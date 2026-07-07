@@ -362,7 +362,7 @@ export class MeshCoreRemoteTelemetryScheduler {
 
     const isRepeaterLike = typeof target.advType === 'number' && REPEATER_ADV_TYPES.has(target.advType);
     const keyShort = target.publicKey.substring(0, 16);
-    logger.info(
+    logger.debug(
       `[MeshCoreRemoteTelem:${manager.sourceId}] Requesting telemetry from ${keyShort}… (${isRepeaterLike ? 'repeater: status + LPP' : 'companion: LPP'})`,
     );
 
@@ -538,7 +538,7 @@ export class MeshCoreRemoteTelemetryScheduler {
       const wanted = [opts.includeStatus ? 'status' : null, opts.includeLpp ? 'LPP' : null]
         .filter(Boolean)
         .join(' + ');
-      logger.info(
+      logger.debug(
         `[MeshCoreRemoteTelem:${manager.sourceId}] No telemetry from ${keyShort}… (${wanted} empty/timeout)`,
       );
       return { written: 0, sources };
@@ -546,7 +546,7 @@ export class MeshCoreRemoteTelemetryScheduler {
 
     try {
       await this.database.telemetry.insertTelemetryBatch(rows, manager.sourceId);
-      logger.info(
+      logger.debug(
         `[MeshCoreRemoteTelem:${manager.sourceId}] Wrote ${rows.length} telemetry rows for ${keyShort}… (${sources.join(', ')})`,
       );
       return { written: rows.length, sources };

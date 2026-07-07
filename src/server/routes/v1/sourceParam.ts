@@ -101,7 +101,7 @@ export function attachSource(
             'No source found that this token has permission to access. Configure a source and/or grant permissions.',
         });
       }
-      logger.info(`[v1] default alias resolved → ${resolved.id} for user ${user.id}`);
+      logger.debug(`[v1] default alias resolved → ${resolved.id} for user ${user.id}`);
     } else {
       resolved = await databaseService.sources.getSource(rawSourceId);
       if (!resolved) {

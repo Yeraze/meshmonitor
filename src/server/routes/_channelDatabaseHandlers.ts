@@ -318,7 +318,7 @@ export async function createChannelHandler(req: Request, res: Response) {
       });
     }
 
-    logger.info(`Channel database entry created: "${name}" (id=${newChannelId}) by user ${scope.user?.username ?? 'unknown'}`);
+    logger.debug(`Channel database entry created: "${name}" (id=${newChannelId}) by user ${scope.user?.username ?? 'unknown'}`);
 
     res.status(201).json({
       success: true,
@@ -383,7 +383,7 @@ export async function reorderChannelsHandler(req: Request, res: Response) {
     await databaseService.channelDatabase.reorderAsync(updates);
     channelDecryptionService.invalidateCache();
 
-    logger.info(`Channel database reordered (${updates.length} entries) by user ${scope.user?.username ?? 'unknown'}`);
+    logger.debug(`Channel database reordered (${updates.length} entries) by user ${scope.user?.username ?? 'unknown'}`);
 
     res.json({
       success: true,
@@ -515,7 +515,7 @@ export async function updateChannelHandler(req: Request, res: Response) {
     }
 
     const updatedChannel = await databaseService.channelDatabase.getByIdAsync(id);
-    logger.info(`Channel database entry ${id} updated by user ${scope.user?.username ?? 'unknown'}`);
+    logger.debug(`Channel database entry ${id} updated by user ${scope.user?.username ?? 'unknown'}`);
 
     res.json({
       success: true,
@@ -561,7 +561,7 @@ export async function deleteChannelHandler(req: Request, res: Response) {
     await databaseService.channelDatabase.deleteAsync(id);
     channelDecryptionService.invalidateCache();
 
-    logger.info(`Channel database entry ${id} ("${existing.name}") deleted by user ${scope.user?.username ?? 'unknown'}`);
+    logger.debug(`Channel database entry ${id} ("${existing.name}") deleted by user ${scope.user?.username ?? 'unknown'}`);
 
     res.json({
       success: true,
@@ -811,7 +811,7 @@ export async function setChannelPermissionHandler(req: Request, res: Response) {
       grantedBy: scope.user?.id ?? null,
     });
 
-    logger.info(
+    logger.debug(
       `Channel database permission set: user ${targetUserId} on channel ${channelId} ` +
       `(viewOnMap=${canViewOnMap}, read=${canRead}) by ${scope.user?.username ?? 'unknown'}`
     );
@@ -873,7 +873,7 @@ export async function deleteChannelPermissionHandler(req: Request, res: Response
 
     await databaseService.channelDatabase.deletePermissionAsync(targetUserId, channelId);
 
-    logger.info(
+    logger.debug(
       `Channel database permission deleted: user ${targetUserId} on channel ${channelId} by ${scope.user?.username ?? 'unknown'}`
     );
 

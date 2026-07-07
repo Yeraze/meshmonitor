@@ -591,7 +591,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
         this.send(clientId, encodeErr(ErrorCodes.BadState));
         return;
       }
-      logger.info(`[MeshCore VN ${this.sourceId}] ${name} from ${clientId} forwarded to node`);
+      logger.debug(`[MeshCore VN ${this.sourceId}] ${name} from ${clientId} forwarded to node`);
       this.send(clientId, encodeOk());
     } catch (err) {
       logger.warn(`[MeshCore VN ${this.sourceId}] ${name} from ${clientId} failed: ${(err as Error).message}`);
@@ -614,7 +614,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
         this.send(clientId, encodeErr(ErrorCodes.BadState));
         return;
       }
-      logger.info(`[MeshCore VN ${this.sourceId}] SendSelfAdvert from ${clientId} forwarded to node`);
+      logger.debug(`[MeshCore VN ${this.sourceId}] SendSelfAdvert from ${clientId} forwarded to node`);
       this.send(clientId, encodeOk());
     } catch (err) {
       logger.warn(`[MeshCore VN ${this.sourceId}] SendSelfAdvert from ${clientId} failed: ${(err as Error).message}`);
@@ -656,12 +656,12 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     try {
       const ok = await this.options.manager.loginToNode(parsed.publicKey, parsed.password);
       if (!ok) {
-        logger.info(`[MeshCore VN ${this.sourceId}] SendLogin to ${keyShort}… from ${clientId} did not succeed`);
+        logger.debug(`[MeshCore VN ${this.sourceId}] SendLogin to ${keyShort}… from ${clientId} did not succeed`);
         return;
       }
       const prefix = pubKeyHexToBytes(parsed.publicKey).subarray(0, 6);
       this.send(clientId, encodeLoginSuccessPush(prefix));
-      logger.info(`[MeshCore VN ${this.sourceId}] SendLogin to ${keyShort}… from ${clientId} succeeded`);
+      logger.debug(`[MeshCore VN ${this.sourceId}] SendLogin to ${keyShort}… from ${clientId} succeeded`);
     } catch (err) {
       logger.warn(`[MeshCore VN ${this.sourceId}] SendLogin to ${keyShort}… from ${clientId} failed: ${(err as Error).message}`);
     }
@@ -687,7 +687,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     try {
       const result = await this.options.manager.tracePathRaw(parsed.path);
       if (!result) {
-        logger.info(`[MeshCore VN ${this.sourceId}] SendTracePath from ${clientId} got no result`);
+        logger.debug(`[MeshCore VN ${this.sourceId}] SendTracePath from ${clientId} got no result`);
         return;
       }
       this.send(clientId, encodeTraceDataPush({
@@ -698,7 +698,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
         pathSnrs: result.pathSnrs,
         lastSnr: result.lastSnr,
       }));
-      logger.info(`[MeshCore VN ${this.sourceId}] SendTracePath from ${clientId} → ${result.pathSnrs.length} hops, lastSnr=${result.lastSnr}`);
+      logger.debug(`[MeshCore VN ${this.sourceId}] SendTracePath from ${clientId} → ${result.pathSnrs.length} hops, lastSnr=${result.lastSnr}`);
     } catch (err) {
       logger.warn(`[MeshCore VN ${this.sourceId}] SendTracePath from ${clientId} failed: ${(err as Error).message}`);
     }
@@ -724,12 +724,12 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     try {
       const lpp = await this.options.manager.requestRemoteTelemetryRaw(parsed.publicKey);
       if (!lpp) {
-        logger.info(`[MeshCore VN ${this.sourceId}] SendTelemetryReq to ${keyShort}… from ${clientId} got no data`);
+        logger.debug(`[MeshCore VN ${this.sourceId}] SendTelemetryReq to ${keyShort}… from ${clientId} got no data`);
         return;
       }
       const prefix = pubKeyHexToBytes(parsed.publicKey).subarray(0, 6);
       this.send(clientId, encodeTelemetryResponsePush(prefix, lpp));
-      logger.info(`[MeshCore VN ${this.sourceId}] SendTelemetryReq to ${keyShort}… from ${clientId} → ${lpp.length}B LPP`);
+      logger.debug(`[MeshCore VN ${this.sourceId}] SendTelemetryReq to ${keyShort}… from ${clientId} → ${lpp.length}B LPP`);
     } catch (err) {
       logger.warn(`[MeshCore VN ${this.sourceId}] SendTelemetryReq to ${keyShort}… from ${clientId} failed: ${(err as Error).message}`);
     }
@@ -769,12 +769,12 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     try {
       const status = await this.options.manager.requestNodeStatus(parsed.publicKey);
       if (!status) {
-        logger.info(`[MeshCore VN ${this.sourceId}] SendStatusReq to ${keyShort}… from ${clientId} got no status`);
+        logger.debug(`[MeshCore VN ${this.sourceId}] SendStatusReq to ${keyShort}… from ${clientId} got no status`);
         return;
       }
       const prefix = pubKeyHexToBytes(parsed.publicKey).subarray(0, 6);
       this.send(clientId, encodeStatusResponsePush(prefix, status));
-      logger.info(`[MeshCore VN ${this.sourceId}] SendStatusReq to ${keyShort}… from ${clientId} → status relayed`);
+      logger.debug(`[MeshCore VN ${this.sourceId}] SendStatusReq to ${keyShort}… from ${clientId} → status relayed`);
     } catch (err) {
       logger.warn(`[MeshCore VN ${this.sourceId}] SendStatusReq to ${keyShort}… from ${clientId} failed: ${(err as Error).message}`);
     }
@@ -856,7 +856,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       const neighbours = result?.neighbours ?? [];
       const payload = encodeNeighboursPayload(total, neighbours, req.pubkeyPrefixLen);
       this.send(clientId, encodeBinaryResponsePush(req.tag, payload));
-      logger.info(
+      logger.debug(
         `[MeshCore VN ${this.sourceId}] GetNeighbours to ${keyShort}… from ${clientId} → ${neighbours.length}/${total} neighbours`,
       );
     } catch (err) {
@@ -977,7 +977,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     try {
       const ok = await this.options.manager.sendMessage(text, undefined, channelIdx);
       if (ok) {
-        logger.info(`[MeshCore VN ${this.sourceId}] ▶ forwarded channel ${channelIdx} msg from ${clientId} (${text.length} chars)`);
+        logger.debug(`[MeshCore VN ${this.sourceId}] ▶ forwarded channel ${channelIdx} msg from ${clientId} (${text.length} chars)`);
         // A channel send is a fire-and-forget broadcast — the app's
         // sendChannelTextMessage awaits Ok(0), NOT Sent(6) (which is the
         // DM-with-ack response). Replying Sent here leaves the app's send
@@ -1006,7 +1006,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     try {
       const result = await this.options.manager.sendMessageWithResult(text, fullKey);
       if (result.ok) {
-        logger.info(`[MeshCore VN ${this.sourceId}] ▶ forwarded DM from ${clientId} to ${prefixHex}… (${text.length} chars)`);
+        logger.debug(`[MeshCore VN ${this.sourceId}] ▶ forwarded DM from ${clientId} to ${prefixHex}… (${text.length} chars)`);
         // Carry the firmware's real ack CRC in the Sent response and remember it
         // so the matching send_confirmed pushes a SendConfirmed(0x82) to THIS
         // client — otherwise the app waits for an ack it never gets, retransmits,
@@ -1043,7 +1043,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     this.pendingAcks.delete(key);
     if (!this.clients.has(clientId)) return; // originating client has gone away
     this.send(clientId, encodeSendConfirmed(data.ackCode, data.roundTripMs));
-    logger.info(
+    logger.debug(
       `[MeshCore VN ${this.sourceId}] ◀ ack confirmed to ${clientId} (crc=${key}, rtt=${data.roundTripMs}ms)`,
     );
   }

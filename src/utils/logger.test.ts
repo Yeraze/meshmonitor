@@ -26,30 +26,51 @@ describe('logger LOG_LEVEL support', () => {
     return mod.logger;
   }
 
-  it('should show all log levels when LOG_LEVEL=debug', async () => {
-    process.env.LOG_LEVEL = 'debug';
+  it('should show every level including trace when LOG_LEVEL=trace', async () => {
+    process.env.LOG_LEVEL = 'trace';
     const logger = await importLogger();
 
+    logger.trace('t');
     logger.debug('d');
     logger.info('i');
     logger.warn('w');
     logger.error('e');
 
+    expect(consoleMocks.log).toHaveBeenCalledWith('[TRACE]', 't');
     expect(consoleMocks.log).toHaveBeenCalledWith('[DEBUG]', 'd');
     expect(consoleMocks.log).toHaveBeenCalledWith('[INFO]', 'i');
     expect(consoleMocks.warn).toHaveBeenCalledWith('[WARN]', 'w');
     expect(consoleMocks.error).toHaveBeenCalledWith('[ERROR]', 'e');
   });
 
-  it('should suppress debug when LOG_LEVEL=info', async () => {
-    process.env.LOG_LEVEL = 'info';
+  it('should suppress trace but show debug when LOG_LEVEL=debug', async () => {
+    process.env.LOG_LEVEL = 'debug';
     const logger = await importLogger();
 
+    logger.trace('t');
     logger.debug('d');
     logger.info('i');
     logger.warn('w');
     logger.error('e');
 
+    expect(consoleMocks.log).not.toHaveBeenCalledWith('[TRACE]', 't');
+    expect(consoleMocks.log).toHaveBeenCalledWith('[DEBUG]', 'd');
+    expect(consoleMocks.log).toHaveBeenCalledWith('[INFO]', 'i');
+    expect(consoleMocks.warn).toHaveBeenCalledWith('[WARN]', 'w');
+    expect(consoleMocks.error).toHaveBeenCalledWith('[ERROR]', 'e');
+  });
+
+  it('should suppress trace and debug when LOG_LEVEL=info', async () => {
+    process.env.LOG_LEVEL = 'info';
+    const logger = await importLogger();
+
+    logger.trace('t');
+    logger.debug('d');
+    logger.info('i');
+    logger.warn('w');
+    logger.error('e');
+
+    expect(consoleMocks.log).not.toHaveBeenCalledWith('[TRACE]', 't');
     expect(consoleMocks.log).not.toHaveBeenCalledWith('[DEBUG]', 'd');
     expect(consoleMocks.log).toHaveBeenCalledWith('[INFO]', 'i');
     expect(consoleMocks.warn).toHaveBeenCalledWith('[WARN]', 'w');

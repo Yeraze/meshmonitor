@@ -56,7 +56,7 @@ backupRouter.post('/settings', requirePermission('configuration', 'write'), asyn
     await databaseService.settings.setSetting('backup_maxBackups', maxBackups.toString());
     await databaseService.settings.setSetting('backup_time', backupTime);
 
-    logger.info(`⚙️  Backup settings updated: enabled=${enabled}, maxBackups=${maxBackups}, time=${backupTime}`);
+    logger.debug(`⚙️  Backup settings updated: enabled=${enabled}, maxBackups=${maxBackups}, time=${backupTime}`);
 
     res.json({ success: true });
   } catch (error) {
@@ -98,7 +98,7 @@ backupRouter.get('/download/:filename', requirePermission('configuration', 'read
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(content);
 
-    logger.info(`📥 Backup downloaded: ${filename}`);
+    logger.debug(`📥 Backup downloaded: ${filename}`);
   } catch (error) {
     logger.error('❌ Error downloading backup:', error);
     res.status(500).json({
@@ -120,7 +120,7 @@ backupRouter.delete('/delete/:filename', requirePermission('configuration', 'wri
 
     await backupFileService.deleteBackup(filename);
 
-    logger.info(`🗑️  Backup deleted: ${filename}`);
+    logger.debug(`🗑️  Backup deleted: ${filename}`);
 
     res.json({ success: true });
   } catch (error) {
@@ -141,7 +141,7 @@ const systemBackupRouter = Router();
 // Create a system backup (exports all database tables to JSON)
 systemBackupRouter.post('/', requirePermission('configuration', 'write'), async (req: Request, res: Response) => {
   try {
-    logger.info('📦 System backup requested...');
+    logger.debug('📦 System backup requested...');
 
     const dirname = await systemBackupService.createBackup('manual');
 
@@ -154,7 +154,7 @@ systemBackupRouter.post('/', requirePermission('configuration', 'write'), async 
       req.ip || null
     );
 
-    logger.info(`✅ System backup created: ${dirname}`);
+    logger.debug(`✅ System backup created: ${dirname}`);
 
     res.json({
       success: true,
@@ -241,7 +241,7 @@ systemBackupRouter.get('/download/:dirname', requirePermission('configuration', 
     archive.directory(backupPath, dirname);
     await archive.finalize();
 
-    logger.info(`📥 System backup downloaded: ${dirname}`);
+    logger.debug(`📥 System backup downloaded: ${dirname}`);
   } catch (error) {
     logger.error('❌ Error downloading system backup:', error);
     // finalize() can throw after streaming began (headers sent) — same guard.
@@ -277,7 +277,7 @@ systemBackupRouter.delete('/delete/:dirname', requirePermission('configuration',
       req.ip || null
     );
 
-    logger.info(`🗑️  System backup deleted: ${dirname}`);
+    logger.debug(`🗑️  System backup deleted: ${dirname}`);
 
     res.json({ success: true });
   } catch (error) {
@@ -333,7 +333,7 @@ systemBackupRouter.post('/settings', requirePermission('configuration', 'write')
     await databaseService.settings.setSetting('system_backup_maxBackups', maxBackups.toString());
     await databaseService.settings.setSetting('system_backup_time', backupTime);
 
-    logger.info(`⚙️  System backup settings updated: enabled=${enabled}, maxBackups=${maxBackups}, time=${backupTime}`);
+    logger.debug(`⚙️  System backup settings updated: enabled=${enabled}, maxBackups=${maxBackups}, time=${backupTime}`);
 
     res.json({ success: true });
   } catch (error) {

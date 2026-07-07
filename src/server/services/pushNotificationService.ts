@@ -71,7 +71,7 @@ class PushNotificationService {
           publicKey = storedPublicKey;
           privateKey = storedPrivateKey;
           subject = storedSubject || 'mailto:admin@meshmonitor.local';
-          logger.info('✅ Loaded VAPID keys from database');
+          logger.debug('✅ Loaded VAPID keys from database');
         }
       } catch (error) {
         // Database not ready or settings table doesn't exist (e.g., during tests)
@@ -360,7 +360,7 @@ class PushNotificationService {
     let sent = 0;
     let failed = 0;
 
-    logger.info(`📢 Broadcasting push notification to ${subscriptions.length} subscriptions`);
+    logger.debug(`📢 Broadcasting push notification to ${subscriptions.length} subscriptions`);
 
     for (const subscription of subscriptions) {
       const success = await this.sendToSubscription(subscription, payload);
@@ -395,7 +395,7 @@ class PushNotificationService {
     let failed = 0;
     let filtered = 0;
 
-    logger.info(`📢 Broadcasting push notification for source ${filterContext.sourceId} to ${subscriptions.length} subscriptions with filtering`);
+    logger.debug(`📢 Broadcasting push notification for source ${filterContext.sourceId} to ${subscriptions.length} subscriptions with filtering`);
 
     // Get local node name for prefix
     const localNodeInfo = meshtasticManager.getLocalNodeInfo();
@@ -503,7 +503,7 @@ class PushNotificationService {
     let failed = 0;
     let filtered = 0;
 
-    logger.info(`📢 Broadcasting ${preferenceKey} notification to ${subscriptions.length} subscriptions${targetUserId ? ` (target user: ${targetUserId})` : ''}`);
+    logger.debug(`📢 Broadcasting ${preferenceKey} notification to ${subscriptions.length} subscriptions${targetUserId ? ` (target user: ${targetUserId})` : ''}`);
 
     // Get local node name for prefix
     // First try the live connection, then fall back to database (for startup before connection)

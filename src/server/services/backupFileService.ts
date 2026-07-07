@@ -179,7 +179,7 @@ class BackupFileService {
       const toDelete = totalBackups - limit;
       const oldBackups = await databaseService.misc.getOldestBackups(toDelete);
 
-      logger.info(`🧹 Purging ${oldBackups.length} old backups (max: ${limit})...`);
+      logger.debug(`🧹 Purging ${oldBackups.length} old backups (max: ${limit})...`);
 
       for (const backup of oldBackups) {
         // Delete file from disk

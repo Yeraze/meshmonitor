@@ -35,7 +35,7 @@ export const getScriptsDirectory = (): string => {
 
   if (!fs.existsSync(scriptsDir)) {
     fs.mkdirSync(scriptsDir, { recursive: true });
-    logger.info(`📁 Created scripts directory: ${scriptsDir}`);
+    logger.debug(`📁 Created scripts directory: ${scriptsDir}`);
   }
 
   return scriptsDir;
@@ -848,7 +848,7 @@ router.post('/scripts/export', requirePermission('settings', 'read'), async (req
     }
 
     await archive.finalize();
-    logger.info(`✅ Exported ${scripts.length} script(s) as zip`);
+    logger.debug(`✅ Exported ${scripts.length} script(s) as zip`);
   } catch (error: any) {
     logger.error('❌ Error exporting scripts:', error);
     if (!res.headersSent) {

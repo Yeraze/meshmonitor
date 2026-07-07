@@ -344,7 +344,7 @@ router.get('/:id/export', requireAuth(), async (req: Request, res: Response) => 
       return res.status(404).json({ error: 'Channel not found' });
     }
 
-    logger.info(`📤 Exporting channel ${channelId} (${channel.name}):`, {
+    logger.debug(`📤 Exporting channel ${channelId} (${channel.name}):`, {
       role: channel.role,
       positionPrecision: channel.positionPrecision,
       uplinkEnabled: channel.uplinkEnabled,
@@ -427,7 +427,7 @@ async function migrateMessagesIfChannelsMoved(
     const afterSnapshot = (await databaseService.channels.getAllChannels(sourceId ?? ALL_SOURCES)).map(ch => ({ id: ch.id, psk: ch.psk }));
     const moves = detectChannelMoves(beforeSnapshot, afterSnapshot);
     if (moves.length > 0) {
-      logger.info(`📦 Detected channel move(s): ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
+      logger.debug(`📦 Detected channel move(s): ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
       await databaseService.messages.migrateMessagesForChannelMoves(moves, typeof sourceId === 'string' ? sourceId : undefined);
       await migrateAutomationChannels(
         moves,
@@ -593,7 +593,7 @@ router.put('/:id', requireAuth(), async (req: Request, res: Response) => {
 
       try {
         await mcManager.setChannel(channelId, updatedChannelData.name, secretHex, normalizedScope);
-        logger.info(`✅ MeshCore: pushed channel ${channelId} to device + re-synced DB`);
+        logger.debug(`✅ MeshCore: pushed channel ${channelId} to device + re-synced DB`);
       } catch (deviceError) {
         logger.error(`⚠️ MeshCore: failed to push channel ${channelId} to device:`, deviceError);
         return res.status(502).json({
@@ -628,7 +628,7 @@ router.put('/:id', requireAuth(), async (req: Request, res: Response) => {
         downlinkEnabled: updatedChannelData.downlinkEnabled,
         positionPrecision: updatedChannelData.positionPrecision,
       });
-      logger.info(`✅ Sent channel ${channelId} configuration to device`);
+      logger.debug(`✅ Sent channel ${channelId} configuration to device`);
     } catch (deviceError) {
       logger.error(`⚠️ Failed to send channel ${channelId} config to device:`, deviceError);
       // Continue even if device update fails - database is updated
@@ -638,7 +638,7 @@ router.put('/:id', requireAuth(), async (req: Request, res: Response) => {
     await migrateMessagesIfChannelsMoved(beforeSnapshot, scopedSourceId);
 
     const updatedChannel = await databaseService.channels.getChannelById(channelId, scopedSourceId);
-    logger.info(`✅ Updated channel ${channelId}: ${name}`);
+    logger.debug(`✅ Updated channel ${channelId}: ${name}`);
     res.json({ success: true, channel: updatedChannel });
   } catch (error) {
     logger.error('Error updating channel:', error);
@@ -700,7 +700,7 @@ router.delete('/:id', requireAuth(), async (req: Request, res: Response) => {
           message: deviceError instanceof Error ? deviceError.message : String(deviceError),
         });
       }
-      logger.info(`🗑️ MeshCore: deleted channel ${channelId} on device + re-synced DB (source=${deleteChannelSourceId})`);
+      logger.debug(`🗑️ MeshCore: deleted channel ${channelId} on device + re-synced DB (source=${deleteChannelSourceId})`);
       return res.json({ success: true, message: `Channel ${channelId} deleted`, sourceId: deleteChannelSourceId });
     }
 
@@ -710,7 +710,7 @@ router.delete('/:id', requireAuth(), async (req: Request, res: Response) => {
     // Delete the channel record (scoped to the chosen source)
     await databaseService.channels.deleteChannel(channelId, deleteChannelSourceId);
 
-    logger.info(`🗑️ Deleted channel ${channelId} (source=${deleteChannelSourceId}): ${deletedCount} messages purged`);
+    logger.debug(`🗑️ Deleted channel ${channelId} (source=${deleteChannelSourceId}): ${deletedCount} messages purged`);
     res.json({ success: true, message: `Channel ${channelId} deleted`, sourceId: deleteChannelSourceId, messagesDeleted: deletedCount });
   } catch (error) {
     logger.error('Error deleting channel:', error);
@@ -821,7 +821,7 @@ router.post('/:slotId/import', requireAuth(), async (req: Request, res: Response
         downlinkEnabled: importedChannelData.downlinkEnabled,
         positionPrecision: importedChannelData.positionPrecision,
       });
-      logger.info(`✅ Sent imported channel ${slotId} configuration to device`);
+      logger.debug(`✅ Sent imported channel ${slotId} configuration to device`);
     } catch (deviceError) {
       logger.error(`⚠️ Failed to send imported channel ${slotId} config to device:`, deviceError);
       // Continue even if device update fails - database is updated
@@ -831,7 +831,7 @@ router.post('/:slotId/import', requireAuth(), async (req: Request, res: Response
     await migrateMessagesIfChannelsMoved(beforeSnapshot, importScopedSourceId);
 
     const importedChannel = await databaseService.channels.getChannelById(slotId, importScopedSourceId);
-    logger.info(`✅ Imported channel to slot ${slotId}: ${name}`);
+    logger.debug(`✅ Imported channel to slot ${slotId}: ${name}`);
     res.json({ success: true, channel: importedChannel });
   } catch (error) {
     logger.error('Error importing channel:', error);
@@ -902,7 +902,7 @@ router.post('/reorder', requireAuth(), async (req: Request, res: Response) => {
     const channelsBySlot = new Map(allChannels.map(ch => [ch.id, ch]));
 
     // Begin edit settings transaction
-    logger.info(`🔄 Beginning channel reorder: ${newOrder.join(',')}`);
+    logger.debug(`🔄 Beginning channel reorder: ${newOrder.join(',')}`);
     await reorderManager.beginEditSettings();
     // Pacing: device firmware silently drops admin packets that arrive too soon
     // after BeginEditSettings on TCP PhoneAPI. See /channels/import-config for details.
@@ -959,7 +959,7 @@ router.post('/reorder', requireAuth(), async (req: Request, res: Response) => {
     await new Promise((resolve) => setTimeout(resolve, 1500));
     // Commit to device
     await reorderManager.commitEditSettings();
-    logger.info(`✅ Channel reorder committed`);
+    logger.debug(`✅ Channel reorder committed`);
 
     // Migrate messages — derive moves directly from newOrder mapping
     // newOrder[newSlot] = oldSlot, so messages on oldSlot should move to newSlot
@@ -971,7 +971,7 @@ router.post('/reorder', requireAuth(), async (req: Request, res: Response) => {
       }
     }
     if (moves.length > 0) {
-      logger.info(`📦 Channel reorder message migration: ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
+      logger.debug(`📦 Channel reorder message migration: ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
       try {
         await databaseService.messages.migrateMessagesForChannelMoves(moves, reorderSourceScope);
       } catch (error) {
@@ -979,7 +979,7 @@ router.post('/reorder', requireAuth(), async (req: Request, res: Response) => {
       }
       try {
         await databaseService.auth.migratePermissionsForChannelMoves(moves);
-        logger.info(`🔑 Permission migration complete for channel reorder`);
+        logger.debug(`🔑 Permission migration complete for channel reorder`);
       } catch (error) {
         logger.error('🔑 Failed to migrate permissions after channel reorder:', error);
       }
@@ -1037,7 +1037,7 @@ router.post('/encode-url', requirePermission('configuration', 'read'), async (re
     const channels = channelResults
       .filter((ch): ch is NonNullable<typeof ch> => ch !== null)
       .map(ch => {
-        logger.info(`📡 Channel ${ch.id} from DB - name: "${ch.name}" (length: ${ch.name.length})`);
+        logger.debug(`📡 Channel ${ch.id} from DB - name: "${ch.name}" (length: ${ch.name.length})`);
         return {
           psk: ch.psk ? ch.psk : 'none',
           name: ch.name, // Use the actual name from database (preserved from device)
@@ -1054,9 +1054,9 @@ router.post('/encode-url', requirePermission('configuration', 'read'), async (re
     // Get LoRa config if requested
     let loraConfig = undefined;
     if (includeLoraConfig) {
-      logger.info('📡 includeLoraConfig is TRUE, fetching device config...');
+      logger.debug('📡 includeLoraConfig is TRUE, fetching device config...');
       const deviceConfig = await encodeUrlManager.getDeviceConfig();
-      logger.info('📡 Device config lora:', JSON.stringify(deviceConfig?.lora, null, 2));
+      logger.debug('📡 Device config lora:', JSON.stringify(deviceConfig?.lora, null, 2));
       if (deviceConfig?.lora) {
         loraConfig = {
           usePreset: deviceConfig.lora.usePreset,
@@ -1075,12 +1075,12 @@ router.post('/encode-url', requirePermission('configuration', 'read'), async (re
           sx126xRxBoostedGain: deviceConfig.lora.sx126xRxBoostedGain,
           configOkToMqtt: deviceConfig.lora.configOkToMqtt,
         };
-        logger.info('📡 LoRa config to encode:', JSON.stringify(loraConfig, null, 2));
+        logger.debug('📡 LoRa config to encode:', JSON.stringify(loraConfig, null, 2));
       } else {
         logger.warn('⚠️ Device config or lora config is missing');
       }
     } else {
-      logger.info('📡 includeLoraConfig is FALSE, skipping LoRa config');
+      logger.debug('📡 includeLoraConfig is FALSE, skipping LoRa config');
     }
 
     const url = channelUrlService.encodeUrl(channels, loraConfig);
@@ -1117,18 +1117,18 @@ router.post('/import-config', requirePermission('configuration', 'write'), async
       return res.status(400).json({ error: 'Invalid or empty configuration URL' });
     }
 
-    logger.info(`📥 Decoded ${decoded.channels?.length || 0} channels, LoRa config: ${!!decoded.loraConfig}`);
+    logger.debug(`📥 Decoded ${decoded.channels?.length || 0} channels, LoRa config: ${!!decoded.loraConfig}`);
 
     // Begin edit settings transaction to batch all changes
     const configImportManager = (resolveSourceManager(configSourceId));
     try {
-      logger.info(`🔄 Beginning edit settings transaction for import`);
+      logger.debug(`🔄 Beginning edit settings transaction for import`);
       await configImportManager.beginEditSettings();
       // Allow device time to enter edit mode and ack back before sending config messages.
       // Empirically: 500ms is too short — device firmware silently drops the first
       // SetChannel that follows BeginEditSettings on TCP PhoneAPI under contention.
       await new Promise((resolve) => setTimeout(resolve, 2000));
-      logger.info(`✅ Edit settings transaction started`);
+      logger.debug(`✅ Edit settings transaction started`);
     } catch (error) {
       logger.error(`❌ Failed to begin edit settings transaction:`, error);
       const errMsg = error instanceof Error ? error.message : String(error);
@@ -1147,7 +1147,7 @@ router.post('/import-config', requirePermission('configuration', 'write'), async
       for (let i = 0; i < decoded.channels.length; i++) {
         const channel = decoded.channels[i];
         try {
-          logger.info(`📥 Importing channel ${i}: ${channel.name || '(unnamed)'}`);
+          logger.debug(`📥 Importing channel ${i}: ${channel.name || '(unnamed)'}`);
 
           // Determine role: if not specified, channel 0 is PRIMARY (1), others are SECONDARY (2)
           let role = channel.role;
@@ -1168,7 +1168,7 @@ router.post('/import-config', requirePermission('configuration', 'write'), async
           // Allow device time to process channel config before sending the next message
           await new Promise((resolve) => setTimeout(resolve, 1000));
           importedChannels.push({ index: i, name: channel.name || '(unnamed)' });
-          logger.info(`✅ Imported channel ${i}`);
+          logger.debug(`✅ Imported channel ${i}`);
         } catch (error) {
           logger.error(`❌ Failed to import channel ${i}:`, error);
           // Continue with other channels even if one fails
@@ -1181,7 +1181,7 @@ router.post('/import-config', requirePermission('configuration', 'write'), async
     let requiresReboot = false;
     if (decoded.loraConfig) {
       try {
-        logger.info(`📥 Importing LoRa config:`, JSON.stringify(decoded.loraConfig, null, 2));
+        logger.debug(`📥 Importing LoRa config:`, JSON.stringify(decoded.loraConfig, null, 2));
 
         // IMPORTANT: Always force txEnabled to true
         // MeshMonitor users need TX enabled to send messages
@@ -1191,14 +1191,14 @@ router.post('/import-config', requirePermission('configuration', 'write'), async
           txEnabled: true,
         };
 
-        logger.info(`📥 LoRa config with txEnabled defaulted: txEnabled=${loraConfigToImport.txEnabled}`);
+        logger.debug(`📥 LoRa config with txEnabled defaulted: txEnabled=${loraConfigToImport.txEnabled}`);
         await configImportManager.setLoRaConfig(loraConfigToImport);
         // LoRa config triggers heavier processing (frequency calculations, radio reconfiguration)
         // so allow extra time before committing
         await new Promise((resolve) => setTimeout(resolve, 1500));
         loraImported = true;
         requiresReboot = true; // LoRa config requires reboot when committed
-        logger.info(`✅ Imported LoRa config`);
+        logger.debug(`✅ Imported LoRa config`);
       } catch (error) {
         logger.error(`❌ Failed to import LoRa config:`, error);
       }
@@ -1213,7 +1213,7 @@ router.post('/import-config', requirePermission('configuration', 'write'), async
       }));
       const moves = detectChannelMoves(beforeSnapshot, afterSnapshot);
       if (moves.length > 0) {
-        logger.info(`📦 Detected channel move(s) from config import: ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
+        logger.debug(`📦 Detected channel move(s) from config import: ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
         try {
           await databaseService.messages.migrateMessagesForChannelMoves(moves, configScopedSourceId);
           await migrateAutomationChannels(
@@ -1230,7 +1230,7 @@ router.post('/import-config', requirePermission('configuration', 'write'), async
     // Commit all changes (channels + LoRa config) as a single transaction
     // This will save everything to flash and trigger device reboot if needed
     try {
-      logger.info(
+      logger.debug(
         `💾 Committing all configuration changes (${importedChannels.length} channels${
           loraImported ? ' + LoRa config' : ''
         })...`

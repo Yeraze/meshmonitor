@@ -347,7 +347,7 @@ pushRouter.post(
     const success = await saveUserNotificationPreferencesAsync(userId, prefs, sourceId);
 
     if (success) {
-      logger.info(
+      logger.debug(
         `✅ Saved notification preferences for user ${userId} source=${sourceId ?? '(default)'} (WebPush: ${enableWebPush}, Apprise: ${enableApprise})`
       );
       res.json({ success: true });
@@ -723,7 +723,7 @@ appriseRouter.put('/enabled', requireAdmin(), async (req: Request, res: Response
     }
 
     await databaseService.settings.setSetting('apprise_enabled', enabled ? 'true' : 'false');
-    logger.info(`✅ Apprise ${enabled ? 'enabled' : 'disabled'} system-wide`);
+    logger.debug(`✅ Apprise ${enabled ? 'enabled' : 'disabled'} system-wide`);
     res.json({ success: true, enabled });
   } catch (error: any) {
     logger.error('Error updating Apprise enabled status:', error);

@@ -48,7 +48,7 @@ class BackupSchedulerService {
       this.checkAndRunBackup().catch(err => logger.error('Backup scheduler error:', err));
     }, 60000); // Check every minute
 
-    logger.info('▶️  Backup scheduler started (checks every minute)');
+    logger.debug('▶️  Backup scheduler started (checks every minute)');
 
     // Run initial check
     this.checkAndRunBackup().catch(err => logger.error('Backup scheduler error:', err));
@@ -121,7 +121,7 @@ class BackupSchedulerService {
       this.isDeviceBackupInProgress = true;
 
       // Run the automated device backup
-      logger.info('⏰ Time for automated device backup...');
+      logger.debug('⏰ Time for automated device backup...');
       await this.runAutomatedDeviceBackup();
 
       // Update last device backup timestamp
@@ -177,7 +177,7 @@ class BackupSchedulerService {
       this.isSystemBackupInProgress = true;
 
       // Run the automated system backup
-      logger.info('⏰ Time for automated system backup...');
+      logger.debug('⏰ Time for automated system backup...');
       await this.runAutomatedSystemBackup();
 
       // Update last system backup timestamp
@@ -199,7 +199,7 @@ class BackupSchedulerService {
         throw new Error('Meshtastic manager not initialized');
       }
 
-      logger.info('🤖 Running automated device backup...');
+      logger.debug('🤖 Running automated device backup...');
 
       // Generate the backup YAML
       const yamlBackup = await deviceBackupService.generateBackup(this.meshtasticManager);
@@ -222,7 +222,7 @@ class BackupSchedulerService {
    */
   private async runAutomatedSystemBackup(): Promise<void> {
     try {
-      logger.info('🤖 Running automated system backup...');
+      logger.debug('🤖 Running automated system backup...');
 
       // Create system backup
       const dirname = await systemBackupService.createBackup('automatic');
@@ -241,7 +241,7 @@ class BackupSchedulerService {
       throw new Error('Meshtastic manager not initialized');
     }
 
-    logger.info('👤 Running manual backup...');
+    logger.debug('👤 Running manual backup...');
 
     // Generate the backup YAML
     const yamlBackup = await deviceBackupService.generateBackup(this.meshtasticManager);
@@ -262,7 +262,7 @@ class BackupSchedulerService {
    * Manually trigger a system backup
    */
   async triggerManualSystemBackup(): Promise<string> {
-    logger.info('👤 Running manual system backup...');
+    logger.debug('👤 Running manual system backup...');
 
     // Create system backup
     const dirname = await systemBackupService.createBackup('manual');

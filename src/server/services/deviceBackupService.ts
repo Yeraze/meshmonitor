@@ -208,7 +208,7 @@ class DeviceBackupService {
    * Compatible with `meshtastic --export-config` format
    */
   async generateBackup(meshtasticManager: any): Promise<string> {
-    logger.info('📦 Generating device backup...');
+    logger.debug('📦 Generating device backup...');
 
     try {
       // Get all necessary data
@@ -387,7 +387,7 @@ class DeviceBackupService {
       // Generate YAML with header comment
       const yaml = '# start of Meshtastic configure yaml\n' + this.yamlGenerator.toYAML(backup, 0);
 
-      logger.info('✅ Device backup generated successfully');
+      logger.debug('✅ Device backup generated successfully');
       return yaml;
 
     } catch (error) {

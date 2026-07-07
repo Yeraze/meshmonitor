@@ -1438,7 +1438,7 @@ class MeshtasticManager implements ISourceManager {
         const reason = consumeSuppressFlag
           ? '🟡 [manual-resync recovery] Skipping want_config_id — using cached config'
           : '🟢 [passive] Skipping want_config_id on reconnect — using cached config from last session';
-        logger.info(reason);
+        logger.debug(reason);
         this.configCaptureComplete = true;
         this.isCapturingInitConfig = false;
         // A manual-resync recovery should also clear the in-flight latch so the
@@ -1473,7 +1473,7 @@ class MeshtasticManager implements ISourceManager {
         this.preConfigChannelSnapshot = [];
       }
 
-      logger.info('📸 Starting init config capture for virtual node server');
+      logger.debug('📸 Starting init config capture for virtual node server');
 
       // Send want_config_id to request full node DB and config.
       // If the node resets the socket between our 'connect' event and this
@@ -1558,13 +1558,13 @@ class MeshtasticManager implements ISourceManager {
         const passive = this.passiveMode;
         setTimeout(() => this.startTracerouteScheduler(), S * 1);
         if (passive) {
-          logger.info('🟢 [passive] Skipping remote admin scanner — outbound queries to device');
+          logger.debug('🟢 [passive] Skipping remote admin scanner — outbound queries to device');
         } else {
           setTimeout(() => this.startRemoteAdminScanner().catch(e =>
             logger.error('❌ Error starting remote admin scanner:', e)), S * 2);
         }
         if (passive) {
-          logger.info('🟢 [passive] Skipping time sync scheduler — outbound time corrections to device');
+          logger.debug('🟢 [passive] Skipping time sync scheduler — outbound time corrections to device');
         } else {
           setTimeout(() => this.startTimeSyncScheduler().catch(e =>
             logger.error('❌ Error starting time sync scheduler:', e)), S * 3);
@@ -1594,7 +1594,7 @@ class MeshtasticManager implements ISourceManager {
         // Start remote LocalStats request scheduler (per-source, issue #3398).
         // Outbound to the mesh, so skip in passive mode like other device-bound queries.
         if (passive) {
-          logger.info('🟢 [passive] Skipping remote LocalStats scheduler — outbound queries to mesh');
+          logger.debug('🟢 [passive] Skipping remote LocalStats scheduler — outbound queries to mesh');
         } else {
           setTimeout(() => this.startRemoteLocalStatsScheduler(), S * 10);
         }
@@ -1603,11 +1603,11 @@ class MeshtasticManager implements ISourceManager {
         // until after configComplete so we don't flood the device mid-exchange.
         // This is safe for serial-bridge connections that reject mid-exchange admin msgs.
         if (passive) {
-          logger.info('🟢 [passive] Skipping LoRa config request — outbound to device');
+          logger.debug('🟢 [passive] Skipping LoRa config request — outbound to device');
         } else {
           setTimeout(async () => {
             try {
-              logger.info('📡 Requesting LoRa config from device...');
+              logger.debug('📡 Requesting LoRa config from device...');
               await this.requestConfig(5); // LORA_CONFIG = 5
             } catch (error) {
               logger.error('❌ Failed to request LoRa config:', error);
@@ -1617,11 +1617,11 @@ class MeshtasticManager implements ISourceManager {
 
         // Request all module configs for complete device backup capability (skip on reconnect)
         if (passive) {
-          logger.info('🟢 [passive] Skipping all-module-configs request — outbound to device');
+          logger.debug('🟢 [passive] Skipping all-module-configs request — outbound to device');
         } else if (!this.moduleConfigsEverFetched) {
           setTimeout(async () => {
             try {
-              logger.info('📦 Requesting all module configs for backup...');
+              logger.debug('📦 Requesting all module configs for backup...');
               await this.requestAllModuleConfigs();
               this.moduleConfigsEverFetched = true;
             } catch (error) {
@@ -1629,7 +1629,7 @@ class MeshtasticManager implements ISourceManager {
             }
           }, S * 10);
         } else {
-          logger.info('📦 Skipping module config request on reconnect (already fetched this session)');
+          logger.debug('📦 Skipping module config request on reconnect (already fetched this session)');
         }
 
         // Auto-favorite staleness sweep - runs every 60 minutes
@@ -1646,7 +1646,7 @@ class MeshtasticManager implements ISourceManager {
           });
         }, S * 11);
 
-        logger.info(`✅ Config capture complete — schedulers will start over the next ${(S * 11) / 1000} seconds`);
+        logger.debug(`✅ Config capture complete — schedulers will start over the next ${(S * 11) / 1000} seconds`);
       };
 
       // Fallback: if configComplete never arrives (device disconnects mid-config),
@@ -1978,7 +1978,7 @@ class MeshtasticManager implements ISourceManager {
           if (targetNode) {
             const channel = targetNode.channel ?? 0; // Use node's channel, default to 0
             const targetName = targetNode.longName || targetNode.nodeId;
-            logger.info(`🗺️ Auto-traceroute: Sending traceroute to ${targetName} (${targetNode.nodeId}) on channel ${channel}`);
+            logger.debug(`🗺️ Auto-traceroute: Sending traceroute to ${targetName} (${targetNode.nodeId}) on channel ${channel}`);
 
             // Log the auto-traceroute attempt to database
             await databaseService.logAutoTracerouteAttemptAsync(targetNode.nodeNum, targetName, this.sourceId);
@@ -1991,13 +1991,13 @@ class MeshtasticManager implements ISourceManager {
             // Check for timed-out traceroutes (> 5 minutes old)
             this.checkTracerouteTimeouts();
           } else {
-            logger.info('🗺️ Auto-traceroute: No nodes available for traceroute');
+            logger.debug('🗺️ Auto-traceroute: No nodes available for traceroute');
           }
         } catch (error) {
           logger.error('❌ Error in auto-traceroute:', error);
         }
       } else {
-        logger.info('🗺️ Auto-traceroute: Skipping - not connected or no local node info');
+        logger.debug('🗺️ Auto-traceroute: Skipping - not connected or no local node info');
       }
     };
 
@@ -2034,7 +2034,7 @@ class MeshtasticManager implements ISourceManager {
     const intervalHours = parseInt(intervalHoursStr || '24', 10);
     const intervalMs = Math.max(1, intervalHours) * 60 * 60 * 1000;
 
-    logger.info(`🗑️ Starting auto-delete-by-distance scheduler for source ${this.sourceId} (interval: ${intervalHours}h)`);
+    logger.debug(`🗑️ Starting auto-delete-by-distance scheduler for source ${this.sourceId} (interval: ${intervalHours}h)`);
 
     // Initial run after 2 minutes (matches prior singleton behavior)
     setTimeout(() => {
@@ -2175,7 +2175,7 @@ class MeshtasticManager implements ISourceManager {
         // firmware default of 3 silently drops requests to farther nodes.
         const hopLimit = Math.min(7, (target.hopsAway ?? 1) + 2);
         const targetName = target.longName || target.nodeId;
-        logger.info(`📊 Remote LocalStats: Requesting local_stats from ${targetName} (${target.nodeId}) on channel ${channel}, hopLimit ${hopLimit}`);
+        logger.debug(`📊 Remote LocalStats: Requesting local_stats from ${targetName} (${target.nodeId}) on channel ${channel}, hopLimit ${hopLimit}`);
 
         this.remoteLocalStatsLastSentAt.set(Number(target.nodeNum), Date.now());
         this.lastRemoteLocalStatsSentTime = Date.now();
@@ -2310,7 +2310,7 @@ class MeshtasticManager implements ISourceManager {
       if (now - this.lastAirtimeGateLogTime > 60000) {
         this.lastAirtimeGateLogTime = now;
         const sourceLabel = this.automationAirtimeCutoffSource === 'neighbors' ? 'neighbour-averaged' : 'local';
-        logger.info(
+        logger.debug(
           `⏸️  Automations paused on ${this.sourceId}: ${sourceLabel} Channel Utilization ${value}% exceeds cutoff ${this.automationAirtimeCutoffThreshold}%`
         );
       }
@@ -2384,12 +2384,12 @@ class MeshtasticManager implements ISourceManager {
 
     // If interval is 0, scanner is disabled
     if (this.remoteAdminScannerIntervalMinutes === 0) {
-      logger.info('🔑 Remote admin scanner is disabled');
+      logger.debug('🔑 Remote admin scanner is disabled');
       return;
     }
 
     const intervalMs = this.remoteAdminScannerIntervalMinutes * 60 * 1000;
-    logger.info(`🔑 Starting remote admin scanner with ${this.remoteAdminScannerIntervalMinutes} minute interval`);
+    logger.debug(`🔑 Starting remote admin scanner with ${this.remoteAdminScannerIntervalMinutes} minute interval`);
 
     this.remoteAdminScannerInterval = setInterval(async () => {
       // Check time window schedule
@@ -2468,12 +2468,12 @@ class MeshtasticManager implements ISourceManager {
 
     // If interval is 0 or time sync is disabled, scheduler is disabled
     if (this.timeSyncIntervalMinutes === 0 || !isEnabled) {
-      logger.info(`🕐 Time sync scheduler is disabled for source ${this.sourceId}`);
+      logger.debug(`🕐 Time sync scheduler is disabled for source ${this.sourceId}`);
       return;
     }
 
     const intervalMs = this.timeSyncIntervalMinutes * 60 * 1000;
-    logger.info(`🕐 Starting time sync scheduler for source ${this.sourceId} with ${this.timeSyncIntervalMinutes} minute interval`);
+    logger.debug(`🕐 Starting time sync scheduler for source ${this.sourceId} with ${this.timeSyncIntervalMinutes} minute interval`);
 
     this.timeSyncInterval = setInterval(async () => {
       if (this.isConnected && this.localNodeInfo) {
@@ -2504,7 +2504,7 @@ class MeshtasticManager implements ISourceManager {
 
     const targetNode = await databaseService.getNodeNeedingTimeSyncAsync(this.sourceId);
     if (!targetNode) {
-      logger.info('🕐 Time sync: No nodes available for syncing');
+      logger.debug('🕐 Time sync: No nodes available for syncing');
       return;
     }
 
@@ -2515,14 +2515,14 @@ class MeshtasticManager implements ISourceManager {
     }
 
     const targetName = targetNode.longName || targetNode.nodeId;
-    logger.info(`🕐 Time sync: Syncing time to ${targetName} (${targetNode.nodeId})`);
+    logger.debug(`🕐 Time sync: Syncing time to ${targetName} (${targetNode.nodeId})`);
 
     this.pendingTimeSyncs.add(targetNode.nodeNum);
 
     try {
       await this.sendSetTimeCommand(targetNode.nodeNum);
       await databaseService.nodes.updateNodeTimeSyncAsync(targetNode.nodeNum, Date.now(), this.sourceId);
-      logger.info(`🕐 Time sync: Successfully synced time to ${targetName}`);
+      logger.debug(`🕐 Time sync: Successfully synced time to ${targetName}`);
     } catch (error) {
       logger.error(`🕐 Time sync: Failed to sync time to ${targetName}:`, error);
     } finally {
@@ -2541,7 +2541,7 @@ class MeshtasticManager implements ISourceManager {
 
     const targetNode = await databaseService.getNodeNeedingRemoteAdminCheckAsync(this.localNodeInfo.nodeNum, this.sourceId);
     if (!targetNode) {
-      logger.info('🔑 Remote admin scan: No nodes available for scanning');
+      logger.debug('🔑 Remote admin scan: No nodes available for scanning');
       return;
     }
 
@@ -2552,7 +2552,7 @@ class MeshtasticManager implements ISourceManager {
     }
 
     const targetName = targetNode.longName || targetNode.nodeId;
-    logger.info(`🔑 Remote admin scan: Checking ${targetName} (${targetNode.nodeId}) for admin capability`);
+    logger.debug(`🔑 Remote admin scan: Checking ${targetName} (${targetNode.nodeId}) for admin capability`);
 
     await this.scanNodeForRemoteAdmin(targetNode.nodeNum);
   }
@@ -2583,7 +2583,7 @@ class MeshtasticManager implements ISourceManager {
       }
     } catch (error) {
       // Error - likely no admin access
-      logger.info(`🔑 Remote admin scan: Node ${nodeNum} scan failed - no admin access`);
+      logger.debug(`🔑 Remote admin scan: Node ${nodeNum} scan failed - no admin access`);
       logger.debug(`🔑 Remote admin scan error details:`, error);
       await databaseService.updateNodeRemoteAdminStatusAsync(nodeNum, false, null, this.sourceId);
       return { hasRemoteAdmin: false, metadata: null };
@@ -2706,7 +2706,7 @@ class MeshtasticManager implements ISourceManager {
         // (keys are mismatched so PKI-encrypted DMs would fail)
         const repairNodeData = await databaseService.nodes.getNode(node.nodeNum);
         const repairChannel = repairNodeData?.channel ?? 0;
-        logger.info(`🔐 Key repair: Sending node info exchange to ${nodeName} on channel ${repairChannel} (attempt ${node.attemptCount + 1}/${this.keyRepairMaxExchanges})`);
+        logger.debug(`🔐 Key repair: Sending node info exchange to ${nodeName} on channel ${repairChannel} (attempt ${node.attemptCount + 1}/${this.keyRepairMaxExchanges})`);
         try {
           await this.sendNodeInfoRequest(node.nodeNum, repairChannel);
 
@@ -2980,7 +2980,7 @@ class MeshtasticManager implements ISourceManager {
           }
         });
 
-        logger.info(`📢 Announce scheduler started with cron expression: ${scheduleExpression}`);
+        logger.debug(`📢 Announce scheduler started with cron expression: ${scheduleExpression}`);
       } else {
         logger.error(`❌ Invalid cron expression: ${scheduleExpression}`);
         return;
@@ -3005,7 +3005,7 @@ class MeshtasticManager implements ISourceManager {
         }
       }, intervalMs);
 
-      logger.info(`📢 Announce scheduler started - next announcement in ${intervalHours} hours`);
+      logger.debug(`📢 Announce scheduler started - next announcement in ${intervalHours} hours`);
     }
 
     // Check if announce-on-start is enabled (per-source; applies to both cron and interval modes)
@@ -3133,7 +3133,7 @@ class MeshtasticManager implements ISourceManager {
 
       // Schedule the cron job
       const job = scheduleCron(trigger.cronExpression, async () => {
-        logger.info(`⏱️ Timer "${trigger.name}" triggered (cron: ${trigger.cronExpression})`);
+        logger.debug(`⏱️ Timer "${trigger.name}" triggered (cron: ${trigger.cronExpression})`);
         // Airtime cutoff: skip timer automations while the mesh is congested
         if (await this.isAutomationAirtimeGated()) {
           return;
@@ -3150,10 +3150,10 @@ class MeshtasticManager implements ISourceManager {
       });
 
       this.timerCronJobs.set(trigger.id, job);
-      logger.info(`⏱️ Scheduled timer "${trigger.name}" with cron: ${trigger.cronExpression}`);
+      logger.debug(`⏱️ Scheduled timer "${trigger.name}" with cron: ${trigger.cronExpression}`);
     }
 
-    logger.info(`⏱️ Timer scheduler started with ${this.timerCronJobs.size} active timer(s)`);
+    logger.debug(`⏱️ Timer scheduler started with ${this.timerCronJobs.size} active timer(s)`);
   }
 
   /**
@@ -3240,11 +3240,11 @@ class MeshtasticManager implements ISourceManager {
           this.executeWhileInsideGeofenceTrigger(trigger).catch(err => logger.error(`Error executing while-inside geofence trigger "${trigger.name}":`, err));
         }, intervalMs);
         this.geofenceWhileInsideTimers.set(trigger.id, timer);
-        logger.info(`📍 Geofence "${trigger.name}": while_inside timer set for every ${trigger.whileInsideIntervalMinutes} minute(s)`);
+        logger.debug(`📍 Geofence "${trigger.name}": while_inside timer set for every ${trigger.whileInsideIntervalMinutes} minute(s)`);
       }
     }
 
-    logger.info(`📍 Geofence engine started with ${enabledTriggers.length} active trigger(s)`);
+    logger.debug(`📍 Geofence engine started with ${enabledTriggers.length} active trigger(s)`);
   }
 
   /**
@@ -3329,7 +3329,7 @@ class MeshtasticManager implements ISourceManager {
         this.geofenceNodeState.set(trigger.id, stateSet);
         if (trigger.event === 'entry' || trigger.event === 'while_inside') {
           if (!this.isGeofenceCooldownActive(trigger.id, nodeNum, trigger.cooldownMinutes)) {
-            logger.info(`📍 Geofence "${trigger.name}": node ${nodeNum} entered`);
+            logger.debug(`📍 Geofence "${trigger.name}": node ${nodeNum} entered`);
             void this.executeGeofenceTrigger(trigger, nodeNum, lat, lng, 'entry');
           } else {
             logger.debug(`📍 Geofence "${trigger.name}": cooldown active for node ${nodeNum}, skipping entry`);
@@ -3341,7 +3341,7 @@ class MeshtasticManager implements ISourceManager {
         this.geofenceNodeState.set(trigger.id, stateSet);
         if (trigger.event === 'exit') {
           if (!this.isGeofenceCooldownActive(trigger.id, nodeNum, trigger.cooldownMinutes)) {
-            logger.info(`📍 Geofence "${trigger.name}": node ${nodeNum} exited`);
+            logger.debug(`📍 Geofence "${trigger.name}": node ${nodeNum} exited`);
             void this.executeGeofenceTrigger(trigger, nodeNum, lat, lng, 'exit');
           } else {
             logger.debug(`📍 Geofence "${trigger.name}": cooldown active for node ${nodeNum}, skipping exit`);
@@ -3376,12 +3376,12 @@ class MeshtasticManager implements ISourceManager {
         const isDM = trigger.channel === 'dm';
         // For DMs: use 3 attempts if verifyResponse is enabled, otherwise just 1 attempt
         const maxAttempts = isDM ? (trigger.verifyResponse ? 3 : 1) : 1;
-        logger.info(`📍 Geofence "${trigger.name}" sending text to ${isDM ? `DM (node ${nodeNum})` : `channel ${trigger.channel}`}${trigger.verifyResponse ? ' (with verification)' : ''}`);
+        logger.debug(`📍 Geofence "${trigger.name}" sending text to ${isDM ? `DM (node ${nodeNum})` : `channel ${trigger.channel}`}${trigger.verifyResponse ? ' (with verification)' : ''}`);
         this.messageQueue.enqueue(
           truncated,
           isDM ? nodeNum : 0,
           undefined,
-          () => logger.info(`✅ Geofence "${trigger.name}" message delivered to ${isDM ? `DM (node ${nodeNum})` : `channel ${trigger.channel}`}`),
+          () => logger.debug(`✅ Geofence "${trigger.name}" message delivered to ${isDM ? `DM (node ${nodeNum})` : `channel ${trigger.channel}`}`),
           (reason: string) => logger.warn(`❌ Geofence "${trigger.name}" message failed: ${reason}`),
           isDM ? undefined : trigger.channel as number,
           maxAttempts
@@ -3443,7 +3443,7 @@ class MeshtasticManager implements ISourceManager {
     }
 
     const startTime = Date.now();
-    logger.info(`📍 Executing geofence script: "${trigger.name}" (${eventType}) -> ${scriptPath}`);
+    logger.debug(`📍 Executing geofence script: "${trigger.name}" (${eventType}) -> ${scriptPath}`);
 
     try {
       const { execFile } = await import('child_process');
@@ -3531,19 +3531,19 @@ class MeshtasticManager implements ISourceManager {
               truncated,
               isDM ? nodeNum : 0,
               undefined,
-              () => logger.info(`✅ Geofence "${trigger.name}" script response delivered`),
+              () => logger.debug(`✅ Geofence "${trigger.name}" script response delivered`),
               (reason: string) => logger.warn(`❌ Geofence "${trigger.name}" script response failed: ${reason}`),
               isDM ? undefined : trigger.channel as number,
               maxAttempts
             );
           }
         } else {
-          logger.info(`📍 Geofence "${trigger.name}" script executed (channel=none, no mesh output)`);
+          logger.debug(`📍 Geofence "${trigger.name}" script executed (channel=none, no mesh output)`);
         }
       }
 
       const duration = Date.now() - startTime;
-      logger.info(`📍 Geofence "${trigger.name}" script completed successfully in ${duration}ms`);
+      logger.debug(`📍 Geofence "${trigger.name}" script completed successfully in ${duration}ms`);
       await this.updateGeofenceTriggerResult(trigger.id, 'success');
     } catch (error: any) {
       const duration = Date.now() - startTime;
@@ -3582,7 +3582,7 @@ class MeshtasticManager implements ISourceManager {
         continue;
       }
 
-      logger.info(`📍 Geofence "${trigger.name}": while_inside tick for node ${nodeNum}`);
+      logger.debug(`📍 Geofence "${trigger.name}": while_inside tick for node ${nodeNum}`);
       void this.executeGeofenceTrigger(trigger, nodeNum, eff.latitude, eff.longitude, 'while_inside');
     }
   }
@@ -3685,7 +3685,7 @@ class MeshtasticManager implements ISourceManager {
       return;
     }
 
-    logger.info(`⏱️ Executing timer script: ${scriptPath} -> ${resolvedPath}`);
+    logger.debug(`⏱️ Executing timer script: ${scriptPath} -> ${resolvedPath}`);
 
     // Determine interpreter based on file extension
     const ext = scriptPath.split('.').pop()?.toLowerCase();
@@ -3755,7 +3755,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       const duration = Date.now() - startTime;
-      logger.info(`⏱️ Timer "${triggerName}" completed successfully in ${duration}ms`);
+      logger.debug(`⏱️ Timer "${triggerName}" completed successfully in ${duration}ms`);
 
       // Parse JSON output and send messages to channel
       if (stdout && stdout.trim()) {
@@ -3795,7 +3795,7 @@ class MeshtasticManager implements ISourceManager {
         // Skip sending if channel is 'none' (script handles its own output)
         if (channel !== 'none') {
           // Send each response to the specified channel
-          logger.info(`⏱️ Enqueueing ${scriptResponses.length} timer response(s) to channel ${channel}`);
+          logger.debug(`⏱️ Enqueueing ${scriptResponses.length} timer response(s) to channel ${channel}`);
 
           scriptResponses.forEach((resp, index) => {
             const truncated = this.truncateMessageForMeshtastic(resp, 200);
@@ -3805,7 +3805,7 @@ class MeshtasticManager implements ISourceManager {
               0, // destination: 0 for channel broadcast
               undefined, // no reply-to packet ID for timer messages
               () => {
-                logger.info(`✅ Timer response ${index + 1}/${scriptResponses.length} delivered to channel ${channel}`);
+                logger.debug(`✅ Timer response ${index + 1}/${scriptResponses.length} delivered to channel ${channel}`);
               },
               (reason: string) => {
                 logger.warn(`❌ Timer response ${index + 1}/${scriptResponses.length} failed to channel ${channel}: ${reason}`);
@@ -3836,20 +3836,20 @@ class MeshtasticManager implements ISourceManager {
    */
   private async executeTimerTextMessage(triggerId: string, triggerName: string, message: string, channel: number): Promise<void> {
     try {
-      logger.info(`⏱️ Executing timer text message: "${triggerName}"`);
+      logger.debug(`⏱️ Executing timer text message: "${triggerName}"`);
 
       // Replace tokens using the same method as auto-announce
       const expandedMessage = await this.replaceAnnouncementTokens(message);
       const truncated = this.truncateMessageForMeshtastic(expandedMessage, 200);
 
-      logger.info(`⏱️ Timer "${triggerName}" sending to channel ${channel}: ${truncated.substring(0, 50)}${truncated.length > 50 ? '...' : ''}`);
+      logger.debug(`⏱️ Timer "${triggerName}" sending to channel ${channel}: ${truncated.substring(0, 50)}${truncated.length > 50 ? '...' : ''}`);
 
       this.messageQueue.enqueue(
         truncated,
         0, // destination: 0 for channel broadcast
         undefined, // no reply-to packet ID for timer messages
         () => {
-          logger.info(`✅ Timer "${triggerName}" message delivered to channel ${channel}`);
+          logger.debug(`✅ Timer "${triggerName}" message delivered to channel ${channel}`);
         },
         (reason: string) => {
           logger.warn(`❌ Timer "${triggerName}" message failed to channel ${channel}: ${reason}`);
@@ -4011,54 +4011,54 @@ class MeshtasticManager implements ISourceManager {
           await this.processDeviceMetadata(parsed.data);
           break;
         case 'config':
-          logger.info('⚙️ Received Config with keys:', Object.keys(parsed.data));
+          logger.debug('⚙️ Received Config with keys:', Object.keys(parsed.data));
           logger.debug('⚙️ Received Config:', JSON.stringify(parsed.data, null, 2));
 
           // Proto3 omits fields with default values (false for bool, 0 for numeric)
           // We need to ensure these fields exist with proper defaults
           if (parsed.data.lora) {
-            logger.info(`📊 Raw LoRa config from device:`, JSON.stringify(parsed.data.lora, null, 2));
+            logger.debug(`📊 Raw LoRa config from device:`, JSON.stringify(parsed.data.lora, null, 2));
 
             // Ensure boolean fields have explicit values (Proto3 omits false)
             if (parsed.data.lora.usePreset === undefined) {
               parsed.data.lora.usePreset = false;
-              logger.info('📊 Set usePreset to false (was undefined - Proto3 default)');
+              logger.debug('📊 Set usePreset to false (was undefined - Proto3 default)');
             }
             if (parsed.data.lora.sx126xRxBoostedGain === undefined) {
               parsed.data.lora.sx126xRxBoostedGain = false;
-              logger.info('📊 Set sx126xRxBoostedGain to false (was undefined - Proto3 default)');
+              logger.debug('📊 Set sx126xRxBoostedGain to false (was undefined - Proto3 default)');
             }
             if (parsed.data.lora.ignoreMqtt === undefined) {
               parsed.data.lora.ignoreMqtt = false;
-              logger.info('📊 Set ignoreMqtt to false (was undefined - Proto3 default)');
+              logger.debug('📊 Set ignoreMqtt to false (was undefined - Proto3 default)');
             }
             if (parsed.data.lora.configOkToMqtt === undefined) {
               parsed.data.lora.configOkToMqtt = false;
-              logger.info('📊 Set configOkToMqtt to false (was undefined - Proto3 default)');
+              logger.debug('📊 Set configOkToMqtt to false (was undefined - Proto3 default)');
             }
 
             // Ensure numeric fields have explicit values (Proto3 omits 0)
             if (parsed.data.lora.frequencyOffset === undefined) {
               parsed.data.lora.frequencyOffset = 0;
-              logger.info('📊 Set frequencyOffset to 0 (was undefined - Proto3 default)');
+              logger.debug('📊 Set frequencyOffset to 0 (was undefined - Proto3 default)');
             }
             if (parsed.data.lora.overrideFrequency === undefined) {
               parsed.data.lora.overrideFrequency = 0;
-              logger.info('📊 Set overrideFrequency to 0 (was undefined - Proto3 default)');
+              logger.debug('📊 Set overrideFrequency to 0 (was undefined - Proto3 default)');
             }
             if (parsed.data.lora.modemPreset === undefined) {
               parsed.data.lora.modemPreset = 0;
-              logger.info('📊 Set modemPreset to 0 (was undefined - Proto3 default)');
+              logger.debug('📊 Set modemPreset to 0 (was undefined - Proto3 default)');
             }
             if (parsed.data.lora.channelNum === undefined) {
               parsed.data.lora.channelNum = 0;
-              logger.info('📊 Set channelNum to 0 (was undefined - Proto3 default)');
+              logger.debug('📊 Set channelNum to 0 (was undefined - Proto3 default)');
             }
             // femLnaMode (FEM_LNA_Mode enum) — zero value DISABLED is a real mode, so
             // proto3 elision must default to 0, NOT to a non-zero fallback (see #3594).
             if (parsed.data.lora.femLnaMode === undefined) {
               parsed.data.lora.femLnaMode = 0;
-              logger.info('📊 Set femLnaMode to 0 (DISABLED - was undefined, Proto3 default)');
+              logger.debug('📊 Set femLnaMode to 0 (DISABLED - was undefined, Proto3 default)');
             }
 
             // Persist the per-source modem preset used as the slot-0
@@ -4069,68 +4069,68 @@ class MeshtasticManager implements ISourceManager {
 
           // Apply Proto3 defaults to device config
           if (parsed.data.device) {
-            logger.info(`📊 Raw Device config from device:`, JSON.stringify(parsed.data.device, null, 2));
+            logger.debug(`📊 Raw Device config from device:`, JSON.stringify(parsed.data.device, null, 2));
 
             // Ensure numeric fields have explicit values (Proto3 omits 0)
             if (parsed.data.device.nodeInfoBroadcastSecs === undefined) {
               parsed.data.device.nodeInfoBroadcastSecs = 0;
-              logger.info('📊 Set nodeInfoBroadcastSecs to 0 (was undefined - Proto3 default)');
+              logger.debug('📊 Set nodeInfoBroadcastSecs to 0 (was undefined - Proto3 default)');
             }
           }
 
           // Apply Proto3 defaults to position config
           if (parsed.data.position) {
-            logger.info(`📊 Raw Position config from device:`, JSON.stringify(parsed.data.position, null, 2));
+            logger.debug(`📊 Raw Position config from device:`, JSON.stringify(parsed.data.position, null, 2));
 
             // Ensure boolean fields have explicit values (Proto3 omits false)
             if (parsed.data.position.positionBroadcastSmartEnabled === undefined) {
               parsed.data.position.positionBroadcastSmartEnabled = false;
-              logger.info('📊 Set positionBroadcastSmartEnabled to false (was undefined - Proto3 default)');
+              logger.debug('📊 Set positionBroadcastSmartEnabled to false (was undefined - Proto3 default)');
             }
             if (parsed.data.position.fixedPosition === undefined) {
               parsed.data.position.fixedPosition = false;
-              logger.info('📊 Set fixedPosition to false (was undefined - Proto3 default)');
+              logger.debug('📊 Set fixedPosition to false (was undefined - Proto3 default)');
             }
 
             // Ensure numeric fields have explicit values (Proto3 omits 0)
             if (parsed.data.position.positionBroadcastSecs === undefined) {
               parsed.data.position.positionBroadcastSecs = 0;
-              logger.info('📊 Set positionBroadcastSecs to 0 (was undefined - Proto3 default)');
+              logger.debug('📊 Set positionBroadcastSecs to 0 (was undefined - Proto3 default)');
             }
           }
 
           // Apply Proto3 defaults to position config
           if (parsed.data.position) {
-            logger.info(`📊 Raw Position config from device:`, JSON.stringify(parsed.data.position, null, 2));
+            logger.debug(`📊 Raw Position config from device:`, JSON.stringify(parsed.data.position, null, 2));
 
             // Ensure boolean fields have explicit values (Proto3 omits false)
             if (parsed.data.position.positionBroadcastSmartEnabled === undefined) {
               parsed.data.position.positionBroadcastSmartEnabled = false;
-              logger.info('📊 Set positionBroadcastSmartEnabled to false (was undefined - Proto3 default)');
+              logger.debug('📊 Set positionBroadcastSmartEnabled to false (was undefined - Proto3 default)');
             }
 
             if (parsed.data.position.fixedPosition === undefined) {
               parsed.data.position.fixedPosition = false;
-              logger.info('📊 Set fixedPosition to false (was undefined - Proto3 default)');
+              logger.debug('📊 Set fixedPosition to false (was undefined - Proto3 default)');
             }
 
             // Ensure numeric fields have explicit values (Proto3 omits 0)
             if (parsed.data.position.positionBroadcastSecs === undefined) {
               parsed.data.position.positionBroadcastSecs = 0;
-              logger.info('📊 Set positionBroadcastSecs to 0 (was undefined - Proto3 default)');
+              logger.debug('📊 Set positionBroadcastSecs to 0 (was undefined - Proto3 default)');
             }
 
-            logger.info(`📊 Position config after Proto3 defaults: positionBroadcastSecs=${parsed.data.position.positionBroadcastSecs}, positionBroadcastSmartEnabled=${parsed.data.position.positionBroadcastSmartEnabled}, fixedPosition=${parsed.data.position.fixedPosition}`);
+            logger.debug(`📊 Position config after Proto3 defaults: positionBroadcastSecs=${parsed.data.position.positionBroadcastSecs}, positionBroadcastSmartEnabled=${parsed.data.position.positionBroadcastSmartEnabled}, fixedPosition=${parsed.data.position.fixedPosition}`);
           }
 
           // Merge the actual device configuration (don't overwrite)
           this.actualDeviceConfig = { ...this.actualDeviceConfig, ...parsed.data };
-          logger.info('📊 Merged actualDeviceConfig now has keys:', Object.keys(this.actualDeviceConfig));
-          logger.info('📊 actualDeviceConfig.lora present:', !!this.actualDeviceConfig?.lora);
+          logger.debug('📊 Merged actualDeviceConfig now has keys:', Object.keys(this.actualDeviceConfig));
+          logger.debug('📊 actualDeviceConfig.lora present:', !!this.actualDeviceConfig?.lora);
           if (parsed.data.lora) {
-            logger.info(`📊 Received LoRa config - hopLimit=${parsed.data.lora.hopLimit}, usePreset=${this.actualDeviceConfig.lora.usePreset}, frequencyOffset=${this.actualDeviceConfig.lora.frequencyOffset}`);
+            logger.debug(`📊 Received LoRa config - hopLimit=${parsed.data.lora.hopLimit}, usePreset=${this.actualDeviceConfig.lora.usePreset}, frequencyOffset=${this.actualDeviceConfig.lora.frequencyOffset}`);
           }
-          logger.info(`📊 Current actualDeviceConfig.lora.hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
+          logger.debug(`📊 Current actualDeviceConfig.lora.hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
           logger.debug('📊 Merged actualDeviceConfig now has:', Object.keys(this.actualDeviceConfig));
 
           // Extract local node's public key from security config and save to database
@@ -4138,7 +4138,7 @@ class MeshtasticManager implements ISourceManager {
             const publicKeyBytes = parsed.data.security.publicKey;
             if (publicKeyBytes && publicKeyBytes.length > 0) {
               const publicKeyBase64 = Buffer.from(publicKeyBytes).toString('base64');
-              logger.info(`🔐 Received local node public key from security config: ${publicKeyBase64.substring(0, 20)}...`);
+              logger.debug(`🔐 Received local node public key from security config: ${publicKeyBase64.substring(0, 20)}...`);
 
               // Get local node info to update database
               const localNodeNum = this.localNodeInfo?.nodeNum;
@@ -4164,7 +4164,7 @@ class MeshtasticManager implements ISourceManager {
                   }
 
                   await databaseService.upsertNodeAsync(updateData, this.sourceId);
-                  logger.info(`💾 Saved local node public key to database for ${localNodeId}`);
+                  logger.debug(`💾 Saved local node public key to database for ${localNodeId}`);
                 }).catch(async (err) => {
                   // If low entropy check fails, still save the key
                   await databaseService.upsertNodeAsync({
@@ -4174,7 +4174,7 @@ class MeshtasticManager implements ISourceManager {
                     hasPKC: true
                   }, this.sourceId);
                   logger.warn(`⚠️ Could not check low-entropy key status:`, err);
-                  logger.info(`💾 Saved local node public key to database for ${localNodeId}`);
+                  logger.debug(`💾 Saved local node public key to database for ${localNodeId}`);
                 });
               } else {
                 logger.warn(`⚠️ Received security config with public key but local node info not yet available`);
@@ -4183,52 +4183,52 @@ class MeshtasticManager implements ISourceManager {
           }
           break;
         case 'moduleConfig':
-          logger.info('⚙️ Received Module Config with keys:', Object.keys(parsed.data));
+          logger.debug('⚙️ Received Module Config with keys:', Object.keys(parsed.data));
           logger.debug('⚙️ Received Module Config:', JSON.stringify(parsed.data, null, 2));
 
           // Apply Proto3 defaults to MQTT config
           if (parsed.data.mqtt) {
-            logger.info(`📊 Raw MQTT config from device:`, JSON.stringify(parsed.data.mqtt, null, 2));
+            logger.debug(`📊 Raw MQTT config from device:`, JSON.stringify(parsed.data.mqtt, null, 2));
 
             // Ensure boolean fields have explicit values (Proto3 omits false)
             if (parsed.data.mqtt.enabled === undefined) {
               parsed.data.mqtt.enabled = false;
-              logger.info('📊 Set mqtt.enabled to false (was undefined - Proto3 default)');
+              logger.debug('📊 Set mqtt.enabled to false (was undefined - Proto3 default)');
             }
             if (parsed.data.mqtt.encryptionEnabled === undefined) {
               parsed.data.mqtt.encryptionEnabled = false;
-              logger.info('📊 Set mqtt.encryptionEnabled to false (was undefined - Proto3 default)');
+              logger.debug('📊 Set mqtt.encryptionEnabled to false (was undefined - Proto3 default)');
             }
             if (parsed.data.mqtt.jsonEnabled === undefined) {
               parsed.data.mqtt.jsonEnabled = false;
-              logger.info('📊 Set mqtt.jsonEnabled to false (was undefined - Proto3 default)');
+              logger.debug('📊 Set mqtt.jsonEnabled to false (was undefined - Proto3 default)');
             }
           }
 
           // Apply Proto3 defaults to NeighborInfo config
           if (parsed.data.neighborInfo) {
-            logger.info(`📊 Raw NeighborInfo config from device:`, JSON.stringify(parsed.data.neighborInfo, null, 2));
+            logger.debug(`📊 Raw NeighborInfo config from device:`, JSON.stringify(parsed.data.neighborInfo, null, 2));
 
             // Ensure boolean fields have explicit values (Proto3 omits false)
             if (parsed.data.neighborInfo.enabled === undefined) {
               parsed.data.neighborInfo.enabled = false;
-              logger.info('📊 Set neighborInfo.enabled to false (was undefined - Proto3 default)');
+              logger.debug('📊 Set neighborInfo.enabled to false (was undefined - Proto3 default)');
             }
             if (parsed.data.neighborInfo.transmitOverLora === undefined) {
               parsed.data.neighborInfo.transmitOverLora = false;
-              logger.info('📊 Set neighborInfo.transmitOverLora to false (was undefined - Proto3 default)');
+              logger.debug('📊 Set neighborInfo.transmitOverLora to false (was undefined - Proto3 default)');
             }
 
             // Ensure numeric fields have explicit values (Proto3 omits 0)
             if (parsed.data.neighborInfo.updateInterval === undefined) {
               parsed.data.neighborInfo.updateInterval = 0;
-              logger.info('📊 Set neighborInfo.updateInterval to 0 (was undefined - Proto3 default)');
+              logger.debug('📊 Set neighborInfo.updateInterval to 0 (was undefined - Proto3 default)');
             }
           }
 
           // Merge the actual module configuration (don't overwrite)
           this.actualModuleConfig = { ...this.actualModuleConfig, ...parsed.data };
-          logger.info('📊 Merged actualModuleConfig now has keys:', Object.keys(this.actualModuleConfig));
+          logger.debug('📊 Merged actualModuleConfig now has keys:', Object.keys(this.actualModuleConfig));
           break;
         case 'channel':
           await this.processChannelProtobuf(parsed.data);
@@ -4258,7 +4258,7 @@ class MeshtasticManager implements ISourceManager {
           if (this.isCapturingInitConfig && !this.configCaptureComplete) {
             this.configCaptureComplete = true;
             this.isCapturingInitConfig = false;
-            logger.info(`📸 Init config capture complete! Captured ${this.initConfigCache.length} messages for virtual node replay`);
+            logger.debug(`📸 Init config capture complete! Captured ${this.initConfigCache.length} messages for virtual node replay`);
 
             // Detect channel moves/swaps from external sources (#2425)
             await this.detectAndMigrateChannelChanges();
@@ -4431,7 +4431,7 @@ class MeshtasticManager implements ISourceManager {
 
           // Delete old ghost node (cascades messages, traceroutes, neighbors, telemetry)
           await databaseService.deleteNodeAsync(prevNum, this.sourceId);
-          logger.info(`🗑️ Deleted old ghost node ${previousNodeId} (${prevNum})`);
+          logger.debug(`🗑️ Deleted old ghost node ${previousNodeId} (${prevNum})`);
 
           // Suppress ghost resurrection — incoming mesh traffic may still reference the old nodeNum
           await databaseService.suppressGhostNodeAsync(prevNum);
@@ -4442,7 +4442,7 @@ class MeshtasticManager implements ISourceManager {
 
           // Clear init config cache to force VN clients to get fresh config with correct identity
           this.initConfigCache = [];
-          logger.info(`📸 Cleared init config cache due to same-device reboot merge`);
+          logger.debug(`📸 Cleared init config cache due to same-device reboot merge`);
 
           // Set localNodeInfo with new nodeNum and merged metadata
           const mergedLongName = newNode?.longName || oldNode?.longName || null;
@@ -4462,7 +4462,7 @@ class MeshtasticManager implements ISourceManager {
           setTimeout(async () => {
             try {
               await this.sendRemoveNode(prevNumToRemove);
-              logger.info(`✅ Removed old nodeNum ${previousNodeId} (${prevNumToRemove}) from device NodeDB after reboot merge`);
+              logger.debug(`✅ Removed old nodeNum ${previousNodeId} (${prevNumToRemove}) from device NodeDB after reboot merge`);
             } catch (err) {
               logger.warn(`⚠️ Could not remove old nodeNum ${previousNodeId} (${prevNumToRemove}) from device NodeDB (non-fatal):`, err);
             }
@@ -4477,7 +4477,7 @@ class MeshtasticManager implements ISourceManager {
           logger.info(`⚠️ Virtual node clients may briefly show the old node ID until they reconnect`);
           // Clear the init config cache to force fresh data for virtual node clients
           this.initConfigCache = [];
-          logger.info(`📸 Cleared init config cache due to node ID change`);
+          logger.debug(`📸 Cleared init config cache due to node ID change`);
 
           // Update stored device_id if new device provides one
           if (deviceId) {
@@ -4508,7 +4508,7 @@ class MeshtasticManager implements ISourceManager {
 
     // Clear any erroneous security flags on the local node — we can't have a key mismatch with ourselves
     if (existingNode?.keyMismatchDetected || existingNode?.keySecurityIssueDetails) {
-      logger.info(`🔐 Clearing erroneous security flags on local node ${nodeId}`);
+      logger.debug(`🔐 Clearing erroneous security flags on local node ${nodeId}`);
       await databaseService.upsertNodeAsync({
         nodeNum,
         nodeId,
@@ -4660,7 +4660,7 @@ class MeshtasticManager implements ISourceManager {
       ...this.actualDeviceConfig[section],
       ...values
     };
-    logger.info(`📊 Updated cached device config section '${section}':`, Object.keys(values));
+    logger.debug(`📊 Updated cached device config section '${section}':`, Object.keys(values));
   }
 
   /**
@@ -4690,7 +4690,7 @@ class MeshtasticManager implements ISourceManager {
     if (enabled !== 'true') return;
     const { publicKey, privateKey } = this.getSecurityKeys();
     if (!privateKey) {
-      logger.info(`[MeshtasticManager:${this.sourceId}] PKI DM decryption enabled but device exposed no private key`);
+      logger.debug(`[MeshtasticManager:${this.sourceId}] PKI DM decryption enabled but device exposed no private key`);
       return;
     }
     const priv = Buffer.from(privateKey, 'base64');
@@ -4707,7 +4707,7 @@ class MeshtasticManager implements ISourceManager {
     // decrypted by this key regardless of which source received the packet.
     const nodeNum = this.localNodeInfo?.nodeNum ?? null;
     await store.store(this.sourceId, nodeNum, priv, publicKey);
-    logger.info(`🔑 [MeshtasticManager:${this.sourceId}] Stored local PKI private key (node ${nodeNum}) for DM decryption`);
+    logger.debug(`🔑 [MeshtasticManager:${this.sourceId}] Stored local PKI private key (node ${nodeNum}) for DM decryption`);
   }
 
   /**
@@ -4771,7 +4771,7 @@ class MeshtasticManager implements ISourceManager {
    * Get the current device configuration
    */
   getCurrentConfig(): { deviceConfig: any; moduleConfig: any; localNodeInfo: any; supportedModules: { statusmessage: boolean; trafficManagement: boolean } } {
-    logger.info(`[CONFIG] getCurrentConfig called - hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
+    logger.debug(`[CONFIG] getCurrentConfig called - hopLimit=${this.actualDeviceConfig?.lora?.hopLimit}`);
 
     // Apply Proto3 defaults to device config if it exists
     let deviceConfig = this.actualDeviceConfig || {};
@@ -4811,7 +4811,7 @@ class MeshtasticManager implements ISourceManager {
         lora: loraConfigWithDefaults
       };
 
-      logger.info(`[CONFIG] Returning lora config with usePreset=${loraConfigWithDefaults.usePreset}, sx126xRxBoostedGain=${loraConfigWithDefaults.sx126xRxBoostedGain}, ignoreMqtt=${loraConfigWithDefaults.ignoreMqtt}, configOkToMqtt=${loraConfigWithDefaults.configOkToMqtt}`);
+      logger.debug(`[CONFIG] Returning lora config with usePreset=${loraConfigWithDefaults.usePreset}, sx126xRxBoostedGain=${loraConfigWithDefaults.sx126xRxBoostedGain}, ignoreMqtt=${loraConfigWithDefaults.ignoreMqtt}, configOkToMqtt=${loraConfigWithDefaults.configOkToMqtt}`);
     }
 
     // Apply Proto3 defaults to position config if it exists
@@ -4830,7 +4830,7 @@ class MeshtasticManager implements ISourceManager {
         position: positionConfigWithDefaults
       };
 
-      logger.info(`[CONFIG] Returning position config with positionBroadcastSecs=${positionConfigWithDefaults.positionBroadcastSecs}, positionBroadcastSmartEnabled=${positionConfigWithDefaults.positionBroadcastSmartEnabled}, fixedPosition=${positionConfigWithDefaults.fixedPosition}`);
+      logger.debug(`[CONFIG] Returning position config with positionBroadcastSecs=${positionConfigWithDefaults.positionBroadcastSecs}, positionBroadcastSmartEnabled=${positionConfigWithDefaults.positionBroadcastSmartEnabled}, fixedPosition=${positionConfigWithDefaults.fixedPosition}`);
     }
 
     // Apply Proto3 defaults to security config if it exists
@@ -4849,7 +4849,7 @@ class MeshtasticManager implements ISourceManager {
         security: securityConfigWithDefaults
       };
 
-      logger.info(`[CONFIG] Returning security config with isManaged=${securityConfigWithDefaults.isManaged}, serialEnabled=${securityConfigWithDefaults.serialEnabled}, debugLogApiEnabled=${securityConfigWithDefaults.debugLogApiEnabled}, adminChannelEnabled=${securityConfigWithDefaults.adminChannelEnabled}`);
+      logger.debug(`[CONFIG] Returning security config with isManaged=${securityConfigWithDefaults.isManaged}, serialEnabled=${securityConfigWithDefaults.serialEnabled}, debugLogApiEnabled=${securityConfigWithDefaults.debugLogApiEnabled}, adminChannelEnabled=${securityConfigWithDefaults.adminChannelEnabled}`);
     }
 
     // Apply Proto3 defaults to module config if it exists
@@ -4873,7 +4873,7 @@ class MeshtasticManager implements ISourceManager {
         mqtt: mqttConfigWithDefaults
       };
 
-      logger.info(`[CONFIG] Returning MQTT config with enabled=${mqttConfigWithDefaults.enabled}, encryptionEnabled=${mqttConfigWithDefaults.encryptionEnabled}, jsonEnabled=${mqttConfigWithDefaults.jsonEnabled}`);
+      logger.debug(`[CONFIG] Returning MQTT config with enabled=${mqttConfigWithDefaults.enabled}, encryptionEnabled=${mqttConfigWithDefaults.encryptionEnabled}, jsonEnabled=${mqttConfigWithDefaults.jsonEnabled}`);
     }
 
     // Apply Proto3 defaults to NeighborInfo module config
@@ -4891,7 +4891,7 @@ class MeshtasticManager implements ISourceManager {
         neighborInfo: neighborInfoConfigWithDefaults
       };
 
-      logger.info(`[CONFIG] Returning NeighborInfo config with enabled=${neighborInfoConfigWithDefaults.enabled}, updateInterval=${neighborInfoConfigWithDefaults.updateInterval}, transmitOverLora=${neighborInfoConfigWithDefaults.transmitOverLora}`);
+      logger.debug(`[CONFIG] Returning NeighborInfo config with enabled=${neighborInfoConfigWithDefaults.enabled}, updateInterval=${neighborInfoConfigWithDefaults.updateInterval}, transmitOverLora=${neighborInfoConfigWithDefaults.transmitOverLora}`);
     }
 
     // Apply Proto3 defaults to Telemetry module config
@@ -4920,7 +4920,7 @@ class MeshtasticManager implements ISourceManager {
         telemetry: telemetryConfigWithDefaults
       };
 
-      logger.info(`[CONFIG] Returning Telemetry config with deviceTelemetryEnabled=${telemetryConfigWithDefaults.deviceTelemetryEnabled}, healthMeasurementEnabled=${telemetryConfigWithDefaults.healthMeasurementEnabled}`);
+      logger.debug(`[CONFIG] Returning Telemetry config with deviceTelemetryEnabled=${telemetryConfigWithDefaults.deviceTelemetryEnabled}, healthMeasurementEnabled=${telemetryConfigWithDefaults.healthMeasurementEnabled}`);
     }
 
     // Convert network config IP addresses from uint32 to string format for frontend
@@ -4953,7 +4953,7 @@ class MeshtasticManager implements ISourceManager {
         statusmessage: statusMessageConfigWithDefaults
       };
 
-      logger.info(`[CONFIG] Returning StatusMessage config with nodeStatus="${statusMessageConfigWithDefaults.nodeStatus}"`);
+      logger.debug(`[CONFIG] Returning StatusMessage config with nodeStatus="${statusMessageConfigWithDefaults.nodeStatus}"`);
     }
 
     // Apply Proto3 defaults to TrafficManagement module config (v2.7.22 schema)
@@ -4982,7 +4982,7 @@ class MeshtasticManager implements ISourceManager {
         trafficManagement: trafficManagementConfigWithDefaults
       };
 
-      logger.info(`[CONFIG] Returning TrafficManagement config with enabled=${trafficManagementConfigWithDefaults.enabled}`);
+      logger.debug(`[CONFIG] Returning TrafficManagement config with enabled=${trafficManagementConfigWithDefaults.enabled}`);
     }
 
     return {
@@ -5017,7 +5017,7 @@ class MeshtasticManager implements ISourceManager {
       this.localNodeInfo.hasEthernet = metadata.hasEthernet === true;
       this.localNodeInfo.hasBluetooth = metadata.hasBluetooth === true;
       if (this.isLocalNodeBridged()) {
-        logger.info('🌉 Connected node reports no native WiFi/Ethernet — treating as a bridged node (OTA firmware update disabled)');
+        logger.debug('🌉 Connected node reports no native WiFi/Ethernet — treating as a bridged node (OTA firmware update disabled)');
       }
     }
 
@@ -5113,7 +5113,7 @@ class MeshtasticManager implements ISourceManager {
           }
 
           if (channelRole === 0 && channel.role === undefined && channel.index > 0) {
-            logger.info(`📡 Channel ${channel.index} arrived empty — normalizing role to DISABLED(0) (#2666)`);
+            logger.debug(`📡 Channel ${channel.index} arrived empty — normalizing role to DISABLED(0) (#2666)`);
           }
 
           logger.debug(`📡 Saving channel ${channel.index} (${displayName}) - role: ${channelRole}`);
@@ -5181,7 +5181,7 @@ class MeshtasticManager implements ISourceManager {
           };
           decryptedBy = 'server';
           decryptedChannelId = decryptionResult.channelDatabaseId ?? null;
-          logger.info(
+          logger.trace(
             `🔓 Server decrypted packet ${packetId} from ${fromNum} using channel "${decryptionResult.channelName}" (portnum=${decryptionResult.portnum})`
           );
         }
@@ -5208,7 +5208,7 @@ class MeshtasticManager implements ISourceManager {
           if (pki) {
             meshPacket.decoded = { portnum: pki.portnum, payload: pki.payload };
             decryptedBy = 'server';
-            logger.info(`🔓🔑 Server PKI-decrypted DM ${meshPacket.id} from ${fromNum} to ${toNum} (portnum=${pki.portnum})`);
+            logger.debug(`🔓🔑 Server PKI-decrypted DM ${meshPacket.id} from ${fromNum} to ${toNum} (portnum=${pki.portnum})`);
           }
         } catch (err) {
           logger.debug(`PKI decryption attempt failed for packet ${meshPacket.id}:`, err);
@@ -5621,7 +5621,7 @@ class MeshtasticManager implements ISourceManager {
   private async handleClientNotification(data: ParsedClientNotification): Promise<void> {
     // `message` is device-controlled — sanitize before logging or forwarding it.
     const message = sanitizeNotificationMessage(data.message ?? '');
-    logger.info(`🔔 [${this.sourceId}] Device notification (level ${data.level}): ${message}`);
+    logger.debug(`🔔 [${this.sourceId}] Device notification (level ${data.level}): ${message}`);
 
     // (1) Reconcile a protected-node-cap refusal (firmware 2.8+). Runs
     // independently of the toast policy below. `this.sourceId` is always set
@@ -5978,7 +5978,7 @@ class MeshtasticManager implements ISourceManager {
           const messageText = new TextDecoder('utf-8').decode(
             textBytes instanceof Uint8Array ? textBytes : new Uint8Array(textBytes)
           );
-          logger.info(`📦 S&F ${rrName} from ${fromNodeId}: "${messageText.substring(0, 50)}"`);
+          logger.debug(`📦 S&F ${rrName} from ${fromNodeId}: "${messageText.substring(0, 50)}"`);
 
           // Dedup: check if we already have this message from the original transmission.
           // The firmware preserves the original packet ID in meshPacket.id.
@@ -6004,7 +6004,7 @@ class MeshtasticManager implements ISourceManager {
         case StoreForwardRequestResponse.ROUTER_HEARTBEAT: {
           const period = decoded.heartbeat?.period ?? 0;
           const secondary = decoded.heartbeat?.secondary ?? 0;
-          logger.info(`📦 S&F heartbeat from ${fromNodeId}: period=${period}s, secondary=${secondary}`);
+          logger.debug(`📦 S&F heartbeat from ${fromNodeId}: period=${period}s, secondary=${secondary}`);
 
           // Mark this node as a Store & Forward server
           await databaseService.upsertNodeAsync({
@@ -6020,7 +6020,7 @@ class MeshtasticManager implements ISourceManager {
         case StoreForwardRequestResponse.ROUTER_STATS: {
           const stats = decoded.stats;
           if (stats) {
-            logger.info(`📦 S&F stats from ${fromNodeId}: total=${stats.messagesTotal ?? 0}, saved=${stats.messagesSaved ?? 0}, max=${stats.messagesMax ?? 0}, uptime=${stats.upTime ?? 0}s`);
+            logger.debug(`📦 S&F stats from ${fromNodeId}: total=${stats.messagesTotal ?? 0}, saved=${stats.messagesSaved ?? 0}, max=${stats.messagesMax ?? 0}, uptime=${stats.upTime ?? 0}s`);
           }
           break;
         }
@@ -6028,7 +6028,7 @@ class MeshtasticManager implements ISourceManager {
         case StoreForwardRequestResponse.ROUTER_HISTORY: {
           const history = decoded.history;
           if (history) {
-            logger.info(`📦 S&F history from ${fromNodeId}: ${history.historyMessages ?? 0} messages, window=${history.window ?? 0}min`);
+            logger.debug(`📦 S&F history from ${fromNodeId}: ${history.historyMessages ?? 0} messages, window=${history.window ?? 0}min`);
           }
           break;
         }
@@ -6181,7 +6181,7 @@ class MeshtasticManager implements ISourceManager {
           if (pendingExchangeRequest && pendingExchangeRequest.requestId != null) {
             // Mark the position exchange request as delivered
             await databaseService.messages.updateMessageDeliveryState(pendingExchangeRequest.requestId!, 'delivered');
-            logger.info(`📍 Position exchange acknowledged: Received position from ${nodeId}, marking request message as delivered`);
+            logger.debug(`📍 Position exchange acknowledged: Received position from ${nodeId}, marking request message as delivered`);
           }
         }
 
@@ -6271,7 +6271,7 @@ class MeshtasticManager implements ISourceManager {
         const isLocalNode = this.localNodeInfo && fromNum === this.localNodeInfo.nodeNum;
         const hasFixedPositionEnabled = this.actualDeviceConfig?.position?.fixedPosition === true;
         if (isLocalNode && hasFixedPositionEnabled) {
-          logger.info(`🗺️ Skipping position update for local node ${nodeId}: fixedPosition is enabled, position should only be set via config. Received: ${coords.latitude}, ${coords.longitude}`);
+          logger.debug(`🗺️ Skipping position update for local node ${nodeId}: fixedPosition is enabled, position should only be set via config. Received: ${coords.latitude}, ${coords.longitude}`);
           // Still update lastHeard and technical fields, just not lat/lon/alt
           const technicalData: any = {
             nodeNum: fromNum,
@@ -6418,7 +6418,7 @@ class MeshtasticManager implements ISourceManager {
         // Convert Uint8Array to base64 for storage
         nodeData.publicKey = Buffer.from(user.publicKey).toString('base64');
         nodeData.hasPKC = true;
-        logger.info(`🔐 Received NodeInfo with public key for ${nodeId} (${user.longName}): ${nodeData.publicKey.substring(0, 20)}... (${user.publicKey.length} bytes)`);
+        logger.debug(`🔐 Received NodeInfo with public key for ${nodeId} (${user.longName}): ${nodeData.publicKey.substring(0, 20)}... (${user.publicKey.length} bytes)`);
 
         // Check for key security issues
         const { checkLowEntropyKey } = await import('../services/lowEntropyKeyService.js');
@@ -6501,10 +6501,10 @@ class MeshtasticManager implements ISourceManager {
 
             if (oldKey !== newKey) {
               // Key has changed - the mismatch is fixed via new key
-              logger.info(`🔐 Key mismatch RESOLVED for node ${nodeId} (${user.longName}) - received new key`);
+              logger.debug(`🔐 Key mismatch RESOLVED for node ${nodeId} (${user.longName}) - received new key`);
             } else {
               // Keys now match - the mismatch was fixed (e.g., device re-synced after purge)
-              logger.info(`🔐 Key mismatch RESOLVED for node ${nodeId} (${user.longName}) - keys now match`);
+              logger.debug(`🔐 Key mismatch RESOLVED for node ${nodeId} (${user.longName}) - keys now match`);
             }
 
             nodeData.keyMismatchDetected = false;
@@ -6866,7 +6866,7 @@ class MeshtasticManager implements ISourceManager {
         logger.debug(`🗺️ Outgoing traceroute response from local node ${fromNodeId} — will record without segments`);
       }
 
-      logger.info(`🗺️ Traceroute response from ${fromNodeId}:`, JSON.stringify(routeDiscovery, null, 2));
+      logger.debug(`🗺️ Traceroute response from ${fromNodeId}:`, JSON.stringify(routeDiscovery, null, 2));
 
       // Ensure from node exists in database (don't overwrite existing names)
       const existingFromNode = await databaseService.nodes.getNode(fromNum);
@@ -7344,12 +7344,12 @@ class MeshtasticManager implements ISourceManager {
           this.truncateMessageForMeshtastic(compactMsg, 200),
           pending.isDM ? pending.replyToNodeNum : 0,
           undefined,
-          () => { logger.info(`✅ Autoresponder traceroute result reply delivered`); },
+          () => { logger.debug(`✅ Autoresponder traceroute result reply delivered`); },
           (reason: string) => { logger.warn(`❌ Autoresponder traceroute result reply failed: ${reason}`); },
           pending.isDM ? undefined : pending.replyChannel,
           1
         );
-        logger.info(`🔍 Autoresponder traceroute result for ${fromNodeId} replied to !${pending.replyToNodeNum.toString(16).padStart(8, '0')}`);
+        logger.debug(`🔍 Autoresponder traceroute result for ${fromNodeId} replied to !${pending.replyToNodeNum.toString(16).padStart(8, '0')}`);
       }
 
       // Send notification for successful traceroute
@@ -7482,7 +7482,7 @@ class MeshtasticManager implements ISourceManager {
 
           // ACK from our own radio - message transmitted to mesh
           if (fromNodeId === localNodeId) {
-            logger.info(`📡 ACK from our own radio ${fromNodeId} for requestId ${requestId} - message transmitted to mesh`);
+            logger.debug(`📡 ACK from our own radio ${fromNodeId} for requestId ${requestId} - message transmitted to mesh`);
             const updated = await databaseService.messages.updateMessageDeliveryState(requestId, 'delivered');
             if (updated) {
               logger.debug(`💾 Marked message ${requestId} as delivered (transmitted)`);
@@ -7501,7 +7501,7 @@ class MeshtasticManager implements ISourceManager {
 
           // ACK from target node - message confirmed received by recipient (only for DMs)
           if (fromNodeId === targetNodeId && isDM) {
-            logger.info(`✅ ACK received from TARGET node ${fromNodeId} for requestId ${requestId} - message confirmed`);
+            logger.debug(`✅ ACK received from TARGET node ${fromNodeId} for requestId ${requestId} - message confirmed`);
             const updated = await databaseService.messages.updateMessageDeliveryState(requestId, 'confirmed');
             if (updated) {
               logger.debug(`💾 Marked message ${requestId} as confirmed (received by target)`);
@@ -7652,7 +7652,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // Update message in database to mark delivery as failed
-      logger.info(`❌ Marking message ${requestId} as failed due to routing error from ${isDM ? 'target' : 'mesh'}: ${errorName}`);
+      logger.debug(`❌ Marking message ${requestId} as failed due to routing error from ${isDM ? 'target' : 'mesh'}: ${errorName}`);
       await databaseService.messages.updateMessageDeliveryState(requestId, 'failed');
       // Emit WebSocket event for real-time delivery failure update
       dataEventEmitter.emitRoutingUpdate({ requestId, status: 'nak', errorReason: errorName }, this.sourceId);
@@ -7725,7 +7725,7 @@ class MeshtasticManager implements ISourceManager {
         { destination, packetId, waypointId: waypoint.id, expire: waypoint.expire },
       );
 
-      logger.info(`📍 Waypoint broadcast id=${waypoint.id} (${waypoint.name ?? ''}) packetId=${packetId}`);
+      logger.debug(`📍 Waypoint broadcast id=${waypoint.id} (${waypoint.name ?? ''}) packetId=${packetId}`);
       return packetId;
     } catch (error) {
       logger.error('Error broadcasting waypoint:', error);
@@ -7757,7 +7757,7 @@ class MeshtasticManager implements ISourceManager {
       const fromNum = Number(meshPacket.from);
       const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
 
-      logger.info(`🏠 Neighbor info received from ${fromNodeId}:`, neighborInfo);
+      logger.debug(`🏠 Neighbor info received from ${fromNodeId}:`, neighborInfo);
 
       // MQTT-sourced neighbor info IS persisted (issue #3271): the global, batch
       // position estimator pools the MQTT neighbor graph for extra resolution.
@@ -7783,7 +7783,7 @@ class MeshtasticManager implements ISourceManager {
 
       // Process each neighbor in the list
       if (neighborInfo.neighbors && Array.isArray(neighborInfo.neighbors)) {
-        logger.info(`📡 Processing ${neighborInfo.neighbors.length} neighbors from ${fromNodeId}`);
+        logger.debug(`📡 Processing ${neighborInfo.neighbors.length} neighbors from ${fromNodeId}`);
 
         // Validate and collect neighbor node numbers upfront
         const validNeighbors: Array<{ nodeNum: number; snr: number | null; lastRxTime: number | null }> = [];
@@ -7827,7 +7827,7 @@ class MeshtasticManager implements ISourceManager {
               shortName: neighborNodeId.slice(-4),
               hopsAway: senderHopsAway + 1,
             }, this.sourceId);
-            logger.info(`➕ Created new node ${neighborNodeId} with hopsAway=${senderHopsAway + 1} (no lastHeard — indirectly discovered)`);
+            logger.debug(`➕ Created new node ${neighborNodeId} with hopsAway=${senderHopsAway + 1} (no lastHeard — indirectly discovered)`);
           }
         }
 
@@ -7931,7 +7931,7 @@ class MeshtasticManager implements ISourceManager {
       if (nodeInfo.isFavorite !== undefined) {
         if (existingNode?.favoriteLocked) {
           if (existingNode.isFavorite !== nodeInfo.isFavorite) {
-            logger.info(`🔒 Node ${nodeId} favoriteLocked — preserving DB isFavorite=${existingNode.isFavorite}, re-syncing to device (device reported ${nodeInfo.isFavorite})`);
+            logger.debug(`🔒 Node ${nodeId} favoriteLocked — preserving DB isFavorite=${existingNode.isFavorite}, re-syncing to device (device reported ${nodeInfo.isFavorite})`);
             nodeData.isFavorite = existingNode.isFavorite;
             // Re-push the locked favorite state to the connected device
             void (async () => {
@@ -7973,7 +7973,7 @@ class MeshtasticManager implements ISourceManager {
           const lastPush = this.ignoreReapplyCooldown.get(nodeNum) ?? 0;
           if (now - lastPush >= IGNORE_REAPPLY_COOLDOWN_MS) {
             this.ignoreReapplyCooldown.set(nodeNum, now);
-            logger.info(`🚫 Node ${nodeId} on persistent ignore list but device reports un-ignored — re-applying on local device (#2601)`);
+            logger.debug(`🚫 Node ${nodeId} on persistent ignore list but device reports un-ignored — re-applying on local device (#2601)`);
             void (async () => {
               try {
                 await this.sendIgnoredNode(nodeNum); // no destination = local node, no mesh traffic
@@ -8026,7 +8026,7 @@ class MeshtasticManager implements ISourceManager {
           if (existingNode?.keyMismatchDetected && existingNode.lastMeshReceivedKey) {
             if (deviceSyncKey === existingNode.lastMeshReceivedKey) {
               // Device now has the same key as the mesh broadcast — mismatch resolved!
-              logger.info(`🔐 Key mismatch RESOLVED via device sync for ${nodeId}: device key matches mesh key`);
+              logger.debug(`🔐 Key mismatch RESOLVED via device sync for ${nodeId}: device key matches mesh key`);
               nodeData.keyMismatchDetected = false;
               nodeData.lastMeshReceivedKey = null;
               nodeData.publicKey = deviceSyncKey;
@@ -8198,7 +8198,7 @@ class MeshtasticManager implements ISourceManager {
           const nameChanged = this.localNodeInfo.longName !== nodeInfo.user.longName ||
             this.localNodeInfo.shortName !== nodeInfo.user.shortName;
           if (nameChanged) {
-            logger.info(`📱 Local node name updated: "${this.localNodeInfo.longName}" → "${nodeInfo.user.longName}" (${nodeInfo.user.shortName})`);
+            logger.debug(`📱 Local node name updated: "${this.localNodeInfo.longName}" → "${nodeInfo.user.longName}" (${nodeInfo.user.shortName})`);
           }
           this.localNodeInfo.longName = nodeInfo.user.longName;
           this.localNodeInfo.shortName = nodeInfo.user.shortName;
@@ -8340,7 +8340,7 @@ class MeshtasticManager implements ISourceManager {
       return await this.buildDeviceConfigFromActual();
     }
 
-    logger.info('⚠️ No device config available yet - returning null');
+    logger.debug('⚠️ No device config available yet - returning null');
     logger.debug('No device config available yet');
     return null;
   }
@@ -8525,7 +8525,7 @@ class MeshtasticManager implements ISourceManager {
               // correctly lingers until a later push or NodeInfo confirms the contact.
             }
           } else if (targetNode?.publicKey && targetNode.keyMismatchDetected) {
-            logger.info(`🔐 DM to !${destination.toString(16).padStart(8, '0')} — skipping PKI (key mismatch active; firmware may lack key after purge), falling back to channel encryption`);
+            logger.debug(`🔐 DM to !${destination.toString(16).padStart(8, '0')} — skipping PKI (key mismatch active; firmware may lack key after purge), falling back to channel encryption`);
           }
         } catch {
           // If lookup fails, send without PKI — firmware will use channel encryption
@@ -8543,7 +8543,7 @@ class MeshtasticManager implements ISourceManager {
 
       // Log message sending at INFO level for production visibility
       const destinationInfo = destination ? `node !${destination.toString(16).padStart(8, '0')}` : `channel ${channel}`;
-      logger.info(`📤 Sent message to ${destinationInfo}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}" (ID: ${messageId})`);
+      logger.debug(`📤 Sent message to ${destinationInfo}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}" (ID: ${messageId})`);
       logger.debug('Message sent successfully:', text, 'with ID:', messageId);
 
       // Log outgoing message to packet monitor
@@ -8667,7 +8667,7 @@ class MeshtasticManager implements ISourceManager {
     try {
       const tracerouteData = meshtasticProtobufService.createTracerouteMessage(destination, channel);
 
-      logger.info(`🔍 Traceroute packet created: ${tracerouteData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}`);
+      logger.debug(`🔍 Traceroute packet created: ${tracerouteData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}`);
 
       await this.transport.send(tracerouteData);
 
@@ -8683,7 +8683,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       await databaseService.recordTracerouteRequestAsync(this.localNodeInfo.nodeNum, destination, this.sourceId ?? undefined);
-      logger.info(`📤 Traceroute request sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
+      logger.debug(`📤 Traceroute request sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
 
       // Log outgoing traceroute to packet monitor
       await this.logOutgoingPacket(
@@ -8732,7 +8732,7 @@ class MeshtasticManager implements ISourceManager {
         } : undefined;
       }
 
-      logger.info(`📍 Position exchange: fixedPosition=${hasFixedPosition}, gpsMode=${positionConfig?.gpsMode}, hasValidPositionSource=${hasValidPositionSource}, willSendPosition=${!!localPosition}`);
+      logger.debug(`📍 Position exchange: fixedPosition=${hasFixedPosition}, gpsMode=${positionConfig?.gpsMode}, hasValidPositionSource=${hasValidPositionSource}, willSendPosition=${!!localPosition}`);
 
       const { data: positionRequestData, packetId, requestId } = meshtasticProtobufService.createPositionRequestMessage(
         destination,
@@ -8740,7 +8740,7 @@ class MeshtasticManager implements ISourceManager {
         localPosition
       );
 
-      logger.info(`📍 Position exchange packet created: ${positionRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}, position=${localPosition ? `${localPosition.latitude},${localPosition.longitude}` : 'none'}`);
+      logger.debug(`📍 Position exchange packet created: ${positionRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}, position=${localPosition ? `${localPosition.latitude},${localPosition.longitude}` : 'none'}`);
 
       await this.transport.send(positionRequestData);
 
@@ -8755,7 +8755,7 @@ class MeshtasticManager implements ISourceManager {
         }
       }
 
-      logger.info(`📤 Position exchange sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
+      logger.debug(`📤 Position exchange sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
 
       // Log outgoing position exchange to packet monitor
       await this.logOutgoingPacket(
@@ -8809,7 +8809,7 @@ class MeshtasticManager implements ISourceManager {
         localUserInfo
       );
 
-      logger.info(`📇 NodeInfo exchange packet created: ${nodeInfoRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}, userInfo=${localUserInfo ? localUserInfo.longName : 'none'}`);
+      logger.debug(`📇 NodeInfo exchange packet created: ${nodeInfoRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}, userInfo=${localUserInfo ? localUserInfo.longName : 'none'}`);
 
       await this.transport.send(nodeInfoRequestData);
 
@@ -8824,7 +8824,7 @@ class MeshtasticManager implements ISourceManager {
         }
       }
 
-      logger.info(`📤 NodeInfo exchange sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
+      logger.debug(`📤 NodeInfo exchange sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
 
       // Log outgoing NodeInfo exchange to packet monitor
       await this.logOutgoingPacket(
@@ -8862,7 +8862,7 @@ class MeshtasticManager implements ISourceManager {
         channel
       );
 
-      logger.info(`🏠 NeighborInfo request packet created: ${neighborInfoRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}`);
+      logger.debug(`🏠 NeighborInfo request packet created: ${neighborInfoRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, packetId=${packetId}, requestId=${requestId}`);
 
       await this.transport.send(neighborInfoRequestData);
 
@@ -8877,7 +8877,7 @@ class MeshtasticManager implements ISourceManager {
         }
       }
 
-      logger.info(`📤 NeighborInfo request sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
+      logger.debug(`📤 NeighborInfo request sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
 
       // Log outgoing NeighborInfo request to packet monitor
       await this.logOutgoingPacket(
@@ -8920,7 +8920,7 @@ class MeshtasticManager implements ISourceManager {
       );
 
       const typeLabel = telemetryType || 'device';
-      logger.info(`📊 Telemetry request packet created: ${telemetryRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, type=${typeLabel}, packetId=${packetId}, requestId=${requestId}`);
+      logger.debug(`📊 Telemetry request packet created: ${telemetryRequestData.length} bytes for dest=${destination} (0x${destination.toString(16)}), channel=${channel}, type=${typeLabel}, packetId=${packetId}, requestId=${requestId}`);
 
       await this.transport.send(telemetryRequestData);
 
@@ -8935,7 +8935,7 @@ class MeshtasticManager implements ISourceManager {
         }
       }
 
-      logger.info(`📤 Telemetry request (${typeLabel}) sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
+      logger.debug(`📤 Telemetry request (${typeLabel}) sent from ${this.localNodeInfo.nodeId} to !${destination.toString(16).padStart(8, '0')}`);
 
       // Log outgoing Telemetry request to packet monitor
       await this.logOutgoingPacket(
@@ -8960,7 +8960,7 @@ class MeshtasticManager implements ISourceManager {
    */
   async broadcastNodeInfoToChannel(channel: number): Promise<{ packetId: number; requestId: number }> {
     const BROADCAST_ADDR = 0xFFFFFFFF;
-    logger.info(`📢 Broadcasting NodeInfo on channel ${channel}`);
+    logger.debug(`📢 Broadcasting NodeInfo on channel ${channel}`);
     return this.sendNodeInfoRequest(BROADCAST_ADDR, channel);
   }
 
@@ -8984,13 +8984,13 @@ class MeshtasticManager implements ISourceManager {
       return;
     }
 
-    logger.info(`📢 Starting NodeInfo broadcast to ${channels.length} channel(s) with ${delaySeconds}s delay`);
+    logger.debug(`📢 Starting NodeInfo broadcast to ${channels.length} channel(s) with ${delaySeconds}s delay`);
 
     for (let i = 0; i < channels.length; i++) {
       const channel = channels[i];
       try {
         await this.broadcastNodeInfoToChannel(channel);
-        logger.info(`📢 NodeInfo broadcast sent to channel ${channel} (${i + 1}/${channels.length})`);
+        logger.debug(`📢 NodeInfo broadcast sent to channel ${channel} (${i + 1}/${channels.length})`);
 
         // Wait between broadcasts (except after the last one)
         if (i < channels.length - 1) {
@@ -9003,7 +9003,7 @@ class MeshtasticManager implements ISourceManager {
       }
     }
 
-    logger.info(`📢 NodeInfo broadcast complete for all ${channels.length} channel(s)`);
+    logger.debug(`📢 NodeInfo broadcast complete for all ${channels.length} channel(s)`);
   }
 
   /**
@@ -9026,7 +9026,7 @@ class MeshtasticManager implements ISourceManager {
           0 // Channel 0 for local node communication
         );
 
-      logger.info(`📊 LocalStats request packet created: ${telemetryRequestData.length} bytes for local node ${this.localNodeInfo.nodeId}, packetId=${packetId}, requestId=${requestId}`);
+      logger.debug(`📊 LocalStats request packet created: ${telemetryRequestData.length} bytes for local node ${this.localNodeInfo.nodeId}, packetId=${packetId}, requestId=${requestId}`);
 
       await this.transport.send(telemetryRequestData);
 
@@ -9041,7 +9041,7 @@ class MeshtasticManager implements ISourceManager {
         }
       }
 
-      logger.info(`📤 LocalStats request sent to local node ${this.localNodeInfo.nodeId}`);
+      logger.debug(`📤 LocalStats request sent to local node ${this.localNodeInfo.nodeId}`);
       return { packetId, requestId };
     } catch (error) {
       logger.error('Error requesting LocalStats:', error);
@@ -9089,7 +9089,7 @@ class MeshtasticManager implements ISourceManager {
       }
     }
 
-    logger.info(`📤 Remote LocalStats request sent to ${destination.toString(16)} (packetId=${packetId}, requestId=${requestId})`);
+    logger.debug(`📤 Remote LocalStats request sent to ${destination.toString(16)} (packetId=${packetId}, requestId=${requestId})`);
     return { packetId, requestId };
   }
 
@@ -9434,7 +9434,7 @@ class MeshtasticManager implements ISourceManager {
           isDirectMessage ? fromNum : 0, // destination: node number for DM, 0 for channel
           packetId, // replyId - react to the original message
           () => {
-            logger.info(`✅ Auto-acknowledge tapback ${hopEmoji} delivered to ${tapbackTarget}`);
+            logger.debug(`✅ Auto-acknowledge tapback ${hopEmoji} delivered to ${tapbackTarget}`);
           },
           (reason: string) => {
             logger.warn(`❌ Auto-acknowledge tapback failed to ${tapbackTarget}: ${reason}`);
@@ -9486,7 +9486,7 @@ class MeshtasticManager implements ISourceManager {
           replyDest, // destination: node number for DM, 0 for channel
           replyId, // replyId
           () => {
-            logger.info(`✅ Auto-acknowledge message delivered to ${replyTarget}`);
+            logger.debug(`✅ Auto-acknowledge message delivered to ${replyTarget}`);
           },
           (reason: string) => {
             logger.warn(`❌ Auto-acknowledge message failed to ${replyTarget}: ${reason}`);
@@ -9588,7 +9588,7 @@ class MeshtasticManager implements ISourceManager {
       // Handle "ping stop"
       const session = this.autoPingSessions.get(fromNum);
       if (session) {
-        logger.info(`🛑 Auto-ping stop requested by !${fromNum.toString(16).padStart(8, '0')}`);
+        logger.debug(`🛑 Auto-ping stop requested by !${fromNum.toString(16).padStart(8, '0')}`);
         this.stopAutoPingSession(fromNum, 'cancelled');
       } else {
         await this.sendTextMessage('No active ping session to stop.', 0, fromNum);
@@ -9650,7 +9650,7 @@ class MeshtasticManager implements ISourceManager {
       );
       this.messageQueue.recordExternalSend();
 
-      logger.info(`📡 Auto-ping session started for !${fromNum.toString(16).padStart(8, '0')}: ${actualCount} pings every ${intervalSeconds}s`);
+      logger.debug(`📡 Auto-ping session started for !${fromNum.toString(16).padStart(8, '0')}: ${actualCount} pings every ${intervalSeconds}s`);
 
       // Emit session started event
       await this.emitAutoPingUpdate(session, 'started');
@@ -9788,7 +9788,7 @@ class MeshtasticManager implements ISourceManager {
       }
       session.pendingRequestId = null;
 
-      logger.info(`📡 Auto-ping ${session.completedPings}/${session.totalPings} ${status.toUpperCase()} from !${nodeNum.toString(16).padStart(8, '0')} (${durationMs}ms)`);
+      logger.debug(`📡 Auto-ping ${session.completedPings}/${session.totalPings} ${status.toUpperCase()} from !${nodeNum.toString(16).padStart(8, '0')} (${durationMs}ms)`);
 
       this.emitAutoPingUpdate(session, 'ping_result').catch(err => logger.error('Error emitting auto-ping update:', err));
 
@@ -9814,7 +9814,7 @@ class MeshtasticManager implements ISourceManager {
     session.pendingRequestId = null;
     session.pendingTimeout = null;
 
-    logger.info(`⏰ Auto-ping ${session.completedPings}/${session.totalPings} TIMEOUT for !${session.requestedBy.toString(16).padStart(8, '0')}`);
+    logger.debug(`⏰ Auto-ping ${session.completedPings}/${session.totalPings} TIMEOUT for !${session.requestedBy.toString(16).padStart(8, '0')}`);
 
     this.emitAutoPingUpdate(session, 'ping_result').catch(err => logger.error('Error emitting auto-ping update:', err));
 
@@ -9871,7 +9871,7 @@ class MeshtasticManager implements ISourceManager {
 
     await this.emitAutoPingUpdate(session, 'completed');
 
-    logger.info(`✅ Auto-ping session completed for !${requestedBy.toString(16).padStart(8, '0')}: ${session.successfulPings}/${session.totalPings} successful`);
+    logger.debug(`✅ Auto-ping session completed for !${requestedBy.toString(16).padStart(8, '0')}: ${session.successfulPings}/${session.totalPings} successful`);
   }
 
   /**
@@ -9902,7 +9902,7 @@ class MeshtasticManager implements ISourceManager {
     this.emitAutoPingUpdate(session, 'cancelled').catch(err => logger.error('Error emitting auto-ping cancellation:', err));
     this.autoPingSessions.delete(requestedBy);
 
-    logger.info(`🛑 Auto-ping session ${reason} for !${requestedBy.toString(16).padStart(8, '0')}`);
+    logger.debug(`🛑 Auto-ping session ${reason} for !${requestedBy.toString(16).padStart(8, '0')}`);
   }
 
   /**
@@ -10031,7 +10031,7 @@ class MeshtasticManager implements ISourceManager {
       // This ensures "Москва" and "Mocквa" both match the same trigger pattern.
       const normalizedText = applyHomoglyphOptimization(message.text);
 
-      logger.info(`🤖 Auto-responder checking message on ${isDirectMessage ? 'DM' : `channel ${message.channel}`}: "${message.text}"`);
+      logger.debug(`🤖 Auto-responder checking message on ${isDirectMessage ? 'DM' : `channel ${message.channel}`}: "${message.text}"`);
 
       // Try to match message against triggers
       for (let triggerIdx = 0; triggerIdx < triggers.length; triggerIdx++) {
@@ -10039,19 +10039,19 @@ class MeshtasticManager implements ISourceManager {
         // Normalize trigger channels (handles legacy single channel and new multi-channel array format)
         const triggerChannels = normalizeTriggerChannels(trigger);
 
-        logger.info(`🤖 Checking trigger "${trigger.trigger}" (channels: ${triggerChannels.join('+')}) against message on ${isDirectMessage ? 'DM' : `channel ${message.channel}`}`);
+        logger.debug(`🤖 Checking trigger "${trigger.trigger}" (channels: ${triggerChannels.join('+')}) against message on ${isDirectMessage ? 'DM' : `channel ${message.channel}`}`);
 
         // Check if this trigger applies to the current message's channel
         if (isDirectMessage) {
           // For DMs, only match triggers that include 'dm' in their channels
           if (!triggerChannels.includes('dm')) {
-            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - not configured for DM (channels: ${triggerChannels.join('+')})`);
+            logger.debug(`⏭️  Skipping trigger "${trigger.trigger}" - not configured for DM (channels: ${triggerChannels.join('+')})`);
             continue;
           }
         } else {
           // For channel messages, only match triggers that include this channel number
           if (!triggerChannels.includes(message.channel)) {
-            logger.info(`⏭️  Skipping trigger "${trigger.trigger}" - not configured for channel ${message.channel} (channels: ${triggerChannels.join('+')})`);
+            logger.debug(`⏭️  Skipping trigger "${trigger.trigger}" - not configured for channel ${message.channel} (channels: ${triggerChannels.join('+')})`);
             continue;
           }
         }
@@ -10311,7 +10311,7 @@ class MeshtasticManager implements ISourceManager {
 
             const scriptStartTime = Date.now();
             const triggerPattern = Array.isArray(trigger.trigger) ? trigger.trigger[0] : trigger.trigger;
-            logger.info(`🔧 Executing auto-responder script for pattern "${triggerPattern}" -> ${scriptPath}`);
+            logger.debug(`🔧 Executing auto-responder script for pattern "${triggerPattern}" -> ${scriptPath}`);
 
             // Determine interpreter based on file extension
             const ext = scriptPath.split('.').pop()?.toLowerCase();
@@ -10382,7 +10382,7 @@ class MeshtasticManager implements ISourceManager {
               // Skip sending if channel is 'none' (script handles its own output)
               if (scriptTriggerChannels.includes('none')) {
                 const scriptDuration = Date.now() - scriptStartTime;
-                logger.info(`🔧 Auto-responder script for "${triggerPattern}" completed in ${scriptDuration}ms (channel=none, no mesh output)`);
+                logger.debug(`🔧 Auto-responder script for "${triggerPattern}" completed in ${scriptDuration}ms (channel=none, no mesh output)`);
 
                 // Record cooldown timestamp
                 const triggerCooldownNone = trigger.cooldownSeconds || 0;
@@ -10415,7 +10415,7 @@ class MeshtasticManager implements ISourceManager {
                   isDM ? message.fromNodeNum : 0, // destination: node number for DM, 0 for channel
                   isFirstMessage ? packetId : undefined, // Reply to original message for first response
                   () => {
-                    logger.info(`✅ Script response ${index + 1}/${scriptResp.responses.length} delivered to ${target}`);
+                    logger.debug(`✅ Script response ${index + 1}/${scriptResp.responses.length} delivered to ${target}`);
                   },
                   (reason: string) => {
                     logger.warn(`❌ Script response ${index + 1}/${scriptResp.responses.length} failed to ${target}: ${reason}`);
@@ -10427,7 +10427,7 @@ class MeshtasticManager implements ISourceManager {
 
               // Script responses queued
               const scriptDuration = Date.now() - scriptStartTime;
-              logger.info(`🔧 Auto-responder script for "${triggerPattern}" completed in ${scriptDuration}ms, ${scriptResp.responses.length} response(s) queued to ${target}`);
+              logger.debug(`🔧 Auto-responder script for "${triggerPattern}" completed in ${scriptDuration}ms, ${scriptResp.responses.length} response(s) queued to ${target}`);
 
               // Record cooldown timestamp
               const triggerCooldownScript = trigger.cooldownSeconds || 0;
@@ -10479,7 +10479,7 @@ class MeshtasticManager implements ISourceManager {
                 this.truncateMessageForMeshtastic(errMsg, 200),
                 isDirectMessage ? message.fromNodeNum : 0,
                 packetId,
-                () => { logger.info('✅ Traceroute unknown-node reply delivered'); },
+                () => { logger.debug('✅ Traceroute unknown-node reply delivered'); },
                 (reason: string) => { logger.warn(`❌ Traceroute unknown-node reply failed: ${reason}`); },
                 isDirectMessage ? undefined : message.channel as number,
                 1
@@ -10511,7 +10511,7 @@ class MeshtasticManager implements ISourceManager {
               this.truncateMessageForMeshtastic(ackMsg, 200),
               isDirectMessage ? message.fromNodeNum : 0,
               packetId,
-              () => { logger.info(`✅ Traceroute ACK delivered to ${nodeId}`); },
+              () => { logger.debug(`✅ Traceroute ACK delivered to ${nodeId}`); },
               (reason: string) => { logger.warn(`❌ Traceroute ACK failed to ${nodeId}: ${reason}`); },
               isDirectMessage ? undefined : message.channel as number,
               1
@@ -10528,7 +10528,7 @@ class MeshtasticManager implements ISourceManager {
                 this.truncateMessageForMeshtastic(timeoutMsg, 200),
                 pending.isDM ? pending.replyToNodeNum : 0,
                 undefined,
-                () => { logger.info('✅ Traceroute timeout reply delivered'); },
+                () => { logger.debug('✅ Traceroute timeout reply delivered'); },
                 (reason: string) => { logger.warn(`❌ Traceroute timeout reply failed: ${reason}`); },
                 pending.isDM ? undefined : pending.replyChannel,
                 1
@@ -10548,7 +10548,7 @@ class MeshtasticManager implements ISourceManager {
             try {
               const channel = targetNode.channel ?? 0;
               await this.sendTraceroute(targetNodeNum, channel);
-              logger.info(`🔍 Auto-responder traceroute to ${targetName} (${targetNode.nodeId}) initiated by ${nodeId}`);
+              logger.debug(`🔍 Auto-responder traceroute to ${targetName} (${targetNode.nodeId}) initiated by ${nodeId}`);
 
               // Record cooldown timestamp
               const triggerCooldownTrace = trigger.cooldownSeconds || 0;
@@ -10612,7 +10612,7 @@ class MeshtasticManager implements ISourceManager {
                   message.fromNodeNum, // destination: always DM the sender
                   isFirstMessage ? packetId : undefined, // reply to original for first response
                   () => {
-                    logger.info(`✅ Mailbox response ${index + 1}/${mailboxResponses.length} delivered to ${mailboxTarget}`);
+                    logger.debug(`✅ Mailbox response ${index + 1}/${mailboxResponses.length} delivered to ${mailboxTarget}`);
                     const playId = playOnDelivery.get(index);
                     if (playId !== undefined) {
                       deadDropService.markDelivered(this.sourceId, playId)
@@ -10628,7 +10628,7 @@ class MeshtasticManager implements ISourceManager {
               });
 
               const mailboxDuration = Date.now() - mailboxStart;
-              logger.info(`📬 Auto-responder mailbox completed in ${mailboxDuration}ms, ${mailboxResponses.length} response(s) queued to ${mailboxTarget}`);
+              logger.debug(`📬 Auto-responder mailbox completed in ${mailboxDuration}ms, ${mailboxResponses.length} response(s) queued to ${mailboxTarget}`);
             } catch (error: any) {
               logger.error(`📬 Auto-responder mailbox failed for ${mailboxTarget}: ${error?.message || error}`);
             }
@@ -10695,7 +10695,7 @@ class MeshtasticManager implements ISourceManager {
               isDM ? message.fromNodeNum : 0, // destination: node number for DM, 0 for channel
               isFirstMessage ? packetId : undefined, // Reply to original message for first response
               () => {
-                logger.info(`✅ Auto-response ${index + 1}/${responseValue.responses.length} delivered to ${target}`);
+                logger.debug(`✅ Auto-response ${index + 1}/${responseValue.responses.length} delivered to ${target}`);
               },
               (reason: string) => {
                 logger.warn(`❌ Auto-response ${index + 1}/${responseValue.responses.length} failed to ${target}: ${reason}`);
@@ -11019,7 +11019,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // Log diagnostic info for nodes being considered for welcome
-      logger.info(`👋 Auto-welcome check for ${nodeId}: welcomedAt=${node.welcomedAt} (${typeof node.welcomedAt}), longName=${node.longName}, createdAt=${node.createdAt ? new Date(node.createdAt).toISOString() : 'null'}`);
+      logger.debug(`👋 Auto-welcome check for ${nodeId}: welcomedAt=${node.welcomedAt} (${typeof node.welcomedAt}), longName=${node.longName}, createdAt=${node.createdAt ? new Date(node.createdAt).toISOString() : 'null'}`);
 
       // Check all conditions BEFORE acquiring the lock
       // This allows subsequent calls to re-evaluate conditions if they change
@@ -11059,7 +11059,7 @@ class MeshtasticManager implements ISourceManager {
       );
       if (delaySeconds > 0) {
         deferred = true;
-        logger.info(`👋 Deferring auto-welcome for ${nodeId} by ${delaySeconds}s to let the node settle into receive mode`);
+        logger.debug(`👋 Deferring auto-welcome for ${nodeId} by ${delaySeconds}s to let the node settle into receive mode`);
         setTimeout(() => { void this.deferredAutoWelcome(nodeNum, nodeId); }, delaySeconds * 1000);
         return;
       }
@@ -11132,7 +11132,7 @@ class MeshtasticManager implements ISourceManager {
       channel = parseInt(autoWelcomeTarget);
     }
 
-    logger.info(`👋 Sending auto-welcome to ${nodeId} (${node?.longName}): "${welcomeText}" ${autoWelcomeTarget === 'dm' ? '(via DM)' : `(channel ${channel})`}`);
+    logger.debug(`👋 Sending auto-welcome to ${nodeId} (${node?.longName}): "${welcomeText}" ${autoWelcomeTarget === 'dm' ? '(via DM)' : `(channel ${channel})`}`);
 
     // Route through message queue for rate limiting
     // For DMs, send only once (maxAttempts=1) — the local radio ACK confirms
@@ -11158,7 +11158,7 @@ class MeshtasticManager implements ISourceManager {
     // ACK, causing welcomedAt to never be set and the node to be re-welcomed repeatedly.
     const wasMarked = await databaseService.nodes.markNodeAsWelcomedIfNotAlready(nodeNum, nodeId, this.sourceId);
     if (wasMarked) {
-      logger.info(`✅ Node ${nodeId} welcomed and marked in database`);
+      logger.debug(`✅ Node ${nodeId} welcomed and marked in database`);
     } else {
       logger.warn(`⚠️  Node ${nodeId} was already marked as welcomed by another process`);
     }
@@ -11219,7 +11219,7 @@ class MeshtasticManager implements ISourceManager {
         // Sync to device
         try {
           await this.sendFavoriteNode(nodeNum);
-          logger.info(`⭐ Auto-favorited node ${nodeId} (${targetNode.longName || 'Unknown'}) - 0-hop, role=${targetNode.role}`);
+          logger.debug(`⭐ Auto-favorited node ${nodeId} (${targetNode.longName || 'Unknown'}) - 0-hop, role=${targetNode.role}`);
         } catch (error) {
           logger.warn(`⚠️ Auto-favorited node ${nodeId} in DB but device sync failed:`, error);
         }
@@ -11249,7 +11249,7 @@ class MeshtasticManager implements ISourceManager {
 
       // If feature was disabled, clean up all auto-favorited nodes (skip locked ones)
       if (autoFavoriteEnabled !== 'true') {
-        logger.info(`🧹 Auto-favorite disabled, cleaning up ${autoFavoriteNodes.length} auto-favorited nodes`);
+        logger.debug(`🧹 Auto-favorite disabled, cleaning up ${autoFavoriteNodes.length} auto-favorited nodes`);
         for (const nodeNum of autoFavoriteNodes) {
           try {
             const node = await databaseService.nodes.getNode(nodeNum, this.sourceId);
@@ -11331,7 +11331,7 @@ class MeshtasticManager implements ISourceManager {
               await this.sendRemoveFavoriteNode(nodeNum);
             }
             const nodeId = node.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`;
-            logger.info(`☆ Auto-unfavorited node ${nodeId} (${node.longName || 'Unknown'}) - ${reason}`);
+            logger.debug(`☆ Auto-unfavorited node ${nodeId} (${node.longName || 'Unknown'}) - ${reason}`);
           } catch (error) {
             logger.warn(`⚠️ Failed to auto-unfavorite node ${nodeNum}:`, error);
           }
@@ -11343,7 +11343,7 @@ class MeshtasticManager implements ISourceManager {
         const removeSet = new Set(nodesToRemove);
         const remaining = autoFavoriteNodes.filter(n => !removeSet.has(n));
         await databaseService.settings.setSourceSetting(this.sourceId, 'autoFavoriteNodes', JSON.stringify(remaining));
-        logger.info(`🧹 Auto-favorite sweep: removed ${nodesToRemove.length}, remaining ${remaining.length}`);
+        logger.debug(`🧹 Auto-favorite sweep: removed ${nodesToRemove.length}, remaining ${remaining.length}`);
       }
     } catch (error) {
       logger.error('❌ Error in auto-favorite sweep:', error);
@@ -11389,7 +11389,7 @@ class MeshtasticManager implements ISourceManager {
         return;
       }
 
-      logger.info(`🧹 Auto heap management triggered: heap=${heapFreeBytes}B free (threshold=${threshold}B), purging ${candidates.length} oldest nodes`);
+      logger.debug(`🧹 Auto heap management triggered: heap=${heapFreeBytes}B free (threshold=${threshold}B), purging ${candidates.length} oldest nodes`);
 
       for (const node of candidates) {
         await this.sendRemoveNode(Number(node.nodeNum));
@@ -11616,7 +11616,7 @@ class MeshtasticManager implements ISourceManager {
       // Replace tokens
       const replacedMessage = await this.replaceAnnouncementTokens(message);
 
-      logger.info(`📢 Sending auto-announcement to ${channelIndexes.length} channel(s) [${channelIndexes.join(',')}]: "${replacedMessage}"`);
+      logger.debug(`📢 Sending auto-announcement to ${channelIndexes.length} channel(s) [${channelIndexes.join(',')}]: "${replacedMessage}"`);
 
       channelIndexes.forEach((channelIdx, i) => {
         this.messageQueue.enqueue(
@@ -11624,7 +11624,7 @@ class MeshtasticManager implements ISourceManager {
           0, // destination: 0 for channel broadcast
           undefined, // no reply-to for announcements
           () => {
-            logger.info(`\u2705 Auto-announcement ${i + 1}/${channelIndexes.length} delivered to channel ${channelIdx}`);
+            logger.debug(`\u2705 Auto-announcement ${i + 1}/${channelIndexes.length} delivered to channel ${channelIdx}`);
           },
           (reason: string) => {
             logger.warn(`\u274c Auto-announcement ${i + 1}/${channelIndexes.length} failed on channel ${channelIdx}: ${reason}`);
@@ -11651,7 +11651,7 @@ class MeshtasticManager implements ISourceManager {
           const nodeInfoDelaySeconds = parseInt(await settings.getSettingForSource(sourceId, 'autoAnnounceNodeInfoDelaySeconds') || '30');
 
           if (nodeInfoChannels.length > 0) {
-            logger.info(`📢 NodeInfo broadcasting enabled - will broadcast to ${nodeInfoChannels.length} channel(s)`);
+            logger.debug(`📢 NodeInfo broadcasting enabled - will broadcast to ${nodeInfoChannels.length} channel(s)`);
             // Run NodeInfo broadcasting asynchronously (don't block the announcement)
             this.broadcastNodeInfoToChannels(nodeInfoChannels, nodeInfoDelaySeconds).catch(error => {
               logger.error('❌ Error in NodeInfo broadcasting:', error);
@@ -11804,7 +11804,7 @@ class MeshtasticManager implements ISourceManager {
     // {NODECOUNT} - Nodes heard in the last 2h, matching the Sources panel "active" badge (#3388)
     if (result.includes('{NODECOUNT}')) {
       const activeNodeCount = await databaseService.nodes.getActiveNodeCount(this.sourceId, ACTIVE_NODE_TOKEN_WINDOW_SECONDS);
-      logger.info(`📢 Token replacement - NODECOUNT: ${activeNodeCount} active nodes (last 2h)`);
+      logger.debug(`📢 Token replacement - NODECOUNT: ${activeNodeCount} active nodes (last 2h)`);
       result = result.replace(/{NODECOUNT}/g, encode(activeNodeCount.toString()));
     }
 
@@ -11812,14 +11812,14 @@ class MeshtasticManager implements ISourceManager {
     if (result.includes('{DIRECTCOUNT}')) {
       const nodes = await databaseService.nodes.getActiveNodes(ACTIVE_NODE_TOKEN_WINDOW_DAYS, this.sourceId);
       const directCount = nodes.filter((n: any) => n.hopsAway === 0).length;
-      logger.info(`📢 Token replacement - DIRECTCOUNT: ${directCount} direct nodes out of ${nodes.length} active nodes (last 2h)`);
+      logger.debug(`📢 Token replacement - DIRECTCOUNT: ${directCount} direct nodes out of ${nodes.length} active nodes (last 2h)`);
       result = result.replace(/{DIRECTCOUNT}/g, encode(directCount.toString()));
     }
 
     // {TOTALNODES} - Total nodes (all nodes ever seen, regardless of when last heard, scoped to this source)
     if (result.includes('{TOTALNODES}')) {
       const allNodes = await databaseService.nodes.getAllNodes(this.sourceId);
-      logger.info(`📢 Token replacement - TOTALNODES: ${allNodes.length} total nodes`);
+      logger.debug(`📢 Token replacement - TOTALNODES: ${allNodes.length} total nodes`);
       result = result.replace(/{TOTALNODES}/g, encode(allNodes.length.toString()));
     }
 
@@ -11836,7 +11836,7 @@ class MeshtasticManager implements ISourceManager {
           logger.error('❌ Error fetching numOnlineNodes telemetry:', error);
         }
       }
-      logger.info(`📢 Token replacement - ONLINENODES: ${onlineNodes} online nodes (from device LocalStats)`);
+      logger.debug(`📢 Token replacement - ONLINENODES: ${onlineNodes} online nodes (from device LocalStats)`);
       result = result.replace(/{ONLINENODES}/g, encode(onlineNodes.toString()));
     }
 
@@ -12026,18 +12026,18 @@ class MeshtasticManager implements ISourceManager {
   private async processAdminMessage(payload: Uint8Array, meshPacket: any): Promise<void> {
     try {
       const fromNum = meshPacket.from ? Number(meshPacket.from) : 0;
-      logger.info(`⚙️ Processing ADMIN_APP message from node ${fromNum}, payload size: ${payload.length}`);
+      logger.debug(`⚙️ Processing ADMIN_APP message from node ${fromNum}, payload size: ${payload.length}`);
       const adminMsg = protobufService.decodeAdminMessage(payload);
       if (!adminMsg) {
         logger.error('⚙️ Failed to decode admin message');
         return;
       }
 
-      logger.info('⚙️ Decoded admin message keys:', Object.keys(adminMsg));
-      logger.info('⚙️ Decoded admin message has getConfigResponse:', !!adminMsg.getConfigResponse);
+      logger.debug('⚙️ Decoded admin message keys:', Object.keys(adminMsg));
+      logger.debug('⚙️ Decoded admin message has getConfigResponse:', !!adminMsg.getConfigResponse);
       if (adminMsg.getConfigResponse) {
-        logger.info('⚙️ getConfigResponse type:', typeof adminMsg.getConfigResponse);
-        logger.info('⚙️ getConfigResponse keys:', Object.keys(adminMsg.getConfigResponse || {}));
+        logger.debug('⚙️ getConfigResponse type:', typeof adminMsg.getConfigResponse);
+        logger.debug('⚙️ getConfigResponse keys:', Object.keys(adminMsg.getConfigResponse || {}));
       }
 
       // Extract session passkey from ALL admin responses (per research findings)
@@ -12048,14 +12048,14 @@ class MeshtasticManager implements ISourceManager {
           // Local node - store in legacy location for backward compatibility
           this.sessionPasskey = new Uint8Array(adminMsg.sessionPasskey);
           this.sessionPasskeyExpiry = Date.now() + (290 * 1000); // 290 seconds (10 second buffer before 300s expiry)
-          logger.info('🔑 Session passkey received from local node and stored (expires in 290 seconds)');
+          logger.debug('🔑 Session passkey received from local node and stored (expires in 290 seconds)');
         } else {
           // Remote node - store per-node
           this.remoteSessionPasskeys.set(fromNum, {
             passkey: new Uint8Array(adminMsg.sessionPasskey),
             expiry: Date.now() + (290 * 1000) // 290 seconds
           });
-          logger.info(`🔑 Session passkey received from remote node ${fromNum} and stored (expires in 290 seconds)`);
+          logger.debug(`🔑 Session passkey received from remote node ${fromNum} and stored (expires in 290 seconds)`);
         }
       }
 
@@ -12064,9 +12064,9 @@ class MeshtasticManager implements ISourceManager {
       const isRemoteNode = fromNum !== 0 && fromNum !== localNodeNum;
 
       if (adminMsg.getConfigResponse) {
-        logger.info(`⚙️ Received GetConfigResponse from node ${fromNum}`);
-        logger.info('⚙️ GetConfigResponse structure:', JSON.stringify(Object.keys(adminMsg.getConfigResponse || {})));
-        logger.info('⚙️ GetConfigResponse position field present:', !!adminMsg.getConfigResponse.position);
+        logger.debug(`⚙️ Received GetConfigResponse from node ${fromNum}`);
+        logger.debug('⚙️ GetConfigResponse structure:', JSON.stringify(Object.keys(adminMsg.getConfigResponse || {})));
+        logger.debug('⚙️ GetConfigResponse position field present:', !!adminMsg.getConfigResponse.position);
         if (isRemoteNode) {
           // Store config for remote node
           // getConfigResponse is a Config object containing device, lora, position, etc.
@@ -12092,10 +12092,10 @@ class MeshtasticManager implements ISourceManager {
             });
           }
           nodeConfig.lastUpdated = Date.now();
-          logger.info(`📊 Stored config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.deviceConfig));
-          logger.info(`📊 Position config stored:`, !!nodeConfig.deviceConfig.position);
+          logger.debug(`📊 Stored config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.deviceConfig));
+          logger.debug(`📊 Position config stored:`, !!nodeConfig.deviceConfig.position);
           if (nodeConfig.deviceConfig.position) {
-            logger.info(`📊 Position config details:`, JSON.stringify(Object.keys(nodeConfig.deviceConfig.position)));
+            logger.debug(`📊 Position config details:`, JSON.stringify(Object.keys(nodeConfig.deviceConfig.position)));
           }
         }
       }
@@ -12130,14 +12130,14 @@ class MeshtasticManager implements ISourceManager {
             if (responseKeys.length === 0) {
               const pendingKey = this.pendingModuleConfigRequests.get(fromNum);
               if (pendingKey) {
-                logger.info(`📊 Empty module config response from node ${fromNum}, storing defaults for '${pendingKey}'`);
+                logger.debug(`📊 Empty module config response from node ${fromNum}, storing defaults for '${pendingKey}'`);
                 nodeConfig.moduleConfig[pendingKey] = {};
                 this.pendingModuleConfigRequests.delete(fromNum);
               }
             }
           }
           nodeConfig.lastUpdated = Date.now();
-          logger.info(`📊 Stored module config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.moduleConfig));
+          logger.debug(`📊 Stored module config response from remote node ${fromNum}, keys:`, Object.keys(nodeConfig.moduleConfig));
         } else {
           // Local node: merge the explicit module-config response into
           // actualModuleConfig. Without this, an explicit refresh
@@ -12161,7 +12161,7 @@ class MeshtasticManager implements ISourceManager {
               const pendingKey = this.pendingModuleConfigRequests.get(localNodeKey)
                 ?? this.pendingModuleConfigRequests.get(fromNum);
               if (pendingKey) {
-                logger.info(`📊 Empty local module config response, storing defaults for '${pendingKey}'`);
+                logger.debug(`📊 Empty local module config response, storing defaults for '${pendingKey}'`);
                 if (this.actualModuleConfig[pendingKey] === undefined) {
                   this.actualModuleConfig[pendingKey] = {};
                 }
@@ -12170,7 +12170,7 @@ class MeshtasticManager implements ISourceManager {
               }
             }
           }
-          logger.info(`📊 Merged local module config response, actualModuleConfig keys:`, Object.keys(this.actualModuleConfig));
+          logger.debug(`📊 Merged local module config response, actualModuleConfig keys:`, Object.keys(this.actualModuleConfig));
         }
       }
 
@@ -12377,7 +12377,7 @@ class MeshtasticManager implements ISourceManager {
       const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
 
       await this.transport.send(adminPacket);
-      logger.info(`🔑 Requested session passkey from remote node ${destinationNodeNum} (via getDeviceMetadataRequest)`);
+      logger.debug(`🔑 Requested session passkey from remote node ${destinationNodeNum} (via getDeviceMetadataRequest)`);
 
       // Poll for the response instead of fixed wait
       // This allows early exit if response arrives quickly, and longer total wait time
@@ -12391,7 +12391,7 @@ class MeshtasticManager implements ISourceManager {
         // Check if we received the passkey
         const passkey = this.getSessionPasskey(destinationNodeNum);
         if (passkey) {
-          logger.info(`✅ Session passkey received from remote node ${destinationNodeNum} after ${((i + 1) * pollInterval / 1000).toFixed(1)}s`);
+          logger.debug(`✅ Session passkey received from remote node ${destinationNodeNum} after ${((i + 1) * pollInterval / 1000).toFixed(1)}s`);
           return passkey;
         }
       }
@@ -12688,12 +12688,12 @@ class MeshtasticManager implements ISourceManager {
     try {
       // For local TCP connections, try sending without session passkey first
       // (there's a known bug where session keys don't work properly over TCP)
-      logger.info(`🗑️ Attempting to remove node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) from device NodeDB`);
+      logger.debug(`🗑️ Attempting to remove node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) from device NodeDB`);
       const removeNodeMsg = protobufService.createRemoveNodeMessage(nodeNum, new Uint8Array()); // empty passkey
       const adminPacket = protobufService.createAdminPacket(removeNodeMsg, this.localNodeInfo.nodeNum, this.localNodeInfo.nodeNum); // send to local node
 
       await this.transport.send(adminPacket);
-      logger.info(`✅ Sent remove_by_nodenum admin command for node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
+      logger.debug(`✅ Sent remove_by_nodenum admin command for node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
 
       // Remove from device node tracking so the UI shows the "not in device DB" warning
       this.deviceNodeNums.delete(nodeNum);
@@ -12801,9 +12801,9 @@ class MeshtasticManager implements ISourceManager {
       // Get or request session passkey
       let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
       if (sessionPasskey) {
-        logger.info(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
+        logger.debug(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
       } else {
-        logger.info(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
+        logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
         sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
         if (!sessionPasskey) {
           throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
@@ -12910,7 +12910,7 @@ class MeshtasticManager implements ISourceManager {
             };
             const configKey = moduleConfigMap[configType];
             if (configKey && nodeConfig.moduleConfig?.[configKey]) {
-              logger.info(`✅ Received ${configKey} config from remote node ${destinationNodeNum}`);
+              logger.debug(`✅ Received ${configKey} config from remote node ${destinationNodeNum}`);
               return nodeConfig.moduleConfig[configKey];
             }
           } else {
@@ -12961,9 +12961,9 @@ class MeshtasticManager implements ISourceManager {
       // Get or request session passkey
       let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
       if (sessionPasskey) {
-        logger.info(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
+        logger.debug(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
       } else {
-        logger.info(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
+        logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
         sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
         if (!sessionPasskey) {
           throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
@@ -13054,9 +13054,9 @@ class MeshtasticManager implements ISourceManager {
       // Get or request session passkey
       let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
       if (sessionPasskey) {
-        logger.info(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
+        logger.debug(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
       } else {
-        logger.info(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
+        logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
         sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
         if (!sessionPasskey) {
           throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
@@ -13131,9 +13131,9 @@ class MeshtasticManager implements ISourceManager {
       // Get or request session passkey
       let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
       if (sessionPasskey) {
-        logger.info(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
+        logger.debug(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
       } else {
-        logger.info(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
+        logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
         sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
         if (!sessionPasskey) {
           throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
@@ -13221,7 +13221,7 @@ class MeshtasticManager implements ISourceManager {
       if (!isLocalNode) {
         sessionPasskey = this.getSessionPasskey(destinationNodeNum);
         if (!sessionPasskey) {
-          logger.info(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
+          logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
           sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
           if (!sessionPasskey) {
             throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
@@ -13279,7 +13279,7 @@ class MeshtasticManager implements ISourceManager {
       if (!isLocalNode) {
         sessionPasskey = this.getSessionPasskey(destinationNodeNum);
         if (!sessionPasskey) {
-          logger.info(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
+          logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
           sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
           if (!sessionPasskey) {
             throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
@@ -13300,7 +13300,7 @@ class MeshtasticManager implements ISourceManager {
       const adminPacket = protobufService.createAdminPacket(encoded, targetNodeNum, localNodeNum);
       await this.transport.send(adminPacket);
 
-      logger.info(`🕐 Sent set time command to node ${targetNodeNum} (time: ${currentTime} / ${new Date(currentTime * 1000).toISOString()})`);
+      logger.debug(`🕐 Sent set time command to node ${targetNodeNum} (time: ${currentTime} / ${new Date(currentTime * 1000).toISOString()})`);
     } catch (error) {
       logger.error(`❌ Error sending set time command to node ${destinationNodeNum}:`, error);
       throw error;
@@ -13335,7 +13335,7 @@ class MeshtasticManager implements ISourceManager {
       14  // TRAFFICMANAGEMENT_CONFIG
     ];
 
-    logger.info('📦 Requesting all module configs for complete backup...');
+    logger.debug('📦 Requesting all module configs for complete backup...');
 
     for (const configType of moduleConfigTypes) {
       // Abort early if we lost the connection mid-fetch (#3637). Propagating
@@ -13362,7 +13362,7 @@ class MeshtasticManager implements ISourceManager {
       }
     }
 
-    logger.info('✅ All module config requests sent');
+    logger.debug('✅ All module config requests sent');
   }
 
   /**
@@ -13372,7 +13372,7 @@ class MeshtasticManager implements ISourceManager {
   resetModuleConfigCache(): void {
     this.moduleConfigsEverFetched = false;
     this.actualModuleConfig = null;
-    logger.info('📦 Module config cache reset — will re-fetch on next connect');
+    logger.debug('📦 Module config cache reset — will re-fetch on next connect');
   }
 
   /**
@@ -13382,7 +13382,7 @@ class MeshtasticManager implements ISourceManager {
   async refreshModuleConfigs(): Promise<void> {
     this.moduleConfigsEverFetched = false;
     this.actualModuleConfig = null;
-    logger.info('📦 Force-refreshing module configs...');
+    logger.debug('📦 Force-refreshing module configs...');
     await this.requestAllModuleConfigs();
     this.moduleConfigsEverFetched = true;
   }
@@ -13939,12 +13939,12 @@ class MeshtasticManager implements ISourceManager {
     }
 
     try {
-      logger.info('⚙️ Beginning edit settings transaction');
+      logger.debug('⚙️ Beginning edit settings transaction');
       const beginMsg = protobufService.createBeginEditSettingsMessage(new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(beginMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
-      logger.info('⚙️ Sent begin_edit_settings admin message');
+      logger.debug('⚙️ Sent begin_edit_settings admin message');
     } catch (error) {
       logger.error('❌ Error beginning edit settings:', error);
       throw error;
@@ -13960,12 +13960,12 @@ class MeshtasticManager implements ISourceManager {
     }
 
     try {
-      logger.info('⚙️ Committing edit settings to persist configuration');
+      logger.debug('⚙️ Committing edit settings to persist configuration');
       const commitMsg = protobufService.createCommitEditSettingsMessage(new Uint8Array());
       const adminPacket = protobufService.createAdminPacket(commitMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
 
       await this.transport.send(adminPacket);
-      logger.info('⚙️ Sent commit_edit_settings admin message');
+      logger.debug('⚙️ Sent commit_edit_settings admin message');
 
       // Wait a moment for device to save to flash
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -14029,10 +14029,10 @@ class MeshtasticManager implements ISourceManager {
 
       logger.info(`📡 Channel changes detected on startup config sync:`);
       if (moves.length > 0) {
-        logger.info(`  Moves: ${moves.map(m => `slot ${m.from}→${m.to}`).join(', ')}`);
+        logger.debug(`  Moves: ${moves.map(m => `slot ${m.from}→${m.to}`).join(', ')}`);
       }
       if (newChannels.length > 0) {
-        logger.info(`  New channels: slots ${newChannels.join(', ')}`);
+        logger.debug(`  New channels: slots ${newChannels.join(', ')}`);
       }
 
       // 1. Migrate messages for moved channels
@@ -14464,7 +14464,7 @@ class MeshtasticManager implements ISourceManager {
     // Also request all module configs to get fresh telemetry, mqtt, etc.
     setTimeout(async () => {
       try {
-        logger.info('📦 Requesting fresh module configs...');
+        logger.debug('📦 Requesting fresh module configs...');
         await this.requestAllModuleConfigs();
       } catch (error) {
         logger.error('❌ Failed to request module configs during refresh:', error);

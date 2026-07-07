@@ -460,7 +460,7 @@ class AppriseNotificationService {
     const effectiveSourceId = sourceId ?? payload.sourceId;
     // Get all users with Apprise enabled and this preference enabled
     const users = await getUsersWithServiceEnabledAsync('apprise');
-    logger.info(`📢 Broadcasting ${preferenceKey} notification to ${users.length} Apprise users${targetUserId ? ` (target user: ${targetUserId})` : ''}`);
+    logger.debug(`📢 Broadcasting ${preferenceKey} notification to ${users.length} Apprise users${targetUserId ? ` (target user: ${targetUserId})` : ''}`);
 
     // Get local node name for prefix
     // First try the live connection, then fall back to database (for startup before connection)

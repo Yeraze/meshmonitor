@@ -102,7 +102,7 @@ class DatabaseMaintenanceService {
       });
     }, 60000); // Check every minute
 
-    logger.info('▶️ Database maintenance scheduler started (checks every minute)');
+    logger.debug('▶️ Database maintenance scheduler started (checks every minute)');
   }
 
   /**
@@ -170,7 +170,7 @@ class DatabaseMaintenanceService {
     }
 
     // Run maintenance
-    logger.info('⏰ Time for scheduled database maintenance...');
+    logger.debug('⏰ Time for scheduled database maintenance...');
     try {
       await this.runMaintenance();
     } catch (error) {
@@ -226,11 +226,11 @@ class DatabaseMaintenanceService {
           this.getRetentionDays('neighborInfoRetentionDays'),
         ]);
 
-      logger.info(`🔧 Running database maintenance with retention: messages=${messageRetention}d, traceroutes=${tracerouteRetention}d, routeSegments=${routeSegmentRetention}d, neighborInfo=${neighborInfoRetention}d`);
+      logger.debug(`🔧 Running database maintenance with retention: messages=${messageRetention}d, traceroutes=${tracerouteRetention}d, routeSegments=${routeSegmentRetention}d, neighborInfo=${neighborInfoRetention}d`);
 
       // Get database size before cleanup
       stats.sizeBefore = await databaseService.getDatabaseSizeAsync();
-      logger.info(`📊 Database size before: ${formatBytes(stats.sizeBefore)}`);
+      logger.debug(`📊 Database size before: ${formatBytes(stats.sizeBefore)}`);
 
       // Run cleanups
       stats.messagesDeleted = await databaseService.cleanupOldMessagesAsync(messageRetention);

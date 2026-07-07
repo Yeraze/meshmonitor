@@ -1268,7 +1268,7 @@ class MeshCoreManager extends EventEmitter {
       this.addMessage(message);
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
-      logger.info(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix}: ${data.text}`);
+      logger.debug(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix} (${data.text.length} chars)`);
       void this.checkAutoAcknowledge(message, true, undefined, hopCount, ackRoute);
       void this.checkAutoResponder(message, true, undefined, hopCount, ackRoute);
     } else if (event_type === 'channel_message') {
@@ -1304,7 +1304,7 @@ class MeshCoreManager extends EventEmitter {
       this.addMessage(message);
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
-      logger.info(`[MeshCore] Channel ${data.channel_idx} message: ${data.text}`);
+      logger.debug(`[MeshCore] Channel ${data.channel_idx} message (${data.text.length} chars)`);
       void this.checkAutoAcknowledge(message, false, data.channel_idx, hopCount, route);
       void this.checkAutoResponder(message, false, data.channel_idx, hopCount, route);
     } else if (event_type === 'room_message') {
@@ -1336,7 +1336,7 @@ class MeshCoreManager extends EventEmitter {
       // Track newest post timestamp for sync-since and UI display.
       databaseService.meshcore.updateLastRoomPostAt(this.sourceId, roomFullKey, message.timestamp)
         .catch(err => logger.warn(`[MeshCore:${this.sourceId}] Failed to update lastRoomPostAt:`, err));
-      logger.info(`[MeshCore:${this.sourceId}] Room post from ${authorPrefixHex} in room ${roomPubkeyPrefix}: ${data.text.substring(0, 50)}`);
+      logger.debug(`[MeshCore:${this.sourceId}] Room post from ${authorPrefixHex} in room ${roomPubkeyPrefix} (${data.text.length} chars)`);
     } else if (event_type === 'contact_advertised' || event_type === 'contact_added') {
       const publicKey: string = data.public_key;
       if (publicKey) {
@@ -1401,7 +1401,7 @@ class MeshCoreManager extends EventEmitter {
         if (!updated.advName || updated.advType === undefined) {
           this.schedulePathRefresh(publicKey);
         }
-        logger.info(`[MeshCore] ${event_type} for ${publicKey} (${data.adv_name ?? ''})`);
+        logger.debug(`[MeshCore] ${event_type} for ${publicKey} (${data.adv_name ?? ''})`);
       }
     } else if (event_type === 'cli_reply') {
       // Remote-admin: a contact message with txtType=CliData. Routed here by
@@ -1458,7 +1458,7 @@ class MeshCoreManager extends EventEmitter {
         // is what's available. Coalesce pushes in a debounce window so a
         // chatty contact churning its route doesn't thunder the device.
         this.schedulePathRefresh(publicKey);
-        logger.info(`[MeshCore] contact_path_updated for ${publicKey} (refresh scheduled)`);
+        logger.debug(`[MeshCore] contact_path_updated for ${publicKey} (refresh scheduled)`);
       }
     } else if (event_type === 'path_discovery_response') {
       // 0x8D push from CMD 52 — carries the actual bidirectional path
@@ -1497,7 +1497,7 @@ class MeshCoreManager extends EventEmitter {
       void this.persistContact(updated);
       this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
       dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
-      logger.info(
+      logger.debug(
         `[MeshCore] Path discovery response for ${contact.publicKey.substring(0, 16)}…: ` +
         `out=${outHops} hops [${outPathFormatted}], in=${inHops} hops [${formatPathHex(inPathHex, data.in_hash_size ?? 1)}]`,
       );
@@ -1571,7 +1571,7 @@ class MeshCoreManager extends EventEmitter {
           this.activeDiscovery.returned++;
           if (isNew) this.activeDiscovery.newCount++;
         }
-        logger.info(
+        logger.debug(
           `[MeshCore:${this.sourceId}] Discovered node ${publicKey.substring(0, 16)}… ` +
           `(type=${data.adv_type}, snr=${data.snr}, ${isNew ? 'new' : 'known'})`,
         );
@@ -2200,7 +2200,7 @@ class MeshCoreManager extends EventEmitter {
       this.addMessage(message);
       this.emit('message', message);
       dataEventEmitter.emitMeshCoreMessage(message, this.sourceId);
-      logger.info(`[MeshCore] Message from ${match[1].substring(0, 8)}...: ${match[2]}`);
+      logger.debug(`[MeshCore] Message from ${match[1].substring(0, 8)}... (${match[2].length} chars)`);
     }
   }
 
@@ -2451,7 +2451,7 @@ class MeshCoreManager extends EventEmitter {
       this.pathRefreshTimer = null;
       const pending = Array.from(this.pathRefreshPendingKeys);
       this.pathRefreshPendingKeys.clear();
-      logger.info(
+      logger.debug(
         `[MeshCore:${this.sourceId}] Refreshing contacts after ${pending.length} contact push(es) (path/new-node)`,
       );
       void this.refreshContacts()
@@ -2546,7 +2546,7 @@ class MeshCoreManager extends EventEmitter {
         await Promise.all(
           Array.from(this.contacts.values()).map((c) => this.persistContact(c)),
         );
-        logger.info(`[MeshCore] Refreshed ${this.contacts.size} contacts`);
+        logger.debug(`[MeshCore] Refreshed ${this.contacts.size} contacts`);
       }
     } catch (error) {
       logger.error('[MeshCore] Failed to refresh contacts:', error);
@@ -2586,7 +2586,7 @@ class MeshCoreManager extends EventEmitter {
         seeded++;
       }
       if (seeded > 0) {
-        logger.info(`[MeshCore:${this.sourceId}] Seeded ${seeded} contact(s) from DB`);
+        logger.debug(`[MeshCore:${this.sourceId}] Seeded ${seeded} contact(s) from DB`);
       }
     } catch (err) {
       logger.warn(`[MeshCore:${this.sourceId}] seedContactsFromDb failed: ${(err as Error).message}`);
@@ -2820,7 +2820,7 @@ class MeshCoreManager extends EventEmitter {
       if (response.success) {
         const ackCrc: number | null = response.data?.expectedAckCrc ?? null;
         const estTimeout: number | null = response.data?.estTimeout ?? null;
-        logger.info(`[MeshCore] Message sent: ${text.substring(0, 50)}... (ackCrc=${ackCrc}, estTimeout=${estTimeout})`);
+        logger.debug(`[MeshCore] Message sent (${text.length} chars) (ackCrc=${ackCrc}, estTimeout=${estTimeout})`);
 
         const sentToPublicKey = isChannelSend
           ? MeshCoreManager.channelPublicKey(channelIdx!)
@@ -2992,7 +2992,7 @@ class MeshCoreManager extends EventEmitter {
     const useFlood = pending.samePathRetriesLeft <= 0;
     if (useFlood && pending.floodRetriesLeft <= 0) {
       // All same-path and flood retries exhausted — give up.
-      logger.info(
+      logger.debug(
         `[MeshCore:${this.sourceId}] DM to ${pending.toPublicKey.substring(0, 16)}… still unacked after ` +
         `all retries; marking failed`,
       );
@@ -3000,7 +3000,7 @@ class MeshCoreManager extends EventEmitter {
       return;
     }
 
-    logger.info(
+    logger.debug(
       `[MeshCore:${this.sourceId}] No ack for DM to ${pending.toPublicKey.substring(0, 16)}… within timeout; ` +
       `retrying via ${useFlood ? 'flood (reset path)' : 'current path'} ` +
       `(samePathLeft=${pending.samePathRetriesLeft}, floodLeft=${pending.floodRetriesLeft})`,
@@ -3166,7 +3166,7 @@ class MeshCoreManager extends EventEmitter {
     }
     if (pending.retriesLeft <= 0) return; // defensive: one-shot already spent
 
-    logger.info(
+    logger.debug(
       `[MeshCore:${this.sourceId}] Channel send ${messageId} heard ZERO repeaters within ` +
       `${MeshCoreManager.CHANNEL_RETRY_WINDOW_MS / 1000}s; resending once (auto-retry #3979)`,
     );
@@ -3197,7 +3197,7 @@ class MeshCoreManager extends EventEmitter {
     if (this.deviceType === MeshCoreDeviceType.REPEATER) {
       try {
         await this.sendRepeaterCommand('advert');
-        logger.info('[MeshCore] Advert sent (Repeater)');
+        logger.debug('[MeshCore] Advert sent (Repeater)');
         return true;
       } catch (error) {
         logger.error('[MeshCore] Failed to send advert:', error);
@@ -3209,7 +3209,7 @@ class MeshCoreManager extends EventEmitter {
         // (handled above) scope via their own `region` config instead.
         const response = await this.sendWithDefaultScope(() => this.sendBridgeCommand('send_advert', {}));
         if (response.success) {
-          logger.info('[MeshCore] Advert sent (Companion)');
+          logger.debug('[MeshCore] Advert sent (Companion)');
           return true;
         }
         return false;
@@ -3257,7 +3257,7 @@ class MeshCoreManager extends EventEmitter {
         this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
         dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
       }
-      logger.info(`[MeshCore] Reset path for ${publicKey.substring(0, 16)}…`);
+      logger.debug(`[MeshCore] Reset path for ${publicKey.substring(0, 16)}…`);
       return true;
     } catch (error) {
       logger.error('[MeshCore] resetContactPath threw:', error);
@@ -3287,7 +3287,7 @@ class MeshCoreManager extends EventEmitter {
         logger.warn(`[MeshCore] discover_path failed for ${publicKey}: ${response.error}`);
         return false;
       }
-      logger.info(`[MeshCore] Path discovery sent for ${publicKey.substring(0, 16)}…`);
+      logger.debug(`[MeshCore] Path discovery sent for ${publicKey.substring(0, 16)}…`);
       return true;
     } catch (error) {
       logger.error('[MeshCore] discoverContactPath threw:', error);
@@ -3331,7 +3331,7 @@ class MeshCoreManager extends EventEmitter {
         logger.warn(`[MeshCore] discover_nodes failed (filter=0x${filter.toString(16)}): ${response.error}`);
         return empty;
       }
-      logger.info(
+      logger.debug(
         `[MeshCore] Node discovery sent (filter=0x${filter.toString(16)}, tag=${tag}); ` +
         `collecting for ${windowMs}ms`,
       );
@@ -3344,7 +3344,7 @@ class MeshCoreManager extends EventEmitter {
         // only the current 0-hop set (#3743).
         seen: [...this.activeDiscovery.seen],
       };
-      logger.info(`[MeshCore] Node discovery complete: ${result.returned} returned, ${result.newCount} new`);
+      logger.debug(`[MeshCore] Node discovery complete: ${result.returned} returned, ${result.newCount} new`);
 
       // #3820: a NODE_DISCOVER_RESP carries no name, and the device's contact
       // record stays nameless until the repeater adverts — which a zero-hop
@@ -3412,7 +3412,7 @@ class MeshCoreManager extends EventEmitter {
       void this.persistContact(updated);
       this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
       dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
-      logger.info(`[MeshCore:${this.sourceId}] Owner-name fetched for ${publicKey.substring(0, 16)}…: "${name}" (#3820)`);
+      logger.debug(`[MeshCore:${this.sourceId}] Owner-name fetched for ${publicKey.substring(0, 16)}…: "${name}" (#3820)`);
       return name;
     } catch (err) {
       logger.debug(`[MeshCore:${this.sourceId}] owner-name fetch failed for ${publicKey.substring(0, 12)}…: ${(err as Error).message}`);
@@ -3548,11 +3548,11 @@ class MeshCoreManager extends EventEmitter {
     // First attempt; on an empty result retry once before giving up (#3743).
     let repeaters = await sweepZeroHopRepeaters();
     if (repeaters.length === 0) {
-      logger.info(`[MeshCore:${this.sourceId}] No 0-hop repeaters on first sweep; retrying once`);
+      logger.debug(`[MeshCore:${this.sourceId}] No 0-hop repeaters on first sweep; retrying once`);
       repeaters = await sweepZeroHopRepeaters();
     }
     if (repeaters.length === 0) {
-      logger.info(`[MeshCore:${this.sourceId}] No 0-hop repeaters found after retry`);
+      logger.debug(`[MeshCore:${this.sourceId}] No 0-hop repeaters found after retry`);
       return { regions: [], perRepeater: [], noZeroHopRepeaters: true };
     }
 
@@ -3646,7 +3646,7 @@ class MeshCoreManager extends EventEmitter {
         snr: raw / 4,
       }));
       const lastSnr: number = d.lastSnr ?? 0;
-      logger.info(`[MeshCore] Trace path to ${publicKey.substring(0, 16)}…: ${hops.length} hops, lastSnr=${lastSnr}`);
+      logger.debug(`[MeshCore] Trace path to ${publicKey.substring(0, 16)}…: ${hops.length} hops, lastSnr=${lastSnr}`);
       return { hops, lastSnr };
     } catch (error) {
       logger.error('[MeshCore] traceContactPath threw:', error);
@@ -3727,7 +3727,7 @@ class MeshCoreManager extends EventEmitter {
         logger.warn(`[MeshCore] share_contact failed for ${publicKey}: ${friendly}`);
         return { ok: false, error: friendly };
       }
-      logger.info(`[MeshCore] Shared contact ${publicKey.substring(0, 16)}…`);
+      logger.debug(`[MeshCore] Shared contact ${publicKey.substring(0, 16)}…`);
       return { ok: true };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -3827,7 +3827,7 @@ class MeshCoreManager extends EventEmitter {
         this.emit('contacts_updated', { sourceId: this.sourceId, contact: updated });
         dataEventEmitter.emitMeshCoreContactUpdated(updated, this.sourceId);
       }
-      logger.info(`[MeshCore] Set out_path (${hopCount} hops, ${hashBytes}-byte) for ${publicKey.substring(0, 16)}…`);
+      logger.debug(`[MeshCore] Set out_path (${hopCount} hops, ${hashBytes}-byte) for ${publicKey.substring(0, 16)}…`);
       return true;
     } catch (error) {
       logger.error('[MeshCore] setContactOutPath threw:', error);
@@ -3862,7 +3862,7 @@ class MeshCoreManager extends EventEmitter {
       }
       this.emit('contact_removed', { sourceId: this.sourceId, publicKey });
       dataEventEmitter.emitMeshCoreContactUpdated({ publicKey, removed: true } as any, this.sourceId);
-      logger.info(`[MeshCore] Removed contact ${publicKey.substring(0, 16)}…`);
+      logger.debug(`[MeshCore] Removed contact ${publicKey.substring(0, 16)}…`);
       return true;
     } catch (error) {
       logger.error('[MeshCore] removeContact threw:', error);
@@ -3930,7 +3930,7 @@ class MeshCoreManager extends EventEmitter {
       this.emit('contact_removed', { sourceId: this.sourceId, publicKey });
       dataEventEmitter.emitMeshCoreContactUpdated({ publicKey, removed: true } as any, this.sourceId);
     }
-    logger.info(`[MeshCore:${this.sourceId}] Forgot local contact ${publicKey.substring(0, 16)}… (row=${deletedRow}, mem=${hadInMemory})`);
+    logger.debug(`[MeshCore:${this.sourceId}] Forgot local contact ${publicKey.substring(0, 16)}… (row=${deletedRow}, mem=${hadInMemory})`);
     return removed;
   }
 
@@ -3955,7 +3955,7 @@ class MeshCoreManager extends EventEmitter {
       }
       const bytes = response.data?.advert_bytes;
       if (!Array.isArray(bytes)) return null;
-      logger.info(`[MeshCore] Exported contact ${publicKey ? publicKey.substring(0, 16) + '…' : '(self)'} (${bytes.length}B)`);
+      logger.debug(`[MeshCore] Exported contact ${publicKey ? publicKey.substring(0, 16) + '…' : '(self)'} (${bytes.length}B)`);
       return bytes;
     } catch (error) {
       logger.error('[MeshCore] exportContact threw:', error);
@@ -3980,7 +3980,7 @@ class MeshCoreManager extends EventEmitter {
         return false;
       }
       await this.refreshContacts();
-      logger.info(`[MeshCore] Imported contact (${advertBytes.length}B advert)`);
+      logger.debug(`[MeshCore] Imported contact (${advertBytes.length}B advert)`);
       return true;
     } catch (error) {
       logger.error('[MeshCore] importContact threw:', error);
@@ -4018,7 +4018,7 @@ class MeshCoreManager extends EventEmitter {
         logger.warn(`[MeshCore:${this.sourceId}] set_device_time failed: ${friendly}`);
         return { ok: false, reason: 'command-failed', error: friendly };
       }
-      logger.info(`[MeshCore:${this.sourceId}] Device time synced to server clock`);
+      logger.debug(`[MeshCore:${this.sourceId}] Device time synced to server clock`);
       return { ok: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -4115,7 +4115,7 @@ class MeshCoreManager extends EventEmitter {
         logger.warn(`[MeshCore] reboot failed: ${response.error}`);
         return false;
       }
-      logger.info(`[MeshCore:${this.sourceId}] Reboot command sent`);
+      logger.debug(`[MeshCore:${this.sourceId}] Reboot command sent`);
       return true;
     } catch (error) {
       logger.error('[MeshCore] rebootDevice threw:', error);
@@ -4142,7 +4142,7 @@ class MeshCoreManager extends EventEmitter {
       }
       const hex = response.data?.private_key;
       if (typeof hex !== 'string') return null;
-      logger.info(`[MeshCore:${this.sourceId}] Private key exported`);
+      logger.debug(`[MeshCore:${this.sourceId}] Private key exported`);
       return hex;
     } catch (error) {
       logger.error('[MeshCore] exportPrivateKey threw:', error);
@@ -4171,7 +4171,7 @@ class MeshCoreManager extends EventEmitter {
         logger.warn(`[MeshCore] import_private_key failed: ${response.error}`);
         return false;
       }
-      logger.info(`[MeshCore:${this.sourceId}] Private key imported — device identity changed`);
+      logger.debug(`[MeshCore:${this.sourceId}] Private key imported — device identity changed`);
       return true;
     } catch (error) {
       logger.error('[MeshCore] importPrivateKey threw:', error);
@@ -4197,7 +4197,7 @@ class MeshCoreManager extends EventEmitter {
       }));
 
       if (response.success) {
-        logger.info(`[MeshCore] Logged into node ${publicKey.substring(0, 8)}...`);
+        logger.debug(`[MeshCore] Logged into node ${publicKey.substring(0, 8)}...`);
         return true;
       }
       return false;
@@ -5767,7 +5767,7 @@ class MeshCoreManager extends EventEmitter {
       attempt: this.reconnectAttempts,
       nextDelayMs: delay,
     });
-    logger.info(`[MeshCore:${this.sourceId}] Reconnect attempt ${this.reconnectAttempts} in ${delay}ms`);
+    logger.debug(`[MeshCore:${this.sourceId}] Reconnect attempt ${this.reconnectAttempts} in ${delay}ms`);
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -5837,7 +5837,7 @@ class MeshCoreManager extends EventEmitter {
         return;
       }
 
-      logger.info(`[MeshCore:${this.sourceId}] Auto-pathfinding: running on ${companions.length} companions + ${repeaters.length} repeaters`);
+      logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: running on ${companions.length} companions + ${repeaters.length} repeaters`);
 
       for (let i = 0; i < targets.length; i++) {
         if (!this.connected) break;
@@ -5874,7 +5874,7 @@ class MeshCoreManager extends EventEmitter {
       }
 
       this.autoPathfindingLastRunAt = Date.now();
-      logger.info(`[MeshCore:${this.sourceId}] Auto-pathfinding: run complete`);
+      logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: run complete`);
     };
 
     this.autoPathfindingJitterTimeout = setTimeout(() => {
@@ -6036,7 +6036,7 @@ class MeshCoreManager extends EventEmitter {
 
     this.autoAnnounceLastRunAt = Date.now();
     await databaseService.settings.setSourceSetting(this.sourceId, 'meshcoreAutoAnnounceLastRunAt', String(this.autoAnnounceLastRunAt));
-    logger.info(`[MeshCore:${this.sourceId}] Auto-announce (${reason}): ${sent}/${channelIndexes.length} channels`);
+    logger.debug(`[MeshCore:${this.sourceId}] Auto-announce (${reason}): ${sent}/${channelIndexes.length} channels`);
 
     // Optional advert burst N seconds after the announcement.
     const advertEnabled = (await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceAdvertEnabled')) === 'true';
@@ -6726,10 +6726,10 @@ class MeshCoreManager extends EventEmitter {
           logger.warn(`[MeshCore:${sourceId}] Auto-ack: cannot DM unknown contact ${message.fromPublicKey}`);
           return;
         }
-        logger.info(`[MeshCore:${sourceId}] Auto-ack DM → ${contact.advName ?? contact.publicKey.substring(0, 8)}: "${replyText}"`);
+        logger.debug(`[MeshCore:${sourceId}] Auto-ack DM → ${contact.advName ?? contact.publicKey.substring(0, 8)} (${replyText.length} chars)`);
         await this.sendMessage(replyText, contact.publicKey, undefined, scopeOverride);
       } else {
-        logger.info(`[MeshCore:${sourceId}] Auto-ack channel ${channelIdx} → "${replyText}"`);
+        logger.debug(`[MeshCore:${sourceId}] Auto-ack channel ${channelIdx} (${replyText.length} chars)`);
         // Automated sender → opt into channel-send auto-retry (#3979).
         await this.sendMessage(replyText, undefined, channelIdx, scopeOverride, true);
       }

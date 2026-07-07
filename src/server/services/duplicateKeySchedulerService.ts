@@ -55,7 +55,7 @@ class DuplicateKeySchedulerService {
       this.runScanAllSources().catch(err => logger.error('Security scanner error:', err));
     }, this.scanInterval);
 
-    logger.info('✅ Security scanner initialized');
+    logger.debug('✅ Security scanner initialized');
   }
 
   stop(): void {
@@ -103,13 +103,13 @@ class DuplicateKeySchedulerService {
     let scanSuccessful = true;
 
     try {
-      logger.info(`🔐 Running scheduled security scan for source ${sourceId}...`);
+      logger.debug(`🔐 Running scheduled security scan for source ${sourceId}...`);
 
       // Get all nodes with public keys for this source only
       const nodesWithKeys = await databaseService.nodes.getNodesWithPublicKeys(sourceId);
 
       if (nodesWithKeys.length === 0) {
-        logger.info(`ℹ️  [${sourceId}] No nodes with public keys found, skipping key scan`);
+        logger.debug(`ℹ️  [${sourceId}] No nodes with public keys found, skipping key scan`);
         const earlyAllNodes = await databaseService.nodes.getAllNodes(sourceId);
         const earlyNodeMap = new Map<number, DbNode>(earlyAllNodes.map(n => [Number(n.nodeNum), n]));
 
@@ -151,7 +151,7 @@ class DuplicateKeySchedulerService {
       for (const node of allNodesList) {
         if (nodesWithKeysSet.has(Number(node.nodeNum))) continue;
         if (node.keyIsLowEntropy) {
-          logger.info(`🔐 [${sourceId}] Clearing low-entropy flag from node ${node.nodeNum} (no longer has a public key)`);
+          logger.debug(`🔐 [${sourceId}] Clearing low-entropy flag from node ${node.nodeNum} (no longer has a public key)`);
           await databaseService.nodes.updateNodeLowEntropyFlag(Number(node.nodeNum), false, undefined, sourceId);
           node.keyIsLowEntropy = false;
         }
@@ -166,7 +166,7 @@ class DuplicateKeySchedulerService {
       const duplicates = detectDuplicateKeys(nodesWithKeys);
 
       if (duplicates.size === 0) {
-        logger.info(`✅ [${sourceId}] Duplicate key scan complete: No duplicates found among ${nodesWithKeys.length} nodes`);
+        logger.debug(`✅ [${sourceId}] Duplicate key scan complete: No duplicates found among ${nodesWithKeys.length} nodes`);
 
         for (const node of allNodesList) {
           if (node.duplicateKeyDetected) {
@@ -238,7 +238,7 @@ class DuplicateKeySchedulerService {
    */
   private async runSpamDetection(sourceId: string, sharedNodeMap: Map<number, DbNode>): Promise<void> {
     try {
-      logger.info(`🔐 [${sourceId}] Running spam detection...`);
+      logger.debug(`🔐 [${sourceId}] Running spam detection...`);
 
       const localNodeNumStr = await databaseService.settings.getSettingForSource(sourceId, 'localNodeNum');
       const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
@@ -246,7 +246,7 @@ class DuplicateKeySchedulerService {
       const packetCounts = await databaseService.getPacketCountsPerNodeLastHourAsync(sourceId);
 
       if (packetCounts.length === 0) {
-        logger.info(`ℹ️  [${sourceId}] No packet data available for spam detection`);
+        logger.debug(`ℹ️  [${sourceId}] No packet data available for spam detection`);
         return;
       }
 
@@ -297,7 +297,7 @@ class DuplicateKeySchedulerService {
       if (flaggedCount > 0) {
         logger.info(`🚨 [${sourceId}] Spam detection complete: ${flaggedCount} flagged`);
       } else {
-        logger.info(`✅ [${sourceId}] Spam detection complete: no nodes exceeding ${EXCESSIVE_PACKETS_THRESHOLD} pkt/hr`);
+        logger.debug(`✅ [${sourceId}] Spam detection complete: no nodes exceeding ${EXCESSIVE_PACKETS_THRESHOLD} pkt/hr`);
       }
     } catch (error) {
       logger.error(`Error during spam detection for source ${sourceId}:`, error);
@@ -309,7 +309,7 @@ class DuplicateKeySchedulerService {
    */
   private async runTimeOffsetDetection(sourceId: string, sharedNodeMap: Map<number, DbNode>): Promise<void> {
     try {
-      logger.info(`🔐 [${sourceId}] Running time offset detection...`);
+      logger.debug(`🔐 [${sourceId}] Running time offset detection...`);
 
       const latestTimestamps = await databaseService.getLatestPacketTimestampsPerNodeAsync(sourceId);
       const allNodes = Array.from(sharedNodeMap.values());
@@ -350,7 +350,7 @@ class DuplicateKeySchedulerService {
       if (flaggedCount > 0) {
         logger.info(`🕐 [${sourceId}] Time offset detection complete: ${flaggedCount} flagged`);
       } else {
-        logger.info(`✅ [${sourceId}] Time offset detection complete: no nodes exceeding threshold`);
+        logger.debug(`✅ [${sourceId}] Time offset detection complete: no nodes exceeding threshold`);
       }
     } catch (error) {
       logger.error(`Error during time offset detection for source ${sourceId}:`, error);

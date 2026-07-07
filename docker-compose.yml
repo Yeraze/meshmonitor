@@ -27,6 +27,12 @@ services:
       - TZ=America/New_York
       - ALLOWED_ORIGINS=http://localhost:8080  # Required for CORS
 
+      # Log verbosity: trace | debug | info | warn | error
+      # Defaults to `info` in production / `debug` in development. `info` is
+      # deliberately quiet (startup + connect/disconnect + errors). Raise to
+      # `debug` (or `trace` for the per-packet firehose) when troubleshooting.
+      # - LOG_LEVEL=debug
+
       # OPTIONAL: Uncomment and configure for production deployments
       # See docs/configuration/production.md for full production setup guide
 

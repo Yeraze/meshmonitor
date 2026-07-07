@@ -36,7 +36,7 @@ router.get('/size', requirePermission('configuration', 'read'), async (_req: Req
 
 router.post('/run', requirePermission('configuration', 'write'), async (_req: Request, res: Response) => {
   try {
-    logger.info('🔧 Manual database maintenance requested...');
+    logger.debug('🔧 Manual database maintenance requested...');
     const stats = await databaseMaintenanceService.runMaintenance();
     res.json({
       success: true,

@@ -76,7 +76,7 @@ export function createGeoJsonRouter(service: GeoJsonService): Router {
         }
 
         const layer = service.addLayer(filename, geojsonContent);
-        logger.info(`[GeoJsonRoutes] Layer uploaded: ${layer.name} (source: ${fileType})`);
+        logger.debug(`[GeoJsonRoutes] Layer uploaded: ${layer.name} (source: ${fileType})`);
         return res.status(201).json(layer);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

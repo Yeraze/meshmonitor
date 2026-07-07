@@ -197,7 +197,7 @@ export class FirmwareUpdateService {
       this.cachedReleases = releases;
       this.lastFetchTime = Date.now();
 
-      logger.info(`[FirmwareUpdateService] Fetched ${releases.length} firmware releases`);
+      logger.debug(`[FirmwareUpdateService] Fetched ${releases.length} firmware releases`);
       return releases;
     } catch (error) {
       logger.error('[FirmwareUpdateService] Error fetching releases:', error);
@@ -375,7 +375,7 @@ export class FirmwareUpdateService {
       logger.info('[FirmwareUpdateService] Update cancelled by user');
 
       if (wasDisconnected) {
-        logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after cancel');
+        logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after cancel');
         try {
           await meshtasticManager.userReconnect();
         } catch (reconnectError) {
@@ -450,7 +450,7 @@ export class FirmwareUpdateService {
    */
   startPolling(): void {
     if (process.env.FIRMWARE_CHECK_ENABLED === 'false') {
-      logger.info('[FirmwareUpdateService] Firmware polling disabled via FIRMWARE_CHECK_ENABLED=false');
+      logger.debug('[FirmwareUpdateService] Firmware polling disabled via FIRMWARE_CHECK_ENABLED=false');
       return;
     }
 
@@ -724,7 +724,7 @@ export class FirmwareUpdateService {
       },
     });
 
-    logger.info(
+    logger.debug(
       `[FirmwareUpdateService] Preflight passed for ${displayName} (${boardName}/${platform})`
     );
   }
@@ -744,10 +744,10 @@ export class FirmwareUpdateService {
       step: 'backup',
       message: 'Disconnecting from node for firmware update...',
     });
-    logger.info('[FirmwareUpdateService] Disconnecting MeshMonitor from node for CLI access');
+    logger.debug('[FirmwareUpdateService] Disconnecting MeshMonitor from node for CLI access');
     await meshtasticManager.userDisconnect();
     this.appendLog('Disconnected from node.');
-    logger.info('[FirmwareUpdateService] MeshMonitor disconnected from node');
+    logger.debug('[FirmwareUpdateService] MeshMonitor disconnected from node');
   }
 
   async executeBackup(gatewayIp: string, nodeId: string): Promise<string> {
@@ -800,7 +800,7 @@ export class FirmwareUpdateService {
         backupPath,
       });
 
-      logger.info(`[FirmwareUpdateService] Config backup saved: ${backupPath}`);
+      logger.debug(`[FirmwareUpdateService] Config backup saved: ${backupPath}`);
       return backupPath;
     } catch (error) {
       // cancelUpdate already owns status + reconnect; don't race it.
@@ -813,7 +813,7 @@ export class FirmwareUpdateService {
         error: message,
       });
       // Reconnect on failure so MeshMonitor isn't left disconnected
-      logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after backup failure');
+      logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after backup failure');
       await meshtasticManager.userReconnect();
       throw error;
     }
@@ -878,7 +878,7 @@ export class FirmwareUpdateService {
         downloadSize,
       });
 
-      logger.info(`[FirmwareUpdateService] Downloaded firmware: ${zipPath} (${downloadSize} bytes)`);
+      logger.debug(`[FirmwareUpdateService] Downloaded firmware: ${zipPath} (${downloadSize} bytes)`);
       return zipPath;
     } catch (error) {
       if (this.cancelling) throw error;
@@ -893,7 +893,7 @@ export class FirmwareUpdateService {
       // Reconnect on failure so MeshMonitor isn't left disconnected. Backup
       // already disconnected the node — without this, the user has to wait
       // for the 60s auto-reconnect timer or manually reconnect.
-      logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after download failure');
+      logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after download failure');
       try {
         await meshtasticManager.userReconnect();
       } catch (reconnectError) {
@@ -946,7 +946,7 @@ export class FirmwareUpdateService {
         rejectedFiles: rejected,
       });
 
-      logger.info(`[FirmwareUpdateService] Matched firmware binary: ${matched}`);
+      logger.debug(`[FirmwareUpdateService] Matched firmware binary: ${matched}`);
       return firmwarePath;
     } catch (error) {
       if (this.cancelling) throw error;
@@ -959,7 +959,7 @@ export class FirmwareUpdateService {
         error: message,
       });
       // Reconnect on failure — node is still disconnected from the backup step.
-      logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after extract failure');
+      logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after extract failure');
       try {
         await meshtasticManager.userReconnect();
       } catch (reconnectError) {
@@ -994,7 +994,7 @@ export class FirmwareUpdateService {
         error: message,
       });
       logger.error(`[FirmwareUpdateService] Readiness check failed before OTA: ${message}`);
-      logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after readiness failure');
+      logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after readiness failure');
       await meshtasticManager.userReconnect();
       throw new Error(`Node readiness check failed: ${message}`);
     }
@@ -1069,7 +1069,7 @@ export class FirmwareUpdateService {
 
       if (winner.kind === 'loader' && winner.ready) {
         this.appendLog(`OTA loader is listening on ${host}:${OTA_LOADER_PORT} — taking over upload from CLI.`);
-        logger.info(`[FirmwareUpdateService] Loader detected on ${host}:${OTA_LOADER_PORT}; terminating CLI and uploading directly`);
+        logger.debug(`[FirmwareUpdateService] Loader detected on ${host}:${OTA_LOADER_PORT}; terminating CLI and uploading directly`);
         if (this.activeProcess) {
           this.activeProcess.kill('SIGTERM');
         }
@@ -1187,7 +1187,7 @@ export class FirmwareUpdateService {
       // no config" limbo where handleConnected fires on a torn-down transport.
       // Poll the API port ourselves first, then reconnect synchronously once.
       const nodeHost = parseGateway(gatewayIp).host;
-      logger.info('[FirmwareUpdateService] OTA flash completed — waiting for node to finish reboot before reconnecting');
+      logger.debug('[FirmwareUpdateService] OTA flash completed — waiting for node to finish reboot before reconnecting');
       try {
         await this.waitForNodeReady(nodeHost, DEFAULT_MESHTASTIC_TCP_PORT, 120_000);
         this.appendLog('Node is back online. Reconnecting MeshMonitor...');
@@ -1206,7 +1206,7 @@ export class FirmwareUpdateService {
         message: 'Firmware flashed successfully. The node has been updated and reconnected.',
       });
 
-      logger.info('[FirmwareUpdateService] OTA flash completed successfully and reconnected to node');
+      logger.debug('[FirmwareUpdateService] OTA flash completed successfully and reconnected to node');
     } catch (error) {
       if (this.cancelling) throw error;
       const message = error instanceof Error ? error.message : String(error);
@@ -1220,7 +1220,7 @@ export class FirmwareUpdateService {
       // the node first — it may have been mid-reboot when the flash errored
       // out, and reconnecting into an ECONNREFUSED kicks off the auto-retry
       // race we're explicitly trying to avoid.
-      logger.info('[FirmwareUpdateService] Reconnecting MeshMonitor after flash failure');
+      logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after flash failure');
       try {
         await this.waitForNodeReady(parseGateway(gatewayIp).host, DEFAULT_MESHTASTIC_TCP_PORT, 30_000);
       } catch {
@@ -1270,7 +1270,7 @@ export class FirmwareUpdateService {
     if (fallback && fallback !== stale) return fallback;
     if (!opts?.gatewayIp) return fallback;
     try {
-      logger.info('[FirmwareUpdateService] Verify wait expired — falling back to CLI to read firmware version directly');
+      logger.debug('[FirmwareUpdateService] Verify wait expired — falling back to CLI to read firmware version directly');
       // Temporarily release MM's TCP slot so the CLI can connect cleanly.
       await meshtasticManager.userDisconnect().catch(() => { /* best-effort */ });
       await this.waitForNodeTcpReady(opts.gatewayIp).catch(() => { /* best-effort */ });
@@ -1292,7 +1292,7 @@ export class FirmwareUpdateService {
         const match = result.stdout.match(/"firmwareVersion"\s*:\s*"([^"]+)"/);
         if (match && result.exitCode === 0) {
           cliVersion = match[1];
-          logger.info(`[FirmwareUpdateService] CLI fallback read firmware version: ${cliVersion} (attempt ${attempt})`);
+          logger.debug(`[FirmwareUpdateService] CLI fallback read firmware version: ${cliVersion} (attempt ${attempt})`);
           return cliVersion;
         }
         logger.warn(
@@ -1610,7 +1610,7 @@ export class FirmwareUpdateService {
         }
         if (phase === 'handshake') {
           if (trimmed === 'OK') {
-            logger.info('[FirmwareUpdateService] Loader accepted header, streaming firmware...');
+            logger.debug('[FirmwareUpdateService] Loader accepted header, streaming firmware...');
             streamFirmware();
           } else if (trimmed === 'ERASING') {
             this.updateStatus({ message: 'Loader erasing OTA partition...' });
@@ -1620,7 +1620,7 @@ export class FirmwareUpdateService {
         }
         if (phase === 'commit') {
           if (trimmed === 'OK') {
-            logger.info('[FirmwareUpdateService] Loader confirmed commit — firmware accepted');
+            logger.debug('[FirmwareUpdateService] Loader confirmed commit — firmware accepted');
             commitConfirmed = true;
             finish();
           } else if (trimmed === 'ACK') {
@@ -1647,7 +1647,7 @@ export class FirmwareUpdateService {
           remaining = remaining.slice(nl + 1);
           if (line === 'OK') {
             commitConfirmed = true;
-            logger.info('[FirmwareUpdateService] Loader confirmed commit (drained from buffer on socket close) — firmware accepted');
+            logger.debug('[FirmwareUpdateService] Loader confirmed commit (drained from buffer on socket close) — firmware accepted');
             return true;
           }
           nl = remaining.indexOf('\n');
@@ -1655,7 +1655,7 @@ export class FirmwareUpdateService {
         // Last partial line — loader may have closed before sending the newline.
         if (remaining.trim() === 'OK') {
           commitConfirmed = true;
-          logger.info('[FirmwareUpdateService] Loader confirmed commit (drained partial buffer on socket close) — firmware accepted');
+          logger.debug('[FirmwareUpdateService] Loader confirmed commit (drained partial buffer on socket close) — firmware accepted');
           return true;
         }
         return false;

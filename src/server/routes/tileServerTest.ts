@@ -505,7 +505,7 @@ router.post('/autodetect', async (req, res) => {
     protocols.push('http', 'https');
   }
 
-  logger.info(`🔍 Autodetecting tile server at ${host}${port ? ':' + port : ''}`);
+  logger.debug(`🔍 Autodetecting tile server at ${host}${port ? ':' + port : ''}`);
 
   // Quick DNS and TCP connectivity check before testing all patterns
   // This prevents hanging when the server is completely unreachable
@@ -595,7 +595,7 @@ router.post('/autodetect', async (req, res) => {
           protocol: test.protocol,
           testResult: test.testResult
         });
-        logger.info(`✅ Found working ${test.type} URL: ${test.url}`);
+        logger.debug(`✅ Found working ${test.type} URL: ${test.url}`);
       }
     }
 

@@ -136,7 +136,7 @@ export class MeshCoreRoomSyncScheduler {
       return;
     }
 
-    logger.info(
+    logger.debug(
       `[RoomSyncScheduler] Syncing room ${target.publicKey.substring(0, 12)}… on source ${sourceId}`,
     );
 

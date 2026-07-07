@@ -80,7 +80,7 @@ class ChannelUrlService {
         oneofs: true
       });
 
-      logger.info('Decoded ChannelSet:', JSON.stringify(channelSetObj, null, 2));
+      logger.debug('Decoded ChannelSet:', JSON.stringify(channelSetObj, null, 2));
 
       // Convert to our format
       const result: DecodedChannelSet = {

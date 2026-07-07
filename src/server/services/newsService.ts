@@ -73,7 +73,7 @@ class NewsService {
     this.cronJob = scheduleCron(
       cronExpression,
       async () => {
-        logger.info('News service cron job triggered');
+        logger.debug('News service cron job triggered');
         await this.fetchAndCacheNews();
       },
       {
@@ -85,7 +85,7 @@ class NewsService {
     logger.info('News service initialized (runs every 6 hours)');
 
     // Run initial fetch
-    logger.info('Running initial news fetch...');
+    logger.debug('Running initial news fetch...');
     this.fetchAndCacheNews().catch(err => {
       logger.error('Initial news fetch failed:', err);
     });
@@ -123,7 +123,7 @@ class NewsService {
       // Store in database
       await databaseService.saveNewsCacheAsync(JSON.stringify(data), url);
 
-      logger.info(`Stored news feed with ${data.items.length} items`);
+      logger.debug(`Stored news feed with ${data.items.length} items`);
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         logger.error('News fetch timed out');

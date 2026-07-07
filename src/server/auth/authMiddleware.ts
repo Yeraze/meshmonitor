@@ -45,7 +45,7 @@ export function optionalAuth() {
           if (!user) {
             // Auto-provision if enabled
             if (config.proxyAuthAutoProvision) {
-              logger.info(`🔐 Auto-provisioning proxy user: ${proxyUser.email}`);
+              logger.debug(`🔐 Auto-provisioning proxy user: ${proxyUser.email}`);
 
               const isAdmin = isAdminUser(proxyUser.email, proxyUser.groups);
               const username = proxyUser.email.split('@')[0]; // Use email prefix as username
@@ -105,7 +105,7 @@ export function optionalAuth() {
 
           // Check if we need to migrate local user to proxy
           if (user && user.authProvider === 'local') {
-            logger.info(`🔄 Migrating local user '${user.username}' to proxy auth`);
+            logger.debug(`🔄 Migrating local user '${user.username}' to proxy auth`);
 
             const isAdmin = isAdminUser(proxyUser.email, proxyUser.groups);
 
@@ -143,7 +143,7 @@ export function optionalAuth() {
             const currentIsAdmin = isAdminUser(proxyUser.email, proxyUser.groups);
 
             if (currentIsAdmin !== user.isAdmin) {
-              logger.info(`🔄 Updating admin status for ${user.username}: ${user.isAdmin} → ${currentIsAdmin}`);
+              logger.debug(`🔄 Updating admin status for ${user.username}: ${user.isAdmin} → ${currentIsAdmin}`);
 
               await databaseService.auth.updateUser(user.id, {
                 isAdmin: currentIsAdmin,

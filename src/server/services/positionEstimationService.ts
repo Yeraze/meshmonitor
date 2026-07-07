@@ -395,7 +395,7 @@ class PositionEstimationService {
     await databaseService.deleteEstimatedPositionsByNodeNumsAsync([...anchorNodeNums, ...rejectedNodeNums]);
 
     const durationMs = Date.now() - start;
-    logger.info(
+    logger.debug(
       `📍 Position estimation: ${inputs.length} node(s) estimated from ${observationCount} observation(s) ` +
       `across ${meshtasticSourceIds.length} source(s), ${anchors.size} anchor(s)` +
       (rejectedNodeNums.length ? `, ${rejectedNodeNums.length} rejected (>${maxUncertaintyKm}km)` : '') +

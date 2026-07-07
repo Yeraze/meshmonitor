@@ -88,7 +88,7 @@ class SystemBackupService {
     this.initializeBackupDirectory();
 
     const startTime = Date.now();
-    logger.info(`📦 Starting ${type} system backup...`);
+    logger.debug(`📦 Starting ${type} system backup...`);
 
     try {
       // Create timestamped directory for this backup
@@ -548,7 +548,7 @@ class SystemBackupService {
         [toDelete]
       );
 
-      logger.info(`🧹 Purging ${oldBackups.length} old system backups (max: ${limit})...`);
+      logger.debug(`🧹 Purging ${oldBackups.length} old system backups (max: ${limit})...`);
 
       for (const backup of oldBackups) {
         // Delete directory from disk
