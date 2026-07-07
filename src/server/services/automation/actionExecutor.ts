@@ -163,18 +163,22 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
       // MeshCore carries no per-packet id, so `replyId` is always undefined for a
       // MeshCore trigger and the packetId tapback below is a no-op. A reply is
       // instead expressed by prepending the app's `@[Name]: ` mention — matching
-      // the in-app reply composer (MeshCoreMessageStream `handleReply`). This only
-      // fires when the trigger is a message that carries a sender display name
-      // (`fromName`, populated only for MeshCore message triggers) and the user
-      // hasn't already written a leading `@[ ]` mention. Meshtastic message
-      // triggers have no `fromName` and keep their packetId tapback, so they are
-      // left untouched (no `@[ ]` convention on Meshtastic).
-      if (p.replyToTrigger && ctx.trigger.triggerType === 'trigger.message') {
-        const senderName = typeof ctx.trigger.fields.fromName === 'string'
-          ? ctx.trigger.fields.fromName.trim()
+      // the in-app reply composer (MeshCoreMessageStream `handleReply`). We use the
+      // universal `senderLabel` (#3978: fromName → channelName → id) so a channel
+      // post with no name prefix still degrades to the channel name / id rather
+      // than an empty `@[]`. Gated to `protocol === 'meshcore'`: Meshtastic has no
+      // `@[ ]` convention and keeps its packetId tapback (its senderLabel is a
+      // nodeNum/id that would be a meaningless mention).
+      if (
+        p.replyToTrigger
+        && ctx.trigger.triggerType === 'trigger.message'
+        && ctx.trigger.fields.protocol === 'meshcore'
+      ) {
+        const label = typeof ctx.trigger.fields.senderLabel === 'string'
+          ? ctx.trigger.fields.senderLabel.trim()
           : '';
-        if (senderName && !text.trimStart().startsWith('@[')) {
-          text = `@[${senderName}]: ${text}`;
+        if (label && !text.trimStart().startsWith('@[')) {
+          text = `@[${label}]: ${text}`;
         }
       }
       const fallbackChannel = p.channel != null ? Number(p.channel) : triggerChannel;

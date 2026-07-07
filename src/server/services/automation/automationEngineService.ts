@@ -33,6 +33,7 @@ import {
   meshCoreMessageMatchesFilter,
   describeMessageFilterMiss,
   describeMeshCoreFilterMiss,
+  parseMeshCoreChannelIdx,
   type TriggerContext,
   type SystemEvent,
 } from './triggerContext.js';
@@ -377,18 +378,23 @@ export class AutomationEngineService {
 
   async onMessage(msg: DbMessage, sourceId: string | null): Promise<number> {
     if (await this.isSelfMeshtastic(sourceId, msg.fromNodeNum)) return 0; // #3914: ignore our own sends
-    const ctx = buildMessageContext(msg, sourceId, this.now());
-    // Resolve the message's channel NAME once (per-source slot→name), but only
-    // when a loaded message automation actually filters by channelName — keeps
-    // the hot path DB-free when nobody uses name matching.
+    // Resolve the universal sender/channel labels once (per-source slot→name and
+    // sender node name), but only when a message automation is actually loaded —
+    // keeps the hot path DB-free when nobody listens for messages. `channelName`
+    // also feeds the channel-by-name filter (unchanged behavior).
+    const hasMessageAutomations = (this.index.get('trigger.message') ?? []).length > 0;
     let channelName: string | null | undefined;
-    const usesChannelName = (this.index.get('trigger.message') ?? []).some((a) => {
-      const p = a.triggerNode.params as Record<string, unknown> | undefined;
-      return typeof p?.channelName === 'string' && p.channelName.length > 0;
-    });
-    if (usesChannelName && this.data.getChannelName) {
-      channelName = await this.data.getChannelName(sourceId, Number(msg.channel));
+    let fromName: string | undefined;
+    if (hasMessageAutomations) {
+      if (this.data.getChannelName) {
+        channelName = await this.data.getChannelName(sourceId, Number(msg.channel));
+      }
+      // Sender display name resolved the same way the UI does (long → short name);
+      // the builder falls back to the node id when the node is unknown.
+      const node = await this.data.getNode(sourceId, Number(msg.fromNodeNum));
+      fromName = node?.longName || node?.shortName || undefined;
     }
+    const ctx = buildMessageContext(msg, sourceId, this.now(), { channelName, fromName });
     return this.runTrigger(
       ctx,
       (a) => messageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName),
@@ -404,17 +410,16 @@ export class AutomationEngineService {
    */
   async onMeshCoreMessage(msg: MeshCoreMessage, sourceId: string | null): Promise<number> {
     if (await this.isSelfMeshCore(sourceId, msg.fromPublicKey)) return 0; // #3914: ignore our own sends
-    const ctx = buildMeshCoreMessageContext(msg, sourceId, this.now());
+    // Resolve the channel name once for the universal `channelName`/`senderLabel`
+    // tokens (and the channel-by-name filter), only when a message automation is
+    // loaded. A received channel message stores its slot in `from` as `channel-<idx>`.
+    const hasMessageAutomations = (this.index.get('trigger.message') ?? []).length > 0;
+    const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
     let channelName: string | null | undefined;
-    const usesChannelName = (this.index.get('trigger.message') ?? []).some((a) => {
-      const p = a.triggerNode.params as Record<string, unknown> | undefined;
-      return typeof p?.channelName === 'string' && p.channelName.length > 0;
-    });
-    // A received channel message stores its slot index in `from` as `channel-<idx>`.
-    const channelIdx = ctx.fields.channel;
-    if (usesChannelName && this.data.getChannelName && typeof channelIdx === 'number') {
+    if (hasMessageAutomations && this.data.getChannelName && typeof channelIdx === 'number') {
       channelName = await this.data.getChannelName(sourceId, channelIdx);
     }
+    const ctx = buildMeshCoreMessageContext(msg, sourceId, this.now(), { channelName });
     return this.runTrigger(
       ctx,
       (a) => meshCoreMessageMatchesFilter(msg, a.triggerNode.params ?? {}, channelName),

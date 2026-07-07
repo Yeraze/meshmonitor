@@ -64,14 +64,13 @@ describe('executeAction', () => {
     expect(calls[0].args).toMatchObject({ destination: 777, replyId: 42, channel: 0 });
   });
 
-  // ── replyToTrigger auto-mention for MeshCore (#3973) ────────────────────────
-  it('sendMessage: replyToTrigger prepends @[name] mention for a MeshCore channel trigger', async () => {
+  // ── replyToTrigger auto-mention for MeshCore (#3973 / #3978) ────────────────
+  it('sendMessage: replyToTrigger prepends @[senderLabel] for a MeshCore channel trigger', async () => {
     const { calls, deps } = recorder();
     await executeAction(
       node('action.sendMessage', { text: 'see https://example.com', replyToTrigger: true }),
-      // MeshCore channel message: `from` is the synthetic channel-slot key,
-      // the real sender is in `fromName`. No `packetId` on the wire.
-      ctx({ from: 'channel-13', fromId: 'channel-13', fromName: 'Alice', channel: 13, isBroadcast: true }),
+      // MeshCore channel message: senderLabel = the parsed sender name. No packetId.
+      ctx({ from: 'channel-13', fromId: 'channel-13', fromName: 'Alice', senderLabel: 'Alice', channel: 13, isChannel: true, isBroadcast: true, protocol: 'meshcore' }),
       deps,
     );
     expect(calls[0].args.text).toBe('@[Alice]: see https://example.com');
@@ -79,45 +78,57 @@ describe('executeAction', () => {
     expect(calls[0].args.replyId).toBeUndefined();
   });
 
-  it('sendMessage: replyToTrigger prepends @[name] mention for a MeshCore DM trigger', async () => {
+  it('sendMessage: replyToTrigger prepends @[senderLabel] for a MeshCore DM trigger', async () => {
     const { calls, deps } = recorder();
     await executeAction(
       node('action.sendMessage', { text: 'got it', replyToTrigger: true }),
-      // MeshCore DM: fromName now populated from the resolved contact (#3973).
-      ctx({ from: 'abc123', fromId: 'abc123', fromName: 'Bob', isDM: true }),
+      // MeshCore DM: fromName populated from the resolved contact (#3973) → senderLabel.
+      ctx({ from: 'abc123', fromId: 'abc123', fromName: 'Bob', senderLabel: 'Bob', isDM: true, protocol: 'meshcore' }),
       deps,
     );
     expect(calls[0].args.text).toBe('@[Bob]: got it');
+  });
+
+  it('sendMessage: replyToTrigger falls back to channelName via senderLabel when no sender name', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      // No name prefix on the channel post, but senderLabel degrades to the channel name (#3978).
+      node('action.sendMessage', { text: 'anonymous reply', replyToTrigger: true }),
+      ctx({ from: 'channel-4', fromId: 'channel-4', channelName: 'gauntlet', senderLabel: 'gauntlet', channel: 4, isChannel: true, isBroadcast: true, protocol: 'meshcore' }),
+      deps,
+    );
+    expect(calls[0].args.text).toBe('@[gauntlet]: anonymous reply');
   });
 
   it('sendMessage: replyToTrigger does not double-prepend when the text already starts with a mention', async () => {
     const { calls, deps } = recorder();
     await executeAction(
       // User hand-wrote the mention (the pre-fix workaround) — must not be doubled.
-      node('action.sendMessage', { text: '@[{{ trigger.fromName }}] hi', replyToTrigger: true }),
-      ctx({ from: 'channel-9', fromName: 'Carol', channel: 9, isBroadcast: true }),
+      node('action.sendMessage', { text: '@[{{ trigger.senderLabel }}] hi', replyToTrigger: true }),
+      ctx({ from: 'channel-9', fromName: 'Carol', senderLabel: 'Carol', channel: 9, isChannel: true, isBroadcast: true, protocol: 'meshcore' }),
       deps,
     );
     expect(calls[0].args.text).toBe('@[Carol] hi');
   });
 
-  it('sendMessage: replyToTrigger does not prepend when the sender name is missing', async () => {
+  it('sendMessage: replyToTrigger does not prepend when senderLabel is entirely missing', async () => {
     const { calls, deps } = recorder();
     await executeAction(
       node('action.sendMessage', { text: 'anonymous reply', replyToTrigger: true }),
-      // MeshCore channel message with no parsed sender name — nothing to mention.
-      ctx({ from: 'channel-4', channel: 4, isBroadcast: true }),
+      // No name, no channel name, no usable id → senderLabel undefined → nothing to mention.
+      ctx({ from: 'channel-4', channel: 4, isChannel: true, isBroadcast: true, protocol: 'meshcore' }),
       deps,
     );
     expect(calls[0].args.text).toBe('anonymous reply');
   });
 
-  it('sendMessage: replyToTrigger leaves a Meshtastic reply unchanged (packetId tapback, no mention)', async () => {
+  it('sendMessage: replyToTrigger leaves a Meshtastic reply unchanged (packetId tapback, no @[ ] mention)', async () => {
     const { calls, deps } = recorder();
     await executeAction(
       node('action.sendMessage', { text: 'pong', to: '{{ trigger.from }}', replyToTrigger: true, channel: 0 }),
-      // Meshtastic message trigger: has packetId, no fromName → tapback, no @[ ] mention.
-      ctx({ from: 777, channel: 0, packetId: 42, isDM: true }),
+      // Meshtastic message trigger: protocol meshtastic + packetId → tapback, no mention,
+      // even though senderLabel is now populated (a nodeNum/id) universally.
+      ctx({ from: 777, fromId: '!00000309', fromName: '!00000309', senderLabel: '!00000309', channel: 0, packetId: 42, isDM: true, protocol: 'meshtastic' }),
       deps,
     );
     expect(calls[0].args.text).toBe('pong');

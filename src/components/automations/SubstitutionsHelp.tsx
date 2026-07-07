@@ -9,17 +9,24 @@
 // All `{{ trigger.* }}` tokens, by trigger type. `sourceId`/`timestamp` are added to every group.
 export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
   'trigger.message': [
-    ['text', 'Message body'], ['from', 'Sender node number (Meshtastic) — for MeshCore channel messages this is a synthetic "channel-<idx>" key, not an identity; use fromName instead'],
-    ['fromId', 'Sender node id (!hex) — same MeshCore caveat as from'],
+    ['text', 'Message body'],
+    // ── Universal sender/channel tokens (work the same on Meshtastic & MeshCore) ──
+    ['senderLabel', 'Best label for the sender (name → channel name → id) — the "just works" token for addressing a reply on either protocol'],
+    ['fromName', 'Sender display name — Meshtastic node long/short name (falls back to the id); MeshCore parsed sender name'],
+    ['channelName', 'Channel name (both protocols); empty on a DM'],
+    ['isDM', 'true if a direct message'], ['isChannel', 'true if a channel/broadcast message'],
+    // ── Raw identity (protocol-specific) ──
+    ['from', 'Raw sender identity: Meshtastic node number; MeshCore sender pubkey, or a synthetic "channel-<idx>" key for channel messages (not an identity — use senderLabel/fromName)'],
+    ['fromId', 'Raw sender id: Meshtastic !hex; MeshCore pubkey / channel-<idx> (same caveat as from)'],
     ['to', 'Recipient node number'], ['toId', 'Recipient node id'], ['channel', 'Channel index'],
-    ['portnum', 'Port number'], ['packetId', 'Packet id (used as tapback replyId) — Meshtastic only; unset for MeshCore, where replyToTrigger instead auto-prepends the @[fromName] mention'],
+    ['portnum', 'Port number'], ['packetId', 'Packet id (used as tapback replyId) — Meshtastic only; unset for MeshCore, where replyToTrigger instead auto-prepends the @[senderLabel] mention'],
     ['hops', 'Hop count (hopStart − hopLimit)'], ['hopStart', 'Hop start'], ['hopLimit', 'Hop limit'],
     ['snr', 'Receive SNR — RF-received messages only'], ['rssi', 'Receive RSSI dBm — RF only'],
-    ['isDM', 'true if a direct message'], ['isBroadcast', 'true if broadcast'],
+    ['isBroadcast', 'true if broadcast (alias of isChannel)'],
     ['wantAck', 'Sender requested an ack'], ['replyId', 'Replied-to packet id'],
     ['emoji', 'Tapback/reaction emoji flag'], ['viaMqtt', 'true if it arrived via MQTT'],
-    ['decryptedBy', 'Channel/key that decrypted it'],
-    ['fromName', 'Sender display name (MeshCore only) — use this instead of from/fromId to reference the sender'], ['scopeName', 'Region/scope name (MeshCore)'],
+    ['decryptedBy', 'Channel/key that decrypted it'], ['protocol', 'meshtastic or meshcore'],
+    ['scopeName', 'Region/scope name (MeshCore)'],
     ['scopeCode', 'Region/scope code — 0 = unscoped (MeshCore)'], ['scoped', 'true if sent with a region (MeshCore)'],
   ],
   'trigger.telemetry': [['nodeNum', 'Node number'], ['telemetryType', 'Metric name'], ['value', 'Reading value'], ['unit', 'Unit']],
