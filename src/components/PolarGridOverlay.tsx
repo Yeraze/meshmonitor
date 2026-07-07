@@ -6,13 +6,23 @@ import { getPolarGridRings, getSectorEndpoint } from '../utils/polarGrid.js';
 
 interface PolarGridOverlayProps {
   center: { lat: number; lng: number };
+  /**
+   * Optional literal (hex/rgb) color override for the whole grid. When set,
+   * rings/sectors/labels all render in this color at reduced opacity — used on
+   * the Unified/Dashboard map (#3971) to draw one grid per source in that
+   * source's color so overlapping grids stay distinguishable. When omitted the
+   * grid uses the theme-aware `overlayColors.polarGrid` palette (NodesTab / Map
+   * Analysis). Must be a resolved literal, not a `var(--…)` — Leaflet paints SVG
+   * strokes via the presentation attribute, which does not evaluate CSS vars.
+   */
+  color?: string;
 }
 
 const SECTOR_BEARINGS = Array.from({ length: 12 }, (_, i) => i * 30);
 const CARDINAL_BEARINGS = new Set([0, 90, 180, 270]);
 const DEGREE_LABELS = ['0', '30', '60', '90', '120', '150', '180', '210', '240', '270', '300', '330'];
 
-export const PolarGridOverlay: React.FC<PolarGridOverlayProps> = ({ center }) => {
+export const PolarGridOverlay: React.FC<PolarGridOverlayProps> = ({ center, color }) => {
   const map = useMap();
   const { distanceUnit, overlayColors } = useSettings();
   const [zoom, setZoom] = useState(map.getZoom());
@@ -23,7 +33,16 @@ export const PolarGridOverlay: React.FC<PolarGridOverlayProps> = ({ center }) =>
     return () => { map.off('zoomend', onZoomEnd); };
   }, [map]);
 
-  const colors = overlayColors;
+  // When a per-source color override is provided, use it for every grid element
+  // (the theme palette bakes opacity into rgba() values; a solid override gets
+  // opacity via pathOptions instead). Otherwise fall back to the theme palette.
+  const gridColors = color
+    ? { rings: color, sectors: color, cardinalSectors: color, labels: color }
+    : overlayColors.polarGrid;
+  const ringOpacity = color ? 0.5 : undefined;
+  const cardinalOpacity = color ? 0.55 : undefined;
+  const sectorOpacity = color ? 0.35 : undefined;
+  const colors = { polarGrid: gridColors };
   const centerLatLng: [number, number] = [center.lat, center.lng];
 
   const rings = useMemo(
@@ -76,6 +95,7 @@ export const PolarGridOverlay: React.FC<PolarGridOverlayProps> = ({ center }) =>
           pathOptions={{
             color: colors.polarGrid.rings,
             weight: 2,
+            opacity: ringOpacity,
             fill: false,
             interactive: false,
           }}
@@ -91,6 +111,7 @@ export const PolarGridOverlay: React.FC<PolarGridOverlayProps> = ({ center }) =>
               ? colors.polarGrid.cardinalSectors
               : colors.polarGrid.sectors,
             weight: 2,
+            opacity: sector.isCardinal ? cardinalOpacity : sectorOpacity,
             dashArray: sector.isCardinal ? undefined : '6 6',
             interactive: false,
           }}

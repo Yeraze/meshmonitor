@@ -12,6 +12,7 @@ import PositionTrailsLayer from './layers/PositionTrailsLayer';
 import CoverageHeatmapLayer from './layers/CoverageHeatmapLayer';
 import SnrOverlayLayer from './layers/SnrOverlayLayer';
 import WaypointsLayer from './layers/WaypointsLayer';
+import PolarGridLayer from './layers/PolarGridLayer';
 import TimeSliderControl from './TimeSliderControl';
 import MapLegend from './MapLegend';
 
@@ -66,6 +67,11 @@ export default function MapAnalysisCanvas() {
         </Pane>
         <Pane name="heatmap" style={{ zIndex: 350 }}>
           {config.layers.heatmap.enabled && <CoverageHeatmapLayer />}
+        </Pane>
+        {/* Polar grid sits just below the node markers (z600) so its labels don't
+            paint over them, but above the data layers so the range rings read. */}
+        <Pane name="polarGrid" style={{ zIndex: 550 }}>
+          {config.layers.polarGrid.enabled && <PolarGridLayer />}
         </Pane>
       </MapContainer>
       <TilesetSelector selectedTilesetId={mapTileset} onTilesetChange={setMapTileset} />
