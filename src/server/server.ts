@@ -57,6 +57,7 @@ import { isValidModuleConfigType } from './constants/moduleConfig.js';
 import { CONFIG_TYPE_MAP, MODULE_FIELD_BY_ID, DEVICE_FIELD_BY_ID } from './constants/configTypes.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 import { applyManagerSettings } from './applyManagerSettings.js';
+import { installProcessSafetyNet } from './processSafetyNet.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -6171,8 +6172,14 @@ process.on('SIGINT', () => {
 });
 
 // Graceful shutdown function
-function gracefulShutdown(reason: string): void {
-  logger.info(`🛑 Initiating graceful shutdown: ${reason}`);
+let isShuttingDown = false;
+function gracefulShutdown(reason: string, exitCode = 0): void {
+  if (isShuttingDown) {
+    logger.warn(`🛑 Shutdown already in progress — ignoring duplicate request: ${reason}`);
+    return;
+  }
+  isShuttingDown = true;
+  logger.info(`🛑 Initiating graceful shutdown: ${reason} (exit ${exitCode})`);
 
   const shutdownDependencies = (): void => {
     // Disconnect from Meshtastic
@@ -6192,7 +6199,7 @@ function gracefulShutdown(reason: string): void {
     }
 
     logger.info('✅ Graceful shutdown complete');
-    process.exit(0);
+    process.exit(exitCode);
   };
 
   // SIGTERM can arrive during startup (e.g. while long migrations run on a
@@ -6218,6 +6225,9 @@ function gracefulShutdown(reason: string): void {
 process.on('SIGTERM', () => {
   gracefulShutdown('SIGTERM received');
 });
+
+// Last-resort handlers: log full context and route through gracefulShutdown (exit 1).
+installProcessSafetyNet({ shutdown: gracefulShutdown });
 
 // Data migration: Set channel field to 'dm' for existing auto-responder triggers without channel
 async function migrateAutoResponderTriggers() {
