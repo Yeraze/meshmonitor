@@ -10,7 +10,7 @@ import databaseService from '../services/database.js';
 
 function makeManager(opts?: {
   contacts?: Array<{ publicKey: string; advType?: number; advName?: string; name?: string }>;
-}): { manager: MeshCoreManager; emittedMessages: MeshCoreMessage[] } {
+}): { manager: MeshCoreManager; emittedMessages: MeshCoreMessage[]; insertMessage: ReturnType<typeof vi.spyOn> } {
   const m = new MeshCoreManager('test-source');
   (m as any).deviceType = MeshCoreDeviceType.COMPANION;
   (m as any).connected = true;
@@ -30,9 +30,9 @@ function makeManager(opts?: {
   }
 
   m.on('message', (msg: MeshCoreMessage) => emittedMessages.push(msg));
-  vi.spyOn(databaseService.meshcore, 'insertMessage').mockResolvedValue(undefined as any);
+  const insertMessage = vi.spyOn(databaseService.meshcore, 'insertMessage').mockResolvedValue(undefined as any);
 
-  return { manager: m, emittedMessages };
+  return { manager: m, emittedMessages, insertMessage };
 }
 
 describe('MeshCoreManager contact_message fromName (#3973)', () => {
@@ -42,7 +42,7 @@ describe('MeshCoreManager contact_message fromName (#3973)', () => {
 
   it('populates fromName from the resolved contact advName', () => {
     const senderPubkey = 'cc'.repeat(32);
-    const { manager, emittedMessages } = makeManager({
+    const { manager, emittedMessages, insertMessage } = makeManager({
       contacts: [{ publicKey: senderPubkey, advName: 'Alice' }],
     });
 
@@ -57,6 +57,7 @@ describe('MeshCoreManager contact_message fromName (#3973)', () => {
 
     expect(emittedMessages).toHaveLength(1);
     expect(emittedMessages[0].fromName).toBe('Alice');
+    expect(insertMessage).toHaveBeenCalledWith(expect.objectContaining({ fromName: 'Alice' }), expect.anything());
   });
 
   it('falls back to the contact name when advName is unset', () => {
