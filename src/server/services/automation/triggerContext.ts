@@ -32,26 +32,57 @@ export function deriveHops(msg: Pick<DbMessage, 'hopStart' | 'hopLimit'>): numbe
   return undefined;
 }
 
+/**
+ * Optional pre-resolved labels the caller (engine service) looks up from the DB
+ * and threads into the builder, so the pure builder stays DB-free. Populate the
+ * universal `fromName` / `channelName` / `senderLabel` tokens (#3978).
+ */
+export interface MessageContextLabels {
+  /** Sender's display name (long name → short name). The builder falls back to `fromId`. */
+  fromName?: string | null;
+  /** The message's channel slot name for its source. Ignored for DMs. */
+  channelName?: string | null;
+}
+
 /** Build the trigger context for a `message:new` event. */
-export function buildMessageContext(msg: DbMessage, sourceId: string | null, timestamp: number): TriggerContext {
+export function buildMessageContext(
+  msg: DbMessage,
+  sourceId: string | null,
+  timestamp: number,
+  labels?: MessageContextLabels,
+): TriggerContext {
   const to = Number(msg.toNodeNum);
   // Message ids are `${sourceId}_${fromNum}_${packetId}` (load-bearing format);
   // the trailing segment is the Meshtastic packet id used as a tapback replyId.
   const parsedPacketId = Number(String(msg.id).split('_').pop());
+  const isDM = to !== BROADCAST_ADDR;
+  const isBroadcast = to === BROADCAST_ADDR;
+  const fromId = msg.fromNodeId != null ? String(msg.fromNodeId) : undefined;
+  // Universal, cross-protocol tokens (#3978). `fromName` is the sender's display
+  // name degrading long → short → id; `channelName` is the channel's name (no
+  // meaningful channel label on a DM); `senderLabel` is the "just works" label
+  // for addressing a reply, preferring the name, then the channel, then the id.
+  const fromName = (labels?.fromName && String(labels.fromName).trim()) || fromId;
+  const channelName = isDM ? undefined : (labels?.channelName ?? undefined);
+  const senderLabel = fromName || channelName || fromId;
   const fields: Record<string, unknown> = {
     from: Number(msg.fromNodeNum),
     fromId: msg.fromNodeId,
+    fromName,
     to,
     toId: msg.toNodeId,
     text: msg.text,
     channel: msg.channel,
+    channelName,
+    senderLabel,
     portnum: msg.portnum,
     packetId: Number.isFinite(parsedPacketId) ? parsedPacketId : undefined,
     hops: deriveHops(msg),
     hopStart: msg.hopStart,
     hopLimit: msg.hopLimit,
-    isDM: to !== BROADCAST_ADDR,
-    isBroadcast: to === BROADCAST_ADDR,
+    isDM,
+    isChannel: isBroadcast,
+    isBroadcast,
     wantAck: msg.wantAck,
     replyId: msg.replyId,
     emoji: msg.emoji,
@@ -59,6 +90,7 @@ export function buildMessageContext(msg: DbMessage, sourceId: string | null, tim
     rssi: msg.rxRssi,
     viaMqtt: msg.viaMqtt,
     decryptedBy: msg.decryptedBy,
+    protocol: 'meshtastic',
     sourceId,
     timestamp,
   };
@@ -77,7 +109,7 @@ export function buildMessageContext(msg: DbMessage, sourceId: string | null, tim
  * (see `MeshCoreManager.channelPublicKey`). Parse that back to the slot index;
  * returns undefined for DMs/room posts (a real/author pubkey, not a channel).
  */
-function parseMeshCoreChannelIdx(fromPublicKey: string | undefined): number | undefined {
+export function parseMeshCoreChannelIdx(fromPublicKey: string | undefined): number | undefined {
   const m = /^channel-(\d+)$/.exec(fromPublicKey ?? '');
   return m ? Number(m[1]) : undefined;
 }
@@ -95,6 +127,7 @@ export function buildMeshCoreMessageContext(
   msg: MeshCoreMessage,
   sourceId: string | null,
   timestamp: number,
+  labels?: { channelName?: string | null },
 ): TriggerContext {
   const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
   const isChannel = channelIdx !== undefined;
@@ -102,18 +135,29 @@ export function buildMeshCoreMessageContext(
   // DM = addressed to us (recipient pubkey set) and not a channel/room post.
   const isDM = !isChannel && !isRoom && msg.toPublicKey != null;
   const scopeCode = msg.scopeCode ?? undefined;
+  const fromName = msg.fromName ?? undefined;
+  const fromId = msg.fromPublicKey != null ? String(msg.fromPublicKey) : undefined;
+  // channelName is only meaningful for a channel post; DMs/room posts have none.
+  const channelName = isChannel ? (labels?.channelName ?? undefined) : undefined;
+  // Universal "just works" reply label (#3978): the sender's name if we have one
+  // (channel posts may carry no name prefix), else the channel name, else the raw
+  // id (a pubkey for DMs/rooms, or the synthetic `channel-<idx>` key).
+  const senderLabel = fromName || channelName || fromId;
   const fields: Record<string, unknown> = {
     // MeshCore senders are pubkey strings; channel messages have no per-sender
     // pubkey, so `from` is the synthetic `channel-<idx>` key. `fromName` carries
     // the display name a channel sender prefixed onto the body, when present.
     from: msg.fromPublicKey,
     fromId: msg.fromPublicKey,
-    fromName: msg.fromName,
+    fromName,
+    channelName,
+    senderLabel,
     to: msg.toPublicKey,
     toId: msg.toPublicKey,
     text: msg.text,
     channel: channelIdx,
     isDM,
+    isChannel,
     isBroadcast: isChannel,
     hops: msg.hopCount ?? undefined,
     snr: msg.snr,

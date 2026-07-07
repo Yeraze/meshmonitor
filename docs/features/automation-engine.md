@@ -167,9 +167,19 @@ Sends text to a channel or as a DM, with full `{{ }}` token interpolation in the
   shown with **MC / MT badges**. The correct local slot is resolved per source, and a Meshtastic
   channel is never sent to a MeshCore source (and vice-versa). Disabled channel slots are excluded.
   Raw channel PSKs are never sent to the browser.
-- **DM to node #** — send as a direct message instead of to a channel. `{{ trigger.from }}` replies
-  to the sender.
-- **Reply to the triggering message** — thread the reply to the message that fired the automation.
+- **DM to node #** — send as a direct message instead of to a channel (Meshtastic only — MeshCore
+  sends always go to a channel/region, never a DM-by-node). `{{ trigger.from }}` replies to the
+  sender.
+- **Reply to the triggering message** — on **Meshtastic** this threads the reply as a tapback (via
+  the triggering packet id). MeshCore has no packet-id/thread concept on the wire, so on **MeshCore**
+  this instead **auto-prepends the sender mention** `@[<senderLabel>]: ` to the outgoing text — the same
+  `@[Name]:` markup the in-app reply button uses — so an automation can reply to whoever sent the
+  triggering message without hand-writing the mention. The label comes from
+  `{{ trigger.senderLabel }}` (sender name → channel name → id), so even an anonymous channel post
+  still gets a sensible mention; if nothing at all can be resolved nothing is prepended, and if your
+  text already begins with an `@[…]` mention it is left as-is (no double mention). See
+  [Universal message tokens](#universal-message-tokens-meshtastic--meshcore) — reference the sender via
+  `{{ trigger.senderLabel }}` / `{{ trigger.fromName }}`, not the raw `{{ trigger.from }}`.
 - **MeshCore scope** *(advanced; MeshCore sources only — ignored by Meshtastic)* — which region a
   MeshCore message floods to: **Inherit (channel / source default)**, **Match the triggering
   message's scope** (reply on the same region it arrived on), **Unscoped (flood, no region)**, or
@@ -296,6 +306,26 @@ values, the set-variable value) accept **double-brace tokens**:
 | `{{ trigger.sourceId }}` / `{{ trigger.timestamp }}` | Available for every trigger; `timestamp` renders as a local date/time |
 | `{{ var.name }}` | A user-defined variable; `{{ var.name.field }}` for nested `json` access |
 | `{{ NOW }}` | The current time, rendered as a local `YYYY-MM-DD HH:mm:ss` |
+
+### Universal message tokens (Meshtastic + MeshCore)
+
+A **message** trigger (`trigger.message`) fires on both protocols, so these tokens are **standardized**
+to mean the same thing on each — use them and your automation is portable:
+
+| Token | Meshtastic | MeshCore |
+| --- | --- | --- |
+| `{{ trigger.senderLabel }}` | Node long/short name, else `!hex` id | Parsed sender name, else channel name, else pubkey/`channel-<idx>` |
+| `{{ trigger.fromName }}` | Node long name → short name → id | Parsed sender name (from the `Name:` body prefix / resolved contact) |
+| `{{ trigger.channelName }}` | Channel name (empty on a DM) | Channel name (empty on a DM / room post) |
+| `{{ trigger.isDM }}` / `{{ trigger.isChannel }}` | Direct message / channel broadcast | Direct message / channel post |
+| `{{ trigger.protocol }}` | `meshtastic` | `meshcore` |
+
+`{{ trigger.senderLabel }}` is the **"just works" label for addressing a reply** — it always resolves
+to something usable. Prefer it (or `{{ trigger.fromName }}`) over the **raw identity** tokens:
+
+- `{{ trigger.from }}` / `{{ trigger.fromId }}` are **raw identity**: on Meshtastic the node number /
+  `!hex` id; on MeshCore the sender's public key — or, for a channel message (which carries no
+  per-sender key on the wire), the synthetic `channel-<idx>` slot key, **not** a sender identity.
 
 ### In-builder validation
 

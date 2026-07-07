@@ -213,6 +213,39 @@ in `src/services/database.ts`). **Resolution rules (apply to every field):**
 | `trigger.decryptedBy` | `'node'｜'server'｜null` | |
 | `trigger.node.*` | hydrated `DbNode` for `fromNodeNum` | full sender record (role, hwModel, position, …) |
 
+> **MeshCore addendum (post #3833/#3914, `buildMeshCoreMessageContext` in `triggerContext.ts`):** MeshCore
+> messages have no numeric `packetId`/node-num identity, so the table above only applies verbatim to
+> Meshtastic. For MeshCore triggers:
+> - `trigger.from` / `trigger.fromId` = `fromPublicKey`. For **channel** messages this is a synthetic
+>   `channel-<idx>` key (MeshCore channel packets carry no per-sender pubkey on the wire) — **not** a
+>   sender identity. For DMs/room posts it's the sender's/author's resolved public key.
+> - `trigger.fromName` = the sender's display name — parsed from the "Name: " body prefix for channel
+>   messages, or the resolved contact's `advName`/`name` for DMs and room posts (#3973 fixed this for
+>   DMs, which previously left `fromName` empty).
+> - `trigger.scopeName` / `trigger.scopeCode` / `trigger.scoped` are MeshCore-only (region/scope).
+>
+> **Universal message-token standardization (#3978).** `trigger.message` fires on both protocols, so the
+> sender/channel tokens are standardized to mean the same thing on each. Both `buildMessageContext`
+> (Meshtastic) and `buildMeshCoreMessageContext` (MeshCore) now emit:
+> - `fromName` — **universal**. Meshtastic: sender node display name (long → short → `fromId`), resolved
+>   by the engine via `NodeDataProvider.getNode` and threaded into the pure builder as a `labels` arg
+>   (no DB in the builder). MeshCore: unchanged (`msg.fromName`).
+> - `channelName` — **new, both protocols**. Engine resolves slot→name via `getChannelName` (self-contained
+>   here; **overlaps PR #3974's resolver in `onMessage`/`onMeshCoreMessage` — reconcile at merge**) and
+>   threads it in; the builder suppresses it for DMs.
+> - `senderLabel` — **new, both protocols**. `fromName || channelName || fromId` — the "just works" reply
+>   label. `action.sendMessage`'s MeshCore auto-mention (#3973) now consumes **`senderLabel`** so a nameless
+>   channel post degrades to the channel name / id instead of an empty `@[]`. The auto-mention is gated on
+>   `fields.protocol === 'meshcore'` (was previously "has `fromName`", which no longer discriminates now
+>   that `fromName` is universal); Meshtastic keeps its `packetId` tapback and no `@[ ]` mention.
+> - `isChannel` — **new, both protocols** (symmetry with `isDM`). Meshtastic: `isBroadcast`. MeshCore: the
+>   existing channel-vs-DM/room discriminator.
+> - `protocol` — now set on **both** (`'meshtastic'` | `'meshcore'`).
+>
+> Resolution is gated on "a `trigger.message` automation is loaded" (not the old "a channelName filter is
+> used") so the tokens are always populated when any message automation exists, while the hot path stays
+> DB-free when none is.
+
 **`trigger.nodeDiscovered` / `trigger.nodeUpdated`** — payload `NodeUpdateData {nodeNum, node: Partial<DbNode>}` (event `node:updated`).
 > ⚠️ The emitter has **no separate "discovered" event** and `node` is a **partial** (changed fields only). Engine must: (a) **hydrate the full `DbNode`** from the DB for conditions; (b) expose the partial as `trigger.changed` (which fields changed — for "role changed" style triggers); (c) derive `trigger.isNew` (first-ever `node:updated` for that nodeNum, tracked by the engine, or `createdAt === updatedAt` heuristic). `nodeDiscovered` = `node:updated` where `isNew`; `nodeUpdated` = the rest.
 | field | source |

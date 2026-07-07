@@ -155,9 +155,32 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
     }
 
     case 'action.sendMessage': {
-      const text = await interpolateAsync(String(p.text ?? ''), ctx);
+      let text = await interpolateAsync(String(p.text ?? ''), ctx);
       const destination = await num(ctx, p.to);
       const replyId = p.replyToTrigger ? (ctx.trigger.fields.packetId as number | undefined) : await num(ctx, p.replyId);
+
+      // #3973: "Reply to the triggering message" auto-mention for MeshCore.
+      // MeshCore carries no per-packet id, so `replyId` is always undefined for a
+      // MeshCore trigger and the packetId tapback below is a no-op. A reply is
+      // instead expressed by prepending the app's `@[Name]: ` mention — matching
+      // the in-app reply composer (MeshCoreMessageStream `handleReply`). We use the
+      // universal `senderLabel` (#3978: fromName → channelName → id) so a channel
+      // post with no name prefix still degrades to the channel name / id rather
+      // than an empty `@[]`. Gated to `protocol === 'meshcore'`: Meshtastic has no
+      // `@[ ]` convention and keeps its packetId tapback (its senderLabel is a
+      // nodeNum/id that would be a meaningless mention).
+      if (
+        p.replyToTrigger
+        && ctx.trigger.triggerType === 'trigger.message'
+        && ctx.trigger.fields.protocol === 'meshcore'
+      ) {
+        const label = typeof ctx.trigger.fields.senderLabel === 'string'
+          ? ctx.trigger.fields.senderLabel.trim()
+          : '';
+        if (label && !text.trimStart().startsWith('@[')) {
+          text = `@[${label}]: ${text}`;
+        }
+      }
       const fallbackChannel = p.channel != null ? Number(p.channel) : triggerChannel;
 
       // MeshCore scope/region (#3833). Translate the selected mode into the

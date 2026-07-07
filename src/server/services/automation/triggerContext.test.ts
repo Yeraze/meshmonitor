@@ -79,6 +79,33 @@ describe('buildMessageContext', () => {
     expect(ctx.fields.isBroadcast).toBe(true);
     expect(ctx.fields.isDM).toBe(false);
   });
+
+  // Universal cross-protocol tokens (#3978)
+  it('populates fromName from the resolved node display name (long → short → id)', () => {
+    // Long name wins.
+    expect(buildMessageContext(msg(), 'default', 1, { fromName: 'Alice' }).fields.fromName).toBe('Alice');
+    // No resolved name → falls back to the node id.
+    expect(buildMessageContext(msg(), 'default', 1).fields.fromName).toBe('!0000006f');
+    expect(buildMessageContext(msg(), 'default', 1, { fromName: '  ' }).fields.fromName).toBe('!0000006f');
+  });
+
+  it('exposes channelName for a broadcast but not for a DM', () => {
+    // Broadcast on a named channel.
+    const bcast = buildMessageContext(msg({ toNodeNum: BROADCAST_ADDR }), 'default', 1, { channelName: 'Gauntlet' });
+    expect(bcast.fields.channelName).toBe('Gauntlet');
+    expect(bcast.fields.isChannel).toBe(true);
+    // DM: channelName suppressed even if a name was resolved.
+    const dm = buildMessageContext(msg(), 'default', 1, { channelName: 'Gauntlet' });
+    expect(dm.fields.channelName).toBeUndefined();
+    expect(dm.fields.isChannel).toBe(false);
+  });
+
+  it('senderLabel prefers the name, and protocol is meshtastic', () => {
+    expect(buildMessageContext(msg(), 'default', 1, { fromName: 'Alice' }).fields.senderLabel).toBe('Alice');
+    // No name → senderLabel is the id (fromName already degraded to the id).
+    expect(buildMessageContext(msg(), 'default', 1).fields.senderLabel).toBe('!0000006f');
+    expect(buildMessageContext(msg(), 'default', 1).fields.protocol).toBe('meshtastic');
+  });
 });
 
 describe('other trigger contexts', () => {
@@ -282,6 +309,48 @@ describe('buildMeshCoreMessageContext (#3833)', () => {
     expect(ctx.fields.channel).toBeUndefined();
     expect(ctx.fields.isDM).toBe(false);
     expect(ctx.fields.isBroadcast).toBe(false);
+  });
+
+  // Universal cross-protocol tokens (#3978)
+  it('channel post: channelName from label, isChannel true, senderLabel = fromName', () => {
+    const ctx = buildMeshCoreMessageContext(
+      mcMsg({ fromPublicKey: 'channel-3', fromName: 'Alice' }),
+      'default',
+      1,
+      { channelName: 'gauntlet' },
+    );
+    expect(ctx.fields.channelName).toBe('gauntlet');
+    expect(ctx.fields.isChannel).toBe(true);
+    expect(ctx.fields.senderLabel).toBe('Alice');
+  });
+
+  it('channel post with no name prefix: senderLabel degrades to channelName', () => {
+    const ctx = buildMeshCoreMessageContext(
+      mcMsg({ fromPublicKey: 'channel-3' }),
+      'default',
+      1,
+      { channelName: 'gauntlet' },
+    );
+    expect(ctx.fields.fromName).toBeUndefined();
+    expect(ctx.fields.senderLabel).toBe('gauntlet');
+  });
+
+  it('channel post with neither name nor resolved channel: senderLabel degrades to the synthetic id', () => {
+    const ctx = buildMeshCoreMessageContext(mcMsg({ fromPublicKey: 'channel-3' }), 'default', 1);
+    expect(ctx.fields.channelName).toBeUndefined();
+    expect(ctx.fields.senderLabel).toBe('channel-3');
+  });
+
+  it('DM: no channelName, isChannel false, senderLabel = sender pubkey', () => {
+    const ctx = buildMeshCoreMessageContext(
+      mcMsg({ fromPublicKey: 'aabbcc', toPublicKey: 'localkey' }),
+      'default',
+      1,
+      { channelName: 'ignored' },
+    );
+    expect(ctx.fields.channelName).toBeUndefined();
+    expect(ctx.fields.isChannel).toBe(false);
+    expect(ctx.fields.senderLabel).toBe('aabbcc');
   });
 });
 
