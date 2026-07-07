@@ -28,6 +28,7 @@ import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { notificationService } from './services/notificationService.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import type { DbMeshCorePacket } from '../db/repositories/meshcore.js';
+import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
 import { MESHCORE_SECRET_BYTES } from '../utils/meshcoreHelpers.js';
 import { tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
@@ -549,7 +550,7 @@ interface BridgeResponse {
  * MeshCore Manager class
  * Handles connection and communication with MeshCore devices
  */
-class MeshCoreManager extends EventEmitter {
+class MeshCoreManager extends EventEmitter implements ISourceManager {
   /**
    * The owning source this manager belongs to. Every write the manager
    * performs into `meshcore_nodes` / `meshcore_messages` is stamped with
@@ -557,6 +558,12 @@ class MeshCoreManager extends EventEmitter {
    * (migration 056).
    */
   public readonly sourceId: string;
+
+  /** Human-readable name for aggregate status; defaults to sourceId when absent. */
+  private sourceName: string;
+
+  /** Config stored by configure() so parameterless start() can connect. */
+  private pendingConfig: MeshCoreConfig | null = null;
 
   private config: MeshCoreConfig | null = null;
   private connected: boolean = false;
@@ -805,14 +812,65 @@ class MeshCoreManager extends EventEmitter {
 
   private readonly distanceDeleteScheduler: DistanceDeleteScheduler;
 
-  constructor(sourceId: string) {
+  constructor(sourceId: string, sourceName?: string) {
     super();
     if (!sourceId) {
       throw new Error('MeshCoreManager requires a sourceId');
     }
     this.sourceId = sourceId;
+    this.sourceName = sourceName ?? sourceId;
     this.distanceDeleteScheduler = new DistanceDeleteScheduler(sourceId);
     logger.info(`[MeshCore:${sourceId}] Manager initialized`);
+  }
+
+  /** ISourceManager: source type discriminant — drives type guards in sourceManagerTypes.ts. */
+  get sourceType(): 'meshcore' {
+    return 'meshcore';
+  }
+
+  /**
+   * Store the connection config so parameterless start() can call connect().
+   * Call this before addManager() (which invokes start() automatically).
+   */
+  configure(cfg: MeshCoreConfig): void {
+    this.pendingConfig = cfg;
+  }
+
+  /**
+   * Update the stored display name used by aggregate getAllStatuses() calls.
+   * Call from the source-rename handler so getStatus() stays fresh without
+   * requiring a full manager restart.
+   */
+  setSourceName(name: string): void {
+    this.sourceName = name;
+  }
+
+  /**
+   * ISourceManager: parameterless start — delegates to connect() using the
+   * config stored by configure(). If no config has been stored, logs a warning
+   * and returns without connecting. Swallows connect()'s boolean; logs result.
+   */
+  async start(): Promise<void> {
+    if (!this.pendingConfig) {
+      logger.warn(`[MeshCore:${this.sourceId}] start() called but no config stored — call configure() first`);
+      return;
+    }
+    const ok = await this.connect(this.pendingConfig);
+    if (ok) {
+      logger.info(`[MeshCore:${this.sourceId}] Auto-connected`);
+    } else {
+      logger.warn(`[MeshCore:${this.sourceId}] Auto-connect failed`);
+    }
+  }
+
+  /**
+   * ISourceManager: parameterless stop — delegates to disconnect().
+   * Does NOT remove this manager from any registry; that is the registry's
+   * responsibility. This preserves the "manual disconnect keeps manager
+   * registered" semantics required by the /disconnect route.
+   */
+  async stop(): Promise<void> {
+    await this.disconnect();
   }
 
   /** Start this source's per-source auto-delete-by-distance scheduler (#3901). */
@@ -5264,22 +5322,27 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
-   * Source-registry-compatible status snapshot. Lets `/api/sources/:id/status`
-   * report meshcore sources via the same shape Meshtastic managers return,
-   * even though MeshCoreManager isn't registered in `sourceManagerRegistry`.
+   * Source-registry-compatible status snapshot. Satisfies ISourceManager.getStatus().
+   * The optional `sourceName` arg lets narrowed callers pass the live name from DB
+   * (e.g. the /status route). When omitted, the stored this.sourceName is used so
+   * aggregate getAllStatuses() calls return a meaningful name.
    */
-  getStatus(sourceName: string): {
-    sourceId: string;
-    sourceName: string;
-    sourceType: 'meshcore';
-    connected: boolean;
-  } {
+  getStatus(sourceName?: string): SourceStatus {
     return {
       sourceId: this.sourceId,
-      sourceName,
+      sourceName: sourceName ?? this.sourceName,
       sourceType: 'meshcore',
       connected: this.connected,
     };
+  }
+
+  /**
+   * ISourceManager contract. MeshCore nodes have no meshtastic-style nodeNum,
+   * so this returns null rather than fabricate a value. Meshcore-specific code
+   * should use getLocalNode() directly on the narrowed MeshCoreManager.
+   */
+  getLocalNodeInfo(): null {
+    return null;
   }
 
   getLocalNode(): MeshCoreNode | null {
