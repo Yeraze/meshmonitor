@@ -94,7 +94,7 @@ interface SettingsTabProps {
 }
 
 const GLOBAL_SECTIONS = new Set([
-  'settings-language', 'settings-units', 'settings-appearance', 'settings-link-previews', 'settings-map',
+  'settings-language', 'settings-units', 'settings-appearance', 'settings-link-previews', 'settings-meshcore-messaging', 'settings-map',
   'settings-security',
   'settings-apprise-server', 'settings-backup', 'settings-channel-database',
   'settings-maintenance', 'settings-auto-upgrade', 'settings-analytics',
@@ -179,6 +179,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setEnableAudioNotifications,
     linkPreviewsEnabled,
     setLinkPreviewsEnabled,
+    meshcoreChannelRetryEnabled,
+    setMeshcoreChannelRetryEnabled,
     nodeDimmingEnabled,
     setNodeDimmingEnabled,
     nodeDimmingStartHours,
@@ -240,6 +242,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localPacketLogMaxCount, setLocalPacketLogMaxCount] = useState(1000);
   const [localPacketLogMaxAgeHours, setLocalPacketLogMaxAgeHours] = useState(24);
   const [localLinkPreviewsEnabled, setLocalLinkPreviewsEnabled] = useState(linkPreviewsEnabled);
+  const [localMeshcoreChannelRetryEnabled, setLocalMeshcoreChannelRetryEnabled] = useState(meshcoreChannelRetryEnabled);
   const [localSolarMonitoringEnabled, setLocalSolarMonitoringEnabled] = useState(solarMonitoringEnabled);
   const [localSolarMonitoringLatitude, setLocalSolarMonitoringLatitude] = useState(solarMonitoringLatitude);
   const [localSolarMonitoringLongitude, setLocalSolarMonitoringLongitude] = useState(solarMonitoringLongitude);
@@ -337,6 +340,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const linkPreviewsOn = !(settings.linkPreviewsEnabled === '0' || settings.linkPreviewsEnabled === 'false');
           setLocalLinkPreviewsEnabled(linkPreviewsOn);
 
+          // Load MeshCore channel-send auto-retry (#3979). Absent key => disabled.
+          const meshcoreChannelRetryOn = settings.meshcoreChannelRetryEnabled === '1' || settings.meshcoreChannelRetryEnabled === 'true';
+          setLocalMeshcoreChannelRetryEnabled(meshcoreChannelRetryOn);
+
           // Load LocalStats interval setting
           const statsInterval = parseInt(settings.localStatsIntervalMinutes || '15', 10);
           setLocalLocalStatsIntervalMinutes(statsInterval);
@@ -407,13 +414,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalNodeHopsCalculation(nodeHopsCalculation);
     setLocalDashboardSortOption(preferredDashboardSortOption);
     setLocalLinkPreviewsEnabled(linkPreviewsEnabled);
+    setLocalMeshcoreChannelRetryEnabled(meshcoreChannelRetryEnabled);
     setLocalSolarMonitoringEnabled(solarMonitoringEnabled);
     setLocalSolarMonitoringLatitude(solarMonitoringLatitude);
     setLocalSolarMonitoringLongitude(solarMonitoringLongitude);
     setLocalSolarMonitoringAzimuth(solarMonitoringAzimuth);
     setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
     setLocalHideIncompleteNodes(!showIncompleteNodes);
-  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, nodeHopsCalculation, preferredDashboardSortOption, linkPreviewsEnabled, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme]);
+  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, nodeHopsCalculation, preferredDashboardSortOption, linkPreviewsEnabled, meshcoreChannelRetryEnabled, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme]);
 
   // Default solar monitoring lat/long to device position if still at 0
   useEffect(() => {
@@ -475,6 +483,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localSolarMonitoringAzimuth !== solarMonitoringAzimuth ||
       localSolarMonitoringDeclination !== solarMonitoringDeclination ||
       localLinkPreviewsEnabled !== linkPreviewsEnabled ||
+      localMeshcoreChannelRetryEnabled !== meshcoreChannelRetryEnabled ||
       localHideIncompleteNodes !== !showIncompleteNodes ||
       localHomoglyphEnabled !== initialHomoglyphEnabled ||
       localLocalStatsIntervalMinutes !== initialLocalStatsIntervalMinutes ||
@@ -491,6 +500,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude, localSolarMonitoringAzimuth, localSolarMonitoringDeclination,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       localLinkPreviewsEnabled, linkPreviewsEnabled,
+      localMeshcoreChannelRetryEnabled, meshcoreChannelRetryEnabled,
       localHideIncompleteNodes, showIncompleteNodes, localHomoglyphEnabled, initialHomoglyphEnabled,
       localLocalStatsIntervalMinutes, initialLocalStatsIntervalMinutes,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, initialNodeDimmingSettings,
@@ -533,6 +543,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalSolarMonitoringAzimuth(solarMonitoringAzimuth);
     setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
     setLocalLinkPreviewsEnabled(linkPreviewsEnabled);
+    setLocalMeshcoreChannelRetryEnabled(meshcoreChannelRetryEnabled);
     setLocalHideIncompleteNodes(!showIncompleteNodes);
     setLocalHomoglyphEnabled(initialHomoglyphEnabled);
     setLocalLocalStatsIntervalMinutes(initialLocalStatsIntervalMinutes);
@@ -548,7 +559,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       dateFormat, mapTileset, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
       solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes,
-      linkPreviewsEnabled,
+      linkPreviewsEnabled, meshcoreChannelRetryEnabled,
       initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialNodeDimmingSettings,
       setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity,
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl]);
@@ -601,6 +612,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         solarMonitoringAzimuth: localSolarMonitoringAzimuth.toString(),
         solarMonitoringDeclination: localSolarMonitoringDeclination.toString(),
         linkPreviewsEnabled: localLinkPreviewsEnabled ? '1' : '0',
+        meshcoreChannelRetryEnabled: localMeshcoreChannelRetryEnabled ? '1' : '0',
         hideIncompleteNodes: localHideIncompleteNodes ? '1' : '0',
         homoglyphEnabled: String(localHomoglyphEnabled),
         localStatsIntervalMinutes: localLocalStatsIntervalMinutes.toString(),
@@ -653,6 +665,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onSolarMonitoringAzimuthChange(localSolarMonitoringAzimuth);
       onSolarMonitoringDeclinationChange(localSolarMonitoringDeclination);
       setLinkPreviewsEnabled(localLinkPreviewsEnabled);
+      setMeshcoreChannelRetryEnabled(localMeshcoreChannelRetryEnabled);
       setShowIncompleteNodes(!localHideIncompleteNodes);
 
       // Update initial packet monitor settings after successful save
@@ -683,7 +696,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, getLocalEffectiveTheme,
       localNodeHopsCalculation, localDashboardSortOption, localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude,
-      localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localLinkPreviewsEnabled, setLinkPreviewsEnabled, localHideIncompleteNodes, localHomoglyphEnabled, localLocalStatsIntervalMinutes,
+      localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localLinkPreviewsEnabled, setLinkPreviewsEnabled, localMeshcoreChannelRetryEnabled, setMeshcoreChannelRetryEnabled, localHideIncompleteNodes, localHomoglyphEnabled, localLocalStatsIntervalMinutes,
       onMaxNodeAgeChange, onInactiveNodeThresholdHoursChange, onInactiveNodeCheckIntervalMinutesChange,
       onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange, onPositionHistoryLineStyleChange,
       onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
@@ -824,6 +837,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setLocalSolarMonitoringAzimuth(0);
       setLocalSolarMonitoringDeclination(30);
       setLocalLinkPreviewsEnabled(true);
+      setLocalMeshcoreChannelRetryEnabled(false);
 
       // Update parent component with defaults
       onMaxNodeAgeChange(24);
@@ -849,6 +863,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onSolarMonitoringAzimuthChange(0);
       onSolarMonitoringDeclinationChange(30);
       setLinkPreviewsEnabled(true);
+      setMeshcoreChannelRetryEnabled(false);
 
       // Update initial packet monitor settings
       setInitialPacketMonitorSettings({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
@@ -1076,6 +1091,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         { id: 'settings-sorting', label: t('settings.sorting') },
         { id: 'settings-appearance', label: t('settings.appearance') },
         { id: 'settings-link-previews', label: t('settings.link_previews', 'Link Previews') },
+        { id: 'settings-meshcore-messaging', label: t('settings.meshcore_messaging', 'MeshCore Messaging') },
         { id: 'settings-map', label: t('settings.map') },
         { id: 'settings-node-display', label: t('settings.node_display') },
         { id: 'settings-telemetry', label: t('settings.telemetry') },
@@ -1375,6 +1391,23 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           </h3>
           <p className="setting-description">
             {t('settings.link_previews_description', 'When enabled, MeshMonitor fetches and displays a preview card (title, description, image) for the first URL in a message. The fetch is performed server-side. Disable this to stop all outbound requests to link targets — URLs still render as clickable text.')}
+          </p>
+        </div>}
+
+        {show('settings-meshcore-messaging') && <div id="settings-meshcore-messaging" className="settings-section">
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={localMeshcoreChannelRetryEnabled}
+                onChange={(e) => setLocalMeshcoreChannelRetryEnabled(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.meshcore_channel_retry_enabled', 'Auto-retry automated MeshCore channel sends')}</span>
+            </label>
+          </h3>
+          <p className="setting-description">
+            {t('settings.meshcore_channel_retry_description', 'When enabled, an AUTOMATED MeshCore channel/broadcast message (Automation Engine, Auto-Acknowledge, auto-responder, auto-announce and timer triggers) that hears no repeaters within 30 seconds is resent exactly once. User-initiated sends are never retried. This is opt-in, channel-only, and one-shot — distinct from the always-on retry for direct messages. You may occasionally see a duplicate on the mesh.')}
           </p>
         </div>}
 

@@ -189,6 +189,14 @@ Sends text to a channel or as a DM, with full `{{ }}` token interpolation in the
 The overall send is a **source × channel matrix**: each selected source posts to the matching local
 slot of each selected channel.
 
+> **MeshCore channel-send auto-retry** — because a MeshCore channel/broadcast send is an unacked
+> flood, the `Send message` action (like every automated MeshCore channel sender) can optionally be
+> resent once if no repeater is heard re-flooding it within 30 seconds. This is a global, opt-in,
+> one-shot behavior (off by default) configured in **Settings → MeshCore Messaging**; it never
+> retries user-typed messages, never retries direct messages (those have their own always-on ACK
+> retry), and the resend can never trigger a fresh automation. See
+> [Automated Channel-Send Auto-Retry](/features/meshcore#automated-channel-send-auto-retry).
+
 ### Manage the node
 
 Runs an admin/management operation on the subject node: **Favorite / Unfavorite**, **Ignore /

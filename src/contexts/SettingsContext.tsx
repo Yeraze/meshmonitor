@@ -106,6 +106,12 @@ interface SettingsContextType {
   enableAudioNotifications: boolean;
   /** Global toggle: fetch & render OpenGraph link preview cards for URLs in messages. */
   linkPreviewsEnabled: boolean;
+  /**
+   * Global opt-in (issue #3979, default false): auto-retry an AUTOMATED MeshCore
+   * channel send once, 30s later, when zero repeaters were heard. Automated
+   * senders only; never user-initiated sends. Distinct from the DM ack-retry.
+   */
+  meshcoreChannelRetryEnabled: boolean;
   nodeDimmingEnabled: boolean;
   nodeDimmingStartHours: number;
   nodeDimmingMinOpacity: number;
@@ -154,6 +160,7 @@ interface SettingsContextType {
   setSolarMonitoringDeclination: (declination: number) => void;
   setEnableAudioNotifications: (enabled: boolean) => void;
   setLinkPreviewsEnabled: (enabled: boolean) => void;
+  setMeshcoreChannelRetryEnabled: (enabled: boolean) => void;
   mutedChannels: MutedChannel[];
   mutedDMs: MutedDM[];
   muteChannel: (channelId: number, muteUntil: number | null) => Promise<void>;
@@ -417,6 +424,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   // Link preview setting - server-backed (global). Defaults to true to preserve
   // the previous always-on behavior; loaded from the server in loadServerSettings.
   const [linkPreviewsEnabled, setLinkPreviewsEnabledState] = useState<boolean>(true);
+
+  // MeshCore automated-channel-send auto-retry (issue #3979) - server-backed
+  // (global). Defaults to false (opt-in); loaded from the server in
+  // loadServerSettings.
+  const [meshcoreChannelRetryEnabled, setMeshcoreChannelRetryEnabledState] = useState<boolean>(false);
 
   // Node dimming settings - localStorage only
   const [nodeDimmingEnabled, setNodeDimmingEnabledState] = useState<boolean>(() => {
@@ -820,6 +832,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   // Link preview setter updates state only - value is persisted server-side
   const setLinkPreviewsEnabled = (enabled: boolean) => {
     setLinkPreviewsEnabledState(enabled);
+  };
+
+  // MeshCore channel-retry setter updates state only - persisted server-side
+  const setMeshcoreChannelRetryEnabled = (enabled: boolean) => {
+    setMeshcoreChannelRetryEnabledState(enabled);
   };
 
   // Solar monitoring setters update state only - values are persisted server-side
@@ -1328,6 +1345,13 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             setLinkPreviewsEnabledState(enabled);
           }
 
+          // MeshCore channel-send auto-retry (#3979) - database-only. Absent key
+          // means default (disabled); only an explicit '1'/'true' turns it on.
+          if (settings.meshcoreChannelRetryEnabled !== undefined) {
+            const enabled = settings.meshcoreChannelRetryEnabled === '1' || settings.meshcoreChannelRetryEnabled === 'true';
+            setMeshcoreChannelRetryEnabledState(enabled);
+          }
+
           // Solar monitoring settings - database-only, no localStorage persistence
           if (settings.solarMonitoringEnabled !== undefined) {
             const enabled = settings.solarMonitoringEnabled === '1' || settings.solarMonitoringEnabled === 'true';
@@ -1533,6 +1557,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     customTilesets,
     isLoadingThemes,
     linkPreviewsEnabled,
+    meshcoreChannelRetryEnabled,
     solarMonitoringEnabled,
     solarMonitoringLatitude,
     solarMonitoringLongitude,
@@ -1581,6 +1606,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     updateCustomTileset,
     deleteCustomTileset,
     setLinkPreviewsEnabled,
+    setMeshcoreChannelRetryEnabled,
     setSolarMonitoringEnabled,
     setSolarMonitoringLatitude,
     setSolarMonitoringLongitude,

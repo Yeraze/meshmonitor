@@ -160,6 +160,12 @@ export const VALID_SETTINGS_KEYS = [
   // Global privacy toggle (issue #3416): when '0'/'false', the /api/link-preview
   // endpoint refuses to fetch external URLs and the UI renders no preview cards.
   'linkPreviewsEnabled',
+  // Global opt-in (issue #3979, default OFF): when enabled, an AUTOMATED MeshCore
+  // channel/broadcast send that hears ZERO repeaters within 30s is resent exactly
+  // once. Applies only to automated senders (Automation Engine action.sendMessage,
+  // Auto-Acknowledge, auto-responder, auto-announce, timer triggers) — never to
+  // user-initiated sends. Distinct from the always-on DM ack-retry (#3977/#3980).
+  'meshcoreChannelRetryEnabled',
   'localStatsIntervalMinutes',
   'nodeHopsCalculation',
   'nodeDimmingEnabled',

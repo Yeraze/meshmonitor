@@ -34,7 +34,7 @@ interface MeshSendManager {
 
 /** MeshCore companion managers send via a different method signature. */
 interface MeshCoreSendManager {
-  sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null): Promise<boolean>;
+  sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null, autoRetryOnMiss?: boolean): Promise<boolean>;
   // Request/operation senders (#3835).
   requestRemoteTelemetry(publicKey: string, timeoutSecs?: number): Promise<unknown>;
   traceContactPath(publicKey: string): Promise<unknown>;
@@ -90,7 +90,10 @@ async function sendTextVia(
     // `sendMessage` resolves `false` (not throw) when the node is disconnected
     // or the send fails — surface that as a thrown error so the run-log records
     // a failed step instead of a silent success.
-    const ok = await raw.sendMessage(text, undefined, channel, scopeOverride);
+    // Automation Engine action.sendMessage is an AUTOMATED sender → opt into the
+    // channel-send auto-retry (#3979). Inert unless the global opt-in setting is
+    // on; user-initiated sends go through the route, not here.
+    const ok = await raw.sendMessage(text, undefined, channel, scopeOverride, true);
     if (ok === false) {
       throw new Error(`source "${sourceId}" failed to send the MeshCore message (node not connected or send rejected)`);
     }
