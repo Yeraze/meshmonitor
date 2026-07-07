@@ -47,7 +47,13 @@ import {
   parseSendTelemetryReq,
   parseSendStatusReq,
   encodeStatusResponsePush,
+  BinaryRequestTypes,
+  parseSendBinaryReq,
+  parseGetNeighboursReq,
+  encodeBinaryResponsePush,
+  encodeNeighboursPayload,
   type ParsedCommand,
+  type SendBinaryReqCmd,
 } from './meshcoreCompanionCodec.js';
 
 /**
@@ -117,6 +123,19 @@ export interface MeshCoreVirtualNodeManager {
    * wire status blob for the StatusResponse push.
    */
   requestNodeStatus(publicKey: string): Promise<MeshCoreStatus | null>;
+  /**
+   * Query the neighbour list from a remote repeater (issue #3904). Returns the
+   * total known count and the requested page of entries (pubkey-prefix hex,
+   * last-heard age in seconds, dB SNR), or null on failure / non-repeater /
+   * disconnected. Used to relay the app's SendBinaryReq→GetNeighbours.
+   */
+  getNeighbours(
+    publicKey: string,
+    opts?: { count?: number; offset?: number; orderBy?: number },
+  ): Promise<{
+    total: number;
+    neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[];
+  } | null>;
   /** EventEmitter surface — the manager emits 'message' with a MeshCoreMessage. */
   on(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
   off(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
@@ -470,6 +489,13 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
           // a status request based on the session, not on our admin flag).
           void this.handleSendStatusReq(clientId, command);
           break;
+        case CommandCodes.SendBinaryReq:
+          // Generic binary request (issue #3904); dispatched on an inner sub-type.
+          // Implemented sub-types (e.g. GetNeighbours) are read-only follow-ups to
+          // a login, so — like SendTelemetryReq/SendStatusReq — NOT gated on
+          // allowAdminCommands (the real node answers based on the session).
+          void this.handleSendBinaryReq(clientId, command);
+          break;
         // Config-mutating commands (issue #3904): forwarded to the real node
         // only when `allowAdminCommands` is enabled; otherwise the app gets an
         // explicit Err (UnsupportedCmd) instead of a silent hang.
@@ -601,6 +627,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
   private readonly TRACE_EST_TIMEOUT_MS = 30000;
   private readonly TELEMETRY_EST_TIMEOUT_MS = 30000;
   private readonly STATUS_EST_TIMEOUT_MS = 30000;
+  private readonly NEIGHBOURS_EST_TIMEOUT_MS = 30000;
 
   /**
    * SendLogin(26): authenticate the physical node to a remote node with a
@@ -750,6 +777,90 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       logger.info(`[MeshCore VN ${this.sourceId}] SendStatusReq to ${keyShort}… from ${clientId} → status relayed`);
     } catch (err) {
       logger.warn(`[MeshCore VN ${this.sourceId}] SendStatusReq to ${keyShort}… from ${clientId} failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * SendBinaryReq(50): the app's GENERIC binary-request command (issue #3904).
+   * Frame: `[50][targetPubkey:32][reqData…]` where `reqData[0]` is a
+   * `BinaryRequestTypes` sub-type. We parse the envelope, then dispatch on the
+   * sub-type. GetNeighbours(0x06) is implemented (repeater neighbour list);
+   * every other sub-type gets an explicit Err(UnsupportedCmd) so future ones are
+   * obvious rather than silently dropped.
+   *
+   * A malformed envelope (can't read pubkey/sub-type) → Err(IllegalArg) with no
+   * Sent, mirroring the sibling req handlers.
+   */
+  private async handleSendBinaryReq(clientId: string, command: ParsedCommand): Promise<void> {
+    let parsed: SendBinaryReqCmd;
+    try {
+      parsed = parseSendBinaryReq(command.payload);
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] SendBinaryReq bad payload from ${clientId}: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.IllegalArg));
+      return;
+    }
+    switch (parsed.reqType) {
+      case BinaryRequestTypes.GetNeighbours:
+        await this.handleGetNeighboursReq(clientId, parsed);
+        break;
+      default:
+        logger.debug(
+          `[MeshCore VN ${this.sourceId}] SendBinaryReq unknown sub-type 0x${parsed.reqType.toString(16)} from ${clientId}`,
+        );
+        this.send(clientId, encodeErr(ErrorCodes.UnsupportedCmd));
+        break;
+    }
+  }
+
+  /**
+   * GetNeighbours(0x06) sub-request of SendBinaryReq: relay a remote repeater's
+   * neighbour list (issue #3904 — the final gap; the neighbours protocol is
+   * SendBinaryReq(50)/GetNeighbours(0x06), NOT SendRawData(25) as the issue
+   * inferred). Flow mirrors the sibling req handlers: reply Sent, fetch from the
+   * real node via `manager.getNeighbours`, then push a BinaryResponse(0x8C).
+   *
+   * Tag correlation (verified against meshcore.js `sendBinaryRequest`): the
+   * client matches the push to its request by comparing the push's `tag` to the
+   * `expectedAckCrc` of the preceding Sent(6) — NOT the request's random_tag. We
+   * echo the request's random_tag as BOTH the Sent `expectedAckCrc` AND the
+   * BinaryResponse `tag`, so either interpretation matches.
+   *
+   * Graceful handling: a null result (non-repeater / no session / disconnected)
+   * resolves the app's request cleanly with an EMPTY neighbour list
+   * (total=0/count=0) rather than a timeout — the client tolerates it. An
+   * unexpected throw logs and emits nothing (the app times out, matching the
+   * sibling handlers and real-node behaviour). A malformed inner blob →
+   * Err(IllegalArg) with no Sent.
+   */
+  private async handleGetNeighboursReq(clientId: string, parsed: SendBinaryReqCmd): Promise<void> {
+    let req;
+    try {
+      req = parseGetNeighboursReq(parsed.reqData);
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] GetNeighbours bad payload from ${clientId}: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.IllegalArg));
+      return;
+    }
+    const keyShort = parsed.publicKey.substring(0, 12);
+    // Echo the request's random_tag as the Sent expectedAckCrc — the client
+    // stores it and later matches the BinaryResponse push's tag against it.
+    this.send(clientId, encodeSent(0, req.tag, this.NEIGHBOURS_EST_TIMEOUT_MS));
+    try {
+      const result = await this.options.manager.getNeighbours(parsed.publicKey, {
+        count: req.count,
+        offset: req.offset,
+        orderBy: req.orderBy,
+      });
+      const total = result?.total ?? 0;
+      const neighbours = result?.neighbours ?? [];
+      const payload = encodeNeighboursPayload(total, neighbours, req.pubkeyPrefixLen);
+      this.send(clientId, encodeBinaryResponsePush(req.tag, payload));
+      logger.info(
+        `[MeshCore VN ${this.sourceId}] GetNeighbours to ${keyShort}… from ${clientId} → ${neighbours.length}/${total} neighbours`,
+      );
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] GetNeighbours to ${keyShort}… from ${clientId} failed: ${(err as Error).message}`);
     }
   }
 

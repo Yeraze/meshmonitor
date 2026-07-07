@@ -96,6 +96,17 @@ export const PushCodes = {
   LogRxData: 0x88,
   TraceData: 0x89,
   TelemetryResponse: 0x8b,
+  BinaryResponse: 0x8c,
+} as const;
+
+/**
+ * Inner sub-type of a SendBinaryReq(50) generic binary request (mirrors
+ * meshcore.js `Constants.BinaryRequestTypes`, which mirror the firmware
+ * `REQ_TYPE_*` defines). `req_data[0]` selects the request.
+ */
+export const BinaryRequestTypes = {
+  GetTelemetryData: 0x03, // REQ_TYPE_GET_TELEMETRY_DATA
+  GetNeighbours: 0x06, // REQ_TYPE_GET_NEIGHBOURS
 } as const;
 
 /** Error codes carried by an Err(1) response. */
@@ -244,6 +255,29 @@ export interface SendLoginCmd { publicKey: string; password: string; }
 export interface SendTracePathCmd { tag: number; auth: number; flags: number; path: Buffer; }
 export interface SendTelemetryReqCmd { publicKey: string; }
 export interface SendStatusReqCmd { publicKey: string; }
+/**
+ * A decoded SendBinaryReq(50): the target public key plus the inner request
+ * blob. `reqType` is `reqData[0]` (a `BinaryRequestTypes` value); the caller
+ * dispatches on it and re-parses `reqData` with the matching sub-parser.
+ */
+export interface SendBinaryReqCmd { publicKey: string; reqType: number; reqData: Buffer; }
+/** Parsed GetNeighbours(0x06) request parameters (inner sub-type of SendBinaryReq). */
+export interface GetNeighboursReq {
+  count: number;
+  offset: number;
+  orderBy: number;
+  pubkeyPrefixLen: number;
+  /** The app's random blob (`req_data[7..10]`); echoed back as the correlation tag. */
+  tag: number;
+}
+/** One neighbour entry for the GetNeighbours response payload. */
+export interface NeighbourEntry {
+  /** Public-key prefix as a lowercase hex string (may be longer than requested). */
+  publicKeyPrefix: string;
+  heardSecondsAgo: number;
+  /** SNR in dB (already /4, as MeshCoreManager returns it). */
+  snr: number;
+}
 export interface SetRadioParamsCmd { freq: number; bw: number; sf: number; cr: number; }
 export interface SetTxPowerCmd { power: number; }
 export interface SetAdvertLatLonCmd { lat: number; lon: number; }
@@ -318,6 +352,44 @@ export function parseSendTelemetryReq(payload: Buffer): SendTelemetryReqCmd {
 export function parseSendStatusReq(payload: Buffer): SendStatusReqCmd {
   if (payload.length < 1 + 32) throw new Error('SendStatusReq: short payload');
   return { publicKey: payload.subarray(1, 33).toString('hex') };
+}
+
+/**
+ * SendBinaryReq(50): `[code][targetPublicKey:32][reqData…]` (see meshcore.js
+ * `sendCommandSendBinaryReq`). A generic binary-request envelope; the inner
+ * `reqData[0]` byte selects the request (a `BinaryRequestTypes` value). Returns
+ * the target public key (lowercase hex), the sub-type, and the full inner blob
+ * for the matching sub-parser. Requires at least one inner byte so `reqType` is
+ * always defined.
+ */
+export function parseSendBinaryReq(payload: Buffer): SendBinaryReqCmd {
+  if (payload.length < 1 + 32 + 1) throw new Error('SendBinaryReq: short payload');
+  const reqData = Buffer.from(payload.subarray(33));
+  return {
+    publicKey: payload.subarray(1, 33).toString('hex'),
+    reqType: reqData[0],
+    reqData,
+  };
+}
+
+/**
+ * Parse the GetNeighbours(0x06) inner request blob (mirrors meshcore.js
+ * `getNeighbours`):
+ *   `[type:u8][request_version:u8][count:u8][offset:u16LE][order_by:u8]`
+ *   `[pubkey_prefix_len:u8][random_tag:u32LE]` — 11 bytes.
+ * `random_tag` is the app's correlation blob (echoed back as the BinaryResponse
+ * tag). Throws on a short buffer so the dispatcher can reply Err(IllegalArg).
+ */
+export function parseGetNeighboursReq(reqData: Buffer): GetNeighboursReq {
+  if (reqData.length < 1 + 1 + 1 + 2 + 1 + 1 + 4) throw new Error('GetNeighbours: short payload');
+  return {
+    // reqData[0] = type, reqData[1] = request_version (ignored)
+    count: reqData[2],
+    offset: reqData.readUInt16LE(3),
+    orderBy: reqData[5],
+    pubkeyPrefixLen: reqData[6],
+    tag: reqData.readUInt32LE(7),
+  };
 }
 
 /**
@@ -759,6 +831,58 @@ export function encodeStatusResponsePush(
   head[1] = 0; // reserved
   Buffer.from(pubKeyPrefix).copy(head, 2, 0, 6);
   return Buffer.concat([head, encodeRepeaterStatusData(status)]);
+}
+
+/**
+ * Encode a BinaryResponse(0x8C) push — the reply to a SendBinaryReq the app
+ * initiated. Layout mirrors meshcore.js `onBinaryResponsePush`:
+ * `[0x8C][reserved:1][tag:u32LE][responseData:rest]`.
+ *
+ * The client correlates this push to its pending request by comparing `tag` to
+ * the `expectedAckCrc` it received in the preceding Sent(6) response (see
+ * meshcore.js `sendBinaryRequest`), so the caller MUST have echoed this same
+ * `tag` value into that Sent frame.
+ */
+export function encodeBinaryResponsePush(tag: number, responseData: Buffer | Uint8Array): Buffer {
+  const head = Buffer.alloc(1 + 1 + 4);
+  head[0] = PushCodes.BinaryResponse;
+  head[1] = 0; // reserved
+  head.writeUInt32LE(tag >>> 0, 2);
+  return Buffer.concat([head, Buffer.from(responseData)]);
+}
+
+/**
+ * Serialize the GetNeighbours(0x06) response payload (inverse of meshcore.js
+ * `getNeighbours`'s response decode):
+ *   `[totalCount:u16LE][resultsCount:u16LE]` then `resultsCount` ×
+ *   `[prefix:pubkeyPrefixLen][heardSecondsAgo:u32LE][snr:int8]`.
+ *
+ * - `pubkeyPrefixLen` sets the per-entry prefix STRIDE and MUST equal the value
+ *   the app sent in its request (it slices exactly that many bytes back out).
+ *   Each entry's hex prefix is truncated/zero-padded to that length; the manager
+ *   fetches an 8-byte prefix, so requests for a longer prefix are zero-padded.
+ * - `snr` is a dB value; the wire carries `snr×4` (int8), matching how the app
+ *   divides the byte by 4 on decode.
+ */
+export function encodeNeighboursPayload(
+  total: number,
+  neighbours: NeighbourEntry[],
+  pubkeyPrefixLen: number,
+): Buffer {
+  const stride = Math.max(0, pubkeyPrefixLen);
+  const b = Buffer.alloc(2 + 2 + neighbours.length * (stride + 4 + 1));
+  let o = 0;
+  b.writeUInt16LE(total & 0xffff, o); o += 2;
+  b.writeUInt16LE(neighbours.length & 0xffff, o); o += 2;
+  for (const n of neighbours) {
+    const prefixBytes = pubKeyHexToBytes(n.publicKeyPrefix); // hex → bytes (zero-fills short/undefined)
+    const prefix = Buffer.alloc(stride); // zero-padded to the requested stride
+    prefixBytes.copy(prefix, 0, 0, Math.min(stride, prefixBytes.length));
+    prefix.copy(b, o); o += stride;
+    b.writeUInt32LE((n.heardSecondsAgo ?? 0) >>> 0, o); o += 4;
+    b.writeInt8(clampInt8(Math.round((n.snr ?? 0) * 4)), o); o += 1;
+  }
+  return b;
 }
 
 /**
