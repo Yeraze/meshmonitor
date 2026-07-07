@@ -90,6 +90,23 @@ Mock async methods used by `authMiddleware`:
 ```
 For per-source permission tests, mock `getUserPermissionSetAsync(userId, sourceId)` to return source-specific resource maps.
 
+### Route Test Harness (preferred for new/changed route tests)
+For route tests that exercise `requirePermission` / `optionalAuth`, use `createRouteTestApp()` (`src/server/test-helpers/routeTestApp.ts`) instead of monkey-patching `checkPermissionAsync` or mocking the whole `services/database.js` module. The harness wires real express-session (MemoryStore) + real auth middleware against the singleton's `:memory:` SQLite DB, and seeds per-test permission rows so that real SQL enforces isolation.
+
+```typescript
+let harness: RouteTestHarness;
+beforeEach(async () => {
+  harness = await createRouteTestApp({ mount: app => app.use('/', myRouter) });
+  await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceA);
+});
+afterEach(() => harness.cleanup());
+```
+
+- **New or changed route tests MUST use the harness.** Legacy tests using `vi.mock('../../services/database.js', ...)` convert opportunistically when the file is touched.
+- The monkey-patch pattern (`vi.mock(...)` + fake `checkPermissionAsync` lambda) is deprecated for route tests. A fake that re-implements the logic under test cannot catch regressions in that logic.
+- See `src/server/routes/sourceRoutes.permissions.test.ts` as the canonical template.
+- Non-DB mocks (`sourceManagerRegistry`, `meshtasticManager`, service mocks) are still correct and must remain.
+
 ### Raw SQL Ban
 - `src/services/database.ts` is raw-SQL-free. All domain queries live in `src/db/repositories/*`.
 - ESLint rule (`no-restricted-syntax` in `eslint.config.mjs`) forbids `this.db.prepare`, `this.db.exec`, `postgresPool.query`, `mysqlPool.query` outside `src/server/migrations/**` and test files.
