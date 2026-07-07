@@ -590,6 +590,50 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       ));
     };
 
+    // DM ack-timeout retry update (#3977): the server re-sent a DM on a new
+    // path (same-path resend, or flood after reset) and re-points this message
+    // to the new attempt's ack CRC, or marks it failed once all retries are
+    // exhausted. Keep a SINGLE bubble — update the existing message in place
+    // rather than appending a new one, and follow the fail timer to the new CRC.
+    const onMessageUpdated = (evt: {
+      sourceId: string;
+      id: string;
+      previousAckCrc?: number;
+      expectedAckCrc?: number;
+      estTimeout?: number;
+      deliveryStatus?: MessageDeliveryStatus;
+    }) => {
+      if (evt.sourceId !== sourceId) return;
+      // Cancel the fail timer armed for the prior attempt's CRC — the new
+      // attempt (or terminal status) supersedes it.
+      if (evt.previousAckCrc != null) {
+        const prevTimer = ackTimers.get(evt.previousAckCrc);
+        if (prevTimer) {
+          clearTimeout(prevTimer);
+          ackTimers.delete(evt.previousAckCrc);
+        }
+      }
+      setMessages(prev => prev.map(m => {
+        if (m.id !== evt.id) return m;
+        return {
+          ...m,
+          ...(evt.expectedAckCrc != null ? { expectedAckCrc: evt.expectedAckCrc } : {}),
+          ...(evt.estTimeout != null ? { estTimeout: evt.estTimeout } : {}),
+          ...(evt.deliveryStatus ? { deliveryStatus: evt.deliveryStatus } : {}),
+        };
+      }));
+      // Arm a fresh fail timer for the new attempt unless this was a terminal
+      // status (delivered/failed).
+      if (
+        evt.expectedAckCrc != null &&
+        evt.estTimeout != null &&
+        evt.deliveryStatus !== 'failed' &&
+        evt.deliveryStatus !== 'delivered'
+      ) {
+        startAckTimeout(evt.expectedAckCrc, evt.estTimeout);
+      }
+    };
+
     // Channel "heard repeaters" (#3700): a repeater re-flooded one of our
     // outgoing channel messages and the server correlated the self-echo. The
     // event carries the current full heard-by set, so we replace state by id.
@@ -609,6 +653,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     socket.on('meshcore:status:updated', onStatusUpdated);
     socket.on('meshcore:local-node:updated', onLocalNodeUpdated);
     socket.on('meshcore:send-confirmed', onSendConfirmed);
+    socket.on('meshcore:message:updated', onMessageUpdated);
     socket.on('meshcore:channel-heard', onChannelHeard);
     socket.io.on('reconnect', onReconnect);
 
@@ -621,6 +666,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       socket.off('meshcore:status:updated', onStatusUpdated);
       socket.off('meshcore:local-node:updated', onLocalNodeUpdated);
       socket.off('meshcore:send-confirmed', onSendConfirmed);
+      socket.off('meshcore:message:updated', onMessageUpdated);
       socket.off('meshcore:channel-heard', onChannelHeard);
       socket.io.off('reconnect', onReconnect);
     };
