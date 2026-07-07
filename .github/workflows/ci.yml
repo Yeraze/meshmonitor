@@ -76,6 +76,14 @@ jobs:
       - name: Run type checking
         run: npm run typecheck
 
+      - name: Type-check tests (non-blocking)
+        if: matrix.node-version == '24.x'
+        run: npm run typecheck:tests
+        # NON-BLOCKING: ~283 pre-existing test-type errors (mock/signature drift).
+        # Flip to blocking (remove continue-on-error) once `npm run typecheck:tests` is clean (0 errors).
+        # Tracking: remediation epic #3962 Task 1.2.
+        continue-on-error: true
+
       - name: Run tests
         run: npm run test:run
 
