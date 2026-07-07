@@ -72,6 +72,24 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   loginToNodeMock = vi.fn().mockResolvedValue(true);
   tracePathRawMock = vi.fn().mockResolvedValue({ pathSnrs: [8, 12], lastSnr: 5.5, pathLen: 2, flags: 0 });
   requestRemoteTelemetryRawMock = vi.fn().mockResolvedValue(Buffer.from([0x01, 0x67, 0x00, 0xdc]));
+  requestNodeStatusMock = vi.fn().mockResolvedValue({
+    batteryMv: 4100,
+    queueLen: 3,
+    noiseFloor: -120,
+    lastRssi: -85,
+    packetsRecv: 1000,
+    packetsSent: 900,
+    airTimeSecs: 500,
+    uptimeSecs: 86400,
+    sentFlood: 100,
+    sentDirect: 200,
+    recvFlood: 300,
+    recvDirect: 400,
+    errors: 5,
+    lastSnr: 24, // int16 quarter-dB raw value as the wire carries it
+    directDups: 6,
+    floodDups: 7,
+  });
   isConnected() { return this.localNode !== null; }
   getLocalNode() { return this.localNode; }
   getContacts() { return this.contacts; }
@@ -108,6 +126,9 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   }
   requestRemoteTelemetryRaw(publicKey: string) {
     return this.requestRemoteTelemetryRawMock(publicKey) as Promise<Buffer | null>;
+  }
+  requestNodeStatus(publicKey: string) {
+    return this.requestNodeStatusMock(publicKey) as Promise<Record<string, number> | null>;
   }
   emitMessage(msg: MeshCoreMessage) { this.emit('message', msg); }
   emitSendConfirmed(data: { ackCode: number; roundTripMs: number }) { this.emit('send_confirmed', data); }
@@ -888,5 +909,103 @@ describe('MeshCoreVirtualNodeServer — SendTelemetryReq relay (#3904)', () => {
     expect(res[0]).toBe(ResponseCodes.Err);
     expect(res[1]).toBe(ErrorCodes.IllegalArg);
     expect(manager.requestRemoteTelemetryRawMock).not.toHaveBeenCalled();
+  });
+});
+
+// SendStatusReq(27): reply Sent, then push StatusResponse(0x87) with the remote
+// key prefix + the 48-byte RepeaterStats blob re-encoded from the manager's
+// parsed status (#3904). Read-only follow-up to login → not gated.
+describe('MeshCoreVirtualNodeServer — SendStatusReq relay (#3904)', () => {
+  let server: MeshCoreVirtualNodeServer;
+  let client: TestClient;
+  let manager: FakeManager;
+
+  const REMOTE_KEY = 'd2'.repeat(32);
+  const REMOTE_KEY_BYTES = Buffer.from(REMOTE_KEY, 'hex');
+
+  async function startWith(allowAdminCommands: boolean): Promise<void> {
+    manager = new FakeManager();
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager, allowAdminCommands, databaseService: CHANNELS_DB });
+    await server.start();
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+  }
+  afterEach(async () => { client?.close(); await server?.stop(); });
+
+  // [27][publicKey:32] — no reserved bytes (unlike SendTelemetryReq).
+  function statusFrame(publicKeyHex: string): number[] {
+    return [CommandCodes.SendStatusReq, ...Buffer.from(publicKeyHex, 'hex')];
+  }
+
+  it('replies Sent then pushes StatusResponse with key prefix + the 48-byte stats blob', async () => {
+    await startWith(false); // ungated
+    const frames = client.expectFrames(2);
+    client.send(statusFrame(REMOTE_KEY));
+    const [sent, push] = await frames;
+
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    // [0x87][reserved:1][pubKeyPrefix:6][statusData:48]
+    expect(push[0]).toBe(PushCodes.StatusResponse);
+    expect(push[1]).toBe(0); // reserved
+    expect(push.subarray(2, 8)).toEqual(REMOTE_KEY_BYTES.subarray(0, 6));
+    expect(push.length).toBe(1 + 1 + 6 + 48);
+
+    // Spot-check the little-endian RepeaterStats layout (offsets relative to
+    // the statusData start at byte 8).
+    const s = push.subarray(8);
+    expect(s.readUInt16LE(0)).toBe(4100); // batt_milli_volts
+    expect(s.readUInt16LE(2)).toBe(3); // curr_tx_queue_len
+    expect(s.readInt16LE(4)).toBe(-120); // noise_floor
+    expect(s.readInt16LE(6)).toBe(-85); // last_rssi
+    expect(s.readUInt32LE(8)).toBe(1000); // n_packets_recv
+    expect(s.readUInt32LE(12)).toBe(900); // n_packets_sent
+    expect(s.readUInt32LE(16)).toBe(500); // total_air_time_secs
+    expect(s.readUInt32LE(20)).toBe(86400); // total_up_time_secs
+    expect(s.readUInt16LE(40)).toBe(5); // err_events
+    expect(s.readInt16LE(42)).toBe(24); // last_snr
+    expect(s.readUInt16LE(44)).toBe(6); // n_direct_dups
+    expect(s.readUInt16LE(46)).toBe(7); // n_flood_dups
+    expect(manager.requestNodeStatusMock).toHaveBeenCalledWith(REMOTE_KEY);
+  });
+
+  it('relays status even when allowAdminCommands is off (read-only follow-up to login)', async () => {
+    await startWith(true);
+    const frames = client.expectFrames(2);
+    client.send(statusFrame(REMOTE_KEY));
+    const [sent, push] = await frames;
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    expect(push[0]).toBe(PushCodes.StatusResponse);
+  });
+
+  it('replies Sent but pushes nothing when the status request returns null', async () => {
+    await startWith(false);
+    manager.requestNodeStatusMock.mockResolvedValueOnce(null);
+    const sent = await client.request(statusFrame(REMOTE_KEY));
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    const second = await Promise.race([
+      client.expectFrames(1).then((f) => f[0]),
+      new Promise<null>((r) => setTimeout(() => r(null), 100)),
+    ]);
+    expect(second).toBeNull();
+  });
+
+  it('replies Sent but pushes nothing when the manager throws', async () => {
+    await startWith(false);
+    manager.requestNodeStatusMock.mockRejectedValueOnce(new Error('bridge down'));
+    const sent = await client.request(statusFrame(REMOTE_KEY));
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    const second = await Promise.race([
+      client.expectFrames(1).then((f) => f[0]),
+      new Promise<null>((r) => setTimeout(() => r(null), 100)),
+    ]);
+    expect(second).toBeNull();
+  });
+
+  it('replies Err(IllegalArg) on a short SendStatusReq payload, without querying the node', async () => {
+    await startWith(false);
+    const res = await client.request([CommandCodes.SendStatusReq, 1, 2, 3]); // < 33 bytes
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.IllegalArg);
+    expect(manager.requestNodeStatusMock).not.toHaveBeenCalled();
   });
 });

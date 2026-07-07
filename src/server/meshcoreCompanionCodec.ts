@@ -92,6 +92,7 @@ export const PushCodes = {
   SendConfirmed: 0x82,
   MsgWaiting: 0x83,
   LoginSuccess: 0x85,
+  StatusResponse: 0x87,
   LogRxData: 0x88,
   TraceData: 0x89,
   TelemetryResponse: 0x8b,
@@ -242,6 +243,7 @@ export interface SetAdvertNameCmd { name: string; }
 export interface SendLoginCmd { publicKey: string; password: string; }
 export interface SendTracePathCmd { tag: number; auth: number; flags: number; path: Buffer; }
 export interface SendTelemetryReqCmd { publicKey: string; }
+export interface SendStatusReqCmd { publicKey: string; }
 export interface SetRadioParamsCmd { freq: number; bw: number; sf: number; cr: number; }
 export interface SetTxPowerCmd { power: number; }
 export interface SetAdvertLatLonCmd { lat: number; lon: number; }
@@ -304,6 +306,18 @@ export function parseSendTracePath(payload: Buffer): SendTracePathCmd {
 export function parseSendTelemetryReq(payload: Buffer): SendTelemetryReqCmd {
   if (payload.length < 1 + 3 + 32) throw new Error('SendTelemetryReq: short payload');
   return { publicKey: payload.subarray(4, 36).toString('hex') };
+}
+
+/**
+ * SendStatusReq(27): `[code][publicKey:32]`. Unlike SendTelemetryReq there are
+ * no reserved bytes — the firmware/meshcore.js layout is just the command byte
+ * followed by the 32-byte target public key (see meshcore.js
+ * `sendCommandSendStatusReq`). Returns the target public key as a lowercase hex
+ * string for MeshCoreManager.requestNodeStatus.
+ */
+export function parseSendStatusReq(payload: Buffer): SendStatusReqCmd {
+  if (payload.length < 1 + 32) throw new Error('SendStatusReq: short payload');
+  return { publicKey: payload.subarray(1, 33).toString('hex') };
 }
 
 /**
@@ -682,6 +696,72 @@ export function encodeTelemetryResponsePush(
 }
 
 /**
+ * The 16-field repeater status blob the firmware pushes inside a StatusResponse
+ * (see meshcore.js `getStatus` → `repeaterStats`). All fields little-endian.
+ * Field names mirror MeshCoreManager's `MeshCoreStatus` so the manager's parsed
+ * result can be re-serialized verbatim (the mapping is lossless — every wire
+ * field has a `MeshCoreStatus` counterpart). Missing values encode as 0.
+ */
+export interface RepeaterStatusData {
+  batteryMv?: number;
+  queueLen?: number;
+  noiseFloor?: number;
+  lastRssi?: number;
+  packetsRecv?: number;
+  packetsSent?: number;
+  airTimeSecs?: number;
+  uptimeSecs?: number;
+  sentFlood?: number;
+  sentDirect?: number;
+  recvFlood?: number;
+  recvDirect?: number;
+  errors?: number;
+  lastSnr?: number;
+  directDups?: number;
+  floodDups?: number;
+}
+
+/** Serialize the 48-byte repeater status blob (inverse of meshcore.js `getStatus`). */
+export function encodeRepeaterStatusData(s: RepeaterStatusData): Buffer {
+  const b = Buffer.alloc(48);
+  let o = 0;
+  b.writeUInt16LE((s.batteryMv ?? 0) & 0xffff, o); o += 2; // batt_milli_volts
+  b.writeUInt16LE((s.queueLen ?? 0) & 0xffff, o); o += 2; // curr_tx_queue_len
+  b.writeInt16LE(clampInt16(s.noiseFloor ?? 0), o); o += 2; // noise_floor
+  b.writeInt16LE(clampInt16(s.lastRssi ?? 0), o); o += 2; // last_rssi
+  b.writeUInt32LE((s.packetsRecv ?? 0) >>> 0, o); o += 4; // n_packets_recv
+  b.writeUInt32LE((s.packetsSent ?? 0) >>> 0, o); o += 4; // n_packets_sent
+  b.writeUInt32LE((s.airTimeSecs ?? 0) >>> 0, o); o += 4; // total_air_time_secs
+  b.writeUInt32LE((s.uptimeSecs ?? 0) >>> 0, o); o += 4; // total_up_time_secs
+  b.writeUInt32LE((s.sentFlood ?? 0) >>> 0, o); o += 4; // n_sent_flood
+  b.writeUInt32LE((s.sentDirect ?? 0) >>> 0, o); o += 4; // n_sent_direct
+  b.writeUInt32LE((s.recvFlood ?? 0) >>> 0, o); o += 4; // n_recv_flood
+  b.writeUInt32LE((s.recvDirect ?? 0) >>> 0, o); o += 4; // n_recv_direct
+  b.writeUInt16LE((s.errors ?? 0) & 0xffff, o); o += 2; // err_events
+  b.writeInt16LE(clampInt16(s.lastSnr ?? 0), o); o += 2; // last_snr
+  b.writeUInt16LE((s.directDups ?? 0) & 0xffff, o); o += 2; // n_direct_dups
+  b.writeUInt16LE((s.floodDups ?? 0) & 0xffff, o); // n_flood_dups (last field)
+  return b;
+}
+
+/**
+ * Encode a StatusResponse(0x87) push — the repeater stats a remote node returned
+ * for a SendStatusReq. Layout mirrors meshcore.js `onStatusResponsePush`:
+ * `[0x87][reserved:1][pubKeyPrefix:6][statusData:rest]`. The app correlates the
+ * push to its pending status request by the remote's 6-byte pubkey prefix.
+ */
+export function encodeStatusResponsePush(
+  pubKeyPrefix: Buffer | Uint8Array,
+  status: RepeaterStatusData,
+): Buffer {
+  const head = Buffer.alloc(1 + 1 + 6);
+  head[0] = PushCodes.StatusResponse;
+  head[1] = 0; // reserved
+  Buffer.from(pubKeyPrefix).copy(head, 2, 0, 6);
+  return Buffer.concat([head, encodeRepeaterStatusData(status)]);
+}
+
+/**
  * Encode a LogRxData(0x88) push — the node forwarding a raw received OTA packet
  * to the app. This is the diagnostic "packet feed" that tools like
  * Remote-Terminal-for-MeshCore's channel finder consume (#3963). Real firmware
@@ -743,6 +823,12 @@ function writeCString(target: Buffer, offset: number, value: string, maxLength: 
 function clampInt8(v: number): number {
   if (!Number.isFinite(v)) return 0;
   return Math.max(-128, Math.min(127, Math.trunc(v)));
+}
+
+/** Clamp a number to the signed-16-bit range (for int16 wire fields). */
+function clampInt16(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(-32768, Math.min(32767, Math.trunc(v)));
 }
 
 /** Convert a hex public-key string to a 32-byte buffer (tolerant of `0x`/odd input). */

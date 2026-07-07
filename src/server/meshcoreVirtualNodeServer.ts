@@ -2,7 +2,7 @@ import { Server, Socket } from 'net';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 import databaseService from '../services/database.js';
-import type { MeshCoreNode, TelemetryMode, MeshCoreContact, MeshCoreMessage } from './meshcoreManager.js';
+import type { MeshCoreNode, TelemetryMode, MeshCoreContact, MeshCoreMessage, MeshCoreStatus } from './meshcoreManager.js';
 import {
   CommandCodes,
   ErrorCodes,
@@ -45,6 +45,8 @@ import {
   parseSendLogin,
   parseSendTracePath,
   parseSendTelemetryReq,
+  parseSendStatusReq,
+  encodeStatusResponsePush,
   type ParsedCommand,
 } from './meshcoreCompanionCodec.js';
 
@@ -108,6 +110,13 @@ export interface MeshCoreVirtualNodeManager {
    * SendTelemetryReq (issue #3904).
    */
   requestRemoteTelemetryRaw(publicKey: string): Promise<Buffer | null>;
+  /**
+   * Request operational status from a remote node (repeater/room server) and
+   * return the parsed stats, or null on failure. Used to relay the app's
+   * SendStatusReq (issue #3904); the parsed fields are re-serialized to the
+   * wire status blob for the StatusResponse push.
+   */
+  requestNodeStatus(publicKey: string): Promise<MeshCoreStatus | null>;
   /** EventEmitter surface — the manager emits 'message' with a MeshCoreMessage. */
   on(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
   off(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
@@ -455,6 +464,12 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
           // Remote telemetry request (issue #3904). Read-only — not gated.
           void this.handleSendTelemetryReq(clientId, command);
           break;
+        case CommandCodes.SendStatusReq:
+          // Remote status/owner-info request (issue #3904). Read-only follow-up
+          // to a login — not gated on allowAdminCommands (the real node answers
+          // a status request based on the session, not on our admin flag).
+          void this.handleSendStatusReq(clientId, command);
+          break;
         // Config-mutating commands (issue #3904): forwarded to the real node
         // only when `allowAdminCommands` is enabled; otherwise the app gets an
         // explicit Err (UnsupportedCmd) instead of a silent hang.
@@ -585,6 +600,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
   private readonly LOGIN_EST_TIMEOUT_MS = 12000;
   private readonly TRACE_EST_TIMEOUT_MS = 30000;
   private readonly TELEMETRY_EST_TIMEOUT_MS = 30000;
+  private readonly STATUS_EST_TIMEOUT_MS = 30000;
 
   /**
    * SendLogin(26): authenticate the physical node to a remote node with a
@@ -689,6 +705,51 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       logger.info(`[MeshCore VN ${this.sourceId}] SendTelemetryReq to ${keyShort}… from ${clientId} → ${lpp.length}B LPP`);
     } catch (err) {
       logger.warn(`[MeshCore VN ${this.sourceId}] SendTelemetryReq to ${keyShort}… from ${clientId} failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * SendStatusReq(27): request operational status (repeater stats / owner info)
+   * from a remote node and relay it (issue #3904). The app's flow — verified
+   * against ripplebiz/MeshCore firmware — is Sent → StatusResponse(0x87) push
+   * correlated by the remote's 6-byte pubkey prefix, so we reply Sent, fetch the
+   * status from the real node, then re-serialize it into the wire status blob and
+   * push it. On failure we emit nothing and let the app time out (mirrors real-
+   * node behaviour, where a failed status request produces no push).
+   *
+   * Not gated on allowAdminCommands — this is a read-only follow-up to login,
+   * like SendTelemetryReq; the real node answers based on the session, not our
+   * admin flag.
+   *
+   * Note on the status blob: `manager.requestNodeStatus` returns the parsed
+   * `MeshCoreStatus`, which we re-encode to the 48-byte `RepeaterStats` layout
+   * the app's decoder reads (meshcore.js `getStatus`). Firmware ≥1.16 appends
+   * two extra counters (total_rx_air_time_secs, n_recv_errors → 56 bytes) that
+   * the companion-protocol status view does not parse, so the 48-byte prefix is
+   * exactly what the app renders.
+   */
+  private async handleSendStatusReq(clientId: string, command: ParsedCommand): Promise<void> {
+    let parsed;
+    try {
+      parsed = parseSendStatusReq(command.payload);
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] SendStatusReq bad payload from ${clientId}: ${(err as Error).message}`);
+      this.send(clientId, encodeErr(ErrorCodes.IllegalArg));
+      return;
+    }
+    const keyShort = parsed.publicKey.substring(0, 12);
+    this.send(clientId, encodeSent(0, 0, this.STATUS_EST_TIMEOUT_MS));
+    try {
+      const status = await this.options.manager.requestNodeStatus(parsed.publicKey);
+      if (!status) {
+        logger.info(`[MeshCore VN ${this.sourceId}] SendStatusReq to ${keyShort}… from ${clientId} got no status`);
+        return;
+      }
+      const prefix = pubKeyHexToBytes(parsed.publicKey).subarray(0, 6);
+      this.send(clientId, encodeStatusResponsePush(prefix, status));
+      logger.info(`[MeshCore VN ${this.sourceId}] SendStatusReq to ${keyShort}… from ${clientId} → status relayed`);
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] SendStatusReq to ${keyShort}… from ${clientId} failed: ${(err as Error).message}`);
     }
   }
 
