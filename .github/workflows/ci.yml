@@ -69,9 +69,11 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Run linter
-        run: npm run lint
-        continue-on-error: true  # Pre-existing errors need cleanup before enforcing; tracked separately
+      - name: Run lint ratchet
+        # BLOCKING: fails only on new violations above the checked-in baseline.
+        # Existing debt is frozen in eslint-baseline.json and burns down over time.
+        # Regenerate baseline: npm run lint:baseline. Tracking: #3962 Task 1.4.
+        run: npm run lint:ci
 
       - name: Run type checking
         run: npm run typecheck

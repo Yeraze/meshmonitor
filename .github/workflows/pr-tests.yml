@@ -80,10 +80,13 @@ jobs:
           # Add prettier check when configured
           # npm run format:check
 
-      - name: Run linter
+      - name: Run lint ratchet
         run: |
-          echo "Running ESLint..."
-          npm run lint || true  # Don't fail for now
+          echo "Running ESLint ratchet..."
+          # BLOCKING: fails only on new violations above the checked-in baseline.
+          # Existing debt is frozen in eslint-baseline.json and burns down over time.
+          # Regenerate baseline: npm run lint:baseline. Tracking: #3962 Task 1.4.
+          npm run lint:ci
 
       - name: Type check
         run: |
