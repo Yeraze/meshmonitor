@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { MessagesRepository } from './messages.js';
+import { ALL_SOURCES } from './base.js';
 import * as schema from '../schema/index.js';
 import { createTestDb } from '../../server/test-helpers/testDb.js';
 
@@ -75,7 +76,7 @@ describe('MessagesRepository — createdAt ordering (#3122)', () => {
     insert('real-newer-1', { rxTime: 2000, createdAt: 2000 });
     insert('real-newer-2', { rxTime: 3000, createdAt: 3000 });
 
-    const rows = await repo.getMessages(10);
+    const rows = await repo.getMessages(10, 0, ALL_SOURCES);
     expect(rows.map((r: any) => r.id)).toEqual(['real-newer-2', 'real-newer-1', 'future-but-old']);
   });
 
@@ -84,7 +85,7 @@ describe('MessagesRepository — createdAt ordering (#3122)', () => {
     insert('actual-new', { channel: 0, rxTime: 500, createdAt: 200 });
     insert('other-channel', { channel: 5, rxTime: 999, createdAt: 999 });
 
-    const rows = await repo.getMessagesByChannel(0, 10);
+    const rows = await repo.getMessagesByChannel(0, 10, 0, ALL_SOURCES);
     expect(rows.map((r: any) => r.id)).toEqual(['actual-new', 'skewed']);
   });
 
@@ -98,7 +99,7 @@ describe('MessagesRepository — createdAt ordering (#3122)', () => {
     // Cursor "before" = 250 should pull rows whose createdAt < 250.
     // Under the old rxTime cursor 'skewed' would be excluded (rxTime > 250).
     // Under createdAt 'skewed' is included.
-    const rows = await repo.getMessagesBeforeInChannel(0, 250, 10);
+    const rows = await repo.getMessagesBeforeInChannel(0, 250, 10, ALL_SOURCES);
     expect(rows.map((r: any) => r.id)).toEqual(['b', 'skewed', 'a']);
   });
 
@@ -106,7 +107,7 @@ describe('MessagesRepository — createdAt ordering (#3122)', () => {
     insert('skewed', { rxTime: FAR_FUTURE, createdAt: 100 });
     insert('newer', { rxTime: 50, createdAt: 200 });
 
-    const rows = repo.getMessagesSqlite(10);
+    const rows = repo.getMessagesSqlite(10, 0, ALL_SOURCES);
     expect(rows.map((r: any) => r.id)).toEqual(['newer', 'skewed']);
   });
 
@@ -114,7 +115,7 @@ describe('MessagesRepository — createdAt ordering (#3122)', () => {
     insert('skewed', { channel: 2, rxTime: FAR_FUTURE, createdAt: 100 });
     insert('newer', { channel: 2, rxTime: 50, createdAt: 200 });
 
-    const rows = repo.getMessagesByChannelSqlite(2, 10);
+    const rows = repo.getMessagesByChannelSqlite(2, 10, 0, ALL_SOURCES);
     expect(rows.map((r: any) => r.id)).toEqual(['newer', 'skewed']);
   });
 });

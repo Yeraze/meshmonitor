@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { MessagesRepository } from './messages.js';
+import { ALL_SOURCES } from './base.js';
 import * as schema from '../schema/index.js';
 import { createTestDb } from '../../server/test-helpers/testDb.js';
 
@@ -97,7 +98,7 @@ describe('MessagesRepository sync purge helpers', () => {
       await insertMsg('m2', NODE1_NUM, NODE1_ID, NODE2_NUM, NODE2_ID, 0, 'src-b');
       await insertMsg('m3', NODE1_NUM, NODE1_ID, NODE2_NUM, NODE2_ID, 1, 'src-a');
 
-      const deleted = repo.purgeChannelMessagesSqlite(0);
+      const deleted = repo.purgeChannelMessagesSqlite(0, ALL_SOURCES);
       expect(deleted).toBe(2);
 
       const remaining = db.prepare('SELECT id FROM messages').all() as { id: string }[];

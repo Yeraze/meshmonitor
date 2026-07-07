@@ -8,6 +8,7 @@ import Database from 'better-sqlite3';
 import { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { telemetrySqlite } from '../schema/telemetry.js';
 import { TelemetryRepository } from './telemetry.js';
+import { ALL_SOURCES } from './base.js';
 import * as schema from '../schema/index.js';
 import { createTestDb } from '../../server/test-helpers/testDb.js';
 
@@ -309,7 +310,7 @@ describe('TelemetryRepository', () => {
         packetId: 1234567890,
       });
 
-      const results = await repo.getTelemetryByNode(NODE1, 1);
+      const results = await repo.getTelemetryByNode(NODE1, 1, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(results).toHaveLength(1);
       expect(results[0].packetId).toBe(1234567890);
     });
@@ -325,7 +326,7 @@ describe('TelemetryRepository', () => {
         createdAt: NOW,
       });
 
-      const results = await repo.getTelemetryByNode(NODE1, 1);
+      const results = await repo.getTelemetryByNode(NODE1, 1, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(results).toHaveLength(1);
       expect(results[0].packetId).toBeNull();
     });
@@ -342,7 +343,7 @@ describe('TelemetryRepository', () => {
         packetId: null,
       });
 
-      const results = await repo.getTelemetryByNode(NODE1, 1);
+      const results = await repo.getTelemetryByNode(NODE1, 1, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(results).toHaveLength(1);
       expect(results[0].packetId).toBeNull();
     });
@@ -364,7 +365,7 @@ describe('TelemetryRepository', () => {
         timestamp: NOW, value: 12.5, unit: '%', createdAt: NOW, packetId,
       });
 
-      const results = await repo.getTelemetryByNode(NODE1, 10);
+      const results = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(results).toHaveLength(3);
       // All entries from the same packet should share the same packetId
       expect(results.every(r => r.packetId === packetId)).toBe(true);
@@ -382,7 +383,7 @@ describe('TelemetryRepository', () => {
         timestamp: NOW - 1 * HOUR, value: 80, unit: 'quality', createdAt: NOW,
       });
 
-      const results = await repo.getTelemetryByNode(NODE1, 10);
+      const results = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(results).toHaveLength(2);
 
       const withPacketId = results.find(r => r.telemetryType === 'batteryLevel');
@@ -439,7 +440,7 @@ describe('TelemetryRepository', () => {
       expect(first).toBe(true);
       expect(second).toBe(false);
 
-      const results = await repo.getTelemetryByNode(NODE1, 10);
+      const results = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(results).toHaveLength(1);
     });
 
@@ -476,7 +477,7 @@ describe('TelemetryRepository', () => {
         timestamp: NOW, value: 3.7, unit: 'V', createdAt: NOW, packetId,
       }, SOURCE);
 
-      const results = await repo.getTelemetryByNode(NODE1, 10);
+      const results = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(results).toHaveLength(2);
     });
 
@@ -498,7 +499,7 @@ describe('TelemetryRepository', () => {
       expect(a).toBe(true);
       expect(b).toBe(true);
 
-      const results = await repo.getTelemetryByNode(NODE1, 10);
+      const results = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(results).toHaveLength(2);
     });
 
@@ -516,7 +517,7 @@ describe('TelemetryRepository', () => {
       await repo.insertTelemetry(row, SOURCE);
       await repo.insertTelemetry(row, SOURCE);
 
-      const results = await repo.getTelemetryByNode(NODE1, 10);
+      const results = await repo.getTelemetryByNode(NODE1, 10, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(results).toHaveLength(2);
     });
   });

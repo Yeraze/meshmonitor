@@ -6,6 +6,7 @@
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
+import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
 import { getEffectiveDbNodePosition } from '../../utils/nodeEnhancer.js';
 
@@ -26,9 +27,10 @@ function getScopedSourceId(req: Request): string | undefined {
 router.get('/', async (req: Request, res: Response) => {
   try {
     const sourceId = getScopedSourceId(req);
-    const allNodes = await databaseService.nodes.getAllNodes(sourceId);
-    const activeNodes = await databaseService.nodes.getActiveNodes(7, sourceId);
-    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(100, sourceId);
+    // intentional cross-source: omitting sourceId on this route returns data from all sources
+    const allNodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
+    const activeNodes = await databaseService.nodes.getActiveNodes(7, sourceId ?? ALL_SOURCES);
+    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(100, sourceId ?? ALL_SOURCES);
 
     const stats = {
       totalNodes: allNodes.length,
@@ -88,8 +90,9 @@ router.get('/direct-neighbors', async (req: Request, res: Response) => {
 router.get('/topology', async (req: Request, res: Response) => {
   try {
     const sourceId = getScopedSourceId(req);
-    const nodes = await databaseService.nodes.getAllNodes(sourceId);
-    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(500, sourceId);
+    // intentional cross-source: omitting sourceId on this route returns data from all sources
+    const nodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
+    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(500, sourceId ?? ALL_SOURCES);
 
     const topology = {
       nodes: nodes.map(n => {

@@ -11,6 +11,8 @@ import {
   meshCoreMessageMatchesFilter,
   describeMessageFilterMiss,
   describeMeshCoreFilterMiss,
+  messageFilterChannelNames,
+  messageFilterUsesChannelName,
   resolveTriggerPath,
   BROADCAST_ADDR,
 } from './triggerContext.js';
@@ -137,6 +139,103 @@ describe('messageMatchesFilter', () => {
   });
   it('an empty channelName does not constrain', () => {
     expect(messageMatchesFilter(msg(), { channelName: '' }, null)).toBe(true);
+  });
+});
+
+describe('multi-channel trigger filter (#3974)', () => {
+  const chans = (...names: string[]) => names.map((name) => ({ name, protocol: 'meshtastic' }));
+
+  describe('messageFilterChannelNames', () => {
+    it('extracts non-empty names from the channels array', () => {
+      expect(messageFilterChannelNames({ channels: chans('gauntlet', 'ops') })).toEqual(['gauntlet', 'ops']);
+    });
+    it('drops blank names and ignores non-object entries', () => {
+      expect(messageFilterChannelNames({ channels: [{ name: '' }, { name: 'ops' }, 'x', null, {}] })).toEqual(['ops']);
+    });
+    it('returns [] when channels is absent or not an array', () => {
+      expect(messageFilterChannelNames({})).toEqual([]);
+      expect(messageFilterChannelNames({ channels: 'nope' })).toEqual([]);
+    });
+  });
+
+  describe('messageFilterUsesChannelName', () => {
+    it('is true for a scalar channelName', () => {
+      expect(messageFilterUsesChannelName({ channelName: 'gauntlet' })).toBe(true);
+    });
+    it('is true for a populated channels array', () => {
+      expect(messageFilterUsesChannelName({ channels: chans('gauntlet') })).toBe(true);
+    });
+    it('is false when neither is set / all blank', () => {
+      expect(messageFilterUsesChannelName({})).toBe(false);
+      expect(messageFilterUsesChannelName({ channelName: '' })).toBe(false);
+      expect(messageFilterUsesChannelName({ channels: [{ name: '' }] })).toBe(false);
+    });
+  });
+
+  describe('messageMatchesFilter OR-list (Meshtastic)', () => {
+    it('fires when the resolved name matches ANY entry (case-insensitive)', () => {
+      expect(messageMatchesFilter(msg(), { channels: chans('gauntlet', 'ops') }, 'Gauntlet')).toBe(true);
+      expect(messageMatchesFilter(msg(), { channels: chans('gauntlet', 'ops') }, 'OPS')).toBe(true);
+    });
+    it('does not fire when the resolved name matches no entry', () => {
+      expect(messageMatchesFilter(msg(), { channels: chans('gauntlet', 'ops') }, 'Primary')).toBe(false);
+    });
+    it('never matches when the name could not be resolved', () => {
+      expect(messageMatchesFilter(msg(), { channels: chans('gauntlet') }, null)).toBe(false);
+      expect(messageMatchesFilter(msg(), { channels: chans('gauntlet') })).toBe(false);
+    });
+    it('an empty channels array is a legacy fallback (does not constrain)', () => {
+      expect(messageMatchesFilter(msg(), { channels: [] }, null)).toBe(true);
+      // empty array + legacy scalar channelName still honors the scalar
+      expect(messageMatchesFilter(msg(), { channels: [], channelName: 'ops' }, 'Ops')).toBe(true);
+      expect(messageMatchesFilter(msg(), { channels: [], channelName: 'ops' }, 'Primary')).toBe(false);
+    });
+    it('channels takes precedence over the legacy scalar channel/channelName', () => {
+      // channels wins: the mismatched legacy scalar channelName is ignored.
+      expect(messageMatchesFilter(msg(), { channels: chans('ops'), channelName: 'gauntlet' }, 'Ops')).toBe(true);
+      // channels wins: the legacy numeric channel is ignored (msg.channel = 0, would fail on channel:2).
+      expect(messageMatchesFilter(msg(), { channels: chans('ops'), channel: 2 }, 'Ops')).toBe(true);
+    });
+    it('still applies text/regex checks alongside the channel OR-list', () => {
+      expect(messageMatchesFilter(msg({ text: 'ping' }), { channels: chans('ops'), textContains: 'ping' }, 'Ops')).toBe(true);
+      expect(messageMatchesFilter(msg({ text: 'pong' }), { channels: chans('ops'), textContains: 'ping' }, 'Ops')).toBe(false);
+    });
+  });
+
+  describe('meshCoreMessageMatchesFilter OR-list (MeshCore)', () => {
+    it('fires when the resolved name matches ANY entry', () => {
+      expect(meshCoreMessageMatchesFilter(mcMsg({ fromPublicKey: 'channel-1' }), { channels: chans('gauntlet', 'ops') }, 'Ops')).toBe(true);
+      expect(meshCoreMessageMatchesFilter(mcMsg({ fromPublicKey: 'channel-1' }), { channels: chans('gauntlet', 'ops') }, 'Primary')).toBe(false);
+    });
+    it('never matches when the name could not be resolved', () => {
+      expect(meshCoreMessageMatchesFilter(mcMsg({ fromPublicKey: 'channel-1' }), { channels: chans('ops') }, null)).toBe(false);
+    });
+    it('empty channels array falls back to legacy scalar behavior', () => {
+      expect(meshCoreMessageMatchesFilter(mcMsg({ fromPublicKey: 'channel-1' }), { channels: [] }, null)).toBe(true);
+      expect(meshCoreMessageMatchesFilter(mcMsg({ fromPublicKey: 'channel-1' }), { channels: [], channelName: 'ops' }, 'Ops')).toBe(true);
+    });
+    it('channels precedence ignores the legacy numeric channel', () => {
+      expect(meshCoreMessageMatchesFilter(mcMsg({ fromPublicKey: 'channel-1' }), { channels: chans('ops'), channel: 5 }, 'Ops')).toBe(true);
+    });
+    it('Meshtastic-only filters (from/to/portnum) still force a non-match', () => {
+      expect(meshCoreMessageMatchesFilter(mcMsg({ fromPublicKey: 'channel-1' }), { channels: chans('ops'), from: 5 }, 'Ops')).toBe(false);
+    });
+  });
+
+  describe('describeMessageFilterMiss / describeMeshCoreFilterMiss OR-list reasons', () => {
+    it('explains a Meshtastic multi-channel miss', () => {
+      expect(describeMessageFilterMiss(msg(), { channels: chans('gauntlet', 'ops') }, 'Primary'))
+        .toBe('channel name "Primary" not in [gauntlet, ops]');
+      expect(describeMessageFilterMiss(msg(), { channels: chans('ops') }, null))
+        .toBe('channel name "(unresolved)" not in [ops]');
+    });
+    it('returns undefined for a Meshtastic multi-channel hit', () => {
+      expect(describeMessageFilterMiss(msg(), { channels: chans('gauntlet', 'ops') }, 'Ops')).toBeUndefined();
+    });
+    it('explains a MeshCore multi-channel miss', () => {
+      expect(describeMeshCoreFilterMiss(mcMsg({ fromPublicKey: 'channel-1' }), { channels: chans('ops') }, 'Primary'))
+        .toBe('channel name "Primary" not in [ops]');
+    });
   });
 });
 

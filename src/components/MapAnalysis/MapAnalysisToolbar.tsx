@@ -6,6 +6,7 @@ import NodeTypeFilterControl from './NodeTypeFilterControl';
 import NodeSearchControl from './NodeSearchControl';
 import TracerouteControls from './TracerouteControls';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
+import { useOwnNodePositions } from '../../hooks/useOwnNodePositions';
 import { LayerKey } from '../../hooks/useMapAnalysisConfig';
 import {
   usePositions,
@@ -34,6 +35,11 @@ export default function MapAnalysisToolbar() {
   const navigate = useNavigate();
   const { config, setLayerEnabled, setLayerLookback, setSources, setTimeSlider, reset } = useMapAnalysisCtx();
   const { data: sources = [] } = useDashboardSources();
+
+  // Polar grid (#3971): centered on each active source's own-node position.
+  // Disable the toggle when no active source has a resolvable own node.
+  const ownNodePositions = useOwnNodePositions(config.sources);
+  const hasOwnNode = ownNodePositions.length > 0;
 
   const sourceIds = config.sources.length === 0
     ? sources.map((s: { id: string }) => s.id)
@@ -120,6 +126,13 @@ export default function MapAnalysisToolbar() {
           onToggle={(next) => setLayerEnabled(key, next)}
         />
       ))}
+      <LayerToggleButton
+        label="Polar Grid"
+        enabled={config.layers.polarGrid.enabled && hasOwnNode}
+        onToggle={(next) => setLayerEnabled('polarGrid', next)}
+        disabled={!hasOwnNode}
+        title={hasOwnNode ? undefined : 'No source has a known own-node position'}
+      />
       {TIMED_LAYERS.map(({ key, label, options }) => (
         <LayerToggleButton
           key={key}

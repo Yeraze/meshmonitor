@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, gt, lt, isNull, or, desc, asc, and, isNotNull, ne, sql, inArray, count, countDistinct } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase } from './base.js';
+import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
 import { isValidNodeNum } from '../../server/constants/meshtastic.js';
@@ -230,7 +230,7 @@ export class NodesRepository extends BaseRepository {
   /**
    * Get all nodes ordered by update time
    */
-  async getAllNodes(sourceId?: string): Promise<DbNode[]> {
+  async getAllNodes(sourceId: SourceScope): Promise<DbNode[]> {
     const { nodes } = this.tables;
     const result = await this.db
       .select()
@@ -244,7 +244,7 @@ export class NodesRepository extends BaseRepository {
   /**
    * Get active nodes (heard within sinceDays)
    */
-  async getActiveNodes(sinceDays: number = 7, sourceId?: string): Promise<DbNode[]> {
+  async getActiveNodes(sinceDays: number = 7, sourceId?: SourceScope): Promise<DbNode[]> {
     // lastHeard is stored in seconds (Unix timestamp)
     const cutoff = Math.floor(Date.now() / 1000) - (sinceDays * 24 * 60 * 60);
     const { nodes } = this.tables;
@@ -261,7 +261,7 @@ export class NodesRepository extends BaseRepository {
   /**
    * Get total node count
    */
-  async getNodeCount(sourceId?: string): Promise<number> {
+  async getNodeCount(sourceId: SourceScope): Promise<number> {
     const { nodes } = this.tables;
     const result = await this.db.select({ count: count() }).from(nodes)
       .where(this.withSourceScope(nodes, sourceId));
@@ -280,7 +280,7 @@ export class NodesRepository extends BaseRepository {
    * `lastHeard` is stored in seconds (Unix epoch). Returns 0 for a source
    * with no recently-heard nodes.
    */
-  async getActiveNodeCount(sourceId?: string, sinceSeconds: number = 7200): Promise<number> {
+  async getActiveNodeCount(sourceId: SourceScope, sinceSeconds: number = 7200): Promise<number> {
     const cutoff = Math.floor(Date.now() / 1000) - sinceSeconds;
     const { nodes } = this.tables;
     const result = await this.db
@@ -714,7 +714,7 @@ export class NodesRepository extends BaseRepository {
   /**
    * Get all nodes that have public keys
    */
-  async getNodesWithPublicKeys(sourceId?: string): Promise<Array<{ nodeNum: number; publicKey: string | null }>> {
+  async getNodesWithPublicKeys(sourceId?: SourceScope): Promise<Array<{ nodeNum: number; publicKey: string | null }>> {
     const { nodes } = this.tables;
     const result = await this.db
       .select({ nodeNum: nodes.nodeNum, publicKey: nodes.publicKey })
@@ -1370,12 +1370,14 @@ export class NodesRepository extends BaseRepository {
   /**
    * SQLite-only synchronous getAllNodes.
    */
-  getAllNodesSqlite(sourceId?: string): DbNode[] {
+  getAllNodesSqlite(sourceId?: SourceScope): DbNode[] {
     if (!this.sqliteDb) throw new Error('getAllNodesSqlite is SQLite-only');
     const db = this.sqliteDb;
     const { nodes } = this.tables;
-    const rows = sourceId
-      ? db.select().from(nodes).where(eq(nodes.sourceId, sourceId)).orderBy(desc(nodes.updatedAt)).all()
+    // ALL_SOURCES or undefined → return all; a concrete string → filter by source.
+    const isScoped = typeof sourceId === 'string' && sourceId !== '';
+    const rows = isScoped
+      ? db.select().from(nodes).where(eq(nodes.sourceId, sourceId as string)).orderBy(desc(nodes.updatedAt)).all()
       : db.select().from(nodes).orderBy(desc(nodes.updatedAt)).all();
     return rows.map((r: any) => this.normalizeBigInts(r)) as DbNode[];
   }

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { optionalAuth, requireAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
 import { isValidNodeNum } from '../constants/meshtastic.js';
 import {
@@ -139,7 +140,7 @@ router.get('/telemetry/:nodeId/rates', optionalAuth(), async (req: Request, res:
       // Fetch telemetry for each packet type and calculate rates
       for (const type of packetTypes) {
         const telemetry = await databaseService.telemetry.getTelemetryByNode(
-          nodeId, 5000, cutoffTime, undefined, 0, type, ratesSourceId
+          nodeId, 5000, cutoffTime, undefined, 0, type, ratesSourceId ?? ALL_SOURCES // intentional cross-source when sourceId omitted
         );
 
         // Sort by timestamp ascending for rate calculation
@@ -268,7 +269,8 @@ router.delete('/telemetry/:nodeId/:telemetryType', requireAuth(), requirePermiss
 router.get('/telemetry/available/nodes', requirePermission('info', 'read'), async (req: Request, res: Response) => {
   try {
     const telAvailSourceId = req.query.sourceId as string | undefined;
-    const allNodes = await databaseService.nodes.getAllNodes(telAvailSourceId);
+    // intentional cross-source: omitting sourceId returns nodes from all sources
+    const allNodes = await databaseService.nodes.getAllNodes(telAvailSourceId ?? ALL_SOURCES);
     // Filter nodes based on channel read permissions (source-scoped, #3745)
     const nodes = await filterNodesByChannelPermission(allNodes, (req as any).user, telAvailSourceId);
 

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
 
 const router = Router();
@@ -8,7 +9,7 @@ const router = Router();
 router.get('/longest-active', requirePermission('info', 'read'), async (req: Request, res: Response) => {
   try {
     const segSourceId = req.query.sourceId as string | undefined;
-    const segment = await databaseService.traceroutes.getLongestActiveRouteSegment(segSourceId);
+    const segment = await databaseService.traceroutes.getLongestActiveRouteSegment(segSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
     if (!segment) {
       res.json(null);
       return;
@@ -31,7 +32,7 @@ router.get('/longest-active', requirePermission('info', 'read'), async (req: Req
 router.get('/record-holder', requirePermission('info', 'read'), async (req: Request, res: Response) => {
   try {
     const segSourceId = req.query.sourceId as string | undefined;
-    const segment = await databaseService.traceroutes.getRecordHolderRouteSegment(segSourceId);
+    const segment = await databaseService.traceroutes.getRecordHolderRouteSegment(segSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
     if (!segment) {
       res.json(null);
       return;

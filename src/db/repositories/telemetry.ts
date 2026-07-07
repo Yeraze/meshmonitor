@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, lt, gte, and, desc, inArray, or, not, SQL, count, sql } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase } from './base.js';
+import { ALL_SOURCES, BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbTelemetry } from '../types.js';
 import { logger } from '../../utils/logger.js';
 
@@ -196,7 +196,7 @@ export class TelemetryRepository extends BaseRepository {
     sinceTimestamp?: number,
     beforeTimestamp?: number,
     telemetryType?: string,
-    sourceId?: string
+    sourceId?: SourceScope
   ): Promise<number> {
     const { telemetry } = this.tables;
     let conditions = [eq(telemetry.nodeId, nodeId)];
@@ -232,7 +232,7 @@ export class TelemetryRepository extends BaseRepository {
     beforeTimestamp?: number,
     offset: number = 0,
     telemetryType?: string,
-    sourceId?: string
+    sourceId?: SourceScope
   ): Promise<DbTelemetry[]> {
     const { telemetry } = this.tables;
     let conditions = [eq(telemetry.nodeId, nodeId)];
@@ -268,7 +268,7 @@ export class TelemetryRepository extends BaseRepository {
     nodeId: string,
     limit: number = 1500,
     sinceTimestamp?: number,
-    sourceId?: string,
+    sourceId?: SourceScope,
     beforeTimestamp?: number
   ): Promise<DbTelemetry[]> {
     const positionTypes = ['latitude', 'longitude', 'altitude', 'ground_speed', 'ground_track'];
@@ -353,7 +353,7 @@ export class TelemetryRepository extends BaseRepository {
    * misattribute cross-source telemetry to whichever source happens to be
    * iterating in the outer loop.
    */
-  async getLatestTelemetryByNode(nodeId: string, sourceId?: string): Promise<DbTelemetry[]> {
+  async getLatestTelemetryByNode(nodeId: string, sourceId?: SourceScope): Promise<DbTelemetry[]> {
     const types = await this.getNodeTelemetryTypes(nodeId, sourceId);
     const results: DbTelemetry[] = [];
 
@@ -374,14 +374,14 @@ export class TelemetryRepository extends BaseRepository {
   async getLatestTelemetryForType(
     nodeId: string,
     telemetryType: string,
-    sourceId?: string,
+    sourceId?: SourceScope,
   ): Promise<DbTelemetry | null> {
     const { telemetry } = this.tables;
     const conditions = [
       eq(telemetry.nodeId, nodeId),
       eq(telemetry.telemetryType, telemetryType),
     ];
-    if (sourceId) conditions.push(eq(telemetry.sourceId, sourceId));
+    if (typeof sourceId === 'string' && sourceId !== '') conditions.push(eq(telemetry.sourceId, sourceId));
     const result = await this.db
       .select()
       .from(telemetry)
@@ -464,10 +464,12 @@ export class TelemetryRepository extends BaseRepository {
   /**
    * Get all telemetry types for a node
    */
-  async getNodeTelemetryTypes(nodeId: string, sourceId?: string): Promise<string[]> {
+  async getNodeTelemetryTypes(nodeId: string, sourceId?: SourceScope): Promise<string[]> {
     const { telemetry } = this.tables;
     const conditions = [eq(telemetry.nodeId, nodeId)];
-    if (sourceId) conditions.push(eq(telemetry.sourceId, sourceId));
+    // Hand-rolled filter: ALL_SOURCES (a symbol) must mean "no source filter",
+    // and must never be bound into eq() as a value.
+    if (typeof sourceId === 'string' && sourceId !== '') conditions.push(eq(telemetry.sourceId, sourceId));
     const result = await this.db
       .selectDistinct({ type: telemetry.telemetryType })
       .from(telemetry)
@@ -505,7 +507,7 @@ export class TelemetryRepository extends BaseRepository {
    * Purge telemetry for a node, optionally scoped to a source.
    * Delegates to deleteTelemetryByNode.
    */
-  async purgeNodeTelemetry(nodeNum: number, sourceId?: string): Promise<number> {
+  async purgeNodeTelemetry(nodeNum: number, sourceId?: SourceScope): Promise<number> {
     return this.deleteTelemetryByNode(nodeNum, sourceId);
   }
 
@@ -514,7 +516,7 @@ export class TelemetryRepository extends BaseRepository {
    * Deletes only position-related telemetry types (latitude, longitude, altitude, etc.)
    * Keeps branching: MySQL doesn't support .returning().
    */
-  async purgePositionHistory(nodeNum: number, sourceId?: string): Promise<number> {
+  async purgePositionHistory(nodeNum: number, sourceId?: SourceScope): Promise<number> {
     const positionTypes = [
       'latitude', 'longitude', 'altitude',
       'ground_speed', 'ground_track',
@@ -669,7 +671,7 @@ export class TelemetryRepository extends BaseRepository {
    * nodeNum on other sources.
    * Keeps branching: MySQL doesn't support .returning().
    */
-  async deleteTelemetryByNode(nodeNum: number, sourceId?: string): Promise<number> {
+  async deleteTelemetryByNode(nodeNum: number, sourceId?: SourceScope): Promise<number> {
     const { telemetry } = this.tables;
     const condition = and(eq(telemetry.nodeNum, nodeNum), this.withSourceScope(telemetry, sourceId));
 
@@ -693,7 +695,7 @@ export class TelemetryRepository extends BaseRepository {
   /**
    * Delete all telemetry, optionally scoped to a single source.
    */
-  async deleteAllTelemetry(sourceId?: string): Promise<number> {
+  async deleteAllTelemetry(sourceId?: SourceScope): Promise<number> {
     const { telemetry } = this.tables;
     const countQuery = this.db.select({ count: count() }).from(telemetry);
     const result = await (sourceId
@@ -717,28 +719,32 @@ export class TelemetryRepository extends BaseRepository {
     nodeId: string,
     limit: number = 10
   ): Promise<Array<{ latitude: number; longitude: number; timestamp: number }>> {
-    // Get estimated_latitude records
+    // Get estimated_latitude records.
+    // Intentional cross-source: estimated positions are pooled per physical
+    // node across all sources by design (issue #3271).
     const latRecords = await this.getTelemetryByNode(
       nodeId,
       limit * 2, // Get extra to account for potential unmatched records
       undefined,
       undefined,
       0,
-      'estimated_latitude'
+      'estimated_latitude',
+      ALL_SOURCES
     );
 
     if (latRecords.length === 0) {
       return [];
     }
 
-    // Get estimated_longitude records
+    // Get estimated_longitude records (intentional cross-source — see above)
     const lonRecords = await this.getTelemetryByNode(
       nodeId,
       limit * 2,
       undefined,
       undefined,
       0,
-      'estimated_longitude'
+      'estimated_longitude',
+      ALL_SOURCES
     );
 
     if (lonRecords.length === 0) {
@@ -773,7 +779,7 @@ export class TelemetryRepository extends BaseRepository {
   /**
    * Get all nodes with their telemetry types
    */
-  async getAllNodesTelemetryTypes(sourceId?: string): Promise<Map<string, string[]>> {
+  async getAllNodesTelemetryTypes(sourceId?: SourceScope): Promise<Map<string, string[]>> {
     const map = new Map<string, string[]>();
     const { telemetry } = this.tables;
 
@@ -928,7 +934,7 @@ export class TelemetryRepository extends BaseRepository {
     sinceTimestamp: number | undefined,
     intervalMinutes: number,
     maxHours: number | undefined,
-    sourceId: string | undefined
+    sourceId: SourceScope | undefined
   ): DbTelemetry[] {
     if (!this.sqliteDb) {
       throw new Error('getTelemetryByNodeAveragedSqlite is SQLite-only');
@@ -1053,7 +1059,7 @@ export class TelemetryRepository extends BaseRepository {
     sinceTimestamp: number | undefined,
     intervalMinutes: number,
     _maxHours: number | undefined,
-    sourceId: string | undefined
+    sourceId: SourceScope | undefined
   ): Promise<DbTelemetry[]> {
     const { telemetry } = this.tables;
     const rawTypes = TelemetryRepository.RAW_VALUE_TYPES;

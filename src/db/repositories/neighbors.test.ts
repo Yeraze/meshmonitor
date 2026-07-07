@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
 import { NeighborsRepository } from './neighbors.js';
+import { ALL_SOURCES } from './base.js';
 import { DbNeighborInfo } from '../types.js';
 import {
   TestBackend,
@@ -85,7 +86,7 @@ function runNeighborsTests(getBackend: () => TestBackend) {
     const neighbor = makeNeighbor();
     await repo.insertNeighborInfo(neighbor);
 
-    const all = await repo.getAllNeighborInfo();
+    const all = await repo.getAllNeighborInfo(ALL_SOURCES);
     expect(all).toHaveLength(1);
     expect(all[0].nodeNum).toBe(100);
     expect(all[0].neighborNodeNum).toBe(200);
@@ -106,7 +107,7 @@ function runNeighborsTests(getBackend: () => TestBackend) {
     ];
     await repo.insertNeighborInfoBatch(records);
 
-    const all = await repo.getAllNeighborInfo();
+    const all = await repo.getAllNeighborInfo(ALL_SOURCES);
     expect(all).toHaveLength(3);
   });
 
@@ -118,7 +119,7 @@ function runNeighborsTests(getBackend: () => TestBackend) {
     }
 
     await repo.insertNeighborInfoBatch([]);
-    const all = await repo.getAllNeighborInfo();
+    const all = await repo.getAllNeighborInfo(ALL_SOURCES);
     expect(all).toHaveLength(0);
   });
 
@@ -135,11 +136,11 @@ function runNeighborsTests(getBackend: () => TestBackend) {
       makeNeighbor({ nodeNum: 999, neighborNodeNum: 400 }),
     ]);
 
-    const neighbors = await repo.getNeighborsForNode(100);
+    const neighbors = await repo.getNeighborsForNode(100, ALL_SOURCES);
     expect(neighbors).toHaveLength(2);
     neighbors.forEach(n => expect(n.nodeNum).toBe(100));
 
-    const others = await repo.getNeighborsForNode(999);
+    const others = await repo.getNeighborsForNode(999, ALL_SOURCES);
     expect(others).toHaveLength(1);
     expect(others[0].neighborNodeNum).toBe(400);
   });
@@ -151,7 +152,7 @@ function runNeighborsTests(getBackend: () => TestBackend) {
       return;
     }
 
-    const neighbors = await repo.getNeighborsForNode(12345);
+    const neighbors = await repo.getNeighborsForNode(12345, ALL_SOURCES);
     expect(neighbors).toHaveLength(0);
   });
 
@@ -167,7 +168,7 @@ function runNeighborsTests(getBackend: () => TestBackend) {
       makeNeighbor({ nodeNum: 300, neighborNodeNum: 400 }),
     ]);
 
-    const all = await repo.getAllNeighborInfo();
+    const all = await repo.getAllNeighborInfo(ALL_SOURCES);
     expect(all).toHaveLength(2);
   });
 
@@ -184,9 +185,9 @@ function runNeighborsTests(getBackend: () => TestBackend) {
       makeNeighbor({ nodeNum: 999, neighborNodeNum: 400 }),
     ]);
 
-    await repo.deleteNeighborInfoForNode(100);
+    await repo.deleteNeighborInfoForNode(100, ALL_SOURCES);
 
-    const all = await repo.getAllNeighborInfo();
+    const all = await repo.getAllNeighborInfo(ALL_SOURCES);
     expect(all).toHaveLength(1);
     expect(all[0].nodeNum).toBe(999);
   });
@@ -290,7 +291,7 @@ function runNeighborsTests(getBackend: () => TestBackend) {
     await repo.deleteAllNeighborInfo();
 
     expect(await repo.getNeighborCount()).toBe(0);
-    const all = await repo.getAllNeighborInfo();
+    const all = await repo.getAllNeighborInfo(ALL_SOURCES);
     expect(all).toHaveLength(0);
   });
 
@@ -316,7 +317,7 @@ function runNeighborsTests(getBackend: () => TestBackend) {
     const deleted = await repo.cleanupOldNeighborInfo(30);
     expect(deleted).toBe(2);
 
-    const remaining = await repo.getAllNeighborInfo();
+    const remaining = await repo.getAllNeighborInfo(ALL_SOURCES);
     expect(remaining).toHaveLength(2);
     remaining.forEach(r => expect(r.timestamp).toBeGreaterThanOrEqual(tenDaysAgo));
   });
@@ -346,7 +347,7 @@ function runNeighborsTests(getBackend: () => TestBackend) {
     const neighbor = makeNeighbor({ snr: null, lastRxTime: null });
     await repo.insertNeighborInfo(neighbor);
 
-    const all = await repo.getAllNeighborInfo();
+    const all = await repo.getAllNeighborInfo(ALL_SOURCES);
     expect(all).toHaveLength(1);
     expect(all[0].snr).toBeNull();
     expect(all[0].lastRxTime).toBeNull();
@@ -366,9 +367,9 @@ function runNeighborsTests(getBackend: () => TestBackend) {
       makeNeighbor({ nodeNum: 300, neighborNodeNum: 400 }), // unrelated row
     ]);
 
-    await repo.deleteNeighborInfoInvolvingNode(100);
+    await repo.deleteNeighborInfoInvolvingNode(100, ALL_SOURCES);
 
-    const remaining = await repo.getAllNeighborInfo();
+    const remaining = await repo.getAllNeighborInfo(ALL_SOURCES);
     expect(remaining).toHaveLength(1);
     expect(remaining[0].nodeNum).toBe(300);
     expect(remaining[0].neighborNodeNum).toBe(400);
@@ -382,9 +383,9 @@ function runNeighborsTests(getBackend: () => TestBackend) {
     }
 
     await repo.insertNeighborInfo(makeNeighbor({ nodeNum: 100, neighborNodeNum: 200 }));
-    await repo.deleteNeighborInfoInvolvingNode(999);
+    await repo.deleteNeighborInfoInvolvingNode(999, ALL_SOURCES);
 
-    const remaining = await repo.getAllNeighborInfo();
+    const remaining = await repo.getAllNeighborInfo(ALL_SOURCES);
     expect(remaining).toHaveLength(1);
   });
 
