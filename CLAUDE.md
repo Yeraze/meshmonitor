@@ -34,6 +34,22 @@
 - **Never push directly to main. Always use a branch.**
 - After bulk find-and-replace or sed, verify modified functions have correct `async`/`await` signatures. Route handlers and callbacks need `async` if `await` was added inside.
 
+### Response envelope
+API handlers use a shared envelope helper — `src/server/utils/apiResponse.ts`:
+- Success: `ok(res, data)` → `{ success: true, data }` (omit `data` for `{ success: true }`).
+- Error: `fail(res, status, code, message, extra?)` → `{ success: false, error, code, ...extra }`.
+
+**New or modified handlers must use these.** `code` is a SCREAMING_SNAKE machine
+code; reuse an existing one where it fits.
+
+**Gotcha:** the frontend `ApiService.request()` returns the raw JSON body and
+does **not** unwrap `data`. So `ok(res, x)` is only correct for handlers that
+already return `{ success: true, data }` — converting a bare-payload handler
+(`res.json(array)`) breaks its consumer. `fail()` is always safe: `ApiService`
+reads only `error`/`code`/`retryAfterSeconds` and ignores `success` on errors.
+Existing bare-`{error}` handlers convert opportunistically as they're touched
+(Phases 2/4); this is not a mass conversion.
+
 ## Multi-Source Architecture (4.x)
 
 MeshMonitor 4.x supports **N concurrent Meshtastic node connections** ("sources"). Pre-4.0 code that referenced a singleton `meshtasticManager` is now a `@deprecated` JSDoc-tagged compatibility shim at the bottom of `src/server/meshtasticManager.ts` — IDEs will strikethrough usages but `tsc` does not error.
