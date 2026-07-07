@@ -199,7 +199,7 @@ export class TelemetryRepository extends BaseRepository {
     sourceId?: SourceScope
   ): Promise<number> {
     const { telemetry } = this.tables;
-    let conditions = [eq(telemetry.nodeId, nodeId)];
+    const conditions = [eq(telemetry.nodeId, nodeId)];
 
     const sourceScope = this.withSourceScope(telemetry, sourceId);
     if (sourceScope) conditions.push(sourceScope);
@@ -235,7 +235,7 @@ export class TelemetryRepository extends BaseRepository {
     sourceId?: SourceScope
   ): Promise<DbTelemetry[]> {
     const { telemetry } = this.tables;
-    let conditions = [eq(telemetry.nodeId, nodeId)];
+    const conditions = [eq(telemetry.nodeId, nodeId)];
 
     const sourceScope = this.withSourceScope(telemetry, sourceId);
     if (sourceScope) conditions.push(sourceScope);
@@ -274,7 +274,7 @@ export class TelemetryRepository extends BaseRepository {
     const positionTypes = ['latitude', 'longitude', 'altitude', 'ground_speed', 'ground_track'];
     const { telemetry } = this.tables;
 
-    let conditions = [
+    const conditions = [
       eq(telemetry.nodeId, nodeId),
       inArray(telemetry.telemetryType, positionTypes),
     ];

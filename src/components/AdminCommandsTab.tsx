@@ -719,7 +719,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               .catch(error => ({ index, result: null, error }))
           );
           
-          let results = await Promise.allSettled(channelRequests);
+          const results = await Promise.allSettled(channelRequests);
           const failedChannels: number[] = [];
           const maxRetries = 2;
           let retryCount = 0;
@@ -1263,7 +1263,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         );
         
         // Wait for all requests to complete (or timeout)
-        let results = await Promise.allSettled(channelRequests);
+        const results = await Promise.allSettled(channelRequests);
         
         // Track which channels failed and need retry
         const failedChannels: number[] = [];

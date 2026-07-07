@@ -16,6 +16,10 @@ export default [
       '*.config.ts',
       'eslint.config.mjs',
       '.eslintrc.cjs',
+      'docs/**',      // VitePress site is its own project; .vitepress/cache is build output
+      'examples/**',
+      'protobufs/**', // git submodule — vendored
+      'public/**',
     ],
   },
   {
@@ -44,13 +48,17 @@ export default [
     rules: {
       ...js.configs.recommended.rules,
       ...typescript.configs.recommended.rules,
+      // TypeScript's own compiler reports undefined identifiers; the core rule only
+      // produces false positives on ambient/type globals (NodeJS, React, vi, RequestInfo).
+      // This is the standard typescript-eslint recommendation.
+      'no-undef': 'off',
       'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
+      'react-hooks/exhaustive-deps': 'error',          // was 'warn' — new violations blocked; existing baselined
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },
       ],
-      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-explicit-any': 'error',   // was 'warn' — new any blocked; existing baselined
       '@typescript-eslint/no-unused-vars': [
         'error',
         {
@@ -60,7 +68,7 @@ export default [
         },
       ],
       'no-control-regex': 'off',
-      'prefer-const': 'warn',
+      'prefer-const': 'error',                          // was 'warn' — auto-fixed in WP2
       'no-restricted-syntax': [
         'error',
         {
@@ -112,6 +120,43 @@ export default [
     rules: {
       '@typescript-eslint/no-var-requires': 'off',
       '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+  {
+    // Standalone Node utility scripts and test helpers live outside tsconfig.json;
+    // parse them without the type-aware project service so parser errors don't fire.
+    files: [
+      'scripts/**/*.{js,mjs,cjs,ts}',
+      '*.{js,mjs,cjs}',
+      'tests/**/*.{js,mjs,cjs}',
+    ],
+    languageOptions: { parserOptions: { project: false } },
+  },
+  {
+    // Phase 1.4 ratchet: components/pages must not call the network directly.
+    // Use ApiService (src/services/api.ts) or a TanStack query hook. Existing
+    // violations are frozen by the lint ratchet; they migrate in remediation Phase 5.
+    // NOTE: this block REPLACES no-restricted-syntax for components/pages (flat-config
+    // semantics). The SQL-ban selectors are not needed here — components/pages never
+    // touch the DB directly.
+    files: ['src/components/**', 'src/pages/**'],
+    ignores: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.name='fetch']",
+          message: "Raw fetch() is banned in components/pages. Use ApiService (src/services/api.ts) or a TanStack query hook. See remediation Phase 5.",
+        },
+        {
+          selector: "CallExpression[callee.object.name='window'][callee.property.name='fetch']",
+          message: "Raw window.fetch() is banned in components/pages. Use ApiService or a query hook.",
+        },
+        {
+          selector: "CallExpression[callee.object.name='globalThis'][callee.property.name='fetch']",
+          message: "Raw globalThis.fetch() is banned in components/pages. Use ApiService or a query hook.",
+        },
+      ],
     },
   },
   {

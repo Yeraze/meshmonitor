@@ -884,7 +884,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
                   // Add metadata fields (decoded_payload, rx_time, via_mqtt, etc.)
                   if (parsedMetadata) {
-                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                     
                     const { decoded_payload, ...otherMetadata } = parsedMetadata as Record<string, unknown>;
                     // Add other metadata fields
                     Object.assign(displayData, otherMetadata);

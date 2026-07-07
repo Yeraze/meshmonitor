@@ -31,11 +31,11 @@ export const migration = {
   up: (db: Database): void => {
     logger.info(`${LABEL} (SQLite): normalizing hex-encoded nodes.publicKey to base64...`);
     // SQLite has no native base64 encode; do the conversion in JS.
-    // eslint-disable-next-line no-restricted-syntax -- migrations require raw DML
+     
     const rows = db
       .prepare(`SELECT nodeNum, publicKey FROM nodes WHERE publicKey IS NOT NULL AND length(publicKey) = 64`)
       .all() as Array<{ nodeNum: number; publicKey: string }>;
-    // eslint-disable-next-line no-restricted-syntax -- migrations require raw DML
+     
     const update = db.prepare(`UPDATE nodes SET publicKey = ? WHERE nodeNum = ?`);
     let converted = 0;
     for (const row of rows) {

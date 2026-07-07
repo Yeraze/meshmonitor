@@ -33,7 +33,7 @@ export const migration = {
       ['path_len', 'INTEGER'],
     ] as const) {
       try {
-        // eslint-disable-next-line no-restricted-syntax -- migrations require raw DDL
+         
         db.exec(`ALTER TABLE ${TABLE} ADD COLUMN ${col} ${ddl}`);
         logger.debug(`${LABEL} (SQLite): added ${TABLE}.${col}`);
       } catch (e: any) {

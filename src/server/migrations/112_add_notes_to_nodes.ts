@@ -22,7 +22,7 @@ export const migration = {
   up: (db: Database): void => {
     logger.info(`${LABEL} (SQLite): adding ${TABLE}.${COLUMN}...`);
     try {
-      // eslint-disable-next-line no-restricted-syntax -- migrations require raw DDL
+       
       db.exec(`ALTER TABLE ${TABLE} ADD COLUMN ${COLUMN} TEXT`);
     } catch (e: any) {
       if (e.message?.includes('duplicate column')) {

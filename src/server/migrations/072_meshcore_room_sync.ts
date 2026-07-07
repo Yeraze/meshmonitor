@@ -30,7 +30,7 @@ export const migration = {
     logger.info(`${LABEL} (SQLite): adding room sync columns to ${TABLE}...`);
     for (const col of COLUMNS) {
       try {
-        // eslint-disable-next-line no-restricted-syntax -- migrations require raw DDL
+         
         db.exec(`ALTER TABLE ${TABLE} ADD COLUMN ${col.name} ${col.sqliteDef}`);
         logger.debug(`${LABEL} (SQLite): added ${TABLE}.${col.name}`);
       } catch (e: any) {

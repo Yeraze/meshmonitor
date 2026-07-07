@@ -112,6 +112,21 @@ afterEach(() => harness.cleanup());
 - ESLint rule (`no-restricted-syntax` in `eslint.config.mjs`) forbids `this.db.prepare`, `this.db.exec`, `postgresPool.query`, `mysqlPool.query` outside `src/server/migrations/**` and test files.
 - Intentional exceptions must carry `// eslint-disable-next-line no-restricted-syntax -- <reason>`.
 
+### ESLint Ratchet (remediation #3962 Task 1.4)
+Three lint commands:
+- `npm run lint` — full ESLint report; noisy during burn-down (thousands of existing violations). For local exploration only.
+- `npm run lint:ci` — the **CI gate**. Runs `scripts/lint-ratchet.mjs`: fails only when a file's per-rule violation count exceeds the checked-in baseline (`eslint-baseline.json`). **This is what CI checks — it must exit 0.**
+- `npm run lint:baseline` — regenerate `eslint-baseline.json` from the current tree. Run **after intentionally fixing violations** (baseline shrinks). Never run it to paper over new ones — reviewers will flag a baseline that grows rule counts.
+
+**Rules now errors (existing violations frozen by baseline; burn them down, never up):**
+- `@typescript-eslint/no-explicit-any` — 2,026 sites baselined. Burn down in Phase 6.
+- `react-hooks/exhaustive-deps` — 110 sites. Do NOT auto-fix; missing deps can cause render loops. Fix per-site with behavior verification or a targeted `eslint-disable-next-line` with an issue-ref reason.
+- `prefer-const` — 3 residual sites (destructuring edge cases).
+
+**Raw `fetch()` banned in `src/components/**` and `src/pages/**`** — 64 existing sites frozen by baseline; they migrate to `ApiService` (`src/services/api.ts`) or a TanStack query hook in Phase 5. New components/pages must not use raw `fetch()`.
+
+**Adding a violation you can't avoid:** fix it, or add a targeted `// eslint-disable-next-line <rule> -- #<issue> <reason>`, or (last resort, with reviewer sign-off) `npm run lint:baseline`. Treat any PR that *grows* a rule count in the baseline as a red flag.
+
 ### Migration Registry
 Migrations use a centralized registry in `src/db/migrations.ts`. Each migration has functions for all three backends.
 

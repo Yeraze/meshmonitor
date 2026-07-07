@@ -37,9 +37,9 @@ import v1Messages from './messages.js';
 
 describe('v1 messages — sourceId scoping', () => {
   let harness: RouteTestHarness;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   let permSpy: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   let globalPermSpy: any;
 
   beforeEach(async () => {

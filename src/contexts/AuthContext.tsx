@@ -94,7 +94,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await api.get<AuthStatus>('/api/auth/status');
 
       // Fetch channel database permissions if authenticated
-      let channelDbPermissions: ChannelDbPermissionSet = {};
+      const channelDbPermissions: ChannelDbPermissionSet = {};
       if (response.authenticated && response.user) {
         try {
           const cdPermsResponse = await api.get<{

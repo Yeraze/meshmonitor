@@ -120,7 +120,7 @@ export function computeMatrixValues(legacy: Partial<Record<LegacySuffix, string>
 export const migration = {
   up: (db: Database): void => {
     logger.info(`${LABEL} (SQLite): folding legacy auto-ack settings into the 2x2 matrix...`);
-    // eslint-disable-next-line no-restricted-syntax -- migrations require raw SQL
+     
     const rows = db.prepare(`SELECT key, value FROM settings WHERE key LIKE '%autoAck%'`).all() as SettingRow[];
     const inserts = computeMigrationInserts(rows);
     if (inserts.length === 0) {
@@ -132,7 +132,7 @@ export const migration = {
     // would silently swallow it (writing nothing); on Postgres it hard-fails.
     // Always supply the timestamps.
     const now = Date.now();
-    // eslint-disable-next-line no-restricted-syntax -- migrations require raw SQL
+     
     const stmt = db.prepare(`INSERT OR IGNORE INTO settings (key, value, createdAt, updatedAt) VALUES (?, ?, ?, ?)`);
     const tx = db.transaction((items: SettingRow[]) => {
       for (const it of items) stmt.run(it.key, it.value, now, now);

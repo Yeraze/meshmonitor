@@ -75,7 +75,7 @@ export function shouldSuppressToast(n: ParsedClientNotification): boolean {
  */
 export function sanitizeNotificationMessage(message: string, maxLen = 500): string {
   const cleaned = (message ?? '')
-    // eslint-disable-next-line no-control-regex -- strip control chars from untrusted device input
+     
     .replace(/[\x00-\x1f\x7f-\x9f]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();

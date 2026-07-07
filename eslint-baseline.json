@@ -1,0 +1,1319 @@
+{
+  "check-admin.mjs": {
+    "no-restricted-syntax": 2
+  },
+  "reset-admin.mjs": {
+    "no-restricted-syntax": 2
+  },
+  "scripts/insert-test-node.js": {
+    "no-restricted-syntax": 3
+  },
+  "scripts/news-to-blog.mjs": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "scripts/rebuild-config-url.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "scripts/test-security-scan.js": {
+    "no-restricted-syntax": 2
+  },
+  "src/App.tsx": {
+    "@typescript-eslint/no-explicit-any": 6,
+    "preserve-caught-error": 1,
+    "react-hooks/exhaustive-deps": 22
+  },
+  "src/cli/migrate-db.ts": {
+    "@typescript-eslint/no-explicit-any": 3,
+    "no-useless-assignment": 1
+  },
+  "src/components/APITokenManagement.tsx": {
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/AdminCommandsTab.tsx": {
+    "@typescript-eslint/no-explicit-any": 62,
+    "@typescript-eslint/no-unused-vars": 1,
+    "no-case-declarations": 2,
+    "preserve-caught-error": 2,
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/Analysis/SolarMonitoringReport.tsx": {
+    "no-restricted-syntax": 1
+  },
+  "src/components/AuditLogTab.tsx": {
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/AutoAcknowledgeSection.tsx": {
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/AutoAnnounceSection.tsx": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "no-restricted-syntax": 2,
+    "react-hooks/exhaustive-deps": 3
+  },
+  "src/components/AutoDeleteByDistanceSection.tsx": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/components/AutoFavoriteSection.tsx": {
+    "@typescript-eslint/no-unused-vars": 1,
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/AutoHeapManagementSection.tsx": {
+    "@typescript-eslint/no-unused-vars": 1,
+    "react-hooks/exhaustive-deps": 2
+  },
+  "src/components/AutoKeyManagementSection.tsx": {
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/AutoLocalStatsSection.tsx": {
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/AutoResponderSection.tsx": {
+    "@typescript-eslint/no-explicit-any": 6,
+    "no-restricted-syntax": 1,
+    "react-hooks/exhaustive-deps": 2
+  },
+  "src/components/AutoTracerouteSection.tsx": {
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/AutoWelcomeSection.tsx": {
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/ChangePasswordModal.tsx": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/components/ChannelsTab.tsx": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/ConfigurationTab.tsx": {
+    "@typescript-eslint/no-explicit-any": 4,
+    "react-hooks/exhaustive-deps": 2
+  },
+  "src/components/CopyNodeInfoModal/CopyNodeInfoModal.tsx": {
+    "@typescript-eslint/no-explicit-any": 3,
+    "no-restricted-syntax": 1
+  },
+  "src/components/CustomThemeManagement.tsx": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "no-restricted-syntax": 2
+  },
+  "src/components/Dashboard/DashboardMap.tsx": {
+    "@typescript-eslint/no-explicit-any": 9,
+    "no-restricted-syntax": 1
+  },
+  "src/components/Dashboard/DashboardNeighborPopup.tsx": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/components/Dashboard/DashboardNodePopup.tsx": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/components/Dashboard/DashboardSidebar.tsx": {
+    "@typescript-eslint/no-explicit-any": 6
+  },
+  "src/components/Dashboard/hooks/useDashboardData.ts": {
+    "no-useless-assignment": 1
+  },
+  "src/components/EmbedMap.tsx": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "no-restricted-syntax": 5
+  },
+  "src/components/EmojiPickerModal/EmojiPickerModal.tsx": {
+    "react-refresh/only-export-components": 1
+  },
+  "src/components/GeoJsonLayerManager.tsx": {
+    "no-restricted-syntax": 1
+  },
+  "src/components/GeoJsonOverlay.tsx": {
+    "no-restricted-syntax": 1
+  },
+  "src/components/GeofenceTriggersSection.test.tsx": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/components/GeofenceTriggersSection.tsx": {
+    "@typescript-eslint/no-unused-vars": 1,
+    "no-restricted-syntax": 1,
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/InfoTab.tsx": {
+    "@typescript-eslint/no-explicit-any": 11,
+    "no-restricted-syntax": 1,
+    "react-hooks/exhaustive-deps": 7
+  },
+  "src/components/LinkPreview.tsx": {
+    "react-hooks/exhaustive-deps": 2
+  },
+  "src/components/LinkQualityChart.tsx": {
+    "react-refresh/only-export-components": 1
+  },
+  "src/components/MQTT/MqttBridgeConfigurationView.tsx": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/components/MQTT/mqttBridgeConfig.ts": {
+    "@typescript-eslint/no-explicit-any": 10
+  },
+  "src/components/MapAnalysis/MapAnalysisContext.tsx": {
+    "react-refresh/only-export-components": 1
+  },
+  "src/components/MapAnalysis/layers/NeighborLinksLayer.tsx": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/components/MapStyleManager.tsx": {
+    "no-restricted-syntax": 1
+  },
+  "src/components/MeshCore/CliConsoleBody.tsx": {
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/MeshCore/MeshCoreAutoAckSection.tsx": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/components/MeshCore/MeshCoreAutoAnnounceSection.tsx": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/components/MeshCore/MeshCoreAutoResponderSection.tsx": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/components/MeshCore/MeshCoreChannelsConfigSection.tsx": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/components/MeshCore/MeshCoreChannelsView.tsx": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/components/MeshCore/MeshCoreConfigurationView.tsx": {
+    "react-hooks/exhaustive-deps": 3
+  },
+  "src/components/MeshCore/MeshCoreInfoView.tsx": {
+    "no-restricted-syntax": 1
+  },
+  "src/components/MeshCore/MeshCoreMap.tsx": {
+    "no-restricted-syntax": 1
+  },
+  "src/components/MeshCore/MeshCoreTimerTriggersSection.tsx": {
+    "@typescript-eslint/no-explicit-any": 5
+  },
+  "src/components/MeshCore/hooks/useMeshCoreUnread.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/components/MessagesTab.tsx": {
+    "react-hooks/exhaustive-deps": 2
+  },
+  "src/components/NodesTab.tsx": {
+    "@typescript-eslint/no-explicit-any": 12,
+    "no-restricted-syntax": 5,
+    "no-useless-assignment": 1,
+    "react-hooks/exhaustive-deps": 8
+  },
+  "src/components/NotificationsTab.tsx": {
+    "@typescript-eslint/no-explicit-any": 2,
+    "no-useless-escape": 1,
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/PacketMonitorPanel.tsx": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/components/PacketRateChart.tsx": {
+    "react-refresh/only-export-components": 1
+  },
+  "src/components/PacketStatsChart.tsx": {
+    "react-refresh/only-export-components": 1
+  },
+  "src/components/PolarGridOverlay.test.tsx": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/components/PolarGridOverlay.tsx": {
+    "react-hooks/exhaustive-deps": 3
+  },
+  "src/components/PositionOverrideModal/PositionOverrideModal.tsx": {
+    "no-restricted-syntax": 1
+  },
+  "src/components/RebootModal.tsx": {
+    "prefer-const": 1,
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/RemoteAdminScannerSection.tsx": {
+    "@typescript-eslint/no-explicit-any": 5,
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/RouteSegmentTraceroutesModal.tsx": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/components/SecurityTab.tsx": {
+    "@typescript-eslint/no-explicit-any": 2,
+    "no-restricted-syntax": 1,
+    "react-hooks/exhaustive-deps": 2
+  },
+  "src/components/SettingsTab.tsx": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "no-restricted-syntax": 3,
+    "react-hooks/exhaustive-deps": 4
+  },
+  "src/components/SmartHopsChart.tsx": {
+    "react-refresh/only-export-components": 1
+  },
+  "src/components/SpiderfierController.tsx": {
+    "no-empty-pattern": 1
+  },
+  "src/components/TelemetryChart.tsx": {
+    "react-refresh/only-export-components": 2
+  },
+  "src/components/ThemeEditor.tsx": {
+    "@typescript-eslint/no-explicit-any": 5
+  },
+  "src/components/TimerTriggersSection.tsx": {
+    "@typescript-eslint/no-unused-vars": 1,
+    "no-restricted-syntax": 1,
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/ToastContainer.tsx": {
+    "react-refresh/only-export-components": 2
+  },
+  "src/components/TracerouteHistoryModal.tsx": {
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/TracerouteWidget.tsx": {
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/UsersTab.tsx": {
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/VectorTileLayer.tsx": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/components/WaypointEditorModal.tsx": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/components/admin-commands/AutoFavoriteManagementSection.tsx": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/components/admin-commands/DeviceConfigurationSection.tsx": {
+    "@typescript-eslint/no-explicit-any": 5
+  },
+  "src/components/admin-commands/ModuleConfigurationSection.tsx": {
+    "@typescript-eslint/no-explicit-any": 5
+  },
+  "src/components/admin-commands/RadioConfigurationSection.tsx": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/components/admin-commands/channelLoadingUtils.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/components/admin-commands/nodeOptionsUtils.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/components/admin-commands/useAdminCommandsState.ts": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "no-case-declarations": 1
+  },
+  "src/components/auto-responder/TriggerItem.tsx": {
+    "react-hooks/exhaustive-deps": 2
+  },
+  "src/components/automations/AutomationBuilder.tsx": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/components/automations/AutomationTester.tsx": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/components/automations/AutomationsPage.tsx": {
+    "@typescript-eslint/no-explicit-any": 8
+  },
+  "src/components/automations/SubstitutionsHelp.tsx": {
+    "react-refresh/only-export-components": 2
+  },
+  "src/components/automations/compile.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/components/automations/outcomeMeta.tsx": {
+    "react-refresh/only-export-components": 1
+  },
+  "src/components/configuration/BackupManagementSection.tsx": {
+    "no-restricted-syntax": 6,
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/configuration/ChannelDatabaseSection.tsx": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "react-hooks/exhaustive-deps": 2
+  },
+  "src/components/configuration/ChannelsConfigSection.tsx": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/components/configuration/DatabaseMaintenanceSection.tsx": {
+    "no-restricted-syntax": 5,
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/configuration/DeviceConfigSection.tsx": {
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/configuration/ExportConfigModal.tsx": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/components/configuration/FirmwareUpdateSection.tsx": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/configuration/ImportConfigModal.tsx": {
+    "@typescript-eslint/no-explicit-any": 5,
+    "@typescript-eslint/no-unused-vars": 2,
+    "no-restricted-syntax": 1
+  },
+  "src/components/configuration/MQTTConfigSection.tsx": {
+    "no-restricted-syntax": 1
+  },
+  "src/components/configuration/SystemBackupSection.tsx": {
+    "no-restricted-syntax": 6,
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/configuration/TelemetryConfigSection.tsx": {
+    "react-hooks/exhaustive-deps": 1
+  },
+  "src/components/settings/EmbedSettings.tsx": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/components/settings/PkiDmGlobalToggle.tsx": {
+    "no-restricted-syntax": 1
+  },
+  "src/contexts/AuthContext.test.tsx": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/contexts/AuthContext.tsx": {
+    "react-refresh/only-export-components": 2
+  },
+  "src/contexts/AutomationContext.tsx": {
+    "react-refresh/only-export-components": 1
+  },
+  "src/contexts/CsrfContext.tsx": {
+    "react-refresh/only-export-components": 1
+  },
+  "src/contexts/DataContext.tsx": {
+    "@typescript-eslint/no-explicit-any": 6,
+    "react-refresh/only-export-components": 1
+  },
+  "src/contexts/MapContext.tsx": {
+    "react-hooks/exhaustive-deps": 14,
+    "react-refresh/only-export-components": 1
+  },
+  "src/contexts/MessagingContext.tsx": {
+    "react-refresh/only-export-components": 1
+  },
+  "src/contexts/SaveBarContext.tsx": {
+    "react-refresh/only-export-components": 2
+  },
+  "src/contexts/SettingsContext.tsx": {
+    "react-hooks/exhaustive-deps": 1,
+    "react-refresh/only-export-components": 8
+  },
+  "src/contexts/SourceContext.tsx": {
+    "react-refresh/only-export-components": 1
+  },
+  "src/contexts/UIContext.test.tsx": {
+    "no-useless-assignment": 2
+  },
+  "src/contexts/UIContext.tsx": {
+    "@typescript-eslint/no-explicit-any": 3,
+    "react-refresh/only-export-components": 1
+  },
+  "src/contexts/WebSocketContext.tsx": {
+    "react-refresh/only-export-components": 2
+  },
+  "src/db/activeSchema.ts": {
+    "@typescript-eslint/no-explicit-any": 55
+  },
+  "src/db/drivers/mysql.ts": {
+    "preserve-caught-error": 1
+  },
+  "src/db/drivers/postgres.ts": {
+    "preserve-caught-error": 1
+  },
+  "src/db/drivers/sqlite.ts": {
+    "preserve-caught-error": 1
+  },
+  "src/db/index.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/db/migrationRegistry.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/db/migrations.sourcePresent.test.ts": {
+    "preserve-caught-error": 1
+  },
+  "src/db/repositories/analysis.ts": {
+    "no-useless-assignment": 1
+  },
+  "src/db/repositories/auth.migration.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/db/repositories/auth.ts": {
+    "@typescript-eslint/no-explicit-any": 34,
+    "@typescript-eslint/no-unused-vars": 3
+  },
+  "src/db/repositories/automationVariables.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/db/repositories/automations.ts": {
+    "@typescript-eslint/no-explicit-any": 7
+  },
+  "src/db/repositories/base.ts": {
+    "@typescript-eslint/no-explicit-any": 19
+  },
+  "src/db/repositories/channelDatabase.ts": {
+    "@typescript-eslint/no-explicit-any": 9
+  },
+  "src/db/repositories/channels.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/db/repositories/channels.ts": {
+    "@typescript-eslint/no-explicit-any": 9
+  },
+  "src/db/repositories/embedProfiles.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/db/repositories/ignoredNodes.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/db/repositories/messages.ts": {
+    "@typescript-eslint/no-explicit-any": 20
+  },
+  "src/db/repositories/misc.ts": {
+    "@typescript-eslint/no-explicit-any": 79
+  },
+  "src/db/repositories/neighbors.ts": {
+    "@typescript-eslint/no-explicit-any": 5
+  },
+  "src/db/repositories/nodes.ts": {
+    "@typescript-eslint/no-explicit-any": 37
+  },
+  "src/db/repositories/notifications.ts": {
+    "@typescript-eslint/no-explicit-any": 18,
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/db/repositories/savedRegions.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/db/repositories/settings.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/db/repositories/settings.ts": {
+    "@typescript-eslint/no-explicit-any": 6
+  },
+  "src/db/repositories/sources.ts": {
+    "@typescript-eslint/no-explicit-any": 5
+  },
+  "src/db/repositories/telemetry.multidb.test.ts": {
+    "@typescript-eslint/no-unused-vars": 3,
+    "preserve-caught-error": 1
+  },
+  "src/db/repositories/telemetry.ts": {
+    "@typescript-eslint/no-explicit-any": 36,
+    "no-useless-assignment": 2
+  },
+  "src/db/repositories/test-utils.ts": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "no-restricted-syntax": 2,
+    "preserve-caught-error": 2
+  },
+  "src/db/repositories/traceroutes.ts": {
+    "@typescript-eslint/no-explicit-any": 32
+  },
+  "src/db/repositories/waypoints.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/embed.tsx": {
+    "react-refresh/only-export-components": 1
+  },
+  "src/hooks/mergeNodeUpdate.ts": {
+    "@typescript-eslint/no-explicit-any": 6
+  },
+  "src/hooks/useAuthFetch.ts": {
+    "preserve-caught-error": 1
+  },
+  "src/hooks/useDashboardData.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/hooks/useDashboardData.ts": {
+    "@typescript-eslint/no-explicit-any": 6
+  },
+  "src/hooks/useMarkerSpiderfier.ts": {
+    "@typescript-eslint/no-unused-vars": 2,
+    "react-hooks/exhaustive-deps": 4
+  },
+  "src/hooks/useServerData.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/hooks/useServerData.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/hooks/useTracerouteAnalysis.emptyBack.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/hooks/useTraceroutePaths.test.tsx": {
+    "@typescript-eslint/no-unused-vars": 2
+  },
+  "src/hooks/useTraceroutePaths.tsx": {
+    "react-refresh/only-export-components": 1
+  },
+  "src/hooks/useVersionCheck.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/main.tsx": {
+    "react-refresh/only-export-components": 1
+  },
+  "src/pages/DashboardPage.tsx": {
+    "@typescript-eslint/no-explicit-any": 10,
+    "no-restricted-syntax": 9
+  },
+  "src/pages/UnifiedMessagesPage.tsx": {
+    "no-restricted-syntax": 3
+  },
+  "src/pages/UnifiedTelemetryPage.tsx": {
+    "no-restricted-syntax": 1
+  },
+  "src/server/auth/authMiddleware.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/auth/claims.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/auth/proxyAuth.ts": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "no-useless-assignment": 1
+  },
+  "src/server/config/environment.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/meshcoreCompanionCodec.ts": {
+    "no-useless-assignment": 4
+  },
+  "src/server/meshcoreManager.ts": {
+    "@typescript-eslint/no-explicit-any": 10,
+    "@typescript-eslint/no-unused-vars": 1,
+    "no-useless-assignment": 1
+  },
+  "src/server/meshcoreNativeBackend.ts": {
+    "@typescript-eslint/no-explicit-any": 37
+  },
+  "src/server/meshtasticManager.geofence.test.ts": {
+    "@typescript-eslint/no-unused-vars": 5
+  },
+  "src/server/meshtasticManager.node-identity-guards.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/meshtasticManager.timer-text.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/meshtasticManager.ts": {
+    "@typescript-eslint/no-explicit-any": 168,
+    "@typescript-eslint/no-unused-vars": 2,
+    "no-useless-assignment": 1
+  },
+  "src/server/meshtasticProtobufService.ts": {
+    "@typescript-eslint/no-explicit-any": 33,
+    "no-case-declarations": 18
+  },
+  "src/server/middleware/csrf.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/middleware/embedMiddleware.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/migrations/001_v37_baseline.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/002_create_embed_profiles.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/003_create_geofence_cooldowns.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/004_add_favorite_locked.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/005_add_time_offset_columns.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/migrations/007_add_missing_map_preference_columns.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/migrations/008_add_key_mismatch_columns.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/009_fix_custom_themes_columns.ts": {
+    "@typescript-eslint/no-explicit-any": 6
+  },
+  "src/server/migrations/010_add_auto_distance_delete_log.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/migrations/011_fix_message_nodenum_bigint.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/012_align_sqlite_auth_schema.ts": {
+    "@typescript-eslint/no-explicit-any": 9
+  },
+  "src/server/migrations/013_add_audit_log_missing_columns.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/014_add_messages_decrypted_by.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/015_add_notification_prefs_unique.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/016_rename_system_backup_columns.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/017_add_api_tokens_name_column.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/018_add_mute_columns.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/019_add_channel_to_traceroutes.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/020_create_sources.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/021_add_source_id_columns.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/022_add_source_id_to_permissions.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/023_multi_source_channels.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/024_add_source_id_to_traceroute_tables.ts": {
+    "@typescript-eslint/no-explicit-any": 7
+  },
+  "src/server/migrations/025_add_source_id_to_time_sync_nodes.ts": {
+    "@typescript-eslint/no-explicit-any": 6
+  },
+  "src/server/migrations/026_add_source_id_to_distance_delete_log.ts": {
+    "@typescript-eslint/no-explicit-any": 5
+  },
+  "src/server/migrations/027_add_source_id_to_key_repair_log.ts": {
+    "@typescript-eslint/no-explicit-any": 5
+  },
+  "src/server/migrations/028_add_source_id_to_notifications.ts": {
+    "@typescript-eslint/no-explicit-any": 20
+  },
+  "src/server/migrations/029_nodes_composite_pk.ts": {
+    "@typescript-eslint/no-explicit-any": 11
+  },
+  "src/server/migrations/030_add_source_id_to_route_segments.ts": {
+    "@typescript-eslint/no-explicit-any": 11
+  },
+  "src/server/migrations/031_drop_legacy_nodes_unique.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/032_telemetry_packet_dedupe.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/033_per_source_permissions.ts": {
+    "@typescript-eslint/no-explicit-any": 9
+  },
+  "src/server/migrations/034_add_via_store_forward.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/035_add_is_store_forward_server.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/036_telemetry_performance_indexes.ts": {
+    "@typescript-eslint/no-explicit-any": 6
+  },
+  "src/server/migrations/037_add_id_to_user_map_preferences.ts": {
+    "@typescript-eslint/no-explicit-any": 9
+  },
+  "src/server/migrations/038_cleanup_orphan_notification_prefs.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/039_purge_null_sourceid_telemetry.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/040_purge_null_sourceid_neighbor_info.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/041_drop_legacy_telemetry_nodes_fk.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/042_drop_legacy_messages_nodes_fk.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/043_drop_legacy_neighbor_info_nodes_fk.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/044_drop_legacy_traceroutes_nodes_fk.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/045_drop_legacy_route_segments_nodes_fk.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/046_add_user_map_preferences_id_sqlite.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/047_add_selected_layer_to_user_map_preferences.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/048_rebuild_ignored_nodes_per_source.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/049_perf_composite_indexes.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/050_promote_globals_to_default_source.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/051_drop_legacy_notif_prefs_userid_unique.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/052_add_source_id_to_embed_profiles.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/053_create_waypoints.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/054_add_waypoints_permission.ts": {
+    "@typescript-eslint/no-explicit-any": 5
+  },
+  "src/server/migrations/055_seed_global_waypoints_permission.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/056_add_show_traceroutes_to_embed_profiles.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/057_add_source_id_to_meshcore_tables.ts": {
+    "@typescript-eslint/no-explicit-any": 5
+  },
+  "src/server/migrations/058_collapse_meshcore_resource.ts": {
+    "@typescript-eslint/no-explicit-any": 6
+  },
+  "src/server/migrations/059_telemetry_source_node_type_ts_index.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/060_meshcore_node_telemetry_config.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/061_meshcore_nodes_composite_pk.ts": {
+    "@typescript-eslint/no-explicit-any": 5
+  },
+  "src/server/migrations/062_meshcore_messages_fromname.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/063_drop_source_id_from_channel_database.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/064_add_channel_database_permission.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/065_add_message_source_attribution.ts": {
+    "@typescript-eslint/no-explicit-any": 6
+  },
+  "src/server/migrations/066_add_transport_mechanism_to_nodes.ts": {
+    "@typescript-eslint/no-explicit-any": 5
+  },
+  "src/server/migrations/067_add_show_udp_rf_nodes_to_map_prefs.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/068_meshcore_nodes_out_path.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/069_normalize_node_public_keys_to_base64.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/070_meshcore_admin_credential.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/071_drop_legacy_psk_length_check.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/072_meshcore_room_sync.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/073_meshcore_neighbor_info.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/074_add_show_waypoints_to_map_prefs.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/075_meshcore_packet_log.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/076_add_low_battery_columns.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/077_normalize_mqtt_telemetry_keys.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/078_meshcore_packet_log_bigint_timestamp.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/079_drop_residual_notif_prefs_user_id_unique.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/080_add_low_battery_voltage_threshold.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/081_add_sources_display_order.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/082_add_estimated_positions_table.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/083_add_spoof_suspected.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/084_add_auto_favorite_targets.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/085_add_auto_favorite_ack_status.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/086_add_auto_favorite_max_neighbor_age.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/087_add_map_max_age_to_map_prefs.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/088_add_source_pki_keys.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/089_add_position_snr_hops.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/090_add_position_points_only_to_map_prefs.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/091_estimated_positions_double_precision.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/092_add_hide_from_map_to_nodes.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/093_autoack_matrix.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/094_add_meshcore_node_favorite.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/095_create_dead_drop.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/096_meshcore_neighbor_timestamp_bigint.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/097_add_packet_id_to_traceroutes.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/098_create_automations.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/099_create_automation_variables.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/migrations/100_meshcore_channel_scope.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/101_add_node_unmessagable.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/102_create_meshcore_heard_repeaters.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/migrations/104_add_channel_database_hash.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/105_add_meshcore_message_route.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/106_add_meshcore_message_scope.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/107_clear_null_island_positions.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/migrations/108_meshcore_saved_regions.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/migrations/109_clamp_future_traceroute_timestamps.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/110_add_meshcore_position_history.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/migrations/111_meshcore_node_position_source.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/112_add_notes_to_nodes.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/migrations/_legacyDefaultSource.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/mqttBridgeManager.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/mqttBrokerManager.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/mqttIngestion.ts": {
+    "@typescript-eslint/no-explicit-any": 23
+  },
+  "src/server/protobufLoader.ts": {
+    "@typescript-eslint/no-explicit-any": 11
+  },
+  "src/server/protobufService.ts": {
+    "@typescript-eslint/no-explicit-any": 52,
+    "no-case-declarations": 3,
+    "preserve-caught-error": 1
+  },
+  "src/server/routes/_channelDatabaseHandlers.ts": {
+    "@typescript-eslint/no-explicit-any": 10
+  },
+  "src/server/routes/analysisRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 13
+  },
+  "src/server/routes/apiTokenRoutes.ts": {
+    "prefer-const": 2
+  },
+  "src/server/routes/auditRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/routes/authRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 2,
+    "@typescript-eslint/no-unused-vars": 10
+  },
+  "src/server/routes/automationRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/routes/channelRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/routes/cleanupRoutes.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/routes/configRoutes.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/routes/embedPublicRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 6
+  },
+  "src/server/routes/linkPreviewRoutes.ts": {
+    "@typescript-eslint/ban-ts-comment": 1,
+    "@typescript-eslint/no-explicit-any": 1,
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/routes/maintenanceRoutes.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/routes/meshRequestRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 5
+  },
+  "src/server/routes/meshcoreRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/routes/messageRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 30
+  },
+  "src/server/routes/neighborInfoRoutes.ts": {
+    "@typescript-eslint/no-unused-vars": 2
+  },
+  "src/server/routes/newsRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/routes/notificationRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 16
+  },
+  "src/server/routes/packetRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 25
+  },
+  "src/server/routes/scriptContentRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/routes/scriptRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 9
+  },
+  "src/server/routes/securityRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 29
+  },
+  "src/server/routes/settingsRoutes.test.ts": {
+    "@typescript-eslint/no-unused-vars": 4
+  },
+  "src/server/routes/settingsRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 3,
+    "@typescript-eslint/no-unused-vars": 5
+  },
+  "src/server/routes/sourceRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 32
+  },
+  "src/server/routes/statusRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/routes/systemRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/routes/telemetryRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/routes/themeRoutes.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/routes/tracerouteRoutes.ts": {
+    "@typescript-eslint/no-unused-vars": 2
+  },
+  "src/server/routes/unifiedRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 19
+  },
+  "src/server/routes/userRoutes.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/routes/userRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "@typescript-eslint/no-unused-vars": 8
+  },
+  "src/server/routes/v1/actions.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/routes/v1/channels.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
+  "src/server/routes/v1/deprecatedShim.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/routes/v1/messages.ts": {
+    "@typescript-eslint/no-explicit-any": 6
+  },
+  "src/server/routes/v1/nodes.ts": {
+    "@typescript-eslint/no-explicit-any": 5
+  },
+  "src/server/routes/v1/positionHistory.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/routes/v1/sourceParam.ts": {
+    "@typescript-eslint/no-explicit-any": 2,
+    "no-useless-assignment": 1
+  },
+  "src/server/routes/v1/sources.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/routes/v1/telemetry.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/routes/v1/traceroutes.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/routes/v1/v1-api.test.ts": {
+    "@typescript-eslint/no-unused-vars": 19
+  },
+  "src/server/routes/waypoints.ts": {
+    "@typescript-eslint/no-explicit-any": 10
+  },
+  "src/server/server.neighbor-info-position.test.ts": {
+    "@typescript-eslint/no-unused-vars": 4
+  },
+  "src/server/server.test.ts": {
+    "@typescript-eslint/no-unused-vars": 28
+  },
+  "src/server/server.ts": {
+    "@typescript-eslint/no-explicit-any": 65,
+    "@typescript-eslint/no-unused-vars": 5,
+    "no-case-declarations": 3,
+    "preserve-caught-error": 1
+  },
+  "src/server/services/appriseNotificationService.ts": {
+    "@typescript-eslint/no-explicit-any": 5,
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/services/autoDeleteByDistanceService.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/services/automation/automationEngineService.ts": {
+    "@typescript-eslint/no-explicit-any": 6
+  },
+  "src/server/services/automation/automationEngineSingleton.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/services/automation/graphEvaluator.ts": {
+    "@typescript-eslint/no-explicit-any": 3,
+    "no-useless-assignment": 1
+  },
+  "src/server/services/backupFileService.ts": {
+    "preserve-caught-error": 5
+  },
+  "src/server/services/backupSchedulerService.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/services/channelDecryptionService.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/services/channelUrlService.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/server/services/desktopNotificationService.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/services/deviceBackupService.ts": {
+    "@typescript-eslint/no-explicit-any": 10,
+    "preserve-caught-error": 1
+  },
+  "src/server/services/duplicateKeySchedulerService.ts": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "@typescript-eslint/no-unused-vars": 2
+  },
+  "src/server/services/firmwareUpdateService.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/services/firmwareUpdateService.ts": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "preserve-caught-error": 2
+  },
+  "src/server/services/meshcoreRoomSyncScheduler.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/services/nodeInfoCopyService.ts": {
+    "@typescript-eslint/no-explicit-any": 6
+  },
+  "src/server/services/pkiDecryptionService.test.ts": {
+    "@typescript-eslint/no-unused-vars": 2
+  },
+  "src/server/services/pkiDecryptionService.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/services/pushNotificationService.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/services/retroactiveDecryptionService.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/services/securityDigestService.ts": {
+    "@typescript-eslint/no-explicit-any": 11
+  },
+  "src/server/services/solarAnalysis.ts": {
+    "no-useless-assignment": 1
+  },
+  "src/server/services/sourceDashboardData.ts": {
+    "@typescript-eslint/no-explicit-any": 8
+  },
+  "src/server/services/sourcePkiKeyStore.ts": {
+    "no-useless-assignment": 1
+  },
+  "src/server/services/systemBackupService.ts": {
+    "@typescript-eslint/no-explicit-any": 13,
+    "preserve-caught-error": 4
+  },
+  "src/server/services/systemRestoreService.test.ts": {
+    "@typescript-eslint/no-unsafe-function-type": 2
+  },
+  "src/server/services/systemRestoreService.ts": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "no-useless-assignment": 2
+  },
+  "src/server/services/upgradeService.ts": {
+    "@typescript-eslint/no-unused-vars": 4
+  },
+  "src/server/services/waypointService.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/services/webSocketService.ts": {
+    "@typescript-eslint/no-explicit-any": 32
+  },
+  "src/server/sourceManagerRegistry.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/test-helpers/permissionTestHelper.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/test-helpers/testDb.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/test-helpers/userTestHelper.ts": {
+    "@typescript-eslint/no-explicit-any": 6
+  },
+  "src/server/utils/autoAckRegex.ts": {
+    "no-useless-escape": 1
+  },
+  "src/server/utils/channelView.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/utils/dbNodeMapper.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/utils/mergeNodesAcrossSources.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/utils/notificationFiltering.ts": {
+    "@typescript-eslint/no-unused-vars": 1,
+    "no-misleading-character-class": 2
+  },
+  "src/server/utils/sourceResolver.ts": {
+    "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/utils/ssrfGuard.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/virtualNodeServer.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/virtualNodeServer.ts": {
+    "@typescript-eslint/no-explicit-any": 1,
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/services/analysisApi.ts": {
+    "@typescript-eslint/no-explicit-any": 12
+  },
+  "src/services/api.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/services/api.ts": {
+    "@typescript-eslint/no-explicit-any": 17
+  },
+  "src/services/database.autowelcome-migration.test.ts": {
+    "@typescript-eslint/no-non-null-asserted-optional-chain": 1
+  },
+  "src/services/database.ts": {
+    "@typescript-eslint/no-explicit-any": 128,
+    "@typescript-eslint/no-unused-vars": 1,
+    "no-restricted-syntax": 1,
+    "preserve-caught-error": 1
+  },
+  "src/services/lowEntropyKeyService.test.ts": {
+    "@typescript-eslint/no-unused-vars": 4
+  },
+  "src/test/setup.ts": {
+    "@typescript-eslint/no-require-imports": 1
+  },
+  "src/types/express-mysql-session.d.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/utils/logger.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/utils/loraFrequency.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/utils/meshcoreHelpers.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/utils/themeValidation.test.ts": {
+    "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/utils/themeValidation.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "test-telemetry-fix.mjs": {
+    "no-restricted-syntax": 3
+  },
+  "tests/mock-oidc/server.js": {
+    "@typescript-eslint/no-unused-vars": 3
+  },
+  "tests/unit/UserScriptsGallery.security.test.ts": {
+    "@typescript-eslint/no-unused-vars": 3,
+    "no-useless-escape": 1
+  },
+  "tests/unit/accessibilityChecker.test.ts": {
+    "@typescript-eslint/no-unused-vars": 2
+  },
+  "tests/unit/channelDatabasePermissions.test.ts": {
+    "@typescript-eslint/no-unused-vars": 2
+  },
+  "tests/unit/themeValidation.test.ts": {
+    "@typescript-eslint/no-unused-vars": 5
+  }
+}

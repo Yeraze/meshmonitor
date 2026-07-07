@@ -798,7 +798,7 @@ const location = useLocation();
   // Compute connected node name for sidebar and page title
   const connectedNodeName = useMemo(() => {
     // Find the local node from the nodes array
-    let localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
+    const localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
 
     // If currentNodeId isn't available, use localNodeInfo from /api/config
     if (!localNode && deviceInfo?.localNodeInfo) {
@@ -2467,7 +2467,7 @@ const location = useLocation();
         } else {
           setNodes(
             (data.nodes as DeviceInfo[]).map((serverNode: DeviceInfo) => {
-              let updatedNode = { ...serverNode };
+              const updatedNode = { ...serverNode };
 
               // Handle pending favorite requests — key is scoped by sourceId
               // so Source A's optimistic toggles don't leak into Source B's view.
@@ -2548,7 +2548,7 @@ const location = useLocation();
 
         // Check for matching messages to remove from pending
         const currentPending = pendingMessagesRef.current;
-        let updatedPending = new Map(currentPending);
+        const updatedPending = new Map(currentPending);
         let pendingChanged = false;
 
         if (currentPending.size > 0) {

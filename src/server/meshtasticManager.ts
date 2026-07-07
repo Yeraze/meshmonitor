@@ -5745,7 +5745,7 @@ class MeshtasticManager implements ISourceManager {
         }
 
         // Handle broadcast address (4294967295 = 0xFFFFFFFF)
-        let actualToNum = toNum;
+        const actualToNum = toNum;
         const toNodeId = `!${toNum.toString(16).padStart(8, '0')}`;
 
         if (toNum === 4294967295) {
@@ -12187,7 +12187,7 @@ class MeshtasticManager implements ISourceManager {
           const channel = adminMsg.getChannelResponse;
           // The channel.index in the response is 0-based (0-7) per protobuf definition
           // The request uses index + 1 (1-based, 1-8), but the response Channel.index is 0-based
-          let storedIndex = channel.index;
+          const storedIndex = channel.index;
           if (storedIndex === undefined || storedIndex === null) {
             logger.warn(`⚠️ Channel response from node ${fromNum} missing index field`);
             // Skip storing this channel but continue processing other admin message types

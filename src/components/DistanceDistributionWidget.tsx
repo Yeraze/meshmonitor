@@ -78,7 +78,7 @@ const DistanceDistributionWidget: React.FC<DistanceDistributionWidgetProps> = ({
         continue;
       }
 
-      let distKm = calculateDistance(homeLat, homeLon, lat, lon);
+      const distKm = calculateDistance(homeLat, homeLon, lat, lon);
       const dist = distanceUnit === 'mi' ? kmToMiles(distKm) : distKm;
       distances.push(dist);
     }

@@ -21,7 +21,7 @@ export const migration = {
     logger.info(`${LABEL} (SQLite): adding ${TABLE} transport-filter columns...`);
     for (const [col, dflt] of [['show_udp_nodes', 0], ['show_rf_nodes', 1]] as const) {
       try {
-        // eslint-disable-next-line no-restricted-syntax -- migrations require raw DDL
+         
         db.exec(`ALTER TABLE ${TABLE} ADD COLUMN ${col} INTEGER DEFAULT ${dflt}`);
         logger.debug(`${LABEL} (SQLite): added ${TABLE}.${col}`);
       } catch (e: any) {

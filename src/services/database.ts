@@ -1694,7 +1694,7 @@ class DatabaseService {
       );
     `);
 
-    // eslint-disable-next-line no-restricted-syntax -- bootstrap: runs before migrations (Task 2.9)
+     
     // Column name must match baseline 001 (user_id, snake_case). Older bootstraps
     // used camelCase `userId`, which diverged from the baseline once #2681 moved
     // the repo to Drizzle — the Drizzle schema reads `user_id` (matching the

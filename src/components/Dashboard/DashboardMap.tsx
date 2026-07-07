@@ -71,8 +71,8 @@ export interface DashboardMapProps {
 /** Extract lat/lng from a node — handles both flat (API) and nested (position) shapes. */
 function getNodeLatLng(node: any): { lat: number; lng: number } | null {
   // Flat shape from API: node.latitude, node.longitude
-  let lat = node?.latitude ?? node?.position?.latitude;
-  let lng = node?.longitude ?? node?.position?.longitude;
+  const lat = node?.latitude ?? node?.position?.latitude;
+  const lng = node?.longitude ?? node?.position?.longitude;
   // Skip "Null Island" (0,0) — uninitialized/stale GPS default (issue #3763).
   if (lat != null && lng != null && !isNullIsland(lat, lng)) {
     return { lat, lng };
