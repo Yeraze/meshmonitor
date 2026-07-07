@@ -16,6 +16,10 @@ export default [
       '*.config.ts',
       'eslint.config.mjs',
       '.eslintrc.cjs',
+      'docs/**',      // VitePress site is its own project; .vitepress/cache is build output
+      'examples/**',
+      'protobufs/**', // git submodule — vendored
+      'public/**',
     ],
   },
   {
@@ -44,6 +48,10 @@ export default [
     rules: {
       ...js.configs.recommended.rules,
       ...typescript.configs.recommended.rules,
+      // TypeScript's own compiler reports undefined identifiers; the core rule only
+      // produces false positives on ambient/type globals (NodeJS, React, vi, RequestInfo).
+      // This is the standard typescript-eslint recommendation.
+      'no-undef': 'off',
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
       'react-refresh/only-export-components': [
@@ -113,6 +121,16 @@ export default [
       '@typescript-eslint/no-var-requires': 'off',
       '@typescript-eslint/no-require-imports': 'off',
     },
+  },
+  {
+    // Standalone Node utility scripts and test helpers live outside tsconfig.json;
+    // parse them without the type-aware project service so parser errors don't fire.
+    files: [
+      'scripts/**/*.{js,mjs,cjs,ts}',
+      '*.{js,mjs,cjs}',
+      'tests/**/*.{js,mjs,cjs}',
+    ],
+    languageOptions: { parserOptions: { project: false } },
   },
   {
     // Type-aware: no un-awaited promises in production code.
