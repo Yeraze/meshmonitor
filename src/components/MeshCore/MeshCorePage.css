@@ -766,6 +766,54 @@
 .mc-message-row:hover .mc-message-reply { opacity: 1; }
 .mc-message-reply:hover { color: var(--ctp-mauve); opacity: 1; }
 @media (hover: none) { .mc-message-reply { opacity: 1; } }
+/* Per-message delete affordance (#3981). Same subtle-until-hover treatment as
+   the reply button; turns red on hover to signal it's destructive. */
+.mc-message-delete {
+  background: none;
+  border: none;
+  color: var(--ctp-subtext0);
+  cursor: pointer;
+  padding: 0 0.15rem;
+  font-size: 0.8rem;
+  opacity: 0.55;
+  transition: opacity 0.15s, color 0.15s;
+}
+.mc-message-row:hover .mc-message-delete { opacity: 1; }
+.mc-message-delete:hover { color: var(--ctp-red); opacity: 1; }
+@media (hover: none) { .mc-message-delete { opacity: 1; } }
+/* Conversation / channel "clear" toolbar above the message stream (#3981). */
+.meshcore-conversation-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.35rem 0.5rem 0;
+}
+.meshcore-clear-conversation-btn {
+  background: none;
+  border: 1px solid var(--ctp-surface1);
+  color: var(--ctp-subtext0);
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.78rem;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.meshcore-clear-conversation-btn:hover {
+  color: var(--ctp-red);
+  border-color: var(--ctp-red);
+}
+/* Prominent destructive action: purge every message for the source (#3981). */
+.meshcore-purge-all-btn {
+  background: var(--ctp-red);
+  color: var(--ctp-base);
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.meshcore-purge-all-btn:hover:not(:disabled) { filter: brightness(1.1); }
+.meshcore-purge-all-btn:disabled { opacity: 0.6; cursor: default; }
 .mc-message-text { color: var(--ctp-text); font-size: 0.9rem; word-wrap: break-word; }
 /* Hop count + relay route for received messages (#3742). */
 .mc-message-route { color: var(--ctp-subtext0); font-size: 0.75rem; margin-top: 0.15rem; font-family: var(--font-mono, monospace); }

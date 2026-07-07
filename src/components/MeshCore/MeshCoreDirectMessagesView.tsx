@@ -305,6 +305,22 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
     if (isMobileViewport()) setMobileShowContent(true);
   };
 
+  // Per-message delete + whole-conversation clear (#3981). Both confirm first
+  // (destructive, no undo); the hook prunes local state and the server
+  // broadcasts a deletion event so other clients converge.
+  const handleDeleteMessage = async (m: MeshCoreMessage) => {
+    if (!window.confirm(t('meshcore.confirm_delete_message', 'Delete this message?'))) return;
+    await actions.deleteMessage(m.id);
+  };
+  const handleClearConversation = async () => {
+    if (!selected) return;
+    if (!window.confirm(t(
+      'meshcore.confirm_clear_conversation',
+      'Clear the entire conversation with this contact? This cannot be undone.',
+    ))) return;
+    await actions.clearConversation(selected);
+  };
+
   const selectedContactName = selected
     ? (contactsByKey.get(selected)?.advName || contactsByKey.get(selected)?.name || `${selected.substring(0, 8)}…`)
     : '';
@@ -480,16 +496,31 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 {t('meshcore.repeater_no_messaging', 'Repeaters cannot receive direct messages — showing node details only.')}
               </div>
             ) : (
-              <MeshCoreMessageStream
-                messages={filtered}
-                contacts={contacts}
-                selfPublicKey={selfKey}
-                disabled={!connected || !canSend}
-                emptyText={t('meshcore.no_messages', 'No messages with this contact yet')}
-                onSend={text => actions.sendMessage(text, selected)}
-                conversationKey={`dm-${selected}`}
-                maxBytes={150}
-              />
+              <>
+                {canSend && filtered.length > 0 && (
+                  <div className="meshcore-conversation-toolbar">
+                    <button
+                      type="button"
+                      className="meshcore-clear-conversation-btn"
+                      onClick={() => void handleClearConversation()}
+                      title={t('meshcore.clear_conversation', 'Clear conversation')}
+                    >
+                      🗑️ {t('meshcore.clear_conversation', 'Clear conversation')}
+                    </button>
+                  </div>
+                )}
+                <MeshCoreMessageStream
+                  messages={filtered}
+                  contacts={contacts}
+                  selfPublicKey={selfKey}
+                  disabled={!connected || !canSend}
+                  emptyText={t('meshcore.no_messages', 'No messages with this contact yet')}
+                  onSend={text => actions.sendMessage(text, selected)}
+                  onDeleteMessage={canSend ? handleDeleteMessage : undefined}
+                  conversationKey={`dm-${selected}`}
+                  maxBytes={150}
+                />
+              </>
             )}
             <div className="meshcore-detail-pane">
               <MeshCoreContactDetailPanel

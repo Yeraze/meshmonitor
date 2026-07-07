@@ -469,6 +469,19 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const selfKey = status?.localNode?.publicKey;
   const connected = status?.connected ?? false;
 
+  // Per-message delete + whole-channel clear (#3981). Both confirm first.
+  const handleDeleteMessage = useCallback(async (m: MeshCoreMessage) => {
+    if (!window.confirm(t('meshcore.confirm_delete_message', 'Delete this message?'))) return;
+    await actions.deleteMessage(m.id);
+  }, [actions, t]);
+  const handleClearChannel = useCallback(async () => {
+    if (!window.confirm(t(
+      'meshcore.confirm_clear_channel',
+      'Clear all messages on this channel? This cannot be undone.',
+    ))) return;
+    await actions.clearChannelMessages(active.id);
+  }, [actions, active, t]);
+
   const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';
 
   return (
@@ -616,12 +629,25 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
             )}
           </div>
         )}
+        {canSend && filtered.length > 0 && (
+          <div className="meshcore-conversation-toolbar">
+            <button
+              type="button"
+              className="meshcore-clear-conversation-btn"
+              onClick={() => void handleClearChannel()}
+              title={t('meshcore.clear_channel', 'Clear channel messages')}
+            >
+              🗑️ {t('meshcore.clear_channel', 'Clear channel messages')}
+            </button>
+          </div>
+        )}
         <MeshCoreMessageStream
           messages={filtered}
           contacts={contacts}
           selfPublicKey={selfKey}
           disabled={!connected || !canSend}
           emptyText={t('meshcore.no_messages', 'No messages on this channel yet')}
+          onDeleteMessage={canSend ? handleDeleteMessage : undefined}
           onSend={async text => {
             // Pass the one-off scope override only when the operator has opened
             // the control AND typed a value (incl. '' to mean unscoped). When
