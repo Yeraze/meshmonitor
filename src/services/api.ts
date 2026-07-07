@@ -50,9 +50,8 @@ class ApiService {
     const csrfToken = this.getCsrfToken();
     if (csrfToken) {
       headers['X-CSRF-Token'] = csrfToken;
-      console.log('[API] ✓ CSRF token added to headers');
     } else {
-      console.error('[API] ✗ NO CSRF TOKEN - Request may fail!');
+      logger.warn('[API] No CSRF token available for mutation request');
     }
 
     return headers;
@@ -92,22 +91,11 @@ class ApiService {
     // Add CSRF token for mutation requests
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase())) {
       const csrfToken = this.getCsrfToken();
-      const tokenStatus = csrfToken ? `Found (${csrfToken.substring(0,8)}...)` : 'NOT FOUND';
-      // Pass method/endpoint as separate args rather than interpolating them
-      // into the format string — console.log treats the first arg as a format
-      // string under some runtimes and caller-controlled %s/%d can break
-      // formatting.
-      console.log('[API]', method, endpoint, '- CSRF token:', tokenStatus);
-
-      // Also check sessionStorage directly
-      const directCheck = sessionStorage.getItem('csrfToken');
-      console.log('[API] Direct sessionStorage check:', directCheck ? 'EXISTS' : 'MISSING');
 
       if (csrfToken) {
         headers['X-CSRF-Token'] = csrfToken;
-        console.log('[API] ✓ X-CSRF-Token header added');
       } else {
-        console.error('[API] ✗ NO CSRF TOKEN - Request will fail!');
+        logger.warn('[API] No CSRF token available — mutation request will likely fail');
       }
     }
 
@@ -931,13 +919,12 @@ class ApiService {
     await this.ensureBaseUrl();
     // Add cache-busting parameter to ensure fresh data after device reboot
     const timestamp = Date.now();
-    console.log(`[API] Fetching config with timestamp: ${timestamp}`);
     const params = new URLSearchParams({ t: String(timestamp) });
     if (sourceId) params.set('sourceId', sourceId);
     const response = await fetch(`${this.baseUrl}/api/config/current?${params}`);
     if (!response.ok) throw new Error('Failed to fetch current configuration');
     const config = await response.json();
-    console.log(`[API] Received config - hopLimit: ${config?.deviceConfig?.lora?.hopLimit}`);
+    logger.debug(`[API] Received config - hopLimit: ${config?.deviceConfig?.lora?.hopLimit}`);
     return config;
   }
 
