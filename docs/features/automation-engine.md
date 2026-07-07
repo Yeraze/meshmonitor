@@ -153,9 +153,14 @@ Sends text to a channel or as a DM, with full `{{ }}` token interpolation in the
   shown with **MC / MT badges**. The correct local slot is resolved per source, and a Meshtastic
   channel is never sent to a MeshCore source (and vice-versa). Disabled channel slots are excluded.
   Raw channel PSKs are never sent to the browser.
-- **DM to node #** — send as a direct message instead of to a channel. `{{ trigger.from }}` replies
-  to the sender.
-- **Reply to the triggering message** — thread the reply to the message that fired the automation.
+- **DM to node #** — send as a direct message instead of to a channel (Meshtastic only — MeshCore
+  sends always go to a channel/region, never a DM-by-node). `{{ trigger.from }}` replies to the
+  sender.
+- **Reply to the triggering message** — threads the reply as a tapback on Meshtastic. **MeshCore has
+  no reply/thread concept, so this checkbox has no effect there.** MeshCore messages also carry no
+  per-sender packet id, so `{{ trigger.from }}` / `{{ trigger.fromId }}` resolve to a synthetic
+  `channel-<idx>` key for channel messages, not an identity — use `{{ trigger.fromName }}` (the
+  sender's display name) to reference the sender in MeshCore automations instead.
 - **MeshCore scope** *(advanced; MeshCore sources only — ignored by Meshtastic)* — which region a
   MeshCore message floods to: **Inherit (channel / source default)**, **Match the triggering
   message's scope** (reply on the same region it arrived on), **Unscoped (flood, no region)**, or

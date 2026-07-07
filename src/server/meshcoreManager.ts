@@ -387,8 +387,9 @@ export interface MeshCoreSendResult {
 export interface MeshCoreMessage {
   id: string;
   fromPublicKey: string;
-  /** Display name parsed from the message body (channel messages only — MeshCore
-   *  channel packets carry no per-sender identity; the sender prefixes their name). */
+  /** Sender display name. For channel messages, parsed from the "Name: " prefix
+   *  MeshCore devices add to the body (channel packets carry no per-sender identity
+   *  on the wire). For DMs and room posts, taken from the resolved contact. */
   fromName?: string;
   toPublicKey?: string; // null for broadcast
   text: string;
@@ -1157,6 +1158,7 @@ class MeshCoreManager extends EventEmitter {
       const message: MeshCoreMessage = {
         id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         fromPublicKey: data.pubkey_prefix,
+        fromName: senderContact?.advName ?? senderContact?.name ?? undefined,
         toPublicKey: this.localNode?.publicKey || 'local',
         text: data.text,
         timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),

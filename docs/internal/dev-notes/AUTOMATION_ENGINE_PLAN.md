@@ -213,6 +213,21 @@ in `src/services/database.ts`). **Resolution rules (apply to every field):**
 | `trigger.decryptedBy` | `'node'｜'server'｜null` | |
 | `trigger.node.*` | hydrated `DbNode` for `fromNodeNum` | full sender record (role, hwModel, position, …) |
 
+> **MeshCore addendum (post #3833/#3914, `buildMeshCoreMessageContext` in `triggerContext.ts`):** MeshCore
+> messages have no numeric `packetId`/node-num identity, so the table above only applies verbatim to
+> Meshtastic. For MeshCore triggers:
+> - `trigger.from` / `trigger.fromId` = `fromPublicKey`. For **channel** messages this is a synthetic
+>   `channel-<idx>` key (MeshCore channel packets carry no per-sender pubkey on the wire) — **not** a
+>   sender identity. For DMs/room posts it's the sender's/author's resolved public key.
+> - `trigger.fromName` = the sender's display name — parsed from the "Name: " body prefix for channel
+>   messages, or the resolved contact's `advName`/`name` for DMs and room posts (#3973 fixed this for
+>   DMs, which previously left `fromName` empty). **This is the correct token to reference "who sent
+>   this" in a MeshCore automation**, not `trigger.from`.
+> - `trigger.packetId` is never set, so `action.sendMessage`'s `replyToTrigger` (which reads
+>   `trigger.fields.packetId`) always resolves to a no-op for MeshCore sends — MeshCore has no
+>   reply/tapback concept on the wire.
+> - `trigger.scopeName` / `trigger.scopeCode` / `trigger.scoped` are MeshCore-only (region/scope).
+
 **`trigger.nodeDiscovered` / `trigger.nodeUpdated`** — payload `NodeUpdateData {nodeNum, node: Partial<DbNode>}` (event `node:updated`).
 > ⚠️ The emitter has **no separate "discovered" event** and `node` is a **partial** (changed fields only). Engine must: (a) **hydrate the full `DbNode`** from the DB for conditions; (b) expose the partial as `trigger.changed` (which fields changed — for "role changed" style triggers); (c) derive `trigger.isNew` (first-ever `node:updated` for that nodeNum, tracked by the engine, or `createdAt === updatedAt` heuristic). `nodeDiscovered` = `node:updated` where `isNew`; `nodeUpdated` = the rest.
 | field | source |

@@ -9,16 +9,17 @@
 // All `{{ trigger.* }}` tokens, by trigger type. `sourceId`/`timestamp` are added to every group.
 export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
   'trigger.message': [
-    ['text', 'Message body'], ['from', 'Sender node number'], ['fromId', 'Sender node id (!hex)'],
+    ['text', 'Message body'], ['from', 'Sender node number (Meshtastic) — for MeshCore channel messages this is a synthetic "channel-<idx>" key, not an identity; use fromName instead'],
+    ['fromId', 'Sender node id (!hex) — same MeshCore caveat as from'],
     ['to', 'Recipient node number'], ['toId', 'Recipient node id'], ['channel', 'Channel index'],
-    ['portnum', 'Port number'], ['packetId', 'Packet id (used as tapback replyId)'],
+    ['portnum', 'Port number'], ['packetId', 'Packet id (used as tapback replyId) — Meshtastic only; unset for MeshCore, so replyToTrigger has no effect on MeshCore sends'],
     ['hops', 'Hop count (hopStart − hopLimit)'], ['hopStart', 'Hop start'], ['hopLimit', 'Hop limit'],
     ['snr', 'Receive SNR — RF-received messages only'], ['rssi', 'Receive RSSI dBm — RF only'],
     ['isDM', 'true if a direct message'], ['isBroadcast', 'true if broadcast'],
     ['wantAck', 'Sender requested an ack'], ['replyId', 'Replied-to packet id'],
     ['emoji', 'Tapback/reaction emoji flag'], ['viaMqtt', 'true if it arrived via MQTT'],
     ['decryptedBy', 'Channel/key that decrypted it'],
-    ['fromName', 'Sender name (MeshCore)'], ['scopeName', 'Region/scope name (MeshCore)'],
+    ['fromName', 'Sender display name (MeshCore only) — use this instead of from/fromId to reference the sender'], ['scopeName', 'Region/scope name (MeshCore)'],
     ['scopeCode', 'Region/scope code — 0 = unscoped (MeshCore)'], ['scoped', 'true if sent with a region (MeshCore)'],
   ],
   'trigger.telemetry': [['nodeNum', 'Node number'], ['telemetryType', 'Metric name'], ['value', 'Reading value'], ['unit', 'Unit']],
