@@ -9,6 +9,10 @@ export interface LayerToggleButtonProps {
   onLookbackChange?: (h: number | null) => void;
   loading?: boolean;
   errored?: boolean;
+  /** When true the toggle can't be clicked (e.g. no own-node position, #3971). */
+  disabled?: boolean;
+  /** Tooltip shown on the button — useful to explain a disabled state. */
+  title?: string;
 }
 
 export default function LayerToggleButton({
@@ -20,6 +24,8 @@ export default function LayerToggleButton({
   onLookbackChange,
   loading,
   errored,
+  disabled,
+  title,
 }: LayerToggleButtonProps) {
   const [popOpen, setPopOpen] = useState(false);
   const showChevron = !!lookbackOptions && !!onLookbackChange;
@@ -29,6 +35,8 @@ export default function LayerToggleButton({
       <button
         type="button"
         onClick={() => onToggle(!enabled)}
+        disabled={disabled}
+        title={title}
         className={`map-analysis-layer-btn ${enabled ? 'active' : ''}`}
       >
         {label}

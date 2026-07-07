@@ -26,6 +26,7 @@ export type DataEventType =
   | 'waypoint:deleted'
   | 'waypoint:expired'
   | 'meshcore:message'
+  | 'meshcore:message:updated'
   | 'meshcore:contact:updated'
   | 'meshcore:status:updated'
   | 'meshcore:local-node:updated'
@@ -315,6 +316,34 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] MeshCore message from ${message.fromPublicKey}`);
+  }
+
+  /**
+   * Emit a MeshCore DM delivery-tracking update for an existing message (#3977).
+   * Fired as the ack-timeout retry state machine re-sends a DM: it re-points the
+   * message's tracked `expectedAckCrc`/`estTimeout` to the latest attempt (so the
+   * single bubble keeps resolving on the current CRC) or marks it `failed` once
+   * all retries are exhausted. `previousAckCrc` lets the client cancel the fail
+   * timer it armed for the prior attempt's CRC.
+   */
+  emitMeshCoreMessageUpdated(
+    data: {
+      id: string;
+      previousAckCrc?: number;
+      expectedAckCrc?: number;
+      estTimeout?: number;
+      deliveryStatus?: 'sending' | 'sent' | 'delivered' | 'failed';
+    },
+    sourceId: string,
+  ): void {
+    const event: DataEvent = {
+      type: 'meshcore:message:updated',
+      data: { sourceId, ...data },
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] MeshCore message updated: ${data.id} (status=${data.deliveryStatus ?? 'sent'})`);
   }
 
   /**

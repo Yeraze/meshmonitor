@@ -268,43 +268,43 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   };
 
   useEffect(() => {
-    fetchRouteSegments();
+    void fetchRouteSegments();
     const interval = setInterval(fetchRouteSegments, 60000); // Refresh every minute
     return () => clearInterval(interval);
   }, [connectionStatus, activeSourceId]);
 
   useEffect(() => {
-    fetchVirtualNodeStatus();
+    void fetchVirtualNodeStatus();
     const interval = setInterval(fetchVirtualNodeStatus, 60000); // Refresh every minute
     return () => clearInterval(interval);
   }, [connectionStatus]);
 
   useEffect(() => {
-    fetchServerInfo();
+    void fetchServerInfo();
     const interval = setInterval(fetchServerInfo, 60000); // Refresh every minute
     return () => clearInterval(interval);
   }, [connectionStatus]);
 
   useEffect(() => {
-    fetchLocalStats();
+    void fetchLocalStats();
     const interval = setInterval(fetchLocalStats, 60000); // Refresh every minute
     return () => clearInterval(interval);
   }, [connectionStatus, currentNodeId, activeSourceId]);
 
   useEffect(() => {
-    fetchSecurityKeys();
+    void fetchSecurityKeys();
     // Only fetch once when connected and authenticated - keys don't change frequently
   }, [connectionStatus, isAuthenticated, activeSourceId]);
 
   useEffect(() => {
-    fetchPacketDistribution();
+    void fetchPacketDistribution();
     const interval = setInterval(fetchPacketDistribution, 60000); // Refresh every minute
     return () => clearInterval(interval);
   }, [fetchPacketDistribution]);
 
   useEffect(() => {
     if (selectedPortnum !== null) {
-      fetchPortnumNodeDistribution();
+      void fetchPortnumNodeDistribution();
       const interval = setInterval(fetchPortnumNodeDistribution, 60000);
       return () => clearInterval(interval);
     }
@@ -328,7 +328,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
 
   // Stable callbacks
   const handleClearRecordClick = useCallback(() => {
-    handleClearRecordHolder();
+    void handleClearRecordHolder();
   }, [handleClearRecordHolder]);
 
   const handleCancelConfirm = useCallback(() => {
@@ -336,7 +336,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
   }, []);
 
   const handleConfirmClear = useCallback(() => {
-    confirmClearRecordHolder();
+    void confirmClearRecordHolder();
   }, [confirmClearRecordHolder]);
 
   return (

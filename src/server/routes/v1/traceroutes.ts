@@ -6,6 +6,7 @@
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
+import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
 import { maskTraceroutesByChannel } from '../../utils/nodeEnhancer.js';
 
@@ -34,7 +35,7 @@ router.get('/', async (req: Request, res: Response) => {
     const sourceIdStr = getScopedSourceId(req);
     const maxLimit = parseInt(limit as string) || 100;
 
-    let traceroutes = databaseService.getAllTraceroutes(maxLimit, sourceIdStr);
+    let traceroutes = databaseService.getAllTraceroutes(maxLimit, sourceIdStr ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
 
     // Apply filters
     if (fromNodeId) {
@@ -73,7 +74,7 @@ router.get('/:fromNodeId/:toNodeId', async (req: Request, res: Response) => {
   try {
     const { fromNodeId, toNodeId } = req.params;
     const sourceIdParam = getScopedSourceId(req);
-    const allTraceroutes = databaseService.getAllTraceroutes(100, sourceIdParam);
+    const allTraceroutes = databaseService.getAllTraceroutes(100, sourceIdParam ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
     const traceroute = allTraceroutes.find(t => t.fromNodeId === fromNodeId && t.toNodeId === toNodeId);
 
     if (!traceroute) {

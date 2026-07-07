@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, and, desc, lt, or, isNull, gte, notInArray, count, sql } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase } from './base.js';
+import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbTraceroute, DbRouteSegment, DbNode } from '../types.js';
 
 /**
@@ -116,7 +116,7 @@ export class TraceroutesRepository extends BaseRepository {
   /**
    * Get all traceroutes with pagination
    */
-  async getAllTraceroutes(limit: number = 100, sourceId?: string): Promise<DbTraceroute[]> {
+  async getAllTraceroutes(limit: number = 100, sourceId?: SourceScope): Promise<DbTraceroute[]> {
     const { traceroutes } = this.tables;
     const result = await this.db
       .select()
@@ -136,7 +136,7 @@ export class TraceroutesRepository extends BaseRepository {
    * local TCP mesh) from bleeding into a view scoped to a different source
    * (e.g. an MQTT feed) where the same nodeNums may also be present.
    */
-  async getTraceroutesByNodes(fromNodeNum: number, toNodeNum: number, limit: number = 10, sourceId?: string): Promise<DbTraceroute[]> {
+  async getTraceroutesByNodes(fromNodeNum: number, toNodeNum: number, limit: number = 10, sourceId?: SourceScope): Promise<DbTraceroute[]> {
     const { traceroutes } = this.tables;
     // Search bidirectionally to capture traceroutes initiated from either direction
     // This is especially important for 3rd party traceroutes (e.g., via Virtual Node)
@@ -172,7 +172,7 @@ export class TraceroutesRepository extends BaseRepository {
    * nodeNum on other sources.
    * Uses .returning() for SQLite/Postgres, count-then-delete for MySQL.
    */
-  async deleteTraceroutesForNode(nodeNum: number, sourceId?: string): Promise<number> {
+  async deleteTraceroutesForNode(nodeNum: number, sourceId?: SourceScope): Promise<number> {
     const { traceroutes } = this.tables;
     const condition = and(
       or(eq(traceroutes.fromNodeNum, nodeNum), eq(traceroutes.toNodeNum, nodeNum)),
@@ -264,7 +264,7 @@ export class TraceroutesRepository extends BaseRepository {
    * Get the longest currently-stored route segment, optionally scoped to a
    * single source so each source tracks its own longest link independently.
    */
-  async getLongestActiveRouteSegment(sourceId?: string): Promise<DbRouteSegment | null> {
+  async getLongestActiveRouteSegment(sourceId?: SourceScope): Promise<DbRouteSegment| null> {
     const { routeSegments } = this.tables;
     const result = await this.db
       .select()
@@ -281,7 +281,7 @@ export class TraceroutesRepository extends BaseRepository {
    * Get the record-holder segment, optionally scoped to a single source so
    * each source maintains its own all-time record.
    */
-  async getRecordHolderRouteSegment(sourceId?: string): Promise<DbRouteSegment | null> {
+  async getRecordHolderRouteSegment(sourceId?: SourceScope): Promise<DbRouteSegment| null> {
     const { routeSegments } = this.tables;
     const result = await this.db
       .select()
@@ -304,7 +304,7 @@ export class TraceroutesRepository extends BaseRepository {
    *
    * Uses .returning() for SQLite/Postgres, count-then-delete for MySQL.
    */
-  async deleteRouteSegmentsForNode(nodeNum: number, sourceId?: string): Promise<number> {
+  async deleteRouteSegmentsForNode(nodeNum: number, sourceId?: SourceScope): Promise<number> {
     const { routeSegments } = this.tables;
     const condition = and(
       or(eq(routeSegments.fromNodeNum, nodeNum), eq(routeSegments.toNodeNum, nodeNum)),
@@ -358,7 +358,7 @@ export class TraceroutesRepository extends BaseRepository {
    * so each source maintains its own record independently — unseating one
    * source's record holder must not touch another source's.
    */
-  async clearRecordHolderBySource(sourceId?: string): Promise<void> {
+  async clearRecordHolderBySource(sourceId?: SourceScope): Promise<void> {
     const { routeSegments } = this.tables;
     await this.db
       .update(routeSegments)
@@ -372,7 +372,7 @@ export class TraceroutesRepository extends BaseRepository {
   /**
    * Delete all traceroutes, optionally scoped to a single source.
    */
-  async deleteAllTraceroutes(sourceId?: string): Promise<number> {
+  async deleteAllTraceroutes(sourceId?: SourceScope): Promise<number> {
     const { traceroutes } = this.tables;
     const countQuery = this.db.select({ count: count() }).from(traceroutes);
     const result = await (sourceId
@@ -391,7 +391,7 @@ export class TraceroutesRepository extends BaseRepository {
    * Delete old route segments that are not record holders, optionally
    * scoped to a single source.
    */
-  async cleanupOldRouteSegments(days: number = 30, sourceId?: string): Promise<number> {
+  async cleanupOldRouteSegments(days: number = 30, sourceId?: SourceScope): Promise<number> {
     const cutoff = this.now() - (days * 24 * 60 * 60 * 1000);
     const { routeSegments } = this.tables;
     const condition = and(
@@ -413,7 +413,7 @@ export class TraceroutesRepository extends BaseRepository {
   /**
    * Delete all route segments, optionally scoped to a single source.
    */
-  async deleteAllRouteSegments(sourceId?: string): Promise<number> {
+  async deleteAllRouteSegments(sourceId?: SourceScope): Promise<number> {
     const { routeSegments } = this.tables;
     const scope = this.withSourceScope(routeSegments, sourceId);
     const result = await this.db
@@ -628,7 +628,7 @@ export class TraceroutesRepository extends BaseRepository {
    * Synchronously get recent traceroutes (all pairs) (SQLite only).
    * When sourceId is provided, restricts the result to that source.
    */
-  getAllTraceroutesRecentSync(limit: number = 100, sourceId?: string): DbTraceroute[] {
+  getAllTraceroutesRecentSync(limit: number = 100, sourceId?: SourceScope): DbTraceroute[] {
     const db = this.getSqliteDb();
     const { traceroutes } = this.tables;
     const rows = db

@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
 import meshtasticManagerDefault from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
@@ -771,8 +772,10 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
       });
     }
 
-    // Get node name for logging (async for multi-database support)
-    const nodes = await databaseService.nodes.getAllNodes();
+    // Get node name for logging (async for multi-database support).
+    // Use purgeSourceId if available; fall back to ALL_SOURCES for the name lookup (log-only, low stakes).
+    const nameScope = (typeof purgeSourceId === 'string' && purgeSourceId.length > 0) ? purgeSourceId : ALL_SOURCES;
+    const nodes = await databaseService.nodes.getAllNodes(nameScope);
     const node = nodes.find((n: any) => Number(n.nodeNum) === nodeNum);
     const nodeName = node?.shortName || node?.longName || `Node ${nodeNum}`;
 

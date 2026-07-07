@@ -46,7 +46,7 @@ export function ScopeSelectField({
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await csrfFetch(`${baseUrl}/api/sources/${sourceId}/meshcore/saved-regions`);
         if (!res.ok) return; // e.g. no configuration:read — degrade to free-text entry

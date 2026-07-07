@@ -101,7 +101,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
   useEffect(() => {
     // Generate URL whenever selections change
     if (isOpen && selectedChannels.size > 0) {
-      generateUrl();
+      void generateUrl();
     } else if (isOpen && selectedChannels.size === 0) {
       // Clear URL if no channels selected
       setGeneratedUrl('');

@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
 import { NotificationsRepository, NotificationPreferences } from './notifications.js';
+import { ALL_SOURCES } from './base.js';
 import {
   TestBackend,
   createPostgresBackend,
@@ -756,12 +757,12 @@ function runNotificationsTests(getBackend: () => TestBackend) {
       await backend.exec(insertMqttMessageSql(backend, 'mqtt1', 0, 3000));
 
       // Default: all three unread messages counted.
-      const all = await repo.getUnreadCountsByChannelAsync(1, undefined, undefined, false);
+      const all = await repo.getUnreadCountsByChannelAsync(1, undefined, ALL_SOURCES, false);
       expect(all[0]).toBe(3);
 
       // excludeMqtt: the MQTT-bridged message is dropped from the count, so the
       // sidebar dot and per-channel badge stay in sync with the hidden-MQTT view.
-      const rfOnly = await repo.getUnreadCountsByChannelAsync(1, undefined, undefined, true);
+      const rfOnly = await repo.getUnreadCountsByChannelAsync(1, undefined, ALL_SOURCES, true);
       expect(rfOnly[0]).toBe(2);
     });
   });

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAdmin } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 
@@ -11,12 +12,13 @@ router.use(requireAdmin());
 router.post('/nodes', async (req: Request, res: Response) => {
   try {
     const { sourceId: purgeNodesSourceId } = req.body || {};
-    const nodeCount = await databaseService.nodes.getNodeCount();
+    // intentional cross-source: purge stats reflect global total before wipe
+    const nodeCount = await databaseService.nodes.getNodeCount(ALL_SOURCES);
     await databaseService.purgeAllNodesAsync(purgeNodesSourceId);
     const purgeNodesManager = resolveSourceManager(purgeNodesSourceId);
     await purgeNodesManager.refreshNodeDatabase();
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'nodes_purged',
       'nodes',
@@ -41,7 +43,7 @@ router.post('/telemetry', async (req: Request, res: Response) => {
     const { sourceId: purgeTelemetrySourceId } = req.body || {};
     await databaseService.purgeAllTelemetryAsync(purgeTelemetrySourceId);
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'telemetry_purged',
       'telemetry',
@@ -63,10 +65,11 @@ router.post('/telemetry', async (req: Request, res: Response) => {
 
 router.post('/messages', async (req: Request, res: Response) => {
   try {
-    const messageCount = await databaseService.messages.getMessageCount();
-    await databaseService.messages.deleteAllMessages();
+    // intentional cross-source: message purge is a global operation across all sources
+    const messageCount = await databaseService.messages.getMessageCount(ALL_SOURCES);
+    await databaseService.messages.deleteAllMessages(ALL_SOURCES);
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'messages_purged',
       'messages',
@@ -86,7 +89,7 @@ router.post('/traceroutes', async (req: Request, res: Response) => {
     await databaseService.traceroutes.deleteAllTraceroutes();
     await databaseService.traceroutes.deleteAllRouteSegments();
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'traceroutes_purged',
       'traceroute',

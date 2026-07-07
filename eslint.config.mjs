@@ -114,6 +114,16 @@ export default [
       '@typescript-eslint/no-require-imports': 'off',
     },
   },
+  {
+    // Type-aware: no un-awaited promises in production code.
+    // Scoped to src non-test TS/TSX only (test files have project:false and
+    // would crash a type-aware rule). See eslint.config.mjs test override below.
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
+    ignores: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx'],
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'error',
+    },
+  },
   // Test files are excluded from tsconfig.json, so disable project-based type-checking for them
   {
     files: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx'],

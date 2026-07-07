@@ -151,7 +151,7 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
     if (!privateKey) return;
     const confirmed = window.confirm(t('security_config.copy_private_key_confirm'));
     if (confirmed) {
-      navigator.clipboard.writeText(privateKey);
+      void navigator.clipboard.writeText(privateKey);
     }
   }, [privateKey, t]);
 

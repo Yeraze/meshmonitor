@@ -12,6 +12,7 @@ import { drizzle as drizzlePostgres } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { telemetrySqlite, telemetryPostgres } from '../schema/telemetry.js';
 import { TelemetryRepository } from './telemetry.js';
+import { ALL_SOURCES } from './base.js';
 import * as schema from '../schema/index.js';
 import { postgresAvailable } from './test-utils.js';
 
@@ -306,7 +307,7 @@ describe.skipIf(!postgresAvailable)('TelemetryRepository - PostgreSQL Backend', 
       base - 6 * BUCKET, // since
       60,                // intervalMinutes
       undefined,         // maxHours
-      undefined          // sourceId
+      ALL_SOURCES        // intentional cross-source: bucketing behavior under test, not scoping
     );
 
     // One row per bucket, newest-first, with the -3h bucket averaged.

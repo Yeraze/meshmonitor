@@ -6,6 +6,7 @@
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
+import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
 import { checkNodeChannelAccess, maskTelemetryByChannel } from '../../utils/nodeEnhancer.js';
 
@@ -51,8 +52,8 @@ router.get('/', async (req: Request, res: Response) => {
       }
 
       const typeStr = type ? type as string : undefined;
-      telemetry = await databaseService.telemetry.getTelemetryByNode(nodeId as string, maxLimit, sinceTimestamp, beforeTimestamp, offsetNum, typeStr);
-      total = await databaseService.telemetry.getTelemetryCountByNode(nodeId as string, sinceTimestamp, beforeTimestamp, typeStr);
+      telemetry = await databaseService.telemetry.getTelemetryByNode(nodeId as string, maxLimit, sinceTimestamp, beforeTimestamp, offsetNum, typeStr, sourceIdStr ?? ALL_SOURCES); // scoped when provided; intentional cross-source otherwise
+      total = await databaseService.telemetry.getTelemetryCountByNode(nodeId as string, sinceTimestamp, beforeTimestamp, typeStr, sourceIdStr ?? ALL_SOURCES);
     } else if (type) {
       telemetry = await databaseService.telemetry.getTelemetryByType(type as string, maxLimit);
       // Filter by since/before if provided
@@ -66,12 +67,12 @@ router.get('/', async (req: Request, res: Response) => {
       telemetry = await maskTelemetryByChannel(telemetry, (req as any).user, sourceIdStr);
     } else {
       // Get all telemetry by getting all nodes and their telemetry — scoped
-      // to the requested source so cross-source rows don't mix.
-      const nodes = await databaseService.nodes.getAllNodes(sourceIdStr);
+      // to the requested source so cross-source rows don't mix (intentional cross-source when sourceId omitted).
+      const nodes = await databaseService.nodes.getAllNodes(sourceIdStr ?? ALL_SOURCES);
       telemetry = [];
       const perNodeLimit = Math.max(1, Math.floor(maxLimit / 10));
       for (const node of nodes.slice(0, 10)) { // Limit to first 10 nodes to avoid huge response
-        const nodeTelemetry = await databaseService.telemetry.getTelemetryByNode(node.nodeId, perNodeLimit, sinceTimestamp, beforeTimestamp);
+        const nodeTelemetry = await databaseService.telemetry.getTelemetryByNode(node.nodeId, perNodeLimit, sinceTimestamp, beforeTimestamp, 0, undefined, sourceIdStr ?? ALL_SOURCES);
         telemetry.push(...nodeTelemetry);
       }
       // Mask records from channels the user cannot access
@@ -147,8 +148,8 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
     const beforeTimestamp = before ? parseInt(before as string) : undefined;
 
     const typeStr = type ? type as string : undefined;
-    const telemetry = await databaseService.telemetry.getTelemetryByNode(nodeId, maxLimit, sinceTimestamp, beforeTimestamp, offsetNum, typeStr);
-    const total = await databaseService.telemetry.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, typeStr);
+    const telemetry = await databaseService.telemetry.getTelemetryByNode(nodeId, maxLimit, sinceTimestamp, beforeTimestamp, offsetNum, typeStr, sourceIdParam ?? ALL_SOURCES);
+    const total = await databaseService.telemetry.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, typeStr, sourceIdParam ?? ALL_SOURCES);
 
     res.json({
       success: true,

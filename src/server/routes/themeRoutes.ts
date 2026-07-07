@@ -58,7 +58,7 @@ router.post('/', requirePermission('themes', 'write'), async (req: Request, res:
 
     const theme = await databaseService.misc.createCustomTheme(name, slug, JSON.stringify(definition), req.user!.id);
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'theme_created',
       'themes',
@@ -116,7 +116,7 @@ router.put('/:slug', requirePermission('themes', 'write'), async (req: Request, 
     if (updates.definition) repoUpdates.definition = JSON.stringify(updates.definition);
     await databaseService.misc.updateCustomTheme(slug, repoUpdates);
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'theme_updated',
       'themes',
@@ -148,7 +148,7 @@ router.delete('/:slug', requirePermission('themes', 'write'), async (req: Reques
 
     await databaseService.misc.deleteCustomTheme(slug);
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'theme_deleted',
       'themes',

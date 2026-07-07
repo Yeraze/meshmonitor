@@ -282,19 +282,54 @@ export function buildScheduleContext(sourceId: string | null, timestamp: number)
  * graph evaluation. Unset params don't constrain. Returns true on match.
  */
 /**
+ * Extract the channel names a `trigger.message` filter targets via the multi-select
+ * `channels` field (#3974). Entries are `{ name, protocol? }` — the same shape the
+ * builder's `channelMulti` renderer emits and `action.sendMessage` resolves. Matching
+ * is name-based (protocol is a UI hint only), mirroring the legacy scalar `channelName`
+ * check. Empty/blank names are dropped (Primary can't be name-matched, same as legacy).
+ */
+export function messageFilterChannelNames(params: Record<string, unknown> = {}): string[] {
+  if (!Array.isArray(params.channels)) return [];
+  return (params.channels as unknown[])
+    .map((c) => (c && typeof c === 'object' && typeof (c as Record<string, unknown>).name === 'string'
+      ? ((c as Record<string, unknown>).name as string)
+      : ''))
+    .filter((n) => n.length > 0);
+}
+
+/**
+ * True when a `trigger.message` params object constrains by channel name — either the
+ * legacy scalar `channelName` or the multi-select `channels` array (#3974). The engine
+ * uses this to decide whether it must resolve the per-source slot→name before filtering.
+ */
+export function messageFilterUsesChannelName(params: Record<string, unknown> = {}): boolean {
+  if (typeof params.channelName === 'string' && params.channelName.length > 0) return true;
+  return messageFilterChannelNames(params).length > 0;
+}
+
+/**
  * @param channelName Pre-resolved name of `msg.channel` for its source (the engine
  *   resolves the per-source slot→name once before filtering). Required for the
- *   `params.channelName` check to match; when absent, a channelName filter fails.
+ *   `params.channelName`/`params.channels` checks to match; when absent, a name
+ *   filter fails.
  */
 export function messageMatchesFilter(msg: DbMessage, params: Record<string, unknown> = {}, channelName?: string | null): boolean {
   if (params.portnum != null && Number(msg.portnum) !== Number(params.portnum)) return false;
   if (params.from != null && Number(msg.fromNodeNum) !== Number(params.from)) return false;
   if (params.to != null && Number(msg.toNodeNum) !== Number(params.to)) return false;
-  if (params.channel != null && Number(msg.channel) !== Number(params.channel)) return false;
-  // Channel-by-name: portable across sources where the channel sits in a
-  // different slot. Case-insensitive; a non-resolving channel never matches.
-  if (typeof params.channelName === 'string' && params.channelName.length > 0) {
-    if (!channelName || channelName.toLowerCase() !== params.channelName.toLowerCase()) return false;
+  // Multi-channel OR-list (#3974) takes precedence over the legacy scalar
+  // channel/channelName fields: fire if the resolved name matches ANY entry.
+  const channelNames = messageFilterChannelNames(params);
+  if (channelNames.length > 0) {
+    const resolved = channelName?.toLowerCase();
+    if (!resolved || !channelNames.some((n) => n.toLowerCase() === resolved)) return false;
+  } else {
+    if (params.channel != null && Number(msg.channel) !== Number(params.channel)) return false;
+    // Channel-by-name: portable across sources where the channel sits in a
+    // different slot. Case-insensitive; a non-resolving channel never matches.
+    if (typeof params.channelName === 'string' && params.channelName.length > 0) {
+      if (!channelName || channelName.toLowerCase() !== params.channelName.toLowerCase()) return false;
+    }
   }
   const text = msg.text ?? '';
   if (typeof params.textContains === 'string' && params.textContains.length > 0) {
@@ -330,9 +365,15 @@ export function meshCoreMessageMatchesFilter(
 ): boolean {
   if (params.portnum != null || params.from != null || params.to != null) return false;
   const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
-  if (params.channel != null && Number(channelIdx) !== Number(params.channel)) return false;
-  if (typeof params.channelName === 'string' && params.channelName.length > 0) {
-    if (!channelName || channelName.toLowerCase() !== params.channelName.toLowerCase()) return false;
+  const channelNames = messageFilterChannelNames(params);
+  if (channelNames.length > 0) {
+    const resolved = channelName?.toLowerCase();
+    if (!resolved || !channelNames.some((n) => n.toLowerCase() === resolved)) return false;
+  } else {
+    if (params.channel != null && Number(channelIdx) !== Number(params.channel)) return false;
+    if (typeof params.channelName === 'string' && params.channelName.length > 0) {
+      if (!channelName || channelName.toLowerCase() !== params.channelName.toLowerCase()) return false;
+    }
   }
   const text = msg.text ?? '';
   if (typeof params.textContains === 'string' && params.textContains.length > 0) {
@@ -365,9 +406,17 @@ export function describeMessageFilterMiss(
   if (params.portnum != null && Number(msg.portnum) !== Number(params.portnum)) return `portnum ${msg.portnum} ≠ ${params.portnum}`;
   if (params.from != null && Number(msg.fromNodeNum) !== Number(params.from)) return `sender #${msg.fromNodeNum} ≠ from #${params.from}`;
   if (params.to != null && Number(msg.toNodeNum) !== Number(params.to)) return `recipient #${msg.toNodeNum} ≠ to #${params.to}`;
-  if (params.channel != null && Number(msg.channel) !== Number(params.channel)) return `channel ${msg.channel} ≠ ${params.channel}`;
-  if (typeof params.channelName === 'string' && params.channelName.length > 0) {
-    if (!channelName || channelName.toLowerCase() !== params.channelName.toLowerCase()) return `channel name "${channelName ?? '(unresolved)'}" ≠ "${params.channelName}"`;
+  const channelNames = messageFilterChannelNames(params);
+  if (channelNames.length > 0) {
+    const resolved = channelName?.toLowerCase();
+    if (!resolved || !channelNames.some((n) => n.toLowerCase() === resolved)) {
+      return `channel name "${channelName ?? '(unresolved)'}" not in [${channelNames.join(', ')}]`;
+    }
+  } else {
+    if (params.channel != null && Number(msg.channel) !== Number(params.channel)) return `channel ${msg.channel} ≠ ${params.channel}`;
+    if (typeof params.channelName === 'string' && params.channelName.length > 0) {
+      if (!channelName || channelName.toLowerCase() !== params.channelName.toLowerCase()) return `channel name "${channelName ?? '(unresolved)'}" ≠ "${params.channelName}"`;
+    }
   }
   const text = msg.text ?? '';
   if (typeof params.textContains === 'string' && params.textContains.length > 0) {
@@ -393,9 +442,17 @@ export function describeMeshCoreFilterMiss(
     return 'rule uses Meshtastic-only filters (from/to/portnum) — never matches MeshCore';
   }
   const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
-  if (params.channel != null && Number(channelIdx) !== Number(params.channel)) return `channel ${channelIdx ?? '(DM)'} ≠ ${params.channel}`;
-  if (typeof params.channelName === 'string' && params.channelName.length > 0) {
-    if (!channelName || channelName.toLowerCase() !== params.channelName.toLowerCase()) return `channel name "${channelName ?? '(unresolved)'}" ≠ "${params.channelName}"`;
+  const channelNames = messageFilterChannelNames(params);
+  if (channelNames.length > 0) {
+    const resolved = channelName?.toLowerCase();
+    if (!resolved || !channelNames.some((n) => n.toLowerCase() === resolved)) {
+      return `channel name "${channelName ?? '(unresolved)'}" not in [${channelNames.join(', ')}]`;
+    }
+  } else {
+    if (params.channel != null && Number(channelIdx) !== Number(params.channel)) return `channel ${channelIdx ?? '(DM)'} ≠ ${params.channel}`;
+    if (typeof params.channelName === 'string' && params.channelName.length > 0) {
+      if (!channelName || channelName.toLowerCase() !== params.channelName.toLowerCase()) return `channel name "${channelName ?? '(unresolved)'}" ≠ "${params.channelName}"`;
+    }
   }
   const text = msg.text ?? '';
   if (typeof params.textContains === 'string' && params.textContains.length > 0) {

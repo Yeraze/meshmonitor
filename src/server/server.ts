@@ -6,6 +6,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import databaseService, { DbMessage } from '../services/database.js';
+import { ALL_SOURCES } from '../db/repositories/index.js';
 import { MeshMessage } from '../types/message.js';
 import meshtasticManager from './meshtasticManager.js';
 import { MeshtasticManager } from './meshtasticManager.js';
@@ -290,7 +291,7 @@ initializeOIDC()
 // IMPORTANT: We mark restore as started immediately to prevent race conditions
 // with createAdminIfNeeded() in database.ts
 systemRestoreService.markRestoreStarted();
-(async () => {
+void (async () => {
   try {
     const restoreFromBackup = systemRestoreService.shouldRestore();
 
@@ -321,7 +322,7 @@ systemRestoreService.markRestoreStarted();
         }
 
         // Audit log to mark restore completion point (after migrations)
-        databaseService.auditLogAsync(
+        void databaseService.auditLogAsync(
           null, // System action during bootstrap
           'system_restore_bootstrap_complete',
           'system_backup',
@@ -834,7 +835,7 @@ async function checkForAutoUpgrade(): Promise<void> {
 
     if (upgradeResult.success) {
       logger.info(`✅ Scheduled auto-upgrade triggered successfully: ${upgradeResult.upgradeId}`);
-      databaseService.auditLogAsync(
+      void databaseService.auditLogAsync(
         null,
         'auto_upgrade_triggered',
         'system',
@@ -1263,7 +1264,7 @@ apiRouter.get('/nodes/active', optionalAuth(), async (req, res) => {
     const activeNodesSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
       ? (req.query.sourceId as string)
       : undefined;
-    const allDbNodes = await databaseService.nodes.getActiveNodes(days, activeNodesSourceId);
+    const allDbNodes = await databaseService.nodes.getActiveNodes(days, activeNodesSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
 
     // Filter nodes based on channel read permissions (source-scoped, #3745)
     const dbNodes = await filterNodesByChannelPermission(allDbNodes, (req as any).user, activeNodesSourceId);
@@ -2602,7 +2603,7 @@ apiRouter.get('/messages/direct/:nodeId1/:nodeId2', requirePermission('messages'
       ? req.query.sourceId
       : undefined;
     // Fetch limit+1 to accurately detect if more messages exist
-    const dbMessages = await databaseService.messages.getDirectMessages(nodeId1, nodeId2, limit + 1, offset, sourceIdParam) as DbMessage[];
+    const dbMessages = await databaseService.messages.getDirectMessages(nodeId1, nodeId2, limit + 1, offset, sourceIdParam ?? ALL_SOURCES) as DbMessage[]; // intentional cross-source when sourceId omitted
     const hasMore = dbMessages.length > limit;
     // Return only the requested limit
     const messages = dbMessages.slice(0, limit).map(transformDbMessageToMeshMessage);
@@ -2734,7 +2735,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
     // Get channel unread counts if user has channels permission
     // Only count incoming messages (exclude messages sent by our node)
     if (hasChannelsRead) {
-      const rawCounts = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId, unreadSourceId, excludeMqtt);
+      const rawCounts = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId, unreadSourceId ?? ALL_SOURCES, excludeMqtt); // intentional cross-source when sourceId omitted
 
       // MM-SEC-3: filter by per-channel read permission as well as mute prefs.
       // The bare `channel_0:read` gate above lets a viewer reach this handler
@@ -2757,7 +2758,7 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
 
     // Get DM unread counts if user has messages permission (batch query)
     if (hasMessagesRead && localNodeInfo) {
-      const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId, unreadSourceId);
+      const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId, unreadSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
       const allNodes = await unreadManager.getAllNodesAsync(unreadSourceId);
       const visibleNodes = await filterNodesByChannelPermission(allNodes, req.user, unreadSourceId);
       const visibleNodeIds = new Set(visibleNodes.map(n => n.user?.id).filter(Boolean));
@@ -3090,7 +3091,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       // Scope to the requesting source so per-source tabs only count messages
       // their own source ingested (issue: badge stays lit for messages that
       // aren't visible in the current tab).
-      const allUnreadChannels = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId, pollSourceId);
+      const allUnreadChannels = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId, pollSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
 
       // Filter channels based on per-channel read permission
       const filteredUnreadChannels: { [channelId: number]: number } = {};
@@ -3107,7 +3108,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
       // Batch DM unread counts (single query instead of N+1)
       if (hasMessagesRead && localNodeInfo) {
-        const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId, pollSourceId);
+        const allUnreadDMs = await databaseService.getBatchUnreadDMCountsAsync(localNodeInfo.nodeId, userId, pollSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
         const visibleNodeIds = new Set(filteredMemoryNodes.map(n => n.user?.id).filter(Boolean));
         const directMessages: { [nodeId: string]: number } = {};
         for (const [nodeId, count] of Object.entries(allUnreadDMs)) {
@@ -3125,7 +3126,8 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 5. Channels (filtered based on per-channel read permissions)
     try {
-      const allChannels = await databaseService.channels.getAllChannels(pollSourceId);
+      // intentional cross-source: omitting sourceId on the poll route returns channels from all sources
+      const allChannels = await databaseService.channels.getAllChannels(pollSourceId ?? ALL_SOURCES);
 
       // Filter channels async
       const filteredChannels: typeof allChannels = [];
@@ -3186,7 +3188,8 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     try {
       if (hasInfoRead) {
         // Use DB nodes for telemetry (has telemetryTypes), filtered by channel permissions
-        const allDbNodes = await databaseService.nodes.getAllNodes(pollSourceId);
+        // intentional cross-source: omitting sourceId on the poll route returns nodes from all sources
+        const allDbNodes = await databaseService.nodes.getAllNodes(pollSourceId ?? ALL_SOURCES);
         const dbNodes = await filterNodesByChannelPermission(allDbNodes, req.user, pollSourceId);
 
         const nodesWithTelemetry: string[] = [];
@@ -3334,7 +3337,7 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       let limit = Math.ceil(traceroutesPerHour * maxNodeAgeHours * 1.1);
       limit = Math.max(limit, 100);
 
-      const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, pollSourceId);
+      const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, pollSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
       const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
 
       // Add hopCount for each traceroute
@@ -3440,9 +3443,11 @@ apiRouter.post('/nodes/refresh', requirePermission('nodes', 'write'), async (req
     // Trigger full node database refresh
     await refreshManager.refreshNodeDatabase();
 
-    const nodeCount = await databaseService.nodes.getNodeCount();
+    const nodeCount = await databaseService.nodes.getNodeCount(
+      typeof refreshSourceId === 'string' && refreshSourceId.length > 0 ? refreshSourceId : ALL_SOURCES,
+    );
     const channelCount = await databaseService.channels.getChannelCount(
-      typeof refreshSourceId === 'string' && refreshSourceId.length > 0 ? refreshSourceId : undefined,
+      typeof refreshSourceId === 'string' && refreshSourceId.length > 0 ? refreshSourceId : ALL_SOURCES,
     );
 
     logger.debug(`✅ Node refresh complete: ${nodeCount} nodes, ${channelCount} channels`);
@@ -4102,7 +4107,7 @@ apiRouter.get('/settings/position-estimation/status', requirePermission('setting
 apiRouter.post('/settings/position-estimation/run-now', requirePermission('settings', 'write'), async (req, res) => {
   try {
     const result = await positionEstimationScheduler.runNow();
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'position_estimation_run',
       'settings',
@@ -4228,7 +4233,7 @@ apiRouter.put('/admin/auto-favorite-targets/:nodeNum', requireAdmin(), async (re
       eligibleRoles: JSON.stringify(roles),
     });
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'auto_favorite_config',
       'admin',
@@ -4291,7 +4296,7 @@ apiRouter.post('/settings/mark-all-welcomed', requirePermission('settings', 'wri
     logger.info(`👋 Manually marked ${count} nodes as welcomed via API${sourceId ? ` (source=${sourceId})` : ''}`);
 
     // Audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'mark_all_welcomed',
       'nodes',
@@ -6268,13 +6273,13 @@ async function migrateAutoResponderTriggers() {
 }
 
 // Run migration on startup
-migrateAutoResponderTriggers();
+void migrateAutoResponderTriggers();
 
 // Module-level server variable for graceful shutdown
 let server: ReturnType<typeof app.listen>;
 
 // Wrap server startup in async IIFE to wait for database before accepting requests
-(async () => {
+void (async () => {
   try {
     // Wait for database initialization to complete BEFORE starting server
     // This is critical for PostgreSQL/MySQL where Drizzle repositories are initialized async
@@ -6309,7 +6314,7 @@ let server: ReturnType<typeof app.listen>;
     firmwareUpdateService.startPolling();
 
     // Send server start notification
-    (async () => {
+    void (async () => {
       try {
         const enabledFeatures: string[] = ['WebSocket']; // WebSocket is always enabled
       if (env.oidcEnabled) enabledFeatures.push('OIDC');

@@ -113,11 +113,11 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (query.length < 2) return;
-    performSearch(0);
+    void performSearch(0);
   };
 
   const handleLoadMore = () => {
-    performSearch(results.length);
+    void performSearch(results.length);
   };
 
   const handleResultClick = (result: SearchResult) => {

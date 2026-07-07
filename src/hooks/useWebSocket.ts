@@ -215,7 +215,7 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
     const key = sourcePollQueryKey(sourceId);
     queryClient.setQueryData<PollData>(key, (old) => {
       if (!old) {
-        queryClient.invalidateQueries({ queryKey: key });
+        void queryClient.invalidateQueries({ queryKey: key });
         return old;
       }
 
@@ -345,7 +345,7 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
 
     socket.on('message:new', (data: RawMessage) => {
       addMessageToCache(data);
-      queryClient.invalidateQueries({ queryKey: ['unreadCounts'] });
+      void queryClient.invalidateQueries({ queryKey: ['unreadCounts'] });
     });
 
     socket.on('channel:updated', (data: Channel) => {
@@ -357,15 +357,15 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
     });
 
     socket.on('traceroute:complete', (_data: TracerouteCompleteEvent) => {
-      queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
+      void queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
     });
 
     socket.on('routing:update', (_data: { requestId: number; status: string }) => {
-      queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
+      void queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
     });
 
     socket.on('telemetry:batch', (_data: { [nodeNum: number]: unknown[] }) => {
-      queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
+      void queryClient.invalidateQueries({ queryKey: sourcePollQueryKey(sourceId) });
     });
 
     socket.on('firmware:status', (data: unknown) => {
@@ -377,9 +377,9 @@ export function useWebSocket(enabled: boolean = true): WebSocketState {
     // so the WaypointsLayer / map re-fetch and reconcile.
     const invalidateWaypoints = () => {
       if (sourceId) {
-        queryClient.invalidateQueries({ queryKey: ['waypoints', sourceId] });
+        void queryClient.invalidateQueries({ queryKey: ['waypoints', sourceId] });
       } else {
-        queryClient.invalidateQueries({ queryKey: ['waypoints'] });
+        void queryClient.invalidateQueries({ queryKey: ['waypoints'] });
       }
     };
     socket.on('waypoint:upserted', invalidateWaypoints);

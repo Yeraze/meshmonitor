@@ -65,7 +65,7 @@ export function useAutoUpgrade(
       }
     };
 
-    checkUpgradeStatus();
+    void checkUpgradeStatus();
   }, [baseUrl, authFetch]);
 
   // Cleanup polling on unmount
@@ -150,7 +150,7 @@ export function useAutoUpgrade(
     };
 
     // Start polling
-    poll();
+    void poll();
   }, [baseUrl, authFetch, showToast]);
 
   // Trigger an upgrade

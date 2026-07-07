@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, desc, and, or, gte, lt, sql, count, max } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase } from './base.js';
+import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbNeighborInfo } from '../types.js';
 
 /**
@@ -84,7 +84,7 @@ export class NeighborsRepository extends BaseRepository {
   /**
    * Get neighbors for a node
    */
-  async getNeighborsForNode(nodeNum: number, sourceId?: string): Promise<DbNeighborInfo[]> {
+  async getNeighborsForNode(nodeNum: number, sourceId?: SourceScope): Promise<DbNeighborInfo[]> {
     const { neighborInfo } = this.tables;
     const result = await this.db
       .select()
@@ -98,7 +98,7 @@ export class NeighborsRepository extends BaseRepository {
   /**
    * Get all neighbor info
    */
-  async getAllNeighborInfo(sourceId?: string): Promise<DbNeighborInfo[]> {
+  async getAllNeighborInfo(sourceId: SourceScope): Promise<DbNeighborInfo[]> {
     const { neighborInfo } = this.tables;
     const result = await this.db
       .select()
@@ -115,7 +115,7 @@ export class NeighborsRepository extends BaseRepository {
    * deleting a node from one source does not also wipe neighbor info for
    * the same nodeNum on other sources.
    */
-  async deleteNeighborInfoForNode(nodeNum: number, sourceId?: string): Promise<void> {
+  async deleteNeighborInfoForNode(nodeNum: number, sourceId?: SourceScope): Promise<void> {
     const { neighborInfo } = this.tables;
     await this.db
       .delete(neighborInfo)
@@ -177,7 +177,7 @@ export class NeighborsRepository extends BaseRepository {
    * the source node (nodeNum) OR the neighbor node (neighborNodeNum).
    * Used by deleteNode() to fully remove a node from the neighbor graph.
    */
-  async deleteNeighborInfoInvolvingNode(nodeNum: number, sourceId?: string): Promise<void> {
+  async deleteNeighborInfoInvolvingNode(nodeNum: number, sourceId?: SourceScope): Promise<void> {
     const { neighborInfo } = this.tables;
     await this.db
       .delete(neighborInfo)

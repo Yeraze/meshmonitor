@@ -24,11 +24,20 @@ import DashboardWaypoints from './DashboardWaypoints';
 import DashboardNodePopup, { type NodeSourceRef } from './DashboardNodePopup';
 import DashboardNeighborPopup from './DashboardNeighborPopup';
 import GeoJsonOverlay from '../GeoJsonOverlay';
+import PolarGridOverlay from '../PolarGridOverlay';
 import { TilesetSelector } from '../TilesetSelector';
 import MapLegend from '../MapLegend';
 import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
 import { useMapContext } from '../../contexts/MapContext';
 import { useSettings } from '../../contexts/SettingsContext';
+import {
+  useDashboardSources,
+  useSourceStatuses,
+  UNIFIED_SOURCE_ID,
+  type DashboardSource,
+} from '../../hooks/useDashboardData';
+import { getSourceColor, resolveSourceColor } from '../../utils/sourceColors';
+import { getOwnNodePositions } from '../../utils/ownNodePositions';
 import { nodePassesTransportFilter } from '../../utils/nodeTransport';
 import { isNullIsland } from '../../utils/nullIsland';
 import { effectiveMapMaxAgeHours } from '../../utils/mapAge';
@@ -161,6 +170,21 @@ export default function DashboardMap({
   const tileset = getTilesetById(tilesetId, customTilesets);
   const { mapPinStyle, setMapTileset } = useSettings();
 
+  // Polar grid (#3971): draw a grid centered on each source's own-node position.
+  // On the Unified map (sourceId === UNIFIED_SOURCE_ID) that's every source, each
+  // in its own color with a legend; on a single-source map it's just that source.
+  const { data: allSources = [] } = useDashboardSources();
+  const allSourceIds = allSources.map((s: DashboardSource) => s.id);
+  // Stable, sorted id list drives per-source color assignment so a source keeps
+  // the same color here as on the other Unified views.
+  const colorSourceIds = [...allSourceIds].sort();
+  const sourceNameById = new Map<string, string>(
+    allSources.map((s: DashboardSource) => [s.id, s.name] as [string, string]),
+  );
+  const isUnified = sourceId === UNIFIED_SOURCE_ID;
+  const polarSourceIds = isUnified ? allSourceIds : sourceId ? [sourceId] : [];
+  const sourceStatuses = useSourceStatuses(polarSourceIds);
+
   // Spiderfier: fan out co-located markers so each node (incl. estimated-position
   // nodes that collapse onto the same anchor) is individually selectable (#3612).
   // Reuses the SAME shared SpiderfierController + tuning as the per-source NodesTab
@@ -259,6 +283,8 @@ export default function DashboardMap({
     setShowNeighborInfo,
     showWaypoints,
     setShowWaypoints,
+    showPolarGrid,
+    setShowPolarGrid,
     mapMaxAgeHours,
     setMapMaxAgeHours,
   } = useMapContext();
@@ -273,7 +299,7 @@ export default function DashboardMap({
   const [geoJsonLayers, setGeoJsonLayers] = useState<GeoJsonLayer[]>([]);
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const baseUrl = await api.getBaseUrl();
         const response = await fetch(`${baseUrl}/api/geojson/layers`);
@@ -316,6 +342,16 @@ export default function DashboardMap({
     .filter((entry): entry is { node: any; pos: { lat: number; lng: number } } => entry.pos !== null);
 
   const nodePositions: [number, number][] = nodesWithPosition.map((e) => [e.pos.lat, e.pos.lng]);
+
+  // Own-node position per source for the polar grid. Resolved from the raw
+  // `nodes` prop (not the age/transport-filtered marker list) so the grid center
+  // survives even when the local node is stale or filtered off the map.
+  const localNodeNumBySource = new Map<string, number | null | undefined>();
+  for (const id of polarSourceIds) {
+    localNodeNumBySource.set(id, sourceStatuses.get(id)?.nodeNum ?? null);
+  }
+  const ownNodePositions = getOwnNodePositions(nodes, localNodeNumBySource);
+  const hasOwnNode = ownNodePositions.length > 0;
 
   // Genuine removals (a node aged out / filtered away) are reconciled here
   // rather than from the ref `null` bounce (see getMarkerRef): drop any tracked
@@ -470,6 +506,16 @@ export default function DashboardMap({
         {showLegend && <MapLegend />}
 
         {geoJsonLayers.length > 0 && <GeoJsonOverlay layers={geoJsonLayers} />}
+
+        {/* Polar grid — one per source with a known own-node position, each in
+            that source's color so overlapping grids stay distinguishable (#3971). */}
+        {showPolarGrid && ownNodePositions.map((op) => (
+          <PolarGridOverlay
+            key={`polar-${op.sourceId}`}
+            center={{ lat: op.lat, lng: op.lng }}
+            color={resolveSourceColor(op.sourceId, colorSourceIds)}
+          />
+        ))}
 
         {showWaypoints && <DashboardWaypoints sourceId={sourceId} />}
 
@@ -653,6 +699,25 @@ export default function DashboardMap({
         />
       )}
 
+      {/* Polar grid legend — names each source whose grid is drawn, with its
+          color swatch, so overlapping grids on the Unified map aren't confused. */}
+      {showPolarGrid && ownNodePositions.length > 0 && (
+        <div className="dashboard-polar-grid-legend" role="note" aria-label="Polar grid sources">
+          <div className="dashboard-polar-grid-legend__title">Polar Grid</div>
+          {ownNodePositions.map((op) => (
+            <div key={`legend-${op.sourceId}`} className="dashboard-polar-grid-legend__row">
+              <span
+                className="dashboard-polar-grid-legend__swatch"
+                style={{ background: getSourceColor(op.sourceId, colorSourceIds) }}
+              />
+              <span className="dashboard-polar-grid-legend__name">
+                {sourceNameById.get(op.sourceId) ?? op.sourceId}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Map Features control panel — mirrors NodesTab's "Features" panel but
           trimmed to the toggles meaningful on a cross-source map. */}
       <div className={`map-controls dashboard-map-controls ${isMapControlsCollapsed ? 'collapsed' : ''}`}>
@@ -769,6 +834,17 @@ export default function DashboardMap({
               onChange={(e) => setShowWaypoints(e.target.checked)}
             />
             <span>Show Waypoints</span>
+          </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showPolarGrid && hasOwnNode}
+              disabled={!hasOwnNode}
+              onChange={(e) => setShowPolarGrid(e.target.checked)}
+            />
+            <span title={!hasOwnNode ? 'No source has a known own-node position' : undefined}>
+              Show Polar Grid
+            </span>
           </label>
           <label className="map-control-item">
             <input

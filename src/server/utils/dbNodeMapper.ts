@@ -13,6 +13,7 @@
  */
 
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { mergeNodesAcrossSources } from './mergeNodesAcrossSources.js';
 import type { DeviceInfo } from '../meshtasticManager.js';
 import { logger } from '../../utils/logger.js';
@@ -138,7 +139,8 @@ export async function loadAllNodesAsDeviceInfo(sourceId?: string): Promise<Devic
     'uptimeSeconds',
     sourceId,
   );
-  const dbNodes = await databaseService.nodes.getAllNodes(sourceId);
+  // intentional cross-source when sourceId omitted: caller wants unified view across all sources
+  const dbNodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
   const effective = sourceId ? dbNodes : mergeNodesAcrossSources(dbNodes);
   return effective.map(node => mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId)));
 }

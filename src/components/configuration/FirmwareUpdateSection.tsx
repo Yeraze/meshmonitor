@@ -236,8 +236,8 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
         throw new Error(data.error || 'Failed to save channel');
       }
       showToast(t('firmware.channel', 'Release channel saved'), 'success');
-      queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
-      queryClient.invalidateQueries({ queryKey: ['firmware', 'releases'] });
+      void queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
+      void queryClient.invalidateQueries({ queryKey: ['firmware', 'releases'] });
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Error saving channel', 'error');
     } finally {
@@ -256,8 +256,8 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
         throw new Error(data.error || 'Failed to check for updates');
       }
       showToast(t('firmware.check_now', 'Check complete'), 'success');
-      queryClient.invalidateQueries({ queryKey: ['firmware', 'releases'] });
-      queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
+      void queryClient.invalidateQueries({ queryKey: ['firmware', 'releases'] });
+      void queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Error checking for updates', 'error');
     } finally {
@@ -282,7 +282,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
         const data = await res.json();
         throw new Error(data.error || 'Failed to start update');
       }
-      queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
+      void queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Error starting update', 'error');
     }
@@ -306,7 +306,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
         // "No update step is awaiting confirmation" is a benign race condition —
         // the backend already advanced past this step. Just refetch silently.
         if (res.status === 400 && data.error?.includes('awaiting confirmation')) {
-          queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
+          void queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
           return;
         }
         // Issue #3413: Safety Rail 5 blocked the flash because the node is
@@ -318,7 +318,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
         }
         throw new Error(data.error || 'Failed to confirm step');
       }
-      queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
+      void queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Error confirming step', 'error');
     } finally {
@@ -375,7 +375,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
         throw new Error(data.error || 'Failed to cancel update');
       }
       showToast(t('firmware.wizard_cancel', 'Update cancelled'), 'success');
-      queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
+      void queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Error cancelling update', 'error');
     }
@@ -398,7 +398,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
       // Best-effort — even if the call fails, clear local queries
     }
     // Invalidate everything so the UI refreshes with new node data
-    queryClient.invalidateQueries();
+    void queryClient.invalidateQueries();
     queryClient.removeQueries({ queryKey: ['firmware', 'liveStatus'] });
   };
 
@@ -411,7 +411,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
         const data = await res.json();
         throw new Error(data.error || 'Failed to retry flash');
       }
-      queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
+      void queryClient.invalidateQueries({ queryKey: ['firmware', 'status'] });
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Error retrying flash', 'error');
     }

@@ -455,7 +455,7 @@ async function runWithConcurrencyLimit<T>(
     })();
 
     executing.add(promise);
-    promise.finally(() => executing.delete(promise));
+    void promise.finally(() => executing.delete(promise));
 
     if (executing.size >= limit) {
       await Promise.race(executing);

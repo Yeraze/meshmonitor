@@ -165,7 +165,7 @@ router.post(
         });
       }
 
-      databaseService.auditLogAsync(
+      void databaseService.auditLogAsync(
         req.user!.id,
         'security_scan_triggered',
         'security',
@@ -199,7 +199,7 @@ router.get('/export', async (req: Request, res: Response) => {
     const timestamp = new Date().toISOString();
 
     // Log the export action
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'security_export',
       'security',
@@ -301,7 +301,7 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), asy
     await databaseService.updateNodeTimeOffsetFlagsAsync(nodeNum, false, null, (node as any).sourceId);
 
     // Log the action
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'security_issues_cleared',
       'security',

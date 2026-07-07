@@ -114,7 +114,7 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
         console.error('Failed to fetch available scripts:', error);
       }
     };
-    fetchScripts();
+    void fetchScripts();
   }, [baseUrl]);
 
   // Handle script selection with autofill

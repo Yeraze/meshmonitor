@@ -760,7 +760,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       }
     };
 
-    fetchConfig();
+    void fetchConfig();
   }, [refreshTrigger, sourceId]); // Re-run when refreshTrigger or sourceId changes
 
   // Separate effect to load position data when nodes become available
@@ -794,7 +794,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       }
     };
 
-    loadPositionFromNodes();
+    void loadPositionFromNodes();
   }, [nodes]); // Run when nodes first populate
 
   const handleSaveDeviceConfig = async () => {

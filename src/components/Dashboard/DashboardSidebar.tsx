@@ -745,7 +745,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                   disabled={!source.enabled}
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigate(`/source/${source.id}`);
+                    void navigate(`/source/${source.id}`);
                   }}
                 >
                   {t('source.open')}

@@ -4,8 +4,8 @@
  * Central export point for all repository classes.
  */
 
-export { BaseRepository } from './base.js';
-export type { DrizzleDatabase, SQLiteDrizzle, PostgresDrizzle } from './base.js';
+export { BaseRepository, ALL_SOURCES } from './base.js';
+export type { DrizzleDatabase, SQLiteDrizzle, PostgresDrizzle, SourceScope } from './base.js';
 export { SettingsRepository } from './settings.js';
 export { ChannelsRepository, type ChannelInput } from './channels.js';
 export { NodesRepository, type NodesCacheHook } from './nodes.js';

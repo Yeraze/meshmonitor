@@ -48,13 +48,13 @@ class InactiveNodeNotificationService {
     // Run initial check after a short delay
     // Capture parameters in closure to ensure correct values are used even if service is restarted
     this.initialCheckTimeout = setTimeout(() => {
-      this.checkInactiveNodes();
+      void this.checkInactiveNodes();
       this.initialCheckTimeout = null; // Clear reference after execution
     }, 60000); // Wait 1 minute before first check
 
     // Schedule periodic checks
     this.checkInterval = setInterval(() => {
-      this.checkInactiveNodes();
+      void this.checkInactiveNodes();
     }, checkIntervalMinutes * 60 * 1000);
   }
 

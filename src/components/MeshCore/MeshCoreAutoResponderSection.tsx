@@ -103,7 +103,7 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
   // Load triggers
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await csrfFetch(`${baseUrl}/api/sources/${sourceId}/meshcore/automation/responder`);
         if (!res.ok) return;
@@ -123,7 +123,7 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
   // Load channels
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await csrfFetch(`${baseUrl}/api/channels/all?sourceId=${encodeURIComponent(sourceId)}`);
         if (!res.ok) return;
@@ -144,7 +144,7 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
   // Load available scripts (responseType='script' picker).
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await csrfFetch(`${baseUrl}/api/scripts`);
         if (!res.ok) return;

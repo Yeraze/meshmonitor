@@ -17,6 +17,7 @@ import { createRequire } from 'module';
 import { Router, Request, Response } from 'express';
 import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { upgradeService } from '../services/upgradeService.js';
@@ -111,9 +112,10 @@ router.get('/status', optionalAuth(), async (_req: Request, res: Response) => {
         : null,
     },
     statistics: {
-      nodes: await databaseService.nodes.getNodeCount(),
-      messages: await databaseService.messages.getMessageCount(),
-      channels: await databaseService.channels.getChannelCount(),
+      // intentional cross-source: system stats report global totals
+      nodes: await databaseService.nodes.getNodeCount(ALL_SOURCES),
+      messages: await databaseService.messages.getMessageCount(ALL_SOURCES),
+      channels: await databaseService.channels.getChannelCount(ALL_SOURCES),
     },
     uptime: process.uptime(),
   });
@@ -178,7 +180,7 @@ router.get('/version/check', optionalAuth(), async (_req: Request, res: Response
             if (upgradeResult.success) {
               autoUpgradeTriggered = true;
               logger.info(`✅ Auto-upgrade triggered successfully: ${upgradeResult.upgradeId}`);
-              databaseService.auditLogAsync(
+              void databaseService.auditLogAsync(
                 null,
                 'auto_upgrade_triggered',
                 'system',

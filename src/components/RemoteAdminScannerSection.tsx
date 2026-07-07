@@ -88,7 +88,7 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
         setIsLoading(false);
       }
     };
-    fetchSettings();
+    void fetchSettings();
   }, [baseUrl, csrfFetch, sourceQuery]);
 
   // Fetch scan log and stats
@@ -151,12 +151,12 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
       }
     };
 
-    fetchLogAndStats();
+    void fetchLogAndStats();
 
     // Refresh every 30 seconds if enabled
     const intervalId = setInterval(() => {
       if (localEnabled) {
-        fetchLogAndStats();
+        void fetchLogAndStats();
       }
     }, 30000);
 

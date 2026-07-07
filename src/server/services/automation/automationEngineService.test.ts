@@ -145,6 +145,31 @@ describe('AutomationEngineService', () => {
     expect(calls.map((c) => c.fn)).toEqual(['sendTapback']);
   });
 
+  it('matches a message trigger by the multi-channel OR-list, resolving slot→name (#3974)', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('on-gauntlet-or-ops', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { channels: [{ name: 'gauntlet', protocol: 'meshtastic' }, { name: 'ops', protocol: 'meshtastic' }] } },
+        { id: 'tap', type: 'action.tapback', params: { emoji: '👍' } },
+      ],
+      edges: [{ from: 't', to: 'tap' }],
+    });
+    // Slot 2 = "Gauntlet", slot 3 = "Ops", everything else "Primary".
+    const chData = {
+      getNode: async () => null,
+      getTelemetry: async () => null,
+      getChannelName: async (_sourceId: string | null, idx: number) => (idx === 2 ? 'Gauntlet' : idx === 3 ? 'Ops' : 'Primary'),
+    };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: chData, now: () => clock });
+    await engine.load();
+
+    expect(await engine.onMessage(message({ channel: 2 }), 'default')).toBe(1); // matches "gauntlet"
+    expect(await engine.onMessage(message({ channel: 3 }), 'default')).toBe(1); // matches "ops"
+    expect(await engine.onMessage(message({ channel: 0 }), 'default')).toBe(0); // "Primary" in neither
+    expect(calls.map((c) => c.fn)).toEqual(['sendTapback', 'sendTapback']);
+  });
+
   it('fires a message automation on a MeshCore message and replies on the trigger scope (#3833)', async () => {
     const { calls, deps } = recorder();
     await createEnabled('mc-ping', {

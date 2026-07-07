@@ -131,7 +131,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
   };
 
   useEffect(() => {
-    fetchSecurityData();
+    void fetchSecurityData();
     // Refresh every 30 seconds
     const interval = setInterval(fetchSecurityData, 30000);
     return () => clearInterval(interval);
@@ -152,7 +152,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
         // Settings may not exist yet, use defaults
       }
     };
-    loadDigestSettings();
+    void loadDigestSettings();
   }, []);
 
   const saveDigestSettings = useCallback(async () => {

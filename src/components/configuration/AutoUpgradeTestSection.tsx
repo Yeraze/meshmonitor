@@ -68,7 +68,7 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
         setIsLoadingSettings(false);
       }
     };
-    loadSettings();
+    void loadSettings();
   }, [baseUrl, csrfFetch]);
 
   const handleAutoUpgradeImmediateChange = async (enabled: boolean) => {
@@ -188,13 +188,13 @@ const AutoUpgradeTestSection: React.FC<AutoUpgradeTestSectionProps> = ({ baseUrl
 
         // Start polling for status
         const interval = setInterval(() => {
-          pollUpgradeStatus(data.upgradeId);
+          void pollUpgradeStatus(data.upgradeId);
         }, 2000); // Poll every 2 seconds
 
         setStatusPollInterval(interval);
 
         // Do initial poll immediately
-        pollUpgradeStatus(data.upgradeId);
+        void pollUpgradeStatus(data.upgradeId);
       } else {
         throw new Error(data.message || 'Failed to start test upgrade');
       }

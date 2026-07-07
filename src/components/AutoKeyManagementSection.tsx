@@ -105,7 +105,7 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
       }
     };
 
-    fetchLog();
+    void fetchLog();
     // Refresh log every 30 seconds
     const interval = setInterval(fetchLog, 30000);
     return () => clearInterval(interval);

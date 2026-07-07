@@ -65,13 +65,13 @@ class LowBatteryNotificationService {
 
     // Run initial check after a short delay
     this.initialCheckTimeout = setTimeout(() => {
-      this.checkLowBatteryNodes();
+      void this.checkLowBatteryNodes();
       this.initialCheckTimeout = null;
     }, 60000); // Wait 1 minute before first check
 
     // Schedule periodic checks
     this.checkInterval = setInterval(() => {
-      this.checkLowBatteryNodes();
+      void this.checkLowBatteryNodes();
     }, checkIntervalMinutes * 60 * 1000);
   }
 

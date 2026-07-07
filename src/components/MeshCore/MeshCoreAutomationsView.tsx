@@ -74,7 +74,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
   }, [baseUrl, sourceId, csrfFetch]);
 
   useEffect(() => {
-    fetchSettings();
+    void fetchSettings();
   }, [fetchSettings]);
 
   useEffect(() => {

@@ -797,7 +797,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const setLanguage = async (lang: string) => {
     setLanguageState(lang);
     localStorage.setItem('language', lang);
-    i18n.changeLanguage(lang);
+    void i18n.changeLanguage(lang);
 
     // Persist to database for logged-in users (fire and forget)
     try {
@@ -1317,7 +1317,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
           if (settings.language) {
             setLanguageState(settings.language);
             localStorage.setItem('language', settings.language);
-            i18n.changeLanguage(settings.language);
+            void i18n.changeLanguage(settings.language);
             logger.debug(`🌐 Language loaded from server: ${settings.language}`);
           }
 
@@ -1451,12 +1451,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
       }
     };
 
-    loadServerSettings();
+    void loadServerSettings();
   }, [baseUrl]);
 
   // Load custom themes on mount
   React.useEffect(() => {
-    loadCustomThemes();
+    void loadCustomThemes();
   }, [loadCustomThemes]);
 
   React.useEffect(() => {
@@ -1479,7 +1479,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   // Load mute preferences on mount (server-side, requires auth)
   React.useEffect(() => {
-    loadMutePreferences();
+    void loadMutePreferences();
   }, [loadMutePreferences]);
 
   // Apply custom theme CSS when themes are loaded or theme changes

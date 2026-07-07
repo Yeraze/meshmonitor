@@ -116,7 +116,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
   }, [sourceQuery]);
 
   useEffect(() => {
-    fetchLog();
+    void fetchLog();
     pollRef.current = setInterval(fetchLog, 30_000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -199,7 +199,7 @@ const AutoDeleteByDistanceSection: React.FC<AutoDeleteByDistanceSectionProps> = 
           t('automation.distance_delete.run_result', { count: result.deletedCount }),
           result.deletedCount > 0 ? 'warning' : 'success'
         );
-        fetchLog(); // Refresh log
+        void fetchLog(); // Refresh log
       } else {
         showToast(t('automation.settings_save_failed'), 'error');
       }

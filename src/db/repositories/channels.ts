@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, and, gt, isNull, or, lt, count, notInArray } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase } from './base.js';
+import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbChannel } from '../types.js';
 import { logger } from '../../utils/logger.js';
 
@@ -64,7 +64,7 @@ export class ChannelsRepository extends BaseRepository {
   /**
    * Get all channels ordered by ID, optionally scoped to a source.
    */
-  async getAllChannels(sourceId?: string): Promise<DbChannel[]> {
+  async getAllChannels(sourceId: SourceScope): Promise<DbChannel[]> {
     const { channels } = this.tables;
     const result = await this.db
       .select()
@@ -78,7 +78,7 @@ export class ChannelsRepository extends BaseRepository {
   /**
    * Get the total number of channels, optionally scoped to a source.
    */
-  async getChannelCount(sourceId?: string): Promise<number> {
+  async getChannelCount(sourceId: SourceScope): Promise<number> {
     const { channels } = this.tables;
     const whereClause = this.withSourceScope(channels, sourceId);
     const result = whereClause
@@ -339,7 +339,7 @@ export class ChannelsRepository extends BaseRepository {
    * Synchronously get all channels (SQLite only), optionally scoped to a
    * source (#3712).
    */
-  getAllChannelsSync(sourceId?: string): DbChannel[] {
+  getAllChannelsSync(sourceId?: SourceScope): DbChannel[] {
     const db = this.getSqliteDb();
     const { channels } = this.tables;
     const rows = db
@@ -355,13 +355,11 @@ export class ChannelsRepository extends BaseRepository {
    * Synchronously count channels (SQLite only), optionally scoped to a
    * source (#3712).
    */
-  getChannelCountSync(sourceId?: string): number {
+  getChannelCountSync(sourceId?: SourceScope): number {
     const db = this.getSqliteDb();
     const { channels } = this.tables;
     const whereClause = this.withSourceScope(channels, sourceId);
-    const rows = whereClause
-      ? db.select({ count: count() }).from(channels).where(whereClause).all()
-      : db.select({ count: count() }).from(channels).all();
+    const rows = db.select({ count: count() }).from(channels).where(whereClause).all();
     return Number((rows[0] as any).count);
   }
 

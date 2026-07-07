@@ -753,7 +753,7 @@ export class MeshCoreNativeBackend extends EventEmitter {
     // the way python-meshcore did. Pulling the messages causes ContactMsgRecv
     // / ChannelMsgRecv to fire normally.
     this.connection.on(PushCodes.MsgWaiting, () => {
-      this.drainWaitingMessages();
+      void this.drainWaitingMessages();
     });
   }
 

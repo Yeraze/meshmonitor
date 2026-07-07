@@ -12,6 +12,7 @@ import { createPostgresDriver } from '../db/drivers/postgres.js';
 import { SettingsRepository } from '../db/repositories/settings.js';
 import { NodesRepository } from '../db/repositories/nodes.js';
 import { MessagesRepository } from '../db/repositories/messages.js';
+import { ALL_SOURCES } from '../db/repositories/index.js';
 
 const POSTGRES_URL = process.env.DATABASE_URL || 'postgres://meshmonitor:meshmonitor_dev@localhost:5432/meshmonitor';
 
@@ -198,16 +199,16 @@ async function testNodes(nodesRepo: NodesRepository): Promise<boolean> {
     }
     console.log('  ✅ getNode works');
 
-    // Test getAllNodes
-    const allNodes = await nodesRepo.getAllNodes();
+    // Test getAllNodes (intentional cross-source: CLI test checks all sources)
+    const allNodes = await nodesRepo.getAllNodes(ALL_SOURCES);
     if (allNodes.length < 1) {
       console.error(`  ❌ getAllNodes returned ${allNodes.length} nodes, expected at least 1`);
       return false;
     }
     console.log('  ✅ getAllNodes works');
 
-    // Test getNodeCount
-    const count = await nodesRepo.getNodeCount();
+    // Test getNodeCount (intentional cross-source: CLI test checks all sources)
+    const count = await nodesRepo.getNodeCount(ALL_SOURCES);
     if (count < 1) {
       console.error(`  ❌ getNodeCount returned ${count}, expected at least 1`);
       return false;
@@ -258,8 +259,8 @@ async function testMessages(messagesRepo: MessagesRepository): Promise<boolean> 
     }
     console.log('  ✅ getMessages works');
 
-    // Test getMessageCount
-    const count = await messagesRepo.getMessageCount();
+    // Test getMessageCount (intentional cross-source: CLI test checks all sources)
+    const count = await messagesRepo.getMessageCount(ALL_SOURCES);
     if (count < 1) {
       console.error(`  ❌ getMessageCount returned ${count}, expected at least 1`);
       return false;
@@ -336,4 +337,4 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+void main();

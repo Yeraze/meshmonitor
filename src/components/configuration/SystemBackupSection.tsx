@@ -60,7 +60,7 @@ const SystemBackupSection: React.FC = () => {
 
   // Load backup settings on mount
   useEffect(() => {
-    loadBackupSettings();
+    void loadBackupSettings();
   }, []);
 
   const loadBackupSettings = async () => {
@@ -175,7 +175,7 @@ const SystemBackupSection: React.FC = () => {
 
       // Refresh backup list if modal is open
       if (isBackupModalOpen) {
-        handleShowBackups();
+        void handleShowBackups();
       }
     } catch (error) {
       logger.error('Error creating system backup:', error);
@@ -266,7 +266,7 @@ const SystemBackupSection: React.FC = () => {
 
       showToast(t('system_backup.toast_deleted'), 'success');
       // Refresh the backup list
-      handleShowBackups();
+      void handleShowBackups();
     } catch (error) {
       logger.error('Error deleting system backup:', error);
       showToast(t('system_backup.toast_delete_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');

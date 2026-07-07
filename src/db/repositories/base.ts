@@ -21,6 +21,21 @@ export type MySQLDrizzle = MySql2Database<typeof schema>;
 export type DrizzleDatabase = SQLiteDrizzle | PostgresDrizzle | MySQLDrizzle;
 
 /**
+ * Explicit opt-in sentinel for the rare, intentional cross-source query.
+ * Passing this to withSourceScope (or any scoped repo method) means
+ * "I really do want rows from EVERY source" — e.g. system stats, global
+ * purge, process-wide cache warm-up, full backup export.
+ *
+ * A unique symbol (not a magic string) so it can never arrive off the wire /
+ * from JSON, can never collide with a real sourceId, and forces callers to
+ * import it explicitly.
+ */
+export const ALL_SOURCES: unique symbol = Symbol('ALL_SOURCES');
+
+/** A resolved source scope: a concrete sourceId, or the all-sources sentinel. */
+export type SourceScope = string | typeof ALL_SOURCES;
+
+/**
  * Base repository providing common functionality
  */
 export abstract class BaseRepository {
@@ -217,17 +232,24 @@ export abstract class BaseRepository {
   }
 
   /**
-   * Return a Drizzle WHERE condition that filters by sourceId.
+   * Return a Drizzle WHERE condition that scopes a query to one source.
    *
-   * Returns `undefined` when no sourceId is given — Drizzle's `and(...)` treats
-   * undefined entries as no-ops, so existing callers that omit sourceId continue
-   * to see all rows regardless of their source_id value.
+   * FAIL-CLOSED: a missing/empty sourceId THROWS — the #1 hard rule
+   * (per-source isolation) is now enforced at runtime, not by caller discipline.
+   * For an intentional cross-source query, pass the ALL_SOURCES sentinel, which
+   * returns `undefined` (no WHERE clause).
    *
-   * Usage:
    *   .where(and(eq(nodes.nodeNum, num), this.withSourceScope(nodes, sourceId)))
    */
-  protected withSourceScope(table: any, sourceId?: string): SQL | undefined {
-    if (!sourceId) return undefined;
+  protected withSourceScope(table: any, sourceId: SourceScope | undefined): SQL | undefined {
+    if (sourceId === ALL_SOURCES) return undefined;           // explicit opt-out
+    if (sourceId === undefined || sourceId === null || sourceId === '') {
+      throw new Error(
+        'withSourceScope: sourceId is required. Pass a concrete sourceId, or the ' +
+        'ALL_SOURCES sentinel for an intentional cross-source query. ' +
+        'Omitting sourceId used to silently return rows from every source (data leak).',
+      );
+    }
     return eq(table.sourceId, sourceId);
   }
 

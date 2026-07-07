@@ -48,11 +48,11 @@ class DuplicateKeySchedulerService {
 
     this.initialScanTimer = setTimeout(() => {
       this.initialScanTimer = null;
-      this.runScanAllSources();
+      this.runScanAllSources().catch(err => logger.error('Security scanner error:', err));
     }, 5 * 60 * 1000);
 
     this.intervalId = setInterval(() => {
-      this.runScanAllSources();
+      this.runScanAllSources().catch(err => logger.error('Security scanner error:', err));
     }, this.scanInterval);
 
     logger.info('✅ Security scanner initialized');

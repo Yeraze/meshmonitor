@@ -378,10 +378,13 @@ export class AutomationEngineService {
 
   async onMessage(msg: DbMessage, sourceId: string | null): Promise<number> {
     if (await this.isSelfMeshtastic(sourceId, msg.fromNodeNum)) return 0; // #3914: ignore our own sends
-    // Resolve the universal sender/channel labels once (per-source slot→name and
-    // sender node name), but only when a message automation is actually loaded —
-    // keeps the hot path DB-free when nobody listens for messages. `channelName`
-    // also feeds the channel-by-name filter (unchanged behavior).
+    // Resolve the per-source channel name + sender node name once. We resolve when
+    // EITHER a channelName/`channels` filter needs it (#3974) OR the universal
+    // channelName/fromName/senderLabel tokens need populating — and since ANY loaded
+    // message automation may reference those tokens, "a message automation is loaded"
+    // subsumes the filter case, so one lookup serves both. Hot path stays DB-free
+    // when no message automation is loaded. The resolved name still feeds
+    // messageMatchesFilter, which does #3974's single- and multi-channel matching.
     const hasMessageAutomations = (this.index.get('trigger.message') ?? []).length > 0;
     let channelName: string | null | undefined;
     let fromName: string | undefined;
@@ -410,9 +413,11 @@ export class AutomationEngineService {
    */
   async onMeshCoreMessage(msg: MeshCoreMessage, sourceId: string | null): Promise<number> {
     if (await this.isSelfMeshCore(sourceId, msg.fromPublicKey)) return 0; // #3914: ignore our own sends
-    // Resolve the channel name once for the universal `channelName`/`senderLabel`
-    // tokens (and the channel-by-name filter), only when a message automation is
-    // loaded. A received channel message stores its slot in `from` as `channel-<idx>`.
+    // Same reconciliation as onMessage: resolve the channel name when any message
+    // automation is loaded (subsumes #3974's channelName/`channels` filter gate),
+    // feeding both the universal channelName/senderLabel tokens and the matcher's
+    // single-/multi-channel matching. `channel-<idx>` is parsed straight from the
+    // sender key so we can resolve BEFORE building the context (to pass it in).
     const hasMessageAutomations = (this.index.get('trigger.message') ?? []).length > 0;
     const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
     let channelName: string | null | undefined;

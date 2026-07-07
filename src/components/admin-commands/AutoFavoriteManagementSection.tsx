@@ -91,7 +91,7 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
   }, [selectedNodeNum, sourceId, showToast, t]);
 
   useEffect(() => {
-    loadConfig();
+    void loadConfig();
   }, [loadConfig]);
 
   const update = useCallback((patch: Partial<AutoFavoriteConfig>) => {

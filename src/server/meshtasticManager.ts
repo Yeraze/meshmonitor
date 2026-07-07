@@ -1,4 +1,5 @@
 import databaseService, { type DbMessage } from '../services/database.js';
+import { ALL_SOURCES } from '../db/repositories/index.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService, { convertIpv4ConfigToStrings } from './protobufService.js';
 import { getProtobufRoot } from './protobufLoader.js';
@@ -800,7 +801,7 @@ class MeshtasticManager implements ISourceManager {
         | import('./mqttBrokerManager.js').MqttBrokerManager
         | import('./mqttBridgeManager.js').MqttBridgeManager;
       const listener = (p: import('./mqttBrokerManager.js').MqttBrokerLocalPacket) => {
-        this.handleLinkedBrokerLocalPacket(p);
+        void this.handleLinkedBrokerLocalPacket(p);
       };
       this.mqttLinkBrokerListener = listener;
       this.mqttLinkBroker.on('local-packet', listener);
@@ -1276,7 +1277,7 @@ class MeshtasticManager implements ISourceManager {
       });
 
       this.transport.on('message', (data: Uint8Array) => {
-        this.processIncomingData(data);
+        void this.processIncomingData(data);
       });
 
       this.transport.on('disconnect', () => {
@@ -1815,7 +1816,7 @@ class MeshtasticManager implements ISourceManager {
       ? 'broadcast'
       : `!${destination.toString(16).padStart(8, '0')}`;
 
-    packetLogService.logPacket({
+    void packetLogService.logPacket({
       timestamp: Date.now(),
       from_node: localNodeNum,
       from_node_id: localNodeId,
@@ -2004,7 +2005,7 @@ class MeshtasticManager implements ISourceManager {
     this.tracerouteJitterTimeout = setTimeout(() => {
       this.tracerouteJitterTimeout = null;
       // Execute first traceroute
-      executeTraceroute();
+      executeTraceroute().catch(err => logger.error('Auto-traceroute scheduler error:', err));
 
       // Start regular interval (no jitter on subsequent runs)
       this.tracerouteInterval = setInterval(executeTraceroute, intervalMs);
@@ -2186,7 +2187,7 @@ class MeshtasticManager implements ISourceManager {
 
     this.remoteLocalStatsJitterTimeout = setTimeout(() => {
       this.remoteLocalStatsJitterTimeout = null;
-      executeRemoteLocalStats();
+      executeRemoteLocalStats().catch(err => logger.error('Remote LocalStats scheduler error:', err));
       this.remoteLocalStatsInterval = setInterval(executeRemoteLocalStats, intervalMs);
     }, initialJitterMs);
   }
@@ -2681,23 +2682,23 @@ class MeshtasticManager implements ISourceManager {
             logger.info(`🔐 Key repair: Auto-purging node ${nodeName} from device database`);
             try {
               await this.sendRemoveNode(node.nodeNum);
-              databaseService.logKeyRepairAttemptAsync(node.nodeNum, nodeName, 'purge', true, null, null, this.sourceId);
+              void databaseService.logKeyRepairAttemptAsync(node.nodeNum, nodeName, 'purge', true, null, null, this.sourceId);
               logger.info(`🔐 Key repair: Purged node ${nodeName}, sending final node info exchange`);
 
               // Send one more node info exchange after purge — use channel, not DM
               // (keys are mismatched so PKI-encrypted DMs would fail)
               const purgedNodeData = await databaseService.nodes.getNode(node.nodeNum);
               await this.sendNodeInfoRequest(node.nodeNum, purgedNodeData?.channel ?? 0);
-              databaseService.logKeyRepairAttemptAsync(node.nodeNum, nodeName, 'exchange', null, null, null, this.sourceId);
+              void databaseService.logKeyRepairAttemptAsync(node.nodeNum, nodeName, 'exchange', null, null, null, this.sourceId);
             } catch (error) {
               logger.error(`🔐 Key repair: Failed to purge node ${nodeName}:`, error);
-              databaseService.logKeyRepairAttemptAsync(node.nodeNum, nodeName, 'purge', false, null, null, this.sourceId);
+              void databaseService.logKeyRepairAttemptAsync(node.nodeNum, nodeName, 'purge', false, null, null, this.sourceId);
             }
           }
 
           // Mark as exhausted
           await databaseService.setKeyRepairStateAsync(node.nodeNum, { exhausted: true });
-          databaseService.logKeyRepairAttemptAsync(node.nodeNum, nodeName, 'exhausted', null, null, null, this.sourceId);
+          void databaseService.logKeyRepairAttemptAsync(node.nodeNum, nodeName, 'exhausted', null, null, null, this.sourceId);
           continue;
         }
 
@@ -2716,10 +2717,10 @@ class MeshtasticManager implements ISourceManager {
             startedAt: node.startedAt ?? now
           });
 
-          databaseService.logKeyRepairAttemptAsync(node.nodeNum, nodeName, `exchange (${node.attemptCount + 1}/${this.keyRepairMaxExchanges})`, null, null, null, this.sourceId);
+          void databaseService.logKeyRepairAttemptAsync(node.nodeNum, nodeName, `exchange (${node.attemptCount + 1}/${this.keyRepairMaxExchanges})`, null, null, null, this.sourceId);
         } catch (error) {
           logger.error(`🔐 Key repair: Failed to send node info to ${nodeName}:`, error);
-          databaseService.logKeyRepairAttemptAsync(node.nodeNum, nodeName, `exchange (${node.attemptCount + 1}/${this.keyRepairMaxExchanges})`, false, null, null, this.sourceId);
+          void databaseService.logKeyRepairAttemptAsync(node.nodeNum, nodeName, `exchange (${node.attemptCount + 1}/${this.keyRepairMaxExchanges})`, false, null, null, this.sourceId);
         }
       }
     } catch (error) {
@@ -3329,7 +3330,7 @@ class MeshtasticManager implements ISourceManager {
         if (trigger.event === 'entry' || trigger.event === 'while_inside') {
           if (!this.isGeofenceCooldownActive(trigger.id, nodeNum, trigger.cooldownMinutes)) {
             logger.info(`📍 Geofence "${trigger.name}": node ${nodeNum} entered`);
-            this.executeGeofenceTrigger(trigger, nodeNum, lat, lng, 'entry');
+            void this.executeGeofenceTrigger(trigger, nodeNum, lat, lng, 'entry');
           } else {
             logger.debug(`📍 Geofence "${trigger.name}": cooldown active for node ${nodeNum}, skipping entry`);
           }
@@ -3341,7 +3342,7 @@ class MeshtasticManager implements ISourceManager {
         if (trigger.event === 'exit') {
           if (!this.isGeofenceCooldownActive(trigger.id, nodeNum, trigger.cooldownMinutes)) {
             logger.info(`📍 Geofence "${trigger.name}": node ${nodeNum} exited`);
-            this.executeGeofenceTrigger(trigger, nodeNum, lat, lng, 'exit');
+            void this.executeGeofenceTrigger(trigger, nodeNum, lat, lng, 'exit');
           } else {
             logger.debug(`📍 Geofence "${trigger.name}": cooldown active for node ${nodeNum}, skipping exit`);
           }
@@ -3582,7 +3583,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       logger.info(`📍 Geofence "${trigger.name}": while_inside tick for node ${nodeNum}`);
-      this.executeGeofenceTrigger(trigger, nodeNum, eff.latitude, eff.longitude, 'while_inside');
+      void this.executeGeofenceTrigger(trigger, nodeNum, eff.latitude, eff.longitude, 'while_inside');
     }
   }
 
@@ -5372,7 +5373,7 @@ class MeshtasticManager implements ISourceManager {
         // above) arrived over the air, so it is a reception, not our own 'tx'.
         const spoof = this.assessLocalSpoof(meshPacket);
 
-        packetLogService.logPacket({
+        void packetLogService.logPacket({
           packet_id: meshPacket.id ?? undefined,
           timestamp: Date.now(), // Use server time in ms for consistent ordering (rxTime preserved in metadata.rx_time)
           from_node: fromNum,
@@ -6169,7 +6170,7 @@ class MeshtasticManager implements ISourceManager {
         const localNodeInfo = this.getLocalNodeInfo();
         if (localNodeInfo) {
           const localNodeId = `!${localNodeInfo.nodeNum.toString(16).padStart(8, '0')}`;
-          const pendingMessages = await databaseService.messages.getDirectMessages(localNodeId, nodeId, 100) as DbMessage[];
+          const pendingMessages = await databaseService.messages.getDirectMessages(localNodeId, nodeId, 100, 0, this.sourceId) as DbMessage[]; // scoped to this manager's source (leak fix)
           const pendingExchangeRequest = pendingMessages.find((msg: DbMessage) =>
             msg.text === 'Position exchange requested' &&
             msg.fromNodeNum === localNodeInfo.nodeNum &&
@@ -6514,9 +6515,9 @@ class MeshtasticManager implements ISourceManager {
             }
 
             // Clear the repair state and log success
-            databaseService.clearKeyRepairStateAsync(fromNum);
+            void databaseService.clearKeyRepairStateAsync(fromNum);
             const nodeName = user.longName || user.shortName || nodeId;
-            databaseService.logKeyRepairAttemptAsync(fromNum, nodeName, 'fixed', true, null, null, this.sourceId);
+            void databaseService.logKeyRepairAttemptAsync(fromNum, nodeName, 'fixed', true, null, null, this.sourceId);
 
             // Emit update to UI
             dataEventEmitter.emitNodeUpdate(fromNum, {
@@ -9668,7 +9669,7 @@ class MeshtasticManager implements ISourceManager {
    */
   private startAutoPingSession(session: AutoPingSession): void {
     session.timer = setInterval(() => {
-      this.sendNextAutoPing(session);
+      void this.sendNextAutoPing(session);
     }, session.intervalMs);
   }
 
@@ -9678,7 +9679,7 @@ class MeshtasticManager implements ISourceManager {
   private async sendNextAutoPing(session: AutoPingSession): Promise<void> {
     // Check if session is complete — send summary as the final message
     if (session.completedPings >= session.totalPings) {
-      this.finalizeAutoPingSession(session.requestedBy);
+      void this.finalizeAutoPingSession(session.requestedBy);
       return;
     }
 
@@ -14112,7 +14113,8 @@ class MeshtasticManager implements ISourceManager {
       'uptimeSeconds',
       sourceId,
     );
-    const dbNodes = await databaseService.nodes.getAllNodes(sourceId);
+    // intentional cross-source when sourceId omitted: caller wants unified view across all sources
+    const dbNodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
     // Without a sourceId the caller wants the unified view, so collapse the
     // per-source rows into one entry per nodeNum. Issue #3135.
     const effective = sourceId ? dbNodes : mergeNodesAcrossSources(dbNodes);

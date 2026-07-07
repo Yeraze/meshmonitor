@@ -255,7 +255,7 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
 
     if (!user) {
       // Audit log failed attempt
-      databaseService.auditLogAsync(
+      void databaseService.auditLogAsync(
         null,
         'login_failed',
         'auth',
@@ -273,7 +273,7 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
       // Don't create full session yet - store pending MFA verification
       req.session.pendingMfaUserId = user.id;
 
-      databaseService.auditLogAsync(
+      void databaseService.auditLogAsync(
         user.id,
         'login_mfa_required',
         'auth',
@@ -300,7 +300,7 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
     req.session.isAdmin = user.isAdmin;
 
     // Audit log successful login
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       user.id,
       'login_success',
       'auth',
@@ -335,7 +335,7 @@ router.post('/logout', (req: Request, res: Response) => {
 
     // Audit log
     if (userId) {
-      databaseService.auditLogAsync(
+      void databaseService.auditLogAsync(
         userId,
         'logout',
         'auth',
@@ -386,7 +386,7 @@ router.post('/verify-mfa', authLimiter, async (req: Request, res: Response) => {
       if (remaining !== null) {
         verified = true;
         await databaseService.consumeBackupCodeAsync(user.id, JSON.stringify(remaining));
-        databaseService.auditLogAsync(
+        void databaseService.auditLogAsync(
           user.id,
           'mfa_backup_code_used',
           'auth',
@@ -397,7 +397,7 @@ router.post('/verify-mfa', authLimiter, async (req: Request, res: Response) => {
     }
 
     if (!verified) {
-      databaseService.auditLogAsync(
+      void databaseService.auditLogAsync(
         user.id,
         'mfa_verify_failed',
         'auth',
@@ -420,7 +420,7 @@ router.post('/verify-mfa', authLimiter, async (req: Request, res: Response) => {
     req.session.authProvider = 'local';
     req.session.isAdmin = user.isAdmin;
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       user.id,
       'login_success',
       'auth',
@@ -589,7 +589,7 @@ router.get('/oidc/callback', async (req: Request, res: Response) => {
     req.session.isAdmin = user.isAdmin;
 
     // Audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       user.id,
       'login_success',
       'auth',

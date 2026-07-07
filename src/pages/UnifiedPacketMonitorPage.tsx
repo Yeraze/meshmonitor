@@ -106,7 +106,7 @@ export default function UnifiedPacketMonitorPage() {
         console.error('Failed to fetch unified packet distribution:', err);
       }
     };
-    fetchDist();
+    void fetchDist();
     const iv = paused ? undefined : setInterval(fetchDist, 30000);
     return () => { cancelled = true; if (iv) clearInterval(iv); };
   }, [canView, showCharts, rangeHours, paused]);
@@ -149,7 +149,7 @@ export default function UnifiedPacketMonitorPage() {
   useEffect(() => {
     if (lastVirtualItemIndex === undefined) return;
     if (lastVirtualItemIndex >= packets.length - 10 && hasMore && !loadingMore && packets.length > 0) {
-      loadMore();
+      void loadMore();
     }
   }, [lastVirtualItemIndex, packets.length, hasMore, loadingMore, loadMore]);
 

@@ -86,8 +86,8 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
   }, [baseUrl, csrfFetch, sourceQuery]);
 
   useEffect(() => {
-    fetchSettings();
-    fetchStatus();
+    void fetchSettings();
+    void fetchStatus();
   }, [fetchSettings, fetchStatus]);
 
   // Poll the live status so the banner reflects current utilization.
@@ -117,7 +117,7 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
         setInitialSource(localSource);
         setHasChanges(false);
         showToast(t('automation.airtime_cutoff.saved', 'Airtime cutoff settings saved'), 'success');
-        fetchStatus();
+        void fetchStatus();
       } else {
         showToast(t('automation.airtime_cutoff.save_error', 'Failed to save settings'), 'error');
       }
