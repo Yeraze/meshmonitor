@@ -2715,15 +2715,26 @@ class MeshCoreManager extends EventEmitter {
   }
 
   /**
+   * Margin applied to the firmware's `estTimeout` before a DM send is treated
+   * as missed (#3977). Absorbs normal jitter; not itself a protocol constant.
+   */
+  private static readonly DM_ACK_TIMEOUT_MARGIN = 1.2;
+
+  /**
    * Arm the auto-retry timer for a just-sent DM (#3977). `estTimeout` is the
-   * firmware's own estimate for this send; a 20% margin absorbs normal jitter
-   * before treating it as a miss. Cleared early by the `send_confirmed`
-   * handler if the ack arrives first, and cleared in bulk on disconnect.
+   * firmware's own estimate for this send. Cleared early by the
+   * `send_confirmed` handler if the ack arrives first, and cleared in bulk
+   * on disconnect. If an entry already exists for this `ackCrc` (the
+   * firmware's CRC space is only 16 bits, so a collision between two
+   * in-flight DMs is unlikely but possible), its timer is cancelled first so
+   * it can't fire later with the wrong pending state.
    */
   private scheduleDmAckTimeout(ackCrc: number, toPublicKey: string, text: string, estTimeout: number): void {
+    const existing = this.pendingDmRetries.get(ackCrc);
+    if (existing) clearTimeout(existing.timer);
     const timer = setTimeout(() => {
       void this.handleDmAckTimeout(ackCrc);
-    }, Math.round(estTimeout * 1.2));
+    }, Math.round(estTimeout * MeshCoreManager.DM_ACK_TIMEOUT_MARGIN));
     this.pendingDmRetries.set(ackCrc, { toPublicKey, text, timer });
   }
 
@@ -2735,6 +2746,13 @@ class MeshCoreManager extends EventEmitter {
    * tracked here, so if it also goes unacked, nothing further happens
    * automatically and the frontend's existing per-message ack timer marks it
    * failed, same as any other unacked send.
+   *
+   * The reset+resend pair runs inside `runSerialized` (the same per-source
+   * lock `sendMessageWithResult` uses) so it can't interleave with a
+   * concurrent user-initiated send's scope-assert→send pair (#3667).
+   * `performScopedSend` is called directly rather than via
+   * `sendMessageWithResult`/another `runSerialized` — it's already
+   * serialized by this call.
    */
   private async handleDmAckTimeout(ackCrc: number): Promise<void> {
     const pending = this.pendingDmRetries.get(ackCrc);
@@ -2747,12 +2765,11 @@ class MeshCoreManager extends EventEmitter {
       `[MeshCore:${this.sourceId}] No ack for DM to ${pending.toPublicKey.substring(0, 16)}… within timeout; ` +
       `resetting path and retrying via flood`,
     );
-    const reset = await this.resetContactPath(pending.toPublicKey);
-    if (!reset) return;
-
-    await this.runSerialized(() =>
-      this.performScopedSend(pending.text, pending.toPublicKey, undefined, undefined, true),
-    );
+    await this.runSerialized(async () => {
+      const reset = await this.resetContactPath(pending.toPublicKey);
+      if (!reset || !this.connected) return;
+      await this.performScopedSend(pending.text, pending.toPublicKey, undefined, undefined, true);
+    });
   }
 
   /**

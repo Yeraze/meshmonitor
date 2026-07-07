@@ -121,6 +121,17 @@ describe('MeshCoreManager — DM ack-timeout auto-retry (#3977)', () => {
     expect(bridgeCalls.filter(c => c.cmd === 'send_message')).toHaveLength(2);
   });
 
+  it('does not resend when reset_path itself fails', async () => {
+    const { manager, bridgeCalls } = makeManager({ resetPathOk: false });
+
+    await manager.sendMessageWithResult('hello', PUBKEY);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(bridgeCalls.filter(c => c.cmd === 'reset_path')).toHaveLength(1);
+    // Only the original send — the resend never fires since reset_path failed.
+    expect(bridgeCalls.filter(c => c.cmd === 'send_message')).toHaveLength(1);
+  });
+
   it('cancels the retry if the ack for the flood resend arrives', async () => {
     const { manager, bridgeCalls } = makeManager();
 
