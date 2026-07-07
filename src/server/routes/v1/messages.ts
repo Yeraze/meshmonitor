@@ -121,12 +121,12 @@ router.get('/', async (req: Request, res: Response) => {
     let messages;
 
     if (channelNum !== undefined) {
-      messages = await databaseService.messages.getMessagesByChannel(channelNum, maxLimit, 0, sourceIdStr);
+      messages = await databaseService.messages.getMessagesByChannel(channelNum, maxLimit, 0, sourceIdStr ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
     } else if (sinceTimestamp) {
       messages = await databaseService.messages.getMessagesAfterTimestamp(sinceTimestamp, sourceIdStr ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
       messages = messages.slice(0, maxLimit);
     } else {
-      messages = await databaseService.messages.getMessages(maxLimit, 0, sourceIdStr, [PortNum.TRACEROUTE_APP]);
+      messages = await databaseService.messages.getMessages(maxLimit, 0, sourceIdStr ?? ALL_SOURCES, [PortNum.TRACEROUTE_APP]); // intentional cross-source when sourceId omitted
     }
 
     // Filter messages by accessible channels (unless admin)
