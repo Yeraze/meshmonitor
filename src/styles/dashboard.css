@@ -598,6 +598,50 @@
   opacity: 0.7;
 }
 
+/* ── Polar grid legend (#3971) ───────────────────────────────────────────── */
+.dashboard-polar-grid-legend {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 1000;
+  background: var(--ctp-mantle);
+  border: 1px solid var(--ctp-surface0);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--ctp-text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  max-width: 220px;
+}
+
+.dashboard-polar-grid-legend__title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--ctp-subtext0);
+}
+
+.dashboard-polar-grid-legend__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.5;
+}
+
+.dashboard-polar-grid-legend__swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.dashboard-polar-grid-legend__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 
 .dashboard-signin-btn {

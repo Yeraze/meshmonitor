@@ -7,8 +7,15 @@ import React from 'react';
 import { PolarGridOverlay } from './PolarGridOverlay';
 
 vi.mock('react-leaflet', () => ({
-  Circle: ({ center, radius }: any) => (
-    <div data-testid="circle" data-radius={radius} data-lat={center[0]} data-lng={center[1]} />
+  Circle: ({ center, radius, pathOptions }: any) => (
+    <div
+      data-testid="circle"
+      data-radius={radius}
+      data-lat={center[0]}
+      data-lng={center[1]}
+      data-color={pathOptions?.color}
+      data-opacity={pathOptions?.opacity}
+    />
   ),
   Polyline: ({ positions }: any) => <div data-testid="polyline" />,
   Marker: ({ position }: any) => (
@@ -94,5 +101,24 @@ describe('PolarGridOverlay', () => {
     for (let i = 1; i < radii.length; i++) {
       expect(radii[i]).toBeGreaterThan(radii[i - 1]);
     }
+  });
+
+  it('uses the theme ring color at full opacity by default', () => {
+    render(<PolarGridOverlay center={CENTER} />);
+    const circle = screen.getAllByTestId('circle')[0];
+    expect(circle.getAttribute('data-color')).toBe('rgba(0,200,255,0.3)');
+    // No explicit opacity override (undefined) — the rgba alpha carries the
+    // transparency, so the attribute is absent.
+    expect(circle.getAttribute('data-opacity')).toBeNull();
+  });
+
+  it('overrides every ring with the per-source color at reduced opacity (#3971)', () => {
+    render(<PolarGridOverlay center={CENTER} color="#89b4fa" />);
+    const circles = screen.getAllByTestId('circle');
+    circles.forEach((circle) => {
+      expect(circle.getAttribute('data-color')).toBe('#89b4fa');
+      expect(Number(circle.getAttribute('data-opacity'))).toBeLessThan(1);
+      expect(Number(circle.getAttribute('data-opacity'))).toBeGreaterThan(0);
+    });
   });
 });

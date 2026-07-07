@@ -43,7 +43,19 @@ vi.mock('../../contexts/MapContext', () => ({
     setShowNeighborInfo: vi.fn(),
     showWaypoints: false,
     setShowWaypoints: vi.fn(),
+    showPolarGrid: false,
+    setShowPolarGrid: vi.fn(),
   }),
+}));
+
+// Polar grid (#3971) pulls the source list + per-source status to resolve each
+// source's own-node position. Mock the data hooks so the bare component renders
+// without a QueryClient/AuthProvider; empty data ⇒ no grid, existing assertions
+// (marker/polyline counts) are unaffected.
+vi.mock('../../hooks/useDashboardData', () => ({
+  useDashboardSources: () => ({ data: [] }),
+  useSourceStatuses: () => new Map(),
+  UNIFIED_SOURCE_ID: '__unified__',
 }));
 
 // CSRF + api are provided by the app shell in production; mock them so the bare

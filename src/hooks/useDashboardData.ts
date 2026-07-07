@@ -31,6 +31,13 @@ export interface SourceStatus {
   sourceName?: string;
   sourceType?: string;
   connected: boolean;
+  /**
+   * The source's own (local) node number, surfaced by the manager's
+   * `getStatus()`. Used to center the polar grid overlay on the local node
+   * across the multi-source Map Analysis / Unified maps (#3971). Absent for
+   * MeshCore sources (no meshtastic nodeNum) and while disconnected.
+   */
+  nodeNum?: number;
   /** Total nodes heard by this source — populated by GET /api/sources/:id/status. */
   nodeCount?: number;
   /**
