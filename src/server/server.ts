@@ -107,10 +107,16 @@ JSON.stringify = function (value, replacer?: any, space?: any) {
 if (env.trustProxyProvided) {
   app.set('trust proxy', env.trustProxy);
   logger.debug(`✅ Trust proxy configured: ${env.trustProxy}`);
-} else if (env.isProduction) {
-  // Default: trust first proxy in production (common reverse proxy setup)
-  app.set('trust proxy', 1);
-  logger.debug('ℹ️  Trust proxy defaulted to 1 hop (production mode)');
+} else {
+  // Secure default: do NOT trust proxy headers unless TRUST_PROXY is explicitly set.
+  // Trusting them by default lets a direct-connected client spoof X-Forwarded-For to
+  // rotate req.ip past the auth brute-force limiter and poison audit attribution.
+  app.set('trust proxy', false);
+  if (env.isProduction) {
+    logger.warn('⚠️  TRUST_PROXY not set — using the direct socket IP for rate limiting and audit logs.');
+    logger.warn('   If MeshMonitor is behind a reverse proxy (nginx, Traefik, Caddy, Cloudflare), set TRUST_PROXY=1 (or the hop count / subnet) so client IPs resolve correctly.');
+    logger.warn('   See: https://expressjs.com/en/guide/behind-proxies.html');
+  }
 }
 
 // Security: Helmet.js for HTTP security headers

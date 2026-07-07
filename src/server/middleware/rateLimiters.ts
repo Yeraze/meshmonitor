@@ -67,8 +67,8 @@ logger.info(`   - Messages: ${env.rateLimitMessages === 0 ? 'unlimited (disabled
 
 // Log reverse proxy configuration warnings
 if (!env.trustProxyProvided && env.isProduction) {
-  logger.warn('⚠️  TRUST_PROXY not set - rate limiting will use proxy IP for all requests');
-  logger.warn('   If behind a reverse proxy (nginx, Traefik, etc.), set TRUST_PROXY=1');
+  logger.warn('⚠️  TRUST_PROXY not set — rate limiting keys on the direct socket IP (secure default).');
+  logger.warn('   If behind a reverse proxy, set TRUST_PROXY=1 so per-client limits use the real client IP.');
   logger.warn('   See: https://expressjs.com/en/guide/behind-proxies.html');
 }
 // General API rate limiting

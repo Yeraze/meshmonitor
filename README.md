@@ -115,6 +115,8 @@ services:
 2. `TRUST_PROXY` is configured to trust your reverse proxy
 3. Your proxy validates authentication before forwarding requests
 
+As of v4.13, `TRUST_PROXY` defaults to `false`; you MUST set `TRUST_PROXY=1` (or the appropriate hop count/subnet) whenever MeshMonitor runs behind any reverse proxy, or client IP resolution, rate limiting, and audit logs will all show the proxy's IP.
+
 ### Email Uniqueness Caveat
 
 ⚠️ **Email uniqueness is NOT enforced** in the database schema. If multiple users share the same email address, the first match will be used. Ensure your proxy provides unique email addresses for each user.

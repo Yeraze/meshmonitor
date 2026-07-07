@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING (deployments behind a reverse proxy): `TRUST_PROXY` now defaults to `false`.** Previously, production builds trusted the first proxy hop when `TRUST_PROXY` was unset, which let a direct-connected client spoof `X-Forwarded-For` to bypass the auth brute-force limiter and poison audit attribution. Proxied deployments must now set `TRUST_PROXY` explicitly (`TRUST_PROXY=1` for a single proxy). Direct (non-proxied) deployments need no change.
+
 ## [4.12.5] - 2026-07-06
 
 ### Added
