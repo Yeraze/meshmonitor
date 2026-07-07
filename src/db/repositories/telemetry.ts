@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, lt, gte, and, desc, inArray, or, not, SQL, count, sql } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
+import { ALL_SOURCES, BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbTelemetry } from '../types.js';
 import { logger } from '../../utils/logger.js';
 
@@ -201,7 +201,7 @@ export class TelemetryRepository extends BaseRepository {
     const { telemetry } = this.tables;
     let conditions = [eq(telemetry.nodeId, nodeId)];
 
-    const sourceScope = this.withSourceScope(telemetry, sourceId);
+    const sourceScope = this.withSourceScope(telemetry, sourceId ?? ALL_SOURCES);
     if (sourceScope) conditions.push(sourceScope);
 
     if (sinceTimestamp !== undefined) {
@@ -237,7 +237,7 @@ export class TelemetryRepository extends BaseRepository {
     const { telemetry } = this.tables;
     let conditions = [eq(telemetry.nodeId, nodeId)];
 
-    const sourceScope = this.withSourceScope(telemetry, sourceId);
+    const sourceScope = this.withSourceScope(telemetry, sourceId ?? ALL_SOURCES);
     if (sourceScope) conditions.push(sourceScope);
 
     if (sinceTimestamp !== undefined) {
@@ -279,7 +279,7 @@ export class TelemetryRepository extends BaseRepository {
       inArray(telemetry.telemetryType, positionTypes),
     ];
 
-    const sourceScope = this.withSourceScope(telemetry, sourceId);
+    const sourceScope = this.withSourceScope(telemetry, sourceId ?? ALL_SOURCES);
     if (sourceScope) conditions.push(sourceScope);
 
     if (sinceTimestamp !== undefined) {
@@ -671,7 +671,7 @@ export class TelemetryRepository extends BaseRepository {
    */
   async deleteTelemetryByNode(nodeNum: number, sourceId?: SourceScope): Promise<number> {
     const { telemetry } = this.tables;
-    const condition = and(eq(telemetry.nodeNum, nodeNum), this.withSourceScope(telemetry, sourceId));
+    const condition = and(eq(telemetry.nodeNum, nodeNum), this.withSourceScope(telemetry, sourceId ?? ALL_SOURCES));
 
     if (this.isMySQL()) {
       const countResult = await this.db
@@ -780,7 +780,7 @@ export class TelemetryRepository extends BaseRepository {
     const result = await this.db
       .selectDistinct({ nodeId: telemetry.nodeId, type: telemetry.telemetryType })
       .from(telemetry)
-      .where(this.withSourceScope(telemetry, sourceId));
+      .where(this.withSourceScope(telemetry, sourceId ?? ALL_SOURCES));
 
     for (const r of result) {
       const types = map.get(r.nodeId) || [];
@@ -1060,7 +1060,7 @@ export class TelemetryRepository extends BaseRepository {
     const intervalMs = intervalMinutes * 60 * 1000;
 
     const baseConditions: SQL[] = [eq(telemetry.nodeId, nodeId)];
-    const sourceScope = this.withSourceScope(telemetry, sourceId);
+    const sourceScope = this.withSourceScope(telemetry, sourceId ?? ALL_SOURCES);
     if (sourceScope) baseConditions.push(sourceScope);
     if (sinceTimestamp !== undefined) {
       baseConditions.push(gte(telemetry.timestamp, sinceTimestamp));

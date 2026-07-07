@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, and, desc, lt, or, isNull, gte, notInArray, count, sql } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
+import { ALL_SOURCES, BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbTraceroute, DbRouteSegment, DbNode } from '../types.js';
 
 /**
@@ -121,7 +121,7 @@ export class TraceroutesRepository extends BaseRepository {
     const result = await this.db
       .select()
       .from(traceroutes)
-      .where(this.withSourceScope(traceroutes, sourceId))
+      .where(this.withSourceScope(traceroutes, sourceId ?? ALL_SOURCES))
       .orderBy(desc(traceroutes.timestamp))
       .limit(limit);
 
@@ -156,7 +156,7 @@ export class TraceroutesRepository extends BaseRepository {
               eq(traceroutes.toNodeNum, fromNodeNum)
             )
           ),
-          this.withSourceScope(traceroutes, sourceId)
+          this.withSourceScope(traceroutes, sourceId ?? ALL_SOURCES)
         )
       )
       .orderBy(desc(traceroutes.timestamp))
@@ -176,7 +176,7 @@ export class TraceroutesRepository extends BaseRepository {
     const { traceroutes } = this.tables;
     const condition = and(
       or(eq(traceroutes.fromNodeNum, nodeNum), eq(traceroutes.toNodeNum, nodeNum)),
-      this.withSourceScope(traceroutes, sourceId)
+      this.withSourceScope(traceroutes, sourceId ?? ALL_SOURCES)
     );
 
     if (this.isMySQL()) {
@@ -269,7 +269,7 @@ export class TraceroutesRepository extends BaseRepository {
     const result = await this.db
       .select()
       .from(routeSegments)
-      .where(this.withSourceScope(routeSegments, sourceId))
+      .where(this.withSourceScope(routeSegments, sourceId ?? ALL_SOURCES))
       .orderBy(desc(routeSegments.distanceKm))
       .limit(1);
 
@@ -288,7 +288,7 @@ export class TraceroutesRepository extends BaseRepository {
       .from(routeSegments)
       .where(and(
         eq(routeSegments.isRecordHolder, true),
-        this.withSourceScope(routeSegments, sourceId),
+        this.withSourceScope(routeSegments, sourceId ?? ALL_SOURCES),
       ))
       .orderBy(desc(routeSegments.distanceKm))
       .limit(1);
@@ -308,7 +308,7 @@ export class TraceroutesRepository extends BaseRepository {
     const { routeSegments } = this.tables;
     const condition = and(
       or(eq(routeSegments.fromNodeNum, nodeNum), eq(routeSegments.toNodeNum, nodeNum)),
-      this.withSourceScope(routeSegments, sourceId),
+      this.withSourceScope(routeSegments, sourceId ?? ALL_SOURCES),
     );
 
     if (this.isMySQL()) {
@@ -365,7 +365,7 @@ export class TraceroutesRepository extends BaseRepository {
       .set({ isRecordHolder: false })
       .where(and(
         eq(routeSegments.isRecordHolder, true),
-        this.withSourceScope(routeSegments, sourceId),
+        this.withSourceScope(routeSegments, sourceId ?? ALL_SOURCES),
       ));
   }
 
@@ -397,7 +397,7 @@ export class TraceroutesRepository extends BaseRepository {
     const condition = and(
       lt(routeSegments.timestamp, cutoff),
       eq(routeSegments.isRecordHolder, false),
-      this.withSourceScope(routeSegments, sourceId),
+      this.withSourceScope(routeSegments, sourceId ?? ALL_SOURCES),
     );
     const toDelete = await this.db
       .select({ count: count() })
@@ -415,7 +415,7 @@ export class TraceroutesRepository extends BaseRepository {
    */
   async deleteAllRouteSegments(sourceId?: SourceScope): Promise<number> {
     const { routeSegments } = this.tables;
-    const scope = this.withSourceScope(routeSegments, sourceId);
+    const scope = this.withSourceScope(routeSegments, sourceId ?? ALL_SOURCES);
     const result = await this.db
       .select({ count: count() })
       .from(routeSegments)
@@ -634,7 +634,7 @@ export class TraceroutesRepository extends BaseRepository {
     const rows = db
       .select()
       .from(traceroutes)
-      .where(this.withSourceScope(traceroutes, sourceId))
+      .where(this.withSourceScope(traceroutes, sourceId ?? ALL_SOURCES))
       .orderBy(desc(traceroutes.timestamp))
       .limit(limit)
       .all();

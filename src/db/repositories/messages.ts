@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, gt, lt, gte, and, or, desc, sql, like, ilike, inArray, isNotNull, isNull, ne, notInArray, SQL, count } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
+import { ALL_SOURCES, BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbMessage } from '../types.js';
 import { logger } from '../../utils/logger.js';
 
@@ -117,10 +117,10 @@ export class MessagesRepository extends BaseRepository {
     const { messages } = this.tables;
     const whereClause = (excludePortnums && excludePortnums.length > 0)
       ? and(
-          this.withSourceScope(messages, sourceId),
+          this.withSourceScope(messages, sourceId ?? ALL_SOURCES),
           or(isNull(messages.portnum), notInArray(messages.portnum, excludePortnums)),
         )
-      : this.withSourceScope(messages, sourceId);
+      : this.withSourceScope(messages, sourceId ?? ALL_SOURCES);
     const result = await this.db
       .select()
       .from(messages)
@@ -140,7 +140,7 @@ export class MessagesRepository extends BaseRepository {
     const result = await this.db
       .select()
       .from(messages)
-      .where(and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId)))
+      .where(and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId ?? ALL_SOURCES)))
       .orderBy(desc(messages.createdAt))
       .limit(limit)
       .offset(offset);
@@ -169,7 +169,7 @@ export class MessagesRepository extends BaseRepository {
     const { messages } = this.tables;
     const conditions: (SQL | undefined)[] = [
       eq(messages.channel, channel),
-      this.withSourceScope(messages, sourceId),
+      this.withSourceScope(messages, sourceId ?? ALL_SOURCES),
     ];
     if (before !== undefined) {
       conditions.push(sql`${messages.createdAt} < ${before}`);
@@ -199,7 +199,7 @@ export class MessagesRepository extends BaseRepository {
             and(eq(messages.fromNodeId, nodeId1), eq(messages.toNodeId, nodeId2)),
             and(eq(messages.fromNodeId, nodeId2), eq(messages.toNodeId, nodeId1))
           ),
-          this.withSourceScope(messages, sourceId)
+          this.withSourceScope(messages, sourceId ?? ALL_SOURCES)
         )
       )
       .orderBy(desc(messages.createdAt))
@@ -217,7 +217,7 @@ export class MessagesRepository extends BaseRepository {
     const result = await this.db
       .select()
       .from(messages)
-      .where(and(gt(messages.timestamp, timestamp), this.withSourceScope(messages, sourceId)))
+      .where(and(gt(messages.timestamp, timestamp), this.withSourceScope(messages, sourceId ?? ALL_SOURCES)))
       .orderBy(messages.timestamp);
 
     return this.normalizeBigInts(result) as DbMessage[];
@@ -229,7 +229,7 @@ export class MessagesRepository extends BaseRepository {
   async getMessageCount(sourceId: SourceScope): Promise<number> {
     const { messages } = this.tables;
     const result = await this.db.select({ count: count() }).from(messages)
-      .where(this.withSourceScope(messages, sourceId));
+      .where(this.withSourceScope(messages, sourceId ?? ALL_SOURCES));
     return Number(result[0].count);
   }
 
@@ -253,7 +253,7 @@ export class MessagesRepository extends BaseRepository {
         lastTimestamp: sql<number | null>`MAX(${messages.timestamp})`,
       })
       .from(messages)
-      .where(this.withSourceScope(messages, sourceId))
+      .where(this.withSourceScope(messages, sourceId ?? ALL_SOURCES))
       .groupBy(messages.channel);
 
     return rows
@@ -290,7 +290,7 @@ export class MessagesRepository extends BaseRepository {
    */
   async purgeChannelMessages(channel: number, sourceId?: string): Promise<number> {
     const { messages } = this.tables;
-    const condition = and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId));
+    const condition = and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId ?? ALL_SOURCES));
     const [{ deletedCount }] = await this.db
       .select({ deletedCount: count() })
       .from(messages)
@@ -311,7 +311,7 @@ export class MessagesRepository extends BaseRepository {
         eq(messages.toNodeNum, nodeNum)
       ),
       sql`${messages.toNodeId} != '!ffffffff'`,
-      this.withSourceScope(messages, sourceId)
+      this.withSourceScope(messages, sourceId ?? ALL_SOURCES)
     );
     const [{ deletedCount }] = await this.db
       .select({ deletedCount: count() })
@@ -413,7 +413,7 @@ export class MessagesRepository extends BaseRepository {
     const rows = db
       .select()
       .from(messages)
-      .where(this.withSourceScope(messages, sourceId))
+      .where(this.withSourceScope(messages, sourceId ?? ALL_SOURCES))
       .orderBy(desc(messages.createdAt))
       .limit(limit)
       .offset(offset)
@@ -433,7 +433,7 @@ export class MessagesRepository extends BaseRepository {
     const rows = db
       .select()
       .from(messages)
-      .where(and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId)))
+      .where(and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId ?? ALL_SOURCES)))
       .orderBy(desc(messages.createdAt))
       .limit(limit)
       .offset(offset)
@@ -453,7 +453,7 @@ export class MessagesRepository extends BaseRepository {
     const rows = db
       .select()
       .from(messages)
-      .where(and(gt(messages.timestamp, timestamp), this.withSourceScope(messages, sourceId)))
+      .where(and(gt(messages.timestamp, timestamp), this.withSourceScope(messages, sourceId ?? ALL_SOURCES)))
       .orderBy(messages.timestamp)
       .all();
     return this.normalizeBigInts(rows) as DbMessage[];
@@ -471,7 +471,7 @@ export class MessagesRepository extends BaseRepository {
     const rows = db
       .select({ count: count() })
       .from(messages)
-      .where(this.withSourceScope(messages, sourceId))
+      .where(this.withSourceScope(messages, sourceId ?? ALL_SOURCES))
       .all();
     return Number(rows[0]?.count ?? 0);
   }
@@ -501,7 +501,7 @@ export class MessagesRepository extends BaseRepository {
     const messages = this.tables.messages;
     const cutoff = this.now() - days * 24 * 60 * 60 * 1000;
     const condition = sourceId
-      ? and(lt(messages.timestamp, cutoff), this.withSourceScope(messages, sourceId))
+      ? and(lt(messages.timestamp, cutoff), this.withSourceScope(messages, sourceId ?? ALL_SOURCES))
       : lt(messages.timestamp, cutoff);
     const result = db.delete(messages).where(condition).run();
     return Number(result.changes);
@@ -623,7 +623,7 @@ export class MessagesRepository extends BaseRepository {
       ? sql<string>`DATE_FORMAT(FROM_UNIXTIME(${messages.timestamp}/1000), '%Y-%m-%d')`
       : sql<string>`to_char(to_timestamp(${messages.timestamp}/1000), 'YYYY-MM-DD')`;
 
-    const condition = and(gt(messages.timestamp, cutoff), this.withSourceScope(messages, sourceId));
+    const condition = and(gt(messages.timestamp, cutoff), this.withSourceScope(messages, sourceId ?? ALL_SOURCES));
 
     const rows = await this.db
       .select({ date: dateExpr, count: count() })
@@ -651,7 +651,7 @@ export class MessagesRepository extends BaseRepository {
     const cutoff = this.now() - days * 24 * 60 * 60 * 1000;
     const dateExpr = sql<string>`date(${messages.timestamp}/1000, 'unixepoch')`;
     const condition = sourceId
-      ? and(gt(messages.timestamp, cutoff), this.withSourceScope(messages, sourceId))
+      ? and(gt(messages.timestamp, cutoff), this.withSourceScope(messages, sourceId ?? ALL_SOURCES))
       : gt(messages.timestamp, cutoff);
     const rows = db
       .select({ date: dateExpr, count: count() })
@@ -674,7 +674,7 @@ export class MessagesRepository extends BaseRepository {
   async cleanupOldMessagesForSource(days: number, sourceId: string): Promise<number> {
     const cutoff = this.now() - days * 24 * 60 * 60 * 1000;
     const { messages } = this.tables;
-    const condition = and(lt(messages.timestamp, cutoff), this.withSourceScope(messages, sourceId));
+    const condition = and(lt(messages.timestamp, cutoff), this.withSourceScope(messages, sourceId ?? ALL_SOURCES));
 
     // Count first so we can return an affected-row count consistently across
     // dialects (MySQL's delete result shape is awkward with Drizzle here).
@@ -698,7 +698,7 @@ export class MessagesRepository extends BaseRepository {
     }
     const db = this.sqliteDb;
     const messages = this.tables.messages;
-    const condition = and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId));
+    const condition = and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId ?? ALL_SOURCES));
     const result = db.delete(messages).where(condition).run();
     return Number(result.changes);
   }
@@ -720,7 +720,7 @@ export class MessagesRepository extends BaseRepository {
         eq(messages.toNodeNum, nodeNum)
       ),
       ne(messages.toNodeId, '!ffffffff'),
-      this.withSourceScope(messages, sourceId)
+      this.withSourceScope(messages, sourceId ?? ALL_SOURCES)
     );
     const result = db.delete(messages).where(condition).run();
     return Number(result.changes);

@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, desc, and, or, gte, lt, sql, count, max } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
+import { ALL_SOURCES, BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbNeighborInfo } from '../types.js';
 
 /**
@@ -89,7 +89,7 @@ export class NeighborsRepository extends BaseRepository {
     const result = await this.db
       .select()
       .from(neighborInfo)
-      .where(and(eq(neighborInfo.nodeNum, nodeNum), this.withSourceScope(neighborInfo, sourceId)))
+      .where(and(eq(neighborInfo.nodeNum, nodeNum), this.withSourceScope(neighborInfo, sourceId ?? ALL_SOURCES)))
       .orderBy(desc(neighborInfo.timestamp));
 
     return this.normalizeBigInts(result) as DbNeighborInfo[];
@@ -103,7 +103,7 @@ export class NeighborsRepository extends BaseRepository {
     const result = await this.db
       .select()
       .from(neighborInfo)
-      .where(this.withSourceScope(neighborInfo, sourceId))
+      .where(this.withSourceScope(neighborInfo, sourceId ?? ALL_SOURCES))
       .orderBy(desc(neighborInfo.timestamp));
 
     return this.normalizeBigInts(result) as DbNeighborInfo[];
@@ -119,7 +119,7 @@ export class NeighborsRepository extends BaseRepository {
     const { neighborInfo } = this.tables;
     await this.db
       .delete(neighborInfo)
-      .where(and(eq(neighborInfo.nodeNum, nodeNum), this.withSourceScope(neighborInfo, sourceId)));
+      .where(and(eq(neighborInfo.nodeNum, nodeNum), this.withSourceScope(neighborInfo, sourceId ?? ALL_SOURCES)));
   }
 
   /**
@@ -184,7 +184,7 @@ export class NeighborsRepository extends BaseRepository {
       .where(
         and(
           or(eq(neighborInfo.nodeNum, nodeNum), eq(neighborInfo.neighborNodeNum, nodeNum)),
-          this.withSourceScope(neighborInfo, sourceId)
+          this.withSourceScope(neighborInfo, sourceId ?? ALL_SOURCES)
         )
       );
   }

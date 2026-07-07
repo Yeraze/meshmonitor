@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, gt, lt, isNull, or, desc, asc, and, isNotNull, ne, sql, inArray, count, countDistinct } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
+import { ALL_SOURCES, BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbNode } from '../types.js';
 import { logger } from '../../utils/logger.js';
 import { isValidNodeNum } from '../../server/constants/meshtastic.js';
@@ -235,7 +235,7 @@ export class NodesRepository extends BaseRepository {
     const result = await this.db
       .select()
       .from(nodes)
-      .where(this.withSourceScope(nodes, sourceId))
+      .where(this.withSourceScope(nodes, sourceId ?? ALL_SOURCES))
       .orderBy(desc(nodes.updatedAt));
 
     return this.normalizeBigInts(result) as DbNode[];
@@ -252,7 +252,7 @@ export class NodesRepository extends BaseRepository {
     const result = await this.db
       .select()
       .from(nodes)
-      .where(and(gt(nodes.lastHeard, cutoff), this.withSourceScope(nodes, sourceId)))
+      .where(and(gt(nodes.lastHeard, cutoff), this.withSourceScope(nodes, sourceId ?? ALL_SOURCES)))
       .orderBy(desc(nodes.lastHeard));
 
     return this.normalizeBigInts(result) as DbNode[];
@@ -264,7 +264,7 @@ export class NodesRepository extends BaseRepository {
   async getNodeCount(sourceId: SourceScope): Promise<number> {
     const { nodes } = this.tables;
     const result = await this.db.select({ count: count() }).from(nodes)
-      .where(this.withSourceScope(nodes, sourceId));
+      .where(this.withSourceScope(nodes, sourceId ?? ALL_SOURCES));
     return Number(result[0].count);
   }
 
@@ -286,7 +286,7 @@ export class NodesRepository extends BaseRepository {
     const result = await this.db
       .select({ count: count() })
       .from(nodes)
-      .where(and(gt(nodes.lastHeard, cutoff), this.withSourceScope(nodes, sourceId)));
+      .where(and(gt(nodes.lastHeard, cutoff), this.withSourceScope(nodes, sourceId ?? ALL_SOURCES)));
     return Number(result[0].count);
   }
 
@@ -703,7 +703,7 @@ export class NodesRepository extends BaseRepository {
             eq(nodes.keyIsLowEntropy, true),
             eq(nodes.duplicateKeyDetected, true)
           ),
-          this.withSourceScope(nodes, sourceId)
+          this.withSourceScope(nodes, sourceId ?? ALL_SOURCES)
         )
       )
       .orderBy(desc(nodes.lastHeard));
@@ -723,7 +723,7 @@ export class NodesRepository extends BaseRepository {
         and(
           isNotNull(nodes.publicKey),
           ne(nodes.publicKey, ''),
-          this.withSourceScope(nodes, sourceId)
+          this.withSourceScope(nodes, sourceId ?? ALL_SOURCES)
         )
       );
 
@@ -1164,7 +1164,7 @@ export class NodesRepository extends BaseRepository {
             isNull(nodes.lastRemoteAdminCheck),
             lt(nodes.lastRemoteAdminCheck, expirationMsAgo)
           ),
-          this.withSourceScope(nodes, sourceId)
+          this.withSourceScope(nodes, sourceId ?? ALL_SOURCES)
         )
       )
       .orderBy(sql`${nodes.hopsAway} IS NULL`, asc(nodes.hopsAway), desc(nodes.lastHeard))
@@ -1236,7 +1236,7 @@ export class NodesRepository extends BaseRepository {
       baseConditions.push(inArray(nodes.nodeNum, filterNodeNums));
     }
 
-    const sourceScope = this.withSourceScope(nodes, sourceId);
+    const sourceScope = this.withSourceScope(nodes, sourceId ?? ALL_SOURCES);
     if (sourceScope) baseConditions.push(sourceScope);
 
     const results = await this.db
