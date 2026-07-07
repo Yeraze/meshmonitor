@@ -195,6 +195,14 @@ export interface MeshCoreActions {
    *  send re-asserts the channel/default scope. Omit (or pass `undefined`) for
    *  the normal channel/default resolution. */
   sendMessage: (text: string, toPublicKey?: string, channelIdx?: number, scope?: string | null) => Promise<boolean>;
+  /** Delete a single stored message by id (#3981). Resolves `true` on success. */
+  deleteMessage: (id: string) => Promise<boolean>;
+  /** Clear a whole DM conversation with a peer (by pubkey/prefix) (#3981). */
+  clearConversation: (publicKey: string) => Promise<boolean>;
+  /** Clear every message on a channel index (#3981). */
+  clearChannelMessages: (channelIdx: number) => Promise<boolean>;
+  /** Purge every MeshCore message (channel + DM) for this source (#3981). */
+  purgeAllMessages: () => Promise<boolean>;
   setDeviceName: (name: string) => Promise<boolean>;
   setRadioParams: (params: { freq: number; bw: number; sf: number; cr: number }) => Promise<boolean>;
   setTxPower: (power: number) => Promise<boolean>;
@@ -648,7 +656,40 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       ));
     };
 
+    // Message deletion (#3981): the server broadcasts the deletion scope and
+    // each client prunes its own view. Source-room filtering happens at the
+    // socket layer, so (like onMessage) the payload carries no sourceId.
+    const onMessagesDeleted = (evt: {
+      ids?: string[];
+      conversationPublicKey?: string;
+      channelIdx?: number;
+      all?: boolean;
+    }) => {
+      setMessages(prev => {
+        if (evt.all) return [];
+        if (evt.ids && evt.ids.length > 0) {
+          const del = new Set(evt.ids);
+          return prev.filter(m => !del.has(m.id));
+        }
+        if (typeof evt.channelIdx === 'number') {
+          const key = `channel-${evt.channelIdx}`;
+          return prev.filter(m => {
+            if (m.fromPublicKey === key || m.toPublicKey === key) return false;
+            if (evt.channelIdx === 0 && !m.toPublicKey && !m.fromPublicKey.startsWith('channel-')) return false;
+            return true;
+          });
+        }
+        if (evt.conversationPublicKey) {
+          const pk = evt.conversationPublicKey;
+          const matches = (a?: string) => !!a && (a === pk || a.startsWith(pk) || pk.startsWith(a));
+          return prev.filter(m => !(matches(m.fromPublicKey) || matches(m.toPublicKey)));
+        }
+        return prev;
+      });
+    };
+
     socket.on('meshcore:message', onMessage);
+    socket.on('meshcore:messages:deleted', onMessagesDeleted);
     socket.on('meshcore:contact:updated', onContactUpdated);
     socket.on('meshcore:status:updated', onStatusUpdated);
     socket.on('meshcore:local-node:updated', onLocalNodeUpdated);
@@ -662,6 +703,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       ackTimers.clear();
       socket.off('connect', joinRoom);
       socket.off('meshcore:message', onMessage);
+      socket.off('meshcore:messages:deleted', onMessagesDeleted);
       socket.off('meshcore:contact:updated', onContactUpdated);
       socket.off('meshcore:status:updated', onStatusUpdated);
       socket.off('meshcore:local-node:updated', onLocalNodeUpdated);
@@ -1360,6 +1402,87 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch, fetchMessages]);
 
+  // ----- Message deletion / purge (#3981) -----
+  // Each does an optimistic local prune; the server also broadcasts a
+  // meshcore:messages:deleted event so other clients (and this one) converge.
+  // Both prunes are idempotent filters, so the double-apply is harmless.
+
+  const deleteMessage = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/messages/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (data.success) {
+        setMessages(prev => prev.filter(m => m.id !== id));
+        return true;
+      }
+      setError(data.error || 'Failed to delete message');
+      return false;
+    } catch (_err) {
+      setError('Failed to delete message');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const clearConversation = useCallback(async (publicKey: string): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/messages/conversation/${encodeURIComponent(publicKey)}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (data.success) {
+        const matches = (a?: string) => !!a && (a === publicKey || a.startsWith(publicKey) || publicKey.startsWith(a));
+        setMessages(prev => prev.filter(m => !(matches(m.fromPublicKey) || matches(m.toPublicKey))));
+        return true;
+      }
+      setError(data.error || 'Failed to clear conversation');
+      return false;
+    } catch (_err) {
+      setError('Failed to clear conversation');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const clearChannelMessages = useCallback(async (channelIdx: number): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/messages/channel/${channelIdx}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (data.success) {
+        const key = `channel-${channelIdx}`;
+        setMessages(prev => prev.filter(m => {
+          if (m.fromPublicKey === key || m.toPublicKey === key) return false;
+          if (channelIdx === 0 && !m.toPublicKey && !m.fromPublicKey.startsWith('channel-')) return false;
+          return true;
+        }));
+        return true;
+      }
+      setError(data.error || 'Failed to clear channel messages');
+      return false;
+    } catch (_err) {
+      setError('Failed to clear channel messages');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
+  const purgeAllMessages = useCallback(async (): Promise<boolean> => {
+    try {
+      const response = await csrfFetch(`${mcPrefix}/messages`, { method: 'DELETE' });
+      const data = await response.json();
+      if (data.success) {
+        setMessages([]);
+        return true;
+      }
+      setError(data.error || 'Failed to purge messages');
+      return false;
+    } catch (_err) {
+      setError('Failed to purge messages');
+      return false;
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const setDeviceName = useCallback(async (name: string): Promise<boolean> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/config/name`, {
@@ -1624,6 +1747,10 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       importPrivateKey,
       sendAdvert,
       sendMessage,
+      deleteMessage,
+      clearConversation,
+      clearChannelMessages,
+      purgeAllMessages,
       setDeviceName,
       setRadioParams,
       setTxPower,

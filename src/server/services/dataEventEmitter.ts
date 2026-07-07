@@ -26,6 +26,7 @@ export type DataEventType =
   | 'waypoint:deleted'
   | 'waypoint:expired'
   | 'meshcore:message'
+  | 'meshcore:messages:deleted'
   | 'meshcore:message:updated'
   | 'meshcore:contact:updated'
   | 'meshcore:status:updated'
@@ -316,6 +317,28 @@ class DataEventEmitter extends EventEmitter {
     };
     this.emit('data', event);
     logger.debug(`[DataEventEmitter] MeshCore message from ${message.fromPublicKey}`);
+  }
+
+  /**
+   * Emit a MeshCore message-deletion event (#3981) so connected clients prune
+   * the deleted messages from their view. The payload describes the deletion
+   * scope; the client applies the same match locally (single ids, a whole DM
+   * conversation, a channel index, or every message for the source). The event
+   * is source-room-filtered by the socket layer, so the payload carries no
+   * sourceId (mirroring emitMeshCoreMessage).
+   */
+  emitMeshCoreMessagesDeleted(
+    data: { ids?: string[]; conversationPublicKey?: string; channelIdx?: number; all?: boolean },
+    sourceId: string,
+  ): void {
+    const event: DataEvent = {
+      type: 'meshcore:messages:deleted',
+      data,
+      timestamp: Date.now(),
+      sourceId,
+    };
+    this.emit('data', event);
+    logger.debug(`[DataEventEmitter] MeshCore messages deleted (source ${sourceId})`);
   }
 
   /**

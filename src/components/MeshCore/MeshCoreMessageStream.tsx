@@ -18,6 +18,9 @@ interface MeshCoreMessageStreamProps {
    *  stream prefills the composer with the `@[Sender]:` mention + focuses it;
    *  the parent uses this callback to send the reply on the message's scope. */
   onReply?: (message: MeshCoreMessage) => void;
+  /** When provided, each message row shows a delete (🗑️) action (#3981). The
+   *  parent is responsible for confirmation and the actual delete call. */
+  onDeleteMessage?: (message: MeshCoreMessage) => void | Promise<void>;
   /** Stable key identifying the current conversation. When it changes, the
    *  stream re-runs its entry scroll (to the first-unread row, or the bottom). */
   conversationKey?: string;
@@ -67,6 +70,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   onSend,
   onNodeNameClick,
   onReply,
+  onDeleteMessage,
   conversationKey,
   maxBytes = 130,
 }) => {
@@ -362,6 +366,17 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                       onClick={() => handleReply(m)}
                     >
                       ↩
+                    </button>
+                  )}
+                  {onDeleteMessage && (
+                    <button
+                      type="button"
+                      className="mc-message-delete"
+                      title={t('meshcore.delete_message', 'Delete this message')}
+                      aria-label={t('meshcore.delete_message', 'Delete this message')}
+                      onClick={() => { void onDeleteMessage(m); }}
+                    >
+                      🗑️
                     </button>
                   )}
                 </span>

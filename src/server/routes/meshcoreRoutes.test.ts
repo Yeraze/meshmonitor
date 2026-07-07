@@ -43,6 +43,11 @@ const meshcoreManager = {
   getContacts: vi.fn().mockReturnValue([]),
   getContact: vi.fn().mockReturnValue(undefined),
   getRecentMessages: vi.fn().mockReturnValue([]),
+  // Message deletion / purge (#3981)
+  deleteStoredMessage: vi.fn().mockResolvedValue(true),
+  purgeConversation: vi.fn().mockResolvedValue(3),
+  purgeChannelMessages: vi.fn().mockResolvedValue(5),
+  purgeAllMessages: vi.fn().mockResolvedValue(9),
   connect: vi.fn().mockResolvedValue(true),
   disconnect: vi.fn().mockResolvedValue(undefined),
   sendMessage: vi.fn().mockResolvedValue(true),
@@ -545,6 +550,87 @@ describe('MeshCore Routes', () => {
         .send({ text: 'Hello', toPublicKey: validKey });
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
+    });
+  });
+
+  // Message deletion / purge (#3981). Every route requires auth + messages:write
+  // and is scoped to the source in the URL. The manager is stubbed, so these
+  // assert routing/permission/validation and that the right manager method is
+  // invoked with the source-scoped arguments.
+  describe('MeshCore message deletion / purge (#3981)', () => {
+    const VALID_PK = 'a'.repeat(64);
+
+    it('DELETE /messages/:id requires authentication', async () => {
+      const response = await request(app)
+        .delete('/api/sources/test-source/meshcore/messages/abc-123');
+      expect(response.status).toBe(401);
+    });
+
+    it('DELETE /messages/:id deletes a single message', async () => {
+      const response = await authenticatedAgent
+        .delete('/api/sources/test-source/meshcore/messages/abc-123');
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(meshcoreManager.deleteStoredMessage).toHaveBeenCalledWith('abc-123');
+    });
+
+    it('DELETE /messages/:id returns 404 when the message is missing', async () => {
+      meshcoreManager.deleteStoredMessage.mockResolvedValueOnce(false);
+      const response = await authenticatedAgent
+        .delete('/api/sources/test-source/meshcore/messages/nope');
+      expect(response.status).toBe(404);
+    });
+
+    it('DELETE /messages/conversation/:publicKey clears a DM conversation', async () => {
+      const response = await authenticatedAgent
+        .delete(`/api/sources/test-source/meshcore/messages/conversation/${VALID_PK}`);
+      expect(response.status).toBe(200);
+      expect(response.body.deletedCount).toBe(3);
+      expect(meshcoreManager.purgeConversation).toHaveBeenCalledWith(VALID_PK);
+    });
+
+    it('DELETE /messages/conversation/:publicKey rejects a non-hex key', async () => {
+      const response = await authenticatedAgent
+        .delete('/api/sources/test-source/meshcore/messages/conversation/not-hex!!');
+      expect(response.status).toBe(400);
+      expect(meshcoreManager.purgeConversation).not.toHaveBeenCalled();
+    });
+
+    it('DELETE /messages/channel/:idx clears a channel', async () => {
+      const response = await authenticatedAgent
+        .delete('/api/sources/test-source/meshcore/messages/channel/3');
+      expect(response.status).toBe(200);
+      expect(response.body.deletedCount).toBe(5);
+      expect(meshcoreManager.purgeChannelMessages).toHaveBeenCalledWith(3);
+    });
+
+    it('DELETE /messages/channel/:idx rejects a bad index', async () => {
+      const response = await authenticatedAgent
+        .delete('/api/sources/test-source/meshcore/messages/channel/-1');
+      expect(response.status).toBe(400);
+      expect(meshcoreManager.purgeChannelMessages).not.toHaveBeenCalled();
+    });
+
+    it('DELETE /messages purges every message for the source', async () => {
+      const response = await authenticatedAgent
+        .delete('/api/sources/test-source/meshcore/messages');
+      expect(response.status).toBe(200);
+      expect(response.body.deletedCount).toBe(9);
+      expect(meshcoreManager.purgeAllMessages).toHaveBeenCalledTimes(1);
+    });
+
+    it('DELETE /messages requires authentication', async () => {
+      const response = await request(app)
+        .delete('/api/sources/test-source/meshcore/messages');
+      expect(response.status).toBe(401);
+      expect(meshcoreManager.purgeAllMessages).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 for an unregistered source (no cross-source leak)', async () => {
+      const response = await authenticatedAgent
+        .delete('/api/sources/no-such-source/meshcore/messages');
+      expect(response.status).toBe(404);
+      expect(meshcoreManager.purgeAllMessages).not.toHaveBeenCalled();
     });
   });
 

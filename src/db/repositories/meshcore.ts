@@ -1005,6 +1005,133 @@ export class MeshCoreRepository extends BaseRepository {
     return count;
   }
 
+  // ============ Scoped message deletion (#3981) ============
+  //
+  // Every method below is REQUIRED to take a sourceId — a MeshCore purge must
+  // never leak across sources. Deletion by DM conversation is computed on the
+  // manager side (see meshcoreManager.purgeConversation) because inbound DMs
+  // store a pubkey *prefix* in fromPublicKey while outbound store the full key,
+  // so matching needs the same prefix semantics the frontend uses — the manager
+  // resolves the id set and calls deleteMessagesByIds here.
+
+  /**
+   * Delete a single message by id, scoped to a source (#3981). Returns true if
+   * a row was removed. The sourceId guard means a client can't delete another
+   * source's message even if it guesses the id.
+   */
+  async deleteMessageForSource(id: string, sourceId: string): Promise<boolean> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.deleteMessageForSource requires a sourceId');
+    }
+    const { meshcoreMessages } = this.tables;
+    const condition = and(eq(meshcoreMessages.id, id), eq(meshcoreMessages.sourceId, sourceId));
+    const existing = await this.db
+      .select({ id: meshcoreMessages.id })
+      .from(meshcoreMessages)
+      .where(condition)
+      .limit(1);
+    if (existing.length === 0) return false;
+    await this.db.delete(meshcoreMessages).where(condition);
+    return true;
+  }
+
+  /**
+   * Delete a set of messages by id, scoped to a source (#3981). Chunks the id
+   * list so it never exceeds a backend's bind-variable ceiling (SQLite ~999).
+   * Returns the number of rows deleted.
+   */
+  async deleteMessagesByIds(ids: string[], sourceId: string): Promise<number> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.deleteMessagesByIds requires a sourceId');
+    }
+    if (ids.length === 0) return 0;
+    const { meshcoreMessages } = this.tables;
+    let deleted = 0;
+    const CHUNK = 500;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const batch = ids.slice(i, i + CHUNK);
+      const condition = and(
+        eq(meshcoreMessages.sourceId, sourceId),
+        inArray(meshcoreMessages.id, batch),
+      );
+      const present = await this.db
+        .select({ id: meshcoreMessages.id })
+        .from(meshcoreMessages)
+        .where(condition);
+      if (present.length === 0) continue;
+      await this.db.delete(meshcoreMessages).where(condition);
+      deleted += present.length;
+    }
+    return deleted;
+  }
+
+  /**
+   * Lightweight (id + endpoint keys + type) scan of a source's messages, used
+   * by the manager to resolve which rows belong to a DM conversation before a
+   * conversation purge (#3981). Only the columns needed for matching are
+   * selected so this stays cheap on low-volume MeshCore meshes.
+   */
+  async getMessageEndpointsForSource(
+    sourceId: string,
+  ): Promise<{ id: string; fromPublicKey: string; toPublicKey: string | null; messageType: string | null }[]> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.getMessageEndpointsForSource requires a sourceId');
+    }
+    const { meshcoreMessages } = this.tables;
+    const rows = await this.db
+      .select({
+        id: meshcoreMessages.id,
+        fromPublicKey: meshcoreMessages.fromPublicKey,
+        toPublicKey: meshcoreMessages.toPublicKey,
+        messageType: meshcoreMessages.messageType,
+      })
+      .from(meshcoreMessages)
+      .where(eq(meshcoreMessages.sourceId, sourceId));
+    return rows as { id: string; fromPublicKey: string; toPublicKey: string | null; messageType: string | null }[];
+  }
+
+  /**
+   * Delete every message on a MeshCore channel index, scoped to a source
+   * (#3981). Reuses channelWhereClause so it stays in lockstep with the channel
+   * read queries (incl. the channel-0 legacy null-recipient rule). Returns the
+   * number of rows deleted.
+   */
+  async deleteChannelMessagesForSource(channelIdx: number, sourceId: string): Promise<number> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.deleteChannelMessagesForSource requires a sourceId');
+    }
+    const { meshcoreMessages } = this.tables;
+    const condition = this.channelWhereClause(channelIdx, sourceId);
+    const toDelete = await this.db
+      .select({ id: meshcoreMessages.id })
+      .from(meshcoreMessages)
+      .where(condition);
+    if (toDelete.length === 0) return 0;
+    await this.db.delete(meshcoreMessages).where(condition);
+    return toDelete.length;
+  }
+
+  /**
+   * Delete every message owned by a source (#3981). Unlike deleteAllMessages
+   * (which wipes the whole table across all sources), this is source-scoped so
+   * one source's purge never touches another's history. Returns the number of
+   * rows deleted.
+   */
+  async deleteAllMessagesForSource(sourceId: string): Promise<number> {
+    if (!sourceId) {
+      throw new Error('MeshCoreRepository.deleteAllMessagesForSource requires a sourceId');
+    }
+    const { meshcoreMessages } = this.tables;
+    const condition = eq(meshcoreMessages.sourceId, sourceId);
+    const toDelete = await this.db
+      .select({ id: meshcoreMessages.id })
+      .from(meshcoreMessages)
+      .where(condition);
+    if (toDelete.length === 0) return 0;
+    await this.db.delete(meshcoreMessages).where(condition);
+    return toDelete.length;
+  }
+
   // ============ Heard-Repeater Methods (#3700) ============
 
   /**

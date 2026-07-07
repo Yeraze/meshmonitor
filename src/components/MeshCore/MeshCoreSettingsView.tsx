@@ -2,6 +2,7 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ConnectionStatus, MeshCoreActions, SavedRegion } from './hooks/useMeshCore';
 import { useToast } from '../ToastContainer';
+import { useAuth } from '../../contexts/AuthContext';
 
 // MeshCoreDeviceType.COMPANION — active discovery is companion-only.
 const DEVICE_TYPE_COMPANION = 1;
@@ -19,6 +20,9 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
+  const { hasPermission } = useAuth();
+  const canPurgeMessages = hasPermission('messages', 'write');
+  const [purgingMessages, setPurgingMessages] = useState(false);
   const connected = status?.connected ?? false;
   const isCompanion = status?.deviceType === DEVICE_TYPE_COMPANION;
   // Which discovery (if any) is currently running, so we can disable both
@@ -55,6 +59,27 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
     const rows = await fetchSavedRegions();
     if (rows) setSavedRegions(rows);
   }, [fetchSavedRegions]);
+
+  // Purge every MeshCore message (channel + DM) for this source (#3981).
+  // Destructive and irreversible — double-confirm and surface the result.
+  const handlePurgeAllMessages = useCallback(async () => {
+    if (!window.confirm(t(
+      'meshcore.settings.confirm_purge_all_messages',
+      'Delete ALL MeshCore messages (every channel and DM) for this source? This cannot be undone.',
+    ))) return;
+    setPurgingMessages(true);
+    try {
+      const ok = await actions.purgeAllMessages();
+      showToast(
+        ok
+          ? t('meshcore.settings.purge_all_messages_done', 'All MeshCore messages purged')
+          : t('meshcore.settings.purge_all_messages_failed', 'Failed to purge messages'),
+        ok ? 'success' : 'error',
+      );
+    } finally {
+      setPurgingMessages(false);
+    }
+  }, [actions, showToast, t]);
 
   useEffect(() => {
     if (connected && isCompanion) {
@@ -443,6 +468,28 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {canPurgeMessages && (
+        <div className="form-section">
+          <h3>{t('meshcore.settings.message_data', 'Message data')}</h3>
+          <p style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem', lineHeight: 1.6 }}>
+            {t(
+              'meshcore.settings.purge_all_messages_desc',
+              'Permanently delete every stored MeshCore message (all channels and direct messages) for this source.',
+            )}
+          </p>
+          <button
+            type="button"
+            className="meshcore-purge-all-btn"
+            onClick={() => void handlePurgeAllMessages()}
+            disabled={purgingMessages}
+          >
+            🗑️ {purgingMessages
+              ? t('meshcore.settings.purging', 'Purging…')
+              : t('meshcore.settings.purge_all_messages', 'Purge all messages')}
+          </button>
         </div>
       )}
     </div>

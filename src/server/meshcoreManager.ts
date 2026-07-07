@@ -5197,6 +5197,100 @@ class MeshCoreManager extends EventEmitter {
     return databaseService.meshcore.getChannelLatestTimestamps(channelIndices, this.sourceId);
   }
 
+  // ============ Message deletion / purge (#3981) ============
+  //
+  // Every path deletes from the DB scoped to THIS source, prunes the in-memory
+  // pool (so getRecentMessages / the reconnect catch-up don't resurrect a
+  // deleted row), and broadcasts a meshcore:messages:deleted event so every
+  // connected client prunes its view immediately.
+
+  /**
+   * Two keys refer to the same MeshCore peer when either is a prefix of the
+   * other — inbound DMs are stored under a pubkey *prefix* while outbound and
+   * contacts use the full key. Mirrors the frontend `keysMatch`.
+   */
+  private static keysMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    return a.startsWith(b) || b.startsWith(a);
+  }
+
+  /**
+   * Delete a single stored message (#3981). Returns true if a row was deleted.
+   */
+  async deleteStoredMessage(id: string): Promise<boolean> {
+    const deleted = await databaseService.meshcore.deleteMessageForSource(id, this.sourceId);
+    if (deleted) {
+      this.messages = this.messages.filter(m => m.id !== id);
+      dataEventEmitter.emitMeshCoreMessagesDeleted({ ids: [id] }, this.sourceId);
+    }
+    return deleted;
+  }
+
+  /**
+   * Clear a whole DM conversation with `publicKey` (#3981). Because inbound and
+   * outbound rows key the peer differently (prefix vs full key), the id set is
+   * resolved in JS with the same prefix match the frontend uses, then deleted
+   * by id. Channel pseudo-messages and room posts are never swept up. Returns
+   * the number of rows deleted.
+   */
+  async purgeConversation(publicKey: string): Promise<number> {
+    const rows = await databaseService.meshcore.getMessageEndpointsForSource(this.sourceId);
+    const selfKey = this.localNode?.publicKey;
+    const ids = rows
+      .filter(r => {
+        if (r.messageType === 'room_post') return false;
+        if (r.fromPublicKey.startsWith('channel-')) return false;
+        if (r.toPublicKey && r.toPublicKey.startsWith('channel-')) return false;
+        // A row belongs to this conversation when the peer appears on either
+        // endpoint. When we know our own key, exclude it so a self-key match
+        // doesn't drag in unrelated peers' rows.
+        const fromPeer = !MeshCoreManager.keysMatch(r.fromPublicKey, selfKey)
+          && MeshCoreManager.keysMatch(r.fromPublicKey, publicKey);
+        const toPeer = !MeshCoreManager.keysMatch(r.toPublicKey, selfKey)
+          && MeshCoreManager.keysMatch(r.toPublicKey, publicKey);
+        return fromPeer || toPeer;
+      })
+      .map(r => r.id);
+    if (ids.length === 0) return 0;
+    const count = await databaseService.meshcore.deleteMessagesByIds(ids, this.sourceId);
+    if (count > 0) {
+      const deleted = new Set(ids);
+      this.messages = this.messages.filter(m => !deleted.has(m.id));
+      dataEventEmitter.emitMeshCoreMessagesDeleted({ conversationPublicKey: publicKey }, this.sourceId);
+    }
+    return count;
+  }
+
+  /**
+   * Clear every message on a channel index (#3981). Returns rows deleted.
+   */
+  async purgeChannelMessages(channelIdx: number): Promise<number> {
+    const count = await databaseService.meshcore.deleteChannelMessagesForSource(channelIdx, this.sourceId);
+    if (count > 0) {
+      const key = `channel-${channelIdx}`;
+      this.messages = this.messages.filter(m => {
+        // Mirror channelWhereClause: synthetic channel key on either side, plus
+        // the channel-0 legacy broadcast rows (no recipient, non-synthetic sender).
+        if (m.fromPublicKey === key || m.toPublicKey === key) return false;
+        if (channelIdx === 0 && !m.toPublicKey && !m.fromPublicKey.startsWith('channel-')) return false;
+        return true;
+      });
+      dataEventEmitter.emitMeshCoreMessagesDeleted({ channelIdx }, this.sourceId);
+    }
+    return count;
+  }
+
+  /**
+   * Purge every message for this source (#3981). Returns rows deleted.
+   */
+  async purgeAllMessages(): Promise<number> {
+    const count = await databaseService.meshcore.deleteAllMessagesForSource(this.sourceId);
+    this.messages = [];
+    dataEventEmitter.emitMeshCoreMessagesDeleted({ all: true }, this.sourceId);
+    return count;
+  }
+
   isConnected(): boolean {
     return this.connected;
   }

@@ -136,7 +136,7 @@ function isValidPublicKey(key: string | undefined): boolean {
 function auditMeshcoreEvent(
   req: Request,
   action: string,
-  resource: 'remote_admin' | 'configuration',
+  resource: 'remote_admin' | 'configuration' | 'messages',
   details: Record<string, unknown>,
 ): void {
   const userId = req.session?.userId ?? null;
@@ -1434,6 +1434,103 @@ router.get('/messages/channel-counts', optionalAuth(), requirePermission('messag
   } catch (error) {
     logger.error('[API] Error getting channel message counts:', error);
     res.status(500).json({ success: false, error: 'Failed to get channel message counts' });
+  }
+});
+
+/**
+ * DELETE /api/sources/:id/meshcore/messages
+ * Purge EVERY MeshCore message (channel + DM) for this source (#3981). The
+ * MeshCore analogue of the Meshtastic "purge all messages" admin action.
+ * Scoped to `:id` via requirePermission — never touches other sources.
+ */
+router.delete('/messages', requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const deletedCount = await managerFor(req).purgeAllMessages();
+    auditMeshcoreEvent(req, 'meshcore_messages_purged', 'messages', {
+      sourceId: req.params.id,
+      deletedCount,
+    });
+    res.json({ success: true, message: 'All MeshCore messages purged', deletedCount });
+  } catch (error) {
+    logger.error('[API] Error purging MeshCore messages:', error);
+    res.status(500).json({ success: false, error: 'Failed to purge messages' });
+  }
+});
+
+/**
+ * DELETE /api/sources/:id/meshcore/messages/channel/:idx
+ * Clear every message on a channel index for this source (#3981). Registered
+ * before /messages/:id so the two-segment path wins the route match.
+ */
+router.delete('/messages/channel/:idx', requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const idx = parseInt(req.params.idx, 10);
+    if (isNaN(idx) || idx < 0) {
+      return res.status(400).json({ success: false, error: 'idx must be a non-negative integer' });
+    }
+    const deletedCount = await managerFor(req).purgeChannelMessages(idx);
+    auditMeshcoreEvent(req, 'meshcore_channel_messages_cleared', 'messages', {
+      sourceId: req.params.id,
+      channelIdx: idx,
+      deletedCount,
+    });
+    res.json({ success: true, message: 'Channel messages cleared', channelIdx: idx, deletedCount });
+  } catch (error) {
+    logger.error('[API] Error clearing MeshCore channel messages:', error);
+    res.status(500).json({ success: false, error: 'Failed to clear channel messages' });
+  }
+});
+
+/**
+ * DELETE /api/sources/:id/meshcore/messages/conversation/:publicKey
+ * Clear a whole DM conversation for this source (#3981). `publicKey` may be a
+ * pubkey prefix or full 64-hex key; the manager resolves the id set with the
+ * same prefix match the UI uses. Registered before /messages/:id.
+ */
+router.delete('/messages/conversation/:publicKey', requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const publicKey = String(req.params.publicKey || '').toLowerCase();
+    if (!/^[0-9a-f]{2,64}$/.test(publicKey)) {
+      return res.status(400).json({ success: false, error: 'publicKey must be a hex string' });
+    }
+    const deletedCount = await managerFor(req).purgeConversation(publicKey);
+    auditMeshcoreEvent(req, 'meshcore_dm_conversation_cleared', 'messages', {
+      sourceId: req.params.id,
+      publicKey,
+      deletedCount,
+    });
+    res.json({ success: true, message: 'Conversation cleared', publicKey, deletedCount });
+  } catch (error) {
+    logger.error('[API] Error clearing MeshCore conversation:', error);
+    res.status(500).json({ success: false, error: 'Failed to clear conversation' });
+  }
+});
+
+/**
+ * DELETE /api/sources/:id/meshcore/messages/:messageId
+ * Delete a single MeshCore message by id, scoped to this source (#3981).
+ * NB: the path param is `:messageId`, NOT `:id` — the router is mounted under
+ * `/api/sources/:id/meshcore`, so a `:id` here would shadow the source id in
+ * `req.params.id` (breaking manager lookup and permission scoping).
+ */
+router.delete('/messages/:messageId', requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+  try {
+    const messageId = String(req.params.messageId || '');
+    if (!messageId) {
+      return res.status(400).json({ success: false, error: 'message id is required' });
+    }
+    const deleted = await managerFor(req).deleteStoredMessage(messageId);
+    if (!deleted) {
+      return res.status(404).json({ success: false, error: 'Message not found' });
+    }
+    auditMeshcoreEvent(req, 'meshcore_message_deleted', 'messages', {
+      sourceId: req.params.id,
+      messageId,
+    });
+    res.json({ success: true, message: 'Message deleted', id: messageId });
+  } catch (error) {
+    logger.error('[API] Error deleting MeshCore message:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete message' });
   }
 });
 
