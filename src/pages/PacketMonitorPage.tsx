@@ -20,7 +20,7 @@ const PacketMonitorContent: React.FC = () => {
       }
     };
 
-    fetchDeviceInfo();
+    void fetchDeviceInfo();
   }, [setDeviceInfo]);
 
   return (

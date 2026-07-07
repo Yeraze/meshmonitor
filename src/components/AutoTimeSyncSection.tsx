@@ -74,7 +74,7 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
         console.error('Failed to fetch nodes:', error);
       }
     };
-    fetchNodes();
+    void fetchNodes();
   }, [baseUrl, csrfFetch, currentNodeId, sourceQuery]);
 
   // Fetch current settings
@@ -95,7 +95,7 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
         console.error('Failed to fetch time sync settings:', error);
       }
     };
-    fetchSettings();
+    void fetchSettings();
   }, [baseUrl, csrfFetch, sourceQuery]);
 
   // Reset initial settings when the selected source changes so SaveBar

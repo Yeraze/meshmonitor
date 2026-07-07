@@ -25,7 +25,7 @@ export const AVAILABLE_LANGUAGES = [
   { code: 'zh_Hans', name: 'Chinese (Simplified)', nativeName: '简体中文' },
 ];
 
-i18n
+void i18n
   .use(HttpBackend)
   .use(LanguageDetector)
   .use(initReactI18next)

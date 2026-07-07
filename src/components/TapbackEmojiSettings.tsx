@@ -98,7 +98,7 @@ const TapbackEmojiSettings: React.FC = () => {
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !isSaving) {
-      handleAddEmoji();
+      void handleAddEmoji();
     }
   };
 

@@ -338,7 +338,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     }
 
     // Initial fetch
-    fetchPasskeyStatus();
+    void fetchPasskeyStatus();
 
     // Set up interval to update countdown
     const interval = setInterval(() => {

@@ -254,7 +254,7 @@ export function playSound(soundId: string, ctx?: AudioContext): boolean {
     const audioContext = ctx ?? new AudioCtor!();
 
     if (audioContext.state === 'suspended') {
-      audioContext.resume();
+      void audioContext.resume();
     }
 
     const now = audioContext.currentTime;

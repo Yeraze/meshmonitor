@@ -165,73 +165,73 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const setShowPaths = React.useCallback((value: boolean) => {
     setShowPathsState(value);
     // Save to server (fire and forget)
-    savePreferenceToServer({ showPaths: value });
+    void savePreferenceToServer({ showPaths: value });
   }, []);
 
   const setShowNeighborInfo = React.useCallback((value: boolean) => {
     setShowNeighborInfoState(value);
-    savePreferenceToServer({ showNeighborInfo: value });
+    void savePreferenceToServer({ showNeighborInfo: value });
   }, []);
 
   const setShowRoute = React.useCallback((value: boolean) => {
     setShowRouteState(value);
-    savePreferenceToServer({ showRoute: value });
+    void savePreferenceToServer({ showRoute: value });
   }, []);
 
   const setShowMotion = React.useCallback((value: boolean) => {
     setShowMotionState(value);
-    savePreferenceToServer({ showMotion: value });
+    void savePreferenceToServer({ showMotion: value });
   }, []);
 
   const setShowMqttNodes = React.useCallback((value: boolean) => {
     setShowMqttNodesState(value);
-    savePreferenceToServer({ showMqttNodes: value });
+    void savePreferenceToServer({ showMqttNodes: value });
   }, []);
 
   const setShowUdpNodes = React.useCallback((value: boolean) => {
     setShowUdpNodesState(value);
-    savePreferenceToServer({ showUdpNodes: value });
+    void savePreferenceToServer({ showUdpNodes: value });
   }, []);
 
   const setShowRfNodes = React.useCallback((value: boolean) => {
     setShowRfNodesState(value);
-    savePreferenceToServer({ showRfNodes: value });
+    void savePreferenceToServer({ showRfNodes: value });
   }, []);
 
   const setShowMeshCoreNodes = React.useCallback((value: boolean) => {
     setShowMeshCoreNodesState(value);
-    savePreferenceToServer({ showMeshCoreNodes: value });
+    void savePreferenceToServer({ showMeshCoreNodes: value });
   }, []);
 
   const setShowWaypoints = React.useCallback((value: boolean) => {
     setShowWaypointsState(value);
-    savePreferenceToServer({ showWaypoints: value });
+    void savePreferenceToServer({ showWaypoints: value });
   }, []);
 
   const setPositionHistoryPointsOnly = React.useCallback((value: boolean) => {
     setPositionHistoryPointsOnlyState(value);
-    savePreferenceToServer({ positionHistoryPointsOnly: value });
+    void savePreferenceToServer({ positionHistoryPointsOnly: value });
   }, []);
 
   const setShowAnimations = React.useCallback((value: boolean) => {
     setShowAnimationsState(value);
-    savePreferenceToServer({ showAnimations: value });
+    void savePreferenceToServer({ showAnimations: value });
   }, []);
 
   const setShowEstimatedPositions = React.useCallback((value: boolean) => {
     setShowEstimatedPositionsState(value);
     localStorage.setItem('showEstimatedPositions', value.toString());
-    savePreferenceToServer({ showEstimatedPositions: value });
+    void savePreferenceToServer({ showEstimatedPositions: value });
   }, []);
 
   const setShowAccuracyRegions = React.useCallback((value: boolean) => {
     setShowAccuracyRegionsState(value);
-    savePreferenceToServer({ showAccuracyRegions: value });
+    void savePreferenceToServer({ showAccuracyRegions: value });
   }, []);
 
   const setShowPolarGrid = React.useCallback((value: boolean) => {
     setShowPolarGridState(value);
-    savePreferenceToServer({ showPolarGrid: value });
+    void savePreferenceToServer({ showPolarGrid: value });
   }, []);
 
   // Helper function to save preference to server
@@ -281,7 +281,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
       clearTimeout(positionHistoryDebounceRef.current);
     }
     positionHistoryDebounceRef.current = setTimeout(() => {
-      savePreferenceToServer({ positionHistoryHours: value });
+      void savePreferenceToServer({ positionHistoryHours: value });
     }, 500);
   }, [savePreferenceToServer]);
 
@@ -293,7 +293,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
       clearTimeout(mapMaxAgeDebounceRef.current);
     }
     mapMaxAgeDebounceRef.current = setTimeout(() => {
-      savePreferenceToServer({ mapMaxAgeHours: value });
+      void savePreferenceToServer({ mapMaxAgeHours: value });
     }, 500);
   }, [savePreferenceToServer]);
 
@@ -371,7 +371,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
       }
     };
 
-    loadServerPreferences();
+    void loadServerPreferences();
   }, []); // Run once on mount
 
   // Persist map center to localStorage

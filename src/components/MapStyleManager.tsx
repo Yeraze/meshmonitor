@@ -31,7 +31,7 @@ const MapStyleManager: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchStyles();
+    void fetchStyles();
   }, [fetchStyles]);
 
   const handleUpload = async (file: File) => {
@@ -170,7 +170,7 @@ const MapStyleManager: React.FC = () => {
               style={{ display: 'none' }}
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) handleUpload(file);
+                if (file) void handleUpload(file);
               }}
             />
             <button

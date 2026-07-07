@@ -115,9 +115,9 @@ const UsersTab: React.FC = () => {
   const [configuredChannelIds, setConfiguredChannelIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
-    fetchUsers();
-    fetchChannelDatabaseEntries();
-    fetchSources();
+    void fetchUsers();
+    void fetchChannelDatabaseEntries();
+    void fetchSources();
   }, []);
 
   const fetchSources = async () => {

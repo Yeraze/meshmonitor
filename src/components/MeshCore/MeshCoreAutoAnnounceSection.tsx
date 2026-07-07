@@ -81,7 +81,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
   // Load settings
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await csrfFetch(`${baseUrl}/api/sources/${sourceId}/meshcore/automation/announce`);
         if (!res.ok) return;
@@ -114,7 +114,7 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
   // Load channels
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await csrfFetch(
           `${baseUrl}/api/channels/all?sourceId=${encodeURIComponent(sourceId)}`,

@@ -99,7 +99,7 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
       }
     };
 
-    fetchData();
+    void fetchData();
   }, [isOpen, forceShowAll, isAuthenticated]);
 
   // Reset state when popup closes
@@ -148,7 +148,7 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
       // Scroll content to top for new item
       contentRef.current?.scrollTo({ top: 0, behavior: 'instant' });
     } else {
-      handleClose();
+      void handleClose();
     }
   }, [currentIndex, newsItems.length, handleClose]);
 

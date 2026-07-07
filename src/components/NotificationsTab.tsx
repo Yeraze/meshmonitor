@@ -112,8 +112,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
 
   // Check notification permission and subscription status
   useEffect(() => {
-    checkNotificationStatus();
-    loadVapidStatus();
+    void checkNotificationStatus();
+    void loadVapidStatus();
   }, []);
 
   // Reload source-scoped data whenever the active source changes. Preferences
@@ -123,8 +123,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   // channels.length > 0 previously meant MeshCore sources — which return no
   // Meshtastic channels — never loaded their saved preferences.
   useEffect(() => {
-    loadChannels().finally(() => loadPreferences());
-    loadNodes();
+    void loadChannels().finally(() => loadPreferences());
+    void loadNodes();
   }, [currentSourceId]);
 
   // Fetch available nodes

@@ -78,7 +78,7 @@ export const CsrfProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Fetch token on mount
   useEffect(() => {
-    fetchToken();
+    void fetchToken();
   }, [fetchToken]);
 
   const value: CsrfContextType = {

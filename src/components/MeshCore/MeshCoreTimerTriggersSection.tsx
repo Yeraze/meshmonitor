@@ -100,7 +100,7 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
   // Load triggers
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await csrfFetch(`${baseUrl}/api/sources/${sourceId}/meshcore/automation/timers`);
         if (!res.ok) return;
@@ -120,7 +120,7 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
   // Load channels
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await csrfFetch(`${baseUrl}/api/channels/all?sourceId=${encodeURIComponent(sourceId)}`);
         if (!res.ok) return;
@@ -142,7 +142,7 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
   // with Meshtastic — /api/scripts is protocol-neutral.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await csrfFetch(`${baseUrl}/api/scripts`);
         if (!res.ok) return;
@@ -160,7 +160,7 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
   // Load contacts (for DM destination)
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await csrfFetch(`${baseUrl}/api/sources/${sourceId}/meshcore/contacts`);
         if (!res.ok) return;

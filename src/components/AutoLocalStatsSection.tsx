@@ -116,7 +116,7 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
         console.error('Failed to fetch nodes:', error);
       }
     };
-    fetchNodes();
+    void fetchNodes();
   }, [baseUrl, csrfFetch, sourceQuery]);
 
   // Fetch filter + general settings together
@@ -174,7 +174,7 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
         console.error('Failed to fetch remote LocalStats settings:', error);
       }
     };
-    fetchAllSettings();
+    void fetchAllSettings();
   }, [baseUrl, csrfFetch, sourceQuery]);
 
   // Reset baselines when the source changes.

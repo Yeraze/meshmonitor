@@ -58,8 +58,8 @@ const AutoHeapManagementSection: React.FC<AutoHeapManagementSectionProps> = ({ b
   }, [baseUrl, csrfFetch, currentNodeId]);
 
   useEffect(() => {
-    fetchSettings();
-    fetchHeapStatus();
+    void fetchSettings();
+    void fetchHeapStatus();
   }, [fetchSettings, fetchHeapStatus]);
 
   useEffect(() => {

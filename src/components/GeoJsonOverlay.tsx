@@ -43,7 +43,7 @@ const GeoJsonOverlay: React.FC<GeoJsonOverlayProps> = ({
   useEffect(() => {
     layers.forEach(layer => {
       if (layer.visible && !dataCache[layer.id]) {
-        fetchLayerData(layer);
+        void fetchLayerData(layer);
       }
     });
   }, [layers, dataCache, fetchLayerData]);

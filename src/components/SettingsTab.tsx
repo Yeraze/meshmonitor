@@ -283,7 +283,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         logger.error('Failed to fetch system status:', error);
       }
     };
-    fetchSystemStatus();
+    void fetchSystemStatus();
   }, [baseUrl]);
 
   // Fetch database type from health endpoint (public, no auth required)
@@ -302,7 +302,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         logger.error('Failed to fetch database type:', error);
       }
     };
-    fetchDatabaseType();
+    void fetchDatabaseType();
   }, [baseUrl]);
 
   // Fetch packet monitor and other server-stored settings
@@ -375,7 +375,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         logger.error('Failed to fetch server settings:', error);
       }
     };
-    fetchServerSettings();
+    void fetchServerSettings();
   }, [baseUrl, setShowIncompleteNodes]);
 
   // Update local state when props change

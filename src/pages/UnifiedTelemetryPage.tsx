@@ -313,7 +313,7 @@ export default function UnifiedTelemetryPage() {
 
   useEffect(() => {
     setLoading(true);
-    fetchTelemetry();
+    void fetchTelemetry();
     const iv = setInterval(fetchTelemetry, 15000);
     return () => clearInterval(iv);
   }, [fetchTelemetry]);

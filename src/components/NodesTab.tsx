@@ -504,7 +504,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       },
       onDelete: (wp: Waypoint) => {
         if (lockedToOther(wp)) return;
-        handleDeleteWaypoint(wp);
+        void handleDeleteWaypoint(wp);
       },
     }),
     [canWriteWaypoints, lockedToOther, handleEditWaypoint, handleDeleteWaypoint],
@@ -816,7 +816,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       }
     };
 
-    fetchPacketLogStatus();
+    void fetchPacketLogStatus();
   }, [canViewPacketMonitor]);
 
   useEffect(() => {
@@ -831,7 +831,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         console.error('Failed to fetch GeoJSON layers:', err);
       }
     };
-    fetchGeoJsonLayers();
+    void fetchGeoJsonLayers();
   }, []);
 
   useEffect(() => {
@@ -875,7 +875,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         console.error('Failed to fetch map styles:', err);
       }
     };
-    fetchMapStyles();
+    void fetchMapStyles();
   }, []);
 
   // Refs to access latest values without recreating listeners
@@ -941,7 +941,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   const handleLockClick = useCallback((node: DeviceInfo) => {
     return (e: React.MouseEvent) => {
-      if (toggleFavoriteLock) toggleFavoriteLock(node, e);
+      if (toggleFavoriteLock) void toggleFavoriteLock(node, e);
     };
   }, [toggleFavoriteLock]);
 
@@ -2103,7 +2103,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                             setActiveStyleId(styleId);
                             try { localStorage.setItem('meshmonitor-activeMapStyleId', styleId ?? ''); } catch { /* ignore */ }
                             // Save as server default so incognito/new browsers get this style
-                            api.getBaseUrl().then(baseUrl => {
+                            void api.getBaseUrl().then(baseUrl => {
                               csrfFetch(`${baseUrl}/api/settings`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },

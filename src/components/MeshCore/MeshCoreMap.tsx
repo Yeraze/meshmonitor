@@ -224,7 +224,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
   const [retentionDays, setRetentionDays] = useState(7);
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const settings = await api.get<Record<string, string>>('/api/settings');
         const raw = settings?.meshcore_position_history_retention_days;
@@ -254,7 +254,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
   const [geoJsonLayers, setGeoJsonLayers] = useState<GeoJsonLayer[]>([]);
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const baseUrl = await api.getBaseUrl();
         const response = await fetch(`${baseUrl}/api/geojson/layers`);
@@ -365,7 +365,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
     let cancelled = false;
     const keys = historyKeysSig ? historyKeysSig.split('|') : [];
     const since = Date.now() - positionHistoryHours * 60 * 60 * 1000;
-    (async () => {
+    void (async () => {
       const next = new Map<string, [number, number][]>();
       await Promise.all(keys.map(async (publicKey) => {
         try {

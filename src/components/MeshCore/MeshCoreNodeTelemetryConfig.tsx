@@ -71,7 +71,7 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
     setError(null);
     setSaved(false);
     setPollMsg(null);
-    (async () => {
+    void (async () => {
       try {
         const response = await csrfFetch(endpoint);
         const data = await response.json();

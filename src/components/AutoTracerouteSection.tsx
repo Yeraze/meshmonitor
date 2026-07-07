@@ -160,7 +160,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         console.error('Failed to fetch nodes:', error);
       }
     };
-    fetchNodes();
+    void fetchNodes();
   }, [baseUrl, csrfFetch, sourceQuery]);
 
   // Fetch current filter settings and schedule settings together to avoid race conditions
@@ -236,7 +236,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
         console.error('Failed to fetch settings:', error);
       }
     };
-    fetchAllSettings();
+    void fetchAllSettings();
   }, [baseUrl, csrfFetch, sourceQuery]);
 
   // Reset initial settings when the selected source changes so the
@@ -261,12 +261,12 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
     };
 
     // Initial fetch
-    fetchTracerouteLog();
+    void fetchTracerouteLog();
 
     // Refresh every 30 seconds if auto-traceroute is enabled
     const intervalId = setInterval(() => {
       if (localEnabled) {
-        fetchTracerouteLog();
+        void fetchTracerouteLog();
       }
     }, 30000);
 

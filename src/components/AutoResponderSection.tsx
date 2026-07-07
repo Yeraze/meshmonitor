@@ -127,7 +127,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
     };
 
   useEffect(() => {
-    fetchScripts();
+    void fetchScripts();
   }, [baseUrl]);
 
   // Script management handlers
@@ -1330,7 +1330,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                     <button
                                       onClick={() => {
                                         if (newTriggerLiveTestResult?.result) {
-                                          navigator.clipboard.writeText(newTriggerLiveTestResult.result);
+                                          void navigator.clipboard.writeText(newTriggerLiveTestResult.result);
                                           showToast(t('common.copied_to_clipboard'), 'success');
                                         }
                                       }}
@@ -1965,7 +1965,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                 <button
                                   onClick={() => {
                                     if (quickTestResult?.result) {
-                                      navigator.clipboard.writeText(quickTestResult.result);
+                                      void navigator.clipboard.writeText(quickTestResult.result);
                                       showToast(t('common.copied_to_clipboard'), 'success');
                                     }
                                   }}
@@ -2205,7 +2205,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                       <button
                                         onClick={() => {
                                           if (liveTestResults[index]?.result) {
-                                            navigator.clipboard.writeText(liveTestResults[index].result!);
+                                            void navigator.clipboard.writeText(liveTestResults[index].result!);
                                             showToast(t('common.copied_to_clipboard'), 'success');
                                           }
                                         }}
@@ -2399,7 +2399,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                       filenameDisplay.textContent = `Selected: ${file.name}`;
                       filenameDisplay.style.color = 'var(--ctp-green)';
                     }
-                    handleImportScript(file);
+                    void handleImportScript(file);
                   } else {
                     if (filenameDisplay) {
                       filenameDisplay.textContent = 'No file selected';

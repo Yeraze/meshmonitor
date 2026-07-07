@@ -175,7 +175,7 @@ const SolarMonitoringReport: React.FC<{ baseUrl: string }> = ({ baseUrl }) => {
             className="reports-btn"
             onClick={() => {
               if (run) {
-                refetch();
+                void refetch();
               } else {
                 setRun(true);
               }
@@ -193,7 +193,7 @@ const SolarMonitoringReport: React.FC<{ baseUrl: string }> = ({ baseUrl }) => {
             className="reports-btn reports-btn--ghost"
             onClick={() => {
               if (runForecast) {
-                refetchForecast();
+                void refetchForecast();
               } else {
                 setRunForecast(true);
               }

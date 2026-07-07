@@ -58,7 +58,7 @@ function DashboardInner() {
    * waiting for the 15s poll interval. Same key as `useDashboardSources`.
    */
   const refreshSources = () => {
-    queryClient.invalidateQueries({ queryKey: ['dashboard', 'sources'] });
+    void queryClient.invalidateQueries({ queryKey: ['dashboard', 'sources'] });
   };
 
   /**
@@ -73,7 +73,7 @@ function DashboardInner() {
   const refreshSourcesDebounced = () => {
     if (refreshSourcesTimer.current) clearTimeout(refreshSourcesTimer.current);
     refreshSourcesTimer.current = setTimeout(() => {
-      queryClient.invalidateQueries({ queryKey: ['dashboard', 'sources'] });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard', 'sources'] });
     }, 400);
   };
 
@@ -85,10 +85,10 @@ function DashboardInner() {
    */
   const handleNodeSourceSelect = (source: NodeSourceRef, nodeId: string | undefined) => {
     if (source.protocol === 'MeshCore') {
-      navigate(`/source/${source.sourceId}/`);
+      void navigate(`/source/${source.sourceId}/`);
       return;
     }
-    navigate(`/source/${source.sourceId}/#messages`, {
+    void navigate(`/source/${source.sourceId}/#messages`, {
       state: nodeId ? { focusDmNodeId: nodeId } : undefined,
     });
   };
@@ -206,13 +206,13 @@ function DashboardInner() {
     // hypothetical source whose UUID happens to collide.
     if (isReservedLandingValue(defaultLandingPage)) {
       const reservedPath = getReservedLandingPath(defaultLandingPage);
-      if (reservedPath) navigate(reservedPath, { replace: true });
+      if (reservedPath) void navigate(reservedPath, { replace: true });
       return;
     }
 
     const target = sources.find((s) => s.id === defaultLandingPage);
     if (!target) return;
-    navigate(`/source/${target.id}/`, { replace: true });
+    void navigate(`/source/${target.id}/`, { replace: true });
   }, [skipDefaultLanding, isSuccess, defaultLandingPage, sources, navigate]);
   const statusMap = useSourceStatuses(sourceIds);
   const unifiedStatus = useUnifiedStatus();
@@ -272,7 +272,7 @@ function DashboardInner() {
   useEffect(() => {
     if (!isAuthenticated) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const response = await api.getUnreadNews();
         if (cancelled) return;
@@ -813,7 +813,7 @@ function DashboardInner() {
       refreshSources();
       // Force an immediate status refetch so the "Connected" dot flips to
       // "Idle" without waiting for the next 15s poll tick.
-      queryClient.refetchQueries({ queryKey: ['dashboard', 'status', id], type: 'active' });
+      void queryClient.refetchQueries({ queryKey: ['dashboard', 'status', id], type: 'active' });
     }
   };
 
@@ -908,7 +908,7 @@ function DashboardInner() {
       // Refresh source status either way — a successful resync changes the
       // connection state once configComplete arrives, and a rejected click
       // doesn't hurt to re-poll.
-      queryClient.refetchQueries({ queryKey: ['dashboard', 'status', id], type: 'active' });
+      void queryClient.refetchQueries({ queryKey: ['dashboard', 'status', id], type: 'active' });
       if (!res.ok && res.status !== 409) {
         logger.warn('Manual resync request failed', { status: res.status });
       }
@@ -1394,7 +1394,7 @@ function DashboardInner() {
                       title={t('source.form.mqtt_bridge_advanced_open', 'Open Configuration page')}
                       onClick={() => {
                         setShowSourceModal(false);
-                        navigate(`/source/${editingSourceId}/#mqtt-config`);
+                        void navigate(`/source/${editingSourceId}/#mqtt-config`);
                       }}
                     >
                       {t('source.form.mqtt_bridge_advanced_open', 'Configuration')} →

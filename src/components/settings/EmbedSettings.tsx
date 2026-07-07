@@ -145,7 +145,7 @@ const EmbedSettings = () => {
   }, [showToast, t]);
 
   useEffect(() => {
-    fetchProfiles();
+    void fetchProfiles();
   }, [fetchProfiles]);
 
   // ---- Form helpers ----
@@ -304,7 +304,7 @@ const EmbedSettings = () => {
   // ---- Embed code builder ----
   const [embedBaseUrl, setEmbedBaseUrl] = useState('');
   useEffect(() => {
-    apiService.getBaseUrl().then(base => setEmbedBaseUrl(base));
+    void apiService.getBaseUrl().then(base => setEmbedBaseUrl(base));
   }, []);
 
   const buildEmbedUrl = (profileId: string): string => {

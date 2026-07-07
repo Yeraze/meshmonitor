@@ -126,7 +126,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
   useEffect(() => {
     if (!sourceId) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const url = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/saved-regions`;
         const response = await csrfFetch(url);
@@ -146,7 +146,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
     if (!sourceId) return;
     let cancelled = false;
     setLoading(true);
-    (async () => {
+    void (async () => {
       try {
         const url = `${baseUrl}/api/channels/all?sourceId=${encodeURIComponent(sourceId)}`;
         const response = await csrfFetch(url);
@@ -193,7 +193,7 @@ export const MeshCoreChannelsConfigSection: React.FC<MeshCoreChannelsConfigSecti
     const name = editName.trim();
     if (!name.startsWith('#')) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const hex = await deriveHashtagSecretHex(name);
         if (!cancelled) setEditSecretHex(hex);

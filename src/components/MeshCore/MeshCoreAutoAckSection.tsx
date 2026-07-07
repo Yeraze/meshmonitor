@@ -97,7 +97,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
   // Load auto-ack settings
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await csrfFetch(`${baseUrl}/api/sources/${sourceId}/meshcore/automation/autoack`);
         if (!res.ok) return;
@@ -129,7 +129,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
   // Load channels for the per-channel allowlist
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await csrfFetch(
           `${baseUrl}/api/channels/all?sourceId=${encodeURIComponent(sourceId)}`,

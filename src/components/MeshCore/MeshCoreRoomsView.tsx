@@ -88,7 +88,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
 
   // Fetch credential capability on mount
   useEffect(() => {
-    (async () => {
+    void (async () => {
       const creds = await actions.getRoomCredentials();
       if (creds) {
         setCanRemember(creds.canRemember);
@@ -135,7 +135,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     if (autoLoginAttempted.current.has(selectedRoom)) return;
 
     autoLoginAttempted.current.add(selectedRoom);
-    (async () => {
+    void (async () => {
       setLoginLoading(true);
       const result = await actions.loginRoomWithSaved(selectedRoom);
       if (result.success) {
@@ -163,7 +163,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     setLoginPassword('');
     setRememberPassword(false);
     setSyncConfigDirty(false);
-    loadSyncConfig(pubkey);
+    void loadSyncConfig(pubkey);
     if (isMobileViewport()) setMobileShowContent(true);
   }, [loadSyncConfig]);
 

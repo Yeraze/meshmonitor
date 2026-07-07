@@ -60,10 +60,10 @@ export default function NodeMarkersLayer() {
   // mirrors the Unified/Dashboard map (DashboardPage.handleNodeSourceSelect).
   const handleSourceSelect = (source: NodeSourceRef, nodeId: string | undefined) => {
     if (source.protocol === 'MeshCore') {
-      navigate(`/source/${source.sourceId}/`);
+      void navigate(`/source/${source.sourceId}/`);
       return;
     }
-    navigate(`/source/${source.sourceId}/#messages`, {
+    void navigate(`/source/${source.sourceId}/#messages`, {
       state: nodeId ? { focusDmNodeId: nodeId } : undefined,
     });
   };

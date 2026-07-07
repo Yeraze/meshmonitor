@@ -97,17 +97,17 @@ function AutomationsList() {
     try { setItems(await apiService.get<Automation[]>('/api/automations')); setError(null); }
     catch (e: any) { setError(e?.message ?? 'Failed to load'); }
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
-  const toggle = async (a: Automation) => { await apiService.post(`/api/automations/${a.id}/${a.enabled ? 'disable' : 'enable'}`); load(); };
-  const remove = async (a: Automation) => { if (!confirm(`Delete automation “${a.name}”?`)) return; await apiService.delete(`/api/automations/${a.id}`); load(); };
+  const toggle = async (a: Automation) => { await apiService.post(`/api/automations/${a.id}/${a.enabled ? 'disable' : 'enable'}`); void load(); };
+  const remove = async (a: Automation) => { if (!confirm(`Delete automation “${a.name}”?`)) return; await apiService.delete(`/api/automations/${a.id}`); void load(); };
   const exportOne = async (a: Automation) => {
     const data = await apiService.get(`/api/automations/${a.id}/export`);
     await navigator.clipboard?.writeText(JSON.stringify(data, null, 2));
     alert('Exported JSON copied to clipboard.');
   };
 
-  if (editing) return <AutomationEditor automation={editing} onClose={() => { setEditing(null); load(); }} />;
+  if (editing) return <AutomationEditor automation={editing} onClose={() => { setEditing(null); void load(); }} />;
   if (runsFor) return <RunLog automation={runsFor} onClose={() => setRunsFor(null)} />;
   if (traceFor) return (
     <div>
@@ -314,7 +314,7 @@ function VariablesList() {
     try { setItems(await apiService.get<Variable[]>('/api/automations/variables')); }
     catch (e: any) { setError(e?.message ?? 'Failed to load'); }
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
   const create = async () => {
     setError(null);
@@ -327,10 +327,10 @@ function VariablesList() {
     if (type === 'flag' && flagDuration !== '') config.flagDurationSeconds = Number(flagDuration);
     try {
       await apiService.post('/api/automations/variables', { name, type, scope, readonly, config });
-      setName(''); setDefaultValue(''); setFlagDuration(''); load();
+      setName(''); setDefaultValue(''); setFlagDuration(''); void load();
     } catch (e: any) { setError(e?.message ?? 'Create failed'); }
   };
-  const remove = async (v: Variable) => { if (!confirm(`Delete variable “${v.name}”?`)) return; await apiService.delete(`/api/automations/variables/${v.id}`); load(); };
+  const remove = async (v: Variable) => { if (!confirm(`Delete variable “${v.name}”?`)) return; await apiService.delete(`/api/automations/variables/${v.id}`); void load(); };
 
   return (
     <div>

@@ -166,7 +166,7 @@ export function useMarkAsRead({ baseUrl = '' }: UseMarkAsReadOptions = {}) {
     },
     onSuccess: () => {
       // Invalidate and refetch unread counts after marking as read
-      queryClient.invalidateQueries({ queryKey: ['unreadCounts'] });
+      void queryClient.invalidateQueries({ queryKey: ['unreadCounts'] });
     },
   });
 }

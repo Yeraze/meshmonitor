@@ -57,7 +57,7 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
       }
     };
 
-    fetchHistory();
+    void fetchHistory();
     return () => {
       isMounted.current = false;
     };

@@ -42,7 +42,7 @@ export const LinkPreview: React.FC<LinkPreviewProps> = ({ text }) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting && !hasLoaded) {
             console.log('[LinkPreview] Message entered viewport, loading preview');
-            loadPreviews();
+            void loadPreviews();
             setHasLoaded(true);
             // Stop observing once loaded
             if (containerRef.current) {
