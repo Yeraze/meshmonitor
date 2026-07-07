@@ -657,6 +657,18 @@ class MeshCoreManager extends EventEmitter {
    */
   private pendingChannelSends: Map<string, { channelIdx: number; sentAt: number }> = new Map();
 
+  /**
+   * Pending DM sends awaiting a `SendConfirmed` ack, keyed by the firmware's
+   * `expectedAckCrc` (#3977). If the ack doesn't arrive within `estTimeout`
+   * (+margin), the cached path is likely stale — reset it and resend once via
+   * flood, mirroring what the "Reset Path" button already does manually. Only
+   * ever holds *first-attempt* entries: the retry's own ack isn't re-tracked
+   * here, so a second timeout is a silent no-op (no retry loop) and the
+   * frontend's own per-message ack timer flips that message to "failed",
+   * same as it does for any other unacked send today.
+   */
+  private pendingDmRetries: Map<number, { toPublicKey: string; text: string; timer: NodeJS.Timeout }> = new Map();
+
   // Message limit to prevent unbounded growth
   private static readonly MAX_MESSAGES = 1000;
 
@@ -1050,6 +1062,13 @@ class MeshCoreManager extends EventEmitter {
     }
     this.pendingCommands.clear();
 
+    // Clear pending DM ack-retry timers (#3977) — a torn-down connection
+    // can't reset a path or resend, so don't let a stray timer try.
+    for (const [, retry] of this.pendingDmRetries) {
+      clearTimeout(retry.timer);
+    }
+    this.pendingDmRetries.clear();
+
     this.connected = false;
     this.connectionState = 'disconnected';
     this.deviceType = MeshCoreDeviceType.UNKNOWN;
@@ -1333,6 +1352,13 @@ class MeshCoreManager extends EventEmitter {
         );
       }
     } else if (event_type === 'send_confirmed') {
+      // Ack arrived in time — cancel the auto-retry timer (#3977) so a
+      // stale-path resend doesn't fire after the fact.
+      const retryPending = this.pendingDmRetries.get(data.ack_code);
+      if (retryPending) {
+        clearTimeout(retryPending.timer);
+        this.pendingDmRetries.delete(data.ack_code);
+      }
       this.emit('send_confirmed', {
         sourceId: this.sourceId,
         ackCode: data.ack_code,
@@ -2591,7 +2617,13 @@ class MeshCoreManager extends EventEmitter {
     }
   }
 
-  private async performScopedSend(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null): Promise<MeshCoreSendResult> {
+  private async performScopedSend(
+    text: string,
+    toPublicKey?: string,
+    channelIdx?: number,
+    scopeOverride?: string | null,
+    isAutoRetry: boolean = false,
+  ): Promise<MeshCoreSendResult> {
     try {
       const isChannelSend = !toPublicKey && channelIdx !== undefined;
 
@@ -2654,6 +2686,14 @@ class MeshCoreManager extends EventEmitter {
         this.emit('message', sentMessage);
         dataEventEmitter.emitMeshCoreMessage(sentMessage, this.sourceId);
 
+        // Auto-retry a DM once via flood if no ack arrives in time (#3977).
+        // Not for channel sends (unacked) and not for the retry's own send
+        // (isAutoRetry) — a second miss is left to the frontend's existing
+        // per-message ack timer, which already flips it to "failed".
+        if (!isChannelSend && toPublicKey && !isAutoRetry && ackCrc != null && estTimeout != null) {
+          this.scheduleDmAckTimeout(ackCrc, toPublicKey, text, estTimeout);
+        }
+
         // Register this channel send for self-echo correlation (#3700): a
         // nearby repeater that re-floods our packet will be heard back as an
         // inbound GRP_TXT OTA packet within HEARD_WINDOW_MS, naming the
@@ -2672,6 +2712,47 @@ class MeshCoreManager extends EventEmitter {
       logger.error('[MeshCore] Failed to send message:', error);
       return { ok: false };
     }
+  }
+
+  /**
+   * Arm the auto-retry timer for a just-sent DM (#3977). `estTimeout` is the
+   * firmware's own estimate for this send; a 20% margin absorbs normal jitter
+   * before treating it as a miss. Cleared early by the `send_confirmed`
+   * handler if the ack arrives first, and cleared in bulk on disconnect.
+   */
+  private scheduleDmAckTimeout(ackCrc: number, toPublicKey: string, text: string, estTimeout: number): void {
+    const timer = setTimeout(() => {
+      void this.handleDmAckTimeout(ackCrc);
+    }, Math.round(estTimeout * 1.2));
+    this.pendingDmRetries.set(ackCrc, { toPublicKey, text, timer });
+  }
+
+  /**
+   * No ack arrived for a DM within its estimated timeout (#3977). The cached
+   * path is presumably stale, so reset it (same effect as the manual "Reset
+   * Path" button) and resend once via flood — mirrors the official app's
+   * fallback behavior. This is a one-shot retry: the resend is not itself
+   * tracked here, so if it also goes unacked, nothing further happens
+   * automatically and the frontend's existing per-message ack timer marks it
+   * failed, same as any other unacked send.
+   */
+  private async handleDmAckTimeout(ackCrc: number): Promise<void> {
+    const pending = this.pendingDmRetries.get(ackCrc);
+    if (!pending) return; // already acked (or manager torn down) — nothing to do
+    this.pendingDmRetries.delete(ackCrc);
+
+    if (!this.connected) return;
+
+    logger.info(
+      `[MeshCore:${this.sourceId}] No ack for DM to ${pending.toPublicKey.substring(0, 16)}… within timeout; ` +
+      `resetting path and retrying via flood`,
+    );
+    const reset = await this.resetContactPath(pending.toPublicKey);
+    if (!reset) return;
+
+    await this.runSerialized(() =>
+      this.performScopedSend(pending.text, pending.toPublicKey, undefined, undefined, true),
+    );
   }
 
   /**
