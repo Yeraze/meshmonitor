@@ -1,0 +1,19 @@
+{
+  // Type-checks the Vitest test files alongside the production sources they
+  // import, so mock shapes can't silently drift from real signatures
+  // (remediation epic #3962, Task 1.2). Run via `npm run typecheck:tests`.
+  //
+  // NOTE: deliberately does NOT include the top-level `tests/` directory —
+  // adding those files pulls @types/node into the whole program and changes
+  // inference inside production frontend files (~60 spurious implicit-any
+  // errors in src/components). If `tests/` should ever be type-checked, give
+  // it its own config with its own `types` set.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["src", "src/**/*.test.ts", "src/**/*.test.tsx"],
+  "exclude": ["node_modules", "dist"]
+}

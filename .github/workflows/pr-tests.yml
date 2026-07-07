@@ -90,6 +90,12 @@ jobs:
           echo "Running TypeScript compiler..."
           npm run typecheck
 
+      - name: Type-check tests (non-blocking)
+        run: npm run typecheck:tests
+        # NON-BLOCKING: ~283 pre-existing test-type errors. Flip to blocking (drop continue-on-error)
+        # when `npm run typecheck:tests` reports 0. Tracking: #3962 Task 1.2.
+        continue-on-error: true
+
       - name: Run unit tests
         run: |
           echo "Running test suite..."
