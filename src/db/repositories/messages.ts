@@ -229,7 +229,7 @@ export class MessagesRepository extends BaseRepository {
   async getMessageCount(sourceId: SourceScope): Promise<number> {
     const { messages } = this.tables;
     const result = await this.db.select({ count: count() }).from(messages)
-      .where(this.withSourceScope(messages, sourceId ?? ALL_SOURCES));
+      .where(this.withSourceScope(messages, sourceId));
     return Number(result[0].count);
   }
 

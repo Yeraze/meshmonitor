@@ -69,7 +69,7 @@ export class ChannelsRepository extends BaseRepository {
     const result = await this.db
       .select()
       .from(channels)
-      .where(this.withSourceScope(channels, sourceId ?? ALL_SOURCES))
+      .where(this.withSourceScope(channels, sourceId))
       .orderBy(channels.id);
 
     return this.normalizeBigInts(result) as DbChannel[];
@@ -80,7 +80,7 @@ export class ChannelsRepository extends BaseRepository {
    */
   async getChannelCount(sourceId: SourceScope): Promise<number> {
     const { channels } = this.tables;
-    const whereClause = this.withSourceScope(channels, sourceId ?? ALL_SOURCES);
+    const whereClause = this.withSourceScope(channels, sourceId);
     const result = whereClause
       ? await this.db.select({ count: count() }).from(channels).where(whereClause)
       : await this.db.select({ count: count() }).from(channels);

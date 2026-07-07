@@ -235,7 +235,7 @@ export class NodesRepository extends BaseRepository {
     const result = await this.db
       .select()
       .from(nodes)
-      .where(this.withSourceScope(nodes, sourceId ?? ALL_SOURCES))
+      .where(this.withSourceScope(nodes, sourceId))
       .orderBy(desc(nodes.updatedAt));
 
     return this.normalizeBigInts(result) as DbNode[];
@@ -264,7 +264,7 @@ export class NodesRepository extends BaseRepository {
   async getNodeCount(sourceId: SourceScope): Promise<number> {
     const { nodes } = this.tables;
     const result = await this.db.select({ count: count() }).from(nodes)
-      .where(this.withSourceScope(nodes, sourceId ?? ALL_SOURCES));
+      .where(this.withSourceScope(nodes, sourceId));
     return Number(result[0].count);
   }
 
@@ -286,7 +286,7 @@ export class NodesRepository extends BaseRepository {
     const result = await this.db
       .select({ count: count() })
       .from(nodes)
-      .where(and(gt(nodes.lastHeard, cutoff), this.withSourceScope(nodes, sourceId ?? ALL_SOURCES)));
+      .where(and(gt(nodes.lastHeard, cutoff), this.withSourceScope(nodes, sourceId)));
     return Number(result[0].count);
   }
 

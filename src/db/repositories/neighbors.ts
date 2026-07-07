@@ -103,7 +103,7 @@ export class NeighborsRepository extends BaseRepository {
     const result = await this.db
       .select()
       .from(neighborInfo)
-      .where(this.withSourceScope(neighborInfo, sourceId ?? ALL_SOURCES))
+      .where(this.withSourceScope(neighborInfo, sourceId))
       .orderBy(desc(neighborInfo.timestamp));
 
     return this.normalizeBigInts(result) as DbNeighborInfo[];
