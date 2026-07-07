@@ -44,8 +44,9 @@ import {
   AutomationsRepository,
   AutomationVariablesRepository,
   SavedRegionsRepository,
+  ALL_SOURCES,
 } from '../db/repositories/index.js';
-import type { EstimatedPosition, EstimatedPositionInput } from '../db/repositories/index.js';
+import type { EstimatedPosition, EstimatedPositionInput, SourceScope } from '../db/repositories/index.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 
 // Configuration constants for traceroute history
@@ -394,9 +395,10 @@ class DatabaseService {
   /**
    * Phase 3B: Iterate cache, optionally filtered by sourceId.
    */
-  private *iterateCache(sourceId?: string): IterableIterator<DbNode> {
+  private *iterateCache(sourceId?: SourceScope): IterableIterator<DbNode> {
     for (const node of this.nodesCache.values()) {
-      if (sourceId && node.sourceId !== sourceId) continue;
+      // ALL_SOURCES or undefined → yield all; concrete string → filter by source.
+      if (typeof sourceId === 'string' && sourceId !== '' && node.sourceId !== sourceId) continue;
       yield node;
     }
   }
@@ -959,7 +961,8 @@ class DatabaseService {
 
       // Load all nodes into cache
       if (this.nodesRepo) {
-        const nodes = await this.nodesRepo.getAllNodes();
+        // intentional cross-source: init cache warm-up loads all sources at once
+        const nodes = await this.nodesRepo.getAllNodes(ALL_SOURCES);
         this.nodesCache.clear();
         for (const node of nodes) {
           // Convert from repo DbNode to local DbNode (null -> undefined conversion is safe)
@@ -1029,7 +1032,8 @@ class DatabaseService {
 
       // Load all channels into cache
       if (this.channelsRepo) {
-        const channels = await this.channelsRepo.getAllChannels();
+        // intentional cross-source: init cache warm-up loads all sources at once
+        const channels = await this.channelsRepo.getAllChannels(ALL_SOURCES);
         this.channelsCache.clear();
         for (const channel of channels) {
           this.channelsCache.set(channel.id, channel);
@@ -1039,14 +1043,16 @@ class DatabaseService {
 
       // Load recent messages into cache for delivery state updates
       if (this.messagesRepo) {
-        const messages = await this.messagesRepo.getMessages(500);
+        // intentional cross-source: init cache warm-up loads all sources at once
+        const messages = await this.messagesRepo.getMessages(500, 0, ALL_SOURCES);
         this._messagesCache = messages.map(m => this.convertRepoMessage(m));
         logger.info(`[DatabaseService] Loaded ${this._messagesCache.length} messages into cache`);
       }
 
       // Load neighbor info into cache
       if (this.neighborsRepo) {
-        const neighbors = await this.neighborsRepo.getAllNeighborInfo();
+        // intentional cross-source: init cache warm-up loads all sources at once
+        const neighbors = await this.neighborsRepo.getAllNeighborInfo(ALL_SOURCES);
         this._neighborsCache = neighbors.map(n => this.convertRepoNeighborInfo(n));
         logger.info(`[DatabaseService] Loaded ${this._neighborsCache.length} neighbor records into cache`);
       }
@@ -2459,7 +2465,7 @@ class DatabaseService {
     return this.nodesRepo!.getNodeSqlite(nodeNum, sourceId) as unknown as DbNode | null;
   }
 
-  getAllNodes(sourceId?: string): DbNode[] {
+  getAllNodes(sourceId?: SourceScope): DbNode[] {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (!this.cacheInitialized) {
@@ -2476,7 +2482,7 @@ class DatabaseService {
    * @deprecated Use databaseService.nodes.getAllNodes() directly. Kept for internal/test compatibility.
    */
   async getAllNodesAsync(): Promise<DbNode[]> {
-    return this.nodes.getAllNodes() as unknown as DbNode[];
+    return this.nodes.getAllNodes(ALL_SOURCES) as unknown as DbNode[]; // intentional cross-source: deprecated compat shim returns all sources
   }
 
   getActiveNodes(sinceDays: number = 7): DbNode[] {
@@ -3090,12 +3096,12 @@ class DatabaseService {
     };
   }
 
-  getMessages(limit: number = 100, offset: number = 0): DbMessage[] {
+  getMessages(limit: number = 100, offset: number = 0, sourceId?: SourceScope): DbMessage[] {
     // For PostgreSQL/MySQL, use async repo and cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.messagesRepo) {
         // Fire async query and update cache in background
-        this.messagesRepo.getMessages(limit, offset).then(messages => {
+        this.messagesRepo.getMessages(limit, offset, sourceId).then(messages => {
           // Build a map of current delivery states to preserve local updates
           // (async DB update may not have completed yet)
           const currentDeliveryStates = new Map<number, { deliveryState: string; ackFailed: boolean }>();
@@ -3127,7 +3133,7 @@ class DatabaseService {
     }
     // SQLite: delegate to Drizzle sync variant
     if (this.messagesRepo) {
-      const rows = this.messagesRepo.getMessagesSqlite(limit, offset);
+      const rows = this.messagesRepo.getMessagesSqlite(limit, offset, sourceId);
       return rows.map(msg => this.convertRepoMessage(msg as any));
     }
     return [];
@@ -3728,8 +3734,8 @@ class DatabaseService {
   // Export/Import functionality
   exportData(): { nodes: DbNode[]; messages: DbMessage[] } {
     return {
-      nodes: this.getAllNodes(),
-      messages: this.getMessages(10000) // Export last 10k messages
+      nodes: this.getAllNodes(ALL_SOURCES), // intentional cross-source: full backup export spans all sources
+      messages: this.getMessages(10000, 0, ALL_SOURCES) // Export last 10k messages across all sources
     };
   }
 
@@ -7124,7 +7130,8 @@ class DatabaseService {
   getAllNeighborInfo(): DbNeighborInfo[] {
     // All backends: fire async repo refresh, return cached data immediately
     if (this.neighborsRepo) {
-      this.neighborsRepo.getAllNeighborInfo().then(neighbors => {
+      // intentional cross-source: neighbor cache is global across all sources
+      this.neighborsRepo.getAllNeighborInfo(ALL_SOURCES).then(neighbors => {
         this._neighborsCache = neighbors.map(n => this.convertRepoNeighborInfo(n));
       }).catch(err => logger.debug('Failed to get all neighbor info:', err));
     }

@@ -6,6 +6,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import databaseService, { DbMessage } from '../services/database.js';
+import { ALL_SOURCES } from '../db/repositories/index.js';
 import { MeshMessage } from '../types/message.js';
 import meshtasticManager from './meshtasticManager.js';
 import { MeshtasticManager } from './meshtasticManager.js';
@@ -3125,7 +3126,8 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
 
     // 5. Channels (filtered based on per-channel read permissions)
     try {
-      const allChannels = await databaseService.channels.getAllChannels(pollSourceId);
+      // intentional cross-source: omitting sourceId on the poll route returns channels from all sources
+      const allChannels = await databaseService.channels.getAllChannels(pollSourceId ?? ALL_SOURCES);
 
       // Filter channels async
       const filteredChannels: typeof allChannels = [];
@@ -3186,7 +3188,8 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     try {
       if (hasInfoRead) {
         // Use DB nodes for telemetry (has telemetryTypes), filtered by channel permissions
-        const allDbNodes = await databaseService.nodes.getAllNodes(pollSourceId);
+        // intentional cross-source: omitting sourceId on the poll route returns nodes from all sources
+        const allDbNodes = await databaseService.nodes.getAllNodes(pollSourceId ?? ALL_SOURCES);
         const dbNodes = await filterNodesByChannelPermission(allDbNodes, req.user, pollSourceId);
 
         const nodesWithTelemetry: string[] = [];
@@ -3440,9 +3443,11 @@ apiRouter.post('/nodes/refresh', requirePermission('nodes', 'write'), async (req
     // Trigger full node database refresh
     await refreshManager.refreshNodeDatabase();
 
-    const nodeCount = await databaseService.nodes.getNodeCount();
+    const nodeCount = await databaseService.nodes.getNodeCount(
+      typeof refreshSourceId === 'string' && refreshSourceId.length > 0 ? refreshSourceId : ALL_SOURCES,
+    );
     const channelCount = await databaseService.channels.getChannelCount(
-      typeof refreshSourceId === 'string' && refreshSourceId.length > 0 ? refreshSourceId : undefined,
+      typeof refreshSourceId === 'string' && refreshSourceId.length > 0 ? refreshSourceId : ALL_SOURCES,
     );
 
     logger.debug(`✅ Node refresh complete: ${nodeCount} nodes, ${channelCount} channels`);

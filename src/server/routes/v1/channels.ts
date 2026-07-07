@@ -7,6 +7,7 @@
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
+import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
 import { ResourceType } from '../../../types/permission.js';
 import { transformChannel } from '../../utils/channelView.js';
@@ -33,8 +34,8 @@ router.get('/', async (req: Request, res: Response) => {
     const isAdmin = user?.isAdmin ?? false;
     const sourceIdQ = getScopedSourceId(req);
 
-    // Get all channels (scoped to source if provided)
-    const allChannels = await databaseService.channels.getAllChannels(sourceIdQ);
+    // Get all channels (scoped to source if provided; intentional cross-source when omitted)
+    const allChannels = await databaseService.channels.getAllChannels(sourceIdQ ?? ALL_SOURCES);
 
     // If admin, return all channels with PSKs included (admin can configure them)
     if (isAdmin) {

@@ -6,6 +6,7 @@
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
+import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
 import { checkNodeChannelAccess, maskTelemetryByChannel } from '../../utils/nodeEnhancer.js';
 
@@ -66,8 +67,8 @@ router.get('/', async (req: Request, res: Response) => {
       telemetry = await maskTelemetryByChannel(telemetry, (req as any).user, sourceIdStr);
     } else {
       // Get all telemetry by getting all nodes and their telemetry — scoped
-      // to the requested source so cross-source rows don't mix.
-      const nodes = await databaseService.nodes.getAllNodes(sourceIdStr);
+      // to the requested source so cross-source rows don't mix (intentional cross-source when sourceId omitted).
+      const nodes = await databaseService.nodes.getAllNodes(sourceIdStr ?? ALL_SOURCES);
       telemetry = [];
       const perNodeLimit = Math.max(1, Math.floor(maxLimit / 10));
       for (const node of nodes.slice(0, 10)) { // Limit to first 10 nodes to avoid huge response

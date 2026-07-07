@@ -5,7 +5,7 @@
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, gt, lt, gte, and, or, desc, sql, like, ilike, inArray, isNotNull, isNull, ne, notInArray, SQL, count } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase } from './base.js';
+import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbMessage } from '../types.js';
 import { logger } from '../../utils/logger.js';
 
@@ -111,7 +111,7 @@ export class MessagesRepository extends BaseRepository {
   async getMessages(
     limit: number = 100,
     offset: number = 0,
-    sourceId?: string,
+    sourceId?: SourceScope,
     excludePortnums?: number[],
   ): Promise<DbMessage[]> {
     const { messages } = this.tables;
@@ -135,7 +135,7 @@ export class MessagesRepository extends BaseRepository {
   /**
    * Get messages by channel, ordered by server DB arrival time (issue #3122).
    */
-  async getMessagesByChannel(channel: number, limit: number = 100, offset: number = 0, sourceId?: string): Promise<DbMessage[]> {
+  async getMessagesByChannel(channel: number, limit: number = 100, offset: number = 0, sourceId?: SourceScope): Promise<DbMessage[]> {
     const { messages } = this.tables;
     const result = await this.db
       .select()
@@ -164,7 +164,7 @@ export class MessagesRepository extends BaseRepository {
     channel: number,
     before: number | undefined,
     limit: number = 100,
-    sourceId?: string
+    sourceId?: SourceScope
   ): Promise<DbMessage[]> {
     const { messages } = this.tables;
     const conditions: (SQL | undefined)[] = [
@@ -186,7 +186,7 @@ export class MessagesRepository extends BaseRepository {
   /**
    * Get direct messages between two nodes, ordered by server DB arrival time (issue #3122).
    */
-  async getDirectMessages(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0, sourceId?: string): Promise<DbMessage[]> {
+  async getDirectMessages(nodeId1: string, nodeId2: string, limit: number = 100, offset: number = 0, sourceId?: SourceScope): Promise<DbMessage[]> {
     const { messages } = this.tables;
     const result = await this.db
       .select()
@@ -212,7 +212,7 @@ export class MessagesRepository extends BaseRepository {
   /**
    * Get messages after a timestamp
    */
-  async getMessagesAfterTimestamp(timestamp: number, sourceId?: string): Promise<DbMessage[]> {
+  async getMessagesAfterTimestamp(timestamp: number, sourceId?: SourceScope): Promise<DbMessage[]> {
     const { messages } = this.tables;
     const result = await this.db
       .select()
@@ -226,7 +226,7 @@ export class MessagesRepository extends BaseRepository {
   /**
    * Get total message count
    */
-  async getMessageCount(sourceId?: string): Promise<number> {
+  async getMessageCount(sourceId: SourceScope): Promise<number> {
     const { messages } = this.tables;
     const result = await this.db.select({ count: count() }).from(messages)
       .where(this.withSourceScope(messages, sourceId));
@@ -404,7 +404,7 @@ export class MessagesRepository extends BaseRepository {
   /**
    * SQLite-only synchronous paginated fetch of messages, ordered by createdAt (issue #3122).
    */
-  getMessagesSqlite(limit: number = 100, offset: number = 0, sourceId?: string): DbMessage[] {
+  getMessagesSqlite(limit: number = 100, offset: number = 0, sourceId?: SourceScope): DbMessage[] {
     if (!this.sqliteDb) {
       throw new Error('getMessagesSqlite is SQLite-only');
     }
@@ -424,7 +424,7 @@ export class MessagesRepository extends BaseRepository {
   /**
    * SQLite-only synchronous paginated fetch of messages by channel, ordered by createdAt (issue #3122).
    */
-  getMessagesByChannelSqlite(channel: number, limit: number = 100, offset: number = 0, sourceId?: string): DbMessage[] {
+  getMessagesByChannelSqlite(channel: number, limit: number = 100, offset: number = 0, sourceId?: SourceScope): DbMessage[] {
     if (!this.sqliteDb) {
       throw new Error('getMessagesByChannelSqlite is SQLite-only');
     }
@@ -444,7 +444,7 @@ export class MessagesRepository extends BaseRepository {
   /**
    * SQLite-only synchronous fetch of messages after a timestamp.
    */
-  getMessagesAfterTimestampSqlite(timestamp: number, sourceId?: string): DbMessage[] {
+  getMessagesAfterTimestampSqlite(timestamp: number, sourceId?: SourceScope): DbMessage[] {
     if (!this.sqliteDb) {
       throw new Error('getMessagesAfterTimestampSqlite is SQLite-only');
     }
@@ -462,7 +462,7 @@ export class MessagesRepository extends BaseRepository {
   /**
    * SQLite-only synchronous total message count.
    */
-  getMessageCountSqlite(sourceId?: string): number {
+  getMessageCountSqlite(sourceId?: SourceScope): number {
     if (!this.sqliteDb) {
       throw new Error('getMessageCountSqlite is SQLite-only');
     }
@@ -529,14 +529,15 @@ export class MessagesRepository extends BaseRepository {
    * SQLite-only synchronous wipe of all messages, optionally scoped to a source.
    * Mirrors `deleteAllMessages()` for the sync DatabaseService facade.
    */
-  deleteAllMessagesSqlite(sourceId?: string): number {
+  deleteAllMessagesSqlite(sourceId?: SourceScope): number {
     if (!this.sqliteDb) {
       throw new Error('deleteAllMessagesSqlite is SQLite-only');
     }
     const db = this.sqliteDb;
     const messages = this.tables.messages;
-    const result = sourceId
-      ? db.delete(messages).where(eq(messages.sourceId, sourceId)).run()
+    const isScoped = typeof sourceId === 'string' && sourceId !== '';
+    const result = isScoped
+      ? db.delete(messages).where(eq(messages.sourceId, sourceId as string)).run()
       : db.delete(messages).run();
     return Number(result.changes);
   }
@@ -612,7 +613,7 @@ export class MessagesRepository extends BaseRepository {
    *
    * Keeps branching: per-dialect date formatting.
    */
-  async getMessagesByDay(days: number = 7, sourceId?: string): Promise<Array<{ date: string; count: number }>> {
+  async getMessagesByDay(days: number = 7, sourceId?: SourceScope): Promise<Array<{ date: string; count: number }>> {
     const cutoff = this.now() - days * 24 * 60 * 60 * 1000;
     const { messages } = this.tables;
 
@@ -641,7 +642,7 @@ export class MessagesRepository extends BaseRepository {
    * SQLite-only synchronous variant of `getMessagesByDay()`.
    * Used by the sync `DatabaseService.getMessagesByDay` facade.
    */
-  getMessagesByDaySqlite(days: number = 7, sourceId?: string): Array<{ date: string; count: number }> {
+  getMessagesByDaySqlite(days: number = 7, sourceId?: SourceScope): Array<{ date: string; count: number }> {
     if (!this.sqliteDb) {
       throw new Error('getMessagesByDaySqlite is SQLite-only');
     }
@@ -800,15 +801,17 @@ export class MessagesRepository extends BaseRepository {
   /**
    * Delete all messages, optionally scoped to a single source.
    */
-  async deleteAllMessages(sourceId?: string): Promise<number> {
+  async deleteAllMessages(sourceId?: SourceScope): Promise<number> {
     const { messages } = this.tables;
+    // ALL_SOURCES or undefined → global delete (no WHERE); a string → scoped delete.
+    const isScoped = typeof sourceId === 'string' && sourceId !== '';
     const countQuery = this.db.select({ count: count() }).from(messages);
-    const result = await (sourceId
-      ? countQuery.where(eq(messages.sourceId, sourceId))
+    const result = await (isScoped
+      ? countQuery.where(eq(messages.sourceId, sourceId as string))
       : countQuery);
     const total = Number(result[0].count);
-    if (sourceId) {
-      await this.db.delete(messages).where(eq(messages.sourceId, sourceId));
+    if (isScoped) {
+      await this.db.delete(messages).where(eq(messages.sourceId, sourceId as string));
     } else {
       await this.db.delete(messages);
     }

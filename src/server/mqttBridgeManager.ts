@@ -39,6 +39,7 @@ import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import type { MqttBrokerManager, MqttBrokerLocalPacket } from './mqttBrokerManager.js';
 import type { Source } from '../db/repositories/sources.js';
 import databaseService from '../services/database.js';
+import { ALL_SOURCES } from '../db/repositories/index.js';
 import { logger } from '../utils/logger.js';
 import { loadAllNodesAsDeviceInfo } from './utils/dbNodeMapper.js';
 import type { DeviceInfo } from './meshtasticManager.js';
@@ -435,8 +436,8 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       }
       const trustedSeeded = this.downlinkFilter.seedTrustedNodes(trustedNums);
 
-      // In-bbox positions from anywhere.
-      const allNodes = await databaseService.nodes.getAllNodes();
+      // intentional cross-source: in-bbox positions are pooled from all sources to seed the downlink filter
+      const allNodes = await databaseService.nodes.getAllNodes(ALL_SOURCES);
       const entries = allNodes
         .filter((n) => typeof n.latitude === 'number' && typeof n.longitude === 'number')
         .map((n) => ({

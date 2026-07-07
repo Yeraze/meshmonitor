@@ -1,5 +1,6 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { calculateDistance } from '../../utils/distance.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
@@ -78,8 +79,8 @@ class AutoDeleteByDistanceService {
       const localNodeNum = localNodeNumStr ? Number(localNodeNumStr) : null;
 
       // Get all nodes (must use async for PostgreSQL/MySQL)
-      // If sourceId provided, scope to that source; otherwise scan all sources
-      const allNodes = await databaseService.nodes.getAllNodes(sourceId);
+      // intentional cross-source: when sourceId is omitted, scan all sources
+      const allNodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
 
       // Throttle device syncs so firmware admin queue doesn't back up on
       // large MQTT meshes with hundreds of nodes to ignore per cycle.

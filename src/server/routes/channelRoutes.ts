@@ -24,6 +24,7 @@
 
 import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES, type SourceScope } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
 import { optionalAuth, requireAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import { transformChannel } from '../utils/channelView.js';
@@ -122,7 +123,8 @@ async function buildMqttSourceChannels(
 router.get('/all', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const allChannelsSourceId = req.query.sourceId as string | undefined;
-    const allChannels = await databaseService.channels.getAllChannels(allChannelsSourceId);
+    // intentional cross-source: omitting sourceId on this route returns channels from all sources
+    const allChannels = await databaseService.channels.getAllChannels(allChannelsSourceId ?? ALL_SOURCES);
     const isAdmin = req.user?.isAdmin === true;
 
     const accessible: typeof allChannels = [];
@@ -183,7 +185,8 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
       }
     }
 
-    const allChannels = await databaseService.channels.getAllChannels(channelsSourceId);
+    // intentional cross-source: omitting sourceId on this route returns channels from all sources
+    const allChannels = await databaseService.channels.getAllChannels(channelsSourceId ?? ALL_SOURCES);
 
     // Resolve the source's persisted modem preset (if scoped to one source)
     // so empty-name slot 0 displays as "MediumFast"/"LongFast"/etc. via
@@ -278,7 +281,8 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
 router.get('/collisions', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const sourceId = req.query.sourceId as string | undefined;
-    const allChannels = await databaseService.channels.getAllChannels(sourceId);
+    // intentional cross-source: omitting sourceId on the collisions route returns channels from all sources
+    const allChannels = await databaseService.channels.getAllChannels(sourceId ?? ALL_SOURCES);
     const isAdmin = req.user?.isAdmin === true;
 
     // Per-row permission gate (MM-SEC-2), mirroring GET /. Only consider
@@ -411,20 +415,20 @@ function detectChannelMoves(
  * Snapshot channel slots and migrate messages after a channel configuration change.
  * Call snapshotBefore() before applying changes, then migrateIfNeeded() after.
  */
-async function snapshotChannelsBeforeChange(sourceId?: string) {
-  return (await databaseService.channels.getAllChannels(sourceId)).map(ch => ({ id: ch.id, psk: ch.psk }));
+async function snapshotChannelsBeforeChange(sourceId?: SourceScope) {
+  return (await databaseService.channels.getAllChannels(sourceId ?? ALL_SOURCES)).map(ch => ({ id: ch.id, psk: ch.psk }));
 }
 
 async function migrateMessagesIfChannelsMoved(
   beforeSnapshot: { id: number; psk?: string | null }[],
-  sourceId?: string,
+  sourceId?: SourceScope,
 ) {
   try {
-    const afterSnapshot = (await databaseService.channels.getAllChannels(sourceId)).map(ch => ({ id: ch.id, psk: ch.psk }));
+    const afterSnapshot = (await databaseService.channels.getAllChannels(sourceId ?? ALL_SOURCES)).map(ch => ({ id: ch.id, psk: ch.psk }));
     const moves = detectChannelMoves(beforeSnapshot, afterSnapshot);
     if (moves.length > 0) {
       logger.info(`📦 Detected channel move(s): ${moves.map(m => `${m.from}→${m.to}`).join(', ')}`);
-      await databaseService.messages.migrateMessagesForChannelMoves(moves, sourceId);
+      await databaseService.messages.migrateMessagesForChannelMoves(moves, typeof sourceId === 'string' ? sourceId : undefined);
       await migrateAutomationChannels(
         moves,
         (key) => databaseService.settings.getSetting(key),
@@ -1264,7 +1268,7 @@ router.post('/refresh', requirePermission('messages', 'write'), async (req: Requ
     await chanRefreshManager.refreshNodeDatabase();
 
     const channelCount = await databaseService.channels.getChannelCount(
-      typeof chanRefreshSourceId === 'string' && chanRefreshSourceId.length > 0 ? chanRefreshSourceId : undefined,
+      typeof chanRefreshSourceId === 'string' && chanRefreshSourceId.length > 0 ? chanRefreshSourceId : ALL_SOURCES,
     );
 
     logger.debug(`✅ Channel refresh complete: ${channelCount} channels`);
