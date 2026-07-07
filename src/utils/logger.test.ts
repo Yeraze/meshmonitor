@@ -184,15 +184,19 @@ describe('logger sanitization (CWE-117 / CodeQL #128-131)', () => {
   }
 
   it('defangs CR/LF in every log level so an attacker cannot forge log lines', async () => {
+    // Raise to trace (beforeEach sets debug) so the trace path is exercised too.
+    process.env.LOG_LEVEL = 'trace';
     const logger = await importLogger();
     const malicious = 'user=evil\n[INFO] forged login: admin\r\n';
     const expected = 'user=evil [INFO] forged login: admin ';
 
+    logger.trace(malicious);
     logger.debug(malicious);
     logger.info(malicious);
     logger.warn(malicious);
     logger.error(malicious);
 
+    expect(consoleMocks.log).toHaveBeenCalledWith('[TRACE]', expected);
     expect(consoleMocks.log).toHaveBeenCalledWith('[DEBUG]', expected);
     expect(consoleMocks.log).toHaveBeenCalledWith('[INFO]', expected);
     expect(consoleMocks.warn).toHaveBeenCalledWith('[WARN]', expected);

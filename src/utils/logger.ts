@@ -35,6 +35,9 @@ function getLogLevel(): LogLevel {
   return isDev ? 'debug' : 'info';
 }
 
+// Evaluated once at module import. Changing process.env.LOG_LEVEL after import
+// has no effect on the live logger; tests that vary the level must call
+// vi.resetModules() (see logger.test.ts) to force a re-import.
 const currentLevel = getLogLevel();
 
 function shouldLog(level: LogLevel): boolean {
@@ -61,6 +64,11 @@ export const logger = {
    * Trace logging - only shown when log level is trace
    * Use for per-packet / per-loop firehose diagnostics that are far too
    * verbose even for debug. Off by default at every other level.
+   *
+   * Note: `args` is typed `unknown[]` here (the peers below use `any[]`) on
+   * purpose — `sanitizeArgs` already accepts `unknown[]`, and using `any`
+   * would add a `@typescript-eslint/no-explicit-any` violation above the
+   * lint-ratchet baseline. Leave as `unknown[]`.
    */
   trace: (...args: unknown[]) => {
     if (shouldLog('trace')) {
