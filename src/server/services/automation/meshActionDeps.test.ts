@@ -28,8 +28,10 @@ describe('createMeshActionDeps sendMessage — MeshCore scope (#3833)', () => {
 
     await deps.sendMessage({ sourceId: 'mc', text: 'hi', channel: 2, scopeOverride: 'paris' });
 
-    // raw.sendMessage(text, toPublicKey=undefined, channelIdx, scopeOverride)
-    expect(sendMessage).toHaveBeenCalledWith('hi', undefined, 2, 'paris');
+    // raw.sendMessage(text, toPublicKey=undefined, channelIdx, scopeOverride, autoRetryOnMiss)
+    // The Automation Engine is an automated sender, so it opts into the
+    // channel-send auto-retry (#3979) with the trailing `true`.
+    expect(sendMessage).toHaveBeenCalledWith('hi', undefined, 2, 'paris', true);
   });
 
   it('passes an empty-string (unscoped) override through unchanged', async () => {
@@ -39,7 +41,7 @@ describe('createMeshActionDeps sendMessage — MeshCore scope (#3833)', () => {
 
     await deps.sendMessage({ sourceId: 'mc', text: 'hi', channel: 0, scopeOverride: '' });
 
-    expect(sendMessage).toHaveBeenCalledWith('hi', undefined, 0, '');
+    expect(sendMessage).toHaveBeenCalledWith('hi', undefined, 0, '', true);
   });
 
   it('drops scopeOverride for a Meshtastic manager (no scope concept)', async () => {
@@ -69,7 +71,7 @@ describe('createMeshActionDeps — MeshCore source resolved from meshcoreManager
 
     await deps.sendMessage({ sourceId: 'mc', text: 'PINGTEST received!', channel: 1, scopeOverride: '' });
 
-    expect(sendMessage).toHaveBeenCalledWith('PINGTEST received!', undefined, 1, '');
+    expect(sendMessage).toHaveBeenCalledWith('PINGTEST received!', undefined, 1, '', true);
   });
 
   it('requestData reaches a MeshCore manager that is only in meshcoreManagerRegistry', async () => {

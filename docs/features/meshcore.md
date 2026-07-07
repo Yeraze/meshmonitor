@@ -429,6 +429,20 @@ Timer Triggers schedule recurring actions independent of incoming traffic:
 - **Three actions** — send a **text** message (token expansion supported) to a channel or contact, fire a MeshCore **advert**, or **run a script** (token-expanded args).
 - **Last-run telemetry** — the UI surfaces the last fire time and outcome per trigger.
 
+## Automated Channel-Send Auto-Retry
+
+MeshCore channel (broadcast) messages are unacked, fire-and-forget floods — unlike a direct message, there is no firmware ACK to confirm delivery. MeshMonitor instead listens for nearby repeaters re-flooding your own packet (the "heard repeaters" signal, see [Message route line](#message-route-line)). When **no** repeater is heard, the message likely reached no one.
+
+The **MeshCore Messaging** section of global **Settings** hosts an opt-in toggle, **Auto-retry automated MeshCore channel sends** (default **off**). When enabled:
+
+- An **automated** channel send that hears **zero** repeaters within **30 seconds** is resent **exactly once**.
+- It applies only to automated senders: the [Automation Engine](/features/automation-engine) `Send message` action, Auto-Acknowledge, the [Auto-Responder](#auto-responder), [Auto-Announce](#auto-announce), and [Timer Triggers](#timer-triggers).
+- **User-initiated sends are never retried** — a message you type into the send bar goes out once regardless of this setting.
+- It is **one-shot**: the resend is never itself retried, so at most one extra transmission ever occurs per logical send.
+- The resend does **not** create a second message bubble and does **not** re-enter the automation event bus, so it can never trigger a fresh automation.
+
+This is **distinct from the direct-message retry**, which is always on and follows the firmware's own same-path/flood ACK cadence. Because a channel send has no delivery ACK, the retry can only guess from the heard-repeater signal — so with this enabled you may occasionally see a duplicate on the mesh if a late echo arrives right around the 30-second mark. Leave it off if duplicates are unacceptable for your deployment.
+
 ## Room Servers
 
 Room servers (advType=3) are BBS-style MeshCore nodes that store posts and push-sync them to connected clients. The **Rooms** view in the MeshCore page lists discovered room servers and provides:

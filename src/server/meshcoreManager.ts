@@ -698,8 +698,47 @@ class MeshCoreManager extends EventEmitter {
     }
   > = new Map();
 
+  /**
+   * In-flight AUTOMATED channel sends awaiting a heard-repeater signal (#3979,
+   * Part 2). Keyed by the outgoing message id. A channel/broadcast send is an
+   * unacked fire-and-forget flood, so we can't tell delivery from a firmware
+   * ACK; instead we lean on the Part 1 echo-attribution (#3987): if NO repeater
+   * has been heard re-flooding our packet within {@link CHANNEL_RETRY_WINDOW_MS},
+   * the message likely reached no one, so we resend it exactly ONCE.
+   *
+   * This machine is armed ONLY for automated senders (Automation Engine
+   * `action.sendMessage`, Auto-Acknowledge, auto-responder, auto-announce, timer
+   * triggers) that pass `autoRetryOnMiss=true` AND only when the global
+   * {@link meshcoreChannelRetryEnabled} opt-in setting is on. User-initiated
+   * sends never arm it. It is DISTINCT from and non-colliding with the DM
+   * ack-retry ({@link pendingDmRetries}): the DM path has `toPublicKey` set and
+   * keys on the firmware ACK CRC; the channel path has `channelIdx` set (no
+   * `toPublicKey`) and keys on the echo-heard signal — mutually exclusive
+   * branches of {@link performScopedSend}. Cleared in bulk on disconnect.
+   */
+  private pendingChannelRetries: Map<
+    string,
+    {
+      text: string;
+      channelIdx: number;
+      scopeOverride: string | null | undefined;
+      /** Remaining resends. Starts at 1 (one-shot); the resend itself never re-arms. */
+      retriesLeft: number;
+      timer: NodeJS.Timeout;
+    }
+  > = new Map();
+
   // Message limit to prevent unbounded growth
   private static readonly MAX_MESSAGES = 1000;
+
+  /**
+   * How long after an automated channel send we wait for a heard-repeater
+   * signal before treating the send as a likely miss and resending once
+   * (#3979). Matches {@link HEARD_WINDOW_MS} — the echo-attribution window —
+   * so the heard-repeater set is fully populated for genuine echoes by the
+   * time the timer reads it.
+   */
+  private static readonly CHANNEL_RETRY_WINDOW_MS = 30_000;
 
   /**
    * MeshCore GRP_TXT (channel/broadcast text) payload type (0x05). Inbound OTA
@@ -1097,6 +1136,13 @@ class MeshCoreManager extends EventEmitter {
       clearTimeout(retry.timer);
     }
     this.pendingDmRetries.clear();
+
+    // Clear pending channel-send auto-retry timers (#3979) — a torn-down
+    // connection can't resend, so don't let a stray timer try.
+    for (const [, retry] of this.pendingChannelRetries) {
+      clearTimeout(retry.timer);
+    }
+    this.pendingChannelRetries.clear();
 
     this.connected = false;
     this.connectionState = 'disconnected';
@@ -2560,8 +2606,8 @@ class MeshCoreManager extends EventEmitter {
    * channel 1" from "I sent this to channel 0" — both used to be indistinguishable
    * when only channel 0 was supported (issue follow-up to MeshCore channels plan).
    */
-  async sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null): Promise<boolean> {
-    return (await this.sendMessageWithResult(text, toPublicKey, channelIdx, scopeOverride)).ok;
+  async sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null, autoRetryOnMiss: boolean = false): Promise<boolean> {
+    return (await this.sendMessageWithResult(text, toPublicKey, channelIdx, scopeOverride, autoRetryOnMiss)).ok;
   }
 
   /**
@@ -2571,7 +2617,7 @@ class MeshCoreManager extends EventEmitter {
    * to forward the later `SendConfirmed` push when the DM is acked (#3869).
    * `sendMessage` delegates here and discards the extra fields.
    */
-  async sendMessageWithResult(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null): Promise<MeshCoreSendResult> {
+  async sendMessageWithResult(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null, autoRetryOnMiss: boolean = false): Promise<MeshCoreSendResult> {
     if (!this.connected) {
       logger.error('[MeshCore] Not connected');
       return { ok: false };
@@ -2586,7 +2632,12 @@ class MeshCoreManager extends EventEmitter {
     // flood scope is a single global setting; two concurrent sends with
     // different scopes must not interleave, or a message could ship under the
     // wrong region.
-    return this.runSerialized(() => this.performScopedSend(text, toPublicKey, channelIdx, scopeOverride));
+    //
+    // `autoRetryOnMiss` (#3979) is a caller opt-in: automated senders pass it so
+    // a zero-heard channel send is resent once. It is inert for DM sends and
+    // when the global opt-in setting is off. This is NOT an auto-retry itself
+    // (isAutoRetry=false) — that flag marks the resend leg only.
+    return this.runSerialized(() => this.performScopedSend(text, toPublicKey, channelIdx, scopeOverride, false, autoRetryOnMiss));
   }
 
   /**
@@ -2736,6 +2787,7 @@ class MeshCoreManager extends EventEmitter {
     channelIdx?: number,
     scopeOverride?: string | null,
     isAutoRetry: boolean = false,
+    autoRetryOnMiss: boolean = false,
   ): Promise<MeshCoreSendResult> {
     try {
       const isChannelSend = !toPublicKey && channelIdx !== undefined;
@@ -2827,6 +2879,15 @@ class MeshCoreManager extends EventEmitter {
         // a real ACK (send-confirmed).
         if (isChannelSend) {
           this.registerPendingChannelSend(msgId, channelIdx!, text);
+
+          // Arm the automated channel-send auto-retry (#3979 Part 2) when the
+          // caller opted in AND this is not itself a resend. Gated on the global
+          // opt-in setting (default off). A resend (isAutoRetry=true) is
+          // re-registered above for echo correlation but never re-armed, so at
+          // most ONE retry ever fires per logical send.
+          if (autoRetryOnMiss && !isAutoRetry) {
+            await this.maybeArmChannelRetry(msgId, text, channelIdx!, scopeOverride);
+          }
         }
 
         return { ok: true, expectedAckCrc: ackCrc ?? undefined, estTimeout: estTimeout ?? undefined };
@@ -3025,6 +3086,104 @@ class MeshCoreManager extends EventEmitter {
       { id: messageId, previousAckCrc: lastAckCrc, deliveryStatus: 'failed' },
       this.sourceId,
     );
+  }
+
+  /**
+   * Arm the automated channel-send auto-retry timer for a just-sent channel
+   * message (#3979 Part 2), IFF the global opt-in setting is enabled. Reads the
+   * setting here (not at the call site) so the check is co-located with the
+   * arming and stays consistent across all automated senders. One entry per
+   * outgoing message id; a 30s timer that, on fire, resends once only when zero
+   * repeaters were heard.
+   */
+  private async maybeArmChannelRetry(
+    messageId: string,
+    text: string,
+    channelIdx: number,
+    scopeOverride: string | null | undefined,
+  ): Promise<void> {
+    let enabled: boolean;
+    try {
+      enabled = await databaseService.settings.getSettingAsBoolean('meshcoreChannelRetryEnabled', false);
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] channel-retry setting read failed: ${(err as Error).message}`);
+      return;
+    }
+    if (!enabled) return;
+
+    const existing = this.pendingChannelRetries.get(messageId);
+    if (existing) clearTimeout(existing.timer);
+    const timer = setTimeout(() => {
+      void this.handleChannelRetryTimeout(messageId);
+    }, MeshCoreManager.CHANNEL_RETRY_WINDOW_MS);
+    this.pendingChannelRetries.set(messageId, {
+      text,
+      channelIdx,
+      scopeOverride,
+      retriesLeft: 1,
+      timer,
+    });
+  }
+
+  /**
+   * The channel-send retry window elapsed (#3979 Part 2). If NO repeater was
+   * heard re-flooding this message (per the Part 1 echo-attribution, #3987),
+   * the send likely reached no one, so resend it exactly ONCE. The resend goes
+   * through `performScopedSend` with `isAutoRetry=true` (no new message row / no
+   * `message` event / no re-entry onto the data bus, so it can't spawn a fresh
+   * automation trigger) and `autoRetryOnMiss=false` (so it re-registers for echo
+   * correlation but never arms a second retry — one-shot). Runs inside
+   * `runSerialized` so the scope-assert→send pair can't interleave with a
+   * concurrent send (#3667).
+   */
+  private async handleChannelRetryTimeout(messageId: string): Promise<void> {
+    const pending = this.pendingChannelRetries.get(messageId);
+    if (!pending) return; // already cleared (disconnect) — nothing to do
+    this.pendingChannelRetries.delete(messageId);
+
+    if (!this.connected) return; // torn-down connection can't resend
+
+    // Point-in-time read of the heard-repeater set for this message. The echo
+    // handler (`correlateChannelEcho`) awaits its DB write before returning, and
+    // the retry window equals the echo-attribution window, so any repeater heard
+    // for a genuine echo is already persisted by now. A repeater heard AFTER
+    // this read (extremely-late echo) at worst yields one accepted duplicate,
+    // which the opt-in explicitly tolerates.
+    let heardCount: number;
+    try {
+      const heard = await databaseService.meshcore.getHeardRepeatersForMessage(messageId, this.sourceId);
+      heardCount = heard.length;
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] channel-retry heard-count read failed: ${(err as Error).message}`);
+      return; // can't confirm a miss → don't risk a needless duplicate
+    }
+
+    if (heardCount > 0) {
+      logger.debug(
+        `[MeshCore:${this.sourceId}] Channel send ${messageId} heard by ${heardCount} repeater(s) within window; no retry`,
+      );
+      return;
+    }
+    if (pending.retriesLeft <= 0) return; // defensive: one-shot already spent
+
+    logger.info(
+      `[MeshCore:${this.sourceId}] Channel send ${messageId} heard ZERO repeaters within ` +
+      `${MeshCoreManager.CHANNEL_RETRY_WINDOW_MS / 1000}s; resending once (auto-retry #3979)`,
+    );
+
+    await this.runSerialized(async () => {
+      if (!this.connected) return;
+      // isAutoRetry=true: no new bubble / no bus re-entry / no automation re-trigger.
+      // autoRetryOnMiss=false: re-register for echo correlation but never re-arm.
+      await this.performScopedSend(
+        pending.text,
+        undefined,
+        pending.channelIdx,
+        pending.scopeOverride,
+        true,
+        false,
+      );
+    });
   }
 
   /**
@@ -5867,7 +6026,8 @@ class MeshCoreManager extends EventEmitter {
     let sent = 0;
     for (const idx of channelIndexes) {
       try {
-        const ok = await this.sendMessage(rendered, undefined, idx, scopeOverride);
+        // Automated sender → opt into channel-send auto-retry (#3979).
+        const ok = await this.sendMessage(rendered, undefined, idx, scopeOverride, true);
         if (ok) sent += 1;
       } catch (err) {
         logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: send to channel ${idx} threw: ${(err as Error).message}`);
@@ -6010,7 +6170,8 @@ class MeshCoreManager extends EventEmitter {
         return this.sendMessage(text, trigger.contactPublicKey, undefined, scopeOverride);
       }
       if (typeof trigger.channelIndex === 'number') {
-        return this.sendMessage(text, undefined, trigger.channelIndex, scopeOverride);
+        // Automated sender → opt into channel-send auto-retry (#3979).
+        return this.sendMessage(text, undefined, trigger.channelIndex, scopeOverride, true);
       }
       return false;
     };
@@ -6280,7 +6441,8 @@ class MeshCoreManager extends EventEmitter {
             return this.sendMessage(text, targetKey, undefined, scopeOverride);
           }
           if (typeof channelIdx === 'number') {
-            return this.sendMessage(text, undefined, channelIdx, scopeOverride);
+            // Automated sender → opt into channel-send auto-retry (#3979).
+            return this.sendMessage(text, undefined, channelIdx, scopeOverride, true);
           }
           return false;
         };
@@ -6568,7 +6730,8 @@ class MeshCoreManager extends EventEmitter {
         await this.sendMessage(replyText, contact.publicKey, undefined, scopeOverride);
       } else {
         logger.info(`[MeshCore:${sourceId}] Auto-ack channel ${channelIdx} → "${replyText}"`);
-        await this.sendMessage(replyText, undefined, channelIdx, scopeOverride);
+        // Automated sender → opt into channel-send auto-retry (#3979).
+        await this.sendMessage(replyText, undefined, channelIdx, scopeOverride, true);
       }
     } catch (err) {
       logger.error(`[MeshCore:${this.sourceId}] Auto-ack handler threw: ${(err as Error).message}`);
