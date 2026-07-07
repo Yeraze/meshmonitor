@@ -28,6 +28,9 @@ import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { notificationService } from './services/notificationService.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import type { DbMeshCorePacket } from '../db/repositories/meshcore.js';
+import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
+import { MESHCORE_SECRET_BYTES } from '../utils/meshcoreHelpers.js';
+import { tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 
 // Dynamic imports for optional serialport dependency
 // These are loaded only when MeshCore is enabled to avoid requiring native build tools
@@ -650,13 +653,22 @@ class MeshCoreManager extends EventEmitter {
   private commandId: number = 0;
 
   /**
-   * Pending outgoing channel sends awaiting self-echo correlation (#3700).
-   * Keyed by message id. Each entry remembers the channel index and send time
-   * so an inbound GRP_TXT OTA packet arriving within HEARD_WINDOW_MS can be
-   * attributed (best-effort) to the most recent matching channel send. Pruned
-   * lazily on each inbound packet and on each new send.
+   * Pending outgoing channel sends awaiting self-echo correlation (#3700,
+   * #3979). Keyed by message id. Each entry remembers the channel index, send
+   * time, and the exact `text` we sent, so an inbound GRP_TXT OTA packet
+   * arriving within HEARD_WINDOW_MS can be attributed to the SPECIFIC send whose
+   * decrypted plaintext matches — not merely the most recent send. Pruned lazily
+   * on each inbound packet and on each new send.
    */
-  private pendingChannelSends: Map<string, { channelIdx: number; sentAt: number }> = new Map();
+  private pendingChannelSends: Map<string, { channelIdx: number; sentAt: number; text: string }> = new Map();
+
+  /**
+   * De-dup guard so a single echoed channel packet is attributed at most ONCE
+   * (#3979). Keyed by the GRP_TXT payload hex (channel_hash + MAC + ciphertext)
+   * — the MeshCore dedup identity, invariant across re-floods — mapped to the
+   * time it was attributed, so entries can be pruned by the heard window.
+   */
+  private attributedChannelEchoes: Map<string, number> = new Map();
 
   /**
    * In-flight DM sends awaiting a `SendConfirmed` ack, keyed by the *current*
@@ -1579,18 +1591,42 @@ class MeshCoreManager extends EventEmitter {
    * (#3700). Prunes entries older than HEARD_WINDOW_MS so the map never grows
    * unbounded on a chatty channel.
    */
-  private registerPendingChannelSend(messageId: string, channelIdx: number): void {
+  private registerPendingChannelSend(messageId: string, channelIdx: number, text: string): void {
     const now = Date.now();
     this.prunePendingChannelSends(now);
-    this.pendingChannelSends.set(messageId, { channelIdx, sentAt: now });
+    this.pendingChannelSends.set(messageId, { channelIdx, sentAt: now, text });
   }
 
-  /** Drop pending channel sends older than the heard window. */
+  /** Drop pending channel sends (and stale attribution guards) older than the
+   *  heard window. */
   private prunePendingChannelSends(now: number): void {
     for (const [id, entry] of this.pendingChannelSends) {
       if (now - entry.sentAt > MeshCoreManager.HEARD_WINDOW_MS) {
         this.pendingChannelSends.delete(id);
       }
+    }
+    for (const [key, heardAt] of this.attributedChannelEchoes) {
+      if (now - heardAt > MeshCoreManager.HEARD_WINDOW_MS) {
+        this.attributedChannelEchoes.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Load the 16-byte AES-128 secret for a MeshCore channel slot from the
+   * channels repository (base64 `psk`). Returns null when the channel is
+   * unknown, has no PSK, or the PSK is not a valid 16-byte key. Never throws —
+   * a DB hiccup must not break the packet pipeline.
+   */
+  private async loadChannelSecret(channelIdx: number): Promise<Uint8Array | null> {
+    try {
+      const channel = await databaseService.channels.getChannelById(channelIdx, this.sourceId);
+      if (!channel?.psk) return null;
+      const buf = Buffer.from(channel.psk, 'base64');
+      if (buf.length !== MESHCORE_SECRET_BYTES) return null;
+      return new Uint8Array(buf);
+    } catch {
+      return null;
     }
   }
 
@@ -1599,12 +1635,15 @@ class MeshCoreManager extends EventEmitter {
    *
    * When a nearby repeater re-floods one of OUR channel messages, our device
    * hears it as an inbound GRP_TXT OTA packet whose relay-hash chain
-   * (`path_hops`) names the repeaters that carried it. We can't prove the echo
-   * is ours (the bridge doesn't return our outgoing payload bytes), so we bound
-   * the attribution: only GRP_TXT, only within HEARD_WINDOW_MS of one of our
-   * channel sends, attributed to the most recent such send. Each relay hash is
-   * resolved to a known contact name when possible (raw hash otherwise), the
-   * max SNR is tracked per repeater, and the merged heard-by set is broadcast.
+   * (`path_hops`) names the repeaters that carried it. We PROVE the echo is ours
+   * (#3979): we hold the channel PSK, so we decrypt the echoed payload and
+   * require the recovered plaintext to be exactly `"<ourNodeName>: <textWeSent>"`
+   * for one of our pending channel sends. This rejects both unrelated
+   * third-party chatter on the same channel and cross-attribution between two of
+   * our own near-simultaneous sends. Each relay hash is resolved to a known
+   * contact name when possible (raw hash otherwise), the max SNR is tracked per
+   * repeater, and the merged heard-by set is broadcast. Each echoed packet is
+   * attributed at most once (guarded by the invariant payload identity).
    *
    * Failures are swallowed — correlation must never break the packet pipeline.
    */
@@ -1613,13 +1652,35 @@ class MeshCoreManager extends EventEmitter {
       const now = Date.now();
       this.prunePendingChannelSends(now);
 
+      // Hot-path early-outs: only GRP_TXT frames with at least one pending
+      // channel send can ever match — skip the decrypt attempt otherwise.
+      if (!data || data.payload_type !== MeshCoreManager.PAYLOAD_TYPE_GRP_TXT) return;
+      if (this.pendingChannelSends.size === 0) return;
+
+      // Pre-load the channel secret for every distinct pending channel so the
+      // pure matcher can stay synchronous (no DB in the unit-testable core).
+      const secretByChannel = new Map<number, Uint8Array | null>();
+      for (const [, entry] of this.pendingChannelSends) {
+        if (!secretByChannel.has(entry.channelIdx)) {
+          secretByChannel.set(entry.channelIdx, await this.loadChannelSecret(entry.channelIdx));
+        }
+      }
+
       const match = MeshCoreManager.findEchoMatch(
         data,
         this.pendingChannelSends,
         now,
         MeshCoreManager.HEARD_WINDOW_MS,
+        {
+          selfName: this.localNode?.name ?? null,
+          resolveChannelSecret: (idx) => secretByChannel.get(idx) ?? null,
+        },
       );
       if (!match) return;
+
+      // Attribute each distinct echoed packet at most once (#3979).
+      if (this.attributedChannelEchoes.has(match.echoKey)) return;
+      this.attributedChannelEchoes.set(match.echoKey, now);
 
       const snr = typeof data.snr === 'number' ? Math.round(data.snr) : null;
       const heardBy: Array<{ hash: string; name?: string | null; snr?: number | null }> = [];
@@ -1674,20 +1735,36 @@ class MeshCoreManager extends EventEmitter {
 
   /**
    * Decide whether an inbound OTA packet is a self-echo of a pending channel
-   * send (#3700). Pure (no I/O) so it can be unit-tested directly. Returns the
-   * matched message id and the de-duplicated relay-hash chain, or null.
+   * send (#3700, #3979). Pure (no I/O) so it can be unit-tested directly against
+   * real encrypted fixtures. Returns the matched message id, the de-duplicated
+   * relay-hash chain, and the echo's invariant payload identity (`echoKey`), or
+   * null.
    *
-   * A match requires: payload_type === GRP_TXT, a non-empty `path_hops` relay
-   * chain (a direct/zero-hop packet names no repeaters), and at least one
-   * pending channel send within the window. Attribution goes to the MOST RECENT
-   * pending send (best-effort; the window + type bound the risk).
+   * A match requires ALL of:
+   *  - `payload_type === GRP_TXT`;
+   *  - a non-empty `path_hops` relay chain (a direct/zero-hop packet names no
+   *    repeaters);
+   *  - a known local node name (`selfName`) — needed to confirm self-origin;
+   *  - a decodable `raw_hex`; and
+   *  - a pending channel send, WITHIN the window, whose channel secret both
+   *    MAC-verifies and AES-decrypts the echoed payload to exactly
+   *    `"<selfName>: <that send's text>"`.
+   *
+   * When several pending sends satisfy the exact match (identical text on the
+   * same channel), the OLDEST is chosen for deterministic attribution — never
+   * "most recent". A third-party message (whose decrypted sender name differs)
+   * or a re-flood of a different channel simply never matches.
    */
   static findEchoMatch(
     data: any,
-    pendingChannelSends: Map<string, { channelIdx: number; sentAt: number }>,
+    pendingChannelSends: Map<string, { channelIdx: number; sentAt: number; text: string }>,
     now: number,
     windowMs: number,
-  ): { messageId: string; channelIdx: number; pathHops: string[] } | null {
+    opts: {
+      selfName: string | null;
+      resolveChannelSecret: (channelIdx: number) => Uint8Array | null;
+    },
+  ): { messageId: string; channelIdx: number; pathHops: string[]; echoKey: string } | null {
     if (!data || data.payload_type !== MeshCoreManager.PAYLOAD_TYPE_GRP_TXT) return null;
 
     const rawHops: unknown = data.path_hops;
@@ -1704,16 +1781,34 @@ class MeshCoreManager extends EventEmitter {
     }
     if (pathHops.length === 0) return null;
 
-    let best: { messageId: string; channelIdx: number; sentAt: number } | null = null;
-    for (const [messageId, entry] of pendingChannelSends) {
-      if (now - entry.sentAt > windowMs) continue;
-      if (!best || entry.sentAt > best.sentAt) {
-        best = { messageId, channelIdx: entry.channelIdx, sentAt: entry.sentAt };
-      }
-    }
-    if (!best) return null;
+    // Without our own node name we can't confirm self-origin — bail rather than
+    // risk crediting a third-party message.
+    const selfName = opts.selfName;
+    if (!selfName) return null;
 
-    return { messageId: best.messageId, channelIdx: best.channelIdx, pathHops };
+    // Recover the GRP_TXT payload (`[channel_hash:1][MAC:2][ciphertext]`) from
+    // the raw OTA frame; `path_hops` above already gives the relay chain.
+    const decoded = decodeMeshCorePacket(typeof data.raw_hex === 'string' ? data.raw_hex : null);
+    const payloadHex = decoded?.payload?.hex;
+    if (!payloadHex) return null;
+
+    // Try each in-window pending send OLDEST-first so attribution is
+    // deterministic (never "most recent").
+    const candidates = Array.from(pendingChannelSends.entries())
+      .filter(([, entry]) => now - entry.sentAt <= windowMs)
+      .sort((a, b) => a[1].sentAt - b[1].sentAt);
+
+    for (const [messageId, entry] of candidates) {
+      const secret = opts.resolveChannelSecret(entry.channelIdx);
+      if (!secret) continue;
+      const plaintext = tryDecodeGroupTextPayload(payloadHex, secret);
+      if (!plaintext) continue;
+      // Self-origin + exact-text check in one comparison: MeshCore prefixes the
+      // sender name, so our own echo decrypts to `"<selfName>: <text>"`.
+      if (plaintext.body !== `${selfName}: ${entry.text}`) continue;
+      return { messageId, channelIdx: entry.channelIdx, pathHops, echoKey: payloadHex };
+    }
+    return null;
   }
 
   /**
@@ -2731,7 +2826,7 @@ class MeshCoreManager extends EventEmitter {
         // relaying repeaters in its path. DMs are excluded — they already get
         // a real ACK (send-confirmed).
         if (isChannelSend) {
-          this.registerPendingChannelSend(msgId, channelIdx!);
+          this.registerPendingChannelSend(msgId, channelIdx!, text);
         }
 
         return { ok: true, expectedAckCrc: ackCrc ?? undefined, estTimeout: estTimeout ?? undefined };
