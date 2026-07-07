@@ -53,7 +53,7 @@ describe('GET /stats', () => {
     mockDb.messages.getMessageCount.mockRejectedValue(new Error('boom'));
     const res = await request(app).get('/stats');
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe('Failed to fetch stats');
+    expect(res.body).toMatchObject({ success: false, error: 'Failed to fetch stats', code: 'STATS_FAILED' });
   });
 });
 
@@ -69,7 +69,7 @@ describe('POST /export', () => {
     mockDb.exportDataAsync.mockRejectedValue(new Error('fail'));
     const res = await request(app).post('/export').send({});
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe('Failed to export data');
+    expect(res.body).toMatchObject({ success: false, error: 'Failed to export data', code: 'EXPORT_FAILED' });
   });
 });
 
@@ -87,6 +87,6 @@ describe('POST /import', () => {
     mockDb.importDataAsync.mockRejectedValue(new Error('fail'));
     const res = await request(app).post('/import').send({});
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe('Failed to import data');
+    expect(res.body).toMatchObject({ success: false, error: 'Failed to import data', code: 'IMPORT_FAILED' });
   });
 });

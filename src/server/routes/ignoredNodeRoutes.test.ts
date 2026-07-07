@@ -48,7 +48,8 @@ describe('GET /', () => {
     const res = await request(app).get('/');
 
     expect(res.status).toBe(400);
-    expect(res.body.code).toBe('MISSING_SOURCE_ID');
+    expect(res.body).toMatchObject({ success: false, code: 'MISSING_SOURCE_ID', error: 'No permitted source' });
+    expect(typeof res.body.details).toBe('string');
   });
 
   it('returns 500 on database error', async () => {
@@ -57,6 +58,7 @@ describe('GET /', () => {
     const res = await request(app).get('/');
 
     expect(res.status).toBe(500);
+    expect(res.body).toMatchObject({ success: false, code: 'INTERNAL_ERROR' });
   });
 });
 
@@ -78,7 +80,8 @@ describe('DELETE /:nodeId', () => {
     const res = await request(app).delete('/!ZZZZ');
 
     expect(res.status).toBe(400);
-    expect(res.body.code).toBe('INVALID_NODE_ID');
+    expect(res.body).toMatchObject({ success: false, code: 'INVALID_NODE_ID', error: 'Invalid nodeId format' });
+    expect(typeof res.body.details).toBe('string');
   });
 
   it('returns 400 when source cannot be resolved', async () => {
@@ -87,7 +90,8 @@ describe('DELETE /:nodeId', () => {
     const res = await request(app).delete('/!aabbccdd');
 
     expect(res.status).toBe(400);
-    expect(res.body.code).toBe('MISSING_SOURCE_ID');
+    expect(res.body).toMatchObject({ success: false, code: 'MISSING_SOURCE_ID', error: 'No permitted source' });
+    expect(typeof res.body.details).toBe('string');
   });
 
   it('succeeds even if setNodeIgnoredAsync throws (node not in nodes table)', async () => {
@@ -106,5 +110,6 @@ describe('DELETE /:nodeId', () => {
     const res = await request(app).delete('/!aabbccdd');
 
     expect(res.status).toBe(500);
+    expect(res.body).toMatchObject({ success: false, code: 'INTERNAL_ERROR' });
   });
 });

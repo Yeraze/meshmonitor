@@ -3,12 +3,7 @@ import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { resolveRequestSourceId } from '../utils/sourceResolver.js';
-
-interface ApiErrorResponse {
-  error: string;
-  code: string;
-  details?: string;
-}
+import { fail } from '../utils/apiResponse.js';
 
 const router = Router();
 
@@ -16,24 +11,18 @@ router.get('/', requirePermission('nodes', 'read'), async (req: Request, res: Re
   try {
     const listSourceId = await resolveRequestSourceId(req, 'nodes', 'read');
     if (!listSourceId) {
-      const errorResponse: ApiErrorResponse = {
-        error: 'No permitted source',
-        code: 'MISSING_SOURCE_ID',
+      fail(res, 400, 'MISSING_SOURCE_ID', 'No permitted source', {
         details: 'Provide ?sourceId=, or ensure your account has nodes:read on at least one enabled source',
-      };
-      res.status(400).json(errorResponse);
+      });
       return;
     }
     const ignoredNodes = await databaseService.ignoredNodes.getIgnoredNodesAsync(listSourceId);
     res.json(ignoredNodes);
   } catch (error) {
     logger.error('Error fetching ignored nodes:', error);
-    const errorResponse: ApiErrorResponse = {
-      error: 'Failed to fetch ignored nodes',
-      code: 'INTERNAL_ERROR',
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to fetch ignored nodes', {
       details: error instanceof Error ? error.message : 'Unknown error occurred',
-    };
-    res.status(500).json(errorResponse);
+    });
   }
 });
 
@@ -44,23 +33,17 @@ router.delete('/:nodeId', requirePermission('nodes', 'write'), async (req: Reque
     const nodeNumStr = nodeId.replace('!', '');
 
     if (!/^[0-9a-fA-F]{8}$/.test(nodeNumStr)) {
-      const errorResponse: ApiErrorResponse = {
-        error: 'Invalid nodeId format',
-        code: 'INVALID_NODE_ID',
+      fail(res, 400, 'INVALID_NODE_ID', 'Invalid nodeId format', {
         details: 'nodeId must be in format !XXXXXXXX (8 hex characters)',
-      };
-      res.status(400).json(errorResponse);
+      });
       return;
     }
 
     const deleteSourceId = await resolveRequestSourceId(req, 'nodes', 'write');
     if (!deleteSourceId) {
-      const errorResponse: ApiErrorResponse = {
-        error: 'No permitted source',
-        code: 'MISSING_SOURCE_ID',
+      fail(res, 400, 'MISSING_SOURCE_ID', 'No permitted source', {
         details: 'Provide ?sourceId=, or ensure your account has nodes:write on at least one enabled source',
-      };
-      res.status(400).json(errorResponse);
+      });
       return;
     }
 
@@ -76,12 +59,9 @@ router.delete('/:nodeId', requirePermission('nodes', 'write'), async (req: Reque
     res.json({ success: true, nodeNum, sourceId: deleteSourceId });
   } catch (error) {
     logger.error('Error removing ignored node:', error);
-    const errorResponse: ApiErrorResponse = {
-      error: 'Failed to remove ignored node',
-      code: 'INTERNAL_ERROR',
+    fail(res, 500, 'INTERNAL_ERROR', 'Failed to remove ignored node', {
       details: error instanceof Error ? error.message : 'Unknown error occurred',
-    };
-    res.status(500).json(errorResponse);
+    });
   }
 });
 

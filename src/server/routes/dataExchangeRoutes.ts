@@ -3,6 +3,7 @@ import { requirePermission, requireAdmin } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
+import { ok, fail } from '../utils/apiResponse.js';
 
 const router: Router = Router();
 
@@ -23,7 +24,7 @@ router.get('/stats', requirePermission('dashboard', 'read'), async (req: Request
     });
   } catch (error) {
     logger.error('Error fetching stats:', error);
-    res.status(500).json({ error: 'Failed to fetch stats' });
+    fail(res, 500, 'STATS_FAILED', 'Failed to fetch stats');
   }
 });
 
@@ -33,7 +34,7 @@ router.post('/export', requireAdmin(), async (_req: Request, res: Response) => {
     res.json(data);
   } catch (error) {
     logger.error('Error exporting data:', error);
-    res.status(500).json({ error: 'Failed to export data' });
+    fail(res, 500, 'EXPORT_FAILED', 'Failed to export data');
   }
 });
 
@@ -41,10 +42,10 @@ router.post('/import', requireAdmin(), async (req: Request, res: Response) => {
   try {
     const data = req.body;
     await databaseService.importDataAsync(data);
-    res.json({ success: true });
+    ok(res);
   } catch (error) {
     logger.error('Error importing data:', error);
-    res.status(500).json({ error: 'Failed to import data' });
+    fail(res, 500, 'IMPORT_FAILED', 'Failed to import data');
   }
 });
 
