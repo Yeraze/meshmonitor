@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
 
 const router = Router();
@@ -22,7 +23,7 @@ router.get('/recent', async (req: Request, res: Response) => {
     }
 
     const recentSourceId = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
-    const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, recentSourceId);
+    const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, recentSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
 
     const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);
 
@@ -70,7 +71,7 @@ router.get('/history/:fromNodeNum/:toNodeNum', requirePermission('traceroute', '
       return;
     }
 
-    const traceroutes = await databaseService.traceroutes.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit, historySourceId);
+    const traceroutes = await databaseService.traceroutes.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit, historySourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
 
     const traceroutesWithHops = traceroutes.map(tr => {
       let hopCount = 999;

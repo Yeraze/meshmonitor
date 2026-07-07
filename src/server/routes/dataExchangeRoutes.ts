@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requirePermission, requireAdmin } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
 
 const router: Router = Router();
@@ -8,9 +9,10 @@ const router: Router = Router();
 router.get('/stats', requirePermission('dashboard', 'read'), async (req: Request, res: Response) => {
   try {
     const statsSourceId = req.query.sourceId as string | undefined;
-    const messageCount = await databaseService.messages.getMessageCount(statsSourceId);
-    const nodeCount = await databaseService.nodes.getNodeCount(statsSourceId);
-    const channelCount = await databaseService.channels.getChannelCount(statsSourceId);
+    // intentional cross-source: stats totals span all sources when no sourceId is specified
+    const messageCount = await databaseService.messages.getMessageCount(statsSourceId ?? ALL_SOURCES);
+    const nodeCount = await databaseService.nodes.getNodeCount(statsSourceId ?? ALL_SOURCES);
+    const channelCount = await databaseService.channels.getChannelCount(statsSourceId ?? ALL_SOURCES);
     const messagesByDay = await databaseService.getMessagesByDayAsync(7, statsSourceId);
 
     res.json({

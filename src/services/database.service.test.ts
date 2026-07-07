@@ -177,6 +177,7 @@ const mockEmbedProfileRepo = vi.hoisted(() => ({
 
 // Use classes (not mockReturnValue) since they're called with `new`
 vi.mock('../db/repositories/index.js', () => ({
+  ALL_SOURCES: Symbol('ALL_SOURCES'),
   SettingsRepository: class { getSetting = mockSettingsRepo.getSetting; setSetting = mockSettingsRepo.setSetting; deleteSetting = mockSettingsRepo.deleteSetting; getAllSettings = mockSettingsRepo.getAllSettings; getSettingSync = mockSettingsRepo.getSettingSync; setSettingSync = mockSettingsRepo.setSettingSync; setSettingsSync = mockSettingsRepo.setSettingsSync; getAllSettingsSync = mockSettingsRepo.getAllSettingsSync; deleteAllSettingsSync = mockSettingsRepo.deleteAllSettingsSync; },
   ChannelsRepository: class { getChannels = mockChannelsRepo.getChannels; getChannelById = mockChannelsRepo.getChannelById; upsertChannel = mockChannelsRepo.upsertChannel; },
   NodesRepository: class { getAllNodes = mockNodesRepo.getAllNodes; getNodeByNum = mockNodesRepo.getNodeByNum; upsertNode = mockNodesRepo.upsertNode; deleteNode = mockNodesRepo.deleteNode; getNodesWithKeySecurityIssues = mockNodesRepo.getNodesWithKeySecurityIssues; },

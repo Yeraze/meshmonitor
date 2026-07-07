@@ -13,6 +13,7 @@
  */
 import { Router, Request, Response } from 'express';
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
@@ -294,7 +295,8 @@ router.get('/solar-nodes', async (req: Request, res: Response) => {
         value: Number(r.value),
       }));
 
-    const allNodes = await databaseService.nodes.getAllNodes();
+    // intentional cross-source: node name map for display purposes spans all sources
+    const allNodes = await databaseService.nodes.getAllNodes(ALL_SOURCES);
     const nodeLookup: NodeNameLookup[] = allNodes.map((n: any) => ({
       nodeNum: Number(n.nodeNum),
       longName: n.longName,
@@ -371,7 +373,8 @@ router.get('/solar-forecast', async (req: Request, res: Response) => {
         value: Number(r.value),
       }));
 
-    const allNodes = await databaseService.nodes.getAllNodes();
+    // intentional cross-source: node name map for display purposes spans all sources
+    const allNodes = await databaseService.nodes.getAllNodes(ALL_SOURCES);
     const nodeLookup: NodeNameLookup[] = allNodes.map((n: any) => ({
       nodeNum: Number(n.nodeNum),
       longName: n.longName,

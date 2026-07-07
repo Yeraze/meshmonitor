@@ -8,6 +8,7 @@
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
+import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
 import { checkNodeChannelAccess } from '../../utils/nodeEnhancer.js';
 
@@ -110,7 +111,7 @@ router.get('/:nodeId/position-history', async (req: Request, res: Response) => {
       nodeId,
       internalLimit,
       sinceTimestamp,
-      sourceIdQ
+      sourceIdQ ?? ALL_SOURCES // scoped when provided; intentional cross-source otherwise
     );
 
     // Group by timestamp to build position objects

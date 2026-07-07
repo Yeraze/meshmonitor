@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
 import * as schema from '../schema/index.js';
 import { ChannelsRepository } from './channels.js';
+import { ALL_SOURCES } from './base.js';
 import {
   TestBackend,
   createPostgresBackend,
@@ -270,7 +271,7 @@ function runChannelsTests(getBackend: () => TestBackend) {
     await repo.upsertChannel({ id: 0, name: 'Primary', psk: 'p0', role: 1 });
     await repo.upsertChannel({ id: 1, name: 'One', psk: 'p1', role: 2 });
 
-    const channels = await repo.getAllChannels();
+    const channels = await repo.getAllChannels(ALL_SOURCES);
     expect(channels.length).toBe(3);
     expect(channels[0].id).toBe(0);
     expect(channels[1].id).toBe(1);
@@ -337,7 +338,7 @@ function runChannelsTests(getBackend: () => TestBackend) {
     expect(repo.getChannelCountSync('src-a')).toBe(2);
     expect(repo.getChannelCountSync('src-b')).toBe(1);
     // Unscoped sees everything (legacy behaviour).
-    expect(repo.getChannelCountSync()).toBe(3);
+    expect(repo.getChannelCountSync(ALL_SOURCES)).toBe(3);
   });
 
   it('getChannelCount - returns correct count', async () => {
@@ -347,13 +348,13 @@ function runChannelsTests(getBackend: () => TestBackend) {
       return;
     }
 
-    expect(await repo.getChannelCount()).toBe(0);
+    expect(await repo.getChannelCount(ALL_SOURCES)).toBe(0);
 
     await repo.upsertChannel({ id: 0, name: 'Primary', psk: 'p0', role: 1 });
-    expect(await repo.getChannelCount()).toBe(1);
+    expect(await repo.getChannelCount(ALL_SOURCES)).toBe(1);
 
     await repo.upsertChannel({ id: 1, name: 'Secondary', psk: 'p1', role: 2 });
-    expect(await repo.getChannelCount()).toBe(2);
+    expect(await repo.getChannelCount(ALL_SOURCES)).toBe(2);
   });
 
   it('deleteChannel - removes a channel by ID', async () => {
@@ -370,7 +371,7 @@ function runChannelsTests(getBackend: () => TestBackend) {
 
     expect(await repo.getChannelById(1)).toBeNull();
     expect(await repo.getChannelById(0)).not.toBeNull();
-    expect(await repo.getChannelCount()).toBe(1);
+    expect(await repo.getChannelCount(ALL_SOURCES)).toBe(1);
   });
 
   it('deleteChannel - no-op for non-existent channel', async () => {
@@ -382,7 +383,7 @@ function runChannelsTests(getBackend: () => TestBackend) {
 
     await repo.upsertChannel({ id: 0, name: 'Primary', psk: 'p0', role: 1 });
     await repo.deleteChannel(99);
-    expect(await repo.getChannelCount()).toBe(1);
+    expect(await repo.getChannelCount(ALL_SOURCES)).toBe(1);
   });
 
   it('cleanupInvalidChannels - removes channels outside 0-7 range', async () => {
@@ -403,11 +404,11 @@ function runChannelsTests(getBackend: () => TestBackend) {
     await backend2.exec(`INSERT INTO channels (id, name, psk, role, ${cat}, ${uat}) VALUES (8, 'Invalid8', 'psk', 2, 0, 0)`);
     await backend2.exec(`INSERT INTO channels (id, name, psk, role, ${cat}, ${uat}) VALUES (100, 'Invalid100', 'psk', 2, 0, 0)`);
 
-    expect(await repo.getChannelCount()).toBe(5);
+    expect(await repo.getChannelCount(ALL_SOURCES)).toBe(5);
 
     const deleted = await repo.cleanupInvalidChannels();
     expect(deleted).toBe(2);
-    expect(await repo.getChannelCount()).toBe(3);
+    expect(await repo.getChannelCount(ALL_SOURCES)).toBe(3);
     expect(await repo.getChannelById(8)).toBeNull();
     expect(await repo.getChannelById(100)).toBeNull();
   });
@@ -424,7 +425,7 @@ function runChannelsTests(getBackend: () => TestBackend) {
 
     const deleted = await repo.cleanupInvalidChannels();
     expect(deleted).toBe(0);
-    expect(await repo.getChannelCount()).toBe(2);
+    expect(await repo.getChannelCount(ALL_SOURCES)).toBe(2);
   });
 
   it('cleanupInvalidChannels - preserves out-of-range channels owned by a MeshCore source', async () => {
@@ -455,7 +456,7 @@ function runChannelsTests(getBackend: () => TestBackend) {
     // A legacy NULL-sourceId channel at idx 9 (implicitly Meshtastic; should be removed).
     await backend.exec(`INSERT INTO channels (id, name, psk, ${cat}, ${uat}) VALUES (9, 'Legacy-Nine', 'aGVsbG8=', 0, 0)`);
 
-    expect(await repo.getChannelCount()).toBe(3);
+    expect(await repo.getChannelCount(ALL_SOURCES)).toBe(3);
 
     const deleted = await repo.cleanupInvalidChannels();
     expect(deleted).toBe(2);
@@ -492,11 +493,11 @@ function runChannelsTests(getBackend: () => TestBackend) {
     await backend2.exec(`INSERT INTO channels (id, name, psk, role, ${cat}, ${uat}) VALUES (3, 'Empty3', NULL, NULL, 0, 0)`);
     await backend2.exec(`INSERT INTO channels (id, name, psk, role, ${cat}, ${uat}) VALUES (4, 'Empty4', NULL, NULL, 0, 0)`);
 
-    expect(await repo.getChannelCount()).toBe(5);
+    expect(await repo.getChannelCount(ALL_SOURCES)).toBe(5);
 
     const deleted = await repo.cleanupEmptyChannels();
     expect(deleted).toBe(2);
-    expect(await repo.getChannelCount()).toBe(3);
+    expect(await repo.getChannelCount(ALL_SOURCES)).toBe(3);
     expect(await repo.getChannelById(3)).toBeNull();
     expect(await repo.getChannelById(4)).toBeNull();
     // Protected channels still exist
@@ -521,7 +522,7 @@ function runChannelsTests(getBackend: () => TestBackend) {
 
     const deleted = await repo.cleanupEmptyChannels();
     expect(deleted).toBe(0);
-    expect(await repo.getChannelCount()).toBe(2);
+    expect(await repo.getChannelCount(ALL_SOURCES)).toBe(2);
   });
 
   it('cleanupEmptyChannels - returns 0 when no empty channels', async () => {

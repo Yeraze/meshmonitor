@@ -44,8 +44,9 @@ import {
   AutomationsRepository,
   AutomationVariablesRepository,
   SavedRegionsRepository,
+  ALL_SOURCES,
 } from '../db/repositories/index.js';
-import type { EstimatedPosition, EstimatedPositionInput } from '../db/repositories/index.js';
+import type { EstimatedPosition, EstimatedPositionInput, SourceScope } from '../db/repositories/index.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
 
 // Configuration constants for traceroute history
@@ -394,9 +395,10 @@ class DatabaseService {
   /**
    * Phase 3B: Iterate cache, optionally filtered by sourceId.
    */
-  private *iterateCache(sourceId?: string): IterableIterator<DbNode> {
+  private *iterateCache(sourceId?: SourceScope): IterableIterator<DbNode> {
     for (const node of this.nodesCache.values()) {
-      if (sourceId && node.sourceId !== sourceId) continue;
+      // ALL_SOURCES or undefined → yield all; concrete string → filter by source.
+      if (typeof sourceId === 'string' && sourceId !== '' && node.sourceId !== sourceId) continue;
       yield node;
     }
   }
@@ -959,7 +961,8 @@ class DatabaseService {
 
       // Load all nodes into cache
       if (this.nodesRepo) {
-        const nodes = await this.nodesRepo.getAllNodes();
+        // intentional cross-source: init cache warm-up loads all sources at once
+        const nodes = await this.nodesRepo.getAllNodes(ALL_SOURCES);
         this.nodesCache.clear();
         for (const node of nodes) {
           // Convert from repo DbNode to local DbNode (null -> undefined conversion is safe)
@@ -1029,7 +1032,8 @@ class DatabaseService {
 
       // Load all channels into cache
       if (this.channelsRepo) {
-        const channels = await this.channelsRepo.getAllChannels();
+        // intentional cross-source: init cache warm-up loads all sources at once
+        const channels = await this.channelsRepo.getAllChannels(ALL_SOURCES);
         this.channelsCache.clear();
         for (const channel of channels) {
           this.channelsCache.set(channel.id, channel);
@@ -1039,14 +1043,16 @@ class DatabaseService {
 
       // Load recent messages into cache for delivery state updates
       if (this.messagesRepo) {
-        const messages = await this.messagesRepo.getMessages(500);
+        // intentional cross-source: init cache warm-up loads all sources at once
+        const messages = await this.messagesRepo.getMessages(500, 0, ALL_SOURCES);
         this._messagesCache = messages.map(m => this.convertRepoMessage(m));
         logger.info(`[DatabaseService] Loaded ${this._messagesCache.length} messages into cache`);
       }
 
       // Load neighbor info into cache
       if (this.neighborsRepo) {
-        const neighbors = await this.neighborsRepo.getAllNeighborInfo();
+        // intentional cross-source: init cache warm-up loads all sources at once
+        const neighbors = await this.neighborsRepo.getAllNeighborInfo(ALL_SOURCES);
         this._neighborsCache = neighbors.map(n => this.convertRepoNeighborInfo(n));
         logger.info(`[DatabaseService] Loaded ${this._neighborsCache.length} neighbor records into cache`);
       }
@@ -2459,7 +2465,7 @@ class DatabaseService {
     return this.nodesRepo!.getNodeSqlite(nodeNum, sourceId) as unknown as DbNode | null;
   }
 
-  getAllNodes(sourceId?: string): DbNode[] {
+  getAllNodes(sourceId?: SourceScope): DbNode[] {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (!this.cacheInitialized) {
@@ -2476,7 +2482,7 @@ class DatabaseService {
    * @deprecated Use databaseService.nodes.getAllNodes() directly. Kept for internal/test compatibility.
    */
   async getAllNodesAsync(): Promise<DbNode[]> {
-    return this.nodes.getAllNodes() as unknown as DbNode[];
+    return this.nodes.getAllNodes(ALL_SOURCES) as unknown as DbNode[]; // intentional cross-source: deprecated compat shim returns all sources
   }
 
   getActiveNodes(sinceDays: number = 7): DbNode[] {
@@ -3045,7 +3051,7 @@ class DatabaseService {
     // For PostgreSQL/MySQL, use async repo
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.messagesRepo) {
-        const messages = await this.messagesRepo.getMessages(limit, offset);
+        const messages = await this.messagesRepo.getMessages(limit, offset, ALL_SOURCES); // intentional cross-source: legacy facade has no sourceId
         return messages.map(msg => this.convertRepoMessage(msg));
       }
       return [];
@@ -3090,12 +3096,12 @@ class DatabaseService {
     };
   }
 
-  getMessages(limit: number = 100, offset: number = 0): DbMessage[] {
+  getMessages(limit: number = 100, offset: number = 0, sourceId?: SourceScope): DbMessage[] {
     // For PostgreSQL/MySQL, use async repo and cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.messagesRepo) {
         // Fire async query and update cache in background
-        this.messagesRepo.getMessages(limit, offset).then(messages => {
+        this.messagesRepo.getMessages(limit, offset, sourceId).then(messages => {
           // Build a map of current delivery states to preserve local updates
           // (async DB update may not have completed yet)
           const currentDeliveryStates = new Map<number, { deliveryState: string; ackFailed: boolean }>();
@@ -3127,7 +3133,7 @@ class DatabaseService {
     }
     // SQLite: delegate to Drizzle sync variant
     if (this.messagesRepo) {
-      const rows = this.messagesRepo.getMessagesSqlite(limit, offset);
+      const rows = this.messagesRepo.getMessagesSqlite(limit, offset, sourceId);
       return rows.map(msg => this.convertRepoMessage(msg as any));
     }
     return [];
@@ -3138,7 +3144,8 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.messagesRepo) {
         // Fire async query and update cache in background
-        this.messagesRepo.getMessagesByChannel(channel, limit, offset).then(messages => {
+        // (intentional cross-source: legacy facade has no sourceId)
+        this.messagesRepo.getMessagesByChannel(channel, limit, offset, ALL_SOURCES).then(messages => {
           // Build a map of current delivery states to preserve local updates
           const currentCache = this._messagesCacheChannel.get(channel) || [];
           const currentDeliveryStates = new Map<number, { deliveryState: string; ackFailed: boolean }>();
@@ -3265,7 +3272,7 @@ class DatabaseService {
     beforeTimestamp?: number,
     telemetryType?: string
   ): Promise<number> {
-    return this.telemetry.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
+    return this.telemetry.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType, ALL_SOURCES); // intentional cross-source: deprecated shim has no sourceId
   }
 
   /**
@@ -3339,7 +3346,7 @@ class DatabaseService {
       // Using a larger limit ensures we capture movement over a longer time period
       // (50 was too small - nodes parked for a while would show only recent stationary positions)
       const positionTelemetry = this.telemetryRepo
-        ? await this.telemetryRepo.getPositionTelemetryByNode(nodeId, 500)
+        ? await this.telemetryRepo.getPositionTelemetryByNode(nodeId, 500, undefined, ALL_SOURCES) // intentional cross-source: mobility check pools all sources' positions
         : this.getPositionTelemetryByNode(nodeId, 500);
 
       const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
@@ -3508,7 +3515,7 @@ class DatabaseService {
     // For PostgreSQL/MySQL, fire-and-forget async delete
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.traceroutesRepo) {
-        this.traceroutesRepo.deleteTraceroutesForNode(nodeNum).catch(err => {
+        this.traceroutesRepo.deleteTraceroutesForNode(nodeNum, ALL_SOURCES).catch(err => { // intentional cross-source: legacy facade has no sourceId
           logger.debug('Failed to purge node traceroutes:', err);
         });
       }
@@ -3523,7 +3530,7 @@ class DatabaseService {
     // For PostgreSQL/MySQL, fire-and-forget async delete
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.telemetryRepo) {
-        this.telemetryRepo.deleteTelemetryByNode(nodeNum).catch(err => {
+        this.telemetryRepo.deleteTelemetryByNode(nodeNum, ALL_SOURCES).catch(err => { // intentional cross-source: legacy facade has no sourceId
           logger.debug('Failed to purge node telemetry:', err);
         });
       }
@@ -3584,9 +3591,10 @@ class DatabaseService {
     // Delete route segments where this node is involved
     this.traceroutes.deleteRouteSegmentsInvolvingNodeSync(nodeNum);
 
-    // Delete neighbor_info records where this node is involved (either as source or neighbor)
+    // Delete neighbor_info records where this node is involved (either as source or neighbor).
+    // Scoped to this source (leak fix): matches deleteNodeAsync, which already passes sourceId.
     if (this.neighborsRepo) {
-      this.neighborsRepo.deleteNeighborInfoInvolvingNode(nodeNum).catch(err =>
+      this.neighborsRepo.deleteNeighborInfoInvolvingNode(nodeNum, sourceId).catch(err =>
         logger.debug('Failed to delete neighbor info involving node:', err)
       );
     }
@@ -3728,8 +3736,8 @@ class DatabaseService {
   // Export/Import functionality
   exportData(): { nodes: DbNode[]; messages: DbMessage[] } {
     return {
-      nodes: this.getAllNodes(),
-      messages: this.getMessages(10000) // Export last 10k messages
+      nodes: this.getAllNodes(ALL_SOURCES), // intentional cross-source: full backup export spans all sources
+      messages: this.getMessages(10000, 0, ALL_SOURCES) // Export last 10k messages across all sources
     };
   }
 
@@ -3916,7 +3924,7 @@ class DatabaseService {
     telemetryType?: string
   ): Promise<DbTelemetry[]> {
     // Cast to local DbTelemetry type (they have compatible structure)
-    return this.telemetry.getTelemetryByNode(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType) as unknown as DbTelemetry[];
+    return this.telemetry.getTelemetryByNode(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType, ALL_SOURCES) as unknown as DbTelemetry[]; // intentional cross-source: deprecated shim has no sourceId
   }
 
   /**
@@ -3959,7 +3967,7 @@ class DatabaseService {
   /** @deprecated Use databaseService.telemetry.getPositionTelemetryByNode() instead */
   async getPositionTelemetryByNodeAsync(nodeId: string, limit: number = 1500, sinceTimestamp?: number, beforeTimestamp?: number): Promise<DbTelemetry[]> {
     // Cast to local DbTelemetry type (they have compatible structure)
-    return this.telemetry.getPositionTelemetryByNode(nodeId, limit, sinceTimestamp, undefined, beforeTimestamp) as unknown as Promise<DbTelemetry[]>;
+    return this.telemetry.getPositionTelemetryByNode(nodeId, limit, sinceTimestamp, ALL_SOURCES, beforeTimestamp) as unknown as Promise<DbTelemetry[]>; // intentional cross-source: deprecated shim has no sourceId
   }
 
   /**
@@ -4457,7 +4465,7 @@ class DatabaseService {
       if (this.traceroutesRepo) {
         // Fire async query and update cache in background
         const cacheKey = `${fromNodeNum}_${toNodeNum}`;
-        this.traceroutesRepo.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit).then(traceroutes => {
+        this.traceroutesRepo.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit, ALL_SOURCES).then(traceroutes => { // intentional cross-source: legacy facade has no sourceId
           this._traceroutesByNodesCache.set(cacheKey, traceroutes.map(t => ({
             ...t,
             route: t.route || '',
@@ -4476,7 +4484,7 @@ class DatabaseService {
     return this.traceroutes.getTraceroutesByNodesSync(fromNodeNum, toNodeNum, limit) as unknown as DbTraceroute[];
   }
 
-  getAllTraceroutes(limit: number = 100, sourceId?: string): DbTraceroute[] {
+  getAllTraceroutes(limit: number = 100, sourceId?: SourceScope): DbTraceroute[] {
     // For PostgreSQL/MySQL, use cached traceroutes or return empty
     // Traceroute data is primarily real-time from mesh traffic
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -6287,7 +6295,7 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       if (this.telemetryRepo) {
         // Fire async query and update cache in background
-        this.telemetryRepo.getAllNodesTelemetryTypes(sourceId).then(map => {
+        this.telemetryRepo.getAllNodesTelemetryTypes(sourceId ?? ALL_SOURCES).then(map => { // undefined = global cache key — intentional cross-source
           this.telemetryTypesCacheBySource.set(cacheKey, { map, time: Date.now() });
         }).catch(err => logger.debug('Failed to fetch telemetry types:', err));
       }
@@ -6314,7 +6322,7 @@ class DatabaseService {
 
     // For PostgreSQL/MySQL, use async repository
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const map = await this.telemetry.getAllNodesTelemetryTypes(sourceId);
+      const map = await this.telemetry.getAllNodesTelemetryTypes(sourceId ?? ALL_SOURCES); // undefined = global cache key — intentional cross-source
       this.telemetryTypesCacheBySource.set(cacheKey, { map, time: Date.now() });
       return map;
     }
@@ -6818,7 +6826,8 @@ class DatabaseService {
       }
       if (this.traceroutesRepo) {
         await this.traceroutesRepo.deleteAllTraceroutes(sourceId);
-        await this.traceroutesRepo.deleteAllRouteSegments(sourceId);
+        // undefined sourceId = admin global purge across every source — intentional cross-source
+        await this.traceroutesRepo.deleteAllRouteSegments(sourceId ?? ALL_SOURCES);
       }
       if (this.neighborsRepo) {
         await this.neighborsRepo.deleteAllNeighborInfo(sourceId);
@@ -7084,7 +7093,7 @@ class DatabaseService {
       this._neighborsByNodeCache.delete(nodeNum);
 
       if (this.neighborsRepo) {
-        this.neighborsRepo.deleteNeighborInfoForNode(nodeNum).catch(err =>
+        this.neighborsRepo.deleteNeighborInfoForNode(nodeNum, ALL_SOURCES).catch(err => // intentional cross-source: legacy facade has no sourceId
           logger.debug('Failed to clear neighbor info:', err)
         );
       }
@@ -7093,7 +7102,7 @@ class DatabaseService {
 
     // SQLite: use repo
     if (this.neighborsRepo) {
-      this.neighborsRepo.deleteNeighborInfoForNode(nodeNum).catch(err =>
+      this.neighborsRepo.deleteNeighborInfoForNode(nodeNum, ALL_SOURCES).catch(err => // intentional cross-source: legacy facade has no sourceId
         logger.debug('Failed to clear neighbor info for node:', err)
       );
     }
@@ -7114,7 +7123,7 @@ class DatabaseService {
   getNeighborsForNode(nodeNum: number): DbNeighborInfo[] {
     // All backends: fire async repo refresh, return cached data immediately
     if (this.neighborsRepo) {
-      this.neighborsRepo.getNeighborsForNode(nodeNum).then(neighbors => {
+      this.neighborsRepo.getNeighborsForNode(nodeNum, ALL_SOURCES).then(neighbors => { // intentional cross-source: legacy facade has no sourceId
         this._neighborsByNodeCache.set(nodeNum, neighbors.map(n => this.convertRepoNeighborInfo(n)));
       }).catch(err => logger.debug('Failed to get neighbors for node:', err));
     }
@@ -7124,7 +7133,8 @@ class DatabaseService {
   getAllNeighborInfo(): DbNeighborInfo[] {
     // All backends: fire async repo refresh, return cached data immediately
     if (this.neighborsRepo) {
-      this.neighborsRepo.getAllNeighborInfo().then(neighbors => {
+      // intentional cross-source: neighbor cache is global across all sources
+      this.neighborsRepo.getAllNeighborInfo(ALL_SOURCES).then(neighbors => {
         this._neighborsCache = neighbors.map(n => this.convertRepoNeighborInfo(n));
       }).catch(err => logger.debug('Failed to get all neighbor info:', err));
     }
@@ -8204,10 +8214,12 @@ class DatabaseService {
    * Async version of getUnreadCountsByChannel for PostgreSQL/MySQL.
    * Delegates to NotificationsRepository for Drizzle-based execution on all backends.
    */
-  async getUnreadCountsByChannelAsync(userId: number | null, localNodeId?: string, sourceId?: string, excludeMqtt?: boolean): Promise<{[channelId: number]: number}> {
-    // For SQLite, use sync version (legacy compatibility)
+  async getUnreadCountsByChannelAsync(userId: number | null, localNodeId?: string, sourceId?: SourceScope, excludeMqtt?: boolean): Promise<{[channelId: number]: number}> {
+    // For SQLite, use sync version (legacy compatibility).
+    // The raw-SQL sync twin binds sourceId as a parameter, so the ALL_SOURCES
+    // symbol must be normalized to undefined (its legacy "all sources" spelling).
     if (this.drizzleDbType !== 'postgres' && this.drizzleDbType !== 'mysql') {
-      return this.getUnreadCountsByChannel(userId, localNodeId, sourceId, excludeMqtt);
+      return this.getUnreadCountsByChannel(userId, localNodeId, typeof sourceId === 'string' ? sourceId : undefined, excludeMqtt);
     }
     if (!this.notificationsRepo) return {};
     return this.notificationsRepo.getUnreadCountsByChannelAsync(userId, localNodeId, sourceId, excludeMqtt);
@@ -8267,10 +8279,12 @@ class DatabaseService {
    * Async version of getBatchUnreadDMCounts for PostgreSQL/MySQL support.
    * Delegates to NotificationsRepository for Drizzle-based execution on all backends.
    */
-  async getBatchUnreadDMCountsAsync(localNodeId: string, userId: number | null, sourceId?: string): Promise<{ [fromNodeId: string]: number }> {
-    // For SQLite, use sync version
+  async getBatchUnreadDMCountsAsync(localNodeId: string, userId: number | null, sourceId?: SourceScope): Promise<{ [fromNodeId: string]: number }> {
+    // For SQLite, use sync version.
+    // The raw-SQL sync twin binds sourceId as a parameter, so the ALL_SOURCES
+    // symbol must be normalized to undefined (its legacy "all sources" spelling).
     if (this.drizzleDbType !== 'postgres' && this.drizzleDbType !== 'mysql') {
-      return this.getBatchUnreadDMCounts(localNodeId, userId, sourceId);
+      return this.getBatchUnreadDMCounts(localNodeId, userId, typeof sourceId === 'string' ? sourceId : undefined);
     }
     if (!this.notificationsRepo) return {};
     return this.notificationsRepo.getBatchUnreadDMCountsAsync(localNodeId, userId, sourceId);
@@ -8760,7 +8774,7 @@ class DatabaseService {
 
   /** @deprecated Use databaseService.telemetry.purgeNodeTelemetry() instead */
   async purgeNodeTelemetryAsync(nodeNum: number): Promise<number> {
-    return this.telemetry.purgeNodeTelemetry(nodeNum);
+    return this.telemetry.purgeNodeTelemetry(nodeNum, ALL_SOURCES); // intentional cross-source: deprecated shim has no sourceId
   }
 
   /** @deprecated Use databaseService.telemetry.purgePositionHistory() instead */
@@ -9167,7 +9181,7 @@ class DatabaseService {
 
   async cleanupOldRouteSegmentsAsync(days: number = 30): Promise<number> {
     if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.traceroutesRepo) {
-      return this.traceroutesRepo.cleanupOldRouteSegments(days);
+      return this.traceroutesRepo.cleanupOldRouteSegments(days, ALL_SOURCES); // intentional cross-source: scheduled cleanup spans every source
     }
     return this.cleanupOldRouteSegments(days);
   }

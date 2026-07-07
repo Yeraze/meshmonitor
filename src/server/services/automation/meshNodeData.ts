@@ -4,6 +4,7 @@
  * returns null and the condition resolves to false rather than throwing.
  */
 import databaseService from '../../../services/database.js';
+import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import type { NodeDataProvider, NodeFacts } from './engineContext.js';
 import { sourceProtocol } from './channelUnify.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
@@ -44,7 +45,8 @@ export function createMeshNodeDataProvider(): NodeDataProvider {
 
     async getChannels(sourceId) {
       try {
-        const chans = await databaseService.channels.getAllChannels(sourceId ?? undefined);
+        // intentional cross-source: omitting sourceId returns channels from all sources
+        const chans = await databaseService.channels.getAllChannels(sourceId ?? ALL_SOURCES);
         return chans.map((c) => ({ id: c.id, name: c.name, psk: c.psk ?? null, role: c.role ?? null }));
       } catch {
         return [];

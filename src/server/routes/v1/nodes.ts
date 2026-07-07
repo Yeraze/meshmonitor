@@ -7,6 +7,7 @@
 
 import express, { Request, Response } from 'express';
 import databaseService, { DbNode } from '../../../services/database.js';
+import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
 import { filterNodesByChannelPermission, maskNodeLocationByChannel } from '../../utils/nodeEnhancer.js';
 import { findCopyCandidates, copyNodeInfo } from '../../services/nodeInfoCopyService.js';
@@ -85,9 +86,10 @@ router.get('/', async (req: Request, res: Response) => {
 
     // DB-level sourceId filtering — repo accepts it directly, no more
     // fetch-all-then-filter.
+    // intentional cross-source: omitting sourceId on this route returns nodes from all sources
     const nodes = active
-      ? (await databaseService.nodes.getActiveNodes(sinceDays, sourceId)) as unknown as DbNode[]
-      : (await databaseService.nodes.getAllNodes(sourceId)) as unknown as DbNode[];
+      ? (await databaseService.nodes.getActiveNodes(sinceDays, sourceId ?? ALL_SOURCES)) as unknown as DbNode[]
+      : (await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES)) as unknown as DbNode[];
 
     // Filter nodes based on channel read permissions
     const filteredNodes = await filterNodesByChannelPermission(nodes, user, sourceId);
@@ -140,7 +142,8 @@ router.get('/:nodeId', async (req: Request, res: Response) => {
     // Scope the lookup to the requested source so the same nodeNum seen on
     // two sources resolves independently (migration 029 made nodes PK
     // composite (nodeNum, sourceId)).
-    const sourceNodes = (await databaseService.nodes.getAllNodes(sourceId)) as unknown as DbNode[];
+    // intentional cross-source: omitting sourceId on this route returns nodes from all sources
+    const sourceNodes = (await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES)) as unknown as DbNode[];
     const node = sourceNodes.find(n => n.nodeId === nodeId);
 
     if (!node) {

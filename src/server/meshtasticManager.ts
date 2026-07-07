@@ -1,4 +1,5 @@
 import databaseService, { type DbMessage } from '../services/database.js';
+import { ALL_SOURCES } from '../db/repositories/index.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService, { convertIpv4ConfigToStrings } from './protobufService.js';
 import { getProtobufRoot } from './protobufLoader.js';
@@ -6169,7 +6170,7 @@ class MeshtasticManager implements ISourceManager {
         const localNodeInfo = this.getLocalNodeInfo();
         if (localNodeInfo) {
           const localNodeId = `!${localNodeInfo.nodeNum.toString(16).padStart(8, '0')}`;
-          const pendingMessages = await databaseService.messages.getDirectMessages(localNodeId, nodeId, 100) as DbMessage[];
+          const pendingMessages = await databaseService.messages.getDirectMessages(localNodeId, nodeId, 100, 0, this.sourceId) as DbMessage[]; // scoped to this manager's source (leak fix)
           const pendingExchangeRequest = pendingMessages.find((msg: DbMessage) =>
             msg.text === 'Position exchange requested' &&
             msg.fromNodeNum === localNodeInfo.nodeNum &&
@@ -14112,7 +14113,8 @@ class MeshtasticManager implements ISourceManager {
       'uptimeSeconds',
       sourceId,
     );
-    const dbNodes = await databaseService.nodes.getAllNodes(sourceId);
+    // intentional cross-source when sourceId omitted: caller wants unified view across all sources
+    const dbNodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
     // Without a sourceId the caller wants the unified view, so collapse the
     // per-source rows into one entry per nodeNum. Issue #3135.
     const effective = sourceId ? dbNodes : mergeNodesAcrossSources(dbNodes);

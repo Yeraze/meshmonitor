@@ -7,6 +7,7 @@
 
 import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
+import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { resolveSourceManager } from '../../utils/resolveSourceManager.js';
 import { meshcoreManagerRegistry } from '../../meshcoreRegistry.js';
 import { hasPermission } from '../../auth/authMiddleware.js';
@@ -122,7 +123,7 @@ router.get('/', async (req: Request, res: Response) => {
     if (channelNum !== undefined) {
       messages = await databaseService.messages.getMessagesByChannel(channelNum, maxLimit, 0, sourceIdStr);
     } else if (sinceTimestamp) {
-      messages = await databaseService.messages.getMessagesAfterTimestamp(sinceTimestamp, sourceIdStr);
+      messages = await databaseService.messages.getMessagesAfterTimestamp(sinceTimestamp, sourceIdStr ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
       messages = messages.slice(0, maxLimit);
     } else {
       messages = await databaseService.messages.getMessages(maxLimit, 0, sourceIdStr, [PortNum.TRACEROUTE_APP]);

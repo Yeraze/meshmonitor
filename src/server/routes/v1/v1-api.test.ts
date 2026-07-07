@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
+import { ALL_SOURCES } from '../../../db/repositories/index.js';
 
 // Token constants
 const VALID_TEST_TOKEN = 'mm_v1_test_token_12345678901234567890';
@@ -1395,7 +1396,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
       '2882400001',
       5000, // 1000 * 5 internal limit
       1500, // since parameter
-      undefined // sourceId (no scope in legacy root call)
+      ALL_SOURCES // sourceId (no scope in legacy root call -> intentional cross-source)
     );
   });
 

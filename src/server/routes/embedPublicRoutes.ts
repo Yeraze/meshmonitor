@@ -12,6 +12,7 @@
 import { Router, Request, Response } from 'express';
 import { createEmbedCspMiddleware } from '../middleware/embedMiddleware.js';
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import geojsonService from '../services/geojsonService.js';
@@ -75,7 +76,7 @@ router.get('/:profileId/nodes', createEmbedCspMiddleware(), async (req: Request,
   }
 
   try {
-    const allNodes = await databaseService.nodes.getActiveNodes(7, profile.sourceId ?? undefined);
+    const allNodes = await databaseService.nodes.getActiveNodes(7, profile.sourceId ?? ALL_SOURCES); // intentional cross-source: profile without a sourceId spans all sources
 
     // Filter by the profile's configured channels
     const profileChannels = new Set(profile.channels as number[]);
@@ -141,7 +142,7 @@ router.get('/:profileId/neighborinfo', createEmbedCspMiddleware(), async (req: R
   }
 
   try {
-    const allNodes = await databaseService.nodes.getActiveNodes(7, profile.sourceId ?? undefined);
+    const allNodes = await databaseService.nodes.getActiveNodes(7, profile.sourceId ?? ALL_SOURCES); // intentional cross-source: profile without a sourceId spans all sources
     const profileChannels = new Set(profile.channels as number[]);
 
     // Build a lookup of nodes that pass the embed's filters. Use effective
@@ -206,7 +207,7 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Re
   }
 
   try {
-    const allNodes = await databaseService.nodes.getActiveNodes(7, profile.sourceId ?? undefined);
+    const allNodes = await databaseService.nodes.getActiveNodes(7, profile.sourceId ?? ALL_SOURCES); // intentional cross-source: profile without a sourceId spans all sources
     const profileChannels = new Set(profile.channels as number[]);
 
     // Build position lookup for visible nodes. Use effective position so a
@@ -229,7 +230,7 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Re
     }
 
     // Get recent traceroutes and decompose into point-to-point segments
-    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(100, profile.sourceId ?? undefined);
+    const traceroutes = await databaseService.traceroutes.getAllTraceroutes(100, profile.sourceId ?? ALL_SOURCES); // intentional cross-source: profile without a sourceId spans all sources
     // Traceroute timestamps can be in ms or seconds — normalize to ms
     const cutoffMs = Date.now() - (24 * 60 * 60 * 1000); // last 24h
 

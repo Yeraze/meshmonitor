@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
 import { NodesRepository } from './nodes.js';
+import { ALL_SOURCES } from './base.js';
 import { createTestDb, type TestDb } from '../../server/test-helpers/testDb.js';
 import {
   TestBackend,
@@ -335,7 +336,7 @@ function runNodesTests(getBackend: () => TestBackend) {
     // Missing nodeId
     await repo.upsertNode({ nodeNum: 1 } as any);
 
-    const count = await repo.getNodeCount();
+    const count = await repo.getNodeCount(ALL_SOURCES);
     expect(count).toBe(0);
   });
 
@@ -489,7 +490,7 @@ function runNodesTests(getBackend: () => TestBackend) {
     await repo.upsertNode(makeNode(501));
     await repo.upsertNode(makeNode(502));
 
-    const all = await repo.getAllNodes();
+    const all = await repo.getAllNodes(ALL_SOURCES);
     expect(all.length).toBe(3);
   });
 
@@ -500,11 +501,11 @@ function runNodesTests(getBackend: () => TestBackend) {
       return;
     }
 
-    expect(await repo.getNodeCount()).toBe(0);
+    expect(await repo.getNodeCount(ALL_SOURCES)).toBe(0);
 
     await repo.upsertNode(makeNode(600));
     await repo.upsertNode(makeNode(601));
-    expect(await repo.getNodeCount()).toBe(2);
+    expect(await repo.getNodeCount(ALL_SOURCES)).toBe(2);
   });
 
   it('getDistinctNodeCount - dedupes nodes shared across sources (issue #2805)', async () => {
@@ -962,7 +963,7 @@ function runNodesTests(getBackend: () => TestBackend) {
 
     const count = await repo.deleteAllNodes();
     expect(count).toBe(3);
-    expect(await repo.getNodeCount()).toBe(0);
+    expect(await repo.getNodeCount(ALL_SOURCES)).toBe(0);
   });
 
   // --- updateNodeMessageHops ---
@@ -994,7 +995,7 @@ function runNodesTests(getBackend: () => TestBackend) {
     await repo.upsertNode(makeNode(1601, { publicKey: '' }));
     await repo.upsertNode(makeNode(1602)); // null publicKey
 
-    const result = await repo.getNodesWithPublicKeys();
+    const result = await repo.getNodesWithPublicKeys(ALL_SOURCES);
     expect(result.length).toBe(1);
     expect(Number(result[0].nodeNum)).toBe(1600);
     expect(result[0].publicKey).toBe('abc123');

@@ -4,6 +4,7 @@
  */
 
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 
@@ -214,7 +215,8 @@ class DeviceBackupService {
       const localNodeInfo = meshtasticManager.getLocalNodeInfo();
       const deviceConfig = meshtasticManager.getActualDeviceConfig();
       const moduleConfig = meshtasticManager.getActualModuleConfig();
-      const channels = await databaseService.channels.getAllChannels();
+      // intentional cross-source: device backup exports all channels across all sources
+      const channels = await databaseService.channels.getAllChannels(ALL_SOURCES);
 
       // Build backup object in the same structure as Meshtastic CLI
       // Field order matters for official format compatibility

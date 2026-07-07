@@ -15,6 +15,7 @@ import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import type { DbMessage } from '../../services/database.js';
 import databaseService from '../../services/database.js';
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { canonicalMessageTime, messageReceivedAt } from '../utils/messageTime.js';
 import { automationTraceBus, MAX_TRACE_MS } from './automation/automationTraceBus.js';
 
@@ -201,7 +202,8 @@ export function initializeWebSocket(
             msgSourceId !== joinedSourceId &&
             outgoing.channel !== -1
           ) {
-            const allChannels = await databaseService.channels.getAllChannels();
+            // intentional cross-source: channel map covers all sources to find equivalent slots on the joined source
+            const allChannels = await databaseService.channels.getAllChannels(ALL_SOURCES);
             const myChannels = allChannels.filter(
               (c: any) => c.sourceId === joinedSourceId
             );

@@ -14,7 +14,7 @@ import {
 import {
   messagesSqlite,
 } from '../schema/messages.js';
-import { BaseRepository, DrizzleDatabase } from './base.js';
+import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbPushSubscription } from '../types.js';
 import { logger } from '../../utils/logger.js';
 
@@ -832,7 +832,7 @@ export class NotificationsRepository extends BaseRepository {
   async getUnreadCountsByChannelAsync(
     userId: number | null,
     localNodeId?: string,
-    sourceId?: string,
+    sourceId?: SourceScope,
     excludeMqtt?: boolean
   ): Promise<{ [channelId: number]: number }> {
     const messages = this.tables.messages;
@@ -881,7 +881,7 @@ export class NotificationsRepository extends BaseRepository {
     localNodeId: string,
     remoteNodeId: string,
     userId: number | null,
-    sourceId?: string
+    sourceId?: SourceScope
   ): Promise<number> {
     const messages = this.tables.messages;
     const readMessages = this.tables.readMessages;
@@ -915,7 +915,7 @@ export class NotificationsRepository extends BaseRepository {
   async getBatchUnreadDMCountsAsync(
     localNodeId: string,
     userId: number | null,
-    sourceId?: string
+    sourceId?: SourceScope
   ): Promise<{ [fromNodeId: string]: number }> {
     const messages = this.tables.messages;
     const readMessages = this.tables.readMessages;
