@@ -42,7 +42,7 @@ export async function runMigration096Postgres(client: any): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): widening ${TABLE} timestamp columns to BIGINT...`);
   for (const col of COLUMNS) {
     // Check information_schema first so the ALTER is idempotent (re-runnable).
-    // eslint-disable-next-line no-restricted-syntax -- migrations require raw DDL
+     
     const { rows } = await client.query(
       `SELECT data_type FROM information_schema.columns
        WHERE table_name = $1 AND column_name = $2`,
@@ -57,7 +57,7 @@ export async function runMigration096Postgres(client: any): Promise<void> {
       logger.debug(`${LABEL} (PostgreSQL): ${col} already BIGINT, skipping`);
       continue;
     }
-    // eslint-disable-next-line no-restricted-syntax -- migrations require raw DDL
+     
     await client.query(`ALTER TABLE ${TABLE} ALTER COLUMN "${col}" TYPE BIGINT`);
     logger.info(`${LABEL} (PostgreSQL): ${col} widened from ${currentType} → BIGINT`);
   }
@@ -70,7 +70,7 @@ export async function runMigration096Mysql(pool: any): Promise<void> {
   const conn = await pool.getConnection();
   try {
     for (const col of COLUMNS) {
-      // eslint-disable-next-line no-restricted-syntax -- migrations require raw DDL
+       
       const [rows] = await conn.query(
         `SELECT DATA_TYPE FROM information_schema.COLUMNS
          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
@@ -86,7 +86,7 @@ export async function runMigration096Mysql(pool: any): Promise<void> {
         continue;
       }
       // Both columns are NOT NULL in the original DDL; preserve that on MODIFY.
-      // eslint-disable-next-line no-restricted-syntax -- migrations require raw DDL
+       
       await conn.query(`ALTER TABLE ${TABLE} MODIFY COLUMN \`${col}\` BIGINT NOT NULL`);
       logger.info(`${LABEL} (MySQL): ${col} widened from ${currentType} → BIGINT`);
     }

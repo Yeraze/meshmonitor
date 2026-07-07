@@ -63,7 +63,7 @@ describe('Server /api/nodes endpoint - Estimated Position Integration', () => {
         const estimatedLatitudes = positionTelemetry.filter((t: any) => t.telemetryType === 'estimated_latitude');
         const estimatedLongitudes = positionTelemetry.filter((t: any) => t.telemetryType === 'estimated_longitude');
 
-        let enhancedNode = { ...node, isMobile: false };
+        const enhancedNode = { ...node, isMobile: false };
         if (!node.position?.latitude && !node.position?.longitude &&
             estimatedLatitudes.length > 0 && estimatedLongitudes.length > 0) {
           enhancedNode.position = {
@@ -134,7 +134,7 @@ describe('Server /api/nodes endpoint - Estimated Position Integration', () => {
         const estimatedLatitudes = positionTelemetry.filter((t: any) => t.telemetryType === 'estimated_latitude');
         const estimatedLongitudes = positionTelemetry.filter((t: any) => t.telemetryType === 'estimated_longitude');
 
-        let enhancedNode = { ...node, isMobile: false };
+        const enhancedNode = { ...node, isMobile: false };
         if (!node.position?.latitude && !node.position?.longitude &&
             estimatedLatitudes.length > 0 && estimatedLongitudes.length > 0) {
           enhancedNode.position = {
@@ -190,7 +190,7 @@ describe('Server /api/nodes endpoint - Estimated Position Integration', () => {
         const estimatedLatitudes = positionTelemetry.filter((t: any) => t.telemetryType === 'estimated_latitude');
         const estimatedLongitudes = positionTelemetry.filter((t: any) => t.telemetryType === 'estimated_longitude');
 
-        let enhancedNode = { ...node, isMobile: false };
+        const enhancedNode = { ...node, isMobile: false };
         if (!node.position?.latitude && !node.position?.longitude &&
             estimatedLatitudes.length > 0 && estimatedLongitudes.length > 0) {
           enhancedNode.position = {
@@ -276,7 +276,7 @@ describe('Server /api/nodes endpoint - Estimated Position Integration', () => {
         const estimatedLatitudes = positionTelemetry.filter((t: any) => t.telemetryType === 'estimated_latitude');
         const estimatedLongitudes = positionTelemetry.filter((t: any) => t.telemetryType === 'estimated_longitude');
 
-        let enhancedNode = { ...node, isMobile: false };
+        const enhancedNode = { ...node, isMobile: false };
         if (!node.position?.latitude && !node.position?.longitude &&
             estimatedLatitudes.length > 0 && estimatedLongitudes.length > 0) {
           enhancedNode.position = {

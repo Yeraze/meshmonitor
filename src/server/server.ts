@@ -70,7 +70,7 @@ const __dirname = path.dirname(__filename);
 // dotenv/config automatically loads .env from project root
 // This must run before getEnvironmentConfig() is called
 if (process.env.NODE_ENV !== 'production') {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+   
   require('dotenv/config');
   // Reset cached environment config to ensure .env values are loaded
   resetEnvironmentConfig();
@@ -2712,8 +2712,8 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
     } = {};
 
     // Load mute preferences for the current user (if authenticated)
-    let mutedChannelIds: Set<number> = new Set();
-    let mutedDMNodeIds: Set<string> = new Set();
+    const mutedChannelIds: Set<number> = new Set();
+    const mutedDMNodeIds: Set<string> = new Set();
     if (userId) {
       const { getUserNotificationPreferencesAsync } = await import('./utils/notificationFiltering.js');
       const prefs = await getUserNotificationPreferencesAsync(userId);
@@ -6044,7 +6044,7 @@ if (BASE_URL) {
 
   app.get(`${BASE_URL}/manifest.webmanifest`, (_req: express.Request, res: express.Response) => {
     const manifestPath = path.join(buildPath, 'manifest.webmanifest');
-    let content = fs.readFileSync(manifestPath, 'utf-8');
+    const content = fs.readFileSync(manifestPath, 'utf-8');
     const manifest = JSON.parse(content);
     // Update manifest paths
     manifest.scope = `${BASE_URL}/`;

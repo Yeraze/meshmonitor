@@ -83,7 +83,7 @@ export async function enhanceNodeForClient(
 ): Promise<DeviceInfo & { isMobile: boolean }> {
   if (!node.user?.id) return { ...node, isMobile: false, positionIsOverride: false };
 
-  let enhancedNode = { ...node, isMobile: node.mobile === 1, positionIsOverride: false };
+  const enhancedNode = { ...node, isMobile: node.mobile === 1, positionIsOverride: false };
 
   // Priority 1: Check for position override
   const hasOverride = node.positionOverrideEnabled === true && node.latitudeOverride != null && node.longitudeOverride != null;

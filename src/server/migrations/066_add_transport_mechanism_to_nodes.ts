@@ -40,7 +40,7 @@ export const migration = {
   up: (db: Database): void => {
     logger.info(`${LABEL} (SQLite): adding ${TABLE}.${COLUMN}...`);
     try {
-      // eslint-disable-next-line no-restricted-syntax -- migrations require raw DDL
+       
       db.exec(`ALTER TABLE ${TABLE} ADD COLUMN ${COLUMN} INTEGER`);
       logger.debug(`${LABEL} (SQLite): added ${TABLE}.${COLUMN}`);
     } catch (e: any) {
@@ -54,7 +54,7 @@ export const migration = {
 
     // Backfill: honor existing viaMqtt; everything else defaults to LORA.
     try {
-      // eslint-disable-next-line no-restricted-syntax -- migrations require raw DDL
+       
       const result = db
         .prepare(
           `UPDATE ${TABLE}

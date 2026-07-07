@@ -19,7 +19,7 @@ const TABLE = 'source_pki_keys';
 export const migration = {
   up: (db: Database): void => {
     logger.info(`${LABEL} (SQLite): creating ${TABLE}...`);
-    // eslint-disable-next-line no-restricted-syntax -- migrations require raw DDL
+     
     db.exec(`
       CREATE TABLE IF NOT EXISTS ${TABLE} (
         sourceId TEXT PRIMARY KEY,

@@ -554,7 +554,7 @@ export class NotificationsRepository extends BaseRepository {
       if (this.isSQLite()) {
         const db = this.getSqliteDb();
         // Get message IDs for the DM conversation
-        let baseCondition = and(
+        const baseCondition = and(
           or(
             and(
               eq(messagesSqlite.fromNodeId, localNodeId),

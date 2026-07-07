@@ -831,7 +831,7 @@ describe('Authentication Routes', () => {
       await permissionModel.grantDefaultPermissions(nativeUser.id, false);
 
       // Verify the user exists as a native-login user
-      let user = await userModel.findById(nativeUser.id);
+      const user = await userModel.findById(nativeUser.id);
       expect(user).toBeTruthy();
       expect(user!.authProvider).toBe('local');
       expect(user!.passwordHash).toBeTruthy();

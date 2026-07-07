@@ -571,7 +571,7 @@ describe('MeshCoreChannelsView — unread indicator (#3703)', () => {
     await waitFor(() => expect(container.querySelector('.mc-channel-unread-dot')).toBeTruthy());
 
     // Default order: Public (idx 0) first.
-    let names = Array.from(container.querySelectorAll('.mc-channel-row-name')).map(n => n.textContent);
+    const names = Array.from(container.querySelectorAll('.mc-channel-row-name')).map(n => n.textContent);
     expect(names[0]).toBe('# Public');
 
     // Enable "unread first" — Town (unread) should jump to the top.

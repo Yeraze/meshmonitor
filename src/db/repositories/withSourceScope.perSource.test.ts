@@ -65,7 +65,7 @@ describe('NodesRepository — withSourceScope isolation (Task 1.1)', () => {
 
   // @ts-expect-error -- Tier-2 required param: omitting sourceId must be a compile error
   it('getAllNodes(undefined) rejects with fail-closed error', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     await expect(repo.getAllNodes(undefined as any)).rejects.toThrow(
       /sourceId is required/,
     );

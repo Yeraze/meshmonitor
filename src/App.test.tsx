@@ -55,7 +55,7 @@ describe('App Header Display Logic', () => {
       };
 
       // Simulate the header logic
-      let localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
+      const localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
 
       let displayInfo = null;
       if (!localNode && deviceInfo?.localNodeInfo) {
@@ -75,7 +75,7 @@ describe('App Header Display Logic', () => {
       const nodeAddress = '192.168.5.106';
 
       // Simulate the header logic
-      let localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
+      const localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
 
       let displayValue;
       if (localNode && localNode.user) {
@@ -113,7 +113,7 @@ describe('App Header Display Logic', () => {
       };
 
       // Simulate the header logic
-      let localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
+      const localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
 
       let displayValue;
       if (localNode && localNode.user) {
@@ -151,7 +151,7 @@ describe('App Header Display Logic', () => {
       };
 
       // Simulate the header logic
-      let localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
+      const localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
 
       let displayValue;
       if (localNode && localNode.user) {
@@ -177,7 +177,7 @@ describe('App Header Display Logic', () => {
       };
 
       // Simulate the header logic
-      let localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
+      const localNode = currentNodeId ? nodes.find(n => n.user?.id === currentNodeId) : null;
 
       let displayValue;
       if (localNode && localNode.user) {

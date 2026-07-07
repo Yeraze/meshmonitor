@@ -108,7 +108,7 @@ export class ChannelsRepository extends BaseRepository {
     opts?: { allowBlankName?: boolean },
   ): Promise<void> {
     const now = this.now();
-    let data = { ...channelData };
+    const data = { ...channelData };
     const { channels } = this.tables;
 
     // Enforce role rules
