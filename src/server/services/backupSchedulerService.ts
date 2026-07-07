@@ -45,13 +45,13 @@ class BackupSchedulerService {
 
     // Check every minute if it's time to run a backup
     this.schedulerInterval = setInterval(() => {
-      this.checkAndRunBackup();
+      this.checkAndRunBackup().catch(err => logger.error('Backup scheduler error:', err));
     }, 60000); // Check every minute
 
     logger.info('▶️  Backup scheduler started (checks every minute)');
 
     // Run initial check
-    this.checkAndRunBackup();
+    this.checkAndRunBackup().catch(err => logger.error('Backup scheduler error:', err));
   }
 
   /**

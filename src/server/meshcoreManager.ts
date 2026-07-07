@@ -5273,7 +5273,7 @@ class MeshCoreManager extends EventEmitter {
 
     this.autoPathfindingJitterTimeout = setTimeout(() => {
       this.autoPathfindingJitterTimeout = null;
-      executeRun();
+      executeRun().catch(err => logger.error('[MeshCore] Auto-pathfinding scheduler error:', err));
       this.autoPathfindingTimer = setInterval(executeRun, repeatMs);
     }, initialJitterMs);
   }

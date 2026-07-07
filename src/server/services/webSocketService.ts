@@ -263,7 +263,7 @@ export function initializeWebSocket(
             return;
           }
         }
-        socket.join(`source:${sourceId}`);
+        void socket.join(`source:${sourceId}`);
         joinedSourceId = sourceId;
         logger.debug(`[WebSocket] Socket ${socket.id} joined room source:${sourceId}`);
       } catch (err) {
@@ -274,7 +274,7 @@ export function initializeWebSocket(
 
     socket.on('leave-source', (sourceId: string) => {
       if (typeof sourceId === 'string' && sourceId.length > 0) {
-        socket.leave(`source:${sourceId}`);
+        void socket.leave(`source:${sourceId}`);
         if (joinedSourceId === sourceId) joinedSourceId = null;
         logger.debug(`[WebSocket] Socket ${socket.id} left room source:${sourceId}`);
       }
@@ -307,7 +307,7 @@ export function initializeWebSocket(
         // We don't verify the id exists in the DB: arming a non-existent/disabled
         // rule is harmless (it simply never emits) and self-expires, so a lookup
         // would add a query per arm for no safety benefit.
-        socket.join(`automation-trace:${automationId}`);
+        void socket.join(`automation-trace:${automationId}`);
         automationTraceBus.arm(automationId, socket.id, expiry);
         socket.emit('automation-trace:started', { automationId, expiresAt: expiry });
         logger.debug(`[WebSocket] Socket ${socket.id} started trace for automation ${automationId}`);
@@ -320,7 +320,7 @@ export function initializeWebSocket(
     socket.on('automation-trace:stop', (raw: { automationId?: string }) => {
       const automationId = typeof raw?.automationId === 'string' ? raw.automationId : '';
       if (!automationId) return;
-      socket.leave(`automation-trace:${automationId}`);
+      void socket.leave(`automation-trace:${automationId}`);
       automationTraceBus.disarm(automationId, socket.id);
       logger.debug(`[WebSocket] Socket ${socket.id} stopped trace for automation ${automationId}`);
     });
@@ -374,7 +374,7 @@ export async function shutdownWebSocket(): Promise<void> {
 
     // Close all connections
     await new Promise<void>((resolve) => {
-      io!.close(() => {
+      void io!.close(() => {
         logger.info('[WebSocket] WebSocket server closed');
         resolve();
       });

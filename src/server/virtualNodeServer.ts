@@ -290,7 +290,7 @@ export class VirtualNodeServer extends EventEmitter {
 
       if (result.type === 'complete') {
         // Process the message
-        this.handleClientMessage(clientId, result.payload);
+        void this.handleClientMessage(clientId, result.payload);
         client.buffer = result.remaining;
       }
     }
@@ -695,7 +695,7 @@ export class VirtualNodeServer extends EventEmitter {
 
     // Start processing queue if not already
     if (!this.isProcessingQueue) {
-      this.processQueue();
+      void this.processQueue();
     }
   }
 

@@ -20,7 +20,7 @@ class PacketLogService {
 
     logger.debug('🧹 Starting packet log cleanup scheduler (runs every 15 minutes)');
     this.cleanupInterval = setInterval(() => {
-      this.runCleanup();
+      void this.runCleanup();
     }, this.CLEANUP_INTERVAL_MS);
   }
 

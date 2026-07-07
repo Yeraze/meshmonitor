@@ -131,7 +131,7 @@ export class MessageQueueService {
     }
 
     // Process immediately, then continue with interval
-    this.processQueue();
+    void this.processQueue();
   }
 
   /**
@@ -216,7 +216,7 @@ export class MessageQueueService {
         logger.debug(`⏳ Rate limit: waiting ${Math.round(waitTime / 1000)}s before next send`);
         setTimeout(() => {
           if (this.processing) {
-            this.processQueue();
+            void this.processQueue();
           }
         }, waitTime);
         return;
@@ -239,7 +239,7 @@ export class MessageQueueService {
       // Schedule next processing cycle, but check processing flag first
       setTimeout(() => {
         if (this.processing) {
-          this.processQueue();
+          void this.processQueue();
         }
       }, this.SEND_INTERVAL_MS);
     } catch (error) {
@@ -247,7 +247,7 @@ export class MessageQueueService {
       // Continue processing on error, but check processing flag first
       setTimeout(() => {
         if (this.processing) {
-          this.processQueue();
+          void this.processQueue();
         }
       }, this.SEND_INTERVAL_MS);
     }

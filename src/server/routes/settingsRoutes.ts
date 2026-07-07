@@ -707,7 +707,7 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
     }
 
     if ('customTilesets' in filteredSettings) {
-      callbacks.refreshTileHostnameCache?.();
+      void callbacks.refreshTileHostnameCache?.();
       logger.debug('🗺️ Refreshed CSP tile hostname cache after customTilesets update');
     }
 
@@ -910,7 +910,7 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
     });
 
     if (Object.keys(changedSettings).length > 0) {
-      databaseService.auditLogAsync(
+      void databaseService.auditLogAsync(
         req.user!.id,
         'settings_updated',
         'settings',
@@ -1056,7 +1056,7 @@ router.delete('/', requirePermission('settings', 'write'), async (req: Request, 
     await databaseService.settings.deleteAllSettings();
     callbacks.setTracerouteInterval?.(0);
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'settings_reset',
       'settings',

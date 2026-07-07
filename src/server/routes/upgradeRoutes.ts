@@ -51,7 +51,7 @@ router.post('/clear-block', async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id || null;
     await upgradeService.clearAutoUpgradeBlock(`Acknowledged by user ${userId ?? 'unknown'}`);
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       typeof userId === 'number' ? userId : null,
       'auto_upgrade_block_cleared',
       'system',
@@ -115,7 +115,7 @@ router.post('/trigger', async (req: Request, res: Response) => {
 
     if (result.success) {
       // Log upgrade trigger to audit log
-      databaseService.auditLogAsync(
+      void databaseService.auditLogAsync(
         typeof userId === 'number' ? userId : null,
         'upgrade_triggered',
         'system',
@@ -231,7 +231,7 @@ router.post('/cancel/:upgradeId', async (req: Request, res: Response) => {
         ? `${upgradeStatus.fromVersion} → ${upgradeStatus.toVersion}`
         : 'unknown version';
 
-      databaseService.auditLogAsync(
+      void databaseService.auditLogAsync(
         req.user?.id || null,
         'upgrade_cancelled',
         'system',
