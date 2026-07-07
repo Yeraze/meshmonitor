@@ -13,6 +13,10 @@ Benefits of using a reverse proxy:
 - **Centralized Logging**: Single point for access logs
 - **Multiple Services**: Host multiple applications on one server/domain
 
+## Changed in v4.13
+
+**`TRUST_PROXY` now defaults to `false`** (previously, production builds trusted the first proxy hop when `TRUST_PROXY` was unset). If you run MeshMonitor behind any reverse proxy and did not previously set `TRUST_PROXY`, you must now set it explicitly (e.g. `TRUST_PROXY=1` for a single proxy) to restore correct client-IP resolution for rate limiting and audit logs.
+
 ## ⚠️ Critical: Required Environment Variables
 
 When deploying MeshMonitor behind a reverse proxy with HTTPS, you **MUST** set these environment variables:

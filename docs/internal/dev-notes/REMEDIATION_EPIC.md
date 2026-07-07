@@ -14,8 +14,8 @@
 
 Each unchecked phase = one worktree → architect spec → implementation → review → PR → CI → merge cycle.
 
-- [ ] **P0-docs** — Merge `docs/remediation-plan` (REMEDIATION_PLAN.md + this file) to main.
-- [ ] **0.1** — Process-level safety net: `unhandledRejection`/`uncaughtException` handlers in `server.ts`, logging with full context and routing through `gracefulShutdown()`. Exit: deliberate `Promise.reject()` in dev logs and shuts down gracefully.
+- [x] **P0-docs** — Merge `docs/remediation-plan` (REMEDIATION_PLAN.md + this file) to main.
+- [x] **0.1** — Process-level safety net: `unhandledRejection`/`uncaughtException` handlers in `server.ts`, logging with full context and routing through `gracefulShutdown()`. Exit: deliberate `Promise.reject()` in dev logs and shuts down gracefully.
 - [ ] **0.2** — Trust-proxy default → `false` when `TRUST_PROXY` unset; keep startup warning; release-notes/README documentation for proxied deployments.
 - [ ] **0.3** — Pin `meshcore.js` fork dependency to a commit SHA; lockfile regenerated; `npm ci` reproducible.
 - [ ] **0.4** — Strip/gate the hot-path `console.log`s in `src/services/api.ts` (CSRF token status + token prefix on every mutation); kept diagnostics behind a debug flag.
@@ -37,4 +37,5 @@ Each unchecked phase = one worktree → architect spec → implementation → re
 
 Record per-phase: PR link, deviations from plan, follow-ups.
 
-- _(empty — updated as phases complete)_
+- **P0-docs** — PR #3966 merged (plan + epic doc on main). No deviations.
+- **0.1** — PR #3967 merged (processSafetyNet.ts + idempotent gracefulShutdown with exitCode param). Deviation: NodeJS.* type annotations replaced with inference/unknown due to ESLint no-undef.
