@@ -177,7 +177,20 @@ export async function createRouteTestApp(
   });
 
   // Fetch the real anonymous row (guaranteed by DatabaseService.seedInitialData).
-  const anonRow = await databaseService.auth.getUserByUsername('anonymous');
+  //
+  // DatabaseService resolves readyPromise synchronously (for SQLite) but fires
+  // ensureAnonymousUser() as a fire-and-forget async task.  Under vitest
+  // singleFork+isolate a new module instance is created for each file, and the
+  // test's beforeEach may run before that background task commits the anonymous
+  // row.  Poll with a 2-second timeout to let the seeding complete.
+  let anonRow = await databaseService.auth.getUserByUsername('anonymous');
+  if (!anonRow) {
+    const deadline = Date.now() + 2000;
+    while (!anonRow && Date.now() < deadline) {
+      await new Promise<void>(resolve => setTimeout(resolve, 25));
+      anonRow = await databaseService.auth.getUserByUsername('anonymous');
+    }
+  }
   if (!anonRow) {
     throw new Error(
       'routeTestApp: anonymous user not found — seedInitialData must have run before createRouteTestApp()'
