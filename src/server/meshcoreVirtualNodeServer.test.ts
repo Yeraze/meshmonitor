@@ -8,6 +8,7 @@ import {
   ResponseCodes,
   ErrorCodes,
   PushCodes,
+  BinaryRequestTypes,
   FRAME_APP_TO_NODE,
   FRAME_NODE_TO_APP,
   SUPPORTED_COMPANION_PROTOCOL_VERSION,
@@ -129,6 +130,19 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   }
   requestNodeStatus(publicKey: string) {
     return this.requestNodeStatusMock(publicKey) as Promise<Record<string, number> | null>;
+  }
+  getNeighboursMock = vi.fn().mockResolvedValue({
+    total: 3,
+    neighbours: [
+      { publicKeyPrefix: 'aabbccddeeff0011', heardSecondsAgo: 42, snr: 5.25 },
+      { publicKeyPrefix: '1122334455667788', heardSecondsAgo: 3600, snr: -2.5 },
+    ],
+  });
+  getNeighbours(publicKey: string, opts?: { count?: number; offset?: number; orderBy?: number }) {
+    return this.getNeighboursMock(publicKey, opts) as Promise<{
+      total: number;
+      neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[];
+    } | null>;
   }
   emitMessage(msg: MeshCoreMessage) { this.emit('message', msg); }
   emitSendConfirmed(data: { ackCode: number; roundTripMs: number }) { this.emit('send_confirmed', data); }
@@ -1007,5 +1021,170 @@ describe('MeshCoreVirtualNodeServer — SendStatusReq relay (#3904)', () => {
     expect(res[0]).toBe(ResponseCodes.Err);
     expect(res[1]).toBe(ErrorCodes.IllegalArg);
     expect(manager.requestNodeStatusMock).not.toHaveBeenCalled();
+  });
+});
+
+// SendBinaryReq(50)/GetNeighbours(0x06): reply Sent (with the request's
+// random_tag echoed as expectedAckCrc), then push BinaryResponse(0x8C) carrying
+// the re-serialized neighbour list correlated by the same tag (#3904 final gap).
+// The neighbours protocol is SendBinaryReq(50)/GetNeighbours(0x06), NOT
+// SendRawData(25) as the issue originally inferred.
+describe('MeshCoreVirtualNodeServer — SendBinaryReq/GetNeighbours relay (#3904)', () => {
+  let server: MeshCoreVirtualNodeServer;
+  let client: TestClient;
+  let manager: FakeManager;
+
+  const REMOTE_KEY = 'e5'.repeat(32);
+  const REMOTE_KEY_BYTES = Buffer.from(REMOTE_KEY, 'hex');
+  const TAG = 0x11223344;
+
+  async function startWith(allowAdminCommands: boolean): Promise<void> {
+    manager = new FakeManager();
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager, allowAdminCommands, databaseService: CHANNELS_DB });
+    await server.start();
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+  }
+  afterEach(async () => { client?.close(); await server?.stop(); });
+
+  // [50][pubkey:32][0x06][version:0][count][offset:u16LE][orderBy][prefixLen][tag:u32LE]
+  function neighboursFrame(
+    publicKeyHex: string,
+    opts: { count?: number; offset?: number; orderBy?: number; prefixLen?: number; tag?: number } = {},
+  ): number[] {
+    const { count = 10, offset = 0, orderBy = 0, prefixLen = 8, tag = TAG } = opts;
+    const req = Buffer.alloc(11);
+    req[0] = BinaryRequestTypes.GetNeighbours;
+    req[1] = 0; // request_version
+    req[2] = count;
+    req.writeUInt16LE(offset, 3);
+    req[5] = orderBy;
+    req[6] = prefixLen;
+    req.writeUInt32LE(tag >>> 0, 7);
+    return [CommandCodes.SendBinaryReq, ...Buffer.from(publicKeyHex, 'hex'), ...req];
+  }
+
+  it('replies Sent (tag echoed) then pushes a tag-correlated BinaryResponse with the neighbour list', async () => {
+    await startWith(false); // ungated
+    const frames = client.expectFrames(2);
+    client.send(neighboursFrame(REMOTE_KEY, { count: 5, offset: 2, orderBy: 1, prefixLen: 8 }));
+    const [sent, push] = await frames;
+
+    // Sent(6): [code][result:i8][expectedAckCrc:u32LE][estTimeout:u32LE]
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    expect(sent.readUInt32LE(2)).toBe(TAG); // expectedAckCrc echoes the request tag
+
+    // BinaryResponse(0x8C): [code][reserved:1][tag:u32LE][total:u16LE][count:u16LE][entries…]
+    expect(push[0]).toBe(PushCodes.BinaryResponse);
+    expect(push[1]).toBe(0); // reserved
+    expect(push.readUInt32LE(2)).toBe(TAG); // tag correlates to the Sent's expectedAckCrc
+    const body = push.subarray(6);
+    expect(body.readUInt16LE(0)).toBe(3); // totalCount (from manager.total)
+    expect(body.readUInt16LE(2)).toBe(2); // resultsCount (neighbours.length)
+
+    // stride = prefixLen(8) + heard(4) + snr(1) = 13 bytes per entry
+    const e0 = body.subarray(4, 4 + 13);
+    expect(e0.subarray(0, 8)).toEqual(Buffer.from('aabbccddeeff0011', 'hex'));
+    expect(e0.readUInt32LE(8)).toBe(42); // heardSecondsAgo
+    expect(e0.readInt8(12)).toBe(21); // snr 5.25 dB → round(5.25*4)=21
+
+    const e1 = body.subarray(4 + 13, 4 + 26);
+    expect(e1.subarray(0, 8)).toEqual(Buffer.from('1122334455667788', 'hex'));
+    expect(e1.readUInt32LE(8)).toBe(3600);
+    expect(e1.readInt8(12)).toBe(-10); // snr -2.5 dB → round(-2.5*4)=-10
+
+    expect(push.length).toBe(6 + 4 + 2 * 13);
+    expect(manager.getNeighboursMock).toHaveBeenCalledWith(REMOTE_KEY, { count: 5, offset: 2, orderBy: 1 });
+  });
+
+  it('respects the requested pubkey_prefix_len for the entry stride', async () => {
+    await startWith(false);
+    const frames = client.expectFrames(2);
+    client.send(neighboursFrame(REMOTE_KEY, { prefixLen: 6 }));
+    const [, push] = await frames;
+    const body = push.subarray(6);
+    expect(body.readUInt16LE(2)).toBe(2); // 2 entries
+    // stride now 6 + 4 + 1 = 11 bytes/entry
+    expect(push.length).toBe(6 + 4 + 2 * 11);
+    const e0 = body.subarray(4, 4 + 11);
+    expect(e0.subarray(0, 6)).toEqual(Buffer.from('aabbccddeeff', 'hex')); // first 6 prefix bytes
+    expect(e0.readUInt32LE(6)).toBe(42);
+    expect(e0.readInt8(10)).toBe(21);
+  });
+
+  it('relays neighbours even when allowAdminCommands is off (read-only follow-up to login)', async () => {
+    await startWith(true);
+    const frames = client.expectFrames(2);
+    client.send(neighboursFrame(REMOTE_KEY));
+    const [sent, push] = await frames;
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    expect(push[0]).toBe(PushCodes.BinaryResponse);
+  });
+
+  it('pushes an empty BinaryResponse (total=0/count=0) when there are no neighbours', async () => {
+    await startWith(false);
+    manager.getNeighboursMock.mockResolvedValueOnce({ total: 0, neighbours: [] });
+    const frames = client.expectFrames(2);
+    client.send(neighboursFrame(REMOTE_KEY));
+    const [sent, push] = await frames;
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    expect(push[0]).toBe(PushCodes.BinaryResponse);
+    expect(push.readUInt32LE(2)).toBe(TAG);
+    const body = push.subarray(6);
+    expect(body.readUInt16LE(0)).toBe(0); // total
+    expect(body.readUInt16LE(2)).toBe(0); // count
+    expect(push.length).toBe(6 + 4); // header + [total][count] only
+  });
+
+  it('pushes an empty BinaryResponse when the manager returns null (non-repeater / disconnected)', async () => {
+    await startWith(false);
+    manager.getNeighboursMock.mockResolvedValueOnce(null);
+    const frames = client.expectFrames(2);
+    client.send(neighboursFrame(REMOTE_KEY));
+    const [sent, push] = await frames;
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    expect(push[0]).toBe(PushCodes.BinaryResponse);
+    const body = push.subarray(6);
+    expect(body.readUInt16LE(0)).toBe(0);
+    expect(body.readUInt16LE(2)).toBe(0);
+  });
+
+  it('replies Sent but pushes nothing when the manager throws', async () => {
+    await startWith(false);
+    manager.getNeighboursMock.mockRejectedValueOnce(new Error('bridge down'));
+    const sent = await client.request(neighboursFrame(REMOTE_KEY));
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    const second = await Promise.race([
+      client.expectFrames(1).then((f) => f[0]),
+      new Promise<null>((r) => setTimeout(() => r(null), 100)),
+    ]);
+    expect(second).toBeNull();
+  });
+
+  it('replies Err(IllegalArg) on a short SendBinaryReq envelope, without querying the node', async () => {
+    await startWith(false);
+    // [50][pubkey:32] with no inner req_data byte → too short.
+    const res = await client.request([CommandCodes.SendBinaryReq, ...REMOTE_KEY_BYTES]);
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.IllegalArg);
+    expect(manager.getNeighboursMock).not.toHaveBeenCalled();
+  });
+
+  it('replies Err(IllegalArg) on a short GetNeighbours inner blob, without querying the node', async () => {
+    await startWith(false);
+    // Valid envelope + sub-type but truncated params (< 11 inner bytes).
+    const res = await client.request([CommandCodes.SendBinaryReq, ...REMOTE_KEY_BYTES, BinaryRequestTypes.GetNeighbours, 0, 5]);
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.IllegalArg);
+    expect(manager.getNeighboursMock).not.toHaveBeenCalled();
+  });
+
+  it('replies Err(UnsupportedCmd) for an unknown inner sub-type, without querying the node', async () => {
+    await startWith(false);
+    // Envelope + an unimplemented sub-type (0x03 GetTelemetryData is not handled here).
+    const res = await client.request([CommandCodes.SendBinaryReq, ...REMOTE_KEY_BYTES, BinaryRequestTypes.GetTelemetryData, 0, 0]);
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.UnsupportedCmd);
+    expect(manager.getNeighboursMock).not.toHaveBeenCalled();
   });
 });
