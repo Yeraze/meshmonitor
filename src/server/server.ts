@@ -290,7 +290,7 @@ initializeOIDC()
 // IMPORTANT: We mark restore as started immediately to prevent race conditions
 // with createAdminIfNeeded() in database.ts
 systemRestoreService.markRestoreStarted();
-(async () => {
+void (async () => {
   try {
     const restoreFromBackup = systemRestoreService.shouldRestore();
 
@@ -321,7 +321,7 @@ systemRestoreService.markRestoreStarted();
         }
 
         // Audit log to mark restore completion point (after migrations)
-        databaseService.auditLogAsync(
+        void databaseService.auditLogAsync(
           null, // System action during bootstrap
           'system_restore_bootstrap_complete',
           'system_backup',
@@ -834,7 +834,7 @@ async function checkForAutoUpgrade(): Promise<void> {
 
     if (upgradeResult.success) {
       logger.info(`✅ Scheduled auto-upgrade triggered successfully: ${upgradeResult.upgradeId}`);
-      databaseService.auditLogAsync(
+      void databaseService.auditLogAsync(
         null,
         'auto_upgrade_triggered',
         'system',
@@ -4102,7 +4102,7 @@ apiRouter.get('/settings/position-estimation/status', requirePermission('setting
 apiRouter.post('/settings/position-estimation/run-now', requirePermission('settings', 'write'), async (req, res) => {
   try {
     const result = await positionEstimationScheduler.runNow();
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'position_estimation_run',
       'settings',
@@ -4228,7 +4228,7 @@ apiRouter.put('/admin/auto-favorite-targets/:nodeNum', requireAdmin(), async (re
       eligibleRoles: JSON.stringify(roles),
     });
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'auto_favorite_config',
       'admin',
@@ -4291,7 +4291,7 @@ apiRouter.post('/settings/mark-all-welcomed', requirePermission('settings', 'wri
     logger.info(`👋 Manually marked ${count} nodes as welcomed via API${sourceId ? ` (source=${sourceId})` : ''}`);
 
     // Audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'mark_all_welcomed',
       'nodes',
@@ -6268,13 +6268,13 @@ async function migrateAutoResponderTriggers() {
 }
 
 // Run migration on startup
-migrateAutoResponderTriggers();
+void migrateAutoResponderTriggers();
 
 // Module-level server variable for graceful shutdown
 let server: ReturnType<typeof app.listen>;
 
 // Wrap server startup in async IIFE to wait for database before accepting requests
-(async () => {
+void (async () => {
   try {
     // Wait for database initialization to complete BEFORE starting server
     // This is critical for PostgreSQL/MySQL where Drizzle repositories are initialized async
@@ -6309,7 +6309,7 @@ let server: ReturnType<typeof app.listen>;
     firmwareUpdateService.startPolling();
 
     // Send server start notification
-    (async () => {
+    void (async () => {
       try {
         const enabledFeatures: string[] = ['WebSocket']; // WebSocket is always enabled
       if (env.oidcEnabled) enabledFeatures.push('OIDC');

@@ -125,7 +125,7 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
         console.error('Failed to fetch available scripts:', error);
       }
     };
-    fetchScripts();
+    void fetchScripts();
   }, [baseUrl]);
 
   const handleSaveForSaveBar = useCallback(async () => {

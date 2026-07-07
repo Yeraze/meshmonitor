@@ -273,7 +273,7 @@ export default function DashboardMap({
   const [geoJsonLayers, setGeoJsonLayers] = useState<GeoJsonLayer[]>([]);
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const baseUrl = await api.getBaseUrl();
         const response = await fetch(`${baseUrl}/api/geojson/layers`);

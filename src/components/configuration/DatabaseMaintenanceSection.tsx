@@ -112,14 +112,14 @@ const DatabaseMaintenanceSection: React.FC = () => {
         logger.error('Error fetching database type:', error);
       }
     };
-    fetchDatabaseType();
+    void fetchDatabaseType();
   }, []);
 
   // Load status and settings on mount (only if SQLite)
   useEffect(() => {
     if (databaseType === 'sqlite') {
-      loadStatus();
-      loadDatabaseSize();
+      void loadStatus();
+      void loadDatabaseSize();
     }
   }, [databaseType]);
 
@@ -213,7 +213,7 @@ const DatabaseMaintenanceSection: React.FC = () => {
       setSaveCounter(c => c + 1);
 
       showToast(t('maintenance.toast_settings_saved'), 'success');
-      loadStatus();
+      void loadStatus();
     } catch (error) {
       logger.error('Error saving maintenance settings:', error);
       showToast(t('maintenance.toast_settings_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');
@@ -272,8 +272,8 @@ const DatabaseMaintenanceSection: React.FC = () => {
       );
 
       // Refresh status and size
-      loadStatus();
-      loadDatabaseSize();
+      void loadStatus();
+      void loadDatabaseSize();
     } catch (error) {
       logger.error('Error running maintenance:', error);
       showToast(t('maintenance.toast_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');

@@ -64,7 +64,7 @@ const ChannelSoundPicker: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const qs = currentSourceId ? `?sourceId=${encodeURIComponent(currentSourceId)}` : '';
         const response = await api.get<Channel[]>(`/api/channels${qs}`);

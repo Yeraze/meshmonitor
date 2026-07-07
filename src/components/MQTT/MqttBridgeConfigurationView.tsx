@@ -93,7 +93,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
     let cancelled = false;
     setLoading(true);
     setLoadError('');
-    (async () => {
+    void (async () => {
       try {
         const [srcRes, listRes, chDbRes, srcChRes] = await Promise.all([
           csrfFetch(`${appBasename}/api/sources/${sourceId}`),

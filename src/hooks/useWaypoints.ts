@@ -62,7 +62,7 @@ export function useWaypoints(sourceId: string | null | undefined) {
       return postJson<{ data: Waypoint }>(waypointsApiBase(sourceId), 'POST', input);
     },
     onSuccess: () => {
-      if (sourceId) qc.invalidateQueries({ queryKey: ['waypoints', sourceId] });
+      if (sourceId) void qc.invalidateQueries({ queryKey: ['waypoints', sourceId] });
     },
   });
 
@@ -76,7 +76,7 @@ export function useWaypoints(sourceId: string | null | undefined) {
       );
     },
     onSuccess: () => {
-      if (sourceId) qc.invalidateQueries({ queryKey: ['waypoints', sourceId] });
+      if (sourceId) void qc.invalidateQueries({ queryKey: ['waypoints', sourceId] });
     },
   });
 
@@ -89,7 +89,7 @@ export function useWaypoints(sourceId: string | null | undefined) {
       );
     },
     onSuccess: () => {
-      if (sourceId) qc.invalidateQueries({ queryKey: ['waypoints', sourceId] });
+      if (sourceId) void qc.invalidateQueries({ queryKey: ['waypoints', sourceId] });
     },
   });
 

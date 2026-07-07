@@ -266,7 +266,7 @@ export async function handleOIDCCallback(
         user = await databaseService.findUserByIdAsync(existingUser.id) as User;
 
         // Audit log
-        databaseService.auditLogAsync(
+        void databaseService.auditLogAsync(
           user!.id,
           'user_migrated_to_oidc',
           'users',
@@ -343,7 +343,7 @@ export async function handleOIDCCallback(
         logger.debug(`✅ OIDC user auto-created: ${user!.username}${grantAdmin ? ' (admin)' : ''}`);
 
         // Audit log
-        databaseService.auditLogAsync(
+        void databaseService.auditLogAsync(
           user!.id,
           grantAdmin ? 'oidc_user_created_admin' : 'oidc_user_created',
           'users',

@@ -148,7 +148,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
         }
       }
     }
-    fetchConfig();
+    void fetchConfig();
     return () => { cancelled = true; };
   }, [profileId, baseUrl]);
 
@@ -196,7 +196,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
   useEffect(() => {
     if (!config) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await fetch(`${baseUrl}/api/embed/${profileId}/geojson/layers`);
         if (!res.ok) return;
@@ -213,15 +213,15 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
   useEffect(() => {
     if (!config) return;
 
-    fetchNodes();
-    fetchNeighborInfo();
-    fetchTraceroutes();
+    void fetchNodes();
+    void fetchNeighborInfo();
+    void fetchTraceroutes();
 
     const intervalMs = (config.pollIntervalSeconds || 30) * 1000;
     pollTimerRef.current = setInterval(() => {
-      fetchNodes();
-      fetchNeighborInfo();
-      fetchTraceroutes();
+      void fetchNodes();
+      void fetchNeighborInfo();
+      void fetchTraceroutes();
     }, intervalMs);
 
     return () => {

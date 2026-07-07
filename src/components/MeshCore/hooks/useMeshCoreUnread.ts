@@ -65,7 +65,7 @@ export function useMeshCoreUnread({
       return;
     }
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await csrfFetch(`${baseUrl}/api/channels/all?sourceId=${encodeURIComponent(sourceId)}`);
         if (!res.ok) return;
@@ -103,7 +103,7 @@ export function useMeshCoreUnread({
         /* ignore */
       }
     };
-    fetchLatest();
+    void fetchLatest();
     const id = setInterval(fetchLatest, CHANNEL_POLL_MS);
     return () => { cancelled = true; clearInterval(id); };
   }, [enabled, sourceId, baseUrl, csrfFetch, channelIndices]);

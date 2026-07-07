@@ -213,7 +213,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     if (!sourceId) return;
     let cancelled = false;
     setLoadingChannels(true);
-    (async () => {
+    void (async () => {
       try {
         const url = `${baseUrl}/api/channels/all?sourceId=${encodeURIComponent(sourceId)}`;
         const response = await csrfFetch(url);
@@ -267,7 +267,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   useEffect(() => {
     if (!sourceId || !channelIdsKey) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const url = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/messages/channel-counts?channels=${encodeURIComponent(channelIdsKey)}`;
         const response = await csrfFetch(url);
@@ -307,7 +307,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   useEffect(() => {
     if (!status?.connected) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const def = await getDefaultScope();
         if (!cancelled) setDefaultScope(def ?? '');
@@ -323,7 +323,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // mount / source change regardless of connection state.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const rows = await fetchSavedRegions();
         if (!cancelled && rows) setSavedRegions(rows.map(r => r.name));
@@ -355,7 +355,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     if (regionsDiscoveredRef.current) return;
     regionsDiscoveredRef.current = true;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const res = await discoverRegions();
         if (!cancelled && res?.regions) setDiscoveredRegions(res.regions);
@@ -381,7 +381,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     if (!sourceId) return;
     let cancelled = false;
     const idx = active.id;
-    (async () => {
+    void (async () => {
       try {
         const url = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/messages/channel/${idx}?limit=200`;
         const response = await csrfFetch(url);

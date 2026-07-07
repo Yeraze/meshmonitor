@@ -178,7 +178,7 @@ router.get('/version/check', optionalAuth(), async (_req: Request, res: Response
             if (upgradeResult.success) {
               autoUpgradeTriggered = true;
               logger.info(`✅ Auto-upgrade triggered successfully: ${upgradeResult.upgradeId}`);
-              databaseService.auditLogAsync(
+              void databaseService.auditLogAsync(
                 null,
                 'auto_upgrade_triggered',
                 'system',

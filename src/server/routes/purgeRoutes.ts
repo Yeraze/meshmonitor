@@ -16,7 +16,7 @@ router.post('/nodes', async (req: Request, res: Response) => {
     const purgeNodesManager = resolveSourceManager(purgeNodesSourceId);
     await purgeNodesManager.refreshNodeDatabase();
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'nodes_purged',
       'nodes',
@@ -41,7 +41,7 @@ router.post('/telemetry', async (req: Request, res: Response) => {
     const { sourceId: purgeTelemetrySourceId } = req.body || {};
     await databaseService.purgeAllTelemetryAsync(purgeTelemetrySourceId);
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'telemetry_purged',
       'telemetry',
@@ -66,7 +66,7 @@ router.post('/messages', async (req: Request, res: Response) => {
     const messageCount = await databaseService.messages.getMessageCount();
     await databaseService.messages.deleteAllMessages();
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'messages_purged',
       'messages',
@@ -86,7 +86,7 @@ router.post('/traceroutes', async (req: Request, res: Response) => {
     await databaseService.traceroutes.deleteAllTraceroutes();
     await databaseService.traceroutes.deleteAllRouteSegments();
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'traceroutes_purged',
       'traceroute',

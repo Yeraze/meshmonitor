@@ -131,7 +131,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       !loadingMore &&
       packets.length > 0
     ) {
-      loadMore();
+      void loadMore();
     }
   }, [lastVirtualItemIndex, packets.length, hasMore, loadingMore, loadMore]);
 
@@ -173,7 +173,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
       }
     };
 
-    fetchNeighborStats();
+    void fetchNeighborStats();
   }, [canView]);
 
   // Helper function to truncate long names
@@ -195,7 +195,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
     try {
       await clearPackets();
-      fetchPackets();
+      void fetchPackets();
     } catch (error) {
       console.error('Failed to clear packets:', error);
       alert(t('packet_monitor.clear_failed'));
@@ -336,7 +336,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
     try {
       // Use backend export endpoint with current filters
       // Note: hideOwnPackets is a client-side filter and not passed to backend
-      exportPackets(sourceId ? { ...filters, sourceId } : filters);
+      void exportPackets(sourceId ? { ...filters, sourceId } : filters);
     } catch (error) {
       console.error('Failed to export packets:', error);
       alert(t('packet_monitor.export_failed'));

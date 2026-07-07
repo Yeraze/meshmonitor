@@ -61,7 +61,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
 
   // Load backup settings on mount
   useEffect(() => {
-    loadBackupSettings();
+    void loadBackupSettings();
   }, []);
 
   const loadBackupSettings = async () => {
@@ -270,7 +270,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
 
       showToast(t('backup_management.toast_deleted'), 'success');
       // Refresh the backup list
-      handleShowBackups();
+      void handleShowBackups();
     } catch (error) {
       logger.error('Error deleting backup:', error);
       showToast(t('backup_management.toast_delete_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');

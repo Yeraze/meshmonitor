@@ -48,7 +48,7 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
   }, [baseUrl, csrfFetch, sourceQuery]);
 
   useEffect(() => {
-    fetchIgnoredNodes();
+    void fetchIgnoredNodes();
   }, [fetchIgnoredNodes]);
 
   const handleRemove = async (node: IgnoredNode) => {

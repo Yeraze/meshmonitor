@@ -64,7 +64,7 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
     }
   }, [baseUrl, csrfFetch, sourceQuery]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { void fetchData(); }, [fetchData]);
 
   useEffect(() => {
     if (!initialSettings) return;
@@ -89,7 +89,7 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
         setInitialSettings({ enabled: localEnabled, staleHours: localStaleHours });
         setHasChanges(false);
         showToast(t('automation.auto_favorite.saved', 'Auto Favorite settings saved'), 'success');
-        fetchData();
+        void fetchData();
       } else {
         showToast(t('automation.auto_favorite.save_error', 'Failed to save settings'), 'error');
       }
@@ -322,7 +322,7 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
                               });
                               if (resp.ok) {
                                 showToast(t('automation.auto_favorite.node_locked', 'Node locked from automation'), 'success');
-                                fetchData();
+                                void fetchData();
                               } else {
                                 showToast(t('automation.auto_favorite.lock_error', 'Failed to lock node'), 'error');
                               }

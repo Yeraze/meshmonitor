@@ -50,7 +50,7 @@ export function useSecurityCheck(
       }
     };
 
-    checkDefaultPassword();
+    void checkDefaultPassword();
   }, [baseUrl, authFetch]);
 
   // Check for configuration issues
@@ -67,7 +67,7 @@ export function useSecurityCheck(
       }
     };
 
-    checkConfigIssues();
+    void checkConfigIssues();
   }, [baseUrl, authFetch]);
 
   return {

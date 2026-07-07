@@ -21,7 +21,7 @@ const PkiDmGlobalToggle: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const baseUrl = await apiService.getBaseUrl();
         const res = await fetch(`${baseUrl}/api/settings`, { credentials: 'include' });

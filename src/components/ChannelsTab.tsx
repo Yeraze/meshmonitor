@@ -257,7 +257,7 @@ export default function ChannelsTab({
         // Default to false if we can't fetch settings
       }
     };
-    fetchHomoglyphSetting();
+    void fetchHomoglyphSetting();
   }, []);
 
   // Memoize byte count to avoid redundant homoglyph optimization on each render
@@ -572,7 +572,7 @@ export default function ChannelsTab({
                   setSelectedChannel(channelId);
                   selectedChannelRef.current = channelId;
                   setReplyingTo(null);
-                  markMessagesAsRead(undefined, channelId);
+                  void markMessagesAsRead(undefined, channelId);
                   setUnreadCounts(prev => {
                     const updated = { ...prev, [channelId]: 0 };
                     logger.debug('📝 Setting unread counts:', updated);
@@ -690,7 +690,7 @@ export default function ChannelsTab({
               <button
                 className="btn btn-secondary"
                 onClick={() => {
-                  markMessagesAsRead(undefined, selectedChannel);
+                  void markMessagesAsRead(undefined, selectedChannel);
                 }}
                 title={t('channels.mark_all_read_title')}
                 style={{ padding: '0.4rem 0.75rem', fontSize: '0.9rem', whiteSpace: 'nowrap' }}
@@ -736,7 +736,7 @@ export default function ChannelsTab({
                     </button>
                     <button
                       className="channel-overflow-item"
-                      onClick={() => { setShowChannelMenu(false); markMessagesAsRead(undefined, selectedChannel); }}
+                      onClick={() => { setShowChannelMenu(false); void markMessagesAsRead(undefined, selectedChannel); }}
                     >
                       ✅ {t('channels.mark_all_read_button')}
                     </button>
@@ -800,7 +800,7 @@ export default function ChannelsTab({
                       setSelectedChannel(channelId);
                       selectedChannelRef.current = channelId;
                       setReplyingTo(null);
-                      markMessagesAsRead(undefined, channelId);
+                      void markMessagesAsRead(undefined, channelId);
                       setUnreadCounts(prev => {
                         const updated = { ...prev, [channelId]: 0 };
                         logger.debug('📝 Setting unread counts:', updated);
@@ -1190,7 +1190,7 @@ export default function ChannelsTab({
                                   !e.nativeEvent.isComposing
                                 ) {
                                   e.preventDefault();
-                                  handleSendMessage(selectedChannel);
+                                  void handleSendMessage(selectedChannel);
                                 }
                               }}
                             />
@@ -1204,7 +1204,7 @@ export default function ChannelsTab({
                             onChange={setNewMessage}
                           />
                           <button
-                            onClick={() => { onSendBell?.(selectedChannel, newMessage); setNewMessage(''); }}
+                            onClick={() => { void onSendBell?.(selectedChannel, newMessage); setNewMessage(''); }}
                             className="send-btn channel-action-btn"
                             title="Send alert bell"
                             aria-label="Send alert bell"
@@ -1377,7 +1377,7 @@ export default function ChannelsTab({
                       <button
                         onClick={() => {
                           handleCloseModal();
-                          handlePurgeChannelMessages(channelInfoModal);
+                          void handlePurgeChannelMessages(channelInfoModal);
                         }}
                         style={{
                           width: '100%',

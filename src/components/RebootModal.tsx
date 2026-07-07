@@ -188,7 +188,7 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
 
     // Start the reboot sequence immediately
     console.log('[RebootModal] Launching waitForReboot() function...');
-    waitForReboot();
+    void waitForReboot();
 
     return () => {
       aborted = true;

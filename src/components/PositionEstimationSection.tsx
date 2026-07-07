@@ -74,7 +74,7 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
   }, [csrfFetch, baseUrl]);
 
   useEffect(() => {
-    fetchStatus();
+    void fetchStatus();
   }, [fetchStatus]);
 
   const hasChanges =
@@ -143,7 +143,7 @@ const PositionEstimationSection: React.FC<PositionEstimationSectionProps> = ({ b
           }),
           'success'
         );
-        fetchStatus();
+        void fetchStatus();
       } else if (response.status === 409) {
         showToast(t('automation.position_estimation.already_running', 'Estimation already running'), 'warning');
       } else {

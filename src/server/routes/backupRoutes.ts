@@ -146,7 +146,7 @@ systemBackupRouter.post('/', requirePermission('configuration', 'write'), async 
     const dirname = await systemBackupService.createBackup('manual');
 
     // Audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'system_backup_created',
       'system_backup',
@@ -229,7 +229,7 @@ systemBackupRouter.get('/download/:dirname', requirePermission('configuration', 
     });
 
     // Audit log before streaming
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'system_backup_downloaded',
       'system_backup',
@@ -269,7 +269,7 @@ systemBackupRouter.delete('/delete/:dirname', requirePermission('configuration',
     await systemBackupService.deleteBackup(dirname);
 
     // Audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'system_backup_deleted',
       'system_backup',

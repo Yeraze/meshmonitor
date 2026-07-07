@@ -141,7 +141,7 @@ router.post('/cleanup', requireAdmin(), async (req: Request, res: Response) => {
     const deletedCount = await databaseService.cleanupAuditLogsAsync(days);
 
     // Log the cleanup action
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'audit_cleanup',
       'audit',

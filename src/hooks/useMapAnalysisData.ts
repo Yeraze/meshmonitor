@@ -69,7 +69,7 @@ function useAggregatedPaginated<T>(
     let cursor: string | null = null;
     let acc: T[] = [];
 
-    (async () => {
+    void (async () => {
       try {
         do {
           const res = await fetchPage({

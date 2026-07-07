@@ -34,7 +34,7 @@ const MFAManagement: React.FC = () => {
   const [backupCodesCopied, setBackupCodesCopied] = useState(false);
 
   useEffect(() => {
-    loadStatus();
+    void loadStatus();
   }, []);
 
   const loadStatus = async () => {
@@ -71,7 +71,7 @@ const MFAManagement: React.FC = () => {
       setSetupData(null);
       setVerifyCode('');
       showToast(t('mfa.enabled_success'), 'success');
-      refreshAuth();
+      void refreshAuth();
     } catch (error) {
       logger.error('Failed to verify MFA setup:', error);
       showToast(t('mfa.invalid_code'), 'error');
@@ -93,7 +93,7 @@ const MFAManagement: React.FC = () => {
       setDisableCode('');
       setShowDisableConfirm(false);
       showToast(t('mfa.disabled_success'), 'success');
-      refreshAuth();
+      void refreshAuth();
     } catch (error) {
       logger.error('Failed to disable MFA:', error);
       showToast(t('mfa.invalid_code'), 'error');
@@ -105,7 +105,7 @@ const MFAManagement: React.FC = () => {
 
   const copyBackupCodes = () => {
     if (setupData) {
-      navigator.clipboard.writeText(setupData.backupCodes.join('\n'));
+      void navigator.clipboard.writeText(setupData.backupCodes.join('\n'));
       showToast(t('mfa.backup_codes_copied'), 'success');
       setBackupCodesCopied(true);
     }

@@ -4399,7 +4399,7 @@ class DatabaseService {
         const pendingTimeoutAgo = now - PENDING_TRACEROUTE_TIMEOUT_MS;
 
         // Fire async operation
-        (async () => {
+        void (async () => {
           try {
             // Check for pending traceroute (reversed direction - see note below)
             // NOTE: When a traceroute response comes in, fromNum is the destination (responder) and toNum is the local node (requester)

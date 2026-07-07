@@ -71,7 +71,7 @@ export function useVersionCheck(baseUrl: string): VersionCheckResult {
     };
 
     // Initial check
-    checkForUpdates();
+    void checkForUpdates();
 
     // Check for updates at configured interval
     intervalId = setInterval(checkForUpdates, VERSION_CHECK_INTERVAL_MS);

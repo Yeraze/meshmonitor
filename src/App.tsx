@@ -474,7 +474,7 @@ const location = useLocation();
         logger.debug('Failed to fetch channel database entries:', err);
       }
     };
-    fetchChannelDatabaseEntries();
+    void fetchChannelDatabaseEntries();
   }, [authStatus?.authenticated]);
 
   // Show news popup when authenticated user has unread news
@@ -492,7 +492,7 @@ const location = useLocation();
         logger.debug('Failed to fetch unread news:', err);
       }
     };
-    checkUnreadNews();
+    void checkUnreadNews();
   }, [authStatus?.authenticated]);
 
   // Check if packet logging is enabled on the server
@@ -507,7 +507,7 @@ const location = useLocation();
         setPacketLogEnabled(false);
       }
     };
-    checkPacketLogStatus();
+    void checkPacketLogStatus();
   }, [authStatus]);
 
   // Messaging context
@@ -1221,7 +1221,7 @@ const location = useLocation();
       }
     };
 
-    initializeApp();
+    void initializeApp();
   }, []);
 
   // Check for default admin password
@@ -1239,7 +1239,7 @@ const location = useLocation();
       }
     };
 
-    checkConfigIssues();
+    void checkConfigIssues();
   }, [baseUrl]);
 
   // TX status is now handled by useTxStatus hook
@@ -1298,7 +1298,7 @@ const location = useLocation();
     // Check for updates every 4 hours
     const interval = setInterval(checkForUpdates, 4 * 60 * 60 * 1000);
 
-    checkForUpdates(interval);
+    void checkForUpdates(interval);
 
     return () => clearInterval(interval);
   }, [baseUrl]);
@@ -1335,7 +1335,7 @@ const location = useLocation();
       }
     };
 
-    checkUpgradeStatus();
+    void checkUpgradeStatus();
   }, [baseUrl, authFetch]);
 
   // Cleanup upgrade polling on unmount
@@ -1488,7 +1488,7 @@ const location = useLocation();
     };
 
     // Start polling
-    poll();
+    void poll();
   };
 
   // Debug effect to track selectedChannel changes and keep ref in sync
@@ -1512,7 +1512,7 @@ const location = useLocation();
   // Fetch neighbor info when connected (needed for both map display and Messages tab)
   useEffect(() => {
     if (shouldShowData()) {
-      fetchNeighborInfo();
+      void fetchNeighborInfo();
       // Only auto-refresh when connected (not when viewing cached data)
       if (connectionStatus === 'connected') {
         const interval = setInterval(fetchNeighborInfo, 60000); // Refresh every 60 seconds
@@ -1583,7 +1583,7 @@ const location = useLocation();
       }
     };
 
-    fetchAllPositionHistory();
+    void fetchAllPositionHistory();
     return () => { cancelled = true; };
   }, [selectedNodeId, nodes, baseUrl, sourceId]);
 
@@ -1779,7 +1779,7 @@ const location = useLocation();
       const now = Date.now();
       if (isScrolledNearTop(channelMessagesContainerRef.current) && now - lastScrollLoadTimeRef.current > 200) {
         lastScrollLoadTimeRef.current = now;
-        loadMoreChannelMessages();
+        void loadMoreChannelMessages();
       }
     }
   }, [isScrolledNearBottom, isScrolledNearTop, loadMoreChannelMessages]);
@@ -1793,7 +1793,7 @@ const location = useLocation();
       const now = Date.now();
       if (isScrolledNearTop(dmMessagesContainerRef.current) && now - lastScrollLoadTimeRef.current > 200) {
         lastScrollLoadTimeRef.current = now;
-        loadMoreDirectMessages();
+        void loadMoreDirectMessages();
       }
     }
   }, [isScrolledNearBottom, isScrolledNearTop, loadMoreDirectMessages]);
@@ -1918,7 +1918,7 @@ const location = useLocation();
           // If container doesn't have a scrollbar, load more messages
           const hasScrollbar = container.scrollHeight > container.clientHeight;
           if (!hasScrollbar) {
-            loadMoreChannelMessages();
+            void loadMoreChannelMessages();
           }
         }
       }, 200);
@@ -1967,7 +1967,7 @@ const location = useLocation();
           // If container doesn't have a scrollbar, load more messages
           const hasScrollbar = container.scrollHeight > container.clientHeight;
           if (!hasScrollbar) {
-            loadMoreDirectMessages();
+            void loadMoreDirectMessages();
           }
         }
       }, 200);
@@ -1985,7 +1985,7 @@ const location = useLocation();
   const currentChannelMsgCount = (channelMessages[selectedChannel] || []).length;
   useEffect(() => {
     if (activeTab === 'channels' && selectedChannel >= 0) {
-      markMessagesAsRead(undefined, selectedChannel);
+      void markMessagesAsRead(undefined, selectedChannel);
     }
   }, [selectedChannel, activeTab, markMessagesAsRead, currentChannelMsgCount]);
 
@@ -1996,7 +1996,7 @@ const location = useLocation();
     : 0;
   useEffect(() => {
     if (activeTab === 'messages' && selectedDMNode) {
-      markMessagesAsRead(undefined, undefined, selectedDMNode);
+      void markMessagesAsRead(undefined, undefined, selectedDMNode);
     }
   }, [selectedDMNode, activeTab, markMessagesAsRead, currentDMMsgCount]);
 
@@ -2073,7 +2073,7 @@ const location = useLocation();
       // Only check connection status when not connected
       // Data polling when connected is handled by usePoll hook
       if (currentConnectionStatus !== 'connected') {
-        checkConnectionStatus();
+        void checkConnectionStatus();
       }
     }, 5000);
 
@@ -2085,7 +2085,7 @@ const location = useLocation();
     const scheduleNodeRefresh = () => {
       if (connectionStatus === 'connected') {
         logger.debug('🔄 Performing scheduled node database refresh...');
-        requestFullNodeDatabase();
+        void requestFullNodeDatabase();
       }
     };
 
@@ -2202,7 +2202,7 @@ const location = useLocation();
     setConnectionStatus('connected');
 
     // Refresh all data after reboot - usePoll fetches nodes, messages, channels, config, telemetry
-    refetchPoll();
+    void refetchPoll();
 
     // Trigger config refresh in ConfigurationTab
     setConfigRefreshTrigger(prev => {
@@ -2308,7 +2308,7 @@ const location = useLocation();
             if (currentStatus !== 'connected') {
               logger.debug(`🔗 Connection established, will initialize... (transitioning from ${currentStatus})`);
               // Set to configuring and trigger initialization
-              (async () => {
+              void (async () => {
                 setConnectionStatus('configuring');
                 setError(null);
 
@@ -2881,7 +2881,7 @@ const location = useLocation();
       const pollDelays = [2000, 5000, 10000, 15000]; // 2s, 5s, 10s, 15s
       pollDelays.forEach(delay => {
         setTimeout(() => {
-          refetchPoll();
+          void refetchPoll();
         }, delay);
       });
 
@@ -3266,7 +3266,7 @@ const location = useLocation();
           ...prev,
           [message.channel]: (prev[message.channel] || []).filter(m => m.id !== message.id),
         }));
-        refetchPoll();
+        void refetchPoll();
       } else {
         const errorData = await response.json();
         showToast(t('toast.failed_delete_message', { error: errorData.message || t('errors.unknown') }), 'error');
@@ -3306,7 +3306,7 @@ const location = useLocation();
           ...prev,
           [channelId]: [],
         }));
-        refetchPoll();
+        void refetchPoll();
       } else {
         const errorData = await response.json();
         showToast(t('toast.failed_purge_messages', { error: errorData.message || t('errors.unknown') }), 'error');
@@ -3349,7 +3349,7 @@ const location = useLocation();
           setMessages(prev => prev.filter(m => !(m.fromNodeId === nodeId || m.toNodeId === nodeId)));
         }
         // Also refresh from backend to ensure consistency
-        refetchPoll();
+        void refetchPoll();
       } else {
         const errorData = await response.json();
         showToast(t('toast.failed_purge_messages', { error: errorData.message || t('errors.unknown') }), 'error');
@@ -3385,7 +3385,7 @@ const location = useLocation();
         const data = await response.json();
         showToast(t('toast.purged_traceroutes', { count: data.deletedCount, node: nodeName }), 'success');
         // Refresh data from backend to ensure consistency
-        refetchPoll();
+        void refetchPoll();
       } else {
         const errorData = await response.json();
         showToast(t('toast.failed_purge_traceroutes', { error: errorData.message || t('errors.unknown') }), 'error');
@@ -3423,7 +3423,7 @@ const location = useLocation();
         const data = await response.json();
         showToast(t('toast.purged_telemetry', { count: data.deletedCount, node: nodeName }), 'success');
         // Refresh data from backend to ensure consistency
-        refetchPoll();
+        void refetchPoll();
       } else {
         const errorData = await response.json();
         showToast(t('toast.failed_purge_telemetry', { error: errorData.message || t('errors.unknown') }), 'error');
@@ -3460,7 +3460,7 @@ const location = useLocation();
       if (response.ok) {
         const data = await response.json();
         showToast(t('toast.purged_position_history', { count: data.deletedCount, node: nodeName }), 'success');
-        refetchPoll();
+        void refetchPoll();
       } else {
         const errorData = await response.json();
         showToast(t('toast.failed_purge_position_history', { error: errorData.message || t('errors.unknown') }), 'error');
@@ -3513,7 +3513,7 @@ const location = useLocation();
           setSelectedDMNode('');
         }
         // Refresh data from backend to ensure consistency
-        refetchPoll();
+        void refetchPoll();
       } else {
         const errorData = await response.json();
         showToast(t('toast.failed_delete_node', { error: errorData.message || t('errors.unknown') }), 'error');
@@ -3566,7 +3566,7 @@ const location = useLocation();
           setSelectedDMNode('');
         }
         // Refresh data from backend to ensure consistency
-        refetchPoll();
+        void refetchPoll();
       } else {
         const errorData = await response.json();
         showToast(t('toast.failed_purge_node_device', { error: errorData.message || t('errors.unknown') }), 'error');
@@ -3604,7 +3604,7 @@ const location = useLocation();
 
     showToast(t('position_override.save_success'), 'success');
     // Refresh data to get updated position
-    refetchPoll();
+    void refetchPoll();
   };
 
   const handleSendMessage = async (channel: number = 0) => {

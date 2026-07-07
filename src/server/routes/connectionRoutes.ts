@@ -49,7 +49,7 @@ router.post('/disconnect', requirePermission('connection', 'write'), async (req:
     await disconnectManager.userDisconnect();
 
     // Audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'connection_disconnected',
       'connection',
@@ -72,7 +72,7 @@ router.post('/reconnect', requirePermission('connection', 'write'), async (req: 
     const success = await reconnectManager.userReconnect();
 
     // Audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'connection_reconnected',
       'connection',
@@ -140,7 +140,7 @@ router.post('/configure', requireAdmin(), async (req: Request, res: Response) =>
     await connConfigManager.setNodeIpOverride(nodeIp);
 
     // Audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'connection_address_changed',
       'connection',

@@ -64,14 +64,14 @@ export function useCustomWidgets({
 
     const newWidgets = [...customWidgets, newWidget];
     setCustomWidgets(newWidgets);
-    saveWidgets(newWidgets);
+    void saveWidgets(newWidgets);
   }, [customWidgets, setCustomWidgets, saveWidgets]);
 
   // Remove a widget
   const removeWidget = useCallback((widgetId: string) => {
     const newWidgets = customWidgets.filter(w => w.id !== widgetId);
     setCustomWidgets(newWidgets);
-    saveWidgets(newWidgets);
+    void saveWidgets(newWidgets);
   }, [customWidgets, setCustomWidgets, saveWidgets]);
 
   // Add node to NodeStatus widget
@@ -83,7 +83,7 @@ export function useCustomWidgets({
       return w;
     });
     setCustomWidgets(newWidgets);
-    saveWidgets(newWidgets);
+    void saveWidgets(newWidgets);
   }, [customWidgets, setCustomWidgets, saveWidgets]);
 
   // Remove node from NodeStatus widget
@@ -95,7 +95,7 @@ export function useCustomWidgets({
       return w;
     });
     setCustomWidgets(newWidgets);
-    saveWidgets(newWidgets);
+    void saveWidgets(newWidgets);
   }, [customWidgets, setCustomWidgets, saveWidgets]);
 
   // Set target node for Traceroute widget
@@ -107,7 +107,7 @@ export function useCustomWidgets({
       return w;
     });
     setCustomWidgets(newWidgets);
-    saveWidgets(newWidgets);
+    void saveWidgets(newWidgets);
   }, [customWidgets, setCustomWidgets, saveWidgets]);
 
   // Update widget configuration (e.g., bucket size for distance distribution)
@@ -119,7 +119,7 @@ export function useCustomWidgets({
       return w;
     });
     setCustomWidgets(newWidgets);
-    saveWidgets(newWidgets);
+    void saveWidgets(newWidgets);
   }, [customWidgets, setCustomWidgets, saveWidgets]);
 
   return {

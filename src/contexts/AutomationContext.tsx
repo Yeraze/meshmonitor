@@ -241,7 +241,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         logger.error('[AutomationContext] Failed to load settings:', err);
       }
     };
-    load();
+    void load();
     return () => { cancelled = true; };
   }, [sourceId, baseUrl]);
 

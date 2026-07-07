@@ -296,7 +296,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
         const errorMsg = error instanceof Error ? error.message : t('channel_database.reorder_error');
         showToast(errorMsg, 'error');
         // Revert on error
-        fetchChannels();
+        void fetchChannels();
       }
     }
   };
@@ -304,7 +304,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
   // Fetch channels on mount
   useEffect(() => {
     if (isAdmin) {
-      fetchChannels();
+      void fetchChannels();
     }
   }, [isAdmin]);
 
@@ -318,7 +318,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
             setDecryptionProgress(response.progress);
             if (response.progress.status === 'completed') {
               // Refresh channels to show updated decrypted counts
-              fetchChannels();
+              void fetchChannels();
               showToast(
                 t('channel_database.toast_decryption_completed', {
                   decrypted: response.progress.decrypted,
@@ -328,7 +328,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
               );
             } else if (response.progress.status === 'failed') {
               // Refresh channels and show error
-              fetchChannels();
+              void fetchChannels();
               const errorMsg = response.progress.error || t('channel_database.toast_decryption_failed');
               showToast(errorMsg, 'error');
             }
@@ -445,7 +445,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
 
       setShowEditModal(false);
       setEditingChannel(null);
-      fetchChannels();
+      void fetchChannels();
     } catch (error) {
       logger.error('Error saving channel:', error);
       const errorMsg = error instanceof Error ? error.message : t('channel_database.toast_save_failed');
@@ -461,7 +461,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
       await apiService.deleteChannelDatabaseEntry(id);
       showToast(t('channel_database.toast_channel_deleted'), 'success');
       setShowDeleteConfirm(null);
-      fetchChannels();
+      void fetchChannels();
     } catch (error) {
       logger.error('Error deleting channel:', error);
       const errorMsg = error instanceof Error ? error.message : t('channel_database.toast_delete_failed');
@@ -482,7 +482,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
           : t('channel_database.toast_channel_enabled'),
         'success'
       );
-      fetchChannels();
+      void fetchChannels();
     } catch (error) {
       logger.error('Error toggling channel:', error);
       const errorMsg = error instanceof Error ? error.message : t('channel_database.toast_update_failed');
@@ -603,7 +603,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-      fetchChannels();
+      void fetchChannels();
     } catch (error) {
       logger.error('Error importing channels:', error);
       const errorMsg = error instanceof Error ? error.message : t('channel_database.toast_import_failed');

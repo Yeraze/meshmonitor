@@ -123,7 +123,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     // Audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'user_updated',
       'security',
@@ -170,7 +170,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
     await databaseService.auth.updateUser(userId, { isActive: false });
 
     // Audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'user_deleted',
       'users',
@@ -232,7 +232,7 @@ router.delete('/:id/permanent', async (req: Request, res: Response) => {
     await databaseService.auth.deleteUser(userId);
 
     // Audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'user_permanently_deleted',
       'users',
@@ -282,7 +282,7 @@ router.put('/:id/admin', async (req: Request, res: Response) => {
     }
 
     // Audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'admin_status_changed',
       'users',
@@ -460,7 +460,7 @@ router.put('/:id/permissions', async (req: Request, res: Response) => {
     }
 
     // Audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'permissions_updated',
       'permissions',
@@ -598,7 +598,7 @@ router.put('/:id/channel-database-permissions', async (req: Request, res: Respon
     }
 
     // Audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'channel_db_permissions_updated',
       'permissions',
@@ -638,7 +638,7 @@ router.delete('/:id/mfa', async (req: Request, res: Response) => {
     await databaseService.clearUserMfaAsync(userId);
 
     // Audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'mfa_admin_disabled',
       'auth',

@@ -125,7 +125,7 @@ router.post('/', async (req: Request, res: Response) => {
       sourceId,
     });
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'embed_profile_created',
       'embed_profile',
@@ -177,7 +177,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Embed profile not found' });
     }
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'embed_profile_updated',
       'embed_profile',
@@ -202,7 +202,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Embed profile not found' });
     }
 
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       req.user!.id,
       'embed_profile_deleted',
       'embed_profile',

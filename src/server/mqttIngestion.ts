@@ -349,7 +349,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
       // Use the repo's per-source insert — the `databaseService.insertMessage`
       // facade drops the sourceId, leaving rows orphaned (`sourceId=NULL`)
       // and invisible to source-scoped queries like /api/unified/messages.
-      databaseService.messages.insertMessage(msg, sourceId);
+      databaseService.messages.insertMessage(msg, sourceId).catch(err => logger.error('Failed to insert MQTT message:', err));
       // Refresh lastHeard for the sender.
       databaseService.upsertNode({
         nodeNum: fromNum,
@@ -871,7 +871,7 @@ async function ingestStoreForward(
     (msg as any).viaStoreForward = true;
     // Same per-source insert path as the TEXT_MESSAGE_APP case above —
     // the facade drops sourceId; the repo accepts it.
-    databaseService.messages.insertMessage(msg, sourceId);
+    databaseService.messages.insertMessage(msg, sourceId).catch(err => logger.error('Failed to insert MQTT message:', err));
     return true;
   }
 

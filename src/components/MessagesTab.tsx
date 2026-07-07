@@ -356,7 +356,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
         // Default to false if we can't fetch settings
       }
     };
-    fetchHomoglyphSetting();
+    void fetchHomoglyphSetting();
   }, []);
 
   // Close position channel dropdown on click outside
@@ -618,7 +618,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   }, [selectedNodeNum]);
 
   useEffect(() => {
-    fetchNodePacketDistribution();
+    void fetchNodePacketDistribution();
     const interval = setInterval(fetchNodePacketDistribution, 60000);
     return () => clearInterval(interval);
   }, [fetchNodePacketDistribution]);
@@ -863,7 +863,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         const nodeId = node.user?.id || '';
                         setSelectedDMNode(nodeId);
                         setReplyingTo(null);
-                        if (nodeId) markMessagesAsRead(undefined, -1, nodeId);
+                        if (nodeId) void markMessagesAsRead(undefined, -1, nodeId);
                       }}
                     >
                       <div className="node-header">
@@ -1029,7 +1029,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               const nodeId = e.target.value;
               setSelectedDMNode(nodeId);
               setReplyingTo(null);
-              if (nodeId) markMessagesAsRead(undefined, -1, nodeId);
+              if (nodeId) void markMessagesAsRead(undefined, -1, nodeId);
             }}
           >
             <option value="">{t('messages.select_conversation')}</option>
@@ -1150,7 +1150,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               <button
                                 className="actions-menu-item"
                                 onClick={() => {
-                                  handleTraceroute(selectedDMNode);
+                                  void handleTraceroute(selectedDMNode);
                                   setShowActionsMenu(false);
                                 }}
                                 disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
@@ -1181,7 +1181,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             <button
                               className="actions-menu-item"
                               onClick={() => {
-                                handleExchangePosition(selectedDMNode);
+                                void handleExchangePosition(selectedDMNode);
                                 setShowActionsMenu(false);
                               }}
                               disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode}
@@ -1192,7 +1192,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             <button
                               className="actions-menu-item"
                               onClick={() => {
-                                handleExchangeNodeInfo(selectedDMNode);
+                                void handleExchangeNodeInfo(selectedDMNode);
                                 setShowActionsMenu(false);
                               }}
                               disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode}
@@ -1234,7 +1234,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           <button
                             className="actions-menu-item"
                             onClick={() => {
-                              handleScanForAdmin(selectedDMNode);
+                              void handleScanForAdmin(selectedDMNode);
                               setShowActionsMenu(false);
                             }}
                             disabled={connectionStatus !== 'connected' || adminScanLoading === selectedDMNode}
@@ -1251,7 +1251,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             <button
                               className="actions-menu-item"
                               onClick={(e) => {
-                                toggleFavorite(selectedNode, e);
+                                void toggleFavorite(selectedNode, e);
                                 setShowActionsMenu(false);
                               }}
                             >
@@ -1260,7 +1260,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             <button
                               className="actions-menu-item"
                               onClick={(e) => {
-                                toggleFavoriteLock(selectedNode, e);
+                                void toggleFavoriteLock(selectedNode, e);
                                 setShowActionsMenu(false);
                               }}
                             >
@@ -1269,7 +1269,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             <button
                               className="actions-menu-item"
                               onClick={(e) => {
-                                toggleIgnored(selectedNode, e);
+                                void toggleIgnored(selectedNode, e);
                                 setShowActionsMenu(false);
                               }}
                             >
@@ -1308,7 +1308,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           <button
                             className="actions-menu-item"
                             onClick={(e) => {
-                              toggleHideFromMap(selectedNode, e);
+                              void toggleHideFromMap(selectedNode, e);
                               setShowActionsMenu(false);
                             }}
                           >
@@ -1662,7 +1662,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             !e.nativeEvent.isComposing
                           ) {
                             e.preventDefault();
-                            handleSendDirectMessage(selectedDMNode);
+                            void handleSendDirectMessage(selectedDMNode);
                           }
                         }}
                       />
@@ -1676,7 +1676,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       onChange={setNewMessage}
                     />
                     <button
-                      onClick={() => { onSendBell?.(selectedDMNode, newMessage); setNewMessage(''); }}
+                      onClick={() => { void onSendBell?.(selectedDMNode, newMessage); setNewMessage(''); }}
                       className="send-btn channel-action-btn"
                       title="Send alert bell"
                       aria-label="Send alert bell"
@@ -1952,7 +1952,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         <button
                           key={ch.id}
                           onClick={() => {
-                            handleTraceroute(selectedDMNode, ch.id);
+                            void handleTraceroute(selectedDMNode, ch.id);
                             setShowTracerouteChannelDropdown(false);
                           }}
                           style={{
@@ -2038,7 +2038,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         <button
                           key={ch.id}
                           onClick={() => {
-                            handleExchangeNodeInfo(selectedDMNode, ch.id);
+                            void handleExchangeNodeInfo(selectedDMNode, ch.id);
                             setShowNodeInfoChannelDropdown(false);
                           }}
                           style={{
@@ -2124,7 +2124,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         <button
                           key={ch.id}
                           onClick={() => {
-                            handleExchangePosition(selectedDMNode, ch.id);
+                            void handleExchangePosition(selectedDMNode, ch.id);
                             setShowPositionChannelDropdown(false);
                           }}
                           style={{
@@ -2315,7 +2315,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
           isOpen={showTelemetryRequestModal}
           onClose={() => setShowTelemetryRequestModal(false)}
           onRequest={(telemetryType: TelemetryType) => {
-            handleRequestTelemetry(selectedDMNode, telemetryType);
+            void handleRequestTelemetry(selectedDMNode, telemetryType);
             setShowTelemetryRequestModal(false);
           }}
           loading={telemetryRequestLoading === selectedDMNode}

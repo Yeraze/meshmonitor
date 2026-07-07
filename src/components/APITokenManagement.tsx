@@ -34,7 +34,7 @@ const APITokenManagement: React.FC = () => {
   const [showConfirmRevoke, setShowConfirmRevoke] = useState(false);
 
   useEffect(() => {
-    loadTokenInfo();
+    void loadTokenInfo();
   }, []);
 
   const loadTokenInfo = async () => {
@@ -85,7 +85,7 @@ const APITokenManagement: React.FC = () => {
   };
 
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+    void navigator.clipboard.writeText(text);
     showToast(t('api_token.copied'), 'success');
   };
 

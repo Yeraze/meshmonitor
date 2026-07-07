@@ -668,7 +668,7 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
         showToast(t('telemetry.purge_success', { type: getTelemetryLabel(telemetryType) }), 'success');
 
         // Refresh telemetry data using TanStack Query
-        refetchTelemetry();
+        void refetchTelemetry();
       } catch (error) {
         logger.error('Error purging telemetry data:', error);
         showToast(t('telemetry.purge_failed'), 'error');

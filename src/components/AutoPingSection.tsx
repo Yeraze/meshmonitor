@@ -79,7 +79,7 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
   }, [sourceId]);
 
   useEffect(() => {
-    fetchData();
+    void fetchData();
   }, [baseUrl, csrfFetch, sourceQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll for active sessions
@@ -178,7 +178,7 @@ const AutoPingSection: React.FC<AutoPingSectionProps> = ({ baseUrl }) => {
       });
       if (response.ok) {
         showToast(t('automation.auto_ping.session_stopped', 'Ping session stopped'), 'success');
-        fetchData();
+        void fetchData();
       }
     } catch (error) {
       console.error('Failed to stop ping session:', error);

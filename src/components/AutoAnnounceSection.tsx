@@ -115,7 +115,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       }
     };
 
-    fetchLastAnnouncementTime();
+    void fetchLastAnnouncementTime();
     // Refresh every 30 seconds
     const interval = setInterval(fetchLastAnnouncementTime, 30000);
     return () => clearInterval(interval);
@@ -322,7 +322,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
 
   // Stable callbacks
   const handleSendNowClick = useCallback(() => {
-    handleSendNow();
+    void handleSendNow();
   }, [handleSendNow]);
 
   const createInsertTokenHandler = useCallback((token: string) => {

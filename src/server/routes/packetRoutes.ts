@@ -363,7 +363,7 @@ router.delete('/', requirePacketPermissions, async (req, res) => {
     logger.info(`🧹 Admin ${user.username} cleared ${deletedCount} packet logs`);
 
     // Log to audit log
-    databaseService.auditLogAsync(
+    void databaseService.auditLogAsync(
       user.id,
       'packets_cleared',
       'packetmonitor',

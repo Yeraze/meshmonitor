@@ -67,9 +67,9 @@ const AuditLogTab: React.FC = () => {
   const itemsPerPage = filters.limit;
 
   useEffect(() => {
-    fetchLogs();
-    fetchStats();
-    fetchUsers();
+    void fetchLogs();
+    void fetchStats();
+    void fetchUsers();
   }, [filters]);
 
   const fetchLogs = async () => {
