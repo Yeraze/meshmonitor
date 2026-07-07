@@ -27,7 +27,7 @@ vi.mock('../services/database.js', () => ({
     },
     messages: {
       getMessage: vi.fn(async () => null),
-      insertMessage: vi.fn((_msg: any, _sourceId?: string) => true),
+      insertMessage: vi.fn(async (_msg: any, _sourceId?: string) => true),
     },
     channels: {
       upsertChannel: vi.fn(async () => undefined),
