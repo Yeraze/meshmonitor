@@ -12,7 +12,7 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
     ['text', 'Message body'], ['from', 'Sender node number (Meshtastic) — for MeshCore channel messages this is a synthetic "channel-<idx>" key, not an identity; use fromName instead'],
     ['fromId', 'Sender node id (!hex) — same MeshCore caveat as from'],
     ['to', 'Recipient node number'], ['toId', 'Recipient node id'], ['channel', 'Channel index'],
-    ['portnum', 'Port number'], ['packetId', 'Packet id (used as tapback replyId) — Meshtastic only; unset for MeshCore, so replyToTrigger has no effect on MeshCore sends'],
+    ['portnum', 'Port number'], ['packetId', 'Packet id (used as tapback replyId) — Meshtastic only; unset for MeshCore, where replyToTrigger instead auto-prepends the @[fromName] mention'],
     ['hops', 'Hop count (hopStart − hopLimit)'], ['hopStart', 'Hop start'], ['hopLimit', 'Hop limit'],
     ['snr', 'Receive SNR — RF-received messages only'], ['rssi', 'Receive RSSI dBm — RF only'],
     ['isDM', 'true if a direct message'], ['isBroadcast', 'true if broadcast'],

@@ -155,9 +155,28 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
     }
 
     case 'action.sendMessage': {
-      const text = await interpolateAsync(String(p.text ?? ''), ctx);
+      let text = await interpolateAsync(String(p.text ?? ''), ctx);
       const destination = await num(ctx, p.to);
       const replyId = p.replyToTrigger ? (ctx.trigger.fields.packetId as number | undefined) : await num(ctx, p.replyId);
+
+      // #3973: "Reply to the triggering message" auto-mention for MeshCore.
+      // MeshCore carries no per-packet id, so `replyId` is always undefined for a
+      // MeshCore trigger and the packetId tapback below is a no-op. A reply is
+      // instead expressed by prepending the app's `@[Name]: ` mention — matching
+      // the in-app reply composer (MeshCoreMessageStream `handleReply`). This only
+      // fires when the trigger is a message that carries a sender display name
+      // (`fromName`, populated only for MeshCore message triggers) and the user
+      // hasn't already written a leading `@[ ]` mention. Meshtastic message
+      // triggers have no `fromName` and keep their packetId tapback, so they are
+      // left untouched (no `@[ ]` convention on Meshtastic).
+      if (p.replyToTrigger && ctx.trigger.triggerType === 'trigger.message') {
+        const senderName = typeof ctx.trigger.fields.fromName === 'string'
+          ? ctx.trigger.fields.fromName.trim()
+          : '';
+        if (senderName && !text.trimStart().startsWith('@[')) {
+          text = `@[${senderName}]: ${text}`;
+        }
+      }
       const fallbackChannel = p.channel != null ? Number(p.channel) : triggerChannel;
 
       // MeshCore scope/region (#3833). Translate the selected mode into the

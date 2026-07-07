@@ -156,11 +156,16 @@ Sends text to a channel or as a DM, with full `{{ }}` token interpolation in the
 - **DM to node #** — send as a direct message instead of to a channel (Meshtastic only — MeshCore
   sends always go to a channel/region, never a DM-by-node). `{{ trigger.from }}` replies to the
   sender.
-- **Reply to the triggering message** — threads the reply as a tapback on Meshtastic. **MeshCore has
-  no reply/thread concept, so this checkbox has no effect there.** MeshCore messages also carry no
-  per-sender packet id, so `{{ trigger.from }}` / `{{ trigger.fromId }}` resolve to a synthetic
-  `channel-<idx>` key for channel messages, not an identity — use `{{ trigger.fromName }}` (the
-  sender's display name) to reference the sender in MeshCore automations instead.
+- **Reply to the triggering message** — on **Meshtastic** this threads the reply as a tapback (via
+  the triggering packet id). MeshCore has no packet-id/thread concept on the wire, so on **MeshCore**
+  this instead **auto-prepends the sender mention** `@[<sender name>]: ` to the outgoing text — the same
+  `@[Name]:` markup the in-app reply button uses — so an automation can reply to whoever sent the
+  triggering message without hand-writing the mention. The sender name comes from
+  `{{ trigger.fromName }}`; if it can't be resolved (e.g. an anonymous channel post with no name
+  prefix) nothing is prepended, and if your text already begins with an `@[…]` mention it is left as-is
+  (no double mention). Note that on MeshCore `{{ trigger.from }}` / `{{ trigger.fromId }}` resolve to a
+  synthetic `channel-<idx>` key for channel messages, not an identity — always reference the sender via
+  `{{ trigger.fromName }}` (or just enable this checkbox).
 - **MeshCore scope** *(advanced; MeshCore sources only — ignored by Meshtastic)* — which region a
   MeshCore message floods to: **Inherit (channel / source default)**, **Match the triggering
   message's scope** (reply on the same region it arrived on), **Unscoped (flood, no region)**, or

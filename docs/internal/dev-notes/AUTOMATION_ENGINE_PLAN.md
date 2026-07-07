@@ -223,9 +223,13 @@ in `src/services/database.ts`). **Resolution rules (apply to every field):**
 >   messages, or the resolved contact's `advName`/`name` for DMs and room posts (#3973 fixed this for
 >   DMs, which previously left `fromName` empty). **This is the correct token to reference "who sent
 >   this" in a MeshCore automation**, not `trigger.from`.
-> - `trigger.packetId` is never set, so `action.sendMessage`'s `replyToTrigger` (which reads
->   `trigger.fields.packetId`) always resolves to a no-op for MeshCore sends — MeshCore has no
->   reply/tapback concept on the wire.
+> - `trigger.packetId` is never set, so on MeshCore `action.sendMessage`'s `replyToTrigger` produces no
+>   Meshtastic-style `replyId` tapback. Instead (#3973) the executor auto-prepends the app's
+>   `@[<fromName>]: ` mention to the outgoing text when `replyToTrigger` is set on a `trigger.message`
+>   that carries a `fromName` — matching the in-app reply composer (`MeshCoreMessageStream.handleReply`).
+>   Guards: no `fromName` → no prepend; text already starting with `@[` → left as-is (no double mention).
+>   Meshtastic triggers have no `fromName`, so the same code path leaves them untouched and their
+>   packetId tapback stands. Implemented in `actionExecutor.ts` `case 'action.sendMessage'`.
 > - `trigger.scopeName` / `trigger.scopeCode` / `trigger.scoped` are MeshCore-only (region/scope).
 
 **`trigger.nodeDiscovered` / `trigger.nodeUpdated`** — payload `NodeUpdateData {nodeNum, node: Partial<DbNode>}` (event `node:updated`).

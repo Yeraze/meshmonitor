@@ -64,6 +64,66 @@ describe('executeAction', () => {
     expect(calls[0].args).toMatchObject({ destination: 777, replyId: 42, channel: 0 });
   });
 
+  // ── replyToTrigger auto-mention for MeshCore (#3973) ────────────────────────
+  it('sendMessage: replyToTrigger prepends @[name] mention for a MeshCore channel trigger', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'see https://example.com', replyToTrigger: true }),
+      // MeshCore channel message: `from` is the synthetic channel-slot key,
+      // the real sender is in `fromName`. No `packetId` on the wire.
+      ctx({ from: 'channel-13', fromId: 'channel-13', fromName: 'Alice', channel: 13, isBroadcast: true }),
+      deps,
+    );
+    expect(calls[0].args.text).toBe('@[Alice]: see https://example.com');
+    // No packetId → no Meshtastic tapback replyId.
+    expect(calls[0].args.replyId).toBeUndefined();
+  });
+
+  it('sendMessage: replyToTrigger prepends @[name] mention for a MeshCore DM trigger', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'got it', replyToTrigger: true }),
+      // MeshCore DM: fromName now populated from the resolved contact (#3973).
+      ctx({ from: 'abc123', fromId: 'abc123', fromName: 'Bob', isDM: true }),
+      deps,
+    );
+    expect(calls[0].args.text).toBe('@[Bob]: got it');
+  });
+
+  it('sendMessage: replyToTrigger does not double-prepend when the text already starts with a mention', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      // User hand-wrote the mention (the pre-fix workaround) — must not be doubled.
+      node('action.sendMessage', { text: '@[{{ trigger.fromName }}] hi', replyToTrigger: true }),
+      ctx({ from: 'channel-9', fromName: 'Carol', channel: 9, isBroadcast: true }),
+      deps,
+    );
+    expect(calls[0].args.text).toBe('@[Carol] hi');
+  });
+
+  it('sendMessage: replyToTrigger does not prepend when the sender name is missing', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'anonymous reply', replyToTrigger: true }),
+      // MeshCore channel message with no parsed sender name — nothing to mention.
+      ctx({ from: 'channel-4', channel: 4, isBroadcast: true }),
+      deps,
+    );
+    expect(calls[0].args.text).toBe('anonymous reply');
+  });
+
+  it('sendMessage: replyToTrigger leaves a Meshtastic reply unchanged (packetId tapback, no mention)', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'pong', to: '{{ trigger.from }}', replyToTrigger: true, channel: 0 }),
+      // Meshtastic message trigger: has packetId, no fromName → tapback, no @[ ] mention.
+      ctx({ from: 777, channel: 0, packetId: 42, isDM: true }),
+      deps,
+    );
+    expect(calls[0].args.text).toBe('pong');
+    expect(calls[0].args.replyId).toBe(42);
+  });
+
   // ── MeshCore scope/region (#3833) ──────────────────────────────────────────
   it('sendMessage: inherit scope omits scopeOverride (default call shape unchanged)', async () => {
     const { calls, deps } = recorder();

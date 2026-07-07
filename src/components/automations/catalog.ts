@@ -318,7 +318,7 @@ export const ACTIONS: BlockDef[] = [
       { name: 'sourceIds', label: 'Send via sources', kind: 'sendSourceMulti', help: 'Which radios to send through (MQTT sources are receive-only and excluded). Leave none to use the source that triggered the automation — but a source IS required for source-less triggers like System events and Schedules.' },
       { name: 'channels', label: 'On channels', kind: 'channelMulti', help: 'Channels to post to, unified by name + key across your sources (the correct local slot is resolved per source). Leave none to use the triggering channel.' },
       { name: 'to', label: 'DM to node #', kind: 'text', tokens: true, placeholder: 'blank = channel; {{ trigger.from }} replies to sender', advanced: true },
-      { name: 'replyToTrigger', label: 'Reply to the triggering message', kind: 'checkbox', advanced: true, help: 'Threads as a tapback reply on Meshtastic. MeshCore has no reply/thread concept, so this has no effect there — use {{ trigger.fromName }} in the text to reference the sender instead.' },
+      { name: 'replyToTrigger', label: 'Reply to the triggering message', kind: 'checkbox', advanced: true, help: 'Meshtastic: threads the reply as a tapback. MeshCore has no tapback, so instead it auto-prepends the @[sender name]: mention to your text (the same markup the reply button uses), so you don’t have to write @[{{ trigger.fromName }}] yourself. No sender name / an existing @[…] mention in your text = no change.' },
       {
         name: 'scopeMode', label: 'MeshCore scope', kind: 'select', advanced: true,
         options: [
