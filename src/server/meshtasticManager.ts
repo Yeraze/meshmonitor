@@ -749,7 +749,11 @@ class MeshtasticManager implements ISourceManager {
   }
 
   async start(): Promise<void> {
-    await this.connect();
+    try {
+      await this.connect();
+    } catch (err) {
+      logger.error(`Source ${this.sourceId} initial connect failed (auto-reconnect will retry):`, err);
+    }
     try {
       await this.virtualNodeServer?.start();
     } catch (err) {

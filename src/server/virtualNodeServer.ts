@@ -140,8 +140,18 @@ export class VirtualNodeServer extends EventEmitter {
       this.server = new Server((socket) => this.handleNewClient(socket));
 
       this.server.on('error', (error) => {
+        const failed = this.server;
+        this.server = null; // allow a future start() to retry instead of no-op'ing
+        failed?.close();
         logger.error('Virtual node server error:', error);
-        this.emit('error', error);
+        // EventEmitter throws synchronously when 'error' is emitted with no
+        // listeners attached — no caller currently listens for it on a
+        // VirtualNodeServer instance, so an unconditional emit here would
+        // turn a recoverable bind failure (e.g. EADDRINUSE) into an
+        // uncaught exception. Only emit if someone is actually listening.
+        if (this.listenerCount('error') > 0) {
+          this.emit('error', error);
+        }
         reject(error);
       });
 
