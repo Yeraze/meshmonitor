@@ -24,6 +24,8 @@ function makeStub(sourceType: ISourceManager['sourceType']): ISourceManager {
       connected: false,
     }),
     getLocalNodeInfo: () => null,
+    startDistanceDeleteScheduler: async () => {},
+    stopDistanceDeleteScheduler: () => {},
   };
 }
 

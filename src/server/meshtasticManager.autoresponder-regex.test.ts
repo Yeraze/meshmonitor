@@ -9,7 +9,7 @@ import { matchAutoResponderPattern } from './utils/autoResponderMatcher.js';
  * with custom regex patterns using {param:regex} syntax.
  *
  * All assertions run against the PRODUCTION `matchAutoResponderPattern` function
- * (src/utils/autoResponderUtils.ts) — not a local copy.
+ * (src/server/utils/autoResponderMatcher.ts) — not a local copy.
  */
 
 describe('Auto Responder - Regex Parameter Matching', () => {

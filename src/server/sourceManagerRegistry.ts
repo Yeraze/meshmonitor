@@ -24,6 +24,10 @@ export interface ISourceManager {
   stop(): Promise<void>;
   getStatus(): SourceStatus;
   getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number; firmwareVersion?: string; rebootCount?: number; isLocked?: boolean } | null;
+  /** Arm (or re-arm) this source's auto-delete-by-distance scheduler from its persisted settings. */
+  startDistanceDeleteScheduler(): Promise<void>;
+  /** Disarm this source's auto-delete-by-distance scheduler. */
+  stopDistanceDeleteScheduler(): void;
 }
 
 /**
