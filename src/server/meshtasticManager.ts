@@ -8,6 +8,7 @@ import { VirtualNodeServer, type VirtualNodeConfig } from './virtualNodeServer.j
 import type { ITransport } from './transports/transport.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
+import { getPrimaryMeshtasticManager } from './sourceManagerTypes.js';
 import { calculateDistance } from '../utils/distance.js';
 import { isNullIsland } from '../utils/nullIsland.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
@@ -14584,8 +14585,38 @@ function matchesMqttEcho(store: Array<{ topic: string; packetId: number; expires
 }
 
 /**
- * @deprecated Use sourceManagerRegistry to manage MeshtasticManager instances.
- * This singleton is kept for backward compatibility with single-source deployments
- * and env-var-only configurations where no source record exists in the database.
+ * Eager fallback instance. Used ONLY when no meshtastic_tcp source is registered
+ * in the sourceManagerRegistry (S4: env-IP-only fallback connect, or early module
+ * access before bootstrapSources runs). Never added to the registry itself.
+ *
+ * Exported so server.ts can pass the concrete instance as `deps.fallbackManager`
+ * to bootstrapSources (WP1/WP2: first TCP source still calls configureSource on it
+ * and registers it; WP3 replaces that path with makeMeshtastic()).
  */
-export default new MeshtasticManager();
+export const fallbackManager = new MeshtasticManager();
+
+/**
+ * @deprecated Use sourceManagerRegistry / getPrimaryMeshtasticManager().
+ *
+ * Live Proxy alias for the registry's current primary meshtastic_tcp manager.
+ * Falls back to `fallbackManager` when no primary is registered (S4 env-IP path).
+ *
+ * Property accesses resolve the registry's primary on EVERY access, fixing the
+ * §2.5 staleness bug: after a user edits the primary source's host in the UI
+ * (removeManager + re-addManager in sourceRoutes), legacy consumers that hold a
+ * reference to this export automatically address the new primary without restart.
+ *
+ * This is a behavior improvement over WP1 where the old singleton object was
+ * stranded — acknowledged as intentional in the WP2 spec (orchestrator approved).
+ */
+const meshtasticManagerAlias = new Proxy(fallbackManager, {
+  get(target, prop, _receiver) {
+    // Resolve primary on every access so changes to the registry are
+    // immediately visible (the staleness fix, §2.5).
+    const primary = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? target;
+    // Use primary as receiver so getters are invoked with the correct `this`.
+    return Reflect.get(primary, prop, primary);
+  },
+});
+
+export default meshtasticManagerAlias;

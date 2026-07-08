@@ -42,14 +42,12 @@ export function isMeshtasticManager(m: ISourceManager): m is MeshtasticManager {
 /**
  * Resolve the primary MeshtasticManager from a registry.
  *
- * WP1 (this implementation): returns the first registered meshtastic_tcp
- * manager in insertion order (the same manager that `firstTcpSourceConfigured`
- * gates in bootstrapSources). This is the fallback path.
- *
- * WP2 will prepend a check of `registry.getPrimaryMeshtasticSourceId()`
- * (an explicit designation set when the first TCP source is started), so
- * the primary is stable even after later sources are added ahead of it in
- * getAllManagers() order.
+ * WP2 (this implementation): first checks the explicitly designated primary
+ * via `registry.getPrimaryMeshtasticSourceId()` (set by
+ * `registry.setPrimaryMeshtasticSource()` when the first TCP source is
+ * registered at boot). Falls back to the first meshtastic_tcp manager in
+ * insertion order when no explicit designation exists (e.g. during tests that
+ * use fresh registries, or before WP3 wires the designation call).
  *
  * Returns `undefined` when no meshtastic_tcp manager is registered (e.g. all-
  * MeshCore, all-disabled-tcp, or autoConnect:false installs).
@@ -57,6 +55,12 @@ export function isMeshtasticManager(m: ISourceManager): m is MeshtasticManager {
 export function getPrimaryMeshtasticManager(
   registry: SourceManagerRegistry,
 ): MeshtasticManager | undefined {
-  // WP2: also check registry.getPrimaryMeshtasticSourceId?.() here.
+  // Prefer the explicitly designated primary (stable across later additions).
+  const primaryId = registry.getPrimaryMeshtasticSourceId();
+  if (primaryId !== null) {
+    const mgr = registry.getManager(primaryId);
+    if (mgr && isMeshtasticManager(mgr)) return mgr as MeshtasticManager;
+  }
+  // Fallback: first registered meshtastic_tcp manager in insertion order.
   return registry.getAllManagers().find(isMeshtasticManager) as MeshtasticManager | undefined;
 }

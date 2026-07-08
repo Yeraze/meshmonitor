@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import databaseService, { DbMessage } from '../services/database.js';
 import { ALL_SOURCES } from '../db/repositories/index.js';
 import { MeshMessage } from '../types/message.js';
-import meshtasticManager from './meshtasticManager.js';
+import meshtasticManager, { fallbackManager } from './meshtasticManager.js';
 import { MeshtasticManager } from './meshtasticManager.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { resolveSourceManager } from './utils/resolveSourceManager.js';
@@ -370,7 +370,11 @@ setTimeout(async () => {
       env: { meshtasticNodeIp: env.meshtasticNodeIp, meshtasticTcpPort: env.meshtasticTcpPort },
       registry: sourceManagerRegistry,
       makeMeshtastic: (id, cfg) => new MeshtasticManager(id, cfg),
-      fallbackManager: meshtasticManager,
+      // WP2: pass the concrete fallback instance (not the Proxy alias) so
+      // configureSource() + registry.addManager() operate on a real manager.
+      // The Proxy alias (meshtasticManager) is kept for (global as any) and
+      // backupSchedulerService so those consumers track the live primary.
+      fallbackManager: fallbackManager,
     });
 
     // Initialize backup scheduler

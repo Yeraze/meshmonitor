@@ -37,6 +37,31 @@ export interface ISourceManager {
 export class SourceManagerRegistry extends EventEmitter {
   private managers: Map<string, ISourceManager> = new Map();
 
+  /**
+   * The sourceId of the explicitly designated primary meshtastic_tcp source.
+   * Set once at boot by setPrimaryMeshtasticSource(); null until then.
+   * WP2: used by getPrimaryMeshtasticManager (in sourceManagerTypes.ts) so
+   * the primary is stable even after later sources are added to the registry.
+   */
+  private primaryMeshtasticSourceId: string | null = null;
+
+  /**
+   * Designate the primary meshtastic_tcp source. Set-once / idempotent-safe:
+   * a second call is silently ignored so callers don't need to guard against
+   * duplicate designation at startup.
+   */
+  setPrimaryMeshtasticSource(sourceId: string): void {
+    if (this.primaryMeshtasticSourceId === null) {
+      this.primaryMeshtasticSourceId = sourceId;
+      logger.info(`Designated primary meshtastic source: ${sourceId}`);
+    }
+  }
+
+  /** Returns the explicitly designated primary meshtastic source id, or null. */
+  getPrimaryMeshtasticSourceId(): string | null {
+    return this.primaryMeshtasticSourceId;
+  }
+
   async addManager(manager: ISourceManager): Promise<void> {
     if (this.managers.has(manager.sourceId)) {
       throw new Error(`Source manager already registered: ${manager.sourceId}`);
