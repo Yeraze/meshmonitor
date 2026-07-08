@@ -49,6 +49,8 @@ export interface MapAnalysisConfig {
     windowEndMs?: number;
   };
   inspectorOpen: boolean;
+  /** Unified node keys (`mt:<nodeNum>` / `mc:<publicKey>`) currently selected/followed; empty = no selection (issue #3788). */
+  selectedNodeIds: string[];
 }
 
 const ALL_NODE_TYPES_VISIBLE = Object.fromEntries(
@@ -72,6 +74,7 @@ export const DEFAULT_CONFIG: MapAnalysisConfig = {
   sources: [],
   timeSlider: { enabled: false },
   inspectorOpen: true,
+  selectedNodeIds: [],
 };
 
 /** Read the traceroute options off a config, layering stored values over defaults. */
@@ -96,6 +99,7 @@ function load(): MapAnalysisConfig {
       layers: { ...DEFAULT_CONFIG.layers, ...(parsed.layers ?? {}) },
       nodeTypes: { ...ALL_NODE_TYPES_VISIBLE, ...(parsed.nodeTypes ?? {}) },
       timeSlider: { ...DEFAULT_CONFIG.timeSlider, ...(parsed.timeSlider ?? {}) },
+      selectedNodeIds: Array.isArray(parsed.selectedNodeIds) ? parsed.selectedNodeIds : [],
     };
   } catch {
     return DEFAULT_CONFIG;
@@ -155,6 +159,10 @@ export function useMapAnalysisConfig() {
     setConfig((prev) => ({ ...prev, sources }));
   }, []);
 
+  const setSelectedNodeIds = useCallback((ids: string[]) => {
+    setConfig((prev) => ({ ...prev, selectedNodeIds: ids }));
+  }, []);
+
   const setTimeSlider = useCallback((ts: Partial<MapAnalysisConfig['timeSlider']>) => {
     setConfig((prev) => ({ ...prev, timeSlider: { ...prev.timeSlider, ...ts } }));
   }, []);
@@ -172,6 +180,7 @@ export function useMapAnalysisConfig() {
     setLayerOptions,
     setNodeTypeEnabled,
     setSources,
+    setSelectedNodeIds,
     setTimeSlider,
     setInspectorOpen,
     reset,

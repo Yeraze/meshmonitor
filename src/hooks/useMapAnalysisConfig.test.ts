@@ -39,4 +39,37 @@ describe('useMapAnalysisConfig', () => {
     const { result } = renderHook(() => useMapAnalysisConfig());
     expect(result.current.config).toEqual(DEFAULT_CONFIG);
   });
+
+  it('defaults selectedNodeIds to an empty array', () => {
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    expect(result.current.config.selectedNodeIds).toEqual([]);
+  });
+
+  it('updates selectedNodeIds and persists to localStorage', () => {
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    act(() => result.current.setSelectedNodeIds(['mt:1', 'mc:ab']));
+    expect(result.current.config.selectedNodeIds).toEqual(['mt:1', 'mc:ab']);
+    expect(JSON.parse(localStorage.getItem(KEY)!).selectedNodeIds).toEqual(['mt:1', 'mc:ab']);
+  });
+
+  it('loads an old config missing selectedNodeIds as an empty array without throwing', () => {
+    const { selectedNodeIds: _omit, ...oldConfig } = DEFAULT_CONFIG;
+    localStorage.setItem(KEY, JSON.stringify(oldConfig));
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    expect(result.current.config.selectedNodeIds).toEqual([]);
+  });
+
+  it('coerces a non-array selectedNodeIds to an empty array', () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...DEFAULT_CONFIG, selectedNodeIds: 'oops' }));
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    expect(result.current.config.selectedNodeIds).toEqual([]);
+  });
+
+  it('reset() clears selectedNodeIds back to an empty array', () => {
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    act(() => result.current.setSelectedNodeIds(['mt:1']));
+    expect(result.current.config.selectedNodeIds).toEqual(['mt:1']);
+    act(() => result.current.reset());
+    expect(result.current.config.selectedNodeIds).toEqual([]);
+  });
 });
