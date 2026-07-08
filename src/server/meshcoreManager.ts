@@ -852,14 +852,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   async start(): Promise<void> {
     if (!this.pendingConfig) {
-      logger.warn(`[MeshCore:${this.sourceId}] start() called but no config stored — call configure() first`);
+      logger.warn(`[MeshCore:${this.sourceId} (${this.sourceName})] start() called but no config stored — call configure() first`);
       return;
     }
     const ok = await this.connect(this.pendingConfig);
     if (ok) {
-      logger.info(`[MeshCore:${this.sourceId}] Auto-connected`);
+      logger.info(`[MeshCore:${this.sourceId} (${this.sourceName})] Auto-connected`);
     } else {
-      logger.warn(`[MeshCore:${this.sourceId}] Auto-connect failed`);
+      logger.warn(`[MeshCore:${this.sourceId} (${this.sourceName})] Auto-connect failed`);
     }
   }
 
@@ -893,6 +893,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
 
     this.config = config;
+    this.pendingConfig = config; // keep staging field in sync with direct connect() calls
 
     // Pre-seed in-memory message cache from DB so history survives restarts.
     // Reset the array first to avoid duplicates on reconnect within the same
