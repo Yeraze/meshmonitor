@@ -5,7 +5,7 @@ import { requirePermission, optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
-import { meshcoreConfigFromSource } from '../meshcoreConfig.js';
+import { meshcoreConfigFromSource, ensureMeshCoreManagerStarted } from '../meshcoreConfig.js';
 import { MeshCoreManager } from '../meshcoreManager.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { MqttBrokerManager, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
@@ -414,15 +414,7 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       try {
         const mcConfig = meshcoreConfigFromSource(source);
         if (mcConfig) {
-          // Create-or-connect recipe: register in the unified sourceManagerRegistry.
-          const existing = sourceManagerRegistry.getManager(source.id);
-          if (!existing) {
-            const mc = new MeshCoreManager(source.id, source.name);
-            mc.configure(mcConfig);
-            await sourceManagerRegistry.addManager(mc); // start() → connect(mcConfig)
-          } else if (isMeshCoreManager(existing) && !existing.isConnected()) {
-            await existing.connect(mcConfig);
-          }
+          await ensureMeshCoreManagerStarted(source, mcConfig);
         } else {
           logger.warn(`MeshCore source ${source.id} created with incomplete config`);
         }
@@ -563,14 +555,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
       try {
         const mcConfig = meshcoreConfigFromSource(source);
         if (mcConfig) {
-          const existing = sourceManagerRegistry.getManager(source.id);
-          if (!existing) {
-            const mc = new MeshCoreManager(source.id, source.name);
-            mc.configure(mcConfig);
-            await sourceManagerRegistry.addManager(mc);
-          } else if (isMeshCoreManager(existing) && !existing.isConnected()) {
-            await existing.connect(mcConfig);
-          }
+          await ensureMeshCoreManagerStarted(source, mcConfig);
         } else {
           logger.warn(`MeshCore source ${source.id} enabled with incomplete config`);
         }
@@ -612,14 +597,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
       try {
         const mcConfig = meshcoreConfigFromSource(source);
         if (mcConfig) {
-          const existing = sourceManagerRegistry.getManager(source.id);
-          if (!existing) {
-            const mc = new MeshCoreManager(source.id, source.name);
-            mc.configure(mcConfig);
-            await sourceManagerRegistry.addManager(mc);
-          } else if (isMeshCoreManager(existing) && !existing.isConnected()) {
-            await existing.connect(mcConfig);
-          }
+          await ensureMeshCoreManagerStarted(source, mcConfig);
         } else {
           logger.warn(`MeshCore source ${source.id} has incomplete config; not auto-connecting`);
         }
@@ -716,9 +694,7 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         const mcConfig = meshcoreConfigFromSource(source);
         if (mcConfig) {
           await sourceManagerRegistry.removeManager(source.id);
-          const mc = new MeshCoreManager(source.id, source.name);
-          mc.configure(mcConfig);
-          await sourceManagerRegistry.addManager(mc);
+          await ensureMeshCoreManagerStarted(source, mcConfig);
         } else {
           logger.warn(`MeshCore source ${source.id} updated to incomplete config`);
         }

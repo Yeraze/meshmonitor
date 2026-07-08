@@ -8,8 +8,11 @@
  * pulling in the (now-deprecated) MeshCoreManagerRegistry class.
  */
 
-import { ConnectionType, type MeshCoreConfig } from './meshcoreManager.js';
+import { ConnectionType, MeshCoreManager, type MeshCoreConfig } from './meshcoreManager.js';
 import type { Source } from '../db/repositories/sources.js';
+import { sourceManagerRegistry } from './sourceManagerRegistry.js';
+import { isMeshCoreManager } from './sourceManagerTypes.js';
+import { logger } from '../utils/logger.js';
 
 export interface MeshCoreSourceConfig {
   transport?: 'usb' | 'serial' | 'tcp';
@@ -52,6 +55,32 @@ export function virtualNodeConfigFromSource(cfg: MeshCoreSourceConfig): MeshCore
     port: typeof vn.port === 'number' && vn.port > 0 ? vn.port : DEFAULT_VIRTUAL_NODE_PORT,
     allowAdminCommands: vn.allowAdminCommands === true,
   };
+}
+
+/**
+ * Ensure a MeshCore manager is started for the given source.
+ *
+ * - If no manager is registered: creates one, configures it, and registers it
+ *   (which auto-calls start() → connect()).
+ * - If a MeshCore manager is registered but disconnected: reconnects it with
+ *   the supplied config.
+ * - If already registered and connected: logs a debug message and skips.
+ *
+ * This is the canonical create-or-connect recipe for MeshCore sources, shared
+ * by sourceRoutes.ts (auto-connect on create/enable/config-change) and
+ * server.ts (startup auto-connect loop).
+ */
+export async function ensureMeshCoreManagerStarted(source: Source, cfg: MeshCoreConfig): Promise<void> {
+  const existing = sourceManagerRegistry.getManager(source.id);
+  if (!existing) {
+    const mc = new MeshCoreManager(source.id, source.name);
+    mc.configure(cfg);
+    await sourceManagerRegistry.addManager(mc);
+  } else if (isMeshCoreManager(existing) && !existing.isConnected()) {
+    await existing.connect(cfg);
+  } else {
+    logger.debug(`[MeshCore:${source.id}] Manager already registered as meshcore and connected — skipping auto-connect`);
+  }
 }
 
 /**
