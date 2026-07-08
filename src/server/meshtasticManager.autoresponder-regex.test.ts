@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
-import { matchAutoResponderPattern } from '../utils/autoResponderUtils.js';
+import { matchAutoResponderPattern } from './utils/autoResponderMatcher.js';
 
 /**
  * Auto Responder Regex Parameter Matching Tests

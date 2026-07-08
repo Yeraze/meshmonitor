@@ -35,7 +35,8 @@ import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceServ
 import { MessageQueueService } from './messageQueueService.js';
 import { resolveAutoWelcomeDelaySeconds } from './autoWelcomeDelay.js';
 import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
-import { normalizeTriggerPatterns, normalizeTriggerChannels, matchAutoResponderPattern } from '../utils/autoResponderUtils.js';
+import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
+import { matchAutoResponderPattern } from './utils/autoResponderMatcher.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
 import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
