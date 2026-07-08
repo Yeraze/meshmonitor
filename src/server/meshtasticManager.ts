@@ -31,7 +31,11 @@ import {
   type ParsedClientNotification,
 } from './services/clientNotificationPolicy.js';
 import { waypointService } from './services/waypointService.js';
-import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
+// import type only — cannot use a static runtime import here because of a circular
+// dependency chain: meshtasticManager → distanceDeleteScheduler →
+// autoDeleteByDistanceService → resolveSourceManager → meshtasticManager.
+// The class is loaded lazily via dynamic import() inside startDistanceDeleteScheduler().
+import type { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { MessageQueueService } from './messageQueueService.js';
 import { resolveAutoWelcomeDelaySeconds } from './autoWelcomeDelay.js';
 import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
@@ -530,7 +534,9 @@ class MeshtasticManager implements ISourceManager {
   private userDisconnectedState = false;  // Track user-initiated disconnect
   private tracerouteInterval: NodeJS.Timeout | null = null;
   private tracerouteJitterTimeout: NodeJS.Timeout | null = null;
-  private distanceDeleteInterval: NodeJS.Timeout | null = null;
+  // null until startDistanceDeleteScheduler() is first called (lazy-loaded to
+  // avoid the meshtasticManager → distanceDeleteScheduler circular import).
+  private distanceDeleteScheduler: DistanceDeleteScheduler | null = null;
   // Reconnect flood prevention timing (#2474)
   private static readonly SCHEDULER_STAGGER_MS = 5000;  // Delay between each scheduler start
   private static readonly CONFIG_COMPLETE_FALLBACK_MS = 120000;  // Fallback if configComplete never arrives
@@ -2019,51 +2025,26 @@ class MeshtasticManager implements ISourceManager {
     }, initialJitterMs);
   }
 
-  /**
-   * Start (or restart) the per-source auto-delete-by-distance scheduler.
-   * Reads autoDeleteByDistanceEnabled / autoDeleteByDistanceIntervalHours via
-   * getSettingForSource so each source uses its own configuration.
+  /** Start this source's per-source auto-delete-by-distance scheduler (#3901).
+   *
+   * The DistanceDeleteScheduler is created lazily on the first call to break the
+   * static import cycle:
+   *   meshtasticManager → distanceDeleteScheduler → autoDeleteByDistanceService
+   *   → resolveSourceManager → meshtasticManager
+   * Subsequent calls re-arm the same instance (DistanceDeleteScheduler.start()
+   * calls stop() internally before re-scheduling, so restarts are safe).
    */
   public async startDistanceDeleteScheduler(): Promise<void> {
-    // Clear any existing interval
-    if (this.distanceDeleteInterval) {
-      clearInterval(this.distanceDeleteInterval);
-      this.distanceDeleteInterval = null;
+    if (!this.distanceDeleteScheduler) {
+      const { DistanceDeleteScheduler: Scheduler } = await import('./services/distanceDeleteScheduler.js');
+      this.distanceDeleteScheduler = new Scheduler(this.sourceId);
     }
-
-    const enabled = await databaseService.settings.getSettingForSource(this.sourceId, 'autoDeleteByDistanceEnabled');
-    if (enabled !== 'true') {
-      logger.debug(`🗑️ Auto-delete-by-distance disabled for source ${this.sourceId}`);
-      return;
-    }
-
-    const intervalHoursStr = await databaseService.settings.getSettingForSource(this.sourceId, 'autoDeleteByDistanceIntervalHours');
-    const intervalHours = parseInt(intervalHoursStr || '24', 10);
-    const intervalMs = Math.max(1, intervalHours) * 60 * 60 * 1000;
-
-    logger.debug(`🗑️ Starting auto-delete-by-distance scheduler for source ${this.sourceId} (interval: ${intervalHours}h)`);
-
-    // Initial run after 2 minutes (matches prior singleton behavior)
-    setTimeout(() => {
-      autoDeleteByDistanceService.runDeleteCycle(this.sourceId).catch(err =>
-        logger.error(`❌ Auto-delete-by-distance initial run failed for source ${this.sourceId}:`, err));
-    }, 120_000);
-
-    this.distanceDeleteInterval = setInterval(() => {
-      autoDeleteByDistanceService.runDeleteCycle(this.sourceId).catch(err =>
-        logger.error(`❌ Auto-delete-by-distance run failed for source ${this.sourceId}:`, err));
-    }, intervalMs);
+    await this.distanceDeleteScheduler.start();
   }
 
-  /**
-   * Stop the auto-delete-by-distance scheduler for this source.
-   */
+  /** Stop this source's per-source auto-delete-by-distance scheduler (#3901). */
   public stopDistanceDeleteScheduler(): void {
-    if (this.distanceDeleteInterval) {
-      clearInterval(this.distanceDeleteInterval);
-      this.distanceDeleteInterval = null;
-      logger.debug(`⏹️ Auto-delete-by-distance scheduler stopped for source ${this.sourceId}`);
-    }
+    this.distanceDeleteScheduler?.stop();
   }
 
   setTracerouteInterval(minutes: number): void {
@@ -14374,10 +14355,7 @@ class MeshtasticManager implements ISourceManager {
       this.remoteLocalStatsInterval = null;
     }
 
-    if (this.distanceDeleteInterval) {
-      clearInterval(this.distanceDeleteInterval);
-      this.distanceDeleteInterval = null;
-    }
+    this.distanceDeleteScheduler?.stop();
 
     if (this.remoteAdminScannerInterval) {
       clearInterval(this.remoteAdminScannerInterval);

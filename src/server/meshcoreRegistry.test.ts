@@ -30,6 +30,8 @@ function makeMeshCoreStub(sourceId = 'mc-shim'): ISourceManager {
       connected: true,
     }),
     getLocalNodeInfo: () => null,
+    startDistanceDeleteScheduler: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    stopDistanceDeleteScheduler: vi.fn<() => void>(),
   };
 }
 
@@ -53,6 +55,8 @@ function makeMeshtasticStub(sourceId = 'mt-shim'): ISourceManager {
       longName: 'Node',
       shortName: 'N',
     }),
+    startDistanceDeleteScheduler: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    stopDistanceDeleteScheduler: vi.fn<() => void>(),
   };
 }
 

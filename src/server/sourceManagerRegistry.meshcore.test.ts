@@ -51,6 +51,8 @@ function makeMeshtasticStub(sourceId = 'mt-1'): ISourceManager {
       longName: 'Test Node',
       shortName: 'TN',
     }),
+    startDistanceDeleteScheduler: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    stopDistanceDeleteScheduler: vi.fn<() => void>(),
   };
 }
 

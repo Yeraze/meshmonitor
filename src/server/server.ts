@@ -1157,19 +1157,18 @@ setSettingsCallbacks({
   handleAutoWelcomeEnabled: () => { databaseService.handleAutoWelcomeEnabledAsync().catch(() => {}); return 0; },
   invalidateHtmlCache,
   // Auto-delete-by-distance is per-source (#3901): route the restart/stop to
-  // the owning source manager (across both the primary and MeshCore registries)
-  // so each source schedules against its own settings. There is no global
-  // singleton — a null sourceId is a no-op.
+  // the owning source manager so each source schedules against its own settings.
+  // There is no global singleton — a null sourceId is a no-op.
   restartAutoDeleteByDistanceService: (sourceId?: string | null) => {
     if (!sourceId) return;
-    const mgr = sourceManagerRegistry.getManager(sourceId) as { startDistanceDeleteScheduler?: () => Promise<void> } | undefined;
-    mgr?.startDistanceDeleteScheduler?.().catch((err: unknown) =>
+    const mgr = sourceManagerRegistry.getManager(sourceId);
+    mgr?.startDistanceDeleteScheduler().catch((err: unknown) =>
       logger.error(`Failed to restart auto-delete-by-distance scheduler for source ${sourceId}:`, err));
   },
   stopAutoDeleteByDistanceService: (sourceId?: string | null) => {
     if (!sourceId) return;
-    const mgr = sourceManagerRegistry.getManager(sourceId) as { stopDistanceDeleteScheduler?: () => void } | undefined;
-    mgr?.stopDistanceDeleteScheduler?.();
+    const mgr = sourceManagerRegistry.getManager(sourceId);
+    mgr?.stopDistanceDeleteScheduler();
   },
 });
 
