@@ -8,7 +8,7 @@
  * - Write operations require authentication (connect, disconnect, send, config)
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { ConnectionType, MeshCoreDeviceType, MeshCoreManager, MeshCoreDiscoverFilter, type MeshCoreDiscoverMode } from '../meshcoreManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
@@ -39,10 +39,11 @@ import { decodeMeshCorePacket } from '../../utils/meshcorePacketDecode.js';
  * Presence + existence of the manager is enforced by the router-level
  * guard below, so the assertion here is safe.
  */
-function managerFor(req: Request): MeshCoreManager {
-  const sourceId = (req.params as { id?: string }).id!;
-  // The router guard has already verified this manager exists and is a MeshCoreManager.
-  return sourceManagerRegistry.getManager(sourceId) as MeshCoreManager;
+function managerFor(_req: Request, res: Response): MeshCoreManager {
+  // Return the manager cached in res.locals by the router-level guard.
+  // This eliminates the TOCTOU window of a second getManager() call after the
+  // guard has already verified existence + type.
+  return res.locals.meshcoreManager as MeshCoreManager;
 }
 
 const router = Router({ mergeParams: true });
@@ -52,7 +53,7 @@ const router = Router({ mergeParams: true });
  * must have a registered manager. This lets every handler call
  * `managerFor` without null-checking at each call-site.
  */
-router.use((req, res, next) => {
+router.use((req, res: Response, next: NextFunction) => {
   const sourceId = (req.params as { id?: string }).id;
   if (!sourceId) {
     return res.status(404).json({
@@ -67,6 +68,8 @@ router.use((req, res, next) => {
       error: `No MeshCore manager for source ${sourceId}`,
     });
   }
+  // Cache the narrowed manager so managerFor() can avoid a second registry lookup.
+  res.locals.meshcoreManager = _guardMgr as MeshCoreManager;
   next();
 });
 
@@ -277,7 +280,7 @@ function isValidConnectionParams(params: {
  */
 router.get('/status', optionalAuth(), requirePermission('connection', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const manager = managerFor(req);
+    const manager = managerFor(req, res);
     const status = manager.getConnectionStatus();
     const localNode = manager.getLocalNode();
 
@@ -329,7 +332,7 @@ router.post('/connect', meshcoreDeviceLimiter, requireAuth(), requirePermission(
       firmwareType,
     };
 
-    const manager = managerFor(req);
+    const manager = managerFor(req, res);
     const success = await manager.connect(config);
 
     if (success) {
@@ -357,7 +360,7 @@ router.post('/connect', meshcoreDeviceLimiter, requireAuth(), requirePermission(
  */
 router.post('/disconnect', meshcoreDeviceLimiter, requireAuth(), requirePermission('connection', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    await managerFor(req).disconnect();
+    await managerFor(req, res).disconnect();
     res.json({ success: true, message: 'Disconnected' });
   } catch (error) {
     logger.error('[API] Error disconnecting:', error);
@@ -371,7 +374,7 @@ router.post('/disconnect', meshcoreDeviceLimiter, requireAuth(), requirePermissi
  */
 router.get('/nodes', optionalAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const nodes = await managerFor(req).getAllNodes();
+    const nodes = await managerFor(req, res).getAllNodes();
     res.json({
       success: true,
       data: nodes,
@@ -435,7 +438,7 @@ router.get(
  */
 router.get('/contacts', optionalAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const manager = managerFor(req);
+    const manager = managerFor(req, res);
     const contacts = manager.getContacts();
     const localNode = manager.getLocalNode();
 
@@ -473,7 +476,7 @@ router.get('/contacts', optionalAuth(), requirePermission('nodes', 'read', { sou
  */
 router.post('/contacts/refresh', meshcoreDeviceLimiter, requireAuth(), requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const contacts = await managerFor(req).refreshContacts();
+    const contacts = await managerFor(req, res).refreshContacts();
     res.json({
       success: true,
       data: Array.from(contacts.values()),
@@ -509,7 +512,7 @@ router.post(
           error: 'Invalid public key — must be 64-char hex',
         });
       }
-      const ok = await managerFor(req).resetContactPath(publicKey);
+      const ok = await managerFor(req, res).resetContactPath(publicKey);
       if (!ok) {
         return res.status(409).json({
           success: false,
@@ -547,7 +550,7 @@ router.post(
           error: 'Invalid public key — must be 64-char hex',
         });
       }
-      const ok = await managerFor(req).discoverContactPath(publicKey);
+      const ok = await managerFor(req, res).discoverContactPath(publicKey);
       if (!ok) {
         return res.status(409).json({
           success: false,
@@ -595,7 +598,7 @@ router.post(
         : MeshCoreDiscoverFilter.NEARBY;
       // fetchNames=true: actively pull each discovered repeater/room-server's
       // name via ANON_REQ OWNER so the result is named within seconds (#3820).
-      const { returned, newCount } = await managerFor(req).discoverNodes(filter, 8000, true);
+      const { returned, newCount } = await managerFor(req, res).discoverNodes(filter, 8000, true);
       res.json({ success: true, returned, new: newCount });
     } catch (error) {
       logger.error('[API] Error discovering nodes:', error);
@@ -623,7 +626,7 @@ router.post(
   requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
-      const result = await managerFor(req).discoverRegions();
+      const result = await managerFor(req, res).discoverRegions();
       res.json({ success: true, ...result });
     } catch (error) {
       logger.error('[API] Error discovering regions:', error);
@@ -644,7 +647,7 @@ router.get(
   requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
-      const enabled = await managerFor(req).getRespondToDiscovery();
+      const enabled = await managerFor(req, res).getRespondToDiscovery();
       res.json({ success: true, enabled });
     } catch (error) {
       logger.error('[API] Error reading discoverable setting:', error);
@@ -671,7 +674,7 @@ router.post(
       if (typeof enabled !== 'boolean') {
         return res.status(400).json({ success: false, error: 'enabled must be a boolean' });
       }
-      await managerFor(req).setRespondToDiscovery(enabled);
+      await managerFor(req, res).setRespondToDiscovery(enabled);
       res.json({ success: true, enabled });
     } catch (error) {
       logger.error('[API] Error setting discoverable:', error);
@@ -691,7 +694,7 @@ router.get(
   requirePermission('configuration', 'read', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
-      const scope = await managerFor(req).getDefaultScope();
+      const scope = await managerFor(req, res).getDefaultScope();
       res.json({ success: true, scope });
     } catch (error) {
       logger.error('[API] Error reading default scope:', error);
@@ -723,7 +726,7 @@ router.post(
       if (stripped !== '' && !/^[A-Za-z0-9-]{1,63}$/.test(stripped)) {
         return res.status(400).json({ success: false, error: 'Scope must be 1-63 chars: letters, digits, hyphen' });
       }
-      const scope = await managerFor(req).setDefaultScope(stripped);
+      const scope = await managerFor(req, res).setDefaultScope(stripped);
       res.json({ success: true, scope });
     } catch (error) {
       logger.error('[API] Error setting default scope:', error);
@@ -838,7 +841,7 @@ router.post(
           error: 'Invalid public key — must be 64-char hex',
         });
       }
-      const result = await managerFor(req).traceContactPath(publicKey);
+      const result = await managerFor(req, res).traceContactPath(publicKey);
       if (!result) {
         return res.status(409).json({
           success: false,
@@ -924,7 +927,7 @@ router.put(
           error: `outPath too long: ${hopCount} hops (max 63)`,
         });
       }
-      const ok = await managerFor(req).setContactOutPath(publicKey, parsed, hashBytes);
+      const ok = await managerFor(req, res).setContactOutPath(publicKey, parsed, hashBytes);
       if (!ok) {
         return res.status(409).json({
           success: false,
@@ -961,7 +964,7 @@ router.post(
           error: 'Invalid public key — must be 64-char hex',
         });
       }
-      const result = await managerFor(req).shareContact(publicKey);
+      const result = await managerFor(req, res).shareContact(publicKey);
       if (!result.ok) {
         const error =
           result.error ??
@@ -1001,7 +1004,7 @@ router.delete(
       if (!publicKey) {
         return res.status(400).json({ success: false, error: 'Missing public key' });
       }
-      const manager = managerFor(req);
+      const manager = managerFor(req, res);
       // Try the device-side removal first (deletes from the device + DB on a
       // connected Companion). If that can't apply — the key isn't a real device
       // contact (malformed/ghost), the source is disconnected, or it's not a
@@ -1047,7 +1050,7 @@ router.get(
           error: 'Invalid public key — must be 64-char hex or "self"',
         });
       }
-      const bytes = await managerFor(req).exportContact(isSelf ? null : publicKey);
+      const bytes = await managerFor(req, res).exportContact(isSelf ? null : publicKey);
       if (!bytes) {
         return res.status(409).json({
           success: false,
@@ -1088,7 +1091,7 @@ router.post(
           error: 'advertBytes must contain only integers 0-255',
         });
       }
-      const ok = await managerFor(req).importContact(advertBytes);
+      const ok = await managerFor(req, res).importContact(advertBytes);
       if (!ok) {
         return res.status(409).json({
           success: false,
@@ -1130,7 +1133,7 @@ router.get(
       const count = Math.min(Math.max(parseInt(req.query.count as string || '10', 10) || 10, 1), 50);
       const offset = Math.max(parseInt(req.query.offset as string || '0', 10) || 0, 0);
       const orderBy = Math.min(Math.max(parseInt(req.query.orderBy as string || '0', 10) || 0, 0), 3);
-      const manager = managerFor(req);
+      const manager = managerFor(req, res);
       const result = await manager.getNeighbours(publicKey, { count, offset, orderBy });
       if (!result) {
         return res.status(409).json({
@@ -1177,7 +1180,7 @@ router.post(
   requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
-      const result = await managerFor(req).syncDeviceTime();
+      const result = await managerFor(req, res).syncDeviceTime();
       if (!result.ok) {
         if (result.reason === 'command-failed') {
           // The guards passed but the device rejected (or never acked) the
@@ -1224,7 +1227,7 @@ router.post(
           code: 'DANGER_CONFIRM_REQUIRED',
         });
       }
-      const ok = await managerFor(req).rebootDevice();
+      const ok = await managerFor(req, res).rebootDevice();
       if (!ok) {
         return res.status(409).json({
           success: false,
@@ -1254,7 +1257,7 @@ router.get(
   requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
-      const hex = await managerFor(req).exportPrivateKey();
+      const hex = await managerFor(req, res).exportPrivateKey();
       if (!hex) {
         return res.status(409).json({
           success: false,
@@ -1300,7 +1303,7 @@ router.post(
           error: 'privateKey must be a 128-character hex string',
         });
       }
-      const ok = await managerFor(req).importPrivateKey(privateKey);
+      const ok = await managerFor(req, res).importPrivateKey(privateKey);
       if (!ok) {
         return res.status(409).json({
           success: false,
@@ -1330,7 +1333,7 @@ router.get(
   requirePermission('connection', 'read', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
-      const manager = managerFor(req);
+      const manager = managerFor(req, res);
       const type = req.params.type;
       let data: any = null;
       if (type === 'core') data = await manager.getStatsCore();
@@ -1365,7 +1368,7 @@ router.get('/messages', optionalAuth(), requirePermission('messages', 'read', { 
     }
     const sinceRaw = req.query.since as string | undefined;
     const since = sinceRaw ? parseInt(sinceRaw, 10) : undefined;
-    let messages = managerFor(req).getRecentMessages(limit);
+    let messages = managerFor(req, res).getRecentMessages(limit);
     if (since !== undefined && !isNaN(since)) {
       messages = messages.filter(m => m.timestamp > since);
     }
@@ -1398,7 +1401,7 @@ router.get('/messages/channel/:idx', optionalAuth(), requirePermission('messages
     } else if (limit > VALIDATION.MAX_MESSAGE_LIMIT) {
       limit = VALIDATION.MAX_MESSAGE_LIMIT;
     }
-    const messages = await managerFor(req).getChannelMessages(idx, limit);
+    const messages = await managerFor(req, res).getChannelMessages(idx, limit);
     res.json({
       success: true,
       data: messages,
@@ -1426,7 +1429,7 @@ router.get('/messages/channel-counts', optionalAuth(), requirePermission('messag
       .filter((n) => Number.isInteger(n) && n >= 0);
     // De-dupe and cap to a sane number of channels per request.
     const unique = Array.from(new Set(indices)).slice(0, 64);
-    const manager = managerFor(req);
+    const manager = managerFor(req, res);
     const [counts, latestTimestamps] = unique.length > 0
       ? await Promise.all([
           manager.getChannelMessageCounts(unique),
@@ -1448,7 +1451,7 @@ router.get('/messages/channel-counts', optionalAuth(), requirePermission('messag
  */
 router.delete('/messages', requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const deletedCount = await managerFor(req).purgeAllMessages();
+    const deletedCount = await managerFor(req, res).purgeAllMessages();
     auditMeshcoreEvent(req, 'meshcore_messages_purged', 'messages', {
       sourceId: req.params.id,
       deletedCount,
@@ -1471,7 +1474,7 @@ router.delete('/messages/channel/:idx', requireAuth(), requirePermission('messag
     if (isNaN(idx) || idx < 0) {
       return res.status(400).json({ success: false, error: 'idx must be a non-negative integer' });
     }
-    const deletedCount = await managerFor(req).purgeChannelMessages(idx);
+    const deletedCount = await managerFor(req, res).purgeChannelMessages(idx);
     auditMeshcoreEvent(req, 'meshcore_channel_messages_cleared', 'messages', {
       sourceId: req.params.id,
       channelIdx: idx,
@@ -1496,7 +1499,7 @@ router.delete('/messages/conversation/:publicKey', requireAuth(), requirePermiss
     if (!/^[0-9a-f]{2,64}$/.test(publicKey)) {
       return res.status(400).json({ success: false, error: 'publicKey must be a hex string' });
     }
-    const deletedCount = await managerFor(req).purgeConversation(publicKey);
+    const deletedCount = await managerFor(req, res).purgeConversation(publicKey);
     auditMeshcoreEvent(req, 'meshcore_dm_conversation_cleared', 'messages', {
       sourceId: req.params.id,
       publicKey,
@@ -1522,7 +1525,7 @@ router.delete('/messages/:messageId', requireAuth(), requirePermission('messages
     if (!messageId) {
       return res.status(400).json({ success: false, error: 'message id is required' });
     }
-    const deleted = await managerFor(req).deleteStoredMessage(messageId);
+    const deleted = await managerFor(req, res).deleteStoredMessage(messageId);
     if (!deleted) {
       return res.status(404).json({ success: false, error: 'Message not found' });
     }
@@ -1544,7 +1547,7 @@ router.delete('/messages/:messageId', requireAuth(), requirePermission('messages
  */
 router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const manager = managerFor(req);
+    const manager = managerFor(req, res);
     const status = manager.getConnectionStatus();
     const localNode = manager.getLocalNode();
     const contacts = manager.getContacts();
@@ -1609,7 +1612,7 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
  */
 router.get('/info', optionalAuth(), requirePermission('connection', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const manager = managerFor(req);
+    const manager = managerFor(req, res);
     const status = manager.getConnectionStatus();
     const localNode = manager.getLocalNode();
     const poller = getMeshCoreTelemetryPoller();
@@ -1710,7 +1713,7 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
       scopeOverride = scope;
     }
 
-    const success = await managerFor(req).sendMessage(text, toPublicKey, parsedChannelIdx, scopeOverride);
+    const success = await managerFor(req, res).sendMessage(text, toPublicKey, parsedChannelIdx, scopeOverride);
 
     if (success) {
       res.json({ success: true, message: 'Message sent' });
@@ -1730,7 +1733,7 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
  */
 router.post('/advert', meshcoreDeviceLimiter, requireAuth(), requirePermission('connection', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const success = await managerFor(req).sendAdvert();
+    const success = await managerFor(req, res).sendAdvert();
 
     if (success) {
       res.json({ success: true, message: 'Advert sent' });
@@ -1785,7 +1788,7 @@ router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
       });
     }
 
-    const success = await managerFor(req).loginToNode(publicKey, password);
+    const success = await managerFor(req, res).loginToNode(publicKey, password);
     if (!success) {
       auditMeshcoreEvent(req, 'meshcore_remote_login_failed', 'remote_admin', {
         sourceId,
@@ -1839,7 +1842,7 @@ router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
  */
 router.get('/rooms/servers', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const manager = managerFor(req);
+    const manager = managerFor(req, res);
     const rooms = manager.getRoomServers();
     const result = rooms.map(r => ({
       publicKey: r.publicKey,
@@ -1891,7 +1894,7 @@ router.post('/rooms/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
       });
     }
 
-    const success = await managerFor(req).loginToRoom(publicKey, password);
+    const success = await managerFor(req, res).loginToRoom(publicKey, password);
     if (!success) {
       return res.status(401).json({ success: false, error: 'Room login failed' });
     }
@@ -1936,7 +1939,7 @@ router.post('/rooms/login-with-saved', meshcoreDeviceLimiter, requireAuth(), req
       return res.status(409).json({ success: false, error: 'Saved credential was encrypted with a different key', code: 'CREDENTIAL_KEY_ROTATED' });
     }
 
-    const success = await managerFor(req).loginToRoom(publicKey, result.password);
+    const success = await managerFor(req, res).loginToRoom(publicKey, result.password);
     if (!success) {
       return res.status(401).json({ success: false, error: 'Saved credential rejected by room server', code: 'STORED_CREDENTIAL_REJECTED' });
     }
@@ -1988,7 +1991,7 @@ router.post('/rooms/post', messageLimiter, requireAuth(), requirePermission('mes
       return res.status(400).json({ success: false, error: textValidation.error });
     }
 
-    const success = await managerFor(req).sendRoomPost(text!, roomPublicKey);
+    const success = await managerFor(req, res).sendRoomPost(text!, roomPublicKey);
     if (success) {
       res.json({ success: true, message: 'Room post sent' });
     } else {
@@ -2111,7 +2114,7 @@ router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermissio
         : undefined;
 
     try {
-      const manager = managerFor(req);
+      const manager = managerFor(req, res);
       const result = await manager.sendCliCommand(publicKey, command, {
         timeoutMs: effectiveTimeout,
       });
@@ -2205,7 +2208,7 @@ router.post('/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('con
         : undefined;
 
     try {
-      const manager = managerFor(req);
+      const manager = managerFor(req, res);
       const result = await manager.sendLocalCliCommand(command, {
         timeoutMs: effectiveTimeout,
       });
@@ -2335,7 +2338,7 @@ router.post('/admin/login-with-saved', meshcoreDeviceLimiter, requireAuth(), req
     }
     // result.password is intentionally consumed in-process only; do not
     // log it, do not echo it, do not include it in any response field.
-    const ok = await managerFor(req).loginToNode(publicKey, result.password);
+    const ok = await managerFor(req, res).loginToNode(publicKey, result.password);
     if (!ok) {
       auditMeshcoreEvent(req, 'meshcore_remote_login_saved_failed', 'remote_admin', {
         sourceId, publicKey, code: 'STORED_CREDENTIAL_REJECTED',
@@ -2388,7 +2391,7 @@ router.get('/admin/status/:publicKey', requireAuth(), requirePermission('remote_
       return res.status(400).json({ success: false, error: 'Invalid public key format (expected 64-character hex string)' });
     }
 
-    const status = await managerFor(req).requestNodeStatus(publicKey);
+    const status = await managerFor(req, res).requestNodeStatus(publicKey);
 
     if (status) {
       res.json({ success: true, data: status });
@@ -2416,7 +2419,7 @@ router.post('/config/name', meshcoreDeviceLimiter, requireAuth(), requirePermiss
       return res.status(400).json({ success: false, error: nameValidation.error });
     }
 
-    const success = await managerFor(req).setName(name.trim());
+    const success = await managerFor(req, res).setName(name.trim());
 
     if (success) {
       res.json({ success: true, message: 'Name updated' });
@@ -2448,7 +2451,7 @@ router.post('/config/tx-power', meshcoreDeviceLimiter, requireAuth(), requirePer
       return res.status(400).json({ success: false, error: 'TX power must be between 1 and 22 dBm' });
     }
 
-    const success = await managerFor(req).setTxPower(parsedPower);
+    const success = await managerFor(req, res).setTxPower(parsedPower);
 
     if (success) {
       res.json({ success: true, message: 'TX power updated' });
@@ -2489,7 +2492,7 @@ router.post('/config/radio', meshcoreDeviceLimiter, requireAuth(), requirePermis
       return res.status(400).json({ success: false, error: radioValidation.error });
     }
 
-    const success = await managerFor(req).setRadio(parsedFreq, parsedBw, parsedSf, parsedCr);
+    const success = await managerFor(req, res).setRadio(parsedFreq, parsedBw, parsedSf, parsedCr);
 
     if (success) {
       res.json({ success: true, message: 'Radio config updated' });
@@ -2529,7 +2532,7 @@ router.post('/config/coords', meshcoreDeviceLimiter, requireAuth(), requirePermi
       return res.status(400).json({ success: false, error: 'lon must be between -180 and 180' });
     }
 
-    const success = await managerFor(req).setCoords(parsedLat, parsedLon);
+    const success = await managerFor(req, res).setCoords(parsedLat, parsedLon);
 
     if (success) {
       res.json({ success: true, message: 'Coordinates updated' });
@@ -2561,7 +2564,7 @@ router.post('/config/advert-loc-policy', meshcoreDeviceLimiter, requireAuth(), r
       return res.status(400).json({ success: false, error: 'policy must be 0 or 1' });
     }
 
-    const success = await managerFor(req).setAdvertLocPolicy(parsedPolicy);
+    const success = await managerFor(req, res).setAdvertLocPolicy(parsedPolicy);
 
     if (success) {
       res.json({ success: true, message: 'Advert location policy updated' });
@@ -2592,7 +2595,7 @@ router.post('/config/telemetry-mode-base', meshcoreDeviceLimiter, requireAuth(),
     if (!isTelemetryMode(mode)) {
       return res.status(400).json({ success: false, error: 'mode must be always|device|never' });
     }
-    const success = await managerFor(req).setTelemetryModeBase(mode);
+    const success = await managerFor(req, res).setTelemetryModeBase(mode);
     if (success) {
       res.json({ success: true, message: 'Basic telemetry mode updated' });
     } else {
@@ -2615,7 +2618,7 @@ router.post('/config/telemetry-mode-loc', meshcoreDeviceLimiter, requireAuth(), 
     if (!isTelemetryMode(mode)) {
       return res.status(400).json({ success: false, error: 'mode must be always|device|never' });
     }
-    const success = await managerFor(req).setTelemetryModeLoc(mode);
+    const success = await managerFor(req, res).setTelemetryModeLoc(mode);
     if (success) {
       res.json({ success: true, message: 'Location telemetry mode updated' });
     } else {
@@ -2638,7 +2641,7 @@ router.post('/config/telemetry-mode-env', meshcoreDeviceLimiter, requireAuth(), 
     if (!isTelemetryMode(mode)) {
       return res.status(400).json({ success: false, error: 'mode must be always|device|never' });
     }
-    const success = await managerFor(req).setTelemetryModeEnv(mode);
+    const success = await managerFor(req, res).setTelemetryModeEnv(mode);
     if (success) {
       res.json({ success: true, message: 'Environment telemetry mode updated' });
     } else {
@@ -2721,7 +2724,7 @@ router.post(
         return res.status(400).json({ success: false, error: "type must be 'status' or 'lpp'" });
       }
 
-      const manager = managerFor(req);
+      const manager = managerFor(req, res);
       if (!manager.isConnected()) {
         return res.status(409).json({ success: false, error: 'MeshCore source is not connected' });
       }
@@ -2825,7 +2828,7 @@ router.patch(
       // this, setNodeTelemetryConfig writes a publicKey-only row and
       // the scheduler treats every target as a Companion regardless
       // of whether it's actually a Repeater — see issue #3092.
-      const manager = managerFor(req);
+      const manager = managerFor(req, res);
       const contact = manager.getContact(publicKey);
       if (contact) {
         try {
@@ -2908,7 +2911,7 @@ router.post(
       // Backfill identity from the in-memory contact before seeding the stub
       // row, so a node favorited while it only exists in-memory still carries
       // a name/type for the node list (mirrors the telemetry-config route).
-      const manager = managerFor(req);
+      const manager = managerFor(req, res);
       const contact = manager.getContact(publicKey);
       if (contact) {
         try {
@@ -2960,7 +2963,7 @@ router.get(
   requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
-      const mgr = managerFor(req);
+      const mgr = managerFor(req, res);
       const sourceId = (req.params as { id?: string }).id!;
       const status = mgr.getAutoPathfindingStatus();
 
@@ -2995,7 +2998,7 @@ router.post(
   requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
-      const mgr = managerFor(req);
+      const mgr = managerFor(req, res);
       const sourceId = (req.params as { id?: string }).id!;
       const {
         enabled,
@@ -3332,7 +3335,7 @@ router.post(
       }
 
       // Re-arm the scheduler so the new settings take effect immediately.
-      await managerFor(req).startAutoAnnounce().catch((err: Error) =>
+      await managerFor(req, res).startAutoAnnounce().catch((err: Error) =>
         logger.warn(`[API] auto-announce restart after save failed: ${err.message}`));
 
       const lastRunRaw = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceLastRunAt');
@@ -3355,7 +3358,7 @@ router.get(
   requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
-      const mgr = managerFor(req);
+      const mgr = managerFor(req, res);
       const message = String(req.query.message ?? '');
       if (!message) {
         return res.status(400).json({ success: false, error: 'Missing message parameter' });
@@ -3376,7 +3379,7 @@ router.post(
   requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
-      const mgr = managerFor(req);
+      const mgr = managerFor(req, res);
       const result = await mgr.runAutoAnnounceCycle('manual');
       const status = mgr.getAutoAnnounceStatus();
       res.json({ success: true, data: { ...result, lastRunAt: status.lastRunAt || null } });
@@ -3424,7 +3427,7 @@ router.post(
       }
       await databaseService.settings.setSourceSetting(sourceId, 'meshcoreTimerTriggers', JSON.stringify(body.triggers));
 
-      await managerFor(req).startTimerTriggers().catch((err: Error) =>
+      await managerFor(req, res).startTimerTriggers().catch((err: Error) =>
         logger.warn(`[API] timer-trigger restart after save failed: ${err.message}`));
 
       res.json({ success: true });
@@ -3442,7 +3445,7 @@ router.post(
   requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
   async (req: Request, res: Response) => {
     try {
-      const mgr = managerFor(req);
+      const mgr = managerFor(req, res);
       const triggerId = String((req.params as { triggerId?: string }).triggerId || '');
       if (!triggerId) {
         return res.status(400).json({ success: false, error: 'triggerId required' });
@@ -3519,7 +3522,7 @@ router.post(
         await databaseService.settings.setSourceSetting(sourceId, 'meshcoreAutoResponderTriggers', JSON.stringify(body.triggers));
       }
 
-      managerFor(req).resetAutoResponderRegexCache();
+      managerFor(req, res).resetAutoResponderRegexCache();
 
       res.json({ success: true });
     } catch (error) {
@@ -3539,7 +3542,7 @@ router.post('/neighbors/request', meshcoreDeviceLimiter, requireAuth(), requireP
   const { publicKey } = req.body as { publicKey?: string };
 
   try {
-    const manager = managerFor(req);
+    const manager = managerFor(req, res);
 
     if (publicKey) {
       const normalizedKey = publicKey.toLowerCase();
