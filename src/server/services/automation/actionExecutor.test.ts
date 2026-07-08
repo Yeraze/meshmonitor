@@ -250,6 +250,9 @@ describe('executeAction', () => {
       fn: 'sendTapback',
       args: { sourceId: 'default', emoji: '👍', channel: undefined, destination: 5, replyId: 99 },
     });
+    // #3996: with no explicit sourceIds the reaction fires exactly once — from
+    // the triggering source only — never fanned out to every connected source.
+    expect(calls).toHaveLength(1);
   });
 
   it('tapback: channel message routes back to the channel', async () => {
