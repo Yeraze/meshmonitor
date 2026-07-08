@@ -15,6 +15,7 @@ import WaypointsLayer from './layers/WaypointsLayer';
 import PolarGridLayer from './layers/PolarGridLayer';
 import TimeSliderControl from './TimeSliderControl';
 import MapLegend from './MapLegend';
+import FollowController from './FollowController';
 
 const FALLBACK_CENTER: [number, number] = [30, -90];
 const FALLBACK_ZOOM = 10;
@@ -46,6 +47,7 @@ export default function MapAnalysisCanvas() {
           attribution={tileset.attribution}
           maxZoom={tileset.maxZoom}
         />
+        <FollowController />
         <Pane name="waypoints" style={{ zIndex: 650 }}>
           {config.layers.waypoints.enabled && <WaypointsLayer />}
         </Pane>
