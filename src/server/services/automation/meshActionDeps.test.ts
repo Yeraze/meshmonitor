@@ -1,15 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock both registries so we can inject fake Meshtastic / MeshCore managers.
-// Meshtastic managers live in sourceManagerRegistry; MeshCore managers live in
-// the separate meshcoreManagerRegistry (#3915) — the deps must consult both.
+// Mock the unified registry so we can inject fake Meshtastic / MeshCore
+// managers. Since #3962 Ph2 ALL managers (Meshtastic, MQTT, MeshCore) live in
+// sourceManagerRegistry — the deps resolve every source from it.
 const getManager = vi.fn();
-const meshcoreGet = vi.fn();
 vi.mock('../../sourceManagerRegistry.js', () => ({
   sourceManagerRegistry: { getManager: (id: string) => getManager(id) },
-}));
-vi.mock('../../meshcoreRegistry.js', () => ({
-  meshcoreManagerRegistry: { get: (id: string) => meshcoreGet(id) },
 }));
 // The deps module also imports these at load time; stub to harmless objects.
 vi.mock('../../../services/database.js', () => ({ default: {} }));
@@ -19,7 +15,7 @@ vi.mock('../../utils/scriptRunner.js', () => ({ runScript: vi.fn() }));
 import { createMeshActionDeps } from './meshActionDeps.js';
 
 describe('createMeshActionDeps sendMessage — MeshCore scope (#3833)', () => {
-  beforeEach(() => { getManager.mockReset(); meshcoreGet.mockReset(); });
+  beforeEach(() => { getManager.mockReset(); });
 
   it('forwards scopeOverride to a MeshCore manager (sendMessage signature)', async () => {
     const sendMessage = vi.fn().mockResolvedValue(true);
@@ -56,17 +52,15 @@ describe('createMeshActionDeps sendMessage — MeshCore scope (#3833)', () => {
   });
 });
 
-// Regression tests for #3915: MeshCore managers are NOT in sourceManagerRegistry
-// (getManager returns undefined for them) — the deps must fall back to
-// meshcoreManagerRegistry, or every MeshCore action fails with "cannot send
-// messages" even for a healthy, connected source.
-describe('createMeshActionDeps — MeshCore source resolved from meshcoreManagerRegistry (#3915)', () => {
-  beforeEach(() => { getManager.mockReset(); meshcoreGet.mockReset(); });
+// Regression tests for #3915 (updated for #3962 Ph2): MeshCore managers now
+// live in the unified sourceManagerRegistry — automation actions targeting a
+// MeshCore source must resolve and use them (no separate registry fallback).
+describe('createMeshActionDeps — MeshCore source resolved from sourceManagerRegistry (#3915/#3962)', () => {
+  beforeEach(() => { getManager.mockReset(); });
 
-  it('sendMessage reaches a MeshCore manager that is only in meshcoreManagerRegistry', async () => {
+  it('sendMessage reaches a MeshCore manager in the unified registry', async () => {
     const sendMessage = vi.fn().mockResolvedValue(true);
-    getManager.mockReturnValue(undefined);         // not a Meshtastic source
-    meshcoreGet.mockReturnValue({ sendMessage });  // lives in the MeshCore registry
+    getManager.mockReturnValue({ sendMessage }); // MeshCore-shaped manager
     const deps = createMeshActionDeps();
 
     await deps.sendMessage({ sourceId: 'mc', text: 'PINGTEST received!', channel: 1, scopeOverride: '' });
@@ -74,10 +68,9 @@ describe('createMeshActionDeps — MeshCore source resolved from meshcoreManager
     expect(sendMessage).toHaveBeenCalledWith('PINGTEST received!', undefined, 1, '', true);
   });
 
-  it('requestData reaches a MeshCore manager that is only in meshcoreManagerRegistry', async () => {
+  it('requestData reaches a MeshCore manager in the unified registry', async () => {
     const requestRemoteTelemetry = vi.fn().mockResolvedValue({});
-    getManager.mockReturnValue(undefined);
-    meshcoreGet.mockReturnValue({ sendMessage: vi.fn(), requestRemoteTelemetry });
+    getManager.mockReturnValue({ sendMessage: vi.fn(), requestRemoteTelemetry });
     const deps = createMeshActionDeps();
 
     await deps.requestData({ sourceId: 'mc', op: 'telemetry', target: 'aabbcc', channel: 0 });
@@ -85,9 +78,8 @@ describe('createMeshActionDeps — MeshCore source resolved from meshcoreManager
     expect(requestRemoteTelemetry).toHaveBeenCalledWith('aabbcc');
   });
 
-  it('throws when neither registry has the source', async () => {
+  it('throws when the registry has no manager for the source', async () => {
     getManager.mockReturnValue(undefined);
-    meshcoreGet.mockReturnValue(undefined);
     const deps = createMeshActionDeps();
 
     await expect(deps.sendMessage({ sourceId: 'ghost', text: 'hi', channel: 0 }))
@@ -96,8 +88,7 @@ describe('createMeshActionDeps — MeshCore source resolved from meshcoreManager
 
   it('surfaces a MeshCore send failure (sendMessage resolves false) as a thrown error', async () => {
     const sendMessage = vi.fn().mockResolvedValue(false); // node disconnected / send rejected
-    getManager.mockReturnValue(undefined);
-    meshcoreGet.mockReturnValue({ sendMessage });
+    getManager.mockReturnValue({ sendMessage });
     const deps = createMeshActionDeps();
 
     await expect(deps.sendMessage({ sourceId: 'mc', text: 'hi', channel: 0 }))
@@ -106,7 +97,7 @@ describe('createMeshActionDeps — MeshCore source resolved from meshcoreManager
 });
 
 describe('createMeshActionDeps requestData — node operations (#3835)', () => {
-  beforeEach(() => { getManager.mockReset(); meshcoreGet.mockReset(); });
+  beforeEach(() => { getManager.mockReset(); });
 
   function meshtasticManager() {
     return {

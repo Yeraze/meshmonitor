@@ -39,14 +39,17 @@ vi.mock('../constants/meshtastic.js', () => ({
 }));
 
 const mockMeshcoreManager = vi.hoisted(() => ({
+  // The route narrows via isMeshCoreManager(), which checks sourceType.
+  sourceType: 'meshcore' as const,
   setChannel: vi.fn().mockResolvedValue(undefined),
   deleteChannel: vi.fn().mockResolvedValue(undefined),
 }));
-const mockMeshcoreRegistry = vi.hoisted(() => ({
-  get: vi.fn(() => mockMeshcoreManager),
+// MeshCore managers live in the unified sourceManagerRegistry (#3962 Ph2).
+const mockSourceRegistry = vi.hoisted(() => ({
+  getManager: vi.fn(() => mockMeshcoreManager),
 }));
-vi.mock('../meshcoreRegistry.js', () => ({
-  meshcoreManagerRegistry: mockMeshcoreRegistry,
+vi.mock('../sourceManagerRegistry.js', () => ({
+  sourceManagerRegistry: mockSourceRegistry,
 }));
 
 // --- channelUrlService (dynamically imported) ---
@@ -124,7 +127,7 @@ beforeEach(() => {
   mockDb.messages.getDistinctChannelsForSource.mockResolvedValue([]);
   mockDb.getChannelDatabasePermissionsForUserAsSetAsync.mockResolvedValue({});
   mockDb.sources.getSource.mockResolvedValue({ type: 'meshtastic_tcp' });
-  mockMeshcoreRegistry.get.mockReturnValue(mockMeshcoreManager);
+  mockSourceRegistry.getManager.mockReturnValue(mockMeshcoreManager);
 });
 
 describe('GET /channels and /channels/all', () => {
@@ -307,7 +310,7 @@ describe('PUT /channels/:id', () => {
 
   it('503s for MeshCore when no manager is registered', async () => {
     mockDb.sources.getSource.mockResolvedValue({ type: 'meshcore' });
-    mockMeshcoreRegistry.get.mockReturnValue(undefined);
+    mockSourceRegistry.getManager.mockReturnValue(undefined);
     const sixteen = Buffer.alloc(16).toString('base64');
     const res = await request(app).put('/channels/2').send({ name: 'mc', psk: sixteen, sourceId: 'mc-1' });
     expect(res.status).toBe(503);
@@ -338,7 +341,7 @@ describe('DELETE /channels/:id', () => {
   it('MeshCore happy-path: deletes a channel via device manager and returns success', async () => {
     // Set up a MeshCore source
     mockDb.sources.getSource.mockResolvedValue({ type: 'meshcore' });
-    mockMeshcoreRegistry.get.mockReturnValue(mockMeshcoreManager);
+    mockSourceRegistry.getManager.mockReturnValue(mockMeshcoreManager);
     mockMeshcoreManager.deleteChannel.mockResolvedValue(undefined);
 
     // Delete channel 2 (not primary, which is allowed for MeshCore)
@@ -354,7 +357,7 @@ describe('DELETE /channels/:id', () => {
     expect(mockMeshcoreManager.deleteChannel).toHaveBeenCalledWith(2);
     
     // Verify the manager registry was queried for the correct source
-    expect(mockMeshcoreRegistry.get).toHaveBeenCalledWith('meshcore-1');
+    expect(mockSourceRegistry.getManager).toHaveBeenCalledWith('meshcore-1');
   });
 });
 
