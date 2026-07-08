@@ -105,10 +105,13 @@ describe('MeshCoreManager — Auto-Ack "trigger" scope mode (#3887)', () => {
     expect(scopeOf(bridgeCalls)).toEqual(['lyon']);
   });
 
-  it('falls back to the channel default scope for a known-but-unmapped scope code', async () => {
+  it('replies unscoped for a known-but-unmapped scope code (#3998)', async () => {
+    // scopeCode > 0 but no resolved region name: scoped to a region we can't name,
+    // so it can't be reproduced. "Match the trigger scope" degrades to unscoped
+    // rather than substituting the node's unrelated default (was: 'berlin', #3887).
     const { manager, bridgeCalls } = makeManager({ channelScopes: { 1: null }, defaultScope: 'berlin' });
     const msg = triggerMessage({ scopeCode: 456, scopeName: null });
     await (manager as any).checkAutoAcknowledge(msg, false, 1, null, null);
-    expect(scopeOf(bridgeCalls)).toEqual(['berlin']);
+    expect(scopeOf(bridgeCalls)).toEqual([null]);
   });
 });

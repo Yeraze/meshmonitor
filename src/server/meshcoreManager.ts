@@ -2669,19 +2669,22 @@ class MeshCoreManager extends EventEmitter {
    * `''` = explicit unscoped, a non-empty string = a named region.
    *
    * `trigger` mode replies on the triggering message's own scope — its resolved
-   * `scopeName` when known; `''` when the trigger's scope resolved to unscoped
-   * (`scopeCode === 0`) OR when scope resolution simply couldn't tell
-   * (`scopeCode == null`, #3887); inherit only when the trigger's `scopeCode`
-   * resolved to a real transport code with no matching known region (an
-   * unrecognised scope, not an unresolvable one).
-   *
-   * The `scopeCode == null` case is common in practice: `scopeCode`/`scopeName`
-   * are only recoverable when the raw OTA packet bytes were correlated from a
-   * preceding LogRxData event (best-effort, see meshcoreNativeBackend.ts), so a
-   * genuinely unscoped message often can't be distinguished from "unknown" —
-   * treating both as unscoped matches the dominant real-world case (a mesh with
-   * no scopes configured at all) rather than silently falling back to the
-   * channel default, which the far side's own unscoped repeater won't forward.
+   * `scopeName` when known; otherwise `''` (unscoped). "Match the scope" can only
+   * faithfully reproduce a scope we can name: the transport code is an HMAC keyed
+   * by the region NAME, so without the name we cannot re-derive the code. Every
+   * case where the region name is unavailable therefore degrades to unscoped
+   * (#3998):
+   *   - `scopeCode === 0`   → the trigger was confirmed unscoped.
+   *   - `scopeCode == null` → scope resolution couldn't tell (no raw OTA bytes;
+   *     `scopeCode`/`scopeName` are only recoverable when the packet was
+   *     correlated from a preceding LogRxData event — best-effort, see
+   *     meshcoreNativeBackend.ts), so a genuinely unscoped message is common here.
+   *   - `scopeCode > 0` but no matching known region → the trigger WAS scoped, but
+   *     to a region we can't name (e.g. a flood re-scoped by a repeater whose
+   *     region isn't in our known set). We cannot reproduce it, and substituting
+   *     the node's own DEFAULT scope is NOT "matching the trigger" — it floods
+   *     under an unrelated region the original (unscoped) sender may not hear.
+   *     Reply unscoped instead (#3998; previously inherited the default, #3887).
    */
   private static resolveAutomationScopeOverride(
     cfg: MeshCoreAutomationScopeConfig | undefined,
@@ -2695,9 +2698,12 @@ class MeshCoreManager extends EventEmitter {
       case 'trigger': {
         if (!triggerMsg) return undefined; // no trigger message → inherit
         const name = (triggerMsg.scopeName ?? '').trim();
-        if (name) return name;
-        if (triggerMsg.scopeCode != null && triggerMsg.scopeCode > 0) return undefined; // known-but-unmapped scope → inherit
-        return ''; // scopeCode === 0 (confirmed unscoped) or null (unresolvable) → reply unscoped
+        if (name) return name; // resolved region name → match it exactly
+        // No resolvable region name: confirmed unscoped (scopeCode 0), unresolvable
+        // (scopeCode null), OR scoped to a region we can't name (scopeCode > 0, no
+        // known match) — none can be reproduced, so reply unscoped rather than
+        // substitute the node's unrelated default scope (#3998).
+        return '';
       }
       default:
         return undefined; // inherit
