@@ -35,7 +35,7 @@ import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceServ
 import { MessageQueueService } from './messageQueueService.js';
 import { resolveAutoWelcomeDelaySeconds } from './autoWelcomeDelay.js';
 import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
-import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
+import { normalizeTriggerPatterns, normalizeTriggerChannels, matchAutoResponderPattern } from '../utils/autoResponderUtils.js';
 import { isWithinTimeWindow } from './utils/timeWindow.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
 import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIRTIME_CUTOFF_THRESHOLD, DEFAULT_AIRTIME_CUTOFF_SOURCE, NEIGHBOR_UTIL_SAMPLE_COUNT, type AirtimeCutoffSource, type NeighborUtilContributor } from './utils/airtimeCutoff.js';
@@ -10016,11 +10016,6 @@ class MeshtasticManager implements ISourceManager {
         return;
       }
 
-      // Normalize message text through homoglyph mapping so triggers match regardless of
-      // whether the sender applied homoglyph optimization (Cyrillic→Latin substitution).
-      // This ensures "Москва" and "Mocквa" both match the same trigger pattern.
-      const normalizedText = applyHomoglyphOptimization(message.text);
-
       logger.debug(`🤖 Auto-responder checking message on ${isDirectMessage ? 'DM' : `channel ${message.channel}`}: "${message.text}"`);
 
       // Try to match message against triggers
@@ -10053,135 +10048,8 @@ class MeshtasticManager implements ISourceManager {
 
         // Try each pattern until one matches
         for (const origPatternStr of patterns) {
-          // Normalize trigger pattern through homoglyph mapping to match normalized message text
-          const patternStr = applyHomoglyphOptimization(origPatternStr);
-          // Extract parameters with optional regex patterns from trigger pattern
-          interface ParamSpec {
-            name: string;
-            pattern?: string;
-          }
-          const params: ParamSpec[] = [];
-          let i = 0;
-
-          while (i < patternStr.length) {
-            if (patternStr[i] === '{') {
-              const startPos = i + 1;
-              let depth = 1;
-              let colonPos = -1;
-              let endPos = -1;
-
-              // Find the matching closing brace, accounting for nested braces in regex patterns
-              for (let j = startPos; j < patternStr.length && depth > 0; j++) {
-                if (patternStr[j] === '{') {
-                  depth++;
-                } else if (patternStr[j] === '}') {
-                  depth--;
-                  if (depth === 0) {
-                    endPos = j;
-                  }
-                } else if (patternStr[j] === ':' && depth === 1 && colonPos === -1) {
-                  colonPos = j;
-                }
-              }
-
-              if (endPos !== -1) {
-                const paramName = colonPos !== -1
-                  ? patternStr.substring(startPos, colonPos)
-                  : patternStr.substring(startPos, endPos);
-                const paramPattern = colonPos !== -1
-                  ? patternStr.substring(colonPos + 1, endPos)
-                  : undefined;
-
-                if (!params.find(p => p.name === paramName)) {
-                  params.push({ name: paramName, pattern: paramPattern });
-                }
-
-                i = endPos + 1;
-              } else {
-                i++;
-              }
-            } else {
-              i++;
-            }
-          }
-
-          // Build regex pattern from trigger by processing it character by character
-          let pattern = '';
-          const replacements: Array<{ start: number; end: number; replacement: string }> = [];
-          i = 0;
-
-          while (i < patternStr.length) {
-            if (patternStr[i] === '{') {
-              const startPos = i;
-              let depth = 1;
-              let endPos = -1;
-
-              // Find the matching closing brace
-              for (let j = i + 1; j < patternStr.length && depth > 0; j++) {
-                if (patternStr[j] === '{') {
-                  depth++;
-                } else if (patternStr[j] === '}') {
-                  depth--;
-                  if (depth === 0) {
-                    endPos = j;
-                  }
-                }
-              }
-
-              if (endPos !== -1) {
-                const paramIndex = replacements.length;
-                if (paramIndex < params.length) {
-                  const paramRegex = params[paramIndex].pattern || '[^\\s]+';
-                  replacements.push({
-                    start: startPos,
-                    end: endPos + 1,
-                    replacement: `(${paramRegex})`
-                  });
-                }
-                i = endPos + 1;
-              } else {
-                i++;
-              }
-            } else {
-              i++;
-            }
-          }
-
-          // Build the final pattern by replacing placeholders
-          for (let i = 0; i < patternStr.length; i++) {
-            const replacement = replacements.find(r => r.start === i);
-            if (replacement) {
-              pattern += replacement.replacement;
-              i = replacement.end - 1; // -1 because loop will increment
-            } else {
-              // Escape special regex characters in literal parts
-              const char = patternStr[i];
-              if (/[.*+?^${}()|[\]\\]/.test(char)) {
-                pattern += '\\' + char;
-              } else {
-                pattern += char;
-              }
-            }
-          }
-
-          const triggerRegex = compileUserRegex(`^${pattern}$`, 'i');
-          const triggerMatch = normalizedText.match(triggerRegex);
-
-          if (triggerMatch) {
-            // Extract parameters from original text when possible to preserve full
-            // Unicode characters. Homoglyph normalization can mangle Cyrillic words
-            // (e.g., "Барнаул" → "Бapнayл") which breaks geocoding APIs.
-            // The regex usually matches original text too since param patterns like
-            // [^\s]+ accept any non-whitespace character.
-            const originalMatch = message.text.match(triggerRegex);
-
-            extractedParams = {};
-            params.forEach((param, index) => {
-              extractedParams[param.name] = originalMatch?.[index + 1] ?? triggerMatch[index + 1];
-            });
-            matchedPattern = origPatternStr;
-            break; // Found a match, stop trying other patterns
-          }
+          const m = matchAutoResponderPattern(origPatternStr, message.text);
+          if (m.matched) { extractedParams = m.params; matchedPattern = origPatternStr; break; }
         }
 
         if (matchedPattern) {
