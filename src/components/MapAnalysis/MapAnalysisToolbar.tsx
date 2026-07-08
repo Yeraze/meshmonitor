@@ -1,10 +1,13 @@
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import LayerToggleButton from './LayerToggleButton';
 import SourceMultiSelect from './SourceMultiSelect';
 import NodeTypeFilterControl from './NodeTypeFilterControl';
 import NodeSearchControl from './NodeSearchControl';
+import NodeMultiSelect from './NodeMultiSelect';
 import TracerouteControls from './TracerouteControls';
+import { useAnalysisNodes } from './useAnalysisNodes';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { useOwnNodePositions } from '../../hooks/useOwnNodePositions';
 import { LayerKey } from '../../hooks/useMapAnalysisConfig';
@@ -33,8 +36,23 @@ const UNTIMED_LAYERS: { key: LayerKey; label: string }[] = [
 
 export default function MapAnalysisToolbar() {
   const navigate = useNavigate();
-  const { config, setLayerEnabled, setLayerLookback, setSources, setTimeSlider, reset } = useMapAnalysisCtx();
+  const { config, setLayerEnabled, setLayerLookback, setSources, setSelectedNodeIds, setTimeSlider, reset } =
+    useMapAnalysisCtx();
   const { data: sources = [] } = useDashboardSources();
+
+  // Node picker (issue #3788): deduped/sorted options built from the same
+  // shared node hook the markers layer uses, so the picker never lists a node
+  // the map itself wouldn't render.
+  const analysisNodes = useAnalysisNodes();
+  const nodeOptions = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const { key, node } of analysisNodes) {
+      if (!byKey.has(key)) byKey.set(key, node.longName || node.shortName || node.nodeId || key);
+    }
+    return [...byKey]
+      .map(([key, label]) => ({ key, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [analysisNodes]);
 
   // Polar grid (#3971): centered on each active source's own-node position.
   // Disable the toggle when no active source has a resolvable own node.
@@ -111,6 +129,7 @@ export default function MapAnalysisToolbar() {
       />
       <NodeTypeFilterControl />
       <NodeSearchControl />
+      <NodeMultiSelect nodes={nodeOptions} value={config.selectedNodeIds} onChange={setSelectedNodeIds} />
       <button
         type="button"
         className={`map-analysis-layer-btn ${config.timeSlider.enabled ? 'active' : ''}`}
