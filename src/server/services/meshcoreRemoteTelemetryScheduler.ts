@@ -28,7 +28,8 @@ import type {
   MeshCoreStatus,
   MeshCoreTelemetryRecord,
 } from '../meshcoreManager.js';
-import type { MeshCoreManagerRegistry } from '../meshcoreRegistry.js';
+import type { SourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { MC_TELEMETRY_PREFIX, nodeNumFromPubkey } from './meshcoreTelemetryPoller.js';
 import { isNullIsland } from '../../utils/nullIsland.js';
 
@@ -69,7 +70,7 @@ const MIN_TICK_MS = 1_000;
 export const MAX_INTERVAL_MINUTES = 24 * 60;
 
 export interface MeshCoreRemoteTelemetrySchedulerOptions {
-  registry: MeshCoreManagerRegistry;
+  registry: SourceManagerRegistry;
   database: RemoteTelemetrySchedulerDatabase;
   /** Override the env-derived tick (tests). */
   tickMs?: number;
@@ -281,7 +282,7 @@ export function statusToTelemetryRows(
 }
 
 export class MeshCoreRemoteTelemetryScheduler {
-  private readonly registry: MeshCoreManagerRegistry;
+  private readonly registry: SourceManagerRegistry;
   private readonly database: RemoteTelemetrySchedulerDatabase;
   private readonly tickMs: number;
   private readonly minIntervalMs: number;
@@ -328,7 +329,7 @@ export class MeshCoreRemoteTelemetryScheduler {
     }
     this.running = true;
     try {
-      const managers = this.registry.list();
+      const managers = this.registry.getAllManagers().filter(isMeshCoreManager);
       for (const manager of managers) {
         try {
           await this.tickOneManager(manager);

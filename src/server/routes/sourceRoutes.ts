@@ -5,7 +5,9 @@ import { requirePermission, optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
-import { meshcoreManagerRegistry, meshcoreConfigFromSource } from '../meshcoreRegistry.js';
+import { meshcoreConfigFromSource } from '../meshcoreConfig.js';
+import { MeshCoreManager } from '../meshcoreManager.js';
+import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { MqttBrokerManager, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
@@ -412,8 +414,15 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       try {
         const mcConfig = meshcoreConfigFromSource(source);
         if (mcConfig) {
-          const manager = meshcoreManagerRegistry.getOrCreate(source);
-          await manager.connect(mcConfig);
+          // Create-or-connect recipe: register in the unified sourceManagerRegistry.
+          const existing = sourceManagerRegistry.getManager(source.id);
+          if (!existing) {
+            const mc = new MeshCoreManager(source.id, source.name);
+            mc.configure(mcConfig);
+            await sourceManagerRegistry.addManager(mc); // start() → connect(mcConfig)
+          } else if (isMeshCoreManager(existing) && !existing.isConnected()) {
+            await existing.connect(mcConfig);
+          }
         } else {
           logger.warn(`MeshCore source ${source.id} created with incomplete config`);
         }
@@ -540,13 +549,19 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         }
       }
     } else if (!wasEnabled && isNowEnabled && source.type === 'meshcore' && newAutoConnect) {
-      // Newly enabled MeshCore source with autoConnect on — get-or-create the
-      // per-source manager and connect it.
+      // Newly enabled MeshCore source with autoConnect on — register in the
+      // unified sourceManagerRegistry via the create-or-connect recipe.
       try {
         const mcConfig = meshcoreConfigFromSource(source);
         if (mcConfig) {
-          const manager = meshcoreManagerRegistry.getOrCreate(source);
-          await manager.connect(mcConfig);
+          const existing = sourceManagerRegistry.getManager(source.id);
+          if (!existing) {
+            const mc = new MeshCoreManager(source.id, source.name);
+            mc.configure(mcConfig);
+            await sourceManagerRegistry.addManager(mc);
+          } else if (isMeshCoreManager(existing) && !existing.isConnected()) {
+            await existing.connect(mcConfig);
+          }
         } else {
           logger.warn(`MeshCore source ${source.id} enabled with incomplete config`);
         }
@@ -554,18 +569,16 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         logger.warn(`Could not start MeshCore manager for source ${source.id}:`, err);
       }
     } else if (wasEnabled && !isNowEnabled) {
-      // Newly disabled: stop manager (both registries — each is a no-op when
-      // the source id isn't registered, so this safely covers either type).
+      // Newly disabled: stop manager in the unified registry (no-op when not registered).
       await sourceManagerRegistry.removeManager(source.id);
-      await meshcoreManagerRegistry.remove(source.id);
     } else if (wasEnabled && isNowEnabled && source.type === 'meshtastic_tcp' && oldAutoConnect && !newAutoConnect) {
       // autoConnect just turned off — stop the running manager. The source
       // stays enabled so the user can manually reconnect.
       await sourceManagerRegistry.removeManager(source.id);
     } else if (wasEnabled && isNowEnabled && source.type === 'meshcore' && oldAutoConnect && !newAutoConnect) {
-      // MeshCore autoConnect just turned off — disconnect the manager. The
+      // MeshCore autoConnect just turned off — remove the manager. The
       // source stays enabled so the user can manually reconnect.
-      await meshcoreManagerRegistry.remove(source.id);
+      await sourceManagerRegistry.removeManager(source.id);
     } else if (wasEnabled && isNowEnabled && source.type === 'meshtastic_tcp' && !oldAutoConnect && newAutoConnect) {
       // autoConnect just turned on — start the manager if not already running.
       if (!sourceManagerRegistry.getManager(source.id)) {
@@ -586,13 +599,17 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         }
       }
     } else if (wasEnabled && isNowEnabled && source.type === 'meshcore' && !oldAutoConnect && newAutoConnect) {
-      // MeshCore autoConnect just turned on — get-or-create + connect.
+      // MeshCore autoConnect just turned on — create-or-connect.
       try {
         const mcConfig = meshcoreConfigFromSource(source);
         if (mcConfig) {
-          const manager = meshcoreManagerRegistry.getOrCreate(source);
-          if (!manager.isConnected()) {
-            await manager.connect(mcConfig);
+          const existing = sourceManagerRegistry.getManager(source.id);
+          if (!existing) {
+            const mc = new MeshCoreManager(source.id, source.name);
+            mc.configure(mcConfig);
+            await sourceManagerRegistry.addManager(mc);
+          } else if (isMeshCoreManager(existing) && !existing.isConnected()) {
+            await existing.connect(mcConfig);
           }
         } else {
           logger.warn(`MeshCore source ${source.id} has incomplete config; not auto-connecting`);
@@ -685,13 +702,14 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
     } else if (wasEnabled && isNowEnabled && source.type === 'meshcore' && newAutoConnect && config !== undefined) {
       // MeshCore source config changed while enabled and autoConnect on —
       // the connect config is baked in at connect-time, so any change means
-      // disconnect + reconnect with the fresh config.
+      // remove the old manager and register a fresh one with the updated config.
       try {
         const mcConfig = meshcoreConfigFromSource(source);
         if (mcConfig) {
-          await meshcoreManagerRegistry.remove(source.id);
-          const manager = meshcoreManagerRegistry.getOrCreate(source);
-          await manager.connect(mcConfig);
+          await sourceManagerRegistry.removeManager(source.id);
+          const mc = new MeshCoreManager(source.id, source.name);
+          mc.configure(mcConfig);
+          await sourceManagerRegistry.addManager(mc);
         } else {
           logger.warn(`MeshCore source ${source.id} updated to incomplete config`);
         }
@@ -736,10 +754,9 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       }
     }
 
-    // Stop the manager before deleting (both registries — each is a no-op when
-    // the source id isn't registered, so this safely covers either type).
+    // Stop the manager before deleting. All source types are in the unified
+    // sourceManagerRegistry, and removeManager is a no-op when not registered.
     await sourceManagerRegistry.removeManager(req.params.id);
-    await meshcoreManagerRegistry.remove(req.params.id);
 
     const deleted = await databaseService.sources.deleteSource(req.params.id);
     if (!deleted) {
@@ -773,20 +790,13 @@ router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) =>
     const manager = sourceManagerRegistry.getManager(req.params.id);
     let status: any;
     if (manager) {
-      status = manager.getStatus();
-    } else if (source.type === 'meshcore') {
-      // MeshCore managers live in their own registry, not sourceManagerRegistry.
-      // Surface their live status through the same shape so the dashboard
-      // sidebar reflects connection state for meshcore sources too.
-      const mcManager = meshcoreManagerRegistry.get(req.params.id);
-      status = mcManager
-        ? mcManager.getStatus(source.name)
-        : {
-            sourceId: source.id,
-            sourceName: source.name,
-            sourceType: source.type,
-            connected: false,
-          };
+      if (isMeshCoreManager(manager)) {
+        // Pass the live source name so the status reflects any renames without
+        // requiring a manager restart (mirrors the old meshcoreRegistry path).
+        status = manager.getStatus(source.name);
+      } else {
+        status = manager.getStatus();
+      }
     } else {
       status = {
         sourceId: source.id,
@@ -815,7 +825,9 @@ router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) =>
     let nodeCount: number;
     let activeNodeCount: number;
     if (source.type === 'meshcore') {
-      const mcManager = meshcoreManagerRegistry.get(source.id);
+      // MeshCore contacts live in the manager's in-memory store, not the shared
+      // `nodes` table, so count from getAllNodes() on the narrowed manager.
+      const mcManager = manager && isMeshCoreManager(manager) ? manager : undefined;
       if (mcManager) {
         const all = await mcManager.getAllNodes();
         nodeCount = all.length;
@@ -1053,7 +1065,8 @@ router.post('/:id/connect', requirePermission('sources', 'write'), async (req: R
       return res.status(400).json({ error: 'Manual connect is only supported for meshtastic_tcp and meshcore sources' });
     }
     if (source.type === 'meshcore') {
-      const existingMc = meshcoreManagerRegistry.get(source.id);
+      const existingMgr = sourceManagerRegistry.getManager(source.id);
+      const existingMc = existingMgr && isMeshCoreManager(existingMgr) ? existingMgr : undefined;
       if (existingMc?.isConnected()) {
         return res.json({ success: true, alreadyRunning: true });
       }
@@ -1061,8 +1074,15 @@ router.post('/:id/connect', requirePermission('sources', 'write'), async (req: R
       if (!mcConfig) {
         return res.status(400).json({ error: 'MeshCore source has incomplete config' });
       }
-      const manager = meshcoreManagerRegistry.getOrCreate(source);
-      await manager.connect(mcConfig);
+      if (!existingMc) {
+        // No manager yet — create and register (addManager calls start() → connect).
+        const mc = new MeshCoreManager(source.id, source.name);
+        mc.configure(mcConfig);
+        await sourceManagerRegistry.addManager(mc);
+      } else {
+        // Manager exists but is disconnected — reconnect with fresh config.
+        await existingMc.connect(mcConfig);
+      }
       return res.json({ success: true });
     }
     if (sourceManagerRegistry.getManager(source.id)) {
@@ -1093,7 +1113,8 @@ router.post('/:id/disconnect', requirePermission('sources', 'write'), async (req
     const source = await databaseService.sources.getSource(req.params.id);
     if (!source) return res.status(404).json({ error: 'Source not found' });
     if (source.type === 'meshcore') {
-      const existingMc = meshcoreManagerRegistry.get(source.id);
+      const existingMgr = sourceManagerRegistry.getManager(source.id);
+      const existingMc = existingMgr && isMeshCoreManager(existingMgr) ? existingMgr : undefined;
       if (!existingMc?.isConnected()) {
         return res.json({ success: true, alreadyStopped: true });
       }

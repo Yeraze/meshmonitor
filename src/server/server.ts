@@ -448,12 +448,17 @@ setTimeout(async () => {
             logger.warn(`MeshCore source ${source.id} (${source.name}) has incomplete config; skipping auto-connect`);
             continue;
           }
-          const manager = meshcoreManagerRegistry.getOrCreate(source);
-          const connected = await manager.connect(mcConfig);
-          if (connected) {
-            logger.info(`[MeshCore:${source.id}] Auto-connected source ${source.name}`);
+          // Create-or-connect recipe: register in the unified sourceManagerRegistry.
+          // addManager() calls start() → connect(pendingConfig) and logs result.
+          const existing = sourceManagerRegistry.getManager(source.id);
+          if (!existing) {
+            const mc = new MeshCoreManager(source.id, source.name);
+            mc.configure(mcConfig);
+            await sourceManagerRegistry.addManager(mc);
+          } else if (isMeshCoreManager(existing) && !existing.isConnected()) {
+            await existing.connect(mcConfig);
           } else {
-            logger.warn(`[MeshCore:${source.id}] Auto-connect failed for source ${source.name}`);
+            logger.debug(`[MeshCore:${source.id}] Manager already registered and connected; skipping`);
           }
         } catch (err) {
           logger.error(`Failed to start MeshCore source ${source.id} (${source.name}); continuing with other sources:`, err);
@@ -692,7 +697,7 @@ setTimeout(async () => {
 // handlers as `meshcoreTelemetryPoller` so the Info endpoint can serve the
 // last cached snapshot without forcing a synchronous bridge round-trip.
 export const meshcoreTelemetryPoller = new MeshCoreTelemetryPoller({
-  registry: meshcoreManagerRegistry,
+  registry: sourceManagerRegistry,
   database: databaseService,
 });
 setMeshCoreTelemetryPoller(meshcoreTelemetryPoller);
@@ -719,7 +724,7 @@ setTimeout(async () => {
 // `MeshCoreManager.lastMeshTxAt` primitive and only fires when a node's
 // own `telemetryIntervalMinutes` cadence has elapsed.
 export const meshcoreRemoteTelemetryScheduler = new MeshCoreRemoteTelemetryScheduler({
-  registry: meshcoreManagerRegistry,
+  registry: sourceManagerRegistry,
   database: databaseService,
 });
 setMeshCoreRemoteTelemetryScheduler(meshcoreRemoteTelemetryScheduler);
@@ -735,7 +740,7 @@ setTimeout(async () => {
 // MeshCore Room Sync Scheduler — periodically re-logins to room servers
 // with saved credentials to trigger post push-sync.
 const meshcoreRoomSyncScheduler = new MeshCoreRoomSyncScheduler({
-  registry: meshcoreManagerRegistry,
+  registry: sourceManagerRegistry,
   credentialStore: getMeshCoreCredentialStore(),
 });
 setMeshCoreRoomSyncScheduler(meshcoreRoomSyncScheduler);
@@ -907,7 +912,9 @@ import newsRoutes from './routes/newsRoutes.js';
 import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
-import { meshcoreManagerRegistry, meshcoreConfigFromSource } from './meshcoreRegistry.js';
+import { meshcoreConfigFromSource } from './meshcoreConfig.js';
+import { MeshCoreManager } from './meshcoreManager.js';
+import { isMeshCoreManager, isMeshtasticManager } from './sourceManagerTypes.js';
 import { MeshCoreTelemetryPoller, setMeshCoreTelemetryPoller } from './services/meshcoreTelemetryPoller.js';
 import {
   MeshCoreRemoteTelemetryScheduler,
@@ -1111,50 +1118,50 @@ setSettingsCallbacks({
   stopLowBatteryService: () => lowBatteryNotificationService.stop(),
   restartAnnounceScheduler: (sourceId?: string | null) => {
     if (sourceId) {
-      const mgr = sourceManagerRegistry.getManager(sourceId) as typeof meshtasticManager | undefined;
-      mgr?.restartAnnounceScheduler();
+      const base = sourceManagerRegistry.getManager(sourceId);
+      if (base && isMeshtasticManager(base)) base.restartAnnounceScheduler();
     } else {
-      for (const mgr of sourceManagerRegistry.getAllManagers() as (typeof meshtasticManager)[]) {
+      for (const mgr of sourceManagerRegistry.getAllManagers().filter(isMeshtasticManager)) {
         mgr.restartAnnounceScheduler();
       }
     }
   },
   restartTimerScheduler: (sourceId?: string | null) => {
     if (sourceId) {
-      const mgr = sourceManagerRegistry.getManager(sourceId) as typeof meshtasticManager | undefined;
-      mgr?.restartTimerScheduler();
+      const base = sourceManagerRegistry.getManager(sourceId);
+      if (base && isMeshtasticManager(base)) base.restartTimerScheduler();
     } else {
-      for (const mgr of sourceManagerRegistry.getAllManagers() as (typeof meshtasticManager)[]) {
+      for (const mgr of sourceManagerRegistry.getAllManagers().filter(isMeshtasticManager)) {
         mgr.restartTimerScheduler();
       }
     }
   },
   restartGeofenceEngine: (sourceId?: string | null) => {
     if (sourceId) {
-      const mgr = sourceManagerRegistry.getManager(sourceId) as typeof meshtasticManager | undefined;
-      mgr?.restartGeofenceEngine();
+      const base = sourceManagerRegistry.getManager(sourceId);
+      if (base && isMeshtasticManager(base)) base.restartGeofenceEngine();
     } else {
-      for (const mgr of sourceManagerRegistry.getAllManagers() as (typeof meshtasticManager)[]) {
+      for (const mgr of sourceManagerRegistry.getAllManagers().filter(isMeshtasticManager)) {
         mgr.restartGeofenceEngine();
       }
     }
   },
   setAutomationAirtimeCutoffThreshold: (threshold: number, sourceId?: string | null) => {
     if (sourceId) {
-      const mgr = sourceManagerRegistry.getManager(sourceId) as typeof meshtasticManager | undefined;
-      mgr?.setAutomationAirtimeCutoffThreshold(threshold);
+      const base = sourceManagerRegistry.getManager(sourceId);
+      if (base && isMeshtasticManager(base)) base.setAutomationAirtimeCutoffThreshold(threshold);
     } else {
-      for (const mgr of sourceManagerRegistry.getAllManagers() as (typeof meshtasticManager)[]) {
+      for (const mgr of sourceManagerRegistry.getAllManagers().filter(isMeshtasticManager)) {
         mgr.setAutomationAirtimeCutoffThreshold(threshold);
       }
     }
   },
   setAutomationAirtimeCutoffSource: (source: string, sourceId?: string | null) => {
     if (sourceId) {
-      const mgr = sourceManagerRegistry.getManager(sourceId) as typeof meshtasticManager | undefined;
-      mgr?.setAutomationAirtimeCutoffSource(source);
+      const base = sourceManagerRegistry.getManager(sourceId);
+      if (base && isMeshtasticManager(base)) base.setAutomationAirtimeCutoffSource(source);
     } else {
-      for (const mgr of sourceManagerRegistry.getAllManagers() as (typeof meshtasticManager)[]) {
+      for (const mgr of sourceManagerRegistry.getAllManagers().filter(isMeshtasticManager)) {
         mgr.setAutomationAirtimeCutoffSource(source);
       }
     }
@@ -1167,15 +1174,13 @@ setSettingsCallbacks({
   // singleton — a null sourceId is a no-op.
   restartAutoDeleteByDistanceService: (sourceId?: string | null) => {
     if (!sourceId) return;
-    const mgr = (sourceManagerRegistry.getManager(sourceId)
-      ?? meshcoreManagerRegistry.get(sourceId)) as { startDistanceDeleteScheduler?: () => Promise<void> } | undefined;
+    const mgr = sourceManagerRegistry.getManager(sourceId) as { startDistanceDeleteScheduler?: () => Promise<void> } | undefined;
     mgr?.startDistanceDeleteScheduler?.().catch((err: unknown) =>
       logger.error(`Failed to restart auto-delete-by-distance scheduler for source ${sourceId}:`, err));
   },
   stopAutoDeleteByDistanceService: (sourceId?: string | null) => {
     if (!sourceId) return;
-    const mgr = (sourceManagerRegistry.getManager(sourceId)
-      ?? meshcoreManagerRegistry.get(sourceId)) as { stopDistanceDeleteScheduler?: () => void } | undefined;
+    const mgr = sourceManagerRegistry.getManager(sourceId) as { stopDistanceDeleteScheduler?: () => void } | undefined;
     mgr?.stopDistanceDeleteScheduler?.();
   },
 });
@@ -1208,9 +1213,10 @@ apiRouter.get('/nodes', optionalAuth(), async (req, res) => {
     // Append MeshCore contacts/localNodes so the aggregate dashboard map can
     // render them alongside Meshtastic nodes. MeshCore stores lastSeen in ms;
     // dashboard age-cutoff expects seconds, so we down-convert here.
+    const allMeshcoreManagers = sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager);
     const meshcoreManagers = nodesSourceId
-      ? (meshcoreManagerRegistry.get(nodesSourceId) ? [meshcoreManagerRegistry.get(nodesSourceId)!] : [])
-      : meshcoreManagerRegistry.list();
+      ? allMeshcoreManagers.filter(m => m.sourceId === nodesSourceId)
+      : allMeshcoreManagers;
     // By default MeshCore nodes are only appended when they have a position
     // (the aggregate dashboard map use-case). Consumers that need the full node
     // list regardless of position — e.g. the notification monitored-node picker,
@@ -2378,7 +2384,9 @@ apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write')
     // the composite (nodeNum, sourceId) primary key.
     const { detectDuplicateKeys } = await import('../services/lowEntropyKeyService.js');
 
-    const managers = sourceManagerRegistry.getAllManagers() as any[];
+    // Duplicate key detection is Meshtastic-only — MeshCore nodes don't use the
+    // shared `nodes` table and have no Meshtastic PKI model to scan.
+    const managers = sourceManagerRegistry.getAllManagers().filter(m => m.sourceType !== 'meshcore');
     const sourceIds: string[] = managers.length > 0 ? managers.map(m => m.sourceId) : ['default'];
 
     let totalScanned = 0;
