@@ -16,6 +16,7 @@ import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { compileAutoAckRegex } from './utils/autoAckRegex.js';
 import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
 import { scheduleCron, validateCron, type CronJob } from './utils/cronScheduler.js';
+import { CronOrIntervalScheduler, type ScheduleMode } from './services/cronOrIntervalScheduler.js';
 import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js';
 import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
 import { MeshCoreNativeBackend, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
@@ -783,12 +784,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private autoPathfindingJitterTimeout: NodeJS.Timeout | null = null;
   private autoPathfindingLastRunAt: number = 0;
 
-  // Auto-announce scheduler state. One of these holds the recurring
-  // trigger: cron job when useSchedule=true, setInterval handle when
-  // running on a plain hour interval. lastRunAt is exposed to the UI so
-  // operators can confirm the scheduler is actually firing.
-  private autoAnnounceTimer: NodeJS.Timeout | null = null;
-  private autoAnnounceCron: CronJob | null = null;
+  // Auto-announce scheduler state. announceScheduler holds the recurring
+  // trigger (cron or interval) via the shared CronOrIntervalScheduler
+  // primitive. lastRunAt is exposed to the UI so operators can confirm the
+  // scheduler is actually firing. autoAnnounceAdvertTimer is separate: it is
+  // the one-shot delay for the follow-up advert burst and is NOT owned by
+  // the scheduler primitive.
+  private announceScheduler: CronOrIntervalScheduler | null = null;
   private autoAnnounceLastRunAt: number = 0;
   private autoAnnounceAdvertTimer: NodeJS.Timeout | null = null;
 
@@ -5993,6 +5995,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * is a no-op until `connected` is true.
    */
   async startAutoAnnounce(): Promise<void> {
+    // stopAutoAnnounce clears both the scheduler and the advert timer.
     this.stopAutoAnnounce();
 
     const enabledRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceEnabled');
@@ -6006,37 +6009,41 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     const intervalHoursRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoAnnounceIntervalHours');
     const intervalHours = Math.max(1, parseInt(intervalHoursRaw || '6', 10) || 6);
 
+    let mode: ScheduleMode;
     if (useScheduleRaw) {
-      if (!validateCron(schedule)) {
-        logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: invalid cron expression "${schedule}", not scheduling`);
-        return;
-      }
-      try {
-        this.autoAnnounceCron = scheduleCron(schedule, () => {
-          void this.runAutoAnnounceCycle('cron');
-        });
-        logger.info(`[MeshCore:${this.sourceId}] Auto-announce: cron scheduled (${schedule})`);
-      } catch (err) {
-        logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: failed to schedule cron "${schedule}": ${(err as Error).message}`);
-      }
+      mode = { kind: 'cron', expression: schedule };
     } else {
       const periodMs = intervalHours * 60 * 60 * 1000;
-      this.autoAnnounceTimer = setInterval(() => {
-        void this.runAutoAnnounceCycle('interval');
-      }, periodMs);
+      mode = { kind: 'interval', intervalMs: periodMs };
+    }
+
+    this.announceScheduler = new CronOrIntervalScheduler({
+      label: `MeshCore:${this.sourceId}`,
+      mode,
+      onTick: () => {
+        void this.runAutoAnnounceCycle(useScheduleRaw ? 'cron' : 'interval');
+      },
+    });
+
+    if (!this.announceScheduler.start()) {
+      // cron expression was invalid; warning already logged by the scheduler
+      logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: invalid cron expression "${schedule}", not scheduling`);
+      this.announceScheduler = null;
+      return;
+    }
+
+    if (useScheduleRaw) {
+      logger.info(`[MeshCore:${this.sourceId}] Auto-announce: cron scheduled (${schedule})`);
+    } else {
       logger.info(`[MeshCore:${this.sourceId}] Auto-announce: interval scheduled every ${intervalHours}h`);
     }
   }
 
-  /** Cancel any scheduled auto-announce timers. Idempotent. */
+  /** Cancel the announce scheduler and any pending advert timer. Idempotent. */
   stopAutoAnnounce(): void {
-    if (this.autoAnnounceCron) {
-      try { this.autoAnnounceCron.stop(); } catch { /* ignore */ }
-      this.autoAnnounceCron = null;
-    }
-    if (this.autoAnnounceTimer) {
-      clearInterval(this.autoAnnounceTimer);
-      this.autoAnnounceTimer = null;
+    if (this.announceScheduler) {
+      this.announceScheduler.stop();
+      this.announceScheduler = null;
     }
     if (this.autoAnnounceAdvertTimer) {
       clearTimeout(this.autoAnnounceAdvertTimer);
@@ -6124,7 +6131,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /** Read-only view for the route handler / UI. */
   getAutoAnnounceStatus(): { enabled: boolean; lastRunAt: number } {
     return {
-      enabled: this.autoAnnounceCron !== null || this.autoAnnounceTimer !== null,
+      enabled: this.announceScheduler?.running ?? false,
       lastRunAt: this.autoAnnounceLastRunAt,
     };
   }
