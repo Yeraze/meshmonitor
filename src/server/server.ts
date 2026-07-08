@@ -448,18 +448,7 @@ setTimeout(async () => {
             logger.warn(`MeshCore source ${source.id} (${source.name}) has incomplete config; skipping auto-connect`);
             continue;
           }
-          // Create-or-connect recipe: register in the unified sourceManagerRegistry.
-          // addManager() calls start() → connect(pendingConfig) and logs result.
-          const existing = sourceManagerRegistry.getManager(source.id);
-          if (!existing) {
-            const mc = new MeshCoreManager(source.id, source.name);
-            mc.configure(mcConfig);
-            await sourceManagerRegistry.addManager(mc);
-          } else if (isMeshCoreManager(existing) && !existing.isConnected()) {
-            await existing.connect(mcConfig);
-          } else {
-            logger.debug(`[MeshCore:${source.id}] Manager already registered and connected; skipping`);
-          }
+          await ensureMeshCoreManagerStarted(source, mcConfig);
         } catch (err) {
           logger.error(`Failed to start MeshCore source ${source.id} (${source.name}); continuing with other sources:`, err);
         }
@@ -912,8 +901,7 @@ import newsRoutes from './routes/newsRoutes.js';
 import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
-import { meshcoreConfigFromSource } from './meshcoreConfig.js';
-import { MeshCoreManager } from './meshcoreManager.js';
+import { meshcoreConfigFromSource, ensureMeshCoreManagerStarted } from './meshcoreConfig.js';
 import { isMeshCoreManager, isMeshtasticManager } from './sourceManagerTypes.js';
 import { MeshCoreTelemetryPoller, setMeshCoreTelemetryPoller } from './services/meshcoreTelemetryPoller.js';
 import {
