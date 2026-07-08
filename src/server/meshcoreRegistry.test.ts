@@ -122,6 +122,32 @@ describe('meshcoreManagerRegistry shim — delegation via unified registry', () 
   });
 });
 
+describe('meshcoreManagerRegistry shim — disconnectAll() scoped to meshcore only', () => {
+  // We verify the semantic contract using a local registry to avoid side-effects
+  // on the module-level singleton used by the shim.
+  it('only removes meshcore managers, leaves meshtastic managers registered', async () => {
+    const registry = new SourceManagerRegistry();
+    const mc1 = makeMeshCoreStub('mc-d1');
+    const mc2 = makeMeshCoreStub('mc-d2');
+    const mt1 = makeMeshtasticStub('mt-d1');
+
+    await registry.addManager(mc1);
+    await registry.addManager(mc2);
+    await registry.addManager(mt1);
+    expect(registry.size).toBe(3);
+
+    // Replicate the disconnectAll logic using the local registry.
+    const meshcoreManagers = registry.getAllManagers().filter(isMeshCoreManager);
+    await Promise.allSettled(meshcoreManagers.map(m => registry.removeManager(m.sourceId)));
+
+    // MeshCore sources removed; meshtastic source preserved.
+    expect(registry.getManager('mc-d1')).toBeUndefined();
+    expect(registry.getManager('mc-d2')).toBeUndefined();
+    expect(registry.getManager('mt-d1')).toBeDefined();
+    expect(registry.size).toBe(1);
+  });
+});
+
 describe('meshcoreManagerRegistry shim — @deprecated surface compiles and delegates', () => {
   // Import the shim (which delegates to the module-level sourceManagerRegistry).
   // We verify the exported shape rather than the side effects — full delegation

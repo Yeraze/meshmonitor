@@ -43,9 +43,16 @@ export const meshcoreManagerRegistry = {
     return sourceManagerRegistry.removeManager(id);
   },
 
-  /** @deprecated Use `sourceManagerRegistry.stopAll()`. */
+  /**
+   * @deprecated Use `sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager)` +
+   * `sourceManagerRegistry.removeManager(id)` per entry.
+   * Note: this scopes to meshcore managers only — it does NOT remove meshtastic sources.
+   */
   disconnectAll(): Promise<void> {
-    return sourceManagerRegistry.stopAll();
+    const meshcoreManagers = sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager);
+    return Promise.allSettled(
+      meshcoreManagers.map(m => sourceManagerRegistry.removeManager(m.sourceId))
+    ).then(() => undefined);
   },
 
   /**
