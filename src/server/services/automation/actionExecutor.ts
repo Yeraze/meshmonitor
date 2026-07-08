@@ -262,18 +262,32 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
     }
 
     case 'action.tapback': {
-      // MeshCore has no tapback / emoji-reaction concept. Skip as a recorded
-      // no-op rather than letting the deps throw, which would log a failed run
-      // for every MeshCore message a tapback automation happens to match.
-      if (await isMeshCoreSource(ctx, sourceId)) {
-        return { skipped: true, reason: 'tapback is not supported on MeshCore' };
-      }
       const emoji = String(p.emoji ?? '👍');
       // Default replyId is the triggering packet; route the way the trigger arrived.
       const replyId = p.replyId != null ? await num(ctx, p.replyId) : (ctx.trigger.fields.packetId as number | undefined);
       const destination = isDM ? (ctx.trigger.fields.from as number | undefined) : undefined;
       const channel = isDM ? undefined : triggerChannel;
-      return deps.sendTapback({ sourceId, emoji, channel, destination, replyId });
+
+      // Target sources: explicit multi-select, else the legacy single source /
+      // the triggering source (mirrors action.sendMessage / action.requestData, #3996).
+      const sourceIds = Array.isArray(p.sourceIds) && p.sourceIds.length > 0
+        ? (p.sourceIds as unknown[]).map(String)
+        : [sourceId];
+
+      const results: unknown[] = [];
+      for (const sid of sourceIds) {
+        // MeshCore has no tapback / emoji-reaction concept. Skip as a recorded
+        // no-op rather than letting the deps throw, which would log a failed run
+        // for every MeshCore message a tapback automation happens to match.
+        if (await isMeshCoreSource(ctx, sid)) {
+          results.push({ skipped: true, reason: 'tapback is not supported on MeshCore' });
+          continue;
+        }
+        results.push(await deps.sendTapback({ sourceId: sid, emoji, channel, destination, replyId }));
+      }
+      // Unwrap the single-target case so the result shape (and run-log
+      // resolvedParams) matches the original one-target behavior.
+      return results.length === 1 ? results[0] : results;
     }
 
     case 'action.nodeManage': {
