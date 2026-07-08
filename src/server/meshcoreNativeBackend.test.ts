@@ -1321,4 +1321,43 @@ describe('MeshCoreManager heartbeat (native backend)', () => {
     await mgr.disconnect();
     expect(mgr.getHeartbeatStatus().state).toBe('disconnected');
   });
+
+  it('N consecutive probe failures → heartbeat_failed emitted N times and beginReconnect reached', async () => {
+    // Install a mock where getDeviceTime() always throws so every heartbeat
+    // probe returns { success: false } via sendCommand's catch wrapper.
+    class FailingConnection extends MockConnection {
+      async getDeviceTime(): Promise<{ epochSecs: number } | null> {
+        throw new Error('simulated device timeout');
+      }
+    }
+    const lastRef = installMockModule(FailingConnection as unknown as typeof MockConnection) as any;
+
+    const mgr = new MeshCoreManager('hb-fail-src');
+    const ok = await mgr.connect({
+      connectionType: ConnectionType.SERIAL,
+      serialPort: '/dev/ttyUSB0',
+      firmwareType: 'companion',
+      heartbeatIntervalSeconds: 1,    // 1s interval
+      heartbeatTimeoutMs: 200,
+      heartbeatMaxFailures: 3,
+    });
+    expect(ok).toBe(true);
+    // Verify we actually got a FailingConnection instance
+    expect(lastRef.current).toBeInstanceOf(FailingConnection);
+
+    const failedEvents: any[] = [];
+    mgr.on('heartbeat_failed', (e) => failedEvents.push(e));
+
+    // Wait for 3 probes to fire and fail (3× 1s interval + a little slack).
+    await new Promise((r) => setTimeout(r, 3500));
+
+    // All 3 failures should have been emitted.
+    expect(failedEvents.length).toBeGreaterThanOrEqual(3);
+    expect(failedEvents[0]).toMatchObject({ sourceId: 'hb-fail-src', consecutiveFailures: 1 });
+    expect(failedEvents[1]).toMatchObject({ sourceId: 'hb-fail-src', consecutiveFailures: 2 });
+    expect(failedEvents[2]).toMatchObject({ sourceId: 'hb-fail-src', consecutiveFailures: 3 });
+
+    // After heartbeatMaxFailures, beginReconnect() fires and transitions to 'reconnecting'.
+    expect(mgr.getHeartbeatStatus().state).toBe('reconnecting');
+  });
 });

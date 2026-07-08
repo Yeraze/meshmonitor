@@ -27,6 +27,7 @@ import {
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { notificationService } from './services/notificationService.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
+import { HeartbeatScheduler } from './services/heartbeatScheduler.js';
 import type { DbMeshCorePacket } from '../db/repositories/meshcore.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
@@ -583,7 +584,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
   // Heartbeat / auto-reconnect state (native-backend only).
   private connectionState: MeshCoreConnectionState = 'disconnected';
-  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private heartbeatScheduler: HeartbeatScheduler | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private heartbeatConsecutiveFailures: number = 0;
 
@@ -604,7 +605,6 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private deviceTimeSyncTimer: NodeJS.Timeout | null = null;
   private static readonly DEVICE_TIME_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
   private heartbeatLastSuccessAt: number | null = null;
-  private heartbeatProbeInFlight: boolean = false;
   private reconnectAttempts: number = 0;
   private nextReconnectAt: number | null = null;
   private shouldReconnect: boolean = false;
@@ -5638,7 +5638,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
   /**
    * Start the heartbeat probe loop. Called automatically from connect() when
-   * the native backend is in use. Idempotent: if interval is 0 or a timer
+   * the native backend is in use. Idempotent: if interval is 0 or a scheduler
    * is already running, it's a no-op.
    */
   private startHeartbeat(): void {
@@ -5647,51 +5647,46 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // Heartbeat disabled — preserves prior behaviour.
       return;
     }
-    if (this.heartbeatTimer) return;
+    if (this.heartbeatScheduler?.running) return;
     this.shouldReconnect = true;
-    this.heartbeatTimer = setInterval(() => {
-      this.runHeartbeatProbe().catch((err) => {
-        logger.warn(`[MeshCore:${this.sourceId}] heartbeat probe threw: ${(err as Error).message}`);
-      });
-    }, intervalSecs * 1000);
+    this.heartbeatScheduler = new HeartbeatScheduler({
+      label: `MeshCore:${this.sourceId}`,
+      intervalMs: intervalSecs * 1000,
+      timeoutMs: this.config?.heartbeatTimeoutMs ?? 5000,
+      probe: (t) => this.heartbeatProbe(t),
+      isConnected: () => this.connectionState === 'connected' && !!this.nativeBackend,
+      onSuccess: (ms) => this.onHeartbeatOk(ms),
+      onFailure: (e) => this.recordHeartbeatFailure(e),
+    });
+    this.heartbeatScheduler.start();
     logger.info(`[MeshCore:${this.sourceId}] Heartbeat started (every ${intervalSecs}s)`);
   }
 
   private stopHeartbeat(): void {
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-    }
-    this.heartbeatProbeInFlight = false;
+    this.heartbeatScheduler?.stop();
+    this.heartbeatScheduler = null;
   }
 
-  private async runHeartbeatProbe(): Promise<void> {
-    if (this.heartbeatProbeInFlight) return;
-    if (this.connectionState !== 'connected') return;
-    if (!this.nativeBackend) return;
-
-    this.heartbeatProbeInFlight = true;
-    const timeoutMs = this.config?.heartbeatTimeoutMs ?? 5000;
-    const probeStartedAt = Date.now();
-    try {
-      const response = await this.nativeBackend.sendCommand('get_device_time', {}, timeoutMs);
-      // Probe arrived after a teardown — drop the result.
-      if (this.connectionState !== 'connected') return;
-
-      if (response.success) {
-        const latencyMs = Date.now() - probeStartedAt;
-        this.heartbeatConsecutiveFailures = 0;
-        this.heartbeatLastSuccessAt = Date.now();
-        this.emit('heartbeat_ok', { sourceId: this.sourceId, latencyMs });
-      } else {
-        this.recordHeartbeatFailure(new Error(response.error ?? 'probe failed'));
-      }
-    } catch (err) {
-      if (this.connectionState !== 'connected') return;
-      this.recordHeartbeatFailure(err as Error);
-    } finally {
-      this.heartbeatProbeInFlight = false;
+  /**
+   * Wire-level probe operation: sends a cheap `get_device_time` RTC read to
+   * the native backend and returns `true` on success or throws on failure, so
+   * the {@link HeartbeatScheduler} can route the result to the appropriate
+   * callback without knowing about MeshCore command vocabulary.
+   */
+  private async heartbeatProbe(timeoutMs: number): Promise<boolean> {
+    if (!this.nativeBackend) {
+      throw new Error('no native backend');
     }
+    const response = await this.nativeBackend.sendCommand('get_device_time', {}, timeoutMs);
+    if (response.success) return true;
+    throw new Error(response.error ?? 'probe failed');
+  }
+
+  /** Called by the scheduler on a successful probe. */
+  private onHeartbeatOk(latencyMs: number): void {
+    this.heartbeatConsecutiveFailures = 0;
+    this.heartbeatLastSuccessAt = Date.now();
+    this.emit('heartbeat_ok', { sourceId: this.sourceId, latencyMs });
   }
 
   private recordHeartbeatFailure(err: Error): void {
