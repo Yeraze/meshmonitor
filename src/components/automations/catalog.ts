@@ -387,6 +387,15 @@ export const ACTIONS: BlockDef[] = [
     ],
   },
   {
+    type: 'action.deviceReboot',
+    label: 'Reboot the node',
+    description: 'Reboot the physical device — e.g. reinitialize a flaky BLE bridge or MQTT proxy on a daily schedule.',
+    fields: [
+      { name: 'sourceIds', label: 'Reboot which node(s)', kind: 'sendSourceMulti', help: 'The connected node(s) to reboot. Leave none to use the source that triggered the automation — but a source IS required for source-less triggers like Schedules and System events. (MQTT sources have no physical device and are excluded.)' },
+      { name: 'seconds', label: 'Reboot delay (seconds)', kind: 'number', advanced: true, placeholder: '10', help: 'Meshtastic: how long the device waits before rebooting (default 10s). Ignored by MeshCore.' },
+    ],
+  },
+  {
     type: 'action.notify',
     label: 'Send a notification',
     description: 'Send an external notification (Apprise).',

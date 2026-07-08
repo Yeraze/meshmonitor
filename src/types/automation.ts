@@ -40,6 +40,7 @@ export type ActionType =
   | 'action.tapback'
   | 'action.nodeManage'
   | 'action.requestData'
+  | 'action.deviceReboot'
   | 'action.notify'
   | 'action.runScript'
   | 'action.delay';
@@ -84,6 +85,7 @@ export const ACTION_TYPES: readonly ActionType[] = [
   'action.tapback',
   'action.nodeManage',
   'action.requestData',
+  'action.deviceReboot',
   'action.notify',
   'action.runScript',
   'action.delay',
@@ -365,6 +367,15 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
         case 'action.requestData':
           if (p.op != null && !REQUEST_OPS.includes(p.op as RequestOp)) {
             errors.push(`action.requestData "${n.id}" requires a valid params.op`);
+          }
+          break;
+        case 'action.deviceReboot':
+          // `seconds` is optional (Meshtastic reboot delay; MeshCore ignores it).
+          if (p.seconds != null) {
+            const secs = Number(p.seconds);
+            if (!Number.isFinite(secs) || secs < 0) {
+              errors.push(`action.deviceReboot "${n.id}" requires params.seconds ≥ 0`);
+            }
           }
           break;
         case 'action.delay': {

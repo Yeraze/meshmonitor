@@ -43,6 +43,10 @@ export interface ActionDeps {
     channel: number;
     telemetryType?: TelemetryKind;
   }): Promise<unknown>;
+  /** Reboot the physical device behind a source (#3995). `seconds` is the
+   *  Meshtastic reboot delay; MeshCore ignores it. Throws on an unreachable/
+   *  unsupported source so the run-log records a failed step. */
+  rebootDevice(a: { sourceId: string | null; seconds?: number }): Promise<unknown>;
   notify(a: { sourceId: string | null; title: string; body: string; type?: string; urls?: string[] }): Promise<unknown>;
   /** Run a user script file (in $DATA_DIR/scripts) with the given env. Never throws — returns the outcome. */
   runScript(a: { scriptPath: string; env: Record<string, string>; timeoutMs?: number }):
@@ -341,6 +345,25 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           if (!target) throw new Error(`action.requestData: no target node for "${op}"`);
         }
         results.push(await deps.requestData({ sourceId: sid, op, target, channel, telemetryType: op === 'telemetry' ? telemetryType : undefined }));
+      }
+      return results.length === 1 ? results[0] : results;
+    }
+
+    case 'action.deviceReboot': {
+      // Reboot the physical device (#3995). Targets a SOURCE's local node, not a
+      // subject node — so there's no nodeNum. `seconds` is the Meshtastic reboot
+      // delay (default handled by the manager); MeshCore ignores it. Supports the
+      // same multi-source select as sendMessage/requestData so a source-less
+      // schedule trigger can pick which radio(s) to reboot.
+      const secondsRaw = p.seconds != null ? Number(p.seconds) : undefined;
+      const seconds = secondsRaw != null && Number.isFinite(secondsRaw) && secondsRaw >= 0
+        ? Math.floor(secondsRaw) : undefined;
+      const sourceIds = Array.isArray(p.sourceIds) && p.sourceIds.length > 0
+        ? (p.sourceIds as unknown[]).map(String)
+        : [sourceId];
+      const results: unknown[] = [];
+      for (const sid of sourceIds) {
+        results.push(await deps.rebootDevice({ sourceId: sid, seconds }));
       }
       return results.length === 1 ? results[0] : results;
     }
