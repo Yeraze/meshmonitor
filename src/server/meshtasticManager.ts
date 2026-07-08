@@ -749,14 +749,20 @@ class MeshtasticManager implements ISourceManager {
   }
 
   async start(): Promise<void> {
-    await this.connect();
+    try {
+      await this.connect();
+    } catch (err) {
+      logger.error(`Source ${this.sourceId} initial connect failed (auto-reconnect will retry):`, err);
+    }
     try {
       await this.virtualNodeServer?.start();
     } catch (err) {
       logger.error(`Failed to start VirtualNodeServer for source ${this.sourceId}:`, err);
     }
-    // Wire up the MQTT proxy bridge if this source has an mqttLink. Done
-    // after connect() so the transport is ready to receive injected ToRadio.
+    // Wire up the MQTT proxy bridge if this source has an mqttLink. Attempted
+    // after connect(); note the transport may not yet be ready if the initial
+    // connect failed above — injected ToRadio sends are try/catch-guarded and
+    // the background reconnect will re-establish the transport.
     if (this.mqttLink?.enabled && this.mqttLink.mqttBrokerSourceId) {
       this.setupMqttLink();
     }
