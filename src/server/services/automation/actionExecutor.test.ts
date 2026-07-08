@@ -250,6 +250,9 @@ describe('executeAction', () => {
       fn: 'sendTapback',
       args: { sourceId: 'default', emoji: '👍', channel: undefined, destination: 5, replyId: 99 },
     });
+    // #3996: with no explicit sourceIds the reaction fires exactly once — from
+    // the triggering source only — never fanned out to every connected source.
+    expect(calls).toHaveLength(1);
   });
 
   it('tapback: channel message routes back to the channel', async () => {
@@ -271,6 +274,46 @@ describe('executeAction', () => {
     );
     expect(result).toMatchObject({ skipped: true });
     expect(calls).toHaveLength(0); // deps never invoked
+  });
+
+  // ── source selection (#3996) ────────────────────────────────────────────
+  it('tapback: explicit sourceIds fans out to each selected source', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.tapback', { emoji: '👍', sourceIds: ['radioA', 'radioB'] }),
+      ctx({ from: 5, channel: 3, packetId: 99, isDM: false }),
+      deps,
+    );
+    expect(calls.map((c) => c.args.sourceId)).toEqual(['radioA', 'radioB']);
+    expect(calls[0].args).toMatchObject({ emoji: '👍', channel: 3, destination: undefined, replyId: 99 });
+  });
+
+  it('tapback: a MeshCore source within an explicit selection is skipped, Meshtastic sources still fire', async () => {
+    const { calls, deps } = recorder();
+    const data = {
+      getNode: async () => null,
+      getTelemetry: async () => null,
+      getSourceProtocol: async (sid: string) => (sid === 'mc' ? 'meshcore' : 'meshtastic'),
+    };
+    const c = { ...ctx({ from: 5, channel: 3, packetId: 99, isDM: false }), data };
+    const results = await executeAction(
+      node('action.tapback', { emoji: '👍', sourceIds: ['radioA', 'mc'] }),
+      c,
+      deps,
+    );
+    expect(calls.map((c2) => c2.args.sourceId)).toEqual(['radioA']);
+    expect(results).toEqual([2, { skipped: true, reason: 'tapback is not supported on MeshCore' }]);
+  });
+
+  it('tapback: a single-entry explicit sourceIds still unwraps to a scalar result, not a one-element array', async () => {
+    const { deps } = recorder();
+    const result = await executeAction(
+      node('action.tapback', { emoji: '👍', sourceIds: ['radioA'] }),
+      ctx({ from: 5, channel: 3, packetId: 99, isDM: false }),
+      deps,
+    );
+    expect(result).toBe(2);
+    expect(Array.isArray(result)).toBe(false);
   });
 
   it('nodeManage: defaults to the subject node and validates op', async () => {

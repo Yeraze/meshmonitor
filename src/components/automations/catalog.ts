@@ -308,7 +308,10 @@ export const ACTIONS: BlockDef[] = [
     type: 'action.tapback',
     label: 'Send a tapback (reaction)',
     description: 'React to the triggering message.',
-    fields: [{ name: 'emoji', label: 'Emoji', kind: 'emoji', placeholder: '👍' }],
+    fields: [
+      { name: 'emoji', label: 'Emoji', kind: 'emoji', placeholder: '👍' },
+      { name: 'sourceIds', label: 'Send via sources', kind: 'sendSourceMulti', help: 'Which radios send the reaction (MeshCore sources are skipped — tapbacks are Meshtastic-only). Leave none to use the source that triggered the automation — but a source IS required for source-less triggers like System events and Schedules.' },
+    ],
   },
   {
     type: 'action.sendMessage',
