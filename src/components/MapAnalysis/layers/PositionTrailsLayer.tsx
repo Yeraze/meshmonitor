@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { useDashboardSources } from '../../../hooks/useDashboardData';
 import { usePositions } from '../../../hooks/useMapAnalysisData';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
+import { isNodeEmphasized, selectionOpacity } from '../../../utils/nodeIdentity';
 
 function colorForKey(key: string): string {
   let h = 0;
@@ -90,7 +91,14 @@ export default function PositionTrailsLayer() {
         <Polyline
           key={t.key}
           positions={t.positions}
-          pathOptions={{ color: t.color, weight: 2, opacity: 0.7 }}
+          pathOptions={{
+            color: t.color,
+            weight: 2,
+            opacity: selectionOpacity(
+              0.7,
+              isNodeEmphasized(`mt:${t.nodeNum}`, config.selectedNodeIds),
+            ),
+          }}
           eventHandlers={{
             click: () =>
               setSelected({

@@ -8,7 +8,9 @@ import { MapAnalysisProvider } from '../MapAnalysisContext';
 import PositionTrailsLayer from './PositionTrailsLayer';
 
 vi.mock('react-leaflet', () => ({
-  Polyline: () => <div data-testid="poly" />,
+  Polyline: (p: { pathOptions?: { opacity?: number } }) => (
+    <div data-testid="poly" data-opacity={p.pathOptions?.opacity} />
+  ),
 }));
 vi.mock('../../../hooks/useMapAnalysisData', () => ({
   usePositions: () => ({
@@ -73,5 +75,40 @@ describe('PositionTrailsLayer', () => {
       </QueryClientProvider>,
     );
     expect(screen.queryAllByTestId('poly')).toHaveLength(0);
+  });
+
+  it('dims trails for nodes not in selectedNodeIds', () => {
+    localStorage.setItem(
+      'mapAnalysis.config.v1',
+      JSON.stringify({
+        version: 1,
+        layers: {
+          markers: { enabled: false, lookbackHours: null },
+          traceroutes: { enabled: false, lookbackHours: 24 },
+          neighbors: { enabled: false, lookbackHours: 24 },
+          heatmap: { enabled: false, lookbackHours: 24 },
+          trails: { enabled: true, lookbackHours: 24 },
+          hopShading: { enabled: false, lookbackHours: null },
+          snrOverlay: { enabled: false, lookbackHours: 24 },
+        },
+        sources: [],
+        timeSlider: { enabled: false },
+        inspectorOpen: true,
+        selectedNodeIds: ['mt:1'],
+      }),
+    );
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <MapAnalysisProvider>
+          <PositionTrailsLayer />
+        </MapAnalysisProvider>
+      </QueryClientProvider>,
+    );
+    const polys = screen.getAllByTestId('poly');
+    expect(polys).toHaveLength(2);
+    const opacities = polys.map((p) => p.getAttribute('data-opacity'));
+    expect(opacities).toContain('0.7');
+    expect(opacities).toContain(String(0.7 * 0.3));
   });
 });
