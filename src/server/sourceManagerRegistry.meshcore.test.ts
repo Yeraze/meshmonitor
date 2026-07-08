@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SourceManagerRegistry } from './sourceManagerRegistry.js';
-import { MeshCoreManager } from './meshcoreManager.js';
+import { MeshCoreManager, ConnectionType } from './meshcoreManager.js';
 import { isMeshCoreManager, isMeshtasticManager } from './sourceManagerTypes.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 
@@ -155,7 +155,7 @@ describe('SourceManagerRegistry + MeshCoreManager (WP1)', () => {
 
     it('addManager calls start() which delegates to connect()', async () => {
       const mgr = makeMeshCoreManager('mc-6');
-      mgr.configure({ connectionType: 'serial', serialPort: '/dev/ttyACM0', baudRate: 115200, firmwareType: 'companion' });
+      mgr.configure({ connectionType: ConnectionType.SERIAL, serialPort: '/dev/ttyACM0', baudRate: 115200, firmwareType: 'companion' });
       await registry.addManager(mgr);
       // connect is stubbed to return true; start() calls connect(pendingConfig)
       expect(vi.mocked(mgr.connect)).toHaveBeenCalled();
@@ -249,7 +249,7 @@ describe('SourceManagerRegistry + MeshCoreManager (WP1)', () => {
     it('start() after configure() calls connect() with pendingConfig', async () => {
       const mgr = new MeshCoreManager('mc-cfg');
       vi.spyOn(mgr, 'connect').mockResolvedValue(true);
-      const cfg = { connectionType: 'serial' as const, serialPort: '/dev/ttyACM0', baudRate: 115200, firmwareType: 'companion' as const };
+      const cfg = { connectionType: ConnectionType.SERIAL, serialPort: '/dev/ttyACM0', baudRate: 115200, firmwareType: 'companion' as const };
       mgr.configure(cfg);
       await mgr.start();
       expect(vi.mocked(mgr.connect)).toHaveBeenCalledWith(cfg);

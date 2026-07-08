@@ -17,6 +17,7 @@ function fakeSource(overrides: Partial<Source> = {}): Source {
     type: 'meshcore',
     config: { transport: 'usb', port: '/dev/ttyACM0', deviceType: 'companion' },
     enabled: true,
+    displayOrder: 0,
     createdAt: 1,
     updatedAt: 1,
     createdBy: null,
