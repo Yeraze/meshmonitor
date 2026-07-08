@@ -72,4 +72,55 @@ describe('useMapAnalysisConfig', () => {
     act(() => result.current.reset());
     expect(result.current.config.selectedNodeIds).toEqual([]);
   });
+
+  it('defaults followMode and autoZoom to false', () => {
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    expect(result.current.config.followMode).toBe(false);
+    expect(result.current.config.autoZoom).toBe(false);
+    expect(DEFAULT_CONFIG.followMode).toBe(false);
+    expect(DEFAULT_CONFIG.autoZoom).toBe(false);
+  });
+
+  it('updates followMode and persists to localStorage', () => {
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    act(() => result.current.setFollowMode(true));
+    expect(result.current.config.followMode).toBe(true);
+    expect(JSON.parse(localStorage.getItem(KEY)!).followMode).toBe(true);
+  });
+
+  it('updates autoZoom and persists to localStorage', () => {
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    act(() => result.current.setAutoZoom(true));
+    expect(result.current.config.autoZoom).toBe(true);
+    expect(JSON.parse(localStorage.getItem(KEY)!).autoZoom).toBe(true);
+  });
+
+  it('loads an old config missing followMode/autoZoom as false without throwing', () => {
+    const { followMode: _fm, autoZoom: _az, ...oldConfig } = DEFAULT_CONFIG;
+    localStorage.setItem(KEY, JSON.stringify(oldConfig));
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    expect(result.current.config.followMode).toBe(false);
+    expect(result.current.config.autoZoom).toBe(false);
+  });
+
+  it('coerces garbage followMode/autoZoom values to false', () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({ ...DEFAULT_CONFIG, followMode: 'yes', autoZoom: 1 }),
+    );
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    expect(result.current.config.followMode).toBe(false);
+    expect(result.current.config.autoZoom).toBe(false);
+  });
+
+  it('reset() clears followMode and autoZoom back to false', () => {
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    act(() => result.current.setFollowMode(true));
+    act(() => result.current.setAutoZoom(true));
+    expect(result.current.config.followMode).toBe(true);
+    expect(result.current.config.autoZoom).toBe(true);
+    act(() => result.current.reset());
+    expect(result.current.config.followMode).toBe(false);
+    expect(result.current.config.autoZoom).toBe(false);
+  });
 });
