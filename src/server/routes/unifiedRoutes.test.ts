@@ -50,21 +50,16 @@ vi.mock('../../services/database.js', () => ({
   }
 }));
 
-// sourceManagerRegistry is imported dynamically inside the route handler
+// sourceManagerRegistry is imported dynamically inside the route handler.
+// MeshCore managers now live in this unified registry too (#3962 Ph2).
 vi.mock('../sourceManagerRegistry.js', () => ({
   sourceManagerRegistry: {
     getManager: vi.fn().mockReturnValue(null),
   }
 }));
 
-vi.mock('../meshcoreRegistry.js', () => ({
-  meshcoreManagerRegistry: {
-    get: vi.fn().mockReturnValue(null),
-  },
-}));
-
-import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
-const mockMeshcoreRegistry = meshcoreManagerRegistry as any;
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+const mockSourceRegistry = sourceManagerRegistry as any;
 
 const mockDb = databaseService as any;
 
@@ -1186,9 +1181,12 @@ describe('Unified Routes', () => {
       const mcManagerMock = {
         getAllNodes: vi.fn().mockReturnValue(mcNodes),
         getLocalNode: vi.fn().mockReturnValue(mcNodes[0]),
+        getStatus: vi.fn().mockReturnValue({ connected: false }),
         sourceId: 'src-mc',
+        // isMeshCoreManager() narrows on the sourceType discriminant.
+        sourceType: 'meshcore' as const,
       };
-      mockMeshcoreRegistry.get.mockImplementation((id: string) =>
+      mockSourceRegistry.getManager.mockImplementation((id: string) =>
         id === 'src-mc' ? mcManagerMock : null,
       );
 
@@ -1260,7 +1258,7 @@ describe('GET /unified/dashboard — bundled cross-source datasets (#3735)', () 
     mockDb.neighbors = { getAllNeighborInfo: vi.fn().mockResolvedValue([]) };
     mockDb.channels.getAllChannels.mockResolvedValue([{ id: 0, name: 'Primary', role: 1 }]);
     mockDb.settings.getSetting.mockResolvedValue(null);
-    mockMeshcoreRegistry.get.mockReturnValue(null);
+    mockSourceRegistry.getManager.mockReturnValue(null);
   });
 
   it('returns one bundle per source, each with the four dataset arrays', async () => {

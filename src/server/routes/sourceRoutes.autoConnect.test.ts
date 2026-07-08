@@ -9,8 +9,6 @@ import request from 'supertest';
 import sourceRoutes from './sourceRoutes.js';
 import databaseService from '../../services/database.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
-
 vi.mock('../../services/database.js', () => ({
   default: {
     sources: {
@@ -61,18 +59,27 @@ vi.mock('../meshtasticManager.js', () => {
   return { MeshtasticManager };
 });
 
-vi.mock('../meshcoreRegistry.js', () => ({
-  meshcoreManagerRegistry: {
-    get: vi.fn().mockReturnValue(undefined),
-    getOrCreate: vi.fn(),
-    remove: vi.fn().mockResolvedValue(undefined),
-  },
+vi.mock('../meshcoreConfig.js', () => ({
   meshcoreConfigFromSource: vi.fn().mockReturnValue({ connectionType: 'serial', serialPort: '/dev/ttyACM0', firmwareType: 'companion' }),
 }));
 
+vi.mock('../meshcoreManager.js', () => {
+  class MeshCoreManager {
+    sourceId: string;
+    sourceType: string = 'meshcore';
+    constructor(sourceId: string) { this.sourceId = sourceId; }
+    configure = vi.fn();
+    start = vi.fn().mockResolvedValue(undefined);
+    stop = vi.fn().mockResolvedValue(undefined);
+    isConnected = vi.fn().mockReturnValue(false);
+    disconnect = vi.fn().mockResolvedValue(undefined);
+    connect = vi.fn().mockResolvedValue(true);
+  }
+  return { MeshCoreManager };
+});
+
 const mockDb = databaseService as any;
 const mockRegistry = sourceManagerRegistry as any;
-const mockMcRegistry = meshcoreManagerRegistry as any;
 
 const adminUser = { id: 1, username: 'admin', isActive: true, isAdmin: true };
 
@@ -101,7 +108,6 @@ beforeEach(() => {
   mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: true });
   mockDb.checkPermissionAsync.mockResolvedValue(true);
   mockRegistry.getManager.mockReturnValue(null);
-  mockMcRegistry.get.mockReturnValue(undefined);
 });
 
 describe('sourceRoutes — autoConnect flag on create', () => {
@@ -283,7 +289,8 @@ describe('sourceRoutes — POST /:id/disconnect', () => {
       createdBy: 1,
     });
     const disconnect = vi.fn().mockResolvedValue(undefined);
-    mockMcRegistry.get.mockReturnValue({ isConnected: () => true, disconnect });
+    // The manager is now in the unified sourceManagerRegistry.
+    mockRegistry.getManager.mockReturnValue({ isConnected: () => true, disconnect, sourceType: 'meshcore' });
 
     const res = await request(app).post('/mc-1/disconnect');
 
@@ -294,7 +301,7 @@ describe('sourceRoutes — POST /:id/disconnect', () => {
     // ...but the manager stays registered so /meshcore/* routes keep working
     // and /connect can re-establish without a restart (regression: the source
     // used to become unaddressable — "No MeshCore manager for source").
-    expect(mockMcRegistry.remove).not.toHaveBeenCalled();
+    expect(mockRegistry.removeManager).not.toHaveBeenCalled();
   });
 
   it('reports alreadyStopped for a MeshCore source that is not connected', async () => {
@@ -310,14 +317,15 @@ describe('sourceRoutes — POST /:id/disconnect', () => {
       createdBy: 1,
     });
     const disconnect = vi.fn().mockResolvedValue(undefined);
-    mockMcRegistry.get.mockReturnValue({ isConnected: () => false, disconnect });
+    // The manager is now in the unified sourceManagerRegistry.
+    mockRegistry.getManager.mockReturnValue({ isConnected: () => false, disconnect, sourceType: 'meshcore' });
 
     const res = await request(app).post('/mc-1/disconnect');
 
     expect(res.status).toBe(200);
     expect(res.body.alreadyStopped).toBe(true);
     expect(disconnect).not.toHaveBeenCalled();
-    expect(mockMcRegistry.remove).not.toHaveBeenCalled();
+    expect(mockRegistry.removeManager).not.toHaveBeenCalled();
   });
 });
 

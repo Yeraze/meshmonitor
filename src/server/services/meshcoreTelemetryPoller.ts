@@ -21,7 +21,8 @@ import { logger } from '../../utils/logger.js';
 import type { DbTelemetry } from '../../services/database.js';
 import type { DbMeshCoreNode } from '../../db/repositories/meshcore.js';
 import type { MeshCoreManager, MeshCoreDeviceInfo } from '../meshcoreManager.js';
-import type { MeshCoreManagerRegistry } from '../meshcoreRegistry.js';
+import type { SourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isMeshCoreManager } from '../sourceManagerTypes.js';
 
 /**
  * Minimal slice of DatabaseService the poller depends on. Lets us unit-test
@@ -89,7 +90,7 @@ interface PrevSample {
 }
 
 export interface MeshCoreTelemetryPollerOptions {
-  registry: MeshCoreManagerRegistry;
+  registry: SourceManagerRegistry;
   database: PollerDatabase;
   /** Override the env-derived interval (mostly for tests). */
   intervalMs?: number;
@@ -107,7 +108,7 @@ export function resolvePollIntervalMs(envValue: string | undefined): number {
 }
 
 export class MeshCoreTelemetryPoller {
-  private readonly registry: MeshCoreManagerRegistry;
+  private readonly registry: SourceManagerRegistry;
   private readonly database: PollerDatabase;
   private readonly intervalMs: number;
   private timer: NodeJS.Timeout | null = null;
@@ -186,7 +187,7 @@ export class MeshCoreTelemetryPoller {
     }
     this.running = true;
     try {
-      const managers = this.registry.list();
+      const managers = this.registry.getAllManagers().filter(isMeshCoreManager);
       for (const manager of managers) {
         try {
           await this.pollManager(manager);

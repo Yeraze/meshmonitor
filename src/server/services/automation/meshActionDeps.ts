@@ -12,7 +12,6 @@
  */
 import databaseService from '../../../services/database.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
-import { meshcoreManagerRegistry } from '../../meshcoreRegistry.js';
 import { appriseNotificationService } from '../appriseNotificationService.js';
 import { runScript as runUserScript } from '../../utils/scriptRunner.js';
 import type { ActionDeps } from './actionExecutor.js';
@@ -43,15 +42,12 @@ interface MeshCoreSendManager {
 }
 
 /**
- * Resolve the live manager for a source across BOTH registries (#3915).
- * Meshtastic managers live in `sourceManagerRegistry`; MeshCore managers live
- * in the separate `meshcoreManagerRegistry`. Automation actions must consult
- * both — otherwise every action targeting a MeshCore source fails with
- * "cannot send messages", because a MeshCore manager is never present in
- * `sourceManagerRegistry` no matter how healthy/connected the source is.
+ * Resolve the live manager for a source (#3915, unified in WP3b).
+ * Both Meshtastic and MeshCore managers are registered in `sourceManagerRegistry`
+ * after the one-registry migration; no secondary lookup is needed.
  */
 function resolveManager(sourceId: string): unknown | undefined {
-  return sourceManagerRegistry.getManager(sourceId) ?? meshcoreManagerRegistry.get(sourceId);
+  return sourceManagerRegistry.getManager(sourceId);
 }
 
 function mgr(sourceId: string | null): MeshSendManager {

@@ -33,7 +33,9 @@ import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { migrateAutomationChannels } from '../utils/automationChannelMigration.js';
 import { modemPresetChannelName, CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 import { getEncryptionStatus, getRoleName } from '../utils/channelView.js';
-import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isMeshCoreManager } from '../sourceManagerTypes.js';
+import { fail } from '../utils/apiResponse.js';
 
 const router: Router = Router();
 
@@ -562,17 +564,12 @@ router.put('/:id', requireAuth(), async (req: Request, res: Response) => {
       // re-sync the DB from the device (the manager's setChannel handles
       // both — including base64↔hex secret conversion).
       //
-      // MeshCore managers live in their own registry (meshcoreManagerRegistry),
-      // separate from the Meshtastic one. resolveSourceManager only knows
-      // about the Meshtastic registry and silently falls back to the global
-      // meshtasticManager singleton on a miss, which has no setChannel and
-      // surfaces as a runtime TypeError.
-      const mcManager = meshcoreManagerRegistry.get(chanSourceId);
+      // resolveSourceManager only knows about Meshtastic managers; look up the
+      // MeshCore manager via the unified sourceManagerRegistry and narrow it.
+      const _rawCh = sourceManagerRegistry.getManager(chanSourceId);
+      const mcManager = _rawCh && isMeshCoreManager(_rawCh) ? _rawCh : null;
       if (!mcManager || typeof mcManager.setChannel !== 'function') {
-        return res.status(503).json({
-          error: 'MeshCore source not connected or not registered',
-          message: `No active MeshCore manager for source ${chanSourceId}. Connect the source and retry.`,
-        });
+        return fail(res, 503, 'SOURCE_NOT_CONNECTED', `No active MeshCore manager for source ${chanSourceId}. Connect the source and retry.`);
       }
 
       // Convert the base64 PSK to hex for the meshcore.js wire format.
@@ -683,13 +680,10 @@ router.delete('/:id', requireAuth(), async (req: Request, res: Response) => {
 
     if (sourceType === 'meshcore') {
       // MeshCore: push delete to the device first, then re-sync the DB.
-      // MeshCore managers are in their own registry — see PUT route comment.
-      const mcManager = meshcoreManagerRegistry.get(deleteChannelSourceId);
+      const _rawDel = sourceManagerRegistry.getManager(deleteChannelSourceId);
+      const mcManager = _rawDel && isMeshCoreManager(_rawDel) ? _rawDel : null;
       if (!mcManager || typeof mcManager.deleteChannel !== 'function') {
-        return res.status(503).json({
-          error: 'MeshCore source not connected or not registered',
-          message: `No active MeshCore manager for source ${deleteChannelSourceId}. Connect the source and retry.`,
-        });
+        return fail(res, 503, 'SOURCE_NOT_CONNECTED', `No active MeshCore manager for source ${deleteChannelSourceId}. Connect the source and retry.`);
       }
       try {
         await mcManager.deleteChannel(channelId);

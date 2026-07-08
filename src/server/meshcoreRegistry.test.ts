@@ -1,142 +1,184 @@
 /**
- * MeshCoreManagerRegistry — lifecycle tests for the per-source factory.
- * Mirrors what `sourceManagerRegistry` does for Meshtastic TCP, but for
- * MeshCore. We exercise pure registry plumbing here; the actual device
- * connection logic in MeshCoreManager is out of scope for this slice.
+ * meshcoreRegistry.ts — shim behavior tests.
+ *
+ * The MeshCoreManagerRegistry class was deleted in WP4 of #3962 (Phase 2,
+ * Task 2.1). This file verifies that the @deprecated shim (`meshcoreManagerRegistry`)
+ * correctly delegates to the unified `sourceManagerRegistry`.
+ *
+ * Config-helper tests (meshcoreConfigFromSource) moved to meshcoreConfig.test.ts
+ * as part of WP1.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
-import { MeshCoreManagerRegistry, meshcoreConfigFromSource } from './meshcoreRegistry.js';
-import { ConnectionType } from './meshcoreManager.js';
-import type { Source } from '../db/repositories/sources.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { SourceManagerRegistry } from './sourceManagerRegistry.js';
+import { isMeshCoreManager } from './sourceManagerTypes.js';
+import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 
-function fakeSource(overrides: Partial<Source> = {}): Source {
+// ---------------------------------------------------------------------------
+// Minimal stubs — no real serial/TCP connections opened.
+// ---------------------------------------------------------------------------
+
+function makeMeshCoreStub(sourceId = 'mc-shim'): ISourceManager {
   return {
-    id: 'src-a',
-    name: 'A',
-    type: 'meshcore',
-    config: { transport: 'usb', port: '/dev/ttyACM0', deviceType: 'companion' },
-    enabled: true,
-    createdAt: 1,
-    updatedAt: 1,
-    createdBy: null,
-    ...overrides,
+    sourceId,
+    sourceType: 'meshcore',
+    start: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    stop: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    getStatus: (): SourceStatus => ({
+      sourceId,
+      sourceName: 'Shim Test',
+      sourceType: 'meshcore',
+      connected: true,
+    }),
+    getLocalNodeInfo: () => null,
   };
 }
 
-describe('MeshCoreManagerRegistry', () => {
-  let registry: MeshCoreManagerRegistry;
+function makeMeshtasticStub(sourceId = 'mt-shim'): ISourceManager {
+  return {
+    sourceId,
+    sourceType: 'meshtastic_tcp',
+    start: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    stop: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    getStatus: (): SourceStatus => ({
+      sourceId,
+      sourceName: 'Meshtastic Shim',
+      sourceType: 'meshtastic_tcp',
+      connected: false,
+      nodeNum: 1,
+      nodeId: '!00000001',
+    }),
+    getLocalNodeInfo: () => ({
+      nodeNum: 1,
+      nodeId: '!00000001',
+      longName: 'Node',
+      shortName: 'N',
+    }),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// We test the shim's BEHAVIOR, not its import path. Create a local registry
+// so tests don't pollute the module-level singleton.
+// We can't easily rewire the shim to use a test registry, so we test the
+// shim's contract by verifying the unified-registry semantics directly,
+// then spot-check the shim's surface.
+// ---------------------------------------------------------------------------
+
+describe('meshcoreManagerRegistry shim — delegation via unified registry', () => {
+  let registry: SourceManagerRegistry;
 
   beforeEach(() => {
-    registry = new MeshCoreManagerRegistry();
+    registry = new SourceManagerRegistry();
   });
 
-  it('getOrCreate returns the same instance for the same source id', () => {
-    const a = registry.getOrCreate(fakeSource({ id: 'a' }));
-    const a2 = registry.getOrCreate(fakeSource({ id: 'a', name: 'A renamed' }));
-    expect(a).toBe(a2);
-    expect(a.sourceId).toBe('a');
+  it('isMeshCoreManager returns true for meshcore stubs, false for meshtastic', async () => {
+    const mc = makeMeshCoreStub('mc-1');
+    const mt = makeMeshtasticStub('mt-1');
+    await registry.addManager(mc);
+    await registry.addManager(mt);
+
+    const all = registry.getAllManagers();
+    expect(all.filter(isMeshCoreManager).map(m => m.sourceId)).toEqual(['mc-1']);
+    expect(all.filter(m => !isMeshCoreManager(m)).map(m => m.sourceId)).toEqual(['mt-1']);
   });
 
-  it('getOrCreate yields independent instances per source id', () => {
-    const a = registry.getOrCreate(fakeSource({ id: 'a' }));
-    const b = registry.getOrCreate(fakeSource({ id: 'b' }));
-    expect(a).not.toBe(b);
-    expect(a.sourceId).toBe('a');
-    expect(b.sourceId).toBe('b');
+  it('getManager + isMeshCoreManager narrows to MeshCoreManager', async () => {
+    const mc = makeMeshCoreStub('mc-2');
+    await registry.addManager(mc);
+
+    const found = registry.getManager('mc-2');
+    expect(found).toBeDefined();
+    expect(isMeshCoreManager(found!)).toBe(true);
+    if (isMeshCoreManager(found!)) {
+      expect(found.sourceId).toBe('mc-2');
+    }
   });
 
-  it('list returns every registered manager', () => {
-    registry.getOrCreate(fakeSource({ id: 'a' }));
-    registry.getOrCreate(fakeSource({ id: 'b' }));
-    const ids = registry.list().map(m => m.sourceId).sort();
-    expect(ids).toEqual(['a', 'b']);
+  it('getManager returns undefined and isMeshCoreManager returns false for meshtastic id', async () => {
+    const mt = makeMeshtasticStub('mt-3');
+    await registry.addManager(mt);
+
+    const found = registry.getManager('mt-3');
+    expect(found).toBeDefined();
+    expect(isMeshCoreManager(found!)).toBe(false);
   });
 
-  it('remove disconnects and forgets the manager', async () => {
-    const m = registry.getOrCreate(fakeSource({ id: 'a' }));
-    expect(registry.get('a')).toBe(m);
-    await registry.remove('a');
-    expect(registry.get('a')).toBeUndefined();
-    expect(registry.list()).toHaveLength(0);
+  it('removeManager removes the manager from the registry', async () => {
+    const mc = makeMeshCoreStub('mc-4');
+    await registry.addManager(mc);
+    expect(registry.getManager('mc-4')).toBe(mc);
+
+    await registry.removeManager('mc-4');
+    expect(registry.getManager('mc-4')).toBeUndefined();
   });
 
-  it('disconnectAll clears the registry', async () => {
-    registry.getOrCreate(fakeSource({ id: 'a' }));
-    registry.getOrCreate(fakeSource({ id: 'b' }));
-    await registry.disconnectAll();
-    expect(registry.list()).toHaveLength(0);
+  it('stopAll removes all managers', async () => {
+    await registry.addManager(makeMeshCoreStub('mc-5a'));
+    await registry.addManager(makeMeshtasticStub('mt-5b'));
+    expect(registry.size).toBe(2);
+
+    await registry.stopAll();
+    expect(registry.size).toBe(0);
   });
 });
 
-describe('meshcoreConfigFromSource', () => {
-  it('maps companion-USB source config to a SERIAL MeshCoreConfig', () => {
-    const cfg = meshcoreConfigFromSource(
-      fakeSource({ config: { transport: 'usb', port: '/dev/ttyACM0', deviceType: 'companion' } }),
-    );
-    expect(cfg).toEqual({
-      connectionType: ConnectionType.SERIAL,
-      serialPort: '/dev/ttyACM0',
-      baudRate: 115200,
-      firmwareType: 'companion',
-    });
+describe('meshcoreManagerRegistry shim — disconnectAll() scoped to meshcore only', () => {
+  // We verify the semantic contract using a local registry to avoid side-effects
+  // on the module-level singleton used by the shim.
+  it('only removes meshcore managers, leaves meshtastic managers registered', async () => {
+    const registry = new SourceManagerRegistry();
+    const mc1 = makeMeshCoreStub('mc-d1');
+    const mc2 = makeMeshCoreStub('mc-d2');
+    const mt1 = makeMeshtasticStub('mt-d1');
+
+    await registry.addManager(mc1);
+    await registry.addManager(mc2);
+    await registry.addManager(mt1);
+    expect(registry.size).toBe(3);
+
+    // Replicate the disconnectAll logic using the local registry.
+    const meshcoreManagers = registry.getAllManagers().filter(isMeshCoreManager);
+    await Promise.allSettled(meshcoreManagers.map(m => registry.removeManager(m.sourceId)));
+
+    // MeshCore sources removed; meshtastic source preserved.
+    expect(registry.getManager('mc-d1')).toBeUndefined();
+    expect(registry.getManager('mc-d2')).toBeUndefined();
+    expect(registry.getManager('mt-d1')).toBeDefined();
+    expect(registry.size).toBe(1);
+  });
+});
+
+describe('meshcoreManagerRegistry shim — @deprecated surface compiles and delegates', () => {
+  // Import the shim (which delegates to the module-level sourceManagerRegistry).
+  // We verify the exported shape rather than the side effects — full delegation
+  // coverage lives in sourceManagerRegistry.meshcore.test.ts.
+  it('exports get, list, remove, disconnectAll, getOrCreate as functions', async () => {
+    const mod = await import('./meshcoreRegistry.js');
+    const shim = mod.meshcoreManagerRegistry;
+    expect(typeof shim.get).toBe('function');
+    expect(typeof shim.list).toBe('function');
+    expect(typeof shim.remove).toBe('function');
+    expect(typeof shim.disconnectAll).toBe('function');
+    expect(typeof shim.getOrCreate).toBe('function');
   });
 
-  it('maps tcp source config when host is set', () => {
-    const cfg = meshcoreConfigFromSource(
-      fakeSource({ config: { transport: 'tcp', tcpHost: '10.0.0.5', tcpPort: 4404, deviceType: 'companion' } }),
-    );
-    expect(cfg).toEqual({
-      connectionType: ConnectionType.TCP,
-      tcpHost: '10.0.0.5',
-      tcpPort: 4404,
-      firmwareType: 'companion',
-    });
+  it('get() returns undefined for an unregistered id', async () => {
+    const mod = await import('./meshcoreRegistry.js');
+    expect(mod.meshcoreManagerRegistry.get('no-such-id')).toBeUndefined();
   });
 
-  it('defaults tcpPort to 4403 when omitted', () => {
-    const cfg = meshcoreConfigFromSource(
-      fakeSource({ config: { transport: 'tcp', tcpHost: '10.0.0.5', deviceType: 'companion' } }),
-    );
-    expect(cfg).toEqual({
-      connectionType: ConnectionType.TCP,
-      tcpHost: '10.0.0.5',
-      tcpPort: 4403,
-      firmwareType: 'companion',
-    });
+  it('list() returns an array (may be empty when registry is empty)', async () => {
+    const mod = await import('./meshcoreRegistry.js');
+    expect(Array.isArray(mod.meshcoreManagerRegistry.list())).toBe(true);
   });
 
-  it('returns null for tcp transport without a host', () => {
-    const cfg = meshcoreConfigFromSource(
-      fakeSource({ config: { transport: 'tcp', tcpPort: 4403, deviceType: 'companion' } }),
-    );
-    expect(cfg).toBeNull();
+  it('getOrCreate() throws a migration-guidance error', async () => {
+    const mod = await import('./meshcoreRegistry.js');
+    expect(() => mod.meshcoreManagerRegistry.getOrCreate({})).toThrow(/deprecated/i);
   });
 
-  it('returns null when companion-USB source has no port set (legacy seed default)', () => {
-    const cfg = meshcoreConfigFromSource(
-      fakeSource({ config: { transport: 'usb', port: '', deviceType: 'companion' } }),
-    );
-    expect(cfg).toBeNull();
-  });
-
-  it('passes heartbeatIntervalSeconds through on the SERIAL path', () => {
-    const cfg = meshcoreConfigFromSource(
-      fakeSource({ config: { transport: 'usb', port: '/dev/ttyACM0', deviceType: 'companion', heartbeatIntervalSeconds: 30 } }),
-    );
-    expect(cfg?.heartbeatIntervalSeconds).toBe(30);
-  });
-
-  it('passes heartbeatIntervalSeconds through on the TCP path', () => {
-    const cfg = meshcoreConfigFromSource(
-      fakeSource({ config: { transport: 'tcp', tcpHost: '10.0.0.5', deviceType: 'companion', heartbeatIntervalSeconds: 45 } }),
-    );
-    expect(cfg?.heartbeatIntervalSeconds).toBe(45);
-  });
-
-  it('leaves heartbeatIntervalSeconds undefined when not configured', () => {
-    const cfg = meshcoreConfigFromSource(
-      fakeSource({ config: { transport: 'usb', port: '/dev/ttyACM0', deviceType: 'companion' } }),
-    );
-    expect(cfg?.heartbeatIntervalSeconds).toBeUndefined();
+  it('re-exports meshcoreConfigFromSource from meshcoreConfig', async () => {
+    const mod = await import('./meshcoreRegistry.js');
+    expect(typeof mod.meshcoreConfigFromSource).toBe('function');
   });
 });

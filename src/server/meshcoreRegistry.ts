@@ -1,160 +1,74 @@
 /**
- * MeshCoreManagerRegistry — per-source registry of MeshCoreManager instances.
+ * @deprecated Deprecated compatibility shim. Use `sourceManagerRegistry` + `isMeshCoreManager`
+ * for all new code. This module will be removed in the release after the one that landed #3962
+ * (Task 2.1). All internal production code has been migrated; this exists only to avoid
+ * breaking any stray external importers during the transition window.
  *
- * Slice 1 of the multi-source MeshCore refactor (companion-USB only):
- * lifts MeshCore from a module-level singleton to one manager per
- * `sources.id`, mirroring how Meshtastic TCP already works via
- * `sourceManagerRegistry`.
- *
- * Route nesting (`/api/sources/:id/meshcore/*`), the per-source UI, and
- * the `meshcore` permission collapse are deferred to slice 2/3.
+ * Removal note: delete this file after one release. Tracked by #3962 Task 2.1.
  */
-import { MeshCoreManager, ConnectionType, type MeshCoreConfig } from './meshcoreManager.js';
-import type { Source } from '../db/repositories/sources.js';
+
+import { sourceManagerRegistry } from './sourceManagerRegistry.js';
+import { isMeshCoreManager } from './sourceManagerTypes.js';
 import { logger } from '../utils/logger.js';
 
-interface MeshCoreSourceConfig {
-  transport?: 'usb' | 'serial' | 'tcp';
-  port?: string;
-  serialPort?: string;
-  baudRate?: number;
-  tcpHost?: string;
-  tcpPort?: number;
-  deviceType?: 'companion' | 'repeater';
-  autoConnect?: boolean;
-  /**
-   * Companion heartbeat / auto-reconnect interval in seconds (0 = disabled).
-   * Mirrors the Meshtastic source setting. When > 0 the manager periodically
-   * probes the node (cheap RTC read) and, on repeated failure, tears down and
-   * reconnects with exponential backoff. Only honoured for companion devices
-   * (the native backend); repeater/direct-serial ignores it.
-   */
-  heartbeatIntervalSeconds?: number;
-  // Virtual Node server — expose this node to the MeshCore app over WiFi (#3535).
-  virtualNode?: {
-    enabled?: boolean;
-    port?: number;
-    allowAdminCommands?: boolean;
-  };
-}
-
-/** Default TCP port the Virtual Node server listens on when none is given. */
-const DEFAULT_VIRTUAL_NODE_PORT = 5000;
+// Re-export the config helpers from their canonical location so callers that
+// still import these from the old path continue to compile.
+export {
+  meshcoreConfigFromSource,
+  virtualNodeConfigFromSource,
+  DEFAULT_VIRTUAL_NODE_PORT,
+  type MeshCoreSourceConfig,
+} from './meshcoreConfig.js';
 
 /**
- * Build the runtime virtual-node config from a source's saved config, or
- * undefined when disabled/absent. A non-positive or missing port falls back to
- * the default so an enabled server always binds to a usable port.
+ * @deprecated Use `sourceManagerRegistry.getManager(id)` + `isMeshCoreManager` for lookups,
+ * `sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager)` for enumeration,
+ * and `sourceManagerRegistry.removeManager(id)` for removal.
+ * Removed in the release after #3962 Task 2.1 lands.
  */
-function virtualNodeConfigFromSource(cfg: MeshCoreSourceConfig): MeshCoreConfig['virtualNode'] {
-  const vn = cfg.virtualNode;
-  if (!vn?.enabled) return undefined;
-  return {
-    enabled: true,
-    port: typeof vn.port === 'number' && vn.port > 0 ? vn.port : DEFAULT_VIRTUAL_NODE_PORT,
-    allowAdminCommands: vn.allowAdminCommands === true,
-  };
-}
+export const meshcoreManagerRegistry = {
+  /** @deprecated Use `sourceManagerRegistry.getManager(id)` + `isMeshCoreManager`. */
+  get(id: string) {
+    const m = sourceManagerRegistry.getManager(id);
+    return m && isMeshCoreManager(m) ? m : undefined;
+  },
 
-/**
- * Convert a `sources.config` record into the runtime `MeshCoreConfig`
- * shape that `MeshCoreManager.connect` expects. Slice 1 only supports
- * companion-USB; other transports are documented but not yet wired.
- */
-export function meshcoreConfigFromSource(source: Source): MeshCoreConfig | null {
-  const cfg = (source.config ?? {}) as MeshCoreSourceConfig;
-  const firmwareType = cfg.deviceType === 'repeater' ? 'repeater' : 'companion';
-  const virtualNode = virtualNodeConfigFromSource(cfg);
+  /** @deprecated Use `sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager)`. */
+  list() {
+    return sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager);
+  },
 
-  // Companion-USB / direct serial — the v1 path.
-  const port = cfg.serialPort || cfg.port;
-  if ((cfg.transport === 'usb' || cfg.transport === 'serial' || !cfg.transport) && port) {
-    return {
-      connectionType: ConnectionType.SERIAL,
-      serialPort: port,
-      baudRate: cfg.baudRate ?? 115200,
-      firmwareType,
-      virtualNode,
-      heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
-    };
-  }
-
-  if (cfg.transport === 'tcp' && cfg.tcpHost) {
-    return {
-      connectionType: ConnectionType.TCP,
-      tcpHost: cfg.tcpHost,
-      tcpPort: cfg.tcpPort ?? 4403,
-      firmwareType,
-      virtualNode,
-      heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
-    };
-  }
-
-  return null;
-}
-
-export class MeshCoreManagerRegistry {
-  private readonly managers = new Map<string, MeshCoreManager>();
-
-  /** Get the manager for a given source, or undefined if not yet created. */
-  get(sourceId: string): MeshCoreManager | undefined {
-    return this.managers.get(sourceId);
-  }
+  /** @deprecated Use `sourceManagerRegistry.removeManager(id)`. */
+  remove(id: string): Promise<void> {
+    return sourceManagerRegistry.removeManager(id);
+  },
 
   /**
-   * Get-or-create the manager for a source. Does NOT call connect();
-   * callers do that explicitly so they can decide whether to honour
-   * `autoConnect` and surface failures.
+   * @deprecated Use `sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager)` +
+   * `sourceManagerRegistry.removeManager(id)` per entry.
+   * Note: this scopes to meshcore managers only — it does NOT remove meshtastic sources.
    */
-  getOrCreate(source: Source): MeshCoreManager {
-    const existing = this.managers.get(source.id);
-    if (existing) return existing;
-
-    const manager = new MeshCoreManager(source.id);
-    this.managers.set(source.id, manager);
-    logger.info(`[MeshCoreRegistry] Registered manager for source ${source.id} (${source.name})`);
-    return manager;
-  }
-
-  /** List all registered managers. */
-  list(): MeshCoreManager[] {
-    return Array.from(this.managers.values());
-  }
+  disconnectAll(): Promise<void> {
+    const meshcoreManagers = sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager);
+    return Promise.allSettled(
+      meshcoreManagers.map(m => sourceManagerRegistry.removeManager(m.sourceId))
+    ).then(() => undefined);
+  },
 
   /**
-   * Disconnect and forget the manager for a source. Used when a source is
-   * deleted or disabled.
+   * @deprecated getOrCreate's "create without connect" contract cannot be reproduced
+   * on the unified registry (addManager auto-starts). Migrate to the create-or-connect
+   * recipe: new MeshCoreManager(id, name) → configure(cfg) → sourceManagerRegistry.addManager(mgr).
+   * See #3962 Task 2.1 for details.
    */
-  async remove(sourceId: string): Promise<void> {
-    const manager = this.managers.get(sourceId);
-    if (!manager) return;
-    try {
-      await manager.disconnect();
-    } catch (err) {
-      logger.warn(`[MeshCoreRegistry] Error disconnecting ${sourceId}:`, err);
-    }
-    this.managers.delete(sourceId);
-    logger.info(`[MeshCoreRegistry] Removed manager for source ${sourceId}`);
-  }
-
-  /** Disconnect every manager. Used on shutdown. */
-  async disconnectAll(): Promise<void> {
-    const ids = Array.from(this.managers.keys());
-    await Promise.all(
-      ids.map(async (id) => {
-        try {
-          await this.managers.get(id)?.disconnect();
-        } catch (err) {
-          logger.warn(`[MeshCoreRegistry] Error disconnecting ${id}:`, err);
-        }
-      }),
+  getOrCreate(_source: unknown): never {
+    logger.error(
+      '[meshcoreManagerRegistry.getOrCreate] Called on the deprecated shim — ' +
+        'migrate to sourceManagerRegistry + isMeshCoreManager (#3962 Task 2.1).',
     );
-    this.managers.clear();
-  }
-}
-
-/**
- * Module-level registry instance. Imported by route handlers that haven't
- * yet been migrated to per-source paths (deferred to slice 2/N).
- */
-export const meshcoreManagerRegistry = new MeshCoreManagerRegistry();
+    throw new Error(
+      '[meshcoreManagerRegistry.getOrCreate] deprecated — ' +
+        'migrate to sourceManagerRegistry + isMeshCoreManager. #3962 Task 2.1',
+    );
+  },
+};

@@ -14,7 +14,8 @@
  */
 import { logger } from '../../utils/logger.js';
 import type { MeshCoreManager } from '../meshcoreManager.js';
-import type { MeshCoreManagerRegistry } from '../meshcoreRegistry.js';
+import type { SourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import type { MeshCoreCredentialStore } from './meshcoreCredentialStore.js';
 import databaseService from '../../services/database.js';
 
@@ -50,14 +51,14 @@ export function pickMostOverdueRoom(nodes: RoomSyncNode[], now: number): RoomSyn
 }
 
 export interface RoomSyncSchedulerOptions {
-  registry: MeshCoreManagerRegistry;
+  registry: SourceManagerRegistry;
   credentialStore: MeshCoreCredentialStore;
   tickMs?: number;
   now?: () => number;
 }
 
 export class MeshCoreRoomSyncScheduler {
-  private readonly registry: MeshCoreManagerRegistry;
+  private readonly registry: SourceManagerRegistry;
   private readonly credentialStore: MeshCoreCredentialStore;
   private readonly tickMs: number;
   private readonly now: () => number;
@@ -89,7 +90,7 @@ export class MeshCoreRoomSyncScheduler {
     if (this.ticking) return;
     this.ticking = true;
     try {
-      const managers = this.registry.list();
+      const managers = this.registry.getAllManagers().filter(isMeshCoreManager);
       for (const manager of managers) {
         if (!manager.isConnected()) continue;
         try {

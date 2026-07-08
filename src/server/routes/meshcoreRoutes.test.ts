@@ -33,6 +33,8 @@ vi.mock('../../services/database.js', () => ({
 const meshcoreManager = {
   // The /info route reads `manager.sourceId` to populate telemetryRef.
   sourceId: 'test-source',
+  // The router guard narrows via isMeshCoreManager(), which checks sourceType.
+  sourceType: 'meshcore' as const,
   getConnectionStatus: vi.fn().mockReturnValue({
     connected: false,
     deviceType: 0,
@@ -100,14 +102,19 @@ vi.mock('../meshcoreManager.js', () => ({
 }));
 
 // Only `test-source` is registered; unknown ids return undefined so the
-// router-level guard returns 404.
+// router-level guard returns 404. MeshCore managers now live in the unified
+// sourceManagerRegistry (#3962 Ph2), so that is what we mock.
 const REGISTERED_SOURCE_IDS = new Set(['test-source']);
-vi.mock('../meshcoreRegistry.js', () => ({
-  meshcoreManagerRegistry: {
-    list: () => [meshcoreManager],
-    get: (sourceId: string) => (REGISTERED_SOURCE_IDS.has(sourceId) ? meshcoreManager : undefined),
-  },
-}));
+vi.mock('../sourceManagerRegistry.js', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../sourceManagerRegistry.js')>();
+  return {
+    ...orig,
+    sourceManagerRegistry: {
+      getAllManagers: () => [meshcoreManager],
+      getManager: (sourceId: string) => (REGISTERED_SOURCE_IDS.has(sourceId) ? meshcoreManager : undefined),
+    },
+  };
+});
 
 // Fake credential store with controllable capability + storage. Tests can
 // toggle `canRemember` and inspect calls to `store`/`clear`.

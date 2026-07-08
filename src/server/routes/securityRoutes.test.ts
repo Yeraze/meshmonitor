@@ -79,11 +79,11 @@ describe('securityRoutes — per-source scanner', () => {
     vi.clearAllMocks();
     runScanMock.mockResolvedValue(undefined);
     getAllManagersMock.mockReturnValue([
-      { sourceId: 'src-1' },
-      { sourceId: 'src-2' },
+      { sourceId: 'src-1', sourceType: 'meshtastic_tcp' },
+      { sourceId: 'src-2', sourceType: 'meshtastic_tcp' },
     ]);
     getManagerMock.mockImplementation((id: string) =>
-      ['src-1', 'src-2'].includes(id) ? { sourceId: id } : undefined
+      ['src-1', 'src-2'].includes(id) ? { sourceId: id, sourceType: 'meshtastic_tcp' } : undefined
     );
     getStatusMock.mockImplementation((sid?: string) => {
       if (sid) {
@@ -162,8 +162,10 @@ describe('securityRoutes — per-source scanner', () => {
     beforeEach(() => {
       getManagerMock.mockImplementation((id: string) =>
         ['src-1', 'src-2'].includes(id)
-          ? { sourceId: id, isNodeInDeviceDb: () => false }
-          : undefined,
+          ? { sourceId: id, sourceType: 'meshtastic_tcp', isNodeInDeviceDb: () => false }
+          : id === 'mc-1'
+            ? { sourceId: id, sourceType: 'meshcore' }
+            : undefined,
       );
       mockDb.settings.getSetting.mockResolvedValue('0');
     });
@@ -197,6 +199,52 @@ describe('securityRoutes — per-source scanner', () => {
       // Regression: the repair log MUST be scoped by sourceId, otherwise key
       // mismatch events from every source leak into one source's view.
       expect(mockDb.getKeyRepairLogAsync).toHaveBeenCalledWith(100, 'src-1');
+    });
+  });
+
+  describe('INVALID_SOURCE_TYPE guards', () => {
+    beforeEach(() => {
+      // Register both a meshtastic and a meshcore source stub.
+      getManagerMock.mockImplementation((id: string) => {
+        if (id === 'src-1') return { sourceId: id, sourceType: 'meshtastic_tcp', isNodeInDeviceDb: () => false };
+        if (id === 'mc-1') return { sourceId: id, sourceType: 'meshcore' };
+        return undefined;
+      });
+      getAllManagersMock.mockReturnValue([
+        { sourceId: 'src-1', sourceType: 'meshtastic_tcp' },
+      ]);
+      runScanMock.mockResolvedValue(undefined);
+      getStatusMock.mockReturnValue({ scanningNow: false });
+      mockDb.settings.getSetting.mockResolvedValue('0');
+    });
+
+    it('POST /scanner/scan with meshcore sourceId → 400 INVALID_SOURCE_TYPE', async () => {
+      const app = createApp();
+      const res = await request(app)
+        .post('/api/security/scanner/scan')
+        .send({ sourceId: 'mc-1' });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_SOURCE_TYPE');
+      expect(res.body.success).toBe(false);
+      expect(runScanMock).not.toHaveBeenCalled();
+    });
+
+    it('GET /dead-nodes with meshcore sourceId → 400 INVALID_SOURCE_TYPE', async () => {
+      const app = createApp();
+      const res = await request(app).get('/api/security/dead-nodes?sourceId=mc-1');
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_SOURCE_TYPE');
+      expect(res.body.success).toBe(false);
+    });
+
+    it('POST /dead-nodes/bulk-delete with meshcore sourceId → 400 INVALID_SOURCE_TYPE', async () => {
+      const app = createApp();
+      const res = await request(app)
+        .post('/api/security/dead-nodes/bulk-delete')
+        .send({ sourceId: 'mc-1', nodeNums: [1234] });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_SOURCE_TYPE');
+      expect(res.body.success).toBe(false);
     });
   });
 });

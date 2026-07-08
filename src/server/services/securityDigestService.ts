@@ -300,7 +300,7 @@ class SecurityDigestService {
     // iterate every registered source and build a per-source digest.
     const targetSourceIds = sourceIdOverride
       ? [sourceIdOverride]
-      : sourceManagerRegistry.getAllManagers().map(m => m.sourceId);
+      : sourceManagerRegistry.getAllManagers().filter(m => m.sourceType !== 'meshcore').map(m => m.sourceId);
 
     if (targetSourceIds.length === 0) {
       return { success: false, message: 'No sources available' };
