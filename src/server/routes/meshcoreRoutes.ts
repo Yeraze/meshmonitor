@@ -10,7 +10,8 @@
 
 import { Router, Request, Response } from 'express';
 import { ConnectionType, MeshCoreDeviceType, MeshCoreManager, MeshCoreDiscoverFilter, type MeshCoreDiscoverMode } from '../meshcoreManager.js';
-import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { getMeshCoreTelemetryPoller, nodeNumFromPubkey } from '../services/meshcoreTelemetryPoller.js';
 import {
   MAX_INTERVAL_MINUTES,
@@ -40,7 +41,8 @@ import { decodeMeshCorePacket } from '../../utils/meshcorePacketDecode.js';
  */
 function managerFor(req: Request): MeshCoreManager {
   const sourceId = (req.params as { id?: string }).id!;
-  return meshcoreManagerRegistry.get(sourceId)!;
+  // The router guard has already verified this manager exists and is a MeshCoreManager.
+  return sourceManagerRegistry.getManager(sourceId) as MeshCoreManager;
 }
 
 const router = Router({ mergeParams: true });
@@ -58,7 +60,8 @@ router.use((req, res, next) => {
       error: 'MeshCore routes must be mounted under /api/sources/:id/meshcore',
     });
   }
-  if (!meshcoreManagerRegistry.get(sourceId)) {
+  const _guardMgr = sourceManagerRegistry.getManager(sourceId);
+  if (!_guardMgr || !isMeshCoreManager(_guardMgr)) {
     return res.status(404).json({
       success: false,
       error: `No MeshCore manager for source ${sourceId}`,
@@ -775,7 +778,7 @@ router.post(
       const region = await databaseService.savedRegions.addAsync(name, note ?? null);
       // Refresh the scope cache on every manager so the new region name is
       // available for resolving inbound messages immediately (#3829).
-      for (const mgr of meshcoreManagerRegistry.list()) {
+      for (const mgr of sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager)) {
         mgr.notifySavedRegionsChanged();
       }
       res.json({ success: true, region });
@@ -803,7 +806,7 @@ router.delete(
       await databaseService.savedRegions.deleteAsync(id);
       // Refresh the scope cache on every manager so the deleted region is
       // no longer matched against inbound messages (#3829).
-      for (const mgr of meshcoreManagerRegistry.list()) {
+      for (const mgr of sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager)) {
         mgr.notifySavedRegionsChanged();
       }
       res.json({ success: true });
@@ -2718,8 +2721,8 @@ router.post(
         return res.status(400).json({ success: false, error: "type must be 'status' or 'lpp'" });
       }
 
-      const manager = meshcoreManagerRegistry.get(sourceId);
-      if (!manager || !manager.isConnected()) {
+      const manager = managerFor(req);
+      if (!manager.isConnected()) {
         return res.status(409).json({ success: false, error: 'MeshCore source is not connected' });
       }
 
@@ -3329,11 +3332,8 @@ router.post(
       }
 
       // Re-arm the scheduler so the new settings take effect immediately.
-      const mgr = meshcoreManagerRegistry.get(sourceId);
-      if (mgr) {
-        await mgr.startAutoAnnounce().catch((err: Error) =>
-          logger.warn(`[API] auto-announce restart after save failed: ${err.message}`));
-      }
+      await managerFor(req).startAutoAnnounce().catch((err: Error) =>
+        logger.warn(`[API] auto-announce restart after save failed: ${err.message}`));
 
       const lastRunRaw = await settings.getSettingForSource(sourceId, 'meshcoreAutoAnnounceLastRunAt');
       res.json({
@@ -3424,11 +3424,8 @@ router.post(
       }
       await databaseService.settings.setSourceSetting(sourceId, 'meshcoreTimerTriggers', JSON.stringify(body.triggers));
 
-      const mgr = meshcoreManagerRegistry.get(sourceId);
-      if (mgr) {
-        await mgr.startTimerTriggers().catch((err: Error) =>
-          logger.warn(`[API] timer-trigger restart after save failed: ${err.message}`));
-      }
+      await managerFor(req).startTimerTriggers().catch((err: Error) =>
+        logger.warn(`[API] timer-trigger restart after save failed: ${err.message}`));
 
       res.json({ success: true });
     } catch (error) {
@@ -3522,8 +3519,7 @@ router.post(
         await databaseService.settings.setSourceSetting(sourceId, 'meshcoreAutoResponderTriggers', JSON.stringify(body.triggers));
       }
 
-      const mgr = meshcoreManagerRegistry.get(sourceId);
-      if (mgr) mgr.resetAutoResponderRegexCache();
+      managerFor(req).resetAutoResponderRegexCache();
 
       res.json({ success: true });
     } catch (error) {

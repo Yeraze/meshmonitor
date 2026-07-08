@@ -22,7 +22,7 @@ import databaseService from '../../services/database.js';
 import { hasPermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
+import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import {
   filterNodesByChannelPermission,
   maskNodeLocationByChannel,
@@ -52,7 +52,8 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
   // reach the position-override logic below: MeshCore contacts have no
   // override columns (that's a Meshtastic-node feature, #3551).
   if (source.type === 'meshcore') {
-    const mcManager = meshcoreManagerRegistry.get(source.id);
+    const _raw = sourceManagerRegistry.getManager(source.id);
+    const mcManager = _raw && isMeshCoreManager(_raw) ? _raw : null;
     const mcNodes: any[] = [];
     if (mcManager) {
       for (const n of await mcManager.getAllNodes()) {

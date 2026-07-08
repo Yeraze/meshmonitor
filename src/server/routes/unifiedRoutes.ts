@@ -13,7 +13,7 @@ import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { PortNum, CHANNEL_DB_OFFSET, modemPresetChannelName } from '../constants/meshtastic.js';
 import { filterPacketsByPermissions, getAllowedChannels } from './packetPermissions.js';
-import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
+import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { buildSourceDashboard, getMaxNodeAgeHours } from '../services/sourceDashboardData.js';
 import type { DbChannelDatabase, DbPacketLog } from '../../db/types.js';
 import type { DbMeshCorePacket } from '../../db/repositories/meshcore.js';
@@ -1248,9 +1248,9 @@ router.get('/status', async (req: Request, res: Response) => {
       if (canRead) allowedIds.push(source.id);
     }
 
-    // MeshCore nodes live in per-source in-memory managers (meshcoreManagerRegistry),
-    // not the shared `nodes` table — count them separately using the same 2h
-    // active window as the per-source /status endpoint (issue #3321).
+    // MeshCore nodes live in per-source in-memory managers (looked up via
+    // sourceManagerRegistry), not the shared `nodes` table — count them separately
+    // using the same 2h active window as the per-source /status endpoint (issue #3321).
     const meshcoreAllowedIds = allowedIds.filter(
       (id) => sources.find((s) => s.id === id)?.type === 'meshcore',
     );
@@ -1262,7 +1262,8 @@ router.get('/status', async (req: Request, res: Response) => {
     let mcNodeCount = 0;
     let mcActiveNodeCount = 0;
     for (const id of meshcoreAllowedIds) {
-      const mcManager = meshcoreManagerRegistry.get(id);
+      const _rawUni = sourceManagerRegistry.getManager(id);
+      const mcManager = _rawUni && isMeshCoreManager(_rawUni) ? _rawUni : null;
       if (mcManager) {
         const all = await mcManager.getAllNodes();
         mcNodeCount += all.length;

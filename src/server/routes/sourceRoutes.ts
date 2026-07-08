@@ -521,6 +521,15 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
       return res.status(404).json({ error: 'Source not found' });
     }
 
+    // Propagate name change to the live MeshCore manager so getStatus() stays
+    // fresh without requiring a restart (#3962 WP3b — open question 5).
+    if (name !== undefined) {
+      const liveMgr = sourceManagerRegistry.getManager(source.id);
+      if (liveMgr && isMeshCoreManager(liveMgr)) {
+        liveMgr.setSourceName(source.name);
+      }
+    }
+
     // Handle enable/disable transitions
     const wasEnabled = existing.enabled;
     const isNowEnabled = source.enabled;

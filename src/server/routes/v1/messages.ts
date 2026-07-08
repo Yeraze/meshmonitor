@@ -9,7 +9,8 @@ import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { resolveSourceManager } from '../../utils/resolveSourceManager.js';
-import { meshcoreManagerRegistry } from '../../meshcoreRegistry.js';
+import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
+import { isMeshCoreManager } from '../../sourceManagerTypes.js';
 import { hasPermission } from '../../auth/authMiddleware.js';
 import { ResourceType } from '../../../types/permission.js';
 import { messageLimiter } from '../../middleware/rateLimiters.js';
@@ -250,7 +251,7 @@ router.get('/search', async (req: Request, res: Response) => {
     }
 
     // Search MeshCore messages (in-memory filter, across every registered source)
-    const meshcoreManagers = meshcoreManagerRegistry.list().filter(m => m.isConnected());
+    const meshcoreManagers = sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager).filter(m => m.isConnected());
     if ((searchScope === 'all' || searchScope === 'meshcore') && meshcoreManagers.length > 0) {
       const hasMeshcoreAccess = isAdmin || (accessibleChannels === null);
 
