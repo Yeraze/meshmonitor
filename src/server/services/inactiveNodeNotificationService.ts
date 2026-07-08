@@ -2,7 +2,7 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { notificationService } from './notificationService.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
+
 
 interface InactiveNodeCheck {
   nodeId: string;
@@ -105,13 +105,9 @@ class InactiveNodeNotificationService {
       logger.debug(`🔍 Checking inactive nodes for ${users.length} user(s)`);
 
       // Phase C: iterate every active source and run the inactivity check per source.
-      // MeshCore managers live in meshcoreManagerRegistry (not sourceManagerRegistry),
-      // so combine both to ensure inactivity checks run for MeshCore sources.
-      type MinimalManager = { sourceId: string; sourceType: string };
-      const managers: MinimalManager[] = [
-        ...sourceManagerRegistry.getAllManagers(),
-        ...meshcoreManagerRegistry.list().map(m => ({ sourceId: m.sourceId, sourceType: 'meshcore' as const })),
-      ];
+      // All source types (meshtastic, MeshCore, MQTT) are now in the unified
+      // sourceManagerRegistry, so a single getAllManagers() covers every source.
+      const managers = sourceManagerRegistry.getAllManagers();
       if (managers.length === 0) {
         logger.debug('No source managers registered — skipping inactive node check');
         return;

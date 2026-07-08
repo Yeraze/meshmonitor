@@ -365,7 +365,9 @@ router.get('/dead-nodes', async (req: Request, res: Response) => {
     let deadNodesSourceId = req.query.sourceId as string | undefined;
     // Fall back to first registered manager for legacy single-source callers
     if (!deadNodesSourceId) {
-      const managers = sourceManagerRegistry.getAllManagers();
+      // Exclude MeshCore sources — dead-node detection is Meshtastic-only
+      // (MeshCore nodes are not tracked in the shared `nodes` table).
+      const managers = sourceManagerRegistry.getAllManagers().filter(m => m.sourceType !== 'meshcore');
       if (managers.length === 0) {
         return res.status(400).json({ error: 'No source managers available' });
       }

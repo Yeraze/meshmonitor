@@ -75,7 +75,9 @@ class DuplicateKeySchedulerService {
    * a collision in source A does not block a scan of source B.
    */
   async runScanAllSources(): Promise<void> {
-    const managers = sourceManagerRegistry.getAllManagers();
+    // Exclude MeshCore sources — they have no Meshtastic node table / public-key
+    // security model, so scanning them would be empty and wasteful.
+    const managers = sourceManagerRegistry.getAllManagers().filter(m => m.sourceType !== 'meshcore');
     if (managers.length === 0) {
       logger.debug('🔐 No source managers registered — skipping scheduled security scan');
       return;
@@ -373,7 +375,7 @@ class DuplicateKeySchedulerService {
     const allKeys = new Set<string>([
       ...this.isScanning.keys(),
       ...this.lastScanTime.keys(),
-      ...sourceManagerRegistry.getAllManagers().map(m => m.sourceId),
+      ...sourceManagerRegistry.getAllManagers().filter(m => m.sourceType !== 'meshcore').map(m => m.sourceId),
     ]);
     for (const sid of allKeys) {
       sources[sid] = {
