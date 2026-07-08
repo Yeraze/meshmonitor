@@ -203,15 +203,19 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
         }
         case 'trigger': {
           const tn = ctx.trigger.fields.scopeName;
-          const tc = ctx.trigger.fields.scopeCode;
           // `scopeCode` is only present in fields at all for a MeshCore message
           // trigger (buildMeshCoreMessageContext) — a schedule/telemetry/Meshtastic
           // trigger has no such key, and must inherit rather than be forced unscoped.
           const hasTriggerScope = 'scopeCode' in ctx.trigger.fields;
-          if (typeof tn === 'string' && tn.length > 0) scopeOverride = tn;
-          else if (!hasTriggerScope) scopeOverride = undefined; // no MeshCore message trigger → inherit
-          else if (typeof tc === 'number' && tc > 0) scopeOverride = undefined; // known-but-unmapped scope → inherit
-          else scopeOverride = ''; // scopeCode 0 (unscoped) or unresolvable (#3887) → reply unscoped
+          if (typeof tn === 'string' && tn.length > 0) scopeOverride = tn; // resolved region name → match it
+          else if (!hasTriggerScope) scopeOverride = undefined; // non-MeshCore trigger (no scope concept) → inherit
+          // MeshCore message trigger with no resolvable region name: confirmed
+          // unscoped (scopeCode 0), unresolvable (scopeCode null), OR scoped to a
+          // region we can't name (scopeCode > 0, no known match). None can be
+          // reproduced — the transport code is an HMAC keyed by the region name —
+          // so reply unscoped rather than substitute the node's unrelated default
+          // scope (#3998; previously inherited the default for the unmapped case, #3887).
+          else scopeOverride = '';
           break;
         }
         default:

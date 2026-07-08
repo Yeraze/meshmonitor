@@ -220,14 +220,19 @@ describe('executeAction', () => {
     expect(calls[0].args.scopeOverride).toBe('');
   });
 
-  it('sendMessage: trigger scope on a known-but-unmapped scope code inherits', async () => {
+  it('sendMessage: trigger scope on a known-but-unmapped scope code sends unscoped (#3998)', async () => {
+    // scopeCode > 0 but no resolved region name: the trigger WAS scoped, but to a
+    // region we can't name (e.g. a flood re-scoped by a repeater whose region isn't
+    // in our known set). We can't reproduce an unnameable scope (the transport code
+    // is an HMAC keyed by the region name), so "match the trigger scope" must degrade
+    // to unscoped — NOT the node's unrelated default scope (was: inherit, #3887).
     const { calls, deps } = recorder();
     await executeAction(
       node('action.sendMessage', { text: 'hi', channel: 1, scopeMode: 'trigger' }),
       ctx({ from: 5, channel: 1, isDM: false, scopeName: null, scopeCode: 456 }),
       deps,
     );
-    expect('scopeOverride' in calls[0].args).toBe(false);
+    expect(calls[0].args.scopeOverride).toBe('');
   });
 
   it('sendMessage: DM send never carries a scope override', async () => {
