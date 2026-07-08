@@ -181,7 +181,7 @@ describe('createMeshActionDeps requestData — node operations (#3835)', () => {
 });
 
 describe('createMeshActionDeps rebootDevice — device reboot action (#3995)', () => {
-  beforeEach(() => { getManager.mockReset(); meshcoreGet.mockReset(); });
+  beforeEach(() => { getManager.mockReset(); });
 
   it('calls a Meshtastic manager rebootDevice with the seconds delay', async () => {
     const rebootDevice = vi.fn().mockResolvedValue(undefined); // void
@@ -195,10 +195,9 @@ describe('createMeshActionDeps rebootDevice — device reboot action (#3995)', (
     expect(result).toEqual({ rebooted: true });
   });
 
-  it('reaches a MeshCore manager only present in meshcoreManagerRegistry', async () => {
+  it('reaches a MeshCore manager via the unified registry', async () => {
     const rebootDevice = vi.fn().mockResolvedValue(true);
-    getManager.mockReturnValue(undefined);
-    meshcoreGet.mockReturnValue({ sendMessage: vi.fn(), rebootDevice });
+    getManager.mockReturnValue({ sendMessage: vi.fn(), rebootDevice });
     const deps = createMeshActionDeps();
 
     const result = await deps.rebootDevice({ sourceId: 'mc' });
@@ -209,8 +208,7 @@ describe('createMeshActionDeps rebootDevice — device reboot action (#3995)', (
 
   it('surfaces a MeshCore reboot failure (resolves false) as a thrown error', async () => {
     const rebootDevice = vi.fn().mockResolvedValue(false); // repeater fw / disconnected
-    getManager.mockReturnValue(undefined);
-    meshcoreGet.mockReturnValue({ sendMessage: vi.fn(), rebootDevice });
+    getManager.mockReturnValue({ sendMessage: vi.fn(), rebootDevice });
     const deps = createMeshActionDeps();
 
     await expect(deps.rebootDevice({ sourceId: 'mc' })).rejects.toThrow(/failed to reboot/);
@@ -218,7 +216,6 @@ describe('createMeshActionDeps rebootDevice — device reboot action (#3995)', (
 
   it('throws when the source has no manager / no rebootDevice method', async () => {
     getManager.mockReturnValue(undefined);
-    meshcoreGet.mockReturnValue(undefined);
     const deps = createMeshActionDeps();
     await expect(deps.rebootDevice({ sourceId: 'ghost' })).rejects.toThrow(/cannot reboot/);
   });
