@@ -166,7 +166,7 @@ export function initializeWebSocket(
   // Handle connections
   io.on('connection', (socket: Socket) => {
     const username = (socket as any).username || 'unknown';
-    logger.info(`[WebSocket] Client connected: ${socket.id} (user: ${username})`);
+    logger.debug(`[WebSocket] Client connected: ${socket.id} (user: ${username})`);
 
     // Per-socket joined sourceId (set on join-source). Used to remap cross-source
     // message channel slot indexes so replies from other sources land in the
@@ -331,7 +331,7 @@ export function initializeWebSocket(
     socket.on('disconnect', (reason) => {
       dataEventEmitter.off('data', handler);
       automationTraceBus.disarmSocket(socket.id);
-      logger.info(`[WebSocket] Client disconnected: ${socket.id} (reason: ${reason})`);
+      logger.debug(`[WebSocket] Client disconnected: ${socket.id} (reason: ${reason})`);
     });
 
     // Handle errors

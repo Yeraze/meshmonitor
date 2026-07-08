@@ -678,10 +678,10 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
         const enabled = await databaseService.settings.getSettingForSource(sourceId, 'autoDeleteByDistanceEnabled');
         if (enabled === 'true') {
           callbacks.restartAutoDeleteByDistanceService?.(sourceId);
-          logger.info(`✅ Auto-delete-by-distance scheduler restarted (source: ${sourceId})`);
+          logger.debug(`✅ Auto-delete-by-distance scheduler restarted (source: ${sourceId})`);
         } else {
           callbacks.stopAutoDeleteByDistanceService?.(sourceId);
-          logger.info(`⏹️ Auto-delete-by-distance scheduler stopped (source: ${sourceId})`);
+          logger.debug(`⏹️ Auto-delete-by-distance scheduler stopped (source: ${sourceId})`);
         }
       }
 
@@ -713,17 +713,17 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
 
     if ('analyticsProvider' in filteredSettings || 'analyticsConfig' in filteredSettings) {
       callbacks.invalidateHtmlCache?.();
-      logger.info('📊 Analytics settings updated - HTML cache invalidated');
+      logger.debug('📊 Analytics settings updated - HTML cache invalidated');
     }
 
     if ('autoWelcomeEnabled' in filteredSettings) {
       const wasEnabled = currentSettings['autoWelcomeEnabled'] === 'true';
       const nowEnabled = filteredSettings['autoWelcomeEnabled'] === 'true';
       if (!wasEnabled && nowEnabled) {
-        logger.info('👋 Auto-welcome being enabled - marking existing nodes as welcomed...');
+        logger.debug('👋 Auto-welcome being enabled - marking existing nodes as welcomed...');
         const markedCount = callbacks.handleAutoWelcomeEnabled?.() ?? 0;
         if (markedCount > 0) {
-          logger.info(`✅ Marked ${markedCount} existing node(s) as welcomed to prevent spam`);
+          logger.debug(`✅ Marked ${markedCount} existing node(s) as welcomed to prevent spam`);
         }
       }
     }
@@ -798,7 +798,7 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
           (filteredSettings.autoKeyManagementImmediatePurge === undefined &&
             dbImmediatePurge === 'true'),
       });
-      logger.info('✅ Auto key repair settings updated');
+      logger.debug('✅ Auto key repair settings updated');
     }
 
     const inactiveNodeSettings = [
@@ -833,7 +833,7 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
       if (!isNaN(threshold) && threshold > 0 && !isNaN(checkInterval) && checkInterval > 0 && !isNaN(cooldown) && cooldown > 0) {
         callbacks.stopInactiveNodeService?.();
         callbacks.restartInactiveNodeService?.(threshold, checkInterval, cooldown);
-        logger.info(
+        logger.debug(
           `✅ Inactive node notification service restarted (threshold: ${threshold}h, check: ${checkInterval}min, cooldown: ${cooldown}h)`
         );
       }
@@ -863,7 +863,7 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
       if (!isNaN(checkInterval) && checkInterval > 0 && !isNaN(cooldown) && cooldown > 0) {
         callbacks.stopLowBatteryService?.();
         callbacks.restartLowBatteryService?.(checkInterval, cooldown);
-        logger.info(
+        logger.debug(
           `✅ Low battery notification service restarted (check: ${checkInterval}min, cooldown: ${cooldown}h)`
         );
       }

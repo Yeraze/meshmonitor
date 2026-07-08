@@ -217,7 +217,7 @@ class AutoFavoriteManagementScheduler {
 
   initialize(): void {
     this.start();
-    logger.info('✅ Auto-favorite management scheduler initialized');
+    logger.debug('✅ Auto-favorite management scheduler initialized');
   }
 
   start(): void {
@@ -404,7 +404,7 @@ class AutoFavoriteManagementScheduler {
         const status = ackStatusLabel(ack);
         await databaseService.autoFavoriteTargets.touchAssignment(sourceId, targetNodeNum, fav, now, { status, at: now });
         result.reFavorited.push({ nodeNum: fav, ackStatus: status });
-        logger.info(`🔁 Auto-favorite: re-asserted ${fav} on remote target ${targetNodeNum} (source ${sourceId}) — ack=${status}`);
+        logger.debug(`🔁 Auto-favorite: re-asserted ${fav} on remote target ${targetNodeNum} (source ${sourceId}) — ack=${status}`);
       } catch (error) {
         logger.warn(`⚠️ Auto-favorite: failed to re-assert ${fav} on target ${targetNodeNum}:`, error);
       }

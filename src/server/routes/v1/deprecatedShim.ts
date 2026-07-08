@@ -22,7 +22,7 @@ export function deprecationShim(resource: string): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Warning', WARNING_HEADER_VALUE);
     const user = (req as any).user;
-    logger.info(
+    logger.debug(
       `[v1-deprecated] ${req.method} /api/v1/${resource}${req.url} user=${user?.id ?? 'anon'} sourceId=${
         (req.query?.sourceId as string | undefined) ?? '<none>'
       }`

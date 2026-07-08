@@ -53,7 +53,7 @@ export function createMapStyleRouter(service: MapStyleService): Router {
         const name = filename.replace(/\.[^.]+$/, '');
 
         const style = service.addStyle(name, content, 'upload');
-        logger.info(`[MapStyleRoutes] Style uploaded: ${style.name} (${style.id})`);
+        logger.debug(`[MapStyleRoutes] Style uploaded: ${style.name} (${style.id})`);
         return res.status(201).json(style);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -118,7 +118,7 @@ export function createMapStyleRouter(service: MapStyleService): Router {
         }
 
         const style = service.addStyle(name, content, 'url', url);
-        logger.info(`[MapStyleRoutes] Style added from URL: ${style.name} (${style.id})`);
+        logger.debug(`[MapStyleRoutes] Style added from URL: ${style.name} (${style.id})`);
         return res.status(201).json(style);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -262,7 +262,7 @@ export function createMapStyleRouter(service: MapStyleService): Router {
         const name = requestedName?.trim() || tileJson.name || 'Generated Style';
         const style = generateStyleFromTileJson(tileJson, { name });
 
-        logger.info(`[MapStyleRoutes] Generated style from TileJSON at: ${tileJsonUrl}`);
+        logger.debug(`[MapStyleRoutes] Generated style from TileJSON at: ${tileJsonUrl}`);
         return res.json({ style, filename: `${name.replace(/[^a-z0-9_-]/gi, '_').toLowerCase()}-style.json` });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

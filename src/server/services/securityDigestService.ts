@@ -390,7 +390,7 @@ class SecurityDigestService {
         : formatDigestSummary(issues, baseUrl, suppressEmpty, format);
 
       if (rawBody === null) {
-        logger.info(`[${sourceId}] Security digest suppressed — no issues found`);
+        logger.debug(`[${sourceId}] Security digest suppressed — no issues found`);
         return { sourceId, success: true, message: 'No issues found, digest suppressed' };
       }
 

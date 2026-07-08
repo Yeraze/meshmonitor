@@ -2,21 +2,28 @@
  * Centralized logging utility for MeshMonitor
  *
  * Log level can be controlled via the LOG_LEVEL environment variable.
- * Valid values: debug, info, warn, error
+ * Valid values: trace, debug, info, warn, error
  *
  * If LOG_LEVEL is not set, falls back to NODE_ENV behavior:
  * - development/test → debug
  * - production → info
  *
  * Use appropriate log levels:
- * - debug: Development-only verbose logging
- * - info: Important runtime information
- * - warn: Warnings that don't prevent operation
+ * - trace: Firehose — per-packet / per-loop-iteration diagnostics. Off unless
+ *          explicitly requested; never enable in production for more than a
+ *          short capture window.
+ * - debug: Verbose but bounded — routine per-event, periodic scheduler cycles,
+ *          connection handshake steps, state inspection. Hidden by default.
+ * - info:  Important, low-frequency runtime events a support engineer wants in
+ *          a production log by default: startup/shutdown, source connect/
+ *          disconnect, migrations/backups/restores, actions actually taken.
+ *          Keep this tier sparse — an idle container should be near-silent.
+ * - warn:  Warnings that don't prevent operation
  * - error: Errors that need attention
  */
 
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-const LOG_LEVEL_ORDER: LogLevel[] = ['debug', 'info', 'warn', 'error'];
+type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';
+const LOG_LEVEL_ORDER: LogLevel[] = ['trace', 'debug', 'info', 'warn', 'error'];
 
 function getLogLevel(): LogLevel {
   const envLevel = process.env.LOG_LEVEL?.toLowerCase();
@@ -28,6 +35,9 @@ function getLogLevel(): LogLevel {
   return isDev ? 'debug' : 'info';
 }
 
+// Evaluated once at module import. Changing process.env.LOG_LEVEL after import
+// has no effect on the live logger; tests that vary the level must call
+// vi.resetModules() (see logger.test.ts) to force a re-import.
 const currentLevel = getLogLevel();
 
 function shouldLog(level: LogLevel): boolean {
@@ -51,7 +61,23 @@ function sanitizeArgs(args: unknown[]): unknown[] {
 
 export const logger = {
   /**
-   * Debug logging - only shown when log level is debug
+   * Trace logging - only shown when log level is trace
+   * Use for per-packet / per-loop firehose diagnostics that are far too
+   * verbose even for debug. Off by default at every other level.
+   *
+   * Note: `args` is typed `unknown[]` here (the peers below use `any[]`) on
+   * purpose — `sanitizeArgs` already accepts `unknown[]`, and using `any`
+   * would add a `@typescript-eslint/no-explicit-any` violation above the
+   * lint-ratchet baseline. Leave as `unknown[]`.
+   */
+  trace: (...args: unknown[]) => {
+    if (shouldLog('trace')) {
+      console.log('[TRACE]', ...sanitizeArgs(args));
+    }
+  },
+
+  /**
+   * Debug logging - shown when log level is trace or debug
    * Use for verbose logging, state changes, data inspection
    */
   debug: (...args: any[]) => {

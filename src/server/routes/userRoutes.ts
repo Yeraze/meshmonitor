@@ -606,7 +606,7 @@ router.put('/:id/channel-database-permissions', async (req: Request, res: Respon
       req.ip || null
     );
 
-    logger.info(`Channel database permissions updated for user ${userId} by ${req.user?.username ?? 'unknown'}`);
+    logger.debug(`Channel database permissions updated for user ${userId} by ${req.user?.username ?? 'unknown'}`);
 
     return res.json({
       success: true,

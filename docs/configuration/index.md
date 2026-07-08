@@ -190,7 +190,7 @@ See the [Push Notifications guide](/features/notifications) for setup instructio
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `LOG_LEVEL` | Log verbosity: `debug`, `info`, `warn`, `error` | `debug` in development, `info` in production |
+| `LOG_LEVEL` | Log verbosity: `trace`, `debug`, `info`, `warn`, `error` | `debug` in development, `info` in production |
 
 **Note**: `LOG_LEVEL` controls log output independently of `NODE_ENV`. This lets you enable debug logging in production Docker deployments without changing rate limits, cookie warnings, or other `NODE_ENV`-dependent behavior.
 
@@ -320,12 +320,14 @@ MeshMonitor logs to stdout/stderr by default. Log output uses level prefixes: `[
 
 ### Log Levels
 
-Control verbosity with the `LOG_LEVEL` environment variable:
+Control verbosity with the `LOG_LEVEL` environment variable. Levels are
+cumulative — each includes everything above it in this table:
 
 | Level | What is logged |
 |-------|---------------|
-| `debug` | Everything — verbose diagnostics, state changes, data inspection |
-| `info` | Informational messages, warnings, and errors |
+| `trace` | Firehose — per-packet / per-loop diagnostics. Only enable for a short capture window; far too noisy for steady use. |
+| `debug` | Verbose but bounded — routine per-event activity, periodic scheduler cycles, connection handshake steps, state inspection. |
+| `info` | **Default in production.** Important, low-frequency events: startup/shutdown, source connect/disconnect, backups/restores/migrations, and deliberate actions taken. An idle container is near-silent at this level. |
 | `warn` | Warnings and errors only |
 | `error` | Errors only |
 
@@ -334,11 +336,14 @@ If `LOG_LEVEL` is not set, the default depends on `NODE_ENV`:
 - `production` → `info`
 
 ::: tip Troubleshooting in Production
-Set `LOG_LEVEL=debug` to get verbose logging without changing `NODE_ENV`. This avoids side effects like altered rate limits or cookie warnings:
+The default `info` level is deliberately quiet — routine per-packet, per-request,
+and periodic-scheduler activity is logged at `debug`. To investigate an issue,
+raise the level without changing `NODE_ENV` (this avoids side effects like
+altered rate limits or cookie warnings):
 ```yaml
 environment:
   - NODE_ENV=production
-  - LOG_LEVEL=debug
+  - LOG_LEVEL=debug   # or `trace` for the full per-packet firehose
 ```
 :::
 

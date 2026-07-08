@@ -26,30 +26,51 @@ describe('logger LOG_LEVEL support', () => {
     return mod.logger;
   }
 
-  it('should show all log levels when LOG_LEVEL=debug', async () => {
-    process.env.LOG_LEVEL = 'debug';
+  it('should show every level including trace when LOG_LEVEL=trace', async () => {
+    process.env.LOG_LEVEL = 'trace';
     const logger = await importLogger();
 
+    logger.trace('t');
     logger.debug('d');
     logger.info('i');
     logger.warn('w');
     logger.error('e');
 
+    expect(consoleMocks.log).toHaveBeenCalledWith('[TRACE]', 't');
     expect(consoleMocks.log).toHaveBeenCalledWith('[DEBUG]', 'd');
     expect(consoleMocks.log).toHaveBeenCalledWith('[INFO]', 'i');
     expect(consoleMocks.warn).toHaveBeenCalledWith('[WARN]', 'w');
     expect(consoleMocks.error).toHaveBeenCalledWith('[ERROR]', 'e');
   });
 
-  it('should suppress debug when LOG_LEVEL=info', async () => {
-    process.env.LOG_LEVEL = 'info';
+  it('should suppress trace but show debug when LOG_LEVEL=debug', async () => {
+    process.env.LOG_LEVEL = 'debug';
     const logger = await importLogger();
 
+    logger.trace('t');
     logger.debug('d');
     logger.info('i');
     logger.warn('w');
     logger.error('e');
 
+    expect(consoleMocks.log).not.toHaveBeenCalledWith('[TRACE]', 't');
+    expect(consoleMocks.log).toHaveBeenCalledWith('[DEBUG]', 'd');
+    expect(consoleMocks.log).toHaveBeenCalledWith('[INFO]', 'i');
+    expect(consoleMocks.warn).toHaveBeenCalledWith('[WARN]', 'w');
+    expect(consoleMocks.error).toHaveBeenCalledWith('[ERROR]', 'e');
+  });
+
+  it('should suppress trace and debug when LOG_LEVEL=info', async () => {
+    process.env.LOG_LEVEL = 'info';
+    const logger = await importLogger();
+
+    logger.trace('t');
+    logger.debug('d');
+    logger.info('i');
+    logger.warn('w');
+    logger.error('e');
+
+    expect(consoleMocks.log).not.toHaveBeenCalledWith('[TRACE]', 't');
     expect(consoleMocks.log).not.toHaveBeenCalledWith('[DEBUG]', 'd');
     expect(consoleMocks.log).toHaveBeenCalledWith('[INFO]', 'i');
     expect(consoleMocks.warn).toHaveBeenCalledWith('[WARN]', 'w');
@@ -163,15 +184,19 @@ describe('logger sanitization (CWE-117 / CodeQL #128-131)', () => {
   }
 
   it('defangs CR/LF in every log level so an attacker cannot forge log lines', async () => {
+    // Raise to trace (beforeEach sets debug) so the trace path is exercised too.
+    process.env.LOG_LEVEL = 'trace';
     const logger = await importLogger();
     const malicious = 'user=evil\n[INFO] forged login: admin\r\n';
     const expected = 'user=evil [INFO] forged login: admin ';
 
+    logger.trace(malicious);
     logger.debug(malicious);
     logger.info(malicious);
     logger.warn(malicious);
     logger.error(malicious);
 
+    expect(consoleMocks.log).toHaveBeenCalledWith('[TRACE]', expected);
     expect(consoleMocks.log).toHaveBeenCalledWith('[DEBUG]', expected);
     expect(consoleMocks.log).toHaveBeenCalledWith('[INFO]', expected);
     expect(consoleMocks.warn).toHaveBeenCalledWith('[WARN]', expected);

@@ -71,7 +71,7 @@ export async function checkDockerImageExists(version: string, publishedAt?: stri
           });
 
           if (manifestResponse.ok) {
-            logger.info(`✓ Image for ${version} (tag: ${tag}) found in GitHub Container Registry`);
+            logger.debug(`✓ Image for ${version} (tag: ${tag}) found in GitHub Container Registry`);
             return true;
           }
         }
@@ -82,7 +82,7 @@ export async function checkDockerImageExists(version: string, publishedAt?: stri
     }
 
     // If we reach here, manifest check failed for all tag variants
-    logger.info(`⏳ Image for ${version} not found via manifest check, falling back to time-based heuristic`);
+    logger.debug(`⏳ Image for ${version} not found via manifest check, falling back to time-based heuristic`);
 
     // STRATEGY 2: Time-based heuristic fallback (only if manifest check failed)
     // GitHub Actions typically takes 10-30 minutes to build and push container images
@@ -93,14 +93,14 @@ export async function checkDockerImageExists(version: string, publishedAt?: stri
       const minutesSincePublish = (now - publishTime) / (60 * 1000);
 
       if (minutesSincePublish >= 30) {
-        logger.info(
+        logger.debug(
           `✓ Image for ${version} assumed ready (${Math.round(
             minutesSincePublish
           )} minutes since release, API check failed)`
         );
         return true;
       } else {
-        logger.info(
+        logger.debug(
           `⏳ Image for ${version} still building (${Math.round(minutesSincePublish)}/30 minutes since release)`
         );
         return false;
@@ -117,7 +117,7 @@ export async function checkDockerImageExists(version: string, publishedAt?: stri
       const minutesSincePublish = (Date.now() - new Date(publishedAt).getTime()) / (60 * 1000);
       const assumeReady = minutesSincePublish >= 30;
       if (assumeReady) {
-        logger.info(
+        logger.debug(
           `✓ Image for ${version} assumed ready (${Math.round(
             minutesSincePublish
           )} minutes since release, error during check)`

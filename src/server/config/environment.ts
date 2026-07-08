@@ -309,7 +309,7 @@ export interface EnvironmentConfig {
   accessLogFormatProvided: boolean;
 
   // Logging
-  logLevel: 'debug' | 'info' | 'warn' | 'error';
+  logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   logLevelProvided: boolean;
 
   // Branding (login page customization)
@@ -696,8 +696,8 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   const accessLogFormat = parseEnum('ACCESS_LOG_FORMAT', process.env.ACCESS_LOG_FORMAT, ['combined', 'common', 'tiny'] as const, 'combined');
 
   // Logging
-  const logLevelDefault: 'debug' | 'info' | 'warn' | 'error' = nodeEnv.value === 'development' ? 'debug' : 'info';
-  const logLevel = parseEnum('LOG_LEVEL', process.env.LOG_LEVEL?.toLowerCase(), ['debug', 'info', 'warn', 'error'] as const, logLevelDefault);
+  const logLevelDefault: 'trace' | 'debug' | 'info' | 'warn' | 'error' = nodeEnv.value === 'development' ? 'debug' : 'info';
+  const logLevel = parseEnum('LOG_LEVEL', process.env.LOG_LEVEL?.toLowerCase(), ['trace', 'debug', 'info', 'warn', 'error'] as const, logLevelDefault);
 
   // Branding (login page customization)
   // CUSTOM_TITLE overrides the "MeshMonitor" heading on the login page.
@@ -736,79 +736,79 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   logger.info(`   BASE_URL: ${baseUrl || '/'} (${src(baseUrlProvided)})`);
   logger.info(`   LOG_LEVEL: ${logLevel.value} (${src(logLevel.wasProvided)})`);
   logger.info(`   TZ: ${timezone.value} (${src(timezone.wasProvided)})`);
-  logger.info(`   ALLOWED_ORIGINS: ${allowedOrigins.value || '*'} (${src(allowedOrigins.wasProvided)})`);
-  logger.info(`   IFRAME_ALLOWED_ORIGINS: ${iframeAllowedOrigins.value.length > 0 ? iframeAllowedOrigins.value.join(',') : '(not set - iframe embedding blocked)'} (${src(iframeAllowedOrigins.wasProvided)})`);
-  logger.info(`   TRUST_PROXY: ${trustProxy.value} (${src(trustProxy.wasProvided)})`);
+  logger.debug(`   ALLOWED_ORIGINS: ${allowedOrigins.value || '*'} (${src(allowedOrigins.wasProvided)})`);
+  logger.debug(`   IFRAME_ALLOWED_ORIGINS: ${iframeAllowedOrigins.value.length > 0 ? iframeAllowedOrigins.value.join(',') : '(not set - iframe embedding blocked)'} (${src(iframeAllowedOrigins.wasProvided)})`);
+  logger.debug(`   TRUST_PROXY: ${trustProxy.value} (${src(trustProxy.wasProvided)})`);
   logger.info(`   VERSION_CHECK_DISABLED: ${versionCheckDisabled}`);
-  logger.info('   --- Session/Security ---');
-  logger.info(`   SESSION_SECRET: ${sessionSecretProvided ? '***provided***' : '(auto-generated)'}`);
-  logger.info(`   SESSION_COOKIE_NAME: ${sessionCookieName.value} (${src(sessionCookieName.wasProvided)})`);
-  logger.info(`   SESSION_MAX_AGE: ${sessionMaxAge.value}ms (${src(sessionMaxAge.wasProvided)})`);
-  logger.info(`   SESSION_ROLLING: ${sessionRolling.value} (${src(sessionRolling.wasProvided)})`);
-  logger.info(`   COOKIE_SECURE: ${cookieSecure.value} (${src(cookieSecure.wasProvided)})`);
-  logger.info(`   COOKIE_SAMESITE: ${cookieSameSite.value} (${src(cookieSameSite.wasProvided)})`);
-  logger.info('   --- Database ---');
+  logger.debug('   --- Session/Security ---');
+  logger.debug(`   SESSION_SECRET: ${sessionSecretProvided ? '***provided***' : '(auto-generated)'}`);
+  logger.debug(`   SESSION_COOKIE_NAME: ${sessionCookieName.value} (${src(sessionCookieName.wasProvided)})`);
+  logger.debug(`   SESSION_MAX_AGE: ${sessionMaxAge.value}ms (${src(sessionMaxAge.wasProvided)})`);
+  logger.debug(`   SESSION_ROLLING: ${sessionRolling.value} (${src(sessionRolling.wasProvided)})`);
+  logger.debug(`   COOKIE_SECURE: ${cookieSecure.value} (${src(cookieSecure.wasProvided)})`);
+  logger.debug(`   COOKIE_SAMESITE: ${cookieSameSite.value} (${src(cookieSameSite.wasProvided)})`);
+  logger.debug('   --- Database ---');
   logger.info(`   DATABASE_TYPE: ${databaseType}`);
   if (databaseUrl.wasProvided) {
     logger.info(`   DATABASE_URL: ***provided*** (${databaseType})`);
   } else {
     logger.info(`   DATABASE_PATH: ${databasePath.value} (${src(databasePath.wasProvided)})`);
   }
-  logger.info(`   TRACEROUTE_HISTORY_LIMIT: ${tracerouteHistoryLimit.value} (${src(tracerouteHistoryLimit.wasProvided)})`);
-  logger.info('   --- Meshtastic ---');
+  logger.debug(`   TRACEROUTE_HISTORY_LIMIT: ${tracerouteHistoryLimit.value} (${src(tracerouteHistoryLimit.wasProvided)})`);
+  logger.debug('   --- Meshtastic ---');
   logger.info(`   MESHTASTIC_NODE_IP: ${meshtasticNodeIp.value} (${src(meshtasticNodeIp.wasProvided)})`);
   logger.info(`   MESHTASTIC_NODE_PORT / MESHTASTIC_TCP_PORT: ${meshtasticTcpPort.value} (${src(meshtasticTcpPort.wasProvided)})`);
-  logger.info(`   MESHTASTIC_STALE_CONNECTION_TIMEOUT: ${meshtasticStaleConnectionTimeout.value}ms (${src(meshtasticStaleConnectionTimeout.wasProvided)})`);
-  logger.info(`   MESHTASTIC_CONNECT_TIMEOUT_MS: ${meshtasticConnectTimeoutMs.value}ms (${src(meshtasticConnectTimeoutMs.wasProvided)})`);
-  logger.info(`   MESHTASTIC_RECONNECT_INITIAL_DELAY_MS: ${meshtasticReconnectInitialDelayMs.value}ms (${src(meshtasticReconnectInitialDelayMs.wasProvided)})`);
-  logger.info(`   MESHTASTIC_RECONNECT_MAX_DELAY_MS: ${meshtasticReconnectMaxDelayMs.value}ms (${src(meshtasticReconnectMaxDelayMs.wasProvided)})`);
-  logger.info(`   MESHTASTIC_MODULE_CONFIG_DELAY_MS: ${meshtasticModuleConfigDelayMs.value}ms (${src(meshtasticModuleConfigDelayMs.wasProvided)})`);
+  logger.debug(`   MESHTASTIC_STALE_CONNECTION_TIMEOUT: ${meshtasticStaleConnectionTimeout.value}ms (${src(meshtasticStaleConnectionTimeout.wasProvided)})`);
+  logger.debug(`   MESHTASTIC_CONNECT_TIMEOUT_MS: ${meshtasticConnectTimeoutMs.value}ms (${src(meshtasticConnectTimeoutMs.wasProvided)})`);
+  logger.debug(`   MESHTASTIC_RECONNECT_INITIAL_DELAY_MS: ${meshtasticReconnectInitialDelayMs.value}ms (${src(meshtasticReconnectInitialDelayMs.wasProvided)})`);
+  logger.debug(`   MESHTASTIC_RECONNECT_MAX_DELAY_MS: ${meshtasticReconnectMaxDelayMs.value}ms (${src(meshtasticReconnectMaxDelayMs.wasProvided)})`);
+  logger.debug(`   MESHTASTIC_MODULE_CONFIG_DELAY_MS: ${meshtasticModuleConfigDelayMs.value}ms (${src(meshtasticModuleConfigDelayMs.wasProvided)})`);
   if (oidcEnabled) {
-    logger.info('   --- OIDC ---');
-    logger.info(`   OIDC_ISSUER: ${oidcIssuer.value ? '***provided***' : 'not set'}`);
-    logger.info(`   OIDC_CLIENT_ID: ${oidcClientId.value ? '***provided***' : 'not set'}`);
-    logger.info(`   OIDC_AUTO_CREATE_USERS: ${oidcAutoCreateUsers.value} (${src(oidcAutoCreateUsers.wasProvided)})`);
-    logger.info(`   OIDC_GROUPS_CLAIM: ${oidcGroupsClaim.value} (${src(oidcGroupsClaim.wasProvided)})`);
-    logger.info(`   OIDC_ADMIN_GROUPS: ${oidcAdminGroups.length > 0 ? oidcAdminGroups.join(', ') : 'not set (group→admin mapping disabled; first-login bootstrap applies)'}`);
-    logger.info(`   OIDC_ALLOWED_GROUPS: ${oidcAllowedGroups.length > 0 ? oidcAllowedGroups.join(', ') : 'not set (all OIDC users allowed)'}`);
+    logger.debug('   --- OIDC ---');
+    logger.debug(`   OIDC_ISSUER: ${oidcIssuer.value ? '***provided***' : 'not set'}`);
+    logger.debug(`   OIDC_CLIENT_ID: ${oidcClientId.value ? '***provided***' : 'not set'}`);
+    logger.debug(`   OIDC_AUTO_CREATE_USERS: ${oidcAutoCreateUsers.value} (${src(oidcAutoCreateUsers.wasProvided)})`);
+    logger.debug(`   OIDC_GROUPS_CLAIM: ${oidcGroupsClaim.value} (${src(oidcGroupsClaim.wasProvided)})`);
+    logger.debug(`   OIDC_ADMIN_GROUPS: ${oidcAdminGroups.length > 0 ? oidcAdminGroups.join(', ') : 'not set (group→admin mapping disabled; first-login bootstrap applies)'}`);
+    logger.debug(`   OIDC_ALLOWED_GROUPS: ${oidcAllowedGroups.length > 0 ? oidcAllowedGroups.join(', ') : 'not set (all OIDC users allowed)'}`);
   }
-  logger.info('   --- Authentication ---');
-  logger.info(`   DISABLE_ANONYMOUS: ${disableAnonymous.value} (${src(disableAnonymous.wasProvided)})`);
-  logger.info(`   DISABLE_LOCAL_AUTH: ${disableLocalAuth.value} (${src(disableLocalAuth.wasProvided)})`);
+  logger.debug('   --- Authentication ---');
+  logger.debug(`   DISABLE_ANONYMOUS: ${disableAnonymous.value} (${src(disableAnonymous.wasProvided)})`);
+  logger.debug(`   DISABLE_LOCAL_AUTH: ${disableLocalAuth.value} (${src(disableLocalAuth.wasProvided)})`);
   if (adminUsername.wasProvided) {
-    logger.info(`   ADMIN_USERNAME: ${adminUsername.value} (env)`);
+    logger.debug(`   ADMIN_USERNAME: ${adminUsername.value} (env)`);
   }
   if (proxyAuthEnabled.value) {
-    logger.info('   --- Proxy Authentication ---');
-    logger.info(`   PROXY_AUTH_ENABLED: ${proxyAuthEnabled.value}`);
-    logger.info(`   PROXY_AUTH_AUTO_PROVISION: ${proxyAuthAutoProvision.value}`);
-    logger.info(`   PROXY_AUTH_ADMIN_GROUPS: ${proxyAuthAdminGroups.length > 0 ? proxyAuthAdminGroups.join(', ') : 'not set'}`);
-    logger.info(`   PROXY_AUTH_ADMIN_EMAILS: ${proxyAuthAdminEmails.length > 0 ? '***configured***' : 'not set'}`);
-    logger.info(`   PROXY_AUTH_NORMAL_USER_GROUPS: ${proxyAuthNormalUserGroups.length > 0 ? proxyAuthNormalUserGroups.join(', ') : 'not set (all proxy users allowed)'}`);
-    logger.info(`   PROXY_AUTH_JWT_GROUPS_CLAIM: ${proxyAuthJwtGroupsClaim}`);
-    logger.info(`   PROXY_AUTH_AUDIT_LOGGING: ${proxyAuthAuditLogging.value}`);
+    logger.debug('   --- Proxy Authentication ---');
+    logger.debug(`   PROXY_AUTH_ENABLED: ${proxyAuthEnabled.value}`);
+    logger.debug(`   PROXY_AUTH_AUTO_PROVISION: ${proxyAuthAutoProvision.value}`);
+    logger.debug(`   PROXY_AUTH_ADMIN_GROUPS: ${proxyAuthAdminGroups.length > 0 ? proxyAuthAdminGroups.join(', ') : 'not set'}`);
+    logger.debug(`   PROXY_AUTH_ADMIN_EMAILS: ${proxyAuthAdminEmails.length > 0 ? '***configured***' : 'not set'}`);
+    logger.debug(`   PROXY_AUTH_NORMAL_USER_GROUPS: ${proxyAuthNormalUserGroups.length > 0 ? proxyAuthNormalUserGroups.join(', ') : 'not set (all proxy users allowed)'}`);
+    logger.debug(`   PROXY_AUTH_JWT_GROUPS_CLAIM: ${proxyAuthJwtGroupsClaim}`);
+    logger.debug(`   PROXY_AUTH_AUDIT_LOGGING: ${proxyAuthAuditLogging.value}`);
     if (proxyAuthLogoutUrl) {
-      logger.info(`   PROXY_AUTH_LOGOUT_URL: ${proxyAuthLogoutUrl}`);
+      logger.debug(`   PROXY_AUTH_LOGOUT_URL: ${proxyAuthLogoutUrl}`);
     }
   }
-  logger.info('   --- Rate Limiting ---');
-  logger.info(`   RATE_LIMIT_API: ${rateLimitApi.value} req/min (${src(rateLimitApi.wasProvided)})`);
-  logger.info(`   RATE_LIMIT_AUTH: ${rateLimitAuth.value} req/min (${src(rateLimitAuth.wasProvided)})`);
-  logger.info(`   RATE_LIMIT_MESSAGES: ${rateLimitMessages.value} req/min (${src(rateLimitMessages.wasProvided)})`);
+  logger.debug('   --- Rate Limiting ---');
+  logger.debug(`   RATE_LIMIT_API: ${rateLimitApi.value} req/min (${src(rateLimitApi.wasProvided)})`);
+  logger.debug(`   RATE_LIMIT_AUTH: ${rateLimitAuth.value} req/min (${src(rateLimitAuth.wasProvided)})`);
+  logger.debug(`   RATE_LIMIT_MESSAGES: ${rateLimitMessages.value} req/min (${src(rateLimitMessages.wasProvided)})`);
   if (vapidPublicKey.wasProvided) {
-    logger.info('   --- Push Notifications ---');
-    logger.info(`   VAPID keys: ***provided***`);
-    logger.info(`   PUSH_NOTIFICATION_TTL: ${pushNotificationTtl.value}s (${src(pushNotificationTtl.wasProvided)})`);
+    logger.debug('   --- Push Notifications ---');
+    logger.debug(`   VAPID keys: ***provided***`);
+    logger.debug(`   PUSH_NOTIFICATION_TTL: ${pushNotificationTtl.value}s (${src(pushNotificationTtl.wasProvided)})`);
   }
   if (accessLogEnabled.value) {
-    logger.info('   --- Access Logging ---');
-    logger.info(`   ACCESS_LOG_PATH: ${accessLogPath.value} (${src(accessLogPath.wasProvided)})`);
-    logger.info(`   ACCESS_LOG_FORMAT: ${accessLogFormat.value} (${src(accessLogFormat.wasProvided)})`);
+    logger.debug('   --- Access Logging ---');
+    logger.debug(`   ACCESS_LOG_PATH: ${accessLogPath.value} (${src(accessLogPath.wasProvided)})`);
+    logger.debug(`   ACCESS_LOG_FORMAT: ${accessLogFormat.value} (${src(accessLogFormat.wasProvided)})`);
   }
   if (customTitle.wasProvided || customLogoUrl.wasProvided) {
-    logger.info('   --- Branding ---');
-    if (customTitle.wasProvided) logger.info(`   CUSTOM_TITLE: ${customTitle.value}`);
-    if (customLogoUrl.wasProvided) logger.info(`   CUSTOM_LOGO_URL: ${customLogoUrl.value}`);
+    logger.debug('   --- Branding ---');
+    if (customTitle.wasProvided) logger.debug(`   CUSTOM_TITLE: ${customTitle.value}`);
+    if (customLogoUrl.wasProvided) logger.debug(`   CUSTOM_LOGO_URL: ${customLogoUrl.value}`);
   }
 
   return {

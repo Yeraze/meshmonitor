@@ -88,7 +88,7 @@ class RetroactiveDecryptionService {
       this.currentProgress.total = encryptedPackets.length;
       this.currentProgress.status = 'running';
 
-      logger.info(
+      logger.debug(
         `Starting retroactive decryption for channel "${channelInfo.name}": ${encryptedPackets.length} encrypted packets to process`
       );
 

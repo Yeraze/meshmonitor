@@ -1647,7 +1647,7 @@ export class MeshtasticProtobufService {
 
       // Only strip PKI if from=0 and pkiEncrypted=true
       if ((packetObj.from === 0 || !packetObj.from) && packetObj.pkiEncrypted) {
-        logger.info(`🔓 Stripping PKI encryption from packet with from=0 (pkiEncrypted=${packetObj.pkiEncrypted})`);
+        logger.debug(`🔓 Stripping PKI encryption from packet with from=0 (pkiEncrypted=${packetObj.pkiEncrypted})`);
 
         // Remove PKI-related fields
         delete packetObj.pkiEncrypted;
@@ -1659,7 +1659,7 @@ export class MeshtasticProtobufService {
           packet: newPacket,
         });
 
-        logger.info(`✅ Successfully stripped PKI encryption from packet`);
+        logger.debug(`✅ Successfully stripped PKI encryption from packet`);
         return ToRadio.encode(newToRadio).finish();
       }
 

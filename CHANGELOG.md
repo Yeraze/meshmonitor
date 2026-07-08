@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Changed
+- **Container logs are far quieter at the default level.** Routine per-packet, per-request, and periodic-scheduler activity — plus the ~60-line environment dump printed on every boot — was logged at `info`, which is the production default, making Docker logs hard to use for support. That activity is now logged at `debug`; `info` is reserved for genuinely important, low-frequency events (startup/shutdown, source connect/disconnect, backups/restores/migrations, and deliberate actions taken), so an idle container is near-silent. A new `trace` level captures the full per-packet firehose. Raise verbosity for troubleshooting with `LOG_LEVEL=debug` (or `trace`) — no `NODE_ENV` change needed. As a side benefit, MeshCore message **bodies** are no longer written to logs (only sender/channel metadata and a length).
 - **BREAKING (deployments behind a reverse proxy): `TRUST_PROXY` now defaults to `false`.** Previously, production builds trusted the first proxy hop when `TRUST_PROXY` was unset, which let a direct-connected client spoof `X-Forwarded-For` to bypass the auth brute-force limiter and poison audit attribution. Proxied deployments must now set `TRUST_PROXY` explicitly (`TRUST_PROXY=1` for a single proxy). Direct (non-proxied) deployments need no change.
 
 ## [4.12.5] - 2026-07-06

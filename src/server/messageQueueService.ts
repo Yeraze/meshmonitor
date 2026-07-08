@@ -104,7 +104,7 @@ export class MessageQueueService {
 
     this.queue.push(queuedMessage);
     const target = channel !== undefined ? `channel ${channel}` : `node !${destination.toString(16).padStart(8, '0')}`;
-    logger.info(`📬 Enqueued automated message ${messageId} to ${target} (queue length: ${this.queue.length})`);
+    logger.debug(`📬 Enqueued automated message ${messageId} to ${target} (queue length: ${this.queue.length})`);
 
     // Start processing if not already running
     if (!this.processing) {
@@ -192,7 +192,7 @@ export class MessageQueueService {
     }
 
     if (cleanedCount > 0) {
-      logger.info(`🧹 Cleaned up ${cleanedCount} orphaned pending ACK(s)`);
+      logger.debug(`🧹 Cleaned up ${cleanedCount} orphaned pending ACK(s)`);
     }
   }
 
@@ -306,7 +306,7 @@ export class MessageQueueService {
 
       const attemptInfo = message.attempts > 1 ? ` (attempt ${message.attempts}/${message.maxAttempts})` : '';
       const target = message.channel !== undefined ? `channel ${message.channel}` : `!${message.destination.toString(16).padStart(8, '0')}`;
-      logger.info(`📤 Sending queued message ${message.id} to ${target}${attemptInfo}`);
+      logger.debug(`📤 Sending queued message ${message.id} to ${target}${attemptInfo}`);
 
       // Send the message
       const requestId = await this.sendCallback(message.text, message.destination, message.replyId, message.channel, message.emoji);
@@ -338,7 +338,7 @@ export class MessageQueueService {
       this.pendingAcks.set(requestId, message);
 
       if (message.attempts >= message.maxAttempts) {
-        logger.info(`🏁 Final attempt for message ${message.id} - no more retries`);
+        logger.debug(`🏁 Final attempt for message ${message.id} - no more retries`);
       } else {
         logger.debug(`⏳ Waiting for ACK for message ${message.id} (requestId: ${requestId})`);
       }
@@ -352,7 +352,7 @@ export class MessageQueueService {
       } else {
         // Will retry in next cycle - ensure message stays in pendingAcks for retry
         const remainingAttempts = message.maxAttempts - message.attempts;
-        logger.info(`🔄 Will retry message ${message.id} (${remainingAttempts} attempt${remainingAttempts === 1 ? '' : 's'} remaining)`);
+        logger.debug(`🔄 Will retry message ${message.id} (${remainingAttempts} attempt${remainingAttempts === 1 ? '' : 's'} remaining)`);
 
         // If message has a requestId from a previous attempt, keep it in pendingAcks
         if (message.requestId) {
@@ -370,7 +370,7 @@ export class MessageQueueService {
     const message = this.pendingAcks.get(requestId);
     if (message) {
       const isLateAck = message.requestId !== requestId;
-      logger.info(`✅ ACK received for message ${message.id} (requestId: ${requestId}${isLateAck ? ', late ACK on prior attempt' : ''})`);
+      logger.debug(`✅ ACK received for message ${message.id} (requestId: ${requestId}${isLateAck ? ', late ACK on prior attempt' : ''})`);
       this.deleteAllRequestIds(message);
 
       // Call success callback with error handling

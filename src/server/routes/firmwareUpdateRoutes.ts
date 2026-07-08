@@ -101,7 +101,7 @@ router.post('/channel', async (req: Request, res: Response) => {
       await firmwareUpdateService.setCustomUrl(customUrl);
     }
 
-    logger.info(`[FirmwareRoutes] Channel set to "${channel}"${customUrl ? ` with URL: ${customUrl}` : ''}`);
+    logger.debug(`[FirmwareRoutes] Channel set to "${channel}"${customUrl ? ` with URL: ${customUrl}` : ''}`);
     return res.json({ success: true, channel });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -470,7 +470,7 @@ router.delete('/recovery-marker/:nodeId', (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'nodeId is required' });
     }
     const removed = firmwareUpdateService.clearFlashIncompleteMarker(nodeId);
-    logger.info(`[FirmwareRoutes] Cleared ${removed} half-flash marker(s) for node ${nodeId}`);
+    logger.debug(`[FirmwareRoutes] Cleared ${removed} half-flash marker(s) for node ${nodeId}`);
     return res.json({ success: true, removed });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

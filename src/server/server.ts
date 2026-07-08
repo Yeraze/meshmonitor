@@ -74,7 +74,7 @@ if (process.env.NODE_ENV !== 'production') {
   require('dotenv/config');
   // Reset cached environment config to ensure .env values are loaded
   resetEnvironmentConfig();
-  logger.info('📄 Loaded .env file from project root (if present)');
+  logger.debug('📄 Loaded .env file from project root (if present)');
 }
 
 // Load environment configuration (after .env is loaded)
@@ -296,8 +296,8 @@ void (async () => {
     const restoreFromBackup = systemRestoreService.shouldRestore();
 
     if (restoreFromBackup) {
-      logger.info('🔄 RESTORE_FROM_BACKUP environment variable detected');
-      logger.info(`📦 Attempting to restore from: ${restoreFromBackup}`);
+      logger.debug('🔄 RESTORE_FROM_BACKUP environment variable detected');
+      logger.debug(`📦 Attempting to restore from: ${restoreFromBackup}`);
 
       // Validate restore can proceed
       const validation = await systemRestoreService.canRestore(restoreFromBackup);
@@ -1638,7 +1638,7 @@ apiRouter.post('/nodes/:nodeId/favorite-lock', requirePermission('nodes', 'write
       }
     }
 
-    logger.info(`${locked ? '🔒' : '🔓'} Node ${nodeNum} favorite lock set to: ${locked}`);
+    logger.debug(`${locked ? '🔒' : '🔓'} Node ${nodeNum} favorite lock set to: ${locked}`);
 
     res.json({
       success: true,
@@ -2267,7 +2267,7 @@ apiRouter.post('/nodes/:nodeNum/scan-remote-admin', requirePermission('settings'
       return;
     }
 
-    logger.info(`Manual remote admin scan requested for node ${parsedNodeNum}`);
+    logger.debug(`Manual remote admin scan requested for node ${parsedNodeNum}`);
 
     // Perform the scan
     const result = await scanManager.scanNodeForRemoteAdmin(parsedNodeNum);
@@ -2346,7 +2346,7 @@ apiRouter.post('/nodes/:nodeId/send-key-warning', requirePermission('messages', 
       nodeNum // Destination
     );
 
-    logger.info(`🔐 Sent key security warning to node ${nodeId} (${node.longName || 'Unknown'})`);
+    logger.debug(`🔐 Sent key security warning to node ${nodeId} (${node.longName || 'Unknown'})`);
 
     res.json({
       success: true,
@@ -2429,7 +2429,7 @@ apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write')
           );
           affectedNodes.push(Number(nodeNum));
         }
-        logger.info(`🔐 [${sourceId}] Detected ${nodeNums.length} nodes sharing key hash ${keyHash.substring(0, 16)}...`);
+        logger.debug(`🔐 [${sourceId}] Detected ${nodeNums.length} nodes sharing key hash ${keyHash.substring(0, 16)}...`);
       }
     }
 
@@ -2830,13 +2830,13 @@ apiRouter.post('/messages/send', optionalAuth(), async (req, res) => {
       const targetNode = await databaseService.nodes.getNode(destinationNum, reqSourceId);
       if (targetNode && targetNode.channel !== undefined && targetNode.channel !== null) {
         meshChannel = targetNode.channel;
-        logger.info(`📨 DM to ${destination} - Using target node's channel: ${meshChannel}`);
+        logger.debug(`📨 DM to ${destination} - Using target node's channel: ${meshChannel}`);
       } else {
-        logger.info(`📨 DM to ${destination} - Target node channel unknown, using default channel: ${meshChannel}`);
+        logger.debug(`📨 DM to ${destination} - Target node channel unknown, using default channel: ${meshChannel}`);
       }
     }
 
-    logger.info(
+    logger.debug(
       `📨 Sending message - Received channel: ${channel}, Using meshChannel: ${meshChannel}, Text: "${text.substring(
         0,
         50
@@ -4293,7 +4293,7 @@ apiRouter.post('/settings/mark-all-welcomed', requirePermission('settings', 'wri
   try {
     const sourceId = (req.query.sourceId as string | undefined) ?? (req.body?.sourceId as string | undefined) ?? null;
     const count = await databaseService.markAllNodesAsWelcomedAsync(sourceId);
-    logger.info(`👋 Manually marked ${count} nodes as welcomed via API${sourceId ? ` (source=${sourceId})` : ''}`);
+    logger.debug(`👋 Manually marked ${count} nodes as welcomed via API${sourceId ? ` (source=${sourceId})` : ''}`);
 
     // Audit log
     void databaseService.auditLogAsync(
@@ -4444,7 +4444,7 @@ apiRouter.post('/config/lora', requirePermission('configuration', 'write'), asyn
       txEnabled: true,
     };
 
-    logger.info(`⚙️ Setting LoRa config with txEnabled defaulted: txEnabled=${loraConfigToSet.txEnabled}`);
+    logger.debug(`⚙️ Setting LoRa config with txEnabled defaulted: txEnabled=${loraConfigToSet.txEnabled}`);
     await cfgLoraManager.setLoRaConfig(loraConfigToSet);
     res.json({ success: true, message: 'LoRa configuration sent' });
   } catch (error) {
@@ -4642,7 +4642,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
         
         if (needsRequest && configInfo) {
           // Try to request the specific config type
-          logger.info(`Config type '${configType}' not available, requesting from device...`);
+          logger.debug(`Config type '${configType}' not available, requesting from device...`);
           try {
             if (configInfo.isModule) {
               await adminLoadManager.requestModuleConfig(configInfo.type);
@@ -4829,7 +4829,7 @@ apiRouter.post('/admin/load-config', requireAdmin(), async (req, res) => {
         }
       } else {
         // Remote node - request config with session passkey
-        logger.info(`Requesting ${configType} config from remote node ${destinationNodeNum}`);
+        logger.debug(`Requesting ${configType} config from remote node ${destinationNodeNum}`);
         
         // Canonical config/module type registry (see configTypes.ts).
         const configInfo = CONFIG_TYPE_MAP[configType];
@@ -5280,7 +5280,7 @@ apiRouter.post('/admin/get-device-metadata', requireAdmin(), async (req, res) =>
             JSON.stringify(metadata),
             gdmManager.sourceId
           );
-          logger.info(`✅ Updated hasRemoteAdmin=true and saved metadata for node ${destinationNodeNum}`);
+          logger.debug(`✅ Updated hasRemoteAdmin=true and saved metadata for node ${destinationNodeNum}`);
         } catch (dbError) {
           logger.error(`Failed to save remote admin status for node ${destinationNodeNum}:`, dbError);
           // Continue with response even if database update fails
@@ -5320,7 +5320,7 @@ apiRouter.post('/admin/reboot', requireAdmin(), async (req, res) => {
 
     await arManager.sendRebootCommand(destinationNodeNum, Number(seconds));
 
-    logger.info(`✅ Sent reboot command to node ${destinationNodeNum} (in ${seconds} seconds)`);
+    logger.debug(`✅ Sent reboot command to node ${destinationNodeNum} (in ${seconds} seconds)`);
     res.json({ success: true, message: `Reboot command sent (node will reboot in ${seconds} seconds)` });
   } catch (error: any) {
     logger.error('Error sending reboot command:', error);
@@ -5364,7 +5364,7 @@ apiRouter.post('/admin/set-time', requireAdmin(), async (req, res) => {
 
     await astManager.sendSetTimeCommand(destinationNodeNum);
 
-    logger.info(`✅ Sent set-time command to node ${destinationNodeNum}`);
+    logger.debug(`✅ Sent set-time command to node ${destinationNodeNum}`);
     res.json({ success: true, message: 'Time sync command sent successfully' });
   } catch (error: any) {
     logger.error('Error sending set-time command:', error);
@@ -5520,7 +5520,7 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
     const localNodeNum = aicManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
 
-    logger.info(`📥 Importing configuration from URL to node ${destinationNodeNum}: ${configUrl}`);
+    logger.debug(`📥 Importing configuration from URL to node ${destinationNodeNum}: ${configUrl}`);
 
     const channelUrlService = (await import('./services/channelUrlService.js')).default;
 
@@ -5531,7 +5531,7 @@ apiRouter.post('/admin/import-config', requireAdmin(), async (req, res) => {
       return res.status(400).json({ error: 'Invalid or empty configuration URL' });
     }
 
-    logger.info(`📥 Decoded ${decoded.channels?.length || 0} channels, LoRa config: ${!!decoded.loraConfig}`);
+    logger.debug(`📥 Decoded ${decoded.channels?.length || 0} channels, LoRa config: ${!!decoded.loraConfig}`);
 
     const importedChannels = [];
     let loraImported = false;
@@ -5684,9 +5684,9 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
     if (!isLocalNode) {
       sessionPasskey = acManager.getSessionPasskey(destinationNodeNum);
       if (sessionPasskey) {
-        logger.info(`🔑 Using cached session passkey for admin command to remote node ${destinationNodeNum}`);
+        logger.debug(`🔑 Using cached session passkey for admin command to remote node ${destinationNodeNum}`);
       } else {
-        logger.info(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one for admin command...`);
+        logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one for admin command...`);
         sessionPasskey = await acManager.requestRemoteSessionPasskey(destinationNodeNum);
         if (!sessionPasskey) {
           logger.error(`❌ Failed to obtain session passkey for remote node ${destinationNodeNum} after 45s`);
@@ -5767,7 +5767,7 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
               altitude: altitude || 0,
               positionTimestamp: Date.now(),
             });
-            logger.info(`⚙️ Updated local node ${localNodeId} position in database: lat=${latitude}, lon=${longitude}`);
+            logger.debug(`⚙️ Updated local node ${localNodeId} position in database: lat=${latitude}, lon=${longitude}`);
           }
         }
         adminMessage = protobufService.createSetPositionConfigMessage(positionConfig, sessionPasskey || undefined);
@@ -5936,7 +5936,7 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
         altitude: params.altitude || 0,
         positionTimestamp: Date.now(),
       });
-      logger.info(`⚙️ Updated local node ${localNodeId} position in database: lat=${params.latitude}, lon=${params.longitude}`);
+      logger.debug(`⚙️ Updated local node ${localNodeId} position in database: lat=${params.latitude}, lon=${params.longitude}`);
     }
 
     // If command succeeded on a remote node, update hasRemoteAdmin flag
@@ -5948,7 +5948,7 @@ apiRouter.post('/admin/commands', requireAdmin(), async (req, res) => {
           null,  // Don't overwrite existing metadata, just set the flag
           acManager.sourceId
         );
-        logger.info(`✅ Updated hasRemoteAdmin=true for node ${destinationNodeNum} after successful '${command}' command`);
+        logger.debug(`✅ Updated hasRemoteAdmin=true for node ${destinationNodeNum} after successful '${command}' command`);
       } catch (dbError) {
         logger.error(`Failed to update hasRemoteAdmin for node ${destinationNodeNum}:`, dbError);
         // Continue with response even if database update fails
@@ -6341,12 +6341,12 @@ void (async () => {
 
   // Log environment variable sources in development
   if (env.isDevelopment) {
-    logger.info(
+    logger.debug(
       `🔧 Meshtastic Node IP: ${env.meshtasticNodeIp} ${
         env.meshtasticNodeIpProvided ? '📄 (from .env)' : '⚙️ (default)'
       }`
     );
-    logger.info(
+    logger.debug(
       `🔧 Meshtastic TCP Port: ${env.meshtasticTcpPort} ${
         env.meshtasticTcpPortProvided ? '📄 (from .env)' : '⚙️ (default)'
       }`
@@ -6354,7 +6354,7 @@ void (async () => {
 
     // Log scripts directory location in development
     const scriptsDir = getScriptsDirectory();
-    logger.info(`📜 Auto-responder scripts directory: ${scriptsDir}`);
+    logger.debug(`📜 Auto-responder scripts directory: ${scriptsDir}`);
 
     // Check if directory has any scripts
     try {
@@ -6365,9 +6365,9 @@ void (async () => {
       });
 
       if (scriptFiles.length > 0) {
-        logger.info(`   Found ${scriptFiles.length} script(s): ${scriptFiles.join(', ')}`);
+        logger.debug(`   Found ${scriptFiles.length} script(s): ${scriptFiles.join(', ')}`);
       } else {
-        logger.info(`   No scripts found. Place your test scripts (.js, .mjs, .py, .sh) in this directory`);
+        logger.debug(`   No scripts found. Place your test scripts (.js, .mjs, .py, .sh) in this directory`);
       }
     } catch (error) {
       logger.warn(`   Could not read scripts directory: ${error}`);

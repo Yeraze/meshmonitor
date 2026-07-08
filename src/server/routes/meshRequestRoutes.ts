@@ -70,7 +70,7 @@ router.post('/position/request', requirePermission('messages', 'write'), async (
 
     // Get local node info to create system message
     const localNodeInfo = posManager.getLocalNodeInfo();
-    logger.info(
+    logger.debug(
       `📍 localNodeInfo for system message: ${
         localNodeInfo ? `nodeId=${localNodeInfo.nodeId}, nodeNum=${localNodeInfo.nodeNum}` : 'NULL'
       }`
@@ -86,7 +86,7 @@ router.post('/position/request', requirePermission('messages', 'write'), async (
       // For DMs (channel 0), store as channel -1 to show in DM conversation
       const messageChannel = channel === 0 ? -1 : channel;
 
-      logger.info(
+      logger.debug(
         `📍 Inserting position request system message to database: ${messageId} (channel: ${messageChannel}, packetId: ${packetId}, requestId: ${requestId}, broadcast: ${isBroadcast})`
       );
       await databaseService.messages.insertMessage({
@@ -106,7 +106,7 @@ router.post('/position/request', requirePermission('messages', 'write'), async (
         sourceIp: req.ip ?? null,
         sourcePath: 'http_api',
       });
-      logger.info(`📍 Position request system message inserted successfully`);
+      logger.debug(`📍 Position request system message inserted successfully`);
     } else {
       logger.warn(`⚠️ Could not create system message for position request - localNodeInfo is null`);
     }
@@ -151,7 +151,7 @@ router.post('/nodeinfo/request', requirePermission('messages', 'write'), async (
 
     // Get local node info to create system message
     const localNodeInfo = niManager.getLocalNodeInfo();
-    logger.info(
+    logger.debug(
       `📇 localNodeInfo for system message: ${
         localNodeInfo ? `nodeId=${localNodeInfo.nodeId}, nodeNum=${localNodeInfo.nodeNum}` : 'NULL'
       }`
@@ -165,7 +165,7 @@ router.post('/nodeinfo/request', requirePermission('messages', 'write'), async (
       // For DMs (channel 0), store as channel -1 to show in DM conversation
       const messageChannel = channel === 0 ? -1 : channel;
 
-      logger.info(
+      logger.debug(
         `📇 Inserting nodeinfo request system message to database: ${messageId} (channel: ${messageChannel}, packetId: ${packetId}, requestId: ${requestId})`
       );
       await databaseService.messages.insertMessage({
@@ -184,7 +184,7 @@ router.post('/nodeinfo/request', requirePermission('messages', 'write'), async (
         sourceIp: req.ip ?? null,
         sourcePath: 'http_api',
       });
-      logger.info(`📇 NodeInfo request system message inserted successfully`);
+      logger.debug(`📇 NodeInfo request system message inserted successfully`);
     } else {
       logger.warn(`⚠️ Could not create system message for nodeinfo request - localNodeInfo is null`);
     }
@@ -264,7 +264,7 @@ router.post('/neighborinfo/request', requirePermission('traceroute', 'write'), a
     const { packetId, requestId } = await neighborManager.sendNeighborInfoRequest(destinationNum, channel);
     neighborInfoRequestTimestamps.set(Number(destinationNum), now);
 
-    logger.info(`🏠 NeighborInfo request sent to ${destinationNum.toString(16)} on channel ${channel}, packetId=${packetId}, requestId=${requestId}`);
+    logger.debug(`🏠 NeighborInfo request sent to ${destinationNum.toString(16)} on channel ${channel}, packetId=${packetId}, requestId=${requestId}`);
 
     res.json({
       success: true,
@@ -318,7 +318,7 @@ router.post('/telemetry/request', requirePermission('messages', 'write'), async 
     );
 
     const typeLabel = telemetryType || 'device';
-    logger.info(`📊 Telemetry request (${typeLabel}) sent to ${destinationNum.toString(16)} on channel ${channel}, packetId=${packetId}, requestId=${requestId}`);
+    logger.debug(`📊 Telemetry request (${typeLabel}) sent to ${destinationNum.toString(16)} on channel ${channel}, packetId=${packetId}, requestId=${requestId}`);
 
     res.json({
       success: true,

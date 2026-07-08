@@ -208,7 +208,7 @@ export class VirtualNodeServer extends EventEmitter {
     };
 
     this.clients.set(clientId, client);
-    logger.info(`📱 Virtual node client connected: ${clientId} (${this.clients.size} total)`);
+    logger.debug(`📱 Virtual node client connected: ${clientId} (${this.clients.size} total)`);
 
     // Audit log the connection (fire-and-forget async)
     databaseService.auditLogAsync(
@@ -241,7 +241,7 @@ export class VirtualNodeServer extends EventEmitter {
     const client = this.clients.get(clientId);
     if (client) {
       this.clients.delete(clientId);
-      logger.info(`📱 Virtual node client disconnected: ${clientId} (${this.clients.size} remaining)`);
+      logger.debug(`📱 Virtual node client disconnected: ${clientId} (${this.clients.size} remaining)`);
 
       // Audit log the disconnection (fire-and-forget async)
       databaseService.auditLogAsync(
@@ -363,7 +363,7 @@ export class VirtualNodeServer extends EventEmitter {
    */
   private async handleClientMessage(clientId: string, payload: Uint8Array): Promise<void> {
     try {
-      logger.info(`Virtual node: Received ${payload.length} bytes from ${clientId}`);
+      logger.trace(`Virtual node: Received ${payload.length} bytes from ${clientId}`);
 
       // Parse the ToRadio message
       const toRadio = await meshtasticProtobufService.parseToRadio(payload);
@@ -373,7 +373,7 @@ export class VirtualNodeServer extends EventEmitter {
         return;
       }
 
-      logger.info(`Virtual node: Parsed message from ${clientId}:`, JSON.stringify(toRadio, null, 2));
+      logger.trace(`Virtual node: Parsed message from ${clientId}:`, JSON.stringify(toRadio, null, 2));
 
       // Handle different message types
       if (toRadio.packet) {
@@ -466,7 +466,7 @@ export class VirtualNodeServer extends EventEmitter {
           // the Virtual Node and need admin command access (fixes #1766)
           const client = this.clients.get(clientId);
           if (client && this.isLocalhostClient(client)) {
-            logger.info(`Virtual node: Allowing admin command from localhost client ${clientId} (portnum ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)})`);
+            logger.debug(`Virtual node: Allowing admin command from localhost client ${clientId} (portnum ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)})`);
             // Fall through to queue the message
           } else if (isSelfAddressed) {
             // Self-addressed blocked portnum - allow through (self-addressed admin
@@ -486,7 +486,7 @@ export class VirtualNodeServer extends EventEmitter {
                   // Handle setFavoriteNode
                   if (adminMsg.setFavoriteNode !== undefined && adminMsg.setFavoriteNode !== null) {
                     const targetNodeNum = Number(adminMsg.setFavoriteNode);
-                    logger.info(`⭐ Virtual node: Intercepted setFavoriteNode for node ${targetNodeNum} from ${clientId}`);
+                    logger.debug(`⭐ Virtual node: Intercepted setFavoriteNode for node ${targetNodeNum} from ${clientId}`);
 
                     await databaseService.nodes.setNodeFavorite(targetNodeNum, true, this.config.meshtasticManager.sourceId);
                     logger.debug(`✅ Virtual node: Updated database - node ${targetNodeNum} is now favorite`);
@@ -497,7 +497,7 @@ export class VirtualNodeServer extends EventEmitter {
                   // Handle removeFavoriteNode
                   else if (adminMsg.removeFavoriteNode !== undefined && adminMsg.removeFavoriteNode !== null) {
                     const targetNodeNum = Number(adminMsg.removeFavoriteNode);
-                    logger.info(`☆ Virtual node: Intercepted removeFavoriteNode for node ${targetNodeNum} from ${clientId}`);
+                    logger.debug(`☆ Virtual node: Intercepted removeFavoriteNode for node ${targetNodeNum} from ${clientId}`);
 
                     await databaseService.nodes.setNodeFavorite(targetNodeNum, false, this.config.meshtasticManager.sourceId);
                     logger.debug(`✅ Virtual node: Updated database - node ${targetNodeNum} is no longer favorite`);
@@ -548,7 +548,7 @@ export class VirtualNodeServer extends EventEmitter {
           }
         } else if (this.allowAdminCommands && normalizedPortNum && this.BLOCKED_PORTNUMS.includes(normalizedPortNum)) {
           // Admin commands are explicitly allowed via configuration
-          logger.info(`Virtual node: Allowing admin command from ${clientId} (portnum ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)}) - VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS=true`);
+          logger.debug(`Virtual node: Allowing admin command from ${clientId} (portnum ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)}) - VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS=true`);
         }
 
         // Process the packet locally so it appears in the web UI
@@ -563,7 +563,7 @@ export class VirtualNodeServer extends EventEmitter {
           if (!toRadio.packet.from || toRadio.packet.from === 0 || toRadio.packet.from === '0') {
             const localNodeInfo = this.config.meshtasticManager.getLocalNodeInfo();
             if (localNodeInfo) {
-              logger.info(`Virtual node: Populating missing 'from' field for local storage with ${localNodeInfo.nodeId} (${localNodeInfo.nodeNum})`);
+              logger.trace(`Virtual node: Populating missing 'from' field for local storage with ${localNodeInfo.nodeId} (${localNodeInfo.nodeNum})`);
               overrideFrom = localNodeInfo.nodeNum;
             } else {
               logger.warn(`Virtual node: Cannot populate 'from' field - local node info not available yet`);
@@ -572,7 +572,7 @@ export class VirtualNodeServer extends EventEmitter {
 
           const fromRadioMessage = await meshtasticProtobufService.createFromRadioWithPacket(toRadio.packet, overrideFrom);
           if (fromRadioMessage) {
-            logger.info(`Virtual node: Processing outgoing message locally from ${clientId} (portnum: ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)})`);
+            logger.trace(`Virtual node: Processing outgoing message locally from ${clientId} (portnum: ${normalizedPortNum}/${meshtasticProtobufService.getPortNumName(normalizedPortNum)})`);
             // Process locally through MeshtasticManager to store in database
             // Pass context to prevent broadcast loop and preserve the packet ID as requestId for ACK matching
             // The packet.id is the client-generated message ID that will be returned in ACK packets
@@ -593,7 +593,7 @@ export class VirtualNodeServer extends EventEmitter {
         // at the physical node when relayed through the Virtual Node Server proxy.
         // We strip the PKI encryption so these packets can be processed as non-encrypted messages.
         const strippedPayload = await meshtasticProtobufService.stripPKIEncryption(payload);
-        logger.info(`Virtual node: Queueing message from ${clientId} (portnum: ${portnum})`);
+        logger.trace(`Virtual node: Queueing message from ${clientId} (portnum: ${portnum})`);
         this.queueMessage(clientId, strippedPayload);
       } else if (toRadio.wantConfigId) {
         // Client is requesting config with a specific ID
@@ -605,7 +605,7 @@ export class VirtualNodeServer extends EventEmitter {
         if (isSameConfigId && client?.lastConfigSentAt && (Date.now() - client.lastConfigSentAt.getTime()) < CONFIG_COOLDOWN_MS) {
           logger.warn(`Virtual node: Ignoring duplicate config request from ${clientId} (ID: ${toRadio.wantConfigId}) - config was sent ${Date.now() - client.lastConfigSentAt.getTime()}ms ago (cooldown: ${CONFIG_COOLDOWN_MS}ms)`);
         } else {
-          logger.info(`Virtual node: Client ${clientId} requesting config with ID ${toRadio.wantConfigId}`);
+          logger.debug(`Virtual node: Client ${clientId} requesting config with ID ${toRadio.wantConfigId}`);
           await this.sendInitialConfig(clientId, toRadio.wantConfigId);
         }
       } else if (toRadio.heartbeat) {
@@ -641,7 +641,7 @@ export class VirtualNodeServer extends EventEmitter {
               // Wrap in FromRadio using existing helper and process locally
               const fromRadioMessage = await meshtasticProtobufService.createFromRadioWithPacket(envelope.packet);
               if (fromRadioMessage) {
-                logger.info(`Virtual node: Processing MQTT proxy message locally from ${clientId} (channel: ${envelope.channelId || 'unknown'}, gateway: ${envelope.gatewayId || 'unknown'})`);
+                logger.trace(`Virtual node: Processing MQTT proxy message locally from ${clientId} (channel: ${envelope.channelId || 'unknown'}, gateway: ${envelope.gatewayId || 'unknown'})`);
                 await this.config.meshtasticManager.processIncomingData(fromRadioMessage, {
                   skipVirtualNodeBroadcast: true,
                 });
@@ -658,17 +658,17 @@ export class VirtualNodeServer extends EventEmitter {
         }
 
         // Always forward to physical radio regardless of local processing result
-        logger.info(`Virtual node: Forwarding MQTT proxy message from ${clientId} to physical node`);
+        logger.trace(`Virtual node: Forwarding MQTT proxy message from ${clientId} to physical node`);
         this.queueMessage(clientId, payload);
       } else if (toRadio.disconnect) {
         // Handle disconnect request locally - don't forward to physical node
-        logger.info(`Virtual node: Client ${clientId} requested disconnect`);
+        logger.debug(`Virtual node: Client ${clientId} requested disconnect`);
         // The socket close will be handled by the 'close' event handler
       } else {
         // Forward other message types to physical node only if they require it
         // Log the message type for debugging
         const messageType = Object.keys(toRadio).filter(k => k !== 'payloadVariant' && toRadio[k as keyof typeof toRadio] !== undefined);
-        logger.info(`Virtual node: Forwarding message type [${messageType.join(', ')}] from ${clientId} to physical node`);
+        logger.trace(`Virtual node: Forwarding message type [${messageType.join(', ')}] from ${clientId} to physical node`);
         this.queueMessage(clientId, payload);
       }
     } catch (error) {
@@ -691,7 +691,7 @@ export class VirtualNodeServer extends EventEmitter {
       timestamp: new Date(),
     });
 
-    logger.info(`Virtual node: Queued message from ${clientId} (queue size: ${this.messageQueue.length})`);
+    logger.trace(`Virtual node: Queued message from ${clientId} (queue size: ${this.messageQueue.length})`);
 
     // Start processing queue if not already
     if (!this.isProcessingQueue) {
@@ -718,7 +718,7 @@ export class VirtualNodeServer extends EventEmitter {
       try {
         // Forward to physical node via MeshtasticManager
         await this.config.meshtasticManager.sendRawMessage(message.data);
-        logger.info(`Virtual node: Forwarded message from ${message.clientId} to physical node`);
+        logger.trace(`Virtual node: Forwarded message from ${message.clientId} to physical node`);
       } catch (error) {
         logger.error(`Virtual node: Failed to forward message from ${message.clientId}:`, error);
       }
@@ -879,7 +879,7 @@ export class VirtualNodeServer extends EventEmitter {
     const isDbOnlyRequest = configId === NONCE_ONLY_DB;
     const isConfigOnly = configId === NONCE_ONLY_CONFIG;
 
-    logger.info(`Virtual node: Starting to send ${isDbOnlyRequest ? 'DB-only' : isConfigOnly ? 'config-only' : 'full'} config to ${clientId}${configId ? ` (ID: ${configId})` : ''}`);
+    logger.debug(`Virtual node: Starting to send ${isDbOnlyRequest ? 'DB-only' : isConfigOnly ? 'config-only' : 'full'} config to ${clientId}${configId ? ` (ID: ${configId})` : ''}`);
     try {
       // Check if config capture is complete before sending anything
       if (!this.config.meshtasticManager.isInitConfigCaptureComplete()) {
@@ -899,7 +899,7 @@ export class VirtualNodeServer extends EventEmitter {
       // === DB-ONLY REQUEST (69421): OtherNodeInfos + ConfigComplete ===
       // Firmware skips channels, config, and moduleConfig for this nonce.
       if (isDbOnlyRequest) {
-        logger.info(`Virtual node: DB-only config request - sending NodeInfo + ConfigComplete`);
+        logger.debug(`Virtual node: DB-only config request - sending NodeInfo + ConfigComplete`);
 
         const nodeResult = await this.sendNodeInfosFromDb(clientId);
         sentCount += nodeResult.sent;
@@ -907,7 +907,7 @@ export class VirtualNodeServer extends EventEmitter {
           logger.warn(`Virtual node: Client ${clientId} disconnected during DB-only NodeInfo send`);
           return;
         }
-        logger.info(`Virtual node: ✓ Sent ${nodeResult.sent} NodeInfo entries for DB-only request`);
+        logger.debug(`Virtual node: ✓ Sent ${nodeResult.sent} NodeInfo entries for DB-only request`);
 
         const configComplete = await meshtasticProtobufService.createConfigComplete(configId || 1);
         if (configComplete) {
@@ -915,7 +915,7 @@ export class VirtualNodeServer extends EventEmitter {
           sentCount++;
         }
 
-        logger.info(`Virtual node: ✅ DB-only config sent to ${clientId} (${sentCount} messages)`);
+        logger.debug(`Virtual node: ✅ DB-only config sent to ${clientId} (${sentCount} messages)`);
 
         const client = this.clients.get(clientId);
         if (client) {
@@ -943,7 +943,7 @@ export class VirtualNodeServer extends EventEmitter {
         }
 
         const vnFirmwareVersion = `${firmwareVersion}-MM${packageJson.version}`;
-        logger.info(`Virtual node: Sending MyNodeInfo with nodeNum=${localNodeInfo.nodeNum} (${localNodeInfo.nodeId}) fw=${vnFirmwareVersion} to ${clientId}`);
+        logger.debug(`Virtual node: Sending MyNodeInfo with nodeNum=${localNodeInfo.nodeNum} (${localNodeInfo.nodeId}) fw=${vnFirmwareVersion} to ${clientId}`);
 
         const myNodeInfoMessage = await meshtasticProtobufService.createMyNodeInfo({
           myNodeNum: localNodeInfo.nodeNum,
@@ -991,7 +991,7 @@ export class VirtualNodeServer extends EventEmitter {
         logger.warn(`Virtual node: Client ${clientId} disconnected during channel send`);
         return;
       }
-      logger.info(`Virtual node: ✓ Sent ${channelResult.sent} channels from database`);
+      logger.debug(`Virtual node: ✓ Sent ${channelResult.sent} channels from database`);
 
       // --- STEP 4: Config + ModuleConfig (from cache) ---
       let staticCount = 0;
@@ -1012,7 +1012,7 @@ export class VirtualNodeServer extends EventEmitter {
         sentCount++;
         staticCount++;
       }
-      logger.info(`Virtual node: ✓ Sent ${staticCount} cached static messages (config, moduleConfig)`);
+      logger.debug(`Virtual node: ✓ Sent ${staticCount} cached static messages (config, moduleConfig)`);
 
       // --- STEP 5: OtherNodeInfos (only for full/random, skipped for 69420) ---
       if (!isConfigOnly) {
@@ -1022,7 +1022,7 @@ export class VirtualNodeServer extends EventEmitter {
           logger.warn(`Virtual node: Client ${clientId} disconnected during NodeInfo send`);
           return;
         }
-        logger.info(`Virtual node: ✓ Sent ${nodeResult.sent} NodeInfo entries from database`);
+        logger.debug(`Virtual node: ✓ Sent ${nodeResult.sent} NodeInfo entries from database`);
       }
 
       // --- STEP 6: ConfigComplete ---
@@ -1031,10 +1031,10 @@ export class VirtualNodeServer extends EventEmitter {
       if (configComplete) {
         await this.sendToClient(clientId, configComplete);
         sentCount++;
-        logger.info(`Virtual node: ✓ ConfigComplete sent (ID: ${useConfigId})`);
+        logger.debug(`Virtual node: ✓ ConfigComplete sent (ID: ${useConfigId})`);
       }
 
-      logger.info(`Virtual node: ✅ ${isConfigOnly ? 'Config-only' : 'Full'} config sent to ${clientId} (${sentCount} messages)`);
+      logger.debug(`Virtual node: ✅ ${isConfigOnly ? 'Config-only' : 'Full'} config sent to ${clientId} (${sentCount} messages)`);
 
       const client = this.clients.get(clientId);
       if (client) {
@@ -1134,7 +1134,7 @@ export class VirtualNodeServer extends EventEmitter {
     for (const [clientId, client] of this.clients.entries()) {
       const inactiveMs = now - client.lastActivity.getTime();
       if (inactiveMs > this.CLIENT_TIMEOUT_MS) {
-        logger.info(`Virtual node: Client ${clientId} inactive for ${Math.floor(inactiveMs / 1000)}s, disconnecting`);
+        logger.debug(`Virtual node: Client ${clientId} inactive for ${Math.floor(inactiveMs / 1000)}s, disconnecting`);
         clientsToRemove.push(clientId);
       }
     }
@@ -1169,13 +1169,13 @@ export class VirtualNodeServer extends EventEmitter {
       return;
     }
 
-    logger.info(`Virtual node: Refreshing config for ${clientIds.length} connected client(s) after physical node reconnection`);
+    logger.debug(`Virtual node: Refreshing config for ${clientIds.length} connected client(s) after physical node reconnection`);
     for (const clientId of clientIds) {
       const client = this.clients.get(clientId);
       if (client && !client.socket.destroyed) {
         try {
           await this.sendInitialConfig(clientId);
-          logger.info(`Virtual node: Refreshed config for client ${clientId}`);
+          logger.debug(`Virtual node: Refreshed config for client ${clientId}`);
         } catch (error) {
           logger.error(`Virtual node: Failed to refresh config for client ${clientId}:`, error);
         }

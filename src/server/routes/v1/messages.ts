@@ -490,7 +490,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
         });
       }
 
-      logger.info(`📝 v1 API: Splitting long message (${messageBytes.length} bytes) into ${messageParts.length} parts`);
+      logger.debug(`📝 v1 API: Splitting long message (${messageBytes.length} bytes) into ${messageParts.length} parts`);
 
       // Queue all parts through messageQueueService
       const queueIds: string[] = [];
@@ -503,7 +503,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
           destinationNum || 0, // 0 for channel messages (broadcast)
           isFirstMessage ? replyId : undefined, // Only first message gets replyId
           () => {
-            logger.info(`✅ API message part ${index + 1}/${messageParts.length} delivered`);
+            logger.debug(`✅ API message part ${index + 1}/${messageParts.length} delivered`);
           },
           (reason: string) => {
             logger.warn(`❌ API message part ${index + 1}/${messageParts.length} failed: ${reason}`);
@@ -514,7 +514,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
         queueIds.push(queueId);
       });
 
-      logger.info(`📤 v1 API: Queued ${messageParts.length} message parts (user: ${req.user?.username}, queueIds: ${queueIds.join(', ')})`);
+      logger.debug(`📤 v1 API: Queued ${messageParts.length} message parts (user: ${req.user?.username}, queueIds: ${queueIds.join(', ')})`);
 
       res.status(202).json({
         success: true,
@@ -543,7 +543,7 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
       const localNodeNum = await databaseService.settings.getSetting('localNodeNum');
       const messageId = localNodeNum ? `${localNodeNum}_${requestId}` : requestId.toString();
 
-      logger.info(`📤 v1 API: Sent message via API token (user: ${req.user?.username}, requestId: ${requestId})`);
+      logger.debug(`📤 v1 API: Sent message via API token (user: ${req.user?.username}, requestId: ${requestId})`);
 
       res.status(201).json({
         success: true,

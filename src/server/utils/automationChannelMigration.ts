@@ -77,7 +77,7 @@ export async function migrateAutomationChannels(
       }
       if (changed) {
         await settingsSet('autoResponderTriggers', JSON.stringify(triggers));
-        logger.info('  ✅ Updated auto-responder trigger channels');
+        logger.debug('  ✅ Updated auto-responder trigger channels');
       }
     }
   } catch (error) {
@@ -99,7 +99,7 @@ export async function migrateAutomationChannels(
       }
       if (changed) {
         await settingsSet('timerTriggers', JSON.stringify(triggers));
-        logger.info('  ✅ Updated timer trigger channels');
+        logger.debug('  ✅ Updated timer trigger channels');
       }
     }
   } catch (error) {
@@ -121,7 +121,7 @@ export async function migrateAutomationChannels(
       }
       if (changed) {
         await settingsSet('geofenceTriggers', JSON.stringify(triggers));
-        logger.info('  ✅ Updated geofence trigger channels');
+        logger.debug('  ✅ Updated geofence trigger channels');
       }
     }
   } catch (error) {
@@ -136,7 +136,7 @@ export async function migrateAutomationChannels(
       const newChannels = channels.map(ch => map.get(ch) ?? ch);
       if (JSON.stringify(newChannels) !== JSON.stringify(channels)) {
         await settingsSet('autoAckChannels', newChannels.join(','));
-        logger.info('  ✅ Updated auto-ack channels');
+        logger.debug('  ✅ Updated auto-ack channels');
       }
     }
   } catch (error) {
@@ -152,7 +152,7 @@ export async function migrateAutomationChannels(
           const newChannels = pref.enabledChannels.map(ch => map.get(ch) ?? ch);
           if (JSON.stringify(newChannels) !== JSON.stringify(pref.enabledChannels)) {
             await updateNotificationPrefs(pref.userId, newChannels);
-            logger.info(`  ✅ Updated notification channels for user ${pref.userId}`);
+            logger.debug(`  ✅ Updated notification channels for user ${pref.userId}`);
           }
         }
       }

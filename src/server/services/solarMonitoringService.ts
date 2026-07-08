@@ -44,7 +44,7 @@ class SolarMonitoringService {
     this.cronJob = scheduleCron(
       cronExpression,
       async () => {
-        logger.info('☀️  Solar monitoring cron job triggered');
+        logger.debug('☀️  Solar monitoring cron job triggered');
         await this.fetchAndStoreSolarEstimates();
       },
       {
@@ -56,7 +56,7 @@ class SolarMonitoringService {
     logger.info('✅ Solar monitoring service initialized (runs at :05 of every hour)');
 
     // Run initial fetch
-    logger.info('☀️  Running initial solar estimate fetch...');
+    logger.debug('☀️  Running initial solar estimate fetch...');
     this.fetchAndStoreSolarEstimates().catch(err => {
       logger.error('❌ Initial solar fetch failed:', err);
     });
@@ -123,7 +123,7 @@ class SolarMonitoringService {
         count++;
       }
 
-      logger.info(`✅ Stored ${count} solar estimates (fetched at ${new Date(fetchedAt * 1000).toISOString()})`);
+      logger.debug(`✅ Stored ${count} solar estimates (fetched at ${new Date(fetchedAt * 1000).toISOString()})`);
 
     } catch (error) {
       logger.error('❌ Error fetching or storing solar estimates:', error);

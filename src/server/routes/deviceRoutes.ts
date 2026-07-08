@@ -45,7 +45,7 @@ router.get('/device/backup', requirePermission('configuration', 'read'), async (
     const saveToFile = req.query.save === 'true';
     const backupSourceId = req.query.sourceId as string | undefined;
     const backupManager = resolveSourceManager(backupSourceId);
-    logger.info(`📦 Device backup requested (save=${saveToFile})...`);
+    logger.debug(`📦 Device backup requested (save=${saveToFile})...`);
 
     // Generate YAML backup using the device backup service
     const yamlBackup = await deviceBackupService.generateBackup(backupManager);
@@ -63,7 +63,7 @@ router.get('/device/backup', requirePermission('configuration', 'read'), async (
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send(yamlBackup);
 
-      logger.info(`✅ Device backup saved and downloaded: ${filename}`);
+      logger.debug(`✅ Device backup saved and downloaded: ${filename}`);
     } else {
       // Just download, don't save - generate filename for display
       const nodeIdNumber = nodeId.startsWith('!') ? nodeId.substring(1) : nodeId;
@@ -76,7 +76,7 @@ router.get('/device/backup', requirePermission('configuration', 'read'), async (
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send(yamlBackup);
 
-      logger.info(`✅ Device backup generated: ${filename}`);
+      logger.debug(`✅ Device backup generated: ${filename}`);
     }
   } catch (error) {
     logger.error('❌ Error generating device backup:', error);

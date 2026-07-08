@@ -73,7 +73,7 @@ class PositionEstimationScheduler {
         logger.error('❌ Error in position estimation scheduler check:', error);
       });
     }, CHECK_INTERVAL_MS);
-    logger.info('▶️ Position estimation scheduler started (checks every minute)');
+    logger.debug('▶️ Position estimation scheduler started (checks every minute)');
   }
 
   stop(): void {

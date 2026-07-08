@@ -1456,12 +1456,12 @@ class ProtobufService {
       const adminMsg = AdminMessage.create(adminMsgData);
 
       const encoded = AdminMessage.encode(adminMsg).finish();
-      logger.info('⚙️ Created SetPositionConfig admin message');
-      logger.info('⚙️ Position config data:', JSON.stringify(positionConfigData, null, 2));
-      logger.info('⚙️ Smart broadcast enabled:', positionConfigData.positionBroadcastSmartEnabled);
+      logger.debug('⚙️ Created SetPositionConfig admin message');
+      logger.debug('⚙️ Position config data:', JSON.stringify(positionConfigData, null, 2));
+      logger.debug('⚙️ Smart broadcast enabled:', positionConfigData.positionBroadcastSmartEnabled);
       if (positionConfigData.positionBroadcastSmartEnabled) {
-        logger.info('⚙️ Smart broadcast minimum distance:', positionConfigData.broadcastSmartMinimumDistance);
-        logger.info('⚙️ Smart broadcast minimum interval:', positionConfigData.broadcastSmartMinimumIntervalSecs);
+        logger.debug('⚙️ Smart broadcast minimum distance:', positionConfigData.broadcastSmartMinimumDistance);
+        logger.debug('⚙️ Smart broadcast minimum interval:', positionConfigData.broadcastSmartMinimumIntervalSecs);
       }
       return encoded;
     } catch (error) {
