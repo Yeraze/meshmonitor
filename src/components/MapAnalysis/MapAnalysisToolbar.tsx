@@ -36,8 +36,17 @@ const UNTIMED_LAYERS: { key: LayerKey; label: string }[] = [
 
 export default function MapAnalysisToolbar() {
   const navigate = useNavigate();
-  const { config, setLayerEnabled, setLayerLookback, setSources, setSelectedNodeIds, setTimeSlider, reset } =
-    useMapAnalysisCtx();
+  const {
+    config,
+    setLayerEnabled,
+    setLayerLookback,
+    setSources,
+    setSelectedNodeIds,
+    setTimeSlider,
+    setFollowMode,
+    setAutoZoom,
+    reset,
+  } = useMapAnalysisCtx();
   const { data: sources = [] } = useDashboardSources();
 
   // Node picker (issue #3788): deduped/sorted options built from the same
@@ -130,6 +139,22 @@ export default function MapAnalysisToolbar() {
       <NodeTypeFilterControl />
       <NodeSearchControl />
       <NodeMultiSelect nodes={nodeOptions} value={config.selectedNodeIds} onChange={setSelectedNodeIds} />
+      <button
+        type="button"
+        className={`map-analysis-layer-btn ${config.followMode ? 'active' : ''}`}
+        onClick={() => setFollowMode(!config.followMode)}
+        title="Recenter on the selected nodes as they move (keeps zoom)"
+      >
+        Follow
+      </button>
+      <button
+        type="button"
+        className={`map-analysis-layer-btn ${config.autoZoom ? 'active' : ''}`}
+        onClick={() => setAutoZoom(!config.autoZoom)}
+        title="Zoom to fit the selected nodes as they move"
+      >
+        Auto-zoom
+      </button>
       <button
         type="button"
         className={`map-analysis-layer-btn ${config.timeSlider.enabled ? 'active' : ''}`}

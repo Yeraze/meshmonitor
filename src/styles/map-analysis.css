@@ -365,6 +365,25 @@
   word-break: break-word;
 }
 
+/* ===== Follow resume overlay (issue #3788 P2 WP-D) ===== */
+.map-analysis-follow-resume {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  background: #2563eb;
+  color: #fff;
+  border: 1px solid #2563eb;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.map-analysis-follow-resume:hover { background: #1d4ed8; border-color: #1d4ed8; }
+
 /* ===== Legend ===== */
 .map-analysis-legend {
   position: absolute;

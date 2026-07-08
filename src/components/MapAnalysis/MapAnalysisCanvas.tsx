@@ -16,6 +16,7 @@ import PolarGridLayer from './layers/PolarGridLayer';
 import TimeSliderControl from './TimeSliderControl';
 import MapLegend from './MapLegend';
 import FollowController from './FollowController';
+import FollowResumeButton from './FollowResumeButton';
 
 const FALLBACK_CENTER: [number, number] = [30, -90];
 const FALLBACK_ZOOM = 10;
@@ -79,6 +80,7 @@ export default function MapAnalysisCanvas() {
       <TilesetSelector selectedTilesetId={mapTileset} onTilesetChange={setMapTileset} />
       <TimeSliderControl />
       <MapLegend />
+      <FollowResumeButton />
     </div>
   );
 }
