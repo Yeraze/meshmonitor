@@ -74,7 +74,7 @@ unchanged behavior.
 - New/extended Vitest coverage green; typecheck clean; browser-validated.
 - Ships as a standalone, useful feature ("pick and highlight nodes").
 
-### Phase 2 — Follow & Auto-zoom  ⬜
+### Phase 2 — Follow & Auto-zoom  ✅ (browser-validated; PR pending)
 Add "Follow" and "Auto-zoom" toggles to the toolbar. New `useMap()` view
 controller(s) that, on each 15s position update, compute the selected nodes'
 current positions and:
@@ -113,3 +113,18 @@ current positions and:
   Deviation from plan: interview chose **dim-unselected (keep visible)** over
   hide-unselected, so Phase 1 emphasizes rather than filters. Next: ship
   Phase 1 PR after #4008 merges + rebase; then Phase 2 (Follow & Auto-zoom).
+- 2026-07-08 — Phase 1 shipped: PR #4010 merged to main (`5bcb4ffc`). (Aside: the
+  main-red hotfix I opened, #4008, was superseded by the maintainer's #4007 —
+  closed as dup; Phase 1 rebased onto the fixed main, full suite green.)
+- 2026-07-08 — Phase 2 implemented across WP-A/B/C/D (config `followMode`/`autoZoom`
+  + transient `followPaused`; pure `followMath.ts`; `FollowController` useMap child
+  with moveend-gated manual-pan pause + `{animate:false}`/rAF programmatic-flag
+  lifecycle + `planAutoZoom`; toolbar toggles + `FollowResumeButton` overlay). Full
+  Vitest suite green (2744/2744 suites, 0 failures); typecheck + lint:ci clean.
+  Browser-validated on the deployed build: Follow recentered [25,-95]z9 →
+  [25.978,-80.137]z9 (avg of selection, zoom preserved); Auto-zoom fit a wide
+  select-all from z14 → z0; near-coincident pair correctly stayed put (single-case,
+  no zoom-to-max); a user zoom paused + showed "Resume follow" + did NOT yank back;
+  Resume re-engaged (refit to z0); toggles persisted across reload. No feature
+  console errors. Note: implementers WP-C left work uncommitted once (committed by
+  orchestrator) — no correctness impact. Next: ship Phase 2 PR; epic complete after merge.
