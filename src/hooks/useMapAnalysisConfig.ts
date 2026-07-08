@@ -51,6 +51,10 @@ export interface MapAnalysisConfig {
   inspectorOpen: boolean;
   /** Unified node keys (`mt:<nodeNum>` / `mc:<publicKey>`) currently selected/followed; empty = no selection (issue #3788). */
   selectedNodeIds: string[];
+  /** Follow: recenter to the selected nodes' average position each update, keep zoom (issue #3788 P2). */
+  followMode: boolean;
+  /** Auto-zoom: fit the selected nodes' bounds (+15% margin) each update (issue #3788 P2). */
+  autoZoom: boolean;
 }
 
 const ALL_NODE_TYPES_VISIBLE = Object.fromEntries(
@@ -75,6 +79,8 @@ export const DEFAULT_CONFIG: MapAnalysisConfig = {
   timeSlider: { enabled: false },
   inspectorOpen: true,
   selectedNodeIds: [],
+  followMode: false,
+  autoZoom: false,
 };
 
 /** Read the traceroute options off a config, layering stored values over defaults. */
@@ -100,6 +106,8 @@ function load(): MapAnalysisConfig {
       nodeTypes: { ...ALL_NODE_TYPES_VISIBLE, ...(parsed.nodeTypes ?? {}) },
       timeSlider: { ...DEFAULT_CONFIG.timeSlider, ...(parsed.timeSlider ?? {}) },
       selectedNodeIds: Array.isArray(parsed.selectedNodeIds) ? parsed.selectedNodeIds : [],
+      followMode: typeof parsed.followMode === 'boolean' ? parsed.followMode : false,
+      autoZoom: typeof parsed.autoZoom === 'boolean' ? parsed.autoZoom : false,
     };
   } catch {
     return DEFAULT_CONFIG;
@@ -163,6 +171,14 @@ export function useMapAnalysisConfig() {
     setConfig((prev) => ({ ...prev, selectedNodeIds: ids }));
   }, []);
 
+  const setFollowMode = useCallback((v: boolean) => {
+    setConfig((prev) => ({ ...prev, followMode: v }));
+  }, []);
+
+  const setAutoZoom = useCallback((v: boolean) => {
+    setConfig((prev) => ({ ...prev, autoZoom: v }));
+  }, []);
+
   const setTimeSlider = useCallback((ts: Partial<MapAnalysisConfig['timeSlider']>) => {
     setConfig((prev) => ({ ...prev, timeSlider: { ...prev.timeSlider, ...ts } }));
   }, []);
@@ -181,6 +197,8 @@ export function useMapAnalysisConfig() {
     setNodeTypeEnabled,
     setSources,
     setSelectedNodeIds,
+    setFollowMode,
+    setAutoZoom,
     setTimeSlider,
     setInspectorOpen,
     reset,

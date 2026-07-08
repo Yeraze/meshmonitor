@@ -34,6 +34,13 @@ vi.mock('react-leaflet', () => ({
   useMap: () => null,
 }));
 
+// FollowController's own behavior (Follow/Auto-zoom/pause) is covered by its
+// dedicated FollowController.test.tsx; here it's a no-op so this suite can
+// keep useMap() -> null (required by the spiderfier no-op path above).
+vi.mock('./FollowController', () => ({
+  default: () => null,
+}));
+
 vi.mock('../../hooks/useMapAnalysisData', () => ({
   useTraceroutes: () => ({
     items: [],

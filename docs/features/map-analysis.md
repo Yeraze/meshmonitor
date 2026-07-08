@@ -35,6 +35,7 @@ The toolbar runs across the top of the canvas. From left to right:
 | **Source multi-select** | Pick which sources contribute to every layer. "All sources" is the default. |
 | **Search box** | Filter visible markers (and traceroute link endpoints) by name or node number. See [Node search](#node-search). |
 | **Node multi-select** | Pick specific nodes to emphasize. Selected nodes render at full opacity; everything else dims. "All nodes" (empty selection) is the default. See [Node selection & emphasis](#node-selection-emphasis). |
+| **Follow / Auto-zoom** | Keep the selected nodes framed as they move — recenter (Follow) and/or fit-to-bounds (Auto-zoom) on each update. See [Follow & Auto-zoom](#follow-auto-zoom). |
 | **Time slider toggle** | Show/hide the floating time-window slider. |
 | **Layer buttons (×8)** | Toggle each visualization layer on/off. The right-edge chevron opens a popover for layer-specific options (lookback window, sub-options). |
 | **Progress bar** | Shows aggregate loading state while any layer is fetching. |
@@ -80,6 +81,28 @@ Selection is keyed on a node's stable cross-source identity (Meshtastic
 `nodeNum`, MeshCore public key), so a node reported by several sources stays a
 single entry. The set persists per-browser in the workspace config alongside
 the other toolbar controls.
+
+### Follow & Auto-zoom
+
+Two toolbar toggles keep the selected nodes framed as their positions update
+(the map polls every 15 s, cross-source, so a node's position is the freshest
+fix any source reported):
+
+- **Follow** — recenters the map on the **average position** of the selected
+  nodes on each update, preserving your current zoom.
+- **Auto-zoom** — fits the map to the **bounding box** of the selected nodes'
+  current positions with a 15% margin on each update. When both are on,
+  Auto-zoom governs the view (its fit implies a center).
+
+Both operate only on the selected set, so pick your nodes first; with an empty
+selection they do nothing. A single selected node (or several at the same spot)
+centers without zooming all the way in.
+
+**Manual override:** panning or zooming the map by hand **pauses** Follow/Auto-zoom
+so you can look around without the map snapping back on the next update. A
+**⟳ Resume follow** button appears while paused; click it (or change the node
+selection) to re-engage. The toggles persist across reloads; the paused state
+does not (a reload starts following again).
 
 ## Layers
 
@@ -171,7 +194,7 @@ Map Analysis introduces **no new permission resource**. Page access is public (m
 
 ## Persistence
 
-All toolbar state — layer toggles, lookback selections, source filter, node selection, time slider window, inspector visibility — is persisted to a single versioned `localStorage` key (`mapAnalysis.config.v1`). It's per-browser, not per-account. The schema is versioned for future migration to server-persisted defaults.
+All toolbar state — layer toggles, lookback selections, source filter, node selection, Follow/Auto-zoom toggles, time slider window, inspector visibility — is persisted to a single versioned `localStorage` key (`mapAnalysis.config.v1`). It's per-browser, not per-account. The schema is versioned for future migration to server-persisted defaults.
 
 ## Limitations (v1)
 

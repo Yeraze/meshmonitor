@@ -32,6 +32,9 @@ type CtxShape = ReturnType<typeof useMapAnalysisConfig> & {
   /** Free-text node search term; empty = no filter (issue #3399). */
   nodeFilter: string;
   setNodeFilter: (s: string) => void;
+  /** Follow/Auto-zoom paused by a manual pan/zoom; cleared by Resume or retargeting (issue #3788 P2). */
+  followPaused: boolean;
+  setFollowPaused: (p: boolean) => void;
 };
 
 const Ctx = createContext<CtxShape | null>(null);
@@ -40,8 +43,19 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
   const config = useMapAnalysisConfig();
   const [selected, setSelected] = useState<SelectedTarget | null>(null);
   const [nodeFilter, setNodeFilter] = useState('');
+  const [followPaused, setFollowPaused] = useState(false);
   return (
-    <Ctx.Provider value={{ ...config, selected, setSelected, nodeFilter, setNodeFilter }}>
+    <Ctx.Provider
+      value={{
+        ...config,
+        selected,
+        setSelected,
+        nodeFilter,
+        setNodeFilter,
+        followPaused,
+        setFollowPaused,
+      }}
+    >
       {children}
     </Ctx.Provider>
   );

@@ -49,4 +49,31 @@ describe('MapAnalysisToolbar', () => {
     const stored = JSON.parse(localStorage.getItem('mapAnalysis.config.v1')!);
     expect(stored.layers.traceroutes.enabled).toBe(true);
   });
+
+  // issue #3788 P2 WP-D, spec test #5 (optional).
+  it('renders Follow and Auto-zoom toggles, inactive by default', () => {
+    render(<MapAnalysisToolbar />, { wrapper });
+    expect(screen.getByRole('button', { name: 'Follow' })).not.toHaveClass('active');
+    expect(screen.getByRole('button', { name: 'Auto-zoom' })).not.toHaveClass('active');
+  });
+
+  it('toggles Follow independently of Auto-zoom, carries the active class, and persists', () => {
+    render(<MapAnalysisToolbar />, { wrapper });
+    fireEvent.click(screen.getByRole('button', { name: 'Follow' }));
+    expect(screen.getByRole('button', { name: 'Follow' })).toHaveClass('active');
+    expect(screen.getByRole('button', { name: 'Auto-zoom' })).not.toHaveClass('active');
+    const stored = JSON.parse(localStorage.getItem('mapAnalysis.config.v1')!);
+    expect(stored.followMode).toBe(true);
+    expect(stored.autoZoom).toBe(false);
+  });
+
+  it('toggles Auto-zoom independently of Follow, carries the active class, and persists', () => {
+    render(<MapAnalysisToolbar />, { wrapper });
+    fireEvent.click(screen.getByRole('button', { name: 'Auto-zoom' }));
+    expect(screen.getByRole('button', { name: 'Auto-zoom' })).toHaveClass('active');
+    expect(screen.getByRole('button', { name: 'Follow' })).not.toHaveClass('active');
+    const stored = JSON.parse(localStorage.getItem('mapAnalysis.config.v1')!);
+    expect(stored.autoZoom).toBe(true);
+    expect(stored.followMode).toBe(false);
+  });
 });
