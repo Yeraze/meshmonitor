@@ -1,8 +1,8 @@
 import express, { Request, Response } from 'express';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
-import { isMeshCoreManager } from '../sourceManagerTypes.js';
-import meshtasticManagerDefault from '../meshtasticManager.js';
+import { isMeshCoreManager, isMeshtasticManager } from '../sourceManagerTypes.js';
+import type { MeshCoreManager } from '../meshcoreManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { logger } from '../../utils/logger.js';
 import { RequestHandler } from 'express';
@@ -208,7 +208,7 @@ router.get('/search', async (req: Request, res: Response) => {
     }
 
     // Search MeshCore messages (in-memory filter, across every registered source)
-    const meshcoreManagers = sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager).filter(m => m.isConnected());
+    const meshcoreManagers = sourceManagerRegistry.getAllManagers().filter((m): m is MeshCoreManager => isMeshCoreManager(m) && m.isConnected());
     if ((searchScope === 'all' || searchScope === 'meshcore') && meshcoreManagers.length > 0) {
       const hasMeshcoreAccess = isAdmin || (accessibleChannels !== null && accessibleChannels.has(-1));
 
@@ -753,8 +753,9 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
 
     // Get the meshtasticManager instance (source-aware)
     const { sourceId: purgeSourceId } = req.body || {};
-    const meshtasticManager = purgeSourceId
-      ? (sourceManagerRegistry.getManager(purgeSourceId) as typeof meshtasticManagerDefault ?? (global as any).meshtasticManager)
+    const _purgeBase = purgeSourceId ? sourceManagerRegistry.getManager(purgeSourceId) : null;
+    const meshtasticManager = (_purgeBase && isMeshtasticManager(_purgeBase))
+      ? _purgeBase
       : (global as any).meshtasticManager;
     if (!meshtasticManager) {
       return res.status(500).json({

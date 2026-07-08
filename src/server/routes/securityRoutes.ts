@@ -8,6 +8,9 @@ import { Router, Request, Response } from 'express';
 import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isMeshtasticManager } from '../sourceManagerTypes.js';
+import type { MeshtasticManager } from '../meshtasticManager.js';
+import { fail } from '../utils/apiResponse.js';
 import { duplicateKeySchedulerService } from '../services/duplicateKeySchedulerService.js';
 import { securityDigestService } from '../services/securityDigestService.js';
 import { logger } from '../../utils/logger.js';
@@ -155,7 +158,10 @@ router.post(
       // Require the source to be registered — no fallback to a default manager.
       const manager = sourceManagerRegistry.getManager(sourceId);
       if (!manager) {
-        return res.status(400).json({ error: `Unknown sourceId: ${sourceId}` });
+        return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${sourceId}`);
+      }
+      if (!isMeshtasticManager(manager)) {
+        return fail(res, 400, 'INVALID_SOURCE_TYPE', 'Security scan is Meshtastic-only');
       }
 
       const status = duplicateKeySchedulerService.getStatus(sourceId);
@@ -375,9 +381,12 @@ router.get('/dead-nodes', async (req: Request, res: Response) => {
     }
     const deadNodesManagerBase = sourceManagerRegistry.getManager(deadNodesSourceId);
     if (!deadNodesManagerBase) {
-      return res.status(400).json({ error: `Unknown sourceId: ${deadNodesSourceId}` });
+      return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${deadNodesSourceId}`);
     }
-    const deadNodesManager = deadNodesManagerBase as any;
+    if (!isMeshtasticManager(deadNodesManagerBase)) {
+      return fail(res, 400, 'INVALID_SOURCE_TYPE', 'Dead-node detection is Meshtastic-only');
+    }
+    const deadNodesManager: MeshtasticManager = deadNodesManagerBase;
     const DEAD_NODE_DAYS = 7;
     const cutoffSeconds = Math.floor(Date.now() / 1000) - (DEAD_NODE_DAYS * 24 * 60 * 60);
 
@@ -429,9 +438,12 @@ router.post('/dead-nodes/bulk-delete', requirePermission('security', 'write'), a
     }
     const bulkDeleteManagerBase = sourceManagerRegistry.getManager(bulkDeleteSourceId);
     if (!bulkDeleteManagerBase) {
-      return res.status(400).json({ error: `Unknown sourceId: ${bulkDeleteSourceId}` });
+      return fail(res, 400, 'SOURCE_NOT_FOUND', `Unknown sourceId: ${bulkDeleteSourceId}`);
     }
-    const bulkDeleteManager = bulkDeleteManagerBase as any;
+    if (!isMeshtasticManager(bulkDeleteManagerBase)) {
+      return fail(res, 400, 'INVALID_SOURCE_TYPE', 'Dead-node detection is Meshtastic-only');
+    }
+    const bulkDeleteManager: MeshtasticManager = bulkDeleteManagerBase;
 
     if (!Array.isArray(nodeNums) || nodeNums.length === 0) {
       return res.status(400).json({ error: 'nodeNums must be a non-empty array' });
