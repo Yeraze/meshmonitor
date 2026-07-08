@@ -53,6 +53,27 @@ vi.mock('../meshcoreRegistry.js', () => ({
   meshcoreConfigFromSource: vi.fn().mockReturnValue(null),
 }));
 
+vi.mock('../meshcoreConfig.js', () => ({
+  meshcoreConfigFromSource: vi.fn().mockReturnValue(null),
+}));
+
+vi.mock('../meshcoreManager.js', () => {
+  class MeshCoreManager {
+    sourceId: string;
+    sourceType: string = 'meshcore';
+    constructor(sourceId: string) { this.sourceId = sourceId; }
+    configure = vi.fn();
+    start = vi.fn().mockResolvedValue(undefined);
+    stop = vi.fn().mockResolvedValue(undefined);
+    isConnected = vi.fn().mockReturnValue(false);
+    disconnect = vi.fn().mockResolvedValue(undefined);
+    connect = vi.fn().mockResolvedValue(true);
+    getStatus = vi.fn().mockReturnValue({ sourceId: '', sourceName: '', sourceType: 'meshcore', connected: false });
+    getLocalNodeInfo = vi.fn().mockReturnValue(null);
+  }
+  return { MeshCoreManager };
+});
+
 vi.mock('../meshtasticManager.js', () => {
   class MeshtasticManager {
     sourceId: string;
@@ -108,9 +129,10 @@ describe('GET /:id/status — meshcore registry fallback', () => {
       updatedAt: 0,
       createdBy: 1,
     });
-    // sourceManagerRegistry has nothing for meshcore — meshcoreManagerRegistry does
-    mockMeshcoreRegistry.get.mockReturnValue({
+    // MeshCore manager is now in the unified sourceManagerRegistry.
+    mockSourceRegistry.getManager.mockReturnValue({
       sourceId: 'mc-1',
+      sourceType: 'meshcore',
       getStatus: (name: string) => ({
         sourceId: 'mc-1',
         sourceName: name,
@@ -162,8 +184,10 @@ describe('GET /:id/status — meshcore registry fallback', () => {
       createdBy: 1,
     });
     const now = Date.now();
-    mockMeshcoreRegistry.get.mockReturnValue({
+    // MeshCore manager is now in the unified sourceManagerRegistry.
+    mockSourceRegistry.getManager.mockReturnValue({
       sourceId: 'mc-3',
+      sourceType: 'meshcore',
       getStatus: (name: string) => ({
         sourceId: 'mc-3',
         sourceName: name,

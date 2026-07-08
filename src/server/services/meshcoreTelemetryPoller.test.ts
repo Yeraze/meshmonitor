@@ -25,7 +25,7 @@ import type {
   MeshCoreStatsPackets,
   MeshCoreDeviceInfo,
 } from '../meshcoreManager.js';
-import type { MeshCoreManagerRegistry } from '../meshcoreRegistry.js';
+import type { SourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { logger } from '../../utils/logger.js';
 
 // ============================================================================
@@ -55,6 +55,7 @@ function makeManager(opts: FakeManagerOpts): MeshCoreManager {
 
   const m: any = {
     sourceId: opts.sourceId,
+    sourceType: 'meshcore' as const,
     isConnected: () => opts.connected ?? true,
     getLocalNode: () => localNode,
     getStatsCore: () => (opts.throws ? reject() : Promise.resolve(opts.core ?? null)),
@@ -70,8 +71,8 @@ function makeManager(opts: FakeManagerOpts): MeshCoreManager {
   return m as MeshCoreManager;
 }
 
-function makeRegistry(...managers: MeshCoreManager[]): MeshCoreManagerRegistry {
-  return { list: () => managers } as unknown as MeshCoreManagerRegistry;
+function makeRegistry(...managers: MeshCoreManager[]): SourceManagerRegistry {
+  return { getAllManagers: () => managers } as unknown as SourceManagerRegistry;
 }
 
 function makeDatabase(): {

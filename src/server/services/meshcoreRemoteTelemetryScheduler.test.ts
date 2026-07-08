@@ -29,7 +29,7 @@ import type {
   MeshCoreStatus,
   MeshCoreTelemetryRecord,
 } from '../meshcoreManager.js';
-import type { MeshCoreManagerRegistry } from '../meshcoreRegistry.js';
+import type { SourceManagerRegistry } from '../sourceManagerRegistry.js';
 
 function makeNode(over: Partial<DbMeshCoreNode>): DbMeshCoreNode {
   return {
@@ -236,8 +236,8 @@ function makeFakeManager(init: Partial<FakeManagerState>): MeshCoreManager & { _
   return m as MeshCoreManager & { _state: FakeManagerState };
 }
 
-function makeRegistry(managers: MeshCoreManager[]): MeshCoreManagerRegistry {
-  return { list: () => managers } as unknown as MeshCoreManagerRegistry;
+function makeRegistry(managers: MeshCoreManager[]): SourceManagerRegistry {
+  return { getAllManagers: () => managers } as unknown as SourceManagerRegistry;
 }
 
 describe('MeshCoreRemoteTelemetryScheduler.tickOneManager', () => {
