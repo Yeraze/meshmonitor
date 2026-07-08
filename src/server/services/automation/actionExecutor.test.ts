@@ -12,6 +12,7 @@ function recorder() {
     sendTapback: async (a) => { calls.push({ fn: 'sendTapback', args: a }); return 2; },
     manageNode: async (a) => { calls.push({ fn: 'manageNode', args: a }); return 3; },
     requestData: async (a) => { calls.push({ fn: 'requestData', args: a }); return 5; },
+    rebootDevice: async (a) => { calls.push({ fn: 'rebootDevice', args: a }); return 6; },
     notify: async (a) => { calls.push({ fn: 'notify', args: a }); return 4; },
     runScript: async (a) => { calls.push({ fn: 'runScript', args: a }); return { success: true, stdout: '', returnValue: { ok: 1 } }; },
   };
@@ -291,6 +292,49 @@ describe('executeAction', () => {
     // delete is DB-level → runs on any source, MeshCore included.
     await executeAction(node('action.nodeManage', { op: 'delete' }), ctx({ from: 7 }, 'mc', 'meshcore'), deps);
     expect(calls).toEqual([{ fn: 'manageNode', args: { sourceId: 'mc', nodeNum: 7, op: 'delete' } }]);
+  });
+
+  // ── deviceReboot (#3995) ───────────────────────────────────────────────────
+  it('deviceReboot: reboots the trigger source and passes the seconds delay', async () => {
+    const { calls, deps } = recorder();
+    const result = await executeAction(
+      node('action.deviceReboot', { seconds: 30 }),
+      ctx({ from: 1 }, 'default'),
+      deps,
+    );
+    expect(calls).toEqual([{ fn: 'rebootDevice', args: { sourceId: 'default', seconds: 30 } }]);
+    expect(result).toBe(6);
+  });
+
+  it('deviceReboot: a scheduled (source-less) trigger reboots the selected source(s)', async () => {
+    const { calls, deps } = recorder();
+    // A schedule trigger carries no sourceId; the action must reboot the
+    // source(s) the user selected in the builder (multi-select), NOT the null
+    // trigger source. This is the core #3995 use case (daily scheduled reboot).
+    const scheduleCtx: EngineEvalContext = {
+      trigger: { triggerType: 'trigger.schedule', sourceId: null, timestamp: 1000, fields: {} },
+      vars: { getValue: async () => null } as unknown as VariableResolver,
+      data: { getNode: async () => null, getTelemetry: async () => null },
+      varCtx: { sourceId: null, nodeNum: undefined },
+      now: 1000,
+    };
+    await executeAction(
+      node('action.deviceReboot', { sourceIds: ['radioA', 'radioB'] }),
+      scheduleCtx,
+      deps,
+    );
+    expect(calls).toEqual([
+      { fn: 'rebootDevice', args: { sourceId: 'radioA', seconds: undefined } },
+      { fn: 'rebootDevice', args: { sourceId: 'radioB', seconds: undefined } },
+    ]);
+  });
+
+  it('deviceReboot: ignores a non-numeric/negative seconds (falls back to manager default)', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(node('action.deviceReboot', { seconds: -5 }), ctx({ from: 1 }, 'default'), deps);
+    await executeAction(node('action.deviceReboot', { seconds: 'soon' }), ctx({ from: 1 }, 'default'), deps);
+    expect(calls[0].args).toEqual({ sourceId: 'default', seconds: undefined });
+    expect(calls[1].args).toEqual({ sourceId: 'default', seconds: undefined });
   });
 
   // ── requestData (#3835) ────────────────────────────────────────────────────

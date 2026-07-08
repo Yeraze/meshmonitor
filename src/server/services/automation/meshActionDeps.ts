@@ -166,6 +166,27 @@ export function createMeshActionDeps(): ActionDeps {
       throw new Error(`source "${sourceId}" cannot perform node requests`);
     },
 
+    async rebootDevice({ sourceId, seconds }) {
+      // Reboot the physical device (#3995). Both protocol managers expose a
+      // `rebootDevice` method: Meshtastic `rebootDevice(seconds)` (void), MeshCore
+      // `rebootDevice()` (Companion-only; resolves `false` on failure / repeater
+      // firmware, ignores the seconds arg). Calling with `seconds` is safe for
+      // both — MeshCore drops the extra argument.
+      if (!sourceId) throw new Error('automation reboot action requires a target source');
+      const raw = resolveManager(sourceId) as { rebootDevice?: (seconds?: number) => Promise<unknown> } | undefined;
+      if (!raw || typeof raw.rebootDevice !== 'function') {
+        throw new Error(`source "${sourceId}" cannot reboot (no connected device)`);
+      }
+      const result = await raw.rebootDevice(seconds);
+      // Surface an explicit MeshCore `false` as a thrown error so the run-log
+      // records a failed step instead of a silent success. Meshtastic returns
+      // void (undefined), which is not false → treated as success.
+      if (result === false) {
+        throw new Error(`source "${sourceId}" failed to reboot (node not connected or unsupported firmware)`);
+      }
+      return result ?? { rebooted: true };
+    },
+
     async notify({ sourceId, title, body, type, urls }) {
       const r = await appriseNotificationService.notifyDirect({ sourceId, title, body, type }, urls);
       if (!r.ok) throw new Error(`notify failed: ${r.message}`);

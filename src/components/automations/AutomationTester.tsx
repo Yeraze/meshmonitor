@@ -282,6 +282,8 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
     // advert announces broadly (and MeshCore adverts carry no channel) — omit the target/channel.
     const tgt = op === 'advert' ? '' : ` → ${p.target ? `node ${p.target}` : '(triggering node)'} on ch ${p.channel ?? 0}`;
     headline = `Request ${op}${tt}${tgt}`;
+  } else if (a.type === 'action.deviceReboot') {
+    headline = `Reboot device${p.seconds != null ? ` (delay ${String(p.seconds)}s)` : ''}`;
   }
   return (
     <div className={`ae-test-action ${a.ok ? '' : 'is-err'}`}>
