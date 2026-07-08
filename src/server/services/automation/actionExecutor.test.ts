@@ -302,6 +302,17 @@ describe('executeAction', () => {
     expect(results).toEqual([2, { skipped: true, reason: 'tapback is not supported on MeshCore' }]);
   });
 
+  it('tapback: a single-entry explicit sourceIds still unwraps to a scalar result, not a one-element array', async () => {
+    const { deps } = recorder();
+    const result = await executeAction(
+      node('action.tapback', { emoji: '👍', sourceIds: ['radioA'] }),
+      ctx({ from: 5, channel: 3, packetId: 99, isDM: false }),
+      deps,
+    );
+    expect(result).toBe(2);
+    expect(Array.isArray(result)).toBe(false);
+  });
+
   it('nodeManage: defaults to the subject node and validates op', async () => {
     const { calls, deps } = recorder();
     await executeAction(node('action.nodeManage', { op: 'favorite' }), ctx({ from: 222 }), deps);
