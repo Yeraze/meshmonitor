@@ -35,6 +35,9 @@ type CtxShape = ReturnType<typeof useMapAnalysisConfig> & {
   /** Follow/Auto-zoom paused by a manual pan/zoom; cleared by Resume or retargeting (issue #3788 P2). */
   followPaused: boolean;
   setFollowPaused: (p: boolean) => void;
+  /** Node-to-node LOS distance measurement tool active (issue #3636); transient, not persisted. */
+  measureMode: boolean;
+  setMeasureMode: (m: boolean) => void;
 };
 
 const Ctx = createContext<CtxShape | null>(null);
@@ -44,6 +47,7 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
   const [selected, setSelected] = useState<SelectedTarget | null>(null);
   const [nodeFilter, setNodeFilter] = useState('');
   const [followPaused, setFollowPaused] = useState(false);
+  const [measureMode, setMeasureMode] = useState(false);
   return (
     <Ctx.Provider
       value={{
@@ -54,6 +58,8 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
         setNodeFilter,
         followPaused,
         setFollowPaused,
+        measureMode,
+        setMeasureMode,
       }}
     >
       {children}

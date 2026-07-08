@@ -24,6 +24,8 @@ import GeoJsonOverlay from '../GeoJsonOverlay';
 import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
 import { TilesetSelector } from '../TilesetSelector';
 import MapLegend from '../MapLegend';
+import MeasureDistanceController from '../MeasureDistanceController';
+import type { MeasurePoint } from '../../utils/measureDistance';
 
 const MESHCORE_COLOR = '#cba6f7';
 const NEIGHBOR_COLOR = '#06b6d4';
@@ -120,6 +122,8 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
   const tileset = getTilesetById(mapTileset, customTilesets);
   const [showPaths, setShowPaths] = useState(true);
   const [showNeighbors, setShowNeighbors] = useState(true);
+  // #3636: node-to-node LOS distance measurement tool.
+  const [measureActive, setMeasureActive] = useState(false);
   const [neighborEdges, setNeighborEdges] = useState<NeighborEdge[]>([]);
 
   // Spiderfier: fan out co-located MeshCore contacts so each is selectable
@@ -298,6 +302,17 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
     [positioned, nodeTypeFilter],
   );
 
+  // #3636: measurement endpoints — nearest-node snapping picks from these.
+  const measurePoints: MeasurePoint[] = useMemo(
+    () => visibleContacts.map(c => ({
+      id: c.publicKey,
+      lat: c.latitude as number,
+      lng: c.longitude as number,
+      label: c.advName || c.name,
+    })),
+    [visibleContacts],
+  );
+
   // Unregister markers whose contact is no longer rendered (filtered out / gone),
   // keyed off the rendered publicKey set — genuine removals only, never the
   // ref null-bounce.
@@ -452,6 +467,13 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
           maxZoom={tileset.maxZoom}
         />
         <SpiderfierController ref={spiderfierRef} />
+        {measureActive && (
+          <MeasureDistanceController
+            active={measureActive}
+            points={measurePoints}
+            onExit={() => setMeasureActive(false)}
+          />
+        )}
         {showLegend && <MapLegend showNodeTypes />}
         {geoJsonLayers.length > 0 && <GeoJsonOverlay layers={geoJsonLayers} />}
         {visibleContacts.map(c => {
@@ -560,6 +582,16 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
       <div className="map-controls dashboard-map-controls">
         <div className="map-controls-body">
           <div className="map-controls-title">Features</div>
+          {/* #3636: node-to-node LOS distance measurement toggle. */}
+          <label className="map-control-item" title="Measure straight-line distance between two nodes">
+            <input
+              type="checkbox"
+              checked={measureActive}
+              disabled={measurePoints.length < 2}
+              onChange={(e) => setMeasureActive(e.target.checked)}
+            />
+            <span>Measure Distance</span>
+          </label>
           <label className="map-control-item">
             <input
               type="checkbox"

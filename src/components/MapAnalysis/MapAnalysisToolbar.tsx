@@ -45,6 +45,8 @@ export default function MapAnalysisToolbar() {
     setTimeSlider,
     setFollowMode,
     setAutoZoom,
+    measureMode,
+    setMeasureMode,
     reset,
   } = useMapAnalysisCtx();
   const { data: sources = [] } = useDashboardSources();
@@ -161,6 +163,15 @@ export default function MapAnalysisToolbar() {
         onClick={() => setTimeSlider({ enabled: !config.timeSlider.enabled })}
       >
         Time Slider
+      </button>
+      {/* #3636: node-to-node LOS distance measurement tool. */}
+      <button
+        type="button"
+        className={`map-analysis-layer-btn ${measureMode ? 'active' : ''}`}
+        onClick={() => setMeasureMode(!measureMode)}
+        title="Measure straight-line distance between two nodes"
+      >
+        Measure
       </button>
       {UNTIMED_LAYERS.map(({ key, label }) => (
         <LayerToggleButton

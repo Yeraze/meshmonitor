@@ -1,0 +1,19 @@
+/* #3636: distance label for the node-to-node LOS measurement tool.
+   Applied to the permanent Leaflet tooltip anchored at the measurement line's
+   midpoint. Styled as a high-contrast pill so it reads over any tile layer. */
+.leaflet-tooltip.measure-distance-label {
+  background: #0f172a;
+  color: #e2e8f0;
+  border: 1px solid #38bdf8;
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-weight: 600;
+  font-size: 0.8rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+}
+
+/* Center-direction tooltips have no callout arrow; hide any pseudo just in case. */
+.leaflet-tooltip.measure-distance-label::before {
+  display: none;
+}
