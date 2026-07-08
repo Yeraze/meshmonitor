@@ -57,6 +57,7 @@ import { normalizeChannelRole } from './constants/channelRole.js';
 import { isAutoFavoriteEligible } from './constants/autoFavorite.js';
 import { createRequire } from 'module';
 import { validateCron, scheduleCron, type CronJob } from './utils/cronScheduler.js';
+import { CronOrIntervalScheduler, type ScheduleMode } from './services/cronOrIntervalScheduler.js';
 import fs from 'fs';
 import path from 'path';
 import * as net from 'net';
@@ -554,8 +555,7 @@ class MeshtasticManager implements ISourceManager {
   private timeOffsetSamples: number[] = [];
   private timeOffsetInterval: NodeJS.Timeout | null = null;
   private localStatsIntervalMinutes: number = 15;  // Default 5 minutes
-  private announceInterval: NodeJS.Timeout | null = null;
-  private announceCronJob: CronJob | null = null;
+  private announceScheduler: CronOrIntervalScheduler | null = null;
   private timerCronJobs: Map<string, CronJob> = new Map();
   private geofenceNodeState: Map<string, Set<number>> = new Map(); // geofenceId -> set of nodeNums currently inside
   private geofenceWhileInsideTimers: Map<string, NodeJS.Timeout> = new Map(); // geofenceId -> interval timer
@@ -2946,15 +2946,9 @@ class MeshtasticManager implements ISourceManager {
   }
 
   private async startAnnounceScheduler(): Promise<void> {
-    // Clear any existing interval or cron job
-    if (this.announceInterval) {
-      clearInterval(this.announceInterval);
-      this.announceInterval = null;
-    }
-    if (this.announceCronJob) {
-      this.announceCronJob.stop();
-      this.announceCronJob = null;
-    }
+    // Clear any existing scheduler
+    this.announceScheduler?.stop();
+    this.announceScheduler = null;
 
     // Check if auto-announce is enabled
     const autoAnnounceEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'autoAnnounceEnabled');
@@ -2963,56 +2957,46 @@ class MeshtasticManager implements ISourceManager {
       return;
     }
 
-    // Check if we should use scheduled sends (cron) or interval (per-source — written
-    // by AutoAnnounceSection via /api/settings?sourceId=)
-    const useSchedule = await databaseService.settings.getSettingForSource(this.sourceId, 'autoAnnounceUseSchedule') === 'true';
+    // Determine schedule mode (cron vs interval — per-source, written by
+    // AutoAnnounceSection via /api/settings?sourceId=)
+    const useSchedule = (await databaseService.settings.getSettingForSource(this.sourceId, 'autoAnnounceUseSchedule')) === 'true';
 
+    let mode: ScheduleMode;
     if (useSchedule) {
-      const scheduleExpression = await databaseService.settings.getSettingForSource(this.sourceId, 'autoAnnounceSchedule') || '0 */6 * * *';
+      const scheduleExpression = (await databaseService.settings.getSettingForSource(this.sourceId, 'autoAnnounceSchedule')) || '0 */6 * * *';
       logger.debug(`📢 Starting announce scheduler with cron expression: ${scheduleExpression}`);
-
-      // Validate and schedule the cron job
-      if (validateCron(scheduleExpression)) {
-        this.announceCronJob = scheduleCron(scheduleExpression, async () => {
-          logger.debug(`📢 Cron job triggered (connected: ${this.isConnected})`);
-          if (this.isConnected) {
-            try {
-              await this.sendAutoAnnouncement(true);
-            } catch (error) {
-              logger.error('❌ Error in cron auto-announce:', error);
-            }
-          } else {
-            logger.debug('📢 Skipping announcement - not connected to node');
-          }
-        });
-
-        logger.debug(`📢 Announce scheduler started with cron expression: ${scheduleExpression}`);
-      } else {
-        logger.error(`❌ Invalid cron expression: ${scheduleExpression}`);
-        return;
-      }
+      mode = { kind: 'cron', expression: scheduleExpression };
     } else {
-      // Use interval-based scheduling (per-source)
-      const intervalHours = parseInt(await databaseService.settings.getSettingForSource(this.sourceId, 'autoAnnounceIntervalHours') || '6');
+      const intervalHours = parseInt((await databaseService.settings.getSettingForSource(this.sourceId, 'autoAnnounceIntervalHours')) || '6');
       const intervalMs = intervalHours * 60 * 60 * 1000;
-
       logger.debug(`📢 Starting announce scheduler with ${intervalHours} hour interval`);
-
-      this.announceInterval = setInterval(async () => {
-        logger.debug(`📢 Announce interval triggered (connected: ${this.isConnected})`);
-        if (this.isConnected) {
-          try {
-            await this.sendAutoAnnouncement(true);
-          } catch (error) {
-            logger.error('❌ Error in auto-announce:', error);
-          }
-        } else {
-          logger.debug('📢 Skipping announcement - not connected to node');
-        }
-      }, intervalMs);
-
-      logger.debug(`📢 Announce scheduler started - next announcement in ${intervalHours} hours`);
+      mode = { kind: 'interval', intervalMs };
     }
+
+    this.announceScheduler = new CronOrIntervalScheduler({
+      label: `Meshtastic:${this.sourceId}`,
+      mode,
+      onTick: () => {
+        logger.debug(`📢 Announce tick triggered (connected: ${this.isConnected})`);
+        if (this.isConnected) {
+          return this.sendAutoAnnouncement(true).catch((error: Error) => {
+            logger.error('❌ Error in auto-announce:', error);
+          });
+        }
+        logger.debug('📢 Skipping announcement - not connected to node');
+      },
+    });
+
+    if (!this.announceScheduler.start()) {
+      // cron expression was invalid; warning already logged by the scheduler
+      if (mode.kind === 'cron') {
+        logger.error(`❌ Invalid cron expression: ${mode.expression}`);
+      }
+      this.announceScheduler = null;
+      return;
+    }
+
+    logger.debug('📢 Announce scheduler started');
 
     // Check if announce-on-start is enabled (per-source; applies to both cron and interval modes)
     const announceOnStart = await databaseService.settings.getSettingForSource(this.sourceId, 'autoAnnounceOnStart');
@@ -14536,16 +14520,11 @@ class MeshtasticManager implements ISourceManager {
       this.timeSyncInterval = null;
     }
 
-    if (this.announceInterval) {
-      clearInterval(this.announceInterval);
-      this.announceInterval = null;
-    }
-
-    // Stop announce cron job if active
-    if (this.announceCronJob) {
-      this.announceCronJob.stop();
-      this.announceCronJob = null;
-      logger.debug('📢 Stopped announce cron job');
+    // Stop announce scheduler if active
+    if (this.announceScheduler) {
+      this.announceScheduler.stop();
+      this.announceScheduler = null;
+      logger.debug('📢 Stopped announce scheduler');
     }
 
     // Stop all timer cron jobs
