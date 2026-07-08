@@ -1379,10 +1379,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         } as MeasurePoint;
       })
       .filter((p): p is MeasurePoint => p !== null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on position signature, matching nodePositions above
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on a position+label signature; label included so tooltip names refresh
     [nodesWithPosition.map(n => {
       const pos = getEffectivePosition(n);
-      return `${n.nodeNum}-${pos.latitude}-${pos.longitude}`;
+      return `${n.nodeNum}-${pos.latitude}-${pos.longitude}-${n.user?.shortName ?? ''}`;
     }).join(',')],
   );
 

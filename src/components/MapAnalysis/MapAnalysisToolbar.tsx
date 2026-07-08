@@ -164,12 +164,16 @@ export default function MapAnalysisToolbar() {
       >
         Time Slider
       </button>
-      {/* #3636: node-to-node LOS distance measurement tool. */}
+      {/* #3636: node-to-node LOS distance measurement tool. Disabled until at
+          least two positioned nodes exist, matching the "Features"-panel maps. */}
       <button
         type="button"
         className={`map-analysis-layer-btn ${measureMode ? 'active' : ''}`}
         onClick={() => setMeasureMode(!measureMode)}
-        title="Measure straight-line distance between two nodes"
+        disabled={analysisNodes.length < 2}
+        title={analysisNodes.length < 2
+          ? 'Need at least two positioned nodes to measure'
+          : 'Measure straight-line distance between two nodes'}
       >
         Measure
       </button>
