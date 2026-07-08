@@ -1,9 +1,9 @@
 /**
- * Source Routes — GET /:id/status fallback for meshcore sources.
+ * Source Routes — GET /:id/status for meshcore sources.
  *
- * Meshcore managers live in their own registry (meshcoreManagerRegistry), not
- * sourceManagerRegistry, so the status endpoint must consult both before
- * reporting `connected: false` for a meshcore source.
+ * After #3962 Task 2.1, MeshCore managers live in the unified sourceManagerRegistry
+ * alongside Meshtastic managers. The status endpoint queries sourceManagerRegistry
+ * for all source types — there is no separate meshcoreManagerRegistry.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -13,8 +13,6 @@ import request from 'supertest';
 import sourceRoutes from './sourceRoutes.js';
 import databaseService from '../../services/database.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
-
 vi.mock('../../services/database.js', () => ({
   default: {
     sources: {
@@ -41,16 +39,6 @@ vi.mock('../sourceManagerRegistry.js', () => ({
     removeManager: vi.fn().mockResolvedValue(undefined),
     reconfigureVirtualNode: vi.fn().mockResolvedValue(false),
   },
-}));
-
-vi.mock('../meshcoreRegistry.js', () => ({
-  meshcoreManagerRegistry: {
-    get: vi.fn().mockReturnValue(undefined),
-    getOrCreate: vi.fn(),
-    remove: vi.fn().mockResolvedValue(undefined),
-    list: vi.fn().mockReturnValue([]),
-  },
-  meshcoreConfigFromSource: vi.fn().mockReturnValue(null),
 }));
 
 vi.mock('../meshcoreConfig.js', () => ({
@@ -90,7 +78,6 @@ vi.mock('../meshtasticManager.js', () => {
 
 const mockDb = databaseService as any;
 const mockSourceRegistry = sourceManagerRegistry as any;
-const mockMeshcoreRegistry = meshcoreManagerRegistry as any;
 
 const adminUser = { id: 1, username: 'admin', isActive: true, isAdmin: true };
 
@@ -113,7 +100,6 @@ beforeEach(() => {
   mockDb.checkPermissionAsync.mockResolvedValue(true);
   mockDb.nodes.getNode.mockResolvedValue(null);
   mockSourceRegistry.getManager.mockReturnValue(null);
-  mockMeshcoreRegistry.get.mockReturnValue(undefined);
 });
 
 describe('GET /:id/status — meshcore registry fallback', () => {
@@ -239,7 +225,8 @@ describe('GET /:id/status — meshcore registry fallback', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.connected).toBe(true);
-    expect(mockMeshcoreRegistry.get).not.toHaveBeenCalled();
+    // sourceManagerRegistry is the single source of truth after #3962 Task 2.1 —
+    // there is no separate meshcoreRegistry to consult.
   });
 });
 

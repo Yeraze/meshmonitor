@@ -38,15 +38,6 @@ vi.mock('../sourceManagerRegistry.js', () => ({
   },
 }));
 
-vi.mock('../meshcoreRegistry.js', () => ({
-  meshcoreManagerRegistry: {
-    get: vi.fn().mockReturnValue(null),
-    getOrCreate: vi.fn(),
-    remove: vi.fn().mockResolvedValue(undefined),
-  },
-  meshcoreConfigFromSource: vi.fn().mockReturnValue(null),
-}));
-
 const mockDb = databaseService as any;
 
 const adminUser = { id: 1, username: 'admin', isActive: true, isAdmin: true };

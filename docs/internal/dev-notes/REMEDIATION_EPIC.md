@@ -27,6 +27,17 @@ Each unchecked phase = one worktree → architect spec → implementation → re
 - [x] **1.5** — Response-envelope convention: `ok(res, data)` / `fail(res, status, code, msg)` helper for the `{ success, error, code }` envelope; documented in CLAUDE.md; new/modified handlers must use it.
 - [x] **1.6** — Schema-drift tripwire: CI test diffing `createTables()` schema vs full migration replay (001→latest), normalized `sqlite_master`, fail on divergence.
 
+## Phase 2 checklist
+
+Phase 2 started 2026-07-07. Decisions carried forward from the Phase 0+1 interview: behavior-preserving; each numbered sub-task is one PR; full suite green before merge.
+
+- [ ] **2.1** — `MeshCoreManager implements ISourceManager`: one unified `sourceManagerRegistry` for all source types; `meshcoreRegistry.ts` reduced to a `@deprecated` shim (delete after one release). WP1 (interface+guards+config move) → WP2+WP3a (lifecycle+loop hardening) → WP3b (read-site migration) → WP4 (shim+tests+docs). See `task21_spec.md` and PR on branch `feature/3962-p2-meshcore-isourcemanager`.
+- [ ] **2.2a** — Heartbeat/status-probing: extract shared service parameterized by `ISourceManager` (plan §2.2 ¶1).
+- [ ] **2.2b** — Auto-announce: MeshCore + Meshtastic cycles → one `autoAnnounceService` with per-protocol adapters (plan §2.2 ¶2).
+- [ ] **2.2c** — Auto-responder: `checkAutoResponder` in both managers → shared service (plan §2.2 ¶3).
+- [ ] **2.2d** — Distance-delete scheduling: MeshCore's `DistanceDeleteScheduler` construction → unified ownership in `services/` (plan §2.2 ¶4).
+- [ ] **2.3** — Singleton retirement: enumerate legacy-singleton branches in `meshtasticManager.ts`; create a registry-managed default source from env config; reduce `export default` to a pure alias; delete last special-casing (plan §2.3).
+
 ## Ordering notes
 
 - Phase 0 tasks are independent; executed serially in numeric order (one phase in flight at a time).

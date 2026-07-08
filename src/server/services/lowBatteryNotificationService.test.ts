@@ -43,13 +43,6 @@ vi.mock('../sourceManagerRegistry.js', () => ({
   },
 }));
 
-const mockMeshcoreList = vi.fn();
-vi.mock('../meshcoreRegistry.js', () => ({
-  meshcoreManagerRegistry: {
-    list: mockMeshcoreList,
-  },
-}));
-
 const mockBroadcastToPreferenceUsers = vi.fn();
 vi.mock('./notificationService.js', () => ({
   notificationService: {
@@ -75,7 +68,6 @@ describe('LowBatteryNotificationService', () => {
     vi.setSystemTime(new Date('2026-03-15T12:00:00Z'));
 
     mockGetAllManagers.mockReturnValue([{ sourceId: 'src1', sourceType: 'meshtastic_tcp' }]);
-    mockMeshcoreList.mockReturnValue([]);
     mockGetSource.mockResolvedValue({ id: 'src1', name: 'Source One' });
     mockCheckPermissionAsync.mockResolvedValue(true);
 

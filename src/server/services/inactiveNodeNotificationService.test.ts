@@ -49,13 +49,6 @@ vi.mock('../sourceManagerRegistry.js', () => ({
   },
 }));
 
-const mockMeshcoreList = vi.fn();
-vi.mock('../meshcoreRegistry.js', () => ({
-  meshcoreManagerRegistry: {
-    list: mockMeshcoreList,
-  },
-}));
-
 const mockBroadcastToPreferenceUsers = vi.fn();
 vi.mock('./notificationService.js', () => ({
   notificationService: {
@@ -82,7 +75,6 @@ describe('InactiveNodeNotificationService', () => {
 
     // Phase C defaults: one Meshtastic source, no MeshCore sources
     mockGetAllManagers.mockReturnValue([{ sourceId: 'src1', sourceType: 'meshtastic_tcp' }]);
-    mockMeshcoreList.mockReturnValue([]);
     mockGetSource.mockResolvedValue({ id: 'src1', name: 'Source One' });
     mockCheckPermissionAsync.mockResolvedValue(true);
 

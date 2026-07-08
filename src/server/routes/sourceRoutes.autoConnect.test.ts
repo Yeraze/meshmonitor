@@ -9,8 +9,6 @@ import request from 'supertest';
 import sourceRoutes from './sourceRoutes.js';
 import databaseService from '../../services/database.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-import { meshcoreManagerRegistry } from '../meshcoreRegistry.js';
-
 vi.mock('../../services/database.js', () => ({
   default: {
     sources: {
@@ -61,15 +59,6 @@ vi.mock('../meshtasticManager.js', () => {
   return { MeshtasticManager };
 });
 
-vi.mock('../meshcoreRegistry.js', () => ({
-  meshcoreManagerRegistry: {
-    get: vi.fn().mockReturnValue(undefined),
-    getOrCreate: vi.fn(),
-    remove: vi.fn().mockResolvedValue(undefined),
-  },
-  meshcoreConfigFromSource: vi.fn().mockReturnValue({ connectionType: 'serial', serialPort: '/dev/ttyACM0', firmwareType: 'companion' }),
-}));
-
 vi.mock('../meshcoreConfig.js', () => ({
   meshcoreConfigFromSource: vi.fn().mockReturnValue({ connectionType: 'serial', serialPort: '/dev/ttyACM0', firmwareType: 'companion' }),
 }));
@@ -91,7 +80,6 @@ vi.mock('../meshcoreManager.js', () => {
 
 const mockDb = databaseService as any;
 const mockRegistry = sourceManagerRegistry as any;
-const mockMcRegistry = meshcoreManagerRegistry as any;
 
 const adminUser = { id: 1, username: 'admin', isActive: true, isAdmin: true };
 
@@ -120,7 +108,6 @@ beforeEach(() => {
   mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: true });
   mockDb.checkPermissionAsync.mockResolvedValue(true);
   mockRegistry.getManager.mockReturnValue(null);
-  mockMcRegistry.get.mockReturnValue(undefined);
 });
 
 describe('sourceRoutes — autoConnect flag on create', () => {
