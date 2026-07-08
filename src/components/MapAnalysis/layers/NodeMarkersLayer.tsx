@@ -2,37 +2,18 @@ import { Marker, Popup } from 'react-leaflet';
 import { useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Marker as LeafletMarker } from 'leaflet';
-import {
-  useDashboardSources,
-  useDashboardUnifiedData,
-} from '../../../hooks/useDashboardData';
+import { useDashboardSources } from '../../../hooks/useDashboardData';
 import { useHopCounts } from '../../../hooks/useMapAnalysisData';
 import { useSettings } from '../../../contexts/SettingsContext';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
 import { useMarkerSpiderfier, SHARED_SPIDERFIER_OPTIONS } from '../../../hooks/useMarkerSpiderfier';
-import { resolveNodeLatLng, type MaybePositionedNode } from '../nodePositionUtil';
-import { nodeMatchesSearch } from '../nodeSearch';
+import { useAnalysisNodes, type NodeRecord } from '../useAnalysisNodes';
 import { createNodeIcon } from '../../../utils/mapIcons';
 import { getNodeTypeCategory } from '../../../utils/nodeTypeCategory';
 import { markerAgeOpacity, MIN_MARKER_OPACITY } from '../../../utils/markerAgeOpacity';
+import { isNodeEmphasized, selectionOpacity } from '../../../utils/nodeIdentity';
 import DashboardNodePopup, { type NodeSourceRef } from '../../Dashboard/DashboardNodePopup';
 import '../../../styles/nodes.css'; // `.node-popup-*` classes used by DashboardNodePopup
-
-interface NodeRecord extends MaybePositionedNode {
-  nodeNum: number;
-  sourceId?: string;
-  nodeId?: string | null;
-  longName?: string | null;
-  shortName?: string | null;
-  hideFromMap?: boolean | null;
-  user?: { role?: string | number | null } | null;
-  isMeshCore?: boolean;
-  advType?: number | null;
-  /** Unix seconds of last reception; drives time-slider opacity fade (#3886). */
-  lastHeard?: number | null;
-  /** Every configured source that reported this node (unified merge, #2805). */
-  sources?: NodeSourceRef[];
-}
 
 interface HopEntry {
   sourceId: string;
@@ -52,7 +33,7 @@ interface HopEntry {
  * inspector panel can react.
  */
 export default function NodeMarkersLayer() {
-  const { config, selected, setSelected, nodeFilter } = useMapAnalysisCtx();
+  const { config, selected, setSelected } = useMapAnalysisCtx();
   const { mapPinStyle } = useSettings();
   const navigate = useNavigate();
 
@@ -139,10 +120,6 @@ export default function NodeMarkersLayer() {
   const { data: sources = [] } = useDashboardSources();
   const sourceList = sources as Array<{ id: string; name: string }>;
   const sourceIds = sourceList.map((s) => s.id);
-  // Pass the FULL source objects (not bare ids) so the unified merge stamps the
-  // per-node `sources` array used by the popup's "Seen by N sources" list and by
-  // the multi-source filter. Bare-string callers get no `sources` field.
-  const { nodes } = useDashboardUnifiedData(sources, sourceIds.length > 0);
   const hop = useHopCounts({
     enabled: config.layers.hopShading.enabled,
     sources: config.sources.length === 0 ? sourceIds : config.sources,
@@ -157,26 +134,10 @@ export default function NodeMarkersLayer() {
     return m;
   }, [hop.data]);
 
-  const filteredNodes = ((nodes ?? []) as NodeRecord[])
-    .map((n) => ({ node: n, latLng: resolveNodeLatLng(n) }))
-    .filter(({ node, latLng }) => {
-      if (!latLng) return false;
-      // #3549: per-node "Hide from Map" suppresses the marker on every map surface.
-      if (node.hideFromMap) return false;
-      // Node search (issue #3399): hide non-matches.
-      if (!nodeMatchesSearch(node, nodeFilter)) return false;
-      // Node-type filter (issue #3546): hide categories the user toggled off.
-      if (config.nodeTypes[getNodeTypeCategory(node)] === false) return false;
-      if (config.sources.length === 0) return true;
-      // Source filter: a unified-merged node can be reported by several sources
-      // (node.sources). It must stay visible if ANY of those is enabled — not
-      // just its primary sourceId — so multi-source nodes don't vanish when only
-      // one of their sources is selected. Fall back to sourceId for unmerged rows.
-      const sourceIds = node.sources && node.sources.length > 0
-        ? node.sources.map((s) => s.sourceId)
-        : (node.sourceId ? [node.sourceId] : []);
-      return sourceIds.some((id) => config.sources.includes(id));
-    });
+  // Shared identity + visibility computation (issue #3788 WP-B) — the same
+  // predicate the node picker (NodeMultiSelect) uses, so the two surfaces
+  // never disagree about which nodes exist/are shown.
+  const filteredNodes = useAnalysisNodes();
 
   // Genuine removals (a node aged out / filtered away) are reconciled here
   // rather than from the ref `null` bounce — drop any tracked marker whose key
@@ -208,8 +169,8 @@ export default function NodeMarkersLayer() {
 
   return (
     <>
-      {filteredNodes.map(({ node: n, latLng }) => {
-        const [lat, lon] = latLng!;
+      {filteredNodes.map(({ node: n, latLng, key: unifiedKey }) => {
+        const [lat, lon] = latLng;
         const sourceId = n.sourceId ?? '';
         const hopVal = hopByKey.get(`${sourceId}:${Number(n.nodeNum)}`);
         const hops =
@@ -252,13 +213,20 @@ export default function NodeMarkersLayer() {
           : n.lastHeard != null
             ? markerAgeOpacity(windowEndMs, windowStartMs, n.lastHeard * 1000)
             : MIN_MARKER_OPACITY;
+        // Selection dimming (issue #3788 WP-C): applied via the leaflet `opacity`
+        // prop only — NOT folded into `iconSig`/the divIcon — so the spiderfy fan
+        // and icon cache don't churn when the selection changes. Empty selection
+        // ⇒ isNodeEmphasized always true ⇒ finalOpacity === markerOpacity (today's
+        // behavior, unchanged).
+        const emphasized = isNodeEmphasized(unifiedKey, config.selectedNodeIds);
+        const finalOpacity = selectionOpacity(markerOpacity, emphasized);
         return (
           <Marker
             key={markerKey}
             ref={getMarkerRef(markerKey)}
             position={stablePosition(markerKey, lat, lon)}
             icon={icon}
-            opacity={markerOpacity}
+            opacity={finalOpacity}
             eventHandlers={{
               click: () =>
                 setSelected({

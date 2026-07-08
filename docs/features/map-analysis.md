@@ -34,6 +34,7 @@ The toolbar runs across the top of the canvas. From left to right:
 | --- | --- |
 | **Source multi-select** | Pick which sources contribute to every layer. "All sources" is the default. |
 | **Search box** | Filter visible markers (and traceroute link endpoints) by name or node number. See [Node search](#node-search). |
+| **Node multi-select** | Pick specific nodes to emphasize. Selected nodes render at full opacity; everything else dims. "All nodes" (empty selection) is the default. See [Node selection & emphasis](#node-selection-emphasis). |
 | **Time slider toggle** | Show/hide the floating time-window slider. |
 | **Layer buttons (×8)** | Toggle each visualization layer on/off. The right-edge chevron opens a popover for layer-specific options (lookback window, sub-options). |
 | **Progress bar** | Shows aggregate loading state while any layer is fetching. |
@@ -62,6 +63,23 @@ The toolbar **search box** hides every marker that doesn't match the term and co
 - its `nodeNum` in **hex or decimal**.
 
 Clear the box to restore the full map. The search term lives in the workspace state alongside the other toolbar controls, so it composes with the source filter and every layer toggle.
+
+### Node selection & emphasis
+
+The toolbar **node multi-select** ("All nodes") lets you pin a specific set of
+nodes. The picker lists every node currently on the map — so it already
+reflects the source, node-type, and search filters — with **Select all** and
+**Clear** shortcuts.
+
+With one or more nodes selected, the map keeps *every* node visible but
+**dims the unselected ones** (both their markers and their position trails),
+so your chosen nodes stand out without losing surrounding context. An empty
+selection is the default and dims nothing.
+
+Selection is keyed on a node's stable cross-source identity (Meshtastic
+`nodeNum`, MeshCore public key), so a node reported by several sources stays a
+single entry. The set persists per-browser in the workspace config alongside
+the other toolbar controls.
 
 ## Layers
 
@@ -153,7 +171,7 @@ Map Analysis introduces **no new permission resource**. Page access is public (m
 
 ## Persistence
 
-All toolbar state — layer toggles, lookback selections, source filter, time slider window, inspector visibility — is persisted to a single versioned `localStorage` key (`mapAnalysis.config.v1`). It's per-browser, not per-account. The schema is versioned for future migration to server-persisted defaults.
+All toolbar state — layer toggles, lookback selections, source filter, node selection, time slider window, inspector visibility — is persisted to a single versioned `localStorage` key (`mapAnalysis.config.v1`). It's per-browser, not per-account. The schema is versioned for future migration to server-persisted defaults.
 
 ## Limitations (v1)
 

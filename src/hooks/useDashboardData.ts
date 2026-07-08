@@ -9,6 +9,7 @@ import { useQuery, useQueries } from '@tanstack/react-query';
 import { appBasename } from '../init';
 import { useAuth } from '../contexts/AuthContext';
 import { classifyNodeTransport, type NodeTransportClass } from '../utils/nodeTransport';
+import { unifiedNodeKey } from '../utils/nodeIdentity';
 
 /**
  * A data source configured in MeshMonitor
@@ -356,22 +357,16 @@ export function mergeUnifiedSourceData(
       : null;
     for (const n of ps.nodes as any[]) {
       if (n == null) continue;
-      let key: string | null = null;
-      if (n.isMeshCore) {
-        // A MeshCore contact's identity is its public key — stable across
-        // sources. The server-built `nodeId` embeds the reporting source
-        // (`mc:<sourceId>:<pubkeyPrefix>`), so keying on it would put the same
-        // physical node into a separate bucket per source and it would always
-        // show as "seen by 1 source". Key on publicKey so the same node merges
-        // across MeshCore sources; fall back to nodeId only when no key exists.
-        if (typeof n.publicKey === 'string' && n.publicKey.length > 0) {
-          key = `mc:${n.publicKey}`;
-        } else if (typeof n.nodeId === 'string' && n.nodeId.length > 0) {
-          key = `mc:${n.nodeId}`;
-        }
-      } else if (typeof n.nodeNum === 'number') {
-        key = `mt:${n.nodeNum}`;
-      }
+      // A MeshCore contact's identity is its public key — stable across
+      // sources. The server-built `nodeId` embeds the reporting source
+      // (`mc:<sourceId>:<pubkeyPrefix>`), so keying on it would put the same
+      // physical node into a separate bucket per source and it would always
+      // show as "seen by 1 source". Key on publicKey so the same node merges
+      // across MeshCore sources; fall back to nodeId only when no key exists.
+      // `unifiedNodeKey` is the single source of truth for this bucketing —
+      // it must stay in sync with the node-selection feature (#3788), which
+      // keys markers/trails identically.
+      const key = unifiedNodeKey(n);
       if (key == null) continue;
       const entry = { node: n, source };
       const bucket = recordsByKey.get(key);
