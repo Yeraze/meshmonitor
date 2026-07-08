@@ -4,7 +4,6 @@ import helmet from 'helmet';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { v4 as uuidv4 } from 'uuid';
 import databaseService, { DbMessage } from '../services/database.js';
 import { ALL_SOURCES } from '../db/repositories/index.js';
 import { MeshMessage } from '../types/message.js';
@@ -57,7 +56,7 @@ import { PortNum, getRoutingErrorName } from './constants/meshtastic.js';
 import { isValidModuleConfigType } from './constants/moduleConfig.js';
 import { CONFIG_TYPE_MAP, MODULE_FIELD_BY_ID, DEVICE_FIELD_BY_ID } from './constants/configTypes.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
-import { applyManagerSettings } from './applyManagerSettings.js';
+import { bootstrapSources } from './bootstrapSources.js';
 import { installProcessSafetyNet } from './processSafetyNet.js';
 
 const require = createRequire(import.meta.url);
@@ -360,164 +359,19 @@ setTimeout(async () => {
     // Wait for database initialization (critical for PostgreSQL/MySQL where repos are async)
     await databaseService.waitForReady();
 
-    // Per-source scheduler settings are applied to each manager inside the
-    // `for (const source of enabledSources)` loop below via applyManagerSettings().
-    // Globally-scoped schedulers (Announce, Timer, DistanceDelete, RemoteAdminScanner,
-    // TimeSync) self-bootstrap inside their start*Scheduler methods — no action here.
-
-    // NOTE: We no longer mark existing nodes as welcomed on startup.
-    // This is now handled when autoWelcomeEnabled is first changed to 'true'
-    // via the settings endpoint. This prevents welcoming existing nodes when
-    // the feature is enabled after nodes are already in the database.
-
-    // Clear any runtime IP/port overrides from previous sessions
-    // These are temporary settings that should reset on container restart
-    await databaseService.settings.setSetting('meshtasticNodeIpOverride', '');
-    await databaseService.settings.setSetting('meshtasticTcpPortOverride', '');
-
-    // Auto-create default source if none exist
-    const sourceCount = await databaseService.sources.getSourceCount();
-    if (sourceCount === 0) {
-      const env = getEnvironmentConfig();
-      if (env.meshtasticNodeIp) {
-        await databaseService.sources.createSource({
-          id: uuidv4(),
-          name: 'Default',
-          type: 'meshtastic_tcp',
-          config: { host: env.meshtasticNodeIp, port: env.meshtasticTcpPort },
-          enabled: true,
-        });
-        logger.info(`📡 Auto-created default source from environment config`);
-      }
-    }
-
-    // Assign legacy NULL sourceId rows to the default source (Phase 2 data migration).
-    // Safe to run every startup — updates 0 rows after the first run.
-    const allSources = await databaseService.sources.getAllSources();
-    if (allSources.length > 0) {
-      await databaseService.sources.assignNullSourceIds(allSources[0].id);
-      logger.debug(`Assigned NULL sourceId rows to default source ${allSources[0].id}`);
-    }
-
-    // Start all enabled sources via the registry.
-    // The first TCP source also configures the legacy singleton so that all
-    // existing non-poll endpoints (which import meshtasticManager directly)
-    // continue to work without modification.
-    const enabledSourcesRaw = await databaseService.sources.getEnabledSources();
-    // Sort so mqtt_broker sources start before mqtt_bridge sources — bridges
-    // resolve their parent broker via the registry, and while they can
-    // attach later via the deferred 'manager-started' event, starting in
-    // order keeps the happy path racefree.
-    const typeStartOrder = (t: string) =>
-      t === 'mqtt_broker' ? 0 : t === 'mqtt_bridge' ? 2 : 1;
-    const enabledSources = [...enabledSourcesRaw].sort(
-      (a, b) => typeStartOrder(a.type) - typeStartOrder(b.type),
-    );
-    let firstTcpSourceConfigured = false;
-
-    for (const source of enabledSources) {
-      if (source.type === 'mqtt_broker' || source.type === 'mqtt_bridge') {
-        try {
-          const manager = buildMqttManagerForSource(
-            source.id,
-            source.name,
-            source.type,
-            source.config,
-          );
-          await sourceManagerRegistry.addManager(manager);
-          logger.info(`Started MQTT ${source.type} source ${source.id} (${source.name})`);
-        } catch (err) {
-          logger.error(`Failed to start MQTT source ${source.id} (${source.name}):`, err);
-        }
-        continue;
-      }
-
-      if (source.type === 'meshcore') {
-        // Slice 1 of multi-source MeshCore: spin up a per-source manager
-        // and connect it. Companion-USB only — other transports will be
-        // wired in slice 2.
-        const cfg = source.config as any;
-        if (cfg?.autoConnect === false) {
-          logger.info(`Skipping auto-connect for MeshCore source ${source.id} (${source.name}) — autoConnect disabled`);
-          continue;
-        }
-
-        try {
-          const mcConfig = meshcoreConfigFromSource(source);
-          if (!mcConfig) {
-            logger.warn(`MeshCore source ${source.id} (${source.name}) has incomplete config; skipping auto-connect`);
-            continue;
-          }
-          await ensureMeshCoreManagerStarted(source, mcConfig);
-        } catch (err) {
-          logger.error(`Failed to start MeshCore source ${source.id} (${source.name}); continuing with other sources:`, err);
-        }
-        continue;
-      }
-
-      if (source.type === 'meshtastic_tcp') {
-        const cfg = source.config as any;
-
-        // Respect per-source autoConnect flag — when explicitly false, the
-        // source is enabled but should not connect automatically; the user
-        // must click the manual Connect button to start monitoring.
-        if (cfg?.autoConnect === false) {
-          logger.info(`Skipping auto-connect for source ${source.id} (${source.name}) — autoConnect disabled`);
-          continue;
-        }
-
-        try {
-          if (!firstTcpSourceConfigured) {
-            // Configure the legacy singleton for the first source, then let the
-            // registry start it (addManager calls start() → connect()).
-            // All legacy API routes use this singleton directly.
-            meshtasticManager.configureSource({
-              host: cfg.host,
-              port: cfg.port,
-              heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
-              virtualNode: cfg.virtualNode,
-              mqttLink: cfg.mqttLink,
-            }, source.id);
-            await applyManagerSettings(meshtasticManager, source.id, databaseService);
-            await sourceManagerRegistry.addManager(meshtasticManager);
-            firstTcpSourceConfigured = true;
-            logger.debug(`Started primary source manager via singleton: ${source.id}`);
-          } else {
-            // Additional sources get their own manager instances
-            const manager = new MeshtasticManager(source.id, {
-              host: cfg.host,
-              port: cfg.port,
-              heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
-              virtualNode: cfg.virtualNode,
-              mqttLink: cfg.mqttLink,
-            });
-            await applyManagerSettings(manager, source.id, databaseService);
-            await sourceManagerRegistry.addManager(manager);
-          }
-        } catch (err) {
-          // Don't let one failed source block others from registering.
-          // The manager's internal retry logic will reconnect when reachable.
-          logger.error(`Failed to start source ${source.id} (${source.name}); continuing with other sources:`, err);
-        }
-        continue;
-      }
-
-      // Unknown source type — most likely a leftover row from a deprecated
-      // type (e.g. the pre-#3003 'mqtt' subscriber type). Surface a warning
-      // so it shows up in logs; the source will appear in the dashboard
-      // sidebar as never-connected until the user deletes it.
-      logger.warn(
-        `Source ${source.id} (${source.name}) has unknown type "${source.type}" — no manager will be started. Delete the source if it is no longer needed.`,
-      );
-    }
-
-    if (!firstTcpSourceConfigured) {
-      // No sources configured — use legacy singleton with env-var config
-      await meshtasticManager.connect();
-      logger.debug('Meshtastic manager connected (legacy mode, no sources configured)');
-    } else {
-      logger.debug(`Started ${enabledSources.length} source manager(s)`);
-    }
+    // Bootstrap all enabled sources (or auto-create a Default source from env
+    // when none exist). Extracted into bootstrapSources() for testability — see
+    // WP1 of issue #3962 Phase 2 and src/server/bootstrapSources.ts.
+    // NOTE: Per-source scheduler settings are applied inside bootstrapSources
+    // via applyManagerSettings(). Globally-scoped schedulers self-bootstrap
+    // inside their own start*Scheduler methods.
+    await bootstrapSources({
+      db: databaseService,
+      env: { meshtasticNodeIp: env.meshtasticNodeIp, meshtasticTcpPort: env.meshtasticTcpPort },
+      registry: sourceManagerRegistry,
+      makeMeshtastic: (id, cfg) => new MeshtasticManager(id, cfg),
+      fallbackManager: meshtasticManager,
+    });
 
     // Initialize backup scheduler
     backupSchedulerService.initialize(meshtasticManager);
@@ -901,7 +755,7 @@ import newsRoutes from './routes/newsRoutes.js';
 import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
-import { meshcoreConfigFromSource, ensureMeshCoreManagerStarted } from './meshcoreConfig.js';
+// meshcoreConfigFromSource / ensureMeshCoreManagerStarted moved to bootstrapSources.ts
 import { isMeshCoreManager, isMeshtasticManager } from './sourceManagerTypes.js';
 import { MeshCoreTelemetryPoller, setMeshCoreTelemetryPoller } from './services/meshcoreTelemetryPoller.js';
 import {
@@ -917,7 +771,7 @@ import embedProfileRoutes from './routes/embedProfileRoutes.js';
 import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';
 import firmwareUpdateRoutes from './routes/firmwareUpdateRoutes.js';
-import sourceRoutes, { buildMqttManagerForSource } from './routes/sourceRoutes.js';
+import sourceRoutes from './routes/sourceRoutes.js';
 import unifiedRoutes from './routes/unifiedRoutes.js';
 import analysisRoutes from './routes/analysisRoutes.js';
 import { firmwareUpdateService } from './services/firmwareUpdateService.js';
