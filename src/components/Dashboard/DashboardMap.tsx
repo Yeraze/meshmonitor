@@ -27,6 +27,8 @@ import GeoJsonOverlay from '../GeoJsonOverlay';
 import PolarGridOverlay from '../PolarGridOverlay';
 import { TilesetSelector } from '../TilesetSelector';
 import MapLegend from '../MapLegend';
+import MeasureDistanceController from '../MeasureDistanceController';
+import type { MeasurePoint } from '../../utils/measureDistance';
 import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
 import { useMapContext } from '../../contexts/MapContext';
 import { useSettings } from '../../contexts/SettingsContext';
@@ -266,6 +268,9 @@ export default function DashboardMap({
     localStorage.setItem('isMapControlsCollapsed', String(isMapControlsCollapsed));
   }, [isMapControlsCollapsed]);
 
+  // #3636: node-to-node LOS distance measurement tool.
+  const [measureActive, setMeasureActive] = useState(false);
+
   const {
     showPaths,
     setShowPaths,
@@ -342,6 +347,14 @@ export default function DashboardMap({
     .filter((entry): entry is { node: any; pos: { lat: number; lng: number } } => entry.pos !== null);
 
   const nodePositions: [number, number][] = nodesWithPosition.map((e) => [e.pos.lat, e.pos.lng]);
+
+  // #3636: measurement endpoints — nearest-node snapping picks from these.
+  const measurePoints: MeasurePoint[] = nodesWithPosition.map(({ node, pos }) => ({
+    id: String(node.nodeId ?? node.user?.id ?? node.nodeNum),
+    lat: pos.lat,
+    lng: pos.lng,
+    label: node.shortName ?? node.user?.shortName,
+  }));
 
   // Own-node position per source for the polar grid. Resolved from the raw
   // `nodes` prop (not the age/transport-filtered marker list) so the grid center
@@ -500,6 +513,14 @@ export default function DashboardMap({
         />
 
         <SpiderfierController ref={spiderfierRef} />
+
+        {measureActive && (
+          <MeasureDistanceController
+            active={measureActive}
+            points={measurePoints}
+            onExit={() => setMeasureActive(false)}
+          />
+        )}
 
         <MapBoundsUpdater positions={nodePositions} sourceId={sourceId} />
 
@@ -734,6 +755,17 @@ export default function DashboardMap({
           </div>
           {!isMapControlsCollapsed && (
           <>
+          {/* #3636: node-to-node LOS distance measurement toggle. Needs at least
+              two positioned nodes to be meaningful. */}
+          <label className="map-control-item" title="Measure straight-line distance between two nodes">
+            <input
+              type="checkbox"
+              checked={measureActive}
+              disabled={measurePoints.length < 2}
+              onChange={(e) => setMeasureActive(e.target.checked)}
+            />
+            <span>Measure Distance</span>
+          </label>
           {/* Map Features age slider (#3322): hides node markers, traceroutes,
               and route segments older than the chosen age. Ranges 1h–maxNodeAge. */}
           {(() => {

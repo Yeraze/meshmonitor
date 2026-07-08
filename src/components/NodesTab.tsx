@@ -35,6 +35,8 @@ import MapPositionHandler from './MapPositionHandler';
 import PolarGridOverlay from './PolarGridOverlay.js';
 import GeoJsonOverlay from './GeoJsonOverlay';
 import { SpiderfierController, SpiderfierControllerRef } from './SpiderfierController';
+import MeasureDistanceController from './MeasureDistanceController';
+import type { MeasurePoint } from '../utils/measureDistance';
 import { TilesetSelector } from './TilesetSelector';
 import { MapCenterController } from './MapCenterController';
 import PacketMonitorPanel from './PacketMonitorPanel';
@@ -696,6 +698,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     const saved = localStorage.getItem('meshmonitor-showLegend');
     return saved === null ? false : saved === 'true';
   });
+
+  // #3636: node-to-node LOS distance measurement tool.
+  const [measureActive, setMeasureActive] = useState(false);
 
   const sidebarRef = useRef<HTMLDivElement>(null);
 
@@ -1360,6 +1365,27 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     return `${n.nodeNum}-${pos.latitude}-${pos.longitude}`;
   }).join(',')]);
 
+  // #3636: measurement endpoints — nearest-node snapping picks from these.
+  const measurePoints: MeasurePoint[] = React.useMemo(
+    () => nodesWithPosition
+      .map(node => {
+        const pos = getEffectivePosition(node);
+        if (pos.latitude == null || pos.longitude == null) return null;
+        return {
+          id: String(node.user?.id ?? node.nodeNum),
+          lat: pos.latitude,
+          lng: pos.longitude,
+          label: node.user?.shortName,
+        } as MeasurePoint;
+      })
+      .filter((p): p is MeasurePoint => p !== null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on a position+label signature; label included so tooltip names refresh
+    [nodesWithPosition.map(n => {
+      const pos = getEffectivePosition(n);
+      return `${n.nodeNum}-${pos.latitude}-${pos.longitude}-${n.user?.shortName ?? ''}`;
+    }).join(',')],
+  );
+
   // Memoize marker icons to prevent unnecessary Leaflet DOM rebuilds
   // React-Leaflet calls setIcon() whenever the icon prop reference changes, which
   // destroys and recreates the entire icon DOM element. By memoizing icons, we ensure
@@ -1850,6 +1876,16 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </div>
               {!isMapControlsCollapsed && (
                 <>
+                  {/* #3636: node-to-node LOS distance measurement toggle. */}
+                  <label className="map-control-item" title="Measure straight-line distance between two nodes">
+                    <input
+                      type="checkbox"
+                      checked={measureActive}
+                      disabled={measurePoints.length < 2}
+                      onChange={(e) => setMeasureActive(e.target.checked)}
+                    />
+                    <span>Measure Distance</span>
+                  </label>
                   {/* Map Features age slider (#3322): hides node markers,
                       traceroutes, and route segments older than the chosen age.
                       Ranges 1h–maxNodeAgeHours (settings); default = max ("All"). */}
@@ -2200,6 +2236,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               />
               <MapResizeHandler trigger={`${showPacketMonitor}-${isNodeListCollapsed}-${packetMonitorHeight}`} />
               <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
+          {measureActive && (
+            <MeasureDistanceController
+              active={measureActive}
+              points={measurePoints}
+              onExit={() => setMeasureActive(false)}
+            />
+          )}
               {showLegend && (
               <MapLegend
                 positionHistory={positionHistoryLegendData}

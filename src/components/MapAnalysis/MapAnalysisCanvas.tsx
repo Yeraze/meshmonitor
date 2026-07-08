@@ -1,7 +1,11 @@
+import { useMemo } from 'react';
 import { MapContainer, TileLayer, Pane } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
+import { useAnalysisNodes } from './useAnalysisNodes';
+import MeasureDistanceController from '../MeasureDistanceController';
+import type { MeasurePoint } from '../../utils/measureDistance';
 import { getTilesetById } from '../../config/tilesets';
 import { TilesetSelector } from '../TilesetSelector';
 import NodeMarkersLayer from './layers/NodeMarkersLayer';
@@ -30,7 +34,20 @@ export default function MapAnalysisCanvas() {
     customTilesets,
     setMapTileset,
   } = useSettings();
-  const { config } = useMapAnalysisCtx();
+  const { config, measureMode, setMeasureMode } = useMapAnalysisCtx();
+
+  // #3636: measurement endpoints, from the same visible+positioned node list
+  // the markers layer uses so the two never disagree.
+  const analysisNodes = useAnalysisNodes();
+  const measurePoints: MeasurePoint[] = useMemo(
+    () => analysisNodes.map((a) => ({
+      id: a.key,
+      lat: a.latLng[0],
+      lng: a.latLng[1],
+      label: a.node.shortName ?? undefined,
+    })),
+    [analysisNodes],
+  );
 
   const center: [number, number] = [
     defaultMapCenterLat ?? FALLBACK_CENTER[0],
@@ -49,6 +66,13 @@ export default function MapAnalysisCanvas() {
           maxZoom={tileset.maxZoom}
         />
         <FollowController />
+        {measureMode && (
+          <MeasureDistanceController
+            active={measureMode}
+            points={measurePoints}
+            onExit={() => setMeasureMode(false)}
+          />
+        )}
         <Pane name="waypoints" style={{ zIndex: 650 }}>
           {config.layers.waypoints.enabled && <WaypointsLayer />}
         </Pane>
