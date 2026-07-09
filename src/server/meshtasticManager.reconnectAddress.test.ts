@@ -75,11 +75,10 @@ describe('MeshtasticManager — reconnect uses the per-source configured address
     expect(after.nodeIp).not.toBe(ENV_DEFAULT_IP);
   });
 
-  it('a source configured via configureSource() also resolves to its own host', async () => {
-    // The legacy singleton path: a fresh manager that is later configured from a
-    // DB source record must use that record's host, not the env default.
-    const mgr = new MeshtasticManager('default');
-    mgr.configureSource({ host: '172.16.5.5', port: 4403 }, 'src-3');
+  it('a source constructed with host via factory also resolves to its own host', async () => {
+    // WP3: configureSource() deleted — uniform construction via new MeshtasticManager(id, cfg).
+    // Verifies the same invariant: a source with an explicit host never falls back to the env default.
+    const mgr = new MeshtasticManager('src-3', { host: '172.16.5.5', port: 4403 });
     const status = await mgr.getConnectionStatus();
     expect(status.nodeIp).toBe('172.16.5.5');
     expect(status.nodeIp).not.toBe(ENV_DEFAULT_IP);

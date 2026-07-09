@@ -8,14 +8,14 @@
 1. **This file** — invariants, rules, and gotchas. Skim end-to-end.
 2. **`docs/internal/dev-notes/ARCHITECTURE_LESSONS.md`** — MUST-READ before touching node communication, state management, backup/restore, async operations, multi-database, or multi-source.
 3. **`docs/internal/dev-notes/MESHCORE_REMOTE_ADMIN.md`** — MUST-READ before touching MeshCore CLI/admin routes, the credential store, the danger guard, or the shared `CliConsoleBody` primitive.
-4. **`src/server/sourceManagerRegistry.ts`** + **`src/server/meshtasticManager.ts`** — read these two before any feature touching nodes/messages/telemetry. There is no global `meshtasticManager` singleton; everything is per-source.
+4. **`src/server/sourceManagerRegistry.ts`** + **`src/server/meshtasticManager.ts`** + **`src/server/bootstrapSources.ts`** — read these before any feature touching nodes/messages/telemetry. There is no global `meshtasticManager` singleton; everything is per-source. The `meshtasticManager` default export is a live Proxy alias (see Multi-Source section below), not a concrete instance.
 5. **One repository under `src/db/repositories/`** (e.g. `auth.ts`) — read before adding a query. Raw SQL outside this directory is ESLint-banned.
 
 ## Where things live
 
 | Subsystem | Primary files |
 |-----------|---------------|
-| Multi-source registry | `src/server/sourceManagerRegistry.ts` (single unified registry — both Meshtastic TCP and MeshCore managers live here as `ISourceManager`), `src/server/meshtasticManager.ts`, `src/server/meshcoreManager.ts`, `src/server/sourceManagerTypes.ts` (type-guard predicates `isMeshCoreManager`/`isMeshtasticManager`), `src/contexts/SourceContext.tsx`. `src/server/meshcoreRegistry.ts` is a `@deprecated` shim kept for one release — delete after #3962 Task 2.1. |
+| Multi-source registry | `src/server/sourceManagerRegistry.ts` (single unified registry — both Meshtastic TCP and MeshCore managers live here as `ISourceManager`), `src/server/meshtasticManager.ts`, `src/server/meshcoreManager.ts`, `src/server/sourceManagerTypes.ts` (type-guard predicates `isMeshCoreManager`/`isMeshtasticManager`), `src/server/bootstrapSources.ts` (startup source-loading seam — extracts the boot loop for testability; designates the primary TCP source), `src/contexts/SourceContext.tsx`. `src/server/meshcoreRegistry.ts` is a `@deprecated` shim kept for one release — delete after #3962 Task 2.1. |
 | Auth + permissions | `src/server/auth/`, `src/db/repositories/auth.ts`, `src/db/repositories/permissions.ts` |
 | Database backends | `src/db/drivers/{sqlite,postgres,mysql}.ts`, `src/db/schema/`, `src/db/repositories/` |
 | Migrations | `src/server/migrations/NNN_*.ts` (75+ total), registry in `src/db/migrations.ts` |
@@ -52,7 +52,11 @@ Existing bare-`{error}` handlers convert opportunistically as they're touched
 
 ## Multi-Source Architecture (4.x)
 
-MeshMonitor 4.x supports **N concurrent node connections** ("sources"), covering Meshtastic TCP, MQTT broker/bridge, and MeshCore. All manager types implement `ISourceManager` (`src/server/sourceManagerRegistry.ts`) and live in the **single unified `sourceManagerRegistry`**. Pre-4.0 code that referenced a singleton `meshtasticManager` is now a `@deprecated` JSDoc-tagged compatibility shim at the bottom of `src/server/meshtasticManager.ts`. Similarly, `src/server/meshcoreRegistry.ts` is a `@deprecated` shim (landed in #3962 Task 2.1) — delete it after one release.
+MeshMonitor 4.x supports **N concurrent node connections** ("sources"), covering Meshtastic TCP, MQTT broker/bridge, and MeshCore. All manager types implement `ISourceManager` (`src/server/sourceManagerRegistry.ts`) and live in the **single unified `sourceManagerRegistry`**.
+
+Pre-4.0 code that referenced a singleton `meshtasticManager` is served by a **live Proxy alias** (`meshtasticManagerAlias`, `export default`) at the bottom of `src/server/meshtasticManager.ts`. The alias resolves the registry's current primary meshtastic_tcp manager on every property access — methods are bound to the concrete primary at call time so `this` is always the real instance, not the Proxy. A named `fallbackManager` export is the concrete unconfigured instance used when no primary is registered (S4 env-IP fallback). WP4 (#3962) will migrate the remaining importers to call `getPrimaryMeshtasticManager()` directly, then delete the alias. Until then, consumers that need atomicity across multiple calls should capture `getPrimaryMeshtasticManager()` once per operation.
+
+Similarly, `src/server/meshcoreRegistry.ts` is a `@deprecated` shim (landed in #3962 Task 2.1) — delete it after one release.
 
 ### Critical Rules
 - **No global `meshtasticManager` singleton.** Look up per-source instances via `sourceManagerRegistry.getManager(sourceId)`.

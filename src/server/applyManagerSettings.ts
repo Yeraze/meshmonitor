@@ -14,14 +14,24 @@
  * NOT duplicate that work.
  */
 import type { MeshtasticManager } from './meshtasticManager.js';
-import type databaseService from '../services/database.js';
 
-type DatabaseService = typeof databaseService;
+/**
+ * Structural subset of DatabaseService that applyManagerSettings needs.
+ * Satisfied by the real databaseService and by lightweight bootstrap/test
+ * stubs (see bootstrapSources.ts BootstrapDb) — a type-only loosening with
+ * no runtime change.
+ */
+export interface ManagerSettingsDb {
+  settings: {
+    getSetting(key: string): Promise<string | null>;
+    getSettingForSource(sourceId: string | null | undefined, key: string): Promise<string | null>;
+  };
+}
 
 export async function applyManagerSettings(
   manager: MeshtasticManager,
   sourceId: string,
-  db: DatabaseService
+  db: ManagerSettingsDb
 ): Promise<void> {
   const trInterval = await db.settings.getSettingForSource(sourceId, 'tracerouteIntervalMinutes');
   if (trInterval !== null) {

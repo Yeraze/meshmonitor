@@ -8,6 +8,7 @@ import { VirtualNodeServer, type VirtualNodeConfig } from './virtualNodeServer.j
 import type { ITransport } from './transports/transport.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
+import { getPrimaryMeshtasticManager } from './sourceManagerTypes.js';
 import { calculateDistance } from '../utils/distance.js';
 import { isNullIsland } from '../utils/nullIsland.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
@@ -727,34 +728,6 @@ class MeshtasticManager implements ISourceManager {
     return 'meshtastic_tcp';
   }
 
-  /**
-   * Apply a source config after construction.
-   * Used to configure the legacy singleton when sources are loaded from DB at startup.
-   */
-  configureSource(config: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean; passiveResyncStaleMs?: number | null }, sourceId?: string): void {
-    this.sourceConfigOverride = {
-      host: config.host,
-      port: config.port,
-      heartbeatIntervalSeconds: config.heartbeatIntervalSeconds,
-      mqttLink: config.mqttLink,
-      passiveMode: config.passiveMode === true,
-      passiveResyncStaleMs:
-        typeof config.passiveResyncStaleMs === 'number' ? config.passiveResyncStaleMs : undefined,
-    };
-    this.passiveMode = config.passiveMode === true;
-    this.passiveResyncStaleMs =
-      typeof config.passiveResyncStaleMs === 'number' ? config.passiveResyncStaleMs : null;
-    if (sourceId) this.sourceId = sourceId;
-    if (config.virtualNode?.enabled && !this.virtualNodeServer) {
-      this.virtualNodeServer = new VirtualNodeServer({
-        port: config.virtualNode.port,
-        allowAdminCommands: config.virtualNode.allowAdminCommands,
-        meshtasticManager: this,
-      });
-    }
-    this.mqttLink = config.mqttLink ?? null;
-  }
-
   async start(): Promise<void> {
     try {
       await this.connect();
@@ -1042,7 +1015,7 @@ class MeshtasticManager implements ISourceManager {
 
   private async getConfig(): Promise<MeshtasticConfig> {
     // Per-source config takes priority (set when this manager was created from a
-    // source record via the constructor or configureSource()). A configured
+    // source record via the constructor). A configured
     // source MUST resolve to its own host — even on a reconnect that fires before
     // anything else is ready — and must never fall through to the env default
     // ('192.168.1.100'), which would surface the wrong address in the connection
@@ -14584,8 +14557,75 @@ function matchesMqttEcho(store: Array<{ topic: string; packetId: number; expires
 }
 
 /**
- * @deprecated Use sourceManagerRegistry to manage MeshtasticManager instances.
- * This singleton is kept for backward compatibility with single-source deployments
- * and env-var-only configurations where no source record exists in the database.
+ * Eager fallback instance. Used ONLY when no meshtastic_tcp source is registered
+ * in the sourceManagerRegistry (S4: env-IP-only fallback connect, or early module
+ * access before bootstrapSources runs). Never added to the registry itself.
+ *
+ * Exported so server.ts can pass the concrete instance as `deps.fallbackManager`
+ * to bootstrapSources for the S4 env-IP fallback connect path.
+ * WP3: no longer registered as the primary; all tcp sources use makeMeshtastic().
  */
-export default new MeshtasticManager();
+export const fallbackManager = new MeshtasticManager();
+
+/**
+ * @deprecated Use sourceManagerRegistry / getPrimaryMeshtasticManager().
+ *
+ * Live Proxy alias for the registry's current primary meshtastic_tcp manager.
+ * Falls back to `fallbackManager` when no primary is registered (S4 env-IP path).
+ *
+ * Per-CALL resolution: each property access resolves the registry's current
+ * primary at that instant, fixing the §2.5 staleness bug (removeManager +
+ * re-addManager in sourceRoutes no longer strands legacy consumers on a dead
+ * manager). PROTOTYPE methods are bound to the concrete primary at access time
+ * so `this` inside the method is always the real instance — not the Proxy.
+ * This eliminates the risk of EventEmitter internals or class fields being
+ * re-resolved through the Proxy on subsequent `this.x` reads within the same
+ * call, and prevents async methods from straddling two primaries across an await.
+ *
+ * Own-property functions (arrow class fields, test spies assigned directly to
+ * the instance) are returned as-is: arrow functions already have lexical `this`
+ * (bind would be a no-op), and returning spy own-properties unbound preserves
+ * Vitest spy identity for `toHaveBeenCalled` assertions in tests.
+ *
+ * Multi-call sequences (e.g. firmwareUpdateService disconnect→…→reconnect)
+ * can still straddle a primary swap if the primary source is edited between
+ * those calls. Callers with multi-step operations that must be atomic should
+ * capture `getPrimaryMeshtasticManager()` once per operation rather than
+ * accessing the alias multiple times (WP4 migration guidance).
+ *
+ * WP4 will migrate the remaining 8 value-importers to call
+ * getPrimaryMeshtasticManager() directly, then delete this alias.
+ */
+const meshtasticManagerAlias = new Proxy(fallbackManager, {
+  get(target, prop, _receiver) {
+    // Resolve the live primary once for this access.
+    const p = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? target;
+    const v = Reflect.get(p, prop, p);
+    // Bind PROTOTYPE methods to the concrete primary so `this` inside the
+    // method is the real instance, not the Proxy. Without binding, class-field
+    // accesses and EventEmitter internals would re-enter the trap on every
+    // `this.x` read, and an async method could address two different primaries
+    // across an await.
+    //
+    // Own-property functions (arrow class fields, test spies assigned directly
+    // to the instance) are intentionally NOT bound:
+    //  - Arrow functions already have lexical `this`; .bind() is a no-op.
+    //  - Test spies assigned via `alias.method = vi.fn()` must be returned as
+    //    the original spy so Vitest's `toHaveBeenCalled` assertions still work.
+    if (typeof v === 'function' && !Object.prototype.hasOwnProperty.call(p, prop)) {
+      return v.bind(p);
+    }
+    return v;
+  },
+  set(target, prop, value, _receiver) {
+    // Retarget writes to the same resolved primary so consumers don't silently
+    // write to a dead object after a primary swap.
+    // Grep of all 8 default-export importers found ZERO property writes through
+    // this alias (all callers invoke methods only), so this trap is a safety net
+    // rather than a fix for a known bug.
+    const primary = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? target;
+    return Reflect.set(primary, prop, value, primary);
+  },
+});
+
+export default meshtasticManagerAlias;
