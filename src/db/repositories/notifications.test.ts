@@ -689,7 +689,9 @@ function runNotificationsTests(getBackend: () => TestBackend) {
         lowBatteryThreshold: 10,
         monitoredNodes: ['!node1'],
       }));
-      // user2: low battery on but no active channel (web push + apprise both off) → excluded
+      // user2: low battery on but no active channel (web push + apprise both off) —
+      // #4020: still returned (eligibility = ANY flagged row exists for the user),
+      // the caller/service layer decides whether the row has a usable channel.
       await repo.saveUserPreferences(2, makeDefaultPrefs({
         enableWebPush: false,
         enableApprise: false,
@@ -704,9 +706,18 @@ function runNotificationsTests(getBackend: () => TestBackend) {
       const users = await repo.getUsersWithLowBatteryNotifications();
       const user1 = users.find((u) => u.userId === 1);
       expect(user1).toBeDefined();
+      expect(user1!.sourceId).toBe('');
       expect(user1!.lowBatteryThreshold).toBe(10);
       expect(JSON.parse(user1!.monitoredNodes || '[]')).toEqual(['!node1']);
-      expect(users.find((u) => u.userId === 2)).toBeUndefined();
+      expect(user1!.notifyOnLowBattery).toBe(true);
+      expect(user1!.notifyOnMessage).toBe(true);
+      expect(user1!.appriseUrlCount).toBe(0);
+
+      const user2 = users.find((u) => u.userId === 2);
+      expect(user2).toBeDefined();
+      expect(user2!.notifyOnMessage).toBe(false);
+      expect(user2!.appriseEnabled).toBe(false);
+
       expect(users.find((u) => u.userId === 3)).toBeUndefined();
     });
 
@@ -734,12 +745,191 @@ function runNotificationsTests(getBackend: () => TestBackend) {
       expect(JSON.parse(user!.monitoredNodes || '[]')).toEqual(['mc:src-a:deadbeefcafe']);
     });
 
+    // #4020: the regression this whole PR fixes — a user's flag lives on one
+    // (userId, sourceId) row and their monitored nodes / channel config live
+    // on a DIFFERENT row for the same user. Both rows must come back so the
+    // service layer can merge them, instead of only the first-matched row.
+    it('returns ALL rows for a flagged user across multiple sources, ordered by (userId, sourceId) ASC', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'split_row_user'));
+      // Flag lives on the '' (default) row, with no monitored nodes and no channel.
+      await repo.saveUserPreferences(1, makeDefaultPrefs({
+        notifyOnLowBattery: true,
+        enableWebPush: false,
+        enableApprise: false,
+      }), '');
+      // Monitored nodes + a working Apprise channel live on a per-source row,
+      // with the flag OFF on this row (#4020: eligibility must still hold).
+      await repo.saveUserPreferences(1, makeDefaultPrefs({
+        notifyOnLowBattery: false,
+        enableApprise: true,
+        appriseUrls: ['http://apprise.example.com/a'],
+        monitoredNodes: ['mc:src-a:deadbeefcafe'],
+      }), 'src-a');
+
+      const users = await repo.getUsersWithLowBatteryNotifications();
+      const rows = users.filter((u) => u.userId === 1);
+      expect(rows).toHaveLength(2);
+      // '' sorts before 'src-a' in every backend's ASC string ordering.
+      expect(rows[0].sourceId).toBe('');
+      expect(rows[0].notifyOnLowBattery).toBe(true);
+      expect(rows[0].appriseUrlCount).toBe(0);
+      expect(rows[1].sourceId).toBe('src-a');
+      expect(rows[1].notifyOnLowBattery).toBe(false);
+      expect(rows[1].appriseEnabled).toBe(true);
+      expect(rows[1].appriseUrlCount).toBe(1);
+      expect(JSON.parse(rows[1].monitoredNodes || '[]')).toEqual(['mc:src-a:deadbeefcafe']);
+    });
+
+    it('excludes a flag-only row with no channel from OTHER users, but a flagged user with no channel on any row is still returned', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'flag_no_channel'));
+      await repo.saveUserPreferences(1, makeDefaultPrefs({
+        notifyOnLowBattery: true,
+        enableWebPush: false,
+        enableApprise: false,
+      }));
+
+      const users = await repo.getUsersWithLowBatteryNotifications();
+      const rows = users.filter((u) => u.userId === 1);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].notifyOnMessage).toBe(false);
+      expect(rows[0].appriseEnabled).toBe(false);
+    });
+
     it('returns empty array when no users have low-battery notifications enabled', async () => {
       const backend = getBackend();
       if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
 
       const users = await repo.getUsersWithLowBatteryNotifications();
       expect(users).toEqual([]);
+    });
+  });
+
+  // ============ getUsersWithInactiveNodeNotifications ============
+
+  describe('getUsersWithInactiveNodeNotifications', () => {
+    it('returns users with inactive-node notifications and an active channel, including monitored nodes', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'user1'));
+      await backend.exec(insertUserSql(backend, 2, 'user2'));
+
+      await repo.saveUserPreferences(1, makeDefaultPrefs({
+        enableWebPush: true,
+        notifyOnInactiveNode: true,
+        monitoredNodes: ['!node1'],
+      }));
+      await repo.saveUserPreferences(2, makeDefaultPrefs({
+        notifyOnInactiveNode: false,
+      }));
+
+      const users = await repo.getUsersWithInactiveNodeNotifications();
+      const user1 = users.find((u) => u.userId === 1);
+      expect(user1).toBeDefined();
+      expect(user1!.sourceId).toBe('');
+      expect(JSON.parse(user1!.monitoredNodes || '[]')).toEqual(['!node1']);
+      expect(user1!.notifyOnInactiveNode).toBe(true);
+      expect(users.find((u) => u.userId === 2)).toBeUndefined();
+    });
+
+    // #4020: same split-row defect as low-battery — the flag and the
+    // monitored-nodes/channel config can live on different (userId, sourceId)
+    // rows for the same user. All rows must be returned.
+    it('returns ALL rows for a flagged user across multiple sources, ordered by (userId, sourceId) ASC', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'split_row_user'));
+      await repo.saveUserPreferences(1, makeDefaultPrefs({
+        notifyOnInactiveNode: true,
+        enableWebPush: false,
+        enableApprise: false,
+      }), '');
+      await repo.saveUserPreferences(1, makeDefaultPrefs({
+        notifyOnInactiveNode: false,
+        enableApprise: true,
+        appriseUrls: ['http://apprise.example.com/a'],
+        monitoredNodes: ['mc:src-a:deadbeefcafe'],
+      }), 'src-a');
+
+      const users = await repo.getUsersWithInactiveNodeNotifications();
+      const rows = users.filter((u) => u.userId === 1);
+      expect(rows).toHaveLength(2);
+      expect(rows[0].sourceId).toBe('');
+      expect(rows[0].notifyOnInactiveNode).toBe(true);
+      expect(rows[1].sourceId).toBe('src-a');
+      expect(rows[1].appriseUrlCount).toBe(1);
+      expect(JSON.parse(rows[1].monitoredNodes || '[]')).toEqual(['mc:src-a:deadbeefcafe']);
+    });
+
+    it('returns empty array when no users have inactive-node notifications enabled', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      const users = await repo.getUsersWithInactiveNodeNotifications();
+      expect(users).toEqual([]);
+    });
+  });
+
+  // ============ getUserPreferenceRows ============
+
+  describe('getUserPreferenceRows', () => {
+    it('returns all of a user\'s rows ordered with \'\' first', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'multi_row_user'));
+      await repo.saveUserPreferences(1, makeDefaultPrefs({ enableApprise: true }), 'src-b');
+      await repo.saveUserPreferences(1, makeDefaultPrefs({ enableWebPush: true }), '');
+      await repo.saveUserPreferences(1, makeDefaultPrefs({ enableApprise: true }), 'src-a');
+
+      const rows = await repo.getUserPreferenceRows(1);
+      expect(rows.map((r) => r.sourceId)).toEqual(['', 'src-a', 'src-b']);
+      expect(rows[0].prefs.enableWebPush).toBe(true);
+      expect(rows[1].prefs.enableApprise).toBe(true);
+    });
+
+    it('returns an empty array for a user with no rows', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      const rows = await repo.getUserPreferenceRows(999);
+      expect(rows).toEqual([]);
+    });
+
+    it('returns an empty array for an invalid userId', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      const rows = await repo.getUserPreferenceRows(-1);
+      expect(rows).toEqual([]);
+    });
+  });
+
+  // ============ getUserPreferences determinism (no sourceId given) ============
+
+  describe('getUserPreferences — determinism without a sourceId (#4020)', () => {
+    it('prefers the \'\' row over a named-source row when no sourceId is given', async () => {
+      const backend = getBackend();
+      if (!backend.available) { console.log(`⚠ Skipped: ${backend.skipReason}`); return; }
+
+      await backend.exec(insertUserSql(backend, 1, 'determinism_user'));
+      // Insert the named-source row FIRST so a non-deterministic query would
+      // be tempted to return whichever row got inserted first / has the
+      // lowest primary key, rather than the '' row.
+      await repo.saveUserPreferences(1, makeDefaultPrefs({ enableApprise: true }), 'mc-x');
+      await repo.saveUserPreferences(1, makeDefaultPrefs({ enableWebPush: true, enableApprise: false }), '');
+
+      const result = await repo.getUserPreferences(1, undefined);
+      expect(result).not.toBeNull();
+      expect(result!.enableWebPush).toBe(true);
+      expect(result!.enableApprise).toBe(false);
     });
   });
 

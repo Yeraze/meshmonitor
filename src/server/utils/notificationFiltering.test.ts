@@ -5,6 +5,7 @@ import {
   getUsersWithServiceEnabledAsync,
   shouldFilterNotificationAsync,
   applyNodeNamePrefixAsync,
+  resolveAppriseTargetAsync,
   type NotificationFilterContext,
   type NotificationPreferences,
 } from './notificationFiltering.js';
@@ -16,6 +17,7 @@ vi.mock('../../services/database.js', () => ({
       getUserPreferences: vi.fn(),
       saveUserPreferences: vi.fn(),
       getUsersWithServiceEnabled: vi.fn(),
+      getUserPreferenceRows: vi.fn(),
     },
     getSettingAsync: vi.fn(),
     checkPermissionAsync: vi.fn(),
@@ -49,6 +51,7 @@ beforeEach(() => {
   mockDb.notifications.getUserPreferences.mockResolvedValue(defaultPrefs);
   mockDb.notifications.saveUserPreferences.mockResolvedValue(true);
   mockDb.notifications.getUsersWithServiceEnabled.mockReturnValue([1, 2, 3]);
+  mockDb.notifications.getUserPreferenceRows.mockResolvedValue([]);
   mockDb.getSettingAsync.mockResolvedValue(null);
   mockDb.checkPermissionAsync.mockResolvedValue(true);
 });
@@ -567,5 +570,115 @@ describe('applyNodeNamePrefixAsync', () => {
     mockDb.getSettingAsync.mockResolvedValue(null);
     const result = await applyNodeNamePrefixAsync(1, 'Hello', 'MyNode');
     expect(result).toBe('Hello');
+  });
+});
+
+// ─── getUserNotificationPreferencesAsync — Rule B '' fallback (#4020) ───────
+
+describe('getUserNotificationPreferencesAsync — \'\' fallback for untargeted broadcasts (#4020)', () => {
+  it('falls back to the \'\' row when there is no exact-sourceId row', async () => {
+    mockDb.notifications.getUserPreferences.mockImplementation(
+      async (_userId: number, sourceId?: string) => {
+        if (sourceId === '') return { ...defaultPrefs, enableApprise: true };
+        return null; // no row for 'source-without-its-own-row'
+      }
+    );
+
+    const result = await getUserNotificationPreferencesAsync(1, 'source-without-its-own-row');
+    expect(result).not.toBeNull();
+    expect(result!.enableApprise).toBe(true);
+    expect(mockDb.notifications.getUserPreferences).toHaveBeenNthCalledWith(1, 1, 'source-without-its-own-row');
+    expect(mockDb.notifications.getUserPreferences).toHaveBeenNthCalledWith(2, 1, '');
+  });
+
+  it('does NOT fall back to \'\' when an exact-sourceId row exists (preserves a deliberate per-source opt-out)', async () => {
+    mockDb.notifications.getUserPreferences.mockImplementation(
+      async (_userId: number, sourceId?: string) => {
+        if (sourceId === 'source-A') return { ...defaultPrefs, enableWebPush: false }; // explicit opt-out
+        if (sourceId === '') return { ...defaultPrefs, enableWebPush: true };
+        return null;
+      }
+    );
+
+    const result = await getUserNotificationPreferencesAsync(1, 'source-A');
+    expect(result).not.toBeNull();
+    expect(result!.enableWebPush).toBe(false); // the exact row's opt-out wins, not the '' row
+    expect(mockDb.notifications.getUserPreferences).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not attempt the \'\' fallback when sourceId is already \'\' or undefined', async () => {
+    mockDb.notifications.getUserPreferences.mockResolvedValue(null);
+    mockDb.getSettingAsync.mockResolvedValue(null);
+
+    await getUserNotificationPreferencesAsync(1, '');
+    expect(mockDb.notifications.getUserPreferences).toHaveBeenCalledTimes(1);
+
+    mockDb.notifications.getUserPreferences.mockClear();
+    await getUserNotificationPreferencesAsync(1, undefined);
+    expect(mockDb.notifications.getUserPreferences).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─── resolveAppriseTargetAsync ────────────────────────────────────────────────
+
+describe('resolveAppriseTargetAsync', () => {
+  it('returns null when the user has no preference rows', async () => {
+    mockDb.notifications.getUserPreferenceRows.mockResolvedValue([]);
+    const result = await resolveAppriseTargetAsync(1, 'src-a');
+    expect(result).toBeNull();
+  });
+
+  it('returns the exact-sourceId row\'s URLs when it has a usable channel', async () => {
+    mockDb.notifications.getUserPreferenceRows.mockResolvedValue([
+      { sourceId: '', prefs: { ...defaultPrefs, enableApprise: true, appriseUrls: ['http://default'] } },
+      { sourceId: 'src-a', prefs: { ...defaultPrefs, enableApprise: true, appriseUrls: ['http://src-a'], prefixWithNodeName: true } },
+    ]);
+    const result = await resolveAppriseTargetAsync(1, 'src-a');
+    expect(result).toEqual({ urls: ['http://src-a'], prefixWithNodeName: true });
+  });
+
+  it('falls back to the \'\' row when the exact-sourceId row has no usable channel', async () => {
+    mockDb.notifications.getUserPreferenceRows.mockResolvedValue([
+      { sourceId: '', prefs: { ...defaultPrefs, enableApprise: true, appriseUrls: ['http://default'] } },
+      { sourceId: 'src-a', prefs: { ...defaultPrefs, enableApprise: false, appriseUrls: [] } },
+    ]);
+    const result = await resolveAppriseTargetAsync(1, 'src-a');
+    expect(result).toEqual({ urls: ['http://default'], prefixWithNodeName: false });
+  });
+
+  it('falls back to any remaining row when neither exact nor \'\' have a usable channel', async () => {
+    mockDb.notifications.getUserPreferenceRows.mockResolvedValue([
+      { sourceId: '', prefs: { ...defaultPrefs, enableApprise: false, appriseUrls: [] } },
+      { sourceId: 'src-a', prefs: { ...defaultPrefs, enableApprise: false, appriseUrls: [] } },
+      { sourceId: 'src-b', prefs: { ...defaultPrefs, enableApprise: true, appriseUrls: ['http://src-b'] } },
+    ]);
+    const result = await resolveAppriseTargetAsync(1, 'src-a');
+    expect(result).toEqual({ urls: ['http://src-b'], prefixWithNodeName: false });
+  });
+
+  it('returns null when no row anywhere has a usable channel', async () => {
+    mockDb.notifications.getUserPreferenceRows.mockResolvedValue([
+      { sourceId: '', prefs: { ...defaultPrefs, enableApprise: false, appriseUrls: [] } },
+      { sourceId: 'src-a', prefs: { ...defaultPrefs, enableApprise: true, appriseUrls: [] } }, // enabled but no URLs
+    ]);
+    const result = await resolveAppriseTargetAsync(1, 'src-a');
+    expect(result).toBeNull();
+  });
+
+  it('treats enableApprise=true with empty URLs as not usable', async () => {
+    mockDb.notifications.getUserPreferenceRows.mockResolvedValue([
+      { sourceId: 'src-a', prefs: { ...defaultPrefs, enableApprise: true, appriseUrls: [] } },
+    ]);
+    const result = await resolveAppriseTargetAsync(1, 'src-a');
+    expect(result).toBeNull();
+  });
+
+  it('works without a sourceId — walks rows in their natural (sourceId ASC) order', async () => {
+    mockDb.notifications.getUserPreferenceRows.mockResolvedValue([
+      { sourceId: '', prefs: { ...defaultPrefs, enableApprise: false, appriseUrls: [] } },
+      { sourceId: 'src-a', prefs: { ...defaultPrefs, enableApprise: true, appriseUrls: ['http://src-a'] } },
+    ]);
+    const result = await resolveAppriseTargetAsync(1);
+    expect(result).toEqual({ urls: ['http://src-a'], prefixWithNodeName: false });
   });
 });

@@ -53,9 +53,9 @@ beforeEach(() => {
   mockPush.broadcastWithFiltering.mockResolvedValue({ sent: 1, failed: 0, filtered: 0 });
   mockApprise.broadcastWithFiltering.mockResolvedValue({ sent: 1, failed: 0, filtered: 0 });
   mockDesktop.broadcastWithFiltering.mockResolvedValue({ sent: 0, failed: 0, filtered: 0 });
-  mockPush.broadcastToPreferenceUsers.mockResolvedValue(undefined);
-  mockApprise.broadcastToPreferenceUsers.mockResolvedValue(undefined);
-  mockDesktop.broadcastToPreferenceUsers.mockResolvedValue(undefined);
+  mockPush.broadcastToPreferenceUsers.mockResolvedValue({ sent: 0, failed: 0, filtered: 0 });
+  mockApprise.broadcastToPreferenceUsers.mockResolvedValue({ sent: 0, failed: 0, filtered: 0 });
+  mockDesktop.broadcastToPreferenceUsers.mockResolvedValue({ sent: 0, failed: 0, filtered: 0 });
 });
 
 // ─── broadcast ────────────────────────────────────────────────────────────────
@@ -291,5 +291,35 @@ describe('notificationService.broadcastToPreferenceUsers', () => {
       42,
       'src1'
     );
+  });
+
+  // #4020: broadcastToPreferenceUsers now returns an aggregated count so
+  // callers (lowBatteryNotificationService, inactiveNodeNotificationService)
+  // can tell whether a matched alert actually reached anyone.
+  it('aggregates sent/failed/filtered across push, apprise, and desktop', async () => {
+    mockPush.broadcastToPreferenceUsers.mockResolvedValue({ sent: 1, failed: 0, filtered: 2 });
+    mockApprise.broadcastToPreferenceUsers.mockResolvedValue({ sent: 0, failed: 1, filtered: 0 });
+    mockDesktop.broadcastToPreferenceUsers.mockResolvedValue({ sent: 1, failed: 0, filtered: 0 });
+
+    const result = await notificationService.broadcastToPreferenceUsers(
+      'notifyOnLowBattery',
+      { title: 'Low battery', body: 'Node low', sourceId: 'src1', sourceName: 'Source One' },
+      3
+    );
+
+    expect(result).toEqual({ sent: 2, failed: 1, filtered: 2 });
+  });
+
+  it('treats a rejected sub-service as contributing zero to the aggregate', async () => {
+    mockPush.broadcastToPreferenceUsers.mockRejectedValue(new Error('push down'));
+    mockApprise.broadcastToPreferenceUsers.mockResolvedValue({ sent: 1, failed: 0, filtered: 0 });
+
+    const result = await notificationService.broadcastToPreferenceUsers(
+      'notifyOnLowBattery',
+      { title: 'Low battery', body: 'Node low', sourceId: 'src1', sourceName: 'Source One' },
+      3
+    );
+
+    expect(result.sent).toBe(1);
   });
 });
