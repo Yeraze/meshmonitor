@@ -65,6 +65,29 @@ describe('executeAction', () => {
     expect(calls[0].args).toMatchObject({ destination: 777, replyId: 42, channel: 0 });
   });
 
+  // ── MeshCore DM destination resolution (#4018) ──────────────────────────────
+  it('sendMessage: DM to a MeshCore pubkey resolves destination as a string, not NaN', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'pong', to: '{{ trigger.from }}' }),
+      ctx({ from: '3745442c10a1', channel: undefined, isDM: true, protocol: 'meshcore' }, 'mc', 'meshcore'),
+      deps,
+    );
+    // Must NOT fall back to a channel broadcast (the pre-fix bug): a real
+    // destination is set, so the send is a DM, not `channel: 0`.
+    expect(calls[0].args).toMatchObject({ destination: '3745442c10a1', sourceId: 'mc' });
+  });
+
+  it('sendMessage: a Meshtastic DM target still resolves as a number on a MeshCore-aware context', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.sendMessage', { text: 'pong', to: '{{ trigger.from }}' }),
+      ctx({ from: 777, isDM: true }, 'mt', 'meshtastic'),
+      deps,
+    );
+    expect(calls[0].args).toMatchObject({ destination: 777, sourceId: 'mt' });
+  });
+
   // ── replyToTrigger auto-mention for MeshCore (#3973 / #3978) ────────────────
   it('sendMessage: replyToTrigger prepends @[senderLabel] for a MeshCore channel trigger', async () => {
     const { calls, deps } = recorder();

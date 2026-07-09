@@ -20,7 +20,8 @@ export interface ActionDeps {
     sourceId: string | null;
     text: string;
     channel: number;
-    destination?: number;
+    /** Meshtastic: a node number. MeshCore: a contact public-key string (#4018). */
+    destination?: number | string;
     replyId?: number;
     /** MeshCore scope/region override (#3833). undefined = inherit channel/default;
      *  '' = explicit unscoped; non-empty = that region. Ignored by Meshtastic. */
@@ -101,6 +102,14 @@ async function num(ctx: EngineEvalContext, raw: unknown): Promise<number | undef
   return Number.isFinite(n) ? n : undefined;
 }
 
+/** Like `num`, but resolves to a trimmed string — for MeshCore pubkey targets (#4018). */
+async function str(ctx: EngineEvalContext, raw: unknown): Promise<string | undefined> {
+  if (raw == null) return undefined;
+  const v = await resolveOperand(ctx, raw);
+  const s = String(v).trim();
+  return s.length > 0 ? s : undefined;
+}
+
 /**
  * True when the action's target source speaks MeshCore. Best-effort: when the
  * data provider can't report a protocol (older callers / tests), returns false
@@ -160,7 +169,11 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
 
     case 'action.sendMessage': {
       let text = await interpolateAsync(String(p.text ?? ''), ctx);
-      const destination = await num(ctx, p.to);
+      // Destination resolution is deferred into the per-source loop below (#4018):
+      // a MeshCore DM target is a pubkey string, a Meshtastic DM target is a node
+      // number, and which applies depends on each target source's protocol —
+      // unconditionally coercing via Number() left MeshCore destinations always NaN.
+      const rawTo = p.to;
       const replyId = p.replyToTrigger ? (ctx.trigger.fields.packetId as number | undefined) : await num(ctx, p.replyId);
 
       // #3973: "Reply to the triggering message" auto-mention for MeshCore.
@@ -241,17 +254,22 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
 
       const results: unknown[] = [];
       for (const sid of sourceIds) {
+        const proto = (await ctx.data.getSourceProtocol?.(sid)) ?? null;
+        const meshcore = proto === 'meshcore';
+        // MeshCore DM targets are contact public-key strings; Meshtastic DM
+        // targets are node numbers (#4018) — resolve per the target source's
+        // own protocol, not the trigger's.
+        const destination = rawTo == null ? undefined : meshcore ? await str(ctx, rawTo) : await num(ctx, rawTo);
+
         if (destination != null || channelSel.length === 0) {
           // DM, or no unified-channel selection → single send on the fallback channel.
-          // A numeric-`to` DM keeps inherit scope: MeshCore reply scope only applies
-          // to flooded channel broadcasts, and MeshCore pubkey DMs don't route through
-          // this path anyway — so dropping the override on a DM is correct, not a leak.
+          // A DM keeps inherit scope: MeshCore reply scope only applies to flooded
+          // channel broadcasts, so dropping the override on a DM is correct, not a leak.
           // A channel-only fallback send (no `to`) still honors the scope override.
           const fallbackScope = destination != null ? {} : scopeArg;
           results.push(await deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...fallbackScope }));
           continue;
         }
-        const proto = (await ctx.data.getSourceProtocol?.(sid)) ?? null;
         const srcChannels = (await ctx.data.getChannels?.(sid)) ?? [];
         for (const sel of channelSel) {
           if (sel.protocol && proto && sel.protocol !== proto) continue; // wrong-protocol channel
@@ -261,7 +279,10 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
         }
       }
 
-      if (channelSel.length > 0 && destination == null && results.length === 0) {
+      // `results` only stays empty when every target source produced neither a DM
+      // send nor a channel match — equivalent to (and simpler than) checking the
+      // old single outer `destination`, now that resolution is per-source.
+      if (channelSel.length > 0 && results.length === 0) {
         throw new Error('action.sendMessage: none of the selected channels exist on the selected source(s)');
       }
       // Unwrap the single-send case so the result shape (and run-log

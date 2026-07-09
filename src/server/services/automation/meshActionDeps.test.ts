@@ -52,6 +52,43 @@ describe('createMeshActionDeps sendMessage — MeshCore scope (#3833)', () => {
   });
 });
 
+// Regression tests for #4018: a MeshCore DM destination is a pubkey string, and
+// must reach the manager as `toPublicKey`, not be silently dropped.
+describe('createMeshActionDeps sendMessage — MeshCore DM destination (#4018)', () => {
+  beforeEach(() => { getManager.mockReset(); });
+
+  it('forwards a string destination as the MeshCore toPublicKey', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(true);
+    getManager.mockReturnValue({ sendMessage }); // MeshCore-shaped manager
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mc', text: 'pong', channel: 0, destination: '3745442c10a1' });
+
+    // raw.sendMessage(text, toPublicKey, channelIdx, scopeOverride, autoRetryOnMiss)
+    expect(sendMessage).toHaveBeenCalledWith('pong', '3745442c10a1', 0, undefined, true);
+  });
+
+  it('a numeric destination reaching a MeshCore manager is dropped, not miscoerced', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(true);
+    getManager.mockReturnValue({ sendMessage });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mc', text: 'hi', channel: 0, destination: 777 });
+
+    expect(sendMessage).toHaveBeenCalledWith('hi', undefined, 0, undefined, true);
+  });
+
+  it('a string destination reaching a Meshtastic manager is dropped, not sent as NaN', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    getManager.mockReturnValue({ sendTextMessage });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mt', text: 'hi', channel: 0, destination: 'not-a-node' as unknown as number });
+
+    expect(sendTextMessage).toHaveBeenCalledWith('hi', 0, undefined, undefined, 0);
+  });
+});
+
 // Regression tests for #3915 (updated for #3962 Ph2): MeshCore managers now
 // live in the unified sourceManagerRegistry — automation actions targeting a
 // MeshCore source must resolve and use them (no separate registry fallback).

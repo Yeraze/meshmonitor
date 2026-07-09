@@ -68,7 +68,7 @@ async function sendTextVia(
   sourceId: string | null,
   text: string,
   channel: number,
-  destination?: number,
+  destination?: number | string,
   replyId?: number,
   emoji = 0,
   scopeOverride?: string | null,
@@ -78,18 +78,22 @@ async function sendTextVia(
     (Partial<MeshSendManager> & Partial<MeshCoreSendManager>) | undefined;
   if (raw && typeof raw.sendTextMessage === 'function') {
     // Meshtastic has no scope/region concept — scopeOverride is dropped.
-    return raw.sendTextMessage(text, channel, destination, replyId, emoji);
+    const dest = typeof destination === 'number' ? destination : undefined;
+    return raw.sendTextMessage(text, channel, dest, replyId, emoji);
   }
   if (raw && typeof raw.sendMessage === 'function') {
-    // MeshCore: channel send only (DM-by-nodeNum / tapbacks not supported here).
-    // `scopeOverride` (#3833) controls which region the message floods to.
+    // MeshCore: `destination`, when a string, is the contact's public key (#4018)
+    // — routes as a DM instead of always falling back to a channel broadcast.
+    // `scopeOverride` (#3833) controls which region a channel/broadcast send
+    // floods to; the caller already omits it for a DM.
     // `sendMessage` resolves `false` (not throw) when the node is disconnected
     // or the send fails — surface that as a thrown error so the run-log records
     // a failed step instead of a silent success.
     // Automation Engine action.sendMessage is an AUTOMATED sender → opt into the
     // channel-send auto-retry (#3979). Inert unless the global opt-in setting is
     // on; user-initiated sends go through the route, not here.
-    const ok = await raw.sendMessage(text, undefined, channel, scopeOverride, true);
+    const toPublicKey = typeof destination === 'string' ? destination : undefined;
+    const ok = await raw.sendMessage(text, toPublicKey, channel, scopeOverride, true);
     if (ok === false) {
       throw new Error(`source "${sourceId}" failed to send the MeshCore message (node not connected or send rejected)`);
     }
