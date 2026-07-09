@@ -12,6 +12,7 @@ import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, createArrowIcon } from '../utils/mapHelpers.tsx';
 import { convertSpeed } from '../utils/speedConversion';
 import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, resolveMapEndpoint } from '../utils/nodeHelpers';
+import { shouldOffsetForPrecision, offsetWithinPrecisionCell } from '../utils/precisionOffset';
 import MapLegend from './MapLegend';
 import { formatTime, formatDateTime } from '../utils/datetime';
 import { getDistanceToNode, calculateDistance, formatDistance } from '../utils/distance';
@@ -1098,10 +1099,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         const nodeId: string | undefined = marker._meshNodeId;
         if (!nodeId) return;
 
-        // Close popup to prevent Leaflet's native toggle from interfering
-        // The popup will be re-opened after the map pan starts
-        marker.closePopup();
-
         setSelectedNodeIdRef.current(nodeId);
         // When showRoute is enabled, let TracerouteBoundsController handle the zoom
         // to fit the entire traceroute path instead of just centering on the node.
@@ -1128,18 +1125,18 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           }
         }
 
-        // Open popup after delay to let MapCenterController start the pan animation
-        // This matches the sidebar behavior (App.tsx useEffect opens at 100ms)
-        // and handles re-clicking the same marker (where selectedNodeId doesn't change)
-        // Use the current marker from markerRefs (not the spiderfier's potentially stale ref)
-        setTimeout(() => {
-          const currentMarker = markerRefs.current.get(nodeId) || marker;
-          const popup = currentMarker.getPopup();
-          if (popup) {
-            popup.options.autoPan = false;
-          }
-          currentMarker.openPopup();
-        }, 100);
+        // #4015: OMS 'click' fires only for an already-spiderfied or standalone
+        // marker, and Leaflet's own auto-open handler is stripped below, so this
+        // is the single popup opener — no closePopup()/setTimeout dance needed.
+        // autoPan is disabled so opening the popup doesn't fight the pan started
+        // by centerMapOnNode above. Prefer the live marker from markerRefs over
+        // the spiderfier's possibly-stale ref.
+        const currentMarker = markerRefs.current.get(nodeId) || marker;
+        const popup = currentMarker.getPopup();
+        if (popup) {
+          popup.options.autoPan = false;
+        }
+        currentMarker.openPopup();
       };
 
       const spiderfyHandler = (_markers: any[]) => {
@@ -1356,14 +1353,39 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     nodesWithPosition.forEach(node => {
       const effectivePos = getEffectivePosition(node);
       if (effectivePos.latitude != null && effectivePos.longitude != null) {
-        posMap.set(node.nodeNum, [effectivePos.latitude, effectivePos.longitude]);
+        let lat = effectivePos.latitude;
+        let lng = effectivePos.longitude;
+        // #4016: offset obscured low-precision markers within their accuracy cell
+        // so same-cell nodes declutter. Overridden positions return false from
+        // shouldOffsetForPrecision, so they stay exact; the accuracy Rectangle
+        // below keeps using node.position (the true center).
+        if (shouldOffsetForPrecision(node.positionPrecisionBits, node.positionIsOverride)) {
+          [lat, lng] = offsetWithinPrecisionCell(lat, lng, node.positionPrecisionBits as number, String(node.user?.id ?? node.nodeNum));
+        }
+        posMap.set(node.nodeNum, [lat, lng]);
       }
     });
     return posMap;
   }, [nodesWithPosition.map(n => {
     const pos = getEffectivePosition(n);
-    return `${n.nodeNum}-${pos.latitude}-${pos.longitude}`;
+    return `${n.nodeNum}-${pos.latitude}-${pos.longitude}-${n.positionPrecisionBits ?? ''}`;
   }).join(',')]);
+
+  // #4015: signature of the markers currently rendered — drives the auto-open strip.
+  const renderedMarkerSig = nodesWithPosition.map(n => n.nodeNum).join('|');
+
+  // #4015: strip Leaflet's auto-open-on-click handler that `bindPopup` installs
+  // (via the declarative <Popup> child), so a pile click doesn't plant a popup on
+  // the pre-spread stacked marker — the popup opens only via the OMS 'click'
+  // handler set up above. Runs after the child <Popup> bind effects; `off` is
+  // idempotent. `_openPopup` is Leaflet-private (verified vs leaflet@1.9.4); a
+  // future rename degrades to the old double-fire (annoying, not a crash).
+  useEffect(() => {
+    for (const m of markerRefs.current.values()) {
+      const mm = m as L.Marker & { _openPopup?: (e: unknown) => void };
+      if (mm._openPopup) mm.off('click', mm._openPopup, mm);
+    }
+  }, [renderedMarkerSig, markerRefs]);
 
   // #3636: measurement endpoints — nearest-node snapping picks from these.
   const measurePoints: MeasurePoint[] = React.useMemo(

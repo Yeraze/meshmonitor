@@ -29,7 +29,7 @@ import { TilesetSelector } from '../TilesetSelector';
 import MapLegend from '../MapLegend';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
-import { precisionCellBounds, hasAccuracyCell } from '../../utils/precisionOffset';
+import { precisionCellBounds, hasAccuracyCell, shouldOffsetForPrecision, offsetWithinPrecisionCell } from '../../utils/precisionOffset';
 import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
 import { useMapContext } from '../../contexts/MapContext';
 import { useSettings } from '../../contexts/SettingsContext';
@@ -344,7 +344,20 @@ export default function DashboardMap({
     .filter((n) => !n.hideFromMap) // #3549: per-node "Hide from Map" suppresses the marker only
     .filter((n) => n.isFavorite || (n.lastHeard != null && n.lastHeard >= cutoffTime))
     .filter((n) => nodePassesTransportFilter(n, { showRfNodes, showUdpNodes, showMqttNodes }))
-    .map((n) => ({ node: n, pos: getNodeLatLng(n) }))
+    .map((n) => {
+      const truePos = getNodeLatLng(n);
+      if (!truePos) return { node: n, pos: null };
+      // #4016: offset obscured low-precision markers within their accuracy cell,
+      // so `pos` (used by the marker, neighbor/traceroute endpoints, and the
+      // measurement tool) declutters same-cell nodes. The accuracy rectangle
+      // below recomputes the TRUE center from the node, so it stays put.
+      if (shouldOffsetForPrecision(n.positionPrecisionBits, n.positionIsOverride)) {
+        const id = String(n.nodeId ?? n.user?.id ?? n.nodeNum);
+        const [lat, lng] = offsetWithinPrecisionCell(truePos.lat, truePos.lng, n.positionPrecisionBits as number, id);
+        return { node: n, pos: { lat, lng } };
+      }
+      return { node: n, pos: truePos };
+    })
     .filter((entry): entry is { node: any; pos: { lat: number; lng: number } } => entry.pos !== null);
 
   const nodePositions: [number, number][] = nodesWithPosition.map((e) => [e.pos.lat, e.pos.lng]);
@@ -645,8 +658,12 @@ export default function DashboardMap({
             Shares the cell geometry with Map Analysis via `precisionCellBounds`. */}
         {showAccuracyRegions && nodesWithPosition
           .filter(({ node }) => hasAccuracyCell(node.positionPrecisionBits, node.positionIsOverride))
-          .map(({ node, pos }) => {
-            const bounds = precisionCellBounds(pos.lat, pos.lng, node.positionPrecisionBits as number);
+          .map(({ node }) => {
+            // Center on the node's TRUE reported position, not the offset marker
+            // pos, so the offset marker reads as sitting inside its cell (#4016).
+            const center = getNodeLatLng(node);
+            if (!center) return null;
+            const bounds = precisionCellBounds(center.lat, center.lng, node.positionPrecisionBits as number);
             return (
               <Rectangle
                 key={`accuracy-${node.nodeNum ?? node.nodeId ?? node.user?.id}`}

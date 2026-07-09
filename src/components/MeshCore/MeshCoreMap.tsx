@@ -330,6 +330,45 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
     }
   }, [renderedKeysSig]);
 
+  // #4015: open the popup ONLY via the OMS 'click' event (fires only for an
+  // already-spiderfied or standalone marker — never for the click that fans out a
+  // pile). The SpiderfierController's OMS is created in its own effect; retry
+  // briefly until it exists, then register.
+  useEffect(() => {
+    const onOmsClick = (marker: LeafletMarker) => marker.openPopup();
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let registered: SpiderfierControllerRef | null = null;
+    const tryRegister = () => {
+      const controller = spiderfierRef.current;
+      if (controller?.getSpiderfier()) {
+        controller.addListener('click', onOmsClick);
+        registered = controller;
+        return;
+      }
+      if (attempts++ < 20) timer = setTimeout(tryRegister, 50);
+    };
+    tryRegister();
+    return () => {
+      if (timer) clearTimeout(timer);
+      registered?.removeListener('click', onOmsClick);
+    };
+  }, []);
+
+  // #4015: strip Leaflet's auto-open-on-click handler that `bindPopup` installs
+  // via the declarative <Popup> child, so a pile click doesn't plant a popup on
+  // the pre-spread stacked marker. Runs after the child <Popup> bind effects;
+  // `off` is idempotent. Popup content stays bound for the OMS-driven open above.
+  // NOTE: `_openPopup` is Leaflet's private handler (verified vs leaflet@1.9.4);
+  // if a future Leaflet renames it the strip no-ops and we degrade to the old
+  // double-fire (annoying, not a crash) — re-verify on Leaflet bumps.
+  useEffect(() => {
+    for (const m of markerByKey.current.values()) {
+      const mm = m as LeafletMarker & { _openPopup?: (e: unknown) => void };
+      if (mm._openPopup) mm.off('click', mm._openPopup, mm);
+    }
+  }, [renderedKeysSig]);
+
   const localPos = useMemo((): [number, number] | null => {
     if (localNodePosition?.lat != null && localNodePosition?.lng != null) {
       return [localNodePosition.lat, localNodePosition.lng];
