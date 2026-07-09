@@ -118,6 +118,7 @@ export const SKIP_TABLES = new Set([
   'upgrade_history', // Schema mismatch - UUID in integer column
   'auto_traceroute_log', // Non-essential logging
   'auto_traceroute_nodes', // Non-essential
+  'meshcore_pathfinding_targets', // Non-essential (re-selectable Auto-Pathfinding allowlist, mirrors auto_traceroute_nodes)
   'auto_key_repair_state', // Non-essential
   'auto_key_repair_log', // Non-essential logging
   // solar_estimates - REMOVED: Users want historical solar data preserved
