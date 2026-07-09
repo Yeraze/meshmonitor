@@ -3145,6 +3145,9 @@ router.post(
         if (typeof body.nameRegex !== 'string') {
           return fail(res, 400, 'PATHFINDING_FILTER_INVALID', 'nameRegex must be a string');
         }
+        if (body.nameRegex.length > 512) {
+          return fail(res, 400, 'PATHFINDING_FILTER_INVALID', 'nameRegex too long (max 512 characters)');
+        }
         try {
           compileUserRegex(body.nameRegex, 'i');
         } catch {

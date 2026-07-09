@@ -5868,7 +5868,7 @@ class DatabaseService {
       await this.settings.setSourceSettings(sourceId, kv);
     }
     await this.meshcorePathfindingTargets.setTargets(settings.targetKeys, sourceId);
-    logger.debug(`✅ Updated MeshCore pathfinding filter settings (source=${sourceId})`);
+    logger.debug(`Updated MeshCore pathfinding filter settings (source=${sourceId})`);
   }
 
   // Auto-traceroute log methods

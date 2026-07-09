@@ -29,7 +29,7 @@ interface PathfindingFilterSettings {
 const FILTER_DEFAULTS: PathfindingFilterSettings = {
   enabled: false,
   targetKeys: [],
-  contactsEnabled: true,
+  contactsEnabled: false,
   regexEnabled: false,
   nameRegex: '.*',
   lastHeardEnabled: false,
@@ -276,8 +276,8 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
   const regexError = useMemo(() => {
     if (!settings.nameRegex) return null;
     try {
-      const compiled = new RegExp(settings.nameRegex, 'i');
-      return compiled ? null : null;
+      new RegExp(settings.nameRegex, 'i');
+      return null;
     } catch (e) {
       return e instanceof Error ? e.message : String(e);
     }
@@ -287,7 +287,10 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
    * Client-side reproduction of `filterPathfindingContacts`
    * (src/server/meshcoreManager.ts) for the live preview. MUST stay in
    * lockstep with the backend function — branch structure, AND-then-OR
-   * order, and floor sentinels are copied verbatim.
+   * order, and floor sentinels are copied verbatim. That backend function is
+   * covered by `src/server/meshcoreManager.pathfindingFilter.test.ts` — any
+   * change to its branch structure/semantics should update this preview (and
+   * vice versa) in the same PR.
    *
    * CRITICAL unit note (verified against the manager's contact-write sites):
    * `lastSeen` is epoch **milliseconds**, `lastAdvert` is epoch **seconds**.

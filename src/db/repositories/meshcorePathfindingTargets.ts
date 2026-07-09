@@ -34,20 +34,41 @@ export class MeshcorePathfindingTargetsRepository extends BaseRepository {
    * Replace the whole allowlist for a source (delete-then-insert).
    * Input keys are de-duped so the UNIQUE(sourceId, publicKey) constraint is
    * never violated.
+   *
+   * The delete and the (single, batched) insert run inside one Drizzle
+   * transaction so both statements land on the same pinned connection/client
+   * — mirrors the cross-backend pattern in `messages.ts`'s channel-move
+   * migration: SQLite's `better-sqlite3` transaction callback must be
+   * synchronous, while PostgreSQL/MySQL require an async callback, so we
+   * branch on dialect rather than inventing a new transaction mechanism.
    */
   async setTargets(publicKeys: string[], sourceId: string): Promise<void> {
     const now = this.now();
     const { meshcorePathfindingTargets } = this.tables;
-
-    await this.db
-      .delete(meshcorePathfindingTargets)
-      .where(eq(meshcorePathfindingTargets.sourceId, sourceId));
-
     const deduped = [...new Set(publicKeys)];
-    for (const publicKey of deduped) {
-      await this.db
-        .insert(meshcorePathfindingTargets)
-        .values({ sourceId, publicKey, createdAt: now });
+    const rows = deduped.map((publicKey) => ({ sourceId, publicKey, createdAt: now }));
+
+    if (this.isSQLite()) {
+      this.getSqliteDb().transaction((tx) => {
+        tx.delete(meshcorePathfindingTargets).where(eq(meshcorePathfindingTargets.sourceId, sourceId)).run();
+        if (rows.length > 0) {
+          tx.insert(meshcorePathfindingTargets).values(rows).run();
+        }
+      });
+    } else if (this.isPostgres()) {
+      await this.getPostgresDb().transaction(async (tx) => {
+        await tx.delete(meshcorePathfindingTargets).where(eq(meshcorePathfindingTargets.sourceId, sourceId));
+        if (rows.length > 0) {
+          await tx.insert(meshcorePathfindingTargets).values(rows);
+        }
+      });
+    } else {
+      await this.getMysqlDb().transaction(async (tx) => {
+        await tx.delete(meshcorePathfindingTargets).where(eq(meshcorePathfindingTargets.sourceId, sourceId));
+        if (rows.length > 0) {
+          await tx.insert(meshcorePathfindingTargets).values(rows);
+        }
+      });
     }
   }
 }
