@@ -406,6 +406,45 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Scenario 3b: passiveMode forwarding — boot path aligns with runtime path.
+  //
+  // FIX 3 pin: the uniform-construction path (WP3) forwards cfg.passiveMode
+  // and cfg.passiveResyncStaleMs from DB config at BOOT. Previously the first-
+  // source configureSource() path forced them off; now both boot and
+  // runtime-add honor the stored config. This scenario pins that alignment.
+  // -------------------------------------------------------------------------
+  describe('Scenario 3b — passiveMode forwarding from DB config at boot', () => {
+    it('factoryCfg.passiveMode=true and passiveResyncStaleMs forwarded when present in source row', async () => {
+      const row = makeTcpSource('src-passive', '10.0.0.3', 4403, {
+        passiveMode: true,
+        passiveResyncStaleMs: 120_000,
+      });
+      const db = makeDbStub([row]);
+      await bootstrapSources(makeDeps({
+        db, registry, fallbackManager: fallbackManager as any,
+        makeMeshtastic: meshFactory.factory,
+      }));
+      expect(meshFactory.factory).toHaveBeenCalledOnce();
+      const [, factoryCfg] = meshFactory.factory.mock.calls[0] as any;
+      expect(factoryCfg.passiveMode).toBe(true);
+      expect(factoryCfg.passiveResyncStaleMs).toBe(120_000);
+    });
+
+    it('factoryCfg.passiveMode is absent/falsy for a plain source row without passiveMode', async () => {
+      const row = makeTcpSource('src-normal', '10.0.0.4');
+      const db = makeDbStub([row]);
+      await bootstrapSources(makeDeps({
+        db, registry, fallbackManager: fallbackManager as any,
+        makeMeshtastic: meshFactory.factory,
+      }));
+      expect(meshFactory.factory).toHaveBeenCalledOnce();
+      const [, factoryCfg] = meshFactory.factory.mock.calls[0] as any;
+      // passiveMode should be absent or falsy — NOT forced to true or any default.
+      expect(factoryCfg.passiveMode).toBeFalsy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Scenario 4: DB rows exist + env set — DB wins, env ignored
   // -------------------------------------------------------------------------
   describe('Scenario 4 — both DB rows and env set → DB wins', () => {
@@ -770,6 +809,55 @@ describe('identity/staleness pins (§2.5 documentation)', () => {
       // whose result matches what fallbackManager.getStatus() would return.
       expect(typeof (resolved as any).getStatus).toBe('function');
       expect((resolved as any).sourceId).toBe((fallbackManager as any).sourceId);
+    });
+
+    /**
+     * FIX 1 — Proxy method binding.
+     *
+     * Before the fix, calling a prototype method through the alias returned an
+     * UNBOUND function. When called as `alias.method()`, JavaScript set `this`
+     * to `alias` (the Proxy), so class-field accesses and EventEmitter internals
+     * inside the method re-entered the Proxy's get trap on every `this.x` read,
+     * and an async method could address two different primary instances across
+     * an await.
+     *
+     * After the fix, the get trap detects prototype methods via
+     * `!hasOwnProperty.call(p, prop)` and returns `method.bind(p)`. `this`
+     * inside the method is the concrete instance — not the Proxy.
+     *
+     * Own-property functions (test spies assigned via `alias.method = vi.fn()`,
+     * arrow class fields) are intentionally returned unbound: arrow functions
+     * have lexical `this` (bind is a no-op), and returning spies unbound
+     * preserves their Vitest spy identity for `toHaveBeenCalled` assertions.
+     *
+     * The test spies on the PROTOTYPE (not the instance) so the GET trap sees
+     * the method as a prototype method and applies the binding.
+     */
+    it('prototype method called through alias is bound to the concrete primary (not the Proxy) — FIX 1', async () => {
+      const { default: aliasProxy, fallbackManager: concrete } = await import('./meshtasticManager.js');
+
+      // In the test environment the module-level sourceManagerRegistry has no
+      // primary registered, so the alias resolves to fallbackManager (concrete).
+      // Spy on the PROTOTYPE so hasOwnProperty.call(p, 'getStatus') === false,
+      // causing the GET trap to return the bound version.
+      const proto = Object.getPrototypeOf(concrete) as Record<string, unknown>;
+      let capturedThis: unknown;
+      const protoSpy = vi.spyOn(proto as any, 'getStatus').mockImplementation(function (this: unknown) {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias -- capturing `this` in prototype spy to verify Proxy binding fix
+        capturedThis = this;
+        return { sourceId: 'spy', sourceName: 'spy', sourceType: 'meshtastic_tcp', connected: false };
+      });
+
+      try {
+        (aliasProxy as any).getStatus();
+
+        // Post-fix: `this` inside the prototype method === the concrete fallback
+        // instance, NOT the Proxy.
+        expect(capturedThis).toBe(concrete);
+        expect(capturedThis).not.toBe(aliasProxy);
+      } finally {
+        protoSpy.mockRestore();
+      }
     });
   });
 });
