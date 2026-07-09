@@ -25,7 +25,13 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
 }));
 vi.mock('../../../hooks/useMarkerSpiderfier', () => ({
-  useMarkerSpiderfier: () => ({ addMarker: vi.fn(), removeMarker: vi.fn() }),
+  useMarkerSpiderfier: () => ({
+    addMarker: vi.fn(),
+    removeMarker: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    getSpiderfier: vi.fn(),
+  }),
   SHARED_SPIDERFIER_OPTIONS: {},
 }));
 vi.mock('../../../hooks/useMapAnalysisData', () => ({

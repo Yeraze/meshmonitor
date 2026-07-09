@@ -92,6 +92,43 @@ describe('useAnalysisNodes', () => {
     expect(result.current.some((n) => n.node.nodeNum === 3)).toBe(false);
   });
 
+  it('offsets a low-precision node within its cell but leaves others centered (#4016)', () => {
+    mockUseDashboardUnifiedData.mockReturnValue({
+      nodes: [
+        // Low precision (16 bits) -> marker offset from the reported center.
+        { ...MOCK_NODES[0], nodeNum: 10, nodeId: '!0000000a', latitude: 30, longitude: -90, positionPrecisionBits: 16 },
+        // Full precision -> unchanged.
+        { ...MOCK_NODES[0], nodeNum: 11, nodeId: '!0000000b', latitude: 40, longitude: -100, positionPrecisionBits: 32 },
+        // Missing precision -> unchanged.
+        { ...MOCK_NODES[0], nodeNum: 12, nodeId: '!0000000c', latitude: 41, longitude: -101 },
+        // Low precision but user-overridden position -> unchanged.
+        { ...MOCK_NODES[0], nodeNum: 13, nodeId: '!0000000d', latitude: 42, longitude: -102, positionPrecisionBits: 16, positionIsOverride: true },
+      ],
+    });
+    const { result } = renderHook(() => useAnalysisNodes(), { wrapper });
+    const byNum = (num: number) => result.current.find((n) => n.node.nodeNum === num)!;
+
+    // Offset node: moved off the exact center, but still within the ~728m cell (~0.0065deg).
+    const offset = byNum(10).latLng;
+    expect(offset[0]).not.toBe(30);
+    expect(offset[1]).not.toBe(-90);
+    expect(Math.abs(offset[0] - 30)).toBeLessThan(0.01);
+
+    // Full-precision, missing-precision, and overridden nodes stay dead-center.
+    expect(byNum(11).latLng).toEqual([40, -100]);
+    expect(byNum(12).latLng).toEqual([41, -101]);
+    expect(byNum(13).latLng).toEqual([42, -102]);
+  });
+
+  it('offset is deterministic across renders (#4016)', () => {
+    mockUseDashboardUnifiedData.mockReturnValue({
+      nodes: [{ ...MOCK_NODES[0], nodeNum: 10, nodeId: '!0000000a', latitude: 30, longitude: -90, positionPrecisionBits: 16 }],
+    });
+    const first = renderHook(() => useAnalysisNodes(), { wrapper }).result.current[0].latLng;
+    const second = renderHook(() => useAnalysisNodes(), { wrapper }).result.current[0].latLng;
+    expect(first).toEqual(second);
+  });
+
   it('applies the config.sources allow-list', () => {
     localStorage.setItem(
       'mapAnalysis.config.v1',

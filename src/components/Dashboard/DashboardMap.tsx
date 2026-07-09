@@ -29,6 +29,7 @@ import { TilesetSelector } from '../TilesetSelector';
 import MapLegend from '../MapLegend';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
+import { precisionCellBounds, hasAccuracyCell } from '../../utils/precisionOffset';
 import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
 import { useMapContext } from '../../contexts/MapContext';
 import { useSettings } from '../../contexts/SettingsContext';
@@ -394,6 +395,49 @@ export default function DashboardMap({
     }
   }, [renderedKeysSig]);
 
+  // #4015: open the popup ONLY via the OMS 'click' event (which fires solely for
+  // an already-spiderfied or standalone marker — never for the click that fans
+  // out a pile). The SpiderfierController's OMS is created in its own effect;
+  // retry briefly until it exists, then register.
+  useEffect(() => {
+    const onOmsClick = (marker: LeafletMarker) => marker.openPopup();
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Capture the controller we register on so cleanup detaches from the same
+    // one (avoids reading spiderfierRef.current in cleanup).
+    let registered: SpiderfierControllerRef | null = null;
+    const tryRegister = () => {
+      const controller = spiderfierRef.current;
+      if (controller?.getSpiderfier()) {
+        controller.addListener('click', onOmsClick);
+        registered = controller;
+        return;
+      }
+      if (attempts++ < 20) timer = setTimeout(tryRegister, 50);
+    };
+    tryRegister();
+    return () => {
+      if (timer) clearTimeout(timer);
+      registered?.removeListener('click', onOmsClick);
+    };
+  }, []);
+
+  // #4015: strip Leaflet's auto-open-on-click handler that `bindPopup` installs
+  // (via the declarative <Popup> child), so a pile click doesn't plant a popup on
+  // the pre-spread stacked marker. Runs after the child <Popup> bind effects;
+  // `off` is idempotent. Popup content stays bound for the OMS-driven open above.
+  //
+  // NOTE: `_openPopup` is Leaflet's private handler (verified against
+  // leaflet@1.9.4 `Popup.js` bindPopup). Undocumented — if a future Leaflet
+  // renames/removes it, the strip no-ops and we degrade to the old double-fire
+  // (annoying, not a crash). Re-verify when bumping Leaflet.
+  useEffect(() => {
+    for (const m of markerByKey.current.values()) {
+      const mm = m as LeafletMarker & { _openPopup?: (e: unknown) => void };
+      if (mm._openPopup) mm.off('click', mm._openPopup, mm);
+    }
+  }, [renderedKeysSig]);
+
   // nodeNum → [lat, lng] map used to resolve traceroute hop positions. The
   // unified view merges per-source node rows by nodeNum (see mergeUnifiedSourceData
   // in useDashboardData.ts), so a single lookup table works across sources.
@@ -597,30 +641,12 @@ export default function DashboardMap({
           );
         })}
 
-        {/* Position accuracy regions — drawn from precision_bits, mirroring NodesTab. */}
+        {/* Position accuracy regions — drawn from precision_bits, mirroring NodesTab.
+            Shares the cell geometry with Map Analysis via `precisionCellBounds`. */}
         {showAccuracyRegions && nodesWithPosition
-          .filter(({ node }) => {
-            const bits = node.positionPrecisionBits;
-            if (bits === undefined || bits === null) return false;
-            if (bits <= 0 || bits >= 32) return false;
-            // Don't show accuracy region for nodes with user-overridden positions
-            if (node.positionIsOverride) return false;
-            return true;
-          })
+          .filter(({ node }) => hasAccuracyCell(node.positionPrecisionBits, node.positionIsOverride))
           .map(({ node, pos }) => {
-            // Meshtastic encodes lat/lon as int32 (1 unit = 1e-7 degrees).
-            // With N precision bits, the grid cell side = 2^(32-N) * 1e-7 * 111111 m.
-            // Accuracy (max deviation) is half the grid cell.
-            const metersPerDegree = 111_111;
-            const sizeMeters = Math.pow(2, 32 - node.positionPrecisionBits) * 1e-7 * metersPerDegree;
-            const halfSizeMeters = sizeMeters / 2;
-            const latOffset = halfSizeMeters / metersPerDegree;
-            const metersPerDegreeLng = metersPerDegree * Math.cos(pos.lat * Math.PI / 180);
-            const lngOffset = halfSizeMeters / metersPerDegreeLng;
-            const bounds: [[number, number], [number, number]] = [
-              [pos.lat - latOffset, pos.lng - lngOffset],
-              [pos.lat + latOffset, pos.lng + lngOffset],
-            ];
+            const bounds = precisionCellBounds(pos.lat, pos.lng, node.positionPrecisionBits as number);
             return (
               <Rectangle
                 key={`accuracy-${node.nodeNum ?? node.nodeId ?? node.user?.id}`}

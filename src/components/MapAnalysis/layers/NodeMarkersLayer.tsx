@@ -55,7 +55,7 @@ export default function NodeMarkersLayer() {
   // markers in. Uses the SHARED tuning (50px nearbyDistance etc.) so every map
   // surface fans out identically — the prior default 20px radius missed
   // near-but-not-identical co-located nodes.
-  const { addMarker, removeMarker } = useMarkerSpiderfier(SHARED_SPIDERFIER_OPTIONS);
+  const { addMarker, removeMarker, addListener, removeListener } = useMarkerSpiderfier(SHARED_SPIDERFIER_OPTIONS);
   const markerByKey = useRef<Map<string, LeafletMarker>>(new Map());
   const refHandlers = useRef<Map<string, (m: LeafletMarker | null) => void>>(new Map());
   // Stable position/icon refs keyed by the spiderfier key — fixes the fan
@@ -156,6 +156,35 @@ export default function NodeMarkersLayer() {
       iconCacheRef.current.delete(key);
     }
   }, [renderedKeysSig, removeMarker]);
+
+  // #4015: open the popup ONLY via the OMS 'click' event, which fires solely for
+  // a marker that is already spiderfied or standalone — never for the click that
+  // fans out a pile. This runs after the hook's OMS-init effect (registered
+  // earlier in this component), so the spiderfier is ready.
+  useEffect(() => {
+    const onOmsClick = (marker: LeafletMarker) => marker.openPopup();
+    addListener('click', onOmsClick);
+    return () => removeListener('click', onOmsClick);
+  }, [addListener, removeListener]);
+
+  // #4015: strip Leaflet's own auto-open-on-click handler that `bindPopup`
+  // installs (via the declarative <Popup> child). Without this, a pile click
+  // both fans out AND opens the popup on the pre-spread stacked marker, covering
+  // the markers that just spread. This parent effect runs after the child
+  // <Popup> bind effects; `off` is idempotent. Popup content stays bound, so the
+  // OMS-driven openPopup() above still works.
+  //
+  // NOTE: `_openPopup` is Leaflet's private handler (verified against
+  // leaflet@1.9.4 `Popup.js` bindPopup: `this.on({ click: this._openPopup })`).
+  // It's undocumented; if a future Leaflet renames/removes it, the strip becomes
+  // a no-op and we degrade to the old double-fire — annoying, not a crash — so
+  // re-verify this when bumping Leaflet.
+  useEffect(() => {
+    for (const m of markerByKey.current.values()) {
+      const mm = m as LeafletMarker & { _openPopup?: (e: unknown) => void };
+      if (mm._openPopup) mm.off('click', mm._openPopup, mm);
+    }
+  }, [renderedKeysSig]);
 
   // #3886: when the time slider is on, fade markers by recency across its
   // window — fully opaque at the window's newest edge, fading toward a floor as

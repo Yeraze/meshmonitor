@@ -10,7 +10,8 @@ export type LayerKey =
   | 'hopShading'
   | 'snrOverlay'
   | 'waypoints'
-  | 'polarGrid';
+  | 'polarGrid'
+  | 'accuracyRegions';
 
 export interface LayerConfig {
   enabled: boolean;
@@ -73,6 +74,7 @@ export const DEFAULT_CONFIG: MapAnalysisConfig = {
     snrOverlay: { enabled: false, lookbackHours: null },
     waypoints:  { enabled: true,  lookbackHours: null },
     polarGrid:  { enabled: false, lookbackHours: null },
+    accuracyRegions: { enabled: false, lookbackHours: null },
   },
   nodeTypes: { ...ALL_NODE_TYPES_VISIBLE },
   sources: [],
