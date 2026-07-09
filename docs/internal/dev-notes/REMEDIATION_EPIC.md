@@ -49,7 +49,7 @@ Phase 2 started 2026-07-07. Decisions carried forward from the Phase 0+1 intervi
 
 Execution order: 3.1 → 3.5 → 3.2 → 3.3 → 3.4 (3.5 before 3.3 so new migrations use the helpers; 3.4 last, benefits from 3.1).
 
-- [ ] **3.1** — Split `misc.ts` by domain (11 domains incl. distanceDeleteLog the plan missed). 3-PR stack: PR1 solarEstimates/upgradeHistory/newsCache/backupHistory; PR2 autoTraceroute/timeSync/distanceDeleteLog/mapPreferences/themes; PR3 packetLog/keyRepair + misc.ts teardown (delete `.misc`/`.miscRepo`).
+- [x] **3.1** — Split `misc.ts` by domain (11 domains incl. distanceDeleteLog the plan missed). 3-PR stack: PR1 (#4023) solarEstimates/upgradeHistory/newsCache/backupHistory; PR2 (#4030) autoTraceroute/timeSync/distanceDeleteLog/mapPreferences/themes; PR3 (TBD) packetLog/keyRepair + misc.ts teardown (delete `.misc`/`.miscRepo`/`MiscRepository`). Census correction: 11 domains not 10 (distanceDeleteLog plan-omitted). keyRepair moved verbatim (SQLite-only, Task 3.2 owns parity). Sync twins in packetLog moved verbatim (Task 3.4 burn-down). Lint baseline updated net-zero (misc.ts 44 violations → packetLog.ts 33 + keyRepair.ts 11).
 - [ ] **3.5** — Migration ergonomics: shared idempotency helpers (new migrations only) + registry-derived count assertion (kills the count()===N merge magnet).
 - [ ] **3.2** — Key-repair backend parity: port to Drizzle 3-backend (plan-preferred) or formal SQLite-only with capability flag.
 - [ ] **3.3** — Schema bootstrap single source of truth: fresh installs via migration replay; burn down the 1.6 tripwire's 15-entry allowlist (7 createIndexes-only indexes → migration); delete createTables()/createIndexes(); retire tripwire.
@@ -58,6 +58,8 @@ Execution order: 3.1 → 3.5 → 3.2 → 3.3 → 3.4 (3.5 before 3.3 so new migr
 ## Phase log
 
 Record per-phase: PR link, deviations from plan, follow-ups.
+
+- **3.1 PR3** — PR TBD (packetLog/keyRepair split + misc.ts teardown). New files: `packetLog.ts` (19 methods + PacketLogFilterOptions), `keyRepair.ts` (7 SQLite-only methods), `packetLog.test.ts` (renamed from misc.packetlog.test.ts). Deleted: `misc.ts`, `misc.packetlog.test.ts`, `misc.mapprefs.test.ts` (duplicate of mapPreferences.test.ts, leftover from PR2). End-state assertion in `misc.test.ts` (MiscRepository not exported, misc.ts not on disk, PacketLogRepository/KeyRepairRepository exported). Deviations: (1) lint baseline updated via `npm run lint:baseline` — 44 any-type violations moved net-zero from misc.ts to new files; "zero new violations" intent preserved (no net regressions). Full suite: success=true, 8472 passed, 0 failed, 0 suitesFailed; typecheck clean; typecheck:tests 283 (at baseline); lint:ci exit 0; build succeeded.
 
 - **P0-docs** — PR #3966 merged (plan + epic doc on main). No deviations.
 - **0.1** — PR #3967 merged (processSafetyNet.ts + idempotent gracefulShutdown with exitCode param). Deviation: NodeJS.* type annotations replaced with inference/unknown due to ESLint no-undef.

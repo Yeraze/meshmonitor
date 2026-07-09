@@ -1,26 +1,26 @@
 /**
- * Misc Repository - Packet Log Query Tests
+ * Packet Log Repository Tests
  *
- * Tests the refactored Drizzle JOIN queries for packet log methods.
+ * Tests the Drizzle JOIN queries for packet log methods.
  * Verifies that column references are correctly quoted across database backends.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type Database from 'better-sqlite3';
 import { type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
-import { MiscRepository } from './misc.js';
+import { PacketLogRepository } from './packetLog.js';
 import * as schema from '../schema/index.js';
 import { createTestDb } from '../../server/test-helpers/testDb.js';
 
-describe('MiscRepository - Packet Log Queries', () => {
+describe('PacketLogRepository - Packet Log Queries', () => {
   let db: Database.Database;
   let drizzleDb: BetterSQLite3Database<typeof schema>;
-  let repo: MiscRepository;
+  let repo: PacketLogRepository;
 
   beforeEach(() => {
     const t = createTestDb();
     db = t.sqlite;
     drizzleDb = t.db;
-    repo = new MiscRepository(drizzleDb as any, 'sqlite');
+    repo = new PacketLogRepository(drizzleDb as any, 'sqlite');
 
     // Insert test nodes scoped to 'default' source
     const seedNow = Date.now();
@@ -285,16 +285,16 @@ describe('MiscRepository - Packet Log Queries', () => {
  * by the number of sources when the same nodeNum appears in multiple rows of
  * the nodes table (per-source composite PK since migration 029).
  */
-describe('MiscRepository - getPacketCountsByNode multi-source regression (#2794)', () => {
+describe('PacketLogRepository - getPacketCountsByNode multi-source regression (#2794)', () => {
   let db: Database.Database;
   let drizzleDb: BetterSQLite3Database<typeof schema>;
-  let repo: MiscRepository;
+  let repo: PacketLogRepository;
 
   beforeEach(() => {
     const t = createTestDb();
     db = t.sqlite;
     drizzleDb = t.db;
-    repo = new MiscRepository(drizzleDb as any, 'sqlite');
+    repo = new PacketLogRepository(drizzleDb as any, 'sqlite');
 
     // Same node heard on two sources — produces two rows with the same nodeNum.
     const seedNow = Date.now();
@@ -352,16 +352,16 @@ describe('MiscRepository - getPacketCountsByNode multi-source regression (#2794)
  * return duplicate rows when the same nodeNum exists in multiple sources
  * (composite PK since migration 029).
  */
-describe('MiscRepository - getPacketLogs / getPacketLogById multi-source dedup (#3051)', () => {
+describe('PacketLogRepository - getPacketLogs / getPacketLogById multi-source dedup (#3051)', () => {
   let db: Database.Database;
   let drizzleDb: BetterSQLite3Database<typeof schema>;
-  let repo: MiscRepository;
+  let repo: PacketLogRepository;
 
   beforeEach(() => {
     const t = createTestDb();
     db = t.sqlite;
     drizzleDb = t.db;
-    repo = new MiscRepository(drizzleDb as any, 'sqlite');
+    repo = new PacketLogRepository(drizzleDb as any, 'sqlite');
 
     // nodeNum 100 exists in both srcA and srcB (mirrors production multi-source)
     const seedNow = Date.now();

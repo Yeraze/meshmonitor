@@ -29,7 +29,8 @@ import {
   TraceroutesRepository,
   NeighborsRepository,
   NotificationsRepository,
-  MiscRepository,
+  PacketLogRepository,
+  KeyRepairRepository,
   ChannelDatabaseRepository,
   IgnoredNodesRepository,
   EmbedProfileRepository,
@@ -509,7 +510,8 @@ class DatabaseService {
   public traceroutesRepo: TraceroutesRepository | null = null;
   public neighborsRepo: NeighborsRepository | null = null;
   public notificationsRepo: NotificationsRepository | null = null;
-  public miscRepo: MiscRepository | null = null;
+  public packetLogRepo: PacketLogRepository | null = null;
+  public keyRepairRepo: KeyRepairRepository | null = null;
   public channelDatabaseRepo: ChannelDatabaseRepository | null = null;
   public ignoredNodesRepo: IgnoredNodesRepository | null = null;
   public embedProfileRepo: EmbedProfileRepository | null = null;
@@ -658,9 +660,14 @@ class DatabaseService {
     return this.notificationsRepo;
   }
 
-  get misc(): MiscRepository {
-    if (!this.miscRepo) throw new Error('Database not initialized');
-    return this.miscRepo;
+  get packetLog(): PacketLogRepository {
+    if (!this.packetLogRepo) throw new Error('Database not initialized');
+    return this.packetLogRepo;
+  }
+
+  get keyRepair(): KeyRepairRepository {
+    if (!this.keyRepairRepo) throw new Error('Database not initialized');
+    return this.keyRepairRepo;
   }
 
   get channelDatabase(): ChannelDatabaseRepository {
@@ -971,7 +978,8 @@ class DatabaseService {
       this.traceroutesRepo = new TraceroutesRepository(drizzleDb, this.drizzleDbType);
       this.neighborsRepo = new NeighborsRepository(drizzleDb, this.drizzleDbType);
       this.notificationsRepo = new NotificationsRepository(drizzleDb, this.drizzleDbType);
-      this.miscRepo = new MiscRepository(drizzleDb, this.drizzleDbType);
+      this.packetLogRepo = new PacketLogRepository(drizzleDb, this.drizzleDbType);
+      this.keyRepairRepo = new KeyRepairRepository(drizzleDb, this.drizzleDbType);
       this.channelDatabaseRepo = new ChannelDatabaseRepository(drizzleDb, this.drizzleDbType);
       this.ignoredNodesRepo = new IgnoredNodesRepository(drizzleDb, this.drizzleDbType);
       this.embedProfileRepo = new EmbedProfileRepository(drizzleDb, this.drizzleDbType);
@@ -2825,7 +2833,7 @@ class DatabaseService {
     const localNodeNumStr = this.getSetting('localNodeNum');
     const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
 
-    return this.miscRepo!.getPacketCountsPerNodeSinceSync({
+    return this.packetLogRepo!.getPacketCountsPerNodeSinceSync({
       since: oneHourAgo,
       localNodeNum,
     });
@@ -2844,7 +2852,7 @@ class DatabaseService {
       : this.getSetting('localNodeNum');
     const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
 
-    return this.miscRepo!.getPacketCountsPerNodeSince({
+    return this.packetLogRepo!.getPacketCountsPerNodeSince({
       since: oneHourAgo,
       localNodeNum,
       sourceId,
@@ -2863,7 +2871,7 @@ class DatabaseService {
     const localNodeNumStr = this.getSetting('localNodeNum');
     const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
 
-    return this.miscRepo!.getTopBroadcastersSince({
+    return this.packetLogRepo!.getTopBroadcastersSince({
       since: oneHourAgo,
       limit,
       localNodeNum,
@@ -3673,9 +3681,9 @@ class DatabaseService {
 
     // Delete packet log entries for this node (#2637) so Packet Monitor
     // doesn't keep showing history for a deleted node
-    if (this.miscRepo) {
+    if (this.packetLogRepo) {
       try {
-        this.miscRepo.deletePacketLogsForNodeSync(nodeNum, sourceId);
+        this.packetLogRepo.deletePacketLogsForNodeSync(nodeNum, sourceId);
       } catch (err) {
         logger.error(`Failed to delete packet logs for node ${nodeNum}@${sourceId}:`, err);
       }
@@ -5833,7 +5841,7 @@ class DatabaseService {
       return null;
     }
 
-    return this.miscRepo!.getKeyRepairStateSqlite(nodeNum);
+    return this.keyRepairRepo!.getKeyRepairStateSqlite(nodeNum);
   }
 
   async getKeyRepairStateAsync(nodeNum: number): Promise<{
@@ -5900,7 +5908,7 @@ class DatabaseService {
     }
 
     const existing = this.getKeyRepairState(nodeNum);
-    this.miscRepo!.setKeyRepairStateSqlite(nodeNum, state, existing);
+    this.keyRepairRepo!.setKeyRepairStateSqlite(nodeNum, state, existing);
   }
 
   async setKeyRepairStateAsync(nodeNum: number, state: {
@@ -5986,7 +5994,7 @@ class DatabaseService {
       return;
     }
 
-    this.miscRepo!.clearKeyRepairStateSqlite(nodeNum);
+    this.keyRepairRepo!.clearKeyRepairStateSqlite(nodeNum);
   }
 
   getNodesNeedingKeyRepair(): {
@@ -6004,7 +6012,7 @@ class DatabaseService {
     }
 
     // Get nodes with keyMismatchDetected=true that are not exhausted
-    return this.miscRepo!.getNodesNeedingKeyRepairSqlite();
+    return this.keyRepairRepo!.getNodesNeedingKeyRepairSqlite();
   }
 
   async getNodesNeedingKeyRepairAsync(): Promise<{
@@ -6085,7 +6093,7 @@ class DatabaseService {
       return 0;
     }
 
-    return this.miscRepo!.logKeyRepairAttemptSqlite(nodeNum, nodeName, action, success, null, null, null);
+    return this.keyRepairRepo!.logKeyRepairAttemptSqlite(nodeNum, nodeName, action, success, null, null, null);
   }
 
   getKeyRepairLog(limit: number = 50): {
@@ -6101,7 +6109,7 @@ class DatabaseService {
       return [];
     }
 
-    const rows = this.miscRepo!.getKeyRepairLogSqlite(limit, undefined, false, false);
+    const rows = this.keyRepairRepo!.getKeyRepairLogSqlite(limit, undefined, false, false);
     return rows.map(r => ({
       id: r.id,
       timestamp: r.timestamp,
@@ -6153,7 +6161,7 @@ class DatabaseService {
       return (result as any).insertId || 0;
     }
     // SQLite fallback - delegate to repo (uses raw better-sqlite3 for extended columns)
-    return this.miscRepo!.logKeyRepairAttemptSqlite(nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment, sourceId);
+    return this.keyRepairRepo!.logKeyRepairAttemptSqlite(nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment, sourceId);
   }
 
   async getKeyRepairLogAsync(limit: number = 50, sourceId?: string): Promise<{
@@ -6253,12 +6261,12 @@ class DatabaseService {
       }));
     }
     // SQLite — delegate to repository (introspection + fetch)
-    const { tableExists, hasOldKeyCol, hasSourceId } = this.miscRepo!.getKeyRepairLogIntrospectionSqlite();
+    const { tableExists, hasOldKeyCol, hasSourceId } = this.keyRepairRepo!.getKeyRepairLogIntrospectionSqlite();
     if (!tableExists) return [];
-    return this.miscRepo!.getKeyRepairLogSqlite(limit, sourceId, hasOldKeyCol, hasSourceId);
+    return this.keyRepairRepo!.getKeyRepairLogSqlite(limit, sourceId, hasOldKeyCol, hasSourceId);
   }
 
-  // Distance delete log methods moved to MiscRepository (databaseService.misc.getDistanceDeleteLog / addDistanceDeleteLogEntry)
+  // Distance delete log methods moved to DistanceDeleteLogRepository (databaseService.distanceDeleteLog.getDistanceDeleteLog / addDistanceDeleteLogEntry)
 
   async clearKeyRepairStateAsync(nodeNum: number): Promise<void> {
     if (this.drizzleDbType === 'postgres') {
@@ -6465,9 +6473,9 @@ class DatabaseService {
       );
     }
     // Clear packet log so Packet Monitor doesn't show ghost entries from purged nodes (issue #2637)
-    if (this.miscRepo) {
+    if (this.packetLogRepo) {
       try {
-        this.miscRepo.clearPacketLogsSync(sourceId);
+        this.packetLogRepo.clearPacketLogsSync(sourceId);
       } catch (err) {
         logger.error('Failed to clear packet logs during purge:', err);
       }
@@ -6840,9 +6848,9 @@ class DatabaseService {
 
       // Delete packet log entries for this node (#2637) so Packet Monitor
       // doesn't keep showing history for a deleted node
-      if (this.miscRepo) {
+      if (this.packetLogRepo) {
         try {
-          await this.miscRepo.deletePacketLogsForNode(nodeNum, sourceId);
+          await this.packetLogRepo.deletePacketLogsForNode(nodeNum, sourceId);
         } catch (err) {
           logger.error(`Failed to delete packet logs for node ${nodeNum}@${sourceId}:`, err);
         }
@@ -6905,9 +6913,9 @@ class DatabaseService {
         await this.neighborsRepo.deleteAllNeighborInfo(sourceId);
       }
       // Clear packet log so Packet Monitor doesn't show ghost entries from purged nodes (issue #2637)
-      if (this.miscRepo) {
+      if (this.packetLogRepo) {
         try {
-          await this.miscRepo.clearPacketLogs(sourceId);
+          await this.packetLogRepo.clearPacketLogs(sourceId);
         } catch (err) {
           logger.error('Failed to clear packet logs during purge:', err);
         }
@@ -8372,20 +8380,20 @@ class DatabaseService {
   }
 
 
-  // Packet Log operations — delegated to MiscRepository (this.misc)
+  // Packet Log operations — delegated to PacketLogRepository (this.packetLog)
   // Sync methods retain SQLite fallbacks for test compatibility and pre-init callers.
 
   async insertPacketLogAsync(packet: Omit<DbPacketLog, 'id' | 'created_at'>): Promise<number> {
     const enabled = await this.getSettingAsync('packet_log_enabled');
     if (enabled !== '1') return 0;
 
-    // All backends route through MiscRepository
-    const id = await this.misc.insertPacketLog(packet, packet.sourceId ?? undefined);
+    // All backends route through PacketLogRepository
+    const id = await this.packetLog.insertPacketLog(packet, packet.sourceId ?? undefined);
     const maxCountStr = this.drizzleDbType === 'sqlite'
       ? this.getSetting('packet_log_max_count')
       : await this.getSettingAsync('packet_log_max_count');
     const maxCount = maxCountStr ? parseInt(maxCountStr, 10) : 1000;
-    await this.misc.enforcePacketLogMaxCount(maxCount);
+    await this.packetLog.enforcePacketLogMaxCount(maxCount);
     return id;
   }
 
@@ -8395,7 +8403,7 @@ class DatabaseService {
     relay_node?: number | 'unknown'; transport_mechanism?: number; sourceId?: string;
     untilTs?: number; untilId?: number;
   }): Promise<DbPacketLog[]> {
-    return this.misc.getPacketLogs(options);
+    return this.packetLog.getPacketLogs(options);
   }
 
   /**
@@ -8408,11 +8416,11 @@ class DatabaseService {
    * bucket (rows with `sourceId IS NULL`).
    */
   async getDistinctEncryptedPacketSourceIdsAsync(): Promise<Array<string | null>> {
-    return this.misc.getDistinctEncryptedPacketSourceIds();
+    return this.packetLog.getDistinctEncryptedPacketSourceIds();
   }
 
   async getPacketLogByIdAsync(id: number): Promise<DbPacketLog | null> {
-    return this.misc.getPacketLogById(id);
+    return this.packetLog.getPacketLogById(id);
   }
 
   async getPacketLogCountAsync(options: {
@@ -8420,20 +8428,20 @@ class DatabaseService {
     encrypted?: boolean; since?: number; relay_node?: number | 'unknown';
     transport_mechanism?: number; sourceId?: string;
   } = {}): Promise<number> {
-    return this.misc.getPacketLogCount(options);
+    return this.packetLog.getPacketLogCount(options);
   }
 
   clearPacketLogs(): number {
-    return this.miscRepo!.clearPacketLogsSync();
+    return this.packetLogRepo!.clearPacketLogsSync();
   }
 
   async clearPacketLogsAsync(): Promise<number> {
-    if (this.miscRepo) return this.miscRepo.clearPacketLogs();
+    if (this.packetLogRepo) return this.packetLogRepo.clearPacketLogs();
     return this.clearPacketLogs();
   }
 
   async getDistinctRelayNodesAsync(sourceId?: string): Promise<DbDistinctRelayNode[]> {
-    return this.misc.getDistinctRelayNodes(sourceId);
+    return this.packetLog.getDistinctRelayNodes(sourceId);
   }
 
   async updatePacketLogDecryptionAsync(
@@ -8443,7 +8451,7 @@ class DatabaseService {
     portnum: number,
     metadata: string
   ): Promise<void> {
-    return this.miscRepo!.updatePacketLogDecryption(id, decryptedBy, decryptedChannelId, portnum, metadata);
+    return this.packetLogRepo!.updatePacketLogDecryption(id, decryptedBy, decryptedChannelId, portnum, metadata);
   }
 
   cleanupOldPacketLogs(): number {
@@ -8452,26 +8460,26 @@ class DatabaseService {
     // especially during the long PG/MySQL upgrade migrations (#2836). Bail
     // out cleanly if the repository hasn't been wired up yet so the upgrade
     // path doesn't crash with `Cannot read properties of null`.
-    if (!this.miscRepo) return 0;
+    if (!this.packetLogRepo) return 0;
     const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
     const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
     const cutoffTimestamp = Date.now() - (maxAgeHours * 60 * 60 * 1000);
-    return this.miscRepo.cleanupOldPacketLogsSync(cutoffTimestamp);
+    return this.packetLogRepo.cleanupOldPacketLogsSync(cutoffTimestamp);
   }
 
   async cleanupOldPacketLogsAsync(): Promise<number> {
-    if (!this.miscRepo) return 0;
+    if (!this.packetLogRepo) return 0;
     const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
     const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
-    return this.miscRepo.cleanupOldPacketLogs(maxAgeHours);
+    return this.packetLogRepo.cleanupOldPacketLogs(maxAgeHours);
   }
 
   async getPacketCountsByNodeAsync(options?: { since?: number; limit?: number; portnum?: number; sourceId?: string }): Promise<DbPacketCountByNode[]> {
-    return this.misc.getPacketCountsByNode(options);
+    return this.packetLog.getPacketCountsByNode(options);
   }
 
   async getPacketCountsByPortnumAsync(options?: { since?: number; from_node?: number; sourceId?: string }): Promise<DbPacketCountByPortnum[]> {
-    return this.misc.getPacketCountsByPortnum(options);
+    return this.packetLog.getPacketCountsByPortnum(options);
   }
 
 
@@ -9196,14 +9204,14 @@ class DatabaseService {
   }
 
   /**
-   * Get user's map preferences - delegates to MiscRepository (Drizzle ORM)
+   * Get user's map preferences - delegates to MapPreferencesRepository (Drizzle ORM)
    */
   async getMapPreferencesAsync(userId: number): Promise<Record<string, any> | null> {
     return this.mapPreferences!.getMapPreferences(userId);
   }
 
   /**
-   * Save user's map preferences - delegates to MiscRepository (Drizzle ORM)
+   * Save user's map preferences - delegates to MapPreferencesRepository (Drizzle ORM)
    */
   async saveMapPreferencesAsync(userId: number, preferences: {
     mapTileset?: string;
