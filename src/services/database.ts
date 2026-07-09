@@ -44,6 +44,10 @@ import {
   AutomationsRepository,
   AutomationVariablesRepository,
   SavedRegionsRepository,
+  SolarEstimatesRepository,
+  UpgradeHistoryRepository,
+  NewsCacheRepository,
+  BackupHistoryRepository,
   ALL_SOURCES,
 } from '../db/repositories/index.js';
 import type { EstimatedPosition, EstimatedPositionInput, SourceScope } from '../db/repositories/index.js';
@@ -515,6 +519,10 @@ class DatabaseService {
   public automationsRepo: AutomationsRepository | null = null;
   public automationVariablesRepo: AutomationVariablesRepository | null = null;
   public savedRegionsRepo: SavedRegionsRepository | null = null;
+  public solarEstimatesRepo: SolarEstimatesRepository | null = null;
+  public upgradeHistoryRepo: UpgradeHistoryRepository | null = null;
+  public newsCacheRepo: NewsCacheRepository | null = null;
+  public backupHistoryRepo: BackupHistoryRepository | null = null;
 
   /**
    * Typed repository accessors — throw if database not initialized.
@@ -583,6 +591,26 @@ class DatabaseService {
   get savedRegions(): SavedRegionsRepository {
     if (!this.savedRegionsRepo) throw new Error('Database not initialized');
     return this.savedRegionsRepo;
+  }
+
+  get solarEstimates(): SolarEstimatesRepository {
+    if (!this.solarEstimatesRepo) throw new Error('Database not initialized');
+    return this.solarEstimatesRepo;
+  }
+
+  get upgradeHistory(): UpgradeHistoryRepository {
+    if (!this.upgradeHistoryRepo) throw new Error('Database not initialized');
+    return this.upgradeHistoryRepo;
+  }
+
+  get newsCache(): NewsCacheRepository {
+    if (!this.newsCacheRepo) throw new Error('Database not initialized');
+    return this.newsCacheRepo;
+  }
+
+  get backupHistory(): BackupHistoryRepository {
+    if (!this.backupHistoryRepo) throw new Error('Database not initialized');
+    return this.backupHistoryRepo;
   }
 
   get auth(): AuthRepository {
@@ -923,6 +951,10 @@ class DatabaseService {
       this.automationsRepo = new AutomationsRepository(drizzleDb, this.drizzleDbType);
       this.automationVariablesRepo = new AutomationVariablesRepository(drizzleDb, this.drizzleDbType);
       this.savedRegionsRepo = new SavedRegionsRepository(drizzleDb, this.drizzleDbType);
+      this.solarEstimatesRepo = new SolarEstimatesRepository(drizzleDb, this.drizzleDbType);
+      this.upgradeHistoryRepo = new UpgradeHistoryRepository(drizzleDb, this.drizzleDbType);
+      this.newsCacheRepo = new NewsCacheRepository(drizzleDb, this.drizzleDbType);
+      this.backupHistoryRepo = new BackupHistoryRepository(drizzleDb, this.drizzleDbType);
 
       logger.info('[DatabaseService] Drizzle repositories initialized successfully');
 
@@ -5155,7 +5187,7 @@ class DatabaseService {
 
   // Solar Estimates methods
   async upsertSolarEstimateAsync(timestamp: number, wattHours: number, fetchedAt: number): Promise<void> {
-    await this.misc.upsertSolarEstimate({
+    await this.solarEstimates.upsertSolarEstimate({
       timestamp,
       watt_hours: wattHours,
       fetched_at: fetchedAt,
@@ -5163,11 +5195,11 @@ class DatabaseService {
   }
 
   async getRecentSolarEstimatesAsync(limit: number = 100): Promise<Array<{ timestamp: number; watt_hours: number; fetched_at: number }>> {
-    return this.misc.getRecentSolarEstimates(limit);
+    return this.solarEstimates.getRecentSolarEstimates(limit);
   }
 
   async getSolarEstimatesInRangeAsync(startTimestamp: number, endTimestamp: number): Promise<Array<{ timestamp: number; watt_hours: number; fetched_at: number }>> {
-    return this.misc.getSolarEstimatesInRange(startTimestamp, endTimestamp);
+    return this.solarEstimates.getSolarEstimatesInRange(startTimestamp, endTimestamp);
   }
 
   isAutoTracerouteNodeFilterEnabled(): boolean {
@@ -8869,7 +8901,7 @@ class DatabaseService {
    */
   async saveNewsCacheAsync(feedData: string, sourceUrl: string): Promise<void> {
     const now = Math.floor(Date.now() / 1000);
-    return this.misc.saveNewsCache({
+    return this.newsCache.saveNewsCache({
       feedData,
       fetchedAt: now,
       sourceUrl,
@@ -8882,7 +8914,7 @@ class DatabaseService {
    * Get user's news status
    */
   async getUserNewsStatusAsync(userId: number): Promise<{ lastSeenNewsId: string | null; dismissedNewsIds: string[] } | null> {
-    const status = await this.misc.getUserNewsStatus(userId);
+    const status = await this.newsCache.getUserNewsStatus(userId);
     if (!status) {
       return null;
     }
@@ -8896,7 +8928,7 @@ class DatabaseService {
    * Save user's news status
    */
   async saveUserNewsStatusAsync(userId: number, lastSeenNewsId: string | null, dismissedNewsIds: string[]): Promise<void> {
-    return this.misc.saveUserNewsStatus({
+    return this.newsCache.saveUserNewsStatus({
       userId,
       lastSeenNewsId,
       dismissedNewsIds: JSON.stringify(dismissedNewsIds),
@@ -8918,7 +8950,7 @@ class DatabaseService {
     nodeId?: string | null;
     nodeNum?: number | null;
   }): Promise<void> {
-    return this.misc.insertBackupHistory({
+    return this.backupHistory.insertBackupHistory({
       ...backup,
       createdAt: Date.now(),
     });
@@ -8933,7 +8965,7 @@ class DatabaseService {
     oldestBackup: string | null;
     newestBackup: string | null;
   }> {
-    const stats = await this.misc.getBackupStats();
+    const stats = await this.backupHistory.getBackupStats();
     return {
       count: stats.count,
       totalSize: stats.totalSize,
