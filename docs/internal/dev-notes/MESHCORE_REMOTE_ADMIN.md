@@ -168,7 +168,14 @@ DB by design, because the server uses those PSKs to decrypt packets).
 
 ## The danger guard
 
-Pattern: `/(reboot|erase|clkreboot|factory)/i`.
+Pattern: `/\b(reboot|erase|clkreboot|factory)\b(?!\.)/i`.
+
+The `(?!\.)` after the word boundary exists because these firmwares expose
+config keys as dotted paths that legitimately contain the danger words as
+a namespace prefix — e.g. `get reboot.interval` or `set clkreboot.retries
+3` — which are read/write config operations, not the destructive verb
+itself. Without the exclusion, any command referencing such a key (even a
+plain `get`) trips the confirmation prompt. See #4025.
 
 **Two independent enforcement points**, intentionally duplicated:
 
@@ -185,8 +192,11 @@ still gets the prompt-as-requirement.
 
 **If you change the regex on one side, change it on the other.** The
 test `it.each([['reboot'],['Reboot'],['erase'],['clkreboot'],['factory reset'],['set factory mode']])`
-in `meshcoreRoutes.test.ts` catches a missed update on the server side;
-no equivalent test exists client-side, so be careful with the React file.
+in `meshcoreRoutes.test.ts` catches a missed update on the server side.
+`CliConsoleBody.test.tsx` mirrors the same cases (plus the dotted-path
+negatives from #4025) directly against the exported
+`DANGER_COMMAND_PATTERN` constant, so a drift between the two copies now
+fails on the client side too.
 
 ## Local vs remote dispatch
 

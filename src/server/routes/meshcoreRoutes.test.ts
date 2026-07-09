@@ -787,6 +787,22 @@ describe('MeshCore Routes', () => {
         .send({ publicKey: validKey, command: 'stats' });
       expect(response.status).toBe(200);
     });
+
+    it.each([
+      ['get reboot.interval'],
+      ['get erase.enabled'],
+      ['get clkreboot.retries'],
+      ['get factory.mode'],
+      ['set reboot.interval 30'],
+    ])('does not require confirm for dotted config-path command %s (#4025)', async (cmd) => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: cmd });
+      expect(response.status).toBe(200);
+      expect(meshcoreManager.sendCliCommand).toHaveBeenCalledWith(validKey, cmd, {
+        timeoutMs: undefined,
+      });
+    });
   });
 
   describe('GET /api/sources/test-source/meshcore/admin/credentials-capability', () => {
@@ -879,6 +895,7 @@ describe('MeshCore Routes', () => {
       ['erase'],
       ['clkreboot'],
       ['factory reset'],
+      ['set factory mode'],
     ])('rejects danger command %s without confirm', async (cmd) => {
       const response = await authenticatedAgent
         .post('/api/sources/test-source/meshcore/cli')
@@ -894,6 +911,22 @@ describe('MeshCore Routes', () => {
         .send({ command: 'reboot', confirm: true });
       expect(response.status).toBe(200);
       expect(meshcoreManager.sendLocalCliCommand).toHaveBeenCalledWith('reboot', {
+        timeoutMs: undefined,
+      });
+    });
+
+    it.each([
+      ['get reboot.interval'],
+      ['get erase.enabled'],
+      ['get clkreboot.retries'],
+      ['get factory.mode'],
+      ['set reboot.interval 30'],
+    ])('does not require confirm for dotted config-path command %s (#4025)', async (cmd) => {
+      const response = await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/cli')
+        .send({ command: cmd });
+      expect(response.status).toBe(200);
+      expect(meshcoreManager.sendLocalCliCommand).toHaveBeenCalledWith(cmd, {
         timeoutMs: undefined,
       });
     });
