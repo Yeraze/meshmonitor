@@ -373,8 +373,12 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
   // double-fire (annoying, not a crash) — re-verify on Leaflet bumps.
   useEffect(() => {
     for (const m of markerByKey.current.values()) {
-      const mm = m as LeafletMarker & { _openPopup?: (e: unknown) => void };
-      if (mm._openPopup) mm.off('click', mm._openPopup, mm);
+      const mm = m as LeafletMarker & { _openPopup?: (e: unknown) => void; _meshPopupStripped?: boolean };
+      if (mm._meshPopupStripped) continue;
+      if (mm._openPopup) {
+        mm.off('click', mm._openPopup, mm);
+        mm._meshPopupStripped = true;
+      }
     }
   });
 

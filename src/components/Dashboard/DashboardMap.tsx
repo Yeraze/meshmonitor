@@ -454,6 +454,11 @@ export default function DashboardMap({
   // nodeNum → [lat, lng] map used to resolve traceroute hop positions. The
   // unified view merges per-source node rows by nodeNum (see mergeUnifiedSourceData
   // in useDashboardData.ts), so a single lookup table works across sources.
+  // NOTE: `pos` here is the #4016 marker position, which for obscured low-precision
+  // nodes is the within-cell OFFSET, not the true cell center. So neighbor/
+  // traceroute polylines deliberately terminate at the (jittered) marker pin —
+  // keeping edges visually attached to the markers. Only the accuracy Rectangle
+  // re-derives the true center (getNodeLatLng) so the cell box stays put.
   const positionByNodeNum = useMemo(() => {
     const map = new Map<number, [number, number]>();
     for (const { node, pos } of nodesWithPosition) {

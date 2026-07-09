@@ -1379,13 +1379,21 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // Runs on EVERY render (no dep array) on purpose: react-leaflet mounts the
   // markers in a later commit than this component's first effect, so keying on a
   // rendered-node signature can strip before any marker exists and then never
-  // re-run. Re-running each commit catches markers whenever they mount.
-  // `_openPopup` is Leaflet-private (verified vs leaflet@1.9.4); a future rename
-  // degrades to the old double-fire (annoying, not a crash).
+  // re-run (a keyed effect only re-fires if the key changed — and the node set is
+  // often unchanged between the mount commit and the marker-mount commit). This
+  // was verified against the MeshCore map, where it left popups un-stripped.
+  // Cost is bounded: the per-marker `_meshPopupStripped` tag means the actual
+  // `off()` runs once per marker; steady-state renders just skip. `_openPopup` is
+  // Leaflet-private (verified vs leaflet@1.9.4); a future rename degrades to the
+  // old double-fire (annoying, not a crash).
   useEffect(() => {
     for (const m of markerRefs.current.values()) {
-      const mm = m as L.Marker & { _openPopup?: (e: unknown) => void };
-      if (mm._openPopup) mm.off('click', mm._openPopup, mm);
+      const mm = m as L.Marker & { _openPopup?: (e: unknown) => void; _meshPopupStripped?: boolean };
+      if (mm._meshPopupStripped) continue;
+      if (mm._openPopup) {
+        mm.off('click', mm._openPopup, mm);
+        mm._meshPopupStripped = true;
+      }
     }
   });
 
