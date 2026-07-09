@@ -3,6 +3,7 @@ import databaseService from '../../services/database.js';
 import { notificationService } from './notificationService.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { HourlyLogLimiter } from '../utils/hourlyLogLimiter.js';
+import { parseMonitoredUnion, countMonitoredNodes, formatSourceIdForLog, logZeroEligiblePrefRows } from '../utils/notificationCheckHelpers.js';
 
 interface InactiveNodeCheck {
   nodeId: string;
@@ -165,7 +166,7 @@ class InactiveNodeNotificationService {
 
       for (const [userId, userRows] of rowsByUser.entries()) {
         // Rule A: monitored-node union across all of this user's rows (dedup).
-        const monitoredUnion = this.parseMonitoredUnion(userId, userRows);
+        const monitoredUnion = parseMonitoredUnion(userId, userRows);
         if (monitoredUnion.length === 0) {
           this.hourlyLog.log(
             `empty-monitored:${userId}`,
@@ -241,53 +242,17 @@ class InactiveNodeNotificationService {
   }
 
   /**
-   * Parse and dedup-union the monitoredNodes JSON across all of a user's
-   * preference rows. A malformed row is logged and contributes nothing
-   * (rather than aborting the whole union), matching the per-row parse
-   * failure handling this replaces.
-   */
-  private parseMonitoredUnion(userId: number, rows: Array<{ sourceId: string; monitoredNodes: string | null }>): string[] {
-    const union = new Set<string>();
-    for (const row of rows) {
-      if (!row.monitoredNodes) continue;
-      try {
-        const parsed = JSON.parse(row.monitoredNodes);
-        if (Array.isArray(parsed)) {
-          for (const id of parsed) union.add(id);
-        }
-      } catch (error) {
-        logger.warn(`Failed to parse monitored_nodes for user ${userId} (source ${row.sourceId || "''"}):`, error);
-      }
-    }
-    return Array.from(union);
-  }
-
-  /**
    * Compact, count-only summary of a user's preference rows for diagnostics.
    * Never includes URL contents or node identifiers — only booleans/counts.
    */
   private formatRowsSummary(rows: InactiveNodePrefRow[]): string {
     return rows
       .map((r) => {
-        const src = r.sourceId === '' ? "''" : this.truncateSourceId(r.sourceId);
-        const monitoredCount = this.countMonitored(r.monitoredNodes);
+        const src = formatSourceIdForLog(r.sourceId);
+        const monitoredCount = countMonitoredNodes(r.monitoredNodes);
         return `[src=${src} inactive=${r.notifyOnInactiveNode ? '✓' : '✗'} webPush=${r.notifyOnMessage ? '✓' : '✗'} apprise=${r.appriseEnabled ? '✓' : '✗'} monitored=${monitoredCount} urls=${r.appriseUrlCount}]`;
       })
       .join(' ');
-  }
-
-  private countMonitored(monitoredNodes: string | null): number {
-    if (!monitoredNodes) return 0;
-    try {
-      const parsed = JSON.parse(monitoredNodes);
-      return Array.isArray(parsed) ? parsed.length : 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  private truncateSourceId(sourceId: string): string {
-    return sourceId.length > 8 ? `${sourceId.substring(0, 8)}…` : sourceId;
   }
 
   /**
@@ -296,18 +261,10 @@ class InactiveNodeNotificationService {
    * row but the channel/URLs are on another (the exact #4020 failure mode).
    */
   private async logZeroEligibleDiagnostic(): Promise<void> {
-    const userIds = await databaseService.notifications.getAllPreferenceUserIds();
-    for (const userId of userIds) {
-      const rows = await databaseService.notifications.getUserPreferenceRows(userId);
-      if (rows.length === 0) continue;
-      const dump = rows
-        .map(({ sourceId, prefs }) => {
-          const src = sourceId === '' ? "''" : this.truncateSourceId(sourceId);
-          return `[src=${src} inactive=${prefs.notifyOnInactiveNode ? '✓' : '✗'} webPush=${prefs.enableWebPush ? '✓' : '✗'} apprise=${prefs.enableApprise ? '✓' : '✗'} monitored=${prefs.monitoredNodes.length} urls=${prefs.appriseUrls.length}]`;
-        })
-        .join(' ');
-      this.hourlyLog.log(`no-users:${userId}`, 'info', `⚠️ [inactive-node] user=${userId} rows: ${dump}`);
-    }
+    await logZeroEligiblePrefRows(this.hourlyLog, '⚠️ [inactive-node]', (sourceId, prefs) => {
+      const src = formatSourceIdForLog(sourceId);
+      return `[src=${src} inactive=${prefs.notifyOnInactiveNode ? '✓' : '✗'} webPush=${prefs.enableWebPush ? '✓' : '✗'} apprise=${prefs.enableApprise ? '✓' : '✗'} monitored=${prefs.monitoredNodes.length} urls=${prefs.appriseUrls.length}]`;
+    });
   }
 
   /**
