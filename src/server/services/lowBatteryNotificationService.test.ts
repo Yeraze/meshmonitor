@@ -79,9 +79,13 @@ describe('LowBatteryNotificationService', () => {
     service.lastNotifiedNodes = new Map();
     service.currentCooldownHours = 24;
     service.loggedNoSubscribedUsers = false;
-    service.loggedEmptyMonitoredNodes = new Set();
-    service.loggedPermissionDenied = new Set();
-    service.loggedMeshCoreDiagnostic = new Set();
+    // These four are `readonly Set`s on the class — clear in place rather than
+    // reassigning the reference, since a reassignment only "works" here because
+    // the test accesses them through an `any`-typed handle that bypasses the
+    // readonly check the real type would enforce.
+    (service.loggedEmptyMonitoredNodes as Set<number>).clear();
+    (service.loggedPermissionDenied as Set<string>).clear();
+    (service.loggedMeshCoreDiagnostic as Set<string>).clear();
   });
 
   afterEach(() => {
