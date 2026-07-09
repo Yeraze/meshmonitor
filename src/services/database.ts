@@ -5828,21 +5828,7 @@ class DatabaseService {
     await this.autoTraceroute!.updateAutoTracerouteResultByNode(toNodeNum, success);
   }
 
-  // Auto key repair state methods
-  getKeyRepairState(nodeNum: number): {
-    nodeNum: number;
-    attemptCount: number;
-    lastAttemptTime: number | null;
-    exhausted: boolean;
-    startedAt: number;
-  } | null {
-    // For PostgreSQL/MySQL, use async version
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return null;
-    }
-
-    return this.keyRepairRepo!.getKeyRepairStateSqlite(nodeNum);
-  }
+  // Auto key repair state methods — thin delegations to KeyRepairRepository (Task 3.2)
 
   async getKeyRepairStateAsync(nodeNum: number): Promise<{
     nodeNum: number;
@@ -5851,64 +5837,7 @@ class DatabaseService {
     exhausted: boolean;
     startedAt: number;
   } | null> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const result = await client.query(
-          `SELECT "nodeNum", "attemptCount", "lastAttemptTime", exhausted, "startedAt"
-           FROM auto_key_repair_state WHERE "nodeNum" = $1`,
-          [nodeNum]
-        );
-        if (result.rows.length === 0) return null;
-        const row = result.rows[0];
-        return {
-          nodeNum: Number(row.nodeNum),
-          attemptCount: row.attemptCount,
-          lastAttemptTime: row.lastAttemptTime ? Number(row.lastAttemptTime) : null,
-          exhausted: row.exhausted === 1,
-          startedAt: Number(row.startedAt),
-        };
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [rows] = await pool.query(
-        `SELECT nodeNum, attemptCount, lastAttemptTime, exhausted, startedAt
-         FROM auto_key_repair_state WHERE nodeNum = ?`,
-        [nodeNum]
-      );
-      const resultRows = rows as any[];
-      if (resultRows.length === 0) return null;
-      const row = resultRows[0];
-      return {
-        nodeNum: Number(row.nodeNum),
-        attemptCount: row.attemptCount,
-        lastAttemptTime: row.lastAttemptTime ? Number(row.lastAttemptTime) : null,
-        exhausted: row.exhausted === 1,
-        startedAt: Number(row.startedAt),
-      };
-    }
-    // SQLite fallback
-    return this.getKeyRepairState(nodeNum);
-  }
-
-  setKeyRepairState(nodeNum: number, state: {
-    attemptCount?: number;
-    lastAttemptTime?: number;
-    exhausted?: boolean;
-    startedAt?: number;
-  }): void {
-    // For PostgreSQL/MySQL, use async version
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      this.setKeyRepairStateAsync(nodeNum, state).catch(err =>
-        logger.error('Error setting key repair state:', err)
-      );
-      return;
-    }
-
-    const existing = this.getKeyRepairState(nodeNum);
-    this.keyRepairRepo!.setKeyRepairStateSqlite(nodeNum, state, existing);
+    return this.keyRepairRepo!.getKeyRepairStateAsync(nodeNum);
   }
 
   async setKeyRepairStateAsync(nodeNum: number, state: {
@@ -5917,102 +5846,11 @@ class DatabaseService {
     exhausted?: boolean;
     startedAt?: number;
   }): Promise<void> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const existing = await this.getKeyRepairStateAsync(nodeNum);
-        const now = Date.now();
-        if (existing) {
-          await client.query(
-            `UPDATE auto_key_repair_state
-             SET "attemptCount" = $1, "lastAttemptTime" = $2, exhausted = $3
-             WHERE "nodeNum" = $4`,
-            [
-              state.attemptCount ?? existing.attemptCount,
-              state.lastAttemptTime ?? existing.lastAttemptTime,
-              (state.exhausted ?? existing.exhausted) ? 1 : 0,
-              nodeNum
-            ]
-          );
-        } else {
-          await client.query(
-            `INSERT INTO auto_key_repair_state ("nodeNum", "attemptCount", "lastAttemptTime", exhausted, "startedAt")
-             VALUES ($1, $2, $3, $4, $5)`,
-            [
-              nodeNum,
-              state.attemptCount ?? 0,
-              state.lastAttemptTime ?? null,
-              (state.exhausted ?? false) ? 1 : 0,
-              state.startedAt ?? now
-            ]
-          );
-        }
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const existing = await this.getKeyRepairStateAsync(nodeNum);
-      const now = Date.now();
-      if (existing) {
-        await pool.query(
-          `UPDATE auto_key_repair_state
-           SET attemptCount = ?, lastAttemptTime = ?, exhausted = ?
-           WHERE nodeNum = ?`,
-          [
-            state.attemptCount ?? existing.attemptCount,
-            state.lastAttemptTime ?? existing.lastAttemptTime,
-            (state.exhausted ?? existing.exhausted) ? 1 : 0,
-            nodeNum
-          ]
-        );
-      } else {
-        await pool.query(
-          `INSERT INTO auto_key_repair_state (nodeNum, attemptCount, lastAttemptTime, exhausted, startedAt)
-           VALUES (?, ?, ?, ?, ?)`,
-          [
-            nodeNum,
-            state.attemptCount ?? 0,
-            state.lastAttemptTime ?? null,
-            (state.exhausted ?? false) ? 1 : 0,
-            state.startedAt ?? now
-          ]
-        );
-      }
-    } else {
-      // SQLite fallback
-      this.setKeyRepairState(nodeNum, state);
-    }
+    return this.keyRepairRepo!.setKeyRepairStateAsync(nodeNum, state);
   }
 
-  clearKeyRepairState(nodeNum: number): void {
-    // For PostgreSQL/MySQL, delegate to async version
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      this.clearKeyRepairStateAsync(nodeNum).catch(err =>
-        logger.error('Error clearing key repair state:', err)
-      );
-      return;
-    }
-
-    this.keyRepairRepo!.clearKeyRepairStateSqlite(nodeNum);
-  }
-
-  getNodesNeedingKeyRepair(): {
-    nodeNum: number;
-    nodeId: string;
-    longName: string | null;
-    shortName: string | null;
-    attemptCount: number;
-    lastAttemptTime: number | null;
-    startedAt: number | null;
-  }[] {
-    // For PostgreSQL/MySQL, use async version
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return [];
-    }
-
-    // Get nodes with keyMismatchDetected=true that are not exhausted
-    return this.keyRepairRepo!.getNodesNeedingKeyRepairSqlite();
+  async clearKeyRepairStateAsync(nodeNum: number): Promise<void> {
+    return this.keyRepairRepo!.clearKeyRepairStateAsync(nodeNum);
   }
 
   async getNodesNeedingKeyRepairAsync(): Promise<{
@@ -6024,101 +5862,10 @@ class DatabaseService {
     lastAttemptTime: number | null;
     startedAt: number | null;
   }[]> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const result = await client.query(
-          `SELECT
-            n."nodeNum",
-            n."nodeId",
-            n."longName",
-            n."shortName",
-            COALESCE(s."attemptCount", 0) as "attemptCount",
-            s."lastAttemptTime",
-            s."startedAt"
-          FROM nodes n
-          LEFT JOIN auto_key_repair_state s ON n."nodeNum" = s."nodeNum"
-          WHERE n."keyMismatchDetected" = true
-            AND (s.exhausted IS NULL OR s.exhausted = 0)`
-        );
-        return result.rows.map((row: any) => ({
-          nodeNum: Number(row.nodeNum),
-          nodeId: row.nodeId,
-          longName: row.longName ?? null,
-          shortName: row.shortName ?? null,
-          attemptCount: Number(row.attemptCount),
-          lastAttemptTime: row.lastAttemptTime ? Number(row.lastAttemptTime) : null,
-          startedAt: row.startedAt ? Number(row.startedAt) : null,
-        }));
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [rows] = await pool.query(
-        `SELECT
-          n.nodeNum,
-          n.nodeId,
-          n.longName,
-          n.shortName,
-          COALESCE(s.attemptCount, 0) as attemptCount,
-          s.lastAttemptTime,
-          s.startedAt
-        FROM nodes n
-        LEFT JOIN auto_key_repair_state s ON n.nodeNum = s.nodeNum
-        WHERE n.keyMismatchDetected = 1
-          AND (s.exhausted IS NULL OR s.exhausted = 0)`
-      );
-      return (rows as any[]).map((row: any) => ({
-        nodeNum: Number(row.nodeNum),
-        nodeId: row.nodeId,
-        longName: row.longName ?? null,
-        shortName: row.shortName ?? null,
-        attemptCount: Number(row.attemptCount),
-        lastAttemptTime: row.lastAttemptTime ? Number(row.lastAttemptTime) : null,
-        startedAt: row.startedAt ? Number(row.startedAt) : null,
-      }));
-    }
-    // SQLite fallback
-    return this.getNodesNeedingKeyRepair();
+    return this.keyRepairRepo!.getNodesNeedingKeyRepairAsync();
   }
 
-  // Auto key repair log methods
-  logKeyRepairAttempt(nodeNum: number, nodeName: string | null, action: string, success: boolean | null = null): number {
-    // For PostgreSQL/MySQL, delegate to async version
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      this.logKeyRepairAttemptAsync(nodeNum, nodeName, action, success).catch(err =>
-        logger.error('Error logging key repair attempt:', err)
-      );
-      return 0;
-    }
-
-    return this.keyRepairRepo!.logKeyRepairAttemptSqlite(nodeNum, nodeName, action, success, null, null, null);
-  }
-
-  getKeyRepairLog(limit: number = 50): {
-    id: number;
-    timestamp: number;
-    nodeNum: number;
-    nodeName: string | null;
-    action: string;
-    success: boolean | null;
-  }[] {
-    // For PostgreSQL/MySQL, key repair logging is not yet implemented
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return [];
-    }
-
-    const rows = this.keyRepairRepo!.getKeyRepairLogSqlite(limit, undefined, false, false);
-    return rows.map(r => ({
-      id: r.id,
-      timestamp: r.timestamp,
-      nodeNum: r.nodeNum,
-      nodeName: r.nodeName,
-      action: r.action,
-      success: r.success,
-    }));
-  }
+  // Auto key repair log methods — thin delegations to KeyRepairRepository (Task 3.2)
 
   async logKeyRepairAttemptAsync(
     nodeNum: number,
@@ -6129,39 +5876,7 @@ class DatabaseService {
     newKeyFragment: string | null = null,
     sourceId: string | null = null
   ): Promise<number> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const result = await client.query(
-          `INSERT INTO auto_key_repair_log (timestamp, "nodeNum", "nodeName", action, success, created_at, "oldKeyFragment", "newKeyFragment", "sourceId")
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-          [Date.now(), nodeNum, nodeName, action, success === null ? null : (success ? 1 : 0), Date.now(), oldKeyFragment, newKeyFragment, sourceId]
-        );
-        await client.query(
-          `DELETE FROM auto_key_repair_log WHERE id NOT IN (
-            SELECT id FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT 100
-          )`
-        );
-        return result.rows[0]?.id || 0;
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const [result] = await pool.query(
-        `INSERT INTO auto_key_repair_log (timestamp, nodeNum, nodeName, action, success, created_at, oldKeyFragment, newKeyFragment, sourceId)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [Date.now(), nodeNum, nodeName, action, success === null ? null : (success ? 1 : 0), Date.now(), oldKeyFragment, newKeyFragment, sourceId]
-      );
-      await pool.query(
-        `DELETE FROM auto_key_repair_log WHERE id NOT IN (
-          SELECT id FROM (SELECT id FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT 100) as t
-        )`
-      );
-      return (result as any).insertId || 0;
-    }
-    // SQLite fallback - delegate to repo (uses raw better-sqlite3 for extended columns)
-    return this.keyRepairRepo!.logKeyRepairAttemptSqlite(nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment, sourceId);
+    return this.keyRepairRepo!.logKeyRepairAttemptAsync(nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment, sourceId);
   }
 
   async getKeyRepairLogAsync(limit: number = 50, sourceId?: string): Promise<{
@@ -6174,115 +5889,10 @@ class DatabaseService {
     oldKeyFragment: string | null;
     newKeyFragment: string | null;
   }[]> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        // Check if table exists (may not exist if auto-key management was never enabled)
-        const tableCheck = await client.query(
-          "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'auto_key_repair_log'"
-        );
-        if (tableCheck.rows.length === 0) {
-          return [];
-        }
-
-        // Check if migration 084 columns exist
-        const colCheck = await client.query(
-          "SELECT column_name FROM information_schema.columns WHERE table_name = 'auto_key_repair_log' AND column_name = 'oldKeyFragment'"
-        );
-        const selectCols = colCheck.rows.length > 0
-          ? 'id, timestamp, "nodeNum", "nodeName", action, success, "oldKeyFragment", "newKeyFragment"'
-          : 'id, timestamp, "nodeNum", "nodeName", action, success';
-
-        // Check if sourceId column exists (migration 027)
-        const sourceColCheck = await client.query(
-          "SELECT column_name FROM information_schema.columns WHERE table_name = 'auto_key_repair_log' AND column_name = 'sourceId'"
-        );
-        const hasSourceId = sourceColCheck.rows.length > 0;
-        const whereClause = sourceId && hasSourceId ? `WHERE "sourceId" = $2` : '';
-        const params: any[] = sourceId && hasSourceId ? [limit, sourceId] : [limit];
-
-        const result = await client.query(
-          `SELECT ${selectCols} FROM auto_key_repair_log ${whereClause} ORDER BY timestamp DESC LIMIT $1`,
-          params
-        );
-        return result.rows.map((row: any) => ({
-          id: row.id,
-          timestamp: Number(row.timestamp),
-          nodeNum: Number(row.nodeNum),
-          nodeName: row.nodeName,
-          action: row.action,
-          success: row.success === null ? null : Boolean(row.success),
-          oldKeyFragment: row.oldKeyFragment || null,
-          newKeyFragment: row.newKeyFragment || null,
-        }));
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-
-      // Check if table exists (may not exist if auto-key management was never enabled)
-      const [tableRows] = await pool.query(
-        "SELECT TABLE_NAME FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'auto_key_repair_log'"
-      );
-      if ((tableRows as any[]).length === 0) {
-        return [];
-      }
-
-      // Check if migration 084 columns exist
-      const [colRows] = await pool.query(
-        "SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'auto_key_repair_log' AND column_name = 'oldKeyFragment'"
-      );
-      const selectCols = (colRows as any[]).length > 0
-        ? 'id, timestamp, nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment'
-        : 'id, timestamp, nodeNum, nodeName, action, success';
-
-      // Check if sourceId column exists (migration 027)
-      const [sourceColRows] = await pool.query(
-        "SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'auto_key_repair_log' AND column_name = 'sourceId'"
-      );
-      const hasSourceIdMy = (sourceColRows as any[]).length > 0;
-      const whereClauseMy = sourceId && hasSourceIdMy ? 'WHERE sourceId = ?' : '';
-      const paramsMy: any[] = sourceId && hasSourceIdMy ? [sourceId, limit] : [limit];
-
-      const [rows] = await pool.query(
-        `SELECT ${selectCols} FROM auto_key_repair_log ${whereClauseMy} ORDER BY timestamp DESC LIMIT ?`,
-        paramsMy
-      );
-      return (rows as any[]).map((row: any) => ({
-        id: row.id,
-        timestamp: Number(row.timestamp),
-        nodeNum: Number(row.nodeNum),
-        nodeName: row.nodeName,
-        action: row.action,
-        success: row.success === null ? null : Boolean(row.success),
-        oldKeyFragment: row.oldKeyFragment || null,
-        newKeyFragment: row.newKeyFragment || null,
-      }));
-    }
-    // SQLite — delegate to repository (introspection + fetch)
-    const { tableExists, hasOldKeyCol, hasSourceId } = this.keyRepairRepo!.getKeyRepairLogIntrospectionSqlite();
-    if (!tableExists) return [];
-    return this.keyRepairRepo!.getKeyRepairLogSqlite(limit, sourceId, hasOldKeyCol, hasSourceId);
+    return this.keyRepairRepo!.getKeyRepairLogAsync(limit, sourceId);
   }
 
   // Distance delete log methods moved to DistanceDeleteLogRepository (databaseService.distanceDeleteLog.getDistanceDeleteLog / addDistanceDeleteLogEntry)
-
-  async clearKeyRepairStateAsync(nodeNum: number): Promise<void> {
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        await client.query('DELETE FROM auto_key_repair_state WHERE "nodeNum" = $1', [nodeNum]);
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      await pool.query('DELETE FROM auto_key_repair_state WHERE nodeNum = ?', [nodeNum]);
-    } else {
-      this.clearKeyRepairState(nodeNum);
-    }
-  }
 
   getTelemetryByType(telemetryType: string, limit: number = 100): DbTelemetry[] {
     // For PostgreSQL/MySQL, telemetry is async - return empty for sync calls

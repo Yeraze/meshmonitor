@@ -290,6 +290,8 @@ export const autoKeyRepairLogSqlite = sqliteTable('auto_key_repair_log', {
   action: text('action').notNull(),
   success: integer('success'),
   createdAt: integer('created_at'),
+  oldKeyFragment: text('oldKeyFragment'),
+  newKeyFragment: text('newKeyFragment'),
   sourceId: text('sourceId'),
 });
 
@@ -301,6 +303,8 @@ export const autoKeyRepairLogPostgres = pgTable('auto_key_repair_log', {
   action: pgText('action').notNull(),
   success: pgInteger('success'),
   createdAt: pgBigint('created_at', { mode: 'number' }),
+  oldKeyFragment: pgText('oldKeyFragment'),
+  newKeyFragment: pgText('newKeyFragment'),
   sourceId: pgText('sourceId'),
 });
 
@@ -476,6 +480,8 @@ export const autoKeyRepairLogMysql = mysqlTable('auto_key_repair_log', {
   action: myText('action').notNull(),
   success: myInt('success'),
   createdAt: myBigint('created_at', { mode: 'number' }),
+  oldKeyFragment: myText('oldKeyFragment'),
+  newKeyFragment: myText('newKeyFragment'),
   sourceId: myVarchar('sourceId', { length: 64 }),
 });
 
