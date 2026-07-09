@@ -28,7 +28,13 @@ export type {
   PushSubscriptionInput,
 } from './notifications.js';
 export { MiscRepository } from './misc.js';
-export type { AutoTracerouteNode, PacketLogFilterOptions } from './misc.js';
+export type { PacketLogFilterOptions } from './misc.js';
+export { AutoTracerouteRepository } from './autoTraceroute.js';
+export type { AutoTracerouteNode } from './autoTraceroute.js';
+export { TimeSyncRepository } from './timeSync.js';
+export { DistanceDeleteLogRepository } from './distanceDeleteLog.js';
+export { MapPreferencesRepository } from './mapPreferences.js';
+export { ThemesRepository } from './themes.js';
 export { SolarEstimatesRepository } from './solarEstimates.js';
 export type { SolarEstimate } from './solarEstimates.js';
 export { UpgradeHistoryRepository } from './upgradeHistory.js';
