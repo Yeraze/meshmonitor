@@ -14,9 +14,11 @@
  *   sourceManagerRegistry.getAllManagers().filter(isMeshCoreManager)     // MeshCoreManager[]
  *   sourceManagerRegistry.getAllManagers().filter(isMeshtasticManager)   // MeshtasticManager[]
  *
- * WP2 will enhance getPrimaryMeshtasticManager to also consult
- * registry.getPrimaryMeshtasticSourceId() (the explicitly designated primary).
- * In WP1 it falls back to the first registered meshtastic_tcp manager.
+ * getPrimaryMeshtasticManager consults registry.getPrimaryMeshtasticSourceId()
+ * (the explicitly designated primary set by bootstrapSources at startup) and
+ * falls back to the first registered meshtastic_tcp manager in insertion order
+ * when no explicit designation exists (e.g. tests with fresh registries, or
+ * the interim window after a primary is cleared by removeManager).
  */
 
 import type { ISourceManager, SourceManagerRegistry } from './sourceManagerRegistry.js';

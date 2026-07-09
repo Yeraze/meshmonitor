@@ -370,10 +370,12 @@ setTimeout(async () => {
       env: { meshtasticNodeIp: env.meshtasticNodeIp, meshtasticTcpPort: env.meshtasticTcpPort },
       registry: sourceManagerRegistry,
       makeMeshtastic: (id, cfg) => new MeshtasticManager(id, cfg),
-      // WP2: pass the concrete fallback instance (not the Proxy alias) so
-      // configureSource() + registry.addManager() operate on a real manager.
-      // The Proxy alias (meshtasticManager) is kept for (global as any) and
-      // backupSchedulerService so those consumers track the live primary.
+      // WP3: pass the concrete fallback instance (not the Proxy alias).
+      // fallbackManager.connect() is called only when no tcp source auto-connects
+      // (S4: all-MeshCore / all-disabled-tcp / autoConnect:false installs).
+      // The Proxy alias (meshtasticManager default export) is kept for
+      // (global as any) and backupSchedulerService so those consumers track
+      // the live primary without per-file edits (WP4 will migrate them).
       fallbackManager: fallbackManager,
     });
 
