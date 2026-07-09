@@ -158,7 +158,7 @@ class NewsService {
    */
   async getCachedNews(): Promise<NewsFeed | null> {
     try {
-      const cache = await databaseService.misc.getNewsCache();
+      const cache = await databaseService.newsCache.getNewsCache();
       if (!cache) {
         return null;
       }

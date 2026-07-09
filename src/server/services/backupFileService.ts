@@ -92,7 +92,7 @@ class BackupFileService {
    */
   async listBackups(): Promise<BackupFile[]> {
     try {
-      const rows = await databaseService.misc.getBackupHistoryList();
+      const rows = await databaseService.backupHistory.getBackupHistoryList();
       return rows.map(row => ({
         filename: row.filename,
         timestamp: new Date(row.timestamp).toISOString(),
@@ -111,7 +111,7 @@ class BackupFileService {
    */
   async getBackup(filename: string): Promise<string> {
     try {
-      const row = await databaseService.misc.getBackupByFilename(filename);
+      const row = await databaseService.backupHistory.getBackupByFilename(filename);
       if (!row) {
         throw new Error('Backup not found');
       }
@@ -133,7 +133,7 @@ class BackupFileService {
    */
   async deleteBackup(filename: string): Promise<void> {
     try {
-      const row = await databaseService.misc.getBackupByFilename(filename);
+      const row = await databaseService.backupHistory.getBackupByFilename(filename);
       if (!row) {
         throw new Error('Backup not found');
       }
@@ -145,7 +145,7 @@ class BackupFileService {
       }
 
       // Delete from database
-      await databaseService.misc.deleteBackupHistory(filename);
+      await databaseService.backupHistory.deleteBackupHistory(filename);
 
       logger.info(`🗑️  Deleted backup: ${filename}`);
     } catch (error) {
@@ -169,7 +169,7 @@ class BackupFileService {
         return;
       }
 
-      const totalBackups = await databaseService.misc.countBackups();
+      const totalBackups = await databaseService.backupHistory.countBackups();
 
       if (totalBackups <= limit) {
         return; // Under the limit
@@ -177,7 +177,7 @@ class BackupFileService {
 
       // Get oldest backups to delete
       const toDelete = totalBackups - limit;
-      const oldBackups = await databaseService.misc.getOldestBackups(toDelete);
+      const oldBackups = await databaseService.backupHistory.getOldestBackups(toDelete);
 
       logger.debug(`🧹 Purging ${oldBackups.length} old backups (max: ${limit})...`);
 
@@ -188,7 +188,7 @@ class BackupFileService {
         }
 
         // Delete from database
-        await databaseService.misc.deleteBackupHistory(backup.filename);
+        await databaseService.backupHistory.deleteBackupHistory(backup.filename);
 
         logger.debug(`  🗑️  Purged: ${backup.filename}`);
       }

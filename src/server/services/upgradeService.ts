@@ -201,14 +201,14 @@ class UpgradeService {
       const upgradeId = uuidv4();
       const now = Date.now();
 
-      if (!databaseService.miscRepo) {
+      if (!databaseService.upgradeHistoryRepo) {
         return {
           success: false,
           message: 'Database repository not initialized'
         };
       }
 
-      await databaseService.miscRepo.createUpgradeHistory({
+      await databaseService.upgradeHistoryRepo.createUpgradeHistory({
         id: upgradeId,
         fromVersion: currentVersion,
         toVersion: targetVersion,
@@ -267,12 +267,12 @@ class UpgradeService {
    */
   async getUpgradeStatus(upgradeId: string): Promise<UpgradeStatus | null> {
     try {
-      if (!databaseService.miscRepo) {
+      if (!databaseService.upgradeHistoryRepo) {
         logger.error('❌ Database repository not initialized');
         return null;
       }
 
-      let row = await databaseService.miscRepo.getUpgradeById(upgradeId);
+      let row = await databaseService.upgradeHistoryRepo.getUpgradeById(upgradeId);
 
       if (!row) {
         return null;
@@ -287,12 +287,12 @@ class UpgradeService {
             if (fileStatus === 'complete' || fileStatus === 'ready') {
               logger.info(`🔄 Syncing upgrade ${upgradeId} status from file: ${row.status} -> complete`);
               await this.markCompleteAndClear(row.id);
-              const updated = await databaseService.miscRepo.getUpgradeById(upgradeId);
+              const updated = await databaseService.upgradeHistoryRepo.getUpgradeById(upgradeId);
               if (updated) row = updated;
             } else if (fileStatus === 'failed') {
               logger.info(`🔄 Syncing upgrade ${upgradeId} status from file: ${row.status} -> failed`);
               await this.markFailedAndEvaluate(row.id, 'Upgrade failed (detected from watchdog status)');
-              const updated = await databaseService.miscRepo.getUpgradeById(upgradeId);
+              const updated = await databaseService.upgradeHistoryRepo.getUpgradeById(upgradeId);
               if (updated) row = updated;
             }
           }
@@ -352,12 +352,12 @@ class UpgradeService {
    */
   async getUpgradeHistory(limit: number = 10): Promise<UpgradeStatus[]> {
     try {
-      if (!databaseService.miscRepo) {
+      if (!databaseService.upgradeHistoryRepo) {
         logger.error('❌ Database repository not initialized');
         return [];
       }
 
-      const rows = await databaseService.miscRepo.getUpgradeHistoryList(limit);
+      const rows = await databaseService.upgradeHistoryRepo.getUpgradeHistoryList(limit);
 
       return rows.map(row => {
         // Safely parse logs JSON
@@ -398,7 +398,7 @@ class UpgradeService {
    */
   async isUpgradeInProgress(): Promise<boolean> {
     try {
-      if (!databaseService.miscRepo) {
+      if (!databaseService.upgradeHistoryRepo) {
         logger.error('❌ Database repository not initialized');
         return false;
       }
@@ -407,7 +407,7 @@ class UpgradeService {
       const STALE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
       const staleThreshold = Date.now() - STALE_TIMEOUT_MS;
 
-      const staleUpgrades = await databaseService.miscRepo.findStaleUpgrades(staleThreshold);
+      const staleUpgrades = await databaseService.upgradeHistoryRepo.findStaleUpgrades(staleThreshold);
 
       if (staleUpgrades.length > 0) {
         logger.warn(`⚠️ Found ${staleUpgrades.length} stale upgrade(s), reconciling...`);
@@ -455,7 +455,7 @@ class UpgradeService {
       }
 
       // Now check if any non-stale upgrades are in progress
-      const count = await databaseService.miscRepo.countInProgressUpgrades(staleThreshold);
+      const count = await databaseService.upgradeHistoryRepo.countInProgressUpgrades(staleThreshold);
 
       return count > 0;
     } catch (error) {
@@ -479,7 +479,7 @@ class UpgradeService {
     startedAt: number;
   } | null> {
     try {
-      if (!databaseService.miscRepo) {
+      if (!databaseService.upgradeHistoryRepo) {
         logger.error('❌ Database repository not initialized');
         return null;
       }
@@ -487,7 +487,7 @@ class UpgradeService {
       const STALE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
       const staleThreshold = Date.now() - STALE_TIMEOUT_MS;
 
-      const row = await databaseService.miscRepo.findActiveUpgrade(staleThreshold);
+      const row = await databaseService.upgradeHistoryRepo.findActiveUpgrade(staleThreshold);
 
       if (!row) {
         return null;
@@ -575,8 +575,8 @@ class UpgradeService {
       }
 
       // Check if previous upgrade failed
-      if (databaseService.miscRepo) {
-        const lastUpgrade = await databaseService.miscRepo.getLastUpgrade();
+      if (databaseService.upgradeHistoryRepo) {
+        const lastUpgrade = await databaseService.upgradeHistoryRepo.getLastUpgrade();
 
         if (lastUpgrade && lastUpgrade.status === 'failed') {
           logger.warn('⚠️ Previous upgrade failed, but allowing new upgrade attempt');
@@ -622,9 +622,9 @@ class UpgradeService {
     threshold: number;
   }> {
     let consecutiveFailures = 0;
-    if (databaseService.miscRepo) {
+    if (databaseService.upgradeHistoryRepo) {
       try {
-        consecutiveFailures = await databaseService.miscRepo.countConsecutiveFailedUpgrades();
+        consecutiveFailures = await databaseService.upgradeHistoryRepo.countConsecutiveFailedUpgrades();
       } catch (error) {
         logger.warn('Failed to count consecutive upgrade failures:', error);
       }
@@ -644,9 +644,9 @@ class UpgradeService {
     // successful auto-upgrade where the explicit clear path
     // (markCompleteAndClear) was missed (e.g. container restarted before the
     // watchdog status sync had a chance to run).
-    if (blocked && databaseService.miscRepo) {
+    if (blocked && databaseService.upgradeHistoryRepo) {
       try {
-        const lastUpgrade = await databaseService.miscRepo.getLastUpgrade();
+        const lastUpgrade = await databaseService.upgradeHistoryRepo.getLastUpgrade();
         if (lastUpgrade?.status === 'complete') {
           await this.clearAutoUpgradeBlock(
             'Auto-cleared: most recent upgrade completed successfully'
@@ -667,11 +667,11 @@ class UpgradeService {
    * Trips the breaker when consecutive failures reach the threshold.
    */
   private async markFailedAndEvaluate(id: string, errorMessage: string): Promise<void> {
-    if (!databaseService.miscRepo) return;
-    await databaseService.miscRepo.markUpgradeFailed(id, errorMessage);
+    if (!databaseService.upgradeHistoryRepo) return;
+    await databaseService.upgradeHistoryRepo.markUpgradeFailed(id, errorMessage);
 
     try {
-      const consecutiveFailures = await databaseService.miscRepo.countConsecutiveFailedUpgrades();
+      const consecutiveFailures = await databaseService.upgradeHistoryRepo.countConsecutiveFailedUpgrades();
       if (consecutiveFailures >= AUTO_UPGRADE_FAILURE_THRESHOLD) {
         const reason = `${consecutiveFailures} consecutive upgrade attempts failed. Last error: ${errorMessage}`;
         await databaseService.settings.setSetting('autoUpgradeBlocked', 'true');
@@ -685,11 +685,11 @@ class UpgradeService {
 
   /**
    * Mark an upgrade complete and clear any tripped circuit breaker.
-   * Called instead of miscRepo.markUpgradeComplete from internal sync paths.
+   * Called instead of upgradeHistoryRepo.markUpgradeComplete from internal sync paths.
    */
   private async markCompleteAndClear(id: string): Promise<void> {
-    if (!databaseService.miscRepo) return;
-    await databaseService.miscRepo.markUpgradeComplete(id);
+    if (!databaseService.upgradeHistoryRepo) return;
+    await databaseService.upgradeHistoryRepo.markUpgradeComplete(id);
     await this.clearAutoUpgradeBlock('Cleared by successful upgrade');
   }
 
@@ -712,7 +712,7 @@ class UpgradeService {
    * consumed (deleted), this method is a no-op.
    */
   async syncPendingUpgradeStatusOnBoot(): Promise<void> {
-    if (!databaseService.miscRepo) return;
+    if (!databaseService.upgradeHistoryRepo) return;
 
     try {
       if (!fs.existsSync(UPGRADE_STATUS_FILE)) {
@@ -730,7 +730,7 @@ class UpgradeService {
       }
 
       // Find the most recent pending/in-progress row, regardless of age.
-      const pendingRow = await databaseService.miscRepo.findMostRecentPendingUpgrade();
+      const pendingRow = await databaseService.upgradeHistoryRepo.findMostRecentPendingUpgrade();
       if (!pendingRow) {
         // No pending row. The status file is a leftover from a previously-synced
         // upgrade (e.g. the prior boot already reconciled it). Clean it up so
@@ -792,14 +792,14 @@ class UpgradeService {
       }
 
       // Update database status
-      if (!databaseService.miscRepo) {
+      if (!databaseService.upgradeHistoryRepo) {
         return {
           success: false,
           message: 'Database repository not initialized'
         };
       }
 
-      await databaseService.miscRepo.markUpgradeFailed(upgradeId, 'Cancelled by user');
+      await databaseService.upgradeHistoryRepo.markUpgradeFailed(upgradeId, 'Cancelled by user');
 
       logger.info(`⚠️ Upgrade cancelled: ${upgradeId}`);
 

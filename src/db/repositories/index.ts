@@ -28,7 +28,15 @@ export type {
   PushSubscriptionInput,
 } from './notifications.js';
 export { MiscRepository } from './misc.js';
-export type { SolarEstimate, AutoTracerouteNode, UpgradeHistoryRecord, NewUpgradeHistory, NewsCache, UserNewsStatus, BackupHistory, PacketLogFilterOptions } from './misc.js';
+export type { AutoTracerouteNode, PacketLogFilterOptions } from './misc.js';
+export { SolarEstimatesRepository } from './solarEstimates.js';
+export type { SolarEstimate } from './solarEstimates.js';
+export { UpgradeHistoryRepository } from './upgradeHistory.js';
+export type { UpgradeHistoryRecord, NewUpgradeHistory } from './upgradeHistory.js';
+export { NewsCacheRepository } from './newsCache.js';
+export type { NewsCache, UserNewsStatus } from './newsCache.js';
+export { BackupHistoryRepository } from './backupHistory.js';
+export type { BackupHistory } from './backupHistory.js';
 export { ChannelDatabaseRepository, type ChannelDatabaseInput, type ChannelDatabaseUpdate, type ChannelDatabasePermissionInput } from './channelDatabase.js';
 export { IgnoredNodesRepository, type IgnoredNodeRecord } from './ignoredNodes.js';
 export { MeshCoreRepository } from './meshcore.js';
