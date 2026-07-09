@@ -192,8 +192,11 @@ still gets the prompt-as-requirement.
 
 **If you change the regex on one side, change it on the other.** The
 test `it.each([['reboot'],['Reboot'],['erase'],['clkreboot'],['factory reset'],['set factory mode']])`
-in `meshcoreRoutes.test.ts` catches a missed update on the server side;
-no equivalent test exists client-side, so be careful with the React file.
+in `meshcoreRoutes.test.ts` catches a missed update on the server side.
+`CliConsoleBody.test.tsx` mirrors the same cases (plus the dotted-path
+negatives from #4025) directly against the exported
+`DANGER_COMMAND_PATTERN` constant, so a drift between the two copies now
+fails on the client side too.
 
 ## Local vs remote dispatch
 
