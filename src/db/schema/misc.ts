@@ -222,6 +222,25 @@ export const autoTracerouteNodesPostgres = pgTable('auto_traceroute_nodes', {
   sourceId: pgText('sourceId'),
 });
 
+// ============ MESHCORE PATHFINDING TARGETS (#4024) ============
+// OR-union "specific contact" allowlist for MeshCore Auto-Pathfinding target
+// filtering. Always source-scoped — no legacy unscoped rows, unlike
+// auto_traceroute_nodes.
+
+export const meshcorePathfindingTargetsSqlite = sqliteTable('meshcore_pathfinding_targets', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  sourceId: text('sourceId').notNull(),
+  publicKey: text('publicKey').notNull(),
+  createdAt: integer('createdAt').notNull(),
+});
+
+export const meshcorePathfindingTargetsPostgres = pgTable('meshcore_pathfinding_targets', {
+  id: pgSerial('id').primaryKey(),
+  sourceId: pgText('sourceId').notNull(),
+  publicKey: pgText('publicKey').notNull(),
+  createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
+});
+
 // ============ AUTO TIME SYNC NODES ============
 
 export const autoTimeSyncNodesSqlite = sqliteTable('auto_time_sync_nodes', {
@@ -446,6 +465,13 @@ export const autoTracerouteNodesMysql = mysqlTable('auto_traceroute_nodes', {
   sourceId: myVarchar('sourceId', { length: 64 }),
 });
 
+export const meshcorePathfindingTargetsMysql = mysqlTable('meshcore_pathfinding_targets', {
+  id: mySerial('id').primaryKey(),
+  sourceId: myVarchar('sourceId', { length: 255 }).notNull(),
+  publicKey: myVarchar('publicKey', { length: 64 }).notNull(),
+  createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
+});
+
 export const autoTimeSyncNodesMysql = mysqlTable('auto_time_sync_nodes', {
   id: mySerial('id').primaryKey(),
   nodeNum: myBigint('nodeNum', { mode: 'number' }).notNull(),
@@ -625,3 +651,10 @@ export type UserNewsStatusPostgres = typeof userNewsStatusPostgres.$inferSelect;
 export type NewUserNewsStatusPostgres = typeof userNewsStatusPostgres.$inferInsert;
 export type UserNewsStatusMysql = typeof userNewsStatusMysql.$inferSelect;
 export type NewUserNewsStatusMysql = typeof userNewsStatusMysql.$inferInsert;
+
+export type MeshcorePathfindingTargetSqlite = typeof meshcorePathfindingTargetsSqlite.$inferSelect;
+export type NewMeshcorePathfindingTargetSqlite = typeof meshcorePathfindingTargetsSqlite.$inferInsert;
+export type MeshcorePathfindingTargetPostgres = typeof meshcorePathfindingTargetsPostgres.$inferSelect;
+export type NewMeshcorePathfindingTargetPostgres = typeof meshcorePathfindingTargetsPostgres.$inferInsert;
+export type MeshcorePathfindingTargetMysql = typeof meshcorePathfindingTargetsMysql.$inferSelect;
+export type NewMeshcorePathfindingTargetMysql = typeof meshcorePathfindingTargetsMysql.$inferInsert;
