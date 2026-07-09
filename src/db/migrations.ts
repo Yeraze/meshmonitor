@@ -127,6 +127,7 @@ import { migration as clampFutureTracerouteMigration, runMigration109Postgres as
 import { migration as meshcorePositionHistoryMigration, runMigration110Postgres as runMeshcorePositionHistoryPostgres, runMigration110Mysql as runMeshcorePositionHistoryMysql } from '../server/migrations/110_add_meshcore_position_history.js';
 import { migration as meshcoreNodePositionSourceMigration, runMigration111Postgres as runMeshcoreNodePositionSourcePostgres, runMigration111Mysql as runMeshcoreNodePositionSourceMysql } from '../server/migrations/111_meshcore_node_position_source.js';
 import { migration as nodeNotesMigration, runMigration112Postgres as runNodeNotesPostgres, runMigration112Mysql as runNodeNotesMysql } from '../server/migrations/112_add_notes_to_nodes.js';
+import { migration as bootstrapOnlyIndexesMigration, runMigration113Postgres as runBootstrapOnlyIndexesPostgres, runMigration113Mysql as runBootstrapOnlyIndexesMysql } from '../server/migrations/113_add_bootstrap_only_indexes.js';
 
 // ============================================================================
 // Registry
@@ -1781,4 +1782,21 @@ registry.register({
   sqlite: (db) => nodeNotesMigration.up(db),
   postgres: (client) => runNodeNotesPostgres(client),
   mysql: (pool) => runNodeNotesMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 113: normalise bootstrap-only and name-case-drifted indexes
+// (#3962 Phase 3.3 WP-A). Adds the 7 indexes that existed only in SQLite's
+// createIndexes() bootstrap (never in any migration), and normalises the 3
+// camelCase/lowercase name-case pairs to canonical lowercase on all installs.
+// After this migration the schemaDrift allowlist shrinks from 15 → 2 entries.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 113,
+  name: 'add_bootstrap_only_indexes',
+  settingsKey: 'migration_113_add_bootstrap_only_indexes',
+  sqlite: (db) => bootstrapOnlyIndexesMigration.up(db),
+  postgres: (client) => runBootstrapOnlyIndexesPostgres(client),
+  mysql: (pool) => runBootstrapOnlyIndexesMysql(pool),
 });
