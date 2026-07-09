@@ -121,6 +121,32 @@ const VALIDATION = {
 const DANGER_COMMAND_PATTERN = /\b(reboot|erase|clkreboot|factory)\b(?!\.)/i;
 
 /**
+ * Resolve the effective CLI reply-timeout (ms) for a MeshCore console command
+ * (issue #4027).
+ *
+ * Priority:
+ *  1. An explicit, in-range `timeoutMs` from the request body — a per-call
+ *     override (1ms..60s), unchanged from the original behavior.
+ *  2. The global `meshcoreCliTimeoutSeconds` setting, clamped to 1..60s, so an
+ *     operator with a directly-reachable repeater can shorten the default wait
+ *     and re-fire a command sooner instead of being blocked the full 15s.
+ *  3. `undefined` — the manager then applies its built-in 15s default. Returning
+ *     `undefined` (rather than a hard 15000) keeps the "no setting" path byte-for-
+ *     byte identical to the pre-#4027 behavior.
+ */
+async function resolveCliTimeoutMs(timeoutMs?: number): Promise<number | undefined> {
+  if (typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0 && timeoutMs <= 60_000) {
+    return timeoutMs;
+  }
+  const raw = await databaseService.settings.getSetting('meshcoreCliTimeoutSeconds');
+  const seconds = raw == null ? NaN : parseInt(raw, 10);
+  if (Number.isFinite(seconds) && seconds >= 1 && seconds <= 60) {
+    return seconds * 1000;
+  }
+  return undefined;
+}
+
+/**
  * Validation helper functions
  */
 function isValidPublicKey(key: string | undefined): boolean {
@@ -2112,10 +2138,7 @@ router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermissio
         code: 'DANGER_CONFIRM_REQUIRED',
       });
     }
-    const effectiveTimeout =
-      typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0 && timeoutMs <= 60_000
-        ? timeoutMs
-        : undefined;
+    const effectiveTimeout = await resolveCliTimeoutMs(timeoutMs);
 
     try {
       const manager = managerFor(req, res);
@@ -2206,10 +2229,7 @@ router.post('/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('con
         code: 'DANGER_CONFIRM_REQUIRED',
       });
     }
-    const effectiveTimeout =
-      typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0 && timeoutMs <= 60_000
-        ? timeoutMs
-        : undefined;
+    const effectiveTimeout = await resolveCliTimeoutMs(timeoutMs);
 
     try {
       const manager = managerFor(req, res);

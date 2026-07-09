@@ -254,6 +254,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localHomoglyphEnabled, setLocalHomoglyphEnabled] = useState(false);
   const [localLocalStatsIntervalMinutes, setLocalLocalStatsIntervalMinutes] = useState(15);
   const [initialLocalStatsIntervalMinutes, setInitialLocalStatsIntervalMinutes] = useState(15);
+  // MeshCore CLI console reply-timeout (seconds), issue #4027. Local-only
+  // server-backed setting (no SettingsContext prop), mirroring localStats above.
+  const [localMeshcoreCliTimeoutSeconds, setLocalMeshcoreCliTimeoutSeconds] = useState(15);
+  const [initialMeshcoreCliTimeoutSeconds, setInitialMeshcoreCliTimeoutSeconds] = useState(15);
   const [isFetchingSolarEstimates, setIsFetchingSolarEstimates] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -348,6 +352,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const statsInterval = parseInt(settings.localStatsIntervalMinutes || '15', 10);
           setLocalLocalStatsIntervalMinutes(statsInterval);
           setInitialLocalStatsIntervalMinutes(statsInterval);
+
+          // Load MeshCore CLI console timeout (#4027). Absent/invalid => 15s default.
+          const cliTimeoutParsed = parseInt(settings.meshcoreCliTimeoutSeconds || '15', 10);
+          const cliTimeout = Number.isFinite(cliTimeoutParsed) ? Math.min(60, Math.max(1, cliTimeoutParsed)) : 15;
+          setLocalMeshcoreCliTimeoutSeconds(cliTimeout);
+          setInitialMeshcoreCliTimeoutSeconds(cliTimeout);
 
           // Load node dimming initial values from server
           const dimmingEnabled = settings.nodeDimmingEnabled === '1' || settings.nodeDimmingEnabled === 'true';
@@ -487,6 +497,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localHideIncompleteNodes !== !showIncompleteNodes ||
       localHomoglyphEnabled !== initialHomoglyphEnabled ||
       localLocalStatsIntervalMinutes !== initialLocalStatsIntervalMinutes ||
+      localMeshcoreCliTimeoutSeconds !== initialMeshcoreCliTimeoutSeconds ||
       nodeDimmingEnabled !== initialNodeDimmingSettings.enabled ||
       nodeDimmingStartHours !== initialNodeDimmingSettings.startHours ||
       nodeDimmingMinOpacity !== initialNodeDimmingSettings.minOpacity ||
@@ -503,6 +514,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localMeshcoreChannelRetryEnabled, meshcoreChannelRetryEnabled,
       localHideIncompleteNodes, showIncompleteNodes, localHomoglyphEnabled, initialHomoglyphEnabled,
       localLocalStatsIntervalMinutes, initialLocalStatsIntervalMinutes,
+      localMeshcoreCliTimeoutSeconds, initialMeshcoreCliTimeoutSeconds,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, initialNodeDimmingSettings,
       localAnalyticsProvider, localAnalyticsConfig, initialAnalyticsProvider, initialAnalyticsConfig,
       localAppriseApiServerUrl, initialAppriseApiServerUrl]);
@@ -547,6 +559,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalHideIncompleteNodes(!showIncompleteNodes);
     setLocalHomoglyphEnabled(initialHomoglyphEnabled);
     setLocalLocalStatsIntervalMinutes(initialLocalStatsIntervalMinutes);
+    setLocalMeshcoreCliTimeoutSeconds(initialMeshcoreCliTimeoutSeconds);
     setNodeDimmingEnabled(initialNodeDimmingSettings.enabled);
     setNodeDimmingStartHours(initialNodeDimmingSettings.startHours);
     setNodeDimmingMinOpacity(initialNodeDimmingSettings.minOpacity);
@@ -560,7 +573,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
       solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes,
       linkPreviewsEnabled, meshcoreChannelRetryEnabled,
-      initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialNodeDimmingSettings,
+      initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialMeshcoreCliTimeoutSeconds, initialNodeDimmingSettings,
       setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity,
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl]);
 
@@ -616,6 +629,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         hideIncompleteNodes: localHideIncompleteNodes ? '1' : '0',
         homoglyphEnabled: String(localHomoglyphEnabled),
         localStatsIntervalMinutes: localLocalStatsIntervalMinutes.toString(),
+        meshcoreCliTimeoutSeconds: localMeshcoreCliTimeoutSeconds.toString(),
         nodeHopsCalculation: localNodeHopsCalculation,
         nodeDimmingEnabled: nodeDimmingEnabled ? '1' : '0',
         nodeDimmingStartHours: nodeDimmingStartHours.toString(),
@@ -672,6 +686,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setInitialPacketMonitorSettings({ enabled: localPacketLogEnabled, maxCount: localPacketLogMaxCount, maxAgeHours: localPacketLogMaxAgeHours });
       setInitialHomoglyphEnabled(localHomoglyphEnabled);
       setInitialLocalStatsIntervalMinutes(localLocalStatsIntervalMinutes);
+      setInitialMeshcoreCliTimeoutSeconds(localMeshcoreCliTimeoutSeconds);
       setInitialNodeDimmingSettings({
         enabled: nodeDimmingEnabled,
         startHours: nodeDimmingStartHours,
@@ -696,7 +711,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, getLocalEffectiveTheme,
       localNodeHopsCalculation, localDashboardSortOption, localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude,
-      localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localLinkPreviewsEnabled, setLinkPreviewsEnabled, localMeshcoreChannelRetryEnabled, setMeshcoreChannelRetryEnabled, localHideIncompleteNodes, localHomoglyphEnabled, localLocalStatsIntervalMinutes,
+      localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localLinkPreviewsEnabled, setLinkPreviewsEnabled, localMeshcoreChannelRetryEnabled, setMeshcoreChannelRetryEnabled, localHideIncompleteNodes, localHomoglyphEnabled, localLocalStatsIntervalMinutes, localMeshcoreCliTimeoutSeconds,
       onMaxNodeAgeChange, onInactiveNodeThresholdHoursChange, onInactiveNodeCheckIntervalMinutesChange,
       onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange, onPositionHistoryLineStyleChange,
       onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
@@ -1409,6 +1424,26 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <p className="setting-description">
             {t('settings.meshcore_channel_retry_description', 'When enabled, an AUTOMATED MeshCore channel/broadcast message (Automation Engine, Auto-Acknowledge, auto-responder, auto-announce and timer triggers) that hears no repeaters within 30 seconds is resent exactly once. User-initiated sends are never retried. This is opt-in, channel-only, and one-shot — distinct from the always-on retry for direct messages. You may occasionally see a duplicate on the mesh.')}
           </p>
+          <div className="setting-item">
+            <label htmlFor="meshcoreCliTimeoutSeconds">
+              {t('settings.meshcore_cli_timeout_label', 'Remote CLI reply timeout (seconds)')}
+              <span className="setting-description">
+                {t('settings.meshcore_cli_timeout_description', 'How long the MeshCore CLI console (repeater/room-server remote admin and the local device console) waits for a reply before giving up, so you can re-fire a command. Lower it when your repeater is in direct range to avoid waiting the full default. Range 1–60s; default 15s.')}
+              </span>
+            </label>
+            <input
+              id="meshcoreCliTimeoutSeconds"
+              type="number"
+              min="1"
+              max="60"
+              value={localMeshcoreCliTimeoutSeconds}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                setLocalMeshcoreCliTimeoutSeconds(Number.isNaN(n) ? 15 : Math.min(60, Math.max(1, n)));
+              }}
+              className="setting-input"
+            />
+          </div>
         </div>}
 
         {show('settings-map') && <div id="settings-map" className="settings-section">
