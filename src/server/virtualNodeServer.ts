@@ -7,6 +7,7 @@ import protobufService from './protobufService.js';
 import { MeshtasticManager } from './meshtasticManager.js';
 import databaseService from '../services/database.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
+import { modemPresetChannelName } from './constants/meshtastic.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -761,7 +762,26 @@ export class VirtualNodeServer extends EventEmitter {
     // channel entries (otherwise uplink_enabled defaults to false and every
     // packet is dropped).
     const deviceConfig = this.config.meshtasticManager.getActualDeviceConfig?.();
-    const presetFallback = getPrimaryChannelNameFallback(deviceConfig?.lora?.modemPreset);
+    let presetFallback = getPrimaryChannelNameFallback(deviceConfig?.lora?.modemPreset);
+
+    // getActualDeviceConfig() is in-memory only and is cleared to null on
+    // every physical-node disconnect (meshtasticManager.ts handleDisconnected,
+    // non-passive mode) until the device re-sends LoRa config on reconnect.
+    // A client requesting config during that window would otherwise get slot
+    // 0 with no name at all (not even the preset fallback), which the
+    // Meshtastic app displays as the placeholder "Channel 0" (#4037). Fall
+    // back to the durable per-source `lora.preset.<sourceId>` setting that
+    // every other consumer of this fallback already uses (channelRoutes.ts,
+    // unifiedRoutes.ts, sourceDashboardData.ts).
+    if (!presetFallback) {
+      try {
+        const raw = await databaseService.getSettingAsync(`lora.preset.${sourceId}`);
+        const n = raw != null ? Number(raw) : NaN;
+        if (Number.isFinite(n)) presetFallback = modemPresetChannelName(n) ?? undefined;
+      } catch (err) {
+        logger.debug(`Virtual node: Failed to load persisted modem preset for source ${sourceId}:`, err);
+      }
+    }
 
     let sent = 0;
     for (const ch of dbChannels) {
