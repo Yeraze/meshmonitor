@@ -474,14 +474,14 @@
   "src/db/repositories/ignoredNodes.ts": {
     "@typescript-eslint/no-explicit-any": 2
   },
+  "src/db/repositories/keyRepair.ts": {
+    "@typescript-eslint/no-explicit-any": 11
+  },
   "src/db/repositories/mapPreferences.ts": {
     "@typescript-eslint/no-explicit-any": 3
   },
   "src/db/repositories/messages.ts": {
     "@typescript-eslint/no-explicit-any": 20
-  },
-  "src/db/repositories/misc.ts": {
-    "@typescript-eslint/no-explicit-any": 44
   },
   "src/db/repositories/neighbors.ts": {
     "@typescript-eslint/no-explicit-any": 5
@@ -492,6 +492,9 @@
   "src/db/repositories/notifications.ts": {
     "@typescript-eslint/no-explicit-any": 18,
     "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/db/repositories/packetLog.ts": {
+    "@typescript-eslint/no-explicit-any": 33
   },
   "src/db/repositories/savedRegions.ts": {
     "@typescript-eslint/no-explicit-any": 4

@@ -61,14 +61,14 @@ describe('DatabaseService.purgeAllNodesAsync — packet_log integration (#2637)'
   beforeAll(async () => {
     await databaseService.waitForReady();
     // Async repo init may complete slightly after waitForReady on SQLite path;
-    // ensure miscRepo is ready before we exercise it.
-    for (let i = 0; i < 50 && !databaseService.miscRepo; i++) {
+    // ensure packetLogRepo is ready before we exercise it.
+    for (let i = 0; i < 50 && !databaseService.packetLogRepo; i++) {
       await new Promise((r) => setTimeout(r, 20));
     }
   });
 
   it('clears packet_log alongside nodes when purgeAllNodesAsync runs', async () => {
-    expect(databaseService.miscRepo).not.toBeNull();
+    expect(databaseService.packetLogRepo).not.toBeNull();
     expect(databaseService.nodesRepo).not.toBeNull();
 
     // Seed two real nodes via the public sync API
@@ -108,7 +108,7 @@ describe('DatabaseService.purgeAllNodesAsync — packet_log integration (#2637)'
 describe('DatabaseService.deleteNodeAsync — packet_log integration (#2637)', () => {
   beforeAll(async () => {
     await databaseService.waitForReady();
-    for (let i = 0; i < 50 && !databaseService.miscRepo; i++) {
+    for (let i = 0; i < 50 && !databaseService.packetLogRepo; i++) {
       await new Promise((r) => setTimeout(r, 20));
     }
   });

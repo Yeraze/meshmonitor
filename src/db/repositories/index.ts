@@ -27,8 +27,9 @@ export type {
   NotificationPreferences,
   PushSubscriptionInput,
 } from './notifications.js';
-export { MiscRepository } from './misc.js';
-export type { PacketLogFilterOptions } from './misc.js';
+export { PacketLogRepository } from './packetLog.js';
+export type { PacketLogFilterOptions } from './packetLog.js';
+export { KeyRepairRepository } from './keyRepair.js';
 export { AutoTracerouteRepository } from './autoTraceroute.js';
 export type { AutoTracerouteNode } from './autoTraceroute.js';
 export { TimeSyncRepository } from './timeSync.js';

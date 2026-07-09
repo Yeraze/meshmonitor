@@ -1,7 +1,7 @@
 /**
- * Misc Repository
+ * Packet Log Repository
  *
- * Handles packet log and key repair database operations.
+ * Handles packet log database operations including analytics.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
 import { eq, asc, and, or, inArray, sql, isNull } from 'drizzle-orm';
@@ -10,10 +10,7 @@ import { DatabaseType, DbPacketLog, DbPacketCountByNode, DbPacketCountByPortnum,
 import { logger } from '../../utils/logger.js';
 import { getPortNumName } from '../../server/constants/meshtastic.js';
 
-/**
- * Repository for miscellaneous operations (packet log, key repair)
- */
-export class MiscRepository extends BaseRepository {
+export class PacketLogRepository extends BaseRepository {
   constructor(db: DrizzleDatabase, dbType: DatabaseType) {
     super(db, dbType);
   }
@@ -129,7 +126,7 @@ export class MiscRepository extends BaseRepository {
       await this.db.insert(packetLog).values(values);
       return 0;
     } catch (error) {
-      logger.error(`[MiscRepository] Failed to insert packet log: ${error}`);
+      logger.error(`[PacketLogRepository] Failed to insert packet log: ${error}`);
       return 0;
     }
   }
@@ -159,10 +156,10 @@ export class MiscRepository extends BaseRepository {
           const ids = oldest.map((row: { id: number }) => row.id);
           await this.db.delete(packetLog).where(inArray(packetLog.id, ids));
         }
-        logger.debug(`[MiscRepository] Deleted ${oldest.length} old packets to enforce max count of ${maxCount}`);
+        logger.debug(`[PacketLogRepository] Deleted ${oldest.length} old packets to enforce max count of ${maxCount}`);
       }
     } catch (error) {
-      logger.error('[MiscRepository] Failed to enforce packet log max count:', error);
+      logger.error('[PacketLogRepository] Failed to enforce packet log max count:', error);
     }
   }
 
@@ -199,7 +196,7 @@ export class MiscRepository extends BaseRepository {
       }
       return Array.from(seen);
     } catch (error) {
-      logger.error('[MiscRepository] Failed to enumerate distinct encrypted packet sourceIds:', error);
+      logger.error('[PacketLogRepository] Failed to enumerate distinct encrypted packet sourceIds:', error);
       return [];
     }
   }
@@ -232,7 +229,7 @@ export class MiscRepository extends BaseRepository {
       const rows = await this.executeQuery(joinQuery);
       return (rows as any[]).map((row: any) => this.normalizePacketLogRow(row));
     } catch (error) {
-      logger.error('[MiscRepository] Failed to get packet logs:', error);
+      logger.error('[PacketLogRepository] Failed to get packet logs:', error);
       return [];
     }
   }
@@ -259,7 +256,7 @@ export class MiscRepository extends BaseRepository {
       if (!rows || rows.length === 0) return null;
       return this.normalizePacketLogRow(rows[0]);
     } catch (error) {
-      logger.error('[MiscRepository] Failed to get packet log by id:', error);
+      logger.error('[PacketLogRepository] Failed to get packet log by id:', error);
       return null;
     }
   }
@@ -277,7 +274,7 @@ export class MiscRepository extends BaseRepository {
       );
       return Number(rows[0]?.count ?? 0);
     } catch (error) {
-      logger.error('[MiscRepository] Failed to get packet log count:', error);
+      logger.error('[PacketLogRepository] Failed to get packet log count:', error);
       return 0;
     }
   }
@@ -291,10 +288,10 @@ export class MiscRepository extends BaseRepository {
         ? await this.executeRun(sql`DELETE FROM packet_log WHERE sourceId = ${sourceId}`)
         : await this.executeRun(sql`DELETE FROM packet_log`);
       const deletedCount = this.getAffectedRows(results);
-      logger.debug(`[MiscRepository] Cleared ${deletedCount} packet log entries`);
+      logger.debug(`[PacketLogRepository] Cleared ${deletedCount} packet log entries`);
       return deletedCount;
     } catch (error) {
-      logger.error('[MiscRepository] Failed to clear packet logs:', error);
+      logger.error('[PacketLogRepository] Failed to clear packet logs:', error);
       throw error;
     }
   }
@@ -320,12 +317,12 @@ export class MiscRepository extends BaseRepository {
       const deletedCount = this.getAffectedRows(results);
       if (deletedCount > 0) {
         logger.debug(
-          `[MiscRepository] Deleted ${deletedCount} packet log entries for node ${nodeNum}${sourceId ? `@${sourceId}` : ''}`
+          `[PacketLogRepository] Deleted ${deletedCount} packet log entries for node ${nodeNum}${sourceId ? `@${sourceId}` : ''}`
         );
       }
       return deletedCount;
     } catch (error) {
-      logger.error('[MiscRepository] Failed to delete packet logs for node:', error);
+      logger.error('[PacketLogRepository] Failed to delete packet logs for node:', error);
       return 0;
     }
   }
@@ -346,7 +343,7 @@ export class MiscRepository extends BaseRepository {
     const changes = Number(result?.changes ?? 0);
     if (changes > 0) {
       logger.debug(
-        `[MiscRepository] Deleted ${changes} packet log entries for node ${nodeNum}${sourceId ? `@${sourceId}` : ''} (sync)`
+        `[PacketLogRepository] Deleted ${changes} packet log entries for node ${nodeNum}${sourceId ? `@${sourceId}` : ''} (sync)`
       );
     }
     return changes;
@@ -364,11 +361,11 @@ export class MiscRepository extends BaseRepository {
       );
       const deleted = this.getAffectedRows(results);
       if (deleted > 0) {
-        logger.debug(`[MiscRepository] Cleaned up ${deleted} packet log entries older than ${maxAgeHours} hours`);
+        logger.debug(`[PacketLogRepository] Cleaned up ${deleted} packet log entries older than ${maxAgeHours} hours`);
       }
       return deleted;
     } catch (error) {
-      logger.error('[MiscRepository] Failed to cleanup old packet logs:', error);
+      logger.error('[PacketLogRepository] Failed to cleanup old packet logs:', error);
       return 0;
     }
   }
@@ -408,7 +405,7 @@ export class MiscRepository extends BaseRepository {
       }
       return results;
     } catch (error) {
-      logger.error('[MiscRepository] Failed to get distinct relay nodes:', error);
+      logger.error('[PacketLogRepository] Failed to get distinct relay nodes:', error);
       return [];
     }
   }
@@ -457,7 +454,7 @@ export class MiscRepository extends BaseRepository {
       ? db.run(sql`DELETE FROM packet_log WHERE sourceId = ${sourceId}`)
       : db.run(sql`DELETE FROM packet_log`)) as any;
     const changes = Number(result?.changes ?? 0);
-    logger.debug(`[MiscRepository] Cleared ${changes} packet log entries (sync)`);
+    logger.debug(`[PacketLogRepository] Cleared ${changes} packet log entries (sync)`);
     return changes;
   }
 
@@ -527,7 +524,7 @@ export class MiscRepository extends BaseRepository {
         packetCount: Number(r.packetCount ?? r.packetcount),
       }));
     } catch (error) {
-      logger.error('[MiscRepository] Failed to get packet counts per node since:', error);
+      logger.error('[PacketLogRepository] Failed to get packet counts per node since:', error);
       return [];
     }
   }
@@ -573,7 +570,7 @@ export class MiscRepository extends BaseRepository {
         packetCount: Number(r.packetCount ?? r.packetcount),
       }));
     } catch (error) {
-      logger.error('[MiscRepository] Failed to get top broadcasters since:', error);
+      logger.error('[PacketLogRepository] Failed to get top broadcasters since:', error);
       return [];
     }
   }
@@ -628,7 +625,7 @@ export class MiscRepository extends BaseRepository {
         count: Number(row.count),
       }));
     } catch (error) {
-      logger.error('[MiscRepository] Failed to get packet counts by node:', error);
+      logger.error('[PacketLogRepository] Failed to get packet counts by node:', error);
       return [];
     }
   }
@@ -661,238 +658,9 @@ export class MiscRepository extends BaseRepository {
         count: Number(row.count),
       }));
     } catch (error) {
-      logger.error('[MiscRepository] Failed to get packet counts by portnum:', error);
+      logger.error('[PacketLogRepository] Failed to get packet counts by portnum:', error);
       return [];
     }
-  }
-
-  // =============================================================================
-  // Key Repair State / Log — SQLite sync variants
-  // (async multi-dialect versions still live on DatabaseService for now)
-  // =============================================================================
-
-  /**
-   * SQLite-only sync fetch of key repair state.
-   */
-  getKeyRepairStateSqlite(nodeNum: number): {
-    nodeNum: number;
-    attemptCount: number;
-    lastAttemptTime: number | null;
-    exhausted: boolean;
-    startedAt: number;
-  } | null {
-    if (!this.sqliteDb) throw new Error('getKeyRepairStateSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const t = (this.tables as any).autoKeyRepairState;
-    const rows = db
-      .select({
-        nodeNum: t.nodeNum,
-        attemptCount: t.attemptCount,
-        lastAttemptTime: t.lastAttemptTime,
-        exhausted: t.exhausted,
-        startedAt: t.startedAt,
-      })
-      .from(t)
-      .where(eq(t.nodeNum, nodeNum))
-      .limit(1)
-      .all() as Array<{
-        nodeNum: number;
-        attemptCount: number;
-        lastAttemptTime: number | null;
-        exhausted: number;
-        startedAt: number;
-      }>;
-    if (rows.length === 0) return null;
-    const r = rows[0];
-    return {
-      nodeNum: Number(r.nodeNum),
-      attemptCount: Number(r.attemptCount ?? 0),
-      lastAttemptTime: r.lastAttemptTime != null ? Number(r.lastAttemptTime) : null,
-      exhausted: Number(r.exhausted) === 1,
-      startedAt: Number(r.startedAt),
-    };
-  }
-
-  /**
-   * SQLite-only sync upsert of key repair state (mirrors legacy facade logic).
-   */
-  setKeyRepairStateSqlite(
-    nodeNum: number,
-    state: { attemptCount?: number; lastAttemptTime?: number; exhausted?: boolean; startedAt?: number },
-    existing: { attemptCount: number; lastAttemptTime: number | null; exhausted: boolean } | null,
-  ): void {
-    if (!this.sqliteDb) throw new Error('setKeyRepairStateSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const t = (this.tables as any).autoKeyRepairState;
-    const now = Date.now();
-
-    if (existing) {
-      db.update(t)
-        .set({
-          attemptCount: state.attemptCount ?? existing.attemptCount,
-          lastAttemptTime: state.lastAttemptTime ?? existing.lastAttemptTime,
-          exhausted: (state.exhausted ?? existing.exhausted) ? 1 : 0,
-        })
-        .where(eq(t.nodeNum, nodeNum))
-        .run();
-    } else {
-      db.insert(t).values({
-        nodeNum,
-        attemptCount: state.attemptCount ?? 0,
-        lastAttemptTime: state.lastAttemptTime ?? null,
-        exhausted: (state.exhausted ?? false) ? 1 : 0,
-        startedAt: state.startedAt ?? now,
-      }).run();
-    }
-  }
-
-  /**
-   * SQLite-only sync delete of key repair state.
-   */
-  clearKeyRepairStateSqlite(nodeNum: number): void {
-    if (!this.sqliteDb) throw new Error('clearKeyRepairStateSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const t = (this.tables as any).autoKeyRepairState;
-    db.delete(t).where(eq(t.nodeNum, nodeNum)).run();
-  }
-
-  /**
-   * SQLite-only sync list of nodes needing key repair — joins the nodes table
-   * to pick up nodeId/longName/shortName.
-   */
-  getNodesNeedingKeyRepairSqlite(): Array<{
-    nodeNum: number;
-    nodeId: string;
-    longName: string | null;
-    shortName: string | null;
-    attemptCount: number;
-    lastAttemptTime: number | null;
-    startedAt: number | null;
-  }> {
-    if (!this.sqliteDb) throw new Error('getNodesNeedingKeyRepairSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const n = (this.tables as any).nodes;
-    const s = (this.tables as any).autoKeyRepairState;
-    // Drizzle's leftJoin sugar
-    const rows = db
-      .select({
-        nodeNum: n.nodeNum,
-        nodeId: n.nodeId,
-        longName: n.longName,
-        shortName: n.shortName,
-        attemptCount: s.attemptCount,
-        lastAttemptTime: s.lastAttemptTime,
-        startedAt: s.startedAt,
-        exhausted: s.exhausted,
-      })
-      .from(n)
-      .leftJoin(s, eq(n.nodeNum, s.nodeNum))
-      .where(eq(n.keyMismatchDetected, true))
-      .all() as any[];
-    return rows
-      .filter(r => r.exhausted == null || Number(r.exhausted) === 0)
-      .map(r => ({
-        nodeNum: Number(r.nodeNum),
-        nodeId: r.nodeId,
-        longName: r.longName ?? null,
-        shortName: r.shortName ?? null,
-        attemptCount: Number(r.attemptCount ?? 0),
-        lastAttemptTime: r.lastAttemptTime != null ? Number(r.lastAttemptTime) : null,
-        startedAt: r.startedAt != null ? Number(r.startedAt) : null,
-      }));
-  }
-
-  /**
-   * SQLite-only sync append to key repair log + cleanup.
-   * Uses the full v084 column set (oldKeyFragment, newKeyFragment, sourceId).
-   * The schema's SQLite table only includes timestamp/nodeNum/nodeName/action/success
-   * etc.; for the extended columns we drop down to raw SQL at a tagged site
-   * (this repo doesn't know about columns added via migrations at runtime).
-   */
-  logKeyRepairAttemptSqlite(
-    nodeNum: number,
-    nodeName: string | null,
-    action: string,
-    success: boolean | null,
-    oldKeyFragment: string | null,
-    newKeyFragment: string | null,
-    sourceId: string | null,
-  ): number {
-    if (!this.sqliteDb) throw new Error('logKeyRepairAttemptSqlite is SQLite-only');
-    const betterSqlite = (this.sqliteDb as any).$client as import('better-sqlite3').Database;
-    const now = Date.now();
-    const info = betterSqlite
-      .prepare(`
-        INSERT INTO auto_key_repair_log (timestamp, nodeNum, nodeName, action, success, created_at, oldKeyFragment, newKeyFragment, sourceId)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-      .run(now, nodeNum, nodeName, action, success === null ? null : (success ? 1 : 0), now, oldKeyFragment, newKeyFragment, sourceId);
-    betterSqlite
-      .prepare('DELETE FROM auto_key_repair_log WHERE id NOT IN (SELECT id FROM auto_key_repair_log ORDER BY timestamp DESC LIMIT 100)')
-      .run();
-    return Number(info.lastInsertRowid);
-  }
-
-  /**
-   * SQLite-only — probe introspection used by getKeyRepairLogAsync fallback.
-   * Returns an object describing column / table presence so the caller can
-   * build the correct SELECT list without raw SQL on the facade.
-   */
-  getKeyRepairLogIntrospectionSqlite(): { tableExists: boolean; hasOldKeyCol: boolean; hasSourceId: boolean } {
-    if (!this.sqliteDb) throw new Error('getKeyRepairLogIntrospectionSqlite is SQLite-only');
-    const betterSqlite = (this.sqliteDb as any).$client as import('better-sqlite3').Database;
-    try {
-      const table = betterSqlite
-        .prepare("SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name='auto_key_repair_log'")
-        .get() as { count: number };
-      if (table.count === 0) return { tableExists: false, hasOldKeyCol: false, hasSourceId: false };
-      const oldKey = betterSqlite
-        .prepare("SELECT COUNT(*) as count FROM pragma_table_info('auto_key_repair_log') WHERE name='oldKeyFragment'")
-        .get() as { count: number };
-      const src = betterSqlite
-        .prepare("SELECT COUNT(*) as count FROM pragma_table_info('auto_key_repair_log') WHERE name='sourceId'")
-        .get() as { count: number };
-      return { tableExists: true, hasOldKeyCol: oldKey.count > 0, hasSourceId: src.count > 0 };
-    } catch {
-      return { tableExists: false, hasOldKeyCol: false, hasSourceId: false };
-    }
-  }
-
-  /**
-   * SQLite-only — fetch key repair log rows with optional sourceId filter.
-   * Assumes introspection has already confirmed the table and columns exist.
-   */
-  getKeyRepairLogSqlite(limit: number, sourceId: string | undefined, hasOldKeyCol: boolean, hasSourceId: boolean): Array<{
-    id: number;
-    timestamp: number;
-    nodeNum: number;
-    nodeName: string | null;
-    action: string;
-    success: boolean | null;
-    oldKeyFragment: string | null;
-    newKeyFragment: string | null;
-  }> {
-    if (!this.sqliteDb) throw new Error('getKeyRepairLogSqlite is SQLite-only');
-    const betterSqlite = (this.sqliteDb as any).$client as import('better-sqlite3').Database;
-    const selectCols = hasOldKeyCol
-      ? 'id, timestamp, nodeNum, nodeName, action, success, oldKeyFragment, newKeyFragment'
-      : 'id, timestamp, nodeNum, nodeName, action, success';
-    const useSourceFilter = !!sourceId && hasSourceId;
-    const whereClause = useSourceFilter ? 'WHERE sourceId = ?' : '';
-    const params: any[] = useSourceFilter ? [sourceId, limit] : [limit];
-    const rows = betterSqlite
-      .prepare(`SELECT ${selectCols} FROM auto_key_repair_log ${whereClause} ORDER BY timestamp DESC LIMIT ?`)
-      .all(...params) as any[];
-    return rows.map(row => ({
-      id: row.id,
-      timestamp: Number(row.timestamp),
-      nodeNum: Number(row.nodeNum),
-      nodeName: row.nodeName,
-      action: row.action,
-      success: row.success === null ? null : Boolean(row.success),
-      oldKeyFragment: row.oldKeyFragment || null,
-      newKeyFragment: row.newKeyFragment || null,
-    }));
   }
 }
 

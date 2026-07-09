@@ -1,16 +1,32 @@
 /**
- * Multi-Database Misc Repository Tests
+ * End-state assertion: misc.ts teardown complete (Task 3.1 PR3).
  *
- * The autoTraceroute tests previously here have been moved to autoTraceroute.test.ts.
- * This file is retained as a placeholder during the misc.ts split (Task 3.1).
- * Remaining domains (packetLog, keyRepair) will be covered by their own test files
- * in WP3.
+ * Asserts that MiscRepository no longer exists as an export from the barrel
+ * and that src/db/repositories/misc.ts has been deleted.
  */
-import { describe, it } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as barrel from './index.js';
 
-describe('MiscRepository', () => {
-  it('placeholder — autoTraceroute tests moved to autoTraceroute.test.ts', () => {
-    // Tests for autoTraceroute have been moved to autoTraceroute.test.ts (PR2).
-    // Tests for packetLog will be in packetLog.test.ts (PR3).
+describe('misc.ts teardown — end-state assertions (Task 3.1 PR3)', () => {
+  it('misc.ts no longer exists in src/db/repositories/', () => {
+    const miscPath = path.resolve(
+      import.meta.dirname ?? __dirname,
+      'misc.ts'
+    );
+    expect(fs.existsSync(miscPath)).toBe(false);
+  });
+
+  it('MiscRepository is not exported from the barrel (index.ts)', () => {
+    expect((barrel as any).MiscRepository).toBeUndefined();
+  });
+
+  it('PacketLogRepository is exported from the barrel', () => {
+    expect(typeof (barrel as any).PacketLogRepository).toBe('function');
+  });
+
+  it('KeyRepairRepository is exported from the barrel', () => {
+    expect(typeof (barrel as any).KeyRepairRepository).toBe('function');
   });
 });

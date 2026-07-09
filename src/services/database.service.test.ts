@@ -154,7 +154,7 @@ const mockNotificationsRepo = vi.hoisted(() => ({
   getUsersWithServiceEnabled: vi.fn().mockReturnValue([]),
 }));
 
-const mockMiscRepo = vi.hoisted(() => ({
+const mockPacketLogRepo = vi.hoisted(() => ({
   getPacketLogs: vi.fn().mockResolvedValue([]),
   getPacketLog: vi.fn().mockResolvedValue(null),
   insertPacketLog: vi.fn().mockResolvedValue(undefined),
@@ -187,7 +187,8 @@ vi.mock('../db/repositories/index.js', () => ({
   TraceroutesRepository: class { getTraceroutes = mockTraceroutesRepo.getTraceroutes; insertTraceroute = mockTraceroutesRepo.insertTraceroute; },
   NeighborsRepository: class { getNeighbors = mockNeighborsRepo.getNeighbors; upsertNeighbor = mockNeighborsRepo.upsertNeighbor; },
   NotificationsRepository: class { getUserPreferences = mockNotificationsRepo.getUserPreferences; saveUserPreferences = mockNotificationsRepo.saveUserPreferences; getUsersWithServiceEnabled = mockNotificationsRepo.getUsersWithServiceEnabled; },
-  MiscRepository: class { getPacketLogs = mockMiscRepo.getPacketLogs; getPacketLog = mockMiscRepo.getPacketLog; insertPacketLog = mockMiscRepo.insertPacketLog; updatePacketLogDecryption = mockMiscRepo.updatePacketLogDecryption; },
+  PacketLogRepository: class { getPacketLogs = mockPacketLogRepo.getPacketLogs; getPacketLog = mockPacketLogRepo.getPacketLog; insertPacketLog = mockPacketLogRepo.insertPacketLog; updatePacketLogDecryption = mockPacketLogRepo.updatePacketLogDecryption; },
+  KeyRepairRepository: class {},
   ChannelDatabaseRepository: class { getChannels = mockChannelDatabaseRepo.getChannels; },
   IgnoredNodesRepository: class { getIgnoredNodes = mockIgnoredNodesRepo.getIgnoredNodes; addIgnoredNode = mockIgnoredNodesRepo.addIgnoredNode; removeIgnoredNode = mockIgnoredNodesRepo.removeIgnoredNode; },
   EmbedProfileRepository: class { getProfiles = mockEmbedProfileRepo.getProfiles; },
