@@ -403,6 +403,20 @@ The **Automation** view (accessible from the MeshCore page sub-toolbar) provides
 
 Retrieved neighbor data is automatically resolved (pubkey prefixes mapped to full contact records) and persisted to `meshcore_neighbor_info` for map rendering and the Map Analysis inspector panel.
 
+### Target filtering
+
+By default Auto-Pathfinding processes **every** Companion and Repeater contact each cycle. On a large contact list that spends mesh airtime and cycle time on nodes you may not care about. Enable **Filter target contacts** to narrow which contacts are targeted — it is fully opt-in, so leaving it off keeps the original "everything" behavior. A single filter list covers both sub-features (path discovery still targets companions, neighbor queries still target repeaters).
+
+The filter combines several optional controls, each independently toggleable:
+
+- **Limit to selected contacts** — a searchable checklist (with Select All / Deselect All and a running count) of the specific contacts to include.
+- **Filter by name (regex)** — include contacts whose name matches a regular expression.
+- **Limit by last heard** — only contacts heard within the last N hours.
+- **Limit by hop range** — only contacts whose cached route hop-count falls within a min–max range. Contacts with an unknown route (i.e. the next send would flood) are excluded while this is on.
+- **Limit by signal quality** — only contacts at or above a minimum RSSI (dBm) and/or SNR (dB). Leave a threshold at its floor value to ignore it.
+
+The controls combine intuitively: **last heard**, **hop range** and **signal quality** first *narrow* the pool of contacts, then the **selected-contacts** list and **name regex** *include* any contact matching either of them. If you turn the filter on without configuring a selected-contacts list or a name regex, every contact surviving the narrowing filters is targeted. A live **matching targets** preview shows how many contacts the current settings would target, updating as you edit. All settings are per-source and saved from the shared MeshCore Automations save bar.
+
 ## Auto-Announce
 
 The **Automation** view also hosts a per-source Auto-Announce that periodically broadcasts a status message to one or more MeshCore channels:
