@@ -258,7 +258,10 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
         const meshcore = proto === 'meshcore';
         // MeshCore DM targets are contact public-key strings; Meshtastic DM
         // targets are node numbers (#4018) — resolve per the target source's
-        // own protocol, not the trigger's.
+        // own protocol, not the trigger's. A `to` value can't be valid for both
+        // at once, so a mixed-protocol multi-select whose `to` only makes sense
+        // for one protocol falls back to a channel broadcast on the others —
+        // a pre-existing per-source-multi-select design consequence, not new here.
         const destination = rawTo == null ? undefined : meshcore ? await str(ctx, rawTo) : await num(ctx, rawTo);
 
         if (destination != null || channelSel.length === 0) {
