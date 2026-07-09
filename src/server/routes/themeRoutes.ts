@@ -7,7 +7,7 @@ const router = Router();
 
 router.get('/', optionalAuth(), async (_req: Request, res: Response) => {
   try {
-    const themes = await databaseService.misc.getAllCustomThemes();
+    const themes = await databaseService.themes.getAllCustomThemes();
     res.json({ themes });
   } catch (error) {
     logger.error('Error fetching custom themes:', error);
@@ -18,7 +18,7 @@ router.get('/', optionalAuth(), async (_req: Request, res: Response) => {
 router.get('/:slug', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const { slug } = req.params;
-    const theme = await databaseService.misc.getCustomThemeBySlug(slug);
+    const theme = await databaseService.themes.getCustomThemeBySlug(slug);
 
     if (!theme) {
       return res.status(404).json({ error: 'Theme not found' });
@@ -45,7 +45,7 @@ router.post('/', requirePermission('themes', 'write'), async (req: Request, res:
         .json({ error: 'Slug must start with "custom-" and contain only lowercase letters, numbers, and hyphens' });
     }
 
-    const existingTheme = await databaseService.misc.getCustomThemeBySlug(slug);
+    const existingTheme = await databaseService.themes.getCustomThemeBySlug(slug);
     if (existingTheme) {
       return res.status(409).json({ error: 'Theme with this slug already exists' });
     }
@@ -56,7 +56,7 @@ router.post('/', requirePermission('themes', 'write'), async (req: Request, res:
         .json({ error: 'Invalid theme definition. All required color variables must be valid hex codes' });
     }
 
-    const theme = await databaseService.misc.createCustomTheme(name, slug, JSON.stringify(definition), req.user!.id);
+    const theme = await databaseService.themes.createCustomTheme(name, slug, JSON.stringify(definition), req.user!.id);
 
     void databaseService.auditLogAsync(
       req.user!.id,
@@ -80,7 +80,7 @@ router.put('/:slug', requirePermission('themes', 'write'), async (req: Request, 
     const { slug } = req.params;
     const { name, definition } = req.body;
 
-    const existingTheme = await databaseService.misc.getCustomThemeBySlug(slug);
+    const existingTheme = await databaseService.themes.getCustomThemeBySlug(slug);
     if (!existingTheme) {
       return res.status(404).json({ error: 'Theme not found' });
     }
@@ -114,7 +114,7 @@ router.put('/:slug', requirePermission('themes', 'write'), async (req: Request, 
     const repoUpdates: Record<string, string> = {};
     if (updates.name) repoUpdates.name = updates.name as string;
     if (updates.definition) repoUpdates.definition = JSON.stringify(updates.definition);
-    await databaseService.misc.updateCustomTheme(slug, repoUpdates);
+    await databaseService.themes.updateCustomTheme(slug, repoUpdates);
 
     void databaseService.auditLogAsync(
       req.user!.id,
@@ -137,7 +137,7 @@ router.delete('/:slug', requirePermission('themes', 'write'), async (req: Reques
   try {
     const { slug } = req.params;
 
-    const theme = await databaseService.misc.getCustomThemeBySlug(slug);
+    const theme = await databaseService.themes.getCustomThemeBySlug(slug);
     if (!theme) {
       return res.status(404).json({ error: 'Theme not found' });
     }
@@ -146,7 +146,7 @@ router.delete('/:slug', requirePermission('themes', 'write'), async (req: Reques
       return res.status(403).json({ error: 'Cannot delete built-in themes' });
     }
 
-    await databaseService.misc.deleteCustomTheme(slug);
+    await databaseService.themes.deleteCustomTheme(slug);
 
     void databaseService.auditLogAsync(
       req.user!.id,

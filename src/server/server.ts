@@ -3925,7 +3925,7 @@ apiRouter.get('/settings/key-repair-log', requirePermission('settings', 'read'),
 apiRouter.get('/settings/distance-delete/log', requirePermission('settings', 'read'), async (req, res) => {
   try {
     const distLogSourceId = req.query.sourceId as string | undefined;
-    const entries = await databaseService.misc.getDistanceDeleteLog(10, distLogSourceId);
+    const entries = await databaseService.distanceDeleteLog.getDistanceDeleteLog(10, distLogSourceId);
     res.json(entries);
   } catch (error) {
     logger.error('Error fetching distance-delete log:', error);

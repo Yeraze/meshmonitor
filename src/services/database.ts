@@ -48,6 +48,11 @@ import {
   UpgradeHistoryRepository,
   NewsCacheRepository,
   BackupHistoryRepository,
+  AutoTracerouteRepository,
+  TimeSyncRepository,
+  DistanceDeleteLogRepository,
+  MapPreferencesRepository,
+  ThemesRepository,
   ALL_SOURCES,
 } from '../db/repositories/index.js';
 import type { EstimatedPosition, EstimatedPositionInput, SourceScope } from '../db/repositories/index.js';
@@ -523,6 +528,11 @@ class DatabaseService {
   public upgradeHistoryRepo: UpgradeHistoryRepository | null = null;
   public newsCacheRepo: NewsCacheRepository | null = null;
   public backupHistoryRepo: BackupHistoryRepository | null = null;
+  public autoTracerouteRepo: AutoTracerouteRepository | null = null;
+  public timeSyncRepo: TimeSyncRepository | null = null;
+  public distanceDeleteLogRepo: DistanceDeleteLogRepository | null = null;
+  public mapPreferencesRepo: MapPreferencesRepository | null = null;
+  public themesRepo: ThemesRepository | null = null;
 
   /**
    * Typed repository accessors — throw if database not initialized.
@@ -611,6 +621,31 @@ class DatabaseService {
   get backupHistory(): BackupHistoryRepository {
     if (!this.backupHistoryRepo) throw new Error('Database not initialized');
     return this.backupHistoryRepo;
+  }
+
+  get autoTraceroute(): AutoTracerouteRepository {
+    if (!this.autoTracerouteRepo) throw new Error('Database not initialized');
+    return this.autoTracerouteRepo;
+  }
+
+  get timeSync(): TimeSyncRepository {
+    if (!this.timeSyncRepo) throw new Error('Database not initialized');
+    return this.timeSyncRepo;
+  }
+
+  get distanceDeleteLog(): DistanceDeleteLogRepository {
+    if (!this.distanceDeleteLogRepo) throw new Error('Database not initialized');
+    return this.distanceDeleteLogRepo;
+  }
+
+  get mapPreferences(): MapPreferencesRepository {
+    if (!this.mapPreferencesRepo) throw new Error('Database not initialized');
+    return this.mapPreferencesRepo;
+  }
+
+  get themes(): ThemesRepository {
+    if (!this.themesRepo) throw new Error('Database not initialized');
+    return this.themesRepo;
   }
 
   get auth(): AuthRepository {
@@ -955,6 +990,11 @@ class DatabaseService {
       this.upgradeHistoryRepo = new UpgradeHistoryRepository(drizzleDb, this.drizzleDbType);
       this.newsCacheRepo = new NewsCacheRepository(drizzleDb, this.drizzleDbType);
       this.backupHistoryRepo = new BackupHistoryRepository(drizzleDb, this.drizzleDbType);
+      this.autoTracerouteRepo = new AutoTracerouteRepository(drizzleDb, this.drizzleDbType);
+      this.timeSyncRepo = new TimeSyncRepository(drizzleDb, this.drizzleDbType);
+      this.distanceDeleteLogRepo = new DistanceDeleteLogRepository(drizzleDb, this.drizzleDbType);
+      this.mapPreferencesRepo = new MapPreferencesRepository(drizzleDb, this.drizzleDbType);
+      this.themesRepo = new ThemesRepository(drizzleDb, this.drizzleDbType);
 
       logger.info('[DatabaseService] Drizzle repositories initialized successfully');
 
@@ -5174,14 +5214,14 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       throw new Error(`SQLite method 'getAutoTracerouteNodes' called but using ${this.drizzleDbType} database. Use getAutoTracerouteNodesAsync() instead.`);
     }
-    return this.misc!.getAutoTracerouteNodesSync();
+    return this.autoTraceroute!.getAutoTracerouteNodesSync();
   }
 
   setAutoTracerouteNodes(nodeNums: number[]): void {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       throw new Error(`SQLite method 'setAutoTracerouteNodes' called but using ${this.drizzleDbType} database. Use setAutoTracerouteNodesAsync() instead.`);
     }
-    this.misc!.setAutoTracerouteNodesSync(nodeNums);
+    this.autoTraceroute!.setAutoTracerouteNodesSync(nodeNums);
     logger.debug(`✅ Set auto-traceroute filter to ${nodeNums.length} nodes`);
   }
 
@@ -5556,7 +5596,7 @@ class DatabaseService {
     filterHopsMin: number;
     filterHopsMax: number;
   }> {
-    const nodeNums = await this.misc.getAutoTracerouteNodes(sourceId);
+    const nodeNums = await this.autoTraceroute.getAutoTracerouteNodes(sourceId);
     const read = (key: string) =>
       this.settings.getSettingForSource(sourceId ?? null, key);
     const [
@@ -5662,13 +5702,13 @@ class DatabaseService {
       if (settings.filterHopsMin !== undefined) kv.tracerouteFilterHopsMin = String(settings.filterHopsMin);
       if (settings.filterHopsMax !== undefined) kv.tracerouteFilterHopsMax = String(settings.filterHopsMax);
       await this.settings.setSourceSettings(sourceId, kv);
-      await this.misc.setAutoTracerouteNodes(settings.nodeNums, sourceId);
+      await this.autoTraceroute.setAutoTracerouteNodes(settings.nodeNums, sourceId);
       logger.debug(`✅ Updated per-source traceroute filter settings (source=${sourceId})`);
       return;
     }
 
     this.setAutoTracerouteNodeFilterEnabled(settings.enabled);
-    await this.misc.setAutoTracerouteNodes(settings.nodeNums, sourceId);
+    await this.autoTraceroute.setAutoTracerouteNodes(settings.nodeNums, sourceId);
     this.setTracerouteFilterChannels(settings.filterChannels);
     this.setTracerouteFilterRoles(settings.filterRoles);
     this.setTracerouteFilterHwModels(settings.filterHwModels);
@@ -5714,16 +5754,16 @@ class DatabaseService {
 
   // Auto-traceroute log methods
   logAutoTracerouteAttempt(toNodeNum: number, toNodeName: string | null, sourceId?: string): number {
-    return this.misc!.logAutoTracerouteAttemptSync(toNodeNum, toNodeName, sourceId);
+    return this.autoTraceroute!.logAutoTracerouteAttemptSync(toNodeNum, toNodeName, sourceId);
   }
 
   updateAutoTracerouteResult(logId: number, success: boolean): void {
-    this.misc!.updateAutoTracerouteResultSync(logId, success);
+    this.autoTraceroute!.updateAutoTracerouteResultSync(logId, success);
   }
 
   // Update the most recent pending auto-traceroute for a given destination
   updateAutoTracerouteResultByNode(toNodeNum: number, success: boolean): void {
-    this.misc!.updateAutoTracerouteResultByNodeSync(toNodeNum, success);
+    this.autoTraceroute!.updateAutoTracerouteResultByNodeSync(toNodeNum, success);
   }
 
   getAutoTracerouteLog(limit: number = 10, sourceId?: string): {
@@ -5737,7 +5777,7 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       return [];
     }
-    return this.misc!.getAutoTracerouteLogSync(limit, sourceId);
+    return this.autoTraceroute!.getAutoTracerouteLogSync(limit, sourceId);
   }
 
   /**
@@ -5754,7 +5794,7 @@ class DatabaseService {
       // Fallback to sync for SQLite
       return this.getAutoTracerouteLog(limit, sourceId);
     }
-    return this.misc!.getAutoTracerouteLog(limit, sourceId);
+    return this.autoTraceroute!.getAutoTracerouteLog(limit, sourceId);
   }
 
   /**
@@ -5765,7 +5805,7 @@ class DatabaseService {
       // Fallback to sync for SQLite
       return this.logAutoTracerouteAttempt(toNodeNum, toNodeName, sourceId);
     }
-    return this.misc!.logAutoTracerouteAttempt(toNodeNum, toNodeName, sourceId);
+    return this.autoTraceroute!.logAutoTracerouteAttempt(toNodeNum, toNodeName, sourceId);
   }
 
   /**
@@ -5777,7 +5817,7 @@ class DatabaseService {
       this.updateAutoTracerouteResultByNode(toNodeNum, success);
       return;
     }
-    await this.misc!.updateAutoTracerouteResultByNode(toNodeNum, success);
+    await this.autoTraceroute!.updateAutoTracerouteResultByNode(toNodeNum, success);
   }
 
   // Auto key repair state methods
@@ -9049,7 +9089,7 @@ class DatabaseService {
     expirationHours: number;
     intervalMinutes: number;
   }> {
-    const nodeNums = await this.misc.getAutoTimeSyncNodes(sourceId);
+    const nodeNums = await this.timeSync.getAutoTimeSyncNodes(sourceId);
     const read = (key: string) => this.settings.getSettingForSource(sourceId ?? null, key);
     const [enabledStr, filterEnabledStr, expirationStr, intervalStr] = await Promise.all([
       read('autoTimeSyncEnabled'),
@@ -9091,7 +9131,7 @@ class DatabaseService {
         await this.settings.setSourceSettings(sourceId, kv);
       }
       if (settings.nodeNums !== undefined) {
-        await this.misc.setAutoTimeSyncNodes(settings.nodeNums, sourceId);
+        await this.timeSync.setAutoTimeSyncNodes(settings.nodeNums, sourceId);
       }
       logger.debug(`✅ Updated per-source time sync filter settings (source=${sourceId})`);
       return;
@@ -9101,7 +9141,7 @@ class DatabaseService {
       this.setAutoTimeSyncEnabled(settings.enabled);
     }
     if (settings.nodeNums !== undefined) {
-      await this.misc.setAutoTimeSyncNodes(settings.nodeNums, sourceId);
+      await this.timeSync.setAutoTimeSyncNodes(settings.nodeNums, sourceId);
     }
     if (settings.filterEnabled !== undefined) {
       this.setAutoTimeSyncNodeFilterEnabled(settings.filterEnabled);
@@ -9139,7 +9179,7 @@ class DatabaseService {
     // Get filter settings
     let filterNodeNums: number[] | undefined;
     if (filterEnabledStr === 'true') {
-      filterNodeNums = await this.misc.getAutoTimeSyncNodes(sourceId);
+      filterNodeNums = await this.timeSync.getAutoTimeSyncNodes(sourceId);
       if (filterNodeNums.length === 0) {
         // Filter is enabled but no nodes selected - skip
         return null;
@@ -9159,7 +9199,7 @@ class DatabaseService {
    * Get user's map preferences - delegates to MiscRepository (Drizzle ORM)
    */
   async getMapPreferencesAsync(userId: number): Promise<Record<string, any> | null> {
-    return this.miscRepo!.getMapPreferences(userId);
+    return this.mapPreferences!.getMapPreferences(userId);
   }
 
   /**
@@ -9183,7 +9223,7 @@ class DatabaseService {
     mapMaxAgeHours?: number | null;
     positionHistoryPointsOnly?: boolean;
   }): Promise<void> {
-    return this.miscRepo!.saveMapPreferences(userId, preferences);
+    return this.mapPreferences!.saveMapPreferences(userId, preferences);
   }
   // ============================================================
   // Async wrappers for sync methods (Phase 4 migration)

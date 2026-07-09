@@ -12,7 +12,9 @@ import type Database from 'better-sqlite3';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import * as schema from '../schema/index.js';
 import { SettingsRepository } from './settings.js';
-import { MiscRepository } from './misc.js';
+import { AutoTracerouteRepository } from './autoTraceroute.js';
+import { TimeSyncRepository } from './timeSync.js';
+import { DistanceDeleteLogRepository } from './distanceDeleteLog.js';
 import { NodesRepository } from './nodes.js';
 import { createTestDb } from '../../server/test-helpers/testDb.js';
 
@@ -20,7 +22,9 @@ interface Harness {
   raw: Database.Database;
   drizzleDb: BetterSQLite3Database<typeof schema>;
   settings: SettingsRepository;
-  misc: MiscRepository;
+  autoTraceroute: AutoTracerouteRepository;
+  timeSync: TimeSyncRepository;
+  distanceDeleteLog: DistanceDeleteLogRepository;
   nodes: NodesRepository;
 }
 
@@ -30,7 +34,9 @@ function createHarness(): Harness {
     raw: t.sqlite,
     drizzleDb: t.db,
     settings: new SettingsRepository(t.db, 'sqlite'),
-    misc: new MiscRepository(t.db, 'sqlite'),
+    autoTraceroute: new AutoTracerouteRepository(t.db, 'sqlite'),
+    timeSync: new TimeSyncRepository(t.db, 'sqlite'),
+    distanceDeleteLog: new DistanceDeleteLogRepository(t.db, 'sqlite'),
     nodes: new NodesRepository(t.db, 'sqlite'),
   };
 }
@@ -96,30 +102,30 @@ describe('per-source isolation (Phase 2a–2f)', () => {
   // -------------------------------------------------------------------------
   describe('Phase 2b — auto-traceroute per-source', () => {
     it('addAutoTracerouteNode allows same nodeNum across sources A and B', async () => {
-      await h.misc.addAutoTracerouteNode(12345, 'A');
+      await h.autoTraceroute.addAutoTracerouteNode(12345, 'A');
       // Composite unique (nodeNum, sourceId) must permit this:
-      await expect(h.misc.addAutoTracerouteNode(12345, 'B')).resolves.not.toThrow();
+      await expect(h.autoTraceroute.addAutoTracerouteNode(12345, 'B')).resolves.not.toThrow();
 
-      const a = await h.misc.getAutoTracerouteNodes('A');
-      const b = await h.misc.getAutoTracerouteNodes('B');
+      const a = await h.autoTraceroute.getAutoTracerouteNodes('A');
+      const b = await h.autoTraceroute.getAutoTracerouteNodes('B');
       expect(a).toEqual([12345]);
       expect(b).toEqual([12345]);
     });
 
     it('addAutoTracerouteNode is idempotent within the same source', async () => {
-      await h.misc.addAutoTracerouteNode(999, 'A');
-      await h.misc.addAutoTracerouteNode(999, 'A');
-      const rows = await h.misc.getAutoTracerouteNodes('A');
+      await h.autoTraceroute.addAutoTracerouteNode(999, 'A');
+      await h.autoTraceroute.addAutoTracerouteNode(999, 'A');
+      const rows = await h.autoTraceroute.getAutoTracerouteNodes('A');
       expect(rows).toEqual([999]);
     });
 
     it('getAutoTracerouteNodes(sourceId) returns only that source', async () => {
-      await h.misc.addAutoTracerouteNode(100, 'A');
-      await h.misc.addAutoTracerouteNode(200, 'A');
-      await h.misc.addAutoTracerouteNode(300, 'B');
+      await h.autoTraceroute.addAutoTracerouteNode(100, 'A');
+      await h.autoTraceroute.addAutoTracerouteNode(200, 'A');
+      await h.autoTraceroute.addAutoTracerouteNode(300, 'B');
 
-      expect((await h.misc.getAutoTracerouteNodes('A')).sort()).toEqual([100, 200]);
-      expect(await h.misc.getAutoTracerouteNodes('B')).toEqual([300]);
+      expect((await h.autoTraceroute.getAutoTracerouteNodes('A')).sort()).toEqual([100, 200]);
+      expect(await h.autoTraceroute.getAutoTracerouteNodes('B')).toEqual([300]);
     });
 
     it('auto_traceroute_log: insert with sourceId is only visible to that source', () => {
@@ -165,18 +171,18 @@ describe('per-source isolation (Phase 2a–2f)', () => {
   // -------------------------------------------------------------------------
   describe('Phase 2c — auto-time-sync per-source', () => {
     it('addAutoTimeSyncNode allows same nodeNum for sources A and B', async () => {
-      await h.misc.addAutoTimeSyncNode(12345, 'A');
-      await expect(h.misc.addAutoTimeSyncNode(12345, 'B')).resolves.not.toThrow();
-      expect(await h.misc.getAutoTimeSyncNodes('A')).toEqual([12345]);
-      expect(await h.misc.getAutoTimeSyncNodes('B')).toEqual([12345]);
+      await h.timeSync.addAutoTimeSyncNode(12345, 'A');
+      await expect(h.timeSync.addAutoTimeSyncNode(12345, 'B')).resolves.not.toThrow();
+      expect(await h.timeSync.getAutoTimeSyncNodes('A')).toEqual([12345]);
+      expect(await h.timeSync.getAutoTimeSyncNodes('B')).toEqual([12345]);
     });
 
     it('getAutoTimeSyncNodes(sourceId) filters by source', async () => {
-      await h.misc.addAutoTimeSyncNode(10, 'A');
-      await h.misc.addAutoTimeSyncNode(20, 'A');
-      await h.misc.addAutoTimeSyncNode(30, 'B');
-      expect((await h.misc.getAutoTimeSyncNodes('A')).sort()).toEqual([10, 20]);
-      expect(await h.misc.getAutoTimeSyncNodes('B')).toEqual([30]);
+      await h.timeSync.addAutoTimeSyncNode(10, 'A');
+      await h.timeSync.addAutoTimeSyncNode(20, 'A');
+      await h.timeSync.addAutoTimeSyncNode(30, 'B');
+      expect((await h.timeSync.getAutoTimeSyncNodes('A')).sort()).toEqual([10, 20]);
+      expect(await h.timeSync.getAutoTimeSyncNodes('B')).toEqual([30]);
     });
   });
 
@@ -185,15 +191,15 @@ describe('per-source isolation (Phase 2a–2f)', () => {
   // -------------------------------------------------------------------------
   describe('Phase 2d — distance-delete log per-source', () => {
     it('addDistanceDeleteLogEntry with sourceId is only visible to that source', async () => {
-      await h.misc.addDistanceDeleteLogEntry({
+      await h.distanceDeleteLog.addDistanceDeleteLogEntry({
         timestamp: 1, nodesDeleted: 1, thresholdKm: 50, details: '[]', sourceId: 'A',
       });
-      await h.misc.addDistanceDeleteLogEntry({
+      await h.distanceDeleteLog.addDistanceDeleteLogEntry({
         timestamp: 2, nodesDeleted: 2, thresholdKm: 75, details: '[]', sourceId: 'B',
       });
 
-      const aRows = await h.misc.getDistanceDeleteLog(10, 'A');
-      const bRows = await h.misc.getDistanceDeleteLog(10, 'B');
+      const aRows = await h.distanceDeleteLog.getDistanceDeleteLog(10, 'A');
+      const bRows = await h.distanceDeleteLog.getDistanceDeleteLog(10, 'B');
       expect(aRows).toHaveLength(1);
       expect(bRows).toHaveLength(1);
       expect(aRows[0].nodesDeleted).toBe(1);
@@ -201,17 +207,17 @@ describe('per-source isolation (Phase 2a–2f)', () => {
     });
 
     it('unfiltered getDistanceDeleteLog returns all rows', async () => {
-      await h.misc.addDistanceDeleteLogEntry({
+      await h.distanceDeleteLog.addDistanceDeleteLogEntry({
         timestamp: 1, nodesDeleted: 1, thresholdKm: 50, details: '[]', sourceId: 'A',
       });
-      await h.misc.addDistanceDeleteLogEntry({
+      await h.distanceDeleteLog.addDistanceDeleteLogEntry({
         timestamp: 2, nodesDeleted: 2, thresholdKm: 75, details: '[]', sourceId: 'B',
       });
-      await h.misc.addDistanceDeleteLogEntry({
+      await h.distanceDeleteLog.addDistanceDeleteLogEntry({
         timestamp: 3, nodesDeleted: 3, thresholdKm: 99, details: '[]',
       });
 
-      const all = await h.misc.getDistanceDeleteLog(10);
+      const all = await h.distanceDeleteLog.getDistanceDeleteLog(10);
       expect(all).toHaveLength(3);
     });
   });

@@ -14,7 +14,7 @@ vi.mock('../../services/database.js', () => ({
     getUserPermissionSetAsync: vi.fn(),
     auditLogAsync: vi.fn(),
     validateThemeDefinition: vi.fn(),
-    misc: {
+    themes: {
       getAllCustomThemes: vi.fn(),
       getCustomThemeBySlug: vi.fn(),
       createCustomTheme: vi.fn(),
@@ -31,7 +31,7 @@ const mockDb = databaseService as unknown as {
   getUserPermissionSetAsync: ReturnType<typeof vi.fn>;
   auditLogAsync: ReturnType<typeof vi.fn>;
   validateThemeDefinition: ReturnType<typeof vi.fn>;
-  misc: {
+  themes: {
     getAllCustomThemes: ReturnType<typeof vi.fn>;
     getCustomThemeBySlug: ReturnType<typeof vi.fn>;
     createCustomTheme: ReturnType<typeof vi.fn>;
@@ -69,7 +69,7 @@ describe('Theme Routes', () => {
 
   describe('GET /themes', () => {
     it('returns all themes without authentication', async () => {
-      mockDb.misc.getAllCustomThemes.mockResolvedValue([sampleTheme]);
+      mockDb.themes.getAllCustomThemes.mockResolvedValue([sampleTheme]);
       const app = createApp();
       const res = await request(app).get('/themes');
       expect(res.status).toBe(200);
@@ -79,7 +79,7 @@ describe('Theme Routes', () => {
     it('returns all themes for authenticated users', async () => {
       mockDb.findUserByIdAsync.mockResolvedValue(regularUser);
       mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: false });
-      mockDb.misc.getAllCustomThemes.mockResolvedValue([sampleTheme]);
+      mockDb.themes.getAllCustomThemes.mockResolvedValue([sampleTheme]);
       const app = createApp(regularUser.id);
       const res = await request(app).get('/themes');
       expect(res.status).toBe(200);
@@ -88,7 +88,7 @@ describe('Theme Routes', () => {
 
   describe('GET /themes/:slug', () => {
     it('returns a specific theme by slug', async () => {
-      mockDb.misc.getCustomThemeBySlug.mockResolvedValue(sampleTheme);
+      mockDb.themes.getCustomThemeBySlug.mockResolvedValue(sampleTheme);
       const app = createApp();
       const res = await request(app).get('/themes/custom-dark');
       expect(res.status).toBe(200);
@@ -96,7 +96,7 @@ describe('Theme Routes', () => {
     });
 
     it('returns 404 for unknown slug', async () => {
-      mockDb.misc.getCustomThemeBySlug.mockResolvedValue(null);
+      mockDb.themes.getCustomThemeBySlug.mockResolvedValue(null);
       const app = createApp();
       const res = await request(app).get('/themes/custom-nonexistent');
       expect(res.status).toBe(404);
@@ -121,8 +121,8 @@ describe('Theme Routes', () => {
     it('creates a theme for admin', async () => {
       mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
       mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: true });
-      mockDb.misc.getCustomThemeBySlug.mockResolvedValue(null);
-      mockDb.misc.createCustomTheme.mockResolvedValue(sampleTheme);
+      mockDb.themes.getCustomThemeBySlug.mockResolvedValue(null);
+      mockDb.themes.createCustomTheme.mockResolvedValue(sampleTheme);
       const app = createApp(adminUser.id);
       const res = await request(app)
         .post('/themes')
@@ -144,7 +144,7 @@ describe('Theme Routes', () => {
     it('returns 409 when slug already exists', async () => {
       mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
       mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: true });
-      mockDb.misc.getCustomThemeBySlug.mockResolvedValue(sampleTheme);
+      mockDb.themes.getCustomThemeBySlug.mockResolvedValue(sampleTheme);
       const app = createApp(adminUser.id);
       const res = await request(app)
         .post('/themes')
@@ -157,8 +157,8 @@ describe('Theme Routes', () => {
     it('updates an existing theme', async () => {
       mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
       mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: true });
-      mockDb.misc.getCustomThemeBySlug.mockResolvedValue(sampleTheme);
-      mockDb.misc.updateCustomTheme.mockResolvedValue(undefined);
+      mockDb.themes.getCustomThemeBySlug.mockResolvedValue(sampleTheme);
+      mockDb.themes.updateCustomTheme.mockResolvedValue(undefined);
       const app = createApp(adminUser.id);
       const res = await request(app).put('/themes/custom-dark').send({ name: 'Dark Mode Updated' });
       expect(res.status).toBe(200);
@@ -168,7 +168,7 @@ describe('Theme Routes', () => {
     it('returns 403 when trying to modify a built-in theme', async () => {
       mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
       mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: true });
-      mockDb.misc.getCustomThemeBySlug.mockResolvedValue({ ...sampleTheme, is_builtin: true });
+      mockDb.themes.getCustomThemeBySlug.mockResolvedValue({ ...sampleTheme, is_builtin: true });
       const app = createApp(adminUser.id);
       const res = await request(app).put('/themes/custom-dark').send({ name: 'Updated' });
       expect(res.status).toBe(403);
@@ -179,8 +179,8 @@ describe('Theme Routes', () => {
     it('deletes a custom theme', async () => {
       mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
       mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: true });
-      mockDb.misc.getCustomThemeBySlug.mockResolvedValue(sampleTheme);
-      mockDb.misc.deleteCustomTheme.mockResolvedValue(undefined);
+      mockDb.themes.getCustomThemeBySlug.mockResolvedValue(sampleTheme);
+      mockDb.themes.deleteCustomTheme.mockResolvedValue(undefined);
       const app = createApp(adminUser.id);
       const res = await request(app).delete('/themes/custom-dark');
       expect(res.status).toBe(200);
@@ -190,7 +190,7 @@ describe('Theme Routes', () => {
     it('returns 403 when trying to delete a built-in theme', async () => {
       mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
       mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: true });
-      mockDb.misc.getCustomThemeBySlug.mockResolvedValue({ ...sampleTheme, is_builtin: true });
+      mockDb.themes.getCustomThemeBySlug.mockResolvedValue({ ...sampleTheme, is_builtin: true });
       const app = createApp(adminUser.id);
       const res = await request(app).delete('/themes/custom-dark');
       expect(res.status).toBe(403);
@@ -199,7 +199,7 @@ describe('Theme Routes', () => {
     it('returns 404 for unknown theme', async () => {
       mockDb.findUserByIdAsync.mockResolvedValue(adminUser);
       mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: true });
-      mockDb.misc.getCustomThemeBySlug.mockResolvedValue(null);
+      mockDb.themes.getCustomThemeBySlug.mockResolvedValue(null);
       const app = createApp(adminUser.id);
       const res = await request(app).delete('/themes/custom-nonexistent');
       expect(res.status).toBe(404);

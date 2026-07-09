@@ -444,6 +444,9 @@
     "@typescript-eslint/no-explicit-any": 34,
     "@typescript-eslint/no-unused-vars": 3
   },
+  "src/db/repositories/autoTraceroute.ts": {
+    "@typescript-eslint/no-explicit-any": 22
+  },
   "src/db/repositories/automationVariables.ts": {
     "@typescript-eslint/no-explicit-any": 4
   },
@@ -462,17 +465,23 @@
   "src/db/repositories/channels.ts": {
     "@typescript-eslint/no-explicit-any": 9
   },
+  "src/db/repositories/distanceDeleteLog.ts": {
+    "@typescript-eslint/no-explicit-any": 5
+  },
   "src/db/repositories/embedProfiles.ts": {
     "@typescript-eslint/no-explicit-any": 2
   },
   "src/db/repositories/ignoredNodes.ts": {
     "@typescript-eslint/no-explicit-any": 2
   },
+  "src/db/repositories/mapPreferences.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
   "src/db/repositories/messages.ts": {
     "@typescript-eslint/no-explicit-any": 20
   },
   "src/db/repositories/misc.ts": {
-    "@typescript-eslint/no-explicit-any": 79
+    "@typescript-eslint/no-explicit-any": 44
   },
   "src/db/repositories/neighbors.ts": {
     "@typescript-eslint/no-explicit-any": 5
@@ -508,6 +517,12 @@
     "@typescript-eslint/no-explicit-any": 1,
     "no-restricted-syntax": 2,
     "preserve-caught-error": 2
+  },
+  "src/db/repositories/themes.ts": {
+    "@typescript-eslint/no-explicit-any": 4
+  },
+  "src/db/repositories/timeSync.ts": {
+    "@typescript-eslint/no-explicit-any": 1
   },
   "src/db/repositories/traceroutes.ts": {
     "@typescript-eslint/no-explicit-any": 32
@@ -1009,7 +1024,7 @@
     "@typescript-eslint/no-explicit-any": 3
   },
   "src/server/routes/messageRoutes.ts": {
-    "@typescript-eslint/no-explicit-any": 30
+    "@typescript-eslint/no-explicit-any": 29
   },
   "src/server/routes/neighborInfoRoutes.ts": {
     "@typescript-eslint/no-unused-vars": 2
@@ -1031,7 +1046,7 @@
     "@typescript-eslint/no-explicit-any": 9
   },
   "src/server/routes/securityRoutes.ts": {
-    "@typescript-eslint/no-explicit-any": 29
+    "@typescript-eslint/no-explicit-any": 27
   },
   "src/server/routes/settingsRoutes.test.ts": {
     "@typescript-eslint/no-unused-vars": 4
@@ -1112,7 +1127,7 @@
     "@typescript-eslint/no-unused-vars": 28
   },
   "src/server/server.ts": {
-    "@typescript-eslint/no-explicit-any": 65,
+    "@typescript-eslint/no-explicit-any": 62,
     "@typescript-eslint/no-unused-vars": 5,
     "no-case-declarations": 3,
     "preserve-caught-error": 1
