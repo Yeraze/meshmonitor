@@ -8,7 +8,35 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { CliConsoleBody } from './CliConsoleBody';
+import { CliConsoleBody, DANGER_COMMAND_PATTERN } from './CliConsoleBody';
+
+// Mirrors the server-side DANGER_COMMAND_PATTERN suite in meshcoreRoutes.test.ts.
+// If this drifts from the server pattern, the client's confirm modal and the
+// server's defense-in-depth guard can disagree about what's destructive (#4025).
+describe('CliConsoleBody — DANGER_COMMAND_PATTERN', () => {
+  it.each([
+    ['reboot'],
+    ['Reboot'],
+    ['erase'],
+    ['clkreboot'],
+    ['factory reset'],
+    ['set factory mode'],
+  ])('flags danger command %s', (cmd) => {
+    expect(DANGER_COMMAND_PATTERN.test(cmd)).toBe(true);
+  });
+
+  it.each([
+    ['get reboot.interval'],
+    ['get erase.enabled'],
+    ['get clkreboot.retries'],
+    ['get factory.mode'],
+    ['set reboot.interval 30'],
+    ['ver'],
+    ['stats'],
+  ])('does not flag non-danger command %s', (cmd) => {
+    expect(DANGER_COMMAND_PATTERN.test(cmd)).toBe(false);
+  });
+});
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({

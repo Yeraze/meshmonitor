@@ -2098,7 +2098,7 @@ router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermissio
     // confirmation modal for these commands, but server-side enforcement
     // means scripts and direct API calls cannot bypass the prompt by
     // simply not rendering it. Keep the pattern in sync with the
-    // client-side DANGER_COMMAND_PATTERN in MeshCoreRemoteConsole.tsx.
+    // client-side DANGER_COMMAND_PATTERN in CliConsoleBody.tsx.
     if (DANGER_COMMAND_PATTERN.test(command) && confirm !== true) {
       auditMeshcoreEvent(req, 'meshcore_remote_cli_blocked', 'remote_admin', {
         sourceId: req.params.id,

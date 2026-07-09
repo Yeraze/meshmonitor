@@ -895,6 +895,7 @@ describe('MeshCore Routes', () => {
       ['erase'],
       ['clkreboot'],
       ['factory reset'],
+      ['set factory mode'],
     ])('rejects danger command %s without confirm', async (cmd) => {
       const response = await authenticatedAgent
         .post('/api/sources/test-source/meshcore/cli')
