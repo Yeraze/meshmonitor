@@ -152,7 +152,7 @@ Three lint commands:
 ### Migration Registry
 Migrations use a centralized registry in `src/db/migrations.ts`. Each migration has functions for all three backends.
 
-**Current migration count:** 112 (latest: `112_add_notes_to_nodes`).
+**Migration count:** derived from the registry at test-time — `src/db/migrations.test.ts` asserts structural invariants without a hardcoded number, so no file needs updating when a new migration is added.
 
 For the full "adding a migration" recipe see [Migration recipe](#migration-recipe) below.
 
@@ -198,8 +198,15 @@ The remainder of this file is reference detail used less often than the rules ab
    - `export async function runMigrationNNNPostgres(client)` for PostgreSQL
    - `export async function runMigrationNNNMysql(pool)` for MySQL
 2. Register it in `src/db/migrations.ts` with `registry.register({ number, name, settingsKey, sqlite, postgres, mysql })`.
-3. Update `src/db/migrations.test.ts` (count, last migration name).
-4. Make migrations **idempotent** — try/catch for SQLite (`duplicate column`), `IF NOT EXISTS` for PostgreSQL, `information_schema` checks for MySQL.
+   `src/db/migrations.test.ts` does **not** need editing — its assertions are registry-derived and automatically cover the new entry.
+3. Make migrations **idempotent** using the shared helpers in `src/server/migrations/helpers.ts`:
+   - SQLite: `addColumnIfMissing(db, table, column, ddl)` — catches "duplicate column"; re-throws others.
+   - PostgreSQL: `addColumnIfMissingPostgres(client, table, column, ddl)` — uses native `ADD COLUMN IF NOT EXISTS`.
+   - MySQL columns: `addColumnIfMissingMysql(pool, table, column, ddl)` — `information_schema.COLUMNS` pre-check.
+   - MySQL tables: `createTableIfMissingMysql(pool, table, createDdl)` — `information_schema.TABLES` pre-check.
+     Include inline `INDEX` / `UNIQUE KEY` clauses in the `createDdl` when creating a new table.
+   - MySQL indexes: `createIndexIfMissingMysql(pool, table, indexName, createDdl)` — `information_schema.STATISTICS` pre-check (MySQL has no `CREATE INDEX IF NOT EXISTS`).
+   - SQLite and PostgreSQL support `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` natively — no helpers needed for those cases.
 
 ## API Testing Helper Script
 

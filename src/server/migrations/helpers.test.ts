@@ -13,6 +13,7 @@ import {
   addColumnIfMissingPostgres,
   addColumnIfMissingMysql,
   createTableIfMissingMysql,
+  createIndexIfMissingMysql,
 } from './helpers.js';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -29,10 +30,13 @@ function columnNames(db: Database.Database, table: string): string[] {
  *   should report as already present (for COLUMNS queries).
  * @param existingTables  - table names that the information_schema mock
  *   should report as already present (for TABLES queries).
+ * @param existingIndexes - index names that the information_schema mock
+ *   should report as already present (for STATISTICS queries).
  */
 function makeMysqlPool(
   existingColumns: string[] = [],
   existingTables: string[] = [],
+  existingIndexes: string[] = [],
 ): { pool: any; conn: any } {
   const conn = {
     query: vi.fn().mockImplementation(async (sql: string, params?: unknown[]) => {
@@ -43,6 +47,10 @@ function makeMysqlPool(
       if (sql.includes('information_schema.TABLES')) {
         const tbl = Array.isArray(params) ? (params[0] as string) : '';
         return [existingTables.includes(tbl) ? [{ TABLE_NAME: tbl }] : []];
+      }
+      if (sql.includes('information_schema.STATISTICS')) {
+        const idx = Array.isArray(params) ? (params[1] as string) : '';
+        return [existingIndexes.includes(idx) ? [{ INDEX_NAME: idx }] : []];
       }
       return [{ affectedRows: 0 }];
     }),
@@ -204,6 +212,55 @@ describe('createTableIfMissingMysql', () => {
     await expect(
       createTableIfMissingMysql(pool, 'my_events', DDL),
     ).rejects.toThrow('create failed');
+    expect(conn.release).toHaveBeenCalled();
+  });
+});
+
+// ─── createIndexIfMissingMysql ────────────────────────────────────────────────
+
+describe('createIndexIfMissingMysql', () => {
+  const CREATE_DDL = 'CREATE INDEX idx_messages_createdat ON messages(createdAt)';
+
+  it('issues CREATE INDEX when the index is absent', async () => {
+    const { pool, conn } = makeMysqlPool([], [], /* no existing indexes */ []);
+    await createIndexIfMissingMysql(pool, 'messages', 'idx_messages_createdat', CREATE_DDL);
+
+    // information_schema.STATISTICS check
+    expect(conn.query).toHaveBeenCalledWith(
+      expect.stringContaining('information_schema.STATISTICS'),
+      ['messages', 'idx_messages_createdat'],
+    );
+    // CREATE INDEX issued
+    expect(conn.query).toHaveBeenCalledWith(CREATE_DDL);
+    expect(conn.release).toHaveBeenCalled();
+  });
+
+  it('skips CREATE INDEX when the index already exists', async () => {
+    const { pool, conn } = makeMysqlPool([], [], ['idx_messages_createdat']);
+    await createIndexIfMissingMysql(pool, 'messages', 'idx_messages_createdat', CREATE_DDL);
+
+    // Only one query: the information_schema check
+    expect(conn.query).toHaveBeenCalledTimes(1);
+    expect(conn.query).toHaveBeenCalledWith(
+      expect.stringContaining('information_schema.STATISTICS'),
+      ['messages', 'idx_messages_createdat'],
+    );
+    expect(conn.release).toHaveBeenCalled();
+  });
+
+  it('releases the connection even when CREATE INDEX throws', async () => {
+    const conn = {
+      query: vi.fn().mockImplementation(async (sql: string) => {
+        if (sql.includes('information_schema')) return [[]];
+        throw new Error('index create failed');
+      }),
+      release: vi.fn(),
+    };
+    const pool = { getConnection: vi.fn().mockResolvedValue(conn) };
+
+    await expect(
+      createIndexIfMissingMysql(pool, 'messages', 'idx_messages_createdat', CREATE_DDL),
+    ).rejects.toThrow('index create failed');
     expect(conn.release).toHaveBeenCalled();
   });
 });

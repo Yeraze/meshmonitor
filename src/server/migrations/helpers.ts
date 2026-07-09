@@ -23,9 +23,11 @@
  *   `information_schema.COLUMNS` before issuing `ALTER TABLE`.
  *   `createTableIfMissingMysql(pool, table, createDdl)` — queries
  *   `information_schema.TABLES` before issuing `CREATE TABLE`.
- *   MySQL has no `CREATE INDEX IF NOT EXISTS` syntax; add indexes inline
- *   in the `CREATE TABLE` DDL passed to `createTableIfMissingMysql` (the
- *   same technique used by existing migrations 108 / 110).
+ *   `createIndexIfMissingMysql(pool, table, indexName, createDdl)` — queries
+ *   `information_schema.STATISTICS` before issuing `CREATE INDEX`.
+ *   MySQL has no `CREATE INDEX IF NOT EXISTS` syntax; use this helper for
+ *   standalone index creation (or add indexes inline in the `CREATE TABLE`
+ *   DDL passed to `createTableIfMissingMysql` for new tables).
  */
 
 import type { Database } from 'better-sqlite3';
@@ -170,6 +172,52 @@ export async function addColumnIfMissingMysql(
  *   )
  * `);
  */
+/**
+ * Idempotently creates an index on a MySQL table only if it does not exist.
+ *
+ * MySQL has no `CREATE INDEX IF NOT EXISTS` syntax, so this helper queries
+ * `information_schema.STATISTICS` first and skips `CREATE INDEX` if the
+ * index is already present.  The connection is always released in a `finally`
+ * block.
+ *
+ * @param pool      - mysql2 Pool
+ * @param table     - Table name (used in the information_schema query and logs)
+ * @param indexName - Index name (used in the information_schema query and logs)
+ * @param createDdl - Full `CREATE INDEX indexName ON table(cols)` statement.
+ *
+ * @example
+ * await createIndexIfMissingMysql(
+ *   pool,
+ *   'messages',
+ *   'idx_messages_createdat',
+ *   'CREATE INDEX idx_messages_createdat ON messages(createdAt)',
+ * );
+ */
+export async function createIndexIfMissingMysql(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mysql2 Pool: tight coupling not warranted in helpers
+  pool: any,
+  table: string,
+  indexName: string,
+  createDdl: string,
+): Promise<void> {
+  const conn = await pool.getConnection();
+  try {
+    const [rows] = await conn.query(
+      `SELECT INDEX_NAME FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+      [table, indexName],
+    );
+    if (Array.isArray(rows) && rows.length === 0) {
+      await conn.query(createDdl);
+      logger.debug(`Migration helper (MySQL): created index ${indexName} on ${table}`);
+    } else {
+      logger.debug(`Migration helper (MySQL): index ${indexName} on ${table} already exists, skipping`);
+    }
+  } finally {
+    conn.release();
+  }
+}
+
 export async function createTableIfMissingMysql(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mysql2 Pool: tight coupling not warranted in helpers
   pool: any,
