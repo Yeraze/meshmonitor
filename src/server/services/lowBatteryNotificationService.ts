@@ -44,6 +44,15 @@ class LowBatteryNotificationService {
   // three prior fixes each landed without any log evidence they actually
   // took effect for the reporter's setup.
   private readonly loggedMeshCoreDiagnostic = new Set<string>();
+  // The three gates below (no subscribed users, empty monitored-node list,
+  // failed permission check) all `continue`/`return` *before* reaching the
+  // diagnostic above, and previously logged nothing at all (or debug-only) —
+  // so a report of "nothing in the log" was indistinguishable from "the
+  // service is fine and just hasn't matched anything yet". One-shot INFO
+  // diagnostics here close that gap — see #4020 (5th report of this symptom).
+  private loggedNoSubscribedUsers = false;
+  private readonly loggedEmptyMonitoredNodes = new Set<number>();
+  private readonly loggedPermissionDenied = new Set<string>();
 
   /**
    * Start the low-battery monitoring service
@@ -107,6 +116,13 @@ class LowBatteryNotificationService {
       const users = await databaseService.notifications.getUsersWithLowBatteryNotifications();
 
       if (users.length === 0) {
+        if (!this.loggedNoSubscribedUsers) {
+          this.loggedNoSubscribedUsers = true;
+          logger.info(
+            '🔋 [low-battery] No users have notifyOnLowBattery enabled with an active delivery channel ' +
+            '(notifyOnMessage or appriseEnabled) — the check loop exits here every cycle until that changes.'
+          );
+        }
         logger.debug('✅ No users have low battery notifications enabled');
         return;
       }
@@ -145,13 +161,30 @@ class LowBatteryNotificationService {
           }
 
           if (monitoredNodeIds.length === 0) {
+            if (!this.loggedEmptyMonitoredNodes.has(user.userId)) {
+              this.loggedEmptyMonitoredNodes.add(user.userId);
+              logger.info(
+                `🔋 [low-battery] User ${user.userId} has notifyOnLowBattery enabled but no monitored nodes selected — ` +
+                `nothing to check until at least one node is added to the monitored-nodes list.`
+              );
+            }
             continue;
           }
 
           // Permission check — skip user if they lack nodes:read on this source
           try {
             const allowed = await databaseService.checkPermissionAsync(user.userId, 'nodes', 'read', sourceId);
-            if (!allowed) continue;
+            if (!allowed) {
+              const permKey = `${user.userId}:${sourceId}`;
+              if (!this.loggedPermissionDenied.has(permKey)) {
+                this.loggedPermissionDenied.add(permKey);
+                logger.info(
+                  `🔋 [low-battery] User ${user.userId} lacks nodes:read permission on source ${sourceId} — ` +
+                  `low-battery checks for this source are skipped for that user until permission is granted.`
+                );
+              }
+              continue;
+            }
           } catch (err) {
             logger.error(`Permission check failed for user ${user.userId} on source ${sourceId}:`, err);
             continue;

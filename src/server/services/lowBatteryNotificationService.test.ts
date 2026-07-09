@@ -50,9 +50,10 @@ vi.mock('./notificationService.js', () => ({
   },
 }));
 
+const mockLoggerInfo = vi.fn();
 vi.mock('../../utils/logger.js', () => ({
   logger: {
-    info: vi.fn(),
+    info: mockLoggerInfo,
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
@@ -77,6 +78,10 @@ describe('LowBatteryNotificationService', () => {
     // Reset internal state
     service.lastNotifiedNodes = new Map();
     service.currentCooldownHours = 24;
+    service.loggedNoSubscribedUsers = false;
+    service.loggedEmptyMonitoredNodes = new Set();
+    service.loggedPermissionDenied = new Set();
+    service.loggedMeshCoreDiagnostic = new Set();
   });
 
   afterEach(() => {
@@ -92,6 +97,9 @@ describe('LowBatteryNotificationService', () => {
 
       expect(mockGetUsersWithLowBatteryNotifications).toHaveBeenCalled();
       expect(mockGetLowBatteryMonitoredNodes).not.toHaveBeenCalled();
+      // #4020: this early exit must be visible at default (INFO) log level —
+      // it previously logged nothing above debug, indistinguishable from "working fine".
+      expect(mockLoggerInfo).toHaveBeenCalledWith(expect.stringContaining('No users have notifyOnLowBattery enabled'));
     });
 
     it('should skip users with no monitored nodes', async () => {
@@ -103,6 +111,8 @@ describe('LowBatteryNotificationService', () => {
 
       expect(mockGetLowBatteryMonitoredNodes).not.toHaveBeenCalled();
       expect(mockBroadcastToPreferenceUsers).not.toHaveBeenCalled();
+      // #4020: previously silent — no monitored nodes selected is now surfaced at INFO.
+      expect(mockLoggerInfo).toHaveBeenCalledWith(expect.stringContaining('no monitored nodes selected'));
     });
 
     it('should query using the user threshold', async () => {
@@ -184,6 +194,8 @@ describe('LowBatteryNotificationService', () => {
 
       expect(mockGetLowBatteryMonitoredNodes).not.toHaveBeenCalled();
       expect(mockBroadcastToPreferenceUsers).not.toHaveBeenCalled();
+      // #4020: previously silent — a denied permission check is now surfaced at INFO.
+      expect(mockLoggerInfo).toHaveBeenCalledWith(expect.stringContaining('lacks nodes:read permission'));
     });
 
     it('should handle malformed monitored_nodes JSON gracefully', async () => {
