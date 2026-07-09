@@ -411,6 +411,9 @@ describe('Settings Persistence', () => {
         'homoglyphEnabled',
         // Local stats interval — backend reads directly
         'localStatsIntervalMinutes',
+        // MeshCore CLI console reply-timeout (#4027) — loaded directly by
+        // SettingsTab and read server-side by the /cli routes, not via SettingsContext.
+        'meshcoreCliTimeoutSeconds',
         // Analytics — backend injects into HTML, frontend doesn't need them
         'analyticsProvider', 'analyticsConfig',
         // Apprise API server URL (#3012) — loaded directly by SettingsTab,

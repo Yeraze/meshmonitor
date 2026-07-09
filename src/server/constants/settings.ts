@@ -166,6 +166,12 @@ export const VALID_SETTINGS_KEYS = [
   // Auto-Acknowledge, auto-responder, auto-announce, timer triggers) — never to
   // user-initiated sends. Distinct from the always-on DM ack-retry (#3977/#3980).
   'meshcoreChannelRetryEnabled',
+  // Global reply-timeout (seconds) for the MeshCore CLI console — the window the
+  // server waits for a repeater/room-server to answer a `/admin/cli` or `/cli`
+  // command before returning a 504 (issue #4027). Lower it when your repeater is
+  // in direct range so you can re-fire a command sooner instead of waiting the
+  // default 15s. Clamped to 1..60s; absent/invalid => the built-in 15s default.
+  'meshcoreCliTimeoutSeconds',
   'localStatsIntervalMinutes',
   'nodeHopsCalculation',
   'nodeDimmingEnabled',

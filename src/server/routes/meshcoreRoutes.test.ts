@@ -690,6 +690,9 @@ describe('MeshCore Routes', () => {
     beforeEach(() => {
       meshcoreManager.sendCliCommand.mockReset();
       meshcoreManager.sendCliCommand.mockResolvedValue({ reply: 'v1.7.0', elapsedMs: 73 });
+      // Reset the shared (beforeAll) settings mock so a per-test
+      // meshcoreCliTimeoutSeconds override (#4027) can't leak into siblings.
+      (DatabaseService as any).settings.getSetting = vi.fn(async () => null);
     });
 
     it('requires authentication', async () => {
@@ -752,6 +755,42 @@ describe('MeshCore Routes', () => {
         .send({ publicKey: validKey, command: 'ver', timeoutMs: 5000 });
       expect(meshcoreManager.sendCliCommand).toHaveBeenCalledWith(validKey, 'ver', {
         timeoutMs: 5000,
+      });
+    });
+
+    it('falls back to the configured meshcoreCliTimeoutSeconds setting (#4027)', async () => {
+      (DatabaseService as any).settings.getSetting = vi.fn(async (key: string) =>
+        key === 'meshcoreCliTimeoutSeconds' ? '5' : null,
+      );
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: 'ver' });
+      expect(meshcoreManager.sendCliCommand).toHaveBeenCalledWith(validKey, 'ver', {
+        timeoutMs: 5000,
+      });
+    });
+
+    it('caller timeoutMs wins over the configured setting (#4027)', async () => {
+      (DatabaseService as any).settings.getSetting = vi.fn(async (key: string) =>
+        key === 'meshcoreCliTimeoutSeconds' ? '5' : null,
+      );
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: 'ver', timeoutMs: 8000 });
+      expect(meshcoreManager.sendCliCommand).toHaveBeenCalledWith(validKey, 'ver', {
+        timeoutMs: 8000,
+      });
+    });
+
+    it('ignores an out-of-range configured setting, leaving the 15s manager default (#4027)', async () => {
+      (DatabaseService as any).settings.getSetting = vi.fn(async (key: string) =>
+        key === 'meshcoreCliTimeoutSeconds' ? '9999' : null,
+      );
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/admin/cli')
+        .send({ publicKey: validKey, command: 'ver' });
+      expect(meshcoreManager.sendCliCommand).toHaveBeenCalledWith(validKey, 'ver', {
+        timeoutMs: undefined,
       });
     });
 
@@ -852,6 +891,9 @@ describe('MeshCore Routes', () => {
     beforeEach(() => {
       meshcoreManager.sendLocalCliCommand.mockReset();
       meshcoreManager.sendLocalCliCommand.mockResolvedValue({ reply: 'v1.7.0', elapsedMs: 12 });
+      // Reset the shared (beforeAll) settings mock so a per-test
+      // meshcoreCliTimeoutSeconds override (#4027) can't leak into siblings.
+      (DatabaseService as any).settings.getSetting = vi.fn(async () => null);
     });
 
     it('requires authentication', async () => {
@@ -886,6 +928,18 @@ describe('MeshCore Routes', () => {
       expect(response.body.data).toEqual({ reply: 'v1.7.0', elapsedMs: 12 });
       expect(meshcoreManager.sendLocalCliCommand).toHaveBeenCalledWith('ver', {
         timeoutMs: undefined,
+      });
+    });
+
+    it('falls back to the configured meshcoreCliTimeoutSeconds setting (#4027)', async () => {
+      (DatabaseService as any).settings.getSetting = vi.fn(async (key: string) =>
+        key === 'meshcoreCliTimeoutSeconds' ? '5' : null,
+      );
+      await authenticatedAgent
+        .post('/api/sources/test-source/meshcore/cli')
+        .send({ command: 'ver' });
+      expect(meshcoreManager.sendLocalCliCommand).toHaveBeenCalledWith('ver', {
+        timeoutMs: 5000,
       });
     });
 
