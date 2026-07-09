@@ -7,7 +7,7 @@
  *
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, desc, sql, and, or, lte, isNull, ne, type SQL } from 'drizzle-orm';
+import { eq, desc, sql, and, or, lte, isNull, ne, asc, inArray, type SQL } from 'drizzle-orm';
 import {
   readMessagesSqlite,
 } from '../schema/notifications.js';
@@ -209,11 +209,22 @@ export class NotificationsRepository extends BaseRepository {
             eq(userNotificationPreferences.sourceId, sourceId)
           )
         : eq(userNotificationPreferences.userId, userId);
-      const rows = await this.db
-        .select()
-        .from(userNotificationPreferences)
-        .where(whereClause)
-        .limit(1);
+      // Deterministic tie-break when no sourceId is given and a user has rows
+      // for multiple sources: '' (the legacy/default row) sorts first in all
+      // three dialects, so callers that don't specify a source consistently
+      // see the same row rather than whichever the query planner returns.
+      const rows = sourceId
+        ? await this.db
+            .select()
+            .from(userNotificationPreferences)
+            .where(whereClause)
+            .limit(1)
+        : await this.db
+            .select()
+            .from(userNotificationPreferences)
+            .where(whereClause)
+            .orderBy(asc(userNotificationPreferences.sourceId))
+            .limit(1);
 
       if (rows.length === 0) {
         return null;
@@ -366,19 +377,80 @@ export class NotificationsRepository extends BaseRepository {
   }
 
   /**
-   * Get users who have inactive node notifications enabled and at least one notification channel active
+   * Count the entries in a JSON-array column without ever returning the
+   * contents (used for appriseUrlCount — diagnostics must never leak URLs).
    */
-  async getUsersWithInactiveNodeNotifications(): Promise<Array<{ userId: number; monitoredNodes: string | null }>> {
+  private countJsonArray(value: string | null | undefined): number {
+    if (!value) return 0;
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.length : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Get users who have inactive node notifications enabled and at least one notification channel active.
+   *
+   * #4020 fix: a user's flag/monitored-nodes/channel-config can live on DIFFERENT
+   * per-(userId, sourceId) rows (e.g. the flag was saved on the '' row before a
+   * source existed, then monitored nodes got saved on a per-source row). Returning
+   * only the first matching row silently dropped the other rows' data, so the
+   * gate/collect/deliver pipeline stages could each resolve a different row and
+   * never agree on "this user should be notified". This now returns ALL rows
+   * (across all sources) for any user with at least one flagged row, ordered by
+   * (userId, sourceId) so callers can group per user and merge across rows.
+   */
+  async getUsersWithInactiveNodeNotifications(): Promise<Array<{
+    userId: number;
+    sourceId: string;
+    notifyOnInactiveNode: boolean;
+    notifyOnMessage: boolean;
+    appriseEnabled: boolean;
+    monitoredNodes: string | null;
+    appriseUrlCount: number;
+  }>> {
     try {
       const { userNotificationPreferences: t } = this.tables;
-      const rows = await this.db
-        .select({ userId: t.userId, monitoredNodes: t.monitoredNodes })
+      const flaggedRows = await this.db
+        .select({ userId: t.userId })
         .from(t)
-        .where(and(
-          eq(t.notifyOnInactiveNode, true),
-          or(eq(t.notifyOnMessage, true), eq(t.appriseEnabled, true))
-        ));
-      return rows;
+        .where(eq(t.notifyOnInactiveNode, true));
+      const flaggedUserIds = Array.from(new Set<number>(flaggedRows.map((r: { userId: number }) => Number(r.userId))));
+      if (flaggedUserIds.length === 0) return [];
+
+      const rows = await this.db
+        .select({
+          userId: t.userId,
+          sourceId: t.sourceId,
+          notifyOnInactiveNode: t.notifyOnInactiveNode,
+          notifyOnMessage: t.notifyOnMessage,
+          appriseEnabled: t.appriseEnabled,
+          monitoredNodes: t.monitoredNodes,
+          appriseUrls: t.appriseUrls,
+        })
+        .from(t)
+        .where(inArray(t.userId, flaggedUserIds))
+        .orderBy(asc(t.userId), asc(t.sourceId));
+
+      return rows.map((r: {
+        userId: number;
+        sourceId: string;
+        notifyOnInactiveNode: boolean | number | null;
+        notifyOnMessage: boolean | number | null;
+        appriseEnabled: boolean | number | null;
+        monitoredNodes: string | null;
+        appriseUrls: string | null;
+      }) => ({
+        userId: Number(r.userId),
+        sourceId: r.sourceId,
+        notifyOnInactiveNode: Boolean(r.notifyOnInactiveNode),
+        notifyOnMessage: Boolean(r.notifyOnMessage),
+        appriseEnabled: Boolean(r.appriseEnabled),
+        monitoredNodes: r.monitoredNodes,
+        appriseUrlCount: this.countJsonArray(r.appriseUrls),
+      }));
     } catch (error) {
       logger.debug('Failed to query users with inactive node notifications:', error);
       return [];
@@ -387,28 +459,120 @@ export class NotificationsRepository extends BaseRepository {
 
   /**
    * Get users who have low-battery notifications enabled and at least one notification channel active.
-   * Returns each user's monitored node list (shared with the inactive-node feature) plus both
-   * per-user thresholds: the Meshtastic percentage (lowBatteryThreshold) and the MeshCore voltage
-   * in mV (lowBatteryVoltageThreshold).
+   *
+   * #4020 fix: see getUsersWithInactiveNodeNotifications above — the same
+   * split-row defect applied here. Returns ALL rows for any user with at
+   * least one flagged row (ordered by userId, sourceId ASC) instead of a
+   * single arbitrary row, so callers can resolve eligibility/thresholds/
+   * channel per-concern across the full row set.
    */
-  async getUsersWithLowBatteryNotifications(): Promise<Array<{ userId: number; monitoredNodes: string | null; lowBatteryThreshold: number | null; lowBatteryVoltageThreshold: number | null }>> {
+  async getUsersWithLowBatteryNotifications(): Promise<Array<{
+    userId: number;
+    sourceId: string;
+    notifyOnLowBattery: boolean;
+    notifyOnMessage: boolean;
+    appriseEnabled: boolean;
+    monitoredNodes: string | null;
+    lowBatteryThreshold: number | null;
+    lowBatteryVoltageThreshold: number | null;
+    appriseUrlCount: number;
+  }>> {
     try {
       const { userNotificationPreferences: t } = this.tables;
-      const rows = await this.db
-        .select({ userId: t.userId, monitoredNodes: t.monitoredNodes, lowBatteryThreshold: t.lowBatteryThreshold, lowBatteryVoltageThreshold: t.lowBatteryVoltageThreshold })
+      const flaggedRows = await this.db
+        .select({ userId: t.userId })
         .from(t)
-        .where(and(
-          eq(t.notifyOnLowBattery, true),
-          or(eq(t.notifyOnMessage, true), eq(t.appriseEnabled, true))
-        ));
-      return rows.map((r: any) => ({
-        userId: r.userId,
+        .where(eq(t.notifyOnLowBattery, true));
+      const flaggedUserIds = Array.from(new Set<number>(flaggedRows.map((r: { userId: number }) => Number(r.userId))));
+      if (flaggedUserIds.length === 0) return [];
+
+      const rows = await this.db
+        .select({
+          userId: t.userId,
+          sourceId: t.sourceId,
+          notifyOnLowBattery: t.notifyOnLowBattery,
+          notifyOnMessage: t.notifyOnMessage,
+          appriseEnabled: t.appriseEnabled,
+          monitoredNodes: t.monitoredNodes,
+          lowBatteryThreshold: t.lowBatteryThreshold,
+          lowBatteryVoltageThreshold: t.lowBatteryVoltageThreshold,
+          appriseUrls: t.appriseUrls,
+        })
+        .from(t)
+        .where(inArray(t.userId, flaggedUserIds))
+        .orderBy(asc(t.userId), asc(t.sourceId));
+
+      return rows.map((r: {
+        userId: number;
+        sourceId: string;
+        notifyOnLowBattery: boolean | number | null;
+        notifyOnMessage: boolean | number | null;
+        appriseEnabled: boolean | number | null;
+        monitoredNodes: string | null;
+        lowBatteryThreshold: number | null;
+        lowBatteryVoltageThreshold: number | null;
+        appriseUrls: string | null;
+      }) => ({
+        userId: Number(r.userId),
+        sourceId: r.sourceId,
+        notifyOnLowBattery: Boolean(r.notifyOnLowBattery),
+        notifyOnMessage: Boolean(r.notifyOnMessage),
+        appriseEnabled: Boolean(r.appriseEnabled),
         monitoredNodes: r.monitoredNodes,
         lowBatteryThreshold: r.lowBatteryThreshold != null ? Number(r.lowBatteryThreshold) : null,
         lowBatteryVoltageThreshold: r.lowBatteryVoltageThreshold != null ? Number(r.lowBatteryVoltageThreshold) : null,
+        appriseUrlCount: this.countJsonArray(r.appriseUrls),
       }));
     } catch (error) {
       logger.debug('Failed to query users with low battery notifications:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get every (sourceId, preferences) row for a single user, ordered by
+   * sourceId ASC (so the '' / default-source row — if present — sorts first,
+   * followed by per-source rows in id order). Used by the targeted alert
+   * pipeline (low-battery, inactive-node) and by Apprise/push delivery to
+   * resolve "does this user have a usable row anywhere" without picking an
+   * arbitrary single row (#4020).
+   */
+  async getUserPreferenceRows(userId: number): Promise<Array<{ sourceId: string; prefs: NotificationPreferences }>> {
+    if (!Number.isInteger(userId) || userId <= 0) {
+      logger.error(`Invalid userId: ${userId}`);
+      return [];
+    }
+    try {
+      const { userNotificationPreferences: t } = this.tables;
+      const rows = await this.db
+        .select()
+        .from(t)
+        .where(eq(t.userId, userId))
+        .orderBy(asc(t.sourceId));
+      return rows.map((row: Record<string, unknown>) => ({ sourceId: row.sourceId as string, prefs: this.mapPreferencesRow(row) }));
+    } catch (error) {
+      logger.error(`Failed to get preference rows for user ${userId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Distinct userIds that have at least one notification-preferences row of
+   * any kind, ordered ascending. Used only for the zero-eligible-users
+   * diagnostic dump (so we can show what every known user's rows look like
+   * when a check cycle finds nobody currently eligible) — not part of the
+   * delivery path itself.
+   */
+  async getAllPreferenceUserIds(): Promise<number[]> {
+    try {
+      const { userNotificationPreferences: t } = this.tables;
+      const rows = await this.db
+        .selectDistinct({ userId: t.userId })
+        .from(t)
+        .orderBy(asc(t.userId));
+      return rows.map((r: { userId: number }) => Number(r.userId));
+    } catch (error) {
+      logger.debug('Failed to query distinct preference userIds:', error);
       return [];
     }
   }

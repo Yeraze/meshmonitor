@@ -554,11 +554,30 @@ class PushNotificationService {
         }
       }
 
-      // Check if user has this preference enabled (per-source if sourceId provided)
-      const prefs = await getUserNotificationPreferencesAsync(userId, effectiveSourceId);
-      if (!prefs || !prefs.enableWebPush || !prefs[preferenceKey]) {
-        filtered++;
-        continue;
+      // #4020: the targeted alert pipeline (low-battery, inactive-node) already
+      // decided this user should be notified — the check service is the sole
+      // authority on intent, so we must not re-gate on prefs[preferenceKey]
+      // here (that flag can live on a DIFFERENT (userId, sourceId) row than
+      // the one whose subscription we're about to send to, and re-checking it
+      // against effectiveSourceId's row alone was exactly how alerts silently
+      // vanished). We still require a channel to actually be usable: any of
+      // the user's rows has enableWebPush true (an existing subscription is
+      // already guaranteed since we're iterating this user's subscriptions).
+      if (targetUserId !== undefined) {
+        const rows = await databaseService.notifications.getUserPreferenceRows(userId);
+        const hasWebPush = rows.some((r) => r.prefs.enableWebPush);
+        if (!hasWebPush) {
+          filtered++;
+          continue;
+        }
+      } else {
+        // Untargeted broadcasts (new node, traceroute, server events) keep the
+        // original single-row, single-source gate.
+        const prefs = await getUserNotificationPreferencesAsync(userId, effectiveSourceId);
+        if (!prefs || !prefs.enableWebPush || !prefs[preferenceKey]) {
+          filtered++;
+          continue;
+        }
       }
 
       // Apply node name prefix if user has it enabled

@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { getUserNotificationPreferencesAsync, getUsersWithServiceEnabledAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync } from '../utils/notificationFiltering.js';
+import { getUserNotificationPreferencesAsync, getUsersWithServiceEnabledAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, resolveAppriseTargetAsync } from '../utils/notificationFiltering.js';
 import meshtasticManager from '../meshtasticManager.js';
 
 export interface AppriseNotificationPayload {
@@ -458,8 +458,13 @@ class AppriseNotificationService {
 
     // Phase C: scope preference broadcasts by sourceId
     const effectiveSourceId = sourceId ?? payload.sourceId;
-    // Get all users with Apprise enabled and this preference enabled
-    const users = await getUsersWithServiceEnabledAsync('apprise');
+    // #4020: the targeted alert pipeline (low-battery, inactive-node) already
+    // decided targetUserId should be notified — the check service is the sole
+    // authority on intent, so iterate that user directly instead of the
+    // any-row "who has Apprise enabled anywhere" list (which both misses
+    // users whose flagged row is on a different source and wastes a scan of
+    // every Apprise-enabled user just to filter down to one).
+    const users = targetUserId !== undefined ? [targetUserId] : await getUsersWithServiceEnabledAsync('apprise');
     logger.debug(`📢 Broadcasting ${preferenceKey} notification to ${users.length} Apprise users${targetUserId ? ` (target user: ${targetUserId})` : ''}`);
 
     // Get local node name for prefix
@@ -482,12 +487,6 @@ class AppriseNotificationService {
     }
 
     for (const userId of users) {
-      // If targetUserId is specified, only send to that user
-      if (targetUserId !== undefined && userId !== targetUserId) {
-        filtered++;
-        continue;
-      }
-
       // Phase C: per-source permission check
       if (effectiveSourceId) {
         try {
@@ -503,28 +502,55 @@ class AppriseNotificationService {
         }
       }
 
-      // Check if user has this preference enabled (per-source) and has URLs configured
-      const prefs = await getUserNotificationPreferencesAsync(userId, effectiveSourceId);
-      if (!prefs || !prefs.enableApprise || !prefs[preferenceKey]) {
-        filtered++;
-        continue;
+      let urls: string[];
+      let prefixWithNodeName: boolean;
+
+      if (targetUserId !== undefined) {
+        // #4020: resolve the delivery channel across ALL of this user's rows
+        // (exact-source first, then '', then any remaining row) instead of
+        // re-checking prefs[preferenceKey] against a single row — the check
+        // service already established intent, so we only need "is there a
+        // usable Apprise channel anywhere for this user".
+        const resolved = await resolveAppriseTargetAsync(userId, effectiveSourceId);
+        if (!resolved) {
+          logger.debug(`⚠️  No usable Apprise channel for user ${userId} on any prefs row, skipping`);
+          filtered++;
+          continue;
+        }
+        urls = resolved.urls;
+        prefixWithNodeName = resolved.prefixWithNodeName;
+      } else {
+        // Untargeted broadcasts (new node, traceroute, server events) keep the
+        // original single-row, single-source gate.
+        const prefs = await getUserNotificationPreferencesAsync(userId, effectiveSourceId);
+        if (!prefs || !prefs.enableApprise || !prefs[preferenceKey]) {
+          filtered++;
+          continue;
+        }
+
+        // Check if user has Apprise URLs configured
+        if (!prefs.appriseUrls || prefs.appriseUrls.length === 0) {
+          logger.debug(`⚠️  No Apprise URLs configured for user ${userId}, skipping`);
+          filtered++;
+          continue;
+        }
+        urls = prefs.appriseUrls;
+        prefixWithNodeName = prefs.prefixWithNodeName;
       }
 
-      // Check if user has Apprise URLs configured
-      if (!prefs.appriseUrls || prefs.appriseUrls.length === 0) {
-        logger.debug(`⚠️  No Apprise URLs configured for user ${userId}, skipping`);
-        filtered++;
-        continue;
-      }
-
-      // Apply node name prefix if user has it enabled
-      const prefixedBody = await applyNodeNamePrefixAsync(userId, payload.body, localNodeName);
-      const notificationPayload = prefixedBody !== payload.body
-        ? { ...payload, body: prefixedBody }
+      // Apply node name prefix if the resolved row has it enabled. For the
+      // targeted path this uses the SAME row resolveAppriseTargetAsync picked
+      // (not a re-query, which could land on a different row than the one
+      // whose URLs we're sending to).
+      const bodyToSend = targetUserId !== undefined
+        ? (prefixWithNodeName && localNodeName ? `[${localNodeName}] ${payload.body}` : payload.body)
+        : await applyNodeNamePrefixAsync(userId, payload.body, localNodeName);
+      const notificationPayload = bodyToSend !== payload.body
+        ? { ...payload, body: bodyToSend }
         : payload;
 
       // Send to user's specific URLs
-      const success = await this.sendNotificationToUrls(notificationPayload, prefs.appriseUrls);
+      const success = await this.sendNotificationToUrls(notificationPayload, urls);
       if (success) {
         sent++;
       } else {

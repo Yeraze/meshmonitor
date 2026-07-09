@@ -2,7 +2,8 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { notificationService } from './notificationService.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
-
+import { HourlyLogLimiter } from '../utils/hourlyLogLimiter.js';
+import { parseMonitoredUnion, countMonitoredNodes, formatSourceIdForLog, logZeroEligiblePrefRows } from '../utils/notificationCheckHelpers.js';
 
 interface InactiveNodeCheck {
   nodeId: string;
@@ -15,6 +16,28 @@ interface InactiveNodeCheck {
   sourceName: string;
 }
 
+/** One flagged (userId, sourceId) preferences row as returned by the repository. */
+interface InactiveNodePrefRow {
+  userId: number;
+  sourceId: string;
+  notifyOnInactiveNode: boolean;
+  notifyOnMessage: boolean;
+  appriseEnabled: boolean;
+  monitoredNodes: string | null;
+  appriseUrlCount: number;
+}
+
+/**
+ * #4020: `user_notification_preferences` is one row per (userId, sourceId). A
+ * user's flag/monitored-nodes/channel-config can be split across several rows
+ * (e.g. the flag was saved on the '' row before a source existed, then
+ * monitored nodes were saved on a per-source row later). The repository now
+ * returns ALL of a user's rows once ANY row has the flag set, and this
+ * service merges them per §1 Rule A of the #4020 design: eligibility = any
+ * row true, monitored nodes = union across rows.
+ *
+ * Split-row fix: https://github.com/Yeraze/meshmonitor/issues/4020
+ */
 class InactiveNodeNotificationService {
   private checkInterval: NodeJS.Timeout | null = null;
   private initialCheckTimeout: NodeJS.Timeout | null = null;
@@ -24,6 +47,8 @@ class InactiveNodeNotificationService {
   private readonly DEFAULT_CHECK_INTERVAL_MINUTES = 60; // Check every hour
   private readonly DEFAULT_INACTIVE_THRESHOLD_HOURS = 24; // 24 hours of inactivity
   private readonly DEFAULT_NOTIFICATION_COOLDOWN_HOURS = 24; // Don't notify about same node more than once per 24 hours
+  // Diagnostics: at most once per key per hour — see HourlyLogLimiter/#4020.
+  private readonly hourlyLog = new HourlyLogLimiter();
 
   /**
    * Start the inactive node monitoring service
@@ -94,15 +119,15 @@ class InactiveNodeNotificationService {
       const now = Date.now();
       const cutoffSeconds = Math.floor(now / 1000) - thresholdHours * 60 * 60;
 
-      // Get all users who have inactive node notifications enabled (database-agnostic via Drizzle ORM)
-      const users = await databaseService.notifications.getUsersWithInactiveNodeNotifications();
+      // Get all preference rows for users who have inactive-node notifications
+      // enabled on at least one (userId, sourceId) row (#4020 — see class doc).
+      const rows = await databaseService.notifications.getUsersWithInactiveNodeNotifications();
 
-      if (users.length === 0) {
-        logger.debug('✅ No users have inactive node notifications enabled');
+      if (rows.length === 0) {
+        this.hourlyLog.log('no-users', 'info', '✅ No users have inactive node notifications enabled');
+        await this.logZeroEligibleDiagnostic();
         return;
       }
-
-      logger.debug(`🔍 Checking inactive nodes for ${users.length} user(s)`);
 
       // Phase C: iterate every active source and run the inactivity check per source.
       // All source types (meshtastic, MeshCore, MQTT) are now in the unified
@@ -113,40 +138,62 @@ class InactiveNodeNotificationService {
         return;
       }
 
+      // Resolve sourceName once per source per scan
+      const sourceNames = new Map<string, string>();
       for (const manager of managers) {
-        const sourceId = manager.sourceId;
-        // Resolve sourceName once per source per scan
-        let sourceName: string = sourceId;
+        let sourceName: string = manager.sourceId;
         try {
-          const source = await databaseService.sources.getSource(sourceId);
+          const source = await databaseService.sources.getSource(manager.sourceId);
           if (source?.name) sourceName = source.name;
         } catch (err) {
-          logger.debug(`Could not resolve source name for ${sourceId}:`, err);
+          logger.debug(`Could not resolve source name for ${manager.sourceId}:`, err);
+        }
+        sourceNames.set(manager.sourceId, sourceName);
+      }
+
+      // Group rows by userId (rows already ordered userId, sourceId ASC by the repository)
+      const rowsByUser = new Map<number, InactiveNodePrefRow[]>();
+      for (const row of rows) {
+        const list = rowsByUser.get(row.userId);
+        if (list) {
+          list.push(row);
+        } else {
+          rowsByUser.set(row.userId, [row]);
+        }
+      }
+
+      logger.debug(`🔍 Checking inactive nodes for ${rowsByUser.size} user(s) (${rows.length} preference row(s))`);
+
+      for (const [userId, userRows] of rowsByUser.entries()) {
+        // Rule A: monitored-node union across all of this user's rows (dedup).
+        const monitoredUnion = parseMonitoredUnion(userId, userRows);
+        if (monitoredUnion.length === 0) {
+          this.hourlyLog.log(
+            `empty-monitored:${userId}`,
+            'info',
+            `⚠️ [inactive-node] user=${userId} has no monitored nodes across any row — skipping. rows: ${this.formatRowsSummary(userRows)}`
+          );
+          continue;
         }
 
-        // Process each user's monitored nodes (scoped to this source)
-        for (const user of users) {
-          let monitoredNodeIds: string[] = [];
-
-          if (user.monitoredNodes) {
-            try {
-              monitoredNodeIds = JSON.parse(user.monitoredNodes);
-            } catch (error) {
-              logger.warn(`Failed to parse monitored_nodes for user ${user.userId}:`, error);
-              continue;
-            }
-          }
-
-          if (monitoredNodeIds.length === 0) {
-            continue;
-          }
+        // Process each source for this user (scoped to this source)
+        for (const manager of managers) {
+          const sourceId = manager.sourceId;
+          const sourceName = sourceNames.get(sourceId) ?? sourceId;
 
           // Phase C: permission check — skip user if they lack nodes:read on this source
           try {
-            const allowed = await databaseService.checkPermissionAsync(user.userId, 'nodes', 'read', sourceId);
-            if (!allowed) continue;
+            const allowed = await databaseService.checkPermissionAsync(userId, 'nodes', 'read', sourceId);
+            if (!allowed) {
+              this.hourlyLog.log(
+                `perm:${userId}:${sourceId}`,
+                'info',
+                `🔒 [inactive-node] user=${userId} lacks nodes:read on source ${sourceId} — skipping`
+              );
+              continue;
+            }
           } catch (err) {
-            logger.error(`Permission check failed for user ${user.userId} on source ${sourceId}:`, err);
+            logger.error(`Permission check failed for user ${userId} on source ${sourceId}:`, err);
             continue;
           }
 
@@ -154,27 +201,27 @@ class InactiveNodeNotificationService {
           // milliseconds; Meshtastic nodes report seconds. Collect a
           // protocol-appropriate, already-formatted list of inactive alerts.
           const alerts = manager.sourceType === 'meshcore'
-            ? await this.collectMeshCoreInactiveAlerts(monitoredNodeIds, sourceId, thresholdHours, now)
-            : await this.collectMeshtasticInactiveAlerts(monitoredNodeIds, sourceId, cutoffSeconds, now);
+            ? await this.collectMeshCoreInactiveAlerts(monitoredUnion, sourceId, thresholdHours, now)
+            : await this.collectMeshtasticInactiveAlerts(monitoredUnion, sourceId, cutoffSeconds, now);
 
           if (alerts.length === 0) continue;
 
-          logger.debug(`🔍 Found ${alerts.length} inactive monitored node(s) for user ${user.userId} on source ${sourceId}`);
+          logger.debug(`🔍 Found ${alerts.length} inactive monitored node(s) for user ${userId} on source ${sourceId}`);
 
           for (const alert of alerts) {
             // Source-scoped cooldown key prevents collisions across sources
-            const notificationKey = `${user.userId}:${sourceId}:${alert.nodeId}`;
+            const notificationKey = `${userId}:${sourceId}:${alert.nodeId}`;
             const lastNotification = this.lastNotifiedNodes.get(notificationKey);
             const cooldownMs = cooldownHours * 60 * 60 * 1000;
 
             if (lastNotification && now - lastNotification < cooldownMs) {
               logger.debug(
-                `⏭️  Skipping notification for user ${user.userId}, node ${alert.nodeId} on ${sourceId} (already notified recently)`
+                `⏭️  Skipping notification for user ${userId}, node ${alert.nodeId} on ${sourceId} (already notified recently)`
               );
               continue;
             }
 
-            await this.sendInactiveNodeNotification(user.userId, { ...alert, sourceId, sourceName });
+            await this.sendInactiveNodeNotification(userId, { ...alert, sourceId, sourceName });
 
             this.lastNotifiedNodes.set(notificationKey, now);
           }
@@ -188,9 +235,36 @@ class InactiveNodeNotificationService {
           this.lastNotifiedNodes.delete(key);
         }
       }
+      this.hourlyLog.prune();
     } catch (error) {
       logger.error('❌ Error checking inactive nodes:', error);
     }
+  }
+
+  /**
+   * Compact, count-only summary of a user's preference rows for diagnostics.
+   * Never includes URL contents or node identifiers — only booleans/counts.
+   */
+  private formatRowsSummary(rows: InactiveNodePrefRow[]): string {
+    return rows
+      .map((r) => {
+        const src = formatSourceIdForLog(r.sourceId);
+        const monitoredCount = countMonitoredNodes(r.monitoredNodes);
+        return `[src=${src} inactive=${r.notifyOnInactiveNode ? '✓' : '✗'} webPush=${r.notifyOnMessage ? '✓' : '✗'} apprise=${r.appriseEnabled ? '✓' : '✗'} monitored=${monitoredCount} urls=${r.appriseUrlCount}]`;
+      })
+      .join(' ');
+  }
+
+  /**
+   * When no users are currently eligible, dump every known user's full row
+   * set (counts only) so an operator can see WHY — e.g. the flag is on one
+   * row but the channel/URLs are on another (the exact #4020 failure mode).
+   */
+  private async logZeroEligibleDiagnostic(): Promise<void> {
+    await logZeroEligiblePrefRows(this.hourlyLog, '⚠️ [inactive-node]', (sourceId, prefs) => {
+      const src = formatSourceIdForLog(sourceId);
+      return `[src=${src} inactive=${prefs.notifyOnInactiveNode ? '✓' : '✗'} webPush=${prefs.enableWebPush ? '✓' : '✗'} apprise=${prefs.enableApprise ? '✓' : '✗'} monitored=${prefs.monitoredNodes.length} urls=${prefs.appriseUrls.length}]`;
+    });
   }
 
   /**
@@ -279,11 +353,24 @@ class InactiveNodeNotificationService {
       };
 
       // Send to this specific user (they have the preference enabled and node is in their list)
-      await notificationService.broadcastToPreferenceUsers('notifyOnInactiveNode', payload, userId);
+      const result = await notificationService.broadcastToPreferenceUsers('notifyOnInactiveNode', payload, userId);
 
       logger.info(
-        `📤 Sent inactive node notification to user ${userId} for ${node.nodeId} (${node.inactiveHours} hours inactive)`
+        `📤 Inactive node notification for user ${userId} node ${node.nodeId} (${node.inactiveHours} hours inactive): sent=${result.sent} filtered=${result.filtered}`
       );
+
+      if (result.sent === 0) {
+        // notificationService.broadcastToPreferenceUsers returns a flat
+        // aggregate (sent/failed/filtered) across push+apprise+desktop, not a
+        // per-service breakdown, so this WARN reports the aggregate counts
+        // rather than a push-vs-apprise split.
+        this.hourlyLog.log(
+          `zero-delivery:${userId}:${node.sourceId}`,
+          'warn',
+          `⚠️ inactive-node alert for user ${userId} node ${node.nodeId} matched but 0 notifications delivered ` +
+          `(filtered=${result.filtered}, failed=${result.failed}) — no usable delivery channel on any prefs row`
+        );
+      }
     } catch (error) {
       logger.error(`❌ Error sending inactive node notification to user ${userId} for ${node.nodeId}:`, error);
     }

@@ -281,18 +281,33 @@ class NotificationService {
    * Broadcast to users who have a specific preference enabled
    * Phase C: scoped to a specific sourceId (preferences and permissions are per-source)
    * Optionally target a specific user ID
+   *
+   * #4020: returns an aggregated sent/failed/filtered count across all
+   * sub-services so callers (e.g. lowBatteryNotificationService,
+   * inactiveNodeNotificationService) can tell whether a matched alert
+   * actually reached anyone, instead of firing-and-forgetting.
    */
   public async broadcastToPreferenceUsers(
     preferenceKey: 'notifyOnNewNode' | 'notifyOnTraceroute' | 'notifyOnInactiveNode' | 'notifyOnLowBattery' | 'notifyOnServerEvents',
     payload: NotificationPayload,
     targetUserId?: number
-  ): Promise<void> {
+  ): Promise<{ sent: number; failed: number; filtered: number }> {
     // Send to users with the preference enabled, scoped to the payload's sourceId
-    await Promise.allSettled([
+    const results = await Promise.allSettled([
       pushNotificationService.broadcastToPreferenceUsers(preferenceKey, payload, targetUserId, payload.sourceId),
       appriseNotificationService.broadcastToPreferenceUsers(preferenceKey, payload, targetUserId, payload.sourceId),
       desktopNotificationService.broadcastToPreferenceUsers(preferenceKey, payload, payload.sourceId)
     ]);
+
+    const totals = { sent: 0, failed: 0, filtered: 0 };
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        totals.sent += result.value.sent ?? 0;
+        totals.failed += result.value.failed ?? 0;
+        totals.filtered += result.value.filtered ?? 0;
+      }
+    }
+    return totals;
   }
 }
 

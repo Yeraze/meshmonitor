@@ -99,6 +99,21 @@ export async function getUserNotificationPreferencesAsync(userId: number, source
       return prefs;
     }
 
+    // #4020 Rule B: a user's preferences can live entirely on the ''
+    // (default-source) row while sourceId names a specific source that has
+    // no row of its own — e.g. the row was saved before this source existed.
+    // Only fall back when there is NO exact-sourceId row at all (an exact
+    // miss above just means one wasn't found for `sourceId`); this preserves
+    // deliberate per-source opt-outs (a user who explicitly saved a
+    // muted/disabled row for THIS source keeps that row, since it wins in the
+    // `getUserPreferences(userId, sourceId)` call above whenever it exists).
+    if (sourceId && sourceId !== '') {
+      const defaultSourcePrefs = await databaseService.notifications.getUserPreferences(userId, '');
+      if (defaultSourcePrefs) {
+        return defaultSourcePrefs;
+      }
+    }
+
     // Fall back to old settings table for backward compatibility.
     // Migration 028 deletes per-source rows that predate the per-source schema,
     // so any user who hasn't re-saved preferences in 4.0+ relies entirely on
@@ -278,6 +293,44 @@ export async function shouldFilterNotificationAsync(
   }
 
   return false; // Don't filter (allow by default)
+}
+
+/**
+ * Resolve the Apprise delivery target for a user in the TARGETED alert
+ * pipeline (low-battery, inactive-node — the check service already knows
+ * this specific user should be notified; this resolver only answers "what
+ * URLs / prefix setting do we use").
+ *
+ * #4020: a user's `enableApprise`/`appriseUrls`/`prefixWithNodeName` can live
+ * on a different (userId, sourceId) row than the one that triggered the
+ * eligibility check (e.g. the flag was saved on the '' row, the URLs on a
+ * per-source row). Visits rows in priority order — exact sourceId first,
+ * then '' (default), then any remaining rows (already sourceId ASC) — and
+ * returns the first row with both Apprise enabled and at least one URL.
+ * Returns null when no row has a usable channel.
+ */
+export async function resolveAppriseTargetAsync(
+  userId: number,
+  sourceId?: string
+): Promise<{ urls: string[]; prefixWithNodeName: boolean } | null> {
+  const rows = await databaseService.notifications.getUserPreferenceRows(userId);
+  if (rows.length === 0) return null;
+
+  const ordered = [...rows];
+  if (sourceId) {
+    const idx = ordered.findIndex((r) => r.sourceId === sourceId);
+    if (idx > 0) {
+      const [exact] = ordered.splice(idx, 1);
+      ordered.unshift(exact);
+    }
+  }
+
+  for (const row of ordered) {
+    if (row.prefs.enableApprise && row.prefs.appriseUrls && row.prefs.appriseUrls.length > 0) {
+      return { urls: row.prefs.appriseUrls, prefixWithNodeName: row.prefs.prefixWithNodeName };
+    }
+  }
+  return null;
 }
 
 /**
