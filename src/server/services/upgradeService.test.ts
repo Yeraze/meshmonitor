@@ -17,7 +17,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const settingsStore = vi.hoisted(() => new Map<string, string>());
 
 const mockDb = vi.hoisted(() => ({
-  miscRepo: {
+  upgradeHistoryRepo: {
     countConsecutiveFailedUpgrades: vi.fn().mockResolvedValue(0),
     markUpgradeFailed: vi.fn().mockResolvedValue(undefined),
     markUpgradeComplete: vi.fn().mockResolvedValue(undefined),
@@ -69,9 +69,9 @@ describe('upgradeService circuit breaker', () => {
   beforeEach(() => {
     settingsStore.clear();
     vi.clearAllMocks();
-    mockDb.miscRepo.countConsecutiveFailedUpgrades.mockResolvedValue(0);
-    mockDb.miscRepo.findStaleUpgrades.mockResolvedValue([]);
-    mockDb.miscRepo.countInProgressUpgrades.mockResolvedValue(0);
+    mockDb.upgradeHistoryRepo.countConsecutiveFailedUpgrades.mockResolvedValue(0);
+    mockDb.upgradeHistoryRepo.findStaleUpgrades.mockResolvedValue([]);
+    mockDb.upgradeHistoryRepo.countInProgressUpgrades.mockResolvedValue(0);
     fsMocks.existsSync.mockReturnValue(false);
     fsMocks.readFileSync.mockReturnValue('');
   });
@@ -107,7 +107,7 @@ describe('upgradeService circuit breaker', () => {
     // failure streak is over and the flag must clear on next status read.
     settingsStore.set('autoUpgradeBlocked', 'true');
     settingsStore.set('autoUpgradeBlockedReason', 'old failures');
-    mockDb.miscRepo.getLastUpgrade.mockResolvedValue({
+    mockDb.upgradeHistoryRepo.getLastUpgrade.mockResolvedValue({
       id: 'abc',
       status: 'complete',
     });
@@ -125,7 +125,7 @@ describe('upgradeService circuit breaker', () => {
   it('does NOT auto-heal when most recent upgrade is failed', async () => {
     settingsStore.set('autoUpgradeBlocked', 'true');
     settingsStore.set('autoUpgradeBlockedReason', 'pinned image');
-    mockDb.miscRepo.getLastUpgrade.mockResolvedValue({
+    mockDb.upgradeHistoryRepo.getLastUpgrade.mockResolvedValue({
       id: 'def',
       status: 'failed',
     });
@@ -174,7 +174,7 @@ describe('upgradeService circuit breaker', () => {
 
     expect(result.success).toBe(false);
     expect(result.message).toMatch(/blocked/i);
-    expect(mockDb.miscRepo.createUpgradeHistory).not.toHaveBeenCalled();
+    expect(mockDb.upgradeHistoryRepo.createUpgradeHistory).not.toHaveBeenCalled();
   });
 
   it('triggerUpgrade clears stale .upgrade-status before writing trigger', async () => {
@@ -254,8 +254,8 @@ describe('upgradeService circuit breaker', () => {
       fromVersion: '4.6.0',
       toVersion: '4.6.1',
     };
-    mockDb.miscRepo.findStaleUpgrades.mockResolvedValue([staleRow]);
-    mockDb.miscRepo.countInProgressUpgrades.mockResolvedValue(0);
+    mockDb.upgradeHistoryRepo.findStaleUpgrades.mockResolvedValue([staleRow]);
+    mockDb.upgradeHistoryRepo.countInProgressUpgrades.mockResolvedValue(0);
 
     const STATUS_FILE = '/data/.upgrade-status';
     fsMocks.existsSync.mockImplementation((p: string) =>
@@ -268,8 +268,8 @@ describe('upgradeService circuit breaker', () => {
     await upgradeService.isUpgradeInProgress();
 
     // Must have marked complete, not failed
-    expect(mockDb.miscRepo.markUpgradeComplete).toHaveBeenCalledWith('stale-1');
-    expect(mockDb.miscRepo.markUpgradeFailed).not.toHaveBeenCalled();
+    expect(mockDb.upgradeHistoryRepo.markUpgradeComplete).toHaveBeenCalledWith('stale-1');
+    expect(mockDb.upgradeHistoryRepo.markUpgradeFailed).not.toHaveBeenCalled();
     // Circuit breaker must NOT have been tripped
     expect(settingsStore.get('autoUpgradeBlocked')).not.toBe('true');
   });
@@ -283,17 +283,17 @@ describe('upgradeService circuit breaker', () => {
       fromVersion: '4.6.0',
       toVersion: '4.6.1',
     };
-    mockDb.miscRepo.findStaleUpgrades.mockResolvedValue([staleRow]);
-    mockDb.miscRepo.countInProgressUpgrades.mockResolvedValue(0);
+    mockDb.upgradeHistoryRepo.findStaleUpgrades.mockResolvedValue([staleRow]);
+    mockDb.upgradeHistoryRepo.countInProgressUpgrades.mockResolvedValue(0);
     fsMocks.existsSync.mockReturnValue(false);
 
     await upgradeService.isUpgradeInProgress();
 
-    expect(mockDb.miscRepo.markUpgradeFailed).toHaveBeenCalledWith(
+    expect(mockDb.upgradeHistoryRepo.markUpgradeFailed).toHaveBeenCalledWith(
       'stale-2',
       expect.stringContaining('timed out')
     );
-    expect(mockDb.miscRepo.markUpgradeComplete).not.toHaveBeenCalled();
+    expect(mockDb.upgradeHistoryRepo.markUpgradeComplete).not.toHaveBeenCalled();
   });
 
   // ── Issue #3228: syncPendingUpgradeStatusOnBoot ────────────────────────────
@@ -305,7 +305,7 @@ describe('upgradeService circuit breaker', () => {
       fromVersion: '4.6.3',
       toVersion: '4.6.4',
     };
-    mockDb.miscRepo.findMostRecentPendingUpgrade.mockResolvedValue(pendingRow);
+    mockDb.upgradeHistoryRepo.findMostRecentPendingUpgrade.mockResolvedValue(pendingRow);
 
     const STATUS_FILE = '/data/.upgrade-status';
     fsMocks.existsSync.mockImplementation((p: string) => p === STATUS_FILE);
@@ -315,8 +315,8 @@ describe('upgradeService circuit breaker', () => {
 
     await upgradeService.syncPendingUpgradeStatusOnBoot();
 
-    expect(mockDb.miscRepo.markUpgradeComplete).toHaveBeenCalledWith('boot-1');
-    expect(mockDb.miscRepo.markUpgradeFailed).not.toHaveBeenCalled();
+    expect(mockDb.upgradeHistoryRepo.markUpgradeComplete).toHaveBeenCalledWith('boot-1');
+    expect(mockDb.upgradeHistoryRepo.markUpgradeFailed).not.toHaveBeenCalled();
     // Status file must be deleted after sync
     expect(fsMocks.unlinkSync).toHaveBeenCalledWith(STATUS_FILE);
     // Circuit breaker must be cleared (markCompleteAndClear)
@@ -325,7 +325,7 @@ describe('upgradeService circuit breaker', () => {
 
   it('syncPendingUpgradeStatusOnBoot marks pending row complete when status file says ready', async () => {
     const pendingRow = { id: 'boot-2', status: 'pending', fromVersion: '4.6.3', toVersion: '4.6.4' };
-    mockDb.miscRepo.findMostRecentPendingUpgrade.mockResolvedValue(pendingRow);
+    mockDb.upgradeHistoryRepo.findMostRecentPendingUpgrade.mockResolvedValue(pendingRow);
 
     const STATUS_FILE = '/data/.upgrade-status';
     fsMocks.existsSync.mockImplementation((p: string) => p === STATUS_FILE);
@@ -335,13 +335,13 @@ describe('upgradeService circuit breaker', () => {
 
     await upgradeService.syncPendingUpgradeStatusOnBoot();
 
-    expect(mockDb.miscRepo.markUpgradeComplete).toHaveBeenCalledWith('boot-2');
-    expect(mockDb.miscRepo.markUpgradeFailed).not.toHaveBeenCalled();
+    expect(mockDb.upgradeHistoryRepo.markUpgradeComplete).toHaveBeenCalledWith('boot-2');
+    expect(mockDb.upgradeHistoryRepo.markUpgradeFailed).not.toHaveBeenCalled();
   });
 
   it('syncPendingUpgradeStatusOnBoot marks pending row failed when status file says failed', async () => {
     const pendingRow = { id: 'boot-3', status: 'pending', fromVersion: '4.6.3', toVersion: '4.6.4' };
-    mockDb.miscRepo.findMostRecentPendingUpgrade.mockResolvedValue(pendingRow);
+    mockDb.upgradeHistoryRepo.findMostRecentPendingUpgrade.mockResolvedValue(pendingRow);
 
     const STATUS_FILE = '/data/.upgrade-status';
     fsMocks.existsSync.mockImplementation((p: string) => p === STATUS_FILE);
@@ -351,11 +351,11 @@ describe('upgradeService circuit breaker', () => {
 
     await upgradeService.syncPendingUpgradeStatusOnBoot();
 
-    expect(mockDb.miscRepo.markUpgradeFailed).toHaveBeenCalledWith(
+    expect(mockDb.upgradeHistoryRepo.markUpgradeFailed).toHaveBeenCalledWith(
       'boot-3',
       expect.stringContaining('watchdog status on boot')
     );
-    expect(mockDb.miscRepo.markUpgradeComplete).not.toHaveBeenCalled();
+    expect(mockDb.upgradeHistoryRepo.markUpgradeComplete).not.toHaveBeenCalled();
   });
 
   it('syncPendingUpgradeStatusOnBoot is a no-op when status file does not exist', async () => {
@@ -363,9 +363,9 @@ describe('upgradeService circuit breaker', () => {
 
     await upgradeService.syncPendingUpgradeStatusOnBoot();
 
-    expect(mockDb.miscRepo.findMostRecentPendingUpgrade).not.toHaveBeenCalled();
-    expect(mockDb.miscRepo.markUpgradeComplete).not.toHaveBeenCalled();
-    expect(mockDb.miscRepo.markUpgradeFailed).not.toHaveBeenCalled();
+    expect(mockDb.upgradeHistoryRepo.findMostRecentPendingUpgrade).not.toHaveBeenCalled();
+    expect(mockDb.upgradeHistoryRepo.markUpgradeComplete).not.toHaveBeenCalled();
+    expect(mockDb.upgradeHistoryRepo.markUpgradeFailed).not.toHaveBeenCalled();
   });
 
   it('syncPendingUpgradeStatusOnBoot is a no-op when status file contains non-terminal value', async () => {
@@ -377,12 +377,12 @@ describe('upgradeService circuit breaker', () => {
 
     await upgradeService.syncPendingUpgradeStatusOnBoot();
 
-    expect(mockDb.miscRepo.findMostRecentPendingUpgrade).not.toHaveBeenCalled();
-    expect(mockDb.miscRepo.markUpgradeComplete).not.toHaveBeenCalled();
+    expect(mockDb.upgradeHistoryRepo.findMostRecentPendingUpgrade).not.toHaveBeenCalled();
+    expect(mockDb.upgradeHistoryRepo.markUpgradeComplete).not.toHaveBeenCalled();
   });
 
   it('syncPendingUpgradeStatusOnBoot deletes orphaned status file when no pending row exists', async () => {
-    mockDb.miscRepo.findMostRecentPendingUpgrade.mockResolvedValue(null);
+    mockDb.upgradeHistoryRepo.findMostRecentPendingUpgrade.mockResolvedValue(null);
 
     const STATUS_FILE = '/data/.upgrade-status';
     fsMocks.existsSync.mockImplementation((p: string) => p === STATUS_FILE);
@@ -393,8 +393,8 @@ describe('upgradeService circuit breaker', () => {
     await upgradeService.syncPendingUpgradeStatusOnBoot();
 
     // No DB mutation — just file cleanup
-    expect(mockDb.miscRepo.markUpgradeComplete).not.toHaveBeenCalled();
-    expect(mockDb.miscRepo.markUpgradeFailed).not.toHaveBeenCalled();
+    expect(mockDb.upgradeHistoryRepo.markUpgradeComplete).not.toHaveBeenCalled();
+    expect(mockDb.upgradeHistoryRepo.markUpgradeFailed).not.toHaveBeenCalled();
     expect(fsMocks.unlinkSync).toHaveBeenCalledWith(STATUS_FILE);
   });
 });
