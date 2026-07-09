@@ -1371,21 +1371,23 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     return `${n.nodeNum}-${pos.latitude}-${pos.longitude}-${n.positionPrecisionBits ?? ''}`;
   }).join(',')]);
 
-  // #4015: signature of the markers currently rendered — drives the auto-open strip.
-  const renderedMarkerSig = nodesWithPosition.map(n => n.nodeNum).join('|');
-
   // #4015: strip Leaflet's auto-open-on-click handler that `bindPopup` installs
   // (via the declarative <Popup> child), so a pile click doesn't plant a popup on
   // the pre-spread stacked marker — the popup opens only via the OMS 'click'
-  // handler set up above. Runs after the child <Popup> bind effects; `off` is
-  // idempotent. `_openPopup` is Leaflet-private (verified vs leaflet@1.9.4); a
-  // future rename degrades to the old double-fire (annoying, not a crash).
+  // handler set up above. Popup content stays bound; `off` is idempotent.
+  //
+  // Runs on EVERY render (no dep array) on purpose: react-leaflet mounts the
+  // markers in a later commit than this component's first effect, so keying on a
+  // rendered-node signature can strip before any marker exists and then never
+  // re-run. Re-running each commit catches markers whenever they mount.
+  // `_openPopup` is Leaflet-private (verified vs leaflet@1.9.4); a future rename
+  // degrades to the old double-fire (annoying, not a crash).
   useEffect(() => {
     for (const m of markerRefs.current.values()) {
       const mm = m as L.Marker & { _openPopup?: (e: unknown) => void };
       if (mm._openPopup) mm.off('click', mm._openPopup, mm);
     }
-  }, [renderedMarkerSig, markerRefs]);
+  });
 
   // #3636: measurement endpoints — nearest-node snapping picks from these.
   const measurePoints: MeasurePoint[] = React.useMemo(

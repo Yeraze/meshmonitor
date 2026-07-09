@@ -357,8 +357,17 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
 
   // #4015: strip Leaflet's auto-open-on-click handler that `bindPopup` installs
   // via the declarative <Popup> child, so a pile click doesn't plant a popup on
-  // the pre-spread stacked marker. Runs after the child <Popup> bind effects;
-  // `off` is idempotent. Popup content stays bound for the OMS-driven open above.
+  // the pre-spread stacked marker. Popup content stays bound for the OMS-driven
+  // open above; `off` is idempotent.
+  //
+  // Runs on EVERY render (no dep array) on purpose: react-leaflet creates the map
+  // (and mounts the markers) in a LATER commit than this component's first
+  // effect. MeshCore contact data is usually already present on first render, so
+  // a `renderedKeysSig`-keyed effect would run once (before any marker exists)
+  // and never re-run — leaving popups un-stripped. Re-running each commit catches
+  // markers whenever they mount. Cheap: MeshCore marker counts are small and
+  // `off()` on an already-removed handler is a no-op.
+  //
   // NOTE: `_openPopup` is Leaflet's private handler (verified vs leaflet@1.9.4);
   // if a future Leaflet renames it the strip no-ops and we degrade to the old
   // double-fire (annoying, not a crash) — re-verify on Leaflet bumps.
@@ -367,7 +376,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
       const mm = m as LeafletMarker & { _openPopup?: (e: unknown) => void };
       if (mm._openPopup) mm.off('click', mm._openPopup, mm);
     }
-  }, [renderedKeysSig]);
+  });
 
   const localPos = useMemo((): [number, number] | null => {
     if (localNodePosition?.lat != null && localNodePosition?.lng != null) {
