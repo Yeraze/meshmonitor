@@ -102,6 +102,19 @@ describe('LowBatteryNotificationService', () => {
       expect(mockLoggerInfo).toHaveBeenCalledWith(expect.stringContaining('No users have notifyOnLowBattery enabled'));
     });
 
+    it('should log the "no subscribed users" diagnostic only once per process', async () => {
+      mockGetUsersWithLowBatteryNotifications.mockResolvedValue([]);
+
+      await service.checkLowBatteryNodes();
+      await service.checkLowBatteryNodes();
+      await service.checkLowBatteryNodes();
+
+      const matchingCalls = mockLoggerInfo.mock.calls.filter((call: unknown[]) =>
+        typeof call[0] === 'string' && call[0].includes('No users have notifyOnLowBattery enabled')
+      );
+      expect(matchingCalls).toHaveLength(1);
+    });
+
     it('should skip users with no monitored nodes', async () => {
       mockGetUsersWithLowBatteryNotifications.mockResolvedValue([
         { userId: 1, monitoredNodes: null, lowBatteryThreshold: 20 },
