@@ -168,7 +168,14 @@ DB by design, because the server uses those PSKs to decrypt packets).
 
 ## The danger guard
 
-Pattern: `/(reboot|erase|clkreboot|factory)/i`.
+Pattern: `/\b(reboot|erase|clkreboot|factory)\b(?!\.)/i`.
+
+The `(?!\.)` after the word boundary exists because these firmwares expose
+config keys as dotted paths that legitimately contain the danger words as
+a namespace prefix — e.g. `get reboot.interval` or `set clkreboot.retries
+3` — which are read/write config operations, not the destructive verb
+itself. Without the exclusion, any command referencing such a key (even a
+plain `get`) trips the confirmation prompt. See #4025.
 
 **Two independent enforcement points**, intentionally duplicated:
 

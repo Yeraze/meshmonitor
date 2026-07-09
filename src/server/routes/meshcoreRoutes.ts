@@ -111,10 +111,14 @@ const VALIDATION = {
  * Destructive MeshCore CLI commands. Requests targeting any matching
  * command must carry `confirm: true` in the body or the /admin/cli route
  * rejects with DANGER_CONFIRM_REQUIRED. Keep in sync with the matching
- * pattern in MeshCoreRemoteConsole.tsx so the client knows which commands
- * to route through its typed-name confirmation modal.
+ * pattern in CliConsoleBody.tsx so the client knows which commands to
+ * route through its typed-name confirmation modal.
+ *
+ * The trailing `(?!\.)` excludes danger words used as the prefix of a
+ * dotted config key (e.g. `get reboot.interval`, `set clkreboot.retries 3`)
+ * — those are read/write config-path operations, not the standalone verb.
  */
-const DANGER_COMMAND_PATTERN = /(reboot|erase|clkreboot|factory)/i;
+const DANGER_COMMAND_PATTERN = /\b(reboot|erase|clkreboot|factory)\b(?!\.)/i;
 
 /**
  * Validation helper functions

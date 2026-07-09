@@ -42,8 +42,10 @@ export interface ActionCommand {
 }
 
 /** Server-enforced regex for danger commands. Mirrored from
- *  meshcoreRoutes.ts:DANGER_COMMAND_PATTERN; keep in sync. */
-export const DANGER_COMMAND_PATTERN = /(reboot|erase|clkreboot|factory)/i;
+ *  meshcoreRoutes.ts:DANGER_COMMAND_PATTERN; keep in sync. The trailing
+ *  `(?!\.)` excludes danger words used as the prefix of a dotted config
+ *  key (e.g. `get reboot.interval`), which are not the standalone verb. */
+export const DANGER_COMMAND_PATTERN = /\b(reboot|erase|clkreboot|factory)\b(?!\.)/i;
 
 export type CliRunResult =
   | { ok: true; reply: string; elapsedMs?: number }
