@@ -1,5 +1,5 @@
 /**
- * Migration 113: MeshCore Auto-Pathfinding target allowlist (#4024).
+ * Migration 114: MeshCore Auto-Pathfinding target allowlist (#4024).
  *
  * Creates `meshcore_pathfinding_targets`: one row per selected contact
  * `publicKey` per `sourceId` — the OR-union "specific contact" sub-filter for
@@ -12,7 +12,7 @@
 import type { Database } from 'better-sqlite3';
 import { logger } from '../../utils/logger.js';
 
-const LABEL = 'Migration 113';
+const LABEL = 'Migration 114';
 const TABLE = 'meshcore_pathfinding_targets';
 const IDX = 'meshcore_pathfinding_targets_source_idx';
 
@@ -44,7 +44,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration113Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration114Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): creating ${TABLE}...`);
 
   await client.query(`
@@ -63,7 +63,7 @@ export async function runMigration113Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration113Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration114Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): creating ${TABLE}...`);
 
   const conn = await pool.getConnection();

@@ -127,7 +127,7 @@ import { migration as clampFutureTracerouteMigration, runMigration109Postgres as
 import { migration as meshcorePositionHistoryMigration, runMigration110Postgres as runMeshcorePositionHistoryPostgres, runMigration110Mysql as runMeshcorePositionHistoryMysql } from '../server/migrations/110_add_meshcore_position_history.js';
 import { migration as meshcoreNodePositionSourceMigration, runMigration111Postgres as runMeshcoreNodePositionSourcePostgres, runMigration111Mysql as runMeshcoreNodePositionSourceMysql } from '../server/migrations/111_meshcore_node_position_source.js';
 import { migration as nodeNotesMigration, runMigration112Postgres as runNodeNotesPostgres, runMigration112Mysql as runNodeNotesMysql } from '../server/migrations/112_add_notes_to_nodes.js';
-import { migration as meshcorePathfindingTargetsMigration, runMigration113Postgres as runMeshcorePathfindingTargetsPostgres, runMigration113Mysql as runMeshcorePathfindingTargetsMysql } from '../server/migrations/113_create_meshcore_pathfinding_targets.js';
+import { migration as meshcorePathfindingTargetsMigration, runMigration114Postgres as runMeshcorePathfindingTargetsPostgres, runMigration114Mysql as runMeshcorePathfindingTargetsMysql } from '../server/migrations/114_create_meshcore_pathfinding_targets.js';
 
 // ============================================================================
 // Registry
@@ -1793,9 +1793,9 @@ registry.register({
 // ---------------------------------------------------------------------------
 
 registry.register({
-  number: 113,
+  number: 114,
   name: 'create_meshcore_pathfinding_targets',
-  settingsKey: 'migration_113_create_meshcore_pathfinding_targets',
+  settingsKey: 'migration_114_create_meshcore_pathfinding_targets',
   sqlite: (db) => meshcorePathfindingTargetsMigration.up(db),
   postgres: (client) => runMeshcorePathfindingTargetsPostgres(client),
   mysql: (pool) => runMeshcorePathfindingTargetsMysql(pool),
