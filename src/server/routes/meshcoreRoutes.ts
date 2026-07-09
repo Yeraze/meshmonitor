@@ -29,6 +29,9 @@ import meshcorePositionHistoryService from '../services/meshcorePositionHistoryS
 import { resolveAutoAckPreSendDelaySeconds } from '../autoAckDelay.js';
 import { isNullIsland } from '../../utils/nullIsland.js';
 import { decodeMeshCorePacket } from '../../utils/meshcorePacketDecode.js';
+import { compileUserRegex } from '../../utils/safeRegex.js';
+import { ok, fail } from '../utils/apiResponse.js';
+import type { MeshcorePathfindingFilterSettings } from '../../services/database.js';
 
 /**
  * Resolve the manager for a request. Mounted only under
@@ -3069,6 +3072,131 @@ router.post(
     } catch (error) {
       logger.error('[API] Error saving auto-pathfinding settings:', error);
       res.status(500).json({ success: false, error: 'Failed to save auto-pathfinding settings' });
+    }
+  },
+);
+
+// ============ Auto-Pathfinding Target Filter (#4024) ============
+//
+// Filter config for Auto-Pathfinding contact selection: AND pre-filters
+// (last-heard/hops/signal) narrow the pool, then OR-union identity filters
+// (allowlist/name-regex) select within it. See
+// docs/internal/dev-notes/PATHFINDING_FILTER_SPEC.md §0/§2.7/§3.
+//
+// Deliberately a SEPARATE endpoint from POST /automation/pathfinding above:
+// that handler calls mgr.startAutoPathfinding() to rebuild the scheduler
+// closure, but the filter config does not require a scheduler restart —
+// executeRun() reads it fresh on every tick (§3.2). Saving the filter here
+// must NOT call startAutoPathfinding().
+
+/** MeshCore public keys are hex strings; allow any length firmware might use up to the full 64-char (32-byte) key. */
+const PATHFINDING_TARGET_KEY_PATTERN = /^[0-9a-fA-F]{2,64}$/;
+
+router.get(
+  '/automation/pathfinding/filter',
+  optionalAuth(),
+  requirePermission('automation', 'read', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const settings = await databaseService.getMeshcorePathfindingFilterSettingsAsync(sourceId);
+      ok(res, settings);
+    } catch (error) {
+      logger.error('[API] Error reading auto-pathfinding filter settings:', error);
+      fail(res, 500, 'PATHFINDING_FILTER_READ_FAILED', 'Failed to read pathfinding filter');
+    }
+  },
+);
+
+router.post(
+  '/automation/pathfinding/filter',
+  requireAuth(),
+  requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = (req.params as { id?: string }).id!;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+
+      // ---- boolean fields ----
+      const booleanFieldNames = [
+        'enabled', 'contactsEnabled', 'regexEnabled', 'lastHeardEnabled', 'hopsEnabled', 'signalEnabled',
+      ] as const;
+      for (const field of booleanFieldNames) {
+        if (body[field] !== undefined && typeof body[field] !== 'boolean') {
+          return fail(res, 400, 'PATHFINDING_FILTER_INVALID', `${field} must be a boolean`);
+        }
+      }
+
+      // ---- targetKeys allowlist ----
+      let targetKeys: string[] = [];
+      if (body.targetKeys !== undefined) {
+        const raw = body.targetKeys;
+        const valid =
+          Array.isArray(raw) &&
+          raw.every((k): k is string => typeof k === 'string' && PATHFINDING_TARGET_KEY_PATTERN.test(k));
+        if (!valid) {
+          return fail(res, 400, 'PATHFINDING_FILTER_INVALID', 'targetKeys must be an array of hex-string public keys');
+        }
+        targetKeys = raw as string[];
+      }
+
+      // ---- nameRegex: type + RE2-safe compile check ----
+      if (body.nameRegex !== undefined) {
+        if (typeof body.nameRegex !== 'string') {
+          return fail(res, 400, 'PATHFINDING_FILTER_INVALID', 'nameRegex must be a string');
+        }
+        try {
+          compileUserRegex(body.nameRegex, 'i');
+        } catch {
+          return fail(res, 400, 'PATHFINDING_FILTER_BAD_REGEX', 'Invalid name filter regex');
+        }
+      }
+
+      // ---- integer range fields ----
+      const intFieldBounds: Array<{ key: string; min: number; max: number }> = [
+        { key: 'lastHeardHours', min: 1, max: 8760 },
+        { key: 'hopsMin', min: 0, max: 10 },
+        { key: 'hopsMax', min: 0, max: 10 },
+        { key: 'rssiMin', min: -200, max: 0 },
+        { key: 'snrMin', min: -100, max: 100 },
+      ];
+      for (const { key, min, max } of intFieldBounds) {
+        const value = body[key];
+        if (value !== undefined && (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max)) {
+          return fail(res, 400, 'PATHFINDING_FILTER_INVALID', `${key} must be an integer between ${min} and ${max}`);
+        }
+      }
+      if (
+        typeof body.hopsMin === 'number' &&
+        typeof body.hopsMax === 'number' &&
+        body.hopsMax < body.hopsMin
+      ) {
+        return fail(res, 400, 'PATHFINDING_FILTER_INVALID', 'hopsMax must be >= hopsMin');
+      }
+
+      const validated: Partial<MeshcorePathfindingFilterSettings> & { targetKeys: string[] } = { targetKeys };
+      if (typeof body.enabled === 'boolean') validated.enabled = body.enabled;
+      if (typeof body.contactsEnabled === 'boolean') validated.contactsEnabled = body.contactsEnabled;
+      if (typeof body.regexEnabled === 'boolean') validated.regexEnabled = body.regexEnabled;
+      if (typeof body.nameRegex === 'string') validated.nameRegex = body.nameRegex;
+      if (typeof body.lastHeardEnabled === 'boolean') validated.lastHeardEnabled = body.lastHeardEnabled;
+      if (typeof body.lastHeardHours === 'number') validated.lastHeardHours = body.lastHeardHours;
+      if (typeof body.hopsEnabled === 'boolean') validated.hopsEnabled = body.hopsEnabled;
+      if (typeof body.hopsMin === 'number') validated.hopsMin = body.hopsMin;
+      if (typeof body.hopsMax === 'number') validated.hopsMax = body.hopsMax;
+      if (typeof body.signalEnabled === 'boolean') validated.signalEnabled = body.signalEnabled;
+      if (typeof body.rssiMin === 'number') validated.rssiMin = body.rssiMin;
+      if (typeof body.snrMin === 'number') validated.snrMin = body.snrMin;
+
+      // Filter is read fresh every executeRun() tick — do NOT call
+      // mgr.startAutoPathfinding() here (see block comment above).
+      await databaseService.setMeshcorePathfindingFilterSettingsAsync(sourceId, validated);
+
+      const persisted = await databaseService.getMeshcorePathfindingFilterSettingsAsync(sourceId);
+      ok(res, persisted);
+    } catch (error) {
+      logger.error('[API] Error saving auto-pathfinding filter settings:', error);
+      fail(res, 500, 'PATHFINDING_FILTER_SAVE_FAILED', 'Failed to save pathfinding filter');
     }
   },
 );
