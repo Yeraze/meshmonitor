@@ -394,6 +394,44 @@ export default function DashboardMap({
     }
   }, [renderedKeysSig]);
 
+  // #4015: open the popup ONLY via the OMS 'click' event (which fires solely for
+  // an already-spiderfied or standalone marker — never for the click that fans
+  // out a pile). The SpiderfierController's OMS is created in its own effect;
+  // retry briefly until it exists, then register.
+  useEffect(() => {
+    const onOmsClick = (marker: LeafletMarker) => marker.openPopup();
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Capture the controller we register on so cleanup detaches from the same
+    // one (avoids reading spiderfierRef.current in cleanup).
+    let registered: SpiderfierControllerRef | null = null;
+    const tryRegister = () => {
+      const controller = spiderfierRef.current;
+      if (controller?.getSpiderfier()) {
+        controller.addListener('click', onOmsClick);
+        registered = controller;
+        return;
+      }
+      if (attempts++ < 20) timer = setTimeout(tryRegister, 50);
+    };
+    tryRegister();
+    return () => {
+      if (timer) clearTimeout(timer);
+      registered?.removeListener('click', onOmsClick);
+    };
+  }, []);
+
+  // #4015: strip Leaflet's auto-open-on-click handler that `bindPopup` installs
+  // (via the declarative <Popup> child), so a pile click doesn't plant a popup on
+  // the pre-spread stacked marker. Runs after the child <Popup> bind effects;
+  // `off` is idempotent. Popup content stays bound for the OMS-driven open above.
+  useEffect(() => {
+    for (const m of markerByKey.current.values()) {
+      const mm = m as LeafletMarker & { _openPopup?: (e: unknown) => void };
+      if (mm._openPopup) mm.off('click', mm._openPopup, mm);
+    }
+  }, [renderedKeysSig]);
+
   // nodeNum → [lat, lng] map used to resolve traceroute hop positions. The
   // unified view merges per-source node rows by nodeNum (see mergeUnifiedSourceData
   // in useDashboardData.ts), so a single lookup table works across sources.

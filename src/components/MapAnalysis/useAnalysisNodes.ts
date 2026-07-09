@@ -8,6 +8,7 @@ import { resolveNodeLatLng, type MaybePositionedNode } from './nodePositionUtil'
 import { nodeMatchesSearch } from './nodeSearch';
 import { getNodeTypeCategory } from '../../utils/nodeTypeCategory';
 import { unifiedNodeKey } from '../../utils/nodeIdentity';
+import { shouldOffsetForPrecision, offsetWithinPrecisionCell } from '../../utils/precisionOffset';
 import type { NodeSourceRef } from '../Dashboard/DashboardNodePopup';
 
 /**
@@ -32,6 +33,10 @@ export interface NodeRecord extends MaybePositionedNode {
   sources?: NodeSourceRef[];
   /** MeshCore public key; needed by `unifiedNodeKey` for cross-source selection identity (#3788). */
   publicKey?: string | null;
+  /** Meshtastic obscured-position precision (0–32 bits); drives the #4016 within-cell offset. */
+  positionPrecisionBits?: number | null;
+  /** True when the position is a user override — excluded from the #4016 offset. */
+  positionIsOverride?: boolean | null;
 }
 
 export interface AnalysisNode {
@@ -87,7 +92,18 @@ export function useAnalysisNodes(): AnalysisNode[] {
           return nodeSourceIds.some((id) => config.sources.includes(id));
         },
       )
-      .map(({ node, latLng }) => ({ node, latLng, key: unifiedNodeKey(node) }))
+      .map(({ node, latLng }) => {
+        const key = unifiedNodeKey(node);
+        // #4016: obscured low-precision nodes are deterministically offset within
+        // their accuracy cell so they don't imply false precision or stack on one
+        // point. Applied here (the single latLng source) so markers, Follow,
+        // bounds, the measurement tool, and the popup all use the same position.
+        const bits = node.positionPrecisionBits;
+        const finalLatLng = shouldOffsetForPrecision(bits, node.positionIsOverride)
+          ? offsetWithinPrecisionCell(latLng[0], latLng[1], bits as number, key ?? String(node.nodeNum))
+          : latLng;
+        return { node, latLng: finalLatLng, key };
+      })
       .filter((entry): entry is AnalysisNode => entry.key !== null);
   }, [nodes, nodeFilter, config.nodeTypes, config.sources]);
 }

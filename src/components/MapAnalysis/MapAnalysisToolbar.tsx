@@ -32,6 +32,7 @@ const UNTIMED_LAYERS: { key: LayerKey; label: string }[] = [
   { key: 'markers',     label: 'Markers' },
   { key: 'hopShading',  label: 'Hop Shading' },
   { key: 'waypoints',   label: 'Waypoints' },
+  { key: 'accuracyRegions', label: 'Accuracy Regions' },
 ];
 
 export default function MapAnalysisToolbar() {
