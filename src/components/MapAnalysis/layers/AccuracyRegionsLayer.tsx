@@ -11,14 +11,7 @@ import { useMemo } from 'react';
 import { Rectangle } from 'react-leaflet';
 import { useAnalysisNodes } from '../useAnalysisNodes';
 import { resolveNodeLatLng } from '../nodePositionUtil';
-import { precisionCellBounds } from '../../../utils/precisionOffset';
-
-/** Obscured-position nodes: a defined, non-full precision that isn't a user override. */
-function isObscured(bits: number | null | undefined, isOverride: boolean | null | undefined): boolean {
-  if (isOverride) return false;
-  if (bits == null) return false;
-  return bits > 0 && bits < 32;
-}
+import { precisionCellBounds, hasAccuracyCell } from '../../../utils/precisionOffset';
 
 export default function AccuracyRegionsLayer() {
   const analysisNodes = useAnalysisNodes();
@@ -26,7 +19,7 @@ export default function AccuracyRegionsLayer() {
   const regions = useMemo(() => {
     return analysisNodes
       .map(({ node, key }) => {
-        if (!isObscured(node.positionPrecisionBits, node.positionIsOverride)) return null;
+        if (!hasAccuracyCell(node.positionPrecisionBits, node.positionIsOverride)) return null;
         // Center on the un-offset reported position, not the jittered marker.
         const center = resolveNodeLatLng(node);
         if (!center) return null;

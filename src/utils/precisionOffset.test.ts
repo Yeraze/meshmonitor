@@ -3,6 +3,7 @@ import {
   precisionCellSizeMeters,
   precisionCellSizeDegrees,
   shouldOffsetForPrecision,
+  hasAccuracyCell,
   offsetWithinPrecisionCell,
   OBSCURED_PRECISION_MAX_BITS,
 } from './precisionOffset';
@@ -36,6 +37,29 @@ describe('shouldOffsetForPrecision', () => {
     expect(shouldOffsetForPrecision(null, false)).toBe(false);
     expect(shouldOffsetForPrecision(undefined, false)).toBe(false);
     expect(shouldOffsetForPrecision(16, true)).toBe(false);  // user-overridden position
+  });
+});
+
+describe('hasAccuracyCell', () => {
+  it('is true for any defined non-full precision (1..31), excluding overrides', () => {
+    expect(hasAccuracyCell(31, false)).toBe(true);   // medium precision still has a cell
+    expect(hasAccuracyCell(19, false)).toBe(true);   // above the offset threshold but still drawn
+    expect(hasAccuracyCell(16, false)).toBe(true);
+    expect(hasAccuracyCell(1, false)).toBe(true);
+  });
+
+  it('is false for full precision, zero, missing, or overridden nodes', () => {
+    expect(hasAccuracyCell(32, false)).toBe(false);
+    expect(hasAccuracyCell(0, false)).toBe(false);
+    expect(hasAccuracyCell(null, false)).toBe(false);
+    expect(hasAccuracyCell(undefined, false)).toBe(false);
+    expect(hasAccuracyCell(16, true)).toBe(false);
+  });
+
+  it('is a superset of shouldOffsetForPrecision', () => {
+    for (const bits of [1, 10, 18, 19, 25, 31]) {
+      if (shouldOffsetForPrecision(bits, false)) expect(hasAccuracyCell(bits, false)).toBe(true);
+    }
   });
 });
 

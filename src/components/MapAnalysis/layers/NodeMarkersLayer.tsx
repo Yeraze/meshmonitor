@@ -173,6 +173,12 @@ export default function NodeMarkersLayer() {
   // the markers that just spread. This parent effect runs after the child
   // <Popup> bind effects; `off` is idempotent. Popup content stays bound, so the
   // OMS-driven openPopup() above still works.
+  //
+  // NOTE: `_openPopup` is Leaflet's private handler (verified against
+  // leaflet@1.9.4 `Popup.js` bindPopup: `this.on({ click: this._openPopup })`).
+  // It's undocumented; if a future Leaflet renames/removes it, the strip becomes
+  // a no-op and we degrade to the old double-fire — annoying, not a crash — so
+  // re-verify this when bumping Leaflet.
   useEffect(() => {
     for (const m of markerByKey.current.values()) {
       const mm = m as LeafletMarker & { _openPopup?: (e: unknown) => void };

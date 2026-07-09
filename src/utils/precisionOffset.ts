@@ -36,6 +36,21 @@ export function precisionCellSizeDegrees(bits: number): number {
 }
 
 /**
+ * Whether a node has a meaningful accuracy cell to draw a rectangle for: a
+ * defined, non-full precision (1..31 bits) that isn't a user override. Broader
+ * than {@link shouldOffsetForPrecision} — the marker is only *offset* for large
+ * cells (≤18 bits), but the accuracy square is drawn for any imprecise fix.
+ */
+export function hasAccuracyCell(
+  bits: number | null | undefined,
+  isOverride: boolean | null | undefined,
+): boolean {
+  if (isOverride) return false;
+  if (bits == null) return false;
+  return bits > 0 && bits < 32;
+}
+
+/**
  * Whether a node's marker should be offset within its precision cell.
  * Only nodes with a *defined* low precision (1..MAX bits) qualify; nodes with a
  * user-overridden position, missing/zero precision, or fine GPS are left at their
