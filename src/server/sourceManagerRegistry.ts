@@ -46,9 +46,11 @@ export class SourceManagerRegistry extends EventEmitter {
   private primaryMeshtasticSourceId: string | null = null;
 
   /**
-   * Designate the primary meshtastic_tcp source. Set-once / idempotent-safe:
-   * a second call is silently ignored so callers don't need to guard against
-   * duplicate designation at startup.
+   * Designate the primary meshtastic_tcp source. First-wins while the
+   * designation is set (non-null): a second call is silently ignored so callers
+   * don't need to guard against duplicate designation at startup. After the
+   * designation is cleared by removeManager (e.g. transport-change remove+add),
+   * a new designation is accepted — the null-check then passes again.
    */
   setPrimaryMeshtasticSource(sourceId: string): void {
     if (this.primaryMeshtasticSourceId === null) {
@@ -87,6 +89,15 @@ export class SourceManagerRegistry extends EventEmitter {
       logger.error(`Error stopping source manager ${sourceId}:`, error);
     }
     this.managers.delete(sourceId);
+    // Clear primary designation so a subsequent setPrimaryMeshtasticSource call
+    // (e.g. during a transport-change remove+add cycle in sourceRoutes) can
+    // re-designate the new instance. The insertion-order fallback in
+    // getPrimaryMeshtasticManager covers the interim window between the remove
+    // and the next designation call.
+    if (this.primaryMeshtasticSourceId === sourceId) {
+      this.primaryMeshtasticSourceId = null;
+      logger.info(`Cleared primary meshtastic designation (source ${sourceId} removed)`);
+    }
     this.emit('manager-stopped', manager);
     logger.info(`Removed source manager: ${sourceId}`);
   }
