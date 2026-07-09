@@ -31,10 +31,15 @@ import './MeshCoreRemoteConsole.css';
  * Clicking a button pre-fills the command input — it does NOT auto-send,
  * so the user can edit before pressing Send and danger commands route
  * through the typed-name confirmation modal naturally.
+ *
+ * No `stats` entry: there is no bare `stats` verb in the firmware's CLI —
+ * only `stats-core`/`stats-radio`/`stats-packets`, all serial-only (same
+ * class of restriction as `get acl`, see MESHCORE_REMOTE_ADMIN.md). The
+ * working equivalent for a remote node is `MeshCoreRemoteStatsPanel` below,
+ * which fetches via the binary SendStatusReq instead of CLI text (#4026).
  */
 const REMOTE_ACTION_CATALOG: ActionCommand[] = [
   { key: 'ver',       labelKey: 'meshcore.remoteConsole.action.ver',       defaultLabel: 'Version',  command: 'ver' },
-  { key: 'stats',     labelKey: 'meshcore.remoteConsole.action.stats',     defaultLabel: 'Stats',    command: 'stats' },
   { key: 'neighbors', labelKey: 'meshcore.remoteConsole.action.neighbors', defaultLabel: 'Neighbors', command: 'neighbors' },
   { key: 'clock',     labelKey: 'meshcore.remoteConsole.action.clock',     defaultLabel: 'Clock',    command: 'clock' },
   { key: 'clock_sync', labelKey: 'meshcore.remoteConsole.action.clock_sync', defaultLabel: 'Sync clock', command: 'clock sync' },
