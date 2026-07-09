@@ -8,6 +8,7 @@ import { MeshCoreAutoAckSection } from './MeshCoreAutoAckSection';
 import { MeshCoreAutoAnnounceSection } from './MeshCoreAutoAnnounceSection';
 import { MeshCoreAutoResponderSection } from './MeshCoreAutoResponderSection';
 import { MeshCoreTimerTriggersSection } from './MeshCoreTimerTriggersSection';
+import { MeshCorePathfindingFilterSection } from './MeshCorePathfindingFilterSection';
 import { AutomationTokenReference } from '../AutomationTokenReference';
 import { buildMeshCoreTokenGroups } from './meshcoreAutomationTokens';
 
@@ -316,6 +317,9 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
             {t('meshcore.automation.pathfinding.last_run', 'Last run')}: {new Date(settings.lastRunAt).toLocaleString()}
           </p>
         ) : null}
+
+        {/* Target Filter (#4024) */}
+        <MeshCorePathfindingFilterSection baseUrl={baseUrl} sourceId={sourceId} canWrite={canWrite} />
       </div>
 
       {/* Auto-Acknowledge Section */}
