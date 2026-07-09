@@ -728,34 +728,6 @@ class MeshtasticManager implements ISourceManager {
     return 'meshtastic_tcp';
   }
 
-  /**
-   * Apply a source config after construction.
-   * Used to configure the legacy singleton when sources are loaded from DB at startup.
-   */
-  configureSource(config: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean; passiveResyncStaleMs?: number | null }, sourceId?: string): void {
-    this.sourceConfigOverride = {
-      host: config.host,
-      port: config.port,
-      heartbeatIntervalSeconds: config.heartbeatIntervalSeconds,
-      mqttLink: config.mqttLink,
-      passiveMode: config.passiveMode === true,
-      passiveResyncStaleMs:
-        typeof config.passiveResyncStaleMs === 'number' ? config.passiveResyncStaleMs : undefined,
-    };
-    this.passiveMode = config.passiveMode === true;
-    this.passiveResyncStaleMs =
-      typeof config.passiveResyncStaleMs === 'number' ? config.passiveResyncStaleMs : null;
-    if (sourceId) this.sourceId = sourceId;
-    if (config.virtualNode?.enabled && !this.virtualNodeServer) {
-      this.virtualNodeServer = new VirtualNodeServer({
-        port: config.virtualNode.port,
-        allowAdminCommands: config.virtualNode.allowAdminCommands,
-        meshtasticManager: this,
-      });
-    }
-    this.mqttLink = config.mqttLink ?? null;
-  }
-
   async start(): Promise<void> {
     try {
       await this.connect();
@@ -1043,7 +1015,7 @@ class MeshtasticManager implements ISourceManager {
 
   private async getConfig(): Promise<MeshtasticConfig> {
     // Per-source config takes priority (set when this manager was created from a
-    // source record via the constructor or configureSource()). A configured
+    // source record via the constructor). A configured
     // source MUST resolve to its own host — even on a reconnect that fires before
     // anything else is ready — and must never fall through to the env default
     // ('192.168.1.100'), which would surface the wrong address in the connection
@@ -14590,8 +14562,8 @@ function matchesMqttEcho(store: Array<{ topic: string; packetId: number; expires
  * access before bootstrapSources runs). Never added to the registry itself.
  *
  * Exported so server.ts can pass the concrete instance as `deps.fallbackManager`
- * to bootstrapSources (WP1/WP2: first TCP source still calls configureSource on it
- * and registers it; WP3 replaces that path with makeMeshtastic()).
+ * to bootstrapSources for the S4 env-IP fallback connect path.
+ * WP3: no longer registered as the primary; all tcp sources use makeMeshtastic().
  */
 export const fallbackManager = new MeshtasticManager();
 
@@ -14616,6 +14588,16 @@ const meshtasticManagerAlias = new Proxy(fallbackManager, {
     const primary = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? target;
     // Use primary as receiver so getters are invoked with the correct `this`.
     return Reflect.get(primary, prop, primary);
+  },
+  set(target, prop, value, _receiver) {
+    // WP3: after uniform construction, the primary is a distinct instance from
+    // fallbackManager. Writes through the alias must reach the live primary so
+    // consumers don't silently write to a dead object.
+    // Grep of all 8 default-export importers found ZERO property writes through
+    // this alias (all callers invoke methods only), so this trap is a safety net
+    // rather than a fix for a known bug.
+    const primary = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? target;
+    return Reflect.set(primary, prop, value, primary);
   },
 });
 

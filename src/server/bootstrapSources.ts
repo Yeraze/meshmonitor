@@ -5,12 +5,14 @@
  * server.ts (originally L375-520) to create a testable seam. See WP1 of
  * issue #3962 Phase 2.
  *
- * WP1 (this file): Pure mechanical move. The first TCP source still uses
- * `configureSource(fallbackManager)` exactly as before — the seam is open,
- * but startup construction is unchanged. WP3 will replace that path with
- * `makeMeshtastic()` + `registry.setPrimaryMeshtasticSource()`.
+ * WP3 (this file): Uniform construction — ALL meshtastic_tcp sources
+ * (including the first) are now constructed via `makeMeshtastic(id, cfg)`.
+ * The legacy `configureSource(fallbackManager)` path (S2/S3) is removed.
+ * `registry.setPrimaryMeshtasticSource(id)` designates the first TCP source.
+ * S4 env-IP fallback (`fallbackManager.connect()`) is KEPT (Q1 resolved:
+ * preserve for all-MeshCore/all-disabled-tcp installs).
  *
- * Behavior-preservation table (all rows must hold through WP2/WP3):
+ * Behavior-preservation table (all rows hold after WP3):
  *  - Runtime IP/port overrides are cleared on every boot (S10).
  *  - When sourceCount===0 and env.meshtasticNodeIp is truthy → auto-create
  *    a DB row named "Default" (type meshtastic_tcp). NOTE: env.meshtasticNodeIp
@@ -19,9 +21,8 @@
  *    — this "always-truthy quirk" is pinned by test scenario #2.
  *  - When source rows exist, env is ignored for source creation.
  *  - Sources are sorted: mqtt_broker(0) < meshtastic_tcp/meshcore(1) < mqtt_bridge(2).
- *  - First meshtastic_tcp source (WP1): configures fallbackManager via
- *    configureSource(), then registers it (S2/S3 behavior preserved).
- *  - Additional meshtastic_tcp sources: constructed via makeMeshtastic().
+ *  - ALL meshtastic_tcp sources: constructed via makeMeshtastic() uniformly.
+ *  - First tcp source is designated primary via registry.setPrimaryMeshtasticSource().
  *  - autoConnect===false → skip that source for auto-connect.
  *  - No tcp source configured after loop → fallbackManager.connect() called (S4).
  */
@@ -55,13 +56,15 @@ export interface BootstrapDb {
   };
 }
 
-/** Config shape passed to MeshtasticManager constructor / configureSource. */
+/** Config shape passed to MeshtasticManager constructor. */
 export interface MeshtasticSourceConfig {
   host?: string;
   port?: number;
   heartbeatIntervalSeconds?: number;
   virtualNode?: VirtualNodeConfig;
   mqttLink?: MeshtasticMqttLink;
+  passiveMode?: boolean;
+  passiveResyncStaleMs?: number | null;
 }
 
 /**
@@ -87,16 +90,16 @@ export interface BootstrapDeps {
   /** Registry that started managers are registered into. */
   registry: SourceManagerRegistry;
   /**
-   * Factory for additional (non-primary) tcp source managers.
+   * Factory for ALL tcp source managers (including the first).
    * Default at the server.ts call site: `(id, cfg) => new MeshtasticManager(id, cfg)`.
-   * WP3 will extend this to cover the first tcp source too, replacing configureSource.
+   * WP3: used uniformly for every meshtastic_tcp source.
    */
   makeMeshtastic: (id: string, cfg: MeshtasticSourceConfig) => MeshtasticManager;
   /**
-   * The legacy singleton used for:
-   *  (a) WP1: first meshtastic_tcp source — configured via configureSource().
-   *  (b) S4 env-IP fallback connect when no tcp source auto-connects.
-   * In WP3, (a) is replaced by makeMeshtastic(); (b) remains until Q1 is resolved.
+   * The legacy singleton / unconfigured fallback instance.
+   * Used ONLY for S4: env-IP fallback connect when no tcp source auto-connects
+   * (all-MeshCore / all-disabled-tcp / autoConnect:false installs).
+   * Q1 resolved: keep (behavior-preserving for those deployment shapes).
    */
   fallbackManager: MeshtasticManager;
 }
@@ -208,33 +211,26 @@ export async function bootstrapSources(deps: BootstrapDeps): Promise<void> {
       }
 
       try {
+        // WP3: uniform construction — every meshtastic_tcp source uses makeMeshtastic().
+        // The legacy configureSource(fallbackManager) path (S2/S3) is removed.
+        const manager = deps.makeMeshtastic(source.id, {
+          host: cfg.host,
+          port: cfg.port,
+          heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
+          virtualNode: cfg.virtualNode,
+          mqttLink: cfg.mqttLink,
+          passiveMode: cfg.passiveMode,
+          passiveResyncStaleMs: cfg.passiveResyncStaleMs,
+        });
+        await applyManagerSettings(manager, source.id, deps.db);
+        await deps.registry.addManager(manager);
         if (!firstTcpSourceConfigured) {
-          // WP1: configure the legacy singleton for the first TCP source so all
-          // legacy API routes that import meshtasticManager directly continue to
-          // work without modification (S2/S3 preserved).
-          // WP3 replaces this with makeMeshtastic() + setPrimaryMeshtasticSource().
-          deps.fallbackManager.configureSource({
-            host: cfg.host,
-            port: cfg.port,
-            heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
-            virtualNode: cfg.virtualNode,
-            mqttLink: cfg.mqttLink,
-          }, source.id);
-          await applyManagerSettings(deps.fallbackManager, source.id, deps.db);
-          await deps.registry.addManager(deps.fallbackManager);
+          // Designate the first-started tcp source as the primary so the live
+          // Proxy alias (export default in meshtasticManager.ts) and legacy
+          // consumers resolve to the correct manager instance.
+          deps.registry.setPrimaryMeshtasticSource(source.id);
           firstTcpSourceConfigured = true;
-          logger.debug(`Started primary source manager via singleton: ${source.id}`);
-        } else {
-          // Additional sources get their own manager instances via the injected factory.
-          const manager = deps.makeMeshtastic(source.id, {
-            host: cfg.host,
-            port: cfg.port,
-            heartbeatIntervalSeconds: cfg.heartbeatIntervalSeconds,
-            virtualNode: cfg.virtualNode,
-            mqttLink: cfg.mqttLink,
-          });
-          await applyManagerSettings(manager, source.id, deps.db);
-          await deps.registry.addManager(manager);
+          logger.debug(`Started source manager as primary: ${source.id}`);
         }
       } catch (err) {
         // Don't let one failed source block others from registering.

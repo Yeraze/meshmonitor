@@ -139,23 +139,19 @@ function makeDbStub(initialSources: SourceRow[] = []): BootstrapDb & { _sources:
 
 /**
  * Minimal ISourceManager stub for the fallback (legacy singleton) manager.
- * Tracks configureSource and connect calls. Handles the sourceId mutation
- * that configureSource performs on the real singleton.
+ * WP3: configureSource() is deleted; this stub no longer tracks it.
+ * Only used for S4: connect() is called when no tcp source auto-connects.
  */
 function makeFallbackManagerStub() {
-  let _sourceId = 'default';
   const stub = {
-    get sourceId() { return _sourceId; },
+    sourceId: 'default',
     sourceType: 'meshtastic_tcp' as const,
-    configureSource: vi.fn((cfg: unknown, id?: string) => {
-      if (id) _sourceId = id;
-    }),
     connect: vi.fn().mockResolvedValue(undefined),
     start: vi.fn().mockResolvedValue(undefined),
     stop: vi.fn().mockResolvedValue(undefined),
     getStatus: vi.fn(() => ({
-      sourceId: _sourceId,
-      sourceName: _sourceId,
+      sourceId: 'default',
+      sourceName: 'default',
       sourceType: 'meshtastic_tcp' as const,
       connected: false,
     })),
@@ -268,7 +264,7 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       expect((createdArg.config as any).host).toBe('1.2.3.4');
     });
 
-    it('(B/C) registers exactly 1 manager (the fallbackManager) with host=1.2.3.4', async () => {
+    it('(B/C) registers exactly 1 manager via makeMeshtastic with host=1.2.3.4', async () => {
       const db = makeDbStub([]);
       await bootstrapSources(makeDeps({
         db, registry, fallbackManager: fallbackManager as any,
@@ -276,20 +272,21 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
         env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 4403 },
       }));
       expect(registry.size).toBe(1);
-      // fallbackManager.configureSource was called with host=1.2.3.4
-      expect(fallbackManager.configureSource).toHaveBeenCalledOnce();
-      const cfgArg = fallbackManager.configureSource.mock.calls[0][0] as any;
-      expect(cfgArg.host).toBe('1.2.3.4');
+      // WP3: first TCP source uses makeMeshtastic() — not configureSource (deleted).
+      expect(meshFactory.factory).toHaveBeenCalledOnce();
+      const [, factoryCfg] = meshFactory.factory.mock.calls[0] as any;
+      expect(factoryCfg.host).toBe('1.2.3.4');
     });
 
-    it('(D) getPrimaryMeshtasticManager resolves to the fallbackManager', async () => {
+    it('(D) getPrimaryMeshtasticManager resolves to the first makeMeshtastic instance', async () => {
       const db = makeDbStub([]);
       await bootstrapSources(makeDeps({
         db, registry, fallbackManager: fallbackManager as any,
         makeMeshtastic: meshFactory.factory,
         env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 4403 },
       }));
-      expect(getPrimaryMeshtasticManager(registry)).toBe(fallbackManager);
+      // WP3: primary = the instance returned by makeMeshtastic (not fallbackManager).
+      expect(getPrimaryMeshtasticManager(registry)).toBe(meshFactory.instances[0].stub);
     });
 
     it('(E) fallbackManager.connect() is NOT called (tcp source was configured)', async () => {
@@ -302,14 +299,15 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       expect(fallbackManager.connect).not.toHaveBeenCalled();
     });
 
-    it('makeMeshtastic factory NOT called (only 1 tcp source → uses fallbackManager)', async () => {
+    it('makeMeshtastic factory IS called for the first (and only) tcp source', async () => {
       const db = makeDbStub([]);
       await bootstrapSources(makeDeps({
         db, registry, fallbackManager: fallbackManager as any,
         makeMeshtastic: meshFactory.factory,
         env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 4403 },
       }));
-      expect(meshFactory.factory).not.toHaveBeenCalled();
+      // WP3: uniform construction — factory called once for the single auto-created source.
+      expect(meshFactory.factory).toHaveBeenCalledOnce();
     });
   });
 
@@ -332,7 +330,7 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       expect((createdArg.config as any).host).toBe('192.168.1.100');
     });
 
-    it('(B/D/E) single manager registered (fallbackManager), is primary, connect() not called', async () => {
+    it('(B/D/E) single manager registered via factory, is primary, connect() not called', async () => {
       const db = makeDbStub([]);
       await bootstrapSources(makeDeps({
         db, registry, fallbackManager: fallbackManager as any,
@@ -340,7 +338,8 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
         env: { meshtasticNodeIp: '192.168.1.100', meshtasticTcpPort: 4403 },
       }));
       expect(registry.size).toBe(1);
-      expect(getPrimaryMeshtasticManager(registry)).toBe(fallbackManager);
+      // WP3: primary = first makeMeshtastic instance (not fallbackManager).
+      expect(getPrimaryMeshtasticManager(registry)).toBe(meshFactory.instances[0].stub);
       expect(fallbackManager.connect).not.toHaveBeenCalled();
     });
   });
@@ -362,7 +361,7 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       expect(db.sources.createSource).not.toHaveBeenCalled();
     });
 
-    it('(B/C) 2 managers registered: fallbackManager (src-1) + makeMeshtastic result (src-2)', async () => {
+    it('(B/C) 2 managers registered via makeMeshtastic: src-1 (primary) + src-2', async () => {
       const row1 = makeTcpSource('src-1', '10.0.0.1');
       const row2 = makeTcpSource('src-2', '10.0.0.2');
       const db = makeDbStub([row1, row2]);
@@ -372,16 +371,15 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
         env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 9999 },
       }));
       expect(registry.size).toBe(2);
-      // First source → fallbackManager.configureSource with host from DB row
-      const cfgArg = fallbackManager.configureSource.mock.calls[0][0] as any;
-      expect(cfgArg.host).toBe('10.0.0.1');
-      // Second source → makeMeshtastic factory called with src-2 id
-      expect(meshFactory.factory).toHaveBeenCalledOnce();
-      expect(meshFactory.instances[0].id).toBe('src-2');
-      expect((meshFactory.instances[0].cfg as any).host).toBe('10.0.0.2');
+      // WP3: both sources use makeMeshtastic() — factory called twice.
+      expect(meshFactory.factory).toHaveBeenCalledTimes(2);
+      expect(meshFactory.instances[0].id).toBe('src-1');
+      expect((meshFactory.instances[0].cfg as any).host).toBe('10.0.0.1');
+      expect(meshFactory.instances[1].id).toBe('src-2');
+      expect((meshFactory.instances[1].cfg as any).host).toBe('10.0.0.2');
     });
 
-    it('(D) getPrimaryMeshtasticManager returns fallbackManager (first tcp registered)', async () => {
+    it('(D) getPrimaryMeshtasticManager returns first makeMeshtastic instance (src-1)', async () => {
       const row1 = makeTcpSource('src-1', '10.0.0.1');
       const row2 = makeTcpSource('src-2', '10.0.0.2');
       const db = makeDbStub([row1, row2]);
@@ -390,7 +388,8 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
         makeMeshtastic: meshFactory.factory,
         env: { meshtasticNodeIp: '1.2.3.4', meshtasticTcpPort: 9999 },
       }));
-      expect(getPrimaryMeshtasticManager(registry)).toBe(fallbackManager);
+      // WP3: primary = first instance from makeMeshtastic (not fallbackManager).
+      expect(getPrimaryMeshtasticManager(registry)).toBe(meshFactory.instances[0].stub);
     });
 
     it('(E) fallbackManager.connect() NOT called', async () => {
@@ -421,7 +420,7 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       expect(db.sources.createSource).not.toHaveBeenCalled();
     });
 
-    it('(B/C) manager uses host from DB row, not env', async () => {
+    it('(B/C) manager constructed via factory with host from DB row, not env', async () => {
       const row = makeTcpSource('existing-1', '172.16.0.10');
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
@@ -429,12 +428,13 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
         makeMeshtastic: meshFactory.factory,
         env: { meshtasticNodeIp: '9.9.9.9', meshtasticTcpPort: 5555 },
       }));
-      const cfgArg = fallbackManager.configureSource.mock.calls[0][0] as any;
-      expect(cfgArg.host).toBe('172.16.0.10'); // from DB, NOT from env (9.9.9.9)
-      expect(cfgArg.host).not.toBe('9.9.9.9');
+      expect(meshFactory.factory).toHaveBeenCalledOnce();
+      const [, factoryCfg] = meshFactory.factory.mock.calls[0] as any;
+      expect(factoryCfg.host).toBe('172.16.0.10'); // from DB, NOT from env (9.9.9.9)
+      expect(factoryCfg.host).not.toBe('9.9.9.9');
     });
 
-    it('(D/E) primary = fallbackManager, connect() not called', async () => {
+    it('(D/E) primary = first makeMeshtastic instance, connect() not called', async () => {
       const row = makeTcpSource('existing-1', '172.16.0.10');
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
@@ -442,7 +442,8 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
         makeMeshtastic: meshFactory.factory,
         env: { meshtasticNodeIp: '9.9.9.9', meshtasticTcpPort: 5555 },
       }));
-      expect(getPrimaryMeshtasticManager(registry)).toBe(fallbackManager);
+      // WP3: primary = instance from makeMeshtastic.
+      expect(getPrimaryMeshtasticManager(registry)).toBe(meshFactory.instances[0].stub);
       expect(fallbackManager.connect).not.toHaveBeenCalled();
     });
   });
@@ -481,14 +482,16 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       expect(fallbackManager.connect).toHaveBeenCalledOnce();
     });
 
-    it('fallbackManager.configureSource() NOT called (source was skipped)', async () => {
+    it('makeMeshtastic factory NOT called (autoConnect:false source is skipped)', async () => {
+      // WP3: configureSource() deleted; verify the source is skipped by checking
+      // makeMeshtastic is not called (equivalent outcome: no manager created for it).
       const row = makeTcpSource('src-ac-false', '10.0.0.1', 4403, { autoConnect: false });
       const db = makeDbStub([row]);
       await bootstrapSources(makeDeps({
         db, registry, fallbackManager: fallbackManager as any,
         makeMeshtastic: meshFactory.factory,
       }));
-      expect(fallbackManager.configureSource).not.toHaveBeenCalled();
+      expect(meshFactory.factory).not.toHaveBeenCalled();
     });
   });
 
@@ -596,7 +599,7 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       expect(registry.size).toBe(3);
     });
 
-    it('(C) broker-1 registered, tcp-1 via fallbackManager, tcp-2 via makeMeshtastic', async () => {
+    it('(C) broker-1 registered, tcp-1 and tcp-2 both via makeMeshtastic', async () => {
       const broker = makeBrokerSource('broker-1');
       const tcp1 = makeTcpSource('tcp-1', '10.0.0.1');
       const tcp2 = makeTcpSource('tcp-2', '10.0.0.2');
@@ -607,14 +610,14 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       }));
       expect(registry.getManager('broker-1')).toBe(mqttStub);
       expect(buildMqttManagerForSource).toHaveBeenCalledWith('broker-1', expect.any(String), 'mqtt_broker', expect.any(Object));
-      expect(fallbackManager.configureSource).toHaveBeenCalledOnce();
-      const cfgArg = fallbackManager.configureSource.mock.calls[0][0] as any;
-      expect(cfgArg.host).toBe('10.0.0.1');
-      expect(meshFactory.factory).toHaveBeenCalledOnce();
-      expect(meshFactory.instances[0].id).toBe('tcp-2');
+      // WP3: both TCP sources use makeMeshtastic() — factory called twice.
+      expect(meshFactory.factory).toHaveBeenCalledTimes(2);
+      expect(meshFactory.instances[0].id).toBe('tcp-1');
+      expect((meshFactory.instances[0].cfg as any).host).toBe('10.0.0.1');
+      expect(meshFactory.instances[1].id).toBe('tcp-2');
     });
 
-    it('(D) primary meshtastic manager = fallbackManager (first tcp)', async () => {
+    it('(D) primary meshtastic manager = first tcp instance from makeMeshtastic', async () => {
       const broker = makeBrokerSource('broker-1');
       const tcp1 = makeTcpSource('tcp-1', '10.0.0.1');
       const tcp2 = makeTcpSource('tcp-2', '10.0.0.2');
@@ -623,7 +626,8 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
         db, registry, fallbackManager: fallbackManager as any,
         makeMeshtastic: meshFactory.factory,
       }));
-      expect(getPrimaryMeshtasticManager(registry)).toBe(fallbackManager);
+      // WP3: primary = first TCP instance from factory (tcp-1), not fallbackManager.
+      expect(getPrimaryMeshtasticManager(registry)).toBe(meshFactory.instances[0].stub);
     });
 
     it('(E) fallbackManager.connect() NOT called', async () => {
@@ -640,24 +644,35 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
 
     it('start order: broker is registered before tcp managers', async () => {
       // Verify sorting by checking that buildMqttManagerForSource was called
-      // before configureSource (broker processed first in sorted order).
-      const mqttCallOrder: string[] = [];
+      // before makeMeshtastic (broker processed first in sorted order).
+      // WP3: track tcp registration via makeMeshtastic instead of configureSource.
+      const callOrder: string[] = [];
       (buildMqttManagerForSource as any).mockImplementation((id: string) => {
-        mqttCallOrder.push(`mqtt:${id}`);
+        callOrder.push(`mqtt:${id}`);
         return mqttStub;
       });
-      fallbackManager.configureSource.mockImplementation((_cfg: unknown, id?: string) => {
-        mqttCallOrder.push(`tcp:${id ?? 'unknown'}`);
+      const orderAwareFactory = vi.fn((id: string, _cfg: unknown) => {
+        callOrder.push(`tcp:${id}`);
+        return {
+          sourceId: id,
+          sourceType: 'meshtastic_tcp' as const,
+          start: vi.fn().mockResolvedValue(undefined),
+          stop: vi.fn().mockResolvedValue(undefined),
+          getStatus: vi.fn(() => ({ sourceId: id, sourceName: id, sourceType: 'meshtastic_tcp' as const, connected: false })),
+          getLocalNodeInfo: vi.fn().mockReturnValue(null),
+          startDistanceDeleteScheduler: vi.fn().mockResolvedValue(undefined),
+          stopDistanceDeleteScheduler: vi.fn(),
+        } as any;
       });
       const broker = makeBrokerSource('broker-1');
       const tcp1 = makeTcpSource('tcp-1', '10.0.0.1');
       const db = makeDbStub([tcp1, broker]); // deliberately out of order in DB
       await bootstrapSources(makeDeps({
         db, registry, fallbackManager: fallbackManager as any,
-        makeMeshtastic: meshFactory.factory,
+        makeMeshtastic: orderAwareFactory,
       }));
-      expect(mqttCallOrder.indexOf('mqtt:broker-1')).toBeLessThan(
-        mqttCallOrder.indexOf(`tcp:tcp-1`),
+      expect(callOrder.indexOf('mqtt:broker-1')).toBeLessThan(
+        callOrder.indexOf('tcp:tcp-1'),
       );
     });
   });

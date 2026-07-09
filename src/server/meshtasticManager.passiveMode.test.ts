@@ -82,9 +82,14 @@ import { MeshtasticManager } from './meshtasticManager.js';
  * Passive Mode targets large/fragile TCP nodes where the standard
  * post-reconnect full sync + outbound config burst correlates with
  * remote-initiated socket closes. The manager should:
- *   1. Carry the passiveMode flag through constructor + configureSource.
+ *   1. Carry the passiveMode flag through the constructor.
  *   2. Preserve cached node/config state across handleDisconnected when
  *      passiveMode is on (clear it otherwise — that's the legacy default).
+ *
+ * WP3 (issue #3962): configureSource() was deleted; passive-mode config is
+ * now set exclusively via the constructor (uniform construction). The four
+ * configureSource()-specific tests have been removed; the constructor-based
+ * wiring tests below cover the same flag-propagation contract.
  */
 describe('MeshtasticManager — Passive Mode (#3122)', () => {
   beforeEach(() => {
@@ -104,23 +109,6 @@ describe('MeshtasticManager — Passive Mode (#3122)', () => {
         passiveMode: true,
       } as any);
       expect((mgr as any).passiveMode).toBe(true);
-    });
-
-    it('configureSource() applies a passiveMode=true override', () => {
-      const mgr = new MeshtasticManager('src-1', { host: '127.0.0.1', port: 4403 });
-      expect((mgr as any).passiveMode).toBe(false);
-      mgr.configureSource({ host: '127.0.0.1', port: 4403, passiveMode: true } as any);
-      expect((mgr as any).passiveMode).toBe(true);
-    });
-
-    it('configureSource() coerces a missing passiveMode field to false', () => {
-      const mgr = new MeshtasticManager('src-1', {
-        host: '127.0.0.1',
-        port: 4403,
-        passiveMode: true,
-      } as any);
-      mgr.configureSource({ host: '127.0.0.1', port: 4403 });
-      expect((mgr as any).passiveMode).toBe(false);
     });
   });
 
@@ -238,33 +226,6 @@ describe('MeshtasticManager — Passive Mode (#3122)', () => {
         passiveResyncStaleMs: oneHour,
       } as any);
       expect(effective(mgr)).toBe(oneHour);
-    });
-
-    it('configureSource() applies a per-source staleness override', () => {
-      const mgr = new MeshtasticManager('src-1', { host: '127.0.0.1', port: 4403, passiveMode: true } as any);
-      const twentyFourHours = 24 * 60 * 60 * 1000;
-      mgr.configureSource({
-        host: '127.0.0.1',
-        port: 4403,
-        passiveMode: true,
-        passiveResyncStaleMs: twentyFourHours,
-      } as any);
-      expect(effective(mgr)).toBe(twentyFourHours);
-    });
-
-    it('configureSource() clears the override when passiveResyncStaleMs is omitted', () => {
-      const mgr = new MeshtasticManager('src-1', {
-        host: '127.0.0.1',
-        port: 4403,
-        passiveMode: true,
-        passiveResyncStaleMs: 60_000,
-      } as any);
-      expect(effective(mgr)).toBe(60_000);
-
-      mgr.configureSource({ host: '127.0.0.1', port: 4403, passiveMode: true });
-
-      expect((mgr as any).passiveResyncStaleMs).toBeNull();
-      expect(effective(mgr)).toBe(4 * 60 * 60 * 1000);
     });
 
     it('falls back to default when override is below the 1-minute floor', () => {
