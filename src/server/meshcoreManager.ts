@@ -12,6 +12,8 @@ import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 import { isNullIsland } from '../utils/nullIsland.js';
 import databaseService from '../services/database.js';
+import type { MeshcorePathfindingFilterSettings } from '../services/database.js';
+import { compileUserRegex } from '../utils/safeRegex.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { compileAutoAckRegex } from './utils/autoAckRegex.js';
 import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
@@ -375,6 +377,85 @@ export interface MeshCoreContact {
    * route (e.g. "a3,7f,02"). `null` / undefined means OUT_PATH_UNKNOWN.
    */
   outPath?: string | null;
+}
+
+/** Sentinel RSSI (dBm) below which a configured `rssiMin` threshold is a no-op. */
+export const MC_PF_RSSI_FLOOR = -200;
+/** Sentinel SNR (dB) below which a configured `snrMin` threshold is a no-op. */
+export const MC_PF_SNR_FLOOR = -100;
+
+/**
+ * Pure filter for Auto-Pathfinding target selection (#4024). AND pre-filters
+ * (last-heard, hop range, signal) narrow the pool first; OR-union identity
+ * filters (contact allowlist, name regex) then select within that pool — a
+ * contact passes the OR stage if it matches ANY enabled OR sub-filter. This
+ * mirrors `getNodeNeedingTracerouteAsync` (see
+ * docs/internal/dev-notes/PATHFINDING_FILTER_SPEC.md §0/§3.1).
+ *
+ * Exported at module scope (no manager instance needed) so it is unit
+ * testable without device IO.
+ *
+ * Unit note (verified against this file's contact-write sites, NOT as
+ * asserted by the original spec draft): `lastSeen` is epoch
+ * **milliseconds** — every write site sets it via `Date.now()` or an
+ * advert-derived `advertMs` (`refreshContacts()` ~L2584-2597). `lastAdvert`
+ * is epoch **seconds**, taken verbatim from the firmware's `last_advert`
+ * field. The two are normalized to a common millisecond cutoff below before
+ * comparison.
+ */
+export function filterPathfindingContacts(
+  contacts: MeshCoreContact[],
+  cfg: MeshcorePathfindingFilterSettings,
+  nowMs: number = Date.now(),
+): MeshCoreContact[] {
+  if (!cfg.enabled) return contacts;
+
+  // ---- AND pre-filters ----
+  let pool = contacts;
+  if (cfg.lastHeardEnabled) {
+    const cutoffMs = nowMs - cfg.lastHeardHours * 3600 * 1000;
+    pool = pool.filter(c => {
+      // Prefer lastSeen (already ms); fall back to lastAdvert (seconds -> ms).
+      const seenMs = c.lastSeen != null
+        ? c.lastSeen
+        : (c.lastAdvert != null ? c.lastAdvert * 1000 : null);
+      return seenMs != null && seenMs >= cutoffMs;
+    });
+  }
+  if (cfg.hopsEnabled) {
+    pool = pool.filter(c => {
+      if (c.pathLen == null) return false; // unknown route excluded when hop filter on
+      return c.pathLen >= cfg.hopsMin && c.pathLen <= cfg.hopsMax;
+    });
+  }
+  if (cfg.signalEnabled) {
+    pool = pool.filter(c => {
+      const passRssi = cfg.rssiMin <= MC_PF_RSSI_FLOOR || (c.rssi != null && c.rssi >= cfg.rssiMin);
+      const passSnr = cfg.snrMin <= MC_PF_SNR_FLOOR || (c.snr != null && c.snr >= cfg.snrMin);
+      return passRssi && passSnr;
+    });
+  }
+
+  // ---- OR-union identity filters ----
+  let regex: RegExp | null = null;
+  if (cfg.regexEnabled && cfg.nameRegex && cfg.nameRegex !== '.*') {
+    try { regex = compileUserRegex(cfg.nameRegex, 'i'); } catch { regex = null; }
+  }
+  const allow = new Set(cfg.targetKeys);
+  const hasAnyOr =
+    (cfg.contactsEnabled && allow.size > 0) ||
+    (cfg.regexEnabled && (regex !== null || cfg.nameRegex === '.*'));
+  if (!hasAnyOr) return pool; // AND-only ⇒ whole pool passes
+
+  return pool.filter(c => {
+    if (cfg.contactsEnabled && allow.has(c.publicKey)) return true;
+    if (cfg.regexEnabled) {
+      const name = c.advName || c.name || '';
+      if (cfg.nameRegex === '.*') return true;
+      if (regex && regex.test(name)) return true;
+    }
+    return false;
+  });
 }
 
 /**
@@ -5887,11 +5968,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         return;
       }
 
+      // Filter config is re-read fresh every run (not captured at scheduler
+      // start) so a config change takes effect on the next tick without
+      // requiring a scheduler restart — see PATHFINDING_FILTER_SPEC.md §0/§3.2.
+      const filterCfg = await databaseService.getMeshcorePathfindingFilterSettingsAsync(this.sourceId);
+      const filtered = filterPathfindingContacts(contacts, filterCfg);
+      logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: filter ${contacts.length}→${filtered.length} contacts (enabled=${filterCfg.enabled})`);
+
       const companions = pathDiscoveryEnabled
-        ? contacts.filter(c => c.advType === MeshCoreDeviceType.COMPANION)
+        ? filtered.filter(c => c.advType === MeshCoreDeviceType.COMPANION)
         : [];
       const repeaters = neighborsEnabled
-        ? contacts.filter(c => c.advType === MeshCoreDeviceType.REPEATER)
+        ? filtered.filter(c => c.advType === MeshCoreDeviceType.REPEATER)
         : [];
 
       const targets = [

@@ -64,6 +64,7 @@ import {
   upgradeHistorySqlite, upgradeHistoryPostgres, upgradeHistoryMysql,
   solarEstimatesSqlite, solarEstimatesPostgres, solarEstimatesMysql,
   autoTracerouteNodesSqlite, autoTracerouteNodesPostgres, autoTracerouteNodesMysql,
+  meshcorePathfindingTargetsSqlite, meshcorePathfindingTargetsPostgres, meshcorePathfindingTargetsMysql,
   autoTimeSyncNodesSqlite, autoTimeSyncNodesPostgres, autoTimeSyncNodesMysql,
   autoTracerouteLogSqlite, autoTracerouteLogPostgres, autoTracerouteLogMysql,
   autoKeyRepairStateSqlite, autoKeyRepairStatePostgres, autoKeyRepairStateMysql,
@@ -191,6 +192,10 @@ export interface ActiveSchema {
   upgradeHistory: any;
   solarEstimates: any;
   autoTracerouteNodes: any;
+  // meshcorePathfindingTargets (#4024) is intentionally NOT declared here —
+  // it is served by the `[key: string]: any` index signature below so this
+  // file doesn't grow its no-explicit-any lint-baseline count. Accessed as
+  // `this.tables.meshcorePathfindingTargets` from MeshcorePathfindingTargetsRepository.
   autoTimeSyncNodes: any;
   autoTracerouteLog: any;
   autoKeyRepairState: any;
@@ -279,6 +284,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     upgradeHistory: upgradeHistorySqlite,
     solarEstimates: solarEstimatesSqlite,
     autoTracerouteNodes: autoTracerouteNodesSqlite,
+    meshcorePathfindingTargets: meshcorePathfindingTargetsSqlite,
     autoTimeSyncNodes: autoTimeSyncNodesSqlite,
     autoTracerouteLog: autoTracerouteLogSqlite,
     autoKeyRepairState: autoKeyRepairStateSqlite,
@@ -335,6 +341,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     upgradeHistory: upgradeHistoryPostgres,
     solarEstimates: solarEstimatesPostgres,
     autoTracerouteNodes: autoTracerouteNodesPostgres,
+    meshcorePathfindingTargets: meshcorePathfindingTargetsPostgres,
     autoTimeSyncNodes: autoTimeSyncNodesPostgres,
     autoTracerouteLog: autoTracerouteLogPostgres,
     autoKeyRepairState: autoKeyRepairStatePostgres,
@@ -391,6 +398,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     upgradeHistory: upgradeHistoryMysql,
     solarEstimates: solarEstimatesMysql,
     autoTracerouteNodes: autoTracerouteNodesMysql,
+    meshcorePathfindingTargets: meshcorePathfindingTargetsMysql,
     autoTimeSyncNodes: autoTimeSyncNodesMysql,
     autoTracerouteLog: autoTracerouteLogMysql,
     autoKeyRepairState: autoKeyRepairStateMysql,

@@ -50,6 +50,7 @@ import {
   NewsCacheRepository,
   BackupHistoryRepository,
   AutoTracerouteRepository,
+  MeshcorePathfindingTargetsRepository,
   TimeSyncRepository,
   DistanceDeleteLogRepository,
   MapPreferencesRepository,
@@ -250,6 +251,32 @@ export interface DbPushSubscription {
 // Re-export DbPacketLog from canonical db/types location
 export type DbPacketLog = DbTypesPacketLog;
 export type { DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode };
+
+/**
+ * MeshCore Auto-Pathfinding target filter config (#4024).
+ *
+ * Mirrors the AND/OR classification used by Auto-Traceroute's node filter:
+ * lastHeard/hops/signal are AND pre-filters (narrow the pool first);
+ * contacts/regex are OR-union identity filters (select within the pool).
+ * `targetKeys` is table-backed (MeshcorePathfindingTargetsRepository); every
+ * other field is a per-source settings KV pair. See
+ * docs/internal/dev-notes/PATHFINDING_FILTER_SPEC.md §2.7 / §0.
+ */
+export interface MeshcorePathfindingFilterSettings {
+  enabled: boolean;              // master
+  targetKeys: string[];          // allowlist (table-backed)
+  contactsEnabled: boolean;      // OR: allowlist sub-filter enable
+  regexEnabled: boolean;         // OR: name-regex enable
+  nameRegex: string;             // regex value (default '.*')
+  lastHeardEnabled: boolean;     // AND
+  lastHeardHours: number;        // AND value (default 168)
+  hopsEnabled: boolean;          // AND
+  hopsMin: number;               // default 0
+  hopsMax: number;               // default 10
+  signalEnabled: boolean;        // AND
+  rssiMin: number;               // dBm, default -200 (no-op)
+  snrMin: number;                // dB,  default -100 (no-op)
+}
 
 export interface DbCustomTheme {
   id?: number;
@@ -531,6 +558,7 @@ class DatabaseService {
   public newsCacheRepo: NewsCacheRepository | null = null;
   public backupHistoryRepo: BackupHistoryRepository | null = null;
   public autoTracerouteRepo: AutoTracerouteRepository | null = null;
+  public meshcorePathfindingTargetsRepo: MeshcorePathfindingTargetsRepository | null = null;
   public timeSyncRepo: TimeSyncRepository | null = null;
   public distanceDeleteLogRepo: DistanceDeleteLogRepository | null = null;
   public mapPreferencesRepo: MapPreferencesRepository | null = null;
@@ -628,6 +656,11 @@ class DatabaseService {
   get autoTraceroute(): AutoTracerouteRepository {
     if (!this.autoTracerouteRepo) throw new Error('Database not initialized');
     return this.autoTracerouteRepo;
+  }
+
+  get meshcorePathfindingTargets(): MeshcorePathfindingTargetsRepository {
+    if (!this.meshcorePathfindingTargetsRepo) throw new Error('Database not initialized');
+    return this.meshcorePathfindingTargetsRepo;
   }
 
   get timeSync(): TimeSyncRepository {
@@ -999,6 +1032,7 @@ class DatabaseService {
       this.newsCacheRepo = new NewsCacheRepository(drizzleDb, this.drizzleDbType);
       this.backupHistoryRepo = new BackupHistoryRepository(drizzleDb, this.drizzleDbType);
       this.autoTracerouteRepo = new AutoTracerouteRepository(drizzleDb, this.drizzleDbType);
+      this.meshcorePathfindingTargetsRepo = new MeshcorePathfindingTargetsRepository(drizzleDb, this.drizzleDbType);
       this.timeSyncRepo = new TimeSyncRepository(drizzleDb, this.drizzleDbType);
       this.distanceDeleteLogRepo = new DistanceDeleteLogRepository(drizzleDb, this.drizzleDbType);
       this.mapPreferencesRepo = new MapPreferencesRepository(drizzleDb, this.drizzleDbType);
@@ -5758,6 +5792,83 @@ class DatabaseService {
       this.setTracerouteFilterHopsMax(settings.filterHopsMax);
     }
     logger.debug('✅ Updated all traceroute filter settings');
+  }
+
+  // MeshCore Auto-Pathfinding target filter settings (#4024).
+  //
+  // Mirrors getTracerouteFilterSettingsAsync/setTracerouteFilterSettingsAsync
+  // (above), but sourceId is required — MeshCore managers always have one,
+  // unlike Auto-Traceroute which also supports a legacy unscoped global mode.
+  async getMeshcorePathfindingFilterSettingsAsync(sourceId: string): Promise<MeshcorePathfindingFilterSettings> {
+    const targetKeys = await this.meshcorePathfindingTargets.getTargets(sourceId);
+    const read = (key: string) => this.settings.getSettingForSource(sourceId, key);
+    const [
+      enabledStr, contactsEnStr, regexEnStr, nameRegexStr,
+      lastHeardEnStr, lastHeardHoursStr,
+      hopsEnStr, hopsMinStr, hopsMaxStr,
+      signalEnStr, rssiMinStr, snrMinStr,
+    ] = await Promise.all([
+      read('meshcorePathfindingFilterEnabled'),
+      read('meshcorePathfindingFilterContactsEnabled'),
+      read('meshcorePathfindingFilterRegexEnabled'),
+      read('meshcorePathfindingFilterNameRegex'),
+      read('meshcorePathfindingFilterLastHeardEnabled'),
+      read('meshcorePathfindingFilterLastHeardHours'),
+      read('meshcorePathfindingFilterHopsEnabled'),
+      read('meshcorePathfindingFilterHopsMin'),
+      read('meshcorePathfindingFilterHopsMax'),
+      read('meshcorePathfindingFilterSignalEnabled'),
+      read('meshcorePathfindingFilterRssiMin'),
+      read('meshcorePathfindingFilterSnrMin'),
+    ]);
+
+    const parseIntBounded = (s: string | null, def: number, min = -Infinity, max = Infinity): number => {
+      if (s === null || s === undefined || s === '') return def;
+      const n = parseInt(s, 10);
+      if (isNaN(n) || n < min || n > max) return def;
+      return n;
+    };
+
+    return {
+      enabled: enabledStr === 'true',
+      targetKeys,
+      contactsEnabled: contactsEnStr === 'true',
+      regexEnabled: regexEnStr === 'true',
+      nameRegex: nameRegexStr ?? '.*',
+      lastHeardEnabled: lastHeardEnStr === 'true',
+      lastHeardHours: parseIntBounded(lastHeardHoursStr, 168, 1, 8760),
+      hopsEnabled: hopsEnStr === 'true',
+      hopsMin: parseIntBounded(hopsMinStr, 0, 0, 10),
+      hopsMax: parseIntBounded(hopsMaxStr, 10, 0, 10),
+      signalEnabled: signalEnStr === 'true',
+      rssiMin: parseIntBounded(rssiMinStr, -200, -200, 0),
+      snrMin: parseIntBounded(snrMinStr, -100, -100, 100),
+    };
+  }
+
+  async setMeshcorePathfindingFilterSettingsAsync(
+    sourceId: string,
+    settings: Partial<MeshcorePathfindingFilterSettings> & { targetKeys: string[] },
+  ): Promise<void> {
+    const kv: Record<string, string> = {};
+    if (settings.enabled !== undefined) kv.meshcorePathfindingFilterEnabled = settings.enabled ? 'true' : 'false';
+    if (settings.contactsEnabled !== undefined) kv.meshcorePathfindingFilterContactsEnabled = settings.contactsEnabled ? 'true' : 'false';
+    if (settings.regexEnabled !== undefined) kv.meshcorePathfindingFilterRegexEnabled = settings.regexEnabled ? 'true' : 'false';
+    if (settings.nameRegex !== undefined) kv.meshcorePathfindingFilterNameRegex = settings.nameRegex;
+    if (settings.lastHeardEnabled !== undefined) kv.meshcorePathfindingFilterLastHeardEnabled = settings.lastHeardEnabled ? 'true' : 'false';
+    if (settings.lastHeardHours !== undefined) kv.meshcorePathfindingFilterLastHeardHours = String(settings.lastHeardHours);
+    if (settings.hopsEnabled !== undefined) kv.meshcorePathfindingFilterHopsEnabled = settings.hopsEnabled ? 'true' : 'false';
+    if (settings.hopsMin !== undefined) kv.meshcorePathfindingFilterHopsMin = String(settings.hopsMin);
+    if (settings.hopsMax !== undefined) kv.meshcorePathfindingFilterHopsMax = String(settings.hopsMax);
+    if (settings.signalEnabled !== undefined) kv.meshcorePathfindingFilterSignalEnabled = settings.signalEnabled ? 'true' : 'false';
+    if (settings.rssiMin !== undefined) kv.meshcorePathfindingFilterRssiMin = String(settings.rssiMin);
+    if (settings.snrMin !== undefined) kv.meshcorePathfindingFilterSnrMin = String(settings.snrMin);
+
+    if (Object.keys(kv).length > 0) {
+      await this.settings.setSourceSettings(sourceId, kv);
+    }
+    await this.meshcorePathfindingTargets.setTargets(settings.targetKeys, sourceId);
+    logger.debug(`Updated MeshCore pathfinding filter settings (source=${sourceId})`);
   }
 
   // Auto-traceroute log methods

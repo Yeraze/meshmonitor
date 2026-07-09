@@ -223,6 +223,21 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreAutoPathfindingNeighborsEnabled',
   'meshcoreAutoPathfindingIntervalMinutes',
   'meshcoreAutoPathfindingRepeatHours',
+  // MeshCore Auto-Pathfinding target filter (#4024) — the allowlist itself is
+  // table-backed (meshcore_pathfinding_targets); these are the attribute
+  // filter KV keys.
+  'meshcorePathfindingFilterEnabled',
+  'meshcorePathfindingFilterContactsEnabled',
+  'meshcorePathfindingFilterRegexEnabled',
+  'meshcorePathfindingFilterNameRegex',
+  'meshcorePathfindingFilterLastHeardEnabled',
+  'meshcorePathfindingFilterLastHeardHours',
+  'meshcorePathfindingFilterHopsEnabled',
+  'meshcorePathfindingFilterHopsMin',
+  'meshcorePathfindingFilterHopsMax',
+  'meshcorePathfindingFilterSignalEnabled',
+  'meshcorePathfindingFilterRssiMin',
+  'meshcorePathfindingFilterSnrMin',
   // MeshCore discovery responder (be discoverable; see issue #1027)
   'meshcoreRespondToDiscovery',
   // MeshCore auto-acknowledge
@@ -366,6 +381,19 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreAutoPathfindingNeighborsEnabled',
   'meshcoreAutoPathfindingIntervalMinutes',
   'meshcoreAutoPathfindingRepeatHours',
+  // MeshCore Auto-Pathfinding target filter (#4024) — per source (per node)
+  'meshcorePathfindingFilterEnabled',
+  'meshcorePathfindingFilterContactsEnabled',
+  'meshcorePathfindingFilterRegexEnabled',
+  'meshcorePathfindingFilterNameRegex',
+  'meshcorePathfindingFilterLastHeardEnabled',
+  'meshcorePathfindingFilterLastHeardHours',
+  'meshcorePathfindingFilterHopsEnabled',
+  'meshcorePathfindingFilterHopsMin',
+  'meshcorePathfindingFilterHopsMax',
+  'meshcorePathfindingFilterSignalEnabled',
+  'meshcorePathfindingFilterRssiMin',
+  'meshcorePathfindingFilterSnrMin',
   // MeshCore discovery responder (be discoverable; see issue #1027)
   'meshcoreRespondToDiscovery',
   // MeshCore auto-acknowledge

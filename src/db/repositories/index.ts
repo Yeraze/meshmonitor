@@ -32,6 +32,7 @@ export type { PacketLogFilterOptions } from './packetLog.js';
 export { KeyRepairRepository } from './keyRepair.js';
 export { AutoTracerouteRepository } from './autoTraceroute.js';
 export type { AutoTracerouteNode } from './autoTraceroute.js';
+export { MeshcorePathfindingTargetsRepository } from './meshcorePathfindingTargets.js';
 export { TimeSyncRepository } from './timeSync.js';
 export { DistanceDeleteLogRepository } from './distanceDeleteLog.js';
 export { MapPreferencesRepository } from './mapPreferences.js';
