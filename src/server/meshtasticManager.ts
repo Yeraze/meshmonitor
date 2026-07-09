@@ -14573,26 +14573,53 @@ export const fallbackManager = new MeshtasticManager();
  * Live Proxy alias for the registry's current primary meshtastic_tcp manager.
  * Falls back to `fallbackManager` when no primary is registered (S4 env-IP path).
  *
- * Property accesses resolve the registry's primary on EVERY access, fixing the
- * §2.5 staleness bug: after a user edits the primary source's host in the UI
- * (removeManager + re-addManager in sourceRoutes), legacy consumers that hold a
- * reference to this export automatically address the new primary without restart.
+ * Per-CALL resolution: each property access resolves the registry's current
+ * primary at that instant, fixing the §2.5 staleness bug (removeManager +
+ * re-addManager in sourceRoutes no longer strands legacy consumers on a dead
+ * manager). PROTOTYPE methods are bound to the concrete primary at access time
+ * so `this` inside the method is always the real instance — not the Proxy.
+ * This eliminates the risk of EventEmitter internals or class fields being
+ * re-resolved through the Proxy on subsequent `this.x` reads within the same
+ * call, and prevents async methods from straddling two primaries across an await.
  *
- * This is a behavior improvement over WP1 where the old singleton object was
- * stranded — acknowledged as intentional in the WP2 spec (orchestrator approved).
+ * Own-property functions (arrow class fields, test spies assigned directly to
+ * the instance) are returned as-is: arrow functions already have lexical `this`
+ * (bind would be a no-op), and returning spy own-properties unbound preserves
+ * Vitest spy identity for `toHaveBeenCalled` assertions in tests.
+ *
+ * Multi-call sequences (e.g. firmwareUpdateService disconnect→…→reconnect)
+ * can still straddle a primary swap if the primary source is edited between
+ * those calls. Callers with multi-step operations that must be atomic should
+ * capture `getPrimaryMeshtasticManager()` once per operation rather than
+ * accessing the alias multiple times (WP4 migration guidance).
+ *
+ * WP4 will migrate the remaining 8 value-importers to call
+ * getPrimaryMeshtasticManager() directly, then delete this alias.
  */
 const meshtasticManagerAlias = new Proxy(fallbackManager, {
   get(target, prop, _receiver) {
-    // Resolve primary on every access so changes to the registry are
-    // immediately visible (the staleness fix, §2.5).
-    const primary = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? target;
-    // Use primary as receiver so getters are invoked with the correct `this`.
-    return Reflect.get(primary, prop, primary);
+    // Resolve the live primary once for this access.
+    const p = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? target;
+    const v = Reflect.get(p, prop, p);
+    // Bind PROTOTYPE methods to the concrete primary so `this` inside the
+    // method is the real instance, not the Proxy. Without binding, class-field
+    // accesses and EventEmitter internals would re-enter the trap on every
+    // `this.x` read, and an async method could address two different primaries
+    // across an await.
+    //
+    // Own-property functions (arrow class fields, test spies assigned directly
+    // to the instance) are intentionally NOT bound:
+    //  - Arrow functions already have lexical `this`; .bind() is a no-op.
+    //  - Test spies assigned via `alias.method = vi.fn()` must be returned as
+    //    the original spy so Vitest's `toHaveBeenCalled` assertions still work.
+    if (typeof v === 'function' && !Object.prototype.hasOwnProperty.call(p, prop)) {
+      return v.bind(p);
+    }
+    return v;
   },
   set(target, prop, value, _receiver) {
-    // WP3: after uniform construction, the primary is a distinct instance from
-    // fallbackManager. Writes through the alias must reach the live primary so
-    // consumers don't silently write to a dead object.
+    // Retarget writes to the same resolved primary so consumers don't silently
+    // write to a dead object after a primary swap.
     // Grep of all 8 default-export importers found ZERO property writes through
     // this alias (all callers invoke methods only), so this trap is a safety net
     // rather than a fix for a known bug.
