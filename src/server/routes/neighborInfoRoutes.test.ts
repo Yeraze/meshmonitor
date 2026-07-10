@@ -112,7 +112,7 @@ describe('GET /:nodeNum', () => {
       nodeId: '!000000de', longName: 'Beta',
     });
 
-    const res = await request(app).get('/111');
+    const res = await request(app).get('/111?sourceId=src-A');
 
     expect(res.status).toBe(200);
     expect(res.body[0].neighborName).toBe('Beta');
@@ -123,7 +123,7 @@ describe('GET /:nodeNum', () => {
     (databaseService.getNeighborsForNodeAsync as any).mockResolvedValue([{ neighborNodeNum: 0xdeadbeef }]);
     (databaseService.nodes.getNode as any).mockResolvedValue(null);
 
-    const res = await request(app).get('/111');
+    const res = await request(app).get('/111?sourceId=src-A');
 
     expect(res.body[0].neighborNodeId).toBe('!deadbeef');
   });
@@ -131,8 +131,14 @@ describe('GET /:nodeNum', () => {
   it('returns 500 on database error', async () => {
     (databaseService.getNeighborsForNodeAsync as any).mockRejectedValue(new Error('db error'));
 
-    const res = await request(app).get('/111');
+    const res = await request(app).get('/111?sourceId=src-A');
 
     expect(res.status).toBe(500);
+  });
+
+  it('400s when sourceId is omitted', async () => {
+    const res = await request(app).get('/111');
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MISSING_SOURCE_ID');
   });
 });
