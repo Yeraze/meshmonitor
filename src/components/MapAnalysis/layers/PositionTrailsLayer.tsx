@@ -1,3 +1,15 @@
+/**
+ * PositionTrailsLayer — deliberately different visualization from the shared
+ * single-node age-gradient position history in `src/utils/mapHelpers.tsx`
+ * (`getPositionHistoryColor`/`generatePositionHistoryArrows`). This layer
+ * draws *many* nodes' trails at once, each colored by a deterministic hash
+ * of `(sourceId, nodeNum)` (see `colorForKey` below), with whole-trail
+ * click-to-select — vs. the shared helpers' single selected node with a
+ * per-segment age gradient, per-fix dot markers, and heading arrows. There
+ * is no shared rendering to extract; this is NOT a fork. See
+ * `docs/internal/dev-notes/MAP_CONSOLIDATION_P2_SPEC.md` (§1.4, epic #4047
+ * Phase 2) for the full comparison.
+ */
 import { Polyline } from 'react-leaflet';
 import { useMemo } from 'react';
 import { useDashboardSources } from '../../../hooks/useDashboardData';
