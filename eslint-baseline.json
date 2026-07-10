@@ -445,7 +445,7 @@
     "@typescript-eslint/no-unused-vars": 3
   },
   "src/db/repositories/autoTraceroute.ts": {
-    "@typescript-eslint/no-explicit-any": 22
+    "@typescript-eslint/no-explicit-any": 19
   },
   "src/db/repositories/automationVariables.ts": {
     "@typescript-eslint/no-explicit-any": 4
@@ -463,7 +463,7 @@
     "@typescript-eslint/no-unused-vars": 1
   },
   "src/db/repositories/channels.ts": {
-    "@typescript-eslint/no-explicit-any": 9
+    "@typescript-eslint/no-explicit-any": 5
   },
   "src/db/repositories/distanceDeleteLog.ts": {
     "@typescript-eslint/no-explicit-any": 5
@@ -475,7 +475,7 @@
     "@typescript-eslint/no-explicit-any": 2
   },
   "src/db/repositories/keyRepair.ts": {
-    "@typescript-eslint/no-explicit-any": 11
+    "@typescript-eslint/no-explicit-any": 1
   },
   "src/db/repositories/mapPreferences.ts": {
     "@typescript-eslint/no-explicit-any": 3
@@ -487,14 +487,14 @@
     "@typescript-eslint/no-explicit-any": 5
   },
   "src/db/repositories/nodes.ts": {
-    "@typescript-eslint/no-explicit-any": 37
+    "@typescript-eslint/no-explicit-any": 27
   },
   "src/db/repositories/notifications.ts": {
-    "@typescript-eslint/no-explicit-any": 18,
+    "@typescript-eslint/no-explicit-any": 17,
     "@typescript-eslint/no-unused-vars": 1
   },
   "src/db/repositories/packetLog.ts": {
-    "@typescript-eslint/no-explicit-any": 33
+    "@typescript-eslint/no-explicit-any": 27
   },
   "src/db/repositories/savedRegions.ts": {
     "@typescript-eslint/no-explicit-any": 4
@@ -513,7 +513,7 @@
     "preserve-caught-error": 1
   },
   "src/db/repositories/telemetry.ts": {
-    "@typescript-eslint/no-explicit-any": 36,
+    "@typescript-eslint/no-explicit-any": 25,
     "no-useless-assignment": 2
   },
   "src/db/repositories/test-utils.ts": {
@@ -528,7 +528,7 @@
     "@typescript-eslint/no-explicit-any": 1
   },
   "src/db/repositories/traceroutes.ts": {
-    "@typescript-eslint/no-explicit-any": 32
+    "@typescript-eslint/no-explicit-any": 21
   },
   "src/db/repositories/waypoints.ts": {
     "@typescript-eslint/no-explicit-any": 2
@@ -1286,9 +1286,8 @@
     "@typescript-eslint/no-non-null-asserted-optional-chain": 1
   },
   "src/services/database.ts": {
-    "@typescript-eslint/no-explicit-any": 128,
+    "@typescript-eslint/no-explicit-any": 59,
     "@typescript-eslint/no-unused-vars": 1,
-    "no-restricted-syntax": 1,
     "preserve-caught-error": 1
   },
   "src/services/lowEntropyKeyService.test.ts": {
