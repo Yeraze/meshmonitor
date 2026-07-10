@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import L from 'leaflet';
-import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { useMap, useMapEvents } from 'react-leaflet';
 import { useTranslation } from 'react-i18next';
 import type { GeofenceShape } from './auto-responder/types';
+import { BaseMap } from './map/BaseMap';
 
 interface NodePosition {
   nodeNum: number;
@@ -405,22 +406,14 @@ const GeofenceMapEditor: React.FC<GeofenceMapEditorProps> = ({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={{ height: '400px', border: '1px solid var(--ctp-surface2)', borderRadius: '8px', overflow: 'hidden' }}>
-        <MapContainer
-          center={[30, 0]}
-          zoom={3}
-          style={{ height: '100%', width: '100%' }}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+        <BaseMap center={[30, 0]} zoom={3}>
           <MapDrawingLayer
             shapeType={shapeType}
             shape={shape}
             onShapeChange={onShapeChange}
             nodePositions={nodePositions}
           />
-        </MapContainer>
+        </BaseMap>
       </div>
 
       {shapeType === 'circle' && (
