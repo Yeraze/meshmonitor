@@ -16,6 +16,10 @@ import {
   type TelemetryData,
 } from './useTelemetry';
 
+// The telemetry endpoint requires a sourceId; the hook resolves a fallback via
+// useResolvedSourceId. Pin it so URL assertions are deterministic.
+vi.mock('./useResolvedSourceId', () => ({ useResolvedSourceId: () => 'src-test' }));
+
 // Helper to create a wrapper with QueryClient
 function createWrapper(queryClient?: QueryClient) {
   const client = queryClient ?? new QueryClient({
@@ -90,7 +94,7 @@ describe('useTelemetry hooks', () => {
       renderHook(() => useTelemetry({ nodeId: '!abc123' }), { wrapper });
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith('/api/telemetry/!abc123?hours=24');
+        expect(global.fetch).toHaveBeenCalledWith('/api/telemetry/!abc123?hours=24&sourceId=src-test');
       });
     });
 
@@ -104,7 +108,7 @@ describe('useTelemetry hooks', () => {
       renderHook(() => useTelemetry({ nodeId: '!abc123', hours: 48 }), { wrapper });
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith('/api/telemetry/!abc123?hours=48');
+        expect(global.fetch).toHaveBeenCalledWith('/api/telemetry/!abc123?hours=48&sourceId=src-test');
       });
     });
 
@@ -121,7 +125,7 @@ describe('useTelemetry hooks', () => {
       );
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/api/telemetry/!abc123?hours=24');
+        expect(global.fetch).toHaveBeenCalledWith('http://localhost:3000/api/telemetry/!abc123?hours=24&sourceId=src-test');
       });
     });
 

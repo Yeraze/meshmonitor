@@ -32,7 +32,7 @@ router.get('/direct-neighbors', requirePermission('info', 'read'), async (req: R
 });
 
 // Get telemetry data for a node
-router.get('/telemetry/:nodeId', optionalAuth(), async (req: Request, res: Response) => {
+router.get('/telemetry/:nodeId', optionalAuth(), requireSourceId('query'), async (req: Request, res: Response) => {
   try {
     // Allow users with info read OR dashboard read (dashboard needs telemetry data)
     if (
@@ -53,7 +53,8 @@ router.get('/telemetry/:nodeId', optionalAuth(), async (req: Request, res: Respo
     // from the Device Info time-range selector survive the round-trip.
     const rawHours = req.query.hours ? parseFloat(req.query.hours as string) : 24;
     const hoursParam = Number.isFinite(rawHours) && rawHours > 0 ? rawHours : 24;
-    const telSourceId = req.query.sourceId as string | undefined;
+    // sourceId presence validated by requireSourceId('query')
+    const telSourceId = req.query.sourceId as string;
 
     // Calculate cutoff timestamp for filtering
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
