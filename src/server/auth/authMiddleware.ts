@@ -280,6 +280,11 @@ export interface RequirePermissionOptions {
    *  Useful for endpoints consumed by the dashboard — `dashboard:read`
    *  grants access even if the specific resource permission is missing. */
   fallbackResource?: ResourceType;
+  /** When true, a missing/empty `sourceId` (per `sourceIdFrom`) is rejected
+   *  with a 400 `MISSING_SOURCE_ID` instead of leaving `scopedSourceId`
+   *  undefined. Use on endpoints that interact with a single source and must
+   *  not silently span all sources or throw inside `withSourceScope`. */
+  requireSourceId?: boolean;
 }
 
 export function requirePermission(
@@ -310,6 +315,12 @@ export function requirePermission(
             });
           }
           scopedSourceId = raw;
+        }
+        if (options.requireSourceId && scopedSourceId === undefined) {
+          return res.status(400).json({
+            error: 'sourceId is required',
+            code: 'MISSING_SOURCE_ID'
+          });
         }
       }
       (req as any).scopedSourceId = scopedSourceId;
