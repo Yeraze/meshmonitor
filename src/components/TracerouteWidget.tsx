@@ -10,12 +10,12 @@ import { useTranslation } from 'react-i18next';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { MapContainer, TileLayer, Marker, Tooltip, useMap } from 'react-leaflet';
-import L from 'leaflet';
 import { useSettings } from '../contexts/SettingsContext';
 import { getTilesetById } from '../config/tilesets';
 import { useTraceroutes } from '../hooks/useTraceroutes';
 import { isUnknownSnr, tracerouteSegmentWeight } from '../utils/mapHelpers';
 import { TraceroutePathsLayer } from './map/layers/TraceroutePathsLayer';
+import { createTracerouteEndpointIcon } from './map/markerIcons';
 import {
   parseSnapshotRoutePositions,
   resolveSegmentPosition,
@@ -321,31 +321,14 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
 
 
 
-  // Create node marker icon
-  // TODO(#4047 Phase 4): these from/to marker colors are hardcoded and no
-  // longer match the leg colors above (which converged to the theme
-  // tracerouteForward/tracerouteReturn palette in C1). Marker icon
-  // unification is Phase 4 scope — left as-is here on purpose.
-  const createNodeIcon = useCallback((isEndpoint: boolean, isFrom: boolean, isTo: boolean) => {
-    let color = '#888'; // intermediate hop
-    if (isFrom) color = '#4CAF50'; // green for source
-    else if (isTo) color = '#2196F3'; // blue for destination
-
-    const size = isEndpoint ? 12 : 8;
-
-    return L.divIcon({
-      html: `<div style="
-        width: ${size}px;
-        height: ${size}px;
-        background: ${color};
-        border: 2px solid white;
-        border-radius: 50%;
-        box-shadow: 0 0 4px rgba(0,0,0,0.5);
-      "></div>`,
-      className: 'traceroute-node-icon',
-      iconSize: [size + 4, size + 4],
-      iconAnchor: [(size + 4) / 2, (size + 4) / 2],
-    });
+  // Endpoint/hop marker icon — from/to colors are a deliberate endpoint-
+  // identity encoding (green = source, blue = destination, gray = hop),
+  // intentionally distinct from the theme leg colors above (which encode
+  // travel direction, not endpoint role). See createTracerouteEndpointIcon's
+  // doc block in map/markerIcons.ts (#4047 Phase 4, D3 Option A).
+  const getNodeMarkerIcon = useCallback((isFrom: boolean, isTo: boolean) => {
+    const role: 'from' | 'to' | 'hop' = isFrom ? 'from' : isTo ? 'to' : 'hop';
+    return createTracerouteEndpointIcon(role);
   }, []);
 
   const renderRoute = (
@@ -538,8 +521,7 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
                       <Marker
                         key={node.nodeNum}
                         position={node.position}
-                        icon={createNodeIcon(
-                          node.nodeNum === mapData.fromNodeNum || node.nodeNum === mapData.toNodeNum,
+                        icon={getNodeMarkerIcon(
                           node.nodeNum === mapData.fromNodeNum,
                           node.nodeNum === mapData.toNodeNum
                         )}
