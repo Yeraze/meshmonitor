@@ -134,17 +134,24 @@ describe('GET /telemetry/:nodeId/linkquality', () => {
 });
 
 describe('DELETE /telemetry/:nodeId/:telemetryType', () => {
-  it('returns 200 when deleted', async () => {
+  it('returns 200 when deleted and scopes to the required source', async () => {
     (databaseService.telemetry.deleteTelemetryByNodeAndType as any).mockResolvedValue(true);
-    const res = await request(app).delete('/telemetry/!12345678/temperature');
+    const res = await request(app).delete('/telemetry/!12345678/temperature?sourceId=src-A');
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+    expect(databaseService.telemetry.deleteTelemetryByNodeAndType).toHaveBeenCalledWith('!12345678', 'temperature', 'src-A');
   });
 
   it('returns 404 when nothing deleted', async () => {
     (databaseService.telemetry.deleteTelemetryByNodeAndType as any).mockResolvedValue(false);
-    const res = await request(app).delete('/telemetry/!12345678/temperature');
+    const res = await request(app).delete('/telemetry/!12345678/temperature?sourceId=src-A');
     expect(res.status).toBe(404);
+  });
+
+  it('400s when sourceId is omitted (no cross-source wipe)', async () => {
+    const res = await request(app).delete('/telemetry/!12345678/temperature');
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MISSING_SOURCE_ID');
   });
 });
 

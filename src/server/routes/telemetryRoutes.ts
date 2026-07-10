@@ -246,13 +246,16 @@ router.get('/telemetry/:nodeId/linkquality', optionalAuth(), requireSourceId('qu
 });
 
 // Delete telemetry data for a specific node and type
-router.delete('/telemetry/:nodeId/:telemetryType', requireAuth(), requirePermission('info', 'write'), async (req: Request, res: Response) => {
+router.delete('/telemetry/:nodeId/:telemetryType', requireAuth(), requirePermission('info', 'write'), requireSourceId('query'), async (req: Request, res: Response) => {
   try {
     const { nodeId, telemetryType } = req.params;
+    // sourceId presence validated by requireSourceId; scope the delete so it
+    // never wipes another source's telemetry for this node.
+    const purgeSourceId = req.query.sourceId as string;
 
-    logger.info(`Purging telemetry data for node ${nodeId}, type ${telemetryType}`);
+    logger.info(`Purging telemetry data for node ${nodeId}, type ${telemetryType}, source ${purgeSourceId}`);
 
-    const deleted = await databaseService.telemetry.deleteTelemetryByNodeAndType(nodeId, telemetryType);
+    const deleted = await databaseService.telemetry.deleteTelemetryByNodeAndType(nodeId, telemetryType, purgeSourceId);
 
     if (deleted) {
       logger.info(`Successfully purged ${telemetryType} telemetry for node ${nodeId}`);
