@@ -433,10 +433,16 @@ echo "Test 12: Send message to Yeraze Station G2"
 TARGET_NODE_ID="a2e4ff4c"
 TEST_MESSAGE="Test OIDC deployment"
 
+# The message API is per-source: scope the send to the primary Meshtastic (TCP)
+# source so it routes through the right manager (see withSourceScope()).
+SOURCE_ID=$(curl -s -k -b /tmp/meshmonitor-oidc-cookies.txt "$TEST_URL/api/sources" \
+    | tr '}' '\n' | grep '"type":"meshtastic_tcp"' | head -n1 \
+    | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
 SEND_RESPONSE=$(curl -s -w "\n%{http_code}" -k -X POST $TEST_URL/api/messages/send \
     -H "Content-Type: application/json" \
     -H "X-CSRF-Token: $CSRF_TOKEN" \
-    -d "{\"destination\":\"!$TARGET_NODE_ID\",\"text\":\"$TEST_MESSAGE\"}" \
+    -d "{\"destination\":\"!$TARGET_NODE_ID\",\"text\":\"$TEST_MESSAGE\",\"sourceId\":\"$SOURCE_ID\"}" \
     -b /tmp/meshmonitor-oidc-cookies.txt)
 
 HTTP_CODE=$(echo "$SEND_RESPONSE" | tail -n1)

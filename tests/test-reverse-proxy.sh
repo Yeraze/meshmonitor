@@ -400,6 +400,18 @@ TEST_MESSAGE="Test in Reverse Proxy"
 MAX_ATTEMPTS=3
 RESPONSE_RECEIVED=false
 
+# The message API is per-source: both send and read-back require a sourceId via
+# withSourceScope(), else GET /api/messages returns HTTP 500 and the reply is
+# never detected. Resolve the primary Meshtastic (TCP) source and scope to it.
+SOURCE_ID=$(curl -s -k -b /tmp/meshmonitor-reverse-proxy-cookies.txt "$TEST_URL/api/sources" \
+    | tr '}' '\n' | grep '"type":"meshtastic_tcp"' | head -n1 \
+    | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+if [ -z "$SOURCE_ID" ]; then
+    echo -e "${RED}✗ FAIL${NC}: Could not resolve a meshtastic_tcp sourceId from /api/sources"
+    exit 1
+fi
+echo "   Using sourceId: $SOURCE_ID"
+
 for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
     echo "Attempt $ATTEMPT of $MAX_ATTEMPTS..."
 
@@ -407,7 +419,7 @@ for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
     SEND_RESPONSE=$(curl -s -w "\n%{http_code}" -k -X POST $TEST_URL/api/messages/send \
         -H "Content-Type: application/json" \
         -H "X-CSRF-Token: $CSRF_TOKEN" \
-        -d "{\"destination\":\"!$TARGET_NODE_ID\",\"text\":\"$TEST_MESSAGE (attempt $ATTEMPT)\"}" \
+        -d "{\"destination\":\"!$TARGET_NODE_ID\",\"text\":\"$TEST_MESSAGE (attempt $ATTEMPT)\",\"sourceId\":\"$SOURCE_ID\"}" \
         -b /tmp/meshmonitor-reverse-proxy-cookies.txt)
 
     HTTP_CODE=$(echo "$SEND_RESPONSE" | tail -n1)
@@ -421,7 +433,7 @@ for ATTEMPT in $(seq 1 $MAX_ATTEMPTS); do
 
         while [ $ELAPSED -lt $MAX_WAIT ]; do
             # Check for messages from the target node
-            MESSAGES_RESPONSE=$(curl -s -k $TEST_URL/api/messages \
+            MESSAGES_RESPONSE=$(curl -s -k "$TEST_URL/api/messages?sourceId=$SOURCE_ID" \
                 -b /tmp/meshmonitor-reverse-proxy-cookies.txt)
 
             # Look for a recent message from our target node
