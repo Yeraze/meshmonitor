@@ -226,42 +226,7 @@ export class AutoTracerouteRepository extends BaseRepository {
 
   // ============ auto_traceroute_nodes sync methods (SQLite only) ============
 
-  /**
-   * Synchronously get the list of auto-traceroute node nums ordered by
-   * creation time ascending (SQLite only).
-   */
-  getAutoTracerouteNodesSync(): number[] {
-    const db = this.getSqliteDb();
-    const { autoTracerouteNodes } = this.tables;
-    const rows = db
-      .select({ nodeNum: autoTracerouteNodes.nodeNum })
-      .from(autoTracerouteNodes)
-      .orderBy(asc(autoTracerouteNodes.createdAt))
-      .all();
-    return (rows as any[]).map((r) => Number(r.nodeNum));
-  }
 
-  /**
-   * Synchronously replace the auto-traceroute nodes set in a single
-   * transaction (SQLite only). Bad nodeNums are skipped.
-   */
-  setAutoTracerouteNodesSync(nodeNums: number[]): void {
-    const db = this.getSqliteDb();
-    const { autoTracerouteNodes } = this.tables;
-    const now = Date.now();
-    db.transaction((tx) => {
-      tx.delete(autoTracerouteNodes).run();
-      for (const nodeNum of nodeNums) {
-        try {
-          tx.insert(autoTracerouteNodes)
-            .values({ nodeNum, createdAt: now } as any)
-            .run();
-        } catch (error) {
-          logger.debug(`Skipping invalid nodeNum: ${nodeNum}`, error);
-        }
-      }
-    });
-  }
 
   // ============ auto_traceroute_log sync methods (SQLite only) ============
 
@@ -302,17 +267,6 @@ export class AutoTracerouteRepository extends BaseRepository {
     return Number(result?.lastInsertRowid ?? 0);
   }
 
-  /**
-   * Synchronously mark an auto-traceroute log row's success flag (SQLite only).
-   */
-  updateAutoTracerouteResultSync(logId: number, success: boolean): void {
-    const db = this.getSqliteDb();
-    const { autoTracerouteLog } = this.tables;
-    db.update(autoTracerouteLog)
-      .set({ success: success ? 1 : 0 } as any)
-      .where(eq(autoTracerouteLog.id, logId))
-      .run();
-  }
 
   /**
    * Synchronously update the most recent pending auto-traceroute log row for

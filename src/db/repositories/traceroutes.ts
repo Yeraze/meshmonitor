@@ -4,9 +4,9 @@
  * Handles traceroute and route segment database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, and, desc, lt, or, isNull, gte, notInArray, count, sql } from 'drizzle-orm';
+import { eq, and, desc, lt, or, isNull, gte, notInArray, count } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
-import { DatabaseType, DbTraceroute, DbRouteSegment, DbNode } from '../types.js';
+import { DatabaseType, DbTraceroute, DbRouteSegment } from '../types.js';
 
 /**
  * Repository for traceroute operations
@@ -431,31 +431,7 @@ export class TraceroutesRepository extends BaseRepository {
 
   // ============ SQLite-only sync methods ============
 
-  /**
-   * Synchronously delete all traceroutes (SQLite only).
-   * Returns the number of rows deleted.
-   */
-  deleteAllTraceroutesSync(sourceId?: string): number {
-    const db = this.getSqliteDb();
-    const { traceroutes } = this.tables;
-    const result = sourceId
-      ? db.delete(traceroutes).where(eq(traceroutes.sourceId, sourceId)).run()
-      : db.delete(traceroutes).run();
-    return Number((result as any).changes ?? 0);
-  }
 
-  /**
-   * Synchronously delete all route segments (SQLite only).
-   * Returns the number of rows deleted.
-   */
-  deleteAllRouteSegmentsSync(sourceId?: string): number {
-    const db = this.getSqliteDb();
-    const { routeSegments } = this.tables;
-    const result = sourceId
-      ? db.delete(routeSegments).where(eq(routeSegments.sourceId, sourceId)).run()
-      : db.delete(routeSegments).run();
-    return Number((result as any).changes ?? 0);
-  }
 
   /**
    * Synchronously delete traceroutes older than cutoffTimestamp (SQLite only).
@@ -471,33 +447,7 @@ export class TraceroutesRepository extends BaseRepository {
     return Number((result as any).changes ?? 0);
   }
 
-  /**
-   * Synchronously delete all traceroutes where this node appears as source OR
-   * destination (SQLite only). Returns the number of rows deleted.
-   */
-  deleteTraceroutesInvolvingNodeSync(nodeNum: number): number {
-    const db = this.getSqliteDb();
-    const { traceroutes } = this.tables;
-    const result = db
-      .delete(traceroutes)
-      .where(or(eq(traceroutes.fromNodeNum, nodeNum), eq(traceroutes.toNodeNum, nodeNum))!)
-      .run();
-    return Number((result as any).changes ?? 0);
-  }
 
-  /**
-   * Synchronously delete all route segments where this node appears as source OR
-   * destination (SQLite only). Returns the number of rows deleted.
-   */
-  deleteRouteSegmentsInvolvingNodeSync(nodeNum: number): number {
-    const db = this.getSqliteDb();
-    const { routeSegments } = this.tables;
-    const result = db
-      .delete(routeSegments)
-      .where(or(eq(routeSegments.fromNodeNum, nodeNum), eq(routeSegments.toNodeNum, nodeNum))!)
-      .run();
-    return Number((result as any).changes ?? 0);
-  }
 
   /**
    * Synchronously upsert a traceroute (SQLite only) mirroring the legacy
@@ -598,132 +548,9 @@ export class TraceroutesRepository extends BaseRepository {
     });
   }
 
-  /**
-   * Synchronously get traceroutes between a node pair in either direction
-   * (SQLite only).
-   */
-  getTraceroutesByNodesSync(
-    fromNodeNum: number,
-    toNodeNum: number,
-    limit: number = 10
-  ): DbTraceroute[] {
-    const db = this.getSqliteDb();
-    const { traceroutes } = this.tables;
-    const rows = db
-      .select()
-      .from(traceroutes)
-      .where(
-        or(
-          and(eq(traceroutes.fromNodeNum, fromNodeNum), eq(traceroutes.toNodeNum, toNodeNum)),
-          and(eq(traceroutes.fromNodeNum, toNodeNum), eq(traceroutes.toNodeNum, fromNodeNum))
-        )!
-      )
-      .orderBy(desc(traceroutes.timestamp))
-      .limit(limit)
-      .all();
-    return (rows as any[]).map((r) => this.normalizeTracerouteRow(r));
-  }
 
-  /**
-   * Synchronously get recent traceroutes (all pairs) (SQLite only).
-   * When sourceId is provided, restricts the result to that source.
-   */
-  getAllTraceroutesRecentSync(limit: number = 100, sourceId?: SourceScope): DbTraceroute[] {
-    const db = this.getSqliteDb();
-    const { traceroutes } = this.tables;
-    const rows = db
-      .select()
-      .from(traceroutes)
-      .where(this.withSourceScope(traceroutes, sourceId))
-      .orderBy(desc(traceroutes.timestamp))
-      .limit(limit)
-      .all();
-    return (rows as any[]).map((r) => this.normalizeTracerouteRow(r));
-  }
 
-  /**
-   * Synchronously get non-empty completed traceroutes (route IS NOT NULL and
-   * route != '[]') ordered ascending by timestamp. Used by legacy migration
-   * paths that hydrate route_segments from history. (SQLite only.)
-   */
-  getCompletedTraceroutesForMigrationSync(): Array<{
-    id: number;
-    fromNodeNum: number;
-    toNodeNum: number;
-    route: string | null;
-    snrTowards: string | null;
-    timestamp: number;
-  }> {
-    const db = this.getSqliteDb();
-    const { traceroutes } = this.tables;
-    const rows = db
-      .select({
-        id: traceroutes.id,
-        fromNodeNum: traceroutes.fromNodeNum,
-        toNodeNum: traceroutes.toNodeNum,
-        route: traceroutes.route,
-        snrTowards: traceroutes.snrTowards,
-        timestamp: traceroutes.timestamp,
-      })
-      .from(traceroutes)
-      .where(and(
-        sql`${traceroutes.route} IS NOT NULL`,
-        sql`${traceroutes.route} != '[]'`,
-      )!)
-      .orderBy(traceroutes.timestamp)
-      .all();
-    return (rows as any[]).map((r) => ({
-      id: Number(r.id),
-      fromNodeNum: Number(r.fromNodeNum),
-      toNodeNum: Number(r.toNodeNum),
-      route: r.route ?? null,
-      snrTowards: r.snrTowards ?? null,
-      timestamp: Number(r.timestamp),
-    }));
-  }
 
-  /**
-   * Synchronously return all candidate nodes eligible for auto-traceroute
-   * (SQLite only). A node is eligible when it has been heard within
-   * activeNodeCutoff (unix seconds) AND either:
-   *   - Has no successful traceroute and lastTracerouteRequest is null or
-   *     older than threeHoursCutoff (ms), OR
-   *   - Has at least one traceroute and lastTracerouteRequest is null or
-   *     older than expirationCutoff (ms).
-   *
-   * Sorted by lastHeard descending. Caller applies per-setting filters.
-   */
-  getEligibleTracerouteCandidatesSync(
-    localNodeNum: number,
-    activeNodeCutoffSec: number,
-    threeHoursCutoffMs: number,
-    expirationCutoffMs: number
-  ): DbNode[] {
-    const db = this.getSqliteDb();
-    const rows = db.all(sql`
-      SELECT n.*,
-        (SELECT COUNT(*) FROM traceroutes t
-         WHERE t.fromNodeNum = ${localNodeNum} AND t.toNodeNum = n.nodeNum) as hasTraceroute
-      FROM nodes n
-      WHERE n.nodeNum != ${localNodeNum}
-        AND n.lastHeard > ${activeNodeCutoffSec}
-        AND (
-          (
-            (SELECT COUNT(*) FROM traceroutes t
-             WHERE t.fromNodeNum = ${localNodeNum} AND t.toNodeNum = n.nodeNum) = 0
-            AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ${threeHoursCutoffMs})
-          )
-          OR
-          (
-            (SELECT COUNT(*) FROM traceroutes t
-             WHERE t.fromNodeNum = ${localNodeNum} AND t.toNodeNum = n.nodeNum) > 0
-            AND (n.lastTracerouteRequest IS NULL OR n.lastTracerouteRequest < ${expirationCutoffMs})
-          )
-        )
-      ORDER BY n.lastHeard DESC
-    `) as any[];
-    return rows.map((r) => this.normalizeBigInts(r)) as DbNode[];
-  }
 
   // ============ route_segments sync methods (SQLite only) ============
 
@@ -748,29 +575,6 @@ export class TraceroutesRepository extends BaseRepository {
       .run();
   }
 
-  /**
-   * Synchronously return the longest route segment from the last 7 days
-   * (SQLite only). When sourceId is provided, scope to that source (matching
-   * NULL when `sourceId === null`-like semantics).
-   */
-  getLongestActiveRouteSegmentSync(sourceId?: string): DbRouteSegment | null {
-    const db = this.getSqliteDb();
-    const { routeSegments } = this.tables;
-    const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
-    const conditions: any[] = [gte(routeSegments.timestamp, cutoff)];
-    if (sourceId !== undefined) {
-      conditions.push(eq(routeSegments.sourceId, sourceId));
-    }
-    const rows = db
-      .select()
-      .from(routeSegments)
-      .where(and(...conditions)!)
-      .orderBy(desc(routeSegments.distanceKm))
-      .limit(1)
-      .all();
-    if (rows.length === 0) return null;
-    return this.normalizeRouteSegmentRow(rows[0]);
-  }
 
   /**
    * Synchronously return the current record-holder route segment (SQLite only).
@@ -856,22 +660,6 @@ export class TraceroutesRepository extends BaseRepository {
       n.isRecordHolder = false;
     }
     return n as DbRouteSegment;
-  }
-
-  /**
-   * Helper: convert nullable row fields back to undefined to match DbTraceroute.
-   */
-  private normalizeTracerouteRow(r: any): DbTraceroute {
-    const n = this.normalizeBigInts(r) as any;
-    if (n.channel === null) n.channel = undefined;
-    if (n.packetId === null) n.packetId = undefined;
-    if (n.routePositions === null) n.routePositions = undefined;
-    if (n.sourceId === null) n.sourceId = undefined;
-    if (n.route === null) n.route = undefined;
-    if (n.routeBack === null) n.routeBack = undefined;
-    if (n.snrTowards === null) n.snrTowards = undefined;
-    if (n.snrBack === null) n.snrBack = undefined;
-    return n as DbTraceroute;
   }
 
   /**

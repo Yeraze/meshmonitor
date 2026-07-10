@@ -3,16 +3,8 @@ import { connect, type MqttClient } from 'mqtt';
 import { Aedes } from 'aedes';
 import { createServer, type Server } from 'net';
 
-const upsertNode = vi.fn();
-const insertMessage = vi.fn().mockReturnValue(true);
-const insertTelemetry = vi.fn();
-
 vi.mock('../services/database.js', () => ({
-  default: {
-    upsertNode: (...a: unknown[]) => upsertNode(...a),
-    insertMessage: (...a: unknown[]) => insertMessage(...a),
-    insertTelemetry: (...a: unknown[]) => insertTelemetry(...a),
-  },
+  default: {},
 }));
 
 import { MqttBrokerManager } from './mqttBrokerManager.js';
@@ -95,9 +87,6 @@ describe('MqttBridgeManager mode field', () => {
   });
 
   beforeEach(async () => {
-    upsertNode.mockClear();
-    insertMessage.mockClear();
-    insertTelemetry.mockClear();
     upstreamPort = await ephemeralPort();
     localPort = await ephemeralPort();
     upstream = await startUpstream(upstreamPort);

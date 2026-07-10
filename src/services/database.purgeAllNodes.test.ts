@@ -72,8 +72,8 @@ describe('DatabaseService.purgeAllNodesAsync — packet_log integration (#2637)'
     expect(databaseService.nodesRepo).not.toBeNull();
 
     // Seed two real nodes via the public sync API
-    databaseService.upsertNode({ nodeNum: 1001, nodeId: '!000003e9', longName: 'Alpha', shortName: 'A' });
-    databaseService.upsertNode({ nodeNum: 1002, nodeId: '!000003ea', longName: 'Beta', shortName: 'B' });
+    await databaseService.upsertNodeAsync({ nodeNum: 1001, nodeId: '!000003e9', longName: 'Alpha', shortName: 'A' });
+    await databaseService.upsertNodeAsync({ nodeNum: 1002, nodeId: '!000003ea', longName: 'Beta', shortName: 'B' });
 
     // Seed packet_log rows directly via the underlying SQLite connection.
     // Bypasses insertPacketLogAsync's `packet_log_enabled` gate which is off
@@ -99,7 +99,7 @@ describe('DatabaseService.purgeAllNodesAsync — packet_log integration (#2637)'
 
     // Nodes must be gone (the broadcast node ffffffff/4294967295 may persist;
     // assert our seeded user nodes specifically are gone)
-    const remainingNodes = databaseService.getAllNodes();
+    const remainingNodes = await databaseService.getAllNodesAsync();
     expect(remainingNodes.find((n: any) => n.nodeNum === 1001)).toBeUndefined();
     expect(remainingNodes.find((n: any) => n.nodeNum === 1002)).toBeUndefined();
   });
@@ -120,9 +120,9 @@ describe('DatabaseService.deleteNodeAsync — packet_log integration (#2637)', (
     rawDb.exec('DELETE FROM nodes WHERE nodeNum != 0');
 
     // Seed two nodes on different sources, plus a third unrelated node
-    databaseService.upsertNode({ nodeNum: 2001, nodeId: '!000007d1', longName: 'Scrub Daddy', shortName: 'SD', sourceId: 'srcA' } as any);
-    databaseService.upsertNode({ nodeNum: 2001, nodeId: '!000007d1', longName: 'Scrub Daddy', shortName: 'SD', sourceId: 'srcB' } as any);
-    databaseService.upsertNode({ nodeNum: 2002, nodeId: '!000007d2', longName: 'Other', shortName: 'OT', sourceId: 'srcA' } as any);
+    await databaseService.upsertNodeAsync({ nodeNum: 2001, nodeId: '!000007d1', longName: 'Scrub Daddy', shortName: 'SD', sourceId: 'srcA' } as any);
+    await databaseService.upsertNodeAsync({ nodeNum: 2001, nodeId: '!000007d1', longName: 'Scrub Daddy', shortName: 'SD', sourceId: 'srcB' } as any);
+    await databaseService.upsertNodeAsync({ nodeNum: 2002, nodeId: '!000007d2', longName: 'Other', shortName: 'OT', sourceId: 'srcA' } as any);
 
     const now = Date.now();
     // 2 packets from Scrub Daddy on srcA (should be deleted)

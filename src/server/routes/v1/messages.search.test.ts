@@ -81,9 +81,6 @@ vi.mock('../../../services/database.js', () => ({
     },
     // Messages methods
     searchMessagesAsync: vi.fn().mockResolvedValue({ messages: searchResults, total: 2 }),
-    getMessagesByChannel: vi.fn().mockReturnValue([]),
-    getMessages: vi.fn().mockReturnValue([]),
-    getMessagesAfterTimestamp: vi.fn().mockReturnValue([]),
     messages: {
       getMessages: vi.fn().mockResolvedValue([]),
       getMessagesByChannel: vi.fn().mockResolvedValue([]),

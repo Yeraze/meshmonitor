@@ -86,6 +86,8 @@ const mockNodesRepo = vi.hoisted(() => ({
   getNodeByNum: vi.fn().mockResolvedValue(null),
   upsertNode: vi.fn().mockResolvedValue(undefined),
   deleteNode: vi.fn().mockResolvedValue(undefined),
+  getNode: vi.fn().mockResolvedValue(null),
+  setNodeIgnored: vi.fn().mockResolvedValue(undefined),
   getNodesWithKeySecurityIssues: vi.fn().mockResolvedValue([]),
 }));
 
@@ -180,7 +182,7 @@ vi.mock('../db/repositories/index.js', () => ({
   ALL_SOURCES: Symbol('ALL_SOURCES'),
   SettingsRepository: class { getSetting = mockSettingsRepo.getSetting; setSetting = mockSettingsRepo.setSetting; deleteSetting = mockSettingsRepo.deleteSetting; getAllSettings = mockSettingsRepo.getAllSettings; getSettingSync = mockSettingsRepo.getSettingSync; setSettingSync = mockSettingsRepo.setSettingSync; setSettingsSync = mockSettingsRepo.setSettingsSync; getAllSettingsSync = mockSettingsRepo.getAllSettingsSync; deleteAllSettingsSync = mockSettingsRepo.deleteAllSettingsSync; },
   ChannelsRepository: class { getChannels = mockChannelsRepo.getChannels; getChannelById = mockChannelsRepo.getChannelById; upsertChannel = mockChannelsRepo.upsertChannel; },
-  NodesRepository: class { getAllNodes = mockNodesRepo.getAllNodes; getNodeByNum = mockNodesRepo.getNodeByNum; upsertNode = mockNodesRepo.upsertNode; deleteNode = mockNodesRepo.deleteNode; getNodesWithKeySecurityIssues = mockNodesRepo.getNodesWithKeySecurityIssues; },
+  NodesRepository: class { getAllNodes = mockNodesRepo.getAllNodes; getNodeByNum = mockNodesRepo.getNodeByNum; getNode = mockNodesRepo.getNode; upsertNode = mockNodesRepo.upsertNode; deleteNode = mockNodesRepo.deleteNode; setNodeIgnored = mockNodesRepo.setNodeIgnored; getNodesWithKeySecurityIssues = mockNodesRepo.getNodesWithKeySecurityIssues; },
   MessagesRepository: class { getMessage = mockMessagesRepo.getMessage; getMessages = mockMessagesRepo.getMessages; searchMessages = mockMessagesRepo.searchMessages; insertMessage = mockMessagesRepo.insertMessage; deleteMessage = mockMessagesRepo.deleteMessage; },
   TelemetryRepository: class { getTelemetryCount = mockTelemetryRepo.getTelemetryCount; getTelemetryCountByNode = mockTelemetryRepo.getTelemetryCountByNode; insertTelemetry = mockTelemetryRepo.insertTelemetry; getTelemetryByNode = mockTelemetryRepo.getTelemetryByNode; getPositionTelemetryByNode = mockTelemetryRepo.getPositionTelemetryByNode; getRecentEstimatedPositions = mockTelemetryRepo.getRecentEstimatedPositions; getSmartHopsStats = mockTelemetryRepo.getSmartHopsStats; getLinkQualityHistory = mockTelemetryRepo.getLinkQualityHistory; getAllNodesTelemetryTypes = mockTelemetryRepo.getAllNodesTelemetryTypes; deleteAllTelemetry = mockTelemetryRepo.deleteAllTelemetry; deleteOldTelemetry = mockTelemetryRepo.deleteOldTelemetry; deleteOldTelemetryWithFavorites = mockTelemetryRepo.deleteOldTelemetryWithFavorites; getLatestTelemetryForType = mockTelemetryRepo.getLatestTelemetryForType; getTelemetryByType = mockTelemetryRepo.getTelemetryByType; getLatestTelemetryValueForAllNodes = mockTelemetryRepo.getLatestTelemetryValueForAllNodes; },
   AuthRepository: class { getAllUsers = mockAuthRepo.getAllUsers; createUser = mockAuthRepo.createUser; findUserById = mockAuthRepo.findUserById; findUserByUsername = mockAuthRepo.findUserByUsername; createAuditLogEntry = mockAuthRepo.createAuditLogEntry; getAuditLogs = mockAuthRepo.getAuditLogs; getAuditLogsFiltered = mockAuthRepo.getAuditLogsFiltered; getAuditStats = mockAuthRepo.getAuditStats; cleanupOldAuditLogs = mockAuthRepo.cleanupOldAuditLogs; getUserPreferences = mockAuthRepo.getUserPreferences; setUserPreferences = mockAuthRepo.setUserPreferences; },
@@ -391,7 +393,7 @@ describe('DatabaseService — getTelemetryCountAsync', () => {
   it('delegates to telemetryRepo.getTelemetryCount', async () => {
     mockTelemetryRepo.getTelemetryCount.mockResolvedValue(42);
 
-    const result = await databaseService.getTelemetryCountAsync();
+    const result = await databaseService.telemetry.getTelemetryCount();
     expect(result).toBe(42);
   });
 });
@@ -704,7 +706,7 @@ describe('DatabaseService.upsertNodeAsync — new node notification (#3796)', ()
     mockNodesRepo.upsertNode.mockClear();
     // Default: nodes are incomplete unless a test opts in. No pre-existing node.
     vi.mocked(isNodeComplete).mockReturnValue(false);
-    getNodeSpy = vi.spyOn(databaseService, 'getNode').mockReturnValue(null);
+    getNodeSpy = vi.spyOn(databaseService.nodes, 'getNode').mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -773,7 +775,7 @@ describe('DatabaseService.upsertNodeAsync — new node notification (#3796)', ()
     // and re-dumps its known NodeDB. isNodeComplete(existingNode) is true, so
     // the incomplete->complete transition never happens and we must stay quiet.
     vi.mocked(isNodeComplete).mockReturnValue(true);
-    getNodeSpy.mockReturnValue({
+    getNodeSpy.mockResolvedValue({
       nodeNum: 0x5555eeee,
       nodeId: '!5555eeee',
       longName: 'Already Known',

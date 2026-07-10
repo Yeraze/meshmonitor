@@ -1,11 +1,7 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 
 vi.mock('../services/database.js', () => ({
-  default: {
-    upsertNode: vi.fn(),
-    insertMessage: vi.fn().mockReturnValue(true),
-    insertTelemetry: vi.fn(),
-  },
+  default: {},
 }));
 
 import protobufService from './protobufService.js';

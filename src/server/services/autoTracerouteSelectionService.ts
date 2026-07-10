@@ -61,7 +61,7 @@ export async function selectNodeNeedingTraceroute(
   const EXPIRATION_MS = filterCfg.expirationHours * 60 * 60 * 1000;
 
   // lastHeard is stored in seconds (Unix timestamp), so convert cutoff to seconds
-  const activeNodeCutoff = Math.floor(Date.now() / 1000) - maxNodeAgeHours * 60 * 60;
+  const activeNodeCutoff = Math.floor(now / 1000) - maxNodeAgeHours * 60 * 60;
 
   try {
     // Get eligible nodes from repository
@@ -82,7 +82,7 @@ export async function selectNodeNeedingTraceroute(
 
     // Apply last-heard filter (AND logic — applied before OR union filters)
     if (filterLastHeardEnabled) {
-      const lastHeardCutoff = Math.floor(Date.now() / 1000) - filterLastHeardHours * 3600;
+      const lastHeardCutoff = Math.floor(now / 1000) - filterLastHeardHours * 3600;
       eligibleNodes = eligibleNodes.filter((node) => {
         // Exclude nodes with no lastHeard or lastHeard older than cutoff
         return node.lastHeard != null && node.lastHeard >= lastHeardCutoff;

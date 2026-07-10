@@ -4,11 +4,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 // transitively pulls it in). The proxy parse/encode helpers don't touch
 // the DB, so any in-memory mock will do.
 vi.mock('../services/database.js', () => ({
-  default: {
-    upsertNode: vi.fn(),
-    insertMessage: vi.fn().mockReturnValue(true),
-    insertTelemetry: vi.fn(),
-  },
+  default: {},
 }));
 
 import meshtasticProtobufService from './meshtasticProtobufService.js';

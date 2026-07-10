@@ -351,7 +351,7 @@ describe('PacketLogService', () => {
       });
 
       // Run cleanup
-      const deletedCount = databaseService.cleanupOldPacketLogs();
+      const deletedCount = await databaseService.cleanupOldPacketLogsAsync();
       expect(deletedCount).toBeGreaterThanOrEqual(0);
 
       // Verify old packets are gone but new ones remain
