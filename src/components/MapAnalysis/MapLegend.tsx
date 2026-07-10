@@ -1,30 +1,26 @@
+/**
+ * Map Analysis legend — a floating, layer-driven key whose sections are
+ * gated by which analysis layers are currently enabled (Markers/Hop
+ * Shading/SNR/Neighbors/Coverage Heatmap/Trails/Node Types).
+ *
+ * This is intentionally distinct from the shared static legend
+ * (`src/components/MapLegend.tsx`), which is a fixed, prop-driven,
+ * localStorage-persisted overlay used by NodesTab/MeshCoreMap/DashboardMap.
+ * The two are ~90% disjoint in content and chrome — this is NOT a fork of
+ * the shared legend. See `docs/internal/dev-notes/MAP_CONSOLIDATION_P2_SPEC.md`
+ * (§0/§1.6) for the full drift-vs-functional analysis (epic #4047 Phase 2).
+ * The one genuine drift — the Node-Types glyph — was deduped onto the
+ * shared `roleGlyphMarkerSvg` helper below; everything else here stays.
+ */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { useVisibleNodeTypeCategories } from './useVisibleNodeTypeCategories';
-import { roleGlyphInnerSvg } from '../../utils/mapIcons';
+import { roleGlyphMarkerSvg } from '../../utils/mapIcons';
 import {
   categoryGlyphFamily,
   NODE_TYPE_CATEGORY_META,
-  type NodeTypeCategory,
 } from '../../utils/nodeTypeCategory';
-
-/** Mini marker preview for the node-type legend rows (issue #3546). */
-function RoleIcon({ category }: { category: NodeTypeCategory }) {
-  const color = '#6698f5';
-  return (
-    <span
-      className="map-analysis-legend-swatch"
-      style={{ background: 'transparent', width: 20, height: 20, display: 'inline-block' }}
-      dangerouslySetInnerHTML={{
-        __html: `<svg width="20" height="20" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="24" cy="24" r="20" fill="white" fill-opacity="0.95" stroke="${color}" stroke-width="2" />
-          ${roleGlyphInnerSvg(category, color)}
-        </svg>`,
-      }}
-    />
-  );
-}
 
 interface SwatchProps {
   color: string;
@@ -104,7 +100,13 @@ export default function MapLegend() {
               <h4>{t('map.nodeType.legendTitle', 'Node Types')}</h4>
               {legendCategories.map((c) => (
                 <div className="row" key={c}>
-                  <RoleIcon category={c} /> {t(NODE_TYPE_CATEGORY_META[c].labelKey, NODE_TYPE_CATEGORY_META[c].label)}
+                  <span
+                    className="map-analysis-legend-swatch"
+                    style={{ background: 'transparent', width: 20, height: 20, display: 'inline-block' }}
+                    aria-hidden="true"
+                    dangerouslySetInnerHTML={{ __html: roleGlyphMarkerSvg(c, '#6698f5', 20) }}
+                  />{' '}
+                  {t(NODE_TYPE_CATEGORY_META[c].labelKey, NODE_TYPE_CATEGORY_META[c].label)}
                 </div>
               ))}
             </section>
