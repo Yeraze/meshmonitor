@@ -75,7 +75,7 @@ export const lightOverlayColors: OverlayColors = {
   },
   snrColors: {
     // Verified against OSM HOT cream (#F2EFE9) via WCAG 2.1 relative-luminance
-    // contrast ratio; all bands clear the project's >=4.0 AA-on-cream bar (#4047 P3).
+    // contrast ratio; all bands clear the project's >=4.0 AA-on-cream bar.
     excellent: '#15803d', // darkened Latte green — AA on cream (contrast 4.37)
     good: '#8f5200',      // darkened Latte amber — AA on cream (contrast 5.42)
     fair: '#b45309',      // darkened Latte orange — AA on cream (contrast 4.38)

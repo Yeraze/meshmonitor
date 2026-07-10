@@ -1,9 +1,8 @@
 import { useMemo } from 'react';
-// #2931 — shared unknown-hop sentinel (raw firmware INT8_MIN -128 / 4 = -32).
-// Previously duplicated here as a private copy; folded into mapHelpers under
-// WP1, then re-homed to the leaflet-free tracerouteSegments.ts under WP2 so
-// this hook (and its tests) don't have to pull in mapHelpers.tsx's
-// leaflet/react-leaflet imports just for the sentinel (#4047 P3).
+// #2931 — shared unknown-hop sentinel (raw firmware INT8_MIN -128 / 4 = -32),
+// imported from the leaflet-free tracerouteSegments.ts so this hook (and its
+// tests) don't have to pull in mapHelpers.tsx's leaflet/react-leaflet
+// imports just for the sentinel.
 import { isUnknownSnr, hasReturnPath } from '../utils/tracerouteSegments';
 
 /**
@@ -149,8 +148,7 @@ function segmentsForTraceroute(tr: TracerouteAnalysisInput): RawSegment[] {
   // When routeBack AND snrBack are both empty the return path has not been
   // recorded yet (e.g. MeshMonitor sees its own outgoing response before relay
   // nodes populate routeBack). Skip rather than drawing a fictitious direct
-  // responder→requester line. (Issues #1140, #3622, #2051 — shared guard,
-  // #4047 P3 WP5.)
+  // responder→requester line. (Issues #1140, #3622, #2051 — shared guard.)
   if (hasReturnPath(routeBack, snrBack)) {
     const backPath = [responder, ...routeBack, requester];
     for (let i = 0; i < backPath.length - 1; i++) {
