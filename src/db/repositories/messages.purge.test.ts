@@ -78,7 +78,7 @@ describe('MessagesRepository sync purge helpers', () => {
   describe('purgeChannelMessagesSqlite', () => {
     it('does not throw when called with a sourceId (issue #2631 regression)', async () => {
       await insertMsg('m1', NODE1_NUM, NODE1_ID, NODE2_NUM, NODE2_ID, 0, 'src-a');
-      expect(() => repo.purgeChannelMessagesSqlite(0, 'src-a')).not.toThrow();
+      await expect(repo.purgeChannelMessages(0, 'src-a')).resolves.not.toThrow();
     });
 
     it('purges only messages on the given channel and source', async () => {
@@ -86,7 +86,7 @@ describe('MessagesRepository sync purge helpers', () => {
       await insertMsg('m2', NODE1_NUM, NODE1_ID, NODE2_NUM, NODE2_ID, 0, 'src-b');
       await insertMsg('m3', NODE1_NUM, NODE1_ID, NODE2_NUM, NODE2_ID, 1, 'src-a');
 
-      const deleted = repo.purgeChannelMessagesSqlite(0, 'src-a');
+      const deleted = await repo.purgeChannelMessages(0, 'src-a');
       expect(deleted).toBe(1);
 
       const remaining = db.prepare('SELECT id FROM messages ORDER BY id').all() as { id: string }[];
@@ -98,7 +98,7 @@ describe('MessagesRepository sync purge helpers', () => {
       await insertMsg('m2', NODE1_NUM, NODE1_ID, NODE2_NUM, NODE2_ID, 0, 'src-b');
       await insertMsg('m3', NODE1_NUM, NODE1_ID, NODE2_NUM, NODE2_ID, 1, 'src-a');
 
-      const deleted = repo.purgeChannelMessagesSqlite(0, ALL_SOURCES);
+      const deleted = await repo.purgeChannelMessages(0, ALL_SOURCES as unknown as string);
       expect(deleted).toBe(2);
 
       const remaining = db.prepare('SELECT id FROM messages').all() as { id: string }[];
@@ -109,7 +109,7 @@ describe('MessagesRepository sync purge helpers', () => {
   describe('purgeDirectMessagesSqlite', () => {
     it('does not throw when called with a sourceId (issue #2631 regression)', async () => {
       await insertMsg('m1', NODE1_NUM, NODE1_ID, NODE2_NUM, NODE2_ID, 0, 'src-a');
-      expect(() => repo.purgeDirectMessagesSqlite(NODE1_NUM, 'src-a')).not.toThrow();
+      await expect(repo.purgeDirectMessages(NODE1_NUM, 'src-a')).resolves.not.toThrow();
     });
 
     it('purges only DMs involving the node on the given source', async () => {
@@ -120,7 +120,7 @@ describe('MessagesRepository sync purge helpers', () => {
       // Unrelated DM on src-a between NODE3 ↔ NODE2: m3
       await insertMsg('m3', NODE3_NUM, NODE3_ID, NODE2_NUM, NODE2_ID, 0, 'src-a');
 
-      const deleted = repo.purgeDirectMessagesSqlite(NODE1_NUM, 'src-a');
+      const deleted = await repo.purgeDirectMessages(NODE1_NUM, 'src-a');
       expect(deleted).toBe(1);
 
       const remaining = db.prepare('SELECT id FROM messages ORDER BY id').all() as { id: string }[];
@@ -140,7 +140,7 @@ describe('MessagesRepository sync purge helpers', () => {
       await insertMsg('bcast', NODE1_NUM, NODE1_ID, 0xffffffff, '!ffffffff', 0, 'src-a');
       await insertMsg('dm', NODE1_NUM, NODE1_ID, NODE2_NUM, NODE2_ID, 0, 'src-a');
 
-      const deleted = repo.purgeDirectMessagesSqlite(NODE1_NUM, 'src-a');
+      const deleted = await repo.purgeDirectMessages(NODE1_NUM, 'src-a');
       expect(deleted).toBe(1); // only the DM
 
       const remaining = db.prepare('SELECT id FROM messages ORDER BY id').all() as { id: string }[];
