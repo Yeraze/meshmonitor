@@ -204,6 +204,8 @@ const staleFavoriteNodeWithPosition = {
 };
 
 const neighborLinkWithPositions = {
+  nodeNum: 1,
+  neighborNodeNum: 2,
   nodeLatitude: 35.0,
   nodeLongitude: -80.0,
   neighborLatitude: 36.0,
@@ -213,6 +215,8 @@ const neighborLinkWithPositions = {
 };
 
 const neighborLinkMissingPositions = {
+  nodeNum: 3,
+  neighborNodeNum: 4,
   nodeLatitude: null,
   nodeLongitude: null,
   neighborLatitude: 36.0,

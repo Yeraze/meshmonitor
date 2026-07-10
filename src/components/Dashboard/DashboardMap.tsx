@@ -43,6 +43,7 @@ import { getOwnNodePositions } from '../../utils/ownNodePositions';
 import { nodePassesTransportFilter } from '../../utils/nodeTransport';
 import { isNullIsland } from '../../utils/nullIsland';
 import { effectiveMapMaxAgeHours } from '../../utils/mapAge';
+import { resolveMapEndpoint } from '../../utils/nodeHelpers';
 import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { BaseMap } from '../map/BaseMap';
@@ -271,6 +272,20 @@ export default function DashboardMap({
     })
     .filter((entry): entry is { node: any; pos: { lat: number; lng: number } } => entry.pos !== null);
 
+  // Build a map of nodeNum → marker position for resolving neighbor-info endpoints (#4042).
+  // When a node appears on multiple sources at different positions, the marker uses the
+  // merged position (from useDashboardData), but neighbor records carry source-specific
+  // coordinates. Using resolveMapEndpoint ensures lines connect to the rendered marker
+  // position rather than floating to a stale source-specific coordinate.
+  const nodePositionsMap = useMemo(() => {
+    const posMap = new Map<number, [number, number]>();
+    nodesWithPosition.forEach(({ node, pos }) => {
+      posMap.set(node.nodeNum, [pos.lat, pos.lng]);
+    });
+    return posMap;
+  }, [nodesWithPosition]);
+
+  // Array form of node positions for MapBoundsUpdater (fit bounds).
   const nodePositions: [number, number][] = nodesWithPosition.map((e) => [e.pos.lat, e.pos.lng]);
 
   // #3636: measurement endpoints — nearest-node snapping picks from these.
