@@ -1571,63 +1571,8 @@ class DatabaseService {
     return this.telemetry.getLatestPacketTimestampsPerNode(MIN_VALID_TIMESTAMP_MS, sourceId);
   }
 
-  // Message operations
-  // Returns true if the message was actually inserted (not a duplicate)
-  insertMessage(messageData: DbMessage): boolean {
-    // For PostgreSQL/MySQL, fire-and-forget async insert
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Check cache for duplicate before inserting
-      const existsInCache = this._messagesCache.some(m => m.id === messageData.id);
-      if (existsInCache) {
-        return false;
-      }
-      if (this.messagesRepo) {
-        this.messagesRepo.insertMessage(messageData).catch((error) => {
-          logger.error(`[DatabaseService] Failed to insert message: ${error}`);
-        });
-      }
-      // Also add to cache immediately so delivery state updates can find it
-      this._messagesCache.unshift(messageData);
-      // Keep cache size reasonable
-      if (this._messagesCache.length > 500) {
-        this._messagesCache.pop();
-      }
-      return true;
-    }
 
-    // SQLite synchronous path - delegate to MessagesRepository Drizzle sync variant.
-    // INSERT OR IGNORE semantics preserved via onConflictDoNothing().
-    if (this.messagesRepo) {
-      return this.messagesRepo.insertMessageSqlite(messageData as any);
-    }
-    return false;
-  }
 
-  getMessage(id: string): DbMessage | null {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return this._messagesCache.find(m => m.id === id) ?? null;
-    }
-    // SQLite: delegate to Drizzle sync variant
-    if (this.messagesRepo) {
-      const msg = this.messagesRepo.getMessageSqlite(id);
-      return msg ? this.convertRepoMessage(msg as any) : null;
-    }
-    return null;
-  }
-
-  getMessageByRequestId(requestId: number): DbMessage | null {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return this._messagesCache.find(m => m.requestId === requestId) ?? null;
-    }
-    // SQLite: delegate to Drizzle sync variant
-    if (this.messagesRepo) {
-      const msg = this.messagesRepo.getMessageByRequestIdSqlite(requestId);
-      return msg ? this.convertRepoMessage(msg as any) : null;
-    }
-    return null;
-  }
 
   async getMessageByRequestIdAsync(requestId: number): Promise<DbMessage | null> {
     // For PostgreSQL/MySQL, use async repo
@@ -1638,26 +1583,17 @@ class DatabaseService {
       }
       return null;
     }
-    // For SQLite, use sync method
-    return this.getMessageByRequestId(requestId);
+    // SQLite: use the Drizzle sync variant
+    if (this.messagesRepo) {
+      const msg = this.messagesRepo.getMessageByRequestIdSqlite(requestId);
+      return msg ? this.convertRepoMessage(msg as any) : null;
+    }
+    return null;
   }
 
-  async getMessagesAsync(limit: number = 100, offset: number = 0): Promise<DbMessage[]> {
-    // For PostgreSQL/MySQL, use async repo
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.messagesRepo) {
-        const messages = await this.messagesRepo.getMessages(limit, offset, ALL_SOURCES); // intentional cross-source: legacy facade has no sourceId
-        return messages.map(msg => this.convertRepoMessage(msg));
-      }
-      return [];
-    }
-    // For SQLite, use sync method
-    return this.getMessages(limit, offset);
-  }
 
   // Internal cache for messages (used for PostgreSQL sync compatibility)
   private _messagesCache: DbMessage[] = [];
-  private _messagesCacheChannel: Map<number, DbMessage[]> = new Map();
 
   // Helper to convert repo DbMessage to local DbMessage (null -> undefined)
   private convertRepoMessage(msg: import('../db/types.js').DbMessage): DbMessage {
@@ -1691,109 +1627,10 @@ class DatabaseService {
     };
   }
 
-  getMessages(limit: number = 100, offset: number = 0, sourceId?: SourceScope): DbMessage[] {
-    // For PostgreSQL/MySQL, use async repo and cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.messagesRepo) {
-        // Fire async query and update cache in background
-        this.messagesRepo.getMessages(limit, offset, sourceId).then(messages => {
-          // Build a map of current delivery states to preserve local updates
-          // (async DB update may not have completed yet)
-          const currentDeliveryStates = new Map<number, { deliveryState: string; ackFailed: boolean }>();
-          for (const msg of this._messagesCache) {
-            const requestId = (msg as any).requestId;
-            const deliveryState = (msg as any).deliveryState;
-            // Only preserve non-pending states (they're local updates that may not be in DB yet)
-            if (requestId && deliveryState && deliveryState !== 'pending') {
-              currentDeliveryStates.set(requestId, {
-                deliveryState,
-                ackFailed: (msg as any).ackFailed ?? false
-              });
-            }
-          }
-          // Convert and merge, preserving local delivery state updates
-          this._messagesCache = messages.map(m => {
-            const converted = this.convertRepoMessage(m);
-            const requestId = (converted as any).requestId;
-            const preserved = requestId ? currentDeliveryStates.get(requestId) : undefined;
-            if (preserved && (!(converted as any).deliveryState || (converted as any).deliveryState === 'pending')) {
-              (converted as any).deliveryState = preserved.deliveryState;
-              (converted as any).ackFailed = preserved.ackFailed;
-            }
-            return converted;
-          });
-        }).catch(err => logger.debug('Failed to fetch messages:', err));
-      }
-      return this._messagesCache;
-    }
-    // SQLite: delegate to Drizzle sync variant
-    if (this.messagesRepo) {
-      const rows = this.messagesRepo.getMessagesSqlite(limit, offset, sourceId);
-      return rows.map(msg => this.convertRepoMessage(msg as any));
-    }
-    return [];
-  }
 
-  getMessagesByChannel(channel: number, limit: number = 100, offset: number = 0): DbMessage[] {
-    // For PostgreSQL/MySQL, use async repo and cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.messagesRepo) {
-        // Fire async query and update cache in background
-        // (intentional cross-source: legacy facade has no sourceId)
-        this.messagesRepo.getMessagesByChannel(channel, limit, offset, ALL_SOURCES).then(messages => {
-          // Build a map of current delivery states to preserve local updates
-          const currentCache = this._messagesCacheChannel.get(channel) || [];
-          const currentDeliveryStates = new Map<number, { deliveryState: string; ackFailed: boolean }>();
-          for (const msg of currentCache) {
-            const requestId = (msg as any).requestId;
-            const deliveryState = (msg as any).deliveryState;
-            if (requestId && deliveryState && deliveryState !== 'pending') {
-              currentDeliveryStates.set(requestId, {
-                deliveryState,
-                ackFailed: (msg as any).ackFailed ?? false
-              });
-            }
-          }
-          // Convert and merge, preserving local delivery state updates
-          const updatedCache = messages.map(m => {
-            const converted = this.convertRepoMessage(m);
-            const requestId = (converted as any).requestId;
-            const preserved = requestId ? currentDeliveryStates.get(requestId) : undefined;
-            if (preserved && (!(converted as any).deliveryState || (converted as any).deliveryState === 'pending')) {
-              (converted as any).deliveryState = preserved.deliveryState;
-              (converted as any).ackFailed = preserved.ackFailed;
-            }
-            return converted;
-          });
-          this._messagesCacheChannel.set(channel, updatedCache);
-        }).catch(err => logger.debug('Failed to fetch channel messages:', err));
-      }
-      return this._messagesCacheChannel.get(channel) || [];
-    }
-    // SQLite: delegate to Drizzle sync variant
-    if (this.messagesRepo) {
-      const rows = this.messagesRepo.getMessagesByChannelSqlite(channel, limit, offset);
-      return rows.map(msg => this.convertRepoMessage(msg as any));
-    }
-    return [];
-  }
 
   // Direct messages methods moved to MessagesRepository (databaseService.messages.getDirectMessages)
 
-  getMessagesAfterTimestamp(timestamp: number): DbMessage[] {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return this._messagesCache
-        .filter(m => m.timestamp > timestamp)
-        .sort((a, b) => a.timestamp - b.timestamp);
-    }
-    // SQLite: delegate to Drizzle sync variant
-    if (this.messagesRepo) {
-      const rows = this.messagesRepo.getMessagesAfterTimestampSqlite(timestamp);
-      return rows.map(msg => this.convertRepoMessage(msg as any));
-    }
-    return [];
-  }
 
   async searchMessagesAsync(options: {
     query: string;
@@ -1813,18 +1650,6 @@ class DatabaseService {
     };
   }
 
-  // Statistics
-  getMessageCount(): number {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return this._messagesCache.length;
-    }
-    // SQLite: delegate to Drizzle sync variant
-    if (this.messagesRepo) {
-      return this.messagesRepo.getMessageCountSqlite();
-    }
-    return 0;
-  }
 
 
 
@@ -1850,17 +1675,6 @@ class DatabaseService {
     });
   }
 
-  getMessagesByDay(days: number = 7): Array<{ date: string; count: number }> {
-    // For PostgreSQL/MySQL, return empty array - stats are async
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return [];
-    }
-    // SQLite: delegate to Drizzle sync variant
-    if (this.messagesRepo) {
-      return this.messagesRepo.getMessagesByDaySqlite(days);
-    }
-    return [];
-  }
 
   async getMessagesByDayAsync(days: number = 7, sourceId?: string): Promise<Array<{ date: string; count: number }>> {
     if (this.messagesRepo) {
@@ -1888,61 +1702,8 @@ class DatabaseService {
   }
 
 
-  // Message deletion operations
-  deleteMessage(id: string): boolean {
-    // For PostgreSQL/MySQL, fire-and-forget async delete
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.messagesRepo) {
-        this.messagesRepo.deleteMessage(id).catch(err => {
-          logger.debug('Failed to delete message:', err);
-        });
-      }
-      return true;
-    }
-    // SQLite: delegate to Drizzle sync variant
-    if (this.messagesRepo) {
-      return this.messagesRepo.deleteMessageSqlite(id);
-    }
-    return false;
-  }
 
-  purgeChannelMessages(channel: number, sourceId?: string): number {
-    // For PostgreSQL/MySQL, fire-and-forget async delete
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.messagesRepo) {
-        this.messagesRepo.purgeChannelMessages(channel, sourceId).catch(err => {
-          logger.debug('Failed to purge channel messages:', err);
-        });
-      }
-      return 0;
-    }
 
-    // SQLite: dispatch to Drizzle-backed repo sync helper. Column names come
-    // from the schema, so the `sourceId` vs `source_id` mismatch that caused
-    // issue #2631 on SQLite can't recur.
-    if (this.messagesRepo) {
-      return this.messagesRepo.purgeChannelMessagesSqlite(channel, sourceId);
-    }
-    return 0;
-  }
-
-  purgeDirectMessages(nodeNum: number, sourceId?: string): number {
-    // For PostgreSQL/MySQL, fire-and-forget async delete
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.messagesRepo) {
-        this.messagesRepo.purgeDirectMessages(nodeNum, sourceId).catch(err => {
-          logger.debug('Failed to purge direct messages:', err);
-        });
-      }
-      return 0;
-    }
-
-    // SQLite: dispatch to Drizzle-backed repo sync helper.
-    if (this.messagesRepo) {
-      return this.messagesRepo.purgeDirectMessagesSqlite(nodeNum, sourceId);
-    }
-    return 0;
-  }
 
   purgeNodeTraceroutes(nodeNum: number): number {
     // For PostgreSQL/MySQL, fire-and-forget async delete
@@ -4921,48 +4682,7 @@ class DatabaseService {
     return this.authRepo!.getAuditStats(days);
   }
 
-  // Read Messages tracking
-  markMessageAsRead(messageId: string, userId: number | null): void {
-    // For PostgreSQL/MySQL, read tracking is not yet implemented
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // TODO: Implement read message tracking for PostgreSQL via repository
-      return;
-    }
 
-    // INSERT OR REPLACE — see markChannelMessagesAsRead for rationale.
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO read_messages (message_id, user_id, read_at)
-      VALUES (?, ?, ?)
-    `);
-    stmt.run(messageId, userId, Date.now());
-  }
-
-  markMessagesAsRead(messageIds: string[], userId: number | null): void {
-    if (messageIds.length === 0) return;
-
-    // For PostgreSQL/MySQL, read tracking is not yet implemented
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // TODO: Implement read message tracking for PostgreSQL via repository
-      return;
-    }
-
-    // INSERT OR REPLACE — see markChannelMessagesAsRead for rationale.
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO read_messages (message_id, user_id, read_at)
-      VALUES (?, ?, ?)
-    `);
-
-    const transaction = this.db.transaction(() => {
-      const now = Date.now();
-      messageIds.forEach(messageId => {
-        stmt.run(messageId, userId, now);
-      });
-    });
-
-    transaction();
-  }
 
   async markMessageAsReadAsync(messageId: string, userId: number | null): Promise<void> {
     if (!userId) return;
@@ -4974,214 +4694,11 @@ class DatabaseService {
     return this.notifications.markMessagesAsReadByIds(messageIds, userId);
   }
 
-  markChannelMessagesAsRead(channelId: number, userId: number | null, beforeTimestamp?: number, sourceId?: string): number {
-    logger.info(`[DatabaseService] markChannelMessagesAsRead called: channel=${channelId}, userId=${userId}, sourceId=${sourceId ?? 'all'}, dbType=${this.drizzleDbType}`);
-    // For PostgreSQL/MySQL, use async repo
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.notificationsRepo) {
-        this.notificationsRepo.markChannelMessagesAsRead(channelId, userId, beforeTimestamp, sourceId)
-          .then((count) => {
-            logger.info(`[DatabaseService] Marked ${count} channel ${channelId} messages as read for user ${userId}`);
-          })
-          .catch((error) => {
-            logger.error(`[DatabaseService] Mark channel messages as read failed: ${error}`);
-          });
-      } else {
-        logger.warn(`[DatabaseService] notificationsRepo is null, cannot mark messages as read`);
-      }
-      return 0; // Return 0 since we don't wait for the async result
-    }
-    // SQLite read_messages PK is message_id only — using INSERT OR IGNORE
-    // strands rows owned by an earlier user/anonymous session because the
-    // join in unread queries filters by user_id. INSERT OR REPLACE rewrites
-    // the row to the current reader so subsequent unread checks for that
-    // user actually find their read marker.
-    let query = `
-      INSERT OR REPLACE INTO read_messages (message_id, user_id, read_at)
-      SELECT id, ?, ? FROM messages
-      WHERE channel = ?
-        AND portnum = 1
-    `;
-    const params: any[] = [userId, Date.now(), channelId];
 
-    // Source scope (#3712): without this, marking a slot read on one source
-    // also marks the same slot read on every other source (e.g. an MQTT bridge
-    // and a radio source both using slot 2).
-    if (sourceId) {
-      query += ` AND sourceId = ?`;
-      params.push(sourceId);
-    }
 
-    if (beforeTimestamp !== undefined) {
-      query += ` AND timestamp <= ?`;
-      params.push(beforeTimestamp);
-    }
 
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare(query);
-    const result = stmt.run(...params);
-    return Number(result.changes);
-  }
 
-  markDMMessagesAsRead(localNodeId: string, remoteNodeId: string, userId: number | null, beforeTimestamp?: number): number {
-    logger.info(`[DatabaseService] markDMMessagesAsRead called: local=${localNodeId}, remote=${remoteNodeId}, userId=${userId}`);
-    // For PostgreSQL/MySQL, use async repo
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.notificationsRepo) {
-        this.notificationsRepo.markDMMessagesAsRead(localNodeId, remoteNodeId, userId, beforeTimestamp)
-          .then((count) => {
-            logger.info(`[DatabaseService] Marked ${count} DM messages as read for user ${userId}`);
-          })
-          .catch((error) => {
-            logger.error(`[DatabaseService] Mark DM messages as read failed: ${error}`);
-          });
-      } else {
-        logger.warn(`[DatabaseService] notificationsRepo is null, cannot mark DM messages as read`);
-      }
-      return 0; // Return 0 since we don't wait for the async result
-    }
-    // INSERT OR REPLACE — see markChannelMessagesAsRead for rationale.
-    let query = `
-      INSERT OR REPLACE INTO read_messages (message_id, user_id, read_at)
-      SELECT id, ?, ? FROM messages
-      WHERE ((fromNodeId = ? AND toNodeId = ?) OR (fromNodeId = ? AND toNodeId = ?))
-        AND portnum = 1
-        AND channel = -1
-    `;
-    const params: any[] = [userId, Date.now(), localNodeId, remoteNodeId, remoteNodeId, localNodeId];
 
-    if (beforeTimestamp !== undefined) {
-      query += ` AND timestamp <= ?`;
-      params.push(beforeTimestamp);
-    }
-
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare(query);
-    const result = stmt.run(...params);
-    return Number(result.changes);
-  }
-
-  /**
-   * Mark all DM messages as read for the local node
-   * This marks all direct messages (channel = -1) involving the local node as read
-   */
-  markAllDMMessagesAsRead(localNodeId: string, userId: number | null): number {
-    // For PostgreSQL/MySQL, use async repo
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.notificationsRepo) {
-        this.notificationsRepo.markAllDMMessagesAsRead(localNodeId, userId).catch((error) => {
-          logger.debug(`[DatabaseService] Mark all DM messages as read failed: ${error}`);
-        });
-      }
-      return 0; // Return 0 since we don't wait for the async result
-    }
-    // INSERT OR REPLACE — see markChannelMessagesAsRead for rationale.
-    const query = `
-      INSERT OR REPLACE INTO read_messages (message_id, user_id, read_at)
-      SELECT id, ?, ? FROM messages
-      WHERE (fromNodeId = ? OR toNodeId = ?)
-        AND portnum = 1
-        AND channel = -1
-    `;
-    const params: any[] = [userId, Date.now(), localNodeId, localNodeId];
-
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare(query);
-    const result = stmt.run(...params);
-    return Number(result.changes);
-  }
-
-  // Update message acknowledgment status by requestId (for tracking routing ACKs)
-  updateMessageAckByRequestId(requestId: number, _acknowledged: boolean = true, ackFailed: boolean = false): boolean {
-    // For PostgreSQL/MySQL, use async repo
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.messagesRepo) {
-        this.messagesRepo.updateMessageAckByRequestId(requestId, ackFailed).catch((error) => {
-          logger.debug(`[DatabaseService] Message ack update skipped for requestId ${requestId}: ${error}`);
-        });
-      }
-      return true; // Optimistically return true
-    }
-    // SQLite: delegate to Drizzle sync variant
-    if (this.messagesRepo) {
-      return this.messagesRepo.updateMessageAckByRequestIdSqlite(requestId, ackFailed);
-    }
-    return false;
-  }
-
-  // Update message delivery state directly (undefined/delivered/confirmed)
-  updateMessageDeliveryState(requestId: number, deliveryState: 'delivered' | 'confirmed' | 'failed'): boolean {
-    // For PostgreSQL/MySQL, fire-and-forget async update
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.messagesRepo) {
-        this.messagesRepo.updateMessageDeliveryState(requestId, deliveryState).catch((error) => {
-          // Silently ignore errors - message may not exist (normal for routing acks from external nodes)
-          logger.debug(`[DatabaseService] Message delivery state update skipped for requestId ${requestId}: ${error}`);
-        });
-      }
-      // Also update the cache immediately so poll returns updated state
-      const ackFailed = deliveryState === 'failed';
-      for (const msg of this._messagesCache) {
-        if ((msg as any).requestId === requestId) {
-          (msg as any).deliveryState = deliveryState;
-          (msg as any).ackFailed = ackFailed;
-          break;
-        }
-      }
-      // Update channel-specific caches too
-      for (const [_channel, messages] of this._messagesCacheChannel) {
-        for (const msg of messages) {
-          if ((msg as any).requestId === requestId) {
-            (msg as any).deliveryState = deliveryState;
-            (msg as any).ackFailed = ackFailed;
-            break;
-          }
-        }
-      }
-      return true; // Optimistic return
-    }
-    // SQLite: delegate to Drizzle sync variant
-    if (this.messagesRepo) {
-      return this.messagesRepo.updateMessageDeliveryStateSqlite(requestId, deliveryState);
-    }
-    return false;
-  }
-
-  // Update message rxTime and timestamp when ACK is received (fixes outgoing message ordering)
-  updateMessageTimestamps(requestId: number, rxTime: number): boolean {
-    // For PostgreSQL/MySQL, fire-and-forget async update
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.messagesRepo) {
-        this.messagesRepo.updateMessageTimestamps(requestId, rxTime).catch((error) => {
-          logger.debug(`[DatabaseService] Message timestamp update skipped for requestId ${requestId}: ${error}`);
-        });
-      }
-      // Also update the cache immediately so poll returns updated state
-      for (const msg of this._messagesCache) {
-        if ((msg as any).requestId === requestId) {
-          (msg as any).rxTime = rxTime;
-          (msg as any).timestamp = rxTime;
-          break;
-        }
-      }
-      // Update channel-specific caches too
-      for (const [_channel, messages] of this._messagesCacheChannel) {
-        for (const msg of messages) {
-          if ((msg as any).requestId === requestId) {
-            (msg as any).rxTime = rxTime;
-            (msg as any).timestamp = rxTime;
-            break;
-          }
-        }
-      }
-      return true; // Optimistic return
-    }
-    // SQLite: delegate to Drizzle sync variant
-    if (this.messagesRepo) {
-      return this.messagesRepo.updateMessageTimestampsSqlite(requestId, rxTime);
-    }
-    return false;
-  }
 
   getUnreadMessageIds(userId: number | null): string[] {
     // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
@@ -5195,77 +4712,7 @@ class DatabaseService {
     return rows.map(row => row.id);
   }
 
-  getUnreadCountsByChannel(userId: number | null, localNodeId?: string, sourceId?: string, excludeMqtt?: boolean): {[channelId: number]: number} {
-    // For PostgreSQL/MySQL, use async method via cache or return empty for sync call
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Sync method can't do async DB query - return empty and let caller use async version
-      return {};
-    }
 
-    // Only count incoming messages (exclude messages sent by our node) and
-    // optionally scope to a single source so multi-source views don't bleed
-    // counts from other sources into this tab.
-    const fromClause = localNodeId ? 'AND m.fromNodeId != ?' : '';
-    const sourceClause = sourceId ? 'AND m.sourceId = ?' : '';
-    const mqttClause = excludeMqtt ? 'AND (m.viaMqtt IS NULL OR m.viaMqtt = 0)' : '';
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare(`
-      SELECT m.channel, COUNT(*) as count
-      FROM messages m
-      LEFT JOIN read_messages rm ON m.id = rm.message_id AND rm.user_id ${userId === null ? 'IS NULL' : '= ?'}
-      WHERE rm.message_id IS NULL
-        AND m.channel != -1
-        AND m.portnum = 1
-        ${fromClause}
-        ${sourceClause}
-        ${mqttClause}
-      GROUP BY m.channel
-    `);
-
-    const params: any[] = [];
-    if (userId !== null) params.push(userId);
-    if (localNodeId) params.push(localNodeId);
-    if (sourceId) params.push(sourceId);
-
-    const rows = stmt.all(...params) as Array<{ channel: number; count: number }>;
-
-    const counts: {[channelId: number]: number} = {};
-    rows.forEach(row => {
-      counts[row.channel] = Number(row.count);
-    });
-    return counts;
-  }
-
-  getUnreadDMCount(localNodeId: string, remoteNodeId: string, userId: number | null, sourceId?: string): number {
-    // For PostgreSQL/MySQL, return 0 (unread tracking is complex and low priority)
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return 0;
-    }
-
-    // Only count incoming DMs (messages FROM remote node TO local node)
-    // Exclude outgoing messages (messages FROM local node TO remote node)
-    const sourceClause = sourceId ? 'AND m.sourceId = ?' : '';
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare(`
-      SELECT COUNT(*) as count
-      FROM messages m
-      LEFT JOIN read_messages rm ON m.id = rm.message_id AND rm.user_id ${userId === null ? 'IS NULL' : '= ?'}
-      WHERE rm.message_id IS NULL
-        AND m.portnum = 1
-        AND m.channel = -1
-        AND m.fromNodeId = ?
-        AND m.toNodeId = ?
-        ${sourceClause}
-    `);
-
-    const params: any[] = [];
-    if (userId !== null) params.push(userId);
-    params.push(remoteNodeId, localNodeId);
-    if (sourceId) params.push(sourceId);
-
-    const result = stmt.get(...params) as { count: number };
-    return Number(result.count);
-  }
 
   /**
    * Async version of getUnreadCountsByChannel for PostgreSQL/MySQL.
@@ -5276,61 +4723,42 @@ class DatabaseService {
     // The raw-SQL sync twin binds sourceId as a parameter, so the ALL_SOURCES
     // symbol must be normalized to undefined (its legacy "all sources" spelling).
     if (this.drizzleDbType !== 'postgres' && this.drizzleDbType !== 'mysql') {
-      return this.getUnreadCountsByChannel(userId, localNodeId, typeof sourceId === 'string' ? sourceId : undefined, excludeMqtt);
+      const sid = typeof sourceId === 'string' ? sourceId : undefined;
+      // Only count incoming messages (exclude messages sent by our node) and
+      // optionally scope to a single source so multi-source views don't bleed
+      // counts from other sources into this tab.
+      const fromClause = localNodeId ? 'AND m.fromNodeId != ?' : '';
+      const sourceClause = sid ? 'AND m.sourceId = ?' : '';
+      const mqttClause = excludeMqtt ? 'AND (m.viaMqtt IS NULL OR m.viaMqtt = 0)' : '';
+      // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
+      const stmt = this.db.prepare(`
+        SELECT m.channel, COUNT(*) as count
+        FROM messages m
+        LEFT JOIN read_messages rm ON m.id = rm.message_id AND rm.user_id ${userId === null ? 'IS NULL' : '= ?'}
+        WHERE rm.message_id IS NULL
+          AND m.channel != -1
+          AND m.portnum = 1
+          ${fromClause}
+          ${sourceClause}
+          ${mqttClause}
+        GROUP BY m.channel
+      `);
+
+      const params: any[] = [];
+      if (userId !== null) params.push(userId);
+      if (localNodeId) params.push(localNodeId);
+      if (sid) params.push(sid);
+
+      const rows = stmt.all(...params) as Array<{ channel: number; count: number }>;
+      const counts: {[channelId: number]: number} = {};
+      rows.forEach(row => { counts[row.channel] = Number(row.count); });
+      return counts;
     }
     if (!this.notificationsRepo) return {};
     return this.notificationsRepo.getUnreadCountsByChannelAsync(userId, localNodeId, sourceId, excludeMqtt);
   }
 
-  /**
-   * Async version of getUnreadDMCount for PostgreSQL/MySQL.
-   * Delegates to NotificationsRepository for Drizzle-based execution on all backends.
-   */
-  async getUnreadDMCountAsync(localNodeId: string, remoteNodeId: string, userId: number | null, sourceId?: string): Promise<number> {
-    // For SQLite, use sync version
-    if (this.drizzleDbType !== 'postgres' && this.drizzleDbType !== 'mysql') {
-      return this.getUnreadDMCount(localNodeId, remoteNodeId, userId, sourceId);
-    }
-    if (!this.notificationsRepo) return 0;
-    return this.notificationsRepo.getUnreadDMCountAsync(localNodeId, remoteNodeId, userId, sourceId);
-  }
 
-  /**
-   * Get all DM unread counts in a single batch query, grouped by remote node.
-   * Returns { [fromNodeId: string]: number } for all nodes with unread DMs.
-   */
-  getBatchUnreadDMCounts(localNodeId: string, userId: number | null, sourceId?: string): { [fromNodeId: string]: number } {
-    // For PostgreSQL/MySQL, return empty (handled by async version)
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return {};
-    }
-
-    const sourceClause = sourceId ? 'AND m.sourceId = ?' : '';
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare(`
-      SELECT m.fromNodeId, COUNT(*) as count
-      FROM messages m
-      LEFT JOIN read_messages rm ON m.id = rm.message_id AND rm.user_id ${userId === null ? 'IS NULL' : '= ?'}
-      WHERE rm.message_id IS NULL
-        AND m.portnum = 1
-        AND m.channel = -1
-        AND m.toNodeId = ?
-        ${sourceClause}
-      GROUP BY m.fromNodeId
-    `);
-
-    const params: any[] = [];
-    if (userId !== null) params.push(userId);
-    params.push(localNodeId);
-    if (sourceId) params.push(sourceId);
-
-    const rows = stmt.all(...params) as { fromNodeId: string; count: number }[];
-    const result: { [fromNodeId: string]: number } = {};
-    for (const row of rows) {
-      result[row.fromNodeId] = Number(row.count);
-    }
-    return result;
-  }
 
   /**
    * Async version of getBatchUnreadDMCounts for PostgreSQL/MySQL support.
@@ -5341,7 +4769,30 @@ class DatabaseService {
     // The raw-SQL sync twin binds sourceId as a parameter, so the ALL_SOURCES
     // symbol must be normalized to undefined (its legacy "all sources" spelling).
     if (this.drizzleDbType !== 'postgres' && this.drizzleDbType !== 'mysql') {
-      return this.getBatchUnreadDMCounts(localNodeId, userId, typeof sourceId === 'string' ? sourceId : undefined);
+      const sid = typeof sourceId === 'string' ? sourceId : undefined;
+      const sourceClause = sid ? 'AND m.sourceId = ?' : '';
+      // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
+      const stmt = this.db.prepare(`
+        SELECT m.fromNodeId, COUNT(*) as count
+        FROM messages m
+        LEFT JOIN read_messages rm ON m.id = rm.message_id AND rm.user_id ${userId === null ? 'IS NULL' : '= ?'}
+        WHERE rm.message_id IS NULL
+          AND m.portnum = 1
+          AND m.channel = -1
+          AND m.toNodeId = ?
+          ${sourceClause}
+        GROUP BY m.fromNodeId
+      `);
+
+      const params: any[] = [];
+      if (userId !== null) params.push(userId);
+      params.push(localNodeId);
+      if (sid) params.push(sid);
+
+      const rows = stmt.all(...params) as { fromNodeId: string; count: number }[];
+      const result: { [fromNodeId: string]: number } = {};
+      for (const row of rows) { result[row.fromNodeId] = Number(row.count); }
+      return result;
     }
     if (!this.notificationsRepo) return {};
     return this.notificationsRepo.getBatchUnreadDMCountsAsync(localNodeId, userId, sourceId);
@@ -6304,19 +5755,125 @@ class DatabaseService {
 
   // Group 2: Messages
   async getMessagesByChannelAsync(channel: number, limit: number = 100, offset: number = 0): Promise<DbMessage[]> {
-    return this.getMessagesByChannel(channel, limit, offset);
+    if (this.messagesRepo) {
+      // intentional cross-source: legacy facade has no sourceId
+      const rows = await this.messagesRepo.getMessagesByChannel(channel, limit, offset, ALL_SOURCES);
+      return rows.map(msg => this.convertRepoMessage(msg));
+    }
+    return [];
   }
 
   async markAllDMMessagesAsReadAsync(localNodeId: string, userId: number | null): Promise<number> {
-    return this.markAllDMMessagesAsRead(localNodeId, userId);
+    // For PostgreSQL/MySQL, use async repo
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.notificationsRepo) {
+        this.notificationsRepo.markAllDMMessagesAsRead(localNodeId, userId).catch((error) => {
+          logger.debug(`[DatabaseService] Mark all DM messages as read failed: ${error}`);
+        });
+      }
+      return 0; // Return 0 since we don't wait for the async result
+    }
+    // INSERT OR REPLACE — see markChannelMessagesAsRead for rationale.
+    const query = `
+      INSERT OR REPLACE INTO read_messages (message_id, user_id, read_at)
+      SELECT id, ?, ? FROM messages
+      WHERE (fromNodeId = ? OR toNodeId = ?)
+        AND portnum = 1
+        AND channel = -1
+    `;
+    const params: any[] = [userId, Date.now(), localNodeId, localNodeId];
+
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
+    const stmt = this.db.prepare(query);
+    const result = stmt.run(...params);
+    return Number(result.changes);
   }
 
   async markChannelMessagesAsReadAsync(channelId: number, userId: number | null, beforeTimestamp?: number, sourceId?: string): Promise<number> {
-    return this.markChannelMessagesAsRead(channelId, userId, beforeTimestamp, sourceId);
+    logger.info(`[DatabaseService] markChannelMessagesAsRead called: channel=${channelId}, userId=${userId}, sourceId=${sourceId ?? 'all'}, dbType=${this.drizzleDbType}`);
+    // For PostgreSQL/MySQL, use async repo
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.notificationsRepo) {
+        this.notificationsRepo.markChannelMessagesAsRead(channelId, userId, beforeTimestamp, sourceId)
+          .then((count) => {
+            logger.info(`[DatabaseService] Marked ${count} channel ${channelId} messages as read for user ${userId}`);
+          })
+          .catch((error) => {
+            logger.error(`[DatabaseService] Mark channel messages as read failed: ${error}`);
+          });
+      } else {
+        logger.warn(`[DatabaseService] notificationsRepo is null, cannot mark messages as read`);
+      }
+      return 0; // Return 0 since we don't wait for the async result
+    }
+    // SQLite read_messages PK is message_id only — using INSERT OR IGNORE
+    // strands rows owned by an earlier user/anonymous session because the
+    // join in unread queries filters by user_id. INSERT OR REPLACE rewrites
+    // the row to the current reader so subsequent unread checks for that
+    // user actually find their read marker.
+    let query = `
+      INSERT OR REPLACE INTO read_messages (message_id, user_id, read_at)
+      SELECT id, ?, ? FROM messages
+      WHERE channel = ?
+        AND portnum = 1
+    `;
+    const params: any[] = [userId, Date.now(), channelId];
+
+    // Source scope (#3712): without this, marking a slot read on one source
+    // also marks the same slot read on every other source (e.g. an MQTT bridge
+    // and a radio source both using slot 2).
+    if (sourceId) {
+      query += ` AND sourceId = ?`;
+      params.push(sourceId);
+    }
+
+    if (beforeTimestamp !== undefined) {
+      query += ` AND timestamp <= ?`;
+      params.push(beforeTimestamp);
+    }
+
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
+    const stmt = this.db.prepare(query);
+    const result = stmt.run(...params);
+    return Number(result.changes);
   }
 
   async markDMMessagesAsReadAsync(localNodeId: string, remoteNodeId: string, userId: number | null, beforeTimestamp?: number): Promise<number> {
-    return this.markDMMessagesAsRead(localNodeId, remoteNodeId, userId, beforeTimestamp);
+    logger.info(`[DatabaseService] markDMMessagesAsRead called: local=${localNodeId}, remote=${remoteNodeId}, userId=${userId}`);
+    // For PostgreSQL/MySQL, use async repo
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.notificationsRepo) {
+        this.notificationsRepo.markDMMessagesAsRead(localNodeId, remoteNodeId, userId, beforeTimestamp)
+          .then((count) => {
+            logger.info(`[DatabaseService] Marked ${count} DM messages as read for user ${userId}`);
+          })
+          .catch((error) => {
+            logger.error(`[DatabaseService] Mark DM messages as read failed: ${error}`);
+          });
+      } else {
+        logger.warn(`[DatabaseService] notificationsRepo is null, cannot mark DM messages as read`);
+      }
+      return 0; // Return 0 since we don't wait for the async result
+    }
+    // INSERT OR REPLACE — see markChannelMessagesAsRead for rationale.
+    let query = `
+      INSERT OR REPLACE INTO read_messages (message_id, user_id, read_at)
+      SELECT id, ?, ? FROM messages
+      WHERE ((fromNodeId = ? AND toNodeId = ?) OR (fromNodeId = ? AND toNodeId = ?))
+        AND portnum = 1
+        AND channel = -1
+    `;
+    const params: any[] = [userId, Date.now(), localNodeId, remoteNodeId, remoteNodeId, localNodeId];
+
+    if (beforeTimestamp !== undefined) {
+      query += ` AND timestamp <= ?`;
+      params.push(beforeTimestamp);
+    }
+
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
+    const stmt = this.db.prepare(query);
+    const result = stmt.run(...params);
+    return Number(result.changes);
   }
 
 
