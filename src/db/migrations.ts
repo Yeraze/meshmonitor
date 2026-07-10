@@ -129,6 +129,7 @@ import { migration as meshcoreNodePositionSourceMigration, runMigration111Postgr
 import { migration as nodeNotesMigration, runMigration112Postgres as runNodeNotesPostgres, runMigration112Mysql as runNodeNotesMysql } from '../server/migrations/112_add_notes_to_nodes.js';
 import { migration as bootstrapOnlyIndexesMigration, runMigration113Postgres as runBootstrapOnlyIndexesPostgres, runMigration113Mysql as runBootstrapOnlyIndexesMysql } from '../server/migrations/113_add_bootstrap_only_indexes.js';
 import { migration as meshcorePathfindingTargetsMigration, runMigration114Postgres as runMeshcorePathfindingTargetsPostgres, runMigration114Mysql as runMeshcorePathfindingTargetsMysql } from '../server/migrations/114_create_meshcore_pathfinding_targets.js';
+import { migration as dropInlineNotifPrefsUserIdUniqueMigration, runMigration115Postgres as runDropInlineNotifPrefsUserIdUniquePostgres, runMigration115Mysql as runDropInlineNotifPrefsUserIdUniqueMysql } from '../server/migrations/115_drop_inline_notif_prefs_user_id_unique.js';
 
 // ============================================================================
 // Registry
@@ -1817,4 +1818,19 @@ registry.register({
   sqlite: (db) => meshcorePathfindingTargetsMigration.up(db),
   postgres: (client) => runMeshcorePathfindingTargetsPostgres(client),
   mysql: (pool) => runMeshcorePathfindingTargetsMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 115: Drop an inline (autoindex) single-column UNIQUE constraint
+// on user_notification_preferences.user_id that migration 079 can't see
+// (issue #4044, recurrence of #3324).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 115,
+  name: 'drop_inline_notif_prefs_user_id_unique',
+  settingsKey: 'migration_115_drop_inline_notif_prefs_user_id_unique',
+  sqlite: (db) => dropInlineNotifPrefsUserIdUniqueMigration.up(db),
+  postgres: (client) => runDropInlineNotifPrefsUserIdUniquePostgres(client),
+  mysql: (pool) => runDropInlineNotifPrefsUserIdUniqueMysql(pool),
 });
