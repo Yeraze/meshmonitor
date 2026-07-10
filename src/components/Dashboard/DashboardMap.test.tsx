@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import DashboardMap from './DashboardMap';
+import { darkOverlayColors } from '../../config/overlayColors';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -72,7 +73,7 @@ vi.mock('../../services/api', () => ({
 // SettingsProvider.
 vi.mock('../../contexts/SettingsContext', () => ({
   useDisplaySettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
-  useSettings: () => ({ mapPinStyle: 'official' }),
+  useSettings: () => ({ mapPinStyle: 'official', overlayColors: darkOverlayColors }),
 }));
 
 vi.mock('leaflet', () => ({
