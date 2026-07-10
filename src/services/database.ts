@@ -363,8 +363,6 @@ class DatabaseService {
    */
   public readonly nodeCache: NodeCacheService = new NodeCacheService();
   private channelsCache: Map<number, DbChannel> = new Map();
-  private _traceroutesCache: DbTraceroute[] = [];
-  private _traceroutesByNodesCache: Map<string, DbTraceroute[]> = new Map();
   private cacheInitialized = false;
 
   // Track nodes that have already had their "new node" notification sent
@@ -1166,6 +1164,15 @@ class DatabaseService {
     }
   }
 
+  // SQLite-only record-holder update used by the runDataMigrations bootstrap.
+  private updateRecordHolderSegmentSqlite(newSegment: DbRouteSegment, sourceId?: string): void {
+    const currentRecord = this.traceroutesRepo!.getRecordHolderRouteSegmentSync(sourceId) as unknown as DbRouteSegment | null;
+    if (!currentRecord || newSegment.distanceKm > currentRecord.distanceKm) {
+      this.traceroutesRepo!.clearRecordHolderSegmentSync(sourceId);
+      this.traceroutesRepo!.insertRouteSegmentSync({ ...newSegment, isRecordHolder: true }, sourceId);
+    }
+  }
+
   private runDataMigrations(): void {
     // Migration: Calculate distances for all existing traceroutes
     const migrationKey = 'route_segments_migration_v1';
@@ -1221,8 +1228,9 @@ class DatabaseService {
                 createdAt: Date.now()
               };
 
-              this.insertRouteSegment(segment, (traceroute as any).sourceId ?? undefined);
-              this.updateRecordHolderSegment(segment, (traceroute as any).sourceId ?? undefined);
+              const rdmSid = (traceroute as any).sourceId ?? undefined;
+              this.traceroutesRepo!.insertRouteSegmentSync(segment, rdmSid);
+              this.updateRecordHolderSegmentSqlite(segment, rdmSid);
               segmentsCreated++;
             }
           }
@@ -1255,8 +1263,9 @@ class DatabaseService {
                 createdAt: Date.now()
               };
 
-              this.insertRouteSegment(segment, (traceroute as any).sourceId ?? undefined);
-              this.updateRecordHolderSegment(segment, (traceroute as any).sourceId ?? undefined);
+              const rdmSid = (traceroute as any).sourceId ?? undefined;
+              this.traceroutesRepo!.insertRouteSegmentSync(segment, rdmSid);
+              this.updateRecordHolderSegmentSqlite(segment, rdmSid);
               segmentsCreated++;
             }
           }
@@ -2022,26 +2031,6 @@ class DatabaseService {
     return this.telemetry.getLinkQualityHistory(nodeId, sinceTimestamp);
   }
 
-  /**
-   * Get all traceroutes for position recalculation.
-   * Returns traceroutes with route data, ordered by timestamp for chronological processing.
-   */
-  getAllTraceroutesForRecalculation(): Array<{
-    id: number;
-    fromNodeNum: number;
-    toNodeNum: number;
-    route: string | null;
-    snrTowards: string | null;
-    timestamp: number;
-  }> {
-    // For PostgreSQL/MySQL, this is typically only needed for migration purposes
-    // Since PostgreSQL starts fresh without historical traceroutes, return empty array
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return [];
-    }
-
-    return this.traceroutesRepo!.getCompletedTraceroutesForMigrationSync();
-  }
 
 
 
@@ -2066,65 +2055,6 @@ class DatabaseService {
     return empty;
   }
 
-  insertTraceroute(tracerouteData: DbTraceroute, sourceId?: string): void {
-    // For PostgreSQL/MySQL, use async repository
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.traceroutesRepo) {
-        const now = Date.now();
-        const pendingTimeoutAgo = now - PENDING_TRACEROUTE_TIMEOUT_MS;
-
-        // Fire async operation
-        void (async () => {
-          try {
-            // Check for pending traceroute (reversed direction - see note below)
-            // NOTE: When a traceroute response comes in, fromNum is the destination (responder) and toNum is the local node (requester)
-            // But when we created the pending record, fromNodeNum was the local node and toNodeNum was the destination
-            const pendingRecord = await this.traceroutesRepo!.findPendingTraceroute(
-              tracerouteData.toNodeNum,    // Reversed: response's toNum is the requester
-              tracerouteData.fromNodeNum,  // Reversed: response's fromNum is the destination
-              pendingTimeoutAgo,
-              sourceId
-            );
-
-            if (pendingRecord) {
-              // Update existing pending record
-              await this.traceroutesRepo!.updateTracerouteResponse(
-                pendingRecord.id,
-                tracerouteData.route || null,
-                tracerouteData.routeBack || null,
-                tracerouteData.snrTowards || null,
-                tracerouteData.snrBack || null,
-                tracerouteData.timestamp,
-                tracerouteData.packetId ?? null
-              );
-            } else {
-              // Insert new traceroute
-              await this.traceroutesRepo!.insertTraceroute(tracerouteData, sourceId);
-            }
-
-            // Cleanup old traceroutes
-            await this.traceroutesRepo!.cleanupOldTraceroutesForPair(
-              tracerouteData.fromNodeNum,
-              tracerouteData.toNodeNum,
-              TRACEROUTE_HISTORY_LIMIT,
-              sourceId
-            );
-          } catch (error) {
-            logger.error('[DatabaseService] Failed to insert traceroute:', error);
-          }
-        })();
-      }
-      return;
-    }
-
-    // SQLite: delegate to repository sync upsert (runs in a transaction)
-    this.traceroutes.upsertTracerouteSync(
-      tracerouteData,
-      PENDING_TRACEROUTE_TIMEOUT_MS,
-      TRACEROUTE_HISTORY_LIMIT,
-      sourceId
-    );
-  }
 
   /**
    * Async version of insertTraceroute — carries the FULL pending-response
@@ -2188,55 +2118,7 @@ class DatabaseService {
     );
   }
 
-  getTraceroutesByNodes(fromNodeNum: number, toNodeNum: number, limit: number = 10): DbTraceroute[] {
-    // For PostgreSQL/MySQL, use async repo with cache pattern
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.traceroutesRepo) {
-        // Fire async query and update cache in background
-        const cacheKey = `${fromNodeNum}_${toNodeNum}`;
-        this.traceroutesRepo.getTraceroutesByNodes(fromNodeNum, toNodeNum, limit, ALL_SOURCES).then(traceroutes => { // intentional cross-source: legacy facade has no sourceId
-          this._traceroutesByNodesCache.set(cacheKey, traceroutes.map(t => ({
-            ...t,
-            route: t.route || '',
-            routeBack: t.routeBack || '',
-            snrTowards: t.snrTowards || '',
-            snrBack: t.snrBack || '',
-          })) as DbTraceroute[]);
-        }).catch(err => logger.debug('Failed to fetch traceroutes by nodes:', err));
-      }
-      // Return cached result or empty array
-      const cacheKey = `${fromNodeNum}_${toNodeNum}`;
-      return this._traceroutesByNodesCache.get(cacheKey) || [];
-    }
 
-    // Search bidirectionally to capture traceroutes initiated from either direction
-    return this.traceroutes.getTraceroutesByNodesSync(fromNodeNum, toNodeNum, limit) as unknown as DbTraceroute[];
-  }
-
-  getAllTraceroutes(limit: number = 100, sourceId?: SourceScope): DbTraceroute[] {
-    // For PostgreSQL/MySQL, use cached traceroutes or return empty
-    // Traceroute data is primarily real-time from mesh traffic
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Use traceroutesRepo if available - fire async and return cache
-      if (this.traceroutesRepo) {
-        // Fire async query and update cache in background
-        this.traceroutesRepo.getAllTraceroutes(limit, sourceId).then(traceroutes => {
-          // Store in internal cache for next sync call (cast to local DbTraceroute type)
-          this._traceroutesCache = traceroutes.map(t => ({
-            ...t,
-            route: t.route || '',
-            routeBack: t.routeBack || '',
-            snrTowards: t.snrTowards || '',
-            snrBack: t.snrBack || '',
-          })) as DbTraceroute[];
-        }).catch(err => logger.debug('Failed to fetch traceroutes:', err));
-      }
-      // Return cached traceroutes or empty array
-      return this._traceroutesCache || [];
-    }
-
-    return this.traceroutes.getAllTraceroutesRecentSync(limit, sourceId) as unknown as DbTraceroute[];
-  }
 
   /**
    * Async version of getAllTraceroutes — works across all backends by awaiting
@@ -2246,179 +2128,14 @@ class DatabaseService {
     return (await this.traceroutes.getAllTraceroutes(limit, sourceId)) as unknown as DbTraceroute[];
   }
 
-  getNodeNeedingTraceroute(localNodeNum: number): DbNode | null {
-    // Auto-traceroute selection not yet implemented for PostgreSQL/MySQL
-    // This function uses complex SQLite-specific queries that need conversion
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      logger.debug('⏭️ Auto-traceroute node selection not yet supported for PostgreSQL/MySQL');
-      return null;
-    }
-
-    const now = Date.now();
-    const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
-    const expirationHours = this.getTracerouteExpirationHours();
-    const EXPIRATION_MS = expirationHours * 60 * 60 * 1000;
-
-    // Get maxNodeAgeHours setting to filter only active nodes
-    // lastHeard is stored in seconds (Unix timestamp), so convert cutoff to seconds
-    const maxNodeAgeHours = parseInt(this.getSetting('maxNodeAgeHours') || '24');
-    const activeNodeCutoff = Math.floor(Date.now() / 1000) - (maxNodeAgeHours * 60 * 60);
-
-    // Check if node filter is enabled
-    const filterEnabled = this.isAutoTracerouteNodeFilterEnabled();
-
-    // Get all filter settings
-    const specificNodes = this.getAutoTracerouteNodes();
-    const filterChannels = this.getTracerouteFilterChannels();
-    const filterRoles = this.getTracerouteFilterRoles();
-    const filterHwModels = this.getTracerouteFilterHwModels();
-    const filterNameRegex = this.getTracerouteFilterNameRegex();
-
-    // Get individual filter enabled flags
-    const filterNodesEnabled = this.isTracerouteFilterNodesEnabled();
-    const filterChannelsEnabled = this.isTracerouteFilterChannelsEnabled();
-    const filterRolesEnabled = this.isTracerouteFilterRolesEnabled();
-    const filterHwModelsEnabled = this.isTracerouteFilterHwModelsEnabled();
-    const filterRegexEnabled = this.isTracerouteFilterRegexEnabled();
-
-    // Last heard and hop range filters (AND logic, applied before OR union filters)
-    const filterLastHeardEnabled = this.isTracerouteFilterLastHeardEnabled();
-    const filterLastHeardHours = this.getTracerouteFilterLastHeardHours();
-    const filterHopsEnabled = this.isTracerouteFilterHopsEnabled();
-    const filterHopsMin = this.getTracerouteFilterHopsMin();
-    const filterHopsMax = this.getTracerouteFilterHopsMax();
-
-    // Get all nodes that are eligible for traceroute based on their status
-    // Only consider nodes that have been heard within maxNodeAgeHours (active nodes)
-    // Two categories:
-    // 1. Nodes with no successful traceroute: retry every 3 hours
-    // 2. Nodes with successful traceroute: retry every 24 hours
-    let eligibleNodes = this.traceroutesRepo!.getEligibleTracerouteCandidatesSync(
-      localNodeNum,
-      activeNodeCutoff,
-      now - THREE_HOURS_MS,
-      now - EXPIRATION_MS
-    ) as unknown as DbNode[];
-
-    // Apply last-heard filter (AND logic — applied before OR union filters)
-    if (filterLastHeardEnabled) {
-      const lastHeardCutoff = Math.floor(Date.now() / 1000) - (filterLastHeardHours * 3600);
-      eligibleNodes = eligibleNodes.filter(node => {
-        // Exclude nodes with no lastHeard or lastHeard older than cutoff
-        return node.lastHeard != null && node.lastHeard >= lastHeardCutoff;
-      });
-    }
-
-    // Apply hop range filter (AND logic)
-    if (filterHopsEnabled) {
-      eligibleNodes = eligibleNodes.filter(node => {
-        // Treat NULL hopsAway as 1 (direct neighbor)
-        const hops = node.hopsAway ?? 1;
-        return hops >= filterHopsMin && hops <= filterHopsMax;
-      });
-    }
-
-    // Apply filters using UNION logic (node is eligible if it matches ANY enabled filter)
-    // If filterEnabled is true but no individual filters are enabled, all nodes pass
-    if (filterEnabled) {
-      // Build regex matcher if enabled
-      let regexMatcher: RegExp | null = null;
-      if (filterRegexEnabled && filterNameRegex && filterNameRegex !== '.*') {
-        try {
-          regexMatcher = compileUserRegex(filterNameRegex, 'i');
-        } catch (e) {
-          logger.warn(`Invalid traceroute filter regex: ${filterNameRegex}`, e);
-        }
-      }
-
-      // Check if ANY filter is actually configured
-      const hasAnyFilter =
-        (filterNodesEnabled && specificNodes.length > 0) ||
-        (filterChannelsEnabled && filterChannels.length > 0) ||
-        (filterRolesEnabled && filterRoles.length > 0) ||
-        (filterHwModelsEnabled && filterHwModels.length > 0) ||
-        (filterRegexEnabled && regexMatcher !== null);
-
-      // Only filter if at least one filter is configured
-      if (hasAnyFilter) {
-        eligibleNodes = eligibleNodes.filter(node => {
-          // UNION logic: node passes if it matches ANY enabled filter
-          // Check specific nodes filter
-          if (filterNodesEnabled && specificNodes.length > 0) {
-            if (specificNodes.includes(node.nodeNum)) {
-              return true;
-            }
-          }
-
-          // Check channel filter
-          if (filterChannelsEnabled && filterChannels.length > 0) {
-            if (node.channel !== undefined && filterChannels.includes(node.channel)) {
-              return true;
-            }
-          }
-
-          // Check role filter
-          if (filterRolesEnabled && filterRoles.length > 0) {
-            if (node.role !== undefined && filterRoles.includes(node.role)) {
-              return true;
-            }
-          }
-
-          // Check hardware model filter
-          if (filterHwModelsEnabled && filterHwModels.length > 0) {
-            if (node.hwModel !== undefined && filterHwModels.includes(node.hwModel)) {
-              return true;
-            }
-          }
-
-          // Check regex name filter
-          if (filterRegexEnabled && regexMatcher !== null) {
-            const name = node.longName || node.shortName || node.nodeId || '';
-            if (regexMatcher.test(name)) {
-              return true;
-            }
-          }
-
-          // Node didn't match any enabled filter
-          return false;
-        });
-      }
-      // If hasAnyFilter is false, all nodes pass (no filtering applied)
-    }
-
-    if (eligibleNodes.length === 0) {
-      return null;
-    }
-
-    // Check if sort by hops is enabled
-    const sortByHops = this.isTracerouteSortByHopsEnabled();
-
-    if (sortByHops) {
-      // Sort by hopsAway ascending (closer nodes first), with undefined hops at the end
-      eligibleNodes.sort((a, b) => {
-        const hopsA = a.hopsAway ?? Infinity;
-        const hopsB = b.hopsAway ?? Infinity;
-        return hopsA - hopsB;
-      });
-      // Take the first (closest) node
-      return this.normalizeBigInts(eligibleNodes[0]);
-    }
-
-    // Randomly select one node from the eligible nodes
-    const randomIndex = Math.floor(Math.random() * eligibleNodes.length);
-    return this.normalizeBigInts(eligibleNodes[randomIndex]);
-  }
 
   /**
    * Async version of getNodeNeedingTraceroute - works with all database backends
    * Returns a node that needs a traceroute based on configured filters and timing
    */
   async getNodeNeedingTracerouteAsync(localNodeNum: number, sourceId?: string): Promise<DbNode | null> {
-    // For SQLite (or before the repo is wired) with no sourceId, use the legacy
-    // sync selection path. The repo path handles SQLite when a sourceId is set.
-    if (this.drizzleDbType === 'sqlite' || !this.nodesRepo) {
-      if (!sourceId) return this.getNodeNeedingTraceroute(localNodeNum);
-    }
+    // Selection is fully backend-agnostic via the extracted service + repo.
+    if (!this.nodesRepo) return null;
 
     // Read ALL filter configuration per-source (falls back to global when
     // no per-source override exists). This is what makes Auto-Traceroute
@@ -2733,21 +2450,7 @@ class DatabaseService {
     );
   }
 
-  // Auto-traceroute node filter methods
-  getAutoTracerouteNodes(): number[] {
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      throw new Error(`SQLite method 'getAutoTracerouteNodes' called but using ${this.drizzleDbType} database. Use getAutoTracerouteNodesAsync() instead.`);
-    }
-    return this.autoTraceroute!.getAutoTracerouteNodesSync();
-  }
 
-  setAutoTracerouteNodes(nodeNums: number[]): void {
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      throw new Error(`SQLite method 'setAutoTracerouteNodes' called but using ${this.drizzleDbType} database. Use setAutoTracerouteNodesAsync() instead.`);
-    }
-    this.autoTraceroute!.setAutoTracerouteNodesSync(nodeNums);
-    logger.debug(`✅ Set auto-traceroute filter to ${nodeNums.length} nodes`);
-  }
 
   // Solar Estimates methods
   async upsertSolarEstimateAsync(timestamp: number, wattHours: number, fetchedAt: number): Promise<void> {
@@ -2984,115 +2687,7 @@ class DatabaseService {
     logger.debug(`✅ Set traceroute sort by hops: ${enabled}`);
   }
 
-  // Get all traceroute filter settings at once
-  getTracerouteFilterSettings(): {
-    enabled: boolean;
-    nodeNums: number[];
-    filterChannels: number[];
-    filterRoles: number[];
-    filterHwModels: number[];
-    filterNameRegex: string;
-    filterNodesEnabled: boolean;
-    filterChannelsEnabled: boolean;
-    filterRolesEnabled: boolean;
-    filterHwModelsEnabled: boolean;
-    filterRegexEnabled: boolean;
-    expirationHours: number;
-    sortByHops: boolean;
-    filterLastHeardEnabled: boolean;
-    filterLastHeardHours: number;
-    filterHopsEnabled: boolean;
-    filterHopsMin: number;
-    filterHopsMax: number;
-  } {
-    return {
-      enabled: this.isAutoTracerouteNodeFilterEnabled(),
-      nodeNums: this.getAutoTracerouteNodes(),
-      filterChannels: this.getTracerouteFilterChannels(),
-      filterRoles: this.getTracerouteFilterRoles(),
-      filterHwModels: this.getTracerouteFilterHwModels(),
-      filterNameRegex: this.getTracerouteFilterNameRegex(),
-      filterNodesEnabled: this.isTracerouteFilterNodesEnabled(),
-      filterChannelsEnabled: this.isTracerouteFilterChannelsEnabled(),
-      filterRolesEnabled: this.isTracerouteFilterRolesEnabled(),
-      filterHwModelsEnabled: this.isTracerouteFilterHwModelsEnabled(),
-      filterRegexEnabled: this.isTracerouteFilterRegexEnabled(),
-      expirationHours: this.getTracerouteExpirationHours(),
-      sortByHops: this.isTracerouteSortByHopsEnabled(),
-      filterLastHeardEnabled: this.isTracerouteFilterLastHeardEnabled(),
-      filterLastHeardHours: this.getTracerouteFilterLastHeardHours(),
-      filterHopsEnabled: this.isTracerouteFilterHopsEnabled(),
-      filterHopsMin: this.getTracerouteFilterHopsMin(),
-      filterHopsMax: this.getTracerouteFilterHopsMax(),
-    };
-  }
 
-  // Set all traceroute filter settings at once
-  setTracerouteFilterSettings(settings: {
-    enabled: boolean;
-    nodeNums: number[];
-    filterChannels: number[];
-    filterRoles: number[];
-    filterHwModels: number[];
-    filterNameRegex: string;
-    filterNodesEnabled?: boolean;
-    filterChannelsEnabled?: boolean;
-    filterRolesEnabled?: boolean;
-    filterHwModelsEnabled?: boolean;
-    filterRegexEnabled?: boolean;
-    expirationHours?: number;
-    sortByHops?: boolean;
-    filterLastHeardEnabled?: boolean;
-    filterLastHeardHours?: number;
-    filterHopsEnabled?: boolean;
-    filterHopsMin?: number;
-    filterHopsMax?: number;
-  }): void {
-    this.setAutoTracerouteNodeFilterEnabled(settings.enabled);
-    this.setAutoTracerouteNodes(settings.nodeNums);
-    this.setTracerouteFilterChannels(settings.filterChannels);
-    this.setTracerouteFilterRoles(settings.filterRoles);
-    this.setTracerouteFilterHwModels(settings.filterHwModels);
-    this.setTracerouteFilterNameRegex(settings.filterNameRegex);
-    // Individual filter enabled flags (default to true for backward compatibility)
-    if (settings.filterNodesEnabled !== undefined) {
-      this.setTracerouteFilterNodesEnabled(settings.filterNodesEnabled);
-    }
-    if (settings.filterChannelsEnabled !== undefined) {
-      this.setTracerouteFilterChannelsEnabled(settings.filterChannelsEnabled);
-    }
-    if (settings.filterRolesEnabled !== undefined) {
-      this.setTracerouteFilterRolesEnabled(settings.filterRolesEnabled);
-    }
-    if (settings.filterHwModelsEnabled !== undefined) {
-      this.setTracerouteFilterHwModelsEnabled(settings.filterHwModelsEnabled);
-    }
-    if (settings.filterRegexEnabled !== undefined) {
-      this.setTracerouteFilterRegexEnabled(settings.filterRegexEnabled);
-    }
-    if (settings.expirationHours !== undefined) {
-      this.setTracerouteExpirationHours(settings.expirationHours);
-    }
-    if (settings.sortByHops !== undefined) {
-      this.setTracerouteSortByHopsEnabled(settings.sortByHops);
-    }
-    if (settings.filterLastHeardEnabled !== undefined) {
-      this.setTracerouteFilterLastHeardEnabled(settings.filterLastHeardEnabled);
-    }
-    if (settings.filterLastHeardHours !== undefined) {
-      this.setTracerouteFilterLastHeardHours(settings.filterLastHeardHours);
-    }
-    if (settings.filterHopsEnabled !== undefined) {
-      this.setTracerouteFilterHopsEnabled(settings.filterHopsEnabled);
-    }
-    if (settings.filterHopsMin !== undefined) {
-      this.setTracerouteFilterHopsMin(settings.filterHopsMin);
-    }
-    if (settings.filterHopsMax !== undefined) {
-      this.setTracerouteFilterHopsMax(settings.filterHopsMax);
-    }
-    logger.debug('✅ Updated all traceroute filter settings');
-  }
 
   // Async versions of traceroute filter settings methods.
   //
@@ -3353,33 +2948,9 @@ class DatabaseService {
     logger.debug(`Updated MeshCore pathfinding filter settings (source=${sourceId})`);
   }
 
-  // Auto-traceroute log methods
-  logAutoTracerouteAttempt(toNodeNum: number, toNodeName: string | null, sourceId?: string): number {
-    return this.autoTraceroute!.logAutoTracerouteAttemptSync(toNodeNum, toNodeName, sourceId);
-  }
 
-  updateAutoTracerouteResult(logId: number, success: boolean): void {
-    this.autoTraceroute!.updateAutoTracerouteResultSync(logId, success);
-  }
 
-  // Update the most recent pending auto-traceroute for a given destination
-  updateAutoTracerouteResultByNode(toNodeNum: number, success: boolean): void {
-    this.autoTraceroute!.updateAutoTracerouteResultByNodeSync(toNodeNum, success);
-  }
 
-  getAutoTracerouteLog(limit: number = 10, sourceId?: string): {
-    id: number;
-    timestamp: number;
-    toNodeNum: number;
-    toNodeName: string | null;
-    success: boolean | null;
-  }[] {
-    // For PostgreSQL/MySQL, use async version
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return [];
-    }
-    return this.autoTraceroute!.getAutoTracerouteLogSync(limit, sourceId);
-  }
 
   /**
    * Async version of getAutoTracerouteLog - works with all database backends
@@ -3393,7 +2964,7 @@ class DatabaseService {
   }[]> {
     if (!this.drizzleDatabase || this.drizzleDbType === 'sqlite') {
       // Fallback to sync for SQLite
-      return this.getAutoTracerouteLog(limit, sourceId);
+      return this.autoTraceroute!.getAutoTracerouteLogSync(limit, sourceId);
     }
     return this.autoTraceroute!.getAutoTracerouteLog(limit, sourceId);
   }
@@ -3404,7 +2975,7 @@ class DatabaseService {
   async logAutoTracerouteAttemptAsync(toNodeNum: number, toNodeName: string | null, sourceId?: string): Promise<number> {
     if (!this.drizzleDatabase || this.drizzleDbType === 'sqlite') {
       // Fallback to sync for SQLite
-      return this.logAutoTracerouteAttempt(toNodeNum, toNodeName, sourceId);
+      return this.autoTraceroute!.logAutoTracerouteAttemptSync(toNodeNum, toNodeName, sourceId);
     }
     return this.autoTraceroute!.logAutoTracerouteAttempt(toNodeNum, toNodeName, sourceId);
   }
@@ -3415,7 +2986,7 @@ class DatabaseService {
   async updateAutoTracerouteResultByNodeAsync(toNodeNum: number, success: boolean): Promise<void> {
     if (!this.drizzleDatabase || this.drizzleDbType === 'sqlite') {
       // Fallback to sync for SQLite
-      this.updateAutoTracerouteResultByNode(toNodeNum, success);
+      this.autoTraceroute!.updateAutoTracerouteResultByNodeSync(toNodeNum, success);
       return;
     }
     await this.autoTraceroute!.updateAutoTracerouteResultByNode(toNodeNum, success);
@@ -3900,21 +3471,6 @@ class DatabaseService {
     }
   }
 
-  // Route segment operations
-  insertRouteSegment(segmentData: DbRouteSegment, sourceId?: string): void {
-    // For PostgreSQL/MySQL, use async repository
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.traceroutesRepo) {
-        this.traceroutesRepo.insertRouteSegment(segmentData, sourceId).catch((error) => {
-          logger.error('[DatabaseService] Failed to insert route segment:', error);
-        });
-      }
-      return;
-    }
-
-    // SQLite path
-    this.traceroutesRepo!.insertRouteSegmentSync(segmentData, sourceId);
-  }
 
   /**
    * Async version of insertRouteSegment — awaits the repository insert directly
@@ -3924,107 +3480,11 @@ class DatabaseService {
     await this.traceroutesRepo!.insertRouteSegment(segmentData, sourceId);
   }
 
-  getLongestActiveRouteSegment(sourceId?: string): DbRouteSegment | null {
-    // For PostgreSQL/MySQL, use async version
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return null;
-    }
-    return this.traceroutesRepo!.getLongestActiveRouteSegmentSync(sourceId) as unknown as DbRouteSegment | null;
-  }
 
-  getRecordHolderRouteSegment(sourceId?: string): DbRouteSegment | null {
-    // For PostgreSQL/MySQL, use async version
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return null;
-    }
-    return this.traceroutesRepo!.getRecordHolderRouteSegmentSync(sourceId) as unknown as DbRouteSegment | null;
-  }
 
-  updateRecordHolderSegment(newSegment: DbRouteSegment, sourceId?: string): void {
-    // For PostgreSQL/MySQL, use async approach
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.traceroutesRepo) {
-        this.traceroutesRepo.getRecordHolderRouteSegment(sourceId).then(currentRecord => {
-          if (!currentRecord || newSegment.distanceKm > currentRecord.distanceKm) {
-            // Clear existing record holder flag (per-source so one source's
-            // new record doesn't unseat another source's record holder).
-            this.traceroutesRepo!.clearRecordHolderBySource(sourceId).then(() => {
-              this.traceroutesRepo!.insertRouteSegment({
-                ...newSegment,
-                isRecordHolder: true
-              }, sourceId).catch((err: unknown) => logger.debug('Failed to insert record holder segment:', err));
-            }).catch((err: unknown) => logger.debug('Failed to clear record holder segments:', err));
-            logger.debug(`🏆 New record holder route segment: ${newSegment.distanceKm.toFixed(2)} km from ${newSegment.fromNodeId} to ${newSegment.toNodeId}`);
-          }
-        }).catch(err => logger.debug('Failed to get record holder segment:', err));
-      }
-      return;
-    }
 
-    const currentRecord = this.getRecordHolderRouteSegment(sourceId);
 
-    // If no current record or new segment is longer, update
-    if (!currentRecord || newSegment.distanceKm > currentRecord.distanceKm) {
-      // Clear existing record holders for this source (IS NULL when scope is
-      // global, exact match when scoped — keeps per-source records independent).
-      this.traceroutesRepo!.clearRecordHolderSegmentSync(sourceId);
 
-      // Insert new record holder
-      this.insertRouteSegment({
-        ...newSegment,
-        isRecordHolder: true
-      }, sourceId);
-
-      logger.debug(`🏆 New record holder route segment: ${newSegment.distanceKm.toFixed(2)} km from ${newSegment.fromNodeId} to ${newSegment.toNodeId}`);
-    }
-  }
-
-  clearRecordHolderSegment(sourceId?: string): void {
-    // For PostgreSQL/MySQL, use async approach
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.traceroutesRepo) {
-        this.traceroutesRepo.clearRecordHolderBySource(sourceId).catch((err: unknown) =>
-          logger.debug('Failed to clear record holder segments:', err)
-        );
-      }
-      logger.debug('🗑️ Cleared record holder route segment');
-      return;
-    }
-
-    this.traceroutesRepo!.clearRecordHolderSegmentSync(sourceId);
-    logger.debug('🗑️ Cleared record holder route segment');
-  }
-
-  cleanupOldRouteSegments(days: number = 30, sourceId?: string): number {
-    // For PostgreSQL/MySQL, fire-and-forget async cleanup
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.traceroutesRepo) {
-        this.traceroutesRepo.cleanupOldRouteSegments(days, sourceId).catch((err: unknown) => {
-          logger.debug('Failed to cleanup old route segments:', err);
-        });
-      }
-      return 0;
-    }
-
-    return this.traceroutesRepo!.cleanupOldRouteSegmentsSync(days, sourceId);
-  }
-
-  /**
-   * Delete traceroutes older than the specified number of days
-   */
-  cleanupOldTraceroutes(days: number = 30): number {
-    // For PostgreSQL/MySQL, fire-and-forget async cleanup
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.traceroutesRepo) {
-        this.traceroutesRepo.cleanupOldTraceroutes(days * 24).catch(err => {
-          logger.debug('Failed to cleanup old traceroutes:', err);
-        });
-      }
-      return 0;
-    }
-
-    return this.traceroutesRepo!.cleanupOldTraceroutesSync(days);
-  }
 
   /**
    * Delete neighbor info records older than the specified number of days
@@ -5676,14 +5136,14 @@ class DatabaseService {
     if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.traceroutesRepo) {
       return this.traceroutesRepo.cleanupOldTraceroutes(days * 24);
     }
-    return this.cleanupOldTraceroutes(days);
+    return this.traceroutesRepo!.cleanupOldTraceroutesSync(days);
   }
 
   async cleanupOldRouteSegmentsAsync(days: number = 30): Promise<number> {
     if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.traceroutesRepo) {
       return this.traceroutesRepo.cleanupOldRouteSegments(days, ALL_SOURCES); // intentional cross-source: scheduled cleanup spans every source
     }
-    return this.cleanupOldRouteSegments(days);
+    return this.traceroutesRepo!.cleanupOldRouteSegmentsSync(days);
   }
 
   async cleanupOldNeighborInfoAsync(days: number = 30): Promise<number> {
@@ -6109,16 +5569,26 @@ class DatabaseService {
     await this.recordTracerouteRequest(fromNodeNum, toNodeNum, sourceId);
   }
 
-  async getAllTraceroutesForRecalculationAsync(): Promise<any[]> {
-    return this.getAllTraceroutesForRecalculation();
-  }
-
   async clearRecordHolderSegmentAsync(sourceId?: string): Promise<void> {
-    this.clearRecordHolderSegment(sourceId);
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.traceroutesRepo) {
+        await this.traceroutesRepo.clearRecordHolderBySource(sourceId);
+      }
+      logger.debug('🗑️ Cleared record holder route segment');
+      return;
+    }
+    this.traceroutesRepo!.clearRecordHolderSegmentSync(sourceId);
+    logger.debug('🗑️ Cleared record holder route segment');
   }
 
   async updateRecordHolderSegmentAsync(segment: DbRouteSegment, sourceId?: string): Promise<void> {
-    this.updateRecordHolderSegment(segment, sourceId);
+    if (!this.traceroutesRepo) return;
+    const currentRecord = await this.traceroutesRepo.getRecordHolderRouteSegment(sourceId);
+    if (!currentRecord || segment.distanceKm > currentRecord.distanceKm) {
+      await this.traceroutesRepo.clearRecordHolderBySource(sourceId);
+      await this.traceroutesRepo.insertRouteSegment({ ...segment, isRecordHolder: true }, sourceId);
+      logger.debug(`🏆 New record holder route segment: ${segment.distanceKm.toFixed(2)} km from ${segment.fromNodeId} to ${segment.toNodeId}`);
+    }
   }
 
   // Group 5: Neighbors/Telemetry
