@@ -1428,30 +1428,6 @@ class DatabaseService {
 
 
 
-  /**
-   * Get packet counts per node for the last hour (for spam detection)
-   * Returns an array of { nodeNum, packetCount }
-   * Excludes internal traffic (packets where both from and to are the local node)
-   */
-  getPacketCountsPerNodeLastHour(): Array<{ nodeNum: number; packetCount: number }> {
-    const oneHourAgo = Date.now() - 3600000;
-
-    // For PostgreSQL/MySQL, use async method
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Return empty array and caller should use async version
-      logger.warn('getPacketCountsPerNodeLastHour() called for non-SQLite database - use async version');
-      return [];
-    }
-
-    // Get local node number to exclude internal traffic
-    const localNodeNumStr = this.getSetting('localNodeNum');
-    const localNodeNum = localNodeNumStr ? parseInt(localNodeNumStr, 10) : null;
-
-    return this.packetLogRepo!.getPacketCountsPerNodeSinceSync({
-      since: oneHourAgo,
-      localNodeNum,
-    });
-  }
 
   /**
    * Get packet counts per node for the last hour (async version)
@@ -1692,42 +1668,11 @@ class DatabaseService {
     return [];
   }
 
-  // Cleanup operations
-  cleanupOldMessages(days: number = 30): number {
-    // For PostgreSQL/MySQL, fire-and-forget async cleanup
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.messagesRepo) {
-        this.messagesRepo.cleanupOldMessages(days).catch(err => {
-          logger.debug('Failed to cleanup old messages:', err);
-        });
-      }
-      return 0;
-    }
-    // SQLite: delegate to Drizzle sync variant
-    if (this.messagesRepo) {
-      return this.messagesRepo.cleanupOldMessagesSqlite(days);
-    }
-    return 0;
-  }
 
 
 
 
 
-  purgeNodeTraceroutes(nodeNum: number): number {
-    // For PostgreSQL/MySQL, fire-and-forget async delete
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.traceroutesRepo) {
-        this.traceroutesRepo.deleteTraceroutesForNode(nodeNum, ALL_SOURCES).catch(err => { // intentional cross-source: legacy facade has no sourceId
-          logger.debug('Failed to purge node traceroutes:', err);
-        });
-      }
-      return 0;
-    }
-
-    // Delete all traceroutes involving this node (either as source or destination)
-    return this.traceroutes.deleteTraceroutesInvolvingNodeSync(nodeNum);
-  }
 
 
 
@@ -1851,101 +1796,10 @@ class DatabaseService {
   //  removed — dead code with no callers; all channel upserts go through the
   //  async, #1567-guarded databaseService.channels.upsertChannel)
 
-  getChannelById(id: number, sourceId?: string): DbChannel | null {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (!this.cacheInitialized) {
-        logger.debug(`getChannelById(${id}) called before cache initialized`);
-        return null;
-      }
-      const channel = this.channelsCache.get(id) ?? null;
-      if (id === 0) {
-        logger.info(`🔍 getChannelById(0) - FROM CACHE: ${channel ? `name="${channel.name}" (length: ${channel.name?.length || 0})` : 'null'}`);
-      }
-      return channel;
-    }
-    const channel = this.channelsRepo!.getChannelByIdSync(id, sourceId);
-    return channel;
-  }
 
-  getAllChannels(sourceId?: string): DbChannel[] {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (!this.cacheInitialized) {
-        logger.debug(`getAllChannels() called before cache initialized`);
-        return [];
-      }
-      const cached = Array.from(this.channelsCache.values()).sort((a, b) => a.id - b.id);
-      return sourceId ? cached.filter((c) => (c as any).sourceId === sourceId) : cached;
-    }
-    return this.channelsRepo!.getAllChannelsSync(sourceId);
-  }
 
-  getChannelCount(sourceId?: string): number {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (!this.cacheInitialized) {
-        logger.debug(`getChannelCount() called before cache initialized`);
-        return 0;
-      }
-      if (!sourceId) return this.channelsCache.size;
-      return Array.from(this.channelsCache.values()).filter((c) => (c as any).sourceId === sourceId).length;
-    }
-    return this.channelsRepo!.getChannelCountSync(sourceId);
-  }
 
-  // Clean up invalid channels that shouldn't have been created
-  // Meshtastic supports channels 0-7 (8 total channels)
-  cleanupInvalidChannels(): number {
-    // For PostgreSQL/MySQL, update cache and fire-and-forget
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      let count = 0;
-      for (const [id] of this.channelsCache) {
-        if (id < 0 || id > 7) {
-          this.channelsCache.delete(id);
-          count++;
-        }
-      }
-      // Fire and forget async cleanup
-      if (this.channelsRepo) {
-        this.channelsRepo.cleanupInvalidChannels().catch((error) => {
-          logger.error(`[DatabaseService] Failed to cleanup invalid channels: ${error}`);
-        });
-      }
-      logger.debug(`🧹 Cleaned up ${count} invalid channels (outside 0-7 range)`);
-      return count;
-    }
-    const deleted = this.channelsRepo!.cleanupInvalidChannelsSync();
-    logger.debug(`🧹 Cleaned up ${deleted} invalid channels (outside 0-7 range)`);
-    return deleted;
-  }
 
-  // Clean up channels that appear to be empty/unused
-  // Keep channels 0-1 (Primary and typically one active secondary)
-  // Remove higher ID channels that have no PSK (not configured)
-  cleanupEmptyChannels(): number {
-    // For PostgreSQL/MySQL, update cache and fire-and-forget
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      let count = 0;
-      for (const [id, channel] of this.channelsCache) {
-        if (id > 1 && channel.psk === null && channel.role === null) {
-          this.channelsCache.delete(id);
-          count++;
-        }
-      }
-      // Fire and forget async cleanup
-      if (this.channelsRepo) {
-        this.channelsRepo.cleanupEmptyChannels().catch((error) => {
-          logger.error(`[DatabaseService] Failed to cleanup empty channels: ${error}`);
-        });
-      }
-      logger.debug(`🧹 Cleaned up ${count} empty channels (ID > 1, no PSK/role)`);
-      return count;
-    }
-    const deleted = this.channelsRepo!.cleanupEmptyChannelsSync();
-    logger.debug(`🧹 Cleaned up ${deleted} empty channels (ID > 1, no PSK/role)`);
-    return deleted;
-  }
 
 
   /**
@@ -3296,43 +3150,7 @@ class DatabaseService {
     }
   }
 
-  setSettings(settings: Record<string, string>): void {
-    // For PostgreSQL/MySQL, use async repo and update cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Update cache immediately for sync access
-      for (const [key, value] of Object.entries(settings)) {
-        this.settingsCache.set(key, value);
-      }
-      if (this.settingsRepo) {
-        this.settingsRepo.setSettings(settings).catch(err => {
-          logger.error('Failed to set settings:', err);
-        });
-      }
-      return;
-    }
-    // SQLite: route through repo's sync drizzle path (no raw SQL)
-    if (this.settingsRepo) {
-      this.settingsRepo.setSettingsSync(settings);
-    }
-  }
 
-  deleteAllSettings(): void {
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Clear cache immediately
-      this.settingsCache.clear();
-      if (this.settingsRepo) {
-        this.settingsRepo.deleteAllSettings().catch(err => {
-          logger.error('Failed to delete all settings:', err);
-        });
-      }
-      return;
-    }
-    logger.debug('🔄 Resetting all settings to defaults');
-    // SQLite: route through repo's sync drizzle path (no raw SQL)
-    if (this.settingsRepo) {
-      this.settingsRepo.deleteAllSettingsSync();
-    }
-  }
 
   // ============ ASYNC NOTIFICATION PREFERENCES METHODS ============
 
@@ -3486,66 +3304,8 @@ class DatabaseService {
 
 
 
-  /**
-   * Delete neighbor info records older than the specified number of days
-   */
-  cleanupOldNeighborInfo(days: number = 30): number {
-    if (this.neighborsRepo) {
-      this.neighborsRepo.cleanupOldNeighborInfo(days).catch(err => {
-        logger.debug('Failed to cleanup old neighbor info:', err);
-      });
-    }
-    return 0;
-  }
 
-  /**
-   * Run VACUUM to reclaim unused space in the database file
-   * This can take a while on large databases and temporarily doubles disk usage
-   */
-  vacuum(): void {
-    // For PostgreSQL/MySQL, use native vacuum/optimize
-    if (this.drizzleDbType === 'postgres') {
-      logger.info('🧹 Running VACUUM on PostgreSQL database...');
-      this.postgresPool!.query('VACUUM').then(() => {
-        logger.info('✅ PostgreSQL VACUUM complete');
-      }).catch(err => {
-        logger.error('Failed to VACUUM PostgreSQL:', err);
-      });
-      return;
-    }
-    if (this.drizzleDbType === 'mysql') {
-      logger.info('🧹 Running OPTIMIZE TABLE on MySQL database...');
-      // MySQL OPTIMIZE TABLE requires table names; skip for now as it's not critical
-      logger.info('✅ MySQL OPTIMIZE TABLE skipped (not critical)');
-      return;
-    }
 
-    logger.info('🧹 Running VACUUM on database...');
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    this.db.exec('VACUUM');
-    logger.info('✅ VACUUM complete');
-  }
-
-  /**
-   * Get the current database file size in bytes
-   */
-  getDatabaseSize(): number {
-    // For PostgreSQL, use pg_database_size()
-    if (this.drizzleDbType === 'postgres') {
-      // Return 0 from sync context; use getDatabaseSizeAsync for accurate results
-      return 0;
-    }
-    // For MySQL, use information_schema
-    if (this.drizzleDbType === 'mysql') {
-      // Return 0 from sync context; use getDatabaseSizeAsync for accurate results
-      return 0;
-    }
-
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare('SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()');
-    const result = stmt.get() as { size: number } | undefined;
-    return result?.size ?? 0;
-  }
 
   private _neighborsCache: DbNeighborInfo[] = [];
   private _neighborsByNodeCache: Map<number, DbNeighborInfo[]> = new Map();
@@ -3624,15 +3384,6 @@ class DatabaseService {
     };
   }
 
-  getNeighborsForNode(nodeNum: number): DbNeighborInfo[] {
-    // All backends: fire async repo refresh, return cached data immediately
-    if (this.neighborsRepo) {
-      this.neighborsRepo.getNeighborsForNode(nodeNum, ALL_SOURCES).then(neighbors => { // intentional cross-source: legacy facade has no sourceId
-        this._neighborsByNodeCache.set(nodeNum, neighbors.map(n => this.convertRepoNeighborInfo(n)));
-      }).catch(err => logger.debug('Failed to get neighbors for node:', err));
-    }
-    return this._neighborsByNodeCache.get(nodeNum) || [];
-  }
 
   getAllNeighborInfo(): DbNeighborInfo[] {
     // All backends: fire async repo refresh, return cached data immediately
@@ -3651,10 +3402,6 @@ class DatabaseService {
     return this._neighborsCache;
   }
 
-  getLatestNeighborInfoPerNodeScoped(sourceId?: string): DbNeighborInfo[] {
-    if (!sourceId) return this.getLatestNeighborInfoPerNode();
-    return this._neighborsCache.filter((ni: any) => ni.sourceId === sourceId);
-  }
 
   /**
    * Async version of getLatestNeighborInfoPerNodeScoped — queries the repository
@@ -4094,32 +3841,6 @@ class DatabaseService {
   }
 
 
-  auditLog(
-    userId: number | null,
-    action: string,
-    resource: string | null,
-    details: string | null,
-    ipAddress: string | null,
-    valueBefore?: string | null,
-    valueAfter?: string | null
-  ): void {
-    // Delegate to AuthRepository for all backends (fire-and-forget)
-    // Note: valueBefore/valueAfter not yet in Drizzle schema — tracked as future enhancement
-    void valueBefore;
-    void valueAfter;
-    this.auth.createAuditLogEntry({
-      userId,
-      action,
-      resource,
-      details,
-      ipAddress,
-      userAgent: null,
-      timestamp: Date.now(),
-    }).catch(error => {
-      logger.error('Failed to write audit log:', error);
-      // Don't throw - audit log failures shouldn't break the application
-    });
-  }
 
   /**
    * Async version of getAuditLogs - works with all database backends
@@ -4319,13 +4040,10 @@ class DatabaseService {
     return this.packetLog.getPacketLogCount(options);
   }
 
-  clearPacketLogs(): number {
-    return this.packetLogRepo!.clearPacketLogsSync();
-  }
 
   async clearPacketLogsAsync(): Promise<number> {
     if (this.packetLogRepo) return this.packetLogRepo.clearPacketLogs();
-    return this.clearPacketLogs();
+    return 0;
   }
 
   async getDistinctRelayNodesAsync(sourceId?: string): Promise<DbDistinctRelayNode[]> {
@@ -4342,18 +4060,6 @@ class DatabaseService {
     return this.packetLogRepo!.updatePacketLogDecryption(id, decryptedBy, decryptedChannelId, portnum, metadata);
   }
 
-  cleanupOldPacketLogs(): number {
-    // The packet-log cleanup timer (PacketLogService) starts on a fixed
-    // schedule and can fire while the database is still initializing —
-    // especially during the long PG/MySQL upgrade migrations (#2836). Bail
-    // out cleanly if the repository hasn't been wired up yet so the upgrade
-    // path doesn't crash with `Cannot read properties of null`.
-    if (!this.packetLogRepo) return 0;
-    const maxAgeHoursStr = this.getSetting('packet_log_max_age_hours');
-    const maxAgeHours = maxAgeHoursStr ? parseInt(maxAgeHoursStr, 10) : 24;
-    const cutoffTimestamp = Date.now() - (maxAgeHours * 60 * 60 * 1000);
-    return this.packetLogRepo.cleanupOldPacketLogsSync(cutoffTimestamp);
-  }
 
   async cleanupOldPacketLogsAsync(): Promise<number> {
     if (!this.packetLogRepo) return 0;
@@ -4904,13 +4610,6 @@ class DatabaseService {
 
   // ============ AUTO TIME SYNC SETTINGS ============
 
-  /**
-   * Check if auto time sync is enabled
-   */
-  isAutoTimeSyncEnabled(): boolean {
-    const value = this.getSetting('autoTimeSyncEnabled');
-    return value === 'true';
-  }
 
   /**
    * Enable or disable auto time sync
@@ -4919,13 +4618,6 @@ class DatabaseService {
     this.setSetting('autoTimeSyncEnabled', enabled ? 'true' : 'false');
   }
 
-  /**
-   * Get auto time sync interval in minutes
-   */
-  getAutoTimeSyncIntervalMinutes(): number {
-    const value = this.getSetting('autoTimeSyncIntervalMinutes');
-    return value ? parseInt(value, 10) : 15;
-  }
 
   /**
    * Set auto time sync interval in minutes
@@ -5129,7 +4821,7 @@ class DatabaseService {
     if ((this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') && this.messagesRepo) {
       return this.messagesRepo.cleanupOldMessages(days);
     }
-    return this.cleanupOldMessages(days);
+    return this.messagesRepo!.cleanupOldMessagesSqlite(days);
   }
 
   async cleanupOldTraceroutesAsync(days: number = 30): Promise<number> {
@@ -5169,7 +4861,7 @@ class DatabaseService {
       // Channels with no name and no PSK scoped to a source
       return this.channelsRepo!.cleanupEmptyChannelsForSource(sourceId);
     }
-    return this.cleanupInvalidChannels();
+    return this.channelsRepo!.cleanupInvalidChannels();
   }
 
   async cleanupAuditLogsAsync(days: number): Promise<number> {
@@ -5196,7 +4888,10 @@ class DatabaseService {
       }
       return;
     }
-    return this.vacuum();
+    logger.info('🧹 Running VACUUM on database...');
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
+    this.db.exec('VACUUM');
+    logger.info('✅ VACUUM complete');
   }
 
   async getDatabaseSizeAsync(): Promise<number> {
@@ -5210,7 +4905,10 @@ class DatabaseService {
       );
       return Number((rows as any[])[0]?.size ?? 0);
     }
-    return this.getDatabaseSize();
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
+    const stmt = this.db.prepare('SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()');
+    const result = stmt.get() as { size: number } | undefined;
+    return result?.size ?? 0;
   }
 
   // Group 2: Messages
@@ -5672,15 +5370,6 @@ class DatabaseService {
       return false;
     }
     return true;
-  }
-
-  // Group 7: Settings/Config
-  async isAutoTimeSyncEnabledAsync(): Promise<boolean> {
-    return this.isAutoTimeSyncEnabled();
-  }
-
-  async getAutoTimeSyncIntervalMinutesAsync(): Promise<number> {
-    return this.getAutoTimeSyncIntervalMinutes();
   }
 
   // Group 8: Export/Import
