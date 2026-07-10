@@ -9,7 +9,7 @@ const router = Router();
 router.get('/', requirePermission('info', 'read'), async (req: Request, res: Response) => {
   try {
     const neighborInfoSourceId = req.query.sourceId as string | undefined;
-    const neighborInfo = databaseService.getLatestNeighborInfoPerNodeScoped(neighborInfoSourceId);
+    const neighborInfo = await databaseService.getLatestNeighborInfoPerNodeScopedAsync(neighborInfoSourceId);
 
     const maxNodeAgeStr = await databaseService.settings.getSetting('maxNodeAge');
     const maxNodeAgeHours = maxNodeAgeStr ? parseInt(maxNodeAgeStr, 10) : 24;

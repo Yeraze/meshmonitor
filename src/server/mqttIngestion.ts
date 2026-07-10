@@ -254,7 +254,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         createdAt: nowMs,
         updatedAt: nowMs,
       };
-      databaseService.upsertNode(node);
+      void databaseService.upsertNodeAsync(node).catch(err => logger.error('MQTT upsertNode failed:', err));
       return { ingested: true, portnum };
     }
 
@@ -288,7 +288,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         createdAt: nowMs,
         updatedAt: nowMs,
       };
-      databaseService.upsertNode(node);
+      void databaseService.upsertNodeAsync(node).catch(err => logger.error('MQTT upsertNode failed:', err));
       return { ingested: true, portnum };
     }
 
@@ -351,7 +351,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
       // and invisible to source-scoped queries like /api/unified/messages.
       databaseService.messages.insertMessage(msg, sourceId).catch(err => logger.error('Failed to insert MQTT message:', err));
       // Refresh lastHeard for the sender.
-      databaseService.upsertNode({
+      void databaseService.upsertNodeAsync({
         nodeNum: fromNum,
         nodeId: fromNodeId,
         // Intentionally omit longName/shortName/hwModel: this upsert only
@@ -362,10 +362,9 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         lastHeard: lastHeardSec,
         viaMqtt: true,
         transportMechanism: TransportMechanism.MQTT,
-        sourceId,
         createdAt: nowMs,
         updatedAt: nowMs,
-      });
+      }, sourceId).catch(err => logger.error('MQTT upsertNode failed:', err));
       return { ingested: true, portnum };
     }
 
@@ -400,11 +399,11 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
             packetId,
             packetTimestamp: typeof t.time === 'number' ? t.time * 1000 : undefined,
           };
-          databaseService.insertTelemetry(tel, sourceId);
+          void databaseService.insertTelemetryAsync(tel, sourceId).catch(err => logger.error('MQTT insertTelemetry failed:', err));
           any = true;
         }
       }
-      databaseService.upsertNode({
+      void databaseService.upsertNodeAsync({
         nodeNum: fromNum,
         nodeId: fromNodeId,
         // Intentionally omit longName/shortName/hwModel: this upsert only
@@ -415,10 +414,9 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         lastHeard: lastHeardSec,
         viaMqtt: true,
         transportMechanism: TransportMechanism.MQTT,
-        sourceId,
         createdAt: nowMs,
         updatedAt: nowMs,
-      });
+      }, sourceId).catch(err => logger.error('MQTT upsertNode failed:', err));
       return any ? { ingested: true, portnum } : { ingested: false, reason: 'decode-error', portnum };
     }
 
@@ -433,7 +431,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
     }
 
     case PortNum.PAXCOUNTER_APP: {
-      const ok = ingestPaxcounter(sourceId, packet, payload as Record<string, any>, fromNum, fromNodeId, nowMs);
+      const ok = await ingestPaxcounter(sourceId, packet, payload as Record<string, any>, fromNum, fromNodeId, nowMs);
       return ok ? { ingested: true, portnum } : { ingested: false, reason: 'decode-error', portnum };
     }
 
@@ -600,7 +598,7 @@ async function ingestTraceroute(
     createdAt: nowMs,
   };
   if (effectiveChannel >= 0) (record as any).channel = effectiveChannel;
-  databaseService.insertTraceroute(record, sourceId);
+  await databaseService.insertTracerouteAsync(record, sourceId);
 
   // Hop count → telemetry, matches TCP's Smart Hops feed.
   const packetId = typeof packet.id === 'number' ? packet.id >>> 0 : undefined;
@@ -615,7 +613,7 @@ async function ingestTraceroute(
     packetId,
     ...({ unit: 'hops' } as any),
   };
-  databaseService.insertTelemetry(hopTel, sourceId);
+  void databaseService.insertTelemetryAsync(hopTel, sourceId).catch(err => logger.error('MQTT insertTelemetry (hops) failed:', err));
 
   // Route segments — one row per adjacent pair with known positions.
   if (toNum !== null) {
@@ -654,7 +652,7 @@ async function persistRouteSegments(sourceId: string, fullRoute: number[], times
         toLongitude: n2.longitude,
       } as any),
     };
-    databaseService.insertRouteSegment(seg, sourceId);
+    await databaseService.insertRouteSegmentAsync(seg, sourceId);
   }
 }
 
@@ -754,17 +752,17 @@ async function ingestNeighborInfo(
  * PAXCOUNTER_APP — three telemetry rows (wifi, ble, uptime) plus a
  * lastHeard refresh. Same shape as TCP's processPaxcounterMessageProtobuf.
  */
-function ingestPaxcounter(
+async function ingestPaxcounter(
   sourceId: string,
   packet: any,
   paxcount: Record<string, any>,
   fromNum: number,
   fromNodeId: string,
   nowMs: number,
-): boolean {
+): Promise<boolean> {
   const packetId = typeof packet.id === 'number' ? packet.id >>> 0 : undefined;
   let any = false;
-  const tryInsert = (telemetryType: string, value: unknown, unit: string): void => {
+  const tryInsert = async (telemetryType: string, value: unknown, unit: string): Promise<void> => {
     if (typeof value !== 'number' || !Number.isFinite(value)) return;
     const tel: DbTelemetry = {
       nodeId: fromNodeId,
@@ -776,16 +774,16 @@ function ingestPaxcounter(
       packetId,
       ...({ unit } as any),
     };
-    databaseService.insertTelemetry(tel, sourceId);
+    await databaseService.insertTelemetryAsync(tel, sourceId);
     any = true;
   };
-  tryInsert('paxcounterWifi', paxcount.wifi, 'devices');
-  tryInsert('paxcounterBle', paxcount.ble, 'devices');
-  tryInsert('paxcounterUptime', paxcount.uptime, 's');
+  await tryInsert('paxcounterWifi', paxcount.wifi, 'devices');
+  await tryInsert('paxcounterBle', paxcount.ble, 'devices');
+  await tryInsert('paxcounterUptime', paxcount.uptime, 's');
 
   // Replay guard (see utils/replayGuard.ts): undefined for a stale replay.
   const lastHeardSec = resolveLastHeardSec(packet.rxTime, nowMs);
-  databaseService.upsertNode({
+  await databaseService.upsertNodeAsync({
     nodeNum: fromNum,
     nodeId: fromNodeId,
     // Omit longName/shortName/hwModel — lastHeard refresh only. Passing '' / 0
@@ -794,10 +792,9 @@ function ingestPaxcounter(
     lastHeard: lastHeardSec,
     viaMqtt: true,
     transportMechanism: TransportMechanism.MQTT,
-    sourceId,
     createdAt: nowMs,
     updatedAt: nowMs,
-  });
+  }, sourceId);
   return any;
 }
 
@@ -878,7 +875,7 @@ async function ingestStoreForward(
   if (rr === StoreForwardRequestResponse.ROUTER_HEARTBEAT) {
     // Replay guard (see utils/replayGuard.ts): undefined for a stale replay.
     const lastHeardSec = resolveLastHeardSec(packet.rxTime, nowMs);
-    databaseService.upsertNode({
+    void databaseService.upsertNodeAsync({
       nodeNum: fromNum,
       nodeId: fromNodeId,
       // Omit longName/shortName/hwModel — lastHeard refresh only. Passing '' / 0
@@ -892,7 +889,7 @@ async function ingestStoreForward(
       updatedAt: nowMs,
       // isStoreForwardServer is in the schema but not on DbNode (Migration 056-ish).
       ...({ isStoreForwardServer: true } as any),
-    } as Partial<DbNode>);
+    } as Partial<DbNode>).catch(err => logger.error('MQTT upsertNode failed:', err));
     return true;
   }
 

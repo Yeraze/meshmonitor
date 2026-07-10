@@ -12,10 +12,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../services/database.js', () => ({
   default: {
     upsertNode: vi.fn(),
+    upsertNodeAsync: vi.fn(async () => undefined),
     insertMessage: vi.fn(),
     insertTelemetry: vi.fn(),
+    insertTelemetryAsync: vi.fn(async () => undefined),
     insertTraceroute: vi.fn(),
+    insertTracerouteAsync: vi.fn(async () => undefined),
     insertRouteSegment: vi.fn(),
+    insertRouteSegmentAsync: vi.fn(async () => undefined),
     nodes: {
       getNode: vi.fn(async () => null),
       getNodesByNums: vi.fn(async () => new Map()),
@@ -118,7 +122,7 @@ describe('ingestServiceEnvelope — fail-closed membership', () => {
     expect(result.ingested).toBe(false);
     expect(result.reason).toBe('geo-filtered');
     expect(databaseService.messages.insertMessage).not.toHaveBeenCalled();
-    expect(databaseService.upsertNode).not.toHaveBeenCalled();
+    expect(databaseService.upsertNodeAsync).not.toHaveBeenCalled();
     expect(filter.getDropCounters().geo).toBe(1);
   });
 
@@ -131,7 +135,7 @@ describe('ingestServiceEnvelope — fail-closed membership', () => {
     });
     expect(result.ingested).toBe(false);
     expect(result.reason).toBe('geo-filtered');
-    expect(databaseService.upsertNode).not.toHaveBeenCalled();
+    expect(databaseService.upsertNodeAsync).not.toHaveBeenCalled();
   });
 
   it('drops TELEMETRY from an unknown sender when bbox is enabled', async () => {
@@ -143,7 +147,7 @@ describe('ingestServiceEnvelope — fail-closed membership', () => {
     });
     expect(result.ingested).toBe(false);
     expect(result.reason).toBe('geo-filtered');
-    expect(databaseService.insertTelemetry).not.toHaveBeenCalled();
+    expect(databaseService.insertTelemetryAsync).not.toHaveBeenCalled();
   });
 
   it('allows a TEXT_MESSAGE after the same sender posted an in-bbox POSITION', async () => {
@@ -356,14 +360,14 @@ describe('ingestServiceEnvelope — TRACEROUTE_APP', () => {
       envelope: envFor(NODE_IN, 70 /* TRACEROUTE_APP */),
     });
     expect(result.ingested).toBe(true);
-    expect(databaseService.insertTraceroute).toHaveBeenCalledTimes(1);
-    const [record, sourceId] = (databaseService.insertTraceroute as any).mock.calls[0];
+    expect(databaseService.insertTracerouteAsync).toHaveBeenCalledTimes(1);
+    const [record, sourceId] = (databaseService.insertTracerouteAsync as any).mock.calls[0];
     expect(record.fromNodeNum).toBe(NODE_IN);
     expect(record.route).toBe('[]');
     expect(record.snrTowards).toBe('[40]');
     expect(sourceId).toBe('bridge-1');
 
-    const telemetryCall = (databaseService.insertTelemetry as any).mock.calls
+    const telemetryCall = (databaseService.insertTelemetryAsync as any).mock.calls
       .find((c: any[]) => c[0].telemetryType === 'messageHops');
     expect(telemetryCall).toBeDefined();
     expect(telemetryCall[0].value).toBe(1); // route.length + 1
@@ -432,10 +436,10 @@ describe('ingestServiceEnvelope — PAXCOUNTER_APP', () => {
       envelope: envFor(NODE_IN, 34 /* PAXCOUNTER_APP */),
     });
     expect(result.ingested).toBe(true);
-    const types = (databaseService.insertTelemetry as any).mock.calls.map((c: any[]) => c[0].telemetryType);
+    const types = (databaseService.insertTelemetryAsync as any).mock.calls.map((c: any[]) => c[0].telemetryType);
     expect(types).toEqual(expect.arrayContaining(['paxcounterWifi', 'paxcounterBle', 'paxcounterUptime']));
     // All three carry the bridge's sourceId.
-    for (const call of (databaseService.insertTelemetry as any).mock.calls) {
+    for (const call of (databaseService.insertTelemetryAsync as any).mock.calls) {
       expect(call[1]).toBe('bridge-1');
     }
   });
@@ -490,8 +494,8 @@ describe('ingestServiceEnvelope — STORE_FORWARD_APP', () => {
       envelope: envFor(NODE_IN, 65),
     });
     expect(result.ingested).toBe(true);
-    expect(databaseService.upsertNode).toHaveBeenCalledTimes(1);
-    const upserted = (databaseService.upsertNode as any).mock.calls[0][0];
+    expect(databaseService.upsertNodeAsync).toHaveBeenCalledTimes(1);
+    const upserted = (databaseService.upsertNodeAsync as any).mock.calls[0][0];
     expect(upserted.nodeNum).toBe(NODE_IN);
     expect(upserted.isStoreForwardServer).toBe(true);
   });
@@ -506,7 +510,7 @@ describe('ingestServiceEnvelope — STORE_FORWARD_APP', () => {
     expect(result.ingested).toBe(false);
     expect(result.reason).toBe('unsupported-portnum');
     expect(databaseService.messages.insertMessage).not.toHaveBeenCalled();
-    expect(databaseService.upsertNode).not.toHaveBeenCalled();
+    expect(databaseService.upsertNodeAsync).not.toHaveBeenCalled();
   });
 });
 
@@ -663,7 +667,7 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
       envelope: envFor(NODE_IN, 70 /* TRACEROUTE_APP */),
     });
     expect(result.ingested).toBe(true);
-    const [record] = (databaseService.insertTraceroute as any).mock.calls[0];
+    const [record] = (databaseService.insertTracerouteAsync as any).mock.calls[0];
     expect(record.channel).toBe(CHANNEL_DB_OFFSET + 5);
   });
 
@@ -682,7 +686,7 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
     });
 
     expect(result.ingested).toBe(true);
-    const [insertedNode] = (databaseService.upsertNode as any).mock.calls[0];
+    const [insertedNode] = (databaseService.upsertNodeAsync as any).mock.calls[0];
     expect(insertedNode.channel).toBe(CHANNEL_DB_OFFSET + 9);
   });
 
@@ -695,7 +699,7 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
     });
 
     expect(result.ingested).toBe(true);
-    const [insertedNode] = (databaseService.upsertNode as any).mock.calls[0];
+    const [insertedNode] = (databaseService.upsertNodeAsync as any).mock.calls[0];
     expect(insertedNode.channel).toBe(CHANNEL_DB_OFFSET + 4);
   });
 
@@ -711,7 +715,7 @@ describe('ingestServiceEnvelope — channel_database resolution', () => {
     });
 
     expect(result.ingested).toBe(true);
-    const [insertedNode] = (databaseService.upsertNode as any).mock.calls[0];
+    const [insertedNode] = (databaseService.upsertNodeAsync as any).mock.calls[0];
     expect(insertedNode.channel).toBe(0); // raw slot from the envelope
   });
 });
@@ -722,7 +726,7 @@ describe('ingestServiceEnvelope — TELEMETRY_APP key normalization (#3314)', ()
   });
 
   const telemetryRows = () =>
-    (databaseService.insertTelemetry as any).mock.calls.map((c: any[]) => c[0]);
+    (databaseService.insertTelemetryAsync as any).mock.calls.map((c: any[]) => c[0]);
   const rowByType = (type: string) => telemetryRows().find((r: any) => r.telemetryType === type);
 
   it('stores device metrics under canonical short keys', async () => {
@@ -801,7 +805,7 @@ describe('ingestServiceEnvelope — lastHeard refresh must not clobber NodeInfo'
   });
 
   const senderUpsert = () =>
-    (databaseService.upsertNode as any).mock.calls
+    (databaseService.upsertNodeAsync as any).mock.calls
       .map((c: any[]) => c[0])
       .find((n: any) => n.nodeNum === NODE_IN);
 
@@ -895,7 +899,7 @@ describe('ingestServiceEnvelope — replay guard for lastHeard', () => {
   });
 
   const telemetryUpsert = () =>
-    (databaseService.upsertNode as any).mock.calls
+    (databaseService.upsertNodeAsync as any).mock.calls
       .map((c: any[]) => c[0])
       .find((n: any) => n.nodeNum === NODE_IN);
 

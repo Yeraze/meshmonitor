@@ -59,6 +59,9 @@ import {
 } from '../db/repositories/index.js';
 import type { EstimatedPosition, EstimatedPositionInput, SourceScope } from '../db/repositories/index.js';
 import type { DatabaseType, DbPacketLog as DbTypesPacketLog, DbPacketCountByNode, DbPacketCountByPortnum, DbDistinctRelayNode } from '../db/types.js';
+import { updateNodeMobility } from '../server/services/nodeMobilityService.js';
+import { selectNodeNeedingTraceroute } from '../server/services/autoTracerouteSelectionService.js';
+import { NodeCacheService } from '../server/services/nodeCacheService.js';
 
 // Configuration constants for traceroute history
 const TRACEROUTE_HISTORY_LIMIT = getEnvironmentConfig().tracerouteHistoryLimit;
@@ -353,92 +356,12 @@ class DatabaseService {
   // These caches allow sync methods like getSetting() and getNode() to work
   // with async databases by caching data loaded at startup
   private settingsCache: Map<string, string> = new Map();
-  private nodesCache: Map<string, DbNode> = new Map();
-
   /**
-   * Phase 3B: Build composite cache key from nodeNum + sourceId.
-   * The nodes table PK is (nodeNum, sourceId) post-migration 029.
+   * In-memory node cache (PostgreSQL/MySQL sync-method compatibility). Extracted
+   * into NodeCacheService, which owns the `${nodeNum}:${sourceId}` key scheme,
+   * repo→cache conversion, and the NodesRepository cache-hook wiring.
    */
-  private cacheKey(nodeNum: number, sourceId: string): string {
-    return `${nodeNum}:${sourceId}`;
-  }
-
-  /**
-   * Convert a repository-shaped node row (with `null` for missing fields and a
-   * `sourceId` column) into the local DatabaseService cache shape (with
-   * `undefined` for optional fields). Mirrors the conversion in
-   * loadCachesFromDatabase so cache writes from the repo cache hook stay
-   * structurally identical to the startup-loaded entries.
-   */
-  private repoNodeToCacheNode(node: any, sourceId: string): DbNode {
-    return {
-      nodeNum: node.nodeNum,
-      nodeId: node.nodeId,
-      longName: node.longName ?? '',
-      shortName: node.shortName ?? '',
-      hwModel: node.hwModel ?? 0,
-      role: node.role ?? undefined,
-      hopsAway: node.hopsAway ?? undefined,
-      lastMessageHops: node.lastMessageHops ?? undefined,
-      viaMqtt: node.viaMqtt ?? undefined,
-      macaddr: node.macaddr ?? undefined,
-      latitude: node.latitude ?? undefined,
-      longitude: node.longitude ?? undefined,
-      altitude: node.altitude ?? undefined,
-      batteryLevel: node.batteryLevel ?? undefined,
-      voltage: node.voltage ?? undefined,
-      channelUtilization: node.channelUtilization ?? undefined,
-      airUtilTx: node.airUtilTx ?? undefined,
-      lastHeard: node.lastHeard ?? undefined,
-      snr: node.snr ?? undefined,
-      rssi: node.rssi ?? undefined,
-      lastTracerouteRequest: node.lastTracerouteRequest ?? undefined,
-      firmwareVersion: node.firmwareVersion ?? undefined,
-      channel: node.channel ?? undefined,
-      isFavorite: node.isFavorite ?? undefined,
-      favoriteLocked: node.favoriteLocked ?? undefined,
-      isIgnored: node.isIgnored ?? undefined,
-      mobile: node.mobile ?? undefined,
-      rebootCount: node.rebootCount ?? undefined,
-      publicKey: node.publicKey ?? undefined,
-      hasPKC: node.hasPKC ?? undefined,
-      lastPKIPacket: node.lastPKIPacket ?? undefined,
-      keyIsLowEntropy: node.keyIsLowEntropy ?? undefined,
-      duplicateKeyDetected: node.duplicateKeyDetected ?? undefined,
-      keyMismatchDetected: node.keyMismatchDetected ?? undefined,
-      keySecurityIssueDetails: node.keySecurityIssueDetails ?? undefined,
-      welcomedAt: node.welcomedAt ?? undefined,
-      positionChannel: node.positionChannel ?? undefined,
-      positionPrecisionBits: node.positionPrecisionBits ?? undefined,
-      positionGpsAccuracy: node.positionGpsAccuracy ?? undefined,
-      positionHdop: node.positionHdop ?? undefined,
-      positionTimestamp: node.positionTimestamp ?? undefined,
-      positionOverrideEnabled: node.positionOverrideEnabled ?? undefined,
-      latitudeOverride: node.latitudeOverride ?? undefined,
-      longitudeOverride: node.longitudeOverride ?? undefined,
-      altitudeOverride: node.altitudeOverride ?? undefined,
-      positionOverrideIsPrivate: node.positionOverrideIsPrivate ?? undefined,
-      hideFromMap: node.hideFromMap ?? undefined,
-      notes: node.notes ?? undefined,
-      hasRemoteAdmin: node.hasRemoteAdmin ?? undefined,
-      lastRemoteAdminCheck: node.lastRemoteAdminCheck ?? undefined,
-      remoteAdminMetadata: node.remoteAdminMetadata ?? undefined,
-      sourceId: node.sourceId ?? sourceId,
-      createdAt: node.createdAt,
-      updatedAt: node.updatedAt,
-    } as DbNode;
-  }
-
-  /**
-   * Phase 3B: Iterate cache, optionally filtered by sourceId.
-   */
-  private *iterateCache(sourceId?: SourceScope): IterableIterator<DbNode> {
-    for (const node of this.nodesCache.values()) {
-      // ALL_SOURCES or undefined → yield all; concrete string → filter by source.
-      if (typeof sourceId === 'string' && sourceId !== '' && node.sourceId !== sourceId) continue;
-      yield node;
-    }
-  }
+  public readonly nodeCache: NodeCacheService = new NodeCacheService();
   private channelsCache: Map<number, DbChannel> = new Map();
   private _traceroutesCache: DbTraceroute[] = [];
   private _traceroutesByNodesCache: Map<string, DbTraceroute[]> = new Map();
@@ -956,54 +879,11 @@ class DatabaseService {
       this.settingsRepo = new SettingsRepository(drizzleDb, this.drizzleDbType);
       this.channelsRepo = new ChannelsRepository(drizzleDb, this.drizzleDbType);
       this.nodesRepo = new NodesRepository(drizzleDb, this.drizzleDbType);
-      // Wire the in-memory nodesCache to repository writes so PG/MySQL caches
+      // Wire the in-memory node cache to repository writes so PG/MySQL caches
       // stay coherent with DB state — fixes #2858 where bypassing the facade
       // (e.g. via `databaseService.nodes.upsertNode(...)`) left newly-discovered
       // nodes invisible to sync cache readers like setNodePositionOverride.
-      this.nodesRepo.setCacheHook({
-        setNode: (nodeNum, sourceId, node) => {
-          const key = this.cacheKey(nodeNum, sourceId);
-          if (!node) {
-            this.nodesCache.delete(key);
-            return;
-          }
-          this.nodesCache.set(key, this.repoNodeToCacheNode(node, sourceId));
-        },
-        setNodeAcrossSources: (nodeNum, freshNodes) => {
-          // Remove existing cache entries for this nodeNum that aren't in freshNodes,
-          // then upsert each fresh row.
-          const keepSourceIds = new Set(freshNodes.map(n => (n as any).sourceId ?? 'default'));
-          for (const key of Array.from(this.nodesCache.keys())) {
-            const cached = this.nodesCache.get(key);
-            if (cached && cached.nodeNum === nodeNum && !keepSourceIds.has(cached.sourceId ?? 'default')) {
-              this.nodesCache.delete(key);
-            }
-          }
-          for (const fresh of freshNodes) {
-            const sid = (fresh as any).sourceId ?? 'default';
-            this.nodesCache.set(this.cacheKey(nodeNum, sid), this.repoNodeToCacheNode(fresh, sid));
-          }
-        },
-        setNodeByNodeId: (nodeId, freshNodes) => {
-          // Replace all cache entries for this nodeId with the fresh set.
-          const keepKeys = new Set(
-            freshNodes.map(n => this.cacheKey(n.nodeNum, (n as any).sourceId ?? 'default'))
-          );
-          for (const key of Array.from(this.nodesCache.keys())) {
-            const cached = this.nodesCache.get(key);
-            if (cached && cached.nodeId === nodeId && !keepKeys.has(key)) {
-              this.nodesCache.delete(key);
-            }
-          }
-          for (const fresh of freshNodes) {
-            const sid = (fresh as any).sourceId ?? 'default';
-            this.nodesCache.set(this.cacheKey(fresh.nodeNum, sid), this.repoNodeToCacheNode(fresh, sid));
-          }
-        },
-        clear: () => {
-          this.nodesCache.clear();
-        },
-      });
+      this.nodesRepo.setCacheHook(this.nodeCache.buildHook());
       this.messagesRepo = new MessagesRepository(drizzleDb, this.drizzleDbType);
       this.telemetryRepo = new TelemetryRepository(drizzleDb, this.drizzleDbType);
       // Auth repo for all backends - Migration 012 aligned SQLite schema with Drizzle definitions
@@ -1073,75 +953,13 @@ class DatabaseService {
         logger.info(`[DatabaseService] Loaded ${this.settingsCache.size} settings into cache`);
       }
 
-      // Load all nodes into cache
+      // Load all nodes into cache (NodeCacheService handles the repo→cache
+      // conversion and cross-source warm-up).
       if (this.nodesRepo) {
-        // intentional cross-source: init cache warm-up loads all sources at once
-        const nodes = await this.nodesRepo.getAllNodes(ALL_SOURCES);
-        this.nodesCache.clear();
-        for (const node of nodes) {
-          // Convert from repo DbNode to local DbNode (null -> undefined conversion is safe)
-          // The types only differ in null vs undefined for optional fields
-          const localNode: DbNode = {
-            nodeNum: node.nodeNum,
-            nodeId: node.nodeId,
-            longName: node.longName ?? '',
-            shortName: node.shortName ?? '',
-            hwModel: node.hwModel ?? 0,
-            role: node.role ?? undefined,
-            hopsAway: node.hopsAway ?? undefined,
-            lastMessageHops: node.lastMessageHops ?? undefined,
-            viaMqtt: node.viaMqtt ?? undefined,
-            macaddr: node.macaddr ?? undefined,
-            latitude: node.latitude ?? undefined,
-            longitude: node.longitude ?? undefined,
-            altitude: node.altitude ?? undefined,
-            batteryLevel: node.batteryLevel ?? undefined,
-            voltage: node.voltage ?? undefined,
-            channelUtilization: node.channelUtilization ?? undefined,
-            airUtilTx: node.airUtilTx ?? undefined,
-            lastHeard: node.lastHeard ?? undefined,
-            snr: node.snr ?? undefined,
-            rssi: node.rssi ?? undefined,
-            lastTracerouteRequest: node.lastTracerouteRequest ?? undefined,
-            firmwareVersion: node.firmwareVersion ?? undefined,
-            channel: node.channel ?? undefined,
-            isFavorite: node.isFavorite ?? undefined,
-            favoriteLocked: node.favoriteLocked ?? undefined,
-            isIgnored: node.isIgnored ?? undefined,
-            mobile: node.mobile ?? undefined,
-            rebootCount: node.rebootCount ?? undefined,
-            publicKey: node.publicKey ?? undefined,
-            hasPKC: node.hasPKC ?? undefined,
-            lastPKIPacket: node.lastPKIPacket ?? undefined,
-            keyIsLowEntropy: node.keyIsLowEntropy ?? undefined,
-            duplicateKeyDetected: node.duplicateKeyDetected ?? undefined,
-            keyMismatchDetected: node.keyMismatchDetected ?? undefined,
-            keySecurityIssueDetails: node.keySecurityIssueDetails ?? undefined,
-            welcomedAt: node.welcomedAt ?? undefined,
-            positionChannel: node.positionChannel ?? undefined,
-            positionPrecisionBits: node.positionPrecisionBits ?? undefined,
-            positionGpsAccuracy: node.positionGpsAccuracy ?? undefined,
-            positionHdop: node.positionHdop ?? undefined,
-            positionTimestamp: node.positionTimestamp ?? undefined,
-            positionOverrideEnabled: node.positionOverrideEnabled ?? undefined,
-            latitudeOverride: node.latitudeOverride ?? undefined,
-            longitudeOverride: node.longitudeOverride ?? undefined,
-            altitudeOverride: node.altitudeOverride ?? undefined,
-            positionOverrideIsPrivate: node.positionOverrideIsPrivate ?? undefined,
-            hideFromMap: node.hideFromMap ?? undefined,
-            notes: node.notes ?? undefined,
-            hasRemoteAdmin: node.hasRemoteAdmin ?? undefined,
-            lastRemoteAdminCheck: node.lastRemoteAdminCheck ?? undefined,
-            remoteAdminMetadata: node.remoteAdminMetadata ?? undefined,
-            sourceId: (node as any).sourceId ?? 'default',
-            createdAt: node.createdAt,
-            updatedAt: node.updatedAt,
-          };
-          this.nodesCache.set(this.cacheKey(localNode.nodeNum, localNode.sourceId ?? 'default'), localNode);
-        }
+        await this.nodeCache.warmFromRepo(this.nodesRepo);
         // Count nodes with welcomedAt set for auto-welcome diagnostics
-        const nodesWithWelcome = Array.from(this.nodesCache.values()).filter(n => n.welcomedAt !== null && n.welcomedAt !== undefined);
-        logger.info(`[DatabaseService] Loaded ${this.nodesCache.size} nodes into cache (${nodesWithWelcome.length} previously welcomed)`);
+        const nodesWithWelcome = Array.from(this.nodeCache.values()).filter(n => n.welcomedAt !== null && n.welcomedAt !== undefined);
+        logger.info(`[DatabaseService] Loaded ${this.nodeCache.size} nodes into cache (${nodesWithWelcome.length} previously welcomed)`);
       }
 
       // Load all channels into cache
@@ -1524,7 +1342,7 @@ class DatabaseService {
       // Check if this node already exists (in cache for Postgres/MySQL, in DB for SQLite)
       const suppressedSourceId = (nodeData as any).sourceId ?? 'default';
       const existsInCache = (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql')
-        ? this.nodesCache.has(this.cacheKey(nodeData.nodeNum, suppressedSourceId))
+        ? this.nodeCache.has(nodeData.nodeNum, suppressedSourceId)
         : !!this.getNode(nodeData.nodeNum);
       if (!existsInCache) {
         logger.debug(`👻 Suppressed ghost node creation for !${nodeData.nodeNum.toString(16).padStart(8, '0')}`);
@@ -1537,7 +1355,7 @@ class DatabaseService {
       if (this.nodesRepo) {
         // Update cache optimistically
         const upsertSourceId = (nodeData as any).sourceId ?? 'default';
-        const existingNode = this.nodesCache.get(this.cacheKey(nodeData.nodeNum, upsertSourceId));
+        const existingNode = this.nodeCache.get(nodeData.nodeNum, upsertSourceId);
         const now = Date.now();
         const updatedNode: DbNode = {
           nodeNum: nodeData.nodeNum,
@@ -1614,7 +1432,7 @@ class DatabaseService {
           updatedNode.isIgnored = true;
         }
 
-        this.nodesCache.set(this.cacheKey(nodeData.nodeNum, upsertSourceId), updatedNode);
+        this.nodeCache.set(nodeData.nodeNum, upsertSourceId, updatedNode);
 
         // Fire and forget async version - pass the full merged node to avoid race conditions
         // where a subsequent update (like welcomedAt) could be overwritten. Pass sourceId
@@ -1760,11 +1578,11 @@ class DatabaseService {
       }
       // When sourceId is provided, use the composite cache key directly.
       if (sourceId) {
-        return this.nodesCache.get(this.cacheKey(nodeNum, sourceId)) ?? null;
+        return this.nodeCache.get(nodeNum, sourceId) ?? null;
       }
       // Legacy fallback: iterate cache to find first match by nodeNum
       // (used by callers that haven't been threaded through Phase 3 yet).
-      for (const node of this.nodesCache.values()) {
+      for (const node of this.nodeCache.values()) {
         if (node.nodeNum === nodeNum) return node;
       }
       return null;
@@ -1780,7 +1598,7 @@ class DatabaseService {
         logger.debug('getAllNodes() called before cache initialized');
         return [];
       }
-      return Array.from(this.iterateCache(sourceId));
+      return Array.from(this.nodeCache.iterate(sourceId));
     }
     // SQLite: delegate to Drizzle sync variant
     return this.nodesRepo!.getAllNodesSqlite(sourceId) as unknown as DbNode[];
@@ -1801,7 +1619,7 @@ class DatabaseService {
         return [];
       }
       const cutoff = Math.floor(Date.now() / 1000) - (sinceDays * 24 * 60 * 60);
-      return Array.from(this.iterateCache())
+      return Array.from(this.nodeCache.iterate())
         .filter(node => node.lastHeard !== undefined && node.lastHeard !== null && node.lastHeard > cutoff)
         .sort((a, b) => (b.lastHeard ?? 0) - (a.lastHeard ?? 0));
     }
@@ -1818,7 +1636,7 @@ class DatabaseService {
     const now = Date.now();
     // Update cache for PostgreSQL/MySQL
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
       if (cachedNode) {
         cachedNode.lastMessageHops = hops;
         cachedNode.updatedAt = now;
@@ -1844,7 +1662,7 @@ class DatabaseService {
     // Update cache for PostgreSQL/MySQL
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       let count = 0;
-      for (const node of this.iterateCache(sourceId ?? undefined)) {
+      for (const node of this.nodeCache.iterate(sourceId ?? undefined)) {
         if (node.welcomedAt === undefined || node.welcomedAt === null) {
           node.welcomedAt = now;
           node.updatedAt = now;
@@ -1872,7 +1690,7 @@ class DatabaseService {
     const now = Date.now();
     // Update cache for PostgreSQL/MySQL
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
       if (cachedNode && cachedNode.nodeId === nodeId && (cachedNode.welcomedAt === undefined || cachedNode.welcomedAt === null)) {
         cachedNode.welcomedAt = now;
         cachedNode.updatedAt = now;
@@ -1948,7 +1766,7 @@ class DatabaseService {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       const result: Array<{ nodeNum: number; publicKey: string | null }> = [];
-      for (const node of this.iterateCache()) {
+      for (const node of this.nodeCache.iterate()) {
         if (node.publicKey && node.publicKey !== '') {
           result.push({ nodeNum: node.nodeNum, publicKey: node.publicKey });
         }
@@ -1968,7 +1786,7 @@ class DatabaseService {
    */
   updateNodeSecurityFlags(nodeNum: number, duplicateKeyDetected: boolean, keySecurityIssueDetails: string | undefined, sourceId: string): void {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
       if (cachedNode) {
         cachedNode.duplicateKeyDetected = duplicateKeyDetected;
         cachedNode.keySecurityIssueDetails = keySecurityIssueDetails;
@@ -2023,7 +1841,7 @@ class DatabaseService {
 
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
       if (cachedNode) {
         cachedNode.keyIsLowEntropy = keyIsLowEntropy;
         cachedNode.keySecurityIssueDetails = combinedDetails || undefined;
@@ -2115,7 +1933,7 @@ class DatabaseService {
 
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
       if (cachedNode) {
         (cachedNode as any).isExcessivePackets = isExcessivePackets;
         (cachedNode as any).packetRatePerHour = packetRatePerHour;
@@ -2160,7 +1978,7 @@ class DatabaseService {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       const result: DbNode[] = [];
-      for (const node of this.iterateCache()) {
+      for (const node of this.nodeCache.iterate()) {
         if ((node as any).isExcessivePackets) {
           result.push(node);
         }
@@ -2177,7 +1995,7 @@ class DatabaseService {
   async getNodesWithExcessivePacketsAsync(sourceId?: string): Promise<DbNode[]> {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       const result: DbNode[] = [];
-      for (const node of this.iterateCache(sourceId)) {
+      for (const node of this.nodeCache.iterate(sourceId)) {
         if ((node as any).isExcessivePackets) {
           result.push(node);
         }
@@ -2198,7 +2016,7 @@ class DatabaseService {
   updateNodeTimeOffsetFlags(nodeNum: number, isTimeOffsetIssue: boolean, timeOffsetSeconds: number | null, sourceId: string): void {
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
       if (cachedNode) {
         (cachedNode as any).isTimeOffsetIssue = isTimeOffsetIssue;
         (cachedNode as any).timeOffsetSeconds = timeOffsetSeconds;
@@ -2242,7 +2060,7 @@ class DatabaseService {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       const result: DbNode[] = [];
-      for (const node of this.iterateCache()) {
+      for (const node of this.nodeCache.iterate()) {
         if ((node as any).isTimeOffsetIssue) {
           result.push(node);
         }
@@ -2259,7 +2077,7 @@ class DatabaseService {
   async getNodesWithTimeOffsetIssuesAsync(sourceId?: string): Promise<DbNode[]> {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       const result: DbNode[] = [];
-      for (const node of this.iterateCache(sourceId)) {
+      for (const node of this.nodeCache.iterate(sourceId)) {
         if ((node as any).isTimeOffsetIssue) {
           result.push(node);
         }
@@ -2546,7 +2364,7 @@ class DatabaseService {
         logger.debug(`getNodeCount() called before cache initialized`);
         return 0;
       }
-      return this.nodesCache.size;
+      return this.nodeCache.size;
     }
     return this.nodesRepo!.getNodeCountSqlite();
   }
@@ -2649,64 +2467,15 @@ class DatabaseService {
    * @returns The updated mobility status (0 = stationary, 1 = mobile)
    */
   async updateNodeMobilityAsync(nodeId: string): Promise<number> {
-    try {
-      // Get last 500 position telemetry records for this node
-      // Using a larger limit ensures we capture movement over a longer time period
-      // (50 was too small - nodes parked for a while would show only recent stationary positions)
-      const positionTelemetry = this.telemetryRepo
-        ? await this.telemetryRepo.getPositionTelemetryByNode(nodeId, 500, undefined, ALL_SOURCES) // intentional cross-source: mobility check pools all sources' positions
-        : this.getPositionTelemetryByNode(nodeId, 500);
-
-      const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
-      const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
-
-      let isMobile = 0;
-
-      // Need at least 2 position records to detect movement
-      if (latitudes.length >= 2 && longitudes.length >= 2) {
-        const latValues = latitudes.map(t => t.value);
-        const lonValues = longitudes.map(t => t.value);
-
-        const minLat = Math.min(...latValues);
-        const maxLat = Math.max(...latValues);
-        const minLon = Math.min(...lonValues);
-        const maxLon = Math.max(...lonValues);
-
-        // Calculate distance between min/max corners using Haversine formula
-        const R = 6371; // Earth's radius in km
-        const dLat = (maxLat - minLat) * Math.PI / 180;
-        const dLon = (maxLon - minLon) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                  Math.cos(minLat * Math.PI / 180) * Math.cos(maxLat * Math.PI / 180) *
-                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        const distance = R * c;
-
-        // If movement is greater than 100 meters (0.1 km), mark as mobile
-        isMobile = distance > 0.1 ? 1 : 0;
-
-        logger.debug(`📍 Node ${nodeId} mobility check: ${latitudes.length} positions, distance=${distance.toFixed(3)}km, mobile=${isMobile}`);
-      }
-
-      // Update the mobile flag in the database using repository
-      if (this.nodesRepo) {
-        await this.nodesRepo.updateNodeMobility(nodeId, isMobile);
-      }
-
-      // Also update the cache so getAllNodes() returns the updated value
-      for (const [key, cachedNode] of this.nodesCache.entries()) {
-        if (cachedNode.nodeId === nodeId) {
-          cachedNode.mobile = isMobile;
-          this.nodesCache.set(key, cachedNode);
-          break;
-        }
-      }
-
-      return isMobile;
-    } catch (error) {
-      logger.error(`Failed to update mobility for node ${nodeId}:`, error);
-      return 0; // Default to non-mobile on error
-    }
+    // Delegates the movement heuristic to NodeMobilityService; the cache patch
+    // stays here so the service has no direct dependency on the facade's cache.
+    return updateNodeMobility(nodeId, {
+      telemetryRepo: this.telemetryRepo!,
+      nodesRepo: this.nodesRepo!,
+      patchCache: (nid, mobile) => {
+        this.nodeCache.patchMobility(nid, mobile);
+      },
+    });
   }
 
   getMessagesByDay(days: number = 7): Array<{ date: string; count: number }> {
@@ -2858,10 +2627,9 @@ class DatabaseService {
     // For PostgreSQL/MySQL, update cache and fire-and-forget async delete
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       // Remove from cache immediately (scoped lookup)
-      const key = this.cacheKey(nodeNum, sourceId);
-      const existed = this.nodesCache.has(key);
+      const existed = this.nodeCache.has(nodeNum, sourceId);
       if (existed) {
-        this.nodesCache.delete(key);
+        this.nodeCache.delete(nodeNum, sourceId);
       }
 
       // Fire-and-forget async deletion of all associated data
@@ -3621,90 +3389,16 @@ class DatabaseService {
     sinceTimestamp?: number,
     sourceId?: string
   ): Promise<Record<string, Array<{ timestamp: number; ratePerMinute: number }>>> {
-    const result: Record<string, Array<{ timestamp: number; ratePerMinute: number }>> = {};
-    for (const type of types) {
-      result[type] = [];
+    // Backend-agnostic path: the telemetry repository computes rates via Drizzle
+    // for SQLite/PostgreSQL/MySQL alike (see TelemetryRepository.getPacketRates).
+    if (this.telemetryRepo) {
+      // intentional cross-source when sourceId omitted: the legacy facade
+      // (raw SQL) skipped the source filter entirely for undefined sourceId,
+      // and withSourceScope throws on undefined — preserve that behavior.
+      return this.telemetryRepo.getPacketRates(nodeId, types, sinceTimestamp, sourceId ?? ALL_SOURCES);
     }
-
-    if (this.drizzleDbType === 'postgres') {
-      const client = await this.postgresPool!.connect();
-      try {
-        const typePlaceholders = types.map((_, i) => `$${i + 2}`).join(', ');
-        const params: (string | number)[] = [nodeId, ...types];
-        let query = `SELECT "telemetryType", timestamp, value FROM telemetry
-                      WHERE "nodeId" = $1 AND "telemetryType" IN (${typePlaceholders})`;
-        if (sinceTimestamp !== undefined) {
-          params.push(sinceTimestamp);
-          query += ` AND timestamp >= $${params.length}`;
-        }
-        if (sourceId !== undefined) {
-          params.push(sourceId);
-          query += ` AND "sourceId" = $${params.length}`;
-        }
-        query += ` ORDER BY "telemetryType", timestamp ASC`;
-        const queryResult = await client.query(query, params);
-        return this.calculatePacketRates(queryResult.rows, types);
-      } finally {
-        client.release();
-      }
-    } else if (this.drizzleDbType === 'mysql') {
-      const pool = this.mysqlPool!;
-      const typePlaceholders = types.map(() => '?').join(', ');
-      const params: (string | number)[] = [nodeId, ...types];
-      let query = `SELECT telemetryType, timestamp, value FROM telemetry
-                    WHERE nodeId = ? AND telemetryType IN (${typePlaceholders})`;
-      if (sinceTimestamp !== undefined) {
-        params.push(sinceTimestamp);
-        query += ` AND timestamp >= ?`;
-      }
-      if (sourceId !== undefined) {
-        params.push(sourceId);
-        query += ` AND sourceId = ?`;
-      }
-      query += ` ORDER BY telemetryType, timestamp ASC`;
-      const [rows] = await pool.query(query, params);
-      return this.calculatePacketRates(rows as any[], types);
-    }
+    // Fallback to the legacy sync SQLite implementation when no repo is wired.
     return this.getPacketRates(nodeId, types, sinceTimestamp, sourceId);
-  }
-
-  private calculatePacketRates(
-    rows: Array<{ telemetryType: string; timestamp: number; value: number }>,
-    types: string[]
-  ): Record<string, Array<{ timestamp: number; ratePerMinute: number }>> {
-    const result: Record<string, Array<{ timestamp: number; ratePerMinute: number }>> = {};
-    for (const type of types) {
-      result[type] = [];
-    }
-
-    const groupedByType: Record<string, Array<{ timestamp: number; value: number }>> = {};
-    for (const row of rows) {
-      if (!groupedByType[row.telemetryType]) {
-        groupedByType[row.telemetryType] = [];
-      }
-      groupedByType[row.telemetryType].push({
-        timestamp: Number(row.timestamp),
-        value: Number(row.value),
-      });
-    }
-
-    for (const [type, samples] of Object.entries(groupedByType)) {
-      const rates: Array<{ timestamp: number; ratePerMinute: number }> = [];
-      for (let i = 1; i < samples.length; i++) {
-        const deltaValue = samples[i].value - samples[i - 1].value;
-        const deltaTimeMs = samples[i].timestamp - samples[i - 1].timestamp;
-        const deltaTimeMinutes = deltaTimeMs / 60000;
-        if (deltaValue < 0) continue;
-        if (deltaTimeMinutes > 60) continue;
-        if (deltaTimeMinutes < 0.1) continue;
-        rates.push({
-          timestamp: samples[i].timestamp,
-          ratePerMinute: deltaValue / deltaTimeMinutes,
-        });
-      }
-      result[type] = rates;
-    }
-    return result;
   }
 
   insertTraceroute(tracerouteData: DbTraceroute, sourceId?: string): void {
@@ -3767,6 +3461,68 @@ class DatabaseService {
     );
   }
 
+  /**
+   * Async version of insertTraceroute — carries the FULL pending-response
+   * deduplication logic for all backends (not a delegation to the sync form).
+   * For PG/MySQL it awaits the async repo dedup path; for SQLite it runs the
+   * transactional sync upsert (which is itself synchronous under the hood).
+   */
+  async insertTracerouteAsync(tracerouteData: DbTraceroute, sourceId?: string): Promise<void> {
+    // For PostgreSQL/MySQL, use async repository with full dedup logic
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      if (this.traceroutesRepo) {
+        const now = Date.now();
+        const pendingTimeoutAgo = now - PENDING_TRACEROUTE_TIMEOUT_MS;
+        try {
+          // Check for pending traceroute (reversed direction - see note below)
+          // NOTE: When a traceroute response comes in, fromNum is the destination (responder) and toNum is the local node (requester)
+          // But when we created the pending record, fromNodeNum was the local node and toNodeNum was the destination
+          const pendingRecord = await this.traceroutesRepo.findPendingTraceroute(
+            tracerouteData.toNodeNum,    // Reversed: response's toNum is the requester
+            tracerouteData.fromNodeNum,  // Reversed: response's fromNum is the destination
+            pendingTimeoutAgo,
+            sourceId
+          );
+
+          if (pendingRecord) {
+            // Update existing pending record
+            await this.traceroutesRepo.updateTracerouteResponse(
+              pendingRecord.id,
+              tracerouteData.route || null,
+              tracerouteData.routeBack || null,
+              tracerouteData.snrTowards || null,
+              tracerouteData.snrBack || null,
+              tracerouteData.timestamp,
+              tracerouteData.packetId ?? null
+            );
+          } else {
+            // Insert new traceroute
+            await this.traceroutesRepo.insertTraceroute(tracerouteData, sourceId);
+          }
+
+          // Cleanup old traceroutes
+          await this.traceroutesRepo.cleanupOldTraceroutesForPair(
+            tracerouteData.fromNodeNum,
+            tracerouteData.toNodeNum,
+            TRACEROUTE_HISTORY_LIMIT,
+            sourceId
+          );
+        } catch (error) {
+          logger.error('[DatabaseService] Failed to insert traceroute:', error);
+        }
+      }
+      return;
+    }
+
+    // SQLite: delegate to repository sync upsert (runs in a transaction)
+    this.traceroutes.upsertTracerouteSync(
+      tracerouteData,
+      PENDING_TRACEROUTE_TIMEOUT_MS,
+      TRACEROUTE_HISTORY_LIMIT,
+      sourceId
+    );
+  }
+
   getTraceroutesByNodes(fromNodeNum: number, toNodeNum: number, limit: number = 10): DbTraceroute[] {
     // For PostgreSQL/MySQL, use async repo with cache pattern
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
@@ -3815,6 +3571,14 @@ class DatabaseService {
     }
 
     return this.traceroutes.getAllTraceroutesRecentSync(limit, sourceId) as unknown as DbTraceroute[];
+  }
+
+  /**
+   * Async version of getAllTraceroutes — works across all backends by awaiting
+   * the repository directly instead of relying on the sync fire-and-cache path.
+   */
+  async getAllTraceroutesAsync(limit: number = 100, sourceId?: SourceScope): Promise<DbTraceroute[]> {
+    return (await this.traceroutes.getAllTraceroutes(limit, sourceId)) as unknown as DbTraceroute[];
   }
 
   getNodeNeedingTraceroute(localNodeNum: number): DbNode | null {
@@ -3985,167 +3749,26 @@ class DatabaseService {
    * Returns a node that needs a traceroute based on configured filters and timing
    */
   async getNodeNeedingTracerouteAsync(localNodeNum: number, sourceId?: string): Promise<DbNode | null> {
-    const now = Date.now();
-    const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+    // For SQLite (or before the repo is wired) with no sourceId, use the legacy
+    // sync selection path. The repo path handles SQLite when a sourceId is set.
+    if (this.drizzleDbType === 'sqlite' || !this.nodesRepo) {
+      if (!sourceId) return this.getNodeNeedingTraceroute(localNodeNum);
+    }
 
     // Read ALL filter configuration per-source (falls back to global when
     // no per-source override exists). This is what makes Auto-Traceroute
     // filters honor the Source that the scheduler tick is running on.
     const filterCfg = await this.getTracerouteFilterSettingsAsync(sourceId);
-    const EXPIRATION_MS = filterCfg.expirationHours * 60 * 60 * 1000;
 
-    // Get maxNodeAgeHours setting to filter only active nodes
-    // lastHeard is stored in seconds (Unix timestamp), so convert cutoff to seconds
+    // Get maxNodeAgeHours setting to filter only active nodes.
     const maxNodeAgeHours = parseInt(this.getSetting('maxNodeAgeHours') || '24');
-    const activeNodeCutoff = Math.floor(Date.now() / 1000) - (maxNodeAgeHours * 60 * 60);
 
-    // For SQLite, use repository (which now supports sourceId)
-    if (this.drizzleDbType === 'sqlite' || !this.nodesRepo) {
-      if (!sourceId) return this.getNodeNeedingTraceroute(localNodeNum);
-      // Use repo path for SQLite when sourceId is needed
-    }
-
-    try {
-      // Get eligible nodes from repository
-      let eligibleNodes = await this.nodesRepo!.getEligibleNodesForTraceroute(
-        localNodeNum,
-        activeNodeCutoff,
-        now - THREE_HOURS_MS,
-        now - EXPIRATION_MS,
-        sourceId
-      );
-
-      // Last heard and hop range filters (AND logic, applied before OR union filters)
-      const filterLastHeardEnabled = filterCfg.filterLastHeardEnabled;
-      const filterLastHeardHours = filterCfg.filterLastHeardHours;
-      const filterHopsEnabled = filterCfg.filterHopsEnabled;
-      const filterHopsMin = filterCfg.filterHopsMin;
-      const filterHopsMax = filterCfg.filterHopsMax;
-
-      // Apply last-heard filter (AND logic — applied before OR union filters)
-      if (filterLastHeardEnabled) {
-        const lastHeardCutoff = Math.floor(Date.now() / 1000) - (filterLastHeardHours * 3600);
-        eligibleNodes = eligibleNodes.filter(node => {
-          // Exclude nodes with no lastHeard or lastHeard older than cutoff
-          return node.lastHeard != null && node.lastHeard >= lastHeardCutoff;
-        });
-      }
-
-      // Apply hop range filter (AND logic)
-      if (filterHopsEnabled) {
-        eligibleNodes = eligibleNodes.filter(node => {
-          // Treat NULL hopsAway as 1 (direct neighbor)
-          const hops = node.hopsAway ?? 1;
-          return hops >= filterHopsMin && hops <= filterHopsMax;
-        });
-      }
-
-      // Check if node filter is enabled (per-source when scoped)
-      const filterEnabled = filterCfg.enabled;
-
-      if (filterEnabled) {
-        const specificNodes = filterCfg.nodeNums;
-        const filterChannels = filterCfg.filterChannels;
-        const filterRoles = filterCfg.filterRoles;
-        const filterHwModels = filterCfg.filterHwModels;
-        const filterNameRegex = filterCfg.filterNameRegex;
-
-        const filterNodesEnabled = filterCfg.filterNodesEnabled;
-        const filterChannelsEnabled = filterCfg.filterChannelsEnabled;
-        const filterRolesEnabled = filterCfg.filterRolesEnabled;
-        const filterHwModelsEnabled = filterCfg.filterHwModelsEnabled;
-        const filterRegexEnabled = filterCfg.filterRegexEnabled;
-
-        // Build regex matcher if enabled
-        let regexMatcher: RegExp | null = null;
-        if (filterRegexEnabled && filterNameRegex && filterNameRegex !== '.*') {
-          try {
-            regexMatcher = compileUserRegex(filterNameRegex, 'i');
-          } catch (e) {
-            logger.warn(`Invalid traceroute filter regex: ${filterNameRegex}`, e);
-          }
-        }
-
-        // Check if ANY filter is actually configured
-        const hasAnyFilter =
-          (filterNodesEnabled && specificNodes.length > 0) ||
-          (filterChannelsEnabled && filterChannels.length > 0) ||
-          (filterRolesEnabled && filterRoles.length > 0) ||
-          (filterHwModelsEnabled && filterHwModels.length > 0) ||
-          (filterRegexEnabled && regexMatcher !== null);
-
-        // Only filter if at least one filter is configured
-        if (hasAnyFilter) {
-          eligibleNodes = eligibleNodes.filter(node => {
-            // UNION logic: node passes if it matches ANY enabled filter
-            // Check specific nodes filter
-            if (filterNodesEnabled && specificNodes.length > 0) {
-              if (specificNodes.includes(node.nodeNum)) {
-                return true;
-              }
-            }
-
-            // Check channel filter
-            if (filterChannelsEnabled && filterChannels.length > 0) {
-              if (node.channel != null && filterChannels.includes(node.channel)) {
-                return true;
-              }
-            }
-
-            // Check role filter
-            if (filterRolesEnabled && filterRoles.length > 0) {
-              if (node.role != null && filterRoles.includes(node.role)) {
-                return true;
-              }
-            }
-
-            // Check hardware model filter
-            if (filterHwModelsEnabled && filterHwModels.length > 0) {
-              if (node.hwModel != null && filterHwModels.includes(node.hwModel)) {
-                return true;
-              }
-            }
-
-            // Check regex name filter
-            if (filterRegexEnabled && regexMatcher !== null) {
-              const name = node.longName || node.shortName || node.nodeId || '';
-              if (regexMatcher.test(name)) {
-                return true;
-              }
-            }
-
-            // Node didn't match any enabled filter
-            return false;
-          });
-        }
-        // If hasAnyFilter is false, all nodes pass (no filtering applied)
-      }
-
-      if (eligibleNodes.length === 0) {
-        return null;
-      }
-
-      // Check if sort by hops is enabled (per-source when scoped)
-      const sortByHops = filterCfg.sortByHops;
-
-      if (sortByHops) {
-        // Sort by hopsAway ascending (closer nodes first), with undefined hops at the end
-        eligibleNodes.sort((a, b) => {
-          const hopsA = a.hopsAway ?? Infinity;
-          const hopsB = b.hopsAway ?? Infinity;
-          return hopsA - hopsB;
-        });
-        // Take the first (closest) node
-        return this.normalizeBigInts(eligibleNodes[0]);
-      }
-
-      // Randomly select one node from the eligible nodes
-      const randomIndex = Math.floor(Math.random() * eligibleNodes.length);
-      return this.normalizeBigInts(eligibleNodes[randomIndex]);
-    } catch (error) {
-      logger.error('Error in getNodeNeedingTracerouteAsync:', error);
-      return null;
-    }
+    return selectNodeNeedingTraceroute(localNodeNum, sourceId, {
+      filterCfg,
+      maxNodeAgeHours,
+      nodesRepo: this.nodesRepo!,
+      normalizeBigInts: (node) => this.normalizeBigInts(node),
+    }) as unknown as Promise<DbNode | null>;
   }
 
   /**
@@ -4359,7 +3982,7 @@ class DatabaseService {
 
       // Update cache for PostgreSQL/MySQL
       if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-        const existingNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+        const existingNode = this.nodeCache.get(nodeNum, sourceId);
         if (existingNode) {
           existingNode.hasRemoteAdmin = hasRemoteAdmin;
           existingNode.lastRemoteAdminCheck = Date.now();
@@ -5353,14 +4976,14 @@ class DatabaseService {
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
       // Clear the nodes cache immediately (scoped clear when sourceId is provided)
       if (sourceId) {
-        for (const key of Array.from(this.nodesCache.keys())) {
-          const cached = this.nodesCache.get(key);
+        for (const key of Array.from(this.nodeCache.keys())) {
+          const cached = this.nodeCache.rawGet(key);
           if (cached && (cached as any).sourceId === sourceId) {
-            this.nodesCache.delete(key);
+            this.nodeCache.deleteByKey(key);
           }
         }
       } else {
-        this.nodesCache.clear();
+        this.nodeCache.clear();
       }
 
       // Fire-and-forget async purge
@@ -5777,7 +5400,7 @@ class DatabaseService {
       }
 
       // Also remove from cache (scoped lookup)
-      this.nodesCache.delete(this.cacheKey(nodeNum, sourceId));
+      this.nodeCache.delete(nodeNum, sourceId);
 
       logger.debug(`Deleted node ${nodeNum}@${sourceId}: messages=${messagesDeleted}, traceroutes=${traceroutesDeleted}, telemetry=${telemetryDeleted}, node=${nodeDeleted}`);
     } catch (error) {
@@ -5842,14 +5465,14 @@ class DatabaseService {
 
       // Clear the cache (scoped if a sourceId was provided)
       if (sourceId) {
-        for (const key of Array.from(this.nodesCache.keys())) {
-          const cached = this.nodesCache.get(key);
+        for (const key of Array.from(this.nodeCache.keys())) {
+          const cached = this.nodeCache.rawGet(key);
           if (cached && (cached as any).sourceId === sourceId) {
-            this.nodesCache.delete(key);
+            this.nodeCache.deleteByKey(key);
           }
         }
       } else {
-        this.nodesCache.clear();
+        this.nodeCache.clear();
       }
 
       logger.debug('✅ Successfully purged nodes and related data (async)');
@@ -5873,6 +5496,14 @@ class DatabaseService {
 
     // SQLite path
     this.traceroutesRepo!.insertRouteSegmentSync(segmentData, sourceId);
+  }
+
+  /**
+   * Async version of insertRouteSegment — awaits the repository insert directly
+   * so callers can surface/await failures instead of fire-and-forget.
+   */
+  async insertRouteSegmentAsync(segmentData: DbRouteSegment, sourceId?: string): Promise<void> {
+    await this.traceroutesRepo!.insertRouteSegment(segmentData, sourceId);
   }
 
   getLongestActiveRouteSegment(sourceId?: string): DbRouteSegment | null {
@@ -6148,6 +5779,16 @@ class DatabaseService {
   }
 
   /**
+   * Async version of getLatestNeighborInfoPerNodeScoped — queries the repository
+   * for the latest neighbor info per node, then filters by sourceId when scoped.
+   */
+  async getLatestNeighborInfoPerNodeScopedAsync(sourceId?: string): Promise<DbNeighborInfo[]> {
+    const all = await this.neighbors.getLatestNeighborInfoPerNode();
+    if (!sourceId) return all as unknown as DbNeighborInfo[];
+    return (all as any[]).filter((ni: any) => ni.sourceId === sourceId) as unknown as DbNeighborInfo[];
+  }
+
+  /**
    * Get direct neighbor RSSI statistics from zero-hop packets
    *
    * Queries packet_log for packets received directly (hop_start == hop_limit),
@@ -6193,7 +5834,7 @@ class DatabaseService {
   setNodeFavorite(nodeNum: number, isFavorite: boolean, sourceId: string, favoriteLocked?: boolean): void {
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
       if (cachedNode) {
         cachedNode.isFavorite = isFavorite;
         if (favoriteLocked !== undefined) {
@@ -6251,7 +5892,7 @@ class DatabaseService {
   setNodeFavoriteLocked(nodeNum: number, favoriteLocked: boolean, sourceId: string): void {
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
       if (cachedNode) {
         cachedNode.favoriteLocked = favoriteLocked;
         cachedNode.updatedAt = Date.now();
@@ -6308,7 +5949,7 @@ class DatabaseService {
 
     // For PostgreSQL/MySQL, update cache and fire-and-forget
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
       if (cachedNode) {
         cachedNode.isIgnored = isIgnored;
         cachedNode.updatedAt = Date.now();
@@ -6436,7 +6077,7 @@ class DatabaseService {
 
     // For PostgreSQL/MySQL, use cache and async repo
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const existingNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      const existingNode = this.nodeCache.get(nodeNum, sourceId);
       if (!existingNode) {
         const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
         logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in cache`);
@@ -6505,7 +6146,7 @@ class DatabaseService {
   } | null {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const node = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      const node = this.nodeCache.get(nodeNum, sourceId);
       if (!node) {
         return null;
       }
@@ -6561,7 +6202,7 @@ class DatabaseService {
 
     // For PostgreSQL/MySQL, use cache and async repo
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const existingNode = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+      const existingNode = this.nodeCache.get(nodeNum, sourceId);
       if (!existingNode) {
         const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
         logger.warn(`⚠️ Failed to update hideFromMap for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in cache`);
@@ -6598,7 +6239,7 @@ class DatabaseService {
     }
 
     // Keep the in-memory cache consistent for sync readers.
-    const cached = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+    const cached = this.nodeCache.get(nodeNum, sourceId);
     if (cached) {
       cached.hideFromMap = hidden;
       cached.updatedAt = now;
@@ -6623,7 +6264,7 @@ class DatabaseService {
     await this.nodesRepo.setNodeNotes(nodeNum, notes, sourceId);
 
     // Keep the in-memory cache consistent for sync readers.
-    const cached = this.nodesCache.get(this.cacheKey(nodeNum, sourceId));
+    const cached = this.nodeCache.get(nodeNum, sourceId);
     if (cached) {
       cached.notes = notes;
       cached.updatedAt = now;

@@ -35,7 +35,7 @@ router.get('/', async (req: Request, res: Response) => {
     const sourceIdStr = getScopedSourceId(req);
     const maxLimit = parseInt(limit as string) || 100;
 
-    let traceroutes = databaseService.getAllTraceroutes(maxLimit, sourceIdStr ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
+    let traceroutes = await databaseService.getAllTraceroutesAsync(maxLimit, sourceIdStr ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
 
     // Apply filters
     if (fromNodeId) {
@@ -74,7 +74,7 @@ router.get('/:fromNodeId/:toNodeId', async (req: Request, res: Response) => {
   try {
     const { fromNodeId, toNodeId } = req.params;
     const sourceIdParam = getScopedSourceId(req);
-    const allTraceroutes = databaseService.getAllTraceroutes(100, sourceIdParam ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
+    const allTraceroutes = await databaseService.getAllTraceroutesAsync(100, sourceIdParam ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
     const traceroute = allTraceroutes.find(t => t.fromNodeId === fromNodeId && t.toNodeId === toNodeId);
 
     if (!traceroute) {
