@@ -595,7 +595,9 @@ export class NodesRepository extends BaseRepository {
       await this.db
         .update(nodes)
         .set({ welcomedAt: now })
-        .where(eq(nodes.nodeNum, node.nodeNum));
+        .where(sourceId
+          ? and(eq(nodes.nodeNum, node.nodeNum), eq(nodes.sourceId, sourceId))
+          : eq(nodes.nodeNum, node.nodeNum));
       await this.syncCacheAcrossSources(node.nodeNum);
     }
     return toUpdate.length;

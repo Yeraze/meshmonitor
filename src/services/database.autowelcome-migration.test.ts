@@ -9,7 +9,7 @@ import os from 'os';
 // matching row in the `sources` table must exist.
 const TEST_SOURCE_ID = 'default';
 
-describe('DatabaseService - Auto Welcome Migration', () => {
+describe('DatabaseService - Auto Welcome Migration', async () => {
   let dbService: DatabaseService;
   let testDbPath: string;
 
@@ -48,8 +48,8 @@ describe('DatabaseService - Auto Welcome Migration', () => {
     delete process.env.DATABASE_PATH;
   });
 
-  describe('welcomedAt column migration', () => {
-    it('should have welcomedAt column in nodes table', () => {
+  describe('welcomedAt column migration', async () => {
+    it('should have welcomedAt column in nodes table', async () => {
       const stmt = dbService.db.prepare('PRAGMA table_info(nodes)');
       const columns = stmt.all() as Array<{ name: string; type: string }>;
 
@@ -58,7 +58,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       expect(welcomedAtColumn?.type).toBe('INTEGER');
     });
 
-    it('should allow NULL values for welcomedAt', () => {
+    it('should allow NULL values for welcomedAt', async () => {
       // Insert a node without welcomedAt
       const insertStmt = dbService.db.prepare(`
         INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt, sourceId)
@@ -75,11 +75,11 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       expect(node.welcomedAt).toBeNull();
     });
 
-    it('should allow updating welcomedAt', () => {
+    it('should allow updating welcomedAt', async () => {
       const now = Date.now();
 
       // Insert a node
-      dbService.upsertNode({
+      await dbService.upsertNodeAsync({
         nodeNum: 888888,
         nodeId: '!000d8f4c',
         longName: 'Update Test',
@@ -87,13 +87,10 @@ describe('DatabaseService - Auto Welcome Migration', () => {
         sourceId: TEST_SOURCE_ID,
       } as any);
 
-      // Update welcomedAt
-      dbService.upsertNode({
-        nodeNum: 888888,
-        nodeId: '!000d8f4c',
-        welcomedAt: now,
-        sourceId: TEST_SOURCE_ID,
-      } as any);
+      // Update welcomedAt directly — the repository upsert intentionally never
+      // clobbers welcomedAt (it is managed by markNodeAsWelcomedIfNotAlready to
+      // avoid races), so exercise the column update via the raw connection.
+      dbService.db.prepare('UPDATE nodes SET welcomedAt = ? WHERE nodeNum = ?').run(now, 888888);
 
       // Verify update
       const stmt = dbService.db.prepare('SELECT welcomedAt FROM nodes WHERE nodeNum = ?');
@@ -103,8 +100,8 @@ describe('DatabaseService - Auto Welcome Migration', () => {
     });
   });
 
-  describe('markAllNodesAsWelcomed', () => {
-    it('should mark all nodes without welcomedAt', () => {
+  describe('markAllNodesAsWelcomed', async () => {
+    it('should mark all nodes without welcomedAt', async () => {
       // Insert some test nodes without welcomedAt
       const insertStmt = dbService.db.prepare(`
         INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt, sourceId)
@@ -124,7 +121,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       expect(before.count).toBe(3);
 
       // Mark all nodes as welcomed
-      const markedCount = dbService.markAllNodesAsWelcomed();
+      const markedCount = await dbService.markAllNodesAsWelcomedAsync();
       // Should mark our 3 test nodes (broadcast node may or may not have welcomedAt already)
       expect(markedCount).toBeGreaterThanOrEqual(3);
 
@@ -136,7 +133,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       expect(after.count).toBe(3);
     });
 
-    it('should not modify nodes that already have welcomedAt', () => {
+    it('should not modify nodes that already have welcomedAt', async () => {
       const originalWelcomedAt = Date.now() - 10 * 24 * 60 * 60 * 1000; // 10 days ago
 
       // Insert a node with welcomedAt already set
@@ -146,7 +143,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       `);
 
       // Mark all nodes
-      dbService.markAllNodesAsWelcomed();
+      await dbService.markAllNodesAsWelcomedAsync();
 
       // Verify the original welcomedAt wasn't changed
       const stmt = dbService.db.prepare('SELECT welcomedAt FROM nodes WHERE nodeNum = ?');
@@ -154,16 +151,16 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       expect(node.welcomedAt).toBe(originalWelcomedAt);
     });
 
-    it('should return 0 when no nodes need to be marked', () => {
+    it('should return 0 when no nodes need to be marked', async () => {
       // Mark all existing nodes first
-      dbService.markAllNodesAsWelcomed();
+      await dbService.markAllNodesAsWelcomedAsync();
 
       // Now calling again should return 0
-      const markedCount = dbService.markAllNodesAsWelcomed();
+      const markedCount = await dbService.markAllNodesAsWelcomedAsync();
       expect(markedCount).toBe(0);
     });
 
-    it('should handle mixed scenarios correctly', () => {
+    it('should handle mixed scenarios correctly', async () => {
       const now = Date.now();
       const oldWelcomedAt = now - 5 * 24 * 60 * 60 * 1000; // 5 days ago
 
@@ -184,7 +181,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       `);
 
       // Should only mark the 2 nodes without welcomedAt (666666 and 777777)
-      const markedCount = dbService.markAllNodesAsWelcomed();
+      const markedCount = await dbService.markAllNodesAsWelcomedAsync();
       expect(markedCount).toBeGreaterThanOrEqual(2);
 
       // Verify node 555555 kept its original timestamp
@@ -200,12 +197,12 @@ describe('DatabaseService - Auto Welcome Migration', () => {
     });
   });
 
-  describe('markNodeAsWelcomedIfNotAlready', () => {
-    it('should mark node as welcomed when not already welcomed', () => {
+  describe('markNodeAsWelcomedIfNotAlready', async () => {
+    it('should mark node as welcomed when not already welcomed', async () => {
       const now = Date.now();
 
       // Insert a node without welcomedAt
-      dbService.upsertNode({
+      await dbService.upsertNodeAsync({
         nodeNum: 123456,
         nodeId: '!0001e240',
         longName: 'Test Node',
@@ -214,21 +211,21 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       } as any);
 
       // Mark the node as welcomed
-      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(123456, '!0001e240', TEST_SOURCE_ID);
+      const wasMarked = await dbService.nodes.markNodeAsWelcomedIfNotAlready(123456, '!0001e240', TEST_SOURCE_ID);
 
       expect(wasMarked).toBe(true);
 
       // Verify the node has welcomedAt set
-      const node = dbService.getNode(123456, TEST_SOURCE_ID);
+      const node = await dbService.nodes.getNode(123456, TEST_SOURCE_ID);
       expect(node?.welcomedAt).toBeDefined();
       expect(node?.welcomedAt!).toBeGreaterThan(now - 1000);
     });
 
-    it('should not mark node when already welcomed (atomic protection)', () => {
+    it('should not mark node when already welcomed (atomic protection)', async () => {
       const now = Date.now();
 
       // Insert a node with welcomedAt already set
-      dbService.upsertNode({
+      await dbService.upsertNodeAsync({
         nodeNum: 234567,
         nodeId: '!000393e7',
         longName: 'Already Welcomed',
@@ -238,18 +235,18 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       } as any);
 
       // Try to mark the node as welcomed again
-      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(234567, '!000393e7', TEST_SOURCE_ID);
+      const wasMarked = await dbService.nodes.markNodeAsWelcomedIfNotAlready(234567, '!000393e7', TEST_SOURCE_ID);
 
       expect(wasMarked).toBe(false);
 
       // Verify the welcomedAt timestamp didn't change
-      const node = dbService.getNode(234567, TEST_SOURCE_ID);
+      const node = await dbService.nodes.getNode(234567, TEST_SOURCE_ID);
       expect(node?.welcomedAt).toBe(now - 10000);
     });
 
-    it('should provide race condition protection for concurrent operations', () => {
+    it('should provide race condition protection for concurrent operations', async () => {
       // Insert a node without welcomedAt
-      dbService.upsertNode({
+      await dbService.upsertNodeAsync({
         nodeNum: 345678,
         nodeId: '!00054686',
         longName: 'Concurrent Test',
@@ -258,21 +255,21 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       } as any);
 
       // Simulate two processes trying to mark the node simultaneously
-      const result1 = dbService.markNodeAsWelcomedIfNotAlready(345678, '!00054686', TEST_SOURCE_ID);
-      const result2 = dbService.markNodeAsWelcomedIfNotAlready(345678, '!00054686', TEST_SOURCE_ID);
+      const result1 = await dbService.nodes.markNodeAsWelcomedIfNotAlready(345678, '!00054686', TEST_SOURCE_ID);
+      const result2 = await dbService.nodes.markNodeAsWelcomedIfNotAlready(345678, '!00054686', TEST_SOURCE_ID);
 
       // Only the first one should succeed
       expect(result1).toBe(true);
       expect(result2).toBe(false);
 
       // Node should be marked exactly once
-      const node = dbService.getNode(345678, TEST_SOURCE_ID);
+      const node = await dbService.nodes.getNode(345678, TEST_SOURCE_ID);
       expect(node?.welcomedAt).toBeDefined();
     });
 
-    it('should not mark node if nodeId does not match', () => {
+    it('should not mark node if nodeId does not match', async () => {
       // Insert a node
-      dbService.upsertNode({
+      await dbService.upsertNodeAsync({
         nodeNum: 456789,
         nodeId: '!0006f855',
         longName: 'ID Test',
@@ -281,25 +278,25 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       } as any);
 
       // Try to mark with wrong nodeId
-      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(456789, '!wrongid', TEST_SOURCE_ID);
+      const wasMarked = await dbService.nodes.markNodeAsWelcomedIfNotAlready(456789, '!wrongid', TEST_SOURCE_ID);
 
       expect(wasMarked).toBe(false);
 
       // Node should not be marked
-      const node = dbService.getNode(456789, TEST_SOURCE_ID);
+      const node = await dbService.nodes.getNode(456789, TEST_SOURCE_ID);
       expect(node?.welcomedAt).toBeNull();
     });
 
-    it('should return false for non-existent node', () => {
+    it('should return false for non-existent node', async () => {
       // Try to mark a node that doesn't exist
-      const wasMarked = dbService.markNodeAsWelcomedIfNotAlready(999999, '!000f423f', TEST_SOURCE_ID);
+      const wasMarked = await dbService.nodes.markNodeAsWelcomedIfNotAlready(999999, '!000f423f', TEST_SOURCE_ID);
 
       expect(wasMarked).toBe(false);
     });
   });
 
-  describe('handleAutoWelcomeEnabled', () => {
-    it('should mark all existing nodes as welcomed on first enable', () => {
+  describe('handleAutoWelcomeEnabled', async () => {
+    it('should mark all existing nodes as welcomed on first enable', async () => {
       // Insert some test nodes without welcomedAt
       const insertStmt = dbService.db.prepare(`
         INSERT INTO nodes (nodeNum, nodeId, longName, shortName, hwModel, createdAt, updatedAt, sourceId)
@@ -319,7 +316,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       expect(before.count).toBe(3);
 
       // Simulate enabling auto-welcome for the first time
-      const markedCount = dbService.handleAutoWelcomeEnabled();
+      const markedCount = await dbService.handleAutoWelcomeEnabledAsync();
 
       // Should have marked our 3 test nodes
       expect(markedCount).toBeGreaterThanOrEqual(3);
@@ -336,7 +333,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       expect(migrationStatus).toBe('completed');
     });
 
-    it('should not run twice (idempotent)', () => {
+    it('should not run twice (idempotent)', async () => {
       // Insert test node
       const now = Date.now();
       dbService.db.exec(`
@@ -345,7 +342,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       `);
 
       // Run first time
-      const firstCount = dbService.handleAutoWelcomeEnabled();
+      const firstCount = await dbService.handleAutoWelcomeEnabledAsync();
       expect(firstCount).toBeGreaterThanOrEqual(1);
 
       // Insert another node
@@ -355,7 +352,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       `);
 
       // Run second time - should not mark any nodes (migration already completed)
-      const secondCount = dbService.handleAutoWelcomeEnabled();
+      const secondCount = await dbService.handleAutoWelcomeEnabledAsync();
       expect(secondCount).toBe(0);
 
       // The new node should NOT be marked (migration already ran)
@@ -364,21 +361,19 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       expect(node.welcomedAt).toBeNull();
     });
 
-    it('should handle empty database gracefully', () => {
+    it('should handle empty database gracefully', async () => {
       // Ensure no nodes exist (except broadcast node)
       dbService.db.exec('DELETE FROM nodes WHERE nodeNum != 4294967295');
 
       // Should not throw
-      expect(() => {
-        dbService.handleAutoWelcomeEnabled();
-      }).not.toThrow();
+      await dbService.handleAutoWelcomeEnabledAsync();
 
       // Migration should be marked as completed
       const migrationStatus = dbService.getSetting('auto_welcome_first_enabled');
       expect(migrationStatus).toBe('completed');
     });
 
-    it('should only mark nodes without welcomedAt', () => {
+    it('should only mark nodes without welcomedAt', async () => {
       const now = Date.now();
       const oldWelcomedAt = now - 5 * 24 * 60 * 60 * 1000; // 5 days ago
 
@@ -395,7 +390,7 @@ describe('DatabaseService - Auto Welcome Migration', () => {
       `);
 
       // Run the handler
-      dbService.handleAutoWelcomeEnabled();
+      await dbService.handleAutoWelcomeEnabledAsync();
 
       // Node 666666 should keep its original timestamp
       const stmt1 = dbService.db.prepare('SELECT welcomedAt FROM nodes WHERE nodeNum = ?');

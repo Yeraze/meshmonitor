@@ -1142,20 +1142,20 @@ class DatabaseService {
       const broadcastNodeNum = 4294967295; // 0xFFFFFFFF
       const broadcastNodeId = '!ffffffff';
 
-      const existingNode = this.getNode(broadcastNodeNum);
+      const existingNode = this.nodesRepo!.getNodeSqlite(broadcastNodeNum) as unknown as DbNode | null;
       logger.debug('🔍 getNode(4294967295) returned:', existingNode);
 
       if (!existingNode) {
         logger.debug('🔍 No broadcast node found, creating it');
-        this.upsertNode({
+        this.nodesRepo!.upsertNodeSqlite({
           nodeNum: broadcastNodeNum,
           nodeId: broadcastNodeId,
           longName: 'Broadcast',
           shortName: 'BCAST'
-        });
+        }, false);
 
         // Verify it was created
-        const verify = this.getNode(broadcastNodeNum);
+        const verify = this.nodesRepo!.getNodeSqlite(broadcastNodeNum) as unknown as DbNode | null;
         logger.debug('🔍 After upsert, getNode(4294967295) returns:', verify);
       } else {
         logger.debug(`✅ Broadcast node already exists`);
@@ -1197,8 +1197,8 @@ class DatabaseService {
             const fromNodeNum = route[i];
             const toNodeNum = route[i + 1];
 
-            const fromNode = this.getNode(fromNodeNum);
-            const toNode = this.getNode(toNodeNum);
+            const fromNode = this.nodesRepo!.getNodeSqlite(fromNodeNum) as unknown as DbNode | null;
+            const toNode = this.nodesRepo!.getNodeSqlite(toNodeNum) as unknown as DbNode | null;
 
             // Only calculate distance if both nodes have position data
             if (fromNode?.latitude && fromNode?.longitude &&
@@ -1231,8 +1231,8 @@ class DatabaseService {
             const fromNodeNum = routeBack[i];
             const toNodeNum = routeBack[i + 1];
 
-            const fromNode = this.getNode(fromNodeNum);
-            const toNode = this.getNode(toNodeNum);
+            const fromNode = this.nodesRepo!.getNodeSqlite(fromNodeNum) as unknown as DbNode | null;
+            const toNode = this.nodesRepo!.getNodeSqlite(toNodeNum) as unknown as DbNode | null;
 
             // Only calculate distance if both nodes have position data
             if (fromNode?.latitude && fromNode?.longitude &&
@@ -1282,201 +1282,6 @@ class DatabaseService {
     }
   }
 
-  // Ghost node suppression methods
-  suppressGhostNode(nodeNum: number, durationMs: number = 30 * 60 * 1000): void {
-    const expiresAt = Date.now() + durationMs;
-    this.suppressedGhostNodes.set(nodeNum, expiresAt);
-    logger.info(`👻 Suppressed ghost node !${nodeNum.toString(16).padStart(8, '0')} for ${Math.round(durationMs / 60000)} minutes`);
-  }
-
-  unsuppressGhostNode(nodeNum: number): void {
-    if (this.suppressedGhostNodes.delete(nodeNum)) {
-      logger.info(`👻 Unsuppressed ghost node !${nodeNum.toString(16).padStart(8, '0')}`);
-    }
-  }
-
-  isNodeSuppressed(nodeNum: number | undefined | null): boolean {
-    if (nodeNum === undefined || nodeNum === null) return false;
-    const expiresAt = this.suppressedGhostNodes.get(nodeNum);
-    if (expiresAt === undefined) return false;
-    if (Date.now() >= expiresAt) {
-      this.suppressedGhostNodes.delete(nodeNum);
-      logger.debug(`👻 Ghost suppression expired for !${nodeNum.toString(16).padStart(8, '0')}`);
-      return false;
-    }
-    return true;
-  }
-
-  getSuppressedGhostNodes(): Array<{ nodeNum: number; nodeId: string; expiresAt: number; remainingMs: number }> {
-    const now = Date.now();
-    const result: Array<{ nodeNum: number; nodeId: string; expiresAt: number; remainingMs: number }> = [];
-    for (const [nodeNum, expiresAt] of this.suppressedGhostNodes) {
-      if (now < expiresAt) {
-        result.push({
-          nodeNum,
-          nodeId: `!${nodeNum.toString(16).padStart(8, '0')}`,
-          expiresAt,
-          remainingMs: expiresAt - now,
-        });
-      } else {
-        this.suppressedGhostNodes.delete(nodeNum);
-      }
-    }
-    return result;
-  }
-
-  // Node operations
-  upsertNode(nodeData: Partial<DbNode>): void {
-    logger.debug(`DEBUG: upsertNode called with nodeData:`, JSON.stringify(nodeData));
-    logger.debug(`DEBUG: nodeNum type: ${typeof nodeData.nodeNum}, value: ${nodeData.nodeNum}`);
-    logger.debug(`DEBUG: nodeId type: ${typeof nodeData.nodeId}, value: ${nodeData.nodeId}`);
-    if (nodeData.nodeNum === undefined || nodeData.nodeNum === null || !nodeData.nodeId) {
-      logger.error('Cannot upsert node: missing nodeNum or nodeId');
-      logger.error('STACK TRACE FOR FAILED UPSERT:');
-      logger.error(new Error().stack);
-      return;
-    }
-
-    // Ghost suppression: block creation of suppressed nodes but allow updates to existing ones
-    if (this.isNodeSuppressed(nodeData.nodeNum)) {
-      // Check if this node already exists (in cache for Postgres/MySQL, in DB for SQLite)
-      const suppressedSourceId = (nodeData as any).sourceId ?? 'default';
-      const existsInCache = (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql')
-        ? this.nodeCache.has(nodeData.nodeNum, suppressedSourceId)
-        : !!this.getNode(nodeData.nodeNum);
-      if (!existsInCache) {
-        logger.debug(`👻 Suppressed ghost node creation for !${nodeData.nodeNum.toString(16).padStart(8, '0')}`);
-        return;
-      }
-    }
-
-    // For PostgreSQL/MySQL, use async repo and update cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.nodesRepo) {
-        // Update cache optimistically
-        const upsertSourceId = (nodeData as any).sourceId ?? 'default';
-        const existingNode = this.nodeCache.get(nodeData.nodeNum, upsertSourceId);
-        const now = Date.now();
-        const updatedNode: DbNode = {
-          nodeNum: nodeData.nodeNum,
-          nodeId: nodeData.nodeId,
-          longName: nodeData.longName ?? existingNode?.longName ?? '',
-          shortName: nodeData.shortName ?? existingNode?.shortName ?? '',
-          hwModel: nodeData.hwModel ?? existingNode?.hwModel ?? 0,
-          role: nodeData.role ?? existingNode?.role,
-          hopsAway: nodeData.hopsAway ?? existingNode?.hopsAway,
-          lastMessageHops: nodeData.lastMessageHops ?? existingNode?.lastMessageHops,
-          viaMqtt: nodeData.viaMqtt ?? existingNode?.viaMqtt,
-          macaddr: nodeData.macaddr ?? existingNode?.macaddr,
-          latitude: nodeData.latitude ?? existingNode?.latitude,
-          longitude: nodeData.longitude ?? existingNode?.longitude,
-          altitude: nodeData.altitude ?? existingNode?.altitude,
-          batteryLevel: nodeData.batteryLevel ?? existingNode?.batteryLevel,
-          voltage: nodeData.voltage ?? existingNode?.voltage,
-          channelUtilization: nodeData.channelUtilization ?? existingNode?.channelUtilization,
-          airUtilTx: nodeData.airUtilTx ?? existingNode?.airUtilTx,
-          lastHeard: nodeData.lastHeard ?? existingNode?.lastHeard,
-          snr: nodeData.snr ?? existingNode?.snr,
-          rssi: nodeData.rssi ?? existingNode?.rssi,
-          lastTracerouteRequest: nodeData.lastTracerouteRequest ?? existingNode?.lastTracerouteRequest,
-          firmwareVersion: nodeData.firmwareVersion ?? existingNode?.firmwareVersion,
-          channel: nodeData.channel ?? existingNode?.channel,
-          isFavorite: nodeData.isFavorite ?? existingNode?.isFavorite,
-          favoriteLocked: nodeData.favoriteLocked ?? existingNode?.favoriteLocked,
-          isIgnored: nodeData.isIgnored ?? existingNode?.isIgnored,
-          mobile: nodeData.mobile ?? existingNode?.mobile,
-          rebootCount: nodeData.rebootCount ?? existingNode?.rebootCount,
-          publicKey: nodeData.publicKey ?? existingNode?.publicKey,
-          hasPKC: nodeData.hasPKC ?? existingNode?.hasPKC,
-          lastPKIPacket: nodeData.lastPKIPacket ?? existingNode?.lastPKIPacket,
-          keyIsLowEntropy: nodeData.keyIsLowEntropy ?? existingNode?.keyIsLowEntropy,
-          duplicateKeyDetected: nodeData.duplicateKeyDetected ?? existingNode?.duplicateKeyDetected,
-          keyMismatchDetected: nodeData.keyMismatchDetected ?? existingNode?.keyMismatchDetected,
-          // For keySecurityIssueDetails, allow explicit clearing by checking if property was set
-          keySecurityIssueDetails: 'keySecurityIssueDetails' in nodeData
-            ? (nodeData.keySecurityIssueDetails || undefined)
-            : existingNode?.keySecurityIssueDetails,
-          welcomedAt: nodeData.welcomedAt ?? existingNode?.welcomedAt,
-          positionChannel: nodeData.positionChannel ?? existingNode?.positionChannel,
-          positionPrecisionBits: nodeData.positionPrecisionBits ?? existingNode?.positionPrecisionBits,
-          positionGpsAccuracy: nodeData.positionGpsAccuracy ?? existingNode?.positionGpsAccuracy,
-          positionHdop: nodeData.positionHdop ?? existingNode?.positionHdop,
-          positionTimestamp: nodeData.positionTimestamp ?? existingNode?.positionTimestamp,
-          positionOverrideEnabled: nodeData.positionOverrideEnabled ?? existingNode?.positionOverrideEnabled,
-          latitudeOverride: nodeData.latitudeOverride ?? existingNode?.latitudeOverride,
-          longitudeOverride: nodeData.longitudeOverride ?? existingNode?.longitudeOverride,
-          altitudeOverride: nodeData.altitudeOverride ?? existingNode?.altitudeOverride,
-          positionOverrideIsPrivate: nodeData.positionOverrideIsPrivate ?? existingNode?.positionOverrideIsPrivate,
-          // Map visibility (#3549) - preserve existing toggle across packet upserts
-          hideFromMap: nodeData.hideFromMap ?? existingNode?.hideFromMap,
-          // Free-text notes (#3921) - preserve user annotation across packet upserts
-          notes: nodeData.notes ?? existingNode?.notes,
-          // Remote admin discovery - preserve existing values
-          hasRemoteAdmin: existingNode?.hasRemoteAdmin,
-          lastRemoteAdminCheck: existingNode?.lastRemoteAdminCheck,
-          remoteAdminMetadata: existingNode?.remoteAdminMetadata,
-          sourceId: upsertSourceId,
-          createdAt: existingNode?.createdAt ?? now,
-          updatedAt: now,
-        };
-
-        // The per-source ignore list is authoritative (issue #2601): a node's
-        // on-device ignore flag is wiped whenever the device's nodeDB churns,
-        // and it then reports the node as un-ignored. If the node is still on
-        // our blocklist, force the flag back on — for newly discovered AND
-        // existing nodes — so it's persisted in this single upsert write.
-        if (nodeData.nodeNum !== 4294967295 &&
-            updatedNode.isIgnored !== true &&
-            this.ignoredNodesRepo?.isIgnoredCached(nodeData.nodeNum, upsertSourceId)) {
-          logger.debug(`Re-applying ignore flag for node ${nodeData.nodeNum} on source ${upsertSourceId} (per-source blocklist)`);
-          updatedNode.isIgnored = true;
-        }
-
-        this.nodeCache.set(nodeData.nodeNum, upsertSourceId, updatedNode);
-
-        // Fire and forget async version - pass the full merged node to avoid race conditions
-        // where a subsequent update (like welcomedAt) could be overwritten. Pass sourceId
-        // explicitly so the upsert targets the right row even on the off chance the
-        // node object's sourceId field gets stripped somewhere in the cache update path.
-        this.nodesRepo.upsertNode(updatedNode, upsertSourceId).catch(err => {
-          logger.error('Failed to upsert node:', err);
-        });
-
-        // Send new node notification when a node becomes complete (#3796).
-        this.maybeNotifyNewNode(nodeData, existingNode, upsertSourceId);
-      }
-      return;
-    }
-
-    // Post-migration 029: existence check and UPDATE must be scoped per-source
-    // when a sourceId is supplied. Omitting the scope would cause an upsert on
-    // source A to overwrite source B's row for the same nodeNum.
-    const upsertSourceIdSqlite = (nodeData as any).sourceId as string | undefined;
-    const existingNode = upsertSourceIdSqlite
-      ? this.getNode(nodeData.nodeNum, upsertSourceIdSqlite)
-      : this.getNode(nodeData.nodeNum);
-
-    // The per-source ignore list is authoritative (issue #2601): a node's
-    // on-device ignore flag is wiped whenever the device's nodeDB churns, and it
-    // then reports the node as un-ignored. If the node is still on our blocklist,
-    // force the flag back on — for newly discovered AND existing nodes. The
-    // synchronous in-memory mirror keeps this off the per-packet DB query path.
-    let wasIgnored = false;
-    if (this.ignoredNodesRepo && upsertSourceIdSqlite) {
-      wasIgnored = this.ignoredNodesRepo.isIgnoredCached(nodeData.nodeNum, upsertSourceIdSqlite);
-    }
-
-    // Delegate to the repository's sync upsert — eliminates raw SQL. When
-    // wasIgnored is true the repo forces isIgnored on the inserted/updated row.
-    this.nodesRepo!.upsertNodeSqlite(nodeData, wasIgnored);
-
-    if (wasIgnored && !existingNode?.isIgnored) {
-      logger.debug(`Re-applied ignore flag for node ${nodeData.nodeNum} (per-source blocklist)`);
-    }
-
-    // Send new node notification when a node becomes complete (#3796).
-    this.maybeNotifyNewNode(nodeData, existingNode, upsertSourceIdSqlite);
-  }
 
   /**
    * Fire the "new node discovered" notification when an upsert moves a node
@@ -1560,49 +1365,27 @@ class DatabaseService {
     // has been notified this short-circuits to a single Set lookup.
     const needsCheck = nodeNum !== undefined && nodeNum !== null &&
       nodeNum !== 4294967295 && !this.newNodeNotifiedSet.has(nodeNum);
-    const existingNode = needsCheck ? this.getNode(nodeNum!, sid) : null;
+    const existingNode = needsCheck ? await this.nodes.getNode(nodeNum!, sid) as unknown as DbNode | null : null;
 
     await this.nodes.upsertNode(nodeData, sid);
+
+    // Per-source ignore list is authoritative (issue #2601): a node's on-device
+    // ignore flag is wiped when the device's nodeDB churns, and it then reports
+    // the node as un-ignored. If the node is still on our blocklist, force the
+    // flag back on — for newly discovered AND existing nodes. The repository
+    // upsert never writes isIgnored, so re-apply it explicitly after the write.
+    if (nodeNum !== undefined && nodeNum !== null && nodeNum !== 4294967295 &&
+        (nodeData as any).isIgnored !== true && sid &&
+        this.ignoredNodesRepo?.isIgnoredCached(nodeNum, sid)) {
+      await this.nodes.setNodeIgnored(nodeNum, true, sid);
+    }
 
     if (needsCheck) {
       this.maybeNotifyNewNode(nodeData, existingNode, sid);
     }
   }
 
-  getNode(nodeNum: number, sourceId?: string): DbNode | null {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (!this.cacheInitialized) {
-        logger.debug(`getNode(${nodeNum}) called before cache initialized`);
-        return null;
-      }
-      // When sourceId is provided, use the composite cache key directly.
-      if (sourceId) {
-        return this.nodeCache.get(nodeNum, sourceId) ?? null;
-      }
-      // Legacy fallback: iterate cache to find first match by nodeNum
-      // (used by callers that haven't been threaded through Phase 3 yet).
-      for (const node of this.nodeCache.values()) {
-        if (node.nodeNum === nodeNum) return node;
-      }
-      return null;
-    }
-    // SQLite: delegate to Drizzle sync variant
-    return this.nodesRepo!.getNodeSqlite(nodeNum, sourceId) as unknown as DbNode | null;
-  }
 
-  getAllNodes(sourceId?: SourceScope): DbNode[] {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (!this.cacheInitialized) {
-        logger.debug('getAllNodes() called before cache initialized');
-        return [];
-      }
-      return Array.from(this.nodeCache.iterate(sourceId));
-    }
-    // SQLite: delegate to Drizzle sync variant
-    return this.nodesRepo!.getAllNodesSqlite(sourceId) as unknown as DbNode[];
-  }
 
   /**
    * @deprecated Use databaseService.nodes.getAllNodes() directly. Kept for internal/test compatibility.
@@ -1611,137 +1394,10 @@ class DatabaseService {
     return this.nodes.getAllNodes(ALL_SOURCES) as unknown as DbNode[]; // intentional cross-source: deprecated compat shim returns all sources
   }
 
-  getActiveNodes(sinceDays: number = 7): DbNode[] {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (!this.cacheInitialized) {
-        logger.debug('getActiveNodes() called before cache initialized');
-        return [];
-      }
-      const cutoff = Math.floor(Date.now() / 1000) - (sinceDays * 24 * 60 * 60);
-      return Array.from(this.nodeCache.iterate())
-        .filter(node => node.lastHeard !== undefined && node.lastHeard !== null && node.lastHeard > cutoff)
-        .sort((a, b) => (b.lastHeard ?? 0) - (a.lastHeard ?? 0));
-    }
 
-    // SQLite: delegate to Drizzle sync variant
-    return this.nodesRepo!.getActiveNodesSqlite(sinceDays) as unknown as DbNode[];
-  }
 
-  /**
-   * Update the lastMessageHops for a node (calculated from hopStart - hopLimit of received packets).
-   * Phase 3C: scoped per-source — sourceId is required.
-   */
-  updateNodeMessageHops(nodeNum: number, hops: number, sourceId: string): void {
-    const now = Date.now();
-    // Update cache for PostgreSQL/MySQL
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
-      if (cachedNode) {
-        cachedNode.lastMessageHops = hops;
-        cachedNode.updatedAt = now;
-      }
-      // Fire and forget async update
-      if (this.nodesRepo) {
-        this.nodesRepo.updateNodeMessageHops(nodeNum, hops, sourceId).catch((err: Error) => {
-          logger.error('Failed to update node message hops:', err);
-        });
-      }
-      return;
-    }
-    // SQLite: delegate to Drizzle sync variant
-    this.nodesRepo!.updateNodeMessageHopsSqlite(nodeNum, hops, sourceId);
-  }
 
-  /**
-   * Mark all existing nodes as welcomed to prevent thundering herd on startup
-   * Should be called when Auto-Welcome is enabled during server initialization
-   */
-  markAllNodesAsWelcomed(sourceId?: string | null): number {
-    const now = Date.now();
-    // Update cache for PostgreSQL/MySQL
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      let count = 0;
-      for (const node of this.nodeCache.iterate(sourceId ?? undefined)) {
-        if (node.welcomedAt === undefined || node.welcomedAt === null) {
-          node.welcomedAt = now;
-          node.updatedAt = now;
-          count++;
-        }
-      }
-      // Fire and forget async update
-      if (this.nodesRepo) {
-        this.nodesRepo.markAllNodesAsWelcomed(sourceId ?? null).catch((err: Error) => {
-          logger.error('Failed to mark all nodes as welcomed:', err);
-        });
-      }
-      return count;
-    }
-    void now;
-    return this.nodesRepo!.markAllNodesAsWelcomedSqlite(sourceId ?? null);
-  }
 
-  /**
-   * Atomically mark a specific node as welcomed if not already welcomed.
-   * This prevents race conditions where multiple processes try to welcome the same node.
-   * Returns true if the node was marked, false if already welcomed.
-   */
-  markNodeAsWelcomedIfNotAlready(nodeNum: number, nodeId: string, sourceId: string): boolean {
-    const now = Date.now();
-    // Update cache for PostgreSQL/MySQL
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
-      if (cachedNode && cachedNode.nodeId === nodeId && (cachedNode.welcomedAt === undefined || cachedNode.welcomedAt === null)) {
-        cachedNode.welcomedAt = now;
-        cachedNode.updatedAt = now;
-        // Persist to database and log result
-        if (this.nodesRepo) {
-          this.nodesRepo.markNodeAsWelcomedIfNotAlready(nodeNum, nodeId, sourceId)
-            .then((marked) => {
-              if (marked) {
-                logger.info(`✅ Persisted welcomedAt=${now} to database for node ${nodeId}`);
-              }
-            })
-            .catch((err: Error) => {
-              logger.error(`❌ Failed to persist welcomedAt for node ${nodeId}:`, err);
-            });
-        }
-        return true;
-      }
-      return false;
-    }
-    void now;
-    return this.nodesRepo!.markNodeAsWelcomedIfNotAlreadySqlite(nodeNum, nodeId, sourceId);
-  }
-
-  /**
-   * Handle auto-welcome being enabled for the first time.
-   * This marks all existing nodes as welcomed to prevent a "thundering herd" of welcome messages.
-   * Should only be called when autoWelcomeEnabled changes from disabled to enabled.
-   */
-  handleAutoWelcomeEnabled(): number {
-    const migrationKey = 'auto_welcome_first_enabled';
-    const migrationCompleted = this.getSetting(migrationKey);
-
-    // If migration already ran, don't run it again
-    if (migrationCompleted === 'completed') {
-      logger.debug('✅ Auto-welcome first-enable migration already completed');
-      return 0;
-    }
-
-    logger.info('👋 Auto-welcome enabled for the first time - marking existing nodes as welcomed...');
-    const markedCount = this.markAllNodesAsWelcomed();
-    
-    if (markedCount > 0) {
-      logger.info(`✅ Marked ${markedCount} existing node(s) as welcomed to prevent spam`);
-    } else {
-      logger.debug('No existing nodes to mark as welcomed');
-    }
-
-    // Mark migration as completed so it doesn't run again
-    this.setSetting(migrationKey, 'completed');
-    return markedCount;
-  }
 
   /**
    * Get nodes with key security issues (low-entropy or duplicate keys)
@@ -1759,106 +1415,8 @@ class DatabaseService {
     return this.nodesRepo!.getNodesWithKeySecurityIssuesSqlite(sourceId) as unknown as DbNode[];
   }
 
-  /**
-   * Get all nodes that have public keys (for duplicate detection)
-   */
-  getNodesWithPublicKeys(): Array<{ nodeNum: number; publicKey: string | null }> {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const result: Array<{ nodeNum: number; publicKey: string | null }> = [];
-      for (const node of this.nodeCache.iterate()) {
-        if (node.publicKey && node.publicKey !== '') {
-          result.push({ nodeNum: node.nodeNum, publicKey: node.publicKey });
-        }
-      }
-      return result;
-    }
 
-    return this.nodesRepo!.getNodesWithPublicKeysSqlite();
-  }
 
-  /**
-   * Update security flags for a node by nodeNum (doesn't require nodeId)
-   * Used by duplicate key scanner which needs to update nodes that may not have nodeIds yet
-   */
-  /**
-   * Update security flags for a node, scoped per-source (post-migration 029).
-   */
-  updateNodeSecurityFlags(nodeNum: number, duplicateKeyDetected: boolean, keySecurityIssueDetails: string | undefined, sourceId: string): void {
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
-      if (cachedNode) {
-        cachedNode.duplicateKeyDetected = duplicateKeyDetected;
-        cachedNode.keySecurityIssueDetails = keySecurityIssueDetails;
-        cachedNode.updatedAt = Date.now();
-      }
-
-      if (this.nodesRepo) {
-        this.nodesRepo.updateNodeSecurityFlags(nodeNum, duplicateKeyDetected, keySecurityIssueDetails, sourceId).catch(err => {
-          logger.error(`Failed to update node security flags in database:`, err);
-        });
-      }
-      return;
-    }
-
-    // SQLite: synchronous update, always scoped by sourceId per migration 029.
-    this.nodesRepo!.updateNodeSecurityFlagsSqlite(nodeNum, duplicateKeyDetected, keySecurityIssueDetails, sourceId);
-  }
-
-  updateNodeLowEntropyFlag(nodeNum: number, keyIsLowEntropy: boolean, details: string | undefined, sourceId: string): void {
-    const node = this.getNode(nodeNum, sourceId);
-    if (!node) return;
-
-    // Combine low-entropy details with existing duplicate details if needed
-    let combinedDetails = details || '';
-
-    if (keyIsLowEntropy && details) {
-      // Setting low-entropy flag: combine with any existing duplicate info
-      if (node.duplicateKeyDetected && node.keySecurityIssueDetails) {
-        const existingDetails = node.keySecurityIssueDetails;
-        if (existingDetails.includes('Key shared with')) {
-          combinedDetails = `${details}; ${existingDetails}`;
-        } else {
-          combinedDetails = details;
-        }
-      }
-    } else if (!keyIsLowEntropy) {
-      // Clearing low-entropy flag: preserve only duplicate-related info
-      if (node.duplicateKeyDetected && node.keySecurityIssueDetails) {
-        const existingDetails = node.keySecurityIssueDetails;
-        // Only keep details if they're about key sharing (duplicate detection)
-        if (existingDetails.includes('Key shared with')) {
-          combinedDetails = existingDetails.replace(/Known low-entropy key[;,]?\s*/gi, '').trim();
-        } else {
-          // If no duplicate info, clear details entirely
-          combinedDetails = '';
-        }
-      } else {
-        // No duplicate flag, clear details entirely
-        combinedDetails = '';
-      }
-    }
-
-    // For PostgreSQL/MySQL, update cache and fire-and-forget
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
-      if (cachedNode) {
-        cachedNode.keyIsLowEntropy = keyIsLowEntropy;
-        cachedNode.keySecurityIssueDetails = combinedDetails || undefined;
-        cachedNode.updatedAt = Date.now();
-      }
-
-      if (this.nodesRepo) {
-        this.nodesRepo.updateNodeLowEntropyFlag(nodeNum, keyIsLowEntropy, combinedDetails || undefined, sourceId).catch(err => {
-          logger.error(`Failed to update node low entropy flag in database:`, err);
-        });
-      }
-      return;
-    }
-
-    // SQLite: synchronous update, scoped per-source.
-    this.nodesRepo!.updateNodeLowEntropyFlagSqlite(nodeNum, keyIsLowEntropy, combinedDetails || null, sourceId);
-  }
 
   /**
    * Get packet counts per node for the last hour (for spam detection)
@@ -1925,32 +1483,6 @@ class DatabaseService {
     });
   }
 
-  /**
-   * Update the spam detection flags for a node, scoped per-source.
-   */
-  updateNodeSpamFlags(nodeNum: number, isExcessivePackets: boolean, packetRatePerHour: number, sourceId: string): void {
-    const now = Math.floor(Date.now() / 1000);
-
-    // For PostgreSQL/MySQL, update cache and fire-and-forget
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
-      if (cachedNode) {
-        (cachedNode as any).isExcessivePackets = isExcessivePackets;
-        (cachedNode as any).packetRatePerHour = packetRatePerHour;
-        (cachedNode as any).packetRateLastChecked = now;
-        cachedNode.updatedAt = Date.now();
-      }
-
-      // Fire-and-forget database update
-      this.updateNodeSpamFlagsAsync(nodeNum, isExcessivePackets, packetRatePerHour, now, sourceId).catch(err => {
-        logger.error(`Failed to update node spam flags in database:`, err);
-      });
-      return;
-    }
-
-    // SQLite: synchronous update
-    this.nodesRepo!.updateNodeSpamFlagsSqlite(nodeNum, isExcessivePackets, packetRatePerHour, now, sourceId);
-  }
 
   /**
    * Update the spam detection flags for a node (async), scoped per-source.
@@ -1971,23 +1503,6 @@ class DatabaseService {
     this.nodesRepo!.updateNodeSpamFlagsSqlite(nodeNum, isExcessivePackets, packetRatePerHour, lastChecked, sourceId);
   }
 
-  /**
-   * Get all nodes with excessive packet rates (for security page)
-   */
-  getNodesWithExcessivePackets(): DbNode[] {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const result: DbNode[] = [];
-      for (const node of this.nodeCache.iterate()) {
-        if ((node as any).isExcessivePackets) {
-          result.push(node);
-        }
-      }
-      return result;
-    }
-
-    return this.nodesRepo!.getNodesWithExcessivePacketsSqlite() as unknown as DbNode[];
-  }
 
   /**
    * Get all nodes with excessive packet rates (async)
@@ -2003,36 +1518,9 @@ class DatabaseService {
       return result;
     }
 
-    if (sourceId) {
-      return this.nodesRepo!.getNodesWithExcessivePacketsSqlite(sourceId) as unknown as DbNode[];
-    }
-    return this.getNodesWithExcessivePackets();
+    return this.nodesRepo!.getNodesWithExcessivePacketsSqlite(sourceId) as unknown as DbNode[];
   }
 
-  /**
-   * Update the time offset detection flags for a node (sync facade).
-   * sourceId is required post-migration 029 since (nodeNum, sourceId) is the PK.
-   */
-  updateNodeTimeOffsetFlags(nodeNum: number, isTimeOffsetIssue: boolean, timeOffsetSeconds: number | null, sourceId: string): void {
-    // For PostgreSQL/MySQL, update cache and fire-and-forget
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
-      if (cachedNode) {
-        (cachedNode as any).isTimeOffsetIssue = isTimeOffsetIssue;
-        (cachedNode as any).timeOffsetSeconds = timeOffsetSeconds;
-        cachedNode.updatedAt = Date.now();
-      }
-
-      // Fire-and-forget database update
-      this.updateNodeTimeOffsetFlagsAsync(nodeNum, isTimeOffsetIssue, timeOffsetSeconds, sourceId).catch(err => {
-        logger.error(`Failed to update node time offset flags in database:`, err);
-      });
-      return;
-    }
-
-    // SQLite: synchronous update, scoped by sourceId
-    this.nodesRepo!.updateNodeTimeOffsetFlagsSqlite(nodeNum, isTimeOffsetIssue, timeOffsetSeconds, sourceId);
-  }
 
   /**
    * Update the time offset detection flags for a node (async).
@@ -2053,23 +1541,6 @@ class DatabaseService {
     this.nodesRepo!.updateNodeTimeOffsetFlagsSqlite(nodeNum, isTimeOffsetIssue, timeOffsetSeconds, sourceId);
   }
 
-  /**
-   * Get all nodes with time offset issues (for security page)
-   */
-  getNodesWithTimeOffsetIssues(): DbNode[] {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const result: DbNode[] = [];
-      for (const node of this.nodeCache.iterate()) {
-        if ((node as any).isTimeOffsetIssue) {
-          result.push(node);
-        }
-      }
-      return result;
-    }
-
-    return this.nodesRepo!.getNodesWithTimeOffsetIssuesSqlite() as unknown as DbNode[];
-  }
 
   /**
    * Get all nodes with time offset issues (async)
@@ -2085,10 +1556,7 @@ class DatabaseService {
       return result;
     }
 
-    if (sourceId) {
-      return this.nodesRepo!.getNodesWithTimeOffsetIssuesSqlite(sourceId) as unknown as DbNode[];
-    }
-    return this.getNodesWithTimeOffsetIssues();
+    return this.nodesRepo!.getNodesWithTimeOffsetIssuesSqlite(sourceId) as unknown as DbNode[];
   }
 
   /**
@@ -2357,17 +1825,6 @@ class DatabaseService {
     return 0;
   }
 
-  getNodeCount(): number {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (!this.cacheInitialized) {
-        logger.debug(`getNodeCount() called before cache initialized`);
-        return 0;
-      }
-      return this.nodeCache.size;
-    }
-    return this.nodesRepo!.getNodeCountSqlite();
-  }
 
   getTelemetryCount(): number {
     // For PostgreSQL/MySQL, telemetry is not cached and count is only used for stats
@@ -2401,64 +1858,6 @@ class DatabaseService {
     return this.telemetry.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType, ALL_SOURCES); // intentional cross-source: deprecated shim has no sourceId
   }
 
-  /**
-   * Update node mobility status based on position telemetry
-   * Checks if a node has moved more than 100 meters based on its last 500 position records
-   * @param nodeId The node ID to check
-   * @returns The updated mobility status (0 = stationary, 1 = mobile)
-   */
-  updateNodeMobility(nodeId: string): number {
-    try {
-      // For PostgreSQL/MySQL, mobility detection requires async telemetry queries
-      // Use updateNodeMobilityAsync instead
-      if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-        return 0;
-      }
-
-      // Get last 500 position telemetry records for this node
-      // Using a larger limit ensures we capture movement over a longer time period
-      const positionTelemetry = this.getPositionTelemetryByNode(nodeId, 500);
-
-      const latitudes = positionTelemetry.filter(t => t.telemetryType === 'latitude');
-      const longitudes = positionTelemetry.filter(t => t.telemetryType === 'longitude');
-
-      let isMobile = 0;
-
-      // Need at least 2 position records to detect movement
-      if (latitudes.length >= 2 && longitudes.length >= 2) {
-        const latValues = latitudes.map(t => t.value);
-        const lonValues = longitudes.map(t => t.value);
-
-        const minLat = Math.min(...latValues);
-        const maxLat = Math.max(...latValues);
-        const minLon = Math.min(...lonValues);
-        const maxLon = Math.max(...lonValues);
-
-        // Calculate distance between min/max corners using Haversine formula
-        const R = 6371; // Earth's radius in km
-        const dLat = (maxLat - minLat) * Math.PI / 180;
-        const dLon = (maxLon - minLon) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                  Math.cos(minLat * Math.PI / 180) * Math.cos(maxLat * Math.PI / 180) *
-                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        const distance = R * c;
-
-        // If movement is greater than 100 meters (0.1 km), mark as mobile
-        isMobile = distance > 0.1 ? 1 : 0;
-
-        logger.debug(`📍 Node ${nodeId} mobility check: ${latitudes.length} positions, distance=${distance.toFixed(3)}km, mobile=${isMobile}`);
-      }
-
-      // Update the mobile flag in the database
-      this.nodesRepo!.updateNodeMobilitySqlite(nodeId, isMobile);
-
-      return isMobile;
-    } catch (error) {
-      logger.error(`Failed to update mobility for node ${nodeId}:`, error);
-      return 0; // Default to non-mobile on error
-    }
-  }
 
   /**
    * Async version of updateNodeMobility - works for all database backends
@@ -2515,22 +1914,6 @@ class DatabaseService {
     return 0;
   }
 
-  cleanupInactiveNodes(days: number = 30): number {
-    // For PostgreSQL/MySQL, fire-and-forget async cleanup
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.nodesRepo) {
-        const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-        this.nodesRepo.deleteInactiveNodes(cutoff).catch(err => {
-          logger.debug('Failed to cleanup inactive nodes:', err);
-        });
-      }
-      return 0;
-    }
-
-    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-    // Skip nodes that are ignored - they should persist even if inactive
-    return this.nodesRepo!.deleteInactiveNodesSqlite(cutoff);
-  }
 
   // Message deletion operations
   deleteMessage(id: string): boolean {
@@ -2618,83 +2001,6 @@ class DatabaseService {
     return this.telemetry.deleteTelemetryByNodeSync(nodeNum);
   }
 
-  deleteNode(nodeNum: number, sourceId: string): {
-    messagesDeleted: number;
-    traceroutesDeleted: number;
-    telemetryDeleted: number;
-    nodeDeleted: boolean;
-  } {
-    // For PostgreSQL/MySQL, update cache and fire-and-forget async delete
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Remove from cache immediately (scoped lookup)
-      const existed = this.nodeCache.has(nodeNum, sourceId);
-      if (existed) {
-        this.nodeCache.delete(nodeNum, sourceId);
-      }
-
-      // Fire-and-forget async deletion of all associated data
-      this.deleteNodeAsync(nodeNum, sourceId).catch(err => {
-        logger.error(`Failed to delete node ${nodeNum}@${sourceId} from database:`, err);
-      });
-
-      // Return immediately with cache-based result
-      // Actual counts not available in sync method for PostgreSQL
-      return {
-        messagesDeleted: 0, // Unknown in sync mode
-        traceroutesDeleted: 0,
-        telemetryDeleted: 0,
-        nodeDeleted: existed
-      };
-    }
-
-    // SQLite: synchronous deletion
-    // Delete all data associated with the node and then the node itself
-
-    // Delete DMs to/from this node
-    const dmsDeleted = this.purgeDirectMessages(nodeNum);
-
-    // Also delete broadcast/channel messages FROM this node
-    // (messages the deleted node sent to public channels).
-    // SQLite: delegate to Drizzle sync variant.
-    const broadcastDeleted = this.messagesRepo
-      ? this.messagesRepo.deleteBroadcastMessagesFromNodeSqlite(nodeNum)
-      : 0;
-
-    const messagesDeleted = dmsDeleted + broadcastDeleted;
-    const traceroutesDeleted = this.purgeNodeTraceroutes(nodeNum);
-    const telemetryDeleted = this.purgeNodeTelemetry(nodeNum);
-
-    // Delete route segments where this node is involved
-    this.traceroutes.deleteRouteSegmentsInvolvingNodeSync(nodeNum);
-
-    // Delete neighbor_info records where this node is involved (either as source or neighbor).
-    // Scoped to this source (leak fix): matches deleteNodeAsync, which already passes sourceId.
-    if (this.neighborsRepo) {
-      this.neighborsRepo.deleteNeighborInfoInvolvingNode(nodeNum, sourceId).catch(err =>
-        logger.debug('Failed to delete neighbor info involving node:', err)
-      );
-    }
-
-    // Delete packet log entries for this node (#2637) so Packet Monitor
-    // doesn't keep showing history for a deleted node
-    if (this.packetLogRepo) {
-      try {
-        this.packetLogRepo.deletePacketLogsForNodeSync(nodeNum, sourceId);
-      } catch (err) {
-        logger.error(`Failed to delete packet logs for node ${nodeNum}@${sourceId}:`, err);
-      }
-    }
-
-    // Delete the node from the nodes table (scoped to sourceId)
-    const nodeDeleted = this.nodesRepo!.deleteNodeSqlite(nodeNum, sourceId);
-
-    return {
-      messagesDeleted,
-      traceroutesDeleted,
-      telemetryDeleted,
-      nodeDeleted
-    };
-  }
 
 
 
@@ -2809,44 +2115,7 @@ class DatabaseService {
     }
   }
 
-  // Export/Import functionality
-  exportData(): { nodes: DbNode[]; messages: DbMessage[] } {
-    return {
-      nodes: this.getAllNodes(ALL_SOURCES), // intentional cross-source: full backup export spans all sources
-      messages: this.getMessages(10000, 0, ALL_SOURCES) // Export last 10k messages across all sources
-    };
-  }
 
-  importData(data: { nodes: DbNode[]; messages: DbMessage[] }): void {
-    // For PostgreSQL/MySQL, this method is not supported (use dedicated backup/restore)
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      throw new Error('importData is not supported for PostgreSQL/MySQL. Use dedicated backup/restore functionality.');
-    }
-
-    const transaction = this.db.transaction(() => {
-      // Clear existing data
-      if (this.messagesRepo) {
-        this.messagesRepo.deleteAllMessagesSqlite();
-      }
-      this.nodesRepo!.truncateNodesSqlite();
-
-      // Import nodes via repository
-      for (const node of data.nodes) {
-        this.nodesRepo!.importNodeSqlite(node);
-      }
-
-      // Import messages — delegate to the Drizzle-backed sync variant so
-      // column mapping matches the schema. insertMessageSqlite uses INSERT
-      // OR IGNORE which is safe on re-import (no duplicate-key failures).
-      if (this.messagesRepo) {
-        for (const message of data.messages) {
-          this.messagesRepo.insertMessageSqlite(message as any);
-        }
-      }
-    });
-
-    transaction();
-  }
 
   // Channel operations
   // (legacy synchronous DatabaseService.upsertChannel + ChannelsRepository.upsertChannelSync
@@ -4965,65 +4234,6 @@ class DatabaseService {
     this.telemetryTypesCacheBySource.delete(DatabaseService.TELEMETRY_TYPES_CACHE_GLOBAL_KEY);
   }
 
-  // Danger zone operations
-  // When sourceId is provided, the purge is scoped to that source only; all
-  // child tables receive a WHERE sourceId = ? filter. When omitted, all rows
-  // are deleted (legacy behavior preserved for unscoped callers).
-  purgeAllNodes(sourceId?: string): void {
-    logger.debug(`⚠️ PURGING ${sourceId ? `source ${sourceId}'s ` : 'all '}nodes and related data from database`);
-
-    // For PostgreSQL/MySQL, clear cache and fire-and-forget async purge
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Clear the nodes cache immediately (scoped clear when sourceId is provided)
-      if (sourceId) {
-        for (const key of Array.from(this.nodeCache.keys())) {
-          const cached = this.nodeCache.rawGet(key);
-          if (cached && (cached as any).sourceId === sourceId) {
-            this.nodeCache.deleteByKey(key);
-          }
-        }
-      } else {
-        this.nodeCache.clear();
-      }
-
-      // Fire-and-forget async purge
-      this.purgeAllNodesAsync(sourceId).catch(err => {
-        logger.error('Failed to purge nodes from database:', err);
-      });
-
-      logger.debug('✅ Cache cleared, async purge started');
-      return;
-    }
-
-    // SQLite: synchronous deletion
-    // Delete in order to respect foreign key constraints
-    // First delete all child records that reference nodes
-    if (this.messagesRepo) {
-      this.messagesRepo.deleteAllMessagesSqlite(sourceId);
-    }
-    this.telemetry.deleteAllTelemetrySync(sourceId);
-    this.traceroutes.deleteAllTraceroutesSync(sourceId);
-    this.traceroutes.deleteAllRouteSegmentsSync(sourceId);
-    if (this.neighborsRepo) {
-      // Use Drizzle repo for all backends (including SQLite)
-      this.neighborsRepo.deleteAllNeighborInfo(sourceId).catch(err =>
-        logger.debug('Failed to delete neighbor info:', err)
-      );
-    }
-    // Clear packet log so Packet Monitor doesn't show ghost entries from purged nodes (issue #2637)
-    if (this.packetLogRepo) {
-      try {
-        this.packetLogRepo.clearPacketLogsSync(sourceId);
-      } catch (err) {
-        logger.error('Failed to clear packet logs during purge:', err);
-      }
-    }
-    // Finally delete the nodes themselves
-    this.nodesRepo!.truncateNodesSqlite(sourceId);
-    // Telemetry cache invalidation after bulk purge
-    this.invalidateTelemetryTypesCache(sourceId);
-    logger.debug('✅ Successfully purged nodes and related data');
-  }
 
   purgeAllTelemetry(sourceId?: string): void {
     logger.debug(`⚠️ PURGING ${sourceId ? `source ${sourceId}'s ` : 'all '}telemetry from database`);
@@ -5928,61 +5138,6 @@ class DatabaseService {
     logger.debug(`Node ${nodeNum}@${sourceId} favoriteLocked set to: ${favoriteLocked} (${result.changes} row updated)`);
   }
 
-  // Ignored operations (scoped to sourceId — Phase 3C2)
-  setNodeIgnored(nodeNum: number, isIgnored: boolean, sourceId: string): void {
-    // Get the node info for the persistent ignore list
-    const node = this.getNode(nodeNum, sourceId);
-    const nodeId = node?.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`;
-
-    // Persist to/remove from the per-source ignored_nodes table (migration 048).
-    if (isIgnored) {
-      this.ignoredNodes.addIgnoredNodeAsync(
-        nodeNum, sourceId, nodeId, node?.longName, node?.shortName
-      ).catch(err => {
-        logger.error('Failed to add node to per-source ignore list:', err);
-      });
-    } else {
-      this.ignoredNodes.removeIgnoredNodeAsync(nodeNum, sourceId).catch(err => {
-        logger.error('Failed to remove node from per-source ignore list:', err);
-      });
-    }
-
-    // For PostgreSQL/MySQL, update cache and fire-and-forget
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cachedNode = this.nodeCache.get(nodeNum, sourceId);
-      if (cachedNode) {
-        cachedNode.isIgnored = isIgnored;
-        cachedNode.updatedAt = Date.now();
-      }
-
-      if (this.nodesRepo) {
-        this.nodesRepo.setNodeIgnored(nodeNum, isIgnored, sourceId).catch(err => {
-          logger.error(`Failed to set node ignored status in database:`, err);
-        });
-      }
-
-      logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum}@${sourceId} ignored status set to: ${isIgnored}`);
-      return;
-    }
-
-    // SQLite: synchronous update
-    const now = Date.now();
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare(`
-      UPDATE nodes SET
-        isIgnored = ?,
-        updatedAt = ?
-      WHERE nodeNum = ? AND sourceId = ?
-    `);
-    const result = stmt.run(isIgnored ? 1 : 0, now, nodeNum, sourceId);
-
-    if (result.changes === 0) {
-      logger.warn(`Failed to update ignored status for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
-      throw new Error(`Node ${nodeId} not found`);
-    }
-
-    logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum}@${sourceId} ignored status set to: ${isIgnored} (${result.changes} row updated)`);
-  }
 
   // Persistent ignored nodes operations — use databaseService.ignoredNodes.xxxAsync() directly
 
@@ -6063,190 +5218,9 @@ class DatabaseService {
     }
   }
 
-  // Position override operations (scoped to sourceId — Phase 3C2)
-  setNodePositionOverride(
-    nodeNum: number,
-    enabled: boolean,
-    sourceId: string,
-    latitude?: number,
-    longitude?: number,
-    altitude?: number,
-    isPrivate: boolean = false
-  ): void {
-    const now = Date.now();
 
-    // For PostgreSQL/MySQL, use cache and async repo
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const existingNode = this.nodeCache.get(nodeNum, sourceId);
-      if (!existingNode) {
-        const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-        logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in cache`);
-        throw new Error(`Node ${nodeId} not found`);
-      }
 
-      // Update cache (in-place)
-      existingNode.positionOverrideEnabled = enabled;
-      existingNode.latitudeOverride = enabled && latitude !== undefined ? latitude : undefined;
-      existingNode.longitudeOverride = enabled && longitude !== undefined ? longitude : undefined;
-      existingNode.altitudeOverride = enabled && altitude !== undefined ? altitude : undefined;
-      existingNode.positionOverrideIsPrivate = enabled && isPrivate;
-      existingNode.updatedAt = now;
 
-      // Fire and forget async update — pass sourceId explicitly so the upsert targets
-      // the live-source row (see issue #2902). Without this the repository fell back to
-      // 'default', creating a stray row that the map never reads from.
-      if (this.nodesRepo) {
-        this.nodesRepo.upsertNode(existingNode, sourceId).catch(err => {
-          logger.error('Failed to update position override:', err);
-        });
-      }
-
-      logger.debug(`📍 Node ${nodeNum}@${sourceId} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)${isPrivate ? ' [PRIVATE]' : ''}` : ''}`);
-      return;
-    }
-
-    // SQLite path
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare(`
-      UPDATE nodes SET
-        positionOverrideEnabled = ?,
-        latitudeOverride = ?,
-        longitudeOverride = ?,
-        altitudeOverride = ?,
-        positionOverrideIsPrivate = ?,
-        updatedAt = ?
-      WHERE nodeNum = ? AND sourceId = ?
-    `);
-    const result = stmt.run(
-      enabled ? 1 : 0,
-      enabled && latitude !== undefined ? latitude : null,
-      enabled && longitude !== undefined ? longitude : null,
-      enabled && altitude !== undefined ? altitude : null,
-      enabled && isPrivate ? 1 : 0,
-      now,
-      nodeNum,
-      sourceId
-    );
-
-    if (result.changes === 0) {
-      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-      logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
-      throw new Error(`Node ${nodeId} not found`);
-    }
-
-    logger.debug(`📍 Node ${nodeNum}@${sourceId} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)${isPrivate ? ' [PRIVATE]' : ''}` : ''}`);
-  }
-
-  getNodePositionOverride(nodeNum: number, sourceId: string): {
-    enabled: boolean;
-    latitude?: number;
-    longitude?: number;
-    altitude?: number;
-    isPrivate: boolean;
-  } | null {
-    // For PostgreSQL/MySQL, use cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const node = this.nodeCache.get(nodeNum, sourceId);
-      if (!node) {
-        return null;
-      }
-
-      return {
-        enabled: node.positionOverrideEnabled === true,
-        latitude: node.latitudeOverride ?? undefined,
-        longitude: node.longitudeOverride ?? undefined,
-        altitude: node.altitudeOverride ?? undefined,
-        isPrivate: node.positionOverrideIsPrivate === true,
-      };
-    }
-
-    // SQLite path
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare(`
-      SELECT positionOverrideEnabled, latitudeOverride, longitudeOverride, altitudeOverride, positionOverrideIsPrivate
-      FROM nodes
-      WHERE nodeNum = ? AND sourceId = ?
-    `);
-    const row = stmt.get(nodeNum, sourceId) as {
-      positionOverrideEnabled: number | boolean | null;
-      latitudeOverride: number | null;
-      longitudeOverride: number | null;
-      altitudeOverride: number | null;
-      positionOverrideIsPrivate: number | boolean | null;
-    } | undefined;
-
-    if (!row) {
-      return null;
-    }
-
-    return {
-      enabled: row.positionOverrideEnabled === true || row.positionOverrideEnabled === 1,
-      latitude: row.latitudeOverride ?? undefined,
-      longitude: row.longitudeOverride ?? undefined,
-      altitude: row.altitudeOverride ?? undefined,
-      isPrivate: row.positionOverrideIsPrivate === true || row.positionOverrideIsPrivate === 1,
-    };
-  }
-
-  clearNodePositionOverride(nodeNum: number, sourceId: string): void {
-    this.setNodePositionOverride(nodeNum, false, sourceId);
-  }
-
-  /**
-   * Set the per-node "Hide from Map" flag (issue #3549). When true, MeshMonitor
-   * suppresses the node's marker on every map view while leaving it visible in
-   * node lists, packet monitor, DMs, etc. Display-only — never synced to mesh.
-   */
-  setNodeHideFromMap(nodeNum: number, hidden: boolean, sourceId: string): void {
-    const now = Date.now();
-
-    // For PostgreSQL/MySQL, use cache and async repo
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const existingNode = this.nodeCache.get(nodeNum, sourceId);
-      if (!existingNode) {
-        const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-        logger.warn(`⚠️ Failed to update hideFromMap for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in cache`);
-        throw new Error(`Node ${nodeId} not found`);
-      }
-
-      existingNode.hideFromMap = hidden;
-      existingNode.updatedAt = now;
-
-      if (this.nodesRepo) {
-        this.nodesRepo.upsertNode(existingNode, sourceId).catch(err => {
-          logger.error('Failed to update hideFromMap:', err);
-        });
-      }
-
-      logger.debug(`🗺️ Node ${nodeNum}@${sourceId} hideFromMap ${hidden ? 'enabled' : 'disabled'}`);
-      return;
-    }
-
-    // SQLite path
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare(`
-      UPDATE nodes SET
-        hideFromMap = ?,
-        updatedAt = ?
-      WHERE nodeNum = ? AND sourceId = ?
-    `);
-    const result = stmt.run(hidden ? 1 : 0, now, nodeNum, sourceId);
-
-    if (result.changes === 0) {
-      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-      logger.warn(`⚠️ Failed to update hideFromMap for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
-      throw new Error(`Node ${nodeId} not found`);
-    }
-
-    // Keep the in-memory cache consistent for sync readers.
-    const cached = this.nodeCache.get(nodeNum, sourceId);
-    if (cached) {
-      cached.hideFromMap = hidden;
-      cached.updatedAt = now;
-    }
-
-    logger.debug(`🗺️ Node ${nodeNum}@${sourceId} hideFromMap ${hidden ? 'enabled' : 'disabled'}`);
-  }
 
   /**
    * Set the free-text per-node notes field (issue #3921). MeshMonitor-local
@@ -7837,7 +6811,7 @@ class DatabaseService {
       const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
       return this.nodesRepo!.deleteInactiveNodesForSourceSqlite(cutoff, sourceId);
     }
-    return this.cleanupInactiveNodes(days);
+    return this.nodesRepo!.cleanupInactiveNodes(days);
   }
 
   async cleanupInvalidChannelsAsync(sourceId?: string): Promise<number> {
@@ -7906,13 +6880,25 @@ class DatabaseService {
     return this.markDMMessagesAsRead(localNodeId, remoteNodeId, userId, beforeTimestamp);
   }
 
-  // Group 3: Nodes
-  async getNodesWithPublicKeysAsync(): Promise<Array<{ nodeNum: number; publicKey: string | null }>> {
-    return this.getNodesWithPublicKeys();
-  }
 
   async setNodeIgnoredAsync(nodeNum: number, isIgnored: boolean, sourceId: string): Promise<void> {
-    this.setNodeIgnored(nodeNum, isIgnored, sourceId);
+    // Get the node info for the persistent ignore list
+    const node = await this.nodes.getNode(nodeNum, sourceId) as unknown as DbNode | null;
+    const nodeId = node?.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`;
+
+    // Persist to/remove from the per-source ignored_nodes table (migration 048).
+    if (isIgnored) {
+      await this.ignoredNodes.addIgnoredNodeAsync(
+        nodeNum, sourceId, nodeId, node?.longName, node?.shortName
+      );
+    } else {
+      await this.ignoredNodes.removeIgnoredNodeAsync(nodeNum, sourceId);
+    }
+
+    // Update the node row (isIgnored flag) + in-memory cache for all dialects.
+    await this.nodes.setNodeIgnored(nodeNum, isIgnored, sourceId);
+
+    logger.debug(`${isIgnored ? '🚫' : '✅'} Node ${nodeNum}@${sourceId} ignored status set to: ${isIgnored}`);
   }
 
   async getNodePositionOverrideAsync(nodeNum: number, sourceId: string): Promise<{
@@ -7922,7 +6908,48 @@ class DatabaseService {
     altitude?: number;
     isPrivate?: boolean;
   } | null> {
-    return this.getNodePositionOverride(nodeNum, sourceId);
+    // For PostgreSQL/MySQL, use cache
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const node = this.nodeCache.get(nodeNum, sourceId);
+      if (!node) {
+        return null;
+      }
+
+      return {
+        enabled: node.positionOverrideEnabled === true,
+        latitude: node.latitudeOverride ?? undefined,
+        longitude: node.longitudeOverride ?? undefined,
+        altitude: node.altitudeOverride ?? undefined,
+        isPrivate: node.positionOverrideIsPrivate === true,
+      };
+    }
+
+    // SQLite path
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
+    const stmt = this.db.prepare(`
+      SELECT positionOverrideEnabled, latitudeOverride, longitudeOverride, altitudeOverride, positionOverrideIsPrivate
+      FROM nodes
+      WHERE nodeNum = ? AND sourceId = ?
+    `);
+    const row = stmt.get(nodeNum, sourceId) as {
+      positionOverrideEnabled: number | boolean | null;
+      latitudeOverride: number | null;
+      longitudeOverride: number | null;
+      altitudeOverride: number | null;
+      positionOverrideIsPrivate: number | boolean | null;
+    } | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      enabled: row.positionOverrideEnabled === true || row.positionOverrideEnabled === 1,
+      latitude: row.latitudeOverride ?? undefined,
+      longitude: row.longitudeOverride ?? undefined,
+      altitude: row.altitudeOverride ?? undefined,
+      isPrivate: row.positionOverrideIsPrivate === true || row.positionOverrideIsPrivate === 1,
+    };
   }
 
   async setNodePositionOverrideAsync(
@@ -7934,23 +6961,151 @@ class DatabaseService {
     altitude?: number,
     isPrivate: boolean = false
   ): Promise<void> {
-    this.setNodePositionOverride(nodeNum, enabled, sourceId, latitude, longitude, altitude, isPrivate);
+    const now = Date.now();
+
+    // For PostgreSQL/MySQL, use cache and async repo
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const existingNode = this.nodeCache.get(nodeNum, sourceId);
+      if (!existingNode) {
+        const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+        logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in cache`);
+        throw new Error(`Node ${nodeId} not found`);
+      }
+
+      // Update cache (in-place)
+      existingNode.positionOverrideEnabled = enabled;
+      existingNode.latitudeOverride = enabled && latitude !== undefined ? latitude : undefined;
+      existingNode.longitudeOverride = enabled && longitude !== undefined ? longitude : undefined;
+      existingNode.altitudeOverride = enabled && altitude !== undefined ? altitude : undefined;
+      existingNode.positionOverrideIsPrivate = enabled && isPrivate;
+      existingNode.updatedAt = now;
+
+      // Fire and forget async update — pass sourceId explicitly so the upsert targets
+      // the live-source row (see issue #2902). Without this the repository fell back to
+      // 'default', creating a stray row that the map never reads from.
+      if (this.nodesRepo) {
+        this.nodesRepo.upsertNode(existingNode, sourceId).catch(err => {
+          logger.error('Failed to update position override:', err);
+        });
+      }
+
+      logger.debug(`📍 Node ${nodeNum}@${sourceId} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)${isPrivate ? ' [PRIVATE]' : ''}` : ''}`);
+      return;
+    }
+
+    // SQLite path
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
+    const stmt = this.db.prepare(`
+      UPDATE nodes SET
+        positionOverrideEnabled = ?,
+        latitudeOverride = ?,
+        longitudeOverride = ?,
+        altitudeOverride = ?,
+        positionOverrideIsPrivate = ?,
+        updatedAt = ?
+      WHERE nodeNum = ? AND sourceId = ?
+    `);
+    const result = stmt.run(
+      enabled ? 1 : 0,
+      enabled && latitude !== undefined ? latitude : null,
+      enabled && longitude !== undefined ? longitude : null,
+      enabled && altitude !== undefined ? altitude : null,
+      enabled && isPrivate ? 1 : 0,
+      now,
+      nodeNum,
+      sourceId
+    );
+
+    if (result.changes === 0) {
+      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+      logger.warn(`⚠️ Failed to update position override for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
+      throw new Error(`Node ${nodeId} not found`);
+    }
+
+    logger.debug(`📍 Node ${nodeNum}@${sourceId} position override ${enabled ? 'enabled' : 'disabled'}${enabled ? ` (${latitude}, ${longitude}, ${altitude}m)${isPrivate ? ' [PRIVATE]' : ''}` : ''}`);
   }
 
   async clearNodePositionOverrideAsync(nodeNum: number, sourceId: string): Promise<void> {
-    this.clearNodePositionOverride(nodeNum, sourceId);
+    await this.setNodePositionOverrideAsync(nodeNum, false, sourceId);
   }
 
   async setNodeHideFromMapAsync(nodeNum: number, hidden: boolean, sourceId: string): Promise<void> {
-    this.setNodeHideFromMap(nodeNum, hidden, sourceId);
+    const now = Date.now();
+
+    // For PostgreSQL/MySQL, use cache and async repo
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      const existingNode = this.nodeCache.get(nodeNum, sourceId);
+      if (!existingNode) {
+        const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+        logger.warn(`⚠️ Failed to update hideFromMap for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in cache`);
+        throw new Error(`Node ${nodeId} not found`);
+      }
+
+      existingNode.hideFromMap = hidden;
+      existingNode.updatedAt = now;
+
+      if (this.nodesRepo) {
+        this.nodesRepo.upsertNode(existingNode, sourceId).catch(err => {
+          logger.error('Failed to update hideFromMap:', err);
+        });
+      }
+
+      logger.debug(`🗺️ Node ${nodeNum}@${sourceId} hideFromMap ${hidden ? 'enabled' : 'disabled'}`);
+      return;
+    }
+
+    // SQLite path
+    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
+    const stmt = this.db.prepare(`
+      UPDATE nodes SET
+        hideFromMap = ?,
+        updatedAt = ?
+      WHERE nodeNum = ? AND sourceId = ?
+    `);
+    const result = stmt.run(hidden ? 1 : 0, now, nodeNum, sourceId);
+
+    if (result.changes === 0) {
+      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+      logger.warn(`⚠️ Failed to update hideFromMap for node ${nodeId} (${nodeNum}) source ${sourceId}: node not found in database`);
+      throw new Error(`Node ${nodeId} not found`);
+    }
+
+    // Keep the in-memory cache consistent for sync readers.
+    const cached = this.nodeCache.get(nodeNum, sourceId);
+    if (cached) {
+      cached.hideFromMap = hidden;
+      cached.updatedAt = now;
+    }
+
+    logger.debug(`🗺️ Node ${nodeNum}@${sourceId} hideFromMap ${hidden ? 'enabled' : 'disabled'}`);
   }
 
   async handleAutoWelcomeEnabledAsync(): Promise<number> {
-    return this.handleAutoWelcomeEnabled();
+    const migrationKey = 'auto_welcome_first_enabled';
+    const migrationCompleted = this.getSetting(migrationKey);
+
+    // If migration already ran, don't run it again
+    if (migrationCompleted === 'completed') {
+      logger.debug('✅ Auto-welcome first-enable migration already completed');
+      return 0;
+    }
+
+    logger.info('👋 Auto-welcome enabled for the first time - marking existing nodes as welcomed...');
+    const markedCount = await this.nodes.markAllNodesAsWelcomed();
+
+    if (markedCount > 0) {
+      logger.info(`✅ Marked ${markedCount} existing node(s) as welcomed to prevent spam`);
+    } else {
+      logger.debug('No existing nodes to mark as welcomed');
+    }
+
+    // Mark migration as completed so it doesn't run again
+    this.setSetting(migrationKey, 'completed');
+    return markedCount;
   }
 
   async markAllNodesAsWelcomedAsync(sourceId?: string | null): Promise<number> {
-    return this.markAllNodesAsWelcomed(sourceId ?? null);
+    return this.nodes.markAllNodesAsWelcomed(sourceId ?? null);
   }
 
   // Group 4: Traceroutes
@@ -8012,19 +7167,45 @@ class DatabaseService {
 
   // Group 6: Ghost Nodes (in-memory, but async-compatible wrappers)
   async getSuppressedGhostNodesAsync(): Promise<Array<{ nodeNum: number; nodeId: string; expiresAt: number; remainingMs: number }>> {
-    return this.getSuppressedGhostNodes();
+    const now = Date.now();
+    const result: Array<{ nodeNum: number; nodeId: string; expiresAt: number; remainingMs: number }> = [];
+    for (const [nodeNum, expiresAt] of this.suppressedGhostNodes) {
+      if (now < expiresAt) {
+        result.push({
+          nodeNum,
+          nodeId: `!${nodeNum.toString(16).padStart(8, '0')}`,
+          expiresAt,
+          remainingMs: expiresAt - now,
+        });
+      } else {
+        this.suppressedGhostNodes.delete(nodeNum);
+      }
+    }
+    return result;
   }
 
   async suppressGhostNodeAsync(nodeNum: number, durationMs: number = 30 * 60 * 1000): Promise<void> {
-    this.suppressGhostNode(nodeNum, durationMs);
+    const expiresAt = Date.now() + durationMs;
+    this.suppressedGhostNodes.set(nodeNum, expiresAt);
+    logger.info(`👻 Suppressed ghost node !${nodeNum.toString(16).padStart(8, '0')} for ${Math.round(durationMs / 60000)} minutes`);
   }
 
   async unsuppressGhostNodeAsync(nodeNum: number): Promise<void> {
-    this.unsuppressGhostNode(nodeNum);
+    if (this.suppressedGhostNodes.delete(nodeNum)) {
+      logger.info(`👻 Unsuppressed ghost node !${nodeNum.toString(16).padStart(8, '0')}`);
+    }
   }
 
   async isNodeSuppressedAsync(nodeNum: number | undefined | null): Promise<boolean> {
-    return this.isNodeSuppressed(nodeNum);
+    if (nodeNum === undefined || nodeNum === null) return false;
+    const expiresAt = this.suppressedGhostNodes.get(nodeNum);
+    if (expiresAt === undefined) return false;
+    if (Date.now() >= expiresAt) {
+      this.suppressedGhostNodes.delete(nodeNum);
+      logger.debug(`👻 Ghost suppression expired for !${nodeNum.toString(16).padStart(8, '0')}`);
+      return false;
+    }
+    return true;
   }
 
   // Group 7: Settings/Config
@@ -8038,11 +7219,41 @@ class DatabaseService {
 
   // Group 8: Export/Import
   async exportDataAsync(): Promise<{ nodes: DbNode[]; messages: DbMessage[] }> {
-    return this.exportData();
+    return {
+      nodes: await this.nodes.getAllNodes(ALL_SOURCES) as unknown as DbNode[], // intentional cross-source: full backup export spans all sources
+      messages: await this.messages.getMessages(10000, 0, ALL_SOURCES) as unknown as DbMessage[] // Export last 10k messages across all sources
+    };
   }
 
   async importDataAsync(data: { nodes: DbNode[]; messages: DbMessage[] }): Promise<void> {
-    this.importData(data);
+    // For PostgreSQL/MySQL, this method is not supported (use dedicated backup/restore)
+    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
+      throw new Error('importData is not supported for PostgreSQL/MySQL. Use dedicated backup/restore functionality.');
+    }
+
+    const transaction = this.db.transaction(() => {
+      // Clear existing data
+      if (this.messagesRepo) {
+        this.messagesRepo.deleteAllMessagesSqlite();
+      }
+      this.nodesRepo!.truncateNodesSqlite();
+
+      // Import nodes via repository
+      for (const node of data.nodes) {
+        this.nodesRepo!.importNodeSqlite(node);
+      }
+
+      // Import messages — delegate to the Drizzle-backed sync variant so
+      // column mapping matches the schema. insertMessageSqlite uses INSERT
+      // OR IGNORE which is safe on re-import (no duplicate-key failures).
+      if (this.messagesRepo) {
+        for (const message of data.messages) {
+          this.messagesRepo.insertMessageSqlite(message as any);
+        }
+      }
+    });
+
+    transaction();
   }
 }
 
