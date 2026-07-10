@@ -15,6 +15,18 @@ import type { DbNode } from '../../services/database.js';
 import type { NodesRepository, NodesCacheHook } from '../../db/repositories/nodes.js';
 import { ALL_SOURCES, SourceScope } from '../../db/repositories/base.js';
 
+/**
+ * Repository-shaped node row: DbNode fields but with `null` allowed for
+ * missing values (the repo layer returns SQL NULLs), plus the `sourceId`
+ * column present on multi-source rows. Structurally compatible with both
+ * the repo-layer DbNode (src/db/types.ts) and the service-layer DbNode.
+ */
+type RepoNodeInput = { [K in keyof DbNode]?: DbNode[K] | null } & {
+  nodeNum: number;
+  nodeId: string;
+  sourceId?: string | null;
+};
+
 export class NodeCacheService {
   private readonly cache: Map<string, DbNode> = new Map();
 
@@ -29,7 +41,7 @@ export class NodeCacheService {
    * optional fields). Keeps cache-hook writes structurally identical to the
    * startup warm-load entries.
    */
-  fromRepoNode(node: any, sourceId: string): DbNode {
+  fromRepoNode(node: RepoNodeInput, sourceId: string): DbNode {
     return {
       nodeNum: node.nodeNum,
       nodeId: node.nodeId,
@@ -167,10 +179,10 @@ export class NodeCacheService {
    */
   async warmFromRepo(nodesRepo: NodesRepository): Promise<void> {
     // intentional cross-source: init cache warm-up loads all sources at once
-    const nodes = await nodesRepo.getAllNodes(ALL_SOURCES);
+    const nodes = (await nodesRepo.getAllNodes(ALL_SOURCES)) as RepoNodeInput[];
     this.cache.clear();
     for (const node of nodes) {
-      const sid = (node as any).sourceId ?? 'default';
+      const sid = node.sourceId ?? 'default';
       this.setByKey(this.cacheKey(node.nodeNum, sid), this.fromRepoNode(node, sid));
     }
   }
@@ -193,7 +205,7 @@ export class NodeCacheService {
       setNodeAcrossSources: (nodeNum: number, freshNodes: DbNode[]) => {
         // Remove existing cache entries for this nodeNum that aren't in
         // freshNodes, then upsert each fresh row.
-        const keepSourceIds = new Set(freshNodes.map((n) => (n as any).sourceId ?? 'default'));
+        const keepSourceIds = new Set(freshNodes.map((n) => n.sourceId ?? 'default'));
         for (const key of Array.from(this.cache.keys())) {
           const cached = this.cache.get(key);
           if (cached && cached.nodeNum === nodeNum && !keepSourceIds.has(cached.sourceId ?? 'default')) {
@@ -201,14 +213,14 @@ export class NodeCacheService {
           }
         }
         for (const fresh of freshNodes) {
-          const sid = (fresh as any).sourceId ?? 'default';
+          const sid = fresh.sourceId ?? 'default';
           this.cache.set(this.cacheKey(nodeNum, sid), this.fromRepoNode(fresh, sid));
         }
       },
       setNodeByNodeId: (nodeId: string, freshNodes: DbNode[]) => {
         // Replace all cache entries for this nodeId with the fresh set.
         const keepKeys = new Set(
-          freshNodes.map((n) => this.cacheKey(n.nodeNum, (n as any).sourceId ?? 'default'))
+          freshNodes.map((n) => this.cacheKey(n.nodeNum, n.sourceId ?? 'default'))
         );
         for (const key of Array.from(this.cache.keys())) {
           const cached = this.cache.get(key);
@@ -217,7 +229,7 @@ export class NodeCacheService {
           }
         }
         for (const fresh of freshNodes) {
-          const sid = (fresh as any).sourceId ?? 'default';
+          const sid = fresh.sourceId ?? 'default';
           this.cache.set(this.cacheKey(fresh.nodeNum, sid), this.fromRepoNode(fresh, sid));
         }
       },

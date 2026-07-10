@@ -7233,7 +7233,7 @@ class MeshtasticManager implements ISourceManager {
         createdAt: Date.now()
       };
 
-      // Use DatabaseService.insertTraceroute() (not repo directly) for deduplication:
+      // Use DatabaseService.insertTracerouteAsync() (not repo directly) for deduplication:
       // It checks for pending traceroute requests and updates them instead of inserting duplicates
       await databaseService.insertTracerouteAsync(tracerouteRecord, this.sourceId ?? undefined);
 
