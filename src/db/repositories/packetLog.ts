@@ -327,27 +327,6 @@ export class PacketLogRepository extends BaseRepository {
     }
   }
 
-  /**
-   * Synchronously delete packet log rows for a node (SQLite only).
-   */
-  deletePacketLogsForNodeSync(nodeNum: number, sourceId?: string): number {
-    const db = this.getSqliteDb();
-    const { packetLog } = this.tables;
-    const condition = sourceId
-      ? and(
-          or(eq(packetLog.from_node, nodeNum), eq(packetLog.to_node, nodeNum)),
-          eq(packetLog.sourceId, sourceId)
-        )
-      : or(eq(packetLog.from_node, nodeNum), eq(packetLog.to_node, nodeNum));
-    const result = (db as any).delete(packetLog).where(condition).run() as any;
-    const changes = Number(result?.changes ?? 0);
-    if (changes > 0) {
-      logger.debug(
-        `[PacketLogRepository] Deleted ${changes} packet log entries for node ${nodeNum}${sourceId ? `@${sourceId}` : ''} (sync)`
-      );
-    }
-    return changes;
-  }
 
   /**
    * Cleanup old packet logs based on max age
@@ -444,53 +423,8 @@ export class PacketLogRepository extends BaseRepository {
     }
   }
 
-  /**
-   * Synchronously clear all packet log rows (SQLite only).
-   * Returns number of rows deleted.
-   */
-  clearPacketLogsSync(sourceId?: string): number {
-    const db = this.getSqliteDb();
-    const result = (sourceId
-      ? db.run(sql`DELETE FROM packet_log WHERE sourceId = ${sourceId}`)
-      : db.run(sql`DELETE FROM packet_log`)) as any;
-    const changes = Number(result?.changes ?? 0);
-    logger.debug(`[PacketLogRepository] Cleared ${changes} packet log entries (sync)`);
-    return changes;
-  }
 
-  /**
-   * Synchronously cleanup packet logs older than cutoffTimestamp (SQLite only).
-   * Returns number of rows deleted.
-   */
-  cleanupOldPacketLogsSync(cutoffTimestamp: number): number {
-    const db = this.getSqliteDb();
-    const result = db.run(sql`DELETE FROM packet_log WHERE timestamp < ${cutoffTimestamp}`) as any;
-    return Number(result?.changes ?? 0);
-  }
 
-  /**
-   * Synchronously get packet counts per from_node since a given timestamp,
-   * excluding internal traffic. (SQLite only.)
-   */
-  getPacketCountsPerNodeSinceSync(options: {
-    since: number;
-    localNodeNum: number | null;
-  }): Array<{ nodeNum: number; packetCount: number }> {
-    const db = this.getSqliteDb();
-    const { since, localNodeNum } = options;
-    const ln = localNodeNum ?? -1;
-    const rows = db.all(sql`
-      SELECT from_node as nodeNum, COUNT(*) as packetCount
-      FROM packet_log
-      WHERE timestamp >= ${since}
-        AND NOT (from_node = ${ln} AND to_node = ${ln})
-      GROUP BY from_node
-    `) as any[];
-    return rows.map((r: any) => ({
-      nodeNum: Number(r.nodeNum),
-      packetCount: Number(r.packetCount),
-    }));
-  }
 
   /**
    * Get packet counts per from_node since a given timestamp, excluding internal

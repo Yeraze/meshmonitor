@@ -195,7 +195,7 @@ describe('PacketLogRepository - Packet Log Queries', () => {
       const before = await repo.getPacketLogCount();
       expect(before).toBe(3);
 
-      const deleted = repo.clearPacketLogsSync();
+      const deleted = await repo.clearPacketLogs();
       expect(deleted).toBe(3);
 
       const after = await repo.getPacketLogCount();
