@@ -444,7 +444,7 @@ describe('TelemetryRepository', () => {
       expect(results).toHaveLength(1);
     });
 
-    it('sync insertTelemetrySync: same packet ingested twice yields one row, no throw', () => {
+    it('insertTelemetry: same packet ingested twice yields one row, no throw', async () => {
       const row = {
         nodeId: NODE1,
         nodeNum: NODE1_NUM,
@@ -457,8 +457,8 @@ describe('TelemetryRepository', () => {
       };
 
       // Both calls must complete without throwing.
-      expect(() => repo.insertTelemetrySync(row, SOURCE)).not.toThrow();
-      expect(() => repo.insertTelemetrySync(row, SOURCE)).not.toThrow();
+      await expect(repo.insertTelemetry(row, SOURCE)).resolves.not.toThrow();
+      await expect(repo.insertTelemetry(row, SOURCE)).resolves.not.toThrow();
 
       const rows = db
         .prepare('SELECT COUNT(*) AS n FROM telemetry WHERE packetId = ?')
