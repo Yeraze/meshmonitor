@@ -33,6 +33,11 @@ describe('pickPrimarySource', () => {
     expect(pickPrimarySource([{ id: 'x', type: 'meshcore', enabled: false }])).toBeUndefined();
     expect(pickPrimarySource([])).toBeUndefined();
   });
+
+  it('tolerates a non-array response (e.g. an error envelope) without throwing', () => {
+    // A stubbed/error /api/sources may return an object, not an array.
+    expect(pickPrimarySource({ success: true } as never)).toBeUndefined();
+  });
 });
 
 // --- hook ------------------------------------------------------------------

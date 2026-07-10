@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import Modal from '../common/Modal';
-import { useSource } from '../../contexts/SourceContext';
+import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
 import './PositionOverrideModal.css';
 
 interface Node {
@@ -39,7 +39,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
   baseUrl,
 }) => {
   const { t } = useTranslation();
-  const { sourceId } = useSource();
+  const sourceId = useResolvedSourceId();
   const [enabled, setEnabled] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
   const [latitude, setLatitude] = useState<string>('');
@@ -61,11 +61,12 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
 
   // Load current override when modal opens (only once per modal session)
   useEffect(() => {
-    if (isOpen && nodeId && loadedForNodeRef.current !== nodeId) {
+    // Defer until the sourceId resolves — the endpoint now requires it.
+    if (isOpen && nodeId && sourceId && loadedForNodeRef.current !== nodeId) {
       loadedForNodeRef.current = nodeId;
       setLoading(true);
       setError(null);
-      const sourceQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+      const sourceQuery = `?sourceId=${encodeURIComponent(sourceId)}`;
       fetch(`${baseUrl}/api/nodes/${nodeId}/position-override${sourceQuery}`, {
         credentials: 'include',
       })

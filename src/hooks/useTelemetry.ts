@@ -8,6 +8,7 @@
  */
 
 import { useQuery, useQueries, keepPreviousData } from '@tanstack/react-query';
+import { useResolvedSourceId } from './useResolvedSourceId';
 
 /**
  * Telemetry data point from the backend
@@ -85,12 +86,14 @@ interface UseTelemetryOptions {
  * ```
  */
 export function useTelemetry({ nodeId, hours = 24, baseUrl = '', sourceId, enabled = true }: UseTelemetryOptions) {
+  // The endpoint now requires a sourceId; fall back to the primary source when
+  // the caller didn't supply one (legacy/single-source views).
+  const fallbackSourceId = useResolvedSourceId();
+  const effectiveSourceId = sourceId ?? fallbackSourceId;
   return useQuery({
-    queryKey: ['telemetry', nodeId, hours, sourceId],
+    queryKey: ['telemetry', nodeId, hours, effectiveSourceId],
     queryFn: async (): Promise<TelemetryData[]> => {
-      const url = sourceId
-        ? `${baseUrl}/api/telemetry/${nodeId}?hours=${hours}&sourceId=${encodeURIComponent(sourceId)}`
-        : `${baseUrl}/api/telemetry/${nodeId}?hours=${hours}`;
+      const url = `${baseUrl}/api/telemetry/${nodeId}?hours=${hours}&sourceId=${encodeURIComponent(effectiveSourceId!)}`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -99,7 +102,8 @@ export function useTelemetry({ nodeId, hours = 24, baseUrl = '', sourceId, enabl
 
       return response.json();
     },
-    enabled: enabled && !!nodeId,
+    // Defer until a sourceId is available (required by the endpoint).
+    enabled: enabled && !!nodeId && !!effectiveSourceId,
     // Keep showing the prior result while a new window/node loads so the time
     // range selector and charts don't flash a loading state on every change.
     placeholderData: keepPreviousData,

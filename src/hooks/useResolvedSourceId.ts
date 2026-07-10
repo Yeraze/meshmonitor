@@ -26,6 +26,7 @@ export interface ResolvableSource {
 
 /** Pure primary-source picker (exported for testing). */
 export function pickPrimarySource<T extends ResolvableSource>(sources: T[]): T | undefined {
+  if (!Array.isArray(sources)) return undefined;
   const enabled = sources.filter((s) => s.enabled);
   const byCreated = [...enabled].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
   return byCreated.find((s) => s.type === 'meshtastic_tcp') ?? byCreated[0];

@@ -808,6 +808,7 @@ import scriptRoutes, { scriptsEndpoint, getScriptsDirectory } from './routes/scr
 import deviceRoutes from './routes/deviceRoutes.js';
 import systemRoutes, { setSystemCallbacks } from './routes/systemRoutes.js';
 import channelRoutes from './routes/channelRoutes.js';
+import { requireSourceId } from './utils/requireSourceId.js';
 
 // CSRF token endpoint (must be before CSRF protection middleware)
 apiRouter.get('/csrf-token', csrfTokenEndpoint);
@@ -1679,7 +1680,7 @@ apiRouter.post('/nodes/:nodeId/ignored', requirePermission('nodes', 'write', { s
 });
 
 // Get node position override
-apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), async (req, res) => {
+apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), requireSourceId('query'), async (req, res) => {
   try {
     const { nodeId } = req.params;
 
@@ -1703,9 +1704,8 @@ apiRouter.get('/nodes/:nodeId/position-override', optionalAuth(), async (req, re
     }
 
     const nodeNum = parseInt(nodeNumStr, 16);
-    const poGetSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
-      ? (req.query.sourceId as string)
-      : 'default';
+    // sourceId presence validated by requireSourceId('query')
+    const poGetSourceId = req.query.sourceId as string;
     const override = await databaseService.getNodePositionOverrideAsync(nodeNum, poGetSourceId);
 
     if (!override) {

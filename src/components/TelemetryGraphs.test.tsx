@@ -52,6 +52,10 @@ vi.mock('../contexts/AuthContext', () => ({
   }),
 }));
 
+// Telemetry endpoints now require a sourceId; the hooks resolve a fallback via
+// useResolvedSourceId. Pin it so URL assertions stay deterministic.
+vi.mock('../hooks/useResolvedSourceId', () => ({ useResolvedSourceId: () => 'src-test' }));
+
 // Mock Recharts components to avoid rendering issues in tests
 vi.mock('recharts', () => ({
   ComposedChart: ({ children }: { children?: React.ReactNode }) => <div data-testid="line-chart">{children}</div>,
@@ -147,7 +151,7 @@ describe('TelemetryGraphs Component', () => {
     renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=24`);
+      expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=24&sourceId=src-test`);
     });
   });
 
@@ -263,7 +267,7 @@ describe('TelemetryGraphs Component', () => {
     const { rerender } = renderWithProviders(<TelemetryGraphs nodeId={mockNodeId} />);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=24`);
+      expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=24&sourceId=src-test`);
     });
 
     const newNodeId = '!newNode';
@@ -271,7 +275,7 @@ describe('TelemetryGraphs Component', () => {
     rerender(<TelemetryGraphs nodeId={newNodeId} />);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${newNodeId}?hours=24`);
+      expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${newNodeId}?hours=24&sourceId=src-test`);
     });
   });
 
@@ -991,7 +995,7 @@ describe('TelemetryGraphs Component', () => {
       );
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=24`);
+        expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=24&sourceId=src-test`);
       });
 
       // findByRole retries until the buttons have rendered (the data query may
@@ -999,7 +1003,7 @@ describe('TelemetryGraphs Component', () => {
       fireEvent.click(await screen.findByRole('button', { name: '1h' }));
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=1`);
+        expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=1&sourceId=src-test`);
       });
 
       expect(window.localStorage.getItem('deviceInfoTelemetryHours')).toBe('1');
@@ -1017,7 +1021,7 @@ describe('TelemetryGraphs Component', () => {
       fireEvent.click(screen.getByRole('button', { name: '15m' }));
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=0.25`);
+        expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=0.25&sourceId=src-test`);
       });
 
       expect(screen.getByText('telemetry.title_minutes')).toBeInTheDocument();
@@ -1031,7 +1035,7 @@ describe('TelemetryGraphs Component', () => {
       );
 
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=48`);
+        expect(global.fetch).toHaveBeenCalledWith(`/api/telemetry/${mockNodeId}?hours=48&sourceId=src-test`);
       });
 
       // findByRole retries until the data query renders the selector buttons,
