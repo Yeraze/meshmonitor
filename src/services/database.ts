@@ -3392,7 +3392,10 @@ class DatabaseService {
     // Backend-agnostic path: the telemetry repository computes rates via Drizzle
     // for SQLite/PostgreSQL/MySQL alike (see TelemetryRepository.getPacketRates).
     if (this.telemetryRepo) {
-      return this.telemetryRepo.getPacketRates(nodeId, types, sinceTimestamp, sourceId);
+      // intentional cross-source when sourceId omitted: the legacy facade
+      // (raw SQL) skipped the source filter entirely for undefined sourceId,
+      // and withSourceScope throws on undefined — preserve that behavior.
+      return this.telemetryRepo.getPacketRates(nodeId, types, sinceTimestamp, sourceId ?? ALL_SOURCES);
     }
     // Fallback to the legacy sync SQLite implementation when no repo is wired.
     return this.getPacketRates(nodeId, types, sinceTimestamp, sourceId);
