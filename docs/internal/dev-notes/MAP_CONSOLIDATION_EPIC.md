@@ -45,6 +45,13 @@ markers, popups, spiderfy, tiles, and traceroute rendering land everywhere by co
 - Only NodesTab supports MapLibre vector tiles (`VectorTileLayer`).
 - Leaflet default-icon fix duplicated in `App.tsx` and `EmbedSettings.tsx`.
 
+**Phase restructure (user directive 2026-07-10):** rendering unification broadened beyond
+traceroutes — node markers and node popups are pulled forward as their own phases. Data
+shown in popups and role icons legitimately differ by source technology (Meshtastic vs
+MeshCore); those differences become explicit parameters/composition of ONE system, never
+parallel implementations. New order: P3 traceroutes → P4 node markers → P5 popups →
+P6 embed traceroute alignment → P7 residual layers + big maps on BaseMap.
+
 ## Phases
 
 ### [x] Phase 1 — `BaseMap` shell (`feature/4047-p1-basemap-shell`)
@@ -75,42 +82,52 @@ three files + this epic-doc correction. See `MAP_CONSOLIDATION_P2_SPEC.md` (Opti
 shared helper (browser-validated); the three files carry not-a-fork/deliberate-divergence
 comments; suite green.
 
-### [ ] Phase 3 — Traceroute unification, app maps (`feature/4047-p3-traceroute-unify`)
+### [x] Phase 3 — Traceroute unification, app maps (`feature/4047-p3-traceroute-unify`)
 (a) Canonical 4-band theme-aware SNR→color scale + one weight + one dash convention in
 `mapHelpers`; delete `DashboardMap.snrToColor`, `MapAnalysis.snrQualityColor`, hardcoded
-palettes. (b) Shared `src/components/map/layers/TraceroutePathsLayer.tsx` owning geometry,
-curvature, arrows, forward/return legs, MQTT/unknown-SNR dashing — parameterized for weight
-strategy (usage/occurrence/SNR), arrows, direction-vs-SNR color mode, hover-highlight.
-Consumed by NodesTab (base + selected route via `useTraceroutePaths` data),
-DashboardMap (gains return legs), Map Analysis, TracerouteWidget.
+palettes; the Map Analysis legend SNR section consumes the canonical mapping. (b) Shared
+`src/components/map/layers/TraceroutePathsLayer.tsx` owning geometry, curvature, arrows,
+forward/return legs, MQTT/unknown-SNR dashing — parameterized for weight strategy
+(usage/occurrence/SNR), arrows, direction-vs-SNR color mode, hover-highlight. Consumed by
+NodesTab (base + selected route), DashboardMap (gains return legs), Map Analysis,
+TracerouteWidget.
 **Exit criteria:** one SNR scale everywhere; all four app maps render traceroutes through
 the shared layer; #1862/#2051/#2931 behaviors preserved in one place with tests;
 browser-validated on all four views; suite green.
 
-### [ ] Phase 4 — Embed traceroute alignment (`feature/4047-p4-embed-traceroutes`)
+### [ ] Phase 4 — Node marker unification (`feature/4047-p4-marker-unify`)
+One icon factory in `src/components/map/` unifying `createNodeIcon` (Meshtastic
+hop-colored) and MeshCoreMap's hand-rolled `L.divIcon` around `roleGlyphMarkerSvg`
+(MeshCore role glyphs) behind one API; one shared `NodeMarkersLayer` (spiderfy + icon
+cache built in, generalized from MapAnalysis's) consumed by NodesTab, DashboardMap,
+MeshCoreMap, MapAnalysis. Source-tech icon differences are parameters of the one factory.
+**Exit criteria:** no hand-rolled node-marker divIcon outside the factory; the four maps
+render markers through the shared layer; spiderfy behavior preserved (incl. the
+obscured-marker fix, commits 40b6b1e6/ade691b1); browser-validated; suite green.
+
+### [ ] Phase 5 — Popup unification (`feature/4047-p5-popup-unify`)
+One popup family: shared card chrome + composable data sections. Meshtastic sections
+(hops/SNR/battery/hardware) vs MeshCore sections (path length/scope/etc.) become section
+composition, not separate components. NodesTab migrates off `MapNodePopupContent` (delete
+it); MeshCore popup content joins the family; `NodePopup`/`DashboardNodePopup` reconciled.
+**Exit criteria:** `MapNodePopupContent` deleted; one popup family renders all maps'
+popups with no capability loss; browser-validated per source tech; suite green.
+
+### [ ] Phase 6 — Embed traceroute alignment (`feature/4047-p6-embed-traceroutes`)
 Extend `/api/embed/:id/traceroutes` to carry per-segment SNR + leg/direction data
-(backward-compatible envelope), and render EmbedMap traceroutes through the shared
+(backward-compatible), render EmbedMap traceroutes through the shared
 TraceroutePathsLayer with the canonical SNR scale.
 **Exit criteria:** public embeds show the same traceroute visuals as the app; old embed
-clients don't break; API + rendering tests; browser-validated via an embed iframe; suite green.
+clients don't break; API + rendering tests; browser-validated via an embed iframe;
+suite green.
 
-### [ ] Phase 5 — Popup convergence (`feature/4047-p5-popup-converge`)
-Migrate NodesTab off `MapNodePopupContent` onto the `NodePopup`/`DashboardNodePopup`
-family (continuation of #3692); delete `MapNodePopupContent`. Fold any NodesTab-only popup
-capabilities into the shared family as options.
-**Exit criteria:** `MapNodePopupContent` deleted; NodesTab popups render the canonical card
-with no capability loss (browser-validated); suite green.
-
-### [ ] Phase 6 — Shared layer library (`feature/4047-p6-layer-library`)
-Promote/generalize layers into `src/components/map/layers/`: node markers (spiderfy + icon
-cache built in), neighbor links, position trails, waypoints, accuracy regions. DashboardMap,
-MeshCoreMap, MapAnalysis, and NodesTab compose them, retiring inline marker/polyline code.
-Fold MeshCoreMap's custom `L.divIcon` into `mapIcons.ts`. All big maps on the BaseMap shell
-by end of phase. NodesTab migrates **last** (largest, most entangled). Architect may split
-this phase into multiple PRs if decomposition demands it — flag to orchestrator first.
-**Exit criteria:** no inline marker/polyline reimplementations in the big four; all maps on
-BaseMap; per-map visuals preserved or deliberately converged; browser-validated on every
-map view; suite green.
+### [ ] Phase 7 — Residual layer library + big maps on BaseMap (`feature/4047-p7-layer-library`)
+Promote neighbor links, waypoints, accuracy regions, position trails into
+`src/components/map/layers/`; DashboardMap, MeshCoreMap, MapAnalysis, NodesTab compose
+them and adopt the BaseMap shell; NodesTab migrates **last**. May split into multiple PRs
+— flag to orchestrator first.
+**Exit criteria:** no inline layer reimplementations in the big four; all maps on BaseMap;
+browser-validated on every map view; suite green.
 
 ## Deferred (future issues, not this epic)
 
@@ -120,6 +137,32 @@ map view; suite green.
 ## Phase log
 
 (Per-phase: PR link, deviations, decisions — appended as phases complete.)
+
+### Phase 3 (2026-07-10) — Traceroute unification, app maps
+- Delivered: canonical 4-band theme-aware SNR scale (WCAG-AA-verified light palette);
+  `src/utils/tracerouteSegments.ts` (leaflet-free single home for #1862/#2051/#2931 +
+  sentinel constants + `isValidRouteNode` + `buildLiveNodePositionMap` +
+  `averageNonSentinelSnr`); shared `src/components/map/layers/TraceroutePathsLayer.tsx`
+  (4 color modes incl. `mqttColor`, 3 weight strategies, canonical `'3,6'` dash,
+  curvature number-or-fn, arrows, temporal fade, highlight, React.memo). All four app
+  renderers migrated: NodesTab (base+selected), DashboardMap (return legs + /4 SNR
+  scaling fix + MQTT dash), TracerouteWidget (theme legs), MapAnalysis (thin adapter,
+  legend on canonical palette).
+- Latent bugs fixed along the way: Dashboard colored by UN-scaled SNR; snapshot
+  positions dropped at lat/lng exactly 0 (truthy checks); live positions same (now
+  shared helper, Null-Island guard retained); Dashboard never rendered return legs.
+- 8-angle review + verify found 2 introduced regressions (return-only traceroutes;
+  widget MQTT weight) and 1 unapproved visual change (MQTT color distinction lost) —
+  all fixed; MQTT color is now canonical on ALL maps via `mqttColor` (previously
+  NodesTab-only). 10 findings total, all fixed (see PR).
+- Visible changes shipped: NodesTab 3→4 band; no-data segments noData-gray dashed
+  (was solid mauve); Dashboard gains return legs + MQTT color/dash; widget legs use
+  theme traceroute pink (direction via arrows); Analysis dash '4,6'→'3,6'.
+- Browser-validated on all four surfaces against pre-migration baselines (screenshots
+  in session scratchpad); suite 9,431 tests green; lint ratchet clean.
+- Note for Phase 6 (embed): EmbedMap still fixed-mauve server-computed segments.
+- Deferred (parity, not regressions): eager per-segment popup construction (recharts
+  trees built for all segments); popup laziness would be a perf follow-up.
 
 ### Phase 2 (2026-07-10) — Reconcile the Map Analysis "forks"
 - **Premise corrected (user-approved retarget):** PolarGridLayer was never a fork (#3971

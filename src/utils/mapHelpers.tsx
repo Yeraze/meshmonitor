@@ -5,19 +5,27 @@ import { PositionHistoryItem } from '../contexts/MapContext';
 import { convertSpeed } from './speedConversion';
 export { convertSpeed };
 
+// #2931 — the unknown-hop SNR sentinel lives in the pure, leaflet-free
+// `tracerouteSegments.ts` (so useTracerouteAnalysis.ts and its tests don't
+// have to pull in this file's `leaflet`/`react-leaflet` imports). Re-exported
+// here for backward compatibility with existing importers.
+import { isUnknownSnr, averageNonSentinelSnr, type TracerouteRenderSegment } from './tracerouteSegments';
+export { isUnknownSnr, averageNonSentinelSnr };
+
 /**
- * Scaled SNR sentinel for unknown hops.
- * Raw Meshtastic value is INT8_MIN (-128), divided by 4 = -32.
- * Firmware writes this in TraceRouteModule::insertUnknownHops when a hop's
- * SNR can't be filled in: MQTT-bridged leg, decrypt failure, relay-role node,
- * or pre-snr-array firmware. It is NOT specifically an MQTT marker — the
- * firmware uses it as a generic "unknown SNR" sentinel.
+ * Scaled SNR sentinel for unknown hops. Canonical definition (with the full
+ * firmware-semantics doc comment) lives in `tracerouteSegments.ts`'s
+ * `UNKNOWN_SNR_SENTINEL` — this is a literal re-declaration, NOT
+ * `export { UNKNOWN_SNR_SENTINEL } from './tracerouteSegments'` or
+ * `export const UNKNOWN_SNR_SENTINEL = <imported identifier>`: both of those
+ * forms defeat eslint-plugin-react-refresh's `allowConstantExport` exception
+ * (which only recognizes an in-place *literal* initializer) and cascade into
+ * 18 false-positive `react-refresh/only-export-components` warnings across
+ * this file — verified empirically; re-exporting a *function* like
+ * `isUnknownSnr` above is unaffected. `mapHelpers.test.tsx` asserts this
+ * literal stays equal to the canonical value so the two can't silently drift.
  */
 export const UNKNOWN_SNR_SENTINEL = -32;
-
-/** Returns true if the scaled SNR value is the firmware unknown-hop sentinel */
-export const isUnknownSnr = (snr: number | undefined): boolean =>
-  snr === UNKNOWN_SNR_SENTINEL;
 
 // Constants for arrow generation
 const ARROW_DISTANCE_THRESHOLD = 0.05; // One arrow per 0.05 degrees
@@ -158,22 +166,30 @@ export const generateCurvedPath = (
 };
 
 /**
- * Get color for a route segment based on average SNR
- * Returns the appropriate color from the SNR gradient
+ * Canonical 4-band SNR color scale (theme-aware; hex values live in
+ * `overlayColors.snrColors`). Bands: excellent >=5dB, good >=0dB,
+ * fair >=-5dB, poor <-5dB, noData when unavailable/unknown.
  */
-export const getSegmentSnrColor = (
-  snrData: Array<{ snr: number }> | undefined,
-  snrColors: { good: string; medium: string; poor: string },
-  defaultColor: string
-): string => {
-  if (!snrData || snrData.length === 0) return defaultColor;
-  const rfSnrs = snrData.filter(d => !isUnknownSnr(d.snr)).map(d => d.snr);
-  if (rfSnrs.length === 0) return defaultColor;
-  const avgSnr = rfSnrs.reduce((sum, val) => sum + val, 0) / rfSnrs.length;
-  if (avgSnr > 0) return snrColors.good;
-  if (avgSnr >= -10) return snrColors.medium;
-  return snrColors.poor;
-};
+export interface SnrColorScale {
+  excellent: string;
+  good: string;
+  fair: string;
+  poor: string;
+  noData: string;
+}
+
+/**
+ * Map a single (already /4-scaled dB) average SNR value to its canonical
+ * 4-band color. `null`/`undefined`/the unknown-hop sentinel all resolve to
+ * `scale.noData`.
+ */
+export function snrToColor(avgSnr: number | null | undefined, scale: SnrColorScale): string {
+  if (avgSnr == null || isUnknownSnr(avgSnr)) return scale.noData;
+  if (avgSnr >= 5) return scale.excellent;
+  if (avgSnr >= 0) return scale.good;
+  if (avgSnr >= -5) return scale.fair;
+  return scale.poor;
+}
 
 /**
  * Get opacity for a route segment based on SNR quality
@@ -202,6 +218,41 @@ export const getLineWeight = (snr: number | undefined): number => {
   const normalized = Math.max(-20, Math.min(10, snr));
   return 2 + ((normalized + 20) / 30) * 4;
 };
+
+/**
+ * Canonical line-weight strategies. The three formulas are legitimately
+ * different data axes (SNR quality, usage count, occurrence count) — keep
+ * them as separate named exports rather than unifying.
+ */
+/** Weight by SNR quality (2..6). Alias of `getLineWeight` — same name/behavior. */
+export const weightBySnr = getLineWeight;
+
+/** Weight by per-segment usage count (NodesTab base layer). */
+export function weightByUsage(usage: number): number {
+  return Math.min(2 + usage, 8);
+}
+
+/** Weight by observed occurrence count (MapAnalysis). */
+export function weightByOccurrence(occ: number): number {
+  return 2 + Math.min(occ - 1, 5) * 0.8;
+}
+
+/**
+ * Canonical SNR-based weight for a decomposed traceroute segment (NodesTab
+ * selected layer, TracerouteWidget). An MQTT/unknown-SNR segment is routed
+ * through the sentinel value rather than `undefined` so it gets the "known
+ * unknown" weight `weightBySnr` produces for the sentinel, not the different
+ * weight it produces for its "no data supplied at all" default.
+ */
+export function tracerouteSegmentWeight(seg: TracerouteRenderSegment): number {
+  return weightBySnr(seg.isMqtt ? UNKNOWN_SNR_SENTINEL : (seg.avgSnr ?? undefined));
+}
+
+/**
+ * Canonical dash pattern for MQTT-bridged or all-unknown-SNR segments.
+ * Applied by the shared render layer's `dashMode: 'mqtt-unknown'` (default).
+ */
+export const MQTT_DASH = '3,6';
 
 /**
  * Create arrow icon for direction indicators

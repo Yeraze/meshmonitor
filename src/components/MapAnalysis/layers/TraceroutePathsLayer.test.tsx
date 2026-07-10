@@ -11,6 +11,19 @@ import TraceroutePathsLayer from './TraceroutePathsLayer';
 vi.mock('react-leaflet', () => ({
   Polyline: () => <div data-testid="polyline" />,
 }));
+vi.mock('../../../contexts/SettingsContext', () => ({
+  useSettings: () => ({
+    overlayColors: {
+      snrColors: {
+        excellent: '#22c55e',
+        good: '#eab308',
+        fair: '#f97316',
+        poor: '#ef4444',
+        noData: '#6c7086',
+      },
+    },
+  }),
+}));
 vi.mock('../../../hooks/useMapAnalysisData', () => ({
   useTraceroutes: () => ({
     items: [

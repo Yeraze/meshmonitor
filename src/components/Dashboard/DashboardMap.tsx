@@ -46,6 +46,14 @@ import { isNullIsland } from '../../utils/nullIsland';
 import { effectiveMapMaxAgeHours } from '../../utils/mapAge';
 import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
+import { TraceroutePathsLayer } from '../map/layers/TraceroutePathsLayer';
+import {
+  parseSnapshotRoutePositions,
+  resolveSegmentPosition,
+  buildLiveNodePositionMap,
+  decomposeTraceroute,
+  type TracerouteRenderSegment,
+} from '../../utils/tracerouteSegments';
 
 export interface DashboardMapProps {
   nodes: any[];
@@ -83,48 +91,10 @@ function getNodeLatLng(node: any): { lat: number; lng: number } | null {
   return null;
 }
 
-/** SNR → color, matching the per-hop coloring used in MapAnalysis/TraceroutePathsLayer. */
-function snrToColor(snr: number): string {
-  if (snr >= 5) return '#22c55e';
-  if (snr >= 0) return '#eab308';
-  if (snr >= -5) return '#f97316';
-  return '#ef4444';
-}
-
 /** SNR → line opacity for MeshCore neighbor links, matching MeshCoreNeighborLinksLayer. */
 function snrToOpacity(snr: number | null | undefined): number {
   if (snr == null) return 0.4;
   return Math.max(0.2, Math.min(1, (snr + 10) / 20));
-}
-
-/** Safe JSON.parse that yields [] on bad/empty input. */
-function parseJsonArray(value: unknown): number[] {
-  if (typeof value !== 'string' || value.length === 0) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Parse the `routePositions` JSON snapshot stored on a traceroute row.
- * Shape: `{ [nodeNum]: { lat, lng, alt? } }`. Backend emits this so the
- * frontend can draw the route even if a hop's node has gone stale and
- * been filtered out of the live nodes list.
- */
-function parseRoutePositions(value: unknown): Record<number, { lat: number; lng: number }> {
-  if (typeof value !== 'string' || value.length === 0) return {};
-  try {
-    const parsed = JSON.parse(value);
-    if (parsed && typeof parsed === 'object') {
-      return parsed as Record<number, { lat: number; lng: number }>;
-    }
-  } catch {
-    /* ignore */
-  }
-  return {};
 }
 
 // ---------------------------------------------------------------------------
@@ -171,7 +141,7 @@ export default function DashboardMap({
   onNodeSourceSelect,
 }: DashboardMapProps) {
   const tileset = getTilesetById(tilesetId, customTilesets);
-  const { mapPinStyle, setMapTileset } = useSettings();
+  const { mapPinStyle, setMapTileset, overlayColors } = useSettings();
 
   // Polar grid (#3971): draw a grid centered on each source's own-node position.
   // On the Unified map (sourceId === UNIFIED_SOURCE_ID) that's every source, each
@@ -459,15 +429,13 @@ export default function DashboardMap({
   // traceroute polylines deliberately terminate at the (jittered) marker pin —
   // keeping edges visually attached to the markers. Only the accuracy Rectangle
   // re-derives the true center (getNodeLatLng) so the cell box stays put.
-  const positionByNodeNum = useMemo(() => {
-    const map = new Map<number, [number, number]>();
-    for (const { node, pos } of nodesWithPosition) {
-      if (typeof node.nodeNum === 'number') {
-        map.set(node.nodeNum, [pos.lat, pos.lng]);
-      }
-    }
-    return map;
-  }, [nodesWithPosition]);
+  const positionByNodeNum = useMemo(
+    () =>
+      buildLiveNodePositionMap(nodesWithPosition, ({ node, pos }) =>
+        typeof node.nodeNum === 'number' ? { nodeNum: node.nodeNum, lat: pos.lat, lng: pos.lng } : null,
+      ),
+    [nodesWithPosition],
+  );
 
   // publicKey → [lat, lng] for resolving MeshCore neighbor-link endpoints.
   // MeshCore nodes carry no meshtastic nodeNum; their stable identity (and the
@@ -507,51 +475,47 @@ export default function DashboardMap({
     return segs;
   }, [meshcoreNeighbors, positionByPublicKey, showNeighborInfo]);
 
-  // Traceroute segments: one Polyline per hop, colored by snrTowards. Empty
-  // unless the user has enabled "Show Route Segments" or "Show Traceroute".
-  //
-  // Position resolution order for each hop:
-  //   1. `tr.routePositions` — JSON snapshot of positions at traceroute time.
-  //      Backend stamps this so the line still draws even when a hop's node
-  //      has aged out of the live nodes list.
-  //   2. live `positionByNodeNum` — current node positions.
-  const tracerouteSegments = useMemo(() => {
+  // Traceroute render segments: one TracerouteRenderSegment per hop, forward
+  // AND return leg, built via the shared `decomposeTraceroute`.
+  // `decomposeTraceroute` internally /4-scales `snrTowards`/`snrBack` — this
+  // Dashboard's raw traceroute rows carry un-scaled SNR, unlike every other
+  // consumer of this data — resolves #1862 snapshot positions ahead of live
+  // `positionByNodeNum`, and gates the return leg on the #2051 guard. Empty
+  // unless "Show Route Segments" or "Show Traceroute" is on. Each
+  // traceroute's own key is prefixed onto the util's per-hop key
+  // (`"forward:123-456"`) since multiple traceroute records can repeat the
+  // same node pair and the util itself only decomposes one record at a time.
+  const tracerouteRenderSegments = useMemo<TracerouteRenderSegment[]>(() => {
     if (!showPaths && !showRoute) return [];
     // Map Features age slider (#3322): hide traceroutes/route segments older
     // than the chosen age. Default (slider at max) keeps the prior behavior.
     const trCutoffMs = Date.now() - effectiveMaxAge * 60 * 60 * 1000;
-    const segs: Array<{
-      key: string;
-      positions: [number, number][];
-      color: string;
-    }> = [];
+    const segs: TracerouteRenderSegment[] = [];
     for (const tr of (traceroutes ?? [])) {
       const trTimestamp = Number(tr?.timestamp ?? tr?.createdAt ?? 0);
       if (trTimestamp && trTimestamp < trCutoffMs) continue;
-      const route = parseJsonArray(tr?.route);
-      const snrTowards = parseJsonArray(tr?.snrTowards);
       const fromNum = Number(tr?.fromNodeNum);
       const toNum = Number(tr?.toNodeNum);
       if (!Number.isFinite(fromNum) || !Number.isFinite(toNum)) continue;
-      const snapshot = parseRoutePositions(tr?.routePositions);
-      const lookup = (nodeNum: number): [number, number] | undefined => {
-        const snap = snapshot[nodeNum];
-        if (snap && typeof snap.lat === 'number' && typeof snap.lng === 'number') {
-          return [snap.lat, snap.lng];
-        }
-        return positionByNodeNum.get(nodeNum);
-      };
-      const path = [fromNum, ...route.map((n) => Number(n)), toNum];
-      for (let i = 0; i < path.length - 1; i++) {
-        const a = lookup(path[i]);
-        const b = lookup(path[i + 1]);
-        if (!a || !b) continue;
-        const snr = typeof snrTowards[i] === 'number' ? snrTowards[i] : 0;
-        segs.push({
-          key: `tr-${tr.sourceId ?? 'x'}-${tr.id}-${i}`,
-          positions: [a, b],
-          color: snrToColor(snr),
-        });
+      const snapshot = parseSnapshotRoutePositions(tr?.routePositions);
+      const resolvePosition = (nodeNum: number): [number, number] | null =>
+        resolveSegmentPosition(nodeNum, snapshot, positionByNodeNum);
+      const keyPrefix = `tr-${tr.sourceId ?? 'x'}-${tr.id}`;
+      const decomposed = decomposeTraceroute(
+        {
+          fromNodeNum: fromNum,
+          toNodeNum: toNum,
+          route: tr?.route,
+          routeBack: tr?.routeBack,
+          snrTowards: tr?.snrTowards,
+          snrBack: tr?.snrBack,
+          timestamp: tr?.timestamp,
+          createdAt: tr?.createdAt,
+        },
+        { resolvePosition },
+      );
+      for (const seg of decomposed) {
+        segs.push({ ...seg, key: `${keyPrefix}-${seg.key}` });
       }
     }
     return segs;
@@ -684,23 +648,34 @@ export default function DashboardMap({
             );
           })}
 
-        {/* Route segments — thin SNR-colored hop polylines. */}
-        {showPaths && tracerouteSegments.map((s) => (
-          <Polyline
-            key={`seg-${s.key}`}
-            positions={s.positions}
-            pathOptions={{ color: s.color, weight: 2, opacity: 0.85 }}
+        {/* Route segments — thin SNR-colored hop polylines (shared render
+            layer). MQTT/unknown-SNR hops dash and get the distinguishing
+            mqttColor, matching every other traceroute renderer. */}
+        {showPaths && (
+          <TraceroutePathsLayer
+            segments={tracerouteRenderSegments}
+            snrColors={overlayColors.snrColors}
+            mqttColor={overlayColors.mqttSegment}
+            colorMode="snr"
+            weight={2}
+            opacity={0.85}
+            dashMode="mqtt-unknown"
           />
-        ))}
+        )}
 
-        {/* Traceroute overlay — thicker highlight on top of segments. */}
-        {showRoute && tracerouteSegments.map((s) => (
-          <Polyline
-            key={`route-${s.key}`}
-            positions={s.positions}
-            pathOptions={{ color: '#facc15', weight: 4, opacity: 0.6 }}
+        {/* Traceroute overlay — thicker fixed-yellow highlight on top of the
+            segments above. Highlight, not a data encoding, so it never dashes. */}
+        {showRoute && (
+          <TraceroutePathsLayer
+            segments={tracerouteRenderSegments}
+            snrColors={overlayColors.snrColors}
+            colorMode="fixed"
+            fixedColor="#facc15"
+            weight={4}
+            opacity={0.6}
+            dashMode="never"
           />
-        ))}
+        )}
 
         {/* MeshCore neighbor links — cyan dashed, resolved by public key. */}
         {meshcoreSegments.map((s) => (

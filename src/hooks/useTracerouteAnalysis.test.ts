@@ -1,3 +1,13 @@
+/**
+ * Runs in the default node environment. useTracerouteAnalysis imports
+ * isUnknownSnr/UNKNOWN_SNR_SENTINEL from utils/tracerouteSegments.ts (#4047
+ * P3 WP2) — a pure, leaflet-free module — rather than utils/mapHelpers.tsx
+ * (which pulls in `leaflet` and touches `window` at module scope). WP1
+ * temporarily routed the shared sentinel through mapHelpers.tsx and forced
+ * this file onto @vitest-environment jsdom; WP2 re-homes the sentinel
+ * definition itself into tracerouteSegments.ts so this test can go back to
+ * node env.
+ */
 import { describe, it, expect } from 'vitest';
 import {
   analyzeTraceroutes,

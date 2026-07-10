@@ -14,10 +14,11 @@ export interface OverlayColors {
     gradient: string[];
   };
   snrColors: {
-    good: string;    // SNR > 10dB
-    medium: string;  // SNR 0 to 10dB
-    poor: string;    // SNR < 0dB
-    noData: string;  // No SNR data
+    excellent: string; // SNR >= 5dB
+    good: string;      // SNR 0 to <5dB
+    fair: string;       // SNR -5 to <0dB
+    poor: string;       // SNR < -5dB
+    noData: string;     // No SNR data
   };
   polarGrid: {
     rings: string;
@@ -41,10 +42,11 @@ export const darkOverlayColors: OverlayColors = {
     gradient: ['#0000FF', '#3300CC', '#660099', '#990066', '#CC0033', '#FF0000'],
   },
   snrColors: {
-    good: '#a6e3a1',    // Catppuccin Mocha green (--ctp-green)
-    medium: '#f9e2af',  // Catppuccin Mocha yellow (--ctp-yellow)
-    poor: '#f38ba8',    // Catppuccin Mocha red (--ctp-red)
-    noData: '#6c7086',  // Catppuccin Mocha overlay0 (--ctp-overlay0)
+    excellent: '#22c55e', // Vivid green — SNR >= 5dB
+    good: '#eab308',      // Vivid yellow — SNR 0 to <5dB
+    fair: '#f97316',      // Vivid orange — SNR -5 to <0dB
+    poor: '#ef4444',      // Vivid red — SNR < -5dB
+    noData: '#6c7086',    // Catppuccin Mocha overlay0 (--ctp-overlay0)
   },
   polarGrid: {
     rings: 'rgba(0, 200, 255, 0.3)',
@@ -72,10 +74,13 @@ export const lightOverlayColors: OverlayColors = {
     gradient: ['#1d4ed8', '#4338ca', '#6d28d9', '#a21caf', '#be123c', '#b91c1c'],
   },
   snrColors: {
-    good: '#2f7a1e',    // darkened Latte green — AA on cream (contrast 4.7)
-    medium: '#8f5200',  // darkened Latte amber — AA on cream (contrast 5.4)
-    poor: '#d20f39',    // Catppuccin Latte red — AA on cream (contrast 4.7)
-    noData: '#6c6f7e',  // darkened Latte overlay0 — AA on cream (contrast 4.3)
+    // Verified against OSM HOT cream (#F2EFE9) via WCAG 2.1 relative-luminance
+    // contrast ratio; all bands clear the project's >=4.0 AA-on-cream bar.
+    excellent: '#15803d', // darkened Latte green — AA on cream (contrast 4.37)
+    good: '#8f5200',      // darkened Latte amber — AA on cream (contrast 5.42)
+    fair: '#b45309',      // darkened Latte orange — AA on cream (contrast 4.38)
+    poor: '#d20f39',      // Catppuccin Latte red — AA on cream (contrast 4.73)
+    noData: '#6c6f7e',    // darkened Latte overlay0 — AA on cream (contrast 4.34)
   },
   polarGrid: {
     rings: 'rgba(0, 80, 130, 0.3)',

@@ -39,8 +39,9 @@ vi.mock('../contexts/SettingsContext', () => ({
         gradient: ['#0000FF', '#3300CC', '#660099', '#990066', '#CC0033', '#FF0000'],
       },
       snrColors: {
+        excellent: '#22c55e',
         good: '#a6e3a1',
-        medium: '#f9e2af',
+        fair: '#f9e2af',
         poor: '#f38ba8',
         noData: '#6c7086',
       },

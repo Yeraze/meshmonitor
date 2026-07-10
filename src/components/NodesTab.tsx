@@ -9,7 +9,7 @@ import { TabType } from '../types/ui';
 import { nodePassesTransportFilter } from '../utils/nodeTransport';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
-import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, createArrowIcon } from '../utils/mapHelpers.tsx';
+import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, createArrowIcon, snrToColor } from '../utils/mapHelpers.tsx';
 import { convertSpeed } from '../utils/speedConversion';
 import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, resolveMapEndpoint } from '../utils/nodeHelpers';
 import { shouldOffsetForPrecision, offsetWithinPrecisionCell } from '../utils/precisionOffset';
@@ -2579,9 +2579,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 const ageMin = Math.floor(ageMs / 60000);
                 const ageStr = ageMin < 60 ? `${ageMin}m ago` : `${Math.floor(ageMin / 60)}h ago`;
 
-                // SNR text color for popup
+                // SNR text color for popup (canonical 4-band scale, #4047 P3 D4)
                 const snrTextColor = ni.snr != null
-                  ? ni.snr > 10 ? overlayColors.snrColors.good : ni.snr >= 0 ? overlayColors.snrColors.medium : overlayColors.snrColors.poor
+                  ? snrToColor(ni.snr, overlayColors.snrColors)
                   : undefined;
 
                 // Calculate bearing for unidirectional arrow (degrees from north)
