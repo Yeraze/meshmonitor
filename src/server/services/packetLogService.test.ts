@@ -9,9 +9,9 @@ import packetLogService from './packetLogService.js';
 import databaseService from '../../services/database.js';
 
 describe('PacketLogService', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     // Clear packet logs and reset settings before each test
-    packetLogService.clearPackets();
+    await packetLogService.clearPackets();
     databaseService.setSetting('packet_log_enabled', '0');
     databaseService.setSetting('packet_log_max_count', '1000');
     databaseService.setSetting('packet_log_max_age_hours', '24');
@@ -317,7 +317,7 @@ describe('PacketLogService', () => {
 
       expect(await packetLogService.getPacketCount()).toBe(10);
 
-      const deletedCount = packetLogService.clearPackets();
+      const deletedCount = await packetLogService.clearPackets();
       expect(deletedCount).toBe(10);
       expect(await packetLogService.getPacketCount()).toBe(0);
     });

@@ -138,12 +138,13 @@ class PacketLogService {
   /**
    * Clear all packet logs
    */
-  clearPackets(): number {
-    return databaseService.clearPacketLogs();
+  async clearPackets(): Promise<number> {
+    return databaseService.clearPacketLogsAsync();
   }
 
   /**
    * Clear all packet logs - async version for all backends
+   * @deprecated Use clearPackets() directly — it is now async.
    */
   async clearPacketsAsync(): Promise<number> {
     return databaseService.clearPacketLogsAsync();

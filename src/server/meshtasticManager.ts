@@ -7235,7 +7235,7 @@ class MeshtasticManager implements ISourceManager {
 
       // Use DatabaseService.insertTraceroute() (not repo directly) for deduplication:
       // It checks for pending traceroute requests and updates them instead of inserting duplicates
-      databaseService.insertTraceroute(tracerouteRecord, this.sourceId ?? undefined);
+      await databaseService.insertTracerouteAsync(tracerouteRecord, this.sourceId ?? undefined);
 
       // Store traceroute hop count as telemetry for Smart Hops tracking
       // Hop count is route.length + 1 (intermediate hops + final hop to destination)
