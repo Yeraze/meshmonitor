@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
-import { MapContainer, TileLayer, useMapEvents, useMap } from 'react-leaflet';
+import { useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import { BaseMap } from '../map/BaseMap';
 
 export interface DefaultMapCenterPickerProps {
     lat: number | null;
@@ -76,21 +77,16 @@ export const DefaultMapCenterPicker: React.FC<DefaultMapCenterPickerProps> = ({
     return (
         <div>
             <div style={{ height: '300px', width: '100%' }}>
-                <MapContainer
+                <BaseMap
                     center={initialCenter}
                     zoom={initialZoom}
-                    style={{ height: '100%', width: '100%' }}
-                    scrollWheelZoom={true}
+                    scrollWheelZoom
                 >
-                    <TileLayer
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
                     <MapPositionTracker positionRef={positionRef} />
                     {isConfigured && (
                         <MapInitializer lat={lat!} lon={lon!} zoom={zoom!} />
                     )}
-                </MapContainer>
+                </BaseMap>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
                 <button className="save-button" onClick={handleSave} style={{ minWidth: 'auto', padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
