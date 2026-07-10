@@ -164,7 +164,7 @@ router.get('/:profileId/neighborinfo', createEmbedCspMiddleware(), async (req: R
       });
     }
 
-    const rawNeighbors = await databaseService.neighbors.getAllNeighborInfo(profile.sourceId ?? undefined);
+    const rawNeighbors = await databaseService.neighbors.getAllNeighborInfo(profile.sourceId ?? ALL_SOURCES); // intentional cross-source: profile without a sourceId spans all sources
 
     // Enrich with positions — only include pairs where both nodes are in the filtered set
     const segments = rawNeighbors
