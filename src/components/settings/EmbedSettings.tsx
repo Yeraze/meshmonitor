@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MapContainer, TileLayer, useMapEvents, Marker, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import { useMapEvents, Marker, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import { BaseMap } from '../map/BaseMap';
 import apiService from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
@@ -10,18 +10,6 @@ import { getAllTilesets } from '../../config/tilesets';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import './EmbedSettings.css';
-
-// Fix default marker icon for Leaflet in bundled builds
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
-
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-});
 
 /** Shape matching the backend EmbedProfile */
 interface EmbedProfile {
@@ -490,23 +478,18 @@ const EmbedSettings = () => {
                   {t('settings.embed.map_center_help', 'Click the map to set the center. Zoom with scroll or controls.')}
                 </p>
                 <div className="embed-map-picker">
-                  <MapContainer
+                  <BaseMap
                     center={[form.defaultLat, form.defaultLng]}
                     zoom={form.defaultZoom}
-                    style={{ height: '100%', width: '100%' }}
                     scrollWheelZoom
                   >
-                    <TileLayer
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                      attribution="&copy; OpenStreetMap contributors"
-                    />
                     <MapClickHandler
                       onLocationPick={(lat, lng) => setForm(prev => ({ ...prev, defaultLat: lat, defaultLng: lng }))}
                       onZoomChange={(zoom) => setForm(prev => ({ ...prev, defaultZoom: zoom }))}
                     />
                     <MapCenterUpdater lat={form.defaultLat} lng={form.defaultLng} />
                     <Marker position={[form.defaultLat, form.defaultLng]} />
-                  </MapContainer>
+                  </BaseMap>
                 </div>
                 <div className="embed-map-coords">
                   <span>{t('settings.embed.lat', 'Lat')}: <strong>{form.defaultLat}</strong></span>
