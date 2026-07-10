@@ -82,7 +82,7 @@ three files + this epic-doc correction. See `MAP_CONSOLIDATION_P2_SPEC.md` (Opti
 shared helper (browser-validated); the three files carry not-a-fork/deliberate-divergence
 comments; suite green.
 
-### [ ] Phase 3 — Traceroute unification, app maps (`feature/4047-p3-traceroute-unify`)
+### [x] Phase 3 — Traceroute unification, app maps (`feature/4047-p3-traceroute-unify`)
 (a) Canonical 4-band theme-aware SNR→color scale + one weight + one dash convention in
 `mapHelpers`; delete `DashboardMap.snrToColor`, `MapAnalysis.snrQualityColor`, hardcoded
 palettes; the Map Analysis legend SNR section consumes the canonical mapping. (b) Shared
@@ -137,6 +137,32 @@ browser-validated on every map view; suite green.
 ## Phase log
 
 (Per-phase: PR link, deviations, decisions — appended as phases complete.)
+
+### Phase 3 (2026-07-10) — Traceroute unification, app maps
+- Delivered: canonical 4-band theme-aware SNR scale (WCAG-AA-verified light palette);
+  `src/utils/tracerouteSegments.ts` (leaflet-free single home for #1862/#2051/#2931 +
+  sentinel constants + `isValidRouteNode` + `buildLiveNodePositionMap` +
+  `averageNonSentinelSnr`); shared `src/components/map/layers/TraceroutePathsLayer.tsx`
+  (4 color modes incl. `mqttColor`, 3 weight strategies, canonical `'3,6'` dash,
+  curvature number-or-fn, arrows, temporal fade, highlight, React.memo). All four app
+  renderers migrated: NodesTab (base+selected), DashboardMap (return legs + /4 SNR
+  scaling fix + MQTT dash), TracerouteWidget (theme legs), MapAnalysis (thin adapter,
+  legend on canonical palette).
+- Latent bugs fixed along the way: Dashboard colored by UN-scaled SNR; snapshot
+  positions dropped at lat/lng exactly 0 (truthy checks); live positions same (now
+  shared helper, Null-Island guard retained); Dashboard never rendered return legs.
+- 8-angle review + verify found 2 introduced regressions (return-only traceroutes;
+  widget MQTT weight) and 1 unapproved visual change (MQTT color distinction lost) —
+  all fixed; MQTT color is now canonical on ALL maps via `mqttColor` (previously
+  NodesTab-only). 10 findings total, all fixed (see PR).
+- Visible changes shipped: NodesTab 3→4 band; no-data segments noData-gray dashed
+  (was solid mauve); Dashboard gains return legs + MQTT color/dash; widget legs use
+  theme traceroute pink (direction via arrows); Analysis dash '4,6'→'3,6'.
+- Browser-validated on all four surfaces against pre-migration baselines (screenshots
+  in session scratchpad); suite 9,431 tests green; lint ratchet clean.
+- Note for Phase 6 (embed): EmbedMap still fixed-mauve server-computed segments.
+- Deferred (parity, not regressions): eager per-segment popup construction (recharts
+  trees built for all segments); popup laziness would be a perf follow-up.
 
 ### Phase 2 (2026-07-10) — Reconcile the Map Analysis "forks"
 - **Premise corrected (user-approved retarget):** PolarGridLayer was never a fork (#3971
