@@ -1524,4 +1524,97 @@ export class TelemetryRepository extends BaseRepository {
 
     return { nonFavoritesDeleted, favoritesDeleted };
   }
+
+  /**
+   * Compute per-type "packets per minute" rates from raw telemetry samples.
+   *
+   * Fetches the raw counter samples for `nodeId` across the given telemetry
+   * `types` (ordered oldest-first per type) and derives the rate between each
+   * consecutive pair. Backend-agnostic via Drizzle — replaces the raw-SQL
+   * getPacketRates that used to live on DatabaseService.
+   */
+  async getPacketRates(
+    nodeId: string,
+    types: string[],
+    sinceTimestamp?: number,
+    sourceId?: SourceScope
+  ): Promise<Record<string, Array<{ timestamp: number; ratePerMinute: number }>>> {
+    const { telemetry } = this.tables;
+
+    const conditions: SQL[] = [
+      eq(telemetry.nodeId, nodeId),
+      inArray(telemetry.telemetryType, types),
+    ];
+
+    if (sinceTimestamp !== undefined) {
+      conditions.push(gte(telemetry.timestamp, sinceTimestamp));
+    }
+
+    const sourceScope = this.withSourceScope(telemetry, sourceId);
+    if (sourceScope) conditions.push(sourceScope);
+
+    const rows = await this.db
+      .select({
+        telemetryType: telemetry.telemetryType,
+        timestamp: telemetry.timestamp,
+        value: telemetry.value,
+      })
+      .from(telemetry)
+      .where(and(...conditions))
+      .orderBy(sql`${telemetry.telemetryType} ASC, ${telemetry.timestamp} ASC`);
+
+    return TelemetryRepository.computePacketRates(
+      (rows as Array<{ telemetryType: unknown; timestamp: unknown; value: unknown }>).map((r) => ({
+        telemetryType: r.telemetryType as string,
+        timestamp: Number(r.timestamp),
+        value: Number(r.value),
+      })),
+      types
+    );
+  }
+
+  /**
+   * Pure rate calculation over pre-fetched, per-type-ordered samples. Groups
+   * rows by telemetry type, then computes the delta rate between consecutive
+   * samples. Skips counter resets (negative delta), stale gaps (> 60 min), and
+   * too-small intervals (< 0.1 min) to avoid division artifacts.
+   */
+  static computePacketRates(
+    rows: Array<{ telemetryType: string; timestamp: number; value: number }>,
+    types: string[]
+  ): Record<string, Array<{ timestamp: number; ratePerMinute: number }>> {
+    const result: Record<string, Array<{ timestamp: number; ratePerMinute: number }>> = {};
+    for (const type of types) {
+      result[type] = [];
+    }
+
+    const groupedByType: Record<string, Array<{ timestamp: number; value: number }>> = {};
+    for (const row of rows) {
+      if (!groupedByType[row.telemetryType]) {
+        groupedByType[row.telemetryType] = [];
+      }
+      groupedByType[row.telemetryType].push({
+        timestamp: Number(row.timestamp),
+        value: Number(row.value),
+      });
+    }
+
+    for (const [type, samples] of Object.entries(groupedByType)) {
+      const rates: Array<{ timestamp: number; ratePerMinute: number }> = [];
+      for (let i = 1; i < samples.length; i++) {
+        const deltaValue = samples[i].value - samples[i - 1].value;
+        const deltaTimeMs = samples[i].timestamp - samples[i - 1].timestamp;
+        const deltaTimeMinutes = deltaTimeMs / 60000;
+        if (deltaValue < 0) continue;
+        if (deltaTimeMinutes > 60) continue;
+        if (deltaTimeMinutes < 0.1) continue;
+        rates.push({
+          timestamp: samples[i].timestamp,
+          ratePerMinute: deltaValue / deltaTimeMinutes,
+        });
+      }
+      result[type] = rates;
+    }
+    return result;
+  }
 }
