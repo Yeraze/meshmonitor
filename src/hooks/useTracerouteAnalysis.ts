@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
 // #2931 — shared unknown-hop sentinel (raw firmware INT8_MIN -128 / 4 = -32).
-// Previously duplicated here as a private copy; now imported from the single
-// canonical home in mapHelpers so the definition lives once (#4047 P3 WP1).
-import { isUnknownSnr } from '../utils/mapHelpers';
+// Previously duplicated here as a private copy; folded into mapHelpers under
+// WP1, then re-homed to the leaflet-free tracerouteSegments.ts under WP2 so
+// this hook (and its tests) don't have to pull in mapHelpers.tsx's
+// leaflet/react-leaflet imports just for the sentinel (#4047 P3).
+import { isUnknownSnr } from '../utils/tracerouteSegments';
 
 /**
  * Traceroute analysis for the Map Analysis view (issue #3399).

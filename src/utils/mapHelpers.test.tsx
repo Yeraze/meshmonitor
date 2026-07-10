@@ -24,12 +24,17 @@ import {
   MQTT_DASH,
   type SnrColorScale,
 } from './mapHelpers';
+import { UNKNOWN_SNR_SENTINEL as CANONICAL_UNKNOWN_SNR_SENTINEL } from './tracerouteSegments';
 
 describe('mapHelpers', () => {
   describe('isUnknownSnr (issue #2859)', () => {
     it('returns true for the firmware INT8_MIN sentinel (-32 after /4 scaling)', () => {
       expect(isUnknownSnr(UNKNOWN_SNR_SENTINEL)).toBe(true);
       expect(isUnknownSnr(-32)).toBe(true);
+    });
+
+    it('mapHelpers.UNKNOWN_SNR_SENTINEL stays equal to the canonical tracerouteSegments.ts value (#4047 P3 WP2 — see mapHelpers.tsx comment for why this is a literal re-declaration, not a re-export)', () => {
+      expect(UNKNOWN_SNR_SENTINEL).toBe(CANONICAL_UNKNOWN_SNR_SENTINEL);
     });
 
     it('returns false for SNR=0 (protobuf default — was a false positive in 4.1.0)', () => {

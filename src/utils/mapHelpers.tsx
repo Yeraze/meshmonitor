@@ -5,19 +5,27 @@ import { PositionHistoryItem } from '../contexts/MapContext';
 import { convertSpeed } from './speedConversion';
 export { convertSpeed };
 
+// #2931 — the unknown-hop SNR sentinel now lives in the pure, leaflet-free
+// `tracerouteSegments.ts` (so useTracerouteAnalysis.ts and its tests don't
+// have to pull in this file's `leaflet`/`react-leaflet` imports). Re-exported
+// here for backward compatibility with existing importers (#4047 P3 WP2).
+import { isUnknownSnr } from './tracerouteSegments';
+export { isUnknownSnr };
+
 /**
- * Scaled SNR sentinel for unknown hops.
- * Raw Meshtastic value is INT8_MIN (-128), divided by 4 = -32.
- * Firmware writes this in TraceRouteModule::insertUnknownHops when a hop's
- * SNR can't be filled in: MQTT-bridged leg, decrypt failure, relay-role node,
- * or pre-snr-array firmware. It is NOT specifically an MQTT marker — the
- * firmware uses it as a generic "unknown SNR" sentinel.
+ * Scaled SNR sentinel for unknown hops. Canonical definition (with the full
+ * firmware-semantics doc comment) lives in `tracerouteSegments.ts`'s
+ * `UNKNOWN_SNR_SENTINEL` — this is a literal re-declaration, NOT
+ * `export { UNKNOWN_SNR_SENTINEL } from './tracerouteSegments'` or
+ * `export const UNKNOWN_SNR_SENTINEL = <imported identifier>`: both of those
+ * forms defeat eslint-plugin-react-refresh's `allowConstantExport` exception
+ * (which only recognizes an in-place *literal* initializer) and cascade into
+ * 18 false-positive `react-refresh/only-export-components` warnings across
+ * this file — verified empirically; re-exporting a *function* like
+ * `isUnknownSnr` above is unaffected. `mapHelpers.test.tsx` asserts this
+ * literal stays equal to the canonical value so the two can't silently drift.
  */
 export const UNKNOWN_SNR_SENTINEL = -32;
-
-/** Returns true if the scaled SNR value is the firmware unknown-hop sentinel */
-export const isUnknownSnr = (snr: number | undefined): boolean =>
-  snr === UNKNOWN_SNR_SENTINEL;
 
 // Constants for arrow generation
 const ARROW_DISTANCE_THRESHOLD = 0.05; // One arrow per 0.05 degrees
