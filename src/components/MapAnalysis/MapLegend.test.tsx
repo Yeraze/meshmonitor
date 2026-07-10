@@ -18,6 +18,20 @@ vi.mock('./MapAnalysisContext', () => ({
   useMapAnalysisCtx: () => mockCtx(),
 }));
 
+vi.mock('../../contexts/SettingsContext', () => ({
+  useSettings: () => ({
+    overlayColors: {
+      snrColors: {
+        excellent: '#22c55e',
+        good: '#eab308',
+        fair: '#f97316',
+        poor: '#ef4444',
+        noData: '#6c7086',
+      },
+    },
+  }),
+}));
+
 const mockVisibleCategories = vi.fn();
 vi.mock('./useVisibleNodeTypeCategories', () => ({
   useVisibleNodeTypeCategories: () => mockVisibleCategories(),

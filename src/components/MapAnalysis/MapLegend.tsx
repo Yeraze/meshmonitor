@@ -21,6 +21,7 @@ import {
   categoryGlyphFamily,
   NODE_TYPE_CATEGORY_META,
 } from '../../utils/nodeTypeCategory';
+import { useSettings } from '../../contexts/SettingsContext';
 
 interface SwatchProps {
   color: string;
@@ -53,6 +54,7 @@ function GradientBar({ stops }: { stops: string[] }) {
 export default function MapLegend() {
   const { config } = useMapAnalysisCtx();
   const { t } = useTranslation();
+  const { overlayColors } = useSettings();
   const [collapsed, setCollapsed] = useState(false);
   const visibleCategories = useVisibleNodeTypeCategories();
   // Only categories with a distinct glyph deserve a legend row; client/standard
@@ -125,12 +127,12 @@ export default function MapLegend() {
           {(showTraceroutes || showSnr) && (
             <section>
               <h4>SNR (dB)</h4>
-              <div className="row"><Swatch color="#22c55e" /> ≥ 5 (excellent)</div>
-              <div className="row"><Swatch color="#eab308" /> 0 to 5 (good)</div>
-              <div className="row"><Swatch color="#f97316" /> -5 to 0 (fair)</div>
-              <div className="row"><Swatch color="#ef4444" /> &lt; -5 (poor)</div>
+              <div className="row"><Swatch color={overlayColors.snrColors.excellent} /> ≥ 5 (excellent)</div>
+              <div className="row"><Swatch color={overlayColors.snrColors.good} /> 0 to 5 (good)</div>
+              <div className="row"><Swatch color={overlayColors.snrColors.fair} /> -5 to 0 (fair)</div>
+              <div className="row"><Swatch color={overlayColors.snrColors.poor} /> &lt; -5 (poor)</div>
               {showSnr && (
-                <div className="row"><Swatch color="#888" /> Unknown</div>
+                <div className="row"><Swatch color={overlayColors.snrColors.noData} /> Unknown</div>
               )}
             </section>
           )}
