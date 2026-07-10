@@ -351,12 +351,16 @@ else `'snr'`. Implement as consumer passing `colorMode={focused ? 'direction' : 
 - `src/components/NodesTab.tsx` — the `React.memo` pass-throughs render arrays unchanged; node-SNR swatch
   L2584 → `snrToColor` (D4).
 - `src/components/TracerouteWidget.tsx` — replace inline render L507-573 with `<TraceroutePathsLayer/>`;
-  keep `mapData`/#2051 (or delegate to `decomposeTraceroute`); wire hover via `highlight` prop; delete
-  local fixed-color/dash inline logic.
+  keep `mapData`/#2051 (or delegate to `decomposeTraceroute`); wire hover via `highlight` prop; **delete
+  hardcoded `#4CAF50`/`#2196F3` leg palette — legs converge to theme `tracerouteForward`/`tracerouteReturn`
+  read from `useSettings().overlayColors` (C1, approved visible change);** legend swatches read the same
+  tokens; delete local dash inline logic.
 - `src/components/Dashboard/DashboardMap.tsx` — **delete local `snrToColor` L86-92** and use canonical;
   **/4-scale** the SNR when building segments; add return-leg decomposition (via `decomposeTraceroute`
   or extend `tracerouteSegments`); replace the two stacked passes with two `<TraceroutePathsLayer/>`
-  instances (paths `colorMode:'snr'` + overlay `colorMode:'fixed'`).
+  instances — paths `colorMode:'snr'` with `dashMode:'mqtt-unknown'` (C2 — sentinel data now flows from
+  `decomposeTraceroute`, so MQTT segments dash here like everywhere else) + overlay `colorMode:'fixed'`
+  with `dashMode:'never'`.
 - `src/components/MapAnalysis/layers/TraceroutePathsLayer.tsx` — **delete local `snrQualityColor` +
   hardcoded OUTBOUND/INBOUND**; map `AnalyzedSegment[]` → `TracerouteRenderSegment[]` and render the
   shared `src/components/map/layers/TraceroutePathsLayer`. File remains a thin MapAnalysis adapter
@@ -424,9 +428,11 @@ popup preserved; base layer now 4-band (approved); browser-validated on Nodes ma
 
 ### WP4 — DashboardMap + TracerouteWidget migration *(deps: WP2; parallel to WP3)*
 Files: `DashboardMap.tsx`, `TracerouteWidget.tsx`. **Acceptance:** Dashboard uses canonical scale
-(+/4 scaling), **gains return legs**, two-pass via two layer instances; Widget renders via shared layer
-with hover-highlight preserved and #2051 guard intact; local `snrToColor` + fixed palettes deleted;
-browser-validated on Dashboard + widget; suite green.
+(**/4 scaling — binding, D5**), **gains return legs**, two-pass via two layer instances with paths pass
+`dashMode:'mqtt-unknown'` and overlay pass `'never'` (C2 — MQTT segments visibly dash on the Dashboard);
+Widget renders via shared layer with hover-highlight preserved, #2051 guard intact, and **leg colors from
+theme `tracerouteForward`/`tracerouteReturn` via `useSettings().overlayColors`** (C1 — hardcoded
+`#4CAF50`/`#2196F3` deleted; legend swatches match); browser-validated on Dashboard + widget; suite green.
 
 ### WP5 — MapAnalysis render migration + legend SNR *(deps: WP2; parallel to WP3/WP4)*
 Files: `MapAnalysis/layers/TraceroutePathsLayer.tsx`, `MapAnalysis/MapLegend.tsx`,
@@ -464,4 +470,7 @@ but each must re-run full suite before its PR-slice.)
 - **Snapshot-position parity:** three current `parseRoutePositions` copies (useTraceroutePaths, Widget,
   Dashboard) may differ subtly in field names of the stored snapshot — WP2's `parseSnapshotRoutePositions`
   must reproduce each; diff them during WP2 to avoid a regression where a route silently falls back to live.
-```
+- **Widget node-marker colors (C1 side-effect):** the Widget also colors its from/to node icons
+  `#4CAF50`/`#2196F3` to match its old leg palette (createNodeIcon call around L322). Marker icon
+  unification is **Phase 4 scope** — WP4 must NOT restyle the markers, but should note the temporary
+  leg/marker color mismatch in a code comment referencing Phase 4.
