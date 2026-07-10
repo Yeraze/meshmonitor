@@ -104,18 +104,32 @@ describe('GET /telemetry/:nodeId/rates', () => {
 describe('GET /telemetry/:nodeId/smarthops', () => {
   it('returns smart hop stats and clamps hours', async () => {
     (databaseService.getSmartHopsStatsAsync as any).mockResolvedValue([{ avg: 2 }]);
-    const res = await request(app).get('/telemetry/!12345678/smarthops?hours=9999');
+    const res = await request(app).get('/telemetry/!12345678/smarthops?hours=9999&sourceId=src-A');
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+    expect(databaseService.getSmartHopsStatsAsync).toHaveBeenCalledWith('!12345678', expect.any(Number), expect.any(Number), 'src-A');
+  });
+
+  it('400s when sourceId is omitted', async () => {
+    const res = await request(app).get('/telemetry/!12345678/smarthops');
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MISSING_SOURCE_ID');
   });
 });
 
 describe('GET /telemetry/:nodeId/linkquality', () => {
   it('returns link quality history', async () => {
     (databaseService.getLinkQualityHistoryAsync as any).mockResolvedValue([{ t: 1 }]);
-    const res = await request(app).get('/telemetry/!12345678/linkquality');
+    const res = await request(app).get('/telemetry/!12345678/linkquality?sourceId=src-A');
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
+    expect(databaseService.getLinkQualityHistoryAsync).toHaveBeenCalledWith('!12345678', expect.any(Number), 'src-A');
+  });
+
+  it('400s when sourceId is omitted', async () => {
+    const res = await request(app).get('/telemetry/!12345678/linkquality');
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MISSING_SOURCE_ID');
   });
 });
 

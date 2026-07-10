@@ -106,4 +106,36 @@ describe('requirePermission middleware — per-source scoping', () => {
     const res = await request(app).get('/test/x?sourceId=a&sourceId=b');
     expect(res.status).toBe(400);
   });
+
+  describe('requireSourceId: true', () => {
+    it('400 MISSING_SOURCE_ID when sourceId omitted (query)', async () => {
+      const app = buildApp(
+        requirePermission('info', 'read', { sourceIdFrom: 'query', requireSourceId: true })
+      );
+      const res = await request(app).get('/test');
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ code: 'MISSING_SOURCE_ID' });
+      expect(mockDb.checkPermissionAsync).not.toHaveBeenCalled();
+    });
+
+    it('400 MISSING_SOURCE_ID when sourceId omitted (params.id)', async () => {
+      const app = buildApp(
+        requirePermission('info', 'read', { sourceIdFrom: 'params.id', requireSourceId: true })
+      );
+      // route '/test' has no :id param → missing
+      const res = await request(app).get('/test');
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ code: 'MISSING_SOURCE_ID' });
+    });
+
+    it('passes through when sourceId is present', async () => {
+      const app = buildApp(
+        requirePermission('info', 'read', { sourceIdFrom: 'query', requireSourceId: true })
+      );
+      const res = await request(app).get('/test?sourceId=srcQ');
+      expect(res.status).toBe(200);
+      expect(res.body.scopedSourceId).toBe('srcQ');
+      expect(mockDb.checkPermissionAsync).toHaveBeenCalledWith(42, 'info', 'read', 'srcQ');
+    });
+  });
 });

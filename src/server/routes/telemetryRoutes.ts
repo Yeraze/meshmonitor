@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { optionalAuth, requireAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
+import { requireSourceId } from '../utils/requireSourceId.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
@@ -175,7 +176,7 @@ router.get('/telemetry/:nodeId/rates', optionalAuth(), async (req: Request, res:
 });
 
 // Get smart hops statistics (min/max/avg hop counts over time) for a node
-router.get('/telemetry/:nodeId/smarthops', optionalAuth(), async (req: Request, res: Response) => {
+router.get('/telemetry/:nodeId/smarthops', optionalAuth(), requireSourceId('query'), async (req: Request, res: Response) => {
   try {
     // Allow users with info read OR dashboard read
     if (
@@ -200,8 +201,8 @@ router.get('/telemetry/:nodeId/smarthops', optionalAuth(), async (req: Request, 
     // Calculate cutoff timestamp for filtering
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
 
-    // Get smart hops statistics
-    const stats = await databaseService.getSmartHopsStatsAsync(nodeId, cutoffTime, intervalParam);
+    // Get smart hops statistics (sourceId required + validated by requireSourceId)
+    const stats = await databaseService.getSmartHopsStatsAsync(nodeId, cutoffTime, intervalParam, req.query.sourceId as string);
 
     res.json({ success: true, data: stats });
   } catch (error) {
@@ -211,7 +212,7 @@ router.get('/telemetry/:nodeId/smarthops', optionalAuth(), async (req: Request, 
 });
 
 // Get link quality history for a node
-router.get('/telemetry/:nodeId/linkquality', optionalAuth(), async (req: Request, res: Response) => {
+router.get('/telemetry/:nodeId/linkquality', optionalAuth(), requireSourceId('query'), async (req: Request, res: Response) => {
   try {
     // Allow users with info read OR dashboard read
     if (
@@ -234,8 +235,8 @@ router.get('/telemetry/:nodeId/linkquality', optionalAuth(), async (req: Request
     // Calculate cutoff timestamp for filtering
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
 
-    // Get link quality history
-    const history = await databaseService.getLinkQualityHistoryAsync(nodeId, cutoffTime);
+    // Get link quality history (sourceId required + validated by requireSourceId)
+    const history = await databaseService.getLinkQualityHistoryAsync(nodeId, cutoffTime, req.query.sourceId as string);
 
     res.json({ success: true, data: history });
   } catch (error) {
