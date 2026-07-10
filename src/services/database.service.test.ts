@@ -393,7 +393,7 @@ describe('DatabaseService — getTelemetryCountAsync', () => {
   it('delegates to telemetryRepo.getTelemetryCount', async () => {
     mockTelemetryRepo.getTelemetryCount.mockResolvedValue(42);
 
-    const result = await databaseService.getTelemetryCountAsync();
+    const result = await databaseService.telemetry.getTelemetryCount();
     expect(result).toBe(42);
   });
 });

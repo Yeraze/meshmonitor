@@ -1079,8 +1079,9 @@ class DatabaseService {
   private warmupCaches(): void {
     try {
       logger.debug('🔥 Warming up database caches...');
-      // Pre-populate the telemetry types cache
-      this.getAllNodesTelemetryTypes();
+      // Pre-populate the telemetry types cache (SQLite bootstrap path).
+      const map = this.telemetry.getAllNodesTelemetryTypesSync();
+      this.telemetryTypesCacheBySource.set(DatabaseService.TELEMETRY_TYPES_CACHE_GLOBAL_KEY, { map, time: Date.now() });
       logger.debug('✅ Cache warmup complete');
     } catch (error) {
       // Cache warmup failure is non-critical - cache will populate on first request
@@ -1826,37 +1827,9 @@ class DatabaseService {
   }
 
 
-  getTelemetryCount(): number {
-    // For PostgreSQL/MySQL, telemetry is not cached and count is only used for stats
-    // Return 0 as telemetry count is not critical for operation
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return 0;
-    }
-    return this.telemetry.getTelemetryCountSync();
-  }
 
-  /** @deprecated Use databaseService.telemetry.getTelemetryCount() instead */
-  async getTelemetryCountAsync(): Promise<number> {
-    return this.telemetry.getTelemetryCount();
-  }
 
-  getTelemetryCountByNode(nodeId: string, sinceTimestamp?: number, beforeTimestamp?: number, telemetryType?: string): number {
-    // For PostgreSQL/MySQL, telemetry count is async - return 0 for now
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return 0;
-    }
-    return this.telemetry.getTelemetryCountByNodeSync(nodeId, sinceTimestamp, beforeTimestamp, telemetryType);
-  }
 
-  /** @deprecated Use databaseService.telemetry.getTelemetryCountByNode() instead */
-  async getTelemetryCountByNodeAsync(
-    nodeId: string,
-    sinceTimestamp?: number,
-    beforeTimestamp?: number,
-    telemetryType?: string
-  ): Promise<number> {
-    return this.telemetry.getTelemetryCountByNode(nodeId, sinceTimestamp, beforeTimestamp, telemetryType, ALL_SOURCES); // intentional cross-source: deprecated shim has no sourceId
-  }
 
 
   /**
@@ -1986,20 +1959,6 @@ class DatabaseService {
     return this.traceroutes.deleteTraceroutesInvolvingNodeSync(nodeNum);
   }
 
-  purgeNodeTelemetry(nodeNum: number): number {
-    // For PostgreSQL/MySQL, fire-and-forget async delete
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.telemetryRepo) {
-        this.telemetryRepo.deleteTelemetryByNode(nodeNum, ALL_SOURCES).catch(err => { // intentional cross-source: legacy facade has no sourceId
-          logger.debug('Failed to purge node telemetry:', err);
-        });
-      }
-      return 0;
-    }
-
-    // Delete all telemetry data for this node
-    return this.telemetry.deleteTelemetryByNodeSync(nodeNum);
-  }
 
 
 
@@ -2218,34 +2177,6 @@ class DatabaseService {
     return deleted;
   }
 
-  // Telemetry operations
-  insertTelemetry(telemetryData: DbTelemetry, sourceId?: string): void {
-    // For PostgreSQL/MySQL, fire-and-forget async insert
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.telemetryRepo) {
-        // Note: We removed the nodesCache check here because it was too aggressive -
-        // it would skip telemetry for nodes that exist in the DB but not in the in-memory cache
-        // (e.g., after server restart). The foreign key error handling below handles race conditions.
-        this.telemetryRepo.insertTelemetry(telemetryData, sourceId).catch((error) => {
-          // Ignore foreign key violations - node might not be persisted yet
-          const errorStr = String(error);
-          if (errorStr.includes('foreign key') || errorStr.includes('violates')) {
-            logger.debug(`[DatabaseService] Telemetry insert skipped - node ${telemetryData.nodeNum} not yet persisted`);
-          } else {
-            logger.error(`[DatabaseService] Failed to insert telemetry: ${error}`);
-          }
-        });
-      }
-      // Invalidate the telemetry types cache since we may have added a new type
-      this.invalidateTelemetryTypesCache();
-      return;
-    }
-
-    this.telemetry.insertTelemetrySync(telemetryData, sourceId);
-
-    // Invalidate the telemetry types cache since we may have added a new type
-    this.invalidateTelemetryTypesCache();
-  }
 
   /**
    * Async version of insertTelemetry - works with all database backends
@@ -2255,59 +2186,8 @@ class DatabaseService {
     this.invalidateTelemetryTypesCache();
   }
 
-  getTelemetryByNode(nodeId: string, limit: number = 100, sinceTimestamp?: number, beforeTimestamp?: number, offset: number = 0, telemetryType?: string): DbTelemetry[] {
-    return this.telemetry.getTelemetryByNodeSync(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType) as unknown as DbTelemetry[];
-  }
 
-  /** @deprecated Use databaseService.telemetry.getTelemetryByNode() instead */
-  async getTelemetryByNodeAsync(
-    nodeId: string,
-    limit: number = 100,
-    sinceTimestamp?: number,
-    beforeTimestamp?: number,
-    offset: number = 0,
-    telemetryType?: string
-  ): Promise<DbTelemetry[]> {
-    // Cast to local DbTelemetry type (they have compatible structure)
-    return this.telemetry.getTelemetryByNode(nodeId, limit, sinceTimestamp, beforeTimestamp, offset, telemetryType, ALL_SOURCES) as unknown as DbTelemetry[]; // intentional cross-source: deprecated shim has no sourceId
-  }
 
-  /**
-   * Get only position-related telemetry (latitude, longitude, altitude, ground_speed, ground_track) for a node.
-   * This is much more efficient than fetching all telemetry types - reduces data fetched by ~70%.
-   *
-   * NOTE: This sync method only works for SQLite. For PostgreSQL/MySQL, use getPositionTelemetryByNodeAsync().
-   * Returns empty array for non-SQLite backends by design (sync DB access not supported).
-   */
-  getPositionTelemetryByNode(nodeId: string, limit: number = 1500, sinceTimestamp?: number): DbTelemetry[] {
-    // INTENTIONAL: PostgreSQL/MySQL require async queries - use getPositionTelemetryByNodeAsync() instead
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return [];
-    }
-
-    let query = `
-      SELECT * FROM telemetry
-      WHERE nodeId = ?
-        AND telemetryType IN ('latitude', 'longitude', 'altitude', 'ground_speed', 'ground_track')
-    `;
-    const params: any[] = [nodeId];
-
-    if (sinceTimestamp !== undefined) {
-      query += ` AND timestamp >= ?`;
-      params.push(sinceTimestamp);
-    }
-
-    query += `
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `;
-    params.push(limit);
-
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare(query);
-    const telemetry = stmt.all(...params) as DbTelemetry[];
-    return telemetry.map(t => this.normalizeBigInts(t));
-  }
 
   /** @deprecated Use databaseService.telemetry.getPositionTelemetryByNode() instead */
   async getPositionTelemetryByNodeAsync(nodeId: string, limit: number = 1500, sinceTimestamp?: number, beforeTimestamp?: number): Promise<DbTelemetry[]> {
@@ -2315,63 +2195,6 @@ class DatabaseService {
     return this.telemetry.getPositionTelemetryByNode(nodeId, limit, sinceTimestamp, ALL_SOURCES, beforeTimestamp) as unknown as Promise<DbTelemetry[]>; // intentional cross-source: deprecated shim has no sourceId
   }
 
-  /**
-   * Get the latest estimated positions for all nodes in a single query.
-   * This is much more efficient than querying each node individually (N+1 problem).
-   * Returns a Map of nodeId -> { latitude, longitude } for nodes with estimated positions.
-   */
-  getAllNodesEstimatedPositions(): Map<string, { latitude: number; longitude: number }> {
-    // For PostgreSQL/MySQL, estimated positions require async telemetry queries
-    // Return empty map - estimated positions will be computed via API endpoints
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return new Map();
-    }
-
-    // Use a subquery to get the latest timestamp for each node/type combination,
-    // then join to get the actual values. This avoids the N+1 query problem.
-    const query = `
-      WITH LatestEstimates AS (
-        SELECT nodeId, telemetryType, MAX(timestamp) as maxTimestamp
-        FROM telemetry
-        WHERE telemetryType IN ('estimated_latitude', 'estimated_longitude')
-        GROUP BY nodeId, telemetryType
-      )
-      SELECT t.nodeId, t.telemetryType, t.value
-      FROM telemetry t
-      INNER JOIN LatestEstimates le
-        ON t.nodeId = le.nodeId
-        AND t.telemetryType = le.telemetryType
-        AND t.timestamp = le.maxTimestamp
-    `;
-
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare(query);
-    const results = stmt.all() as Array<{ nodeId: string; telemetryType: string; value: number }>;
-
-    // Build a map of nodeId -> { latitude, longitude }
-    const positionMap = new Map<string, { latitude: number; longitude: number }>();
-
-    for (const row of results) {
-      const existing = positionMap.get(row.nodeId) || { latitude: 0, longitude: 0 };
-
-      if (row.telemetryType === 'estimated_latitude') {
-        existing.latitude = row.value;
-      } else if (row.telemetryType === 'estimated_longitude') {
-        existing.longitude = row.value;
-      }
-
-      positionMap.set(row.nodeId, existing);
-    }
-
-    // Filter out entries that don't have both lat and lon
-    for (const [nodeId, pos] of positionMap) {
-      if (pos.latitude === 0 || pos.longitude === 0) {
-        positionMap.delete(nodeId);
-      }
-    }
-
-    return positionMap;
-  }
 
   /**
    * Get the latest estimated position for every node as a Map keyed by nodeId.
@@ -2393,10 +2216,6 @@ class DatabaseService {
     return this.estimatedPositions.getAll();
   }
 
-  /** Get the global estimate for a single node, or null. */
-  async getEstimatedPositionAsync(nodeNum: number): Promise<EstimatedPosition | null> {
-    return this.estimatedPositions.getByNodeNum(nodeNum);
-  }
 
   /** Bulk-upsert global estimated positions. */
   async upsertEstimatedPositionsAsync(inputs: EstimatedPositionInput[]): Promise<void> {
@@ -2408,22 +2227,7 @@ class DatabaseService {
     return this.estimatedPositions.deleteByNodeNums(nodeNums);
   }
 
-  /** Delete all global estimated positions. */
-  async deleteAllEstimatedPositionsAsync(): Promise<number> {
-    return this.estimatedPositions.deleteAll();
-  }
 
-  /**
-   * Get recent estimated positions for a specific node.
-   * Returns position estimates with timestamps for time-weighted averaging.
-   * @param nodeNum - The node number to get estimates for
-   * @param limit - Maximum number of estimates to return (default 10)
-   * @returns Array of { latitude, longitude, timestamp } sorted by timestamp descending
-   */
-  async getRecentEstimatedPositionsAsync(nodeNum: number, limit: number = 10): Promise<Array<{ latitude: number; longitude: number; timestamp: number }>> {
-    const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
-    return this.telemetry.getRecentEstimatedPositions(nodeId, limit);
-  }
 
   /**
    * Get smart hops statistics for a node.
@@ -2478,179 +2282,8 @@ class DatabaseService {
     return this.traceroutesRepo!.getCompletedTraceroutesForMigrationSync();
   }
 
-  /**
-   * Delete all estimated position telemetry records.
-   * Used during migration to force recalculation with new algorithm.
-   */
-  deleteAllEstimatedPositions(): number {
-    return this.telemetry.deleteAllEstimatedPositionsSync();
-  }
 
-  // Cache for PostgreSQL telemetry data
-  private _telemetryCache: Map<string, DbTelemetry[]> = new Map();
 
-  getTelemetryByNodeAveraged(nodeId: string, sinceTimestamp?: number, intervalMinutes?: number, maxHours?: number, sourceId?: string): DbTelemetry[] {
-    // For PostgreSQL/MySQL, use async repo and cache (no averaging yet)
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const cacheKey = `${nodeId}-${sinceTimestamp || 0}-${maxHours || 24}-${sourceId || 'all'}`;
-      if (this.telemetryRepo) {
-        // Calculate limit based on maxHours
-        const limit = Math.min((maxHours || 24) * 60, 5000); // ~1 per minute, max 5000
-        this.telemetryRepo.getTelemetryByNode(nodeId, limit, sinceTimestamp, undefined, 0, undefined, sourceId).then(telemetry => {
-          // Convert to local DbTelemetry type
-          this._telemetryCache.set(cacheKey, telemetry.map(t => ({
-            id: t.id,
-            nodeId: t.nodeId,
-            nodeNum: t.nodeNum,
-            telemetryType: t.telemetryType,
-            timestamp: t.timestamp,
-            value: t.value,
-            unit: t.unit ?? undefined,
-            createdAt: t.createdAt,
-            packetTimestamp: t.packetTimestamp ?? undefined,
-            channel: t.channel ?? undefined,
-            precisionBits: t.precisionBits ?? undefined,
-            gpsAccuracy: t.gpsAccuracy ?? undefined,
-          })));
-        }).catch(err => logger.debug('Failed to fetch telemetry:', err));
-      }
-      return this._telemetryCache.get(cacheKey) || [];
-    }
-    // Dynamic bucketing: automatically choose interval based on time range
-    // This prevents data cutoff for long time periods or chatty nodes
-    const actualIntervalMinutes = intervalMinutes ?? computeAveragingIntervalMinutes(maxHours);
-
-    // SQLite: delegate to Drizzle-backed repo sync helper. Keeps column names
-    // aligned with the schema (fixes issue #2631 where raw SQL used
-    // `source_id` while the schema column is `sourceId`).
-    if (!this.telemetryRepo) {
-      return [];
-    }
-    const rows = this.telemetryRepo.getTelemetryByNodeAveragedSqlite(
-      nodeId,
-      sinceTimestamp,
-      actualIntervalMinutes,
-      maxHours,
-      sourceId
-    );
-    return rows.map(t => this.normalizeBigInts(t));
-  }
-
-  /**
-   * Get packet rate statistics (packets per minute) for a node.
-   * Calculates the rate of change between consecutive telemetry samples.
-   *
-   * @param nodeId - The node ID to fetch rates for
-   * @param types - Array of telemetry types to calculate rates for
-   * @param sinceTimestamp - Only fetch data after this timestamp (optional)
-   * @returns Object mapping telemetry type to array of rate data points
-   */
-  getPacketRates(
-    nodeId: string,
-    types: string[],
-    sinceTimestamp?: number,
-    sourceId?: string
-  ): Record<string, Array<{ timestamp: number; ratePerMinute: number }>> {
-    const result: Record<string, Array<{ timestamp: number; ratePerMinute: number }>> = {};
-
-    // For PostgreSQL/MySQL, packet rates not yet implemented - return empty
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      for (const type of types) {
-        result[type] = [];
-      }
-      return result;
-    }
-
-    // Initialize result object for each type
-    for (const type of types) {
-      result[type] = [];
-    }
-
-    // Build query to fetch raw telemetry data ordered by timestamp ASC (oldest first)
-    // We need consecutive samples to calculate deltas
-    let query = `
-      SELECT telemetryType, timestamp, value
-      FROM telemetry
-      WHERE nodeId = ?
-        AND telemetryType IN (${types.map(() => '?').join(', ')})
-    `;
-    const params: (string | number)[] = [nodeId, ...types];
-
-    if (sinceTimestamp !== undefined) {
-      query += ` AND timestamp >= ?`;
-      params.push(sinceTimestamp);
-    }
-
-    if (sourceId !== undefined) {
-      query += ` AND sourceId = ?`;
-      params.push(sourceId);
-    }
-
-    query += ` ORDER BY telemetryType, timestamp ASC`;
-
-    // eslint-disable-next-line no-restricted-syntax -- legacy raw SQL, pending future Drizzle migration batch
-    const stmt = this.db.prepare(query);
-    const rows = stmt.all(...params) as Array<{
-      telemetryType: string;
-      timestamp: number;
-      value: number;
-    }>;
-
-    // Group by telemetry type
-    const groupedByType: Record<string, Array<{ timestamp: number; value: number }>> = {};
-    for (const row of rows) {
-      if (!groupedByType[row.telemetryType]) {
-        groupedByType[row.telemetryType] = [];
-      }
-      groupedByType[row.telemetryType].push({
-        timestamp: row.timestamp,
-        value: row.value,
-      });
-    }
-
-    // Calculate rates for each type
-    for (const [type, samples] of Object.entries(groupedByType)) {
-      const rates: Array<{ timestamp: number; ratePerMinute: number }> = [];
-
-      for (let i = 1; i < samples.length; i++) {
-        const deltaValue = samples[i].value - samples[i - 1].value;
-        const deltaTimeMs = samples[i].timestamp - samples[i - 1].timestamp;
-        const deltaTimeMinutes = deltaTimeMs / 60000;
-
-        // Skip counter resets (negative delta = device reboot)
-        if (deltaValue < 0) {
-          continue;
-        }
-
-        // Skip if time gap > 1 hour (stale data, likely a device restart)
-        if (deltaTimeMinutes > 60) {
-          continue;
-        }
-
-        // Skip if delta time is too small (avoid division issues)
-        if (deltaTimeMinutes < 0.1) {
-          continue;
-        }
-
-        const ratePerMinute = deltaValue / deltaTimeMinutes;
-
-        // Skip unreasonably high rates (likely artifact from reset)
-        // More than 1000 packets/minute is suspicious
-        if (ratePerMinute > 1000) {
-          continue;
-        }
-
-        rates.push({
-          timestamp: samples[i].timestamp,
-          ratePerMinute: Math.round(ratePerMinute * 100) / 100, // Round to 2 decimal places
-        });
-      }
-
-      result[type] = rates;
-    }
-
-    return result;
-  }
 
   async getPacketRatesAsync(
     nodeId: string,
@@ -2666,8 +2299,10 @@ class DatabaseService {
       // and withSourceScope throws on undefined — preserve that behavior.
       return this.telemetryRepo.getPacketRates(nodeId, types, sinceTimestamp, sourceId ?? ALL_SOURCES);
     }
-    // Fallback to the legacy sync SQLite implementation when no repo is wired.
-    return this.getPacketRates(nodeId, types, sinceTimestamp, sourceId);
+    // No repo wired (should not happen post-init) — return empty rates per type.
+    const empty: Record<string, Array<{ timestamp: number; ratePerMinute: number }>> = {};
+    for (const type of types) empty[type] = [];
+    return empty;
   }
 
   insertTraceroute(tracerouteData: DbTraceroute, sourceId?: string): void {
@@ -4091,40 +3726,9 @@ class DatabaseService {
 
   // Distance delete log methods moved to DistanceDeleteLogRepository (databaseService.distanceDeleteLog.getDistanceDeleteLog / addDistanceDeleteLogEntry)
 
-  getTelemetryByType(telemetryType: string, limit: number = 100): DbTelemetry[] {
-    // For PostgreSQL/MySQL, telemetry is async - return empty for sync calls
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return [];
-    }
 
-    return this.telemetry.getTelemetryByTypeSync(telemetryType, limit) as unknown as DbTelemetry[];
-  }
 
-  /** @deprecated Use databaseService.telemetry.getTelemetryByType() instead */
-  async getTelemetryByTypeAsync(telemetryType: string, limit: number = 100): Promise<DbTelemetry[]> {
-    // Cast to local DbTelemetry type (they have compatible structure)
-    return this.telemetry.getTelemetryByType(telemetryType, limit) as unknown as DbTelemetry[];
-  }
 
-  getLatestTelemetryByNode(nodeId: string): DbTelemetry[] {
-    // For PostgreSQL/MySQL, telemetry is async - return empty for sync calls
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return [];
-    }
-
-    return this.telemetry.getLatestTelemetryByNodeSync(nodeId) as unknown as DbTelemetry[];
-  }
-
-  getLatestTelemetryForType(nodeId: string, telemetryType: string): DbTelemetry | null {
-    // For PostgreSQL/MySQL, telemetry is not cached - return null for sync calls
-    // This is used for checking node capabilities, not critical for operation
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      // Telemetry queries require async, so return null for sync interface
-      // The actual data will be fetched via API endpoints which can be async
-      return null;
-    }
-    return this.telemetry.getLatestTelemetryForTypeSync(nodeId, telemetryType) as unknown as DbTelemetry | null;
-  }
 
   /**
    * Async version of getLatestTelemetryForType - works with all database backends
@@ -4149,52 +3753,8 @@ class DatabaseService {
     };
   }
 
-  /** @deprecated Use databaseService.telemetry.getLatestTelemetryValueForAllNodes() instead */
-  async getLatestTelemetryValueForAllNodesAsync(
-    telemetryType: string,
-    sourceId?: string,
-  ): Promise<Map<string, number>> {
-    return this.telemetry.getLatestTelemetryValueForAllNodes(telemetryType, sourceId);
-  }
 
-  // Get distinct telemetry types per node (efficient for checking capabilities)
-  getNodeTelemetryTypes(nodeId: string): string[] {
-    // For PostgreSQL/MySQL, return empty array for sync calls
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      return [];
-    }
-    return this.telemetry.getNodeTelemetryTypesSync(nodeId);
-  }
 
-  // Get all nodes with their telemetry types (cached for performance)
-  // This query can be slow with large telemetry tables, so results are cached
-  getAllNodesTelemetryTypes(sourceId?: string): Map<string, string[]> {
-    const now = Date.now();
-    const cacheKey = sourceId ?? DatabaseService.TELEMETRY_TYPES_CACHE_GLOBAL_KEY;
-    const cached = this.telemetryTypesCacheBySource.get(cacheKey);
-
-    // Return cached result if still valid
-    if (cached && now - cached.time < DatabaseService.TELEMETRY_TYPES_CACHE_TTL_MS) {
-      return cached.map;
-    }
-
-    // For PostgreSQL/MySQL, use async query and cache
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.telemetryRepo) {
-        // Fire async query and update cache in background
-        this.telemetryRepo.getAllNodesTelemetryTypes(sourceId ?? ALL_SOURCES).then(map => { // undefined = global cache key — intentional cross-source
-          this.telemetryTypesCacheBySource.set(cacheKey, { map, time: Date.now() });
-        }).catch(err => logger.debug('Failed to fetch telemetry types:', err));
-      }
-      // Return existing cache or empty map
-      return cached?.map ?? new Map();
-    }
-
-    // SQLite: query the database and update cache
-    const map = this.telemetry.getAllNodesTelemetryTypesSync();
-    this.telemetryTypesCacheBySource.set(cacheKey, { map, time: now });
-    return map;
-  }
 
   // Get all nodes with their telemetry types (async version)
   async getAllNodesTelemetryTypesAsync(sourceId?: string): Promise<Map<string, string[]>> {
@@ -4235,120 +3795,7 @@ class DatabaseService {
   }
 
 
-  purgeAllTelemetry(sourceId?: string): void {
-    logger.debug(`⚠️ PURGING ${sourceId ? `source ${sourceId}'s ` : 'all '}telemetry from database`);
 
-    // For PostgreSQL/MySQL, use async repository
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      if (this.telemetryRepo) {
-        this.telemetryRepo.deleteAllTelemetry(sourceId).then(() => {
-          logger.debug('✅ Successfully purged telemetry');
-          this.invalidateTelemetryTypesCache(sourceId);
-        }).catch(err => {
-          logger.error('Failed to purge telemetry:', err);
-        });
-      } else {
-        logger.warn('Cannot purge telemetry: telemetry repository not initialized');
-      }
-      return;
-    }
-
-    this.telemetry.deleteAllTelemetrySync(sourceId);
-    this.invalidateTelemetryTypesCache(sourceId);
-  }
-
-  purgeOldTelemetry(hoursToKeep: number, favoriteDaysToKeep?: number): number {
-    // PostgreSQL/MySQL: Use async telemetry repository
-    if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
-      const regularCutoffTime = Date.now() - (hoursToKeep * 60 * 60 * 1000);
-
-      if (this.telemetryRepo) {
-        // If no favorite days specified, use simple deletion
-        if (!favoriteDaysToKeep) {
-          this.telemetryRepo.deleteOldTelemetry(regularCutoffTime).then(count => {
-            logger.debug(`🧹 Purged ${count} old telemetry records (keeping last ${hoursToKeep} hours)`);
-          }).catch(error => {
-            logger.error('Error purging old telemetry:', error);
-          });
-        } else {
-          // Get favorites and use favorites-aware deletion
-          const favoritesStr = this.getSetting('telemetryFavorites');
-          let favorites: Array<{ nodeId: string; telemetryType: string }> = [];
-          if (favoritesStr) {
-            try {
-              favorites = JSON.parse(favoritesStr);
-            } catch (error) {
-              logger.error('Failed to parse telemetryFavorites from settings:', error);
-            }
-          }
-
-          const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
-
-          this.telemetryRepo.deleteOldTelemetryWithFavorites(
-            regularCutoffTime,
-            favoriteCutoffTime,
-            favorites
-          ).then(({ nonFavoritesDeleted, favoritesDeleted }) => {
-            logger.debug(
-              `🧹 Purged ${nonFavoritesDeleted + favoritesDeleted} old telemetry records ` +
-              `(${nonFavoritesDeleted} non-favorites older than ${hoursToKeep}h, ` +
-              `${favoritesDeleted} favorites older than ${favoriteDaysToKeep}d)`
-            );
-          }).catch(error => {
-            logger.error('Error purging old telemetry:', error);
-          });
-        }
-      }
-      return 0; // Cannot return sync count for async operation
-    }
-
-    const regularCutoffTime = Date.now() - (hoursToKeep * 60 * 60 * 1000);
-
-    // If no favorite storage duration specified, purge all telemetry older than hoursToKeep
-    if (!favoriteDaysToKeep) {
-      const deleted = this.telemetry.deleteOldTelemetrySync(regularCutoffTime);
-      logger.debug(`🧹 Purged ${deleted} old telemetry records (keeping last ${hoursToKeep} hours)`);
-      if (deleted > 0) this.invalidateTelemetryTypesCache();
-      return deleted;
-    }
-
-    // Get the list of favorited telemetry from settings
-    const favoritesStr = this.getSetting('telemetryFavorites');
-    let favorites: Array<{ nodeId: string; telemetryType: string }> = [];
-    if (favoritesStr) {
-      try {
-        favorites = JSON.parse(favoritesStr);
-      } catch (error) {
-        logger.error('Failed to parse telemetryFavorites from settings:', error);
-      }
-    }
-
-    // If no favorites, just purge everything older than hoursToKeep
-    if (favorites.length === 0) {
-      const deleted = this.telemetry.deleteOldTelemetrySync(regularCutoffTime);
-      logger.debug(`🧹 Purged ${deleted} old telemetry records (keeping last ${hoursToKeep} hours, no favorites)`);
-      if (deleted > 0) this.invalidateTelemetryTypesCache();
-      return deleted;
-    }
-
-    // Calculate the cutoff time for favorited telemetry
-    const favoriteCutoffTime = Date.now() - (favoriteDaysToKeep * 24 * 60 * 60 * 1000);
-
-    const { nonFavoritesDeleted, favoritesDeleted } = this.telemetry.deleteOldTelemetryWithFavoritesSync(
-      regularCutoffTime,
-      favoriteCutoffTime,
-      favorites
-    );
-    const totalDeleted = nonFavoritesDeleted + favoritesDeleted;
-
-    logger.debug(
-      `🧹 Purged ${totalDeleted} old telemetry records ` +
-      `(${nonFavoritesDeleted} non-favorites older than ${hoursToKeep}h, ` +
-      `${favoritesDeleted} favorites older than ${favoriteDaysToKeep}d)`
-    );
-    if (totalDeleted > 0) this.invalidateTelemetryTypesCache();
-    return totalDeleted;
-  }
 
   /**
    * Purge all telemetry data (async version), optionally scoped to one source.
@@ -6382,15 +5829,7 @@ class DatabaseService {
   // migrated to direct repository access: databaseService.messages.deleteMessage(), etc.
 
 
-  /** @deprecated Use databaseService.telemetry.purgeNodeTelemetry() instead */
-  async purgeNodeTelemetryAsync(nodeNum: number): Promise<number> {
-    return this.telemetry.purgeNodeTelemetry(nodeNum, ALL_SOURCES); // intentional cross-source: deprecated shim has no sourceId
-  }
 
-  /** @deprecated Use databaseService.telemetry.purgePositionHistory() instead */
-  async purgePositionHistoryAsync(nodeNum: number): Promise<number> {
-    return this.telemetry.purgePositionHistory(nodeNum);
-  }
 
   /**
    * Async method to update user password.
