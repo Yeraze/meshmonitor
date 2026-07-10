@@ -40,7 +40,7 @@ markers, popups, spiderfy, tiles, and traceroute rendering land everywhere by co
 
 ## Phases
 
-### [ ] Phase 1 — `BaseMap` shell (`feature/4047-p1-basemap-shell`)
+### [x] Phase 1 — `BaseMap` shell (`feature/4047-p1-basemap-shell`)
 Create `src/components/map/BaseMap.tsx`: `MapContainer` + raster `TileLayer` /
 `VectorTileLayer` selection via `tilesets.ts` + optional `TilesetSelector` + resize/center
 handling + Leaflet default-icon fix, theme-aware defaults. Migrate the four simple maps
@@ -104,3 +104,24 @@ map view; suite green.
 ## Phase log
 
 (Per-phase: PR link, deviations, decisions — appended as phases complete.)
+
+### Phase 1 (2026-07-10) — BaseMap shell
+- Delivered: `src/components/map/BaseMap.tsx` + `leafletDefaultIcon.ts` + tests; migrated
+  DefaultMapCenterPicker, EmbedSettings preview picker, BBoxMapEditor, GeofenceMapEditor.
+  Big-map shell adoption deferred to later phases per spec (`MAP_CONSOLIDATION_P1_SPEC.md`).
+- **Decision — theme-aware default deferred:** no theme→tileset mapping exists in the
+  codebase; wiring one into BaseMap would have visibly changed the four OSM editors
+  (Phase-1 violation). BaseMap defaults to `DEFAULT_TILESET_ID` unconditionally; a future
+  opt-in `themeAwareDefault` prop is documented in the spec for big-map adoption.
+- **Decision — canonical default marker = Leaflet PNG.** The two deleted icon-fix copies
+  fought over the global `L.Icon.Default`; due to ES module eval order (EmbedSettings
+  evaluates before App.tsx top-level code), the App.tsx SVG teardrop actually won at
+  runtime. The only bare default `<Marker>` in the codebase (EmbedSettings preview)
+  therefore visibly changed from the 24px SVG teardrop to the standard 25×41 Leaflet PNG
+  pin — verified in browser; accepted as corrective under the canonical-look decision.
+- TilesetSelector renders as a SIBLING outside MapContainer (matches NodesTab ground
+  truth); BaseMap returns a fragment and must never own a wrapper div.
+- Validation: full Vitest suite success:true (2,866 suites / 9,325 tests / 0 failed);
+  typecheck + lint:ci clean; browser-validated all four surfaces (tiles, click-to-place,
+  circle draw + handles, two-corner bbox draw + hint transitions) with no new console
+  errors.
