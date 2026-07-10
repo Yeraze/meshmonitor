@@ -796,7 +796,8 @@ export class TelemetryRepository extends BaseRepository {
   async getSmartHopsStats(
     nodeId: string,
     sinceTimestamp: number,
-    intervalMinutes: number = 15
+    intervalMinutes: number = 15,
+    sourceId?: SourceScope
   ): Promise<Array<{ timestamp: number; minHops: number; maxHops: number; avgHops: number }>> {
     // For rolling 24-hour window, we need data from 24 hours before the sinceTimestamp
     const twentyFourHours = 24 * 60 * 60 * 1000;
@@ -809,7 +810,8 @@ export class TelemetryRepository extends BaseRepository {
       extendedSinceTimestamp,
       undefined,
       0,
-      'messageHops'
+      'messageHops',
+      sourceId
     );
 
     if (telemetry.length === 0) {
@@ -862,7 +864,8 @@ export class TelemetryRepository extends BaseRepository {
    */
   async getLinkQualityHistory(
     nodeId: string,
-    sinceTimestamp: number
+    sinceTimestamp: number,
+    sourceId?: SourceScope
   ): Promise<Array<{ timestamp: number; quality: number }>> {
     // Fetch all linkQuality telemetry for this node since cutoff
     const telemetry = await this.getTelemetryByNode(
@@ -871,7 +874,8 @@ export class TelemetryRepository extends BaseRepository {
       sinceTimestamp,
       undefined,
       0,
-      'linkQuality'
+      'linkQuality',
+      sourceId
     );
 
     if (telemetry.length === 0) {
