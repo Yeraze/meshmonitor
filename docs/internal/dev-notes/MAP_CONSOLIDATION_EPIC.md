@@ -4,6 +4,13 @@
 **Tracking issue:** https://github.com/Yeraze/meshmonitor/issues/4047
 **Orchestration:** /epic harness — one phase = one merged PR, phases strictly sequential.
 
+**Branch strategy (user decision 2026-07-10):** all phase PRs target the long-lived
+integration branch **`4049-map-refactor`** (cut from main at 3e3d50f8), NOT main.
+Phase worktrees branch FROM `origin/4049-map-refactor` (so each phase builds on the
+merged prior phases). Main receives ONE final PR merging the combined integration
+branch after all phases complete and are validated together. Keep `4049-map-refactor`
+periodically synced with main (merge main INTO it) to avoid a giant final conflict.
+
 ## Goal
 
 Consolidate MeshMonitor's 10 independent Leaflet map implementations (~8,000 LOC) into a
