@@ -11,6 +11,7 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshtasticManager } from '../sourceManagerTypes.js';
 import type { MeshtasticManager } from '../meshtasticManager.js';
 import { fail } from '../utils/apiResponse.js';
+import { requireSourceId } from '../utils/requireSourceId.js';
 import { duplicateKeySchedulerService } from '../services/duplicateKeySchedulerService.js';
 import { securityDigestService } from '../services/securityDigestService.js';
 import { logger } from '../../utils/logger.js';
@@ -21,7 +22,7 @@ const router = Router();
 router.use(requirePermission('security', 'read'));
 
 // Get all nodes with security issues
-router.get('/issues', async (req: Request, res: Response) => {
+router.get('/issues', requireSourceId('query'), async (req: Request, res: Response) => {
   try {
     const secSourceId = req.query.sourceId as string | undefined;
     const nodesWithKeyIssues = await databaseService.getNodesWithKeySecurityIssuesAsync(secSourceId);
@@ -196,7 +197,7 @@ router.post(
 );
 
 // Export security issues
-router.get('/export', async (req: Request, res: Response) => {
+router.get('/export', requireSourceId('query'), async (req: Request, res: Response) => {
   try {
     const format = req.query.format as string || 'csv';
     const exportSourceId = req.query.sourceId as string | undefined;
@@ -333,7 +334,7 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), asy
  * GET /api/security/key-mismatches
  * Returns recent key mismatch events from the repair log
  */
-router.get('/key-mismatches', async (req: Request, res: Response) => {
+router.get('/key-mismatches', requireSourceId('query'), async (req: Request, res: Response) => {
   try {
     // Scope to the requested source so the repair log doesn't leak events from
     // every source into one source's view (same class as the dead-nodes bug).
