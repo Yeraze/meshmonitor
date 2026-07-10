@@ -1,12 +1,8 @@
 import { useMemo } from 'react';
-
-/**
- * Scaled SNR sentinel for unknown hops (raw firmware INT8_MIN -128 / 4 = -32).
- * Mirrors `UNKNOWN_SNR_SENTINEL` in utils/mapHelpers.tsx — duplicated here so
- * the analysis core stays free of the Leaflet import (keeps it node-testable).
- */
-const UNKNOWN_SNR_SENTINEL = -32;
-const isUnknownSnr = (snr: number | undefined): boolean => snr === UNKNOWN_SNR_SENTINEL;
+// #2931 — shared unknown-hop sentinel (raw firmware INT8_MIN -128 / 4 = -32).
+// Previously duplicated here as a private copy; now imported from the single
+// canonical home in mapHelpers so the definition lives once (#4047 P3 WP1).
+import { isUnknownSnr } from '../utils/mapHelpers';
 
 /**
  * Traceroute analysis for the Map Analysis view (issue #3399).

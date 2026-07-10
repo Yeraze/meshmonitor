@@ -158,21 +158,47 @@ export const generateCurvedPath = (
 };
 
 /**
- * Get color for a route segment based on average SNR
- * Returns the appropriate color from the SNR gradient
+ * Canonical 4-band SNR color scale (theme-aware; hex values live in
+ * `overlayColors.snrColors`). Bands: excellent >=5dB, good >=0dB,
+ * fair >=-5dB, poor <-5dB, noData when unavailable/unknown. See #4047 P3.
+ */
+export interface SnrColorScale {
+  excellent: string;
+  good: string;
+  fair: string;
+  poor: string;
+  noData: string;
+}
+
+/**
+ * Map a single (already /4-scaled dB) average SNR value to its canonical
+ * 4-band color. `null`/`undefined`/the unknown-hop sentinel all resolve to
+ * `scale.noData`.
+ */
+export function snrToColor(avgSnr: number | null | undefined, scale: SnrColorScale): string {
+  if (avgSnr == null || isUnknownSnr(avgSnr)) return scale.noData;
+  if (avgSnr >= 5) return scale.excellent;
+  if (avgSnr >= 0) return scale.good;
+  if (avgSnr >= -5) return scale.fair;
+  return scale.poor;
+}
+
+/**
+ * Get color for a route segment based on average SNR (4-band, canonical).
+ * Averages non-sentinel samples then delegates to `snrToColor`. `defaultColor`
+ * is returned (rather than `scale.noData`) when there is no SNR data at all,
+ * preserving each caller's "no data" fallback (e.g. neighbor/mauve line color).
  */
 export const getSegmentSnrColor = (
   snrData: Array<{ snr: number }> | undefined,
-  snrColors: { good: string; medium: string; poor: string },
+  snrColors: SnrColorScale,
   defaultColor: string
 ): string => {
   if (!snrData || snrData.length === 0) return defaultColor;
   const rfSnrs = snrData.filter(d => !isUnknownSnr(d.snr)).map(d => d.snr);
   if (rfSnrs.length === 0) return defaultColor;
   const avgSnr = rfSnrs.reduce((sum, val) => sum + val, 0) / rfSnrs.length;
-  if (avgSnr > 0) return snrColors.good;
-  if (avgSnr >= -10) return snrColors.medium;
-  return snrColors.poor;
+  return snrToColor(avgSnr, snrColors);
 };
 
 /**
@@ -202,6 +228,31 @@ export const getLineWeight = (snr: number | undefined): number => {
   const normalized = Math.max(-20, Math.min(10, snr));
   return 2 + ((normalized + 20) / 30) * 4;
 };
+
+/**
+ * Canonical line-weight strategies (#4047 P3 §2.2). The three formulas are
+ * legitimately different data axes (SNR quality, usage count, occurrence
+ * count) — keep them as separate named exports rather than unifying.
+ */
+/** Weight by SNR quality (2..6). Alias of `getLineWeight` — same name/behavior. */
+export const weightBySnr = getLineWeight;
+
+/** Weight by per-segment usage count (NodesTab base layer). */
+export function weightByUsage(usage: number): number {
+  return Math.min(2 + usage, 8);
+}
+
+/** Weight by observed occurrence count (MapAnalysis). */
+export function weightByOccurrence(occ: number): number {
+  return 2 + Math.min(occ - 1, 5) * 0.8;
+}
+
+/**
+ * Canonical dash pattern for MQTT-bridged or all-unknown-SNR segments
+ * (#4047 P3 §2.3). Replaces the previously divergent `'5,10'` (Widget) and
+ * `'4,6'` (MapAnalysis) conventions.
+ */
+export const MQTT_DASH = '3,6';
 
 /**
  * Create arrow icon for direction indicators

@@ -15,7 +15,7 @@ import { Popup, Polyline } from 'react-leaflet';
 import { DraggablePopup } from '../components/DraggablePopup';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { calculateDistance, formatDistance } from '../utils/distance';
-import { generateCurvedArrowMarkers, generateCurvedPath, getLineWeight, getSegmentSnrColor, getSegmentSnrOpacity, getTemporalOpacityMultiplier, isUnknownSnr } from '../utils/mapHelpers';
+import { generateCurvedArrowMarkers, generateCurvedPath, getLineWeight, getSegmentSnrColor, getSegmentSnrOpacity, getTemporalOpacityMultiplier, isUnknownSnr, type SnrColorScale } from '../utils/mapHelpers';
 import { logger } from '../utils/logger';
 import type { DistanceUnit } from '../contexts/SettingsContext';
 
@@ -168,11 +168,7 @@ export interface ThemeColors {
   tracerouteReturn?: string;
   mqttSegment?: string;
   neighborLine?: string;
-  snrColors?: {
-    good: string;
-    medium: string;
-    poor: string;
-  };
+  snrColors?: SnrColorScale;
 }
 
 /**

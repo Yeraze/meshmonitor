@@ -1,4 +1,11 @@
 /**
+ * @vitest-environment jsdom
+ *
+ * jsdom is required because useTracerouteAnalysis now imports isUnknownSnr/
+ * UNKNOWN_SNR_SENTINEL from utils/mapHelpers.tsx (#4047 P3 WP1, folding the
+ * previously-duplicated sentinel into its single canonical home), and
+ * mapHelpers.tsx pulls in `leaflet`, which touches `window` at module scope.
+ *
  * Tests for issue #3622 — fictitious direct-connection line from empty routeBack.
  *
  * When MeshMonitor is connected to the TARGET node (L) of a traceroute:

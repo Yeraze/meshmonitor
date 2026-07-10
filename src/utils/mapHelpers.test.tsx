@@ -17,6 +17,12 @@ import {
   generateCurvedPath,
   generateHeadingAwarePath,
   generatePositionHistoryArrows,
+  snrToColor,
+  weightBySnr,
+  weightByUsage,
+  weightByOccurrence,
+  MQTT_DASH,
+  type SnrColorScale,
 } from './mapHelpers';
 
 describe('mapHelpers', () => {
@@ -93,31 +99,105 @@ describe('mapHelpers', () => {
     });
   });
 
-  describe('getSegmentSnrColor', () => {
-    const colors = { good: 'green', medium: 'yellow', poor: 'red' };
+  describe('getSegmentSnrColor (4-band, #4047 P3)', () => {
+    const colors: SnrColorScale = {
+      excellent: 'darkgreen',
+      good: 'green',
+      fair: 'orange',
+      poor: 'red',
+      noData: 'gray',
+    };
 
     it('returns default when no SNR data', () => {
-      expect(getSegmentSnrColor(undefined, colors, 'gray')).toBe('gray');
-      expect(getSegmentSnrColor([], colors, 'gray')).toBe('gray');
+      expect(getSegmentSnrColor(undefined, colors, 'default')).toBe('default');
+      expect(getSegmentSnrColor([], colors, 'default')).toBe('default');
     });
 
     it('ignores unknown-SNR values when computing average', () => {
       // All entries are unknown-sentinel; should fall back to default
       expect(
-        getSegmentSnrColor([{ snr: UNKNOWN_SNR_SENTINEL }], colors, 'gray')
-      ).toBe('gray');
+        getSegmentSnrColor([{ snr: UNKNOWN_SNR_SENTINEL }], colors, 'default')
+      ).toBe('default');
     });
 
-    it('returns good color for positive average SNR', () => {
-      expect(getSegmentSnrColor([{ snr: 5 }, { snr: 3 }], colors, 'gray')).toBe('green');
+    it('returns excellent color for avg SNR >= 5', () => {
+      expect(getSegmentSnrColor([{ snr: 5 }, { snr: 7 }], colors, 'default')).toBe('darkgreen');
     });
 
-    it('returns medium color for slightly negative SNR', () => {
-      expect(getSegmentSnrColor([{ snr: -5 }], colors, 'gray')).toBe('yellow');
+    it('returns good color for avg SNR in [0, 5)', () => {
+      expect(getSegmentSnrColor([{ snr: 3 }], colors, 'default')).toBe('green');
     });
 
-    it('returns poor color for very negative SNR', () => {
-      expect(getSegmentSnrColor([{ snr: -15 }, { snr: -18 }], colors, 'gray')).toBe('red');
+    it('returns fair color for avg SNR in [-5, 0)', () => {
+      expect(getSegmentSnrColor([{ snr: -3 }], colors, 'default')).toBe('orange');
+    });
+
+    it('returns poor color for avg SNR < -5', () => {
+      expect(getSegmentSnrColor([{ snr: -15 }, { snr: -18 }], colors, 'default')).toBe('red');
+    });
+  });
+
+  describe('snrToColor (canonical 4-band SNR scale, #4047 P3)', () => {
+    const scale: SnrColorScale = {
+      excellent: '#22c55e',
+      good: '#eab308',
+      fair: '#f97316',
+      poor: '#ef4444',
+      noData: '#6c7086',
+    };
+
+    it('returns noData for null/undefined', () => {
+      expect(snrToColor(null, scale)).toBe(scale.noData);
+      expect(snrToColor(undefined, scale)).toBe(scale.noData);
+    });
+
+    it('returns noData for the unknown-SNR sentinel', () => {
+      expect(snrToColor(UNKNOWN_SNR_SENTINEL, scale)).toBe(scale.noData);
+    });
+
+    it('returns excellent at and above the 5dB threshold', () => {
+      expect(snrToColor(5, scale)).toBe(scale.excellent);
+      expect(snrToColor(10, scale)).toBe(scale.excellent);
+    });
+
+    it('returns good in [0, 5)', () => {
+      expect(snrToColor(0, scale)).toBe(scale.good);
+      expect(snrToColor(4.9, scale)).toBe(scale.good);
+    });
+
+    it('returns fair in [-5, 0)', () => {
+      expect(snrToColor(-5, scale)).toBe(scale.fair);
+      expect(snrToColor(-0.1, scale)).toBe(scale.fair);
+    });
+
+    it('returns poor below -5', () => {
+      expect(snrToColor(-5.1, scale)).toBe(scale.poor);
+      expect(snrToColor(-20, scale)).toBe(scale.poor);
+    });
+  });
+
+  describe('weight strategies (#4047 P3 §2.2)', () => {
+    it('weightBySnr is the same function as getLineWeight', () => {
+      expect(weightBySnr).toBe(getLineWeight);
+      expect(weightBySnr(10)).toBeCloseTo(6, 5);
+    });
+
+    it('weightByUsage maps usage count to 2..8, capped at 8', () => {
+      expect(weightByUsage(0)).toBe(2);
+      expect(weightByUsage(3)).toBe(5);
+      expect(weightByUsage(100)).toBe(8);
+    });
+
+    it('weightByOccurrence maps occurrence count starting at 2, capped at 6', () => {
+      expect(weightByOccurrence(1)).toBeCloseTo(2, 5);
+      expect(weightByOccurrence(2)).toBeCloseTo(2.8, 5);
+      expect(weightByOccurrence(100)).toBeCloseTo(6, 5);
+    });
+  });
+
+  describe('MQTT_DASH (#4047 P3 §2.3)', () => {
+    it('is the canonical "3,6" dash pattern', () => {
+      expect(MQTT_DASH).toBe('3,6');
     });
   });
 
