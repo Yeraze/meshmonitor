@@ -54,7 +54,8 @@ describe('TelemetryRepository (expanded)', () => {
     nodeNum: number,
     telemetryType: string,
     timestamp: number,
-    value: number = 50
+    value: number = 50,
+    sourceId?: string
   ) => {
     await repo.insertTelemetry({
       nodeId,
@@ -64,7 +65,7 @@ describe('TelemetryRepository (expanded)', () => {
       value,
       unit: '%',
       createdAt: NOW,
-    });
+    }, sourceId);
   };
 
   // -------------------------------------------------------------------------
@@ -574,13 +575,13 @@ describe('TelemetryRepository (expanded)', () => {
   // -------------------------------------------------------------------------
   describe('deleteTelemetryByNodeAndType', () => {
     it('returns false when no matching records exist', async () => {
-      const result = await repo.deleteTelemetryByNodeAndType(NODE1, 'battery');
+      const result = await repo.deleteTelemetryByNodeAndType(NODE1, 'battery', ALL_SOURCES);
       expect(result).toBe(false);
     });
 
     it('returns false when the node exists but the type does not', async () => {
       await insertTelemetry(NODE1, NODE1_NUM, 'voltage', NOW - HOUR);
-      const result = await repo.deleteTelemetryByNodeAndType(NODE1, 'battery');
+      const result = await repo.deleteTelemetryByNodeAndType(NODE1, 'battery', ALL_SOURCES);
       expect(result).toBe(false);
     });
 
@@ -589,7 +590,7 @@ describe('TelemetryRepository (expanded)', () => {
       await insertTelemetry(NODE1, NODE1_NUM, 'battery', NOW - 1 * HOUR);
       await insertTelemetry(NODE1, NODE1_NUM, 'voltage', NOW - HOUR); // should remain
 
-      const result = await repo.deleteTelemetryByNodeAndType(NODE1, 'battery');
+      const result = await repo.deleteTelemetryByNodeAndType(NODE1, 'battery', ALL_SOURCES);
       expect(result).toBe(true);
 
       const remaining = await repo.getTelemetryByNode(NODE1, 100, undefined, undefined, 0, undefined, ALL_SOURCES);
@@ -601,10 +602,22 @@ describe('TelemetryRepository (expanded)', () => {
       await insertTelemetry(NODE1, NODE1_NUM, 'battery', NOW - HOUR);
       await insertTelemetry(NODE2, NODE2_NUM, 'battery', NOW - HOUR);
 
-      await repo.deleteTelemetryByNodeAndType(NODE1, 'battery');
+      await repo.deleteTelemetryByNodeAndType(NODE1, 'battery', ALL_SOURCES);
 
       const node2Records = await repo.getTelemetryByNode(NODE2, 100, undefined, undefined, 0, undefined, ALL_SOURCES);
       expect(node2Records).toHaveLength(1);
+    });
+
+    it('scoped delete leaves other sources intact (no cross-source wipe)', async () => {
+      await insertTelemetry(NODE1, NODE1_NUM, 'battery', NOW - HOUR, 50, 'source-A');
+      await insertTelemetry(NODE1, NODE1_NUM, 'battery', NOW - HOUR, 50, 'source-B');
+
+      const result = await repo.deleteTelemetryByNodeAndType(NODE1, 'battery', 'source-A');
+      expect(result).toBe(true);
+
+      // source-A wiped, source-B preserved
+      expect(await repo.getTelemetryByNode(NODE1, 100, undefined, undefined, 0, undefined, 'source-A')).toHaveLength(0);
+      expect(await repo.getTelemetryByNode(NODE1, 100, undefined, undefined, 0, undefined, 'source-B')).toHaveLength(1);
     });
   });
 

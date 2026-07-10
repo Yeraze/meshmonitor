@@ -256,13 +256,34 @@ CSRF_TOKEN=$(api_body GET /api/csrf-token | python3 -c "import sys,json; print(j
 
 check "GET /api/auth/status (authenticated)" "$(api GET /api/auth/status)" 200
 
+# Resolve the primary Meshtastic (TCP) source. A number of source-scoped
+# endpoints (stats, telemetry/:nodeId, messages, neighbor-info/:nodeNum,
+# security) route rows through withSourceScope(), which REQUIRES a sourceId —
+# omitting it makes those endpoints return HTTP 500. Scope those calls to the
+# primary source. (Zero-config deployments have exactly one meshtastic_tcp
+# source; multi-source picks the first.)
+SOURCE_ID=$(api_body GET /api/sources | python3 -c "
+import sys,json
+try:
+    srcs = json.load(sys.stdin)
+    tcp = [s for s in srcs if s.get('type') == 'meshtastic_tcp']
+    print((tcp[0] if tcp else (srcs[0] if srcs else {})).get('id',''))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")
+if [ -n "$SOURCE_ID" ]; then
+  log_pass "Resolved primary sourceId: $SOURCE_ID"
+else
+  log_fail "Resolve primary sourceId" "no source returned from /api/sources"
+fi
+
 # ─── Nodes ─────────────────────────────────────────────────
 
 echo ""
 echo -e "${BLUE}=== Nodes ===${NC}"
 
 check_json "GET /api/status" "GET" "/api/status" "'status' in data"
-check_json "GET /api/stats" "GET" "/api/stats" "'messageCount' in data and 'nodeCount' in data and 'channelCount' in data"
+check_json "GET /api/stats" "GET" "/api/stats?sourceId=$SOURCE_ID" "'messageCount' in data and 'nodeCount' in data and 'channelCount' in data"
 check_json "GET /api/config" "GET" "/api/config" "isinstance(data, dict)"
 check_json "GET /api/config/current" "GET" "/api/config/current" "isinstance(data, dict)"
 check_json "GET /api/connection" "GET" "/api/connection" "'connected' in data"
@@ -307,10 +328,10 @@ echo -e "${BLUE}=== Telemetry ===${NC}"
 check_json "GET /api/telemetry/available/nodes" "GET" "/api/telemetry/available/nodes" "isinstance(data, (list, dict))"
 
 if [ -n "$FIRST_NODE_ID" ]; then
-  check "GET /api/telemetry/:nodeId" "$(api GET /api/telemetry/$FIRST_NODE_ID)" 200
-  check "GET /api/telemetry/:nodeId/rates" "$(api GET /api/telemetry/$FIRST_NODE_ID/rates)" 200
-  check "GET /api/telemetry/:nodeId/smarthops" "$(api GET /api/telemetry/$FIRST_NODE_ID/smarthops)" 200
-  check "GET /api/telemetry/:nodeId/linkquality" "$(api GET /api/telemetry/$FIRST_NODE_ID/linkquality)" 200
+  check "GET /api/telemetry/:nodeId" "$(api GET /api/telemetry/$FIRST_NODE_ID?sourceId=$SOURCE_ID)" 200
+  check "GET /api/telemetry/:nodeId/rates" "$(api GET /api/telemetry/$FIRST_NODE_ID/rates?sourceId=$SOURCE_ID)" 200
+  check "GET /api/telemetry/:nodeId/smarthops" "$(api GET /api/telemetry/$FIRST_NODE_ID/smarthops?sourceId=$SOURCE_ID)" 200
+  check "GET /api/telemetry/:nodeId/linkquality" "$(api GET /api/telemetry/$FIRST_NODE_ID/linkquality?sourceId=$SOURCE_ID)" 200
 else
   log_skip "Telemetry endpoints (no nodes)"
 fi
@@ -320,7 +341,7 @@ fi
 echo ""
 echo -e "${BLUE}=== Messages ===${NC}"
 
-check_json "GET /api/messages" "GET" "/api/messages" "isinstance(data, list)"
+check_json "GET /api/messages" "GET" "/api/messages?sourceId=$SOURCE_ID" "isinstance(data, list)"
 check_json "GET /api/messages/channel/0" "GET" "/api/messages/channel/0" "'messages' in data"
 check_json "GET /api/messages/search?q=test" "GET" "/api/messages/search?q=test" "'success' in data and 'data' in data"
 check_json "GET /api/messages/unread-counts" "GET" "/api/messages/unread-counts" "'channels' in data"
@@ -343,7 +364,7 @@ check "GET /api/neighbor-info" "$(api GET /api/neighbor-info)" 200
 check "GET /api/direct-neighbors" "$(api GET /api/direct-neighbors)" 200
 
 if [ -n "$FIRST_NODE_NUM" ]; then
-  check "GET /api/neighbor-info/:nodeNum" "$(api GET /api/neighbor-info/$FIRST_NODE_NUM)" 200
+  check "GET /api/neighbor-info/:nodeNum" "$(api GET /api/neighbor-info/$FIRST_NODE_NUM?sourceId=$SOURCE_ID)" 200
 fi
 
 # ─── Channels ──────────────────────────────────────────────
@@ -381,11 +402,11 @@ check_json "GET /api/audit/stats/summary" "GET" "/api/audit/stats/summary" "isin
 echo ""
 echo -e "${BLUE}=== Security ===${NC}"
 
-check_json "GET /api/security/issues" "GET" "/api/security/issues" "'total' in data and 'nodes' in data"
+check_json "GET /api/security/issues" "GET" "/api/security/issues?sourceId=$SOURCE_ID" "'total' in data and 'nodes' in data"
 check_json "GET /api/security/scanner/status" "GET" "/api/security/scanner/status" "'running' in data"
 check_json "GET /api/security/key-mismatches" "GET" "/api/security/key-mismatches" "'events' in data"
 check_json "GET /api/security/dead-nodes" "GET" "/api/security/dead-nodes" "'nodes' in data and 'count' in data"
-check "GET /api/security/export" "$(api GET /api/security/export)" 200
+check "GET /api/security/export" "$(api GET /api/security/export?sourceId=$SOURCE_ID)" 200
 
 # ─── User Management ──────────────────────────────────────
 

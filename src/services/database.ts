@@ -1865,9 +1865,10 @@ class DatabaseService {
   async getSmartHopsStatsAsync(
     nodeId: string,
     sinceTimestamp: number,
-    intervalMinutes: number = 15
+    intervalMinutes: number = 15,
+    sourceId?: SourceScope
   ): Promise<Array<{ timestamp: number; minHops: number; maxHops: number; avgHops: number }>> {
-    return this.telemetry.getSmartHopsStats(nodeId, sinceTimestamp, intervalMinutes);
+    return this.telemetry.getSmartHopsStats(nodeId, sinceTimestamp, intervalMinutes, sourceId);
   }
 
   /**
@@ -1880,9 +1881,10 @@ class DatabaseService {
    */
   async getLinkQualityHistoryAsync(
     nodeId: string,
-    sinceTimestamp: number
+    sinceTimestamp: number,
+    sourceId?: SourceScope
   ): Promise<Array<{ timestamp: number; quality: number }>> {
-    return this.telemetry.getLinkQualityHistory(nodeId, sinceTimestamp);
+    return this.telemetry.getLinkQualityHistory(nodeId, sinceTimestamp, sourceId);
   }
 
 
@@ -3443,14 +3445,14 @@ class DatabaseService {
    * @param nodeNum The node number to delete neighbor info for
    * @returns Number of neighbor records deleted
    */
-  async deleteNeighborInfoForNodeAsync(nodeNum: number): Promise<number> {
+  async deleteNeighborInfoForNodeAsync(nodeNum: number, sourceId?: SourceScope): Promise<number> {
     // Clear from cache
     this._neighborsByNodeCache.delete(nodeNum);
     this._neighborsCache = this._neighborsCache.filter(n => n.nodeNum !== nodeNum);
 
-    // Count then delete from database
-    const count = await this.neighbors.getNeighborCountForNode(nodeNum);
-    await this.neighbors.deleteNeighborInfoForNode(nodeNum);
+    // Count then delete from database (scoped to the requested source)
+    const count = await this.neighbors.getNeighborCountForNode(nodeNum, sourceId);
+    await this.neighbors.deleteNeighborInfoForNode(nodeNum, sourceId);
     logger.info(`Deleted ${count} neighbor records for node ${nodeNum}`);
     return count;
   }

@@ -271,9 +271,32 @@ function runNeighborsTests(getBackend: () => TestBackend) {
       makeNeighbor({ nodeNum: 999, neighborNodeNum: 400 }),
     ]);
 
-    expect(await repo.getNeighborCountForNode(100)).toBe(2);
-    expect(await repo.getNeighborCountForNode(999)).toBe(1);
-    expect(await repo.getNeighborCountForNode(12345)).toBe(0);
+    // getNeighborCountForNode is now source-scoped; ALL_SOURCES keeps the
+    // cross-source "count for this node" intent this test asserts.
+    expect(await repo.getNeighborCountForNode(100, ALL_SOURCES)).toBe(2);
+    expect(await repo.getNeighborCountForNode(999, ALL_SOURCES)).toBe(1);
+    expect(await repo.getNeighborCountForNode(12345, ALL_SOURCES)).toBe(0);
+  });
+
+  it('getNeighborCountForNode - scoped to a single source', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.insertNeighborInfoBatch(
+      [makeNeighbor({ nodeNum: 100, neighborNodeNum: 200 })],
+      'source-A'
+    );
+    await repo.insertNeighborInfoBatch(
+      [makeNeighbor({ nodeNum: 100, neighborNodeNum: 300 })],
+      'source-B'
+    );
+
+    expect(await repo.getNeighborCountForNode(100, 'source-A')).toBe(1);
+    expect(await repo.getNeighborCountForNode(100, 'source-B')).toBe(1);
+    expect(await repo.getNeighborCountForNode(100, ALL_SOURCES)).toBe(2);
   });
 
   it('deleteAllNeighborInfo - removes all records', async () => {

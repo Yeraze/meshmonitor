@@ -134,12 +134,12 @@ export class NeighborsRepository extends BaseRepository {
   /**
    * Get neighbor count for a specific node
    */
-  async getNeighborCountForNode(nodeNum: number): Promise<number> {
+  async getNeighborCountForNode(nodeNum: number, sourceId?: SourceScope): Promise<number> {
     const { neighborInfo } = this.tables;
     const result = await this.db
       .select({ count: count() })
       .from(neighborInfo)
-      .where(eq(neighborInfo.nodeNum, nodeNum));
+      .where(and(eq(neighborInfo.nodeNum, nodeNum), this.withSourceScope(neighborInfo, sourceId)));
     return Number(result[0].count);
   }
 

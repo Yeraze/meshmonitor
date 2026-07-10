@@ -2044,7 +2044,7 @@ apiRouter.post('/nodes/:nodeId/notes', requirePermission('nodes', 'write', { sou
 });
 
 // Delete neighbor info for a node
-apiRouter.delete('/nodes/:nodeId/neighbors', requirePermission('nodes', 'write'), async (req, res) => {
+apiRouter.delete('/nodes/:nodeId/neighbors', requirePermission('nodes', 'write', { sourceIdFrom: 'query', requireSourceId: true }), async (req, res) => {
   try {
     const { nodeId } = req.params;
 
@@ -2064,8 +2064,9 @@ apiRouter.delete('/nodes/:nodeId/neighbors', requirePermission('nodes', 'write')
 
     const nodeNum = parseInt(nodeNumStr, 16);
 
-    // Delete neighbor info from database
-    const deletedCount = await databaseService.deleteNeighborInfoForNodeAsync(nodeNum);
+    // Delete neighbor info from database (scoped to the required source;
+    // requireSourceId already validated presence + string type)
+    const deletedCount = await databaseService.deleteNeighborInfoForNodeAsync(nodeNum, req.query.sourceId as string);
 
     res.json({
       success: true,

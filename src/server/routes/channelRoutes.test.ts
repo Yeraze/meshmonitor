@@ -245,30 +245,38 @@ describe('GET /channels/collisions (#3644)', () => {
 });
 
 describe('GET /channels/:id/export', () => {
+  it('400s MISSING_SOURCE_ID when sourceId omitted (no cross-source PSK export)', async () => {
+    const res = await request(app).get('/channels/2/export');
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MISSING_SOURCE_ID');
+  });
+
   it('rejects a non-numeric channel id', async () => {
-    const res = await request(app).get('/channels/abc/export');
+    const res = await request(app).get('/channels/abc/export?sourceId=src-A');
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Invalid channel ID');
   });
 
   it('404s when the channel does not exist', async () => {
     mockDb.channels.getChannelById.mockResolvedValue(null);
-    const res = await request(app).get('/channels/3/export');
+    const res = await request(app).get('/channels/3/export?sourceId=src-A');
     expect(res.status).toBe(404);
   });
 
-  it('exports the channel JSON with a filename header', async () => {
+  it('exports the channel JSON scoped to the required source', async () => {
     mockDb.channels.getChannelById.mockResolvedValue({
       id: 2, name: 'Test Chan', psk: 'AQ==', role: 2,
       uplinkEnabled: 1, downlinkEnabled: 0, positionPrecision: 16,
     });
-    const res = await request(app).get('/channels/2/export');
+    const res = await request(app).get('/channels/2/export?sourceId=src-A');
     expect(res.status).toBe(200);
     expect(res.headers['content-disposition']).toContain('meshmonitor-channel-test_chan-');
     const body = JSON.parse(res.text);
     expect(body.channel.id).toBe(2);
     expect(body.channel.uplinkEnabled).toBe(true);   // normalized 1 -> true
     expect(body.channel.downlinkEnabled).toBe(false); // normalized 0 -> false
+    // scoped to the supplied source, not a first-match across sources
+    expect(mockDb.channels.getChannelById).toHaveBeenCalledWith(2, 'src-A');
   });
 });
 
