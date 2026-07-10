@@ -38,7 +38,7 @@ describe('/api/config endpoint', () => {
         let localNodeInfo = undefined;
         if (localNodeNumStr) {
           const localNodeNum = parseInt(localNodeNumStr, 10);
-          const currentNode = DatabaseService.getNode(localNodeNum);
+          const currentNode = await DatabaseService.nodes.getNode(localNodeNum);
 
           if (currentNode) {
             deviceMetadata = {
@@ -79,14 +79,14 @@ describe('/api/config endpoint', () => {
   beforeEach(() => {
     // Mock DatabaseService methods
     mockGetSetting = vi.spyOn(DatabaseService, 'getSetting');
-    mockGetNode = vi.spyOn(DatabaseService, 'getNode');
+    mockGetNode = vi.spyOn(DatabaseService.nodes, 'getNode');
   });
 
   describe('localNodeInfo for anonymous users', () => {
     it('should return localNodeInfo when localNodeNum is available', async () => {
       // Mock local node data
       mockGetSetting.mockReturnValue('2732916556');
-      mockGetNode.mockReturnValue({
+      mockGetNode.mockResolvedValue({
         nodeNum: 2732916556,
         nodeId: '!a2e175b8',
         longName: 'Test Node',
@@ -125,7 +125,7 @@ describe('/api/config endpoint', () => {
 
     it('should handle missing node data gracefully', async () => {
       mockGetSetting.mockReturnValue('2732916556');
-      mockGetNode.mockReturnValue(null);
+      mockGetNode.mockResolvedValue(null);
 
       const response = await request(app).get('/api/config');
 
@@ -151,7 +151,7 @@ describe('/api/config endpoint', () => {
 
     it('should include all required fields in localNodeInfo', async () => {
       mockGetSetting.mockReturnValue('123456');
-      mockGetNode.mockReturnValue({
+      mockGetNode.mockResolvedValue({
         nodeNum: 123456,
         nodeId: '!00012345',
         longName: 'My Meshtastic Node',

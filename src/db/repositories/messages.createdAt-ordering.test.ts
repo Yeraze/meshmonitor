@@ -103,19 +103,19 @@ describe('MessagesRepository — createdAt ordering (#3122)', () => {
     expect(rows.map((r: any) => r.id)).toEqual(['b', 'skewed', 'a']);
   });
 
-  it('getMessagesSqlite (sync variant) orders by createdAt', () => {
+  it('getMessages orders by createdAt', async () => {
     insert('skewed', { rxTime: FAR_FUTURE, createdAt: 100 });
     insert('newer', { rxTime: 50, createdAt: 200 });
 
-    const rows = repo.getMessagesSqlite(10, 0, ALL_SOURCES);
+    const rows = await repo.getMessages(10, 0, ALL_SOURCES);
     expect(rows.map((r: any) => r.id)).toEqual(['newer', 'skewed']);
   });
 
-  it('getMessagesByChannelSqlite (sync variant) orders by createdAt', () => {
+  it('getMessagesByChannel orders by createdAt', async () => {
     insert('skewed', { channel: 2, rxTime: FAR_FUTURE, createdAt: 100 });
     insert('newer', { channel: 2, rxTime: 50, createdAt: 200 });
 
-    const rows = repo.getMessagesByChannelSqlite(2, 10, 0, ALL_SOURCES);
+    const rows = await repo.getMessagesByChannel(2, 10, 0, ALL_SOURCES);
     expect(rows.map((r: any) => r.id)).toEqual(['newer', 'skewed']);
   });
 });

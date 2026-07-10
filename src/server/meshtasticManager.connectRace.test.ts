@@ -33,10 +33,6 @@ vi.mock('../services/database.js', () => ({
   default: {
     getSetting: mockGetSetting,
     setSetting: vi.fn(),
-    upsertNode: mockUpsertNode,
-    getNode: mockGetNode,
-    isAutoTimeSyncEnabled: vi.fn().mockReturnValue(false),
-    getAutoTimeSyncIntervalMinutes: vi.fn().mockReturnValue(0),
     settings: {
       getSetting: mockGetSetting,
       setSetting: vi.fn(),

@@ -373,19 +373,6 @@ export class MessagesRepository extends BaseRepository {
     return Number(result?.changes ?? 0) > 0;
   }
 
-  /**
-   * SQLite-only synchronous fetch of a single message by id.
-   */
-  getMessageSqlite(id: string): DbMessage | null {
-    if (!this.sqliteDb) {
-      throw new Error('getMessageSqlite is SQLite-only');
-    }
-    const db = this.sqliteDb;
-    const messages = this.tables.messages;
-    const rows = db.select().from(messages).where(eq(messages.id, id)).limit(1).all();
-    if (rows.length === 0) return null;
-    return this.normalizeBigInts(rows[0]) as DbMessage;
-  }
 
   /**
    * SQLite-only synchronous fetch of a single message by requestId.
@@ -401,93 +388,10 @@ export class MessagesRepository extends BaseRepository {
     return this.normalizeBigInts(rows[0]) as DbMessage;
   }
 
-  /**
-   * SQLite-only synchronous paginated fetch of messages, ordered by createdAt (issue #3122).
-   */
-  getMessagesSqlite(limit: number = 100, offset: number = 0, sourceId?: SourceScope): DbMessage[] {
-    if (!this.sqliteDb) {
-      throw new Error('getMessagesSqlite is SQLite-only');
-    }
-    const db = this.sqliteDb;
-    const messages = this.tables.messages;
-    const rows = db
-      .select()
-      .from(messages)
-      .where(this.withSourceScope(messages, sourceId))
-      .orderBy(desc(messages.createdAt))
-      .limit(limit)
-      .offset(offset)
-      .all();
-    return this.normalizeBigInts(rows) as DbMessage[];
-  }
 
-  /**
-   * SQLite-only synchronous paginated fetch of messages by channel, ordered by createdAt (issue #3122).
-   */
-  getMessagesByChannelSqlite(channel: number, limit: number = 100, offset: number = 0, sourceId?: SourceScope): DbMessage[] {
-    if (!this.sqliteDb) {
-      throw new Error('getMessagesByChannelSqlite is SQLite-only');
-    }
-    const db = this.sqliteDb;
-    const messages = this.tables.messages;
-    const rows = db
-      .select()
-      .from(messages)
-      .where(and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId)))
-      .orderBy(desc(messages.createdAt))
-      .limit(limit)
-      .offset(offset)
-      .all();
-    return this.normalizeBigInts(rows) as DbMessage[];
-  }
 
-  /**
-   * SQLite-only synchronous fetch of messages after a timestamp.
-   */
-  getMessagesAfterTimestampSqlite(timestamp: number, sourceId?: SourceScope): DbMessage[] {
-    if (!this.sqliteDb) {
-      throw new Error('getMessagesAfterTimestampSqlite is SQLite-only');
-    }
-    const db = this.sqliteDb;
-    const messages = this.tables.messages;
-    const rows = db
-      .select()
-      .from(messages)
-      .where(and(gt(messages.timestamp, timestamp), this.withSourceScope(messages, sourceId)))
-      .orderBy(messages.timestamp)
-      .all();
-    return this.normalizeBigInts(rows) as DbMessage[];
-  }
 
-  /**
-   * SQLite-only synchronous total message count.
-   */
-  getMessageCountSqlite(sourceId?: SourceScope): number {
-    if (!this.sqliteDb) {
-      throw new Error('getMessageCountSqlite is SQLite-only');
-    }
-    const db = this.sqliteDb;
-    const messages = this.tables.messages;
-    const rows = db
-      .select({ count: count() })
-      .from(messages)
-      .where(this.withSourceScope(messages, sourceId))
-      .all();
-    return Number(rows[0]?.count ?? 0);
-  }
 
-  /**
-   * SQLite-only synchronous delete-by-id. Returns true when a row was removed.
-   */
-  deleteMessageSqlite(id: string): boolean {
-    if (!this.sqliteDb) {
-      throw new Error('deleteMessageSqlite is SQLite-only');
-    }
-    const db = this.sqliteDb;
-    const messages = this.tables.messages;
-    const result = db.delete(messages).where(eq(messages.id, id)).run();
-    return Number(result.changes) > 0;
-  }
 
   /**
    * SQLite-only synchronous cleanup of messages older than `days`.
@@ -507,23 +411,6 @@ export class MessagesRepository extends BaseRepository {
     return Number(result.changes);
   }
 
-  /**
-   * SQLite-only synchronous delete of broadcast messages sent by a node.
-   * (i.e. messages where fromNodeNum = nodeNum AND toNodeId = '!ffffffff')
-   * Used by deleteNode to clean up public-channel messages from a deleted node.
-   */
-  deleteBroadcastMessagesFromNodeSqlite(nodeNum: number): number {
-    if (!this.sqliteDb) {
-      throw new Error('deleteBroadcastMessagesFromNodeSqlite is SQLite-only');
-    }
-    const db = this.sqliteDb;
-    const messages = this.tables.messages;
-    const result = db
-      .delete(messages)
-      .where(and(eq(messages.fromNodeNum, nodeNum), eq(messages.toNodeId, '!ffffffff')))
-      .run();
-    return Number(result.changes);
-  }
 
   /**
    * SQLite-only synchronous wipe of all messages, optionally scoped to a source.
@@ -542,69 +429,8 @@ export class MessagesRepository extends BaseRepository {
     return Number(result.changes);
   }
 
-  /**
-   * SQLite-only synchronous ACK update by requestId. Matches
-   * `updateMessageAckByRequestId()` but the `ackFailed -> 'failed' / 'delivered'`
-   * mapping that the sync facade historically used (not 'confirmed') is preserved.
-   */
-  updateMessageAckByRequestIdSqlite(requestId: number, ackFailed: boolean = false): boolean {
-    if (!this.sqliteDb) {
-      throw new Error('updateMessageAckByRequestIdSqlite is SQLite-only');
-    }
-    const db = this.sqliteDb;
-    const messages = this.tables.messages;
-    const deliveryState = ackFailed ? 'failed' : 'delivered';
-    const result = db
-      .update(messages)
-      .set({
-        ackFailed,
-        routingErrorReceived: ackFailed,
-        deliveryState,
-      })
-      .where(eq(messages.requestId, requestId))
-      .run();
-    return Number(result.changes) > 0;
-  }
 
-  /**
-   * SQLite-only synchronous delivery-state update.
-   * Keeps in sync with `updateMessageDeliveryState()`; additionally sets
-   * `ackFailed` when the state is 'failed' (matches old raw-SQL behavior).
-   */
-  updateMessageDeliveryStateSqlite(
-    requestId: number,
-    deliveryState: 'delivered' | 'confirmed' | 'failed',
-  ): boolean {
-    if (!this.sqliteDb) {
-      throw new Error('updateMessageDeliveryStateSqlite is SQLite-only');
-    }
-    const db = this.sqliteDb;
-    const messages = this.tables.messages;
-    const ackFailed = deliveryState === 'failed';
-    const result = db
-      .update(messages)
-      .set({ deliveryState, ackFailed })
-      .where(eq(messages.requestId, requestId))
-      .run();
-    return Number(result.changes) > 0;
-  }
 
-  /**
-   * SQLite-only synchronous timestamp/rxTime update (fired when an ACK arrives).
-   */
-  updateMessageTimestampsSqlite(requestId: number, rxTime: number): boolean {
-    if (!this.sqliteDb) {
-      throw new Error('updateMessageTimestampsSqlite is SQLite-only');
-    }
-    const db = this.sqliteDb;
-    const messages = this.tables.messages;
-    const result = db
-      .update(messages)
-      .set({ rxTime, timestamp: rxTime })
-      .where(eq(messages.requestId, requestId))
-      .run();
-    return Number(result.changes) > 0;
-  }
 
   /**
    * Aggregate message count by day for the last `days` days.
@@ -638,33 +464,6 @@ export class MessagesRepository extends BaseRepository {
     }));
   }
 
-  /**
-   * SQLite-only synchronous variant of `getMessagesByDay()`.
-   * Used by the sync `DatabaseService.getMessagesByDay` facade.
-   */
-  getMessagesByDaySqlite(days: number = 7, sourceId?: SourceScope): Array<{ date: string; count: number }> {
-    if (!this.sqliteDb) {
-      throw new Error('getMessagesByDaySqlite is SQLite-only');
-    }
-    const db = this.sqliteDb;
-    const messages = this.tables.messages;
-    const cutoff = this.now() - days * 24 * 60 * 60 * 1000;
-    const dateExpr = sql<string>`date(${messages.timestamp}/1000, 'unixepoch')`;
-    const condition = sourceId
-      ? and(gt(messages.timestamp, cutoff), this.withSourceScope(messages, sourceId))
-      : gt(messages.timestamp, cutoff);
-    const rows = db
-      .select({ date: dateExpr, count: count() })
-      .from(messages)
-      .where(condition)
-      .groupBy(dateExpr)
-      .orderBy(dateExpr)
-      .all();
-    return (rows as Array<{ date: string; count: number | bigint }>).map(r => ({
-      date: r.date,
-      count: Number(r.count),
-    }));
-  }
 
   /**
    * Cleanup old messages scoped to a specific source (async, all backends).
@@ -686,45 +485,7 @@ export class MessagesRepository extends BaseRepository {
     return Number(c);
   }
 
-  /**
-   * SQLite-only synchronous purge of channel messages. Mirrors
-   * `purgeChannelMessages()` but returns the count synchronously so the
-   * sync `DatabaseService` facade can use it directly. Uses Drizzle query
-   * builders so column names come from the schema.
-   */
-  purgeChannelMessagesSqlite(channel: number, sourceId?: SourceScope): number {
-    if (!this.sqliteDb) {
-      throw new Error('purgeChannelMessagesSqlite is SQLite-only');
-    }
-    const db = this.sqliteDb;
-    const messages = this.tables.messages;
-    const condition = and(eq(messages.channel, channel), this.withSourceScope(messages, sourceId));
-    const result = db.delete(messages).where(condition).run();
-    return Number(result.changes);
-  }
 
-  /**
-   * SQLite-only synchronous purge of direct messages to/from a node.
-   * Mirrors `purgeDirectMessages()` — excludes broadcast messages
-   * (`toNodeId != '!ffffffff'`) and scopes by source when provided.
-   */
-  purgeDirectMessagesSqlite(nodeNum: number, sourceId?: string): number {
-    if (!this.sqliteDb) {
-      throw new Error('purgeDirectMessagesSqlite is SQLite-only');
-    }
-    const db = this.sqliteDb;
-    const messages = this.tables.messages;
-    const condition = and(
-      or(
-        eq(messages.fromNodeNum, nodeNum),
-        eq(messages.toNodeNum, nodeNum)
-      ),
-      ne(messages.toNodeId, '!ffffffff'),
-      this.withSourceScope(messages, sourceId)
-    );
-    const result = db.delete(messages).where(condition).run();
-    return Number(result.changes);
-  }
 
   /**
    * Cleanup old messages

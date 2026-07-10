@@ -11,16 +11,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Aedes } from 'aedes';
 import { createServer, type Server } from 'net';
 
-const upsertNode = vi.fn();
-const insertMessage = vi.fn().mockReturnValue(true);
-const insertTelemetry = vi.fn();
-
 vi.mock('../services/database.js', () => ({
-  default: {
-    upsertNode: (...a: unknown[]) => upsertNode(...a),
-    insertMessage: (...a: unknown[]) => insertMessage(...a),
-    insertTelemetry: (...a: unknown[]) => insertTelemetry(...a),
-  },
+  default: {},
 }));
 
 import { MqttBrokerClient } from './transports/mqttBrokerClient.js';
@@ -267,10 +259,6 @@ describe('MqttBridgeManager exposes capabilities + permissionMessage', () => {
   let bridge: MqttBridgeManager;
 
   beforeEach(async () => {
-    upsertNode.mockClear();
-    insertMessage.mockClear();
-    insertTelemetry.mockClear();
-
     upstreamPort = await ephemeralPort();
     localPort = await ephemeralPort();
     upstream = await startUpstream(upstreamPort, {

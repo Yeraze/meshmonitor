@@ -326,19 +326,19 @@ function runChannelsTests(getBackend: () => TestBackend) {
     await repo.upsertChannel({ id: 1, name: 'A-Sec', psk: 'p1', role: 2 }, 'src-a');
     await repo.upsertChannel({ id: 0, name: 'B-Primary', psk: 'q0', role: 1 }, 'src-b');
 
-    // getChannelByIdSync scoped
-    expect(repo.getChannelByIdSync(0, 'src-a')!.name).toBe('A-Primary');
-    expect(repo.getChannelByIdSync(0, 'src-b')!.name).toBe('B-Primary');
+    // getChannelById scoped
+    expect((await repo.getChannelById(0, 'src-a'))!.name).toBe('A-Primary');
+    expect((await repo.getChannelById(0, 'src-b'))!.name).toBe('B-Primary');
 
-    // getAllChannelsSync scoped
-    expect(repo.getAllChannelsSync('src-a').map(c => c.name).sort()).toEqual(['A-Primary', 'A-Sec']);
-    expect(repo.getAllChannelsSync('src-b').map(c => c.name)).toEqual(['B-Primary']);
+    // getAllChannels scoped
+    expect((await repo.getAllChannels('src-a')).map(c => c.name).sort()).toEqual(['A-Primary', 'A-Sec']);
+    expect((await repo.getAllChannels('src-b')).map(c => c.name)).toEqual(['B-Primary']);
 
-    // getChannelCountSync scoped
-    expect(repo.getChannelCountSync('src-a')).toBe(2);
-    expect(repo.getChannelCountSync('src-b')).toBe(1);
+    // getChannelCount scoped
+    expect(await repo.getChannelCount('src-a')).toBe(2);
+    expect(await repo.getChannelCount('src-b')).toBe(1);
     // Unscoped sees everything (legacy behaviour).
-    expect(repo.getChannelCountSync(ALL_SOURCES)).toBe(3);
+    expect(await repo.getChannelCount(ALL_SOURCES)).toBe(3);
   });
 
   it('getChannelCount - returns correct count', async () => {

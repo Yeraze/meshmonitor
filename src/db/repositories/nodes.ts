@@ -595,7 +595,9 @@ export class NodesRepository extends BaseRepository {
       await this.db
         .update(nodes)
         .set({ welcomedAt: now })
-        .where(eq(nodes.nodeNum, node.nodeNum));
+        .where(sourceId
+          ? and(eq(nodes.nodeNum, node.nodeNum), eq(nodes.sourceId, sourceId))
+          : eq(nodes.nodeNum, node.nodeNum));
       await this.syncCacheAcrossSources(node.nodeNum);
     }
     return toUpdate.length;
@@ -1367,92 +1369,11 @@ export class NodesRepository extends BaseRepository {
     return this.normalizeBigInts(rows[0]) as DbNode;
   }
 
-  /**
-   * SQLite-only synchronous getAllNodes.
-   */
-  getAllNodesSqlite(sourceId?: SourceScope): DbNode[] {
-    if (!this.sqliteDb) throw new Error('getAllNodesSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    // ALL_SOURCES or undefined → return all; a concrete string → filter by source.
-    const isScoped = typeof sourceId === 'string' && sourceId !== '';
-    const rows = isScoped
-      ? db.select().from(nodes).where(eq(nodes.sourceId, sourceId as string)).orderBy(desc(nodes.updatedAt)).all()
-      : db.select().from(nodes).orderBy(desc(nodes.updatedAt)).all();
-    return rows.map((r: any) => this.normalizeBigInts(r)) as DbNode[];
-  }
 
-  /**
-   * SQLite-only synchronous getActiveNodes.
-   */
-  getActiveNodesSqlite(sinceDays: number = 7): DbNode[] {
-    if (!this.sqliteDb) throw new Error('getActiveNodesSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    const cutoff = Math.floor(Date.now() / 1000) - (sinceDays * 24 * 60 * 60);
-    const rows = db.select().from(nodes).where(gt(nodes.lastHeard, cutoff)).orderBy(desc(nodes.lastHeard)).all();
-    return rows.map((r: any) => this.normalizeBigInts(r)) as DbNode[];
-  }
 
-  /**
-   * SQLite-only synchronous count of nodes (no source filter).
-   */
-  getNodeCountSqlite(): number {
-    if (!this.sqliteDb) throw new Error('getNodeCountSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    const result = db.select({ count: count() }).from(nodes).all();
-    return Number((result[0] as any).count);
-  }
 
-  /**
-   * SQLite-only synchronous update of lastMessageHops scoped per-source.
-   */
-  updateNodeMessageHopsSqlite(nodeNum: number, hops: number, sourceId: string): void {
-    if (!this.sqliteDb) throw new Error('updateNodeMessageHopsSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    const now = Date.now();
-    db.update(nodes)
-      .set({ lastMessageHops: hops, updatedAt: now })
-      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)))
-      .run();
-  }
 
-  /**
-   * SQLite-only synchronous mark-all-welcomed.
-   */
-  markAllNodesAsWelcomedSqlite(sourceId?: string | null): number {
-    if (!this.sqliteDb) throw new Error('markAllNodesAsWelcomedSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    const now = Date.now();
-    const where = sourceId
-      ? and(isNull(nodes.welcomedAt), eq(nodes.sourceId, sourceId))
-      : isNull(nodes.welcomedAt);
-    const result: any = db.update(nodes).set({ welcomedAt: now }).where(where).run();
-    return Number(result?.changes ?? 0);
-  }
 
-  /**
-   * SQLite-only synchronous atomic welcome-if-not-already.
-   */
-  markNodeAsWelcomedIfNotAlreadySqlite(nodeNum: number, nodeId: string, sourceId: string): boolean {
-    if (!this.sqliteDb) throw new Error('markNodeAsWelcomedIfNotAlreadySqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    const now = Date.now();
-    const result: any = db.update(nodes)
-      .set({ welcomedAt: now, updatedAt: now })
-      .where(and(
-        eq(nodes.nodeNum, nodeNum),
-        eq(nodes.nodeId, nodeId),
-        eq(nodes.sourceId, sourceId),
-        isNull(nodes.welcomedAt)
-      ))
-      .run();
-    return Number(result?.changes ?? 0) > 0;
-  }
 
   /**
    * SQLite-only sync getNodesWithKeySecurityIssues.
@@ -1467,47 +1388,8 @@ export class NodesRepository extends BaseRepository {
     return rows.map((r: any) => this.normalizeBigInts(r)) as DbNode[];
   }
 
-  /**
-   * SQLite-only sync getNodesWithPublicKeys.
-   */
-  getNodesWithPublicKeysSqlite(): Array<{ nodeNum: number; publicKey: string | null }> {
-    if (!this.sqliteDb) throw new Error('getNodesWithPublicKeysSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    const rows = db.select({ nodeNum: nodes.nodeNum, publicKey: nodes.publicKey })
-      .from(nodes)
-      .where(and(isNotNull(nodes.publicKey), ne(nodes.publicKey, '')))
-      .all();
-    return rows as Array<{ nodeNum: number; publicKey: string | null }>;
-  }
 
-  /**
-   * SQLite-only sync updateNodeSecurityFlags.
-   */
-  updateNodeSecurityFlagsSqlite(nodeNum: number, duplicateKeyDetected: boolean, keySecurityIssueDetails: string | undefined, sourceId: string): void {
-    if (!this.sqliteDb) throw new Error('updateNodeSecurityFlagsSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    const now = Date.now();
-    db.update(nodes)
-      .set({ duplicateKeyDetected, keySecurityIssueDetails: keySecurityIssueDetails ?? null, updatedAt: now })
-      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)))
-      .run();
-  }
 
-  /**
-   * SQLite-only sync updateNodeLowEntropyFlag raw write (assumes caller has computed combinedDetails).
-   */
-  updateNodeLowEntropyFlagSqlite(nodeNum: number, keyIsLowEntropy: boolean, combinedDetails: string | null, sourceId: string): void {
-    if (!this.sqliteDb) throw new Error('updateNodeLowEntropyFlagSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    const now = Date.now();
-    db.update(nodes)
-      .set({ keyIsLowEntropy, keySecurityIssueDetails: combinedDetails, updatedAt: now })
-      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)))
-      .run();
-  }
 
   /**
    * SQLite-only sync updateNodeSpamFlags.
@@ -1570,31 +1452,7 @@ export class NodesRepository extends BaseRepository {
     return rows.map((r: any) => this.normalizeBigInts(r)) as DbNode[];
   }
 
-  /**
-   * SQLite-only sync updateNodeMobility by nodeId.
-   */
-  updateNodeMobilitySqlite(nodeId: string, mobile: number): void {
-    if (!this.sqliteDb) throw new Error('updateNodeMobilitySqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    db.update(nodes).set({ mobile }).where(eq(nodes.nodeId, nodeId)).run();
-  }
 
-  /**
-   * SQLite-only sync deleteInactiveNodes (respecting isIgnored).
-   */
-  deleteInactiveNodesSqlite(cutoffMs: number): number {
-    if (!this.sqliteDb) throw new Error('deleteInactiveNodesSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    const result: any = db.delete(nodes)
-      .where(and(
-        or(lt(nodes.lastHeard, cutoffMs), isNull(nodes.lastHeard)),
-        or(eq(nodes.isIgnored, false), isNull(nodes.isIgnored))
-      ))
-      .run();
-    return Number(result?.changes ?? 0);
-  }
 
   /**
    * SQLite-only sync update of lastTracerouteRequest column on nodes.
@@ -1627,76 +1485,10 @@ export class NodesRepository extends BaseRepository {
     return Number(result?.changes ?? 0);
   }
 
-  /**
-   * SQLite-only sync delete single node scoped per-source.
-   */
-  deleteNodeSqlite(nodeNum: number, sourceId: string): boolean {
-    if (!this.sqliteDb) throw new Error('deleteNodeSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    const result: any = db.delete(nodes)
-      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)))
-      .run();
-    return Number(result?.changes ?? 0) > 0;
-  }
 
-  /**
-   * SQLite-only sync delete ALL nodes.
-   */
-  deleteAllNodesSqlite(): number {
-    if (!this.sqliteDb) throw new Error('deleteAllNodesSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    const result: any = db.delete(nodes).run();
-    return Number(result?.changes ?? 0);
-  }
 
-  /**
-   * SQLite-only sync setNodeFavorite scoped per-source.
-   * Returns number of rows changed so callers can decide whether to fire the
-   * favoriteLocked-only fallback path.
-   */
-  setNodeFavoriteSqlite(nodeNum: number, isFavorite: boolean, sourceId: string, favoriteLocked?: boolean): number {
-    if (!this.sqliteDb) throw new Error('setNodeFavoriteSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    const now = Date.now();
-    const setData: Record<string, any> = { isFavorite, updatedAt: now };
-    if (favoriteLocked !== undefined) setData.favoriteLocked = favoriteLocked;
-    const result: any = db.update(nodes)
-      .set(setData)
-      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)))
-      .run();
-    return Number(result?.changes ?? 0);
-  }
 
-  /**
-   * SQLite-only sync setNodeFavoriteLocked scoped per-source.
-   */
-  setNodeFavoriteLockedSqlite(nodeNum: number, favoriteLocked: boolean, sourceId: string): void {
-    if (!this.sqliteDb) throw new Error('setNodeFavoriteLockedSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    const now = Date.now();
-    db.update(nodes)
-      .set({ favoriteLocked, updatedAt: now })
-      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)))
-      .run();
-  }
 
-  /**
-   * SQLite-only sync setNodeIgnored scoped per-source.
-   */
-  setNodeIgnoredSqlite(nodeNum: number, isIgnored: boolean, sourceId: string): void {
-    if (!this.sqliteDb) throw new Error('setNodeIgnoredSqlite is SQLite-only');
-    const db = this.sqliteDb;
-    const { nodes } = this.tables;
-    const now = Date.now();
-    db.update(nodes)
-      .set({ isIgnored, updatedAt: now })
-      .where(and(eq(nodes.nodeNum, nodeNum), eq(nodes.sourceId, sourceId)))
-      .run();
-  }
 
   /**
    * SQLite-only sync delete all nodes (used by importData / purgeAllNodes),

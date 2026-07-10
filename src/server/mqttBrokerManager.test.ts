@@ -2,15 +2,11 @@ import { describe, it, expect, vi, beforeEach, beforeAll, afterEach } from 'vite
 import { connect, type MqttClient } from 'mqtt';
 
 const upsertNode = vi.fn();
-const insertMessage = vi.fn().mockReturnValue(true);
 const insertTelemetry = vi.fn();
 
 vi.mock('../services/database.js', () => ({
   default: {
-    upsertNode: (...a: unknown[]) => upsertNode(...a),
     upsertNodeAsync: async (...a: unknown[]) => upsertNode(...a),
-    insertMessage: (...a: unknown[]) => insertMessage(...a),
-    insertTelemetry: (...a: unknown[]) => insertTelemetry(...a),
     insertTelemetryAsync: async (...a: unknown[]) => insertTelemetry(...a),
     insertTracerouteAsync: vi.fn(async () => undefined),
     insertRouteSegmentAsync: vi.fn(async () => undefined),
@@ -95,7 +91,6 @@ describe('MqttBrokerManager', () => {
 
   beforeEach(async () => {
     upsertNode.mockClear();
-    insertMessage.mockClear();
     insertTelemetry.mockClear();
     port = await ephemeralPort();
     manager = new MqttBrokerManager('test-broker', 'Test Broker', {
