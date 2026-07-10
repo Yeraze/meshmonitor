@@ -2064,8 +2064,9 @@ apiRouter.delete('/nodes/:nodeId/neighbors', requirePermission('nodes', 'write',
 
     const nodeNum = parseInt(nodeNumStr, 16);
 
-    // Delete neighbor info from database (scoped to the required source)
-    const deletedCount = await databaseService.deleteNeighborInfoForNodeAsync(nodeNum, (req as any).scopedSourceId as string);
+    // Delete neighbor info from database (scoped to the required source;
+    // requireSourceId already validated presence + string type)
+    const deletedCount = await databaseService.deleteNeighborInfoForNodeAsync(nodeNum, req.query.sourceId as string);
 
     res.json({
       success: true,
