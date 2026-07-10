@@ -83,8 +83,9 @@ export const migration = {
     );
 
     // Column defs are read live from the table rather than hardcoded so the
-    // rebuild can't drift from whatever ADD COLUMN migrations (012/018/076/080/028)
-    // have already applied by the time migration 115 runs.
+    // rebuild can't drift from whatever ADD COLUMN migrations (012, 018, 028,
+    // 076, 080 — listed here in ascending migration order) have already
+    // applied by the time migration 115 runs.
     const columns = db.prepare(`PRAGMA table_info('user_notification_preferences')`).all() as TableInfoRow[];
     const colDefs = columns
       .map((c) => {
