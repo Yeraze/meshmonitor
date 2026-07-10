@@ -10,7 +10,6 @@ import {
   UNKNOWN_SNR_SENTINEL,
   interpolateColor,
   getPositionHistoryColor,
-  getSegmentSnrColor,
   getSegmentSnrOpacity,
   getLineWeight,
   getTemporalOpacityMultiplier,
@@ -21,10 +20,15 @@ import {
   weightBySnr,
   weightByUsage,
   weightByOccurrence,
+  tracerouteSegmentWeight,
   MQTT_DASH,
   type SnrColorScale,
 } from './mapHelpers';
-import { UNKNOWN_SNR_SENTINEL as CANONICAL_UNKNOWN_SNR_SENTINEL } from './tracerouteSegments';
+import {
+  UNKNOWN_SNR_SENTINEL as CANONICAL_UNKNOWN_SNR_SENTINEL,
+  averageNonSentinelSnr,
+  type TracerouteRenderSegment,
+} from './tracerouteSegments';
 
 describe('mapHelpers', () => {
   describe('isUnknownSnr (issue #2859)', () => {
@@ -104,45 +108,23 @@ describe('mapHelpers', () => {
     });
   });
 
-  describe('getSegmentSnrColor (4-band, #4047 P3)', () => {
-    const colors: SnrColorScale = {
-      excellent: 'darkgreen',
-      good: 'green',
-      fair: 'orange',
-      poor: 'red',
-      noData: 'gray',
-    };
-
-    it('returns default when no SNR data', () => {
-      expect(getSegmentSnrColor(undefined, colors, 'default')).toBe('default');
-      expect(getSegmentSnrColor([], colors, 'default')).toBe('default');
+  describe('averageNonSentinelSnr', () => {
+    it('returns null when there are no samples', () => {
+      expect(averageNonSentinelSnr(undefined)).toBeNull();
+      expect(averageNonSentinelSnr([])).toBeNull();
     });
 
-    it('ignores unknown-SNR values when computing average', () => {
-      // All entries are unknown-sentinel; should fall back to default
-      expect(
-        getSegmentSnrColor([{ snr: UNKNOWN_SNR_SENTINEL }], colors, 'default')
-      ).toBe('default');
+    it('ignores unknown-SNR sentinel values when averaging', () => {
+      expect(averageNonSentinelSnr([{ snr: UNKNOWN_SNR_SENTINEL }])).toBeNull();
+      expect(averageNonSentinelSnr([{ snr: UNKNOWN_SNR_SENTINEL }, { snr: 10 }])).toBe(10);
     });
 
-    it('returns excellent color for avg SNR >= 5', () => {
-      expect(getSegmentSnrColor([{ snr: 5 }, { snr: 7 }], colors, 'default')).toBe('darkgreen');
-    });
-
-    it('returns good color for avg SNR in [0, 5)', () => {
-      expect(getSegmentSnrColor([{ snr: 3 }], colors, 'default')).toBe('green');
-    });
-
-    it('returns fair color for avg SNR in [-5, 0)', () => {
-      expect(getSegmentSnrColor([{ snr: -3 }], colors, 'default')).toBe('orange');
-    });
-
-    it('returns poor color for avg SNR < -5', () => {
-      expect(getSegmentSnrColor([{ snr: -15 }, { snr: -18 }], colors, 'default')).toBe('red');
+    it('averages multiple RF samples', () => {
+      expect(averageNonSentinelSnr([{ snr: 5 }, { snr: 7 }])).toBe(6);
     });
   });
 
-  describe('snrToColor (canonical 4-band SNR scale, #4047 P3)', () => {
+  describe('snrToColor (canonical 4-band SNR scale)', () => {
     const scale: SnrColorScale = {
       excellent: '#22c55e',
       good: '#eab308',
@@ -181,7 +163,7 @@ describe('mapHelpers', () => {
     });
   });
 
-  describe('weight strategies (#4047 P3 §2.2)', () => {
+  describe('weight strategies', () => {
     it('weightBySnr is the same function as getLineWeight', () => {
       expect(weightBySnr).toBe(getLineWeight);
       expect(weightBySnr(10)).toBeCloseTo(6, 5);
@@ -200,7 +182,33 @@ describe('mapHelpers', () => {
     });
   });
 
-  describe('MQTT_DASH (#4047 P3 §2.3)', () => {
+  describe('tracerouteSegmentWeight', () => {
+    const seg = (overrides: Partial<TracerouteRenderSegment> = {}): TracerouteRenderSegment => ({
+      key: 'forward:1-2',
+      from: [0, 0],
+      to: [1, 1],
+      fromNodeNum: 1,
+      toNodeNum: 2,
+      leg: 'forward',
+      avgSnr: null,
+      isMqtt: false,
+      ...overrides,
+    });
+
+    it('routes an MQTT segment through the sentinel (weight 2), not the "undefined" default (weight 3)', () => {
+      expect(tracerouteSegmentWeight(seg({ isMqtt: true, avgSnr: null }))).toBeCloseTo(2, 5);
+    });
+
+    it('uses weightBySnr(avgSnr) for a non-MQTT segment with real SNR', () => {
+      expect(tracerouteSegmentWeight(seg({ isMqtt: false, avgSnr: 10 }))).toBeCloseTo(6, 5);
+    });
+
+    it('falls back to the "no data" default (weight 3) for a non-MQTT segment with no SNR', () => {
+      expect(tracerouteSegmentWeight(seg({ isMqtt: false, avgSnr: null }))).toBe(3);
+    });
+  });
+
+  describe('MQTT_DASH', () => {
     it('is the canonical "3,6" dash pattern', () => {
       expect(MQTT_DASH).toBe('3,6');
     });

@@ -14,11 +14,12 @@ import L from 'leaflet';
 import { useSettings } from '../contexts/SettingsContext';
 import { getTilesetById } from '../config/tilesets';
 import { useTraceroutes } from '../hooks/useTraceroutes';
-import { isUnknownSnr, weightBySnr } from '../utils/mapHelpers';
+import { isUnknownSnr, tracerouteSegmentWeight } from '../utils/mapHelpers';
 import { TraceroutePathsLayer } from './map/layers/TraceroutePathsLayer';
 import {
   parseSnapshotRoutePositions,
   resolveSegmentPosition,
+  buildLiveNodePositionMap,
   hasReturnPath,
   decomposeTraceroute,
   type TracerouteRenderSegment,
@@ -194,25 +195,21 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
     }
   };
 
-  // Live node positions, keyed by nodeNum, normalized to [lat, lng] — the
-  // widget's own live-node shape (position.latitudeI/longitudeI integer OR
-  // position.latitude/longitude float) pre-normalized into the flat
-  // `Map<number,[number,number]>` `resolveSegmentPosition` (#4047 P3 WP2)
-  // expects for its live-position fallback. Presence check intentionally
-  // stays truthy (matching the pre-existing live-position behavior) — only
-  // the #1862 *snapshot* check below adopts the util's typeof fix.
-  const liveNodePositions = useMemo(() => {
-    const map = new Map<number, [number, number]>();
-    for (const node of nodes.values()) {
-      if (typeof node.nodeNum !== 'number' || !node.position) continue;
-      if (node.position.latitudeI && node.position.longitudeI) {
-        map.set(node.nodeNum, [node.position.latitudeI / 1e7, node.position.longitudeI / 1e7]);
-      } else if (node.position.latitude && node.position.longitude) {
-        map.set(node.nodeNum, [node.position.latitude, node.position.longitude]);
-      }
-    }
-    return map;
-  }, [nodes]);
+  // Live node positions, keyed by nodeNum, normalized to [lat, lng] via the
+  // shared `buildLiveNodePositionMap` — the widget's own live-node shape
+  // carries position as EITHER `latitudeI/longitudeI` (integer) OR
+  // `latitude/longitude` (float); the integer form is preferred when present.
+  const liveNodePositions = useMemo(
+    () =>
+      buildLiveNodePositionMap(nodes.values(), (node) => {
+        if (typeof node.nodeNum !== 'number' || !node.position) return null;
+        if (node.position.latitudeI && node.position.longitudeI) {
+          return { nodeNum: node.nodeNum, lat: node.position.latitudeI / 1e7, lng: node.position.longitudeI / 1e7 };
+        }
+        return { nodeNum: node.nodeNum, lat: node.position.latitude, lng: node.position.longitude };
+      }),
+    [nodes],
+  );
 
   // Get node position by nodeNum, optionally preferring a snapshot map
   // (#1862 — resolveSegmentPosition prefers `snapshot` over `liveNodePositions`).
@@ -227,9 +224,8 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
     if (!traceroute) return null;
 
     // Parse snapshot positions (#1862) via the shared util — prefers historical
-    // positions over current. Adopts the canonical `typeof`-based presence
-    // check (fixes the widget's old truthy check silently dropping snapshots
-    // at exactly lat/lng 0 — #4047 P3 WP2 finding).
+    // positions over current. Uses a `typeof`-based presence check (fixes a
+    // truthy-check bug that silently dropped snapshots at exactly lat/lng 0).
     const snapshotPositions = parseSnapshotRoutePositions(traceroute.routePositions);
 
     // Parse routes (filters reserved/invalid node numbers; keeps BROADCAST_ADDR
@@ -294,10 +290,10 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
       [Math.max(...lats) + 0.01, Math.max(...lngs) + 0.01],
     ];
 
-    // Forward + return render segments via the shared decomposition util
-    // (#4047 P3 WP4) — replaces the widget's own curved-path/dash/color
-    // construction. Internally /4-scales SNR, applies the #2931 sentinel,
-    // and re-derives the same #2051 return-leg gate as `hasReturn` above.
+    // Forward + return render segments via the shared decomposition util —
+    // replaces the widget's own curved-path/dash/color construction.
+    // Internally /4-scales SNR, applies the #2931 sentinel, and re-derives
+    // the same #2051 return-leg gate as `hasReturn` above.
     const segments: TracerouteRenderSegment[] = decomposeTraceroute(
       {
         fromNodeNum: traceroute.fromNodeNum,
@@ -515,20 +511,19 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
                       maxZoom={tileset.maxZoom}
                     />
 
-                    {/* Forward + return legs — shared render layer (#4047 P3
-                        WP4). Leg colors converge to the theme
-                        tracerouteForward/tracerouteReturn palette (C1,
-                        approved visible change — replaces the old hardcoded
-                        #4CAF50/#2196F3). Hover-highlight (dim 0.9/0.2,
-                        arrows limited to the highlighted leg) is preserved
-                        via the `highlight` prop. */}
+                    {/* Forward + return legs — shared render layer. Leg
+                        colors read the theme tracerouteForward/
+                        tracerouteReturn tokens (legend swatches below use the
+                        same tokens, so they stay truthful). Hover-highlight
+                        (dim 0.9/0.2, arrows limited to the highlighted leg)
+                        is preserved via the `highlight` prop. */}
                     <TraceroutePathsLayer
                       segments={mapData.segments}
                       snrColors={overlayColors.snrColors}
                       colorMode="fixed-leg"
                       legColors={{ forward: overlayColors.tracerouteForward, return: overlayColors.tracerouteReturn }}
                       curvature={0.2}
-                      weight={(seg) => weightBySnr(seg.avgSnr ?? undefined)}
+                      weight={tracerouteSegmentWeight}
                       opacity={0.9}
                       dashMode="mqtt-unknown"
                       showArrows

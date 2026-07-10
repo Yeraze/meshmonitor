@@ -50,6 +50,7 @@ import { TraceroutePathsLayer } from '../map/layers/TraceroutePathsLayer';
 import {
   parseSnapshotRoutePositions,
   resolveSegmentPosition,
+  buildLiveNodePositionMap,
   decomposeTraceroute,
   type TracerouteRenderSegment,
 } from '../../utils/tracerouteSegments';
@@ -428,15 +429,13 @@ export default function DashboardMap({
   // traceroute polylines deliberately terminate at the (jittered) marker pin —
   // keeping edges visually attached to the markers. Only the accuracy Rectangle
   // re-derives the true center (getNodeLatLng) so the cell box stays put.
-  const positionByNodeNum = useMemo(() => {
-    const map = new Map<number, [number, number]>();
-    for (const { node, pos } of nodesWithPosition) {
-      if (typeof node.nodeNum === 'number') {
-        map.set(node.nodeNum, [pos.lat, pos.lng]);
-      }
-    }
-    return map;
-  }, [nodesWithPosition]);
+  const positionByNodeNum = useMemo(
+    () =>
+      buildLiveNodePositionMap(nodesWithPosition, ({ node, pos }) =>
+        typeof node.nodeNum === 'number' ? { nodeNum: node.nodeNum, lat: pos.lat, lng: pos.lng } : null,
+      ),
+    [nodesWithPosition],
+  );
 
   // publicKey → [lat, lng] for resolving MeshCore neighbor-link endpoints.
   // MeshCore nodes carry no meshtastic nodeNum; their stable identity (and the
@@ -476,15 +475,14 @@ export default function DashboardMap({
     return segs;
   }, [meshcoreNeighbors, positionByPublicKey, showNeighborInfo]);
 
-  // Traceroute render segments: one TracerouteRenderSegment per hop (forward
-  // AND return leg — Dashboard gains return-leg rendering in P3, approved
-  // visible change, D5), built via the shared `decomposeTraceroute` (#4047
-  // P3 WP4). `decomposeTraceroute` internally /4-scales `snrTowards`/`snrBack`
-  // (D5 — binding: this Dashboard's raw traceroute rows carry un-scaled SNR,
-  // unlike every other consumer of this data), resolves #1862 snapshot
-  // positions ahead of live `positionByNodeNum`, and gates the return leg on
-  // the #2051 guard. Empty unless "Show Route Segments" or "Show Traceroute"
-  // is on. Each traceroute's own key is prefixed onto the util's per-hop key
+  // Traceroute render segments: one TracerouteRenderSegment per hop, forward
+  // AND return leg, built via the shared `decomposeTraceroute`.
+  // `decomposeTraceroute` internally /4-scales `snrTowards`/`snrBack` — this
+  // Dashboard's raw traceroute rows carry un-scaled SNR, unlike every other
+  // consumer of this data — resolves #1862 snapshot positions ahead of live
+  // `positionByNodeNum`, and gates the return leg on the #2051 guard. Empty
+  // unless "Show Route Segments" or "Show Traceroute" is on. Each
+  // traceroute's own key is prefixed onto the util's per-hop key
   // (`"forward:123-456"`) since multiple traceroute records can repeat the
   // same node pair and the util itself only decomposes one record at a time.
   const tracerouteRenderSegments = useMemo<TracerouteRenderSegment[]>(() => {
@@ -650,14 +648,14 @@ export default function DashboardMap({
             );
           })}
 
-        {/* Route segments — thin SNR-colored hop polylines (shared render layer,
-            #4047 P3 WP4). MQTT/unknown-SNR hops dash here (C2 — decomposeTraceroute
-            now supplies per-hop sentinel data, so the Dashboard gets the canonical
-            dashing every other traceroute renderer already has). */}
+        {/* Route segments — thin SNR-colored hop polylines (shared render
+            layer). MQTT/unknown-SNR hops dash and get the distinguishing
+            mqttColor, matching every other traceroute renderer. */}
         {showPaths && (
           <TraceroutePathsLayer
             segments={tracerouteRenderSegments}
             snrColors={overlayColors.snrColors}
+            mqttColor={overlayColors.mqttSegment}
             colorMode="snr"
             weight={2}
             opacity={0.85}

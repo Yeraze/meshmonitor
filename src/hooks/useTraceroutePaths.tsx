@@ -15,16 +15,20 @@ import { Popup } from 'react-leaflet';
 import { DraggablePopup } from '../components/DraggablePopup';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { calculateDistance, formatDistance } from '../utils/distance';
-import { getSegmentSnrOpacity, isUnknownSnr, weightByUsage, weightBySnr, type SnrColorScale } from '../utils/mapHelpers';
+import { getSegmentSnrOpacity, weightByUsage, tracerouteSegmentWeight, type SnrColorScale } from '../utils/mapHelpers';
 import {
   parseSnapshotRoutePositions,
   resolveSegmentPosition,
+  buildLiveNodePositionMap,
   decomposeTraceroute,
   hasReturnPath,
-  UNKNOWN_SNR_SENTINEL,
+  isUnknownSnr,
+  isValidRouteNode,
+  averageNonSentinelSnr,
   type TracerouteRenderSegment,
 } from '../utils/tracerouteSegments';
 import { TraceroutePathsLayer } from '../components/map/layers/TraceroutePathsLayer';
+import { darkOverlayColors } from '../config/overlayColors';
 import { logger } from '../utils/logger';
 import type { DistanceUnit } from '../contexts/SettingsContext';
 
@@ -229,38 +233,15 @@ const BROADCAST_ADDR = 4294967295;
  * field. In practice App.tsx always supplies a real scheme-derived scale
  * (`schemeColors.snrColors`); this only guards the type-level `undefined`
  * case so the shared `TraceroutePathsLayer`'s required `snrColors` prop
- * always has a value. Values match `darkOverlayColors.snrColors` (#4047 P3 WP1).
+ * always has a value.
  */
-const FALLBACK_SNR_COLORS: SnrColorScale = {
-  excellent: '#22c55e',
-  good: '#eab308',
-  fair: '#f97316',
-  poor: '#ef4444',
-  noData: '#6c7086',
-};
+const FALLBACK_SNR_COLORS: SnrColorScale = darkOverlayColors.snrColors;
 
-/**
- * Filter function to remove invalid/reserved node numbers from route arrays
- * This provides frontend safety for any invalid data that may exist in the database
- * Invalid values:
- * - 0-3: Reserved per Meshtastic protocol
- * - 255 (0xff): Reserved for broadcast in some contexts
- * - 65535 (0xffff): Invalid placeholder value that causes display issues
- * - 4294967295 (0xffffffff): Broadcast address
- */
-const isValidRouteNode = (nodeNum: number): boolean => {
-  if (nodeNum <= 3) return false;  // Reserved
-  if (nodeNum === 255) return false;  // 0xff reserved
-  if (nodeNum === 65535) return false;  // 0xffff invalid placeholder
-  if (nodeNum === BROADCAST_ADDR) return false;  // Broadcast
-  return true;
-};
-
-// #1862 snapshot parsing + snapshot-then-live position resolution now go
-// through the shared `parseSnapshotRoutePositions`/`resolveSegmentPosition`
-// utils (src/utils/tracerouteSegments.ts) — the local `parseRoutePositions`/
-// `getNodePositionWithSnapshot` helpers (which had the lat/lng===0
-// truthy-check bug on the snapshot half) were deleted in #4047 P3 WP3.
+// `isValidRouteNode` (reserved/broadcast node-number filtering) is imported
+// from `tracerouteSegments.ts` — that's the single home; see its doc comment.
+// #1862 snapshot parsing + snapshot-then-live position resolution likewise go
+// through the shared `parseSnapshotRoutePositions`/`resolveSegmentPosition`/
+// `buildLiveNodePositionMap` utils.
 
 /**
  * Hook for computing and rendering traceroute paths on the map
@@ -279,20 +260,18 @@ export function useTraceroutePaths({
   visibleNodeNums,
   mapZoom,
 }: UseTraceroutePathsParams): UseTraceroutePathsResult {
-  // Shared live-node position map for the #1862 snapshot-then-live fallback.
-  // Kept as a truthy-presence check (matching the pre-existing live-position
-  // fallback semantics) — the WP2 latent-bug fix for lat/lng===0 only applies
-  // to the *snapshot* half via `parseSnapshotRoutePositions`, which both
-  // memos below now use for the historical-position lookup.
-  const liveNodePositions = useMemo(() => {
-    const map = new Map<number, [number, number]>();
-    for (const n of nodesPositionDigest) {
-      if (n.position?.latitude && n.position?.longitude) {
-        map.set(n.nodeNum, [n.position.latitude, n.position.longitude]);
-      }
-    }
-    return map;
-  }, [nodesPositionDigest]);
+  // Shared live-node position map for the #1862 snapshot-then-live fallback,
+  // built via the shared `buildLiveNodePositionMap` (also fixes the
+  // lat/lng===0 falsy-zero bug on the live side, not just the snapshot side).
+  const liveNodePositions = useMemo(
+    () =>
+      buildLiveNodePositionMap(nodesPositionDigest, (n) => ({
+        nodeNum: n.nodeNum,
+        lat: n.position?.latitude,
+        lng: n.position?.longitude,
+      })),
+    [nodesPositionDigest],
+  );
 
   // Memoize base traceroute paths (showPaths) - doesn't depend on selectedNodeId
   // This prevents re-rendering markers when clicking to select a node
@@ -363,8 +342,8 @@ export function useTraceroutePaths({
           tr.snrTowards && tr.snrTowards !== 'null' && tr.snrTowards !== '' ? JSON.parse(tr.snrTowards) : [];
         const timestamp = tr.timestamp || tr.createdAt || Date.now();
 
-        // #1862 — snapshot positions via the shared util (fixes the
-        // lat/lng===0 truthy-check bug — WP2 finding, deliberate).
+        // #1862 — snapshot positions via the shared util (fixes a
+        // lat/lng===0 truthy-check bug in the old per-consumer copy).
         const snapshotPositions = parseSnapshotRoutePositions(tr.routePositions);
         const resolvePosition = (nodeNum: number): [number, number] | null =>
           resolveSegmentPosition(nodeNum, snapshotPositions, liveNodePositions);
@@ -488,12 +467,10 @@ export function useTraceroutePaths({
       });
     }
 
-    // Build shared render segments. TracerouteRenderSegment intentionally has
-    // no nodeNums field (§3.1 of the P3 spec) — keep a side-table of each raw
-    // occurrence's *unsorted* hop nodeNums (needed by the popup/className,
-    // which preserve per-hop node identity/order) keyed by the per-occurrence
-    // `key` (`tr-${idx}-fwd-seg-${i}` / `-back-seg-${i}`, still unique).
-    const nodeNumsByKey = new Map<string, [number, number]>();
+    // Build shared render segments, carrying each occurrence's hop node
+    // numbers directly on the segment (`fromNodeNum`/`toNodeNum`) so the
+    // popup/className below can read them straight off `seg` instead of a
+    // side-table lookup.
     const renderSegments: TracerouteRenderSegment[] = filteredSegments.map(segment => {
       const segmentKey = segment.nodeNums.slice().sort().join('-');
       const usage = segmentUsage.get(segmentKey) || 1;
@@ -506,20 +483,15 @@ export function useTraceroutePaths({
       // mostly radio.
       const isMqttSegment = segmentHasMqtt.get(segmentKey) === true;
       const snrSamples = segmentSNRs.get(segmentKey) || [];
-      // Average of non-sentinel samples — the same computation the shared
-      // layer's `snrToColor`/`getSegmentSnrColor` perform internally, so the
-      // color this drives matches what the old `getSegmentSnrColor` call
-      // would have produced for the "has RF data" case (4-band, approved).
-      const rfSnrs = snrSamples.filter(d => !isUnknownSnr(d.snr)).map(d => d.snr);
-      const avgSnr = rfSnrs.length > 0 ? rfSnrs.reduce((sum, val) => sum + val, 0) / rfSnrs.length : null;
+      const avgSnr = averageNonSentinelSnr(snrSamples);
       const latestTimestamp = segmentLatestTimestamp.get(segmentKey);
-
-      nodeNumsByKey.set(segment.key, segment.nodeNums);
 
       return {
         key: segment.key,
         from: segment.positions[0],
         to: segment.positions[1],
+        fromNodeNum: segment.nodeNums[0],
+        toNodeNum: segment.nodeNums[1],
         // Aggregated bidirectionally across (possibly many) traceroutes —
         // not a single forward/return leg, so 'neutral' (curvature 0 either
         // way for this layer, per the consumer table).
@@ -532,16 +504,20 @@ export function useTraceroutePaths({
       };
     });
 
+    // O(1) node lookup by nodeNum for the popup render-prop below, built
+    // once per memo recomputation instead of a linear `.find()` per segment.
+    const nodeByNum = new Map<number, NodePositionDigest>();
+    for (const n of nodesPositionDigest) nodeByNum.set(n.nodeNum, n);
+
     // Popup content (recharts SegmentSnrChart moves in verbatim) — a single
-    // render-prop looked up per segment via the side-table above.
+    // render-prop reading hop identity straight off the segment.
     const renderBasePopup = (seg: TracerouteRenderSegment): React.ReactNode => {
-      const nodeNums = nodeNumsByKey.get(seg.key);
-      if (!nodeNums) return null;
-      const [nodeNum1, nodeNum2] = nodeNums;
+      const nodeNum1 = seg.fromNodeNum;
+      const nodeNum2 = seg.toNodeNum;
       const segmentKey = [nodeNum1, nodeNum2].sort().join('-');
       const usage = segmentUsage.get(segmentKey) || 1;
-      const node1 = nodesPositionDigest.find(n => n.nodeNum === nodeNum1);
-      const node2 = nodesPositionDigest.find(n => n.nodeNum === nodeNum2);
+      const node1 = nodeByNum.get(nodeNum1);
+      const node2 = nodeByNum.get(nodeNum2);
       const isMqttSegment = seg.isMqtt;
       const node1Name =
         nodeNum1 === BROADCAST_ADDR
@@ -732,11 +708,8 @@ export function useTraceroutePaths({
       );
     };
 
-    const baseSegmentClassName = (seg: TracerouteRenderSegment): string => {
-      const nodeNums = nodeNumsByKey.get(seg.key);
-      if (!nodeNums) return 'route-segment';
-      return `route-segment node-${nodeNums[0]} node-${nodeNums[1]}`;
-    };
+    const baseSegmentClassName = (seg: TracerouteRenderSegment): string =>
+      `route-segment node-${seg.fromNodeNum} node-${seg.toNodeNum}`;
 
     return [
       <TraceroutePathsLayer
@@ -744,6 +717,7 @@ export function useTraceroutePaths({
         segments={renderSegments}
         snrColors={themeColors.snrColors ?? FALLBACK_SNR_COLORS}
         colorMode="snr"
+        mqttColor={themeColors.mqttSegment ?? themeColors.overlay0}
         curvature={0}
         weight={seg => weightByUsage(seg.usageCount ?? 1)}
         opacity={seg => getSegmentSnrOpacity(seg.snrSamples, seg.isMqtt)}
@@ -753,7 +727,7 @@ export function useTraceroutePaths({
         segmentClassName={baseSegmentClassName}
       />,
     ];
-  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.snrColors, callbacks, visibleNodeNums, mapZoom, liveNodePositions]);
+  }, [showPaths, traceroutesDigest, nodesPositionDigest, distanceUnit, maxNodeAgeHours, themeColors.snrColors, themeColors.mqttSegment, themeColors.overlay0, callbacks, visibleNodeNums, mapZoom, liveNodePositions]);
 
   // Separate memoization for selected node traceroute (showRoute)
   // This can change independently without re-rendering the base map markers
@@ -768,41 +742,26 @@ export function useTraceroutePaths({
     if (!selectedTrace) return null;
 
     try {
-      // Route arrays are stored exactly as Meshtastic provides them (no backend
-      // reversal). Filter out invalid/reserved node numbers (isValidRouteNode)
-      // BEFORE handing off to the shared `decomposeTraceroute` util — the
-      // shared util has no equivalent safety filter, so the route/routeBack
-      // JSON is sanitized here to preserve this hook's pre-existing
-      // defensive behavior (dropping reserved/broadcast placeholder nodes
-      // from the middle of a route).
-      const sanitizeRouteJson = (json: string | undefined | null): string | undefined => {
-        if (!json || json === 'null' || json === '') return json ?? undefined;
-        try {
-          const parsed = JSON.parse(json);
-          if (!Array.isArray(parsed)) return json;
-          return JSON.stringify(parsed.filter(isValidRouteNode));
-        } catch {
-          return json;
-        }
-      };
-
+      // Route arrays are stored exactly as Meshtastic provides them (no
+      // backend reversal). `decomposeTraceroute` filters reserved/broadcast
+      // placeholder node numbers out of the route internally, so the raw
+      // JSON is passed straight through.
+      //
       // #1862 — snapshot positions via the shared util.
       const snapshotPositions = parseSnapshotRoutePositions(selectedTrace.routePositions);
       const resolvePosition = (nodeNum: number): [number, number] | null =>
         resolveSegmentPosition(nodeNum, snapshotPositions, liveNodePositions);
 
-      // #1862/#2051/#2931 — per-traceroute decomposition (shared util). Only
-      // `route` gates the whole decomposition (matching `decomposeTraceroute`'s
-      // contract); the return leg is gated solely by `hasReturnPath` (#2051
-      // unified fix) — see the WP3 report for the resulting NodesTab-visible
-      // delta versus the old "skip the whole traceroute unless routeBack is
-      // also present" guard, which never had a #2051 guard at all.
+      // #1862/#2051/#2931 — per-traceroute decomposition (shared util). The
+      // forward and return legs are gated independently: `route` gates the
+      // forward leg, `hasReturnPath` gates the return leg (#2051) — a
+      // traceroute can render one leg without the other.
       const segments = decomposeTraceroute(
         {
           fromNodeNum: selectedTrace.fromNodeNum,
           toNodeNum: selectedTrace.toNodeNum,
-          route: sanitizeRouteJson(selectedTrace.route),
-          routeBack: sanitizeRouteJson(selectedTrace.routeBack),
+          route: selectedTrace.route,
+          routeBack: selectedTrace.routeBack,
           snrTowards: selectedTrace.snrTowards,
           snrBack: selectedTrace.snrBack,
           timestamp: selectedTrace.timestamp,
@@ -835,16 +794,12 @@ export function useTraceroutePaths({
       const legPathLabel = (leg: 'forward' | 'return'): string => {
         const legSegments = segments.filter(s => s.leg === leg);
         if (legSegments.length === 0) return '';
-        // Reconstruct the hop sequence from each segment's node numbers,
-        // parsed back out of `key` ("forward:123-456"/"return:123-456") per
-        // the shared util's documented convention for consumers that need
-        // their own cross-segment node-pair info.
+        // Reconstruct the hop sequence directly from each segment's
+        // fromNodeNum/toNodeNum (segments are in traversal order).
         const nums: number[] = [];
         legSegments.forEach((s, i) => {
-          const pair = s.key.split(':')[1] ?? '';
-          const [a, b] = pair.split('-').map(Number);
-          if (i === 0) nums.push(a);
-          nums.push(b);
+          if (i === 0) nums.push(s.fromNodeNum);
+          nums.push(s.toNodeNum);
         });
         return nums.map(nameForNode).join(' → ');
       };
@@ -898,7 +853,7 @@ export function useTraceroutePaths({
             return: themeColors.tracerouteReturn ?? themeColors.red,
           }}
           curvature={0.2}
-          weight={seg => weightBySnr(seg.isMqtt ? UNKNOWN_SNR_SENTINEL : (seg.avgSnr ?? undefined))}
+          weight={tracerouteSegmentWeight}
           opacity={0.9}
           dashMode="mqtt-unknown"
           showArrows
@@ -911,12 +866,14 @@ export function useTraceroutePaths({
     }
   }, [showRoute, selectedNodeId, traceroutesDigest, nodesPositionDigest, currentNodeId, distanceUnit, themeColors.red, themeColors.blue, themeColors.tracerouteForward, themeColors.tracerouteReturn, themeColors.snrColors, liveNodePositions]);
 
-  // Compute the set of node numbers involved in the selected traceroute
-  // Used for filtering map markers to only show nodes in the active traceroute.
-  // Guards/semantics deliberately mirror the selectedNodeTraceroute memo above
-  // (route-only presence guard; return-leg nodes gated by hasReturnPath —
-  // #2051; isValidRouteNode-sanitized hop arrays) so the marker filter always
-  // covers exactly the nodes whose segments the shared layer actually draws.
+  // Compute the set of node numbers involved in the selected traceroute.
+  // Used for filtering map markers to only show nodes in the active
+  // traceroute. Guards/semantics mirror the selectedNodeTraceroute memo
+  // above: forward and return legs are gated independently (a return-only
+  // traceroute — empty `route`, populated `routeBack`/`snrBack` — still
+  // frames/filters its return-leg nodes, matching that it still renders
+  // return segments), so the marker filter always covers exactly the nodes
+  // whose segments the shared layer actually draws.
   const tracerouteNodeNums = useMemo(() => {
     // Only compute when showRoute is enabled and there's a selected node
     if (!showRoute || !selectedNodeId || selectedNodeId === currentNodeId) return null;
@@ -927,35 +884,31 @@ export function useTraceroutePaths({
 
     if (!selectedTrace) return null;
 
-    // Route-only presence guard — matches decomposeTraceroute's contract
-    // (the return leg is gated separately below; a forward-only traceroute
-    // renders and must therefore be framed/filtered too).
-    if (!selectedTrace.route || selectedTrace.route === 'null' || selectedTrace.route === '') {
-      return null;
-    }
+    const hasForwardRoute =
+      !!selectedTrace.route && selectedTrace.route !== 'null' && selectedTrace.route !== '';
 
     try {
-      const nodeNums = new Set<number>();
-
-      // Add the endpoints
-      nodeNums.add(selectedTrace.fromNodeNum);
-      nodeNums.add(selectedTrace.toNodeNum);
-
-      // Add intermediate nodes from forward route
-      const rawRouteForward = JSON.parse(selectedTrace.route);
-      const routeForward = (Array.isArray(rawRouteForward) ? rawRouteForward : []).filter(isValidRouteNode);
-      routeForward.forEach((num: number) => nodeNums.add(num));
-
-      // Add intermediate nodes from back route — only when a return path
-      // genuinely exists (#2051), matching the rendered return leg. The
-      // sanitized array is passed so the guard sees the same hops the
-      // renderer decomposes.
       let rawRouteBack: unknown = [];
       if (selectedTrace.routeBack && selectedTrace.routeBack !== 'null' && selectedTrace.routeBack !== '') {
         rawRouteBack = JSON.parse(selectedTrace.routeBack);
       }
       const routeBack = (Array.isArray(rawRouteBack) ? rawRouteBack : []).filter(isValidRouteNode);
-      if (hasReturnPath(routeBack, selectedTrace.snrBack)) {
+      const hasReturn = hasReturnPath(routeBack, selectedTrace.snrBack);
+
+      // Neither leg has data — decomposeTraceroute would render nothing.
+      if (!hasForwardRoute && !hasReturn) return null;
+
+      const nodeNums = new Set<number>();
+      nodeNums.add(selectedTrace.fromNodeNum);
+      nodeNums.add(selectedTrace.toNodeNum);
+
+      if (hasForwardRoute) {
+        const rawRouteForward = JSON.parse(selectedTrace.route);
+        const routeForward = (Array.isArray(rawRouteForward) ? rawRouteForward : []).filter(isValidRouteNode);
+        routeForward.forEach((num: number) => nodeNums.add(num));
+      }
+
+      if (hasReturn) {
         routeBack.forEach((num: number) => nodeNums.add(num));
       }
 

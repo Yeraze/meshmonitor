@@ -129,6 +129,38 @@ describe('TraceroutePathsLayer', () => {
     });
   });
 
+  describe('colorMode: snr, mqttColor', () => {
+    it('uses mqttColor for an MQTT segment when provided', () => {
+      renderLayer({
+        segments: [seg({ isMqtt: true, avgSnr: null })],
+        weight: 3,
+        colorMode: 'snr',
+        mqttColor: '#999999',
+      });
+      expect(screen.getByTestId('polyline').getAttribute('data-color')).toBe('#999999');
+    });
+
+    it('falls through to snrToColor for an MQTT segment when mqttColor is absent', () => {
+      renderLayer({
+        segments: [seg({ isMqtt: true, avgSnr: null })],
+        weight: 3,
+        colorMode: 'snr',
+      });
+      // avgSnr null -> noData, same as any other no-data segment.
+      expect(screen.getByTestId('polyline').getAttribute('data-color')).toBe('#555555');
+    });
+
+    it('does not use mqttColor for a non-MQTT segment even when provided', () => {
+      renderLayer({
+        segments: [seg({ isMqtt: false, avgSnr: 7 })],
+        weight: 3,
+        colorMode: 'snr',
+        mqttColor: '#999999',
+      });
+      expect(screen.getByTestId('polyline').getAttribute('data-color')).toBe('#111111');
+    });
+  });
+
   describe('colorMode: fixed', () => {
     it('colors every segment with fixedColor regardless of SNR/leg/direction', () => {
       renderLayer({
@@ -316,6 +348,29 @@ describe('TraceroutePathsLayer', () => {
       });
       const el = screen.getByTestId('polyline');
       expect(Number(el.getAttribute('data-point-count'))).toBeGreaterThan(2);
+    });
+
+    it('accepts a per-segment function, used as-is with no leg-sign negation', () => {
+      const fnRender = renderLayer({
+        segments: [seg({ key: 'a', leg: 'return', direction: 'outbound' })],
+        weight: 3,
+        colorMode: 'snr',
+        curvature: (s) => (s.direction === 'outbound' ? 0.2 : 0.12),
+      });
+      const el = fnRender.container.querySelector('[data-testid="polyline"]')!;
+      const positions = JSON.parse(el.getAttribute('data-positions')!);
+      // A 'return' leg would be negated (-0.2) under the number form; the
+      // function form must produce the SAME curve as passing +0.2 directly
+      // regardless of `leg`.
+      const straightRender = renderLayer({
+        segments: [seg({ key: 'b', leg: 'forward' })],
+        weight: 3,
+        colorMode: 'snr',
+        curvature: 0.2,
+      });
+      const expectedEl = straightRender.container.querySelector('[data-testid="polyline"]')!;
+      const expectedPositions = JSON.parse(expectedEl.getAttribute('data-positions')!);
+      expect(positions).toEqual(expectedPositions);
     });
   });
 

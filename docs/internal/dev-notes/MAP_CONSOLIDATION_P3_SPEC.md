@@ -244,6 +244,19 @@ Arrows drawn with `generateCurvedArrowMarkers`; for straight layers (curvature 0
 exists (verified: only useTraceroutePaths). The `noData` semantic previously split across `defaultColor`
 arg and (absent) 4th band is now unified in `snrToColor`.
 
+**Amendment (post-implementation review, 2026-07-10):** `getSegmentSnrColor` itself was fully deleted
+(not just its 3-band body) — its one caller (`useTraceroutePaths` base layer) had already inlined the
+same non-sentinel-average-then-`snrToColor` computation directly, making the wrapper dead code; the
+averaging step was extracted instead into `averageNonSentinelSnr` in `tracerouteSegments.ts` for reuse.
+The `defaultColor`-vs-mauve "no data" intent described above is **superseded**: every `colorMode: 'snr'`
+segment with no SNR data now renders `scale.noData` (gray) — there is no longer a separate
+mauve/neighbor-line fallback color for "no data" on a traceroute segment. The MQTT/IP-bridged visual
+distinction that `defaultColor` was partly standing in for is instead handled explicitly by the shared
+layer's `mqttColor` prop (`colorMode: 'snr'` only): when set and `seg.isMqtt`, it takes precedence over
+`snrToColor` so MQTT segments keep their own distinguishable color instead of collapsing into the same
+gray as genuine no-data segments. All four traceroute-segment consumers now pass `mqttColor` sourced
+from the same `overlayColors.mqttSegment` token.
+
 ---
 
 ## 3. Shared modules — API design

@@ -6,8 +6,10 @@ import { describe, it, expect } from 'vitest';
 import {
   UNKNOWN_SNR_SENTINEL,
   isUnknownSnr,
+  isValidRouteNode,
   parseSnapshotRoutePositions,
   resolveSegmentPosition,
+  buildLiveNodePositionMap,
   hasReturnPath,
   decomposeTraceroute,
   type TracerouteDecomposeInput,
@@ -291,5 +293,123 @@ describe('decomposeTraceroute', () => {
     };
     const segmentsFallback = decomposeTraceroute(trFallback, { resolvePosition });
     expect(segmentsFallback[0].timestamp).toBe(999);
+  });
+
+  it('builds return-only segments when the forward route is absent but a return path exists (review F1)', () => {
+    const tr: TracerouteDecomposeInput = {
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: null,
+      routeBack: JSON.stringify([150]),
+      snrBack: JSON.stringify([36, 24]),
+    };
+    const segments = decomposeTraceroute(tr, { resolvePosition });
+    expect(segments.every((s) => s.leg === 'return')).toBe(true);
+    expect(segments.map((s) => s.key)).toEqual(['return:200-150', 'return:150-100']);
+  });
+
+  it('returns [] when both the forward route and the return path are absent', () => {
+    const tr: TracerouteDecomposeInput = {
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: null,
+      routeBack: null,
+    };
+    expect(decomposeTraceroute(tr, { resolvePosition })).toEqual([]);
+  });
+
+  it('filters reserved/placeholder node numbers out of the route, joining adjacent segments across the removed hop (review F2)', () => {
+    const resolveWithExtra = (nodeNum: number): [number, number] | null =>
+      nodeNum === 175 ? [17, 17] : resolvePosition(nodeNum);
+    const tr: TracerouteDecomposeInput = {
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      // 4 hops: 100->150, 150->65535 (placeholder), 65535->175, 175->200
+      route: JSON.stringify([150, 65535, 175]),
+      routeBack: '[]',
+      snrTowards: JSON.stringify([40, -128, 28, 20]),
+    };
+    const segments = decomposeTraceroute(tr, { resolvePosition: resolveWithExtra });
+    expect(segments.map((s) => s.key)).toEqual([
+      'forward:100-150',
+      'forward:150-175',
+      'forward:175-200',
+    ]);
+    // The dropped hop's own arrival SNR (-128, index 1) is discarded with it —
+    // the surviving joined segment keeps 175's OWN arrival SNR (28, index 2),
+    // not the removed node's.
+    const joined = segments.find((s) => s.key === 'forward:150-175');
+    expect(joined).toMatchObject({ fromNodeNum: 150, toNodeNum: 175, avgSnr: 7, isMqtt: false });
+  });
+
+  it('carries fromNodeNum/toNodeNum hop identity on every segment (review F5)', () => {
+    const tr: TracerouteDecomposeInput = {
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: JSON.stringify([150]),
+      routeBack: JSON.stringify([150]),
+      snrTowards: JSON.stringify([40, 32]),
+      snrBack: JSON.stringify([36, 24]),
+    };
+    const segments = decomposeTraceroute(tr, { resolvePosition });
+    expect(segments.map((s) => [s.fromNodeNum, s.toNodeNum])).toEqual([
+      [100, 150],
+      [150, 200],
+      [200, 150],
+      [150, 100],
+    ]);
+  });
+});
+
+describe('isValidRouteNode (single home, review F2)', () => {
+  it.each([0, 1, 2, 3, 255, 65535, 4294967295])('rejects reserved/broadcast node %i', (n) => {
+    expect(isValidRouteNode(n)).toBe(false);
+  });
+
+  it.each([4, 100, 65534, 4294967294])('accepts real node numbers %i', (n) => {
+    expect(isValidRouteNode(n)).toBe(true);
+  });
+});
+
+describe('buildLiveNodePositionMap (review F9)', () => {
+  it('builds a nodeNum -> [lat,lng] map via the extractor', () => {
+    const items = [
+      { id: 1, lat: 10, lng: 20 },
+      { id: 2, lat: -5, lng: 15 },
+    ];
+    const map = buildLiveNodePositionMap(items, (i) => ({ nodeNum: i.id, lat: i.lat, lng: i.lng }));
+    expect(map.get(1)).toEqual([10, 20]);
+    expect(map.get(2)).toEqual([-5, 15]);
+  });
+
+  it('skips entries the extractor returns null for', () => {
+    const items = [{ id: 1, lat: 10, lng: 20 }];
+    const map = buildLiveNodePositionMap(items, () => null);
+    expect(map.size).toBe(0);
+  });
+
+  it('skips non-numeric or missing coordinates', () => {
+    const items: Array<{ id: number; lat: number | null | undefined; lng: number | null | undefined }> = [
+      { id: 1, lat: undefined, lng: 20 },
+      { id: 2, lat: null, lng: null },
+    ];
+    const map = buildLiveNodePositionMap(items, (i) => ({ nodeNum: i.id, lat: i.lat, lng: i.lng }));
+    expect(map.size).toBe(0);
+  });
+
+  it('keeps a legitimate single-axis-zero position (equator or prime meridian)', () => {
+    const items = [
+      { id: 1, lat: 0, lng: 20 },
+      { id: 2, lat: 10, lng: 0 },
+    ];
+    const map = buildLiveNodePositionMap(items, (i) => ({ nodeNum: i.id, lat: i.lat, lng: i.lng }));
+    expect(map.get(1)).toEqual([0, 20]);
+    expect(map.get(2)).toEqual([10, 0]);
+  });
+
+  it('drops the (0,0) Null Island placeholder', () => {
+    const items = [{ id: 1, lat: 0, lng: 0 }];
+    const map = buildLiveNodePositionMap(items, (i) => ({ nodeNum: i.id, lat: i.lat, lng: i.lng }));
+    expect(map.has(1)).toBe(false);
   });
 });

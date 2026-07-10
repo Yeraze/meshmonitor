@@ -5,12 +5,12 @@ import { PositionHistoryItem } from '../contexts/MapContext';
 import { convertSpeed } from './speedConversion';
 export { convertSpeed };
 
-// #2931 — the unknown-hop SNR sentinel now lives in the pure, leaflet-free
+// #2931 — the unknown-hop SNR sentinel lives in the pure, leaflet-free
 // `tracerouteSegments.ts` (so useTracerouteAnalysis.ts and its tests don't
 // have to pull in this file's `leaflet`/`react-leaflet` imports). Re-exported
-// here for backward compatibility with existing importers (#4047 P3 WP2).
-import { isUnknownSnr } from './tracerouteSegments';
-export { isUnknownSnr };
+// here for backward compatibility with existing importers.
+import { isUnknownSnr, averageNonSentinelSnr, type TracerouteRenderSegment } from './tracerouteSegments';
+export { isUnknownSnr, averageNonSentinelSnr };
 
 /**
  * Scaled SNR sentinel for unknown hops. Canonical definition (with the full
@@ -168,7 +168,7 @@ export const generateCurvedPath = (
 /**
  * Canonical 4-band SNR color scale (theme-aware; hex values live in
  * `overlayColors.snrColors`). Bands: excellent >=5dB, good >=0dB,
- * fair >=-5dB, poor <-5dB, noData when unavailable/unknown. See #4047 P3.
+ * fair >=-5dB, poor <-5dB, noData when unavailable/unknown.
  */
 export interface SnrColorScale {
   excellent: string;
@@ -190,24 +190,6 @@ export function snrToColor(avgSnr: number | null | undefined, scale: SnrColorSca
   if (avgSnr >= -5) return scale.fair;
   return scale.poor;
 }
-
-/**
- * Get color for a route segment based on average SNR (4-band, canonical).
- * Averages non-sentinel samples then delegates to `snrToColor`. `defaultColor`
- * is returned (rather than `scale.noData`) when there is no SNR data at all,
- * preserving each caller's "no data" fallback (e.g. neighbor/mauve line color).
- */
-export const getSegmentSnrColor = (
-  snrData: Array<{ snr: number }> | undefined,
-  snrColors: SnrColorScale,
-  defaultColor: string
-): string => {
-  if (!snrData || snrData.length === 0) return defaultColor;
-  const rfSnrs = snrData.filter(d => !isUnknownSnr(d.snr)).map(d => d.snr);
-  if (rfSnrs.length === 0) return defaultColor;
-  const avgSnr = rfSnrs.reduce((sum, val) => sum + val, 0) / rfSnrs.length;
-  return snrToColor(avgSnr, snrColors);
-};
 
 /**
  * Get opacity for a route segment based on SNR quality
@@ -238,9 +220,9 @@ export const getLineWeight = (snr: number | undefined): number => {
 };
 
 /**
- * Canonical line-weight strategies (#4047 P3 §2.2). The three formulas are
- * legitimately different data axes (SNR quality, usage count, occurrence
- * count) — keep them as separate named exports rather than unifying.
+ * Canonical line-weight strategies. The three formulas are legitimately
+ * different data axes (SNR quality, usage count, occurrence count) — keep
+ * them as separate named exports rather than unifying.
  */
 /** Weight by SNR quality (2..6). Alias of `getLineWeight` — same name/behavior. */
 export const weightBySnr = getLineWeight;
@@ -256,9 +238,19 @@ export function weightByOccurrence(occ: number): number {
 }
 
 /**
- * Canonical dash pattern for MQTT-bridged or all-unknown-SNR segments
- * (#4047 P3 §2.3). Replaces the previously divergent `'5,10'` (Widget) and
- * `'4,6'` (MapAnalysis) conventions.
+ * Canonical SNR-based weight for a decomposed traceroute segment (NodesTab
+ * selected layer, TracerouteWidget). An MQTT/unknown-SNR segment is routed
+ * through the sentinel value rather than `undefined` so it gets the "known
+ * unknown" weight `weightBySnr` produces for the sentinel, not the different
+ * weight it produces for its "no data supplied at all" default.
+ */
+export function tracerouteSegmentWeight(seg: TracerouteRenderSegment): number {
+  return weightBySnr(seg.isMqtt ? UNKNOWN_SNR_SENTINEL : (seg.avgSnr ?? undefined));
+}
+
+/**
+ * Canonical dash pattern for MQTT-bridged or all-unknown-SNR segments.
+ * Applied by the shared render layer's `dashMode: 'mqtt-unknown'` (default).
  */
 export const MQTT_DASH = '3,6';
 

@@ -1,21 +1,24 @@
 /**
- * Shared traceroute decomposition utilities (#4047 P3 WP2).
+ * Shared traceroute decomposition utilities.
  *
  * Pure, React-free, leaflet-free — safe to import from anywhere (including
  * node-env tests) without pulling in `window`/`leaflet`. This is the SINGLE
- * home for three previously-duplicated behaviors:
+ * home for four previously-duplicated behaviors:
  *   - #1862 — snapshot route positions (render historical traceroutes where
  *     nodes were at capture time, not where they are now).
  *   - #2051 — the empty-routeBack guard (don't draw a fictitious direct
  *     return line when the return path hasn't been recorded yet).
  *   - #2931 — the firmware unknown-SNR sentinel (MQTT-bridged / relay-role /
  *     decrypt-failure hops report a sentinel value, not a real SNR reading).
+ *   - reserved/broadcast node-number filtering (route arrays can contain
+ *     firmware placeholder values for a relay-role hop that never resolved
+ *     its identity; segments touching them join across, not gap).
  *
  * `src/utils/mapHelpers.tsx` re-exports `UNKNOWN_SNR_SENTINEL`/`isUnknownSnr`
- * from here for backward compatibility with existing importers — this file
- * is the canonical definition site (moved out of mapHelpers.tsx in WP2 so
- * that `useTracerouteAnalysis.ts` and its tests don't have to pull in
- * mapHelpers.tsx's leaflet import just for the sentinel).
+ * from here for backward compatibility with existing importers. This file
+ * stays leaflet-free on purpose so `useTracerouteAnalysis.ts` and its tests
+ * don't have to pull in `mapHelpers.tsx`'s leaflet import just for the
+ * sentinel — don't add a leaflet/react-leaflet import here.
  */
 
 // ---------------------------------------------------------------------------
@@ -36,6 +39,42 @@ export const UNKNOWN_SNR_SENTINEL = -32;
 export const isUnknownSnr = (snr: number | undefined): boolean =>
   snr === UNKNOWN_SNR_SENTINEL;
 
+/**
+ * Average SNR across samples, ignoring the unknown-hop sentinel (#2931).
+ * Returns `null` when there are no samples, or every sample was the
+ * sentinel (no real RF data to average).
+ */
+export function averageNonSentinelSnr(samples: Array<{ snr: number }> | undefined): number | null {
+  if (!samples || samples.length === 0) return null;
+  const rfSnrs = samples.filter((s) => !isUnknownSnr(s.snr)).map((s) => s.snr);
+  if (rfSnrs.length === 0) return null;
+  return rfSnrs.reduce((sum, v) => sum + v, 0) / rfSnrs.length;
+}
+
+// ---------------------------------------------------------------------------
+// Reserved/broadcast node-number filtering
+// ---------------------------------------------------------------------------
+
+const BROADCAST_ADDR = 4294967295;
+
+/**
+ * True for a real, renderable node number — false for firmware reserved or
+ * placeholder values that can appear inside a route/routeBack hop array:
+ *   - `<= 3` — reserved
+ *   - `255` (0xff) — reserved
+ *   - `65535` (0xffff) — invalid placeholder
+ *   - `4294967295` (0xffffffff) — broadcast address
+ * Single home for this predicate — hop-array filtering lives inside
+ * `decomposeTraceroute`/`buildLegSegments` below.
+ */
+export function isValidRouteNode(nodeNum: number): boolean {
+  if (nodeNum <= 3) return false;
+  if (nodeNum === 255) return false;
+  if (nodeNum === 65535) return false;
+  if (nodeNum === BROADCAST_ADDR) return false;
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // #1862 — snapshot route positions
 // ---------------------------------------------------------------------------
@@ -44,36 +83,10 @@ export const isUnknownSnr = (snr: number | undefined): boolean =>
  * Parse the `routePositions` JSON snapshot stored on a traceroute row.
  * Shape: `{ [nodeNum]: { lat, lng, alt? } }`.
  *
- * **Three-way diff (#4047 P3 WP2, serena-verified 2026-07-10)** against the
- * pre-existing per-consumer copies this replaces:
- *   - `useTraceroutePaths.tsx` `parseRoutePositions`/`getNodePositionWithSnapshot`
- *   - `TracerouteWidget.tsx` inline snapshot parse + `getNodePosition`
- *   - `DashboardMap.tsx` `parseRoutePositions` + inline `lookup`
- *
- * Findings:
- *   1. **Stored field names are identical everywhere** — `{lat, lng, alt?}`.
- *      No field-name divergence in the snapshot JSON itself.
- *   2. **Presence-check divergence (behavior difference, fixed here):**
- *      useTraceroutePaths and the Widget test snapshot presence with
- *      `snapshot?.lat && snapshot?.lng` (truthy check) — a node sitting
- *      exactly on the equator or prime meridian (`lat===0` or `lng===0`)
- *      would silently fail that check and fall through to the live position
- *      instead of its stored snapshot. DashboardMap uses
- *      `typeof snap.lat === 'number' && typeof snap.lng === 'number'`, which
- *      handles `0` correctly. This function adopts DashboardMap's (correct)
- *      `typeof`-based check — a deliberate latent-bug fix, not a silent
- *      regression, but callers should be aware the two truthy-check
- *      consumers (NodesTab base+selected via useTraceroutePaths, Widget)
- *      will very slightly change behavior for nodes at exactly lat/lng 0
- *      once WP3/WP4 adopt this function.
- *   3. **Live-position fallback source differs per consumer** (out of scope
- *      for this function — it only resolves the snapshot half). Each
- *      consumer's live-node shape differs (a pre-built digest array, a raw
- *      `Map`/node lookup supporting both `latitudeI/longitudeI` integer and
- *      `latitude/longitude` float forms, or an already-normalized position
- *      map) so `resolveSegmentPosition` below deliberately takes an
- *      already-normalized `Map<number,[number,number]>` for the live side —
- *      callers pre-normalize their own node source into that shape.
+ * Presence is checked with `typeof === 'number'`, not a truthy check — a
+ * node sitting exactly on the equator or prime meridian (`lat===0` or
+ * `lng===0`) must still resolve to its stored snapshot position rather than
+ * silently falling through to the live position.
  */
 export function parseSnapshotRoutePositions(
   routePositions: string | null | undefined,
@@ -111,6 +124,34 @@ export function resolveSegmentPosition(
   liveNodes: Map<number, [number, number]>,
 ): [number, number] | null {
   return snapshot.get(nodeNum) ?? liveNodes.get(nodeNum) ?? null;
+}
+
+/**
+ * Build a `nodeNum -> [lat, lng]` map from a consumer's live node list.
+ * `extract` returns the node number and raw (possibly missing) coordinates
+ * for one item, or `null` to skip it entirely.
+ *
+ * Validity rule: coordinates must both be numbers AND must not be exactly
+ * `(0, 0)` — a single axis at exactly 0 (equator or prime meridian) is a
+ * legitimate position and is kept; the `(0, 0)` pair specifically is treated
+ * as an uninitialized/Null-Island placeholder and dropped. This deliberately
+ * differs from (and fixes) a truthy `lat && lng` check, which would also
+ * drop the legitimate single-axis-zero case.
+ */
+export function buildLiveNodePositionMap<T>(
+  items: Iterable<T>,
+  extract: (item: T) => { nodeNum: number; lat: number | null | undefined; lng: number | null | undefined } | null,
+): Map<number, [number, number]> {
+  const map = new Map<number, [number, number]>();
+  for (const item of items) {
+    const entry = extract(item);
+    if (!entry) continue;
+    const { nodeNum, lat, lng } = entry;
+    if (typeof lat !== 'number' || typeof lng !== 'number') continue;
+    if (lat === 0 && lng === 0) continue;
+    map.set(nodeNum, [lat, lng]);
+  }
+  return map;
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +194,9 @@ export interface TracerouteRenderSegment {
   key: string;
   from: [number, number];              // lat,lng — already snapshot-resolved
   to: [number, number];
+  /** Hop node numbers this segment connects, in traversal order (from -> to). */
+  fromNodeNum: number;
+  toNodeNum: number;
   leg: 'forward' | 'return' | 'neutral';
   direction?: 'inbound' | 'outbound' | 'neutral'; // MapAnalysis relative-to-selection
   avgSnr: number | null;               // /4-scaled dB; null = no data
@@ -187,7 +231,12 @@ export interface DecomposeTracerouteOptions {
   resolvePosition: (nodeNum: number) => [number, number] | null;
 }
 
-/** `JSON.parse` a route/hop array, tolerating null/'null'/'' (all -> []). */
+/** `JSON.parse` a route/hop/SNR array, tolerating null/'null'/'' (all -> []).
+ *  Deliberately does NOT filter node validity — this parses both node-number
+ *  arrays (route/routeBack) and SNR-sample arrays (snrTowards/snrBack), and
+ *  filtering only applies to the former. Node filtering happens in
+ *  `buildLegSegments`, where it can stay index-aligned with the paired SNR
+ *  sample instead of shifting it. */
 function parseHopArray(json: string | null | undefined): number[] {
   if (!json || json === 'null' || json === '') return [];
   try {
@@ -204,23 +253,58 @@ function hasRouteData(route: string | null | undefined): boolean {
   return route != null && route !== 'null' && route !== '';
 }
 
+/** One raw hop paired with the SNR observed arriving at it, before any
+ *  node-validity filtering — keeping the pairing lets a hop be dropped
+ *  without shifting its neighbors' SNR samples out of alignment. */
+interface HopEntry {
+  nodeNum: number;
+  /** Already-scaled by caller? No — raw firmware int (dB x4); undefined for
+   *  the leg's start (nothing "arrives" there) or a missing array entry. */
+  snr: number | undefined;
+}
+
 function buildLegSegments(
   leg: 'forward' | 'return',
-  sequence: number[],
+  startNum: number,
+  intermediateHops: number[],
+  endNum: number,
   snrRaw: number[],
   timestamp: number | undefined,
   resolvePosition: (nodeNum: number) => [number, number] | null,
 ): TracerouteRenderSegment[] {
+  // Pair every raw hop (including the end endpoint) with its own arrival SNR
+  // by index BEFORE filtering, then drop invalid/reserved intermediate hops.
+  // Endpoints (index 0 and the last index) are never filtered — they're real
+  // device node numbers, not raw route placeholders. This preserves index
+  // alignment between a hop and its SNR sample even when hops in between are
+  // dropped: adjacent segments join across the removed hop, carrying the
+  // correct arrival SNR for the surviving side.
+  const hops: HopEntry[] = [
+    { nodeNum: startNum, snr: undefined },
+    ...intermediateHops.map((nodeNum, idx): HopEntry => ({
+      nodeNum,
+      snr: idx < snrRaw.length ? snrRaw[idx] : undefined,
+    })),
+    {
+      nodeNum: endNum,
+      snr: intermediateHops.length < snrRaw.length ? snrRaw[intermediateHops.length] : undefined,
+    },
+  ];
+  const filtered = hops.filter(
+    (h, idx) => idx === 0 || idx === hops.length - 1 || isValidRouteNode(h.nodeNum),
+  );
+
   const segments: TracerouteRenderSegment[] = [];
-  for (let i = 0; i < sequence.length - 1; i++) {
-    const fromNum = sequence[i];
-    const toNum = sequence[i + 1];
+  for (let i = 0; i < filtered.length - 1; i++) {
+    const fromNum = filtered[i].nodeNum;
+    const toNum = filtered[i + 1].nodeNum;
     const fromPos = resolvePosition(fromNum);
     const toPos = resolvePosition(toNum);
     if (!fromPos || !toPos) continue;
 
-    // SNR at index i is measured at the receiver of hop i (fullPath[i+1]).
-    const rawSnr = i < snrRaw.length ? snrRaw[i] : undefined;
+    // SNR arriving at the segment's `to` end is what firmware recorded for
+    // this hop (see HopEntry above).
+    const rawSnr = filtered[i + 1].snr;
     const scaledSnr = rawSnr === undefined ? undefined : rawSnr / 4;
     const isMqtt = scaledSnr !== undefined && isUnknownSnr(scaledSnr);
     const avgSnr = scaledSnr === undefined || isMqtt ? null : scaledSnr;
@@ -229,6 +313,8 @@ function buildLegSegments(
       key: `${leg}:${fromNum}-${toNum}`,
       from: fromPos,
       to: toPos,
+      fromNodeNum: fromNum,
+      toNodeNum: toNum,
       leg,
       avgSnr,
       isMqtt,
@@ -242,55 +328,59 @@ function buildLegSegments(
  * Decompose one traceroute record into per-hop forward + return render
  * segments. Consumers (NodesTab base/selected, Widget, Dashboard) call this
  * once per traceroute then apply their own cross-traceroute aggregation
- * (dedup, usage counting, zoom-adaptive filtering — data-side, per §4 of the
- * P3 spec) on top; this function does NOT aggregate across multiple
- * traceroute records.
+ * (dedup, usage counting, zoom-adaptive filtering — data-side) on top; this
+ * function does NOT aggregate across multiple traceroute records.
  *
  * - Forward leg: `[fromNodeNum, ...route, toNodeNum]` with `snrTowards`,
  *   matching the existing convention shared by useTraceroutePaths/Widget/
  *   DashboardMap (NOT the `useTracerouteAnalysis` requester/responder
- *   convention, which is a separate, untouched data hook — see #4047 P3 §3.1
- *   migration nuance).
+ *   convention, which is a separate, untouched data hook). Gated solely by
+ *   `hasRouteData(traceroute.route)`.
  * - Return leg: only emitted when `hasReturnPath` is true (#2051); sequence
- *   `[toNodeNum, ...routeBack, fromNodeNum]` with `snrBack`.
- * - A whole-traceroute guard mirrors the pre-existing "skip if route is
- *   entirely absent" behavior (`!tr.route`/`'null'`/`''`) — but, unlike
- *   useTraceroutePaths' current top-level guard, does NOT also require
- *   `routeBack` to be a valid non-empty string; the return leg is gated
- *   solely by `hasReturnPath`. This is intentional: it's the correct,
- *   unified fix for #2051 (the old NodesTab renderer had no `hasReturnPath`
- *   guard at all and could draw a fictitious direct return line; the old
- *   "skip whole traceroute if routeBack missing" guard was a blunt
- *   workaround for a related but distinct case).
+ *   `[toNodeNum, ...routeBack, fromNodeNum]` with `snrBack`. Gated
+ *   independently of the forward leg — a traceroute with no forward `route`
+ *   but a populated `routeBack`/`snrBack` still yields return segments (and
+ *   vice versa); the two legs are not coupled to a single whole-traceroute
+ *   guard.
  *
- * `key` embeds the leg + hop node numbers (`"forward:123-456"`) since
- * `TracerouteRenderSegment` intentionally has no separate node-num fields
- * (per spec §3.1) — consumers that need to build their own cross-traceroute
- * node-pair aggregation key can parse it back out of `key`.
+ * `key` embeds the leg + hop node numbers (`"forward:123-456"`).
  */
 export function decomposeTraceroute(
   traceroute: TracerouteDecomposeInput,
   opts: DecomposeTracerouteOptions,
 ): TracerouteRenderSegment[] {
-  if (!hasRouteData(traceroute.route)) return [];
-
-  const route = parseHopArray(traceroute.route);
-  const routeBack = parseHopArray(traceroute.routeBack);
-  const snrTowards = parseHopArray(traceroute.snrTowards);
-  const snrBack = parseHopArray(traceroute.snrBack);
   const timestamp = traceroute.timestamp ?? traceroute.createdAt;
-
   const segments: TracerouteRenderSegment[] = [];
 
-  const forwardSequence = [traceroute.fromNodeNum, ...route, traceroute.toNodeNum];
-  segments.push(
-    ...buildLegSegments('forward', forwardSequence, snrTowards, timestamp, opts.resolvePosition),
-  );
-
-  if (hasReturnPath(routeBack, traceroute.snrBack)) {
-    const backSequence = [traceroute.toNodeNum, ...routeBack, traceroute.fromNodeNum];
+  if (hasRouteData(traceroute.route)) {
+    const route = parseHopArray(traceroute.route);
+    const snrTowards = parseHopArray(traceroute.snrTowards);
     segments.push(
-      ...buildLegSegments('return', backSequence, snrBack, timestamp, opts.resolvePosition),
+      ...buildLegSegments(
+        'forward',
+        traceroute.fromNodeNum,
+        route,
+        traceroute.toNodeNum,
+        snrTowards,
+        timestamp,
+        opts.resolvePosition,
+      ),
+    );
+  }
+
+  const routeBack = parseHopArray(traceroute.routeBack);
+  if (hasReturnPath(routeBack, traceroute.snrBack)) {
+    const snrBack = parseHopArray(traceroute.snrBack);
+    segments.push(
+      ...buildLegSegments(
+        'return',
+        traceroute.toNodeNum,
+        routeBack,
+        traceroute.fromNodeNum,
+        snrBack,
+        timestamp,
+        opts.resolvePosition,
+      ),
     );
   }
 
