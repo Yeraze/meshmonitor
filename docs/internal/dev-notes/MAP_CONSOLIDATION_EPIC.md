@@ -58,7 +58,7 @@ each is touched.
 renders tiles/markers/draw tools identically (browser-validated); typecheck + full Vitest
 suite green; vector-tile support works through the shell.
 
-### [ ] Phase 2 — Reconcile the Map Analysis "forks" (`feature/4047-p2-unfork-analysis`)
+### [x] Phase 2 — Reconcile the Map Analysis "forks" (`feature/4047-p2-unfork-analysis`)
 **Premise corrected on investigation (2026-07-10, user-approved retarget):** of the three
 claimed forks, only one contains real drift.
 - `layers/PolarGridLayer.tsx` — NOT a fork: a thin per-source adapter that already renders
@@ -120,6 +120,18 @@ map view; suite green.
 ## Phase log
 
 (Per-phase: PR link, deviations, decisions — appended as phases complete.)
+
+### Phase 2 (2026-07-10) — Reconcile the Map Analysis "forks"
+- **Premise corrected (user-approved retarget):** PolarGridLayer was never a fork (#3971
+  adapter over shared PolarGridOverlay); PositionTrailsLayer is a deliberately different
+  visualization (multi-node hash-colored trails vs single-node age-gradient history);
+  the analysis MapLegend is a layer-driven legend ~90% disjoint from the shared static one.
+- Delivered: analysis-legend `RoleIcon` deduped onto shared `roleGlyphMarkerSvg` (render-
+  identical, DOM-verified); not-a-fork / deliberate-divergence header comments in
+  MapAnalysis/MapLegend.tsx and PositionTrailsLayer.tsx; regression test pinning the
+  legend glyphs to the shared helper. Spec: `MAP_CONSOLIDATION_P2_SPEC.md`.
+- Note for Phase 3: the analysis legend's SNR section reflects the 4-band palette — when
+  Phase 3 centralizes the SNR scale, this legend must consume the canonical mapping.
 
 ### Phase 1 (2026-07-10) — BaseMap shell
 - Delivered: `src/components/map/BaseMap.tsx` + `leafletDefaultIcon.ts` + tests; migrated
