@@ -12,6 +12,7 @@ vi.mock('../../services/database.js', () => ({
       getNode: vi.fn(),
     },
     getLatestNeighborInfoPerNodeScoped: vi.fn(),
+    getLatestNeighborInfoPerNodeScopedAsync: vi.fn(),
     getNeighborsForNodeAsync: vi.fn(),
   },
 }));
@@ -43,7 +44,7 @@ describe('GET /', () => {
       timestamp: now * 1000,
       lastRxTime: now,
     };
-    (databaseService.getLatestNeighborInfoPerNodeScoped as any).mockReturnValue([ni]);
+    (databaseService.getLatestNeighborInfoPerNodeScopedAsync as any).mockResolvedValue([ni]);
     (databaseService.nodes.getNode as any)
       .mockResolvedValueOnce({ nodeId: '!0000006f', longName: 'Alpha', lastHeard: now })
       .mockResolvedValueOnce({ nodeId: '!000000de', longName: 'Beta', lastHeard: now });
@@ -65,7 +66,7 @@ describe('GET /', () => {
       timestamp: oldTime * 1000,
       lastRxTime: oldTime,
     };
-    (databaseService.getLatestNeighborInfoPerNodeScoped as any).mockReturnValue([ni]);
+    (databaseService.getLatestNeighborInfoPerNodeScopedAsync as any).mockResolvedValue([ni]);
     (databaseService.nodes.getNode as any)
       .mockResolvedValueOnce({ nodeId: '!0000006f', longName: 'Old', lastHeard: oldTime })
       .mockResolvedValueOnce({ nodeId: '!000000de', longName: 'Beta', lastHeard: now });
@@ -80,7 +81,7 @@ describe('GET /', () => {
     (databaseService.settings.getSetting as any).mockResolvedValue('24');
     const ni1 = { nodeNum: 111, neighborNodeNum: 222, timestamp: now * 1000, lastRxTime: now };
     const ni2 = { nodeNum: 222, neighborNodeNum: 111, timestamp: now * 1000, lastRxTime: now };
-    (databaseService.getLatestNeighborInfoPerNodeScoped as any).mockReturnValue([ni1, ni2]);
+    (databaseService.getLatestNeighborInfoPerNodeScopedAsync as any).mockResolvedValue([ni1, ni2]);
     (databaseService.nodes.getNode as any).mockResolvedValue({
       nodeId: '!0000006f', longName: 'Node', lastHeard: now,
     });
@@ -93,7 +94,7 @@ describe('GET /', () => {
 
   it('returns 500 on database error', async () => {
     (databaseService.settings.getSetting as any).mockRejectedValue(new Error('db error'));
-    (databaseService.getLatestNeighborInfoPerNodeScoped as any).mockReturnValue([]);
+    (databaseService.getLatestNeighborInfoPerNodeScopedAsync as any).mockResolvedValue([]);
 
     const res = await request(app).get('/');
 

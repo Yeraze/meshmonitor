@@ -8,8 +8,12 @@ const insertTelemetry = vi.fn();
 vi.mock('../services/database.js', () => ({
   default: {
     upsertNode: (...a: unknown[]) => upsertNode(...a),
+    upsertNodeAsync: async (...a: unknown[]) => upsertNode(...a),
     insertMessage: (...a: unknown[]) => insertMessage(...a),
     insertTelemetry: (...a: unknown[]) => insertTelemetry(...a),
+    insertTelemetryAsync: async (...a: unknown[]) => insertTelemetry(...a),
+    insertTracerouteAsync: vi.fn(async () => undefined),
+    insertRouteSegmentAsync: vi.fn(async () => undefined),
   },
 }));
 

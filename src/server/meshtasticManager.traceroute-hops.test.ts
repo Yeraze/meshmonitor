@@ -42,6 +42,7 @@ vi.mock('../services/database.js', () => ({
     upsertNodeAsync: mockUpsertNode,
     insertMessage: mockInsertMessage,
     insertTraceroute: mockInsertTraceroute,
+    insertTracerouteAsync: mockInsertTraceroute,
     findUserByIdAsync: vi.fn(),
     findUserByUsernameAsync: vi.fn(),
     checkPermissionAsync: vi.fn(),

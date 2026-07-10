@@ -226,7 +226,8 @@ vi.mock('../../../services/database.js', () => {
       }),
       getPositionTelemetryByNodeAsync: vi.fn(async () => testPositionTelemetry),
       // Traceroutes methods
-      getAllTraceroutes: vi.fn(() => testTraceroutes)
+      getAllTraceroutes: vi.fn(() => testTraceroutes),
+      getAllTraceroutesAsync: vi.fn(async () => testTraceroutes)
     }
   };
 });
