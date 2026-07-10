@@ -74,7 +74,7 @@ export async function updateNodeMobility(nodeId: string, deps: NodeMobilityDeps)
       isMobile = distance > 0.1 ? 1 : 0;
 
       logger.debug(
-        `📍 Node ${nodeId} mobility check: ${latitudes.length} positions, distance=${distance.toFixed(3)}km, mobile=${isMobile}`
+        `Node ${nodeId} mobility check: ${latitudes.length} positions, distance=${distance.toFixed(3)}km, mobile=${isMobile}`
       );
     }
 
