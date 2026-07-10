@@ -1,4 +1,3 @@
-import { Polyline } from 'react-leaflet';
 import { useMemo } from 'react';
 import {
   useDashboardSources,
@@ -14,32 +13,18 @@ import {
 } from '../../../hooks/useTracerouteAnalysis';
 import { resolveNodeLatLng, type MaybePositionedNode } from '../nodePositionUtil';
 import { visibleNodeNumSet, type SearchableNode } from '../nodeSearch';
-import {
-  generateCurvedPath,
-  generateCurvedArrowMarkers,
-  getSegmentSnrOpacity,
-  UNKNOWN_SNR_SENTINEL,
-} from '../../../utils/mapHelpers';
+import { weightByOccurrence, getSegmentSnrOpacity } from '../../../utils/mapHelpers';
+import type { TracerouteRenderSegment } from '../../../utils/tracerouteSegments';
+import { TraceroutePathsLayer as SharedTraceroutePathsLayer } from '../../map/layers/TraceroutePathsLayer';
+import { useSettings } from '../../../contexts/SettingsContext';
 
 // Direction colours (issue #3399): outbound = the selected node transmitting,
-// inbound = the selected node receiving.
+// inbound = the selected node receiving. These are Analysis-specific-by-design
+// (not part of the canonical theme palette) — kept as the same hardcoded
+// VALUES as before, now threaded through the shared layer's `directionColors`
+// prop instead of a local `segmentColor`/`snrQualityColor` implementation.
 const OUTBOUND_COLOR = '#3b82f6'; // blue
 const INBOUND_COLOR = '#f43f5e'; // rose
-
-/** SNR → quality colour for the global (no node selected) view. */
-function snrQualityColor(avgSnr: number | null): string {
-  if (avgSnr === null) return '#94a3b8'; // slate — unknown SNR
-  if (avgSnr >= 5) return '#22c55e';
-  if (avgSnr >= 0) return '#eab308';
-  if (avgSnr >= -5) return '#f97316';
-  return '#ef4444';
-}
-
-function segmentColor(s: AnalyzedSegment): string {
-  if (s.direction === 'outbound') return OUTBOUND_COLOR;
-  if (s.direction === 'inbound') return INBOUND_COLOR;
-  return snrQualityColor(s.avgSnr);
-}
 
 interface NodeRecord extends MaybePositionedNode {
   nodeNum: number;
@@ -50,13 +35,43 @@ interface NodeRecord extends MaybePositionedNode {
 }
 
 /**
+ * Maps one {@link AnalyzedSegment} to a {@link TracerouteRenderSegment} for
+ * the shared render layer. `leg` is 'neutral' for the unfocused (SNR-colored)
+ * view and 'forward' for the focused (direction-colored) view — this
+ * reproduces the pre-migration curvature exactly: unfocused segments always
+ * used the flat 0.12 neutral curvature, while focused in/outbound segments
+ * always used a positive (never leg-signed/negative) 0.2 curvature. Using
+ * 'forward' (not 'return') for focused segments avoids the shared layer's
+ * leg-signed negation, which the old renderer never applied here.
+ */
+function toRenderSegment(s: AnalyzedSegment): TracerouteRenderSegment {
+  return {
+    key: s.key,
+    from: s.fromPos,
+    to: s.toPos,
+    leg: s.direction === 'neutral' ? 'neutral' : 'forward',
+    direction: s.direction,
+    avgSnr: s.avgSnr,
+    isMqtt: s.isMqtt,
+    occurrences: s.occurrences,
+  };
+}
+
+/**
  * Renders deduplicated traceroute links via {@link useTracerouteAnalysis}. When
  * a node is selected, links are scoped to that node and coloured by direction
  * (outbound vs inbound) with arrows; otherwise links are coloured by SNR. Weak
  * links are removed per the persisted min-occurrences / min-SNR options.
+ *
+ * Thin adapter (#4047 P3 WP5): owns MapAnalysis-specific data wiring
+ * (`useTracerouteAnalysis`) and maps its output onto the shared
+ * `src/components/map/layers/TraceroutePathsLayer` for rendering. Geometry,
+ * color-mode resolution, weight/opacity/dash strategies, and arrows all live
+ * in the shared layer now — this file stays free of hardcoded SNR hex.
  */
 export default function TraceroutePathsLayer() {
   const { config, selected, nodeFilter, setSelected } = useMapAnalysisCtx();
+  const { overlayColors } = useSettings();
   const layer = config.layers.traceroutes;
   const options = useMemo(
     () => getTracerouteOptions(config),
@@ -118,53 +133,49 @@ export default function TraceroutePathsLayer() {
   // Arrows are only drawn in the directional (node-selected) view to keep the
   // global view light.
   const showArrows = selectedNodeNum !== null;
+  // colorMode is dynamic: focused segments carry inbound/outbound direction
+  // (colored by directionColors); unfocused segments are all 'neutral' and
+  // colored by SNR instead (see useTracerouteAnalysis's `focus` gating).
+  const colorMode = showArrows ? 'direction' : 'snr';
+
+  const renderSegments = useMemo(() => segments.map(toRenderSegment), [segments]);
+  const analyzedByKey = useMemo(
+    () => new Map(segments.map((s) => [s.key, s])),
+    [segments],
+  );
 
   return (
-    <>
-      {segments.map((s) => {
-        const color = segmentColor(s);
-        const curvature = s.direction === 'neutral' ? 0.12 : 0.2;
-        const path = generateCurvedPath(s.fromPos, s.toPos, curvature, 20, true);
-        const weight = 2 + Math.min(s.occurrences - 1, 5) * 0.8;
-        const opacity = getSegmentSnrOpacity(
-          s.avgSnr === null ? undefined : [{ snr: s.avgSnr }],
-          s.isMqtt,
-        );
-        return (
-          <Polyline
-            key={s.key}
-            positions={path}
-            pathOptions={{
-              color,
-              weight,
-              opacity,
-              dashArray: s.isMqtt ? '4,6' : undefined,
-            }}
-            eventHandlers={{
-              click: () =>
-                setSelected({
-                  type: 'segment',
-                  fromNodeNum: s.from,
-                  toNodeNum: s.to,
-                  direction: s.direction,
-                  occurrences: s.occurrences,
-                  avgSnr: s.avgSnr,
-                }),
-            }}
-          />
-        );
-      })}
-      {showArrows &&
-        segments.flatMap((s) =>
-          generateCurvedArrowMarkers(
-            [s.fromPos, s.toPos],
-            s.key,
-            segmentColor(s),
-            [s.avgSnr === null ? UNKNOWN_SNR_SENTINEL : s.avgSnr],
-            s.direction === 'neutral' ? 0.12 : 0.2,
-            true,
-          ),
-        )}
-    </>
+    <SharedTraceroutePathsLayer
+      segments={renderSegments}
+      snrColors={overlayColors.snrColors}
+      colorMode={colorMode}
+      directionColors={{
+        outbound: OUTBOUND_COLOR,
+        inbound: INBOUND_COLOR,
+        // Unreachable in practice: focused segments are always in/outbound
+        // (never 'neutral') and unfocused segments use colorMode 'snr', which
+        // ignores directionColors entirely.
+        neutral: overlayColors.snrColors.noData,
+      }}
+      neutralCurvature={0.12}
+      curvature={0.2}
+      weight={(seg) => weightByOccurrence(seg.occurrences ?? 1)}
+      opacity={(seg) =>
+        getSegmentSnrOpacity(seg.avgSnr === null ? undefined : [{ snr: seg.avgSnr }], seg.isMqtt)
+      }
+      showArrows={showArrows}
+      onSegmentClick={(seg) => {
+        const s = analyzedByKey.get(seg.key);
+        if (!s) return;
+        setSelected({
+          type: 'segment',
+          fromNodeNum: s.from,
+          toNodeNum: s.to,
+          direction: s.direction,
+          occurrences: s.occurrences,
+          avgSnr: s.avgSnr,
+        });
+      }}
+    />
   );
 }
