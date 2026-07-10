@@ -20,6 +20,7 @@ import {
   parseSnapshotRoutePositions,
   resolveSegmentPosition,
   decomposeTraceroute,
+  hasReturnPath,
   UNKNOWN_SNR_SENTINEL,
   type TracerouteRenderSegment,
 } from '../utils/tracerouteSegments';
@@ -255,40 +256,11 @@ const isValidRouteNode = (nodeNum: number): boolean => {
   return true;
 };
 
-/**
- * Parse routePositions JSON string into a position map
- * Returns empty object if parsing fails or data is missing
- */
-const parseRoutePositions = (routePositions?: string): Record<number, { lat: number; lng: number; alt?: number }> => {
-  if (!routePositions) return {};
-  try {
-    return JSON.parse(routePositions);
-  } catch {
-    return {};
-  }
-};
-
-/**
- * Get node position, preferring snapshot positions over current positions
- * This ensures historical traceroutes render where nodes were at the time
- */
-const getNodePositionWithSnapshot = (
-  nodeNum: number,
-  snapshotPositions: Record<number, { lat: number; lng: number; alt?: number }>,
-  nodesPositionDigest: NodePositionDigest[]
-): [number, number] | null => {
-  // Prefer historical snapshot position
-  const snapshot = snapshotPositions[nodeNum];
-  if (snapshot?.lat && snapshot?.lng) {
-    return [snapshot.lat, snapshot.lng];
-  }
-  // Fall back to current position
-  const node = nodesPositionDigest.find(n => n.nodeNum === nodeNum);
-  if (node?.position?.latitude && node?.position?.longitude) {
-    return [node.position.latitude, node.position.longitude];
-  }
-  return null;
-};
+// #1862 snapshot parsing + snapshot-then-live position resolution now go
+// through the shared `parseSnapshotRoutePositions`/`resolveSegmentPosition`
+// utils (src/utils/tracerouteSegments.ts) — the local `parseRoutePositions`/
+// `getNodePositionWithSnapshot` helpers (which had the lat/lng===0
+// truthy-check bug on the snapshot half) were deleted in #4047 P3 WP3.
 
 /**
  * Hook for computing and rendering traceroute paths on the map
@@ -940,7 +912,11 @@ export function useTraceroutePaths({
   }, [showRoute, selectedNodeId, traceroutesDigest, nodesPositionDigest, currentNodeId, distanceUnit, themeColors.red, themeColors.blue, themeColors.tracerouteForward, themeColors.tracerouteReturn, themeColors.snrColors, liveNodePositions]);
 
   // Compute the set of node numbers involved in the selected traceroute
-  // Used for filtering map markers to only show nodes in the active traceroute
+  // Used for filtering map markers to only show nodes in the active traceroute.
+  // Guards/semantics deliberately mirror the selectedNodeTraceroute memo above
+  // (route-only presence guard; return-leg nodes gated by hasReturnPath —
+  // #2051; isValidRouteNode-sanitized hop arrays) so the marker filter always
+  // covers exactly the nodes whose segments the shared layer actually draws.
   const tracerouteNodeNums = useMemo(() => {
     // Only compute when showRoute is enabled and there's a selected node
     if (!showRoute || !selectedNodeId || selectedNodeId === currentNodeId) return null;
@@ -951,15 +927,10 @@ export function useTraceroutePaths({
 
     if (!selectedTrace) return null;
 
-    // Skip if the traceroute has null or invalid route data
-    if (
-      !selectedTrace.route ||
-      selectedTrace.route === 'null' ||
-      selectedTrace.route === '' ||
-      !selectedTrace.routeBack ||
-      selectedTrace.routeBack === 'null' ||
-      selectedTrace.routeBack === ''
-    ) {
+    // Route-only presence guard — matches decomposeTraceroute's contract
+    // (the return leg is gated separately below; a forward-only traceroute
+    // renders and must therefore be framed/filtered too).
+    if (!selectedTrace.route || selectedTrace.route === 'null' || selectedTrace.route === '') {
       return null;
     }
 
@@ -972,13 +943,21 @@ export function useTraceroutePaths({
 
       // Add intermediate nodes from forward route
       const rawRouteForward = JSON.parse(selectedTrace.route);
-      const routeForward = rawRouteForward.filter(isValidRouteNode);
+      const routeForward = (Array.isArray(rawRouteForward) ? rawRouteForward : []).filter(isValidRouteNode);
       routeForward.forEach((num: number) => nodeNums.add(num));
 
-      // Add intermediate nodes from back route
-      const rawRouteBack = JSON.parse(selectedTrace.routeBack);
-      const routeBack = rawRouteBack.filter(isValidRouteNode);
-      routeBack.forEach((num: number) => nodeNums.add(num));
+      // Add intermediate nodes from back route — only when a return path
+      // genuinely exists (#2051), matching the rendered return leg. The
+      // sanitized array is passed so the guard sees the same hops the
+      // renderer decomposes.
+      let rawRouteBack: unknown = [];
+      if (selectedTrace.routeBack && selectedTrace.routeBack !== 'null' && selectedTrace.routeBack !== '') {
+        rawRouteBack = JSON.parse(selectedTrace.routeBack);
+      }
+      const routeBack = (Array.isArray(rawRouteBack) ? rawRouteBack : []).filter(isValidRouteNode);
+      if (hasReturnPath(routeBack, selectedTrace.snrBack)) {
+        routeBack.forEach((num: number) => nodeNums.add(num));
+      }
 
       return nodeNums.size > 0 ? nodeNums : null;
     } catch (error) {
@@ -987,15 +966,18 @@ export function useTraceroutePaths({
     }
   }, [showRoute, selectedNodeId, currentNodeId, traceroutesDigest]);
 
-  // Compute bounding box of the selected traceroute for zoom-to-fit
+  // Compute bounding box of the selected traceroute for zoom-to-fit.
+  // Position resolution goes through the shared snapshot-then-live utils
+  // (typeof-based #1862 snapshot checks) — the same resolution the rendered
+  // segments use — so zoom-to-fit frames exactly what is drawn.
   const tracerouteBounds = useMemo((): [[number, number], [number, number]] | null => {
     if (!tracerouteNodeNums || tracerouteNodeNums.size === 0) return null;
 
-    // Parse snapshot positions from the selected traceroute
+    // Parse snapshot positions from the selected traceroute (#1862, shared util)
     const selectedTrace = traceroutesDigest.find(
       tr => tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
     );
-    const snapshotPositions = parseRoutePositions(selectedTrace?.routePositions);
+    const snapshotPositions = parseSnapshotRoutePositions(selectedTrace?.routePositions);
 
     let minLat = Infinity;
     let maxLat = -Infinity;
@@ -1004,7 +986,7 @@ export function useTraceroutePaths({
     let hasValidPositions = false;
 
     tracerouteNodeNums.forEach(nodeNum => {
-      const pos = getNodePositionWithSnapshot(nodeNum, snapshotPositions, nodesPositionDigest);
+      const pos = resolveSegmentPosition(nodeNum, snapshotPositions, liveNodePositions);
       if (pos) {
         hasValidPositions = true;
         minLat = Math.min(minLat, pos[0]);
@@ -1024,7 +1006,7 @@ export function useTraceroutePaths({
       [minLat - latPadding, minLng - lngPadding],
       [maxLat + latPadding, maxLng + lngPadding]
     ];
-  }, [tracerouteNodeNums, nodesPositionDigest, traceroutesDigest, selectedNodeId]);
+  }, [tracerouteNodeNums, liveNodePositions, traceroutesDigest, selectedNodeId]);
 
   return {
     traceroutePathsElements,
