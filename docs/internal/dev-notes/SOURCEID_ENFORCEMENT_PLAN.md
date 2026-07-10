@@ -39,12 +39,14 @@ Driven by an audit (2026-07-10) of every handler touching source-scoped data.
 - [ ] `GET /api/telemetry/:nodeId/linkquality` — always-500, same cause. (telemetryRoutes.ts:214)
 - [ ] `DELETE /api/nodes/:nodeId/neighbors` — always-500 (handler has no
       sourceId). Thread + require. (server.ts:2047)
-- [ ] `DELETE /api/telemetry/:nodeId/:telemetryType` — **data-loss**: deletes
-      across every source. Require + scope. (telemetryRoutes.ts:248)
-- [ ] `GET /api/channels/:id/export` — **PSK leak** across sources on omitted
-      sourceId. Require. (channelRoutes.ts:320)
+- [x] `DELETE /api/telemetry/:nodeId/:telemetryType` — **data-loss**: deletes
+      across every source. Require + scope. (telemetryRoutes.ts:248) — PR #4053+1
+- [x] `GET /api/channels/:id/export` — **PSK leak** across sources on omitted
+      sourceId. Require. (channelRoutes.ts:320) — PR #4053+1
 - [ ] `GET /api/v1/.../packets/:id` — cross-source read by id. Scope. (v1/packets.ts:97)
+      — **deferred to Phase 4** (needs the v1 attachSource/getScopedSourceId pattern).
 - [ ] `POST /api/security/nodes/:nodeNum/clear` — unscoped getNode/upsertNode. (securityRoutes.ts:281)
+      — **moves to Phase 2** (security group).
 
 ## Phase 2 — accidental SILENT_ALL_SOURCES → 400
 

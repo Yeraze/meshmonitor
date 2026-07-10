@@ -467,9 +467,13 @@ export class TelemetryRepository extends BaseRepository {
    * Delete telemetry by node and type.
    * Keeps branching: MySQL doesn't support .returning().
    */
-  async deleteTelemetryByNodeAndType(nodeId: string, telemetryType: string): Promise<boolean> {
+  async deleteTelemetryByNodeAndType(nodeId: string, telemetryType: string, sourceId?: SourceScope): Promise<boolean> {
     const { telemetry } = this.tables;
-    const condition = and(eq(telemetry.nodeId, nodeId), eq(telemetry.telemetryType, telemetryType));
+    const condition = and(
+      eq(telemetry.nodeId, nodeId),
+      eq(telemetry.telemetryType, telemetryType),
+      this.withSourceScope(telemetry, sourceId),
+    );
 
     if (this.isMySQL()) {
       const countResult = await this.db

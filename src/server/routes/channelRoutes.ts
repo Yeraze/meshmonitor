@@ -36,6 +36,7 @@ import { getEncryptionStatus, getRoleName } from '../utils/channelView.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { fail } from '../utils/apiResponse.js';
+import { requireSourceId } from '../utils/requireSourceId.js';
 
 const router: Router = Router();
 
@@ -317,7 +318,7 @@ router.get('/collisions', optionalAuth(), async (req: Request, res: Response) =>
 });
 
 // Export a specific channel configuration
-router.get('/:id/export', requireAuth(), async (req: Request, res: Response) => {
+router.get('/:id/export', requireAuth(), requireSourceId('query'), async (req: Request, res: Response) => {
   try {
     const channelId = parseInt(req.params.id);
     if (isNaN(channelId)) {
@@ -336,11 +337,10 @@ router.get('/:id/export', requireAuth(), async (req: Request, res: Response) => 
       });
     }
 
-    // Scope to a source when supplied (#3712) so a multi-source install can't
+    // Scope to the required source (#3712) so a multi-source install can't
     // export the PSK from a different source's channel that shares this slot.
-    const exportSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
-      ? req.query.sourceId
-      : undefined;
+    // Presence is validated by requireSourceId('query').
+    const exportSourceId = req.query.sourceId as string;
     const channel = await databaseService.channels.getChannelById(channelId, exportSourceId);
     if (!channel) {
       return res.status(404).json({ error: 'Channel not found' });
