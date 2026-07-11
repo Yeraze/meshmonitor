@@ -4426,5 +4426,10 @@
     "automation.airtime_cutoff.source_local_option": "Local node (own频道占用率)",
     "automation.airtime_cutoff.source_neighbors_option": "附近基础设施（3 个最强路由器平均值）",
     "automation.airtime_cutoff.saved": "Airtime cutoff设置s saved",
-    "automation.airtime_cutoff.save_error": "失败 to save设置s"
+    "automation.airtime_cutoff.save_error": "失败 to save设置s",
+    "node_popup.hops_one": "",
+    "node_popup.hops_other": "",
+    "node_popup.sources_seen_by_one": "",
+    "node_popup.sources_seen_by_other": "",
+    "node_popup.meshcore_device": ""
 }

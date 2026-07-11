@@ -20,8 +20,9 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
-import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { useMap, useMapEvents } from 'react-leaflet';
 import { useTranslation } from 'react-i18next';
+import { BaseMap } from './map/BaseMap';
 
 export interface BBoxValue {
   minLat: number;
@@ -295,15 +296,7 @@ const BBoxMapEditor: React.FC<BBoxMapEditorProps> = ({ bbox, onChange, height = 
           overflow: 'hidden',
         }}
       >
-        <MapContainer
-          center={initialCenter}
-          zoom={bbox ? 5 : 2}
-          style={{ height: '100%', width: '100%' }}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+        <BaseMap center={initialCenter} zoom={bbox ? 5 : 2}>
           <Layer
             bbox={bbox}
             pending={pending}
@@ -313,7 +306,7 @@ const BBoxMapEditor: React.FC<BBoxMapEditorProps> = ({ bbox, onChange, height = 
               onChange(next);
             }}
           />
-        </MapContainer>
+        </BaseMap>
       </div>
       <div
         style={{

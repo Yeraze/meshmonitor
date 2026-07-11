@@ -1,4 +1,3 @@
-import { Polyline } from 'react-leaflet';
 import { useMemo } from 'react';
 import {
   useDashboardSources,
@@ -7,11 +6,11 @@ import {
 import { useMeshCoreNeighbors } from '../../../hooks/useMapAnalysisData';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
 import { resolveNodeLatLng, type MaybePositionedNode } from '../nodePositionUtil';
-
-function snrToOpacity(snr: number | null): number {
-  if (snr === null) return 0.4;
-  return Math.max(0.2, Math.min(1, (snr + 10) / 20));
-}
+import { snrToNeighborOpacity } from '../../../utils/neighborLinks';
+import {
+  NeighborLinksLayer as SharedNeighborLinksLayer,
+  type NeighborLinkDescriptor,
+} from '../../map/layers/NeighborLinksLayer';
 
 const MC_NEIGHBOR_COLOR = '#06b6d4';
 
@@ -32,6 +31,19 @@ interface MCNodeRecord extends MaybePositionedNode {
   publicKey?: string;
 }
 
+/**
+ * MeshCore analogue of `NeighborLinksLayer` — fixed cyan look (no
+ * transport-class coloring; MeshCore edges have no RF/UDP/MQTT concept).
+ *
+ * Thin adapter (Map Consolidation epic #4047, Phase 7, WP6): owns all
+ * MapAnalysis-specific data wiring (MeshCore neighbor-edge fetch, endpoint
+ * position resolution keyed by `publicKey`, time-window filter) and maps its
+ * output onto the shared descriptor-based
+ * `src/components/map/layers/NeighborLinksLayer` for rendering.
+ * `pathOptions` (fixed cyan, weight 1.5, dash `'6 4'`) and the
+ * click→`setSelected` handler are unchanged from before the promotion — pure
+ * refactor of render mechanics only.
+ */
 export default function MeshCoreNeighborLinksLayer() {
   const { config, setSelected } = useMapAnalysisCtx();
   const layer = config.layers.neighbors;
@@ -67,7 +79,7 @@ export default function MeshCoreNeighborLinksLayer() {
   const edges = useMemo(() => {
     const out: Array<{
       key: string;
-      positions: [number, number][];
+      positions: [[number, number], [number, number]];
       opacity: number;
       sourceId: string;
       publicKey: string;
@@ -88,7 +100,7 @@ export default function MeshCoreNeighborLinksLayer() {
       out.push({
         key: String(e.id),
         positions: [a, b],
-        opacity: snrToOpacity(e.snr),
+        opacity: snrToNeighborOpacity(e.snr),
         sourceId: e.sourceId,
         publicKey: e.publicKey,
         neighborPublicKey: e.neighborPublicKey,
@@ -102,30 +114,30 @@ export default function MeshCoreNeighborLinksLayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, positionByKey, ts.enabled, ts.windowStartMs, ts.windowEndMs]);
 
-  return (
-    <>
-      {edges.map((e) => (
-        <Polyline
-          key={e.key}
-          positions={e.positions}
-          pathOptions={{ color: MC_NEIGHBOR_COLOR, weight: 1.5, opacity: e.opacity, dashArray: '6 4' }}
-          eventHandlers={{
-            click: () =>
-              setSelected({
-                type: 'neighbor',
-                sourceId: e.sourceId,
-                publicKey: e.publicKey,
-                neighborPublicKey: e.neighborPublicKey,
-                nodeName: e.nodeName,
-                neighborName: e.neighborName,
-                snr: e.snr,
-                timestamp: e.timestamp,
-                nodeNum: 0,
-                neighborNum: 0,
-              }),
-          }}
-        />
-      ))}
-    </>
+  const links = useMemo<NeighborLinkDescriptor[]>(
+    () =>
+      edges.map((e) => ({
+        key: e.key,
+        positions: e.positions,
+        pathOptions: { color: MC_NEIGHBOR_COLOR, weight: 1.5, opacity: e.opacity, dashArray: '6 4' },
+        eventHandlers: {
+          click: () =>
+            setSelected({
+              type: 'neighbor',
+              sourceId: e.sourceId,
+              publicKey: e.publicKey,
+              neighborPublicKey: e.neighborPublicKey,
+              nodeName: e.nodeName,
+              neighborName: e.neighborName,
+              snr: e.snr,
+              timestamp: e.timestamp,
+              nodeNum: 0,
+              neighborNum: 0,
+            }),
+        },
+      })),
+    [edges, setSelected],
   );
+
+  return <SharedNeighborLinksLayer links={links} />;
 }

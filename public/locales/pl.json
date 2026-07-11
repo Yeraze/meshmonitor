@@ -4567,5 +4567,10 @@
     "automation.distance_delete.action_delete": "Usuń węzeł",
     "automation.distance_delete.action_ignore": "Ignoruj węzeł",
     "automation.distance_delete.note_delete": "Usunięty węzeł może pojawić się ponownie, jeżeli nadal rozgłasza pakiety. Wybierz Ignoruj, aby trwale ukrywać go na urządzeniu.",
-    "automation.distance_delete.note_ignore": "Ignorowane węzły są ukrywane i synchronizowane z połączonym urządzeniem (wymaga oprogramowania układowego w wersji ≥ 2.7.0)."
+    "automation.distance_delete.note_ignore": "Ignorowane węzły są ukrywane i synchronizowane z połączonym urządzeniem (wymaga oprogramowania układowego w wersji ≥ 2.7.0).",
+    "node_popup.hops_one": "",
+    "node_popup.hops_other": "",
+    "node_popup.sources_seen_by_one": "",
+    "node_popup.sources_seen_by_other": "",
+    "node_popup.meshcore_device": ""
 }

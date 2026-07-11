@@ -1,13 +1,12 @@
 import { useMemo } from 'react';
-import { MapContainer, TileLayer, Pane } from 'react-leaflet';
+import { Pane } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { useAnalysisNodes } from './useAnalysisNodes';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
-import { getTilesetById } from '../../config/tilesets';
-import { TilesetSelector } from '../TilesetSelector';
+import { BaseMap } from '../map/BaseMap';
 import NodeMarkersLayer from './layers/NodeMarkersLayer';
 import TraceroutePathsLayer from './layers/TraceroutePathsLayer';
 import NeighborLinksLayer from './layers/NeighborLinksLayer';
@@ -15,7 +14,7 @@ import MeshCoreNeighborLinksLayer from './layers/MeshCoreNeighborLinksLayer';
 import PositionTrailsLayer from './layers/PositionTrailsLayer';
 import CoverageHeatmapLayer from './layers/CoverageHeatmapLayer';
 import SnrOverlayLayer from './layers/SnrOverlayLayer';
-import WaypointsLayer from './layers/WaypointsLayer';
+import WaypointsLayer from '../map/layers/WaypointsLayer';
 import PolarGridLayer from './layers/PolarGridLayer';
 import AccuracyRegionsLayer from './layers/AccuracyRegionsLayer';
 import TimeSliderControl from './TimeSliderControl';
@@ -56,16 +55,16 @@ export default function MapAnalysisCanvas() {
   ];
   const zoom = defaultMapCenterZoom ?? FALLBACK_ZOOM;
 
-  const tileset = getTilesetById(mapTileset, customTilesets);
-
   return (
     <div className="map-analysis-canvas" style={{ position: 'relative' }}>
-      <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }}>
-        <TileLayer
-          url={tileset.url}
-          attribution={tileset.attribution}
-          maxZoom={tileset.maxZoom}
-        />
+      <BaseMap
+        center={center}
+        zoom={zoom}
+        tilesetId={mapTileset}
+        customTilesets={customTilesets}
+        showTilesetSelector
+        onTilesetChange={setMapTileset}
+      >
         <FollowController />
         {measureMode && (
           <MeasureDistanceController
@@ -106,8 +105,7 @@ export default function MapAnalysisCanvas() {
         <Pane name="polarGrid" style={{ zIndex: 550 }}>
           {config.layers.polarGrid.enabled && <PolarGridLayer />}
         </Pane>
-      </MapContainer>
-      <TilesetSelector selectedTilesetId={mapTileset} onTilesetChange={setMapTileset} />
+      </BaseMap>
       <TimeSliderControl />
       <MapLegend />
       <FollowResumeButton />

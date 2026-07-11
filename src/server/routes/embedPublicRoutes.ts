@@ -16,8 +16,37 @@ import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import geojsonService from '../services/geojsonService.js';
+import { decomposeTraceroute } from '../../utils/tracerouteSegments.js';
 
 const router = Router();
+
+// Public/cacheable endpoint — hard ceiling on segment count regardless of how
+// many traceroutes fall inside the 24h/100-row window (#4047 P6 §2.2 step 6).
+const MAX_EMBED_TR_SEGMENTS = 500;
+
+// Wire shape for GET /:profileId/traceroutes — an ADDITIVE SUPERSET of the
+// pre-#4047-P6 shape. Legacy fields (fromNum..timestamp) are UNCHANGED so
+// stale/cached embed bundles keep working; `leg`/`avgSnr`/`isMqtt` are new
+// and ignored by old clients. See docs/internal/dev-notes/MAP_CONSOLIDATION_P6_SPEC.md §2.1.
+interface EmbedTracerouteSegmentV2 {
+  fromNum: number;
+  toNum: number;
+  fromLat: number;
+  fromLng: number;
+  fromName: string;
+  toLat: number;
+  toLng: number;
+  toName: string;
+  // CONSTRAINT (#4047 P6 §2.3): previously the raw un-scaled firmware int
+  // (dB x4) — now carries the same /4-scaled value as `avgSnr`. This is an
+  // intentional, non-breaking correction: an old cached client's popup
+  // `{seg.snr} dB` now shows the CORRECT magnitude instead of 4x too large.
+  snr: number | null;
+  timestamp: number;
+  leg: 'forward' | 'return';
+  avgSnr: number | null;
+  isMqtt: boolean;
+}
 
 // GET /:profileId/config — return public config for the embed profile
 // The CSP middleware is applied per-route so it can access req.params.profileId
@@ -210,10 +239,14 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Re
     const allNodes = await databaseService.nodes.getActiveNodes(7, profile.sourceId ?? ALL_SOURCES); // intentional cross-source: profile without a sourceId spans all sources
     const profileChannels = new Set(profile.channels as number[]);
 
-    // Build position lookup for visible nodes. Use effective position so a
-    // user-set override is what anchors traceroute path segments (issue #2847).
+    // Build position lookup for visible nodes — this is the leak boundary
+    // (#4047 P6 §6.2): a segment is emitted below only when BOTH endpoints
+    // resolve here, so hidden/filtered nodes never leave the server. Same
+    // filters as GET /:profileId/nodes: effective position (#2847), drop
+    // (0,0), drop hideFromMap (#3549), MQTT filter, channel filter.
     const nodePositions = new Map<number, { lat: number; lng: number; name: string }>();
     for (const node of allNodes) {
+      if (node.hideFromMap) continue;
       const eff = getEffectiveDbNodePosition(node);
       if (eff.latitude == null || eff.longitude == null) continue;
       if (eff.latitude === 0 && eff.longitude === 0) continue;
@@ -229,74 +262,74 @@ router.get('/:profileId/traceroutes', createEmbedCspMiddleware(), async (req: Re
       });
     }
 
-    // Get recent traceroutes and decompose into point-to-point segments
+    // Live-only position resolution — deliberately NO snapshot (#1862's
+    // routePositions is not consulted here). This matches the embed's
+    // pre-existing live-only behavior and avoids a new leak: a historical
+    // snapshot could reveal where a now-hidden/filtered node used to be
+    // (#4047 P6 §6.1). decomposeTraceroute skips any segment whose endpoint
+    // resolves to null, so the visible-node filter above is the sole gate.
+    const resolvePosition = (n: number): [number, number] | null => {
+      const p = nodePositions.get(n);
+      return p ? [p.lat, p.lng] : null;
+    };
+
+    // Get recent traceroutes and decompose via the shared util (the ONE
+    // decomposition — also used by the app's TraceroutePathsLayer).
     const traceroutes = await databaseService.traceroutes.getAllTraceroutes(100, profile.sourceId ?? ALL_SOURCES); // intentional cross-source: profile without a sourceId spans all sources
     // Traceroute timestamps can be in ms or seconds — normalize to ms
     const cutoffMs = Date.now() - (24 * 60 * 60 * 1000); // last 24h
 
-    // Deduplicate segments by pair (keep most recent)
-    const segmentMap = new Map<string, {
-      fromNum: number; toNum: number;
-      fromLat: number; fromLng: number; fromName: string;
-      toLat: number; toLng: number; toName: string;
-      snr: number | null; timestamp: number;
-    }>();
+    // Dedup by the util's leg-scoped key (`${leg}:${fromNum}-${toNum}`) —
+    // forward and return legs are distinct keys so both survive; keep the
+    // newest timestamp per key. Do NOT collapse to a bidirectional pair key,
+    // that would drop the return leg.
+    const segmentMap = new Map<string, EmbedTracerouteSegmentV2>();
 
     for (const tr of traceroutes) {
-      // Normalize timestamp: if < 1e12 it's in seconds, convert to ms
       const tsMs = tr.timestamp < 1e12 ? tr.timestamp * 1000 : tr.timestamp;
       if (tsMs < cutoffMs) continue;
-      if (!tr.route || tr.route === 'null') continue;
 
-      // Parse the route string — stored as JSON array e.g. "[123,456]"
-      let routeNums: number[];
-      try {
-        const parsed = JSON.parse(tr.route);
-        routeNums = Array.isArray(parsed) ? parsed : [];
-      } catch {
-        continue;
-      }
+      const renderSegments = decomposeTraceroute(tr, { resolvePosition });
+      for (const seg of renderSegments) {
+        const fromInfo = nodePositions.get(seg.fromNodeNum);
+        const toInfo = nodePositions.get(seg.toNodeNum);
+        // Both endpoints resolved (decomposeTraceroute already guarantees
+        // this via resolvePosition), so the names are always present.
+        if (!fromInfo || !toInfo) continue;
 
-      // Build full path: from -> route hops -> to
-      const fullPath = [tr.fromNodeNum, ...routeNums, tr.toNodeNum];
+        const timestamp = seg.timestamp ?? tr.timestamp;
+        const existing = segmentMap.get(seg.key);
+        if (existing && existing.timestamp >= timestamp) continue;
 
-      // Parse SNR values if available — also stored as JSON array
-      let snrValues: number[] = [];
-      if (tr.snrTowards) {
-        try {
-          const parsed = JSON.parse(tr.snrTowards);
-          snrValues = Array.isArray(parsed) ? parsed : [];
-        } catch {
-          // ignore
-        }
-      }
-
-      // Create segments between consecutive nodes in the path
-      for (let i = 0; i < fullPath.length - 1; i++) {
-        const fromNum = fullPath[i];
-        const toNum = fullPath[i + 1];
-        if (!fromNum || !toNum || fromNum === toNum) continue;
-
-        const fromPos = nodePositions.get(fromNum);
-        const toPos = nodePositions.get(toNum);
-        if (!fromPos || !toPos) continue;
-
-        // Canonical key — always lower nodeNum first for dedup
-        const key = fromNum < toNum ? `${fromNum}-${toNum}` : `${toNum}-${fromNum}`;
-        const existing = segmentMap.get(key);
-        if (!existing || tr.timestamp > existing.timestamp) {
-          segmentMap.set(key, {
-            fromNum, toNum,
-            fromLat: fromPos.lat, fromLng: fromPos.lng, fromName: fromPos.name,
-            toLat: toPos.lat, toLng: toPos.lng, toName: toPos.name,
-            snr: snrValues[i] ?? null,
-            timestamp: tr.timestamp,
-          });
-        }
+        segmentMap.set(seg.key, {
+          fromNum: seg.fromNodeNum,
+          toNum: seg.toNodeNum,
+          fromLat: seg.from[0],
+          fromLng: seg.from[1],
+          fromName: fromInfo.name,
+          toLat: seg.to[0],
+          toLng: seg.to[1],
+          toName: toInfo.name,
+          // §2.3: legacy `snr` now carries the /4-scaled `avgSnr` (was the
+          // raw un-scaled dB x4 value) — intentional, non-breaking fix.
+          snr: seg.avgSnr,
+          timestamp,
+          // decomposeTraceroute only ever assigns 'forward'/'return' to
+          // segments it builds (the 'neutral' leg variant is unused here).
+          leg: seg.leg as 'forward' | 'return',
+          avgSnr: seg.avgSnr,
+          isMqtt: seg.isMqtt,
+        });
       }
     }
 
-    res.json(Array.from(segmentMap.values()));
+    // Cap the response — sort newest-first before slicing so the freshest
+    // segments survive the cap (§2.2 step 6; public/cacheable endpoint).
+    const segments = Array.from(segmentMap.values())
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, MAX_EMBED_TR_SEGMENTS);
+
+    res.json(segments);
   } catch (error) {
     logger.error('Error fetching embed traceroutes:', error);
     res.status(500).json({ error: 'Failed to fetch traceroutes' });

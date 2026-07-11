@@ -17,6 +17,11 @@ vi.mock('react-leaflet', () => ({
     }),
 }));
 
+vi.mock('../map/BaseMap', () => ({
+    BaseMap: ({ children }: { children?: React.ReactNode }) =>
+        <div data-testid="minimap">{children}</div>,
+}));
+
 // Mock leaflet CSS import
 vi.mock('leaflet/dist/leaflet.css', () => ({}));
 

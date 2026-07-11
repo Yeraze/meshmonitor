@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/nodes.css';
-import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Circle, Rectangle, useMap } from 'react-leaflet';
+import { Popup, Tooltip, Polyline, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
@@ -9,10 +9,10 @@ import { TabType } from '../types/ui';
 import { nodePassesTransportFilter } from '../utils/nodeTransport';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
-import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, createArrowIcon } from '../utils/mapHelpers.tsx';
+import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, snrToColor } from '../utils/mapHelpers.tsx';
 import { convertSpeed } from '../utils/speedConversion';
-import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, resolveMapEndpoint } from '../utils/nodeHelpers';
-import { shouldOffsetForPrecision, offsetWithinPrecisionCell } from '../utils/precisionOffset';
+import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, resolveMapEndpoint, TRACEROUTE_DISPLAY_HOURS } from '../utils/nodeHelpers';
+import { shouldOffsetForPrecision, offsetWithinPrecisionCell, hasAccuracyCell, precisionCellBounds } from '../utils/precisionOffset';
 import MapLegend from './MapLegend';
 import { formatTime, formatDateTime } from '../utils/datetime';
 import { getDistanceToNode, calculateDistance, formatDistance } from '../utils/distance';
@@ -31,35 +31,27 @@ import { useWaypoints } from '../hooks/useWaypoints';
 import type { Waypoint, WaypointInput } from '../types/waypoint';
 import { useResizable } from '../hooks/useResizable';
 import ZoomHandler from './ZoomHandler';
-import MapResizeHandler from './MapResizeHandler';
 import MapPositionHandler from './MapPositionHandler';
 import PolarGridOverlay from './PolarGridOverlay.js';
 import GeoJsonOverlay from './GeoJsonOverlay';
-import { SpiderfierController, SpiderfierControllerRef } from './SpiderfierController';
+import { NodeMarkersLayer, type NodeMarkerDescriptor } from './map/layers/NodeMarkersLayer';
 import MeasureDistanceController from './MeasureDistanceController';
 import type { MeasurePoint } from '../utils/measureDistance';
-import { TilesetSelector } from './TilesetSelector';
 import { MapCenterController } from './MapCenterController';
 import PacketMonitorPanel from './PacketMonitorPanel';
 import { getPacketStats } from '../services/packetApi';
 
-import { VectorTileLayer } from './VectorTileLayer';
-import { MapNodePopupContent } from './MapNodePopupContent';
+import { BaseMap } from './map/BaseMap';
+import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
+import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from './map/layers/AccuracyRegionsLayer';
+import { NodeCard } from './map/popups/NodeCard';
+import { IdentityItems, SignalItems, LastHeardFooter, TracerouteBody, NodeActions, type NodeActionSpec } from './map/popups/sections';
+import { toNodeCardModel, type NodeCardModel } from './map/popups/nodeCardModel';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import api from '../services/api';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 import type { MapStyle } from '../server/services/mapStyleService.js';
 import { CopyNodeInfoModal } from './CopyNodeInfoModal';
-
-/**
- * Spiderfier initialization constants
- */
-const SPIDERFIER_INIT = {
-  /** Maximum attempts to wait for spiderfier initialization */
-  MAX_ATTEMPTS: 50,
-  /** Interval between initialization attempts (ms) - 50 attempts × 100ms = 5 seconds total */
-  RETRY_INTERVAL_MS: 100,
-} as const;
 
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
@@ -150,17 +142,57 @@ const DistanceDisplay = React.memo<{
 
 // Separate components for traceroutes that can update independently
 // These prevent marker re-renders when only the traceroute paths change
-const TraceroutePathsLayer = React.memo<{ paths: React.ReactNode; enabled: boolean }>(
+// Renamed from TraceroutePathsLayer/SelectedTracerouteLayer (#4047 Phase 7
+// WP13) — those names shadowed the shared `map/layers/TraceroutePathsLayer`;
+// these are thin pass-through wrappers of pre-built nodes, not that layer.
+const TraceroutePathsContainer = React.memo<{ paths: React.ReactNode; enabled: boolean }>(
   ({ paths }) => {
     return <>{paths}</>;
   }
 );
 
-const SelectedTracerouteLayer = React.memo<{ traceroute: React.ReactNode; enabled: boolean }>(
+const SelectedTracerouteContainer = React.memo<{ traceroute: React.ReactNode; enabled: boolean }>(
   ({ traceroute }) => {
     return <>{traceroute}</>;
   }
 );
+
+/**
+ * NodesTab's neighbor-link SNR encoding (#4047 Phase 7 WP11): a 4-tier
+ * weight/opacity table plus a uniform amber color (`overlayColors.neighborLine`),
+ * unlike the shared `NeighborLinksLayer`'s other consumers, which use the
+ * continuous `snrToNeighborOpacity` curve (`utils/neighborLinks.ts`) — the two
+ * are deliberately NOT unified (spec §4.1: "NodesTab uses a different 4-tier
+ * SNR→weight/opacity table — that stays in the NodesTab adapter"). Direction
+ * arrows are unidirectional-only, matching the shared layer's `arrows` gate.
+ * Extracted as a pure function (module-scope, exported) so this table and the
+ * arrow gate can be pinned with a unit test independent of the full
+ * component render.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- #4047 pure helper co-located with its only consumer for adapter unit testing; not a component
+export function computeNeighborLinkStyle(
+  snr: number | null,
+  isBidirectional: boolean,
+  lineColor: string,
+): { pathOptions: L.PathOptions; arrows?: { color: string } } {
+  let weight: number;
+  let opacity: number;
+  if (snr != null) {
+    if (snr > 10) { weight = 4; opacity = 0.85; }
+    else if (snr >= 0) { weight = 3; opacity = 0.6; }
+    else { weight = 2; opacity = 0.4; }
+  } else { weight = 2; opacity = 0.3; }
+
+  return {
+    pathOptions: {
+      color: lineColor,
+      weight,
+      opacity,
+      dashArray: isBidirectional ? undefined : '5, 5',
+    },
+    arrows: isBidirectional ? undefined : { color: lineColor },
+  };
+}
 
 /**
  * Controller that applies the configured default map center once server settings load.
@@ -637,9 +669,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setIsTouchDevice(checkTouch());
   }, []);
 
-  // Ref for spiderfier controller to manage overlapping markers
-  const spiderfierRef = useRef<SpiderfierControllerRef>(null);
-
   // Packet Monitor state
   const [showPacketMonitor, setShowPacketMonitor] = useState(() => {
     // Load from localStorage
@@ -891,17 +920,58 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const showRouteRef = useRef(showRoute);
   const traceroutesRef = useRef(traceroutes);
 
-  // Stable ref callback for markers to prevent unnecessary re-renders
-  const handleMarkerRef = React.useCallback((ref: LeafletMarker | null, nodeId: string | undefined) => {
-    if (ref && nodeId) {
-      markerRefs.current.set(nodeId, ref);
-      // Tag marker with nodeId so the spiderfier click handler can identify it
-      // even if the spiderfier holds a stale marker reference
-      (ref as any)._meshNodeId = nodeId;
-      // Add marker to spiderfier for overlap handling, passing nodeId to allow multiple markers at same position
-      spiderfierRef.current?.addMarker(ref, nodeId);
+  // Rich OMS click handler (#4047 Phase 4 WP6) — moved onto the shared
+  // NodeMarkersLayer's `onOmsClick(marker, key)`. Replaces the old
+  // `handleMarkerRef`/`_meshNodeId` tag lookup: the shared layer already knows
+  // which key a clicked marker belongs to (it tracks `keyByMarker` itself), so
+  // it hands the key straight to this callback instead of us reading a tag off
+  // the marker instance. Reads latest state via the refs above (kept fresh by
+  // the "Update refs when values change" effect below) so this stays
+  // referentially stable and the shared layer's OMS listener effect
+  // (`[addListener, removeListener, onOmsClick]`) isn't re-registered every
+  // render — the same rationale the old retry-loop bridge had.
+  const onOmsClick = useCallback((marker: LeafletMarker, key: string) => {
+    if (!key) return;
+    const nodeId = key;
+    const findNode = () =>
+      processedNodesRef.current.find(n => (n.user?.id ?? String(n.nodeNum)) === nodeId);
+
+    setSelectedNodeIdRef.current(nodeId);
+    // When showRoute is enabled, let TracerouteBoundsController handle the zoom
+    // to fit the entire traceroute path instead of just centering on the node.
+    // But if the node has no valid traceroute, fall back to centering on it.
+    if (!showRouteRef.current) {
+      const node = findNode();
+      if (node) centerMapOnNodeRef.current(node);
+    } else {
+      const hasTraceroute = traceroutesRef.current.some(tr => {
+        const matches = tr.toNodeId === nodeId || tr.fromNodeId === nodeId;
+        if (!matches) return false;
+        return tr.route && tr.route !== 'null' && tr.route !== '' &&
+               tr.routeBack && tr.routeBack !== 'null' && tr.routeBack !== '';
+      });
+      // If no valid traceroute, still center on the node
+      if (!hasTraceroute) {
+        const node = findNode();
+        if (node) centerMapOnNodeRef.current(node);
+      }
     }
-  }, []); // Empty deps - function never changes
+
+    // #4015: OMS 'click' fires only for an already-spiderfied or standalone
+    // marker, and the shared layer strips Leaflet's own auto-open handler, so
+    // this is the single popup opener — no closePopup()/setTimeout dance
+    // needed. autoPan is disabled so opening the popup doesn't fight the pan
+    // started by centerMapOnNode above. Prefer the live marker from
+    // `markerRefs` (kept fresh by each descriptor's `add` event handler, and
+    // also consumed by App.tsx's own "open popup for selected node" effect)
+    // over the shared layer's marker — mirrors the pre-migration preference.
+    const currentMarker = markerRefs.current.get(nodeId) || marker;
+    const popup = currentMarker.getPopup();
+    if (popup) {
+      popup.options.autoPan = false;
+    }
+    currentMarker.openPopup();
+  }, []); // Empty deps - reads latest values via refs
 
   // Stable callback factories for node item interactions
   const handleNodeClick = useCallback((node: DeviceInfo) => {
@@ -1075,98 +1145,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     showRouteRef.current = showRoute;
     traceroutesRef.current = traceroutes;
   });
-
-  // Track if listeners have been set up
-  const listenersSetupRef = useRef(false);
-
-  // Set up spiderfier event listeners ONCE when component mounts
-  useEffect(() => {
-    // Wait for spiderfier to be ready
-    const checkAndSetup = () => {
-      if (listenersSetupRef.current) {
-        return true; // Already set up
-      }
-
-      if (!spiderfierRef.current) {
-        return false;
-      }
-
-      const clickHandler = (marker: any) => {
-        // Get nodeId from the marker's tag (set in handleMarkerRef).
-        // This is more reliable than reference equality with markerRefs because
-        // the spiderfier may hold a stale marker reference after React-Leaflet
-        // recreates the underlying Leaflet marker object.
-        const nodeId: string | undefined = marker._meshNodeId;
-        if (!nodeId) return;
-
-        setSelectedNodeIdRef.current(nodeId);
-        // When showRoute is enabled, let TracerouteBoundsController handle the zoom
-        // to fit the entire traceroute path instead of just centering on the node.
-        // But if the node has no valid traceroute, fall back to centering on it.
-        if (!showRouteRef.current) {
-          const node = processedNodesRef.current.find(n => n.user?.id === nodeId);
-          if (node) {
-            centerMapOnNodeRef.current(node);
-          }
-        } else {
-          // Check if this node has a valid traceroute
-          const hasTraceroute = traceroutesRef.current.some(tr => {
-            const matches = tr.toNodeId === nodeId || tr.fromNodeId === nodeId;
-            if (!matches) return false;
-            return tr.route && tr.route !== 'null' && tr.route !== '' &&
-                   tr.routeBack && tr.routeBack !== 'null' && tr.routeBack !== '';
-          });
-          // If no valid traceroute, still center on the node
-          if (!hasTraceroute) {
-            const node = processedNodesRef.current.find(n => n.user?.id === nodeId);
-            if (node) {
-              centerMapOnNodeRef.current(node);
-            }
-          }
-        }
-
-        // #4015: OMS 'click' fires only for an already-spiderfied or standalone
-        // marker, and Leaflet's own auto-open handler is stripped below, so this
-        // is the single popup opener — no closePopup()/setTimeout dance needed.
-        // autoPan is disabled so opening the popup doesn't fight the pan started
-        // by centerMapOnNode above. Prefer the live marker from markerRefs over
-        // the spiderfier's possibly-stale ref.
-        const currentMarker = markerRefs.current.get(nodeId) || marker;
-        const popup = currentMarker.getPopup();
-        if (popup) {
-          popup.options.autoPan = false;
-        }
-        currentMarker.openPopup();
-      };
-
-      const spiderfyHandler = (_markers: any[]) => {
-        // Markers fanned out
-      };
-
-      const unspiderfyHandler = (_markers: any[]) => {
-        // Markers collapsed
-      };
-
-      // Add listeners only once
-      spiderfierRef.current.addListener('click', clickHandler);
-      spiderfierRef.current.addListener('spiderfy', spiderfyHandler);
-      spiderfierRef.current.addListener('unspiderfy', unspiderfyHandler);
-      listenersSetupRef.current = true;
-
-      return true;
-    };
-
-    // Keep retrying until spiderfier is ready
-    let attempts = 0;
-    const intervalId = setInterval(() => {
-      attempts++;
-      if (checkAndSetup() || attempts >= SPIDERFIER_INIT.MAX_ATTEMPTS) {
-        clearInterval(intervalId);
-      }
-    }, SPIDERFIER_INIT.RETRY_INTERVAL_MS);
-
-    return () => clearInterval(intervalId);
-  }, []); // Empty array - run only once on mount
 
   // Track previous nodes to detect updates and trigger animations
   const prevNodesRef = useRef<Map<string, number>>(new Map());
@@ -1371,31 +1349,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     return `${n.nodeNum}-${pos.latitude}-${pos.longitude}-${n.positionPrecisionBits ?? ''}`;
   }).join(',')]);
 
-  // #4015: strip Leaflet's auto-open-on-click handler that `bindPopup` installs
-  // (via the declarative <Popup> child), so a pile click doesn't plant a popup on
-  // the pre-spread stacked marker — the popup opens only via the OMS 'click'
-  // handler set up above. Popup content stays bound; `off` is idempotent.
-  //
-  // Runs on EVERY render (no dep array) on purpose: react-leaflet mounts the
-  // markers in a later commit than this component's first effect, so keying on a
-  // rendered-node signature can strip before any marker exists and then never
-  // re-run (a keyed effect only re-fires if the key changed — and the node set is
-  // often unchanged between the mount commit and the marker-mount commit). This
-  // was verified against the MeshCore map, where it left popups un-stripped.
-  // Cost is bounded: the per-marker `_meshPopupStripped` tag means the actual
-  // `off()` runs once per marker; steady-state renders just skip. `_openPopup` is
-  // Leaflet-private (verified vs leaflet@1.9.4); a future rename degrades to the
-  // old double-fire (annoying, not a crash).
-  useEffect(() => {
-    for (const m of markerRefs.current.values()) {
-      const mm = m as L.Marker & { _openPopup?: (e: unknown) => void; _meshPopupStripped?: boolean };
-      if (mm._meshPopupStripped) continue;
-      if (mm._openPopup) {
-        mm.off('click', mm._openPopup, mm);
-        mm._meshPopupStripped = true;
-      }
-    }
-  });
+  // #4015: the Leaflet auto-open-on-click strip is now owned by the shared
+  // `NodeMarkersLayer` (#4047 Phase 4 WP6) — it runs the same every-render,
+  // per-marker `_meshPopupStripped`-tagged strip internally against its own
+  // tracked markers, so a duplicate pass over `markerRefs` here is no longer
+  // needed. `markerRefs` itself is still populated (via each descriptor's
+  // `add` event handler below) purely for App.tsx's "open popup for selected
+  // node" effect and this component's `onOmsClick`.
 
   // #3636: measurement endpoints — nearest-node snapping picks from these.
   const measurePoints: MeasurePoint[] = React.useMemo(
@@ -1418,15 +1378,41 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     }).join(',')],
   );
 
-  // Memoize marker icons to prevent unnecessary Leaflet DOM rebuilds
-  // React-Leaflet calls setIcon() whenever the icon prop reference changes, which
-  // destroys and recreates the entire icon DOM element. By memoizing icons, we ensure
-  // setIcon() is only called when visual properties actually change (hops, selection, zoom, etc.),
-  // not on every render. This prevents icon DOM rebuilds from interfering with position updates.
   const showLabel = mapZoom >= 13;
-  const nodeIcons = React.useMemo(() => {
-    const iconMap = new Map<number, L.DivIcon>();
-    nodesWithPosition.forEach(node => {
+
+  // Node marker descriptors for the shared NodeMarkersLayer (#4047 Phase 4,
+  // WP6) — the layer owns spiderfy wiring, the icon/position caches that used
+  // to live in the `nodeIcons`/`nodePositions` memos here, removal
+  // reconciliation, OMS-click popup-open (via `onOmsClick` above), and the
+  // `_openPopup` strip that used to be duplicated inline in this file.
+  // `iconSig` is the exact old `nodeIcons` memo dependency-signature string —
+  // the shared layer's `stableIcon` cache only calls `buildIcon` when it
+  // changes, preserving the "don't rebuild the divIcon DOM every render"
+  // behavior the old memo existed for.
+  //
+  // `key` doubles as the spiderfier tracking key. `String(node.user?.id ??
+  // nodeNum)` preserves the pre-migration `_meshNodeId` identity for every
+  // node that has a `user.id` (the common case), and — unlike the old
+  // `handleMarkerRef`, which silently skipped registering a marker with no
+  // `user?.id` — also gives spiderfy/`markerRefs` coverage to the rare node
+  // that has a position but no user info yet (matches the Dashboard/MapAnalysis
+  // marker-key fallback convention).
+  const nodeMarkers: NodeMarkerDescriptor[] = nodesWithPosition
+    .filter(node => {
+      // Apply standard filters
+      if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes })) return false;
+      if (!showIncompleteNodes && !isNodeComplete(node)) return false;
+      if (!showEstimatedPositions && node.user?.id && nodesWithEstimatedPosition.has(node.user.id)) return false;
+      // When traceroute is active, only show nodes involved in the traceroute
+      if (tracerouteNodeNums && !tracerouteNodeNums.has(node.nodeNum)) return false;
+      // Map Features age slider (#3322): hide markers older than the
+      // chosen age. Favorites are always shown, matching the standard
+      // node age filter. Default (slider at max) is a no-op.
+      if (!node.isFavorite && node.lastHeard && node.lastHeard < mapAgeCutoffSeconds) return false;
+      return true;
+    })
+    .map(node => {
+      const markerKey = String(node.user?.id ?? node.nodeNum);
       const roleNum = typeof node.user?.role === 'string'
         ? parseInt(node.user.role, 10)
         : (typeof node.user?.role === 'number' ? node.user.role : 0);
@@ -1435,27 +1421,340 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       const isLocalNode = node.user?.id === currentNodeId;
       const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
       const shouldAnimate = showAnimations && animatedNodes.has(node.user?.id || '');
+      const position = nodePositions.get(node.nodeNum)!;
 
-      const icon = createNodeIcon({
-        hops,
-        isSelected,
-        isRouter,
-        shortName: node.user?.shortName,
-        showLabel: showLabel || shouldAnimate,
-        animate: shouldAnimate,
-        highlightSelected: showRoute && isSelected,
-        pinStyle: mapPinStyle,
+      // Calculate opacity based on last heard time
+      const markerOpacity = calculateNodeOpacity(
+        node.lastHeard,
+        nodeDimmingEnabled,
+        nodeDimmingStartHours,
+        nodeDimmingMinOpacity,
+        maxNodeAgeHours
+      );
+
+      // Hide popup when showRoute is enabled and node has a valid traceroute,
+      // since TracerouteBoundsController zooms to fit the route.
+      const hasValidTraceroute = traceroutes.some(tr => {
+        const matches = tr.toNodeId === node.user?.id || tr.fromNodeId === node.user?.id;
+        if (!matches) return false;
+        return tr.route && tr.route !== 'null' && tr.route !== '' &&
+               tr.routeBack && tr.routeBack !== 'null' && tr.routeBack !== '';
       });
-      iconMap.set(node.nodeNum, icon);
+
+      return {
+        key: markerKey,
+        position,
+        iconSig: `${node.nodeNum}-${hops}-${isSelected}-${node.user?.role}-${node.user?.shortName}-${showLabel}-${shouldAnimate}-${showRoute && isSelected}-${mapPinStyle}`,
+        buildIcon: () =>
+          createNodeIcon({
+            variant: 'meshtastic',
+            hops,
+            isSelected,
+            isRouter,
+            shortName: node.user?.shortName,
+            showLabel: showLabel || shouldAnimate,
+            animate: shouldAnimate,
+            highlightSelected: showRoute && isSelected,
+            pinStyle: mapPinStyle,
+          }),
+        opacity: markerOpacity,
+        zIndexOffset: shouldAnimate ? 10000 : 0,
+        eventHandlers: {
+          // Keep `markerRefs` (shared with App.tsx's "open popup for selected
+          // node" effect, and this component's `onOmsClick` above) populated
+          // with the live Leaflet marker instance. Leaflet's 'add' event
+          // fires once the marker is added to the map (`e.target` is the
+          // marker itself) — a standard, cheap substitute for the old
+          // `handleMarkerRef` ref-callback tagging, now that the shared layer
+          // owns the `<Marker ref>` itself.
+          add: (e: L.LeafletEvent) => {
+            markerRefs.current.set(markerKey, e.target as LeafletMarker);
+          },
+          ...(!isTouchDevice ? {
+            mouseover: (e: any) => {
+              if (hoverTimeoutRef.current) {
+                clearTimeout(hoverTimeoutRef.current);
+                hoverTimeoutRef.current = null;
+              }
+              // Selectively dim polylines not connected to this node
+              const container = e.target._map?.getContainer();
+              if (!container) return;
+              const nodeClass = `node-${node.nodeNum}`;
+              const paths = container.querySelectorAll('.leaflet-overlay-pane svg path.route-segment, .leaflet-overlay-pane svg path.neighbor-line');
+              paths.forEach((path: Element) => {
+                if (path.classList.contains(nodeClass)) {
+                  (path as HTMLElement).style.opacity = '';
+                } else {
+                  (path as HTMLElement).style.opacity = '0.25';
+                }
+              });
+            },
+            mouseout: (e: any) => {
+              if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+              hoverTimeoutRef.current = setTimeout(() => {
+                const container = e.target._map?.getContainer();
+                if (!container) return;
+                const paths = container.querySelectorAll('.leaflet-overlay-pane svg path.route-segment, .leaflet-overlay-pane svg path.neighbor-line');
+                paths.forEach((path: Element) => {
+                  (path as HTMLElement).style.opacity = '';
+                });
+                hoverTimeoutRef.current = null;
+              }, 150);
+            },
+          } : {}),
+        },
+        children: (
+          <>
+            {!isTouchDevice && (
+              <Tooltip direction="top" offset={[0, -20]} opacity={0.9}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontWeight: 'bold' }}>
+                    {node.user?.longName || node.user?.shortName || `!${node.nodeNum.toString(16)}`}
+                  </div>
+                  {(() => {
+                    const tooltipHops = getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
+                    const { hops: metaHops, showSnr, snr } = getMapHoverTooltipMeta(tooltipHops, node.snr);
+                    if (metaHops === null && !showSnr) return null;
+                    return (
+                      <div style={{ fontSize: '0.85em', opacity: 0.8 }}>
+                        {metaHops !== null && (
+                          <span>{metaHops} hop{metaHops !== 1 ? 's' : ''}</span>
+                        )}
+                        {showSnr && (
+                          <span>
+                            {metaHops !== null ? ' · ' : ''}📶 {snr!.toFixed(1)}dB
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </Tooltip>
+            )}
+            {!(showRoute && hasValidTraceroute) && (
+              <Popup autoPan={false}>
+                {(() => {
+                  const cardModel = toNodeCardModel(node, 'meshtastic', {
+                    effectiveHops: getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum),
+                  });
+                  // NodesTab's popup has never shown SNR/battery (unlike the
+                  // Dashboard card) — strip them from the model fed to
+                  // SignalItems so the migrated card stays pixel-identical
+                  // to the deleted MapNodePopupContent (spec §WP4/§4).
+                  const infoSignalModel: NodeCardModel = { ...cardModel, snr: null, battery: null };
+
+                  const hasTracerouteFeatures = hasPermission('traceroute', 'write') && !!onTraceroute;
+
+                  // Port of the identical recency lookup MapNodePopupContent
+                  // used to inline. nodeCardModel.ts's `useRecentTraceroute`
+                  // is a hook and can't be called from this .map() callback
+                  // (variable call count across nodes would violate the
+                  // rules of hooks), so the pure logic is replicated here.
+                  const recentTraceroute = (() => {
+                    if (!currentNodeId || !node.user?.id || currentNodeId === node.user.id) return null;
+                    const fromNum = parseNodeId(currentNodeId);
+                    if (fromNum === null) return null;
+                    const cutoff = Date.now() - TRACEROUTE_DISPLAY_HOURS * 60 * 60 * 1000;
+                    return traceroutes
+                      .filter(tr => {
+                        const isRelevant =
+                          (tr.fromNodeNum === fromNum && tr.toNodeNum === node.nodeNum) ||
+                          (tr.fromNodeNum === node.nodeNum && tr.toNodeNum === fromNum);
+                        return isRelevant && tr.timestamp >= cutoff;
+                      })
+                      .sort((a, b) => b.timestamp - a.timestamp)[0] || null;
+                  })();
+
+                  const actions: NodeActionSpec[] = [];
+                  if (node.user?.id && hasPermission('messages', 'read')) {
+                    actions.push({ kind: 'more-details', onClick: handlePopupDMClick(node) });
+                  }
+                  if (!isNodeComplete(node) && hasPermission('nodes', 'write')) {
+                    actions.push({ kind: 'copy-nodeinfo', onClick: () => setCopyNodeInfoTarget(node) });
+                  }
+                  if (hasPermission('messages', 'write') && node.nodeNum !== currentNodeNum) {
+                    if (onDeleteNode) {
+                      actions.push({ kind: 'delete', onClick: () => onDeleteNode(node.nodeNum) });
+                    }
+                    if (onPurgeNodeFromDevice && connectionStatus === 'connected') {
+                      actions.push({ kind: 'purge', onClick: () => onPurgeNodeFromDevice(node.nodeNum) });
+                    }
+                  }
+
+                  return (
+                    <NodeCard
+                      model={cardModel}
+                      sections={
+                        <>
+                          <div className="node-popup-grid">
+                            <IdentityItems model={cardModel} />
+                            <SignalItems model={infoSignalModel} showAltitude />
+                          </div>
+                          <LastHeardFooter
+                            lastHeard={cardModel.lastHeard}
+                            mode="absolute"
+                            timeFormat={timeFormat}
+                            dateFormat={dateFormat}
+                          />
+                          <NodeActions actions={actions} />
+                        </>
+                      }
+                      tracerouteBody={hasTracerouteFeatures ? (
+                        <TracerouteBody
+                          recentTraceroute={recentTraceroute}
+                          nodes={nodes}
+                          distanceUnit={distanceUnit}
+                          onRunTraceroute={node.user?.id && onTraceroute ? () => onTraceroute(node.user!.id) : undefined}
+                          running={tracerouteLoading === node.user?.id}
+                          runDisabled={connectionStatus !== 'connected' || tracerouteLoading === node.user?.id}
+                        />
+                      ) : undefined}
+                    />
+                  );
+                })()}
+              </Popup>
+            )}
+          </>
+        ),
+      };
     });
-    return iconMap;
-  }, [nodesWithPosition.map(n => {
-    const isSelected = selectedNodeId === n.user?.id;
-    const isLocalNode = n.user?.id === currentNodeId;
-    const hops = isLocalNode ? 0 : getEffectiveHops(n, nodeHopsCalculation, traceroutes, currentNodeNum);
-    const shouldAnimate = showAnimations && animatedNodes.has(n.user?.id || '');
-    return `${n.nodeNum}-${hops}-${isSelected}-${n.user?.role}-${n.user?.shortName}-${showLabel}-${shouldAnimate}-${showRoute && isSelected}-${mapPinStyle}`;
-  }).join(',')]);
+
+  // Position accuracy regions (#4047 Phase 7 WP11) — adapter over the shared
+  // `AccuracyRegionsLayer` (WP3). `hasAccuracyCell`/`precisionCellBounds`
+  // (`utils/precisionOffset`) reproduce this file's former inline bounds math
+  // exactly (same `2^(32-bits) * 1e-7 * 111_111` cell-size formula, verified
+  // numerically identical) — sharing them here removes the last duplicate of
+  // that formula. `pathOptions` stays hop-colored (NodesTab-only look, tied
+  // visually to the hop-colored marker) via the descriptor's per-region
+  // override, so this box is NOT the shared layer's canonical gray default.
+  const accuracyRegions: AccuracyRegionDescriptor[] = showAccuracyRegions
+    ? nodesWithPosition
+        .filter(node => {
+          if (!hasAccuracyCell(node.positionPrecisionBits, node.positionIsOverride)) return false;
+          if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes })) return false;
+          if (!showIncompleteNodes && !isNodeComplete(node)) return false;
+          // When traceroute is active, only show regions for nodes in the traceroute
+          if (tracerouteNodeNums && !tracerouteNodeNums.has(node.nodeNum)) return false;
+          return true;
+        })
+        .map(node => {
+          const bounds = precisionCellBounds(
+            node.position!.latitude,
+            node.position!.longitude,
+            node.positionPrecisionBits as number,
+          );
+          const isLocalNode = node.user?.id === currentNodeId;
+          const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
+          const color = getHopColor(hops, overlayColors.hopColors);
+          return {
+            key: `accuracy-${node.nodeNum}`,
+            bounds,
+            pathOptions: {
+              color,
+              fillColor: color,
+              fillOpacity: 0.08,
+              opacity: 0.5,
+              weight: 1,
+            },
+          };
+        })
+    : [];
+
+  // Neighbor-info links (#4047 Phase 7 WP11) — adapter over the shared
+  // `NeighborLinksLayer` (WP2). Zoom-adaptive gate hoisted to the top of the
+  // expression (was a per-item early return in the pre-migration inline map)
+  // — `mapZoom`/`neighborInfoMinZoom` don't vary per item, so the rendered
+  // output is identical either way. `computeNeighborLinkStyle` above pins the
+  // 4-tier SNR→weight/opacity table and the unidirectional-arrow gate; bearing
+  // for the arrow icons is now computed by the shared layer itself
+  // (`bearingBetween`, verified to reproduce this file's former inline
+  // `atan2` calculation exactly), so it's no longer computed here.
+  const neighborLinks: NeighborLinkDescriptor[] = (showNeighborInfo && neighborInfo.length > 0 && mapZoom >= neighborInfoMinZoom)
+    ? neighborInfo
+        .map((ni, idx): NeighborLinkDescriptor | null => {
+          // Anchor each endpoint to where the node's MARKER is rendered
+          // (merged / override-aware position, keyed by nodeNum) so the
+          // line connects to the visible marker rather than the
+          // source-specific reported coords (#3642). Falls back to the
+          // record's embedded coords when the node isn't on the map.
+          const nodeEndpoint = resolveMapEndpoint(nodePositions, ni.nodeNum, ni.nodeLatitude, ni.nodeLongitude);
+          const neighborEndpoint = resolveMapEndpoint(nodePositions, ni.neighborNodeNum, ni.neighborLatitude, ni.neighborLongitude);
+          if (!nodeEndpoint || !neighborEndpoint) return null;
+          const [nodeLat, nodeLng] = nodeEndpoint;
+          const [neighborLat, neighborLng] = neighborEndpoint;
+
+          // Filter out segments where either endpoint is not visible (Issue #1149)
+          if (visibleNodeNums && (!visibleNodeNums.has(ni.nodeNum) || !visibleNodeNums.has(ni.neighborNodeNum))) {
+            return null;
+          }
+
+          // When traceroute is active, only show segments for nodes in the traceroute
+          if (tracerouteNodeNums && (!tracerouteNodeNums.has(ni.nodeNum) || !tracerouteNodeNums.has(ni.neighborNodeNum))) {
+            return null;
+          }
+
+          const positions: [[number, number], [number, number]] = [
+            [nodeLat, nodeLng],
+            [neighborLat, neighborLng],
+          ];
+
+          const isBidirectional = ni.bidirectional === true;
+          const { pathOptions, arrows } = computeNeighborLinkStyle(ni.snr ?? null, isBidirectional, overlayColors.neighborLine);
+
+          // Calculate distance between nodes (coordinates guaranteed non-null by early return above)
+          const distKm = calculateDistance(nodeLat, nodeLng, neighborLat, neighborLng);
+          const distStr = formatDistance(distKm, distanceUnit);
+
+          // Normalize timestamp: old data may be in seconds, new data in milliseconds
+          const tsMs = ni.timestamp < 10_000_000_000 ? ni.timestamp * 1000 : ni.timestamp;
+          // Data age (clamped to 0 to handle clock skew)
+          const ageMs = Math.max(0, Date.now() - tsMs);
+          const ageMin = Math.floor(ageMs / 60000);
+          const ageStr = ageMin < 60 ? `${ageMin}m ago` : `${Math.floor(ageMin / 60)}h ago`;
+
+          // SNR text color for popup (canonical 4-band scale, #4047 P3 D4)
+          const snrTextColor = ni.snr != null
+            ? snrToColor(ni.snr, overlayColors.snrColors)
+            : undefined;
+
+          return {
+            key: `neighbor-${idx}`,
+            positions,
+            pathOptions,
+            className: `neighbor-line node-${ni.nodeNum} node-${ni.neighborNodeNum}`,
+            arrows,
+            children: (
+              <Popup>
+                <div className="route-popup">
+                  <h4>{t('direct_links.neighbor_connection', 'Neighbor Connection')}</h4>
+                  <div className="route-endpoints">
+                    <strong>{ni.neighborName}</strong> {isBidirectional ? '↔' : '→'} <strong>{ni.nodeName}</strong>
+                  </div>
+                  {isBidirectional && (
+                    <div className="route-usage" style={{ color: 'var(--ctp-green)' }}>
+                      ↔ {t('direct_links.bidirectional', 'Bidirectional')}
+                    </div>
+                  )}
+                  {ni.snr !== null && ni.snr !== undefined && (
+                    <div className="route-usage">
+                      SNR: <strong style={{ color: snrTextColor }}>{ni.snr.toFixed(1)} dB</strong>
+                    </div>
+                  )}
+                  {distStr && (
+                    <div className="route-usage">
+                      {t('direct_links.distance', 'Distance')}: <strong>{distStr}</strong>
+                    </div>
+                  )}
+                  <div className="route-usage">
+                    {t('direct_links.last_seen', 'Last seen')}: <strong>{formatDateTime(new Date(tsMs), timeFormat, dateFormat)}</strong> ({ageStr})
+                  </div>
+                </div>
+              </Popup>
+            ),
+          };
+        })
+        .filter((d): d is NeighborLinkDescriptor => d !== null)
+    : [];
 
   // Calculate center point of all nodes for initial map view
   // Use saved map center from localStorage if available, otherwise calculate from nodes
@@ -2229,30 +2528,21 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </div>
             </div>
         )}
-            <MapContainer
+            <BaseMap
               center={mapDefaults.center}
               zoom={mapDefaults.zoom}
-              style={{ height: '100%', width: '100%' }}
+              tilesetId={activeTileset}
+              customTilesets={customTilesets}
+              styleJson={activeStyleJson ?? undefined}
+              showTilesetSelector={shouldShowData() && showTileSelector}
+              onTilesetChange={setMapTileset}
+              resizeTrigger={`${showPacketMonitor}-${isNodeListCollapsed}-${packetMonitorHeight}`}
             >
               <MapCenterController
                 centerTarget={mapCenterTarget}
                 onCenterComplete={handleCenterComplete}
               />
               <TracerouteBoundsController bounds={tracerouteBounds} />
-              {getTilesetById(activeTileset, customTilesets).isVector ? (
-                <VectorTileLayer
-                  url={getTilesetById(activeTileset, customTilesets).url}
-                  attribution={getTilesetById(activeTileset, customTilesets).attribution}
-                  maxZoom={getTilesetById(activeTileset, customTilesets).maxZoom}
-                  styleJson={activeStyleJson ?? undefined}
-                />
-              ) : (
-                <TileLayer
-                  attribution={getTilesetById(activeTileset, customTilesets).attribution}
-                  url={getTilesetById(activeTileset, customTilesets).url}
-                  maxZoom={getTilesetById(activeTileset, customTilesets).maxZoom}
-                />
-              )}
               <ZoomHandler onZoomChange={setMapZoom} />
               <MapPositionHandler />
               <WaypointMapEventBridge
@@ -2266,8 +2556,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 lon={defaultMapCenterLon}
                 zoom={defaultMapCenterZoom}
               />
-              <MapResizeHandler trigger={`${showPacketMonitor}-${isNodeListCollapsed}-${packetMonitorHeight}`} />
-              <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
           {measureActive && (
             <MeasureDistanceController
               active={measureActive}
@@ -2281,141 +2569,16 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 unmappedCount={unmappedCount}
               />
               )}
-              {nodesWithPosition
-                .filter(node => {
-                  // Apply standard filters
-                  if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes })) return false;
-                  if (!showIncompleteNodes && !isNodeComplete(node)) return false;
-                  if (!showEstimatedPositions && node.user?.id && nodesWithEstimatedPosition.has(node.user.id)) return false;
-                  // When traceroute is active, only show nodes involved in the traceroute
-                  if (tracerouteNodeNums && !tracerouteNodeNums.has(node.nodeNum)) return false;
-                  // Map Features age slider (#3322): hide markers older than the
-                  // chosen age. Favorites are always shown, matching the standard
-                  // node age filter. Default (slider at max) is a no-op.
-                  if (!node.isFavorite && node.lastHeard && node.lastHeard < mapAgeCutoffSeconds) return false;
-                  return true;
-                })
-                .map(node => {
-                // Use memoized icon and position to prevent unnecessary Leaflet DOM rebuilds
-                const markerIcon = nodeIcons.get(node.nodeNum)!;
-                const position = nodePositions.get(node.nodeNum)!;
-                const shouldAnimate = showAnimations && animatedNodes.has(node.user?.id || '');
-
-                // Calculate opacity based on last heard time
-                const markerOpacity = calculateNodeOpacity(
-                  node.lastHeard,
-                  nodeDimmingEnabled,
-                  nodeDimmingStartHours,
-                  nodeDimmingMinOpacity,
-                  maxNodeAgeHours
-                );
-
-                return (
-              <Marker
-                key={node.nodeNum}
-                position={position}
-                icon={markerIcon}
-                opacity={markerOpacity}
-                zIndexOffset={shouldAnimate ? 10000 : 0}
-                ref={(ref) => handleMarkerRef(ref, node.user?.id)}
-                eventHandlers={!isTouchDevice ? {
-                  mouseover: (e: any) => {
-                    if (hoverTimeoutRef.current) {
-                      clearTimeout(hoverTimeoutRef.current);
-                      hoverTimeoutRef.current = null;
-                    }
-                    // Selectively dim polylines not connected to this node
-                    const container = e.target._map?.getContainer();
-                    if (!container) return;
-                    const nodeClass = `node-${node.nodeNum}`;
-                    const paths = container.querySelectorAll('.leaflet-overlay-pane svg path.route-segment, .leaflet-overlay-pane svg path.neighbor-line');
-                    paths.forEach((path: Element) => {
-                      if (path.classList.contains(nodeClass)) {
-                        (path as HTMLElement).style.opacity = '';
-                      } else {
-                        (path as HTMLElement).style.opacity = '0.25';
-                      }
-                    });
-                  },
-                  mouseout: (e: any) => {
-                    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-                    hoverTimeoutRef.current = setTimeout(() => {
-                      const container = e.target._map?.getContainer();
-                      if (!container) return;
-                      const paths = container.querySelectorAll('.leaflet-overlay-pane svg path.route-segment, .leaflet-overlay-pane svg path.neighbor-line');
-                      paths.forEach((path: Element) => {
-                        (path as HTMLElement).style.opacity = '';
-                      });
-                      hoverTimeoutRef.current = null;
-                    }, 150);
-                  },
-                } : undefined}
-              >
-                {!isTouchDevice && (
-                  <Tooltip direction="top" offset={[0, -20]} opacity={0.9}>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontWeight: 'bold' }}>
-                        {node.user?.longName || node.user?.shortName || `!${node.nodeNum.toString(16)}`}
-                      </div>
-                      {(() => {
-                        const tooltipHops = getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
-                        const { hops, showSnr, snr } = getMapHoverTooltipMeta(tooltipHops, node.snr);
-                        if (hops === null && !showSnr) return null;
-                        return (
-                          <div style={{ fontSize: '0.85em', opacity: 0.8 }}>
-                            {hops !== null && (
-                              <span>{hops} hop{hops !== 1 ? 's' : ''}</span>
-                            )}
-                            {showSnr && (
-                              <span>
-                                {hops !== null ? ' · ' : ''}📶 {snr!.toFixed(1)}dB
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </Tooltip>
-                )}
-                {/* Hide popup when showRoute is enabled and node has a valid traceroute,
-                    since TracerouteBoundsController zooms to fit the route */}
-                {!(showRoute && traceroutes.some(tr => {
-                  const matches = tr.toNodeId === node.user?.id || tr.fromNodeId === node.user?.id;
-                  if (!matches) return false;
-                  return tr.route && tr.route !== 'null' && tr.route !== '' &&
-                         tr.routeBack && tr.routeBack !== 'null' && tr.routeBack !== '';
-                })) && (
-                  <Popup autoPan={false}>
-                    <MapNodePopupContent
-                      node={node}
-                      nodes={nodes}
-                      currentNodeId={currentNodeId}
-                      timeFormat={timeFormat}
-                      dateFormat={dateFormat}
-                      distanceUnit={distanceUnit}
-                      traceroutes={traceroutes}
-                      hasPermission={hasPermission}
-                      onDMNode={handlePopupDMClick(node)}
-                      onCopyNodeInfo={() => setCopyNodeInfoTarget(node)}
-                      onTraceroute={onTraceroute ? () => onTraceroute(node.user!.id) : undefined}
-                      connectionStatus={connectionStatus}
-                      tracerouteLoading={tracerouteLoading}
-                      getEffectiveHops={(n) => getEffectiveHops(n, nodeHopsCalculation, traceroutes, currentNodeNum)}
-                      onDeleteNode={onDeleteNode}
-                      onPurgeNodeFromDevice={onPurgeNodeFromDevice}
-                      currentNodeNum={currentNodeNum}
-                    />
-                  </Popup>
-                )}
-              </Marker>
-                );
-              })}
+              <NodeMarkersLayer markers={nodeMarkers} onOmsClick={onOmsClick} />
 
               {/* Draw uncertainty circles for estimated positions. The "Show
                   Accuracy" map toggle now governs the radius (issue #3271
                   follow-up) — turning it off declutters the circles while the
                   estimated-node markers stay under "Show Estimated Positions".
-                  Both are required so a circle never renders without its marker. */}
+                  Both are required so a circle never renders without its marker.
+                  Single-consumer (#4047 Phase 7 spec §5.2) — no other map draws
+                  estimated-position uncertainty radii, so this stays inline
+                  rather than becoming a speculative one-consumer abstraction. */}
               {showEstimatedPositions && showAccuracyRegions && nodesWithPosition
                 .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id) && nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }) && (showIncompleteNodes || isNodeComplete(node)) && (!tracerouteNodeNums || tracerouteNodeNums.has(node.nodeNum)))
                 .map(node => {
@@ -2448,68 +2611,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   );
                 })}
 
-              {/* Draw position accuracy regions (rectangles) for all nodes with precision data */}
-              {showAccuracyRegions && nodesWithPosition
-                .filter(node => {
-                  // Check precision data exists
-                  if (node.positionPrecisionBits === undefined || node.positionPrecisionBits === null) return false;
-                  if (node.positionPrecisionBits <= 0 || node.positionPrecisionBits >= 32) return false;
-                  // Don't show accuracy region for nodes with overridden positions
-                  if (node.positionIsOverride) return false;
-                  // Apply standard filters
-                  if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes })) return false;
-                  if (!showIncompleteNodes && !isNodeComplete(node)) return false;
-                  // When traceroute is active, only show regions for nodes in the traceroute
-                  if (tracerouteNodeNums && !tracerouteNodeNums.has(node.nodeNum)) return false;
-                  return true;
-                })
-                .map(node => {
-                  // Convert precision_bits to accuracy zone in meters
-                  // Meshtastic encodes lat/lon as int32 (1 unit = 1e-7 degrees).
-                  // With N precision bits, the grid cell = 2^(32-N) * 1e-7 * 111111 meters.
-                  // The accuracy (max deviation) is half the grid cell.
-                  const metersPerDegree = 111_111;
-                  const sizeMeters = Math.pow(2, 32 - node.positionPrecisionBits!) * 1e-7 * metersPerDegree;
-                  const halfSizeMeters = sizeMeters / 2;
-
-                  // Convert meters to lat/lng offsets
-                  // 1 degree of latitude is approximately 111,111 meters
-                  const metersPerDegreeLat = 111_111;
-                  const lat = node.position!.latitude;
-                  const lng = node.position!.longitude;
-
-                  // Latitude offset is constant
-                  const latOffset = halfSizeMeters / metersPerDegreeLat;
-
-                  // Longitude offset varies with latitude (cos(lat) factor)
-                  const metersPerDegreeLng = metersPerDegreeLat * Math.cos(lat * Math.PI / 180);
-                  const lngOffset = halfSizeMeters / metersPerDegreeLng;
-
-                  // Calculate bounds: [[south, west], [north, east]]
-                  const bounds: [[number, number], [number, number]] = [
-                    [lat - latOffset, lng - lngOffset],
-                    [lat + latOffset, lng + lngOffset]
-                  ];
-
-                  // Get hop color for the region (same as marker)
-                  const isLocalNode = node.user?.id === currentNodeId;
-                  const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
-                  const color = getHopColor(hops, overlayColors.hopColors);
-
-                  return (
-                    <Rectangle
-                      key={`accuracy-${node.nodeNum}`}
-                      bounds={bounds}
-                      pathOptions={{
-                        color: color,
-                        fillColor: color,
-                        fillOpacity: 0.08,
-                        opacity: 0.5,
-                        weight: 1,
-                      }}
-                    />
-                  );
-                })}
+              {/* Position accuracy regions — shared layer (#4047 Phase 7 WP11),
+                  hop-colored `pathOptions` computed in the `accuracyRegions`
+                  adapter above (ties visually to the hop-colored marker; NOT
+                  the shared layer's canonical gray default). */}
+              <AccuracyRegionsLayer regions={accuracyRegions} />
 
               {showPolarGrid && ownNodePosition && (
                 <PolarGridOverlay center={ownNodePosition} />
@@ -2518,155 +2624,28 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               <GeoJsonOverlay layers={geoJsonLayers} />
 
               {/* Draw traceroute paths (independent layer) */}
-              <TraceroutePathsLayer paths={traceroutePathsElements} enabled={showPaths} />
+              <TraceroutePathsContainer paths={traceroutePathsElements} enabled={showPaths} />
 
               {/* Draw selected node traceroute (independent layer) */}
-              <SelectedTracerouteLayer traceroute={selectedNodeTraceroute} enabled={showRoute} />
+              <SelectedTracerouteContainer traceroute={selectedNodeTraceroute} enabled={showRoute} />
 
-              {/* Draw neighbor info connections */}
-              {showNeighborInfo && neighborInfo.length > 0 && neighborInfo.map((ni, idx) => {
-                // Anchor each endpoint to where the node's MARKER is rendered
-                // (merged / override-aware position, keyed by nodeNum) so the
-                // line connects to the visible marker rather than the
-                // source-specific reported coords (#3642). Falls back to the
-                // record's embedded coords when the node isn't on the map.
-                const nodeEndpoint = resolveMapEndpoint(nodePositions, ni.nodeNum, ni.nodeLatitude, ni.nodeLongitude);
-                const neighborEndpoint = resolveMapEndpoint(nodePositions, ni.neighborNodeNum, ni.neighborLatitude, ni.neighborLongitude);
-                // Skip if either endpoint has no resolvable position
-                if (!nodeEndpoint || !neighborEndpoint) {
-                  return null;
-                }
-                const [nodeLat, nodeLng] = nodeEndpoint;
-                const [neighborLat, neighborLng] = neighborEndpoint;
-
-                // Filter out segments where either endpoint is not visible (Issue #1149)
-                if (visibleNodeNums && (!visibleNodeNums.has(ni.nodeNum) || !visibleNodeNums.has(ni.neighborNodeNum))) {
-                  return null;
-                }
-
-                // When traceroute is active, only show segments for nodes in the traceroute
-                if (tracerouteNodeNums && (!tracerouteNodeNums.has(ni.nodeNum) || !tracerouteNodeNums.has(ni.neighborNodeNum))) {
-                  return null;
-                }
-
-                const positions: [number, number][] = [
-                  [nodeLat, nodeLng],
-                  [neighborLat, neighborLng]
-                ];
-
-                // Zoom-adaptive: hide neighbor lines at low zoom
-                if (mapZoom < neighborInfoMinZoom) return null;
-
-                const isBidirectional = ni.bidirectional === true;
-
-                // SNR encoded in weight + opacity (color is uniform amber from overlayColors.neighborLine)
-                let lineWeight: number;
-                let lineOpacity: number;
-                if (ni.snr != null) {
-                  if (ni.snr > 10) { lineWeight = 4; lineOpacity = 0.85; }
-                  else if (ni.snr >= 0) { lineWeight = 3; lineOpacity = 0.6; }
-                  else { lineWeight = 2; lineOpacity = 0.4; }
-                } else { lineWeight = 2; lineOpacity = 0.3; }
-
-                // Calculate distance between nodes (coordinates guaranteed non-null by early return above)
-                const distKm = calculateDistance(nodeLat, nodeLng, neighborLat, neighborLng);
-                const distStr = formatDistance(distKm, distanceUnit);
-
-                // Normalize timestamp: old data may be in seconds, new data in milliseconds
-                const tsMs = ni.timestamp < 10_000_000_000 ? ni.timestamp * 1000 : ni.timestamp;
-                // Data age (clamped to 0 to handle clock skew)
-                const ageMs = Math.max(0, Date.now() - tsMs);
-                const ageMin = Math.floor(ageMs / 60000);
-                const ageStr = ageMin < 60 ? `${ageMin}m ago` : `${Math.floor(ageMin / 60)}h ago`;
-
-                // SNR text color for popup
-                const snrTextColor = ni.snr != null
-                  ? ni.snr > 10 ? overlayColors.snrColors.good : ni.snr >= 0 ? overlayColors.snrColors.medium : overlayColors.snrColors.poor
-                  : undefined;
-
-                // Calculate bearing for unidirectional arrow (degrees from north)
-                // Arrow points FROM neighbor TO node (neighbor→node = "I heard this neighbor")
-                // Scale longitude difference by cos(lat) to correct for latitude
-                const latMid = (nodeLat + neighborLat) / 2;
-                const bearing = !isBidirectional
-                  ? Math.atan2(
-                      (nodeLng - neighborLng) * Math.cos(latMid * Math.PI / 180),
-                      nodeLat - neighborLat
-                    ) * (180 / Math.PI)
-                  : 0;
-
-                return (
-                  <React.Fragment key={`neighbor-${idx}`}>
-                    <Polyline
-                      positions={positions}
-                      pathOptions={{
-                        color: overlayColors.neighborLine,
-                        weight: lineWeight,
-                        opacity: lineOpacity,
-                        dashArray: isBidirectional ? undefined : '5, 5',
-                      }}
-                      className={`neighbor-line node-${ni.nodeNum} node-${ni.neighborNodeNum}`}
-                    >
-                      <Popup>
-                        <div className="route-popup">
-                          <h4>{t('direct_links.neighbor_connection', 'Neighbor Connection')}</h4>
-                          <div className="route-endpoints">
-                            <strong>{ni.neighborName}</strong> {isBidirectional ? '↔' : '→'} <strong>{ni.nodeName}</strong>
-                          </div>
-                          {isBidirectional && (
-                            <div className="route-usage" style={{ color: 'var(--ctp-green)' }}>
-                              ↔ {t('direct_links.bidirectional', 'Bidirectional')}
-                            </div>
-                          )}
-                          {ni.snr !== null && ni.snr !== undefined && (
-                            <div className="route-usage">
-                              SNR: <strong style={{ color: snrTextColor }}>{ni.snr.toFixed(1)} dB</strong>
-                            </div>
-                          )}
-                          {distStr && (
-                            <div className="route-usage">
-                              {t('direct_links.distance', 'Distance')}: <strong>{distStr}</strong>
-                            </div>
-                          )}
-                          <div className="route-usage">
-                            {t('direct_links.last_seen', 'Last seen')}: <strong>{formatDateTime(new Date(tsMs), timeFormat, dateFormat)}</strong> ({ageStr})
-                          </div>
-                        </div>
-                      </Popup>
-                    </Polyline>
-                    {/* Direction arrows along unidirectional lines at 25%, 50%, 75% for visibility at any zoom */}
-                    {!isBidirectional && (
-                      <>
-                        {[0.25, 0.5, 0.75].map(fraction => (
-                          <Marker
-                            key={`arrow-${fraction}`}
-                            position={[
-                              neighborLat + (nodeLat - neighborLat) * fraction,
-                              neighborLng + (nodeLng - neighborLng) * fraction
-                            ]}
-                            icon={createArrowIcon(bearing, overlayColors.neighborLine)}
-                            interactive={false}
-                          />
-                        ))}
-                      </>
-                    )}
-                  </React.Fragment>
-                );
-              })}
+              {/* Neighbor info connections — shared layer (#4047 Phase 7 WP11),
+                  descriptors built in the `neighborLinks` adapter above
+                  (4-tier SNR pathOptions, hover-dim className, unidirectional
+                  arrows, popup). */}
+              <NeighborLinksLayer links={neighborLinks} />
 
               {/* Note: Selected node traceroute with separate forward and back paths */}
               {/* This is handled by traceroutePathsElements passed from parent */}
 
-              {/* Draw position history for mobile nodes with color gradient */}
+              {/* Draw position history for mobile nodes with color gradient.
+                  Single-consumer rich single-node form (#4047 Phase 7 spec
+                  §5.3) — MapAnalysis's multi-node PositionTrailsLayer and
+                  MeshCoreMap's arrowless multi-node trails are deliberately
+                  different visualizations; this stays inline. */}
               {positionHistoryElements}
 
-          </MapContainer>
-          {shouldShowData() && showTileSelector && (
-          <TilesetSelector
-            selectedTilesetId={activeTileset}
-            onTilesetChange={setMapTileset}
-          />
-          )}
+          </BaseMap>
           {shouldShowData() && nodesWithPosition.length === 0 && (
             <div className="map-overlay">
               <div className="overlay-content">

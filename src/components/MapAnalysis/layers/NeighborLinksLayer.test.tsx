@@ -8,7 +8,9 @@ import { MapAnalysisProvider } from '../MapAnalysisContext';
 import NeighborLinksLayer from './NeighborLinksLayer';
 
 vi.mock('react-leaflet', () => ({
-  Polyline: () => <div data-testid="poly" />,
+  Polyline: (props: { pathOptions?: Record<string, unknown> }) => (
+    <div data-testid="poly" data-path-options={JSON.stringify(props.pathOptions)} />
+  ),
 }));
 
 // Mutable mock state so individual tests can vary the edges/nodes.
@@ -43,7 +45,7 @@ describe('NeighborLinksLayer', () => {
     ];
   });
 
-  it('renders one polyline per edge', () => {
+  it('renders one polyline per edge, colored/dashed per the pre-promotion RF look', () => {
     const qc = new QueryClient();
     render(
       <QueryClientProvider client={qc}>
@@ -52,7 +54,17 @@ describe('NeighborLinksLayer', () => {
         </MapAnalysisProvider>
       </QueryClientProvider>,
     );
-    expect(screen.getAllByTestId('poly')).toHaveLength(1);
+    const polys = screen.getAllByTestId('poly');
+    expect(polys).toHaveLength(1);
+    // Pins the pre-promotion look (RF transport color, weight 1, dash '4 4')
+    // so the shared-layer adapter is byte-for-byte identical. opacity =
+    // snrToNeighborOpacity(5) = clamp((5 + 10) / 20, 0.2, 1) = 0.75.
+    expect(JSON.parse(polys[0].getAttribute('data-path-options')!)).toEqual({
+      color: '#06b6d4',
+      weight: 1,
+      opacity: 0.75,
+      dashArray: '4 4',
+    });
   });
 
   it('excludes edges outside the time slider window when slider is enabled', () => {

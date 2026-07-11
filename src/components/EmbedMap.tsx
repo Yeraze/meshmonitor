@@ -1,13 +1,17 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Tooltip, Popup, Polyline } from 'react-leaflet';
+import { Marker, Tooltip, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { TILESETS, isPredefinedTilesetId, DEFAULT_TILESET_ID } from '../config/tilesets';
-import type { TilesetConfig } from '../config/tilesets';
+import { DEFAULT_TILESET_ID } from '../config/tilesets';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
 import GeoJsonOverlay from './GeoJsonOverlay';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
+import { getOverlayColors, getSchemeForTileset } from '../config/overlayColors';
+import { BaseMap } from './map/BaseMap';
+import { TraceroutePathsLayer } from './map/layers/TraceroutePathsLayer';
+import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
+import type { TracerouteRenderSegment } from '../utils/tracerouteSegments';
 
 interface EmbedConfig {
   id: string;
@@ -69,17 +73,17 @@ interface EmbedTracerouteSegment {
   toName: string;
   snr: number | null;
   timestamp: number;
+  // Additive fields (#4047 P6 WP1) — the server now emits these on every
+  // response, but they're typed optional here so a stale/cached response
+  // from a not-yet-upgraded server (old shape) is tolerated defensively,
+  // mirroring the server's own tolerance of old (pre-WP1) embed clients.
+  leg?: 'forward' | 'return';
+  avgSnr?: number | null;
+  isMqtt?: boolean;
 }
 
 interface EmbedMapProps {
   profileId: string;
-}
-
-function getEmbedTileset(tilesetId: string): TilesetConfig {
-  if (isPredefinedTilesetId(tilesetId)) {
-    return TILESETS[tilesetId];
-  }
-  return TILESETS[DEFAULT_TILESET_ID];
 }
 
 function formatLastHeard(lastHeard?: number): string {
@@ -256,6 +260,119 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredNodes.map(n => `${n.nodeNum}-${n.hopsAway}-${n.role}-${n.user?.shortName}`).join(',')]);
 
+  // Traceroute palette (#4047 P6 §3.1) — the embed bundle has no
+  // SettingsProvider, so the SNR palette is derived directly from the
+  // profile's tileset rather than useSettings(). Falls back to the default
+  // tileset id before config loads (getSchemeForTileset defaults unknown
+  // tileset ids to 'dark' anyway).
+  const overlay = useMemo(
+    () => getOverlayColors(getSchemeForTileset(config?.tileset ?? DEFAULT_TILESET_ID)),
+    [config?.tileset],
+  );
+  const snrColors = overlay.snrColors;
+  const mqttColor = overlay.mqttSegment;
+
+  // Wire segment -> shared TracerouteRenderSegment mapping (#4047 P6 §3.2).
+  // Positions are already resolved server-side; this is a pure field rename,
+  // no client-side decomposition. `leg` defaults to 'forward' for a stale
+  // pre-WP1 response (old shape has no leg — everything it sent was a single
+  // forward-only line).
+  const renderSegments: TracerouteRenderSegment[] = useMemo(
+    () => tracerouteSegments.map((s) => {
+      const leg = s.leg ?? 'forward';
+      return {
+        key: `${leg}:${s.fromNum}-${s.toNum}`,
+        from: [s.fromLat, s.fromLng] as [number, number],
+        to: [s.toLat, s.toLng] as [number, number],
+        fromNodeNum: s.fromNum,
+        toNodeNum: s.toNum,
+        leg,
+        avgSnr: s.avgSnr !== undefined ? s.avgSnr : s.snr,
+        isMqtt: s.isMqtt ?? false,
+        timestamp: s.timestamp,
+      };
+    }),
+    [tracerouteSegments],
+  );
+
+  // Popup lookup by the same key so the popup can show fromName/toName
+  // (already on the wire object — zero extra plumbing per §3.3).
+  const tracerouteSegmentsByKey = useMemo(() => {
+    const map = new Map<string, EmbedTracerouteSegment>();
+    for (const s of tracerouteSegments) {
+      const leg = s.leg ?? 'forward';
+      map.set(`${leg}:${s.fromNum}-${s.toNum}`, s);
+    }
+    return map;
+  }, [tracerouteSegments]);
+
+  const renderTraceroutePopup = useCallback((seg: TracerouteRenderSegment) => {
+    const wire = tracerouteSegmentsByKey.get(seg.key);
+    return (
+      <Popup>
+        <div className="embed-popup">
+          <div className="embed-popup-header">Traceroute Segment</div>
+          <div className="embed-popup-grid">
+            <div className="embed-popup-item embed-popup-item-full">
+              <span className="embed-popup-icon">📡</span>
+              <span className="embed-popup-value">
+                {wire ? `${wire.fromName} ↔ ${wire.toName}` : `Node ${seg.fromNodeNum} ↔ Node ${seg.toNodeNum}`}
+              </span>
+            </div>
+            {seg.avgSnr != null && (
+              <div className="embed-popup-item">
+                <span className="embed-popup-icon">📶</span>
+                <span className="embed-popup-value">{seg.avgSnr.toFixed(1)} dB</span>
+              </div>
+            )}
+            {seg.isMqtt && (
+              <div className="embed-popup-item embed-popup-item-full">
+                <span className="embed-popup-icon">🌐</span>
+                <span className="embed-popup-value">via MQTT</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </Popup>
+    );
+  }, [tracerouteSegmentsByKey]);
+
+  // Neighbor-info connection lines -> shared NeighborLinksLayer descriptors
+  // (#4047 P7 §4.1/§3.4): the flat color/weight/opacity/dashArray props this
+  // block used to pass straight to <Polyline> are wrapped into a single
+  // `pathOptions` object, byte-for-byte preserving the amber/w3/o.7/dash
+  // '5, 5' look; the popup JSX moves into `children` unchanged.
+  const neighborLinks: NeighborLinkDescriptor[] = useMemo(() => {
+    if (!config?.showNeighborInfo) return [];
+    return neighborSegments.map((seg, idx) => ({
+      key: `nb-${idx}`,
+      positions: [
+        [seg.nodeLatitude, seg.nodeLongitude],
+        [seg.neighborLatitude, seg.neighborLongitude],
+      ] as [[number, number], [number, number]],
+      pathOptions: { color: '#f5a623', weight: 3, opacity: 0.7, dashArray: '5, 5' },
+      children: config.showPopups ? (
+        <Popup>
+          <div className="embed-popup">
+            <div className="embed-popup-header">Neighbor Connection</div>
+            <div className="embed-popup-grid">
+              <div className="embed-popup-item embed-popup-item-full">
+                <span className="embed-popup-icon">🔗</span>
+                <span className="embed-popup-value">{seg.nodeName} &harr; {seg.neighborName}</span>
+              </div>
+              {seg.snr != null && (
+                <div className="embed-popup-item">
+                  <span className="embed-popup-icon">📶</span>
+                  <span className="embed-popup-value">{seg.snr} dB</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </Popup>
+      ) : undefined,
+    }));
+  }, [config?.showNeighborInfo, config?.showPopups, neighborSegments]);
+
   if (loading) {
     return (
       <div style={{
@@ -283,8 +400,6 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     );
   }
 
-  const tileset = getEmbedTileset(config.tileset);
-
   // Optional URL-parameter overrides (issue #2668): ?lat=&lon=&zoom= let
   // embedders pin a location without creating a new profile.
   const urlParams = new URLSearchParams(window.location.search);
@@ -298,19 +413,14 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <style>{embedPopupCss}</style>
-      <MapContainer
+      <BaseMap
         center={[centerLat, centerLng]}
         zoom={centerZoom}
-        style={{ width: '100%', height: '100%' }}
-        zoomControl={true}
-        attributionControl={true}
+        tilesetId={config.tileset}
+        customTilesets={[]}
+        zoomControl
+        attributionControl
       >
-        <TileLayer
-          url={tileset.url}
-          attribution={tileset.attribution}
-          maxZoom={tileset.maxZoom}
-        />
-
         {/* Public GeoJSON overlay layers (issue #3407) */}
         {geoJsonLayers.length > 0 && (
           <GeoJsonOverlay
@@ -320,74 +430,29 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
           />
         )}
 
-        {/* Traceroute path segments */}
-        {config.showPaths && tracerouteSegments.map((seg, idx) => (
-          <Polyline
-            key={`tr-${idx}`}
-            positions={[
-              [seg.fromLat, seg.fromLng],
-              [seg.toLat, seg.toLng],
-            ]}
-            color="#cba6f7"
-            weight={3}
-            opacity={0.8}
-          >
-            {config.showPopups && (
-              <Popup>
-                <div className="embed-popup">
-                  <div className="embed-popup-header">Traceroute Segment</div>
-                  <div className="embed-popup-grid">
-                    <div className="embed-popup-item embed-popup-item-full">
-                      <span className="embed-popup-icon">📡</span>
-                      <span className="embed-popup-value">{seg.fromName} &harr; {seg.toName}</span>
-                    </div>
-                    {seg.snr != null && (
-                      <div className="embed-popup-item">
-                        <span className="embed-popup-icon">📶</span>
-                        <span className="embed-popup-value">{seg.snr} dB</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Popup>
-            )}
-          </Polyline>
-        ))}
+        {/* Traceroute path segments — rendered through the shared layer
+            (#4047 P6) with the flat consumer preset (D3): SNR-colored,
+            MQTT/unknown-dashed, no arrows — matching the app's canonical
+            all-segments-overview look (NodesTab base layer / Dashboard
+            paths pass), not the single-route arrowed preset. */}
+        {config.showPaths && (
+          <TraceroutePathsLayer
+            segments={renderSegments}
+            snrColors={snrColors}
+            colorMode="snr"
+            mqttColor={mqttColor}
+            curvature={0}
+            weight={2}
+            opacity={0.85}
+            dashMode="mqtt-unknown"
+            renderPopup={config.showPopups ? renderTraceroutePopup : undefined}
+          />
+        )}
 
-        {/* Neighbor info connection lines */}
-        {config.showNeighborInfo && neighborSegments.map((seg, idx) => (
-          <Polyline
-            key={`nb-${idx}`}
-            positions={[
-              [seg.nodeLatitude, seg.nodeLongitude],
-              [seg.neighborLatitude, seg.neighborLongitude],
-            ]}
-            color="#f5a623"
-            weight={3}
-            opacity={0.7}
-            dashArray="5, 5"
-          >
-            {config.showPopups && (
-              <Popup>
-                <div className="embed-popup">
-                  <div className="embed-popup-header">Neighbor Connection</div>
-                  <div className="embed-popup-grid">
-                    <div className="embed-popup-item embed-popup-item-full">
-                      <span className="embed-popup-icon">🔗</span>
-                      <span className="embed-popup-value">{seg.nodeName} &harr; {seg.neighborName}</span>
-                    </div>
-                    {seg.snr != null && (
-                      <div className="embed-popup-item">
-                        <span className="embed-popup-icon">📶</span>
-                        <span className="embed-popup-value">{seg.snr} dB</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Popup>
-            )}
-          </Polyline>
-        ))}
+        {/* Neighbor info connection lines — rendered through the shared
+            NeighborLinksLayer (#4047 P7 §4.1); descriptors built above
+            preserve the amber/w3/o.7/dash '5, 5' look byte-for-byte. */}
+        {config.showNeighborInfo && <NeighborLinksLayer links={neighborLinks} />}
 
         {/* Node markers */}
         {filteredNodes.map((node) => {
@@ -496,7 +561,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
             </Marker>
           );
         })}
-      </MapContainer>
+      </BaseMap>
 
       {/* Hop count legend overlay */}
       {config.showLegend && filteredNodes.length > 0 && (

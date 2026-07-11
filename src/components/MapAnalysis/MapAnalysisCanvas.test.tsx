@@ -29,9 +29,22 @@ vi.mock('react-leaflet', () => ({
   Popup: ({ children }: { children?: React.ReactNode }) => (
     <div data-testid="popup">{children}</div>
   ),
+  Polyline: ({ children }: { children?: React.ReactNode }) => (
+    <div data-testid="poly">{children}</div>
+  ),
+  Rectangle: () => <div data-testid="accuracy-rect" />,
   Pane: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
   // Spiderfier (NodeMarkersLayer) calls useMap(); null makes the hook a no-op.
   useMap: () => null,
+}));
+
+// MapAnalysisCanvas now composes BaseMap (#4047 Phase 7 WP10), which
+// statically imports the MapLibre-backed VectorTileLayer. Mock it out (same
+// as BaseMap.test.tsx) so this suite doesn't have to load the real
+// `@maplibre/maplibre-gl-leaflet` module under jsdom — the 'osm' tileset used
+// here is raster, so the vector branch is never exercised.
+vi.mock('../VectorTileLayer', () => ({
+  VectorTileLayer: () => <div data-testid="vector-tile" />,
 }));
 
 // FollowController's own behavior (Follow/Auto-zoom/pause) is covered by its
@@ -97,6 +110,40 @@ vi.mock('../../contexts/SettingsContext', () => ({
   }),
   // Used by DashboardNodePopup, which now renders inside the node marker popups.
   useDisplaySettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
+}));
+
+// The global setup.ts mock for react-i18next ignores `options.defaultValue`
+// (it only interpolates `{{token}}` placeholders into the raw key), so it
+// can't produce real English text for the popup family's `t(key, {
+// defaultValue })` calls that DashboardNodePopup now goes through (#4047
+// Phase 5 WP2). Override locally — mirrors
+// src/components/map/popups/sections.test.tsx — so the "Seen by 2 sources"
+// assertion below exercises the same English copy a real render produces.
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (
+      key: string,
+      arg2?: string | Record<string, unknown>,
+      arg3?: Record<string, unknown>,
+    ) => {
+      let options: Record<string, unknown> | undefined;
+      let defaultValue: string | undefined;
+      if (typeof arg2 === 'string') {
+        defaultValue = arg2;
+        options = arg3;
+      } else {
+        options = arg2;
+        defaultValue = typeof options?.defaultValue === 'string' ? options.defaultValue : undefined;
+      }
+      let out = defaultValue ?? key;
+      if (options) {
+        for (const [k, v] of Object.entries(options)) {
+          out = out.replace(new RegExp(`{{${k}}}`, 'g'), String(v));
+        }
+      }
+      return out;
+    },
+  }),
 }));
 
 const wrapper = ({ children }: { children: React.ReactNode }) => {

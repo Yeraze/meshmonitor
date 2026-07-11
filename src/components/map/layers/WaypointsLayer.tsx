@@ -2,10 +2,18 @@
  * WaypointsLayer — renders one Marker per waypoint per visible source.
  *
  * Pulls the source list from `useDashboardSources` (the same source the other
- * MapAnalysis layers use) and fetches waypoints per-source via the
- * `useWaypoints` hook. Waypoints render as a leaflet `divIcon` using each
- * waypoint's emoji, with a popup that exposes name, description, owner,
- * source, and an expires countdown.
+ * map layers use) and fetches waypoints per-source via the `useWaypoints`
+ * hook. Waypoints render as a leaflet `divIcon` using each waypoint's emoji,
+ * with a popup that exposes name, description, owner, source, and an expires
+ * countdown.
+ *
+ * Relocated from `MapAnalysis/layers/WaypointsLayer.tsx` (Map Consolidation
+ * epic #4047, Phase 7, WP4) — already shared by MapAnalysis and Dashboard
+ * (via `PerSourceWaypoints`), just living in the wrong directory. Clean move,
+ * no behavior change: `MapAnalysisContext` is still MapAnalysis-owned, so the
+ * default `WaypointsLayer` export (which reads `useMapAnalysisCtx`) remains
+ * MapAnalysis-only; `PerSourceWaypoints` has no such dependency and is the
+ * cross-surface piece Dashboard consumes directly.
  */
 import { useMemo } from 'react';
 import { Marker, Popup } from 'react-leaflet';
@@ -13,7 +21,7 @@ import L from 'leaflet';
 import {
   useDashboardSources,
 } from '../../../hooks/useDashboardData';
-import { useMapAnalysisCtx } from '../MapAnalysisContext';
+import { useMapAnalysisCtx } from '../../MapAnalysis/MapAnalysisContext';
 import { useWaypoints } from '../../../hooks/useWaypoints';
 import type { Waypoint } from '../../../types/waypoint';
 

@@ -1,10 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline } from 'react-leaflet';
-import L, { type Marker as LeafletMarker } from 'leaflet';
+import { Popup, Tooltip, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { SpiderfierController, type SpiderfierControllerRef } from '../SpiderfierController';
-import { useSettings } from '../../contexts/SettingsContext';
+import { useSettings, useDisplaySettings } from '../../contexts/SettingsContext';
 import {
   getNodeTypeCategory,
   nodePassesTypeFilter,
@@ -12,9 +10,11 @@ import {
   NODE_TYPE_CATEGORY_META,
   type NodeTypeCategory,
 } from '../../utils/nodeTypeCategory';
-import { roleGlyphMarkerSvg } from '../../utils/mapIcons';
+import { createNodeIcon } from '../map/markerIcons';
+import { BaseMap } from '../map/BaseMap';
+import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
+import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
 import { useSource } from '../../contexts/SourceContext';
-import { getTilesetById, type TilesetId } from '../../config/tilesets';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { isNullIsland } from '../../utils/nullIsland';
 import { getPositionHistoryColor } from '../../utils/mapHelpers';
@@ -22,10 +22,12 @@ import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import GeoJsonOverlay from '../GeoJsonOverlay';
 import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
-import { TilesetSelector } from '../TilesetSelector';
 import MapLegend from '../MapLegend';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
+import { NodeCard } from '../map/popups/NodeCard';
+import { toNodeCardModel } from '../map/popups/nodeCardModel';
+import { MeshCoreDetails, LastHeardFooter, NodeActions, type NodeActionSpec } from '../map/popups/sections';
 
 const MESHCORE_COLOR = '#cba6f7';
 const NEIGHBOR_COLOR = '#06b6d4';
@@ -67,103 +69,17 @@ interface MeshCoreMapProps {
   onNavigateToDm?: (publicKey: string) => void;
 }
 
-/**
- * Marker body: a node-type role glyph (repeater/room/sensor/companion) on a
- * white circle when the contact's advert type is known (issue #3546), else the
- * original purple "MC" badge for standard/unknown nodes. The name label is
- * unchanged so existing behavior is preserved.
- */
-function makeIcon(name: string, category: NodeTypeCategory): L.DivIcon {
-  const glyph = roleGlyphMarkerSvg(category, MESHCORE_COLOR, 24);
-  const body = glyph
-    ? `<div style="width:24px;height:24px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">${glyph}</div>`
-    : `
-      <div style="
-        width: 24px;
-        height: 24px;
-        background: ${MESHCORE_COLOR};
-        border: 2px solid white;
-        border-radius: 50%;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #1e1e2e;
-        font-size: 10px;
-        font-weight: bold;
-      ">MC</div>`;
-  return L.divIcon({
-    className: 'meshcore-marker',
-    html: `
-      ${body}
-      <div style="
-        position: absolute;
-        top: -20px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: ${MESHCORE_COLOR}e6;
-        color: #1e1e2e;
-        padding: 2px 6px;
-        border-radius: 3px;
-        font-size: 11px;
-        white-space: nowrap;
-      ">${name}</div>
-    `,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-  });
-}
-
 export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition, onNavigateToDm }) => {
   const { t } = useTranslation();
   const { mapTileset, customTilesets, setMapTileset } = useSettings();
+  const { timeFormat, dateFormat } = useDisplaySettings();
   const { sourceId } = useSource();
   const csrfFetch = useCsrfFetch();
-  const tileset = getTilesetById(mapTileset, customTilesets);
   const [showPaths, setShowPaths] = useState(true);
   const [showNeighbors, setShowNeighbors] = useState(true);
   // #3636: node-to-node LOS distance measurement tool.
   const [measureActive, setMeasureActive] = useState(false);
   const [neighborEdges, setNeighborEdges] = useState<NeighborEdge[]>([]);
-
-  // Spiderfier: fan out co-located MeshCore contacts so each is selectable
-  // (this map had none before). Same robust bridge as the Map Analysis /
-  // Dashboard maps — register on a marker instance, IGNORE react-leaflet's
-  // null ref-bounce (useImperativeHandle has no deps, so it fires null→instance
-  // every re-render), reconcile genuine removals from the rendered key set, and
-  // keep position/icon refs stable so a re-render doesn't collapse an open fan.
-  const spiderfierRef = useRef<SpiderfierControllerRef>(null);
-  const markerByKey = useRef<Map<string, LeafletMarker>>(new Map());
-  const refHandlers = useRef<Map<string, (m: LeafletMarker | null) => void>>(new Map());
-  const positionCacheRef = useRef<Map<string, [number, number]>>(new Map());
-  const iconCacheRef = useRef<Map<string, { sig: string; icon: L.DivIcon }>>(new Map());
-  const stablePosition = (key: string, lat: number, lng: number): [number, number] => {
-    const cached = positionCacheRef.current.get(key);
-    if (cached && cached[0] === lat && cached[1] === lng) return cached;
-    const next: [number, number] = [lat, lng];
-    positionCacheRef.current.set(key, next);
-    return next;
-  };
-  const stableIcon = (key: string, sig: string, build: () => L.DivIcon): L.DivIcon => {
-    const cached = iconCacheRef.current.get(key);
-    if (cached && cached.sig === sig) return cached.icon;
-    const icon = build();
-    iconCacheRef.current.set(key, { sig, icon });
-    return icon;
-  };
-  const getMarkerRef = (key: string) => {
-    let h = refHandlers.current.get(key);
-    if (!h) {
-      h = (m: LeafletMarker | null) => {
-        if (m) {
-          markerByKey.current.set(key, m);
-          spiderfierRef.current?.addMarker(m, key);
-        }
-      };
-      refHandlers.current.set(key, h);
-    }
-    return h;
-  };
 
   // Per-node-type visibility filter (issue #3546), persisted like the other map
   // toggles. Missing/true => visible; a category is hidden only when explicitly
@@ -313,74 +229,59 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
     [visibleContacts],
   );
 
-  // Unregister markers whose contact is no longer rendered (filtered out / gone),
-  // keyed off the rendered publicKey set — genuine removals only, never the
-  // ref null-bounce.
-  const renderedKeysSig = visibleContacts.map(c => c.publicKey).join('|');
-  useEffect(() => {
-    const rendered = new Set(renderedKeysSig ? renderedKeysSig.split('|') : []);
-    for (const key of [...markerByKey.current.keys()]) {
-      if (rendered.has(key)) continue;
-      const m = markerByKey.current.get(key);
-      if (m) spiderfierRef.current?.removeMarker(m);
-      markerByKey.current.delete(key);
-      refHandlers.current.delete(key);
-      positionCacheRef.current.delete(key);
-      iconCacheRef.current.delete(key);
-    }
-  }, [renderedKeysSig]);
-
-  // #4015: open the popup ONLY via the OMS 'click' event (fires only for an
-  // already-spiderfied or standalone marker — never for the click that fans out a
-  // pile). The SpiderfierController's OMS is created in its own effect; retry
-  // briefly until it exists, then register.
-  useEffect(() => {
-    const onOmsClick = (marker: LeafletMarker) => marker.openPopup();
-    let attempts = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let registered: SpiderfierControllerRef | null = null;
-    const tryRegister = () => {
-      const controller = spiderfierRef.current;
-      if (controller?.getSpiderfier()) {
-        controller.addListener('click', onOmsClick);
-        registered = controller;
-        return;
-      }
-      if (attempts++ < 20) timer = setTimeout(tryRegister, 50);
-    };
-    tryRegister();
-    return () => {
-      if (timer) clearTimeout(timer);
-      registered?.removeListener('click', onOmsClick);
-    };
-  }, []);
-
-  // #4015: strip Leaflet's auto-open-on-click handler that `bindPopup` installs
-  // via the declarative <Popup> child, so a pile click doesn't plant a popup on
-  // the pre-spread stacked marker. Popup content stays bound for the OMS-driven
-  // open above; `off` is idempotent.
-  //
-  // Runs on EVERY render (no dep array) on purpose: react-leaflet creates the map
-  // (and mounts the markers) in a LATER commit than this component's first
-  // effect. MeshCore contact data is usually already present on first render, so
-  // a `renderedKeysSig`-keyed effect would run once (before any marker exists)
-  // and never re-run — leaving popups un-stripped. Re-running each commit catches
-  // markers whenever they mount. Cheap: MeshCore marker counts are small and
-  // `off()` on an already-removed handler is a no-op.
-  //
-  // NOTE: `_openPopup` is Leaflet's private handler (verified vs leaflet@1.9.4);
-  // if a future Leaflet renames it the strip no-ops and we degrade to the old
-  // double-fire (annoying, not a crash) — re-verify on Leaflet bumps.
-  useEffect(() => {
-    for (const m of markerByKey.current.values()) {
-      const mm = m as LeafletMarker & { _openPopup?: (e: unknown) => void; _meshPopupStripped?: boolean };
-      if (mm._meshPopupStripped) continue;
-      if (mm._openPopup) {
-        mm.off('click', mm._openPopup, mm);
-        mm._meshPopupStripped = true;
-      }
-    }
-  });
+  // Node-marker descriptors for the shared `NodeMarkersLayer` (#4047 Phase 4,
+  // WP4). `iconSig`/`buildIcon` mirror the pre-migration `stableIcon(publicKey,
+  // \`${name}|${category}\`, () => makeIcon(name, category))` recipe exactly —
+  // `variant:'meshcore'` is the moved `makeIcon` body verbatim, so output is
+  // pixel-identical. Popup/Tooltip content (Phase 5, unchanged) stays here as
+  // `children`.
+  const markers: NodeMarkerDescriptor[] = useMemo(
+    () => visibleContacts.map(c => {
+      const name = c.advName || c.name || 'MeshCore';
+      const category = getNodeTypeCategory({ advType: c.advType });
+      const model = toNodeCardModel(c, 'meshcore');
+      const actions: NodeActionSpec[] = onNavigateToDm
+        ? [{ kind: 'navigate-to-dm', onClick: () => onNavigateToDm(c.publicKey) }]
+        : [];
+      return {
+        key: c.publicKey,
+        position: [c.latitude!, c.longitude!] as [number, number],
+        iconSig: `${name}|${category}`,
+        buildIcon: () =>
+          createNodeIcon({
+            variant: 'meshcore',
+            fixedColor: MESHCORE_COLOR,
+            roleCategory: category,
+            labelName: name,
+          }),
+        children: (
+          <>
+            <Tooltip>
+              <strong>{name}</strong>
+              {typeof c.rssi === 'number' && <><br />RSSI: {c.rssi} dBm</>}
+              {typeof c.snr === 'number' && <><br />SNR: {c.snr} dB</>}
+              {typeof c.pathLen === 'number' && <><br />Path: {hopCountLabel(c.pathLen)}</>}
+            </Tooltip>
+            <Popup>
+              <NodeCard
+                model={model}
+                sections={
+                  <>
+                    <div className="node-popup-grid">
+                      <MeshCoreDetails model={model} />
+                    </div>
+                    <LastHeardFooter lastHeard={model.lastHeard} mode="absolute" timeFormat={timeFormat} dateFormat={dateFormat} />
+                    {actions.length > 0 && <NodeActions actions={actions} />}
+                  </>
+                }
+              />
+            </Popup>
+          </>
+        ),
+      };
+    }),
+    [visibleContacts, onNavigateToDm, timeFormat, dateFormat],
+  );
 
   const localPos = useMemo((): [number, number] | null => {
     if (localNodePosition?.lat != null && localNodePosition?.lng != null) {
@@ -391,6 +292,12 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
     return null;
   }, [localNodePosition, positioned]);
 
+  // DIVERGENT-BY-DESIGN (#4047 Phase 7, §5.1): a star topology from the local
+  // node to every contact, colored AND dashed by `pathLen` (hop count). No
+  // other map draws local→node lines keyed on path-length — this is the
+  // MeshCore-only "hop-count concept" the Phase-7 spec confirmed divergent
+  // (not a duplicate of the neighbor-link promotion below, which renders
+  // peer↔peer edges, not local→node hop paths). Left inline, not promoted.
   const pathSegments = useMemo(() => {
     if (!showPaths || !localPos) return [];
     return positioned
@@ -459,6 +366,14 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
   }, [showPositionHistory, positionHistoryHours, sourceId, historyKeysSig]);
 
   // Per-node trail segments, colored oldest→newest like the Meshtastic trail.
+  // DIVERGENT-BY-DESIGN (#4047 Phase 7, §5.3): unlike NodesTab's single-
+  // selected-node rich trail (spline/points-only/arrows/per-segment popups)
+  // and MapAnalysis's `PositionTrailsLayer` (many nodes, one hash-colored
+  // polyline each, no age gradient), this is MeshCore's own third form —
+  // many nodes, arrowless age-gradient segments, reusing only the shared
+  // `getPositionHistoryColor` helper. Not a candidate for promotion; the
+  // three forms would have to fuse genuinely different features to share
+  // rendering. Left inline per the Phase-2 divergence verdict (unchanged).
   const historySegments = useMemo(() => {
     if (!showPositionHistory) return [];
     const segs: { key: string; positions: [number, number][]; color: string }[] = [];
@@ -493,6 +408,21 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
       .filter((s): s is NonNullable<typeof s> => s !== null);
   }, [showNeighbors, neighborEdges, positioned]);
 
+  // Neighbor-link descriptors for the shared `NeighborLinksLayer` (#4047
+  // Phase 7, WP8). PURE REFACTOR — `pathOptions`/`children` reproduce the
+  // pre-migration fixed cyan style and sticky tooltip verbatim (MeshCoreMap
+  // is a "fixed style" consumer: unlike DashboardMap/NodesTab it does not
+  // vary opacity by SNR). No `arrows` (MeshCore-only today).
+  const neighborLinks: NeighborLinkDescriptor[] = useMemo(
+    () => neighborSegments.map((s) => ({
+      key: s.key,
+      positions: [s.from, s.to],
+      pathOptions: { color: NEIGHBOR_COLOR, weight: 1.5, opacity: 0.7, dashArray: '6 4' },
+      children: <Tooltip sticky>{s.label}</Tooltip>,
+    })),
+    [neighborSegments],
+  );
+
   const { center, zoom } = useMemo(() => {
     if (selectedPublicKey) {
       const sel = positioned.find(c => c.publicKey === selectedPublicKey);
@@ -507,18 +437,20 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
 
   return (
     <div className="meshcore-map-pane" style={{ position: 'relative' }}>
-      <MapContainer
+      {/* Caller-keyed remount (#4047 Phase 7, §3.3): MeshCoreMap force-fits by
+          remounting the whole shell on center/zoom change (e.g. selecting a
+          node) rather than an imperative flyTo — same effect as the
+          pre-migration `<MapContainer key={...}>`, moved to key the BaseMap
+          element itself. */}
+      <BaseMap
         key={`${center[0]}-${center[1]}-${zoom}`}
         center={center}
         zoom={zoom}
-        style={{ height: '100%', width: '100%' }}
+        tilesetId={mapTileset}
+        customTilesets={customTilesets}
+        showTilesetSelector={showTileSelector}
+        onTilesetChange={setMapTileset}
       >
-        <TileLayer
-          attribution={tileset.attribution}
-          url={tileset.url}
-          maxZoom={tileset.maxZoom}
-        />
-        <SpiderfierController ref={spiderfierRef} />
         {measureActive && (
           <MeasureDistanceController
             active={measureActive}
@@ -528,62 +460,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
         )}
         {showLegend && <MapLegend showNodeTypes />}
         {geoJsonLayers.length > 0 && <GeoJsonOverlay layers={geoJsonLayers} />}
-        {visibleContacts.map(c => {
-          const name = c.advName || c.name || 'MeshCore';
-          const category = getNodeTypeCategory({ advType: c.advType });
-          const icon = stableIcon(c.publicKey, `${name}|${category}`, () => makeIcon(name, category));
-          return (
-            <Marker
-              key={c.publicKey}
-              ref={getMarkerRef(c.publicKey)}
-              position={stablePosition(c.publicKey, c.latitude!, c.longitude!)}
-              icon={icon}
-            >
-              <Tooltip>
-                <strong>{name}</strong>
-                {typeof c.rssi === 'number' && <><br />RSSI: {c.rssi} dBm</>}
-                {typeof c.snr === 'number' && <><br />SNR: {c.snr} dB</>}
-                {typeof c.pathLen === 'number' && <><br />Path: {hopCountLabel(c.pathLen)}</>}
-              </Tooltip>
-              <Popup>
-                <div style={{ minWidth: 200 }}>
-                  <strong>{name}</strong>
-                  <br />
-                  <small>MeshCore Device</small>
-                  <br />
-                  Key: {c.publicKey.substring(0, 16)}…
-                  {typeof c.rssi === 'number' && <><br />RSSI: {c.rssi} dBm</>}
-                  {typeof c.snr === 'number' && <><br />SNR: {c.snr} dB</>}
-                  {typeof c.pathLen === 'number' && <><br />Path: {hopCountLabel(c.pathLen)}</>}
-                  {c.outPath && <><br />Route: {c.outPath}</>}
-                  {c.lastSeen && <><br />Last seen: {new Date(c.lastSeen).toLocaleString()}</>}
-                  {onNavigateToDm && (
-                    <>
-                      <br />
-                      <button
-                        onClick={() => onNavigateToDm(c.publicKey)}
-                        style={{
-                          marginTop: '0.5rem',
-                          padding: '0.3rem 0.7rem',
-                          background: MESHCORE_COLOR,
-                          color: '#1e1e2e',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontWeight: 'bold',
-                          fontSize: '0.85em',
-                          width: '100%',
-                        }}
-                      >
-                        More Details
-                      </button>
-                    </>
-                  )}
-                </div>
-              </Popup>
-            </Marker>
-          );
-        })}
+        <NodeMarkersLayer markers={markers} />
 
         {historySegments.map(s => (
           <Polyline
@@ -608,28 +485,8 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
           </Polyline>
         ))}
 
-        {neighborSegments.map(s => (
-          <Polyline
-            key={s.key}
-            positions={[s.from, s.to]}
-            pathOptions={{
-              color: NEIGHBOR_COLOR,
-              weight: 1.5,
-              opacity: 0.7,
-              dashArray: '6 4',
-            }}
-          >
-            <Tooltip sticky>{s.label}</Tooltip>
-          </Polyline>
-        ))}
-      </MapContainer>
-
-      {showTileSelector && (
-        <TilesetSelector
-          selectedTilesetId={mapTileset as TilesetId}
-          onTilesetChange={setMapTileset}
-        />
-      )}
+        <NeighborLinksLayer links={neighborLinks} />
+      </BaseMap>
 
       <div className="map-controls dashboard-map-controls">
         <div className="map-controls-body">

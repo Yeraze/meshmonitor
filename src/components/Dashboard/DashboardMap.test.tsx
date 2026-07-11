@@ -1,20 +1,44 @@
 /**
  * @vitest-environment jsdom
  */
+import { useEffect, useRef } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import DashboardMap from './DashboardMap';
+import { darkOverlayColors } from '../../config/overlayColors';
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
+// DashboardMap now composes the shared `BaseMap` shell (#4047 Phase 7 WP7/10)
+// instead of its own MapContainer/TileLayer. BaseMap transitively imports
+// VectorTileLayer (real module pulls in maplibre-gl side effects) and the
+// side-effecting leafletDefaultIcon module (mutates L.Icon.Default, which the
+// `leaflet` mock below doesn't provide) — both are stubbed the same way
+// BaseMap.test.tsx does it, so this bare-component render stays dependency-free.
+vi.mock('../VectorTileLayer', () => ({
+  VectorTileLayer: () => <div data-testid="vector-tile-layer" />,
+}));
+vi.mock('../map/leafletDefaultIcon', () => ({}));
+
 vi.mock('react-leaflet', () => ({
   MapContainer: ({ children }: any) => <div data-testid="map-container">{children}</div>,
   TileLayer: () => <div data-testid="tile-layer" />,
-  Marker: ({ children, opacity }: any) => (
-    <div data-testid="map-marker" data-opacity={opacity}>{children}</div>
-  ),
+  Marker: ({ children, opacity, ref }: any) => {
+    // The shared NodeMarkersLayer (#4047 Phase 4 WP5) forwards a ref to
+    // register each marker with the (mocked) spiderfier hook below. A plain
+    // function component can't accept `ref` for real, so invoke it manually
+    // on mount/unmount with a minimal fake marker — mirrors the pattern in
+    // src/components/map/layers/NodeMarkersLayer.test.tsx.
+    const instRef = useRef<any>(null);
+    if (!instRef.current) instRef.current = { openPopup: vi.fn(), off: vi.fn() };
+    useEffect(() => {
+      ref?.(instRef.current);
+      return () => ref?.(null);
+    }, [ref]);
+    return <div data-testid="map-marker" data-opacity={opacity}>{children}</div>;
+  },
   Popup: ({ children }: any) => <div data-testid="map-popup">{children}</div>,
   Polyline: () => <div data-testid="map-polyline" />,
   Rectangle: () => <div data-testid="map-rectangle" />,
@@ -72,7 +96,7 @@ vi.mock('../../services/api', () => ({
 // SettingsProvider.
 vi.mock('../../contexts/SettingsContext', () => ({
   useDisplaySettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
-  useSettings: () => ({ mapPinStyle: 'official' }),
+  useSettings: () => ({ mapPinStyle: 'official', overlayColors: darkOverlayColors }),
 }));
 
 vi.mock('leaflet', () => ({
@@ -96,18 +120,29 @@ vi.mock('../../config/tilesets', () => ({
     attribution: '© OSM',
     maxZoom: 19,
   }),
+  DEFAULT_TILESET_ID: 'osm',
 }));
 
 vi.mock('./DashboardWaypoints', () => ({
   default: () => <div data-testid="dashboard-waypoints" />,
 }));
 
-// SpiderfierController drives the real Leaflet OverlappingMarkerSpiderfier, which
-// needs a live map instance. In these DOM-light tests the map is mocked, so stub
-// the controller to a no-op that still renders (#3612). The marker-ref bridge
-// only invokes spiderfierRef methods, so a null ref is harmless here.
-vi.mock('../SpiderfierController', () => ({
-  SpiderfierController: () => <div data-testid="spiderfier-controller" />,
+// useMarkerSpiderfier drives the real Leaflet OverlappingMarkerSpiderfier,
+// which needs a live map instance. DashboardMap no longer wires this itself
+// (#4047 Phase 4 WP5) — it renders the shared NodeMarkersLayer, which calls
+// the hook directly. In these DOM-light tests the map is mocked, so stub the
+// hook to inert no-ops; addMarker is asserted below to prove every rendered
+// marker still registers with the spiderfier (#3612).
+const addMarkerMock = vi.fn();
+const addListenerMock = vi.fn();
+vi.mock('../../hooks/useMarkerSpiderfier', () => ({
+  useMarkerSpiderfier: () => ({
+    addMarker: addMarkerMock,
+    removeMarker: vi.fn(),
+    addListener: addListenerMock,
+    removeListener: vi.fn(),
+  }),
+  SHARED_SPIDERFIER_OPTIONS: {},
 }));
 
 // ---------------------------------------------------------------------------
@@ -237,9 +272,9 @@ describe('DashboardMap', () => {
     expect(screen.getByTestId('tile-layer')).toBeInTheDocument();
   });
 
-  it('mounts the shared SpiderfierController so co-located markers fan out (#3612)', () => {
+  it('registers node markers with the shared spiderfier so co-located markers fan out (#3612)', () => {
     render(<DashboardMap {...defaultProps} nodes={[nodeWithPosition]} />);
-    expect(screen.getByTestId('spiderfier-controller')).toBeInTheDocument();
+    expect(addMarkerMock).toHaveBeenCalledTimes(1);
   });
 
   it('renders markers for nodes with valid positions', () => {

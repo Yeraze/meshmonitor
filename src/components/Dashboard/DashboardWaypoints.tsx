@@ -1,17 +1,17 @@
 /**
  * DashboardWaypoints — renders waypoint markers on the Dashboard map.
  *
- * Reuses `PerSourceWaypoints` from MapAnalysis/layers/WaypointsLayer to keep
- * marker visuals identical across the two map surfaces. When `sourceId` is
- * null (unified Dashboard view), iterates all known sources; when set,
- * renders waypoints for that single source.
+ * Reuses `PerSourceWaypoints` from map/layers/WaypointsLayer to keep marker
+ * visuals identical across the two map surfaces. When `sourceId` is null
+ * (unified Dashboard view), iterates all known sources; when set, renders
+ * waypoints for that single source.
  */
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import {
   PerSourceWaypoints,
   type SourceInfo,
   type WaypointPopupActions,
-} from '../MapAnalysis/layers/WaypointsLayer';
+} from '../map/layers/WaypointsLayer';
 
 interface DashboardWaypointsProps {
   /** A real source UUID renders waypoints for that source only. Any other
