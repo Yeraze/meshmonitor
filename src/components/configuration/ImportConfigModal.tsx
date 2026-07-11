@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
-import { useSource } from '../../contexts/SourceContext';
+import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
 
 interface ImportConfigModalProps {
   isOpen: boolean;
@@ -58,7 +58,7 @@ const regionNames: { [key: number]: string } = {
 
 export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, onClose, onImportSuccess, nodeNum }) => {
   const { t } = useTranslation();
-  const { sourceId } = useSource();
+  const sourceId = useResolvedSourceId();
   const [url, setUrl] = useState('');
   const [decoded, setDecoded] = useState<DecodedConfig | null>(null);
   const [selectedChannels, setSelectedChannels] = useState<Set<number>>(new Set());

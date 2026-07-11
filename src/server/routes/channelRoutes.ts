@@ -444,7 +444,7 @@ async function migrateMessagesIfChannelsMoved(
 }
 
 // Update a channel configuration
-router.put('/:id', requireAuth(), async (req: Request, res: Response) => {
+router.put('/:id', requireAuth(), requireSourceId('body'), async (req: Request, res: Response) => {
   try {
     const channelId = parseInt(req.params.id);
     if (isNaN(channelId) || channelId < 0) {
@@ -713,7 +713,7 @@ router.delete('/:id', requireAuth(), async (req: Request, res: Response) => {
 });
 
 // Import a channel configuration to a specific slot
-router.post('/:slotId/import', requireAuth(), async (req: Request, res: Response) => {
+router.post('/:slotId/import', requireAuth(), requireSourceId('body'), async (req: Request, res: Response) => {
   try {
     const slotId = parseInt(req.params.slotId);
     if (isNaN(slotId) || slotId < 0 || slotId > 7) {
@@ -834,7 +834,7 @@ router.post('/:slotId/import', requireAuth(), async (req: Request, res: Response
 });
 
 // Reorder device channel slots (drag-and-drop)
-router.post('/reorder', requireAuth(), async (req: Request, res: Response) => {
+router.post('/reorder', requireAuth(), requireSourceId('body'), async (req: Request, res: Response) => {
   try {
     const { newOrder, sourceId: reorderSourceId } = req.body;
 
@@ -1010,7 +1010,7 @@ router.post('/decode-url', requirePermission('configuration', 'read'), async (re
 });
 
 // Encode current configuration to Meshtastic URL
-router.post('/encode-url', requirePermission('configuration', 'read'), async (req: Request, res: Response) => {
+router.post('/encode-url', requirePermission('configuration', 'read'), requireSourceId('body'), async (req: Request, res: Response) => {
   try {
     const { channelIds, includeLoraConfig, sourceId: encodeUrlSourceId } = req.body;
     const encodeUrlManager = resolveSourceManager(encodeUrlSourceId);
@@ -1091,7 +1091,7 @@ router.post('/encode-url', requirePermission('configuration', 'read'), async (re
 });
 
 // Import configuration from URL
-router.post('/import-config', requirePermission('configuration', 'write'), async (req: Request, res: Response) => {
+router.post('/import-config', requirePermission('configuration', 'write'), requireSourceId('body'), async (req: Request, res: Response) => {
   try {
     const { url: configUrl, sourceId: configSourceId } = req.body;
 
