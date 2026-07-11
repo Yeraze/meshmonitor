@@ -6,6 +6,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
+import { useResolvedSourceId } from './useResolvedSourceId';
 
 /**
  * Link quality data point from the backend
@@ -65,10 +66,13 @@ export function useLinkQuality({
   baseUrl = '',
   enabled = true,
 }: UseLinkQualityOptions) {
+  const sourceId = useResolvedSourceId();
   return useQuery({
-    queryKey: ['linkQuality', nodeId, hours],
+    queryKey: ['linkQuality', nodeId, hours, sourceId],
     queryFn: async (): Promise<LinkQualityData[]> => {
-      const response = await fetch(`${baseUrl}/api/telemetry/${nodeId}/linkquality?hours=${hours}`);
+      const response = await fetch(
+        `${baseUrl}/api/telemetry/${nodeId}/linkquality?hours=${hours}&sourceId=${encodeURIComponent(sourceId!)}`
+      );
 
       if (!response.ok) {
         throw new Error(`Failed to fetch link quality: ${response.status} ${response.statusText}`);
@@ -77,7 +81,8 @@ export function useLinkQuality({
       const result: LinkQualityResponse = await response.json();
       return result.data;
     },
-    enabled: enabled && !!nodeId,
+    // sourceId is required by the endpoint — defer until it resolves.
+    enabled: enabled && !!nodeId && !!sourceId,
     refetchInterval: 60000, // Refetch every 60 seconds
     staleTime: 55000, // Data considered fresh for 55 seconds
     gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes

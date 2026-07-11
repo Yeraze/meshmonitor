@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { requirePermission } from '../auth/authMiddleware.js';
+import { requireSourceId } from '../utils/requireSourceId.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
@@ -58,10 +59,11 @@ router.get('/', requirePermission('info', 'read'), async (req: Request, res: Res
   }
 });
 
-router.get('/:nodeNum', requirePermission('info', 'read'), async (req: Request, res: Response) => {
+router.get('/:nodeNum', requirePermission('info', 'read'), requireSourceId('query'), async (req: Request, res: Response) => {
   try {
     const nodeNum = parseInt(req.params.nodeNum);
-    const neighborSourceId = req.query.sourceId as string | undefined;
+    // sourceId presence validated by requireSourceId('query')
+    const neighborSourceId = req.query.sourceId as string;
     const neighborInfo = await databaseService.getNeighborsForNodeAsync(nodeNum, neighborSourceId);
 
     const enrichedNeighborInfo = await Promise.all(neighborInfo.map(async ni => {

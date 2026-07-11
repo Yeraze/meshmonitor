@@ -73,9 +73,15 @@ describe('GET /telemetry/:nodeId', () => {
     (databaseService.getTelemetryByNodeAveragedAsync as any).mockResolvedValue([
       { telemetryType: 'temperature', value: 20 },
     ]);
-    const res = await request(app).get('/telemetry/!12345678');
+    const res = await request(app).get('/telemetry/!12345678?sourceId=src-A');
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
+  });
+
+  it('400s when sourceId is omitted', async () => {
+    const res = await request(app).get('/telemetry/!12345678');
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MISSING_SOURCE_ID');
   });
 
   it('skips the node lookup for a 64-hex MeshCore pubkey (no out-of-range nodeNum) (#3677)', async () => {
@@ -85,7 +91,7 @@ describe('GET /telemetry/:nodeId', () => {
       { telemetryType: 'temperature', value: 20 },
     ]);
     const pubkey = 'a'.repeat(64);
-    const res = await request(app).get(`/telemetry/${pubkey}`);
+    const res = await request(app).get(`/telemetry/${pubkey}?sourceId=src-A`);
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(databaseService.nodes.getNode).not.toHaveBeenCalled();

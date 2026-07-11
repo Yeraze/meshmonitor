@@ -5,7 +5,7 @@ import api from '../services/api';
 import { TabType } from '../types/ui';
 import { getHardwareModelName } from '../utils/hardwareModel';
 import { logger } from '../utils/logger';
-import { useSource } from '../contexts/SourceContext';
+import { useResolvedSourceId } from '../hooks/useResolvedSourceId';
 import '../styles/SecurityTab.css';
 
 interface SecurityNode {
@@ -79,7 +79,9 @@ interface SecurityTabProps {
 export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectDMNode, setNewMessage }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
-  const { sourceId } = useSource();
+  // Resolve a concrete sourceId (context source, else the primary) — the
+  // security endpoints are source-scoped and now require one.
+  const sourceId = useResolvedSourceId();
   const [issues, setIssues] = useState<SecurityIssuesResponse | null>(null);
   const [scannerStatus, setScannerStatus] = useState<ScannerStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,8 +108,10 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
   const canWrite = hasPermission('security', 'write');
 
   const fetchSecurityData = async () => {
+    // Defer until a sourceId resolves — the security endpoints require one.
+    if (!sourceId) return;
     try {
-      const srcParam = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+      const srcParam = `?sourceId=${encodeURIComponent(sourceId)}`;
       const [issuesData, statusData, mismatchData, deadNodesData] = await Promise.all([
         api.get<SecurityIssuesResponse>(`/api/security/issues${srcParam}`),
         api.get<ScannerStatus>(`/api/security/scanner/status${srcParam}`),

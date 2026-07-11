@@ -202,6 +202,18 @@ describe('securityRoutes — per-source scanner', () => {
     });
   });
 
+  describe('source-scoped reads require a sourceId', () => {
+    it.each(['/api/security/issues', '/api/security/export', '/api/security/key-mismatches'])(
+      '%s 400s MISSING_SOURCE_ID when sourceId omitted',
+      async (path) => {
+        const app = createApp();
+        const res = await request(app).get(path);
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('MISSING_SOURCE_ID');
+      }
+    );
+  });
+
   describe('INVALID_SOURCE_TYPE guards', () => {
     beforeEach(() => {
       // Register both a meshtastic and a meshcore source stub.
