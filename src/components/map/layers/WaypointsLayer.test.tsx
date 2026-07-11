@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MapAnalysisProvider } from '../MapAnalysisContext';
+import { MapAnalysisProvider } from '../../MapAnalysis/MapAnalysisContext';
 
 // Stub leaflet primitives so the tests don't need a real DOM map context.
 vi.mock('react-leaflet', () => ({

@@ -1,15 +1,16 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Tooltip, Popup, Polyline } from 'react-leaflet';
+import { Marker, Tooltip, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { TILESETS, isPredefinedTilesetId, DEFAULT_TILESET_ID } from '../config/tilesets';
-import type { TilesetConfig } from '../config/tilesets';
+import { DEFAULT_TILESET_ID } from '../config/tilesets';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getHardwareModelName, getRoleName } from '../utils/nodeHelpers';
 import GeoJsonOverlay from './GeoJsonOverlay';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 import { getOverlayColors, getSchemeForTileset } from '../config/overlayColors';
+import { BaseMap } from './map/BaseMap';
 import { TraceroutePathsLayer } from './map/layers/TraceroutePathsLayer';
+import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
 import type { TracerouteRenderSegment } from '../utils/tracerouteSegments';
 
 interface EmbedConfig {
@@ -83,13 +84,6 @@ interface EmbedTracerouteSegment {
 
 interface EmbedMapProps {
   profileId: string;
-}
-
-function getEmbedTileset(tilesetId: string): TilesetConfig {
-  if (isPredefinedTilesetId(tilesetId)) {
-    return TILESETS[tilesetId];
-  }
-  return TILESETS[DEFAULT_TILESET_ID];
 }
 
 function formatLastHeard(lastHeard?: number): string {
@@ -343,6 +337,42 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     );
   }, [tracerouteSegmentsByKey]);
 
+  // Neighbor-info connection lines -> shared NeighborLinksLayer descriptors
+  // (#4047 P7 §4.1/§3.4): the flat color/weight/opacity/dashArray props this
+  // block used to pass straight to <Polyline> are wrapped into a single
+  // `pathOptions` object, byte-for-byte preserving the amber/w3/o.7/dash
+  // '5, 5' look; the popup JSX moves into `children` unchanged.
+  const neighborLinks: NeighborLinkDescriptor[] = useMemo(() => {
+    if (!config?.showNeighborInfo) return [];
+    return neighborSegments.map((seg, idx) => ({
+      key: `nb-${idx}`,
+      positions: [
+        [seg.nodeLatitude, seg.nodeLongitude],
+        [seg.neighborLatitude, seg.neighborLongitude],
+      ] as [[number, number], [number, number]],
+      pathOptions: { color: '#f5a623', weight: 3, opacity: 0.7, dashArray: '5, 5' },
+      children: config.showPopups ? (
+        <Popup>
+          <div className="embed-popup">
+            <div className="embed-popup-header">Neighbor Connection</div>
+            <div className="embed-popup-grid">
+              <div className="embed-popup-item embed-popup-item-full">
+                <span className="embed-popup-icon">🔗</span>
+                <span className="embed-popup-value">{seg.nodeName} &harr; {seg.neighborName}</span>
+              </div>
+              {seg.snr != null && (
+                <div className="embed-popup-item">
+                  <span className="embed-popup-icon">📶</span>
+                  <span className="embed-popup-value">{seg.snr} dB</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </Popup>
+      ) : undefined,
+    }));
+  }, [config?.showNeighborInfo, config?.showPopups, neighborSegments]);
+
   if (loading) {
     return (
       <div style={{
@@ -370,8 +400,6 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     );
   }
 
-  const tileset = getEmbedTileset(config.tileset);
-
   // Optional URL-parameter overrides (issue #2668): ?lat=&lon=&zoom= let
   // embedders pin a location without creating a new profile.
   const urlParams = new URLSearchParams(window.location.search);
@@ -385,19 +413,14 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <style>{embedPopupCss}</style>
-      <MapContainer
+      <BaseMap
         center={[centerLat, centerLng]}
         zoom={centerZoom}
-        style={{ width: '100%', height: '100%' }}
-        zoomControl={true}
-        attributionControl={true}
+        tilesetId={config.tileset}
+        customTilesets={[]}
+        zoomControl
+        attributionControl
       >
-        <TileLayer
-          url={tileset.url}
-          attribution={tileset.attribution}
-          maxZoom={tileset.maxZoom}
-        />
-
         {/* Public GeoJSON overlay layers (issue #3407) */}
         {geoJsonLayers.length > 0 && (
           <GeoJsonOverlay
@@ -426,40 +449,10 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
           />
         )}
 
-        {/* Neighbor info connection lines */}
-        {config.showNeighborInfo && neighborSegments.map((seg, idx) => (
-          <Polyline
-            key={`nb-${idx}`}
-            positions={[
-              [seg.nodeLatitude, seg.nodeLongitude],
-              [seg.neighborLatitude, seg.neighborLongitude],
-            ]}
-            color="#f5a623"
-            weight={3}
-            opacity={0.7}
-            dashArray="5, 5"
-          >
-            {config.showPopups && (
-              <Popup>
-                <div className="embed-popup">
-                  <div className="embed-popup-header">Neighbor Connection</div>
-                  <div className="embed-popup-grid">
-                    <div className="embed-popup-item embed-popup-item-full">
-                      <span className="embed-popup-icon">🔗</span>
-                      <span className="embed-popup-value">{seg.nodeName} &harr; {seg.neighborName}</span>
-                    </div>
-                    {seg.snr != null && (
-                      <div className="embed-popup-item">
-                        <span className="embed-popup-icon">📶</span>
-                        <span className="embed-popup-value">{seg.snr} dB</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Popup>
-            )}
-          </Polyline>
-        ))}
+        {/* Neighbor info connection lines — rendered through the shared
+            NeighborLinksLayer (#4047 P7 §4.1); descriptors built above
+            preserve the amber/w3/o.7/dash '5, 5' look byte-for-byte. */}
+        {config.showNeighborInfo && <NeighborLinksLayer links={neighborLinks} />}
 
         {/* Node markers */}
         {filteredNodes.map((node) => {
@@ -568,7 +561,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
             </Marker>
           );
         })}
-      </MapContainer>
+      </BaseMap>
 
       {/* Hop count legend overlay */}
       {config.showLegend && filteredNodes.length > 0 && (

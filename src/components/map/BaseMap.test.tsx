@@ -90,6 +90,33 @@ describe('BaseMap', () => {
     expect(rasterTile.getAttribute('data-url')).toBe(OSM_URL);
   });
 
+  // 3b. Tile-key remount (Phase 7 §2.1): the tile layer must remount (fresh
+  // DOM node) when the resolved tileset id changes, and must NOT remount for
+  // an unrelated re-render that leaves the tileset id unchanged.
+  it('remounts the raster tile layer when tilesetId changes', () => {
+    const { rerender, getByTestId } = render(<BaseMap center={[0, 0]} zoom={3} tilesetId="osm" />);
+    const before = getByTestId('raster-tile');
+    rerender(<BaseMap center={[0, 0]} zoom={3} tilesetId="osmHot" />);
+    const after = getByTestId('raster-tile');
+    expect(after).not.toBe(before);
+  });
+
+  it('does not remount the raster tile layer on an unrelated re-render (tilesetId unchanged)', () => {
+    const { rerender, getByTestId } = render(<BaseMap center={[0, 0]} zoom={3} tilesetId="osm" />);
+    const before = getByTestId('raster-tile');
+    rerender(<BaseMap center={[0, 0]} zoom={4} tilesetId="osm" />);
+    const after = getByTestId('raster-tile');
+    expect(after).toBe(before);
+  });
+
+  it('remounts the 4 Phase-1 editors (no tilesetId) identically across re-renders — stable key', () => {
+    const { rerender, getByTestId } = render(<BaseMap center={[0, 0]} zoom={3} />);
+    const before = getByTestId('raster-tile');
+    rerender(<BaseMap center={[0, 0]} zoom={5} />);
+    const after = getByTestId('raster-tile');
+    expect(after).toBe(before);
+  });
+
   // 4. Selector gating (sibling, not child)
   it('does not render the TilesetSelector by default', () => {
     render(<BaseMap center={[0, 0]} zoom={3} />);

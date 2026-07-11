@@ -1,4 +1,3 @@
-import { Polyline } from 'react-leaflet';
 import { useMemo } from 'react';
 import {
   useDashboardSources,
@@ -8,11 +7,11 @@ import { useNeighbors } from '../../../hooks/useMapAnalysisData';
 import { useMapAnalysisCtx } from '../MapAnalysisContext';
 import { resolveNodeLatLng, type MaybePositionedNode } from '../nodePositionUtil';
 import { classifyNodeTransport, type NodeTransportClass } from '../../../utils/nodeTransport';
-
-function snrToOpacity(snr: number | null): number {
-  if (snr === null) return 0.4;
-  return Math.max(0.2, Math.min(1, (snr + 10) / 20));
-}
+import { snrToNeighborOpacity } from '../../../utils/neighborLinks';
+import {
+  NeighborLinksLayer as SharedNeighborLinksLayer,
+  type NeighborLinkDescriptor,
+} from '../../map/layers/NeighborLinksLayer';
 
 function transportColor(tc: NodeTransportClass): string {
   if (tc === 'mqtt') return '#22c55e';
@@ -39,6 +38,16 @@ interface NodeRecord extends MaybePositionedNode {
  * Endpoint positions prefer the edge's own source but fall back to any selected
  * source that has the node positioned, so cross-source links render (#3792).
  * Edge opacity is derived from SNR.
+ *
+ * Thin adapter (Map Consolidation epic #4047, Phase 7, WP6): owns all
+ * MapAnalysis-specific data wiring (neighbor-edge fetch, endpoint position/
+ * transport resolution incl. the #3792 cross-source fallback, time-window
+ * filter) and maps its output onto the shared descriptor-based
+ * `src/components/map/layers/NeighborLinksLayer` for rendering. `pathOptions`
+ * (transport-colored, weight 1, dash `'4 4'`) and the click→`setSelected`
+ * handler are unchanged from before the promotion — this is a pure refactor
+ * of render mechanics, not a visual-convergence pass (deferred, see
+ * MAP_CONSOLIDATION_P7_SPEC.md §6.1).
  */
 export default function NeighborLinksLayer() {
   const { config, setSelected } = useMapAnalysisCtx();
@@ -106,7 +115,7 @@ export default function NeighborLinksLayer() {
   const edges = useMemo(() => {
     const out: Array<{
       key: string;
-      positions: [number, number][];
+      positions: [[number, number], [number, number]];
       opacity: number;
       sourceId: string;
       nodeNum: number;
@@ -131,7 +140,7 @@ export default function NeighborLinksLayer() {
       out.push({
         key: String(e.id),
         positions: [a, b],
-        opacity: snrToOpacity(e.snr),
+        opacity: snrToNeighborOpacity(e.snr),
         sourceId: e.sourceId,
         nodeNum: Number(e.nodeNum),
         neighborNum: Number(e.neighborNum),
@@ -144,26 +153,26 @@ export default function NeighborLinksLayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, positionByKey, positionByNode, transportByKey, transportByNode, ts.enabled, ts.windowStartMs, ts.windowEndMs]);
 
-  return (
-    <>
-      {edges.map((e) => (
-        <Polyline
-          key={e.key}
-          positions={e.positions}
-          pathOptions={{ color: transportColor(e.transportClass), weight: 1, opacity: e.opacity, dashArray: '4 4' }}
-          eventHandlers={{
-            click: () =>
-              setSelected({
-                type: 'neighbor',
-                sourceId: e.sourceId,
-                nodeNum: e.nodeNum,
-                neighborNum: e.neighborNum,
-                snr: e.snr,
-                timestamp: e.timestamp,
-              }),
-          }}
-        />
-      ))}
-    </>
+  const links = useMemo<NeighborLinkDescriptor[]>(
+    () =>
+      edges.map((e) => ({
+        key: e.key,
+        positions: e.positions,
+        pathOptions: { color: transportColor(e.transportClass), weight: 1, opacity: e.opacity, dashArray: '4 4' },
+        eventHandlers: {
+          click: () =>
+            setSelected({
+              type: 'neighbor',
+              sourceId: e.sourceId,
+              nodeNum: e.nodeNum,
+              neighborNum: e.neighborNum,
+              snr: e.snr,
+              timestamp: e.timestamp,
+            }),
+        },
+      })),
+    [edges, setSelected],
   );
+
+  return <SharedNeighborLinksLayer links={links} />;
 }

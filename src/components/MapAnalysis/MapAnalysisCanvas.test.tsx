@@ -29,9 +29,22 @@ vi.mock('react-leaflet', () => ({
   Popup: ({ children }: { children?: React.ReactNode }) => (
     <div data-testid="popup">{children}</div>
   ),
+  Polyline: ({ children }: { children?: React.ReactNode }) => (
+    <div data-testid="poly">{children}</div>
+  ),
+  Rectangle: () => <div data-testid="accuracy-rect" />,
   Pane: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
   // Spiderfier (NodeMarkersLayer) calls useMap(); null makes the hook a no-op.
   useMap: () => null,
+}));
+
+// MapAnalysisCanvas now composes BaseMap (#4047 Phase 7 WP10), which
+// statically imports the MapLibre-backed VectorTileLayer. Mock it out (same
+// as BaseMap.test.tsx) so this suite doesn't have to load the real
+// `@maplibre/maplibre-gl-leaflet` module under jsdom — the 'osm' tileset used
+// here is raster, so the vector branch is never exercised.
+vi.mock('../VectorTileLayer', () => ({
+  VectorTileLayer: () => <div data-testid="vector-tile" />,
 }));
 
 // FollowController's own behavior (Follow/Auto-zoom/pause) is covered by its

@@ -13,19 +13,18 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
-import { MapContainer, TileLayer, Popup, Polyline, Rectangle, useMap } from 'react-leaflet';
+import { Popup, useMap } from 'react-leaflet';
+import type { PathOptions } from 'leaflet';
 import L from 'leaflet';
 import { createNodeIcon } from '../../utils/mapIcons';
 import { markerAgeOpacity } from '../../utils/markerAgeOpacity';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
-import { getTilesetById } from '../../config/tilesets';
-import type { CustomTileset, TilesetId } from '../../config/tilesets';
+import type { CustomTileset } from '../../config/tilesets';
 import DashboardWaypoints from './DashboardWaypoints';
 import DashboardNodePopup, { type NodeSourceRef } from './DashboardNodePopup';
 import DashboardNeighborPopup from './DashboardNeighborPopup';
 import GeoJsonOverlay from '../GeoJsonOverlay';
 import PolarGridOverlay from '../PolarGridOverlay';
-import { TilesetSelector } from '../TilesetSelector';
 import MapLegend from '../MapLegend';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
@@ -46,7 +45,11 @@ import { isNullIsland } from '../../utils/nullIsland';
 import { effectiveMapMaxAgeHours } from '../../utils/mapAge';
 import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
+import { BaseMap } from '../map/BaseMap';
 import { TraceroutePathsLayer } from '../map/layers/TraceroutePathsLayer';
+import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
+import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from '../map/layers/AccuracyRegionsLayer';
+import { snrToNeighborOpacity, dedupByUnorderedPair } from '../../utils/neighborLinks';
 import {
   parseSnapshotRoutePositions,
   resolveSegmentPosition,
@@ -89,12 +92,6 @@ function getNodeLatLng(node: any): { lat: number; lng: number } | null {
     return { lat, lng };
   }
   return null;
-}
-
-/** SNR → line opacity for MeshCore neighbor links, matching MeshCoreNeighborLinksLayer. */
-function snrToOpacity(snr: number | null | undefined): number {
-  if (snr == null) return 0.4;
-  return Math.max(0.2, Math.min(1, (snr + 10) / 20));
 }
 
 // ---------------------------------------------------------------------------
@@ -140,7 +137,6 @@ export default function DashboardMap({
   maxNodeAgeHours,
   onNodeSourceSelect,
 }: DashboardMapProps) {
-  const tileset = getTilesetById(tilesetId, customTilesets);
   const { mapPinStyle, setMapTileset, overlayColors } = useSettings();
 
   // Polar grid (#3971): draw a grid centered on each source's own-node position.
@@ -328,12 +324,23 @@ export default function DashboardMap({
   // to a currently-visible MeshCore node. Gated by the "Show Neighbors" toggle.
   // Endpoints are filtered through the same node pipeline above, so links to a
   // hidden node (stale / ignored / RF off) naturally drop out. Deduped by the
-  // unordered {publicKey, neighborPublicKey} pair so the same link reported by
-  // multiple sources (Unified view) draws once.
-  const meshcoreSegments = useMemo(() => {
+  // unordered {publicKey, neighborPublicKey} pair (shared `dedupByUnorderedPair`,
+  // #4047 Phase 7 WP7) so the same link reported by multiple sources (Unified
+  // view) draws once. Emits descriptors for the shared `NeighborLinksLayer` —
+  // fixed cyan/dashed look preserved verbatim, no `children` (no popup).
+  const meshcoreNeighborLinks = useMemo<NeighborLinkDescriptor[]>(() => {
     if (!showNeighborInfo) return [];
-    const seen = new Set<string>();
-    const segs: Array<{ key: string; positions: [number, number][]; opacity: number }> = [];
+    // Untyped intermediate (publicKey/neighborPublicKey/positions/snr only —
+    // no `edge` reference kept) so the dedup + descriptor steps below never
+    // need an explicit `any`; matches the implicit-any the original inline
+    // `for (const e of meshcoreNeighbors)` loop relied on.
+    const withPositions: {
+      publicKey: string;
+      neighborPublicKey: string;
+      a: [number, number];
+      b: [number, number];
+      snr: number | null;
+    }[] = [];
     for (const e of (meshcoreNeighbors ?? [])) {
       const pk = e?.publicKey;
       const npk = e?.neighborPublicKey;
@@ -341,12 +348,27 @@ export default function DashboardMap({
       const a = positionByPublicKey.get(pk);
       const b = positionByPublicKey.get(npk);
       if (!a || !b) continue;
-      const pairKey = pk < npk ? `${pk}~${npk}` : `${npk}~${pk}`;
-      if (seen.has(pairKey)) continue;
-      seen.add(pairKey);
-      segs.push({ key: pairKey, positions: [a, b], opacity: snrToOpacity(e?.snr) });
+      withPositions.push({ publicKey: pk, neighborPublicKey: npk, a, b, snr: e?.snr ?? null });
     }
-    return segs;
+    const deduped = dedupByUnorderedPair(
+      withPositions,
+      (x) => x.publicKey,
+      (x) => x.neighborPublicKey,
+    );
+    return deduped.map(({ publicKey: pk, neighborPublicKey: npk, a, b, snr }) => {
+      const pairKey = pk < npk ? `${pk}~${npk}` : `${npk}~${pk}`;
+      const positions: [[number, number], [number, number]] = [a, b];
+      return {
+        key: `mc-neighbor-${pairKey}`,
+        positions,
+        pathOptions: {
+          color: '#06b6d4',
+          weight: 1.5,
+          opacity: snrToNeighborOpacity(snr),
+          dashArray: '6 4',
+        },
+      };
+    });
   }, [meshcoreNeighbors, positionByPublicKey, showNeighborInfo]);
 
   // Traceroute render segments: one TracerouteRenderSegment per hop, forward
@@ -452,21 +474,94 @@ export default function DashboardMap({
     };
   });
 
+  // Position accuracy regions — drawn from precision_bits, mirroring NodesTab.
+  // Shares the cell geometry with Map Analysis via `precisionCellBounds`. Uses
+  // the shared layer's canonical gray default (#4047 Phase 7 WP7) — no
+  // `pathOptions` override needed since it's byte-identical to the prior inline
+  // style.
+  const accuracyRegions: AccuracyRegionDescriptor[] = showAccuracyRegions
+    ? nodesWithPosition
+        .filter(({ node }) => hasAccuracyCell(node.positionPrecisionBits, node.positionIsOverride))
+        .map(({ node }) => {
+          // Center on the node's TRUE reported position, not the offset marker
+          // pos, so the offset marker reads as sitting inside its cell (#4016).
+          const center = getNodeLatLng(node);
+          if (!center) return null;
+          const bounds = precisionCellBounds(center.lat, center.lng, node.positionPrecisionBits as number);
+          return {
+            key: `accuracy-${node.nodeNum ?? node.nodeId ?? node.user?.id}`,
+            bounds,
+          };
+        })
+        .filter((d): d is AccuracyRegionDescriptor => d !== null)
+    : [];
+
+  // Meshtastic neighbor links, transport-filtered by the Map Features toggles.
+  // Emits descriptors for the shared `NeighborLinksLayer` (#4047 Phase 7 WP7) —
+  // bidirectional solid vs unidirectional dashed transport-colored look and the
+  // `DashboardNeighborPopup` popup preserved verbatim.
+  const meshtasticNeighborLinks: NeighborLinkDescriptor[] = showNeighborInfo
+    ? neighborInfo
+        .filter((link: any) => {
+          const tc = link.transportClass ?? 'rf';
+          if (tc === 'mqtt' && !showMqttNodes) return false;
+          if (tc === 'udp' && !showUdpNodes) return false;
+          if (tc === 'rf' && !showRfNodes) return false;
+          return true;
+        })
+        .map((link: any, idx: number): NeighborLinkDescriptor | null => {
+          const { nodeLatitude, nodeLongitude, neighborLatitude, neighborLongitude, bidirectional, transportClass } = link;
+          if (
+            nodeLatitude == null ||
+            nodeLongitude == null ||
+            neighborLatitude == null ||
+            neighborLongitude == null
+          ) {
+            return null;
+          }
+
+          const positions: [[number, number], [number, number]] = [
+            [nodeLatitude, nodeLongitude],
+            [neighborLatitude, neighborLongitude],
+          ];
+
+          const tc = transportClass ?? 'rf';
+          const colorByTransport = tc === 'mqtt' ? '#22c55e' : tc === 'udp' ? '#f97316' : 'blue';
+          const pathOptions: PathOptions = bidirectional
+            ? { color: colorByTransport, weight: 2, opacity: 0.6 }
+            : { color: colorByTransport, weight: 1, opacity: 0.6, dashArray: '5, 5' };
+
+          // Stable key by canonical node-pair (not array index) so the deduped
+          // line keeps its identity across polls.
+          const pairKey = link.nodeNum != null && link.neighborNodeNum != null
+            ? `${Math.min(Number(link.nodeNum), Number(link.neighborNodeNum))}-${Math.max(Number(link.nodeNum), Number(link.neighborNodeNum))}`
+            : `idx-${idx}`;
+
+          return {
+            key: `neighbor-link-${pairKey}`,
+            positions,
+            pathOptions,
+            children: (
+              <Popup>
+                <DashboardNeighborPopup link={link} />
+              </Popup>
+            ),
+          };
+        })
+        .filter((d): d is NeighborLinkDescriptor => d !== null)
+    : [];
+
   return (
     <div className="dashboard-map-container" style={{ position: 'relative' }}>
-      <MapContainer
+      <BaseMap
         center={[defaultCenter.lat, defaultCenter.lng]}
         zoom={10}
-        style={{ height: '100%', width: '100%' }}
+        tilesetId={tilesetId}
+        customTilesets={customTilesets}
         zoomControl
+        showTilesetSelector={showTileSelector}
+        onTilesetChange={setMapTileset}
       >
-        <TileLayer
-          key={tilesetId}
-          url={tileset.url}
-          attribution={tileset.attribution}
-          maxZoom={tileset.maxZoom}
-        />
-
         {measureActive && (
           <MeasureDistanceController
             active={measureActive}
@@ -495,30 +590,8 @@ export default function DashboardMap({
 
         <NodeMarkersLayer markers={nodeMarkers} />
 
-        {/* Position accuracy regions — drawn from precision_bits, mirroring NodesTab.
-            Shares the cell geometry with Map Analysis via `precisionCellBounds`. */}
-        {showAccuracyRegions && nodesWithPosition
-          .filter(({ node }) => hasAccuracyCell(node.positionPrecisionBits, node.positionIsOverride))
-          .map(({ node }) => {
-            // Center on the node's TRUE reported position, not the offset marker
-            // pos, so the offset marker reads as sitting inside its cell (#4016).
-            const center = getNodeLatLng(node);
-            if (!center) return null;
-            const bounds = precisionCellBounds(center.lat, center.lng, node.positionPrecisionBits as number);
-            return (
-              <Rectangle
-                key={`accuracy-${node.nodeNum ?? node.nodeId ?? node.user?.id}`}
-                bounds={bounds}
-                pathOptions={{
-                  color: '#888',
-                  fillColor: '#888',
-                  fillOpacity: 0.08,
-                  opacity: 0.5,
-                  weight: 1,
-                }}
-              />
-            );
-          })}
+        {/* Position accuracy regions — shared layer, canonical gray. */}
+        <AccuracyRegionsLayer regions={accuracyRegions} />
 
         {/* Route segments — thin SNR-colored hop polylines (shared render
             layer). MQTT/unknown-SNR hops dash and get the distinguishing
@@ -550,70 +623,12 @@ export default function DashboardMap({
         )}
 
         {/* MeshCore neighbor links — cyan dashed, resolved by public key. */}
-        {meshcoreSegments.map((s) => (
-          <Polyline
-            key={`mc-neighbor-${s.key}`}
-            positions={s.positions}
-            pathOptions={{ color: '#06b6d4', weight: 1.5, opacity: s.opacity, dashArray: '6 4' }}
-          />
-        ))}
+        <NeighborLinksLayer links={meshcoreNeighborLinks} />
 
-        {showNeighborInfo && neighborInfo
-          .filter((link: any) => {
-            const tc = link.transportClass ?? 'rf';
-            if (tc === 'mqtt' && !showMqttNodes) return false;
-            if (tc === 'udp' && !showUdpNodes) return false;
-            if (tc === 'rf' && !showRfNodes) return false;
-            return true;
-          })
-          .map((link: any, idx: number) => {
-          const { nodeLatitude, nodeLongitude, neighborLatitude, neighborLongitude, bidirectional, transportClass } = link;
-          if (
-            nodeLatitude == null ||
-            nodeLongitude == null ||
-            neighborLatitude == null ||
-            neighborLongitude == null
-          ) {
-            return null;
-          }
-
-          const positions: [number, number][] = [
-            [nodeLatitude, nodeLongitude],
-            [neighborLatitude, neighborLongitude],
-          ];
-
-          const tc = transportClass ?? 'rf';
-          const colorByTransport = tc === 'mqtt' ? '#22c55e' : tc === 'udp' ? '#f97316' : 'blue';
-          const pathOptions = bidirectional
-            ? { color: colorByTransport, weight: 2, opacity: 0.6 }
-            : { color: colorByTransport, weight: 1, opacity: 0.6, dashArray: '5, 5' };
-
-          // Stable key by canonical node-pair (not array index) so the deduped
-          // line keeps its identity across polls.
-          const pairKey = link.nodeNum != null && link.neighborNodeNum != null
-            ? `${Math.min(Number(link.nodeNum), Number(link.neighborNodeNum))}-${Math.max(Number(link.nodeNum), Number(link.neighborNodeNum))}`
-            : `idx-${idx}`;
-
-          return (
-            <Polyline
-              key={`neighbor-link-${pairKey}`}
-              positions={positions}
-              pathOptions={pathOptions}
-            >
-              <Popup>
-                <DashboardNeighborPopup link={link} />
-              </Popup>
-            </Polyline>
-          );
-        })}
-      </MapContainer>
-
-      {showTileSelector && (
-        <TilesetSelector
-          selectedTilesetId={tilesetId as TilesetId}
-          onTilesetChange={setMapTileset}
-        />
-      )}
+        {/* Meshtastic neighbor links — transport-colored, bidirectional solid vs
+            unidirectional dashed. */}
+        <NeighborLinksLayer links={meshtasticNeighborLinks} />
+      </BaseMap>
 
       {/* Polar grid legend — names each source whose grid is drawn, with its
           color swatch, so overlapping grids on the Unified map aren't confused. */}

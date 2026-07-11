@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MapContainer, TileLayer, Popup, Tooltip, Polyline } from 'react-leaflet';
+import { Popup, Tooltip, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useSettings, useDisplaySettings } from '../../contexts/SettingsContext';
 import {
@@ -11,9 +11,10 @@ import {
   type NodeTypeCategory,
 } from '../../utils/nodeTypeCategory';
 import { createNodeIcon } from '../map/markerIcons';
+import { BaseMap } from '../map/BaseMap';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
+import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
 import { useSource } from '../../contexts/SourceContext';
-import { getTilesetById, type TilesetId } from '../../config/tilesets';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { isNullIsland } from '../../utils/nullIsland';
 import { getPositionHistoryColor } from '../../utils/mapHelpers';
@@ -21,7 +22,6 @@ import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import GeoJsonOverlay from '../GeoJsonOverlay';
 import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
-import { TilesetSelector } from '../TilesetSelector';
 import MapLegend from '../MapLegend';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
@@ -75,7 +75,6 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
   const { timeFormat, dateFormat } = useDisplaySettings();
   const { sourceId } = useSource();
   const csrfFetch = useCsrfFetch();
-  const tileset = getTilesetById(mapTileset, customTilesets);
   const [showPaths, setShowPaths] = useState(true);
   const [showNeighbors, setShowNeighbors] = useState(true);
   // #3636: node-to-node LOS distance measurement tool.
@@ -293,6 +292,12 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
     return null;
   }, [localNodePosition, positioned]);
 
+  // DIVERGENT-BY-DESIGN (#4047 Phase 7, §5.1): a star topology from the local
+  // node to every contact, colored AND dashed by `pathLen` (hop count). No
+  // other map draws local→node lines keyed on path-length — this is the
+  // MeshCore-only "hop-count concept" the Phase-7 spec confirmed divergent
+  // (not a duplicate of the neighbor-link promotion below, which renders
+  // peer↔peer edges, not local→node hop paths). Left inline, not promoted.
   const pathSegments = useMemo(() => {
     if (!showPaths || !localPos) return [];
     return positioned
@@ -361,6 +366,14 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
   }, [showPositionHistory, positionHistoryHours, sourceId, historyKeysSig]);
 
   // Per-node trail segments, colored oldest→newest like the Meshtastic trail.
+  // DIVERGENT-BY-DESIGN (#4047 Phase 7, §5.3): unlike NodesTab's single-
+  // selected-node rich trail (spline/points-only/arrows/per-segment popups)
+  // and MapAnalysis's `PositionTrailsLayer` (many nodes, one hash-colored
+  // polyline each, no age gradient), this is MeshCore's own third form —
+  // many nodes, arrowless age-gradient segments, reusing only the shared
+  // `getPositionHistoryColor` helper. Not a candidate for promotion; the
+  // three forms would have to fuse genuinely different features to share
+  // rendering. Left inline per the Phase-2 divergence verdict (unchanged).
   const historySegments = useMemo(() => {
     if (!showPositionHistory) return [];
     const segs: { key: string; positions: [number, number][]; color: string }[] = [];
@@ -395,6 +408,21 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
       .filter((s): s is NonNullable<typeof s> => s !== null);
   }, [showNeighbors, neighborEdges, positioned]);
 
+  // Neighbor-link descriptors for the shared `NeighborLinksLayer` (#4047
+  // Phase 7, WP8). PURE REFACTOR — `pathOptions`/`children` reproduce the
+  // pre-migration fixed cyan style and sticky tooltip verbatim (MeshCoreMap
+  // is a "fixed style" consumer: unlike DashboardMap/NodesTab it does not
+  // vary opacity by SNR). No `arrows` (MeshCore-only today).
+  const neighborLinks: NeighborLinkDescriptor[] = useMemo(
+    () => neighborSegments.map((s) => ({
+      key: s.key,
+      positions: [s.from, s.to],
+      pathOptions: { color: NEIGHBOR_COLOR, weight: 1.5, opacity: 0.7, dashArray: '6 4' },
+      children: <Tooltip sticky>{s.label}</Tooltip>,
+    })),
+    [neighborSegments],
+  );
+
   const { center, zoom } = useMemo(() => {
     if (selectedPublicKey) {
       const sel = positioned.find(c => c.publicKey === selectedPublicKey);
@@ -409,17 +437,20 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
 
   return (
     <div className="meshcore-map-pane" style={{ position: 'relative' }}>
-      <MapContainer
+      {/* Caller-keyed remount (#4047 Phase 7, §3.3): MeshCoreMap force-fits by
+          remounting the whole shell on center/zoom change (e.g. selecting a
+          node) rather than an imperative flyTo — same effect as the
+          pre-migration `<MapContainer key={...}>`, moved to key the BaseMap
+          element itself. */}
+      <BaseMap
         key={`${center[0]}-${center[1]}-${zoom}`}
         center={center}
         zoom={zoom}
-        style={{ height: '100%', width: '100%' }}
+        tilesetId={mapTileset}
+        customTilesets={customTilesets}
+        showTilesetSelector={showTileSelector}
+        onTilesetChange={setMapTileset}
       >
-        <TileLayer
-          attribution={tileset.attribution}
-          url={tileset.url}
-          maxZoom={tileset.maxZoom}
-        />
         {measureActive && (
           <MeasureDistanceController
             active={measureActive}
@@ -454,28 +485,8 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
           </Polyline>
         ))}
 
-        {neighborSegments.map(s => (
-          <Polyline
-            key={s.key}
-            positions={[s.from, s.to]}
-            pathOptions={{
-              color: NEIGHBOR_COLOR,
-              weight: 1.5,
-              opacity: 0.7,
-              dashArray: '6 4',
-            }}
-          >
-            <Tooltip sticky>{s.label}</Tooltip>
-          </Polyline>
-        ))}
-      </MapContainer>
-
-      {showTileSelector && (
-        <TilesetSelector
-          selectedTilesetId={mapTileset as TilesetId}
-          onTilesetChange={setMapTileset}
-        />
-      )}
+        <NeighborLinksLayer links={neighborLinks} />
+      </BaseMap>
 
       <div className="map-controls dashboard-map-controls">
         <div className="map-controls-body">

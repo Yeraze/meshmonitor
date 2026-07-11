@@ -131,12 +131,33 @@ browser-validated on every map view; suite green.
 
 ## Deferred (future issues, not this epic)
 
+- Neighbor-link visual convergence (one canonical color/dash/SNR encoding across the 7
+  surfaces incl. public embeds) — promotion shipped pure-refactor in Phase 7 PR-A.
+- Embed profile flag unification (`showPaths` vs `showTraceroutes` double-gate).
+
 - Shared follow/fit-bounds controller (generalize `FollowController`/`followMath` + five
   hand-rolled fit-bounds implementations).
 
 ## Phase log
 
 (Per-phase: PR link, deviations, decisions — appended as phases complete.)
+
+### Phase 7 PR-A (2026-07-10) — layer library + Dashboard/MeshCore/Analysis/Embed on BaseMap
+- Delivered (pure refactor): shared `NeighborLinksLayer` (descriptor-based; 7 renderings
+  dry-mapped losslessly) + `utils/neighborLinks.ts`; shared `AccuracyRegionsLayer`;
+  `WaypointsLayer` relocated to map/layers/ (clean move); BaseMap tile layer keyed by
+  resolved tileset id (remount-on-swap semantics preserved for Dashboard/MeshCore).
+  Dashboard, MeshCoreMap, MapAnalysis (3 thin adapters), EmbedMap all adopt BaseMap +
+  the shared layers with byte-identical pathOptions. Divergent-by-design layers stay
+  inline with spec-citing comments (MeshCore hop-count star, multi-node trails).
+- **Neighbor-link VISUAL convergence deferred** (orchestrator resolution §6.1) — the
+  promotion is pure-refactor; unifying colors/dash across surfaces (incl. public embeds)
+  is a scoped follow-up decision. Added to Deferred below.
+- Browser-validated on all five surfaces incl. a live embed profile (tileset remount
+  proven live OSM→CartoDark→OSM). Suite: 9,631 tests / 0 failures.
+- Gotcha discovered: embed traceroutes need BOTH profile flags — client gates fetch on
+  `showPaths`, server gates on `showTraceroutes`. Pre-existing; candidate for the
+  follow-up issue list.
 
 ### Phase 6 (2026-07-10) — Embed traceroute alignment
 - Delivered: `GET /api/embed/:id/traceroutes` now decomposes via the shared
