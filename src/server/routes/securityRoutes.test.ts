@@ -18,9 +18,10 @@ vi.mock('../../services/database.js', () => ({
     getNodesWithExcessivePacketsAsync: vi.fn().mockResolvedValue([]),
     getNodesWithTimeOffsetIssuesAsync: vi.fn().mockResolvedValue([]),
     getTopBroadcastersAsync: vi.fn().mockResolvedValue([]),
-    nodes: { getAllNodes: vi.fn().mockResolvedValue([]), getNode: vi.fn() },
+    nodes: { getAllNodes: vi.fn().mockResolvedValue([]), getNode: vi.fn(), upsertNode: vi.fn().mockResolvedValue(undefined) },
     settings: { getSetting: vi.fn().mockResolvedValue(null) },
     getKeyRepairLogAsync: vi.fn().mockResolvedValue([]),
+    updateNodeTimeOffsetFlagsAsync: vi.fn().mockResolvedValue(undefined),
   }
 }));
 
@@ -212,6 +213,27 @@ describe('securityRoutes — per-source scanner', () => {
         expect(res.body.code).toBe('MISSING_SOURCE_ID');
       }
     );
+  });
+
+  describe('POST /nodes/:nodeNum/clear', () => {
+    it('400s MISSING_SOURCE_ID when sourceId omitted', async () => {
+      const app = createApp();
+      const res = await request(app).post('/api/security/nodes/123/clear').send({});
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('MISSING_SOURCE_ID');
+    });
+
+    it('scopes the node lookup and clear-write to the requested source', async () => {
+      mockDb.nodes.getNode.mockResolvedValue({ nodeNum: 123, nodeId: '!7b', shortName: 'X', sourceId: 'src-1' });
+      const app = createApp();
+      const res = await request(app).post('/api/security/nodes/123/clear').send({ sourceId: 'src-1' });
+      expect(res.status).toBe(200);
+      // getNode + upsertNode + time-offset clear all scoped to src-1, not a
+      // cross-source first match or the 'default' source.
+      expect(mockDb.nodes.getNode).toHaveBeenCalledWith(123, 'src-1');
+      expect(mockDb.nodes.upsertNode).toHaveBeenCalledWith(expect.objectContaining({ nodeNum: 123 }), 'src-1');
+      expect(mockDb.updateNodeTimeOffsetFlagsAsync).toHaveBeenCalledWith(123, false, null, 'src-1');
+    });
   });
 
   describe('INVALID_SOURCE_TYPE guards', () => {
