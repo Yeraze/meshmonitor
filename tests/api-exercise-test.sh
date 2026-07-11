@@ -315,7 +315,7 @@ if nodes: print(nodes[0].get('nodeNum',''))
 if [ -n "$FIRST_NODE_ID" ]; then
   check "GET /api/nodes/:nodeId/position-history" "$(api GET /api/nodes/$FIRST_NODE_ID/position-history)" 200
   check "GET /api/nodes/:nodeId/positions" "$(api GET /api/nodes/$FIRST_NODE_ID/positions)" 200
-  check "GET /api/nodes/:nodeId/position-override" "$(api GET /api/nodes/$FIRST_NODE_ID/position-override)" 200 404
+  check "GET /api/nodes/:nodeId/position-override" "$(api GET /api/nodes/$FIRST_NODE_ID/position-override?sourceId=$SOURCE_ID)" 200 404
 else
   log_skip "Node-specific endpoints (no nodes found)"
 fi
@@ -404,7 +404,7 @@ echo -e "${BLUE}=== Security ===${NC}"
 
 check_json "GET /api/security/issues" "GET" "/api/security/issues?sourceId=$SOURCE_ID" "'total' in data and 'nodes' in data"
 check_json "GET /api/security/scanner/status" "GET" "/api/security/scanner/status" "'running' in data"
-check_json "GET /api/security/key-mismatches" "GET" "/api/security/key-mismatches" "'events' in data"
+check_json "GET /api/security/key-mismatches" "GET" "/api/security/key-mismatches?sourceId=$SOURCE_ID" "'events' in data"
 check_json "GET /api/security/dead-nodes" "GET" "/api/security/dead-nodes" "'nodes' in data and 'count' in data"
 check "GET /api/security/export" "$(api GET /api/security/export?sourceId=$SOURCE_ID)" 200
 

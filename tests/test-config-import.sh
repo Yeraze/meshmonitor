@@ -206,6 +206,18 @@ else
 fi
 echo ""
 
+# POST /api/channels/import-config now requires a sourceId (source-scoping
+# remediation). Resolve the primary Meshtastic (TCP) source and send it.
+SOURCE_ID=$(curl -s -b /tmp/meshmonitor-config-import-cookies.txt "http://localhost:$TEST_PORT/api/sources" \
+    | tr '}' '\n' | grep '"type":"meshtastic_tcp"' | head -n1 \
+    | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+if [ -z "$SOURCE_ID" ]; then
+    echo -e "${RED}✗ FAIL${NC}: Could not resolve a meshtastic_tcp sourceId from /api/sources"
+    exit 1
+fi
+echo -e "${GREEN}✓${NC} Using sourceId: $SOURCE_ID"
+echo ""
+
 # Function to decode URL and extract expected values
 decode_url() {
     local url="$1"
@@ -225,7 +237,7 @@ import_config() {
         -H "Content-Type: application/json" \
         -H "X-CSRF-Token: $CSRF_TOKEN" \
         -b /tmp/meshmonitor-config-import-cookies.txt \
-        -d "{\"url\":\"$url\"}")
+        -d "{\"url\":\"$url\",\"sourceId\":\"$SOURCE_ID\"}")
 
     echo "$response"
 }
