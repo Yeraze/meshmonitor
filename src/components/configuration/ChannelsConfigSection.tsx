@@ -24,7 +24,7 @@ import { useToast } from '../ToastContainer';
 import { Channel } from '../../types/device';
 import { logger } from '../../utils/logger';
 import { useSettings } from '../../contexts/SettingsContext';
-import { useSource } from '../../contexts/SourceContext';
+import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
 import { formatPrecisionAccuracy } from '../../utils/distance';
 
 // Default public PSK (base64 encoded value of single byte 0x01)
@@ -145,7 +145,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { distanceUnit } = useSettings();
-  const { sourceId } = useSource();
+  // Channel writes require a concrete sourceId; resolve context source or primary.
+  const sourceId = useResolvedSourceId();
 
   // #3644: device channels whose PSK matches a server-side decryption (Channel
   // Database) entry under a DIFFERENT name. Messages on such a channel get filed

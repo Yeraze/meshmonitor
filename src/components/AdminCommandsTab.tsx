@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
 import { useToast } from './ToastContainer';
-import { useSource } from '../contexts/SourceContext';
+import { useResolvedSourceId } from '../hooks/useResolvedSourceId';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, FEM_LNA_MODE_OPTIONS } from './configuration/constants';
 import type { Channel } from '../types/device';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
@@ -28,7 +28,9 @@ interface AdminCommandsTabProps {
 const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeId, channels: _channels = [], onChannelsUpdated: _onChannelsUpdated }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
-  const { sourceId } = useSource();
+  // Resolve a concrete sourceId (context source, else primary) — channel-write
+  // admin actions require one; other admin calls default to primary anyway.
+  const sourceId = useResolvedSourceId();
 
   // Use consolidated state hook for config-related state
   const {
@@ -3542,7 +3544,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       {/* Automatic Favorites Management Section (issue #2608) */}
       <AutoFavoriteManagementSection
         selectedNodeNum={selectedNodeNum}
-        sourceId={sourceId}
+        sourceId={sourceId ?? null}
         nodes={nodes}
       />
 

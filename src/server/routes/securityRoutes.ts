@@ -279,7 +279,7 @@ router.get('/export', requireSourceId('query'), async (req: Request, res: Respon
 });
 
 // Clear security issues for a specific node (requires write permission)
-router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), async (req: Request, res: Response) => {
+router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), requireSourceId('body'), async (req: Request, res: Response) => {
   try {
     const nodeNum = parseInt(req.params.nodeNum, 10);
 
@@ -287,7 +287,12 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), asy
       return res.status(400).json({ error: 'Invalid node number' });
     }
 
-    const node = await databaseService.nodes.getNode(nodeNum);
+    // sourceId presence validated by requireSourceId('body'); scope the node
+    // lookup + write so we clear/rewrite the correct source's row (not a
+    // cross-source first match, and not the 'default' source).
+    const clearSourceId = req.body.sourceId as string;
+
+    const node = await databaseService.nodes.getNode(nodeNum, clearSourceId);
     if (!node) {
       return res.status(404).json({ error: 'Node not found' });
     }
@@ -302,10 +307,10 @@ router.post('/nodes/:nodeNum/clear', requirePermission('security', 'write'), asy
       duplicateKeyDetected: false,
       keyMismatchDetected: false,
       keySecurityIssueDetails: null, // null explicitly clears the field (undefined would preserve existing value)
-    });
+    }, clearSourceId);
 
-    // Clear time offset flags (scoped to the node's source per migration 029)
-    await databaseService.updateNodeTimeOffsetFlagsAsync(nodeNum, false, null, (node as any).sourceId);
+    // Clear time offset flags (scoped to the requested source per migration 029)
+    await databaseService.updateNodeTimeOffsetFlagsAsync(nodeNum, false, null, clearSourceId);
 
     // Log the action
     void databaseService.auditLogAsync(

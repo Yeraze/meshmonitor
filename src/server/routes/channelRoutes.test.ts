@@ -280,29 +280,52 @@ describe('GET /channels/:id/export', () => {
   });
 });
 
+describe('channel-write routes require a sourceId', () => {
+  it('PUT /channels/:id 400s MISSING_SOURCE_ID without sourceId', async () => {
+    const res = await request(app).put('/channels/1').send({ name: 'x' });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MISSING_SOURCE_ID');
+  });
+  it('POST /channels/:slotId/import 400s MISSING_SOURCE_ID without sourceId', async () => {
+    const res = await request(app).post('/channels/1/import').send({ channel: { name: 'x' } });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MISSING_SOURCE_ID');
+  });
+  it('POST /channels/reorder 400s MISSING_SOURCE_ID without sourceId', async () => {
+    const res = await request(app).post('/channels/reorder').send({ newOrder: [0, 1, 2, 3, 4, 5, 6, 7] });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MISSING_SOURCE_ID');
+  });
+  it('POST /channels/import-config 400s MISSING_SOURCE_ID without sourceId', async () => {
+    const res = await request(app).post('/channels/import-config').send({ url: 'https://meshtastic.org/e/#x' });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MISSING_SOURCE_ID');
+  });
+});
+
 describe('PUT /channels/:id', () => {
   it('rejects an out-of-range Meshtastic channel id', async () => {
-    const res = await request(app).put('/channels/9').send({ name: 'x' });
+    const res = await request(app).put('/channels/9').send({ name: 'x', sourceId: 'src-1' });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('0-7');
   });
 
   it('rejects an over-long Meshtastic name (>11)', async () => {
     mockDb.channels.getChannelById.mockResolvedValue({ id: 1, name: 'old', psk: null });
-    const res = await request(app).put('/channels/1').send({ name: 'this-name-is-way-too-long' });
+    const res = await request(app).put('/channels/1').send({ name: 'this-name-is-way-too-long', sourceId: 'src-1' });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('11 characters');
   });
 
   it('404s when updating a missing Meshtastic channel', async () => {
     mockDb.channels.getChannelById.mockResolvedValue(null);
-    const res = await request(app).put('/channels/1').send({ name: 'ok' });
+    const res = await request(app).put('/channels/1').send({ name: 'ok', sourceId: 'src-1' });
     expect(res.status).toBe(404);
   });
 
   it('updates an existing channel and pushes config to the device', async () => {
     mockDb.channels.getChannelById.mockResolvedValue({ id: 1, name: 'old', psk: 'AQ==', role: 2 });
-    const res = await request(app).put('/channels/1').send({ name: 'newname' });
+    const res = await request(app).put('/channels/1').send({ name: 'newname', sourceId: 'src-1' });
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(mockDb.channels.upsertChannel).toHaveBeenCalled();
@@ -371,20 +394,20 @@ describe('DELETE /channels/:id', () => {
 
 describe('POST /channels/:slotId/import', () => {
   it('rejects an invalid slot id', async () => {
-    const res = await request(app).post('/channels/9/import').send({ channel: { name: 'x' } });
+    const res = await request(app).post('/channels/9/import').send({ channel: { name: 'x' }, sourceId: 'src-1' });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('0-7');
   });
 
   it('requires a channel object', async () => {
-    const res = await request(app).post('/channels/1/import').send({});
+    const res = await request(app).post('/channels/1/import').send({ sourceId: 'src-1' });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('Expected channel object');
   });
 
   it('imports a channel into the slot', async () => {
     mockDb.channels.getChannelById.mockResolvedValue({ id: 1, name: 'Imported' });
-    const res = await request(app).post('/channels/1/import').send({ channel: { name: 'Imported', psk: 'AQ==' } });
+    const res = await request(app).post('/channels/1/import').send({ channel: { name: 'Imported', psk: 'AQ==' }, sourceId: 'src-1' });
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(mockDb.channels.upsertChannel).toHaveBeenCalled();
@@ -393,18 +416,18 @@ describe('POST /channels/:slotId/import', () => {
 
 describe('POST /channels/reorder', () => {
   it('rejects a newOrder that is not 8 entries', async () => {
-    const res = await request(app).post('/channels/reorder').send({ newOrder: [0, 1, 2] });
+    const res = await request(app).post('/channels/reorder').send({ newOrder: [0, 1, 2], sourceId: 'src-1' });
     expect(res.status).toBe(400);
   });
 
   it('rejects a newOrder that is not a permutation of 0-7', async () => {
-    const res = await request(app).post('/channels/reorder').send({ newOrder: [0, 0, 1, 2, 3, 4, 5, 6] });
+    const res = await request(app).post('/channels/reorder').send({ newOrder: [0, 0, 1, 2, 3, 4, 5, 6], sourceId: 'src-1' });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('exactly once');
   });
 
   it('returns requiresReboot:false for the identity order without touching the device', async () => {
-    const res = await request(app).post('/channels/reorder').send({ newOrder: [0, 1, 2, 3, 4, 5, 6, 7] });
+    const res = await request(app).post('/channels/reorder').send({ newOrder: [0, 1, 2, 3, 4, 5, 6, 7], sourceId: 'src-1' });
     expect(res.status).toBe(200);
     expect(res.body.requiresReboot).toBe(false);
     expect(mockManager.beginEditSettings).not.toHaveBeenCalled();
@@ -501,14 +524,14 @@ describe('POST /channels/decode-url', () => {
 
 describe('POST /channels/encode-url', () => {
   it('rejects a non-array channelIds', async () => {
-    const res = await request(app).post('/channels/encode-url').send({ channelIds: 'nope' });
+    const res = await request(app).post('/channels/encode-url').send({ channelIds: 'nope', sourceId: 'src-1' });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('channelIds must be an array');
   });
 
   it('400s when no valid channels are selected', async () => {
     mockDb.channels.getChannelById.mockResolvedValue(null);
-    const res = await request(app).post('/channels/encode-url').send({ channelIds: [3] });
+    const res = await request(app).post('/channels/encode-url').send({ channelIds: [3], sourceId: 'src-1' });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('No valid channels');
   });
@@ -516,7 +539,7 @@ describe('POST /channels/encode-url', () => {
   it('encodes the selected channels into a url', async () => {
     mockDb.channels.getChannelById.mockResolvedValue({ id: 0, name: 'Primary', psk: 'AQ==' });
     mockChannelUrlService.encodeUrl.mockReturnValue('https://meshtastic.org/e/#encoded');
-    const res = await request(app).post('/channels/encode-url').send({ channelIds: [0] });
+    const res = await request(app).post('/channels/encode-url').send({ channelIds: [0], sourceId: 'src-1' });
     expect(res.status).toBe(200);
     expect(res.body.url).toContain('meshtastic.org');
   });
@@ -524,14 +547,14 @@ describe('POST /channels/encode-url', () => {
 
 describe('POST /channels/import-config', () => {
   it('requires a url', async () => {
-    const res = await request(app).post('/channels/import-config').send({});
+    const res = await request(app).post('/channels/import-config').send({ sourceId: 'src-1' });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('URL is required');
   });
 
   it('400s on an empty/invalid config url', async () => {
     mockChannelUrlService.decodeUrl.mockReturnValue(null);
-    const res = await request(app).post('/channels/import-config').send({ url: 'https://meshtastic.org/e/#x' });
+    const res = await request(app).post('/channels/import-config').send({ url: 'https://meshtastic.org/e/#x', sourceId: 'src-1' });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('Invalid or empty');
   });
@@ -541,7 +564,7 @@ describe('POST /channels/import-config', () => {
       channels: [{ name: 'A', psk: 'AQ==' }],
       loraConfig: { region: 1 },
     });
-    const res = await request(app).post('/channels/import-config').send({ url: 'https://meshtastic.org/e/#ok' });
+    const res = await request(app).post('/channels/import-config').send({ url: 'https://meshtastic.org/e/#ok', sourceId: 'src-1' });
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.imported.channels).toBe(1);
