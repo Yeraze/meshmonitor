@@ -11,6 +11,17 @@ import { darkOverlayColors } from '../../config/overlayColors';
 // Mocks
 // ---------------------------------------------------------------------------
 
+// DashboardMap now composes the shared `BaseMap` shell (#4047 Phase 7 WP7/10)
+// instead of its own MapContainer/TileLayer. BaseMap transitively imports
+// VectorTileLayer (real module pulls in maplibre-gl side effects) and the
+// side-effecting leafletDefaultIcon module (mutates L.Icon.Default, which the
+// `leaflet` mock below doesn't provide) — both are stubbed the same way
+// BaseMap.test.tsx does it, so this bare-component render stays dependency-free.
+vi.mock('../VectorTileLayer', () => ({
+  VectorTileLayer: () => <div data-testid="vector-tile-layer" />,
+}));
+vi.mock('../map/leafletDefaultIcon', () => ({}));
+
 vi.mock('react-leaflet', () => ({
   MapContainer: ({ children }: any) => <div data-testid="map-container">{children}</div>,
   TileLayer: () => <div data-testid="tile-layer" />,
@@ -109,6 +120,7 @@ vi.mock('../../config/tilesets', () => ({
     attribution: '© OSM',
     maxZoom: 19,
   }),
+  DEFAULT_TILESET_ID: 'osm',
 }));
 
 vi.mock('./DashboardWaypoints', () => ({
