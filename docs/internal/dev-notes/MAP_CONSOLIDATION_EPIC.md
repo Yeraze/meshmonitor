@@ -121,7 +121,7 @@ TraceroutePathsLayer with the canonical SNR scale.
 clients don't break; API + rendering tests; browser-validated via an embed iframe;
 suite green.
 
-### [ ] Phase 7 — Residual layer library + big maps on BaseMap (`feature/4047-p7-layer-library`)
+### [x] Phase 7 — Residual layer library + big maps on BaseMap (`feature/4047-p7-layer-library`)
 Promote neighbor links, waypoints, accuracy regions, position trails into
 `src/components/map/layers/`; DashboardMap, MeshCoreMap, MapAnalysis, NodesTab compose
 them and adopt the BaseMap shell; NodesTab migrates **last**. May split into multiple PRs
@@ -141,6 +141,23 @@ browser-validated on every map view; suite green.
 ## Phase log
 
 (Per-phase: PR link, deviations, decisions — appended as phases complete.)
+
+### Phase 7 PR-B (2026-07-11) — NodesTab on BaseMap + shared layers (EPIC CODE COMPLETE)
+- NodesTab (the epic's original 2,848-line monolith) adopts BaseMap (vector tiles +
+  styleJson + selector + resize through the shell designed from its own wiring in
+  Phase 1) + NeighborLinksLayer (4-tier SNR styling extracted as exported pure
+  `computeNeighborLinkStyle`, test-pinned; `neighbor-line` classNames preserved so the
+  hover-dimming CSS keeps working) + AccuracyRegionsLayer (hop-colored pathOptions;
+  bounds math verified equal to the shared `precisionCellBounds`).
+- Single-consumer layers stay inline with constraint comments (estimated-uncertainty
+  circles, rich single-node position history). Local traceroute wrappers renamed to
+  `*Container` to end the name-shadowing with the shared layer.
+- Zero App.tsx changes; zero shared-API gaps across the entire epic (BaseMap,
+  TraceroutePathsLayer, NodeMarkersLayer, popup family, NeighborLinksLayer,
+  AccuracyRegionsLayer all survived every consumer unmodified).
+- Browser-validated: tiles via BaseMap, 790 markers, 165 neighbor-line paths (hover
+  class intact), 435 bearing arrows, 247 traceroute segments, 93 hop-colored accuracy
+  rectangles. Suite: 9,637 tests / 0 failures.
 
 ### Phase 7 PR-A (2026-07-10) — layer library + Dashboard/MeshCore/Analysis/Embed on BaseMap
 - Delivered (pure refactor): shared `NeighborLinksLayer` (descriptor-based; 7 renderings
