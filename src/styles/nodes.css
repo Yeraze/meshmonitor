@@ -2128,6 +2128,24 @@
   padding: 0.5rem 0;
 }
 
+/* Node Popup — chat overlay frame (#4047 Phase 5 WP5).
+   NodePopup (App.tsx sender-dot click) is a position:fixed div, not a
+   Leaflet popup, so it has no `.leaflet-popup-content-wrapper` to supply a
+   background/border/shadow box the way the map-anchored cards above get one
+   for free. This class supplies ONLY that frame — the canonical .node-popup
+   rules (L1791 above) still own sizing/scrollbar for every consumer,
+   including this one. Salvaged from the deleted NodePopup.css; appended
+   AFTER the base .node-popup rules per the nodes.css cascade-order trap
+   (an earlier same-specificity @media block would otherwise lose to these
+   base rules — see MAP_CONSOLIDATION_P5_SPEC.md §1.3 / CLAUDE.md). */
+.node-popup-overlay {
+  background: var(--ctp-base);
+  border: 1px solid var(--ctp-surface0);
+  border-radius: var(--radius-lg);
+  padding: 0.75rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
 /* Legacy Route Popup Styles (for other popups) */
 .route-popup {
   min-width: 200px;
