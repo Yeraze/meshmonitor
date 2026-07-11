@@ -1021,6 +1021,7 @@ function DashboardInner() {
           sourceId={selectedSourceId}
           maxNodeAgeHours={maxNodeAgeHours}
           onNodeSourceSelect={handleNodeSourceSelect}
+          isLoading={sourceData.isLoading}
         />
       </div>
 

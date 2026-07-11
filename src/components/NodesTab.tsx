@@ -42,6 +42,7 @@ import PacketMonitorPanel from './PacketMonitorPanel';
 import { getPacketStats } from '../services/packetApi';
 
 import { BaseMap } from './map/BaseMap';
+import { MapLoadingOverlay } from './map/MapLoadingOverlay';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from './map/layers/AccuracyRegionsLayer';
 import { NodeCard } from './map/popups/NodeCard';
@@ -379,7 +380,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   } = useMapContext();
 
   const { currentNodeId } = useDeviceConfig();
-  const { nodes } = useNodes();
+  // `isLoading` reflects TanStack Query's pending state for the shared poll
+  // query — true only until the FIRST poll response resolves (success or
+  // error), regardless of how many nodes come back. That's exactly "first
+  // fetch unresolved", so no new plumbing is needed beyond reading it here.
+  const { nodes, isLoading: nodesIsLoading } = useNodes();
 
   // Compute own node position for polar grid overlay (needs to be at component scope)
   const ownHomeNode = nodes.find(n => n.user?.id === currentNodeId);
@@ -2646,7 +2651,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               {positionHistoryElements}
 
           </BaseMap>
-          {shouldShowData() && nodesWithPosition.length === 0 && (
+          {shouldShowData() && nodesIsLoading && <MapLoadingOverlay />}
+          {shouldShowData() && !nodesIsLoading && nodesWithPosition.length === 0 && (
             <div className="map-overlay">
               <div className="overlay-content">
                 <h3>📍 No Node Locations</h3>

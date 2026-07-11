@@ -28,6 +28,12 @@ interface MeshCoreNodesViewProps {
   onDiscoverNodes?: (mode: DiscoverMode) => Promise<{ returned: number; newCount: number } | null>;
   /** Gate for the Discover menu — connected companion device. */
   canDiscover?: boolean;
+  /**
+   * True while the FIRST contacts snapshot fetch is still in flight.
+   * Forwarded to the embedded `MeshCoreMap` to show a loading overlay
+   * instead of an apparently-empty map during initial connect.
+   */
+  mapIsLoading?: boolean;
 }
 
 interface MergedRow {
@@ -117,6 +123,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   onToggleFavorite,
   onDiscoverNodes,
   canDiscover,
+  mapIsLoading,
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
@@ -417,7 +424,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             )}
           </div>
         )}
-        <MeshCoreMap contacts={contacts} selectedPublicKey={selected} onNavigateToDm={onNavigateToDm} />
+        <MeshCoreMap contacts={contacts} selectedPublicKey={selected} onNavigateToDm={onNavigateToDm} isLoading={mapIsLoading} />
       </div>
       {importDialogOpen && (
         <div

@@ -12,6 +12,7 @@ import {
 } from '../../utils/nodeTypeCategory';
 import { createNodeIcon } from '../map/markerIcons';
 import { BaseMap } from '../map/BaseMap';
+import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
 import PolarGridOverlay from '../PolarGridOverlay';
@@ -68,9 +69,17 @@ interface MeshCoreMapProps {
   selectedPublicKey: string | null;
   localNodePosition?: { lat: number; lng: number } | null;
   onNavigateToDm?: (publicKey: string) => void;
+  /**
+   * True while the FIRST contacts snapshot fetch is still in flight (see
+   * `useMeshCore`'s `hasLoadedOnce`). Shows a loading overlay so a slow
+   * initial connect doesn't render an apparently-empty world map before
+   * contacts have a chance to arrive. Defaults to false so existing
+   * callers/tests are unaffected.
+   */
+  isLoading?: boolean;
 }
 
-export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition, onNavigateToDm }) => {
+export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition, onNavigateToDm, isLoading = false }) => {
   const { t } = useTranslation();
   const { mapTileset, customTilesets, setMapTileset } = useSettings();
   const { timeFormat, dateFormat } = useDisplaySettings();
@@ -503,6 +512,8 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
 
         <NeighborLinksLayer links={neighborLinks} />
       </BaseMap>
+
+      {isLoading && <MapLoadingOverlay />}
 
       <div className="map-controls dashboard-map-controls">
         <div className="map-controls-body">

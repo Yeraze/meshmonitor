@@ -103,3 +103,29 @@ describe('MeshCoreMap polar grid toggle', () => {
     expect(localStorage.getItem('meshmonitor-meshcore-showPolarGrid')).toBe('true');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Loading overlay (initial contacts-snapshot fetch spinner)
+// ---------------------------------------------------------------------------
+
+describe('MeshCoreMap loading overlay', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+  });
+
+  it('shows the loading overlay while isLoading is true, even with no contacts', () => {
+    render(<MeshCoreMap contacts={[]} selectedPublicKey={null} isLoading />);
+    expect(screen.getByTestId('map-loading-overlay')).toBeInTheDocument();
+  });
+
+  it('hides the loading overlay once isLoading resolves to false', () => {
+    render(<MeshCoreMap contacts={[]} selectedPublicKey={null} isLoading={false} />);
+    expect(screen.queryByTestId('map-loading-overlay')).not.toBeInTheDocument();
+  });
+
+  it('omits the loading overlay by default (isLoading not passed)', () => {
+    render(<MeshCoreMap contacts={[]} selectedPublicKey={null} />);
+    expect(screen.queryByTestId('map-loading-overlay')).not.toBeInTheDocument();
+  });
+});

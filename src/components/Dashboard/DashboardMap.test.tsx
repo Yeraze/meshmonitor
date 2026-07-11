@@ -371,6 +371,44 @@ describe('DashboardMap', () => {
     expect(screen.queryByText('No node positions')).not.toBeInTheDocument();
   });
 
+  // --- Loading overlay (initial-fetch spinner) --------------------------------
+
+  it('shows the loading overlay instead of the empty state while isLoading is true', () => {
+    render(
+      <DashboardMap
+        {...defaultProps}
+        nodes={[nodeWithoutPosition, nodeWithZeroPosition]}
+        isLoading
+      />,
+    );
+    expect(screen.getByTestId('map-loading-overlay')).toBeInTheDocument();
+    expect(screen.queryByText('No node positions')).not.toBeInTheDocument();
+  });
+
+  it('shows the empty state (not the loading overlay) once loading resolves with no positioned nodes', () => {
+    render(
+      <DashboardMap
+        {...defaultProps}
+        nodes={[nodeWithoutPosition, nodeWithZeroPosition]}
+        isLoading={false}
+      />,
+    );
+    expect(screen.queryByTestId('map-loading-overlay')).not.toBeInTheDocument();
+    expect(screen.getByText('No node positions')).toBeInTheDocument();
+  });
+
+  it('shows neither overlay once loading resolves with positioned nodes', () => {
+    render(
+      <DashboardMap
+        {...defaultProps}
+        nodes={[nodeWithPosition]}
+        isLoading={false}
+      />,
+    );
+    expect(screen.queryByTestId('map-loading-overlay')).not.toBeInTheDocument();
+    expect(screen.queryByText('No node positions')).not.toBeInTheDocument();
+  });
+
   it('does not render markers for ignored nodes even when they have a position', () => {
     render(
       <DashboardMap

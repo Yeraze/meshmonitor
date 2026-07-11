@@ -1068,6 +1068,45 @@
   line-height: 1.4;
 }
 
+/* Map loading overlay (#4047 follow-up) — shared across NodesTab/
+   DashboardMap/MeshCoreMap. Shown while a map's first node-data fetch is
+   still in flight, so a slow initial load doesn't flash the "no nodes"
+   empty state before data has a chance to arrive. Mirrors .map-overlay/
+   .overlay-content's positioning and card styling. */
+.map-loading-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.map-loading-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(30, 30, 46, 0.95);
+  border: 2px solid var(--ctp-surface2);
+  border-radius: var(--radius-xl);
+  padding: 2rem;
+  text-align: center;
+  color: var(--ctp-subtext1);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.map-loading-overlay-content .loading-spinner {
+  width: 28px;
+  height: 28px;
+}
+
+.map-loading-overlay-content p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
 /* Leaflet popup customization */
 .leaflet-popup-content-wrapper {
   background: var(--ctp-surface0);
