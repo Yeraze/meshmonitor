@@ -15,7 +15,7 @@ import MeshCoreNeighborLinksLayer from './layers/MeshCoreNeighborLinksLayer';
 import PositionTrailsLayer from './layers/PositionTrailsLayer';
 import CoverageHeatmapLayer from './layers/CoverageHeatmapLayer';
 import SnrOverlayLayer from './layers/SnrOverlayLayer';
-import WaypointsLayer from './layers/WaypointsLayer';
+import WaypointsLayer from '../map/layers/WaypointsLayer';
 import PolarGridLayer from './layers/PolarGridLayer';
 import AccuracyRegionsLayer from './layers/AccuracyRegionsLayer';
 import TimeSliderControl from './TimeSliderControl';
