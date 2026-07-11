@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MapAnalysisProvider } from '../MapAnalysisContext';
-import NeighborLinksLayer from './NeighborLinksLayer';
+import MeshCoreNeighborLinksLayer from './MeshCoreNeighborLinksLayer';
 
 vi.mock('react-leaflet', () => ({
   Polyline: (props: { pathOptions?: Record<string, unknown> }) => (
@@ -18,15 +18,26 @@ const mockState: {
   edges: Array<Record<string, unknown>>;
   nodes: Array<Record<string, unknown>>;
 } = {
-  edges: [{ id: 1, nodeNum: 1, neighborNum: 2, sourceId: 'a', snr: 5, timestamp: 0 }],
+  edges: [
+    {
+      id: 1,
+      publicKey: 'aa',
+      neighborPublicKey: 'bb',
+      sourceId: 'a',
+      snr: 5,
+      timestamp: 0,
+      nodeName: 'Alpha',
+      neighborName: 'Beta',
+    },
+  ],
   nodes: [
-    { nodeNum: 1, sourceId: 'a', position: { latitude: 30, longitude: -90 } },
-    { nodeNum: 2, sourceId: 'a', position: { latitude: 31, longitude: -91 } },
+    { sourceId: 'a', isMeshCore: true, publicKey: 'aa', position: { latitude: 30, longitude: -90 } },
+    { sourceId: 'a', isMeshCore: true, publicKey: 'bb', position: { latitude: 31, longitude: -91 } },
   ],
 };
 
 vi.mock('../../../hooks/useMapAnalysisData', () => ({
-  useNeighbors: () => ({ data: { items: mockState.edges }, isLoading: false }),
+  useMeshCoreNeighbors: () => ({ data: { items: mockState.edges }, isLoading: false }),
 }));
 vi.mock('../../../hooks/useDashboardData', () => ({
   useDashboardSources: () => ({ data: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] }),
@@ -34,36 +45,46 @@ vi.mock('../../../hooks/useDashboardData', () => ({
   UNIFIED_SOURCE_ID: '__unified__',
 }));
 
-describe('NeighborLinksLayer', () => {
+describe('MeshCoreNeighborLinksLayer', () => {
   beforeEach(() => {
     localStorage.clear();
-    // Reset to the single-source defaults before each test.
-    mockState.edges = [{ id: 1, nodeNum: 1, neighborNum: 2, sourceId: 'a', snr: 5, timestamp: 0 }];
+    mockState.edges = [
+      {
+        id: 1,
+        publicKey: 'aa',
+        neighborPublicKey: 'bb',
+        sourceId: 'a',
+        snr: 5,
+        timestamp: 0,
+        nodeName: 'Alpha',
+        neighborName: 'Beta',
+      },
+    ];
     mockState.nodes = [
-      { nodeNum: 1, sourceId: 'a', position: { latitude: 30, longitude: -90 } },
-      { nodeNum: 2, sourceId: 'a', position: { latitude: 31, longitude: -91 } },
+      { sourceId: 'a', isMeshCore: true, publicKey: 'aa', position: { latitude: 30, longitude: -90 } },
+      { sourceId: 'a', isMeshCore: true, publicKey: 'bb', position: { latitude: 31, longitude: -91 } },
     ];
   });
 
-  it('renders one polyline per edge, colored/dashed per the pre-promotion RF look', () => {
+  it('renders one polyline per edge with the fixed-cyan dashed pathOptions', () => {
     const qc = new QueryClient();
     render(
       <QueryClientProvider client={qc}>
         <MapAnalysisProvider>
-          <NeighborLinksLayer />
+          <MeshCoreNeighborLinksLayer />
         </MapAnalysisProvider>
       </QueryClientProvider>,
     );
     const polys = screen.getAllByTestId('poly');
     expect(polys).toHaveLength(1);
-    // Pins the pre-promotion look (RF transport color, weight 1, dash '4 4')
-    // so the shared-layer adapter is byte-for-byte identical. opacity =
-    // snrToNeighborOpacity(5) = clamp((5 + 10) / 20, 0.2, 1) = 0.75.
+    // Pins the pre-promotion look (fixed cyan, weight 1.5, dash '6 4') so the
+    // shared-layer adapter is byte-for-byte identical. opacity = snrToNeighborOpacity(5)
+    // = clamp((5 + 10) / 20, 0.2, 1) = 0.75.
     expect(JSON.parse(polys[0].getAttribute('data-path-options')!)).toEqual({
       color: '#06b6d4',
-      weight: 1,
+      weight: 1.5,
       opacity: 0.75,
-      dashArray: '4 4',
+      dashArray: '6 4',
     });
   });
 
@@ -91,44 +112,22 @@ describe('NeighborLinksLayer', () => {
     render(
       <QueryClientProvider client={qc}>
         <MapAnalysisProvider>
-          <NeighborLinksLayer />
+          <MeshCoreNeighborLinksLayer />
         </MapAnalysisProvider>
       </QueryClientProvider>,
     );
     expect(screen.queryAllByTestId('poly')).toHaveLength(0);
   });
 
-  it('renders a cross-source edge when the neighbor is positioned under a different source (#3792)', () => {
-    // Edge reported on source 'a'; neighbor node 2 only has a position under
-    // source 'b'. Before the fix the strict `a:2` lookup missed and the edge
-    // was silently dropped (intersection instead of union).
-    mockState.edges = [{ id: 1, nodeNum: 1, neighborNum: 2, sourceId: 'a', snr: 5, timestamp: 0 }];
+  it('drops an edge when an endpoint has no MeshCore position on the reporting source', () => {
     mockState.nodes = [
-      { nodeNum: 1, sourceId: 'a', position: { latitude: 30, longitude: -90 } },
-      { nodeNum: 2, sourceId: 'b', position: { latitude: 31, longitude: -91 } },
+      { sourceId: 'a', isMeshCore: true, publicKey: 'aa', position: { latitude: 30, longitude: -90 } },
     ];
     const qc = new QueryClient();
     render(
       <QueryClientProvider client={qc}>
         <MapAnalysisProvider>
-          <NeighborLinksLayer />
-        </MapAnalysisProvider>
-      </QueryClientProvider>,
-    );
-    expect(screen.getAllByTestId('poly')).toHaveLength(1);
-  });
-
-  it('still drops an edge when an endpoint has no position on any source', () => {
-    // Neighbor node 2 has no position anywhere → edge cannot be drawn.
-    mockState.edges = [{ id: 1, nodeNum: 1, neighborNum: 2, sourceId: 'a', snr: 5, timestamp: 0 }];
-    mockState.nodes = [
-      { nodeNum: 1, sourceId: 'a', position: { latitude: 30, longitude: -90 } },
-    ];
-    const qc = new QueryClient();
-    render(
-      <QueryClientProvider client={qc}>
-        <MapAnalysisProvider>
-          <NeighborLinksLayer />
+          <MeshCoreNeighborLinksLayer />
         </MapAnalysisProvider>
       </QueryClientProvider>,
     );
