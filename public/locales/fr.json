@@ -4468,5 +4468,10 @@
     "auto_favorite.never": "Jamais",
     "auto_favorite.save": "Enregistrer les Paramètres",
     "auto_favorite.saving": "Sauver…",
-    "auto_favorite.running": "Exécuter…"
+    "auto_favorite.running": "Exécuter…",
+    "node_popup.hops_one": "",
+    "node_popup.hops_other": "",
+    "node_popup.sources_seen_by_one": "",
+    "node_popup.sources_seen_by_other": "",
+    "node_popup.meshcore_device": ""
 }

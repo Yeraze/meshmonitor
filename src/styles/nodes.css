@@ -2076,6 +2076,16 @@
   font-style: italic;
 }
 
+/* "View History" button inside the traceroute tab (popup family's
+   `TracerouteBody` section, #4047 Phase 5). Ported from the now-superseded
+   NodePopup.css `.traceroute-history-btn` (unscoped there); scoped under
+   `.node-popup-traceroute` to match its siblings above. */
+.node-popup-traceroute .traceroute-history-btn {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  padding: 0.375rem 0.75rem;
+}
+
 /* Tab Navigation for Map Popups */
 .node-popup-tabs {
   display: flex;

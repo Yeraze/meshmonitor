@@ -4262,5 +4262,10 @@
     "theme_management.dark_active": "Темный активный",
     "theme_management.light_active": "Светлый активный",
     "theme_management.assigned_dark": "Темная",
-    "theme_management.assigned_light": "Светлая"
+    "theme_management.assigned_light": "Светлая",
+    "node_popup.hops_one": "",
+    "node_popup.hops_other": "",
+    "node_popup.sources_seen_by_one": "",
+    "node_popup.sources_seen_by_other": "",
+    "node_popup.meshcore_device": ""
 }
