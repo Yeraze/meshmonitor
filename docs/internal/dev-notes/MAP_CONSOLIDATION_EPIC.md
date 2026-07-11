@@ -105,7 +105,7 @@ MeshCoreMap, MapAnalysis. Source-tech icon differences are parameters of the one
 render markers through the shared layer; spiderfy behavior preserved (incl. the
 obscured-marker fix, commits 40b6b1e6/ade691b1); browser-validated; suite green.
 
-### [ ] Phase 5 — Popup unification (`feature/4047-p5-popup-unify`)
+### [x] Phase 5 — Popup unification (`feature/4047-p5-popup-unify`)
 One popup family: shared card chrome + composable data sections. Meshtastic sections
 (hops/SNR/battery/hardware) vs MeshCore sections (path length/scope/etc.) become section
 composition, not separate components. NodesTab migrates off `MapNodePopupContent` (delete
@@ -137,6 +137,27 @@ browser-validated on every map view; suite green.
 ## Phase log
 
 (Per-phase: PR link, deviations, decisions — appended as phases complete.)
+
+### Phase 5 (2026-07-10) — Popup unification
+- Delivered: popup family at `src/components/map/popups/` (NodeCard chrome + 8 section
+  components + `toNodeCardModel` normalizer with source-tech variants). All five popup
+  renderers migrated: DashboardNodePopup (thin adapter, gains i18n, EN byte-identical),
+  MeshCoreMap popup (canonical card, field-mapped no-loss), NodesTab (family composition;
+  **`MapNodePopupContent.tsx` DELETED**), NodePopup chat overlay (fixed frame kept, body
+  = family; **`NodePopup.css` DELETED** — killed the live `.node-popup` class collision
+  with nodes.css; overlay frame rules moved into nodes.css AFTER the base rules).
+- Premise corrections (architect): NodePopup was a chat overlay, not a map popup; its CSS
+  redefined nodes.css classes (import-order-dependent latent bug, now dead).
+- Approved visible changes shipped: canonical field order everywhere (Dashboard grid
+  reshuffle); MeshCore + overlay restyled to the canonical card; overlay gains hops row;
+  Dashboard gains i18n. Accepted canonical nuances: hops row hidden for the 999 sentinel;
+  hops full-width toggles on altitude presence; `lastHeard === 0` now renders (was hidden
+  by a falsy guard).
+- Browser-validated per source tech: Dashboard (canonical order + "Seen by 2 sources"),
+  NodesTab (tabs + all actions), MeshCore (canonical card), chat overlay (fixed frame,
+  5 actions, click-outside). **Also closed Phase 4's gap: MeshCore markers validated live
+  (61 role badges) — companion connected this boot.**
+- Suite: 9,556 tests / 0 failures; lint baseline shrank again (DashboardNodePopup any 2→0).
 
 ### Phase 4 (2026-07-10) — Node marker unification
 - Delivered as a PURE REFACTOR (empty visible-changes list, byte-parity enforced by
