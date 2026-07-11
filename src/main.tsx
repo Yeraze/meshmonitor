@@ -1,24 +1,6 @@
 // CRITICAL: This must be the FIRST import to ensure API base URL is set
 // before any other modules are loaded
 import { appBasename } from './init';
-
-// TEMP DEBUG (#4047 mobile-admin investigation) — surfaces uncaught errors as an
-// on-screen banner so they can be read on mobile browsers with no devtools.
-// REMOVE BEFORE PR.
-if (typeof window !== 'undefined') {
-  const showErr = (label: string, msg: string) => {
-    let el = document.getElementById('mm-debug-errors');
-    if (!el) {
-      el = document.createElement('div');
-      el.id = 'mm-debug-errors';
-      el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#b91c1c;color:#fff;font:12px monospace;padding:6px 8px;white-space:pre-wrap;max-height:40vh;overflow:auto;';
-      document.body.appendChild(el);
-    }
-    el.textContent += `[${label}] ${msg}\n`;
-  };
-  window.addEventListener('error', (e) => showErr('error', `${e.message} @ ${e.filename?.split('/').pop()}:${e.lineno}\n${e.error?.stack?.split('\n').slice(0, 4).join('\n') ?? ''}`));
-  window.addEventListener('unhandledrejection', (e) => showErr('promise', String(e.reason?.stack ?? e.reason).slice(0, 500)));
-}
 // Initialize i18n after init.ts sets the base URL
 import './config/i18n';
 import React, { Suspense } from 'react';
