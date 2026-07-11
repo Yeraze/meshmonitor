@@ -1,30 +1,28 @@
 /**
  * DashboardNodePopup — richly formatted marker popup for the Dashboard map.
  *
- * Renders the same Meshtastic-style node card used elsewhere in the app
- * (reusing the `.node-popup-*` classes from styles/nodes.css) directly from
- * the flat node shape returned by `/api/sources/:id/nodes`. Handles both the
- * flat API fields (node.longName, node.role, …) and the nested fallbacks
- * (node.user?.longName, node.position?.altitude, …).
+ * Thin composition over the popup family (`src/components/map/popups/`,
+ * #4047 Phase 5 WP2): normalizes the flat-or-nested node shape via
+ * `toNodeCardModel` and composes the canonical `NodeCard` chrome from the
+ * shared section registry. The composed section order (Header → Identity →
+ * Signal → Position → LastHeard → Sources) is the family's canonical order;
+ * see docs/internal/dev-notes/MAP_CONSOLIDATION_P5_SPEC.md §WP2 for the
+ * orchestrator-approved item-order change (Hardware/Hops and SNR/Battery
+ * swap places vs. the pre-Phase-5 layout — everything else, including the
+ * ID item's full-width formatting, stays byte-identical).
  *
- * On the Unified view each merged node carries a `sources` array describing
- * which configured sources reported it and over which protocol (Meshtastic vs
- * MeshCore); when present it's rendered as a labelled list at the bottom.
+ * Consumers: DashboardMap.tsx, MapAnalysis/layers/NodeMarkersLayer.tsx.
  */
 
 import { useDisplaySettings } from '../../contexts/SettingsContext';
-import { getHardwareModelName, getRoleName } from '../../utils/nodeHelpers';
-import { formatRelativeTime } from '../../utils/datetime';
+import { NodeCard } from '../map/popups/NodeCard';
+import { IdentityItems, SignalItems, PositionItem, LastHeardFooter, SourcesList } from '../map/popups/sections';
+import { toNodeCardModel, type NodeSourceRef } from '../map/popups/nodeCardModel';
 
-/** A single source that reported this node, attached by mergeUnifiedSourceData. */
-export interface NodeSourceRef {
-  sourceId: string;
-  sourceName: string;
-  protocol: 'Meshtastic' | 'MeshCore';
-}
+export type { NodeSourceRef };
 
 interface DashboardNodePopupProps {
-  node: any;
+  node: unknown;
   pos: { lat: number; lng: number };
   /**
    * Called when the user clicks one of the "seen by" source rows. The Unified
@@ -33,151 +31,30 @@ interface DashboardNodePopupProps {
   onSourceSelect?: (source: NodeSourceRef, nodeId: string | undefined) => void;
 }
 
-/** Coerce a field that may live on the flat node or its nested `user`. */
-function pick<T>(node: any, flatKey: string, userKey: string): T | undefined {
-  const flat = node?.[flatKey];
-  if (flat !== undefined && flat !== null) return flat as T;
-  const nested = node?.user?.[userKey];
-  return nested === null ? undefined : (nested as T | undefined);
-}
-
 export default function DashboardNodePopup({ node, pos, onSourceSelect }: DashboardNodePopupProps) {
   const { timeFormat, dateFormat } = useDisplaySettings();
 
-  const longName = pick<string>(node, 'longName', 'longName')
-    ?? (typeof node?.nodeNum === 'number' ? `Node ${node.nodeNum}` : 'Unknown');
-  const shortName = pick<string>(node, 'shortName', 'shortName');
-  const nodeId = pick<string>(node, 'nodeId', 'id');
-
-  const roleRaw = pick<number | string>(node, 'role', 'role');
-  const roleName = roleRaw !== undefined ? getRoleName(roleRaw) : null;
-
-  const hwModel = pick<number>(node, 'hwModel', 'hwModel');
-  const hwModelName = hwModel !== undefined ? getHardwareModelName(hwModel) : null;
-
-  const hops = typeof node?.hopsAway === 'number' ? node.hopsAway : null;
-  const altitude = node?.altitude ?? node?.position?.altitude;
-  const snr = typeof node?.snr === 'number' ? node.snr : null;
-  const battery = typeof node?.batteryLevel === 'number' ? node.batteryLevel : null;
-  const lastHeard = typeof node?.lastHeard === 'number' ? node.lastHeard : null;
-
-  const sources: NodeSourceRef[] | undefined = Array.isArray(node?.sources) ? node.sources : undefined;
+  const model = toNodeCardModel(node, 'meshtastic', { pos });
 
   return (
-    <div className="node-popup">
-      {/* Header */}
-      <div
-        className="node-popup-header"
-        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-      >
-        <div
-          className="node-popup-title"
-          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-        >
-          {longName}
-        </div>
-        {shortName && (
-          <div className="node-popup-subtitle" style={{ flexShrink: 0 }}>
-            {shortName}
+    <NodeCard
+      model={model}
+      sections={
+        <>
+          <div className="node-popup-grid">
+            <IdentityItems model={model} idFullWidth />
+            <SignalItems model={model} showAltitude />
+            <PositionItem position={pos} />
           </div>
-        )}
-      </div>
-
-      {/* Info grid */}
-      <div className="node-popup-content">
-        <div className="node-popup-grid">
-          {nodeId && (
-            <div className="node-popup-item node-popup-item-full">
-              <span className="node-popup-icon">🆔</span>
-              <span className="node-popup-value">{nodeId}</span>
-            </div>
-          )}
-
-          {roleName && (
-            <div className="node-popup-item">
-              <span className="node-popup-icon">👤</span>
-              <span className="node-popup-value">{roleName}</span>
-            </div>
-          )}
-
-          {hops != null && (
-            <div className="node-popup-item">
-              <span className="node-popup-icon">🔗</span>
-              <span className="node-popup-value">{hops} hop{hops !== 1 ? 's' : ''}</span>
-            </div>
-          )}
-
-          {hwModelName && (
-            <div className="node-popup-item node-popup-item-full">
-              <span className="node-popup-icon">🖥️</span>
-              <span className="node-popup-value">{hwModelName}</span>
-            </div>
-          )}
-
-          {battery != null && (
-            <div className="node-popup-item">
-              <span className="node-popup-icon">🔋</span>
-              <span className="node-popup-value">{battery}%</span>
-            </div>
-          )}
-
-          {snr != null && (
-            <div className="node-popup-item">
-              <span className="node-popup-icon">📶</span>
-              <span className="node-popup-value">{snr} dB</span>
-            </div>
-          )}
-
-          {altitude != null && (
-            <div className="node-popup-item">
-              <span className="node-popup-icon">⛰️</span>
-              <span className="node-popup-value">{altitude}m</span>
-            </div>
-          )}
-
-          <div className="node-popup-item node-popup-item-full">
-            <span className="node-popup-icon">📍</span>
-            <span className="node-popup-value">
-              {pos.lat.toFixed(5)}, {pos.lng.toFixed(5)}
-            </span>
-          </div>
-        </div>
-
-        {lastHeard != null && (
-          <div className="node-popup-footer">
-            <span className="node-popup-icon">🕐</span>
-            {formatRelativeTime(lastHeard * 1000, timeFormat, dateFormat, true)}
-          </div>
-        )}
-
-        {/* Unified view: which sources reported this node + protocol. Each row
-            links to that source's Node Details view for this node. */}
-        {sources && sources.length > 0 && (
-          <div className="node-popup-sources">
-            <div className="node-popup-sources-title">
-              Seen by {sources.length} source{sources.length !== 1 ? 's' : ''}
-            </div>
-            {sources.map((s) => {
-              const clickable = !!onSourceSelect;
-              return (
-                <button
-                  key={s.sourceId}
-                  type="button"
-                  className="node-popup-source-row node-popup-source-row-button"
-                  disabled={!clickable}
-                  onClick={clickable ? () => onSourceSelect!(s, nodeId) : undefined}
-                  title={clickable ? `Open ${s.sourceName} → Node Details` : undefined}
-                >
-                  <span className={`node-popup-protocol-badge protocol-${s.protocol.toLowerCase()}`}>
-                    {s.protocol}
-                  </span>
-                  <span className="node-popup-source-name">{s.sourceName}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
+          <LastHeardFooter
+            lastHeard={model.lastHeard}
+            mode="relative"
+            timeFormat={timeFormat}
+            dateFormat={dateFormat}
+          />
+          <SourcesList sources={model.sources} nodeId={model.nodeId} onSourceSelect={onSourceSelect} />
+        </>
+      }
+    />
   );
 }
