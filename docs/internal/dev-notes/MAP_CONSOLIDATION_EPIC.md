@@ -113,7 +113,7 @@ it); MeshCore popup content joins the family; `NodePopup`/`DashboardNodePopup` r
 **Exit criteria:** `MapNodePopupContent` deleted; one popup family renders all maps'
 popups with no capability loss; browser-validated per source tech; suite green.
 
-### [ ] Phase 6 — Embed traceroute alignment (`feature/4047-p6-embed-traceroutes`)
+### [x] Phase 6 — Embed traceroute alignment (`feature/4047-p6-embed-traceroutes`)
 Extend `/api/embed/:id/traceroutes` to carry per-segment SNR + leg/direction data
 (backward-compatible), render EmbedMap traceroutes through the shared
 TraceroutePathsLayer with the canonical SNR scale.
@@ -137,6 +137,25 @@ browser-validated on every map view; suite green.
 ## Phase log
 
 (Per-phase: PR link, deviations, decisions — appended as phases complete.)
+
+### Phase 6 (2026-07-10) — Embed traceroute alignment
+- Delivered: `GET /api/embed/:id/traceroutes` now decomposes via the shared
+  `decomposeTraceroute` server-side with an ADDITIVE wire shape (legacy fields kept +
+  `leg`/`avgSnr`/`isMqtt`; `snr` now correctly /4-scaled — old clients get the right
+  value). EmbedMap renders through the shared TraceroutePathsLayer with the FLAT
+  all-segments preset (D3 orchestrator override: arrows are canonical only for
+  single-route views); palette via `getSchemeForTileset(config.tileset)` (embed bundle
+  is context-free). Old-shape resilience pinned by test.
+- **Security fix found by the leak-boundary tests:** the embed traceroutes handler was
+  missing the `hideFromMap` filter the nodes handler applies — hidden nodes' positions
+  could leak into public embed segments. Fixed + 5 leak-boundary tests.
+- Net-new test coverage: embedPublicRoutes route tests (14) and EmbedMap render tests
+  (9) — neither file existed.
+- Browser-validated via a real embed profile/iframe: 60 segments in the canonical light
+  4-band palette, 25 MQTT/unknown-dashed, popup with corrected SNR; console clean.
+  Gotcha for future validators: the embed traceroute fetch is gated on the profile's
+  `showPaths` flag, not `showTraceroutes`.
+- Suite: 9,585 tests / 0 failures. BaseMap adoption for EmbedMap deferred to Phase 7.
 
 ### Phase 5 (2026-07-10) — Popup unification
 - Delivered: popup family at `src/components/map/popups/` (NodeCard chrome + 8 section
