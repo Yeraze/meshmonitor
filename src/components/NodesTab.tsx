@@ -11,7 +11,7 @@ import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, createArrowIcon, snrToColor } from '../utils/mapHelpers.tsx';
 import { convertSpeed } from '../utils/speedConversion';
-import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, resolveMapEndpoint } from '../utils/nodeHelpers';
+import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, resolveMapEndpoint, TRACEROUTE_DISPLAY_HOURS } from '../utils/nodeHelpers';
 import { shouldOffsetForPrecision, offsetWithinPrecisionCell } from '../utils/precisionOffset';
 import MapLegend from './MapLegend';
 import { formatTime, formatDateTime } from '../utils/datetime';
@@ -44,7 +44,9 @@ import PacketMonitorPanel from './PacketMonitorPanel';
 import { getPacketStats } from '../services/packetApi';
 
 import { VectorTileLayer } from './VectorTileLayer';
-import { MapNodePopupContent } from './MapNodePopupContent';
+import { NodeCard } from './map/popups/NodeCard';
+import { IdentityItems, SignalItems, LastHeardFooter, TracerouteBody, NodeActions, type NodeActionSpec } from './map/popups/sections';
+import { toNodeCardModel, type NodeCardModel } from './map/popups/nodeCardModel';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import api from '../services/api';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
@@ -1491,25 +1493,85 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             )}
             {!(showRoute && hasValidTraceroute) && (
               <Popup autoPan={false}>
-                <MapNodePopupContent
-                  node={node}
-                  nodes={nodes}
-                  currentNodeId={currentNodeId}
-                  timeFormat={timeFormat}
-                  dateFormat={dateFormat}
-                  distanceUnit={distanceUnit}
-                  traceroutes={traceroutes}
-                  hasPermission={hasPermission}
-                  onDMNode={handlePopupDMClick(node)}
-                  onCopyNodeInfo={() => setCopyNodeInfoTarget(node)}
-                  onTraceroute={onTraceroute ? () => onTraceroute(node.user!.id) : undefined}
-                  connectionStatus={connectionStatus}
-                  tracerouteLoading={tracerouteLoading}
-                  getEffectiveHops={(n) => getEffectiveHops(n, nodeHopsCalculation, traceroutes, currentNodeNum)}
-                  onDeleteNode={onDeleteNode}
-                  onPurgeNodeFromDevice={onPurgeNodeFromDevice}
-                  currentNodeNum={currentNodeNum}
-                />
+                {(() => {
+                  const cardModel = toNodeCardModel(node, 'meshtastic', {
+                    effectiveHops: getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum),
+                  });
+                  // NodesTab's popup has never shown SNR/battery (unlike the
+                  // Dashboard card) — strip them from the model fed to
+                  // SignalItems so the migrated card stays pixel-identical
+                  // to the deleted MapNodePopupContent (spec §WP4/§4).
+                  const infoSignalModel: NodeCardModel = { ...cardModel, snr: null, battery: null };
+
+                  const hasTracerouteFeatures = hasPermission('traceroute', 'write') && !!onTraceroute;
+
+                  // Port of the identical recency lookup MapNodePopupContent
+                  // used to inline. nodeCardModel.ts's `useRecentTraceroute`
+                  // is a hook and can't be called from this .map() callback
+                  // (variable call count across nodes would violate the
+                  // rules of hooks), so the pure logic is replicated here.
+                  const recentTraceroute = (() => {
+                    if (!currentNodeId || !node.user?.id || currentNodeId === node.user.id) return null;
+                    const fromNum = parseNodeId(currentNodeId);
+                    if (fromNum === null) return null;
+                    const cutoff = Date.now() - TRACEROUTE_DISPLAY_HOURS * 60 * 60 * 1000;
+                    return traceroutes
+                      .filter(tr => {
+                        const isRelevant =
+                          (tr.fromNodeNum === fromNum && tr.toNodeNum === node.nodeNum) ||
+                          (tr.fromNodeNum === node.nodeNum && tr.toNodeNum === fromNum);
+                        return isRelevant && tr.timestamp >= cutoff;
+                      })
+                      .sort((a, b) => b.timestamp - a.timestamp)[0] || null;
+                  })();
+
+                  const actions: NodeActionSpec[] = [];
+                  if (node.user?.id && hasPermission('messages', 'read')) {
+                    actions.push({ kind: 'more-details', onClick: handlePopupDMClick(node) });
+                  }
+                  if (!isNodeComplete(node) && hasPermission('nodes', 'write')) {
+                    actions.push({ kind: 'copy-nodeinfo', onClick: () => setCopyNodeInfoTarget(node) });
+                  }
+                  if (hasPermission('messages', 'write') && node.nodeNum !== currentNodeNum) {
+                    if (onDeleteNode) {
+                      actions.push({ kind: 'delete', onClick: () => onDeleteNode(node.nodeNum) });
+                    }
+                    if (onPurgeNodeFromDevice && connectionStatus === 'connected') {
+                      actions.push({ kind: 'purge', onClick: () => onPurgeNodeFromDevice(node.nodeNum) });
+                    }
+                  }
+
+                  return (
+                    <NodeCard
+                      model={cardModel}
+                      sections={
+                        <>
+                          <div className="node-popup-grid">
+                            <IdentityItems model={cardModel} />
+                            <SignalItems model={infoSignalModel} showAltitude />
+                          </div>
+                          <LastHeardFooter
+                            lastHeard={cardModel.lastHeard}
+                            mode="absolute"
+                            timeFormat={timeFormat}
+                            dateFormat={dateFormat}
+                          />
+                          <NodeActions actions={actions} />
+                        </>
+                      }
+                      tracerouteBody={hasTracerouteFeatures ? (
+                        <TracerouteBody
+                          recentTraceroute={recentTraceroute}
+                          nodes={nodes}
+                          distanceUnit={distanceUnit}
+                          onRunTraceroute={node.user?.id && onTraceroute ? () => onTraceroute(node.user!.id) : undefined}
+                          running={tracerouteLoading === node.user?.id}
+                          runDisabled={connectionStatus !== 'connected' || tracerouteLoading === node.user?.id}
+                        />
+                      ) : undefined}
+                    />
+                  );
+                })()}
               </Popup>
             )}
           </>
