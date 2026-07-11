@@ -96,6 +96,24 @@ export function BaseMap({
   const resolvedId = tilesetId ?? DEFAULT_TILESET_ID;
   const tileset = getTilesetById(resolvedId, customTilesets ?? []);
 
+  // Leaflet's setOptions copies EVERY own key of the options object, so an
+  // explicit `scrollWheelZoom: undefined` OVERRIDES the prototype default
+  // (true) and disables the handler — react-leaflet does no undefined
+  // filtering before `new LeafletMap(node, options)`. Omitted props must
+  // therefore not appear in the options object at all (#4047 regression:
+  // wheel zoom / double-click zoom died on every consumer that relied on
+  // Leaflet defaults).
+  const interactionOptions: {
+    scrollWheelZoom?: boolean;
+    doubleClickZoom?: boolean;
+    zoomControl?: boolean;
+    attributionControl?: boolean;
+  } = {};
+  if (scrollWheelZoom !== undefined) interactionOptions.scrollWheelZoom = scrollWheelZoom;
+  if (doubleClickZoom !== undefined) interactionOptions.doubleClickZoom = doubleClickZoom;
+  if (zoomControl !== undefined) interactionOptions.zoomControl = zoomControl;
+  if (attributionControl !== undefined) interactionOptions.attributionControl = attributionControl;
+
   return (
     <>
       <MapContainer
@@ -104,10 +122,7 @@ export function BaseMap({
         ref={mapRef}
         className={className}
         style={{ height: '100%', width: '100%', ...mapStyle }}
-        scrollWheelZoom={scrollWheelZoom}
-        doubleClickZoom={doubleClickZoom}
-        zoomControl={zoomControl}
-        attributionControl={attributionControl}
+        {...interactionOptions}
       >
         {tileset.isVector
           ? (
