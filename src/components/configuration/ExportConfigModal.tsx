@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import QRCode from 'qrcode';
 import apiService from '../../services/api';
 import type { Channel } from '../../types/device';
-import { useSource } from '../../contexts/SourceContext';
+import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
 
 interface ExportConfigModalProps {
   isOpen: boolean;
@@ -25,7 +25,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
   isLoadingChannels = false
 }) => {
   const { t } = useTranslation();
-  const { sourceId } = useSource();
+  const sourceId = useResolvedSourceId();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<Set<number>>(new Set());
   const [includeLoraConfig, setIncludeLoraConfig] = useState(true);
