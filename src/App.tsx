@@ -4512,7 +4512,7 @@ const location = useLocation();
   // Close popup when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (nodePopup && !(event.target as Element).closest('.node-popup, .sender-dot')) {
+      if (nodePopup && !(event.target as Element).closest('.node-popup-overlay, .sender-dot')) {
         setNodePopup(null);
       }
     };

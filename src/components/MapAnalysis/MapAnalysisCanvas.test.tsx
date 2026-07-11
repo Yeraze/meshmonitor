@@ -99,6 +99,40 @@ vi.mock('../../contexts/SettingsContext', () => ({
   useDisplaySettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
 }));
 
+// The global setup.ts mock for react-i18next ignores `options.defaultValue`
+// (it only interpolates `{{token}}` placeholders into the raw key), so it
+// can't produce real English text for the popup family's `t(key, {
+// defaultValue })` calls that DashboardNodePopup now goes through (#4047
+// Phase 5 WP2). Override locally — mirrors
+// src/components/map/popups/sections.test.tsx — so the "Seen by 2 sources"
+// assertion below exercises the same English copy a real render produces.
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (
+      key: string,
+      arg2?: string | Record<string, unknown>,
+      arg3?: Record<string, unknown>,
+    ) => {
+      let options: Record<string, unknown> | undefined;
+      let defaultValue: string | undefined;
+      if (typeof arg2 === 'string') {
+        defaultValue = arg2;
+        options = arg3;
+      } else {
+        options = arg2;
+        defaultValue = typeof options?.defaultValue === 'string' ? options.defaultValue : undefined;
+      }
+      let out = defaultValue ?? key;
+      if (options) {
+        for (const [k, v] of Object.entries(options)) {
+          out = out.replace(new RegExp(`{{${k}}}`, 'g'), String(v));
+        }
+      }
+      return out;
+    },
+  }),
+}));
+
 const wrapper = ({ children }: { children: React.ReactNode }) => {
   const qc = new QueryClient();
   return (

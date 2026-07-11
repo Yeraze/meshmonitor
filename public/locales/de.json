@@ -4174,5 +4174,10 @@
     "settings.apprise_server_test": "Test Connection",
     "settings.apprise_server_testing": "Testing…",
     "settings.apprise_server_test_success": "Connected successfully ({{latency}}ms)",
-    "settings.apprise_server_test_failure": "Connection failed: {{error}}"
+    "settings.apprise_server_test_failure": "Connection failed: {{error}}",
+    "node_popup.hops_one": "",
+    "node_popup.hops_other": "",
+    "node_popup.sources_seen_by_one": "",
+    "node_popup.sources_seen_by_other": "",
+    "node_popup.meshcore_device": ""
 }

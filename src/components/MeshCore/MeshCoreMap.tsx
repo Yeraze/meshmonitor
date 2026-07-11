@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MapContainer, TileLayer, Popup, Tooltip, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { useSettings } from '../../contexts/SettingsContext';
+import { useSettings, useDisplaySettings } from '../../contexts/SettingsContext';
 import {
   getNodeTypeCategory,
   nodePassesTypeFilter,
@@ -25,6 +25,9 @@ import { TilesetSelector } from '../TilesetSelector';
 import MapLegend from '../MapLegend';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
+import { NodeCard } from '../map/popups/NodeCard';
+import { toNodeCardModel } from '../map/popups/nodeCardModel';
+import { MeshCoreDetails, LastHeardFooter, NodeActions, type NodeActionSpec } from '../map/popups/sections';
 
 const MESHCORE_COLOR = '#cba6f7';
 const NEIGHBOR_COLOR = '#06b6d4';
@@ -69,6 +72,7 @@ interface MeshCoreMapProps {
 export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition, onNavigateToDm }) => {
   const { t } = useTranslation();
   const { mapTileset, customTilesets, setMapTileset } = useSettings();
+  const { timeFormat, dateFormat } = useDisplaySettings();
   const { sourceId } = useSource();
   const csrfFetch = useCsrfFetch();
   const tileset = getTilesetById(mapTileset, customTilesets);
@@ -236,6 +240,10 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
     () => visibleContacts.map(c => {
       const name = c.advName || c.name || 'MeshCore';
       const category = getNodeTypeCategory({ advType: c.advType });
+      const model = toNodeCardModel(c, 'meshcore');
+      const actions: NodeActionSpec[] = onNavigateToDm
+        ? [{ kind: 'navigate-to-dm', onClick: () => onNavigateToDm(c.publicKey) }]
+        : [];
       return {
         key: c.publicKey,
         position: [c.latitude!, c.longitude!] as [number, number],
@@ -256,46 +264,24 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
               {typeof c.pathLen === 'number' && <><br />Path: {hopCountLabel(c.pathLen)}</>}
             </Tooltip>
             <Popup>
-              <div style={{ minWidth: 200 }}>
-                <strong>{name}</strong>
-                <br />
-                <small>MeshCore Device</small>
-                <br />
-                Key: {c.publicKey.substring(0, 16)}…
-                {typeof c.rssi === 'number' && <><br />RSSI: {c.rssi} dBm</>}
-                {typeof c.snr === 'number' && <><br />SNR: {c.snr} dB</>}
-                {typeof c.pathLen === 'number' && <><br />Path: {hopCountLabel(c.pathLen)}</>}
-                {c.outPath && <><br />Route: {c.outPath}</>}
-                {c.lastSeen && <><br />Last seen: {new Date(c.lastSeen).toLocaleString()}</>}
-                {onNavigateToDm && (
+              <NodeCard
+                model={model}
+                sections={
                   <>
-                    <br />
-                    <button
-                      onClick={() => onNavigateToDm(c.publicKey)}
-                      style={{
-                        marginTop: '0.5rem',
-                        padding: '0.3rem 0.7rem',
-                        background: MESHCORE_COLOR,
-                        color: '#1e1e2e',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontWeight: 'bold',
-                        fontSize: '0.85em',
-                        width: '100%',
-                      }}
-                    >
-                      More Details
-                    </button>
+                    <div className="node-popup-grid">
+                      <MeshCoreDetails model={model} />
+                    </div>
+                    <LastHeardFooter lastHeard={model.lastHeard} mode="absolute" timeFormat={timeFormat} dateFormat={dateFormat} />
+                    {actions.length > 0 && <NodeActions actions={actions} />}
                   </>
-                )}
-              </div>
+                }
+              />
             </Popup>
           </>
         ),
       };
     }),
-    [visibleContacts, onNavigateToDm],
+    [visibleContacts, onNavigateToDm, timeFormat, dateFormat],
   );
 
   const localPos = useMemo((): [number, number] | null => {
