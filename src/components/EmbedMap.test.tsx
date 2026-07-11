@@ -1,20 +1,27 @@
 /**
  * @vitest-environment jsdom
  *
- * EmbedMap traceroute rendering (#4047 P6 WP2). The embed bundle has no
- * SettingsProvider, so this suite pins the palette-from-tileset contract
- * (§3.1), the wire→TracerouteRenderSegment mapping including old-shape
- * (pre-WP1) resilience (§3.2), and that the popup capability survives the
- * fixed-mauve→shared-layer swap (§3.3). `TraceroutePathsLayer` is mocked so
- * assertions target the exact props EmbedMap computes and passes to it,
- * rather than re-deriving colors/geometry through the real layer (that
- * layer's own behavior is covered by TraceroutePathsLayer.test.tsx).
+ * EmbedMap traceroute + BaseMap/NeighborLinksLayer adoption (#4047 P6 WP2,
+ * P7 WP9/§3.4). The embed bundle has no SettingsProvider, so this suite
+ * pins the palette-from-tileset contract (§3.1), the wire→
+ * TracerouteRenderSegment mapping including old-shape (pre-WP1) resilience
+ * (§3.2), that the popup capability survives the fixed-mauve→shared-layer
+ * swap (§3.3), that EmbedMap's tile/shell wiring goes through `BaseMap`
+ * with the exact shell props (§3.4), and that neighbor-info lines are
+ * emitted as `NeighborLinksLayer` descriptors preserving the amber/w3/o.7/
+ * dash '5, 5' look byte-for-byte (§4.1). `TraceroutePathsLayer`,
+ * `NeighborLinksLayer`, and `BaseMap` are all mocked so assertions target
+ * the exact props EmbedMap computes and passes to them, rather than
+ * re-deriving colors/geometry/tiles through the real components (those
+ * components' own behavior is covered by their own test files).
  */
 import type { ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import { EmbedMap } from './EmbedMap';
 import type { TraceroutePathsLayerProps } from './map/layers/TraceroutePathsLayer';
+import type { NeighborLinksLayerProps } from './map/layers/NeighborLinksLayer';
+import type { BaseMapProps } from './map/BaseMap';
 import { getOverlayColors, getSchemeForTileset } from '../config/overlayColors';
 
 // ---------------------------------------------------------------------------
@@ -26,13 +33,27 @@ interface MockChildProps {
 }
 
 vi.mock('react-leaflet', () => ({
-  MapContainer: (props: MockChildProps) => <div data-testid="map-container">{props.children}</div>,
-  TileLayer: () => <div data-testid="tile-layer" />,
   Marker: (props: MockChildProps) => <div data-testid="marker">{props.children}</div>,
   Tooltip: (props: MockChildProps) => <div data-testid="tooltip">{props.children}</div>,
   Popup: (props: MockChildProps) => <div data-testid="popup">{props.children}</div>,
-  Polyline: (props: MockChildProps) => <div data-testid="polyline">{props.children}</div>,
   GeoJSON: () => <div data-testid="geojson" />,
+}));
+
+// ---------------------------------------------------------------------------
+// BaseMap mock — passthrough for children (its own tile/shell behavior is
+// covered by BaseMap.test.tsx) with a spy on the exact shell props EmbedMap
+// passes, mirroring the DefaultMapCenterPicker.test.tsx / BBoxMapEditor.test.tsx
+// pattern. Keeps the `map-container` testid the rest of this suite already
+// waits on.
+// ---------------------------------------------------------------------------
+
+const baseMapSpy = vi.fn();
+
+vi.mock('./map/BaseMap', () => ({
+  BaseMap: (props: BaseMapProps) => {
+    baseMapSpy(props);
+    return <div data-testid="map-container">{props.children}</div>;
+  },
 }));
 
 // ---------------------------------------------------------------------------
@@ -45,6 +66,19 @@ vi.mock('./map/layers/TraceroutePathsLayer', () => ({
   TraceroutePathsLayer: (props: TraceroutePathsLayerProps) => {
     tracerouteLayerSpy(props);
     return <div data-testid="traceroute-paths-layer" />;
+  },
+}));
+
+// ---------------------------------------------------------------------------
+// NeighborLinksLayer mock — spy on the exact descriptors EmbedMap emits.
+// ---------------------------------------------------------------------------
+
+const neighborLinksSpy = vi.fn();
+
+vi.mock('./map/layers/NeighborLinksLayer', () => ({
+  NeighborLinksLayer: (props: NeighborLinksLayerProps) => {
+    neighborLinksSpy(props);
+    return <div data-testid="neighbor-links-layer" />;
   },
 }));
 
@@ -174,6 +208,8 @@ async function renderEmbedMap() {
 
 beforeEach(() => {
   tracerouteLayerSpy.mockClear();
+  neighborLinksSpy.mockClear();
+  baseMapSpy.mockClear();
 });
 
 afterEach(() => {
@@ -308,5 +344,106 @@ describe('EmbedMap traceroute rendering (#4047 P6 WP2)', () => {
     await waitFor(() => expect(tracerouteLayerSpy).toHaveBeenCalled());
     const props = tracerouteLayerSpy.mock.calls.at(-1)![0] as TraceroutePathsLayerProps;
     expect(props.renderPopup).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BaseMap shell adoption (#4047 P7 §3.4)
+// ---------------------------------------------------------------------------
+
+describe('EmbedMap BaseMap shell adoption (#4047 P7 §3.4)', () => {
+  it('passes the context-free shell props: tilesetId from config, no custom tilesets, zoom/attribution controls on', async () => {
+    mockFetchSequence({ config: baseConfig({ tileset: 'esriSatellite', defaultLat: 12, defaultLng: 34, defaultZoom: 7 }) });
+    await renderEmbedMap();
+
+    await waitFor(() => expect(baseMapSpy).toHaveBeenCalled());
+    const props = baseMapSpy.mock.calls.at(-1)![0] as BaseMapProps;
+    expect(props.tilesetId).toBe('esriSatellite');
+    expect(props.customTilesets).toEqual([]);
+    expect(props.zoomControl).toBe(true);
+    expect(props.attributionControl).toBe(true);
+    expect(props.center).toEqual([12, 34]);
+    expect(props.zoom).toBe(7);
+    // Embed has no tileset switcher — showTilesetSelector left at its
+    // BaseMap default (false/undefined), never explicitly enabled.
+    expect(props.showTilesetSelector).toBeFalsy();
+  });
+
+  it('honors ?lat=&lon=&zoom= URL overrides in the center/zoom passed to BaseMap (issue #2668)', async () => {
+    window.history.replaceState(null, '', '?lat=51.5&lon=-0.1&zoom=14');
+    try {
+      mockFetchSequence({ config: baseConfig({ defaultLat: 0, defaultLng: 0, defaultZoom: 3 }) });
+      await renderEmbedMap();
+
+      await waitFor(() => expect(baseMapSpy).toHaveBeenCalled());
+      const props = baseMapSpy.mock.calls.at(-1)![0] as BaseMapProps;
+      expect(props.center).toEqual([51.5, -0.1]);
+      expect(props.zoom).toBe(14);
+    } finally {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Neighbor-link adapter over the shared NeighborLinksLayer (#4047 P7 §4.1)
+// ---------------------------------------------------------------------------
+
+describe('EmbedMap neighbor-link adapter (#4047 P7 §4.1)', () => {
+  const neighborSegmentFixture = {
+    nodeNum: 111,
+    neighborNodeNum: 222,
+    snr: 4,
+    nodeLatitude: 40.0,
+    nodeLongitude: -105.0,
+    nodeName: 'Alpha',
+    neighborLatitude: 40.2,
+    neighborLongitude: -105.2,
+    neighborName: 'Bravo',
+  };
+
+  it('emits a descriptor reproducing the pre-migration amber/w3/o.7/dash "5, 5" look, with a popup when showPopups is true', async () => {
+    mockFetchSequence({
+      config: baseConfig({ showNeighborInfo: true, showPopups: true }),
+      neighborInfo: [neighborSegmentFixture],
+    });
+    await renderEmbedMap();
+
+    await waitFor(() => expect(neighborLinksSpy).toHaveBeenCalled());
+    const props = neighborLinksSpy.mock.calls.at(-1)![0] as NeighborLinksLayerProps;
+    expect(props.links).toHaveLength(1);
+    const link = props.links[0];
+    expect(link.positions).toEqual([[40.0, -105.0], [40.2, -105.2]]);
+    expect(link.pathOptions).toEqual({ color: '#f5a623', weight: 3, opacity: 0.7, dashArray: '5, 5' });
+    expect(link.arrows).toBeUndefined();
+    expect(link.children).toBeDefined();
+
+    render(<>{link.children}</>);
+    expect(screen.getByText(/Alpha ↔ Bravo/)).toBeInTheDocument();
+    expect(screen.getByText('4 dB')).toBeInTheDocument();
+  });
+
+  it('omits the popup children when showPopups is false', async () => {
+    mockFetchSequence({
+      config: baseConfig({ showNeighborInfo: true, showPopups: false }),
+      neighborInfo: [neighborSegmentFixture],
+    });
+    await renderEmbedMap();
+
+    await waitFor(() => expect(neighborLinksSpy).toHaveBeenCalled());
+    const props = neighborLinksSpy.mock.calls.at(-1)![0] as NeighborLinksLayerProps;
+    expect(props.links[0].children).toBeUndefined();
+  });
+
+  it('does not render NeighborLinksLayer at all when showNeighborInfo is false', async () => {
+    mockFetchSequence({
+      config: baseConfig({ showNeighborInfo: false }),
+      neighborInfo: [neighborSegmentFixture],
+    });
+    await renderEmbedMap();
+
+    // Give any stray async fetch/render a tick, then assert it never rendered.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(neighborLinksSpy).not.toHaveBeenCalled();
   });
 });
