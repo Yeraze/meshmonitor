@@ -18,7 +18,7 @@
     "no-restricted-syntax": 2
   },
   "src/App.tsx": {
-    "@typescript-eslint/no-explicit-any": 6,
+    "@typescript-eslint/no-explicit-any": 5,
     "preserve-caught-error": 1,
     "react-hooks/exhaustive-deps": 22
   },
@@ -197,10 +197,10 @@
     "react-hooks/exhaustive-deps": 2
   },
   "src/components/NodesTab.tsx": {
-    "@typescript-eslint/no-explicit-any": 12,
+    "@typescript-eslint/no-explicit-any": 8,
     "no-restricted-syntax": 5,
     "no-useless-assignment": 1,
-    "react-hooks/exhaustive-deps": 8
+    "react-hooks/exhaustive-deps": 5
   },
   "src/components/NotificationsTab.tsx": {
     "@typescript-eslint/no-explicit-any": 2,
@@ -248,9 +248,6 @@
   },
   "src/components/SmartHopsChart.tsx": {
     "react-refresh/only-export-components": 1
-  },
-  "src/components/SpiderfierController.tsx": {
-    "no-empty-pattern": 1
   },
   "src/components/TelemetryChart.tsx": {
     "react-refresh/only-export-components": 2
@@ -365,7 +362,7 @@
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/settings/EmbedSettings.tsx": {
-    "@typescript-eslint/no-explicit-any": 4
+    "@typescript-eslint/no-explicit-any": 3
   },
   "src/components/settings/PkiDmGlobalToggle.tsx": {
     "no-restricted-syntax": 1

@@ -35,7 +35,7 @@ import MapResizeHandler from './MapResizeHandler';
 import MapPositionHandler from './MapPositionHandler';
 import PolarGridOverlay from './PolarGridOverlay.js';
 import GeoJsonOverlay from './GeoJsonOverlay';
-import { SpiderfierController, SpiderfierControllerRef } from './SpiderfierController';
+import { NodeMarkersLayer, type NodeMarkerDescriptor } from './map/layers/NodeMarkersLayer';
 import MeasureDistanceController from './MeasureDistanceController';
 import type { MeasurePoint } from '../utils/measureDistance';
 import { TilesetSelector } from './TilesetSelector';
@@ -50,16 +50,6 @@ import api from '../services/api';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 import type { MapStyle } from '../server/services/mapStyleService.js';
 import { CopyNodeInfoModal } from './CopyNodeInfoModal';
-
-/**
- * Spiderfier initialization constants
- */
-const SPIDERFIER_INIT = {
-  /** Maximum attempts to wait for spiderfier initialization */
-  MAX_ATTEMPTS: 50,
-  /** Interval between initialization attempts (ms) - 50 attempts × 100ms = 5 seconds total */
-  RETRY_INTERVAL_MS: 100,
-} as const;
 
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
@@ -637,9 +627,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setIsTouchDevice(checkTouch());
   }, []);
 
-  // Ref for spiderfier controller to manage overlapping markers
-  const spiderfierRef = useRef<SpiderfierControllerRef>(null);
-
   // Packet Monitor state
   const [showPacketMonitor, setShowPacketMonitor] = useState(() => {
     // Load from localStorage
@@ -891,17 +878,58 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const showRouteRef = useRef(showRoute);
   const traceroutesRef = useRef(traceroutes);
 
-  // Stable ref callback for markers to prevent unnecessary re-renders
-  const handleMarkerRef = React.useCallback((ref: LeafletMarker | null, nodeId: string | undefined) => {
-    if (ref && nodeId) {
-      markerRefs.current.set(nodeId, ref);
-      // Tag marker with nodeId so the spiderfier click handler can identify it
-      // even if the spiderfier holds a stale marker reference
-      (ref as any)._meshNodeId = nodeId;
-      // Add marker to spiderfier for overlap handling, passing nodeId to allow multiple markers at same position
-      spiderfierRef.current?.addMarker(ref, nodeId);
+  // Rich OMS click handler (#4047 Phase 4 WP6) — moved onto the shared
+  // NodeMarkersLayer's `onOmsClick(marker, key)`. Replaces the old
+  // `handleMarkerRef`/`_meshNodeId` tag lookup: the shared layer already knows
+  // which key a clicked marker belongs to (it tracks `keyByMarker` itself), so
+  // it hands the key straight to this callback instead of us reading a tag off
+  // the marker instance. Reads latest state via the refs above (kept fresh by
+  // the "Update refs when values change" effect below) so this stays
+  // referentially stable and the shared layer's OMS listener effect
+  // (`[addListener, removeListener, onOmsClick]`) isn't re-registered every
+  // render — the same rationale the old retry-loop bridge had.
+  const onOmsClick = useCallback((marker: LeafletMarker, key: string) => {
+    if (!key) return;
+    const nodeId = key;
+    const findNode = () =>
+      processedNodesRef.current.find(n => (n.user?.id ?? String(n.nodeNum)) === nodeId);
+
+    setSelectedNodeIdRef.current(nodeId);
+    // When showRoute is enabled, let TracerouteBoundsController handle the zoom
+    // to fit the entire traceroute path instead of just centering on the node.
+    // But if the node has no valid traceroute, fall back to centering on it.
+    if (!showRouteRef.current) {
+      const node = findNode();
+      if (node) centerMapOnNodeRef.current(node);
+    } else {
+      const hasTraceroute = traceroutesRef.current.some(tr => {
+        const matches = tr.toNodeId === nodeId || tr.fromNodeId === nodeId;
+        if (!matches) return false;
+        return tr.route && tr.route !== 'null' && tr.route !== '' &&
+               tr.routeBack && tr.routeBack !== 'null' && tr.routeBack !== '';
+      });
+      // If no valid traceroute, still center on the node
+      if (!hasTraceroute) {
+        const node = findNode();
+        if (node) centerMapOnNodeRef.current(node);
+      }
     }
-  }, []); // Empty deps - function never changes
+
+    // #4015: OMS 'click' fires only for an already-spiderfied or standalone
+    // marker, and the shared layer strips Leaflet's own auto-open handler, so
+    // this is the single popup opener — no closePopup()/setTimeout dance
+    // needed. autoPan is disabled so opening the popup doesn't fight the pan
+    // started by centerMapOnNode above. Prefer the live marker from
+    // `markerRefs` (kept fresh by each descriptor's `add` event handler, and
+    // also consumed by App.tsx's own "open popup for selected node" effect)
+    // over the shared layer's marker — mirrors the pre-migration preference.
+    const currentMarker = markerRefs.current.get(nodeId) || marker;
+    const popup = currentMarker.getPopup();
+    if (popup) {
+      popup.options.autoPan = false;
+    }
+    currentMarker.openPopup();
+  }, []); // Empty deps - reads latest values via refs
 
   // Stable callback factories for node item interactions
   const handleNodeClick = useCallback((node: DeviceInfo) => {
@@ -1075,98 +1103,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     showRouteRef.current = showRoute;
     traceroutesRef.current = traceroutes;
   });
-
-  // Track if listeners have been set up
-  const listenersSetupRef = useRef(false);
-
-  // Set up spiderfier event listeners ONCE when component mounts
-  useEffect(() => {
-    // Wait for spiderfier to be ready
-    const checkAndSetup = () => {
-      if (listenersSetupRef.current) {
-        return true; // Already set up
-      }
-
-      if (!spiderfierRef.current) {
-        return false;
-      }
-
-      const clickHandler = (marker: any) => {
-        // Get nodeId from the marker's tag (set in handleMarkerRef).
-        // This is more reliable than reference equality with markerRefs because
-        // the spiderfier may hold a stale marker reference after React-Leaflet
-        // recreates the underlying Leaflet marker object.
-        const nodeId: string | undefined = marker._meshNodeId;
-        if (!nodeId) return;
-
-        setSelectedNodeIdRef.current(nodeId);
-        // When showRoute is enabled, let TracerouteBoundsController handle the zoom
-        // to fit the entire traceroute path instead of just centering on the node.
-        // But if the node has no valid traceroute, fall back to centering on it.
-        if (!showRouteRef.current) {
-          const node = processedNodesRef.current.find(n => n.user?.id === nodeId);
-          if (node) {
-            centerMapOnNodeRef.current(node);
-          }
-        } else {
-          // Check if this node has a valid traceroute
-          const hasTraceroute = traceroutesRef.current.some(tr => {
-            const matches = tr.toNodeId === nodeId || tr.fromNodeId === nodeId;
-            if (!matches) return false;
-            return tr.route && tr.route !== 'null' && tr.route !== '' &&
-                   tr.routeBack && tr.routeBack !== 'null' && tr.routeBack !== '';
-          });
-          // If no valid traceroute, still center on the node
-          if (!hasTraceroute) {
-            const node = processedNodesRef.current.find(n => n.user?.id === nodeId);
-            if (node) {
-              centerMapOnNodeRef.current(node);
-            }
-          }
-        }
-
-        // #4015: OMS 'click' fires only for an already-spiderfied or standalone
-        // marker, and Leaflet's own auto-open handler is stripped below, so this
-        // is the single popup opener — no closePopup()/setTimeout dance needed.
-        // autoPan is disabled so opening the popup doesn't fight the pan started
-        // by centerMapOnNode above. Prefer the live marker from markerRefs over
-        // the spiderfier's possibly-stale ref.
-        const currentMarker = markerRefs.current.get(nodeId) || marker;
-        const popup = currentMarker.getPopup();
-        if (popup) {
-          popup.options.autoPan = false;
-        }
-        currentMarker.openPopup();
-      };
-
-      const spiderfyHandler = (_markers: any[]) => {
-        // Markers fanned out
-      };
-
-      const unspiderfyHandler = (_markers: any[]) => {
-        // Markers collapsed
-      };
-
-      // Add listeners only once
-      spiderfierRef.current.addListener('click', clickHandler);
-      spiderfierRef.current.addListener('spiderfy', spiderfyHandler);
-      spiderfierRef.current.addListener('unspiderfy', unspiderfyHandler);
-      listenersSetupRef.current = true;
-
-      return true;
-    };
-
-    // Keep retrying until spiderfier is ready
-    let attempts = 0;
-    const intervalId = setInterval(() => {
-      attempts++;
-      if (checkAndSetup() || attempts >= SPIDERFIER_INIT.MAX_ATTEMPTS) {
-        clearInterval(intervalId);
-      }
-    }, SPIDERFIER_INIT.RETRY_INTERVAL_MS);
-
-    return () => clearInterval(intervalId);
-  }, []); // Empty array - run only once on mount
 
   // Track previous nodes to detect updates and trigger animations
   const prevNodesRef = useRef<Map<string, number>>(new Map());
@@ -1371,31 +1307,13 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     return `${n.nodeNum}-${pos.latitude}-${pos.longitude}-${n.positionPrecisionBits ?? ''}`;
   }).join(',')]);
 
-  // #4015: strip Leaflet's auto-open-on-click handler that `bindPopup` installs
-  // (via the declarative <Popup> child), so a pile click doesn't plant a popup on
-  // the pre-spread stacked marker — the popup opens only via the OMS 'click'
-  // handler set up above. Popup content stays bound; `off` is idempotent.
-  //
-  // Runs on EVERY render (no dep array) on purpose: react-leaflet mounts the
-  // markers in a later commit than this component's first effect, so keying on a
-  // rendered-node signature can strip before any marker exists and then never
-  // re-run (a keyed effect only re-fires if the key changed — and the node set is
-  // often unchanged between the mount commit and the marker-mount commit). This
-  // was verified against the MeshCore map, where it left popups un-stripped.
-  // Cost is bounded: the per-marker `_meshPopupStripped` tag means the actual
-  // `off()` runs once per marker; steady-state renders just skip. `_openPopup` is
-  // Leaflet-private (verified vs leaflet@1.9.4); a future rename degrades to the
-  // old double-fire (annoying, not a crash).
-  useEffect(() => {
-    for (const m of markerRefs.current.values()) {
-      const mm = m as L.Marker & { _openPopup?: (e: unknown) => void; _meshPopupStripped?: boolean };
-      if (mm._meshPopupStripped) continue;
-      if (mm._openPopup) {
-        mm.off('click', mm._openPopup, mm);
-        mm._meshPopupStripped = true;
-      }
-    }
-  });
+  // #4015: the Leaflet auto-open-on-click strip is now owned by the shared
+  // `NodeMarkersLayer` (#4047 Phase 4 WP6) — it runs the same every-render,
+  // per-marker `_meshPopupStripped`-tagged strip internally against its own
+  // tracked markers, so a duplicate pass over `markerRefs` here is no longer
+  // needed. `markerRefs` itself is still populated (via each descriptor's
+  // `add` event handler below) purely for App.tsx's "open popup for selected
+  // node" effect and this component's `onOmsClick`.
 
   // #3636: measurement endpoints — nearest-node snapping picks from these.
   const measurePoints: MeasurePoint[] = React.useMemo(
@@ -1418,15 +1336,41 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     }).join(',')],
   );
 
-  // Memoize marker icons to prevent unnecessary Leaflet DOM rebuilds
-  // React-Leaflet calls setIcon() whenever the icon prop reference changes, which
-  // destroys and recreates the entire icon DOM element. By memoizing icons, we ensure
-  // setIcon() is only called when visual properties actually change (hops, selection, zoom, etc.),
-  // not on every render. This prevents icon DOM rebuilds from interfering with position updates.
   const showLabel = mapZoom >= 13;
-  const nodeIcons = React.useMemo(() => {
-    const iconMap = new Map<number, L.DivIcon>();
-    nodesWithPosition.forEach(node => {
+
+  // Node marker descriptors for the shared NodeMarkersLayer (#4047 Phase 4,
+  // WP6) — the layer owns spiderfy wiring, the icon/position caches that used
+  // to live in the `nodeIcons`/`nodePositions` memos here, removal
+  // reconciliation, OMS-click popup-open (via `onOmsClick` above), and the
+  // `_openPopup` strip that used to be duplicated inline in this file.
+  // `iconSig` is the exact old `nodeIcons` memo dependency-signature string —
+  // the shared layer's `stableIcon` cache only calls `buildIcon` when it
+  // changes, preserving the "don't rebuild the divIcon DOM every render"
+  // behavior the old memo existed for.
+  //
+  // `key` doubles as the spiderfier tracking key. `String(node.user?.id ??
+  // nodeNum)` preserves the pre-migration `_meshNodeId` identity for every
+  // node that has a `user.id` (the common case), and — unlike the old
+  // `handleMarkerRef`, which silently skipped registering a marker with no
+  // `user?.id` — also gives spiderfy/`markerRefs` coverage to the rare node
+  // that has a position but no user info yet (matches the Dashboard/MapAnalysis
+  // marker-key fallback convention).
+  const nodeMarkers: NodeMarkerDescriptor[] = nodesWithPosition
+    .filter(node => {
+      // Apply standard filters
+      if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes })) return false;
+      if (!showIncompleteNodes && !isNodeComplete(node)) return false;
+      if (!showEstimatedPositions && node.user?.id && nodesWithEstimatedPosition.has(node.user.id)) return false;
+      // When traceroute is active, only show nodes involved in the traceroute
+      if (tracerouteNodeNums && !tracerouteNodeNums.has(node.nodeNum)) return false;
+      // Map Features age slider (#3322): hide markers older than the
+      // chosen age. Favorites are always shown, matching the standard
+      // node age filter. Default (slider at max) is a no-op.
+      if (!node.isFavorite && node.lastHeard && node.lastHeard < mapAgeCutoffSeconds) return false;
+      return true;
+    })
+    .map(node => {
+      const markerKey = String(node.user?.id ?? node.nodeNum);
       const roleNum = typeof node.user?.role === 'string'
         ? parseInt(node.user.role, 10)
         : (typeof node.user?.role === 'number' ? node.user.role : 0);
@@ -1435,27 +1379,143 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       const isLocalNode = node.user?.id === currentNodeId;
       const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
       const shouldAnimate = showAnimations && animatedNodes.has(node.user?.id || '');
+      const position = nodePositions.get(node.nodeNum)!;
 
-      const icon = createNodeIcon({
-        hops,
-        isSelected,
-        isRouter,
-        shortName: node.user?.shortName,
-        showLabel: showLabel || shouldAnimate,
-        animate: shouldAnimate,
-        highlightSelected: showRoute && isSelected,
-        pinStyle: mapPinStyle,
+      // Calculate opacity based on last heard time
+      const markerOpacity = calculateNodeOpacity(
+        node.lastHeard,
+        nodeDimmingEnabled,
+        nodeDimmingStartHours,
+        nodeDimmingMinOpacity,
+        maxNodeAgeHours
+      );
+
+      // Hide popup when showRoute is enabled and node has a valid traceroute,
+      // since TracerouteBoundsController zooms to fit the route.
+      const hasValidTraceroute = traceroutes.some(tr => {
+        const matches = tr.toNodeId === node.user?.id || tr.fromNodeId === node.user?.id;
+        if (!matches) return false;
+        return tr.route && tr.route !== 'null' && tr.route !== '' &&
+               tr.routeBack && tr.routeBack !== 'null' && tr.routeBack !== '';
       });
-      iconMap.set(node.nodeNum, icon);
+
+      return {
+        key: markerKey,
+        position,
+        iconSig: `${node.nodeNum}-${hops}-${isSelected}-${node.user?.role}-${node.user?.shortName}-${showLabel}-${shouldAnimate}-${showRoute && isSelected}-${mapPinStyle}`,
+        buildIcon: () =>
+          createNodeIcon({
+            variant: 'meshtastic',
+            hops,
+            isSelected,
+            isRouter,
+            shortName: node.user?.shortName,
+            showLabel: showLabel || shouldAnimate,
+            animate: shouldAnimate,
+            highlightSelected: showRoute && isSelected,
+            pinStyle: mapPinStyle,
+          }),
+        opacity: markerOpacity,
+        zIndexOffset: shouldAnimate ? 10000 : 0,
+        eventHandlers: {
+          // Keep `markerRefs` (shared with App.tsx's "open popup for selected
+          // node" effect, and this component's `onOmsClick` above) populated
+          // with the live Leaflet marker instance. Leaflet's 'add' event
+          // fires once the marker is added to the map (`e.target` is the
+          // marker itself) — a standard, cheap substitute for the old
+          // `handleMarkerRef` ref-callback tagging, now that the shared layer
+          // owns the `<Marker ref>` itself.
+          add: (e: L.LeafletEvent) => {
+            markerRefs.current.set(markerKey, e.target as LeafletMarker);
+          },
+          ...(!isTouchDevice ? {
+            mouseover: (e: any) => {
+              if (hoverTimeoutRef.current) {
+                clearTimeout(hoverTimeoutRef.current);
+                hoverTimeoutRef.current = null;
+              }
+              // Selectively dim polylines not connected to this node
+              const container = e.target._map?.getContainer();
+              if (!container) return;
+              const nodeClass = `node-${node.nodeNum}`;
+              const paths = container.querySelectorAll('.leaflet-overlay-pane svg path.route-segment, .leaflet-overlay-pane svg path.neighbor-line');
+              paths.forEach((path: Element) => {
+                if (path.classList.contains(nodeClass)) {
+                  (path as HTMLElement).style.opacity = '';
+                } else {
+                  (path as HTMLElement).style.opacity = '0.25';
+                }
+              });
+            },
+            mouseout: (e: any) => {
+              if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+              hoverTimeoutRef.current = setTimeout(() => {
+                const container = e.target._map?.getContainer();
+                if (!container) return;
+                const paths = container.querySelectorAll('.leaflet-overlay-pane svg path.route-segment, .leaflet-overlay-pane svg path.neighbor-line');
+                paths.forEach((path: Element) => {
+                  (path as HTMLElement).style.opacity = '';
+                });
+                hoverTimeoutRef.current = null;
+              }, 150);
+            },
+          } : {}),
+        },
+        children: (
+          <>
+            {!isTouchDevice && (
+              <Tooltip direction="top" offset={[0, -20]} opacity={0.9}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontWeight: 'bold' }}>
+                    {node.user?.longName || node.user?.shortName || `!${node.nodeNum.toString(16)}`}
+                  </div>
+                  {(() => {
+                    const tooltipHops = getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
+                    const { hops: metaHops, showSnr, snr } = getMapHoverTooltipMeta(tooltipHops, node.snr);
+                    if (metaHops === null && !showSnr) return null;
+                    return (
+                      <div style={{ fontSize: '0.85em', opacity: 0.8 }}>
+                        {metaHops !== null && (
+                          <span>{metaHops} hop{metaHops !== 1 ? 's' : ''}</span>
+                        )}
+                        {showSnr && (
+                          <span>
+                            {metaHops !== null ? ' · ' : ''}📶 {snr!.toFixed(1)}dB
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </Tooltip>
+            )}
+            {!(showRoute && hasValidTraceroute) && (
+              <Popup autoPan={false}>
+                <MapNodePopupContent
+                  node={node}
+                  nodes={nodes}
+                  currentNodeId={currentNodeId}
+                  timeFormat={timeFormat}
+                  dateFormat={dateFormat}
+                  distanceUnit={distanceUnit}
+                  traceroutes={traceroutes}
+                  hasPermission={hasPermission}
+                  onDMNode={handlePopupDMClick(node)}
+                  onCopyNodeInfo={() => setCopyNodeInfoTarget(node)}
+                  onTraceroute={onTraceroute ? () => onTraceroute(node.user!.id) : undefined}
+                  connectionStatus={connectionStatus}
+                  tracerouteLoading={tracerouteLoading}
+                  getEffectiveHops={(n) => getEffectiveHops(n, nodeHopsCalculation, traceroutes, currentNodeNum)}
+                  onDeleteNode={onDeleteNode}
+                  onPurgeNodeFromDevice={onPurgeNodeFromDevice}
+                  currentNodeNum={currentNodeNum}
+                />
+              </Popup>
+            )}
+          </>
+        ),
+      };
     });
-    return iconMap;
-  }, [nodesWithPosition.map(n => {
-    const isSelected = selectedNodeId === n.user?.id;
-    const isLocalNode = n.user?.id === currentNodeId;
-    const hops = isLocalNode ? 0 : getEffectiveHops(n, nodeHopsCalculation, traceroutes, currentNodeNum);
-    const shouldAnimate = showAnimations && animatedNodes.has(n.user?.id || '');
-    return `${n.nodeNum}-${hops}-${isSelected}-${n.user?.role}-${n.user?.shortName}-${showLabel}-${shouldAnimate}-${showRoute && isSelected}-${mapPinStyle}`;
-  }).join(',')]);
 
   // Calculate center point of all nodes for initial map view
   // Use saved map center from localStorage if available, otherwise calculate from nodes
@@ -2267,7 +2327,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 zoom={defaultMapCenterZoom}
               />
               <MapResizeHandler trigger={`${showPacketMonitor}-${isNodeListCollapsed}-${packetMonitorHeight}`} />
-              <SpiderfierController ref={spiderfierRef} zoomLevel={mapZoom} />
           {measureActive && (
             <MeasureDistanceController
               active={measureActive}
@@ -2281,135 +2340,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 unmappedCount={unmappedCount}
               />
               )}
-              {nodesWithPosition
-                .filter(node => {
-                  // Apply standard filters
-                  if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes })) return false;
-                  if (!showIncompleteNodes && !isNodeComplete(node)) return false;
-                  if (!showEstimatedPositions && node.user?.id && nodesWithEstimatedPosition.has(node.user.id)) return false;
-                  // When traceroute is active, only show nodes involved in the traceroute
-                  if (tracerouteNodeNums && !tracerouteNodeNums.has(node.nodeNum)) return false;
-                  // Map Features age slider (#3322): hide markers older than the
-                  // chosen age. Favorites are always shown, matching the standard
-                  // node age filter. Default (slider at max) is a no-op.
-                  if (!node.isFavorite && node.lastHeard && node.lastHeard < mapAgeCutoffSeconds) return false;
-                  return true;
-                })
-                .map(node => {
-                // Use memoized icon and position to prevent unnecessary Leaflet DOM rebuilds
-                const markerIcon = nodeIcons.get(node.nodeNum)!;
-                const position = nodePositions.get(node.nodeNum)!;
-                const shouldAnimate = showAnimations && animatedNodes.has(node.user?.id || '');
-
-                // Calculate opacity based on last heard time
-                const markerOpacity = calculateNodeOpacity(
-                  node.lastHeard,
-                  nodeDimmingEnabled,
-                  nodeDimmingStartHours,
-                  nodeDimmingMinOpacity,
-                  maxNodeAgeHours
-                );
-
-                return (
-              <Marker
-                key={node.nodeNum}
-                position={position}
-                icon={markerIcon}
-                opacity={markerOpacity}
-                zIndexOffset={shouldAnimate ? 10000 : 0}
-                ref={(ref) => handleMarkerRef(ref, node.user?.id)}
-                eventHandlers={!isTouchDevice ? {
-                  mouseover: (e: any) => {
-                    if (hoverTimeoutRef.current) {
-                      clearTimeout(hoverTimeoutRef.current);
-                      hoverTimeoutRef.current = null;
-                    }
-                    // Selectively dim polylines not connected to this node
-                    const container = e.target._map?.getContainer();
-                    if (!container) return;
-                    const nodeClass = `node-${node.nodeNum}`;
-                    const paths = container.querySelectorAll('.leaflet-overlay-pane svg path.route-segment, .leaflet-overlay-pane svg path.neighbor-line');
-                    paths.forEach((path: Element) => {
-                      if (path.classList.contains(nodeClass)) {
-                        (path as HTMLElement).style.opacity = '';
-                      } else {
-                        (path as HTMLElement).style.opacity = '0.25';
-                      }
-                    });
-                  },
-                  mouseout: (e: any) => {
-                    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-                    hoverTimeoutRef.current = setTimeout(() => {
-                      const container = e.target._map?.getContainer();
-                      if (!container) return;
-                      const paths = container.querySelectorAll('.leaflet-overlay-pane svg path.route-segment, .leaflet-overlay-pane svg path.neighbor-line');
-                      paths.forEach((path: Element) => {
-                        (path as HTMLElement).style.opacity = '';
-                      });
-                      hoverTimeoutRef.current = null;
-                    }, 150);
-                  },
-                } : undefined}
-              >
-                {!isTouchDevice && (
-                  <Tooltip direction="top" offset={[0, -20]} opacity={0.9}>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontWeight: 'bold' }}>
-                        {node.user?.longName || node.user?.shortName || `!${node.nodeNum.toString(16)}`}
-                      </div>
-                      {(() => {
-                        const tooltipHops = getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
-                        const { hops, showSnr, snr } = getMapHoverTooltipMeta(tooltipHops, node.snr);
-                        if (hops === null && !showSnr) return null;
-                        return (
-                          <div style={{ fontSize: '0.85em', opacity: 0.8 }}>
-                            {hops !== null && (
-                              <span>{hops} hop{hops !== 1 ? 's' : ''}</span>
-                            )}
-                            {showSnr && (
-                              <span>
-                                {hops !== null ? ' · ' : ''}📶 {snr!.toFixed(1)}dB
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </Tooltip>
-                )}
-                {/* Hide popup when showRoute is enabled and node has a valid traceroute,
-                    since TracerouteBoundsController zooms to fit the route */}
-                {!(showRoute && traceroutes.some(tr => {
-                  const matches = tr.toNodeId === node.user?.id || tr.fromNodeId === node.user?.id;
-                  if (!matches) return false;
-                  return tr.route && tr.route !== 'null' && tr.route !== '' &&
-                         tr.routeBack && tr.routeBack !== 'null' && tr.routeBack !== '';
-                })) && (
-                  <Popup autoPan={false}>
-                    <MapNodePopupContent
-                      node={node}
-                      nodes={nodes}
-                      currentNodeId={currentNodeId}
-                      timeFormat={timeFormat}
-                      dateFormat={dateFormat}
-                      distanceUnit={distanceUnit}
-                      traceroutes={traceroutes}
-                      hasPermission={hasPermission}
-                      onDMNode={handlePopupDMClick(node)}
-                      onCopyNodeInfo={() => setCopyNodeInfoTarget(node)}
-                      onTraceroute={onTraceroute ? () => onTraceroute(node.user!.id) : undefined}
-                      connectionStatus={connectionStatus}
-                      tracerouteLoading={tracerouteLoading}
-                      getEffectiveHops={(n) => getEffectiveHops(n, nodeHopsCalculation, traceroutes, currentNodeNum)}
-                      onDeleteNode={onDeleteNode}
-                      onPurgeNodeFromDevice={onPurgeNodeFromDevice}
-                      currentNodeNum={currentNodeNum}
-                    />
-                  </Popup>
-                )}
-              </Marker>
-                );
-              })}
+              <NodeMarkersLayer markers={nodeMarkers} onOmsClick={onOmsClick} />
 
               {/* Draw uncertainty circles for estimated positions. The "Show
                   Accuracy" map toggle now governs the radius (issue #3271

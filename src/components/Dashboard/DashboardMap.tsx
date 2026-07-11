@@ -13,11 +13,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Rectangle, useMap } from 'react-leaflet';
-import L, { type Marker as LeafletMarker } from 'leaflet';
+import { MapContainer, TileLayer, Popup, Polyline, Rectangle, useMap } from 'react-leaflet';
+import L from 'leaflet';
 import { createNodeIcon } from '../../utils/mapIcons';
 import { markerAgeOpacity } from '../../utils/markerAgeOpacity';
-import { SpiderfierController, type SpiderfierControllerRef } from '../SpiderfierController';
+import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
 import { getTilesetById } from '../../config/tilesets';
 import type { CustomTileset, TilesetId } from '../../config/tilesets';
 import DashboardWaypoints from './DashboardWaypoints';
@@ -158,61 +158,6 @@ export default function DashboardMap({
   const polarSourceIds = isUnified ? allSourceIds : sourceId ? [sourceId] : [];
   const sourceStatuses = useSourceStatuses(polarSourceIds);
 
-  // Spiderfier: fan out co-located markers so each node (incl. estimated-position
-  // nodes that collapse onto the same anchor) is individually selectable (#3612).
-  // Reuses the SAME shared SpiderfierController + tuning as the per-source NodesTab
-  // map and Map Analysis. Stable per-key ref handlers bridge react-leaflet's
-  // declarative <Marker> to the imperative Leaflet markers the spiderfier tracks.
-  const spiderfierRef = useRef<SpiderfierControllerRef>(null);
-  const markerByKey = useRef<Map<string, LeafletMarker>>(new Map());
-  const refHandlers = useRef<Map<string, (m: LeafletMarker | null) => void>>(new Map());
-  // Stable position/icon refs keyed by the spiderfier key — fixes the fan
-  // auto-collapsing a few seconds after spiderfying (issue #3685). react-leaflet
-  // only calls marker.setLatLng()/setIcon() when the prop *reference* changes,
-  // and doing either on a spiderfied marker snaps it back to its anchor,
-  // collapsing the fan. The unified node list refetches on every poll and
-  // rebuilds these objects even when nothing actually moved, so we cache them by
-  // value: an unchanged marker keeps identical refs across refreshes and the fan
-  // persists. (The per-source NodesTab map solves the same churn via a memoized
-  // marker.)
-  const positionCacheRef = useRef<Map<string, [number, number]>>(new Map());
-  const iconCacheRef = useRef<Map<string, { sig: string; icon: L.DivIcon }>>(new Map());
-  const stablePosition = (key: string, lat: number, lng: number): [number, number] => {
-    const cached = positionCacheRef.current.get(key);
-    if (cached && cached[0] === lat && cached[1] === lng) return cached;
-    const next: [number, number] = [lat, lng];
-    positionCacheRef.current.set(key, next);
-    return next;
-  };
-  const stableIcon = (key: string, sig: string, build: () => L.DivIcon): L.DivIcon => {
-    const cached = iconCacheRef.current.get(key);
-    if (cached && cached.sig === sig) return cached.icon;
-    const icon = build();
-    iconCacheRef.current.set(key, { sig, icon });
-    return icon;
-  };
-  const getMarkerRef = (key: string) => {
-    let h = refHandlers.current.get(key);
-    if (!h) {
-      h = (m: LeafletMarker | null) => {
-        // react-leaflet forwards its ref via `useImperativeHandle(ref, () =>
-        // instance)` with NO dependency array, so React bounces this callback
-        // `null → instance` on EVERY re-render — not just mount/unmount.
-        // Treating `null` as "removed" would call removeMarker on a still-present
-        // (often spiderfied) marker on every poll/selection change, and OMS
-        // auto-unspiderfies when a spiderfied marker is removed → the fan
-        // collapses (issue #3685). Register on an instance only (addMarker is
-        // idempotent); genuine removals are reconciled by the effect below.
-        if (m) {
-          markerByKey.current.set(key, m);
-          spiderfierRef.current?.addMarker(m, key);
-        }
-      };
-      refHandlers.current.set(key, h);
-    }
-    return h;
-  };
-
   // Tile selector + legend overlays — hidden by default, toggled from the Map
   // Features panel. Persisted under the same localStorage keys the NodesTab map
   // uses so the preference is unified across every map surface.
@@ -350,77 +295,6 @@ export default function DashboardMap({
   const ownNodePositions = getOwnNodePositions(nodes, localNodeNumBySource);
   const hasOwnNode = ownNodePositions.length > 0;
 
-  // Genuine removals (a node aged out / filtered away) are reconciled here
-  // rather than from the ref `null` bounce (see getMarkerRef): drop any tracked
-  // marker whose key is no longer rendered, and unregister it from the
-  // spiderfier. Keyed off the rendered key SET so it only does work when
-  // membership actually changes — must match the markerKey used in the JSX.
-  const renderedKeysSig = nodesWithPosition
-    .map(({ node }) => {
-      const nodeId = node.nodeId ?? node.user?.id;
-      return String(
-        node.sourceId != null && node.nodeNum != null
-          ? `${node.sourceId}:${node.nodeNum}`
-          : nodeId ?? node.nodeNum,
-      );
-    })
-    .join('|');
-  useEffect(() => {
-    const rendered = new Set(renderedKeysSig ? renderedKeysSig.split('|') : []);
-    for (const key of [...markerByKey.current.keys()]) {
-      if (rendered.has(key)) continue;
-      const m = markerByKey.current.get(key);
-      if (m) spiderfierRef.current?.removeMarker(m);
-      markerByKey.current.delete(key);
-      refHandlers.current.delete(key);
-      positionCacheRef.current.delete(key);
-      iconCacheRef.current.delete(key);
-    }
-  }, [renderedKeysSig]);
-
-  // #4015: open the popup ONLY via the OMS 'click' event (which fires solely for
-  // an already-spiderfied or standalone marker — never for the click that fans
-  // out a pile). The SpiderfierController's OMS is created in its own effect;
-  // retry briefly until it exists, then register.
-  useEffect(() => {
-    const onOmsClick = (marker: LeafletMarker) => marker.openPopup();
-    let attempts = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    // Capture the controller we register on so cleanup detaches from the same
-    // one (avoids reading spiderfierRef.current in cleanup).
-    let registered: SpiderfierControllerRef | null = null;
-    const tryRegister = () => {
-      const controller = spiderfierRef.current;
-      if (controller?.getSpiderfier()) {
-        controller.addListener('click', onOmsClick);
-        registered = controller;
-        return;
-      }
-      if (attempts++ < 20) timer = setTimeout(tryRegister, 50);
-    };
-    tryRegister();
-    return () => {
-      if (timer) clearTimeout(timer);
-      registered?.removeListener('click', onOmsClick);
-    };
-  }, []);
-
-  // #4015: strip Leaflet's auto-open-on-click handler that `bindPopup` installs
-  // (via the declarative <Popup> child), so a pile click doesn't plant a popup on
-  // the pre-spread stacked marker. Runs after the child <Popup> bind effects;
-  // `off` is idempotent. Popup content stays bound for the OMS-driven open above.
-  //
-  // NOTE: `_openPopup` is Leaflet's private handler (verified against
-  // leaflet@1.9.4 `Popup.js` bindPopup). Undocumented — if a future Leaflet
-  // renames/removes it, the strip no-ops and we degrade to the old double-fire
-  // (annoying, not a crash). Re-verify when bumping Leaflet.
-  useEffect(() => {
-    for (const m of markerByKey.current.values()) {
-      const mm = m as LeafletMarker & { _openPopup?: (e: unknown) => void };
-      if (mm._openPopup) mm.off('click', mm._openPopup, mm);
-    }
-  }, [renderedKeysSig]);
-
   // nodeNum → [lat, lng] map used to resolve traceroute hop positions. The
   // unified view merges per-source node rows by nodeNum (see mergeUnifiedSourceData
   // in useDashboardData.ts), so a single lookup table works across sources.
@@ -523,6 +397,61 @@ export default function DashboardMap({
 
   const hasNodes = nodesWithPosition.length > 0;
 
+  // Node marker descriptors for the shared NodeMarkersLayer (#4047 Phase 4,
+  // WP5) — the layer owns spiderfy wiring, stable icon/position caches,
+  // removal reconciliation, OMS-click popup-open, and the `_openPopup` strip
+  // that used to be duplicated inline here. `key` doubles as the spiderfier
+  // tracking key (prefer the cross-source identity, fall back to nodeId so
+  // MeshCore (no nodeNum) and unmerged rows still register).
+  const nodeMarkers: NodeMarkerDescriptor[] = nodesWithPosition.map(({ node, pos }) => {
+    const hops = node.hopsAway ?? 999;
+    const shortName = node.shortName ?? node.user?.shortName;
+    const nodeId = node.nodeId ?? node.user?.id;
+    const isRouter = node.role === 2;
+    const markerKey = String(
+      node.sourceId != null && node.nodeNum != null
+        ? `${node.sourceId}:${node.nodeNum}`
+        : nodeId ?? node.nodeNum,
+    );
+    // #3886: fade markers by recency instead of a flat opacity — full when
+    // freshly heard, fading toward a floor as lastHeard nears the age cutoff
+    // (cutoffTime, seconds). Favorites bypass the age gate above so they stay
+    // fully opaque regardless of age. NOTE: here a missing lastHeard yields
+    // full opacity ("assume fresh"), which differs on purpose from Map
+    // Analysis where a missing timestamp sits at the floor — the Dashboard
+    // already age-gates upstream, so anything that reaches this loop is
+    // presumed current.
+    const ageOpacity = node.isFavorite
+      ? 1
+      : markerAgeOpacity(
+          nowMs,
+          cutoffTime * 1000,
+          node.lastHeard != null ? node.lastHeard * 1000 : null,
+        );
+
+    return {
+      key: markerKey,
+      position: [pos.lat, pos.lng],
+      iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${mapPinStyle}`,
+      buildIcon: () =>
+        createNodeIcon({
+          variant: 'meshtastic',
+          hops,
+          isSelected: false,
+          isRouter,
+          shortName,
+          showLabel: true,
+          pinStyle: mapPinStyle,
+        }),
+      opacity: ageOpacity,
+      children: (
+        <Popup>
+          <DashboardNodePopup node={node} pos={pos} onSourceSelect={onNodeSourceSelect} />
+        </Popup>
+      ),
+    };
+  });
+
   return (
     <div className="dashboard-map-container" style={{ position: 'relative' }}>
       <MapContainer
@@ -537,8 +466,6 @@ export default function DashboardMap({
           attribution={tileset.attribution}
           maxZoom={tileset.maxZoom}
         />
-
-        <SpiderfierController ref={spiderfierRef} />
 
         {measureActive && (
           <MeasureDistanceController
@@ -566,62 +493,7 @@ export default function DashboardMap({
 
         {showWaypoints && <DashboardWaypoints sourceId={sourceId} />}
 
-        {nodesWithPosition.map(({ node, pos }) => {
-          const hops = node.hopsAway ?? 999;
-          const shortName = node.shortName ?? node.user?.shortName;
-          const nodeId = node.nodeId ?? node.user?.id;
-          const isRouter = node.role === 2;
-          // Stable spiderfier key — prefer the cross-source identity, fall back to
-          // nodeId so MeshCore (no nodeNum) and unmerged rows still register.
-          const markerKey = String(
-            node.sourceId != null && node.nodeNum != null
-              ? `${node.sourceId}:${node.nodeNum}`
-              : nodeId ?? node.nodeNum,
-          );
-          // Reuse the cached icon/position unless an input actually changed, so a
-          // poll that returns identical data doesn't churn the marker and collapse
-          // any active spiderfy fan.
-          const iconSig = `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${mapPinStyle}`;
-          const icon = stableIcon(markerKey, iconSig, () =>
-            createNodeIcon({
-              hops,
-              isSelected: false,
-              isRouter,
-              shortName,
-              showLabel: true,
-              pinStyle: mapPinStyle,
-            }),
-          );
-          // #3886: fade markers by recency instead of a flat opacity — full when
-          // freshly heard, fading toward a floor as lastHeard nears the age
-          // cutoff (cutoffTime, seconds). Favorites bypass the age gate above so
-          // they stay fully opaque regardless of age. NOTE: here a missing
-          // lastHeard yields full opacity ("assume fresh"), which differs on
-          // purpose from Map Analysis where a missing timestamp sits at the
-          // floor — the Dashboard already age-gates upstream, so anything that
-          // reaches this loop is presumed current.
-          const ageOpacity = node.isFavorite
-            ? 1
-            : markerAgeOpacity(
-                nowMs,
-                cutoffTime * 1000,
-                node.lastHeard != null ? node.lastHeard * 1000 : null,
-              );
-
-          return (
-            <Marker
-              key={nodeId}
-              ref={getMarkerRef(markerKey)}
-              position={stablePosition(markerKey, pos.lat, pos.lng)}
-              icon={icon}
-              opacity={ageOpacity}
-            >
-              <Popup>
-                <DashboardNodePopup node={node} pos={pos} onSourceSelect={onNodeSourceSelect} />
-              </Popup>
-            </Marker>
-          );
-        })}
+        <NodeMarkersLayer markers={nodeMarkers} />
 
         {/* Position accuracy regions — drawn from precision_bits, mirroring NodesTab.
             Shares the cell geometry with Map Analysis via `precisionCellBounds`. */}

@@ -95,7 +95,7 @@ TracerouteWidget.
 the shared layer; #1862/#2051/#2931 behaviors preserved in one place with tests;
 browser-validated on all four views; suite green.
 
-### [ ] Phase 4 — Node marker unification (`feature/4047-p4-marker-unify`)
+### [x] Phase 4 — Node marker unification (`feature/4047-p4-marker-unify`)
 One icon factory in `src/components/map/` unifying `createNodeIcon` (Meshtastic
 hop-colored) and MeshCoreMap's hand-rolled `L.divIcon` around `roleGlyphMarkerSvg`
 (MeshCore role glyphs) behind one API; one shared `NodeMarkersLayer` (spiderfy + icon
@@ -137,6 +137,28 @@ browser-validated on every map view; suite green.
 ## Phase log
 
 (Per-phase: PR link, deviations, decisions — appended as phases complete.)
+
+### Phase 4 (2026-07-10) — Node marker unification
+- Delivered as a PURE REFACTOR (empty visible-changes list, byte-parity enforced by
+  fixture tests): `src/components/map/markerIcons.ts` (factory — `createNodeIcon` with
+  `variant:'meshtastic'|'meshcore'` + `createTracerouteEndpointIcon`; `utils/mapIcons.ts`
+  is a deprecated re-export shim) and `src/components/map/layers/NodeMarkersLayer.tsx`
+  (descriptor-based shared layer owning spiderfy, icon/position caches, reconciliation,
+  OMS-click popup-open, and the every-render `_openPopup` strip — the correct variant;
+  Dashboard/MapAnalysis had the too-early never-refires copy, a latent bug now fixed).
+- All four maps migrated; NodesTab's `_meshNodeId` mechanism replaced by the layer's
+  key WeakMap; `SpiderfierController` DELETED (zero importers); lint baseline shrank.
+- Descriptor API held across all four consumers with ZERO gaps. Net −1,329 lines of
+  duplicated marker/spiderfy logic.
+- D3: widget endpoint dots keep their colors (endpoint identity encoding — documented
+  constraint, Phase-3 TODO resolved as deliberate).
+- Browser-validated: NodesTab (790 markers, fan-no-popup, custom-click popup), Dashboard
+  (732 markers, fan), MapAnalysis (1,479 markers, default-path popup — proves the path
+  Dashboard/MeshCore share). **MeshCore markers NOT live-validated** — both meshcore
+  sources failed to connect in the validation container (serial/VN unavailable);
+  covered by strict byte-parity fixtures in markerIcons.test.ts. Re-verify visually
+  when a meshcore source next connects.
+- Suite: 9,475 tests / 0 failures; typecheck + lint:ci clean.
 
 ### Phase 3 (2026-07-10) — Traceroute unification, app maps
 - Delivered: canonical 4-band theme-aware SNR scale (WCAG-AA-verified light palette);
