@@ -40,7 +40,12 @@ vi.mock('react-leaflet', () => ({
     return <div data-testid="map-marker" data-opacity={opacity}>{children}</div>;
   },
   Popup: ({ children }: any) => <div data-testid="map-popup">{children}</div>,
-  Polyline: () => <div data-testid="map-polyline" />,
+  // #4042: expose resolved positions so tests can assert a neighbor line
+  // terminates at a node's rendered marker position (not the link's raw
+  // embedded lat/lng) — mirrors NeighborLinksLayer.test.tsx's mock.
+  Polyline: ({ positions }: any) => (
+    <div data-testid="map-polyline" data-positions={JSON.stringify(positions)} />
+  ),
   Rectangle: () => <div data-testid="map-rectangle" />,
   useMap: () => ({ fitBounds: vi.fn(), setView: vi.fn() }),
 }));
@@ -214,6 +219,34 @@ const neighborLinkWithPositions = {
   snr: 5,
 };
 
+// #4042 fixtures: a node whose rendered marker position (100) DIFFERS from
+// the neighbor-link's own embedded coordinates, to prove endpoint resolution
+// prefers the marker. neighborNum 999 has no corresponding node/marker, so
+// its endpoint must fall back to the link's embedded coordinates.
+const nodeWithMergedPosition = {
+  user: { id: 'node-7', shortName: 'N7', longName: 'Merged Position Node' },
+  position: { latitude: 40.0, longitude: -90.0 },
+  hopsAway: 1,
+  role: 1,
+  lastHeard: recent,
+  nodeNum: 100,
+};
+
+const neighborLinkStaleEmbeddedCoords = {
+  nodeNum: 100,
+  neighborNodeNum: 999,
+  // Stale/source-specific coordinates for nodeNum 100 — should be ignored in
+  // favor of its rendered marker position (40.0, -90.0) above.
+  nodeLatitude: 10.0,
+  nodeLongitude: -20.0,
+  // neighborNodeNum 999 has no node/marker on the map, so this embedded
+  // fallback coordinate IS expected to be used.
+  neighborLatitude: 50.0,
+  neighborLongitude: -100.0,
+  bidirectional: true,
+  snr: 5,
+};
+
 const neighborLinkMissingPositions = {
   nodeNum: 3,
   neighborNodeNum: 4,
@@ -350,6 +383,25 @@ describe('DashboardMap', () => {
     const polylines = screen.getAllByTestId('map-polyline');
     // Only the link with valid positions should be rendered
     expect(polylines.length).toBe(1);
+  });
+
+  it('resolves a neighbor-link endpoint to the rendered marker position when present, falling back to the embedded coordinate otherwise (#4042)', () => {
+    render(
+      <DashboardMap
+        {...defaultProps}
+        nodes={[nodeWithMergedPosition]}
+        neighborInfo={[neighborLinkStaleEmbeddedCoords]}
+      />,
+    );
+    const polyline = screen.getByTestId('map-polyline');
+    const positions = JSON.parse(polyline.getAttribute('data-positions') ?? 'null');
+    // nodeNum 100 has a rendered marker at [40.0, -90.0] — the resolved
+    // endpoint uses that marker position, NOT the link's stale embedded
+    // [10.0, -20.0].
+    expect(positions[0]).toEqual([40.0, -90.0]);
+    // neighborNodeNum 999 has no node/marker on the map — its endpoint falls
+    // back to the link's embedded coordinate.
+    expect(positions[1]).toEqual([50.0, -100.0]);
   });
 
   it('shows empty state overlay when no nodes have positions', () => {
