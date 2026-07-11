@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/nodes.css';
-import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Circle, Rectangle, useMap } from 'react-leaflet';
+import { Popup, Tooltip, Polyline, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
@@ -9,10 +9,10 @@ import { TabType } from '../types/ui';
 import { nodePassesTransportFilter } from '../utils/nodeTransport';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
-import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, createArrowIcon, snrToColor } from '../utils/mapHelpers.tsx';
+import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, snrToColor } from '../utils/mapHelpers.tsx';
 import { convertSpeed } from '../utils/speedConversion';
 import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, resolveMapEndpoint, TRACEROUTE_DISPLAY_HOURS } from '../utils/nodeHelpers';
-import { shouldOffsetForPrecision, offsetWithinPrecisionCell } from '../utils/precisionOffset';
+import { shouldOffsetForPrecision, offsetWithinPrecisionCell, hasAccuracyCell, precisionCellBounds } from '../utils/precisionOffset';
 import MapLegend from './MapLegend';
 import { formatTime, formatDateTime } from '../utils/datetime';
 import { getDistanceToNode, calculateDistance, formatDistance } from '../utils/distance';
@@ -31,19 +31,19 @@ import { useWaypoints } from '../hooks/useWaypoints';
 import type { Waypoint, WaypointInput } from '../types/waypoint';
 import { useResizable } from '../hooks/useResizable';
 import ZoomHandler from './ZoomHandler';
-import MapResizeHandler from './MapResizeHandler';
 import MapPositionHandler from './MapPositionHandler';
 import PolarGridOverlay from './PolarGridOverlay.js';
 import GeoJsonOverlay from './GeoJsonOverlay';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from './map/layers/NodeMarkersLayer';
 import MeasureDistanceController from './MeasureDistanceController';
 import type { MeasurePoint } from '../utils/measureDistance';
-import { TilesetSelector } from './TilesetSelector';
 import { MapCenterController } from './MapCenterController';
 import PacketMonitorPanel from './PacketMonitorPanel';
 import { getPacketStats } from '../services/packetApi';
 
-import { VectorTileLayer } from './VectorTileLayer';
+import { BaseMap } from './map/BaseMap';
+import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
+import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from './map/layers/AccuracyRegionsLayer';
 import { NodeCard } from './map/popups/NodeCard';
 import { IdentityItems, SignalItems, LastHeardFooter, TracerouteBody, NodeActions, type NodeActionSpec } from './map/popups/sections';
 import { toNodeCardModel, type NodeCardModel } from './map/popups/nodeCardModel';
@@ -142,17 +142,57 @@ const DistanceDisplay = React.memo<{
 
 // Separate components for traceroutes that can update independently
 // These prevent marker re-renders when only the traceroute paths change
-const TraceroutePathsLayer = React.memo<{ paths: React.ReactNode; enabled: boolean }>(
+// Renamed from TraceroutePathsLayer/SelectedTracerouteLayer (#4047 Phase 7
+// WP13) — those names shadowed the shared `map/layers/TraceroutePathsLayer`;
+// these are thin pass-through wrappers of pre-built nodes, not that layer.
+const TraceroutePathsContainer = React.memo<{ paths: React.ReactNode; enabled: boolean }>(
   ({ paths }) => {
     return <>{paths}</>;
   }
 );
 
-const SelectedTracerouteLayer = React.memo<{ traceroute: React.ReactNode; enabled: boolean }>(
+const SelectedTracerouteContainer = React.memo<{ traceroute: React.ReactNode; enabled: boolean }>(
   ({ traceroute }) => {
     return <>{traceroute}</>;
   }
 );
+
+/**
+ * NodesTab's neighbor-link SNR encoding (#4047 Phase 7 WP11): a 4-tier
+ * weight/opacity table plus a uniform amber color (`overlayColors.neighborLine`),
+ * unlike the shared `NeighborLinksLayer`'s other consumers, which use the
+ * continuous `snrToNeighborOpacity` curve (`utils/neighborLinks.ts`) — the two
+ * are deliberately NOT unified (spec §4.1: "NodesTab uses a different 4-tier
+ * SNR→weight/opacity table — that stays in the NodesTab adapter"). Direction
+ * arrows are unidirectional-only, matching the shared layer's `arrows` gate.
+ * Extracted as a pure function (module-scope, exported) so this table and the
+ * arrow gate can be pinned with a unit test independent of the full
+ * component render.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- #4047 pure helper co-located with its only consumer for adapter unit testing; not a component
+export function computeNeighborLinkStyle(
+  snr: number | null,
+  isBidirectional: boolean,
+  lineColor: string,
+): { pathOptions: L.PathOptions; arrows?: { color: string } } {
+  let weight: number;
+  let opacity: number;
+  if (snr != null) {
+    if (snr > 10) { weight = 4; opacity = 0.85; }
+    else if (snr >= 0) { weight = 3; opacity = 0.6; }
+    else { weight = 2; opacity = 0.4; }
+  } else { weight = 2; opacity = 0.3; }
+
+  return {
+    pathOptions: {
+      color: lineColor,
+      weight,
+      opacity,
+      dashArray: isBidirectional ? undefined : '5, 5',
+    },
+    arrows: isBidirectional ? undefined : { color: lineColor },
+  };
+}
 
 /**
  * Controller that applies the configured default map center once server settings load.
@@ -1579,6 +1619,143 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       };
     });
 
+  // Position accuracy regions (#4047 Phase 7 WP11) — adapter over the shared
+  // `AccuracyRegionsLayer` (WP3). `hasAccuracyCell`/`precisionCellBounds`
+  // (`utils/precisionOffset`) reproduce this file's former inline bounds math
+  // exactly (same `2^(32-bits) * 1e-7 * 111_111` cell-size formula, verified
+  // numerically identical) — sharing them here removes the last duplicate of
+  // that formula. `pathOptions` stays hop-colored (NodesTab-only look, tied
+  // visually to the hop-colored marker) via the descriptor's per-region
+  // override, so this box is NOT the shared layer's canonical gray default.
+  const accuracyRegions: AccuracyRegionDescriptor[] = showAccuracyRegions
+    ? nodesWithPosition
+        .filter(node => {
+          if (!hasAccuracyCell(node.positionPrecisionBits, node.positionIsOverride)) return false;
+          if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes })) return false;
+          if (!showIncompleteNodes && !isNodeComplete(node)) return false;
+          // When traceroute is active, only show regions for nodes in the traceroute
+          if (tracerouteNodeNums && !tracerouteNodeNums.has(node.nodeNum)) return false;
+          return true;
+        })
+        .map(node => {
+          const bounds = precisionCellBounds(
+            node.position!.latitude,
+            node.position!.longitude,
+            node.positionPrecisionBits as number,
+          );
+          const isLocalNode = node.user?.id === currentNodeId;
+          const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
+          const color = getHopColor(hops, overlayColors.hopColors);
+          return {
+            key: `accuracy-${node.nodeNum}`,
+            bounds,
+            pathOptions: {
+              color,
+              fillColor: color,
+              fillOpacity: 0.08,
+              opacity: 0.5,
+              weight: 1,
+            },
+          };
+        })
+    : [];
+
+  // Neighbor-info links (#4047 Phase 7 WP11) — adapter over the shared
+  // `NeighborLinksLayer` (WP2). Zoom-adaptive gate hoisted to the top of the
+  // expression (was a per-item early return in the pre-migration inline map)
+  // — `mapZoom`/`neighborInfoMinZoom` don't vary per item, so the rendered
+  // output is identical either way. `computeNeighborLinkStyle` above pins the
+  // 4-tier SNR→weight/opacity table and the unidirectional-arrow gate; bearing
+  // for the arrow icons is now computed by the shared layer itself
+  // (`bearingBetween`, verified to reproduce this file's former inline
+  // `atan2` calculation exactly), so it's no longer computed here.
+  const neighborLinks: NeighborLinkDescriptor[] = (showNeighborInfo && neighborInfo.length > 0 && mapZoom >= neighborInfoMinZoom)
+    ? neighborInfo
+        .map((ni, idx): NeighborLinkDescriptor | null => {
+          // Anchor each endpoint to where the node's MARKER is rendered
+          // (merged / override-aware position, keyed by nodeNum) so the
+          // line connects to the visible marker rather than the
+          // source-specific reported coords (#3642). Falls back to the
+          // record's embedded coords when the node isn't on the map.
+          const nodeEndpoint = resolveMapEndpoint(nodePositions, ni.nodeNum, ni.nodeLatitude, ni.nodeLongitude);
+          const neighborEndpoint = resolveMapEndpoint(nodePositions, ni.neighborNodeNum, ni.neighborLatitude, ni.neighborLongitude);
+          if (!nodeEndpoint || !neighborEndpoint) return null;
+          const [nodeLat, nodeLng] = nodeEndpoint;
+          const [neighborLat, neighborLng] = neighborEndpoint;
+
+          // Filter out segments where either endpoint is not visible (Issue #1149)
+          if (visibleNodeNums && (!visibleNodeNums.has(ni.nodeNum) || !visibleNodeNums.has(ni.neighborNodeNum))) {
+            return null;
+          }
+
+          // When traceroute is active, only show segments for nodes in the traceroute
+          if (tracerouteNodeNums && (!tracerouteNodeNums.has(ni.nodeNum) || !tracerouteNodeNums.has(ni.neighborNodeNum))) {
+            return null;
+          }
+
+          const positions: [[number, number], [number, number]] = [
+            [nodeLat, nodeLng],
+            [neighborLat, neighborLng],
+          ];
+
+          const isBidirectional = ni.bidirectional === true;
+          const { pathOptions, arrows } = computeNeighborLinkStyle(ni.snr ?? null, isBidirectional, overlayColors.neighborLine);
+
+          // Calculate distance between nodes (coordinates guaranteed non-null by early return above)
+          const distKm = calculateDistance(nodeLat, nodeLng, neighborLat, neighborLng);
+          const distStr = formatDistance(distKm, distanceUnit);
+
+          // Normalize timestamp: old data may be in seconds, new data in milliseconds
+          const tsMs = ni.timestamp < 10_000_000_000 ? ni.timestamp * 1000 : ni.timestamp;
+          // Data age (clamped to 0 to handle clock skew)
+          const ageMs = Math.max(0, Date.now() - tsMs);
+          const ageMin = Math.floor(ageMs / 60000);
+          const ageStr = ageMin < 60 ? `${ageMin}m ago` : `${Math.floor(ageMin / 60)}h ago`;
+
+          // SNR text color for popup (canonical 4-band scale, #4047 P3 D4)
+          const snrTextColor = ni.snr != null
+            ? snrToColor(ni.snr, overlayColors.snrColors)
+            : undefined;
+
+          return {
+            key: `neighbor-${idx}`,
+            positions,
+            pathOptions,
+            className: `neighbor-line node-${ni.nodeNum} node-${ni.neighborNodeNum}`,
+            arrows,
+            children: (
+              <Popup>
+                <div className="route-popup">
+                  <h4>{t('direct_links.neighbor_connection', 'Neighbor Connection')}</h4>
+                  <div className="route-endpoints">
+                    <strong>{ni.neighborName}</strong> {isBidirectional ? '↔' : '→'} <strong>{ni.nodeName}</strong>
+                  </div>
+                  {isBidirectional && (
+                    <div className="route-usage" style={{ color: 'var(--ctp-green)' }}>
+                      ↔ {t('direct_links.bidirectional', 'Bidirectional')}
+                    </div>
+                  )}
+                  {ni.snr !== null && ni.snr !== undefined && (
+                    <div className="route-usage">
+                      SNR: <strong style={{ color: snrTextColor }}>{ni.snr.toFixed(1)} dB</strong>
+                    </div>
+                  )}
+                  {distStr && (
+                    <div className="route-usage">
+                      {t('direct_links.distance', 'Distance')}: <strong>{distStr}</strong>
+                    </div>
+                  )}
+                  <div className="route-usage">
+                    {t('direct_links.last_seen', 'Last seen')}: <strong>{formatDateTime(new Date(tsMs), timeFormat, dateFormat)}</strong> ({ageStr})
+                  </div>
+                </div>
+              </Popup>
+            ),
+          };
+        })
+        .filter((d): d is NeighborLinkDescriptor => d !== null)
+    : [];
+
   // Calculate center point of all nodes for initial map view
   // Use saved map center from localStorage if available, otherwise calculate from nodes
   const getMapCenter = (): { center: [number, number]; zoom: number } => {
@@ -2351,30 +2528,21 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </div>
             </div>
         )}
-            <MapContainer
+            <BaseMap
               center={mapDefaults.center}
               zoom={mapDefaults.zoom}
-              style={{ height: '100%', width: '100%' }}
+              tilesetId={activeTileset}
+              customTilesets={customTilesets}
+              styleJson={activeStyleJson ?? undefined}
+              showTilesetSelector={shouldShowData() && showTileSelector}
+              onTilesetChange={setMapTileset}
+              resizeTrigger={`${showPacketMonitor}-${isNodeListCollapsed}-${packetMonitorHeight}`}
             >
               <MapCenterController
                 centerTarget={mapCenterTarget}
                 onCenterComplete={handleCenterComplete}
               />
               <TracerouteBoundsController bounds={tracerouteBounds} />
-              {getTilesetById(activeTileset, customTilesets).isVector ? (
-                <VectorTileLayer
-                  url={getTilesetById(activeTileset, customTilesets).url}
-                  attribution={getTilesetById(activeTileset, customTilesets).attribution}
-                  maxZoom={getTilesetById(activeTileset, customTilesets).maxZoom}
-                  styleJson={activeStyleJson ?? undefined}
-                />
-              ) : (
-                <TileLayer
-                  attribution={getTilesetById(activeTileset, customTilesets).attribution}
-                  url={getTilesetById(activeTileset, customTilesets).url}
-                  maxZoom={getTilesetById(activeTileset, customTilesets).maxZoom}
-                />
-              )}
               <ZoomHandler onZoomChange={setMapZoom} />
               <MapPositionHandler />
               <WaypointMapEventBridge
@@ -2388,7 +2556,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 lon={defaultMapCenterLon}
                 zoom={defaultMapCenterZoom}
               />
-              <MapResizeHandler trigger={`${showPacketMonitor}-${isNodeListCollapsed}-${packetMonitorHeight}`} />
           {measureActive && (
             <MeasureDistanceController
               active={measureActive}
@@ -2408,7 +2575,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   Accuracy" map toggle now governs the radius (issue #3271
                   follow-up) — turning it off declutters the circles while the
                   estimated-node markers stay under "Show Estimated Positions".
-                  Both are required so a circle never renders without its marker. */}
+                  Both are required so a circle never renders without its marker.
+                  Single-consumer (#4047 Phase 7 spec §5.2) — no other map draws
+                  estimated-position uncertainty radii, so this stays inline
+                  rather than becoming a speculative one-consumer abstraction. */}
               {showEstimatedPositions && showAccuracyRegions && nodesWithPosition
                 .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id) && nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }) && (showIncompleteNodes || isNodeComplete(node)) && (!tracerouteNodeNums || tracerouteNodeNums.has(node.nodeNum)))
                 .map(node => {
@@ -2441,68 +2611,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   );
                 })}
 
-              {/* Draw position accuracy regions (rectangles) for all nodes with precision data */}
-              {showAccuracyRegions && nodesWithPosition
-                .filter(node => {
-                  // Check precision data exists
-                  if (node.positionPrecisionBits === undefined || node.positionPrecisionBits === null) return false;
-                  if (node.positionPrecisionBits <= 0 || node.positionPrecisionBits >= 32) return false;
-                  // Don't show accuracy region for nodes with overridden positions
-                  if (node.positionIsOverride) return false;
-                  // Apply standard filters
-                  if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes })) return false;
-                  if (!showIncompleteNodes && !isNodeComplete(node)) return false;
-                  // When traceroute is active, only show regions for nodes in the traceroute
-                  if (tracerouteNodeNums && !tracerouteNodeNums.has(node.nodeNum)) return false;
-                  return true;
-                })
-                .map(node => {
-                  // Convert precision_bits to accuracy zone in meters
-                  // Meshtastic encodes lat/lon as int32 (1 unit = 1e-7 degrees).
-                  // With N precision bits, the grid cell = 2^(32-N) * 1e-7 * 111111 meters.
-                  // The accuracy (max deviation) is half the grid cell.
-                  const metersPerDegree = 111_111;
-                  const sizeMeters = Math.pow(2, 32 - node.positionPrecisionBits!) * 1e-7 * metersPerDegree;
-                  const halfSizeMeters = sizeMeters / 2;
-
-                  // Convert meters to lat/lng offsets
-                  // 1 degree of latitude is approximately 111,111 meters
-                  const metersPerDegreeLat = 111_111;
-                  const lat = node.position!.latitude;
-                  const lng = node.position!.longitude;
-
-                  // Latitude offset is constant
-                  const latOffset = halfSizeMeters / metersPerDegreeLat;
-
-                  // Longitude offset varies with latitude (cos(lat) factor)
-                  const metersPerDegreeLng = metersPerDegreeLat * Math.cos(lat * Math.PI / 180);
-                  const lngOffset = halfSizeMeters / metersPerDegreeLng;
-
-                  // Calculate bounds: [[south, west], [north, east]]
-                  const bounds: [[number, number], [number, number]] = [
-                    [lat - latOffset, lng - lngOffset],
-                    [lat + latOffset, lng + lngOffset]
-                  ];
-
-                  // Get hop color for the region (same as marker)
-                  const isLocalNode = node.user?.id === currentNodeId;
-                  const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
-                  const color = getHopColor(hops, overlayColors.hopColors);
-
-                  return (
-                    <Rectangle
-                      key={`accuracy-${node.nodeNum}`}
-                      bounds={bounds}
-                      pathOptions={{
-                        color: color,
-                        fillColor: color,
-                        fillOpacity: 0.08,
-                        opacity: 0.5,
-                        weight: 1,
-                      }}
-                    />
-                  );
-                })}
+              {/* Position accuracy regions — shared layer (#4047 Phase 7 WP11),
+                  hop-colored `pathOptions` computed in the `accuracyRegions`
+                  adapter above (ties visually to the hop-colored marker; NOT
+                  the shared layer's canonical gray default). */}
+              <AccuracyRegionsLayer regions={accuracyRegions} />
 
               {showPolarGrid && ownNodePosition && (
                 <PolarGridOverlay center={ownNodePosition} />
@@ -2511,155 +2624,28 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               <GeoJsonOverlay layers={geoJsonLayers} />
 
               {/* Draw traceroute paths (independent layer) */}
-              <TraceroutePathsLayer paths={traceroutePathsElements} enabled={showPaths} />
+              <TraceroutePathsContainer paths={traceroutePathsElements} enabled={showPaths} />
 
               {/* Draw selected node traceroute (independent layer) */}
-              <SelectedTracerouteLayer traceroute={selectedNodeTraceroute} enabled={showRoute} />
+              <SelectedTracerouteContainer traceroute={selectedNodeTraceroute} enabled={showRoute} />
 
-              {/* Draw neighbor info connections */}
-              {showNeighborInfo && neighborInfo.length > 0 && neighborInfo.map((ni, idx) => {
-                // Anchor each endpoint to where the node's MARKER is rendered
-                // (merged / override-aware position, keyed by nodeNum) so the
-                // line connects to the visible marker rather than the
-                // source-specific reported coords (#3642). Falls back to the
-                // record's embedded coords when the node isn't on the map.
-                const nodeEndpoint = resolveMapEndpoint(nodePositions, ni.nodeNum, ni.nodeLatitude, ni.nodeLongitude);
-                const neighborEndpoint = resolveMapEndpoint(nodePositions, ni.neighborNodeNum, ni.neighborLatitude, ni.neighborLongitude);
-                // Skip if either endpoint has no resolvable position
-                if (!nodeEndpoint || !neighborEndpoint) {
-                  return null;
-                }
-                const [nodeLat, nodeLng] = nodeEndpoint;
-                const [neighborLat, neighborLng] = neighborEndpoint;
-
-                // Filter out segments where either endpoint is not visible (Issue #1149)
-                if (visibleNodeNums && (!visibleNodeNums.has(ni.nodeNum) || !visibleNodeNums.has(ni.neighborNodeNum))) {
-                  return null;
-                }
-
-                // When traceroute is active, only show segments for nodes in the traceroute
-                if (tracerouteNodeNums && (!tracerouteNodeNums.has(ni.nodeNum) || !tracerouteNodeNums.has(ni.neighborNodeNum))) {
-                  return null;
-                }
-
-                const positions: [number, number][] = [
-                  [nodeLat, nodeLng],
-                  [neighborLat, neighborLng]
-                ];
-
-                // Zoom-adaptive: hide neighbor lines at low zoom
-                if (mapZoom < neighborInfoMinZoom) return null;
-
-                const isBidirectional = ni.bidirectional === true;
-
-                // SNR encoded in weight + opacity (color is uniform amber from overlayColors.neighborLine)
-                let lineWeight: number;
-                let lineOpacity: number;
-                if (ni.snr != null) {
-                  if (ni.snr > 10) { lineWeight = 4; lineOpacity = 0.85; }
-                  else if (ni.snr >= 0) { lineWeight = 3; lineOpacity = 0.6; }
-                  else { lineWeight = 2; lineOpacity = 0.4; }
-                } else { lineWeight = 2; lineOpacity = 0.3; }
-
-                // Calculate distance between nodes (coordinates guaranteed non-null by early return above)
-                const distKm = calculateDistance(nodeLat, nodeLng, neighborLat, neighborLng);
-                const distStr = formatDistance(distKm, distanceUnit);
-
-                // Normalize timestamp: old data may be in seconds, new data in milliseconds
-                const tsMs = ni.timestamp < 10_000_000_000 ? ni.timestamp * 1000 : ni.timestamp;
-                // Data age (clamped to 0 to handle clock skew)
-                const ageMs = Math.max(0, Date.now() - tsMs);
-                const ageMin = Math.floor(ageMs / 60000);
-                const ageStr = ageMin < 60 ? `${ageMin}m ago` : `${Math.floor(ageMin / 60)}h ago`;
-
-                // SNR text color for popup (canonical 4-band scale, #4047 P3 D4)
-                const snrTextColor = ni.snr != null
-                  ? snrToColor(ni.snr, overlayColors.snrColors)
-                  : undefined;
-
-                // Calculate bearing for unidirectional arrow (degrees from north)
-                // Arrow points FROM neighbor TO node (neighbor→node = "I heard this neighbor")
-                // Scale longitude difference by cos(lat) to correct for latitude
-                const latMid = (nodeLat + neighborLat) / 2;
-                const bearing = !isBidirectional
-                  ? Math.atan2(
-                      (nodeLng - neighborLng) * Math.cos(latMid * Math.PI / 180),
-                      nodeLat - neighborLat
-                    ) * (180 / Math.PI)
-                  : 0;
-
-                return (
-                  <React.Fragment key={`neighbor-${idx}`}>
-                    <Polyline
-                      positions={positions}
-                      pathOptions={{
-                        color: overlayColors.neighborLine,
-                        weight: lineWeight,
-                        opacity: lineOpacity,
-                        dashArray: isBidirectional ? undefined : '5, 5',
-                      }}
-                      className={`neighbor-line node-${ni.nodeNum} node-${ni.neighborNodeNum}`}
-                    >
-                      <Popup>
-                        <div className="route-popup">
-                          <h4>{t('direct_links.neighbor_connection', 'Neighbor Connection')}</h4>
-                          <div className="route-endpoints">
-                            <strong>{ni.neighborName}</strong> {isBidirectional ? '↔' : '→'} <strong>{ni.nodeName}</strong>
-                          </div>
-                          {isBidirectional && (
-                            <div className="route-usage" style={{ color: 'var(--ctp-green)' }}>
-                              ↔ {t('direct_links.bidirectional', 'Bidirectional')}
-                            </div>
-                          )}
-                          {ni.snr !== null && ni.snr !== undefined && (
-                            <div className="route-usage">
-                              SNR: <strong style={{ color: snrTextColor }}>{ni.snr.toFixed(1)} dB</strong>
-                            </div>
-                          )}
-                          {distStr && (
-                            <div className="route-usage">
-                              {t('direct_links.distance', 'Distance')}: <strong>{distStr}</strong>
-                            </div>
-                          )}
-                          <div className="route-usage">
-                            {t('direct_links.last_seen', 'Last seen')}: <strong>{formatDateTime(new Date(tsMs), timeFormat, dateFormat)}</strong> ({ageStr})
-                          </div>
-                        </div>
-                      </Popup>
-                    </Polyline>
-                    {/* Direction arrows along unidirectional lines at 25%, 50%, 75% for visibility at any zoom */}
-                    {!isBidirectional && (
-                      <>
-                        {[0.25, 0.5, 0.75].map(fraction => (
-                          <Marker
-                            key={`arrow-${fraction}`}
-                            position={[
-                              neighborLat + (nodeLat - neighborLat) * fraction,
-                              neighborLng + (nodeLng - neighborLng) * fraction
-                            ]}
-                            icon={createArrowIcon(bearing, overlayColors.neighborLine)}
-                            interactive={false}
-                          />
-                        ))}
-                      </>
-                    )}
-                  </React.Fragment>
-                );
-              })}
+              {/* Neighbor info connections — shared layer (#4047 Phase 7 WP11),
+                  descriptors built in the `neighborLinks` adapter above
+                  (4-tier SNR pathOptions, hover-dim className, unidirectional
+                  arrows, popup). */}
+              <NeighborLinksLayer links={neighborLinks} />
 
               {/* Note: Selected node traceroute with separate forward and back paths */}
               {/* This is handled by traceroutePathsElements passed from parent */}
 
-              {/* Draw position history for mobile nodes with color gradient */}
+              {/* Draw position history for mobile nodes with color gradient.
+                  Single-consumer rich single-node form (#4047 Phase 7 spec
+                  §5.3) — MapAnalysis's multi-node PositionTrailsLayer and
+                  MeshCoreMap's arrowless multi-node trails are deliberately
+                  different visualizations; this stays inline. */}
               {positionHistoryElements}
 
-          </MapContainer>
-          {shouldShowData() && showTileSelector && (
-          <TilesetSelector
-            selectedTilesetId={activeTileset}
-            onTilesetChange={setMapTileset}
-          />
-          )}
+          </BaseMap>
           {shouldShowData() && nodesWithPosition.length === 0 && (
             <div className="map-overlay">
               <div className="overlay-content">
