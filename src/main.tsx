@@ -1,6 +1,24 @@
 // CRITICAL: This must be the FIRST import to ensure API base URL is set
 // before any other modules are loaded
 import { appBasename } from './init';
+
+// Self-heal stale-deploy chunk failures (#4047 investigation): after a redeploy
+// rotates hashed chunk names, a browser holding cached HTML 404s on lazy
+// chunks — the dynamic import rejects and the affected subtree wedges (seen
+// as a dead map + unresponsive controls). Vite surfaces these as
+// `vite:preloadError`; reload once to pick up coherent HTML + chunks, with a
+// sessionStorage guard so a genuinely broken deploy can't reload-loop.
+if (typeof window !== 'undefined') {
+  window.addEventListener('vite:preloadError', (event) => {
+    const KEY = 'mm-chunk-reload-at';
+    const last = Number(sessionStorage.getItem(KEY) ?? 0);
+    if (Date.now() - last > 30_000) {
+      sessionStorage.setItem(KEY, String(Date.now()));
+      event.preventDefault();
+      window.location.reload();
+    }
+  });
+}
 // Initialize i18n after init.ts sets the base URL
 import './config/i18n';
 import React, { Suspense } from 'react';
