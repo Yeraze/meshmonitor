@@ -352,15 +352,18 @@ run_test "GET /api/v1/packets with filter - Filter by encrypted" \
     '${BASE_URL}/api/v1/packets?encrypted=true&limit=10' \
     | jq -e '.success == true and (.data | type) == \"array\"'"
 
-# Test 12: Get specific packet (if any exist)
-PACKET_ID=$(curl -sS -H "Authorization: Bearer $API_TOKEN" \
-    "${BASE_URL}/api/v1/packets?limit=1" \
-    | jq -r '.data[0].id // empty')
+# Test 12: Get specific packet (if any exist). GET /api/v1/packets/:id now
+# requires a sourceId (packet IDs are a global PK), so grab the packet's own
+# sourceId from the list and scope the by-id read to it.
+FIRST_PACKET=$(curl -sS -H "Authorization: Bearer $API_TOKEN" \
+    "${BASE_URL}/api/v1/packets?limit=1")
+PACKET_ID=$(echo "$FIRST_PACKET" | jq -r '.data[0].id // empty')
+PACKET_SRC=$(echo "$FIRST_PACKET" | jq -r '.data[0].sourceId // empty')
 
 if [ -n "$PACKET_ID" ] && [ "$PACKET_ID" != "null" ]; then
     run_test "GET /api/v1/packets/:id - Get specific packet" \
         "curl -sS -H 'Authorization: Bearer $API_TOKEN' \
-        '${BASE_URL}/api/v1/packets/${PACKET_ID}' \
+        '${BASE_URL}/api/v1/packets/${PACKET_ID}?sourceId=${PACKET_SRC}' \
         | jq -e '.success == true and .data.id == $PACKET_ID'"
 fi
 
