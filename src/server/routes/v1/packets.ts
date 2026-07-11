@@ -105,8 +105,22 @@ router.get('/:id', async (req, res) => {
       });
     }
 
+    // Packet IDs are a global primary key, so scope the read to the caller's
+    // source: require a sourceId and treat a packet from a different source as
+    // Not Found — otherwise a caller on source A could read source B's packet
+    // by guessing its id.
+    const sourceId = getScopedSourceId(req);
+    if (!sourceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bad Request',
+        code: 'MISSING_SOURCE_ID',
+        message: 'sourceId is required'
+      });
+    }
+
     const packet = await packetLogService.getPacketByIdAsync(id);
-    if (!packet) {
+    if (!packet || packet.sourceId !== sourceId) {
       return res.status(404).json({
         success: false,
         error: 'Not Found',

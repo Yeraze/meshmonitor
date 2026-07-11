@@ -39,8 +39,8 @@ const testTraceroutes = [
 ];
 
 const testPackets = [
-  { id: 1, packet_id: 1001, from_node: 2882400001, to_node: 2882400002, channel: 0, portnum: 1, encrypted: 0, timestamp: Date.now() },
-  { id: 2, packet_id: 1002, from_node: 2882400002, to_node: 2882400001, channel: 0, portnum: 3, encrypted: 1, timestamp: Date.now() - 1000 }
+  { id: 1, packet_id: 1001, from_node: 2882400001, to_node: 2882400002, channel: 0, portnum: 1, encrypted: 0, timestamp: Date.now(), sourceId: 'test-source' },
+  { id: 2, packet_id: 1002, from_node: 2882400002, to_node: 2882400001, channel: 0, portnum: 3, encrypted: 1, timestamp: Date.now() - 1000, sourceId: 'test-source' }
 ];
 
 const testPositionTelemetry = [
@@ -527,9 +527,9 @@ describe('GET /api/v1/packets', () => {
 });
 
 describe('GET /api/v1/packets/:id', () => {
-  it('should return single packet by ID', async () => {
+  it('should return single packet by ID scoped to the source', async () => {
     const response = await request(app)
-      .get('/api/v1/packets/1')
+      .get('/api/v1/packets/1?sourceId=test-source')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -537,9 +537,27 @@ describe('GET /api/v1/packets/:id', () => {
     expect(response.body).toHaveProperty('data');
   });
 
+  it('should 400 MISSING_SOURCE_ID when sourceId is omitted', async () => {
+    const response = await request(app)
+      .get('/api/v1/packets/1')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .expect(400);
+
+    expect(response.body).toHaveProperty('code', 'MISSING_SOURCE_ID');
+  });
+
+  it('should 404 for a packet belonging to a different source (no cross-source read)', async () => {
+    const response = await request(app)
+      .get('/api/v1/packets/1?sourceId=other-source')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .expect(404);
+
+    expect(response.body).toHaveProperty('success', false);
+  });
+
   it('should return 404 for non-existent packet', async () => {
     const response = await request(app)
-      .get('/api/v1/packets/999999')
+      .get('/api/v1/packets/999999?sourceId=test-source')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(404);
 
