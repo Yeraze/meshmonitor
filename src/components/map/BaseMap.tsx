@@ -63,6 +63,14 @@ export interface BaseMapProps {
  * — never inside it, see docs/internal/dev-notes/MAP_CONSOLIDATION_P1_SPEC.md
  * §2.2/§6.10), and an optional gated MapResizeHandler.
  *
+ * The tile layer (both the raster `TileLayer` and vector `VectorTileLayer`
+ * branches) is keyed by the resolved tileset id (Phase 7, §2.1) so a tileset
+ * swap force-remounts a clean layer instead of react-leaflet patching props
+ * onto the old one in place — matches DashboardMap's pre-BaseMap
+ * `key={tilesetId}` remount semantics. For the 4 Phase-1 editors, which omit
+ * `tilesetId`, the resolved id is the constant `DEFAULT_TILESET_ID`, so the
+ * key never changes and there is no remount/behavior change.
+ *
  * Everything else (markers, draw handlers, view controllers) is the caller's
  * `children`. BaseMap is persistence-agnostic: it takes a controlled
  * `tilesetId`/`onTilesetChange` pair and never reads `useSettings()` itself.
@@ -104,6 +112,7 @@ export function BaseMap({
         {tileset.isVector
           ? (
             <VectorTileLayer
+              key={resolvedId}
               url={tileset.url}
               attribution={tileset.attribution}
               maxZoom={tileset.maxZoom}
@@ -112,6 +121,7 @@ export function BaseMap({
           )
           : (
             <TileLayer
+              key={resolvedId}
               url={tileset.url}
               attribution={tileset.attribution}
               maxZoom={tileset.maxZoom}
