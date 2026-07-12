@@ -18,6 +18,7 @@ import type { PathOptions } from 'leaflet';
 import L from 'leaflet';
 import { createNodeIcon } from '../../utils/mapIcons';
 import { markerAgeOpacity } from '../../utils/markerAgeOpacity';
+import { getNodeTypeCategory } from '../../utils/nodeTypeCategory';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
 import type { CustomTileset } from '../../config/tilesets';
 import DashboardWaypoints from './DashboardWaypoints';
@@ -449,6 +450,10 @@ export default function DashboardMap({
     const shortName = node.shortName ?? node.user?.shortName;
     const nodeId = node.nodeId ?? node.user?.id;
     const isRouter = node.role === 2;
+    // #4075: role category drives the repeater-tower glyph for ROUTER_LATE
+    // (and REPEATER), not just ROUTER. Included in iconSig below so the icon
+    // cache distinguishes it from a plain client with the same hops/name.
+    const roleCategory = getNodeTypeCategory(node);
     const markerKey = String(
       node.sourceId != null && node.nodeNum != null
         ? `${node.sourceId}:${node.nodeNum}`
@@ -473,13 +478,14 @@ export default function DashboardMap({
     return {
       key: markerKey,
       position: [pos.lat, pos.lng],
-      iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${mapPinStyle}`,
+      iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${roleCategory}|${mapPinStyle}`,
       buildIcon: () =>
         createNodeIcon({
           variant: 'meshtastic',
           hops,
           isSelected: false,
           isRouter,
+          roleCategory,
           shortName,
           showLabel: true,
           pinStyle: mapPinStyle,
