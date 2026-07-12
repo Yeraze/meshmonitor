@@ -43,6 +43,7 @@ import { getOwnNodePositions } from '../../utils/ownNodePositions';
 import { nodePassesTransportFilter } from '../../utils/nodeTransport';
 import { isNullIsland } from '../../utils/nullIsland';
 import { effectiveMapMaxAgeHours } from '../../utils/mapAge';
+import { resolveMapEndpoint } from '../../utils/nodeHelpers';
 import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { BaseMap } from '../map/BaseMap';
@@ -281,6 +282,7 @@ export default function DashboardMap({
     })
     .filter((entry): entry is { node: any; pos: { lat: number; lng: number } } => entry.pos !== null);
 
+  // Array form of node positions for MapBoundsUpdater (fit bounds).
   const nodePositions: [number, number][] = nodesWithPosition.map((e) => [e.pos.lat, e.pos.lng]);
 
   // #3636: measurement endpoints — nearest-node snapping picks from these.
@@ -338,6 +340,13 @@ export default function DashboardMap({
   // #4047 Phase 7 WP7) so the same link reported by multiple sources (Unified
   // view) draws once. Emits descriptors for the shared `NeighborLinksLayer` —
   // fixed cyan/dashed look preserved verbatim, no `children` (no popup).
+  //
+  // #4042 note: unlike the Meshtastic `neighborInfo` links below, MeshCore
+  // neighbor edges (`meshcoreNeighbors`) carry no embedded per-edge lat/lng at
+  // all — only `publicKey`/`neighborPublicKey`/`snr` (see meshcore_neighbor_info
+  // schema + getNeighbors() repo query). Endpoints are already resolved
+  // exclusively through `positionByPublicKey` (the rendered-marker-position
+  // map below), so there is no stale-embedded-coordinate fallback to fix here.
   const meshcoreNeighborLinks = useMemo<NeighborLinkDescriptor[]>(() => {
     if (!showNeighborInfo) return [];
     // Untyped intermediate (publicKey/neighborPublicKey/positions/snr only —
@@ -510,6 +519,16 @@ export default function DashboardMap({
   // Emits descriptors for the shared `NeighborLinksLayer` (#4047 Phase 7 WP7) —
   // bidirectional solid vs unidirectional dashed transport-colored look and the
   // `DashboardNeighborPopup` popup preserved verbatim.
+  //
+  // #4042: endpoints are resolved through `resolveMapEndpoint` against
+  // `positionByNodeNum` (the same rendered-marker-position map traceroute
+  // hops use, built above from `nodesWithPosition`) rather than the link's
+  // own embedded lat/lng. When a node appears on multiple sources at
+  // different GPS coordinates, the marker renders at the merged position,
+  // but the neighbor record carries source-specific coordinates — preferring
+  // the rendered marker position keeps the line's end attached to the pin.
+  // The embedded coordinates remain a fallback for a node that currently has
+  // no marker on the map (filtered off by age/transport/etc).
   const meshtasticNeighborLinks: NeighborLinkDescriptor[] = showNeighborInfo
     ? neighborInfo
         .filter((link: any) => {
@@ -520,24 +539,18 @@ export default function DashboardMap({
           return true;
         })
         .map((link: any, idx: number): NeighborLinkDescriptor | null => {
-          const { nodeLatitude, nodeLongitude, neighborLatitude, neighborLongitude, bidirectional, transportClass } = link;
-          if (
-            nodeLatitude == null ||
-            nodeLongitude == null ||
-            neighborLatitude == null ||
-            neighborLongitude == null
-          ) {
+          const nodeEndpoint = resolveMapEndpoint(positionByNodeNum, link.nodeNum, link.nodeLatitude, link.nodeLongitude);
+          const neighborEndpoint = resolveMapEndpoint(positionByNodeNum, link.neighborNodeNum, link.neighborLatitude, link.neighborLongitude);
+          // Skip if either endpoint has no resolvable position (no marker AND no embedded coords).
+          if (!nodeEndpoint || !neighborEndpoint) {
             return null;
           }
 
-          const positions: [[number, number], [number, number]] = [
-            [nodeLatitude, nodeLongitude],
-            [neighborLatitude, neighborLongitude],
-          ];
+          const positions: [[number, number], [number, number]] = [nodeEndpoint, neighborEndpoint];
 
-          const tc = transportClass ?? 'rf';
+          const tc = link.transportClass ?? 'rf';
           const colorByTransport = tc === 'mqtt' ? '#22c55e' : tc === 'udp' ? '#f97316' : 'blue';
-          const pathOptions: PathOptions = bidirectional
+          const pathOptions: PathOptions = link.bidirectional
             ? { color: colorByTransport, weight: 2, opacity: 0.6 }
             : { color: colorByTransport, weight: 1, opacity: 0.6, dashArray: '5, 5' };
 
