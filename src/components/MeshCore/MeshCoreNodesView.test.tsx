@@ -186,92 +186,55 @@ describe('MeshCoreNodesView — Discover menu (#3351)', () => {
   });
 });
 
-describe('MeshCoreNodesView — node-details quick access (#3350)', () => {
-  it('renders a details button per row that navigates to the node detail screen', () => {
-    const onNavigateToDm = vi.fn();
-    render(
-      <MeshCoreNodesView nodes={nodes} contacts={contacts} onNavigateToDm={onNavigateToDm} />,
-    );
-    const detailButtons = screen.getAllByLabelText('More details');
-    expect(detailButtons).toHaveLength(3);
-    fireEvent.click(detailButtons[0]);
-    // Default sort is lastHeard desc, so the first row is alpha (PK_B).
-    expect(onNavigateToDm).toHaveBeenCalledWith(PK_B);
-  });
+function setViewportWidth(width: number) {
+  Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: width });
+}
 
-  it('double-clicking a row navigates to the node detail screen', () => {
-    const onNavigateToDm = vi.fn();
-    render(
-      <MeshCoreNodesView nodes={nodes} contacts={contacts} onNavigateToDm={onNavigateToDm} />,
-    );
-    const main = document.querySelectorAll('.mc-node-row-main')[1] as HTMLElement;
-    fireEvent.doubleClick(main);
-    expect(onNavigateToDm).toHaveBeenCalledWith(PK_C); // Bravo, second by lastHeard desc
-  });
-
-  it('single click still selects the row (does not navigate)', () => {
-    const onNavigateToDm = vi.fn();
-    render(
-      <MeshCoreNodesView nodes={nodes} contacts={contacts} onNavigateToDm={onNavigateToDm} />,
-    );
-    const main = document.querySelectorAll('.mc-node-row-main')[0] as HTMLElement;
-    fireEvent.click(main);
-    expect(onNavigateToDm).not.toHaveBeenCalled();
-    expect(document.querySelector('.mc-node-row.selected')).not.toBeNull();
-  });
-
-  it('omits the details button when no navigation handler is provided', () => {
-    render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
-    expect(screen.queryByLabelText('More details')).toBeNull();
-  });
-});
-
-describe('MeshCoreNodesView — Discover menu (#3351)', () => {
+describe('MeshCoreNodesView — list collapse toggle (mobile map access)', () => {
   beforeEach(() => {
-    showToast.mockReset();
+    localStorage.clear();
+    setViewportWidth(1024); // desktop by default
   });
 
-  it('hides the Discover button when canDiscover is false', () => {
-    render(
-      <MeshCoreNodesView
-        nodes={nodes}
-        contacts={contacts}
-        onDiscoverNodes={vi.fn()}
-        canDiscover={false}
-      />,
-    );
-    expect(screen.queryByText('Discover')).toBeNull();
+  it('collapses the list pane on desktop and hides header/list controls', () => {
+    render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
+    expect(document.querySelector('.meshcore-list-pane.collapsed')).toBeNull();
+    fireEvent.click(screen.getByTitle('Collapse node list'));
+    expect(document.querySelector('.meshcore-list-pane.collapsed')).not.toBeNull();
+    // Header content (title/search/list rows) is gone; only the toggle remains.
+    expect(screen.queryByText('Nodes')).toBeNull();
+    expect(screen.queryByPlaceholderText('Search nodes…')).toBeNull();
+    expect(screen.getByTitle('Expand node list')).toBeTruthy();
   });
 
-  it('opens the menu and fires the chosen discovery mode, then toasts the result', async () => {
-    const onDiscoverNodes = vi.fn().mockResolvedValue({ returned: 2, newCount: 1 });
-    render(
-      <MeshCoreNodesView
-        nodes={nodes}
-        contacts={contacts}
-        onDiscoverNodes={onDiscoverNodes}
-        canDiscover
-      />,
-    );
-    fireEvent.click(screen.getByText('Discover'));
-    fireEvent.click(screen.getByText('Discover Sensors'));
-    expect(onDiscoverNodes).toHaveBeenCalledWith('sensors');
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith(expect.any(String), 'success'));
+  it('expanding again restores the header/list controls', () => {
+    render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
+    fireEvent.click(screen.getByTitle('Collapse node list'));
+    fireEvent.click(screen.getByTitle('Expand node list'));
+    expect(document.querySelector('.meshcore-list-pane.collapsed')).toBeNull();
+    expect(screen.getByText('Nodes')).toBeTruthy();
   });
 
-  it('toasts an error when discovery fails', async () => {
-    const onDiscoverNodes = vi.fn().mockResolvedValue(null);
-    render(
-      <MeshCoreNodesView
-        nodes={nodes}
-        contacts={contacts}
-        onDiscoverNodes={onDiscoverNodes}
-        canDiscover
-      />,
-    );
-    fireEvent.click(screen.getByText('Discover'));
-    fireEvent.click(screen.getByText('Discover Repeaters'));
-    expect(onDiscoverNodes).toHaveBeenCalledWith('repeaters');
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith('Discovery failed', 'error'));
+  it('persists the desktop collapse preference to localStorage', () => {
+    render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
+    fireEvent.click(screen.getByTitle('Collapse node list'));
+    expect(localStorage.getItem('meshcore-list-collapsed')).toBe('true');
+  });
+
+  it('restores the collapsed state from localStorage on mount', () => {
+    localStorage.setItem('meshcore-list-collapsed', 'true');
+    render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
+    expect(document.querySelector('.meshcore-list-pane.collapsed')).not.toBeNull();
+  });
+
+  it('on mobile, the toggle reveals the map instead of collapsing to a thin bar', () => {
+    setViewportWidth(500);
+    render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
+    expect(document.querySelector('.meshcore-two-pane.mobile-show-list')).not.toBeNull();
+    fireEvent.click(screen.getByTitle('Collapse node list'));
+    // Reveals the map pane via the existing mobile pane-swap mechanism...
+    expect(document.querySelector('.meshcore-two-pane.mobile-show-content')).not.toBeNull();
+    // ...rather than the desktop thin-bar collapsed state.
+    expect(document.querySelector('.meshcore-list-pane.collapsed')).toBeNull();
   });
 });

@@ -14,6 +14,12 @@ const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = (): boolean =>
   typeof window !== 'undefined' && window.innerWidth <= MOBILE_BREAKPOINT;
 
+/** localStorage key for the desktop list-pane collapse preference (mirrors
+ *  the Meshtastic `collapse-nodes-btn` toggle, but MeshCore's is per-browser
+ *  persisted rather than session-only — see MeshCoreNodesView collapse
+ *  toggle below). */
+const LIST_COLLAPSED_STORAGE_KEY = 'meshcore-list-collapsed';
+
 interface MeshCoreNodesViewProps {
   nodes: MeshCoreNode[];
   contacts: MeshCoreContact[];
@@ -148,6 +154,19 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   const [sortField, setSortField] = useState<SortField>('lastHeard');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [mobileShowContent, setMobileShowContent] = useState(false);
+  // Desktop list-pane collapse toggle (mirrors NodesTab's `collapse-nodes-btn`
+  // / MeshCoreDirectMessagesView's `meshcore-collapse-btn`). Persisted so the
+  // preference survives reloads on desktop; always false on mobile — the
+  // mobile layout doesn't have a "thin bar" collapsed state, it swaps the
+  // whole pane via `mobileShowContent` instead (see handleToggleListCollapse).
+  const [isListCollapsed, setIsListCollapsed] = useState<boolean>(() => {
+    if (isMobileViewport()) return false;
+    try {
+      return localStorage.getItem(LIST_COLLAPSED_STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importHex, setImportHex] = useState('');
@@ -182,15 +201,45 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
 
   useEffect(() => {
     const onResize = () => {
-      if (!isMobileViewport()) setMobileShowContent(false);
+      if (!isMobileViewport()) {
+        setMobileShowContent(false);
+      } else {
+        // Mobile has no "thin bar" collapsed state — force the list content
+        // back on so a desktop-collapsed preference doesn't leave the pane
+        // blank after resizing/rotating into the mobile breakpoint.
+        setIsListCollapsed(false);
+      }
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  // Persist the desktop collapse preference. Skipped while at the mobile
+  // breakpoint so the forced reset above (mobile always uncollapsed) never
+  // clobbers the saved desktop preference.
+  useEffect(() => {
+    if (isMobileViewport()) return;
+    try {
+      localStorage.setItem(LIST_COLLAPSED_STORAGE_KEY, String(isListCollapsed));
+    } catch {
+      // best-effort — ignore storage errors (e.g. private browsing quota)
+    }
+  }, [isListCollapsed]);
+
   const handleSelectNode = useCallback((key: string) => {
     setSelected(key);
     if (isMobileViewport()) setMobileShowContent(true);
+  }, []);
+
+  const handleToggleListCollapse = useCallback(() => {
+    if (isMobileViewport()) {
+      // No thin-bar concept on mobile — reveal the full map (all contacts,
+      // no node selected) instead, matching the desktop "shrink the sidebar"
+      // intent as closely as the mobile single-pane layout allows.
+      setMobileShowContent(true);
+      return;
+    }
+    setIsListCollapsed((c) => !c);
   }, []);
 
   // Same toast contract as the Settings-view discovery buttons — results
@@ -234,8 +283,24 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
 
   return (
     <div className={`meshcore-two-pane ${mobileClass}`}>
-      <div className="meshcore-list-pane">
+      <div className={`meshcore-list-pane ${isListCollapsed ? 'collapsed' : ''}`}>
         <div className="meshcore-list-pane-header">
+          <button
+            type="button"
+            className="meshcore-collapse-btn"
+            onClick={handleToggleListCollapse}
+            title={isListCollapsed
+              ? t('nodes.expand_node_list', 'Expand node list')
+              : t('nodes.collapse_node_list', 'Collapse node list')}
+            aria-label={isListCollapsed
+              ? t('nodes.expand_node_list', 'Expand node list')
+              : t('nodes.collapse_node_list', 'Collapse node list')}
+            aria-expanded={!isListCollapsed}
+          >
+            {isListCollapsed ? '▶' : '◀'}
+          </button>
+          {!isListCollapsed && (
+          <>
           <span>{t('meshcore.nav.nodes', 'Nodes')}</span>
           <span className="pane-count">{rows.length}</span>
           {onImportContact && (
@@ -309,7 +374,11 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
               {sortDirection === 'asc' ? '↑' : '↓'}
             </button>
           </div>
+          </>
+          )}
         </div>
+        {!isListCollapsed && (
+        <>
         <div className="meshcore-search-bar">
           <input
             type="text"
@@ -408,6 +477,8 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             );
           })}
         </div>
+        </>
+        )}
       </div>
       <div className="meshcore-main-pane">
         {mobileShowContent && (
@@ -424,7 +495,13 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
             )}
           </div>
         )}
-        <MeshCoreMap contacts={contacts} selectedPublicKey={selected} onNavigateToDm={onNavigateToDm} isLoading={mapIsLoading} />
+        <MeshCoreMap
+          contacts={contacts}
+          selectedPublicKey={selected}
+          onNavigateToDm={onNavigateToDm}
+          isLoading={mapIsLoading}
+          resizeTrigger={`${isListCollapsed}-${mobileShowContent}`}
+        />
       </div>
       {importDialogOpen && (
         <div
