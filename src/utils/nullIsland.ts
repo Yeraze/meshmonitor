@@ -9,10 +9,16 @@
  *
  * A small radius (rather than exact equality) is used because firmware rounding
  * or floating-point serialization can yield values like 0.000001 instead of
- * exactly 0.0, which an equality check would miss. ~0.001° is roughly 111 m at
- * the equator — well inside any realistic GPS error, and far from any deployment.
+ * exactly 0.0, which an equality check would miss. It also catches integer
+ * "garbage default" fixes: a Meshtastic position of latitudeI = longitudeI =
+ * 2^15 (32768) serializes to 0.0032768°, and 2^16 to 0.0065536° — both are
+ * bogus default readings that sit just outside a tighter radius. ~0.01° is
+ * roughly 1.1 km at the equator: still absurdly tiny (Null Island is open ocean
+ * in the Gulf of Guinea, ~600 km from the nearest land), and it only rejects a
+ * coordinate near BOTH 0° lat AND 0° lng, so real prime-meridian/equator nodes
+ * (whose other coordinate is far from 0) are never affected.
  */
-export const NULL_ISLAND_EPSILON = 0.001;
+export const NULL_ISLAND_EPSILON = 0.01;
 
 /**
  * True when a coordinate is at or within {@link NULL_ISLAND_EPSILON} degrees of
