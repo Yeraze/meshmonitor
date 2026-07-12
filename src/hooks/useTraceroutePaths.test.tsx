@@ -1,5 +1,14 @@
+/**
+ * @vitest-environment jsdom
+ */
 import { describe, it, expect } from 'vitest';
-import { NodePositionDigest, TracerouteDigest } from './useTraceroutePaths';
+import { renderHook } from '@testing-library/react';
+import {
+  useTraceroutePaths,
+  NodePositionDigest,
+  TracerouteDigest,
+  ThemeColors,
+} from './useTraceroutePaths';
 
 /**
  * Tests for useTraceroutePaths hook filtering functionality
@@ -197,6 +206,110 @@ describe('useTraceroutePaths - Route Segment Filtering', () => {
       });
 
       expect(filteredSegments).toHaveLength(0);
+    });
+  });
+
+  // #4047 regression — Phase 3 aligned `tracerouteNodeNums` (used for marker
+  // filtering) to gate the forward/return legs independently, so a
+  // forward-only or return-only traceroute still produces a non-null set.
+  // `tracerouteBounds` (consumed only by NodesTab's TracerouteBoundsController
+  // for zoom-to-fit) derived directly from that same set, so it started
+  // producing bounds for partial traceroutes too. NodesTab's click handlers
+  // still gate their `centerMapOnNode` fallback on a "both legs present"
+  // check (unchanged), so for a partial traceroute both `centerMapOnNode`
+  // (zoom-to-node) AND `TracerouteBoundsController.fitBounds` (zoom-to-route)
+  // fired — the fitBounds call, running slightly after, silently overrode the
+  // node-centering. Symptom: "zoom to node doesn't work", intermittent
+  // because it only reproduced for nodes whose latest traceroute was one-way.
+  describe('tracerouteBounds — #4047 zoom-to-node regression', () => {
+    const nodes: NodePositionDigest[] = [
+      { nodeNum: 100, position: { latitude: 40.0, longitude: -75.0 }, user: { id: '!64', longName: 'Node A' } },
+      { nodeNum: 200, position: { latitude: 40.2, longitude: -75.2 }, user: { id: '!c8', longName: 'Node B' } },
+    ];
+
+    const themeColors: ThemeColors = { mauve: '#c6a0f6', red: '#ed8796', blue: '#8aadf4', overlay0: '#6e738d' };
+    const callbacks = { onSelectNode: () => {}, onSelectRouteSegment: () => {} };
+
+    const baseParams = {
+      showPaths: false,
+      showRoute: true,
+      currentNodeId: '!local',
+      nodesPositionDigest: nodes,
+      distanceUnit: 'metric' as const,
+      maxNodeAgeHours: 24,
+      themeColors,
+      callbacks,
+    };
+
+    it('produces bounds AND nodeNums for a complete (both-leg) traceroute', () => {
+      const traceroutes: TracerouteDigest[] = [
+        {
+          fromNodeNum: 100,
+          toNodeNum: 200,
+          fromNodeId: '!64',
+          toNodeId: '!c8',
+          route: '[]',
+          routeBack: '[]',
+          timestamp: Date.now(),
+        },
+      ];
+
+      const { result } = renderHook(() =>
+        useTraceroutePaths({ ...baseParams, selectedNodeId: '!c8', traceroutesDigest: traceroutes })
+      );
+
+      expect(result.current.tracerouteNodeNums).not.toBeNull();
+      expect(result.current.tracerouteBounds).not.toBeNull();
+    });
+
+    it('produces nodeNums (marker filter) but NO bounds (no zoom-fit) for a forward-only traceroute', () => {
+      const traceroutes: TracerouteDigest[] = [
+        {
+          fromNodeNum: 100,
+          toNodeNum: 200,
+          fromNodeId: '!64',
+          toNodeId: '!c8',
+          route: '[]', // forward leg present
+          routeBack: '', // no return leg
+          timestamp: Date.now(),
+        },
+      ];
+
+      const { result } = renderHook(() =>
+        useTraceroutePaths({ ...baseParams, selectedNodeId: '!c8', traceroutesDigest: traceroutes })
+      );
+
+      // Phase 3 (#4047) deliberately keeps the marker filter populated for a
+      // partial traceroute.
+      expect(result.current.tracerouteNodeNums).not.toBeNull();
+      expect(result.current.tracerouteNodeNums?.has(100)).toBe(true);
+      expect(result.current.tracerouteNodeNums?.has(200)).toBe(true);
+      // But zoom-to-fit must stay disabled so NodesTab's centerMapOnNode
+      // fallback (which also requires both legs) isn't fought by a
+      // subsequent fitBounds call.
+      expect(result.current.tracerouteBounds).toBeNull();
+    });
+
+    it('produces nodeNums (marker filter) but NO bounds (no zoom-fit) for a return-only traceroute', () => {
+      const traceroutes: TracerouteDigest[] = [
+        {
+          fromNodeNum: 100,
+          toNodeNum: 200,
+          fromNodeId: '!64',
+          toNodeId: '!c8',
+          route: '', // no forward leg
+          routeBack: '[]', // return leg present (direct, zero intermediate hops)
+          snrBack: '[10]', // gives hasReturnPath a signal even with an empty routeBack array
+          timestamp: Date.now(),
+        },
+      ];
+
+      const { result } = renderHook(() =>
+        useTraceroutePaths({ ...baseParams, selectedNodeId: '!c8', traceroutesDigest: traceroutes })
+      );
+
+      expect(result.current.tracerouteNodeNums).not.toBeNull();
+      expect(result.current.tracerouteBounds).toBeNull();
     });
   });
 });

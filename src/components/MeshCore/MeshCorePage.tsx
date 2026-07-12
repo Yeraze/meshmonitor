@@ -61,7 +61,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
   const { authStatus } = useAuth();
   const isAdmin = authStatus?.user?.isAdmin ?? false;
   const meshCore = useMeshCore({ baseUrl, sourceId, enabled });
-  const { status, nodes, contacts, messages, loading, error, actions } = meshCore;
+  const { status, nodes, contacts, messages, loading, hasLoadedOnce, error, actions } = meshCore;
 
   const [view, setView] = useState<MeshCoreView>('nodes');
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
@@ -128,6 +128,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               onToggleFavorite={actions.setNodeFavorite}
               onDiscoverNodes={actions.discoverNodes}
               canDiscover={(status?.connected ?? false) && status?.deviceType === DEVICE_TYPE_COMPANION}
+              mapIsLoading={!hasLoadedOnce}
             />
           )}
           {view === 'channels' && (

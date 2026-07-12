@@ -930,6 +930,26 @@ export function useTraceroutePaths({
     const selectedTrace = traceroutesDigest.find(
       tr => tr.toNodeId === selectedNodeId || tr.fromNodeId === selectedNodeId
     );
+    if (!selectedTrace) return null;
+
+    // Zoom-to-fit only kicks in for a *complete* (both-leg) traceroute. This
+    // intentionally does NOT reuse tracerouteNodeNums' Phase-3 (#4047)
+    // independent-leg gate: that gate was a deliberate change so the marker
+    // filter above still shows exactly the nodes a forward-only/return-only
+    // route renders. But NodesTab's node-click handlers (`onOmsClick`,
+    // `handleNodeClick`) fall back to `centerMapOnNode` precisely when a
+    // traceroute isn't "complete" by this same both-legs test - if bounds
+    // were emitted for a partial route too, `TracerouteBoundsController`
+    // would fire `fitBounds` right after `centerMapOnNode`'s `setView`,
+    // silently overriding the node-centering (#4047 regression: "zoom to
+    // node doesn't work" for nodes whose latest traceroute is one-way).
+    // Keeping this gate identical to NodesTab's `hasTraceroute` check (and to
+    // the pre-Phase-3 gate here) keeps the two decision points in sync.
+    const hasCompleteRoute =
+      !!selectedTrace.route && selectedTrace.route !== 'null' && selectedTrace.route !== '' &&
+      !!selectedTrace.routeBack && selectedTrace.routeBack !== 'null' && selectedTrace.routeBack !== '';
+    if (!hasCompleteRoute) return null;
+
     const snapshotPositions = parseSnapshotRoutePositions(selectedTrace?.routePositions);
 
     let minLat = Infinity;

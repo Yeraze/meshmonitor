@@ -46,6 +46,7 @@ import { effectiveMapMaxAgeHours } from '../../utils/mapAge';
 import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { BaseMap } from '../map/BaseMap';
+import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
 import { TraceroutePathsLayer } from '../map/layers/TraceroutePathsLayer';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from '../map/layers/AccuracyRegionsLayer';
@@ -80,6 +81,14 @@ export interface DashboardMapProps {
    * page can navigate to that source's Node Details view for the node.
    */
   onNodeSourceSelect?: (source: NodeSourceRef, nodeId: string | undefined) => void;
+  /**
+   * True while the FIRST fetch of `nodes` for the current selection is still
+   * in flight (from `useDashboardSourceData`/`useDashboardUnifiedData`'s
+   * `isLoading`). Shows a loading overlay instead of the "No node positions"
+   * empty state so a slow initial load doesn't flash a false-empty map.
+   * Defaults to false so existing callers/tests are unaffected.
+   */
+  isLoading?: boolean;
 }
 
 /** Extract lat/lng from a node — handles both flat (API) and nested (position) shapes. */
@@ -136,6 +145,7 @@ export default function DashboardMap({
   sourceId,
   maxNodeAgeHours,
   onNodeSourceSelect,
+  isLoading = false,
 }: DashboardMapProps) {
   const { mapPinStyle, setMapTileset, overlayColors } = useSettings();
 
@@ -826,7 +836,9 @@ export default function DashboardMap({
         </div>
       </div>
 
-      {!hasNodes && (
+      {isLoading && <MapLoadingOverlay />}
+
+      {!isLoading && !hasNodes && (
         <div className="dashboard-map-empty">
           <div className="dashboard-map-empty-content">
             <h3>No node positions</h3>

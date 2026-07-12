@@ -13,7 +13,13 @@ import { getTilesetById } from '../../config/tilesets';
 
 vi.mock('react-leaflet', () => ({
   MapContainer: ({ children, ...props }: { children?: ReactNode; scrollWheelZoom?: boolean }) => (
-    <div data-testid="map-container" data-scrollwheel={String(props.scrollWheelZoom)}>
+    <div
+      data-testid="map-container"
+      data-scrollwheel={String(props.scrollWheelZoom)}
+      data-own-option-keys={['scrollWheelZoom', 'doubleClickZoom', 'zoomControl', 'attributionControl']
+        .filter((k) => k in props)
+        .join(',')}
+    >
       {children}
     </div>
   ),
@@ -158,6 +164,16 @@ describe('BaseMap', () => {
   it('forwards scrollWheelZoom to MapContainer', () => {
     render(<BaseMap center={[0, 0]} zoom={3} scrollWheelZoom />);
     expect(screen.getByTestId('map-container').getAttribute('data-scrollwheel')).toBe('true');
+  });
+
+  it('omits interaction options entirely when not passed — an explicit undefined would override Leaflet defaults and disable the handlers (#4047 wheel-zoom regression)', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} />);
+    expect(screen.getByTestId('map-container').getAttribute('data-own-option-keys')).toBe('');
+  });
+
+  it('includes only the interaction options that were explicitly passed', () => {
+    render(<BaseMap center={[0, 0]} zoom={3} scrollWheelZoom={false} zoomControl />);
+    expect(screen.getByTestId('map-container').getAttribute('data-own-option-keys')).toBe('scrollWheelZoom,zoomControl');
   });
 
   // 8. Icon fix applied (unmocked icon module, real leaflet)

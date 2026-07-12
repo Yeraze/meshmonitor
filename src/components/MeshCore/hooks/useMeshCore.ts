@@ -325,6 +325,14 @@ export interface UseMeshCoreState {
   contacts: MeshCoreContact[];
   messages: MeshCoreMessage[];
   loading: boolean;
+  /**
+   * True once the first contacts/nodes snapshot fetch has resolved (success
+   * or failure). False only before that — unlike `loading`, this does not
+   * flip back on subsequent connect/disconnect/refresh calls. Intended for
+   * "is the initial load still pending" UI (e.g. MeshCoreMap's loading
+   * overlay), not general busy-state.
+   */
+  hasLoadedOnce: boolean;
   error: string | null;
   actions: MeshCoreActions;
 }
@@ -359,6 +367,13 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const [messages, setMessages] = useState<MeshCoreMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // True once the FIRST snapshot fetch (mount-time loadSnapshot below) has
+  // resolved — success or failure, so a permanently-erroring source doesn't
+  // block the UI forever. Distinct from `loading` (which also flips true/
+  // false on every connect/disconnect/refresh) — consumers that need "is the
+  // very first load still pending" (e.g. MeshCoreMap's loading overlay) want
+  // this, not `loading`.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const connectedRef = useRef(false);
   // Per-source push-event bookkeeping. seqCursorRef tracks the newest message
@@ -468,12 +483,21 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   }, [status?.connected]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      // No fetch will run while disabled — don't leave a loading-overlay
+      // consumer waiting forever for a snapshot that will never come.
+      setHasLoadedOnce(true);
+      return;
+    }
     // Snapshot on mount, then 30s status-only safety poll. Live updates ride
     // in over Socket.io (see the push-events effect below).
-    void loadSnapshot();
+    let cancelled = false;
+    void loadSnapshot().finally(() => {
+      if (!cancelled) setHasLoadedOnce(true);
+    });
     const interval = setInterval(() => { void fetchStatus(); }, STATUS_SAFETY_POLL_MS);
     return () => {
+      cancelled = true;
       clearInterval(interval);
     };
   }, [enabled, loadSnapshot, fetchStatus]);
@@ -1717,6 +1741,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     contacts,
     messages,
     loading,
+    hasLoadedOnce,
     error,
     actions: {
       connect,

@@ -12,8 +12,10 @@ import {
 } from '../../utils/nodeTypeCategory';
 import { createNodeIcon } from '../map/markerIcons';
 import { BaseMap } from '../map/BaseMap';
+import { MapLoadingOverlay } from '../map/MapLoadingOverlay';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
+import PolarGridOverlay from '../PolarGridOverlay';
 import { useSource } from '../../contexts/SourceContext';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { isNullIsland } from '../../utils/nullIsland';
@@ -67,9 +69,17 @@ interface MeshCoreMapProps {
   selectedPublicKey: string | null;
   localNodePosition?: { lat: number; lng: number } | null;
   onNavigateToDm?: (publicKey: string) => void;
+  /**
+   * True while the FIRST contacts snapshot fetch is still in flight (see
+   * `useMeshCore`'s `hasLoadedOnce`). Shows a loading overlay so a slow
+   * initial connect doesn't render an apparently-empty world map before
+   * contacts have a chance to arrive. Defaults to false so existing
+   * callers/tests are unaffected.
+   */
+  isLoading?: boolean;
 }
 
-export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition, onNavigateToDm }) => {
+export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition, onNavigateToDm, isLoading = false }) => {
   const { t } = useTranslation();
   const { mapTileset, customTilesets, setMapTileset } = useSettings();
   const { timeFormat, dateFormat } = useDisplaySettings();
@@ -135,6 +145,18 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
   }, [positionHistoryHours]);
   // publicKey -> ordered (oldest→newest) [lat, lng] trail points.
   const [positionHistory, setPositionHistory] = useState<Map<string, [number, number][]>>(new Map());
+
+  // Polar grid overlay (#4047 follow-up) — the same shared range-ring/azimuth-
+  // sector grid NodesTab/DashboardMap/Map Analysis draw, centered on the LOCAL
+  // MeshCore node's position. Persisted per-browser like the other MeshCore
+  // map toggles above (MeshCoreMap doesn't sit inside a `MapProvider`, so it
+  // can't reuse MapContext's server-persisted `showPolarGrid`).
+  const [showPolarGrid, setShowPolarGrid] = useState(
+    () => localStorage.getItem('meshmonitor-meshcore-showPolarGrid') === 'true',
+  );
+  useEffect(() => {
+    localStorage.setItem('meshmonitor-meshcore-showPolarGrid', String(showPolarGrid));
+  }, [showPolarGrid]);
 
   // Server-side rolling retention window (days) for stored trail points. This
   // is a global setting (`meshcore_position_history_retention_days`, default 7)
@@ -460,6 +482,9 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
         )}
         {showLegend && <MapLegend showNodeTypes />}
         {geoJsonLayers.length > 0 && <GeoJsonOverlay layers={geoJsonLayers} />}
+        {showPolarGrid && localPos && (
+          <PolarGridOverlay center={{ lat: localPos[0], lng: localPos[1] }} />
+        )}
         <NodeMarkersLayer markers={markers} />
 
         {historySegments.map(s => (
@@ -487,6 +512,8 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
 
         <NeighborLinksLayer links={neighborLinks} />
       </BaseMap>
+
+      {isLoading && <MapLoadingOverlay />}
 
       <div className="map-controls dashboard-map-controls">
         <div className="map-controls-body">
@@ -555,6 +582,17 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
               />
             </div>
           )}
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showPolarGrid}
+              onChange={(e) => setShowPolarGrid(e.target.checked)}
+              disabled={!localPos}
+            />
+            <span title={!localPos ? t('map.polarGridDisabledTooltip', 'Requires own node position') : undefined}>
+              {t('map.showPolarGrid', 'Show Polar Grid')}
+            </span>
+          </label>
           <label className="map-control-item">
             <input
               type="checkbox"
