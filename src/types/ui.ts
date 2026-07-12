@@ -32,6 +32,8 @@ export type ConnectionStatus =
 export interface MapCenterControllerProps {
   centerTarget: [number, number] | null;
   onCenterComplete: () => void;
+  /** User-configurable target zoom (issue #4046 item 2). Defaults to 17. */
+  targetZoom?: number;
 }
 
 export interface ChartData {
