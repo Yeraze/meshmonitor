@@ -10,6 +10,7 @@ import { DEFAULT_TILESET_ID, type TilesetId, type CustomTileset } from '../confi
 import { type OverlayScheme, getSchemeForTileset, getOverlayColors, type OverlayColors } from '../config/overlayColors';
 import i18n from '../config/i18n';
 import { type TapbackEmoji, DEFAULT_TAPBACK_EMOJIS } from '../components/EmojiPickerModal/EmojiPickerModal';
+import { DEFAULT_TARGET_ZOOM } from '../utils/mapZoomAnimation';
 
 /** A per-channel mute rule. muteUntil = null means indefinite. */
 export interface MutedChannel {
@@ -89,6 +90,11 @@ interface SettingsContextType {
   defaultMapCenterLat: number | null;
   defaultMapCenterLon: number | null;
   defaultMapCenterZoom: number | null;
+  /** Target zoom when centering on a single node — MapCenterController
+   *  clamps to `Math.max(currentZoom, mapCenterTargetZoom)`, so this only
+   *  ever zooms IN, never forces a zoom-out (issue #4046 item 2). Also feeds
+   *  the zoom-gated spiderfier's below-threshold click flow (item 4). */
+  mapCenterTargetZoom: number;
   defaultLandingPage: string;
   theme: Theme;
   appearanceMode: AppearanceMode;
@@ -143,6 +149,7 @@ interface SettingsContextType {
   setDefaultMapCenterLat: (lat: number | null) => void;
   setDefaultMapCenterLon: (lon: number | null) => void;
   setDefaultMapCenterZoom: (zoom: number | null) => void;
+  setMapCenterTargetZoom: (zoom: number) => void;
   setDefaultLandingPage: (value: string) => void;
   setTheme: (theme: Theme) => void;
   setAppearanceMode: (mode: AppearanceMode) => void;
@@ -379,6 +386,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const [defaultMapCenterZoom, setDefaultMapCenterZoomState] = useState<number | null>(() => {
     const saved = localStorage.getItem('defaultMapCenterZoom');
     return saved ? parseInt(saved, 10) : null;
+  });
+
+  const [mapCenterTargetZoom, setMapCenterTargetZoomState] = useState<number>(() => {
+    const saved = localStorage.getItem('mapCenterTargetZoom');
+    return saved ? parseInt(saved, 10) : DEFAULT_TARGET_ZOOM;
   });
 
   // Default landing page when visiting root URL: 'unified' or a sourceId UUID.
@@ -661,6 +673,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     } else {
       localStorage.removeItem('defaultMapCenterZoom');
     }
+  };
+
+  const setMapCenterTargetZoom = (zoom: number) => {
+    setMapCenterTargetZoomState(zoom);
+    localStorage.setItem('mapCenterTargetZoom', String(zoom));
   };
 
   const setDefaultLandingPage = (value: string) => {
@@ -1290,6 +1307,14 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
+          if (settings.mapCenterTargetZoom !== undefined) {
+            const zoom = parseInt(settings.mapCenterTargetZoom, 10);
+            if (!isNaN(zoom) && zoom >= 1 && zoom <= 18) {
+              setMapCenterTargetZoomState(zoom);
+              localStorage.setItem('mapCenterTargetZoom', String(zoom));
+            }
+          }
+
           if (typeof settings.defaultLandingPage === 'string' && settings.defaultLandingPage.length > 0) {
             setDefaultLandingPageState(settings.defaultLandingPage);
             localStorage.setItem('defaultLandingPage', settings.defaultLandingPage);
@@ -1547,6 +1572,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     defaultMapCenterLat,
     defaultMapCenterLon,
     defaultMapCenterZoom,
+    mapCenterTargetZoom,
     defaultLandingPage,
     theme,
     appearanceMode,
@@ -1595,6 +1621,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setDefaultMapCenterLat,
     setDefaultMapCenterLon,
     setDefaultMapCenterZoom,
+    setMapCenterTargetZoom,
     setDefaultLandingPage,
     setTheme,
     setAppearanceMode,
