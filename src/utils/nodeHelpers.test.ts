@@ -22,6 +22,16 @@ describe('resolveMapEndpoint (#3642)', () => {
     expect(resolveMapEndpoint(markers, 1, null, null)).toBeNull();
     expect(resolveMapEndpoint(markers, 1, 40.5, undefined)).toBeNull();
   });
+
+  it('does not fall back to a Null-Island embedded position (#02ecd5e0)', () => {
+    // The node isn't on the map and its neighbor record embeds the 2^15 garbage
+    // default — the line must be omitted, not drawn out to (0, 0).
+    const markers = new Map<number, [number, number]>();
+    expect(resolveMapEndpoint(markers, 0x02ecd5e0, 0.0032768, 0.0032768)).toBeNull();
+    // But the rendered marker still wins even if the record embeds garbage.
+    const onMap = new Map<number, [number, number]>([[0x02ecd5e0, [26.9221888, -80.1374208]]]);
+    expect(resolveMapEndpoint(onMap, 0x02ecd5e0, 0.0032768, 0.0032768)).toEqual([26.9221888, -80.1374208]);
+  });
 });
 
 describe('Node Helpers', () => {

@@ -66,13 +66,25 @@ describe('parseSnapshotRoutePositions (#1862)', () => {
     expect(result.get(300)).toEqual([1, 2]);
   });
 
-  it('handles lat/lng of exactly 0 correctly (typeof-number check, not truthy)', () => {
+  it('keeps a single-axis-zero position (typeof-number check, not truthy)', () => {
     // Regression guard for the 3-way diff finding: two of the three
     // pre-existing implementations used a truthy `snapshot?.lat && snapshot?.lng`
     // check that silently dropped nodes sitting exactly on lat=0 or lng=0.
-    const snap = JSON.stringify({ 100: { lat: 0, lng: 0 } });
+    // A single axis at 0 (with the other far from 0) is a real position.
+    const snap = JSON.stringify({ 100: { lat: 0, lng: 20.5 }, 200: { lat: 51.5, lng: 0 } });
     const result = parseSnapshotRoutePositions(snap);
-    expect(result.get(100)).toEqual([0, 0]);
+    expect(result.get(100)).toEqual([0, 20.5]);
+    expect(result.get(200)).toEqual([51.5, 0]);
+  });
+
+  it('drops a Null-Island snapshot so it does not anchor a route at (0,0) (#02ecd5e0)', () => {
+    // A snapshot captured while the node held a garbage GPS default — the exact
+    // (0,0) pair or the 2^15 value 0.0032768 — must be skipped so the segment
+    // falls through to the live position instead of shooting out to Null Island.
+    const snap = JSON.stringify({ 100: { lat: 0, lng: 0 }, 200: { lat: 0.0032768, lng: 0.0032768 } });
+    const result = parseSnapshotRoutePositions(snap);
+    expect(result.has(100)).toBe(false);
+    expect(result.has(200)).toBe(false);
   });
 });
 
@@ -409,6 +421,12 @@ describe('buildLiveNodePositionMap (review F9)', () => {
 
   it('drops the (0,0) Null Island placeholder', () => {
     const items = [{ id: 1, lat: 0, lng: 0 }];
+    const map = buildLiveNodePositionMap(items, (i) => ({ nodeNum: i.id, lat: i.lat, lng: i.lng }));
+    expect(map.has(1)).toBe(false);
+  });
+
+  it('drops a near-(0,0) garbage default (2^15 value 0.0032768) (#02ecd5e0)', () => {
+    const items = [{ id: 1, lat: 0.0032768, lng: 0.0032768 }];
     const map = buildLiveNodePositionMap(items, (i) => ({ nodeNum: i.id, lat: i.lat, lng: i.lng }));
     expect(map.has(1)).toBe(false);
   });
