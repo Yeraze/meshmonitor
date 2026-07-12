@@ -8,6 +8,7 @@
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { appBasename } from '../init';
 import { useAuth } from '../contexts/AuthContext';
+import { isNullIsland } from '../utils/nullIsland';
 import { classifyNodeTransport, type NodeTransportClass } from '../utils/nodeTransport';
 import { unifiedNodeKey } from '../utils/nodeIdentity';
 
@@ -263,19 +264,45 @@ function mergeNodeRecords(records: any[]): any {
   const merged: any = {};
   for (const r of sortedNewestFirst) {
     for (const [k, v] of Object.entries(r)) {
-      if (k === 'position' || k === 'isFavorite' || k === 'isIgnored' || k === 'lastHeard') continue;
+      // Position fields are selected together below so a stale/garbage reading
+      // from one source can't splice onto another's — and so a Null-Island
+      // reading never wins just for being newest.
+      if (
+        k === 'position' ||
+        k === 'latitude' ||
+        k === 'longitude' ||
+        k === 'positionPrecisionBits' ||
+        k === 'isFavorite' ||
+        k === 'isIgnored' ||
+        k === 'lastHeard'
+      ) {
+        continue;
+      }
       if ((merged[k] === undefined || merged[k] === null) && v !== undefined && v !== null) {
         merged[k] = v;
       }
     }
   }
 
-  // Position: take the newest record that has both lat and lng (don't mix
-  // halves from different sources).
-  const withPosition = sortedNewestFirst.find(
-    (r) => r?.position?.latitude != null && r?.position?.longitude != null,
-  );
-  if (withPosition) merged.position = withPosition.position;
+  // Position: take the newest record with a REAL fix — both lat and lng present
+  // on the same record and NOT at Null Island (#3763; e.g. Jupiter Dad !02ecd5e0
+  // reporting the 2^15 garbage default 0.0032768 from an MQTT source while other
+  // sources have the true position). Flat (API) and nested position shapes are
+  // both supported; lat/lng/nested-position/precision are carried from the SAME
+  // record so the marker and its accuracy cell stay consistent.
+  const withPosition = sortedNewestFirst.find((r) => {
+    const lat = r?.latitude ?? r?.position?.latitude;
+    const lng = r?.longitude ?? r?.position?.longitude;
+    return lat != null && lng != null && !isNullIsland(lat, lng);
+  });
+  if (withPosition) {
+    if (withPosition.latitude != null) merged.latitude = withPosition.latitude;
+    if (withPosition.longitude != null) merged.longitude = withPosition.longitude;
+    if (withPosition.position != null) merged.position = withPosition.position;
+    if (withPosition.positionPrecisionBits != null) {
+      merged.positionPrecisionBits = withPosition.positionPrecisionBits;
+    }
+  }
 
   merged.lastHeard = sortedNewestFirst.reduce(
     (acc: number | null, r) => {

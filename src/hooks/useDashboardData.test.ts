@@ -246,6 +246,40 @@ describe('mergeUnifiedSourceData', () => {
     expect((merged.nodes[0] as any).lastHeard).toBe(5000);
   });
 
+  it('ignores a Null-Island position from the freshest source and uses a real one (#02ecd5e0 Jupiter Dad)', () => {
+    // Two MQTT sources report the node most recently with the 2^15 garbage
+    // default (0.0032768, 0.0032768) — just outside the old 0.001 radius — while
+    // an older source has the true position. The merge must reject the garbage
+    // and land the node at its real location, carrying its precision along.
+    const merged = mergeUnifiedSourceData([
+      {
+        nodes: [{
+          nodeNum: 49075680,
+          lastHeard: 5000,
+          latitude: 0.0032768,
+          longitude: 0.0032768,
+          positionPrecisionBits: null,
+        }],
+        traceroutes: [], neighborInfo: [], channels: [],
+      },
+      {
+        nodes: [{
+          nodeNum: 49075680,
+          lastHeard: 3000,
+          latitude: 26.9221888,
+          longitude: -80.1374208,
+          positionPrecisionBits: 13,
+        }],
+        traceroutes: [], neighborInfo: [], channels: [],
+      },
+    ]);
+    const n = merged.nodes[0] as any;
+    expect(n.latitude).toBe(26.9221888);
+    expect(n.longitude).toBe(-80.1374208);
+    expect(n.positionPrecisionBits).toBe(13); // precision from the same real record, not the garbage one
+    expect(n.lastHeard).toBe(5000);
+  });
+
   it('only marks merged node as ignored when EVERY source has it ignored', () => {
     const oneIgnored = mergeUnifiedSourceData([
       {
