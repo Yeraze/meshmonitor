@@ -41,6 +41,7 @@ interface RenderLogEntry {
   position: [number, number];
   icon: unknown;
   opacity?: number;
+  eventHandlers?: Record<string, (...args: unknown[]) => void>;
 }
 let renderLog: RenderLogEntry[] = [];
 let mountedMarkers: FakeMarker[] = [];
@@ -59,7 +60,7 @@ vi.mock('react-leaflet', () => ({
   Marker: (props: MockMarkerProps) => {
     const instRef = useRef<FakeMarker | null>(null);
     if (!instRef.current) instRef.current = createFakeMarker();
-    renderLog.push({ position: props.position, icon: props.icon, opacity: props.opacity });
+    renderLog.push({ position: props.position, icon: props.icon, opacity: props.opacity, eventHandlers: props.eventHandlers });
     useEffect(() => {
       props.ref?.(instRef.current);
       mountedMarkers.push(instRef.current!);
@@ -73,6 +74,12 @@ vi.mock('react-leaflet', () => ({
   },
 }));
 
+// #4046 item 2/4: NodeMarkersLayer reads `mapCenterTargetZoom` from
+// SettingsContext to feed the below-threshold "zoom in first" target.
+vi.mock('../../../contexts/SettingsContext', () => ({
+  useSettings: () => ({ mapCenterTargetZoom: 17 }),
+}));
+
 // ---------------------------------------------------------------------------
 // useMarkerSpiderfier mock
 // ---------------------------------------------------------------------------
@@ -81,6 +88,11 @@ const addMarkerMock = vi.fn();
 const removeMarkerMock = vi.fn();
 const addListenerMock = vi.fn();
 const removeListenerMock = vi.fn();
+const handleGatedClickMock = vi.fn();
+// #4046 item 4: mutable so individual tests can simulate being below the
+// zoom-gate threshold. Read fresh on every `useMarkerSpiderfier()` call
+// (i.e. every render), matching the real hook's re-render-on-cross behavior.
+let isAboveGateThresholdMock = true;
 
 vi.mock('../../../hooks/useMarkerSpiderfier', () => ({
   useMarkerSpiderfier: () => ({
@@ -88,6 +100,8 @@ vi.mock('../../../hooks/useMarkerSpiderfier', () => ({
     removeMarker: removeMarkerMock,
     addListener: addListenerMock,
     removeListener: removeListenerMock,
+    isAboveGateThreshold: isAboveGateThresholdMock,
+    handleGatedClick: handleGatedClickMock,
   }),
   SHARED_SPIDERFIER_OPTIONS: {},
 }));
@@ -114,6 +128,8 @@ beforeEach(() => {
   removeMarkerMock.mockClear();
   addListenerMock.mockClear();
   removeListenerMock.mockClear();
+  handleGatedClickMock.mockClear();
+  isAboveGateThresholdMock = true;
 });
 afterEach(() => cleanup());
 
@@ -230,5 +246,46 @@ describe('NodeMarkersLayer', () => {
     const marker = mountedMarkers[0];
     expect(marker.off).not.toHaveBeenCalled();
     expect(marker._meshPopupStripped).toBeUndefined();
+  });
+
+  // #4046 item 4: below the zoom-gate threshold, a marker's own click
+  // eventHandler is replaced with the "zoom in first" flow instead of the
+  // descriptor's normal click behavior (e.g. MapAnalysis's setSelected, or
+  // NodesTab's `add`-only handlers relying purely on the OMS 'click' event,
+  // which never fires for an unregistered marker).
+  describe('zoom-gated click routing (#4046 item 4)', () => {
+    it('above the threshold: uses the descriptor eventHandlers.click unchanged', () => {
+      isAboveGateThresholdMock = true;
+      const clickSpy = vi.fn();
+      render(<NodeMarkersLayer markers={[descriptor({ key: 'n1', eventHandlers: { click: clickSpy } })]} />);
+
+      const handlers = renderLog.at(-1)?.eventHandlers;
+      expect(handlers?.click).toBe(clickSpy);
+      expect(handleGatedClickMock).not.toHaveBeenCalled();
+    });
+
+    it('below the threshold: click is routed to handleGatedClick instead of the descriptor handler', () => {
+      isAboveGateThresholdMock = false;
+      const clickSpy = vi.fn();
+      render(<NodeMarkersLayer markers={[descriptor({ key: 'n1', eventHandlers: { click: clickSpy } })]} />);
+
+      const handlers = renderLog.at(-1)?.eventHandlers;
+      expect(handlers?.click).not.toBe(clickSpy);
+
+      const marker = mountedMarkers[0];
+      handlers?.click({ target: marker });
+      expect(handleGatedClickMock).toHaveBeenCalledWith(marker);
+      expect(clickSpy).not.toHaveBeenCalled();
+    });
+
+    it('below the threshold: non-click eventHandlers (e.g. add/mouseover) are preserved', () => {
+      isAboveGateThresholdMock = false;
+      const addSpy = vi.fn();
+      render(<NodeMarkersLayer markers={[descriptor({ key: 'n1', eventHandlers: { add: addSpy } })]} />);
+
+      const handlers = renderLog.at(-1)?.eventHandlers;
+      expect(handlers?.add).toBe(addSpy);
+      expect(typeof handlers?.click).toBe('function'); // gated click still wired in
+    });
   });
 });

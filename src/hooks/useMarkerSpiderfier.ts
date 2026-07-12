@@ -3,10 +3,33 @@
  * Handles spreading of overlapping markers in a "peacock fan" pattern
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useMap } from 'react-leaflet';
 import { Marker as LeafletMarker } from 'leaflet';
 import { OverlappingMarkerSpiderfier, type SpiderfierEventMap, type SpiderfierEventHandler } from 'ts-overlapping-marker-spiderfier-leaflet';
+import {
+  DEFAULT_TARGET_ZOOM,
+  DEFAULT_ZOOM_GATE_THRESHOLD,
+  computeClampedTargetZoom,
+  computeZoomAnimationDuration,
+} from '../utils/mapZoomAnimation';
+
+export { DEFAULT_ZOOM_GATE_THRESHOLD };
+
+/**
+ * Minimal shape of `OverlappingMarkerSpiderfier`'s PRIVATE `spiderListener`
+ * method that we deliberately reach into for issue #4046 item 1 (re-spiderfy
+ * after zoom settles). The vendored library exposes no public "recompute the
+ * fan for this marker" API — `spiderListener` is exactly what its own
+ * per-marker 'click' handler calls (`ts-overlapping-marker-spiderfier-leaflet
+ * @1.0.5`, `dist/index.cjs.js`): it searches for nearby markers around the
+ * given marker AT THE CURRENT ZOOM and re-spiderfies them, which is exactly
+ * "fresh geometry, never reused stale foot positions." A typed cast (not
+ * `any`) — see the call site below for the full rationale.
+ */
+interface SpiderfierInternals {
+  spiderListener(marker: LeafletMarker): void;
+}
 
 /**
  * Shared spiderfier tuning used by every map surface (per-source NodesTab map,
@@ -40,6 +63,13 @@ export const SHARED_SPIDERFIER_OPTIONS: SpiderfierOptions = {
     usual: 'rgba(100, 100, 100, 0.6)', // Semi-transparent gray
     highlighted: 'rgba(50, 50, 50, 0.8)', // Darker when hovering
   },
+  /** Issue #4046 item 4: below z13, don't register markers with the
+   *  spiderfier at all — a click falls through to the native marker click,
+   *  which `NodeMarkersLayer` wires to a "zoom in first" flow instead of
+   *  spiderfying a large, hard-to-parse low-zoom pile. Applies to every
+   *  surface that uses the shared layer (NodesTab, Dashboard, MeshCore,
+   *  Map Analysis). */
+  zoomGateThreshold: DEFAULT_ZOOM_GATE_THRESHOLD,
 };
 
 export interface SpiderfierOptions {
@@ -95,6 +125,22 @@ export interface SpiderfierOptions {
     usual: string;
     highlighted: string;
   };
+
+  /**
+   * Issue #4046 item 4: zoom level at/above which markers are registered
+   * with the spiderfier. Below this, `addMarker` withholds registration
+   * (the marker is still tracked, just not handed to OMS) and
+   * `isAboveGateThreshold` / `handleGatedClick` let the consumer wire a
+   * "zoom in first" click flow instead. Default: DEFAULT_ZOOM_GATE_THRESHOLD (13).
+   */
+  zoomGateThreshold?: number;
+
+  /**
+   * Target zoom used by `handleGatedClick`'s "zoom in first" flow (issue
+   * #4046 items 2/4) — same clamp-never-zoom-out semantics as
+   * `MapCenterController`'s `targetZoom`. Default: DEFAULT_TARGET_ZOOM (17).
+   */
+  zoomGateTargetZoom?: number;
 }
 
 /**
@@ -119,6 +165,54 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
   // These get flushed into the spiderfier the moment it's created.
   const pendingRef = useRef<Map<string, LeafletMarker>>(new Map());
 
+  // #4046 item 4: markers withheld from the spiderfier because the zoom is
+  // below `zoomGateThreshold`. Distinct from `pendingRef` (which is a
+  // one-time pre-init buffer) — markers can move in and out of this set
+  // repeatedly as the zoom crosses the gate.
+  const gatedMarkersRef = useRef<Map<string, LeafletMarker>>(new Map());
+  // Mirrors whether we're currently above the gate. A ref for synchronous
+  // reads inside effect callbacks, plus `isAboveGateThreshold` state so
+  // `NodeMarkersLayer` re-renders (to swap marker eventHandlers) when it
+  // crosses.
+  const aboveThresholdRef = useRef(true);
+  const [isAboveGateThreshold, setIsAboveGateThreshold] = useState(true);
+
+  // #4046 item 1: the last marker-group spiderfy'd, tracked so a fresh
+  // zoomend can re-trigger the fan at the new zoom's geometry. Any marker
+  // from the group works as the recompute anchor (spiderListener searches
+  // for markers near IT, at the current zoom).
+  const lastSpiderfiedAnchorRef = useRef<LeafletMarker | null>(null);
+  // True between 'zoomstart' and our own 'zoomend' handler running. Lets the
+  // 'unspiderfy' listener below tell a zoom-triggered collapse (OMS's own
+  // unconditional zoomend->unspiderfy — keep the anchor, we're about to
+  // re-spiderfy it) apart from a deliberate one (click-away, or clicking a
+  // different marker — drop the anchor, nothing to re-spiderfy).
+  const zoomChangeInProgressRef = useRef(false);
+
+  // `addMarker`/`removeMarker`/`handleGatedClick` are deliberately
+  // referentially stable (`[]` deps — see the comment above `addMarker`'s
+  // definition), because `NodeMarkersLayer` caches its per-marker ref
+  // callback once per key and never rebinds it. That means those callbacks
+  // can only read *current* option values through a ref, not through the
+  // `options` closure directly (which would go stale, or — worse — force us
+  // to break referential stability by adding `options.x` to their deps).
+  // Synced on every render (no dependency array) rather than only when
+  // `options` changes, since callers may pass a fresh object literal each
+  // render even when the underlying values are unchanged.
+  const optionsRef = useRef(options);
+  useEffect(() => {
+    optionsRef.current = options;
+  });
+  // Same rationale as `optionsRef` — `map` is stable in practice (one
+  // `useMap()` context per mounted MapContainer), but capturing it directly
+  // in a `[]`-dep callback trips `react-hooks/exhaustive-deps`. Route through
+  // a ref instead of adding `map` to addMarker's deps (which would break its
+  // required referential stability).
+  const mapRef = useRef(map);
+  useEffect(() => {
+    mapRef.current = map;
+  });
+
   // Initialize spiderfier instance (only once when map is available)
   useEffect(() => {
     if (!map) return;
@@ -141,12 +235,43 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
 
     spiderfierRef.current = spiderfier;
 
+    // #4046 item 1: track the last-spiderfied group so a subsequent zoomend
+    // can recompute a fresh fan for it (see the zoomend handler below).
+    const handleSpiderfy = (spiderfiedMarkers: LeafletMarker[]) => {
+      lastSpiderfiedAnchorRef.current = spiderfiedMarkers[0] ?? null;
+    };
+    const handleUnspiderfy = () => {
+      // Only drop the tracked anchor when this collapse was NOT caused by a
+      // zoom change (e.g. the user clicked empty map space to close the fan,
+      // or clicked a different marker — OMS unspiderfies any existing fan
+      // before spiderfying a new one). A zoom-triggered collapse leaves the
+      // anchor in place so the zoomend handler can re-spiderfy the same
+      // group at the new zoom.
+      if (!zoomChangeInProgressRef.current) {
+        lastSpiderfiedAnchorRef.current = null;
+      }
+    };
+    spiderfier.addListener('spiderfy', handleSpiderfy);
+    spiderfier.addListener('unspiderfy', handleUnspiderfy);
+
+    // Initialize the zoom-gate state from the current zoom (#4046 item 4).
+    const threshold = options.zoomGateThreshold;
+    const initiallyAbove = threshold == null || map.getZoom() >= threshold;
+    aboveThresholdRef.current = initiallyAbove;
+    setIsAboveGateThreshold(initiallyAbove);
+
     // Flush any markers that registered before the spiderfier existed (their
     // ref callbacks ran during the commit phase, before this effect). Without
     // this, markers present at first mount are never handed to the spiderfier
     // and clicking their pile never spreads them apart.
     if (pendingRef.current.size > 0) {
       pendingRef.current.forEach((marker, key) => {
+        if (!initiallyAbove) {
+          // Below the gate at first mount — withhold registration, matching
+          // the steady-state addMarker() behavior.
+          gatedMarkersRef.current.set(key, marker);
+          return;
+        }
         try {
           spiderfier.addMarker(marker);
           markersRef.current.add(marker);
@@ -172,6 +297,9 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
         markersRef.current.clear();
         markerByIdRef.current.clear();
         pendingRef.current.clear();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- #4046 mirrors the pre-existing markersRef/markerByIdRef/pendingRef cleanup lines above (baselined): these are plain Map/Set refs, not DOM nodes, so the "ref may have changed by cleanup time" warning is a false positive here.
+        gatedMarkersRef.current.clear();
+        lastSpiderfiedAnchorRef.current = null;
         spiderfierRef.current = null;
       }
     };
@@ -183,6 +311,93 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
       spiderfierRef.current.nearbyDistance = options.nearbyDistance;
     }
   }, [options.nearbyDistance]);
+
+  // #4046 items 1 + 4: on 'zoomstart', snapshot that a zoom is in progress
+  // (read by the 'unspiderfy' listener above to distinguish a zoom-triggered
+  // collapse from a deliberate one). On 'zoomend':
+  //   - if the zoom-gate threshold was just crossed, (de)register every
+  //     tracked marker accordingly (item 4);
+  //   - if a fan was open immediately before this zoom change and we're
+  //     still above the gate, recompute it fresh at the new zoom (item 1) —
+  //     the vendored OMS unconditionally unspiderfies on its own 'zoomend'
+  //     listener (registered first, inside its constructor), so by the time
+  //     this handler runs the fan is already collapsed; we're re-triggering
+  //     a brand new spiderfy computation, never reusing the stale geometry.
+  useEffect(() => {
+    if (!map) return;
+
+    const handleZoomStart = () => {
+      zoomChangeInProgressRef.current = true;
+    };
+
+    const handleZoomEnd = () => {
+      zoomChangeInProgressRef.current = false;
+
+      const spiderfier = spiderfierRef.current;
+      if (!spiderfier) return;
+
+      const threshold = options.zoomGateThreshold;
+      if (threshold != null) {
+        const nowAbove = map.getZoom() >= threshold;
+        if (nowAbove !== aboveThresholdRef.current) {
+          aboveThresholdRef.current = nowAbove;
+          setIsAboveGateThreshold(nowAbove);
+
+          if (nowAbove) {
+            // Crossed up: register every withheld marker.
+            gatedMarkersRef.current.forEach((marker, key) => {
+              try {
+                spiderfier.addMarker(marker);
+                markersRef.current.add(marker);
+                markerByIdRef.current.set(key, marker);
+              } catch {
+                // Ignore — marker may have been unmounted while gated.
+              }
+            });
+            gatedMarkersRef.current.clear();
+          } else {
+            // Crossed down: deregister everything so a low-zoom click falls
+            // through to the native marker click (zoom-in-first flow, #4046
+            // item 4) instead of spiderfying a large pile.
+            markersRef.current.forEach(marker => {
+              try {
+                spiderfier.removeMarker(marker);
+              } catch {
+                // Ignore
+              }
+            });
+            markerByIdRef.current.forEach((marker, key) => {
+              gatedMarkersRef.current.set(key, marker);
+            });
+            markersRef.current.clear();
+            markerByIdRef.current.clear();
+            // Nothing can be spiderfied below the gate — drop the tracked
+            // anchor so crossing back up later doesn't resurrect a stale fan.
+            lastSpiderfiedAnchorRef.current = null;
+          }
+        }
+      }
+
+      const anchor = lastSpiderfiedAnchorRef.current;
+      if (anchor && markersRef.current.has(anchor)) {
+        // Reach into the vendored library's private `spiderListener` — the
+        // exact method its own marker 'click' handler calls. There's no
+        // public "recompute this fan" API; this typed cast (not `any`) is
+        // the documented, deliberate exception (see SpiderfierInternals
+        // above). Calling it re-derives the nearby-marker group from the
+        // anchor's position AT THE CURRENT (new) ZOOM and re-spiderfies —
+        // fresh foot positions, never the stale pre-zoom ones.
+        (spiderfier as unknown as SpiderfierInternals).spiderListener(anchor);
+      }
+    };
+
+    map.on('zoomstart', handleZoomStart);
+    map.on('zoomend', handleZoomEnd);
+    return () => {
+      map.off('zoomstart', handleZoomStart);
+      map.off('zoomend', handleZoomEnd);
+    };
+  }, [map, options.zoomGateThreshold]);
 
   /**
    * Add a marker to the spiderfier
@@ -203,6 +418,18 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
       pendingRef.current.set(trackingKey, marker);
       return;
     }
+
+    // #4046 item 4: below the zoom-gate threshold, track the marker but
+    // withhold it from the spiderfier entirely — no live OMS registration to
+    // dedupe/replace, so this is a simple upsert. The zoomend handler above
+    // registers it once the zoom crosses back above the threshold.
+    const threshold = optionsRef.current.zoomGateThreshold;
+    if (threshold != null && mapRef.current && mapRef.current.getZoom() < threshold) {
+      gatedMarkersRef.current.set(trackingKey, marker);
+      return;
+    }
+    gatedMarkersRef.current.delete(trackingKey);
+
     const existingMarker = markerByIdRef.current.get(trackingKey);
 
     // If the existing marker is the same object, we're done (already added)
@@ -281,6 +508,17 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
       }
     }
 
+    // #4046 item 4: also purge the zoom-gate withheld set — a node that
+    // ages out/filters away while below the gate must not be resurrected
+    // (pointing at a stale, unmounted marker) when the zoom later crosses
+    // back above the threshold.
+    for (const [key, value] of gatedMarkersRef.current.entries()) {
+      if (value === marker) {
+        gatedMarkersRef.current.delete(key);
+        break;
+      }
+    }
+
     if (!spiderfierRef.current) return;
 
     if (!markersRef.current.has(marker)) return;
@@ -342,11 +580,39 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
     spiderfierRef.current.removeListener(event, handler);
   }, []);
 
+  /**
+   * Issue #4046 item 4: the "zoom in first" click handler for a marker that
+   * is below the zoom-gate threshold (and therefore NOT registered with the
+   * spiderfier — its native Leaflet click never reaches OMS). Consumers
+   * (`NodeMarkersLayer`) wire this as the marker's `click` eventHandler
+   * while `isAboveGateThreshold` is false, in place of the marker's normal
+   * click behavior — no selection, no popup, just center-and-zoom so the
+   * pile is sparse enough to click precisely on a follow-up click. Reuses
+   * the same clamp-never-zoom-out + duration-scaling math as
+   * `MapCenterController` (items 2/3), invoked directly against the map
+   * rather than through each consumer's own center-on-node plumbing, so
+   * every map surface gets identical below-threshold behavior for free.
+   */
+  const handleGatedClick = useCallback((marker: LeafletMarker) => {
+    if (!map) return;
+    const currentZoom = map.getZoom();
+    const targetZoom = optionsRef.current.zoomGateTargetZoom ?? DEFAULT_TARGET_ZOOM;
+    const clampedZoom = computeClampedTargetZoom(currentZoom, targetZoom);
+    const duration = computeZoomAnimationDuration(currentZoom, clampedZoom);
+    map.setView(marker.getLatLng(), clampedZoom, { animate: true, duration });
+  }, [map]);
+
   return {
     addMarker,
     removeMarker,
     getSpiderfier,
     addListener,
     removeListener,
+    /** True when at/above `zoomGateThreshold` (or gating is disabled) —
+     *  markers are registered with the spiderfier and click normally. False
+     *  below the threshold — markers are withheld and `NodeMarkersLayer`
+     *  should route clicks through `handleGatedClick` instead (#4046 item 4). */
+    isAboveGateThreshold,
+    handleGatedClick,
   };
 }
