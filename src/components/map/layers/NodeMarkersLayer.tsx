@@ -1,12 +1,13 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Marker } from 'react-leaflet';
 import type L from 'leaflet';
-import type { Marker as LeafletMarker, LeafletEventHandlerFnMap } from 'leaflet';
+import type { Marker as LeafletMarker, LeafletEventHandlerFnMap, LeafletMouseEvent } from 'leaflet';
 import {
   useMarkerSpiderfier,
   SHARED_SPIDERFIER_OPTIONS,
   type SpiderfierOptions,
 } from '../../../hooks/useMarkerSpiderfier';
+import { useSettings } from '../../../contexts/SettingsContext';
 
 /**
  * One node marker's render inputs, resolved consumer-side. `key` doubles as
@@ -95,7 +96,21 @@ export function NodeMarkersLayer({
   onOmsClick,
   stripLeafletAutoPopup = true,
 }: NodeMarkersLayerProps) {
-  const { addMarker, removeMarker, addListener, removeListener } = useMarkerSpiderfier(spiderfierOptions);
+  // #4046 item 4's below-threshold "zoom in first" click target reuses the
+  // same user-configurable `mapCenterTargetZoom` setting as
+  // `MapCenterController` (item 2), so a marker click at low zoom on ANY map
+  // surface (Nodes/Dashboard/MeshCore/Map Analysis, all go through this
+  // shared layer) lands on the same target zoom as clicking a node in a list.
+  // Only applied when the caller's own `spiderfierOptions` didn't already set
+  // one explicitly.
+  const { mapCenterTargetZoom } = useSettings();
+  const effectiveSpiderfierOptions = useMemo<SpiderfierOptions>(() => ({
+    ...spiderfierOptions,
+    zoomGateTargetZoom: spiderfierOptions.zoomGateTargetZoom ?? mapCenterTargetZoom,
+  }), [spiderfierOptions, mapCenterTargetZoom]);
+
+  const { addMarker, removeMarker, addListener, removeListener, isAboveGateThreshold, handleGatedClick } =
+    useMarkerSpiderfier(effectiveSpiderfierOptions);
 
   const markerByKey = useRef<Map<string, LeafletMarker>>(new Map());
   const keyByMarker = useRef<WeakMap<LeafletMarker, string>>(new WeakMap());
@@ -222,6 +237,25 @@ export function NodeMarkersLayer({
     }
   });
 
+  // #4046 item 4: below the zoom-gate threshold, markers aren't registered
+  // with the spiderfier at all (see `useMarkerSpiderfier`'s `zoomGateThreshold`
+  // gating), so their native Leaflet 'click' never reaches OMS — the OMS
+  // 'click' listener above (onOmsClick / openPopup) simply never fires. That
+  // means BELOW the threshold, a marker's `click` eventHandler is the only
+  // thing that runs. We replace it with the "zoom in first" flow — never the
+  // consumer's own click behavior (selection/centering/popup) — so a click
+  // on a large low-zoom pile isn't ambiguous about which node was meant;
+  // once zoomed in enough to cross back above the threshold, a further click
+  // resumes normal spiderfy/select/popup behavior. Non-click handlers (e.g.
+  // NodesTab's `add`/`mouseover`/`mouseout`) are preserved either way.
+  const resolveEventHandlers = (d: NodeMarkerDescriptor): LeafletEventHandlerFnMap | undefined => {
+    if (isAboveGateThreshold) return d.eventHandlers;
+    return {
+      ...d.eventHandlers,
+      click: (e: LeafletMouseEvent) => handleGatedClick(e.target as LeafletMarker),
+    };
+  };
+
   return (
     <>
       {markers.map((d) => (
@@ -232,7 +266,7 @@ export function NodeMarkersLayer({
           icon={stableIcon(d.key, d.iconSig, d.buildIcon)}
           opacity={d.opacity}
           zIndexOffset={d.zIndexOffset}
-          eventHandlers={d.eventHandlers}
+          eventHandlers={resolveEventHandlers(d)}
         >
           {d.children}
         </Marker>

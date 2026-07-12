@@ -199,6 +199,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setDefaultMapCenterLat,
     setDefaultMapCenterLon,
     setDefaultMapCenterZoom,
+    mapCenterTargetZoom,
+    setMapCenterTargetZoom,
     defaultLandingPage,
     setDefaultLandingPage,
     appearanceMode,
@@ -232,6 +234,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localDefaultMapCenterLat, setLocalDefaultMapCenterLat] = useState<number | null>(defaultMapCenterLat);
   const [localDefaultMapCenterLon, setLocalDefaultMapCenterLon] = useState<number | null>(defaultMapCenterLon);
   const [localDefaultMapCenterZoom, setLocalDefaultMapCenterZoom] = useState<number | null>(defaultMapCenterZoom);
+  const [localMapCenterTargetZoom, setLocalMapCenterTargetZoom] = useState(mapCenterTargetZoom);
   const [localDefaultLandingPage, setLocalDefaultLandingPage] = useState<string>(defaultLandingPage);
   const [localAppearanceMode, setLocalAppearanceMode] = useState<AppearanceMode>(appearanceMode);
   const [localDarkTheme, setLocalDarkTheme] = useState<Theme>(darkTheme);
@@ -417,6 +420,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalDefaultMapCenterLat(defaultMapCenterLat);
     setLocalDefaultMapCenterLon(defaultMapCenterLon);
     setLocalDefaultMapCenterZoom(defaultMapCenterZoom);
+    setLocalMapCenterTargetZoom(mapCenterTargetZoom);
     setLocalDefaultLandingPage(defaultLandingPage);
     setLocalAppearanceMode(appearanceMode);
     setLocalDarkTheme(darkTheme);
@@ -431,7 +435,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalSolarMonitoringAzimuth(solarMonitoringAzimuth);
     setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
     setLocalHideIncompleteNodes(!showIncompleteNodes);
-  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, nodeHopsCalculation, preferredDashboardSortOption, linkPreviewsEnabled, meshcoreChannelRetryEnabled, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme]);
+  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, nodeHopsCalculation, preferredDashboardSortOption, linkPreviewsEnabled, meshcoreChannelRetryEnabled, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme]);
 
   // Default solar monitoring lat/long to device position if still at 0
   useEffect(() => {
@@ -478,6 +482,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localDefaultMapCenterLat !== defaultMapCenterLat ||
       localDefaultMapCenterLon !== defaultMapCenterLon ||
       localDefaultMapCenterZoom !== defaultMapCenterZoom ||
+      localMapCenterTargetZoom !== mapCenterTargetZoom ||
       localDefaultLandingPage !== defaultLandingPage ||
       localAppearanceMode !== appearanceMode ||
       localDarkTheme !== darkTheme ||
@@ -505,8 +510,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       JSON.stringify(localAnalyticsConfig) !== initialAnalyticsConfig ||
       localAppriseApiServerUrl !== initialAppriseApiServerUrl;
     setHasChanges(changed);
-  }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, localNodeHopsCalculation, localDashboardSortOption,
-      maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
+  }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localMapCenterTargetZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, localNodeHopsCalculation, localDashboardSortOption,
+      maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours, initialPacketMonitorSettings,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude, localSolarMonitoringAzimuth, localSolarMonitoringDeclination,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
@@ -540,6 +545,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalDefaultMapCenterLat(defaultMapCenterLat);
     setLocalDefaultMapCenterLon(defaultMapCenterLon);
     setLocalDefaultMapCenterZoom(defaultMapCenterZoom);
+    setLocalMapCenterTargetZoom(mapCenterTargetZoom);
     setLocalDefaultLandingPage(defaultLandingPage);
     setLocalAppearanceMode(appearanceMode);
     setLocalDarkTheme(darkTheme);
@@ -569,7 +575,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes,
       inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours,
       favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat,
-      dateFormat, mapTileset, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
+      dateFormat, mapTileset, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
       solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes,
       linkPreviewsEnabled, meshcoreChannelRetryEnabled,
@@ -611,6 +617,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         defaultMapCenterLat: localDefaultMapCenterLat !== null ? localDefaultMapCenterLat.toString() : '',
         defaultMapCenterLon: localDefaultMapCenterLon !== null ? localDefaultMapCenterLon.toString() : '',
         defaultMapCenterZoom: localDefaultMapCenterZoom !== null ? localDefaultMapCenterZoom.toString() : '',
+        mapCenterTargetZoom: localMapCenterTargetZoom.toString(),
         defaultLandingPage: localDefaultLandingPage,
         theme: localEffectiveTheme,
         appearanceMode: localAppearanceMode,
@@ -667,6 +674,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setDefaultMapCenterLat(localDefaultMapCenterLat);
       setDefaultMapCenterLon(localDefaultMapCenterLon);
       setDefaultMapCenterZoom(localDefaultMapCenterZoom);
+      setMapCenterTargetZoom(localMapCenterTargetZoom);
       setDefaultLandingPage(localDefaultLandingPage);
       setAppearanceMode(localAppearanceMode);
       setDarkTheme(localDarkTheme);
@@ -708,7 +716,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours,
       localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours,
       localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection,
-      localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, getLocalEffectiveTheme,
+      localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localMapCenterTargetZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, getLocalEffectiveTheme,
       localNodeHopsCalculation, localDashboardSortOption, localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude,
       localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localLinkPreviewsEnabled, setLinkPreviewsEnabled, localMeshcoreChannelRetryEnabled, setMeshcoreChannelRetryEnabled, localHideIncompleteNodes, localHomoglyphEnabled, localLocalStatsIntervalMinutes, localMeshcoreCliTimeoutSeconds,
@@ -716,7 +724,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange, onPositionHistoryLineStyleChange,
       onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
       onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetChange,
-      onMapPinStyleChange, setNeighborInfoMinZoom, setDefaultMapCenterLat, setDefaultMapCenterLon, setDefaultMapCenterZoom, setDefaultLandingPage, setAppearanceMode, setDarkTheme, setLightTheme, setNodeHopsCalculation, setPreferredDashboardSortOption, onSolarMonitoringEnabledChange,
+      onMapPinStyleChange, setNeighborInfoMinZoom, setDefaultMapCenterLat, setDefaultMapCenterLon, setDefaultMapCenterZoom, setMapCenterTargetZoom, setDefaultLandingPage, setAppearanceMode, setDarkTheme, setLightTheme, setNodeHopsCalculation, setPreferredDashboardSortOption, onSolarMonitoringEnabledChange,
       onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange, onSolarMonitoringAzimuthChange,
       onSolarMonitoringDeclinationChange, setShowIncompleteNodes, showToast, t,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
@@ -1498,6 +1506,27 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 const value = parseInt(e.target.value);
                 if (value >= 1 && value <= 18) {
                   setLocalNeighborInfoMinZoom(value);
+                }
+              }}
+              className="setting-input"
+              style={{ width: '100px' }}
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="mapCenterTargetZoom">
+              {t('settings.map_center_target_zoom_label')}
+              <span className="setting-description">{t('settings.map_center_target_zoom_description')}</span>
+            </label>
+            <input
+              id="mapCenterTargetZoom"
+              type="number"
+              min="1"
+              max="18"
+              value={localMapCenterTargetZoom}
+              onChange={(e) => {
+                const value = parseInt(e.target.value);
+                if (value >= 1 && value <= 18) {
+                  setLocalMapCenterTargetZoom(value);
                 }
               }}
               className="setting-input"

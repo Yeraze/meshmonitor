@@ -449,6 +449,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     defaultMapCenterLat,
     defaultMapCenterLon,
     defaultMapCenterZoom,
+    mapCenterTargetZoom,
   } = useSettings();
 
   // Effective map age cap from the Map Features age slider (#3322), clamped to
@@ -2546,6 +2547,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               <MapCenterController
                 centerTarget={mapCenterTarget}
                 onCenterComplete={handleCenterComplete}
+                targetZoom={mapCenterTargetZoom}
               />
               <TracerouteBoundsController bounds={tracerouteBounds} />
               <ZoomHandler onZoomChange={setMapZoom} />

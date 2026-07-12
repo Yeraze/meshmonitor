@@ -636,6 +636,91 @@ describe('SettingsProvider', () => {
     expect(contextValue.distanceUnit).toBe('km');
   });
 
+  it('should default mapCenterTargetZoom to 17 when not in localStorage (#4046 item 2)', async () => {
+    localStorage.removeItem('mapCenterTargetZoom');
+    mockFetch.mockReset();
+    createFetchMock({});
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+
+    let contextValue: any;
+
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    await act(async () => {
+      render(
+        <SettingsProvider>
+          <Consumer />
+        </SettingsProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('consumer')).toBeDefined();
+    });
+
+    expect(contextValue.mapCenterTargetZoom).toBe(17);
+  });
+
+  it('should initialize mapCenterTargetZoom from localStorage', async () => {
+    localStorage.setItem('mapCenterTargetZoom', '14');
+    mockFetch.mockReset();
+    createFetchMock({});
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+
+    let contextValue: any;
+
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    await act(async () => {
+      render(
+        <SettingsProvider>
+          <Consumer />
+        </SettingsProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('consumer')).toBeDefined();
+    });
+
+    expect(contextValue.mapCenterTargetZoom).toBe(14);
+  });
+
+  it('should update localStorage when setMapCenterTargetZoom is called', async () => {
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+
+    let contextValue: any;
+
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    await act(async () => {
+      render(
+        <SettingsProvider>
+          <Consumer />
+        </SettingsProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('consumer')).toBeDefined();
+    });
+
+    await act(async () => {
+      contextValue.setMapCenterTargetZoom(12);
+    });
+
+    expect(localStorage.getItem('mapCenterTargetZoom')).toBe('12');
+  });
+
   it('should initialize preferredSortField from localStorage', async () => {
     localStorage.setItem('preferredSortField', 'battery');
     const { SettingsProvider, useSettings } = await import('./SettingsContext');

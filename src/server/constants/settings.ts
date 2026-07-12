@@ -183,6 +183,10 @@ export const VALID_SETTINGS_KEYS = [
   'defaultMapCenterLat',
   'defaultMapCenterLon',
   'defaultMapCenterZoom',
+  // Target zoom when centering on a single node — clamped to never zoom out
+  // (issue #4046 item 2). Also feeds the zoom-gated spiderfier's "zoom in
+  // first" click flow (item 4).
+  'mapCenterTargetZoom',
   'securityDigestEnabled',
   'securityDigestAppriseUrl',
   'securityDigestTime',
