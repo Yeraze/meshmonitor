@@ -77,9 +77,19 @@ interface MeshCoreMapProps {
    * callers/tests are unaffected.
    */
   isLoading?: boolean;
+  /**
+   * Forwarded to `BaseMap`'s `resizeTrigger` (issue: mobile node-list
+   * collapse toggle). When this value changes, the underlying Leaflet map
+   * calls `invalidateSize()` so the canvas fills its new container size
+   * after the list pane collapses/expands or the mobile list↔map pane swap
+   * fires — otherwise the map can render at its stale size (grey/blank
+   * edges) until the next manual resize. Omit ⇒ no resize handler mounted
+   * (matches BaseMap's own opt-in default).
+   */
+  resizeTrigger?: unknown;
 }
 
-export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition, onNavigateToDm, isLoading = false }) => {
+export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPublicKey, localNodePosition, onNavigateToDm, isLoading = false, resizeTrigger }) => {
   const { t } = useTranslation();
   const { mapTileset, customTilesets, setMapTileset } = useSettings();
   const { timeFormat, dateFormat } = useDisplaySettings();
@@ -472,6 +482,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
         customTilesets={customTilesets}
         showTilesetSelector={showTileSelector}
         onTilesetChange={setMapTileset}
+        resizeTrigger={resizeTrigger}
       >
         {measureActive && (
           <MeasureDistanceController
