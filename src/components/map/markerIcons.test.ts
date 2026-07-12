@@ -295,3 +295,35 @@ describe('createTracerouteEndpointIcon', () => {
     expect(icon.className).toBe('traceroute-node-icon');
   });
 });
+
+describe('createNodeIcon — Meshtastic ROUTER_LATE renders as repeater tower (#4075)', () => {
+  const iconHtml = (roleCategory: NodeTypeCategory | undefined, isRouter: boolean) =>
+    (createNodeIcon({
+      variant: 'meshtastic',
+      hops: 1,
+      isRouter,
+      roleCategory,
+      shortName: 'X',
+    }) as unknown as { html: string }).html;
+
+  it('ROUTER_LATE (mtRouterLate) produces the same glyph as ROUTER (mtRouter)', () => {
+    // Both roles map to the "repeater" glyph family via categoryGlyphFamily;
+    // passing roleCategory must make them render identically.
+    expect(iconHtml('mtRouterLate', false)).toBe(iconHtml('mtRouter', false));
+  });
+
+  it('ROUTER_LATE does NOT render as the generic client pin', () => {
+    // The bug: a ROUTER_LATE node (isRouter=false, role 11) with no roleCategory
+    // fell through to the plain pin. With its category it must diverge from a
+    // standard client icon.
+    expect(iconHtml('mtRouterLate', false)).not.toBe(iconHtml('mtClient', false));
+  });
+
+  it('ROUTER and ROUTER_LATE render identically once both pass roleCategory (roleCategory wins over the legacy isRouter branch)', () => {
+    // #4075 fix: the call sites now pass roleCategory. Because roleCategory
+    // takes precedence over the legacy hand-drawn isRouter tower, a ROUTER node
+    // (isRouter=true + mtRouter) and a ROUTER_LATE node (mtRouterLate) resolve
+    // to the same category glyph — the same one MapAnalysis already used.
+    expect(iconHtml('mtRouter', true)).toBe(iconHtml('mtRouterLate', false));
+  });
+});

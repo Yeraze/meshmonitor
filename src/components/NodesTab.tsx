@@ -7,6 +7,7 @@ import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
 import { nodePassesTransportFilter } from '../utils/nodeTransport';
+import { getNodeTypeCategory } from '../utils/nodeTypeCategory';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, snrToColor } from '../utils/mapHelpers.tsx';
@@ -1423,6 +1424,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         ? parseInt(node.user.role, 10)
         : (typeof node.user?.role === 'number' ? node.user.role : 0);
       const isRouter = roleNum === 2;
+      // #4075: pass the role category so ROUTER_LATE (and REPEATER) get the
+      // repeater-tower glyph like ROUTER, matching MapAnalysis. isRouter alone
+      // is role===2 only, so ROUTER_LATE would fall through to the generic pin.
+      const roleCategory = getNodeTypeCategory(node);
       const isSelected = selectedNodeId === node.user?.id;
       const isLocalNode = node.user?.id === currentNodeId;
       const hops = isLocalNode ? 0 : getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
@@ -1457,6 +1462,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             hops,
             isSelected,
             isRouter,
+            roleCategory,
             shortName: node.user?.shortName,
             showLabel: showLabel || shouldAnimate,
             animate: shouldAnimate,
