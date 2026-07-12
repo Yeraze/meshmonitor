@@ -21,6 +21,10 @@
  * sentinel — don't add a leaflet/react-leaflet import here.
  */
 
+// `nullIsland` is pure (no leaflet) — safe to import without breaking the
+// leaflet-free guarantee above.
+import { isNullIsland } from './nullIsland.js';
+
 // ---------------------------------------------------------------------------
 // #2931 — unknown-hop SNR sentinel (canonical home, re-exported by mapHelpers)
 // ---------------------------------------------------------------------------
@@ -105,6 +109,11 @@ export function parseSnapshotRoutePositions(
     if (!Number.isFinite(nodeNum)) continue;
     const entry = value as { lat?: unknown; lng?: unknown } | null;
     if (entry && typeof entry.lat === 'number' && typeof entry.lng === 'number') {
+      // A snapshot captured while the node was at Null Island (a garbage GPS
+      // default, e.g. the 2^15 value 0.0032768) must NOT anchor a route
+      // segment there — skip it so resolveSegmentPosition falls through to the
+      // live position (#02ecd5e0 "Jupiter Dad" routes shooting to 0,0).
+      if (isNullIsland(entry.lat, entry.lng)) continue;
       result.set(nodeNum, [entry.lat, entry.lng]);
     }
   }
@@ -131,12 +140,13 @@ export function resolveSegmentPosition(
  * `extract` returns the node number and raw (possibly missing) coordinates
  * for one item, or `null` to skip it entirely.
  *
- * Validity rule: coordinates must both be numbers AND must not be exactly
- * `(0, 0)` — a single axis at exactly 0 (equator or prime meridian) is a
- * legitimate position and is kept; the `(0, 0)` pair specifically is treated
- * as an uninitialized/Null-Island placeholder and dropped. This deliberately
- * differs from (and fixes) a truthy `lat && lng` check, which would also
- * drop the legitimate single-axis-zero case.
+ * Validity rule: coordinates must both be numbers AND must not be at Null
+ * Island — a coordinate within {@link isNullIsland}'s radius of `(0, 0)` is an
+ * uninitialized/garbage GPS default and is dropped, while a single axis at
+ * exactly 0 (equator or prime meridian, with the other axis far from 0) is a
+ * legitimate position and is kept. This uses the shared Null-Island radius
+ * (not an exact `(0,0)` check) so garbage defaults like the 2^15 value
+ * 0.0032768 don't anchor neighbor/route line endpoints at (0, 0).
  */
 export function buildLiveNodePositionMap<T>(
   items: Iterable<T>,
@@ -148,7 +158,7 @@ export function buildLiveNodePositionMap<T>(
     if (!entry) continue;
     const { nodeNum, lat, lng } = entry;
     if (typeof lat !== 'number' || typeof lng !== 'number') continue;
-    if (lat === 0 && lng === 0) continue;
+    if (isNullIsland(lat, lng)) continue;
     map.set(nodeNum, [lat, lng]);
   }
   return map;
