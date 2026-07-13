@@ -59,7 +59,6 @@ export const TABLE_ORDER = [
   'backup_history',
   'custom_themes',
   'user_map_preferences',
-  'upgrade_history',
   'auto_traceroute_log',
   'auto_traceroute_nodes',
   'auto_time_sync_nodes',
@@ -115,7 +114,6 @@ export const SKIP_TABLES = new Set([
   'packet_log', // Debug logging - schema incompatible and data is transient
   'sqlite_sequence', // SQLite internal table
   'backup_history', // Schema mismatch - null filePath values
-  'upgrade_history', // Schema mismatch - UUID in integer column
   'auto_traceroute_log', // Non-essential logging
   'auto_traceroute_nodes', // Non-essential
   'meshcore_pathfinding_targets', // Non-essential (re-selectable Auto-Pathfinding allowlist, mirrors auto_traceroute_nodes)

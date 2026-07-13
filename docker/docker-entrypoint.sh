@@ -103,12 +103,8 @@ if [ "$RUNNING_AS_ROOT" = "true" ]; then
     done
 fi
 
-# Copy upgrade-related scripts to internal directory (separate from user scripts)
-# User scripts go in /data/scripts (may be bind-mounted)
-# Internal MeshMonitor scripts go in /data/.meshmonitor-internal (never bind-mounted)
-SCRIPTS_SOURCE_DIR="/app/scripts"
+# Internal MeshMonitor scripts directory (never bind-mounted).
 INTERNAL_SCRIPTS_DIR="/data/.meshmonitor-internal"
-AUDIT_LOG="/data/logs/audit.log"
 
 # Create directories first (as root), then chown after
 # Note: /data/scripts is for USER scripts and may be bind-mounted - we don't create it here
@@ -122,39 +118,23 @@ if [ "$RUNNING_AS_ROOT" = "true" ]; then
     chown -R node:node /data /app/dist
 fi
 
-if [ -d "$SCRIPTS_SOURCE_DIR" ]; then
-    echo "Deploying internal scripts to $INTERNAL_SCRIPTS_DIR/..."
+# Auto-Upgrade Retirement (v4.13): in-app upgrade execution was removed.
+# Best-effort cleanup of stale trigger/status files and the retired watchdog
+# scripts left behind by earlier versions. Safe to run every boot.
+rm -f /data/.upgrade-trigger \
+      /data/.upgrade-status \
+      /data/.docker-socket-test* \
+      "$INTERNAL_SCRIPTS_DIR/upgrade-watchdog.sh" \
+      "$INTERNAL_SCRIPTS_DIR/test-docker-socket.sh" \
+      /data/scripts/upgrade-watchdog.sh 2>/dev/null || true
 
-    # Copy upgrade watchdog script
-    if [ -f "$SCRIPTS_SOURCE_DIR/upgrade-watchdog.sh" ]; then
-        SCRIPT_HASH=$(sha256sum "$SCRIPTS_SOURCE_DIR/upgrade-watchdog.sh" | cut -d' ' -f1 | cut -c1-8)
-        cp "$SCRIPTS_SOURCE_DIR/upgrade-watchdog.sh" "$INTERNAL_SCRIPTS_DIR/upgrade-watchdog.sh"
-        chmod +x "$INTERNAL_SCRIPTS_DIR/upgrade-watchdog.sh"
-        echo "✓ Upgrade watchdog script deployed"
-
-        # Backward compatibility: also deploy to /data/scripts/ for older sidecar configs
-        # that still reference the old path (command: /data/scripts/upgrade-watchdog.sh)
-        # Only deploy if /data/scripts exists or can be created (skip if bind-mounted with other content)
-        LEGACY_SCRIPTS_DIR="/data/scripts"
-        if mkdir -p "$LEGACY_SCRIPTS_DIR" 2>/dev/null; then
-            cp "$SCRIPTS_SOURCE_DIR/upgrade-watchdog.sh" "$LEGACY_SCRIPTS_DIR/upgrade-watchdog.sh"
-            chmod +x "$LEGACY_SCRIPTS_DIR/upgrade-watchdog.sh"
-            echo "✓ Upgrade watchdog script also deployed to $LEGACY_SCRIPTS_DIR (backward compat)"
-        fi
-
-        # Audit log the deployment
-        if [ -w "$(dirname "$AUDIT_LOG")" ]; then
-            echo "{\"timestamp\":\"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\",\"event\":\"upgrade_script_deployed\",\"script_hash\":\"$SCRIPT_HASH\",\"version\":\"${npm_package_version:-unknown}\",\"user\":\"system\"}" >> "$AUDIT_LOG" 2>/dev/null || true
-        fi
-    fi
-
-    # Copy Docker socket test script
-    if [ -f "$SCRIPTS_SOURCE_DIR/test-docker-socket.sh" ]; then
-        cp "$SCRIPTS_SOURCE_DIR/test-docker-socket.sh" "$INTERNAL_SCRIPTS_DIR/test-docker-socket.sh"
-        chmod +x "$INTERNAL_SCRIPTS_DIR/test-docker-socket.sh"
-        echo "✓ Docker socket test script deployed"
-    fi
-fi
+# AUTO_UPGRADE_ENABLED is no longer supported. Warn once if it is still set.
+case "$AUTO_UPGRADE_ENABLED" in
+    1|true|TRUE|yes|YES|on|ON)
+        echo "⚠️  AUTO_UPGRADE_ENABLED is no longer supported (in-app upgrades were removed in v4.13)." >&2
+        echo "    See https://yeraze.github.io/meshmonitor/configuration/updating for update instructions." >&2
+        ;;
+esac
 
 # Image integrity check (issue #3542): a corrupt or incomplete image pull can
 # leave dist/server/server.js as a 0-byte file. Node then exits 0 immediately,

@@ -30,14 +30,17 @@ vi.mock('../../services/database.js', () => ({
   default: mockDb,
 }));
 
-const mockUpgradeService = vi.hoisted(() => ({
-  isEnabled: vi.fn().mockReturnValue(false),
-  isUpgradeInProgress: vi.fn(),
-  triggerUpgrade: vi.fn(),
+const mockVersionCheckService = vi.hoisted(() => ({
+  getStatus: vi.fn(),
 }));
-vi.mock('../services/upgradeService.js', () => ({
-  upgradeService: mockUpgradeService,
+vi.mock('../services/versionCheckService.js', () => ({
+  versionCheckService: mockVersionCheckService,
 }));
+
+const mockDeployment = vi.hoisted(() => ({
+  detectDeploymentMethod: vi.fn().mockReturnValue('docker'),
+}));
+vi.mock('../utils/deployment.js', () => mockDeployment);
 
 const mockEnv = vi.hoisted(() => ({ nodeEnv: 'test', versionCheckDisabled: false }));
 vi.mock('../config/environment.js', () => ({
@@ -47,8 +50,6 @@ vi.mock('../config/environment.js', () => ({
 const mockSystemInfo = vi.hoisted(() => ({
   serverStartTime: Date.now() - 5000,
   isRunningInDocker: vi.fn().mockReturnValue(false),
-  compareVersions: vi.fn(),
-  checkDockerImageExists: vi.fn(),
 }));
 vi.mock('../utils/systemInfo.js', () => mockSystemInfo);
 
@@ -112,39 +113,45 @@ describe('GET /version/check', () => {
     expect(res.status).toBe(404);
   });
 
-  // Note: GitHub API failures are NOT cached (the handler returns early), while a
-  // successful response IS cached for 5 minutes at module scope. This failure test
-  // therefore runs before the success test so it observes a fresh (uncached) miss.
-  it('handles GitHub API failure gracefully', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 403 });
-    vi.stubGlobal('fetch', fetchMock);
+  it('handles version-check failure gracefully (bare shape + deploymentMethod)', async () => {
+    mockVersionCheckService.getStatus.mockResolvedValue({
+      updateAvailable: false,
+      currentVersion: '1.0.0',
+      latestVersion: null,
+      releaseUrl: null,
+      releaseName: null,
+      publishedAt: null,
+      imageReady: false,
+      checkedAt: Date.now(),
+      error: 'Unable to check for updates',
+    });
     const res = await request(app).get('/version/check');
     expect(res.status).toBe(200);
     expect(res.body.updateAvailable).toBe(false);
     expect(res.body.error).toBe('Unable to check for updates');
-    vi.unstubAllGlobals();
+    expect(res.body.deploymentMethod).toBe('docker');
   });
 
-  it('reports an available update when newer and image ready', async () => {
-    mockSystemInfo.compareVersions.mockReturnValue(1);
-    mockSystemInfo.checkDockerImageExists.mockResolvedValue(true);
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        tag_name: 'v9.9.9',
-        html_url: 'https://example/release',
-        name: 'Release',
-        published_at: '2026-01-01T00:00:00Z',
-      }),
+  it('reports an available update with deploymentMethod and no autoUpgradeTriggered field', async () => {
+    mockDeployment.detectDeploymentMethod.mockReturnValue('lxc');
+    mockVersionCheckService.getStatus.mockResolvedValue({
+      updateAvailable: true,
+      currentVersion: '1.0.0',
+      latestVersion: '9.9.9',
+      releaseUrl: 'https://example/release',
+      releaseName: 'Release',
+      publishedAt: '2026-01-01T00:00:00Z',
+      imageReady: true,
+      checkedAt: Date.now(),
     });
-    vi.stubGlobal('fetch', fetchMock);
 
     const res = await request(app).get('/version/check');
     expect(res.status).toBe(200);
     expect(res.body.updateAvailable).toBe(true);
     expect(res.body.latestVersion).toBe('9.9.9');
     expect(res.body.imageReady).toBe(true);
-    vi.unstubAllGlobals();
+    expect(res.body.deploymentMethod).toBe('lxc');
+    expect(res.body).not.toHaveProperty('autoUpgradeTriggered');
   });
 });
 

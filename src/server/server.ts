@@ -44,13 +44,12 @@ import { inactiveNodeNotificationService } from './services/inactiveNodeNotifica
 import { lowBatteryNotificationService } from './services/lowBatteryNotificationService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
-import { upgradeService } from './services/upgradeService.js';
+import { versionCheckService } from './services/versionCheckService.js';
 import { enhanceNodeForClient, filterNodesByChannelPermission, checkNodeChannelAccess, getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
 import { generateAnalyticsScript, AnalyticsProvider } from './utils/analyticsScriptGenerator.js';
 import { rewriteHtml } from './utils/htmlRewriter.js';
 import { resolveRequestSourceId } from './utils/sourceResolver.js';
-import { compareVersions, checkDockerImageExists } from './utils/systemInfo.js';
 import { parseDestinationNum } from './utils/parseDestination.js';
 import { PortNum, getRoutingErrorName } from './constants/meshtastic.js';
 import { isValidModuleConfigType } from './constants/moduleConfig.js';
@@ -603,140 +602,21 @@ setTimeout(async () => {
 }, 10000); // After telemetry scheduler.
 
 // ==========================================
-// Scheduled Auto-Upgrade Check
+// Version Check (detection / notification only)
 // ==========================================
-// Check for updates every 4 hours server-side to enable unattended upgrades
-// This allows auto-upgrade to work without requiring a frontend to be open
-const AUTO_UPGRADE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
-
-async function checkForAutoUpgrade(): Promise<void> {
-  // Skip if version check is disabled
-  if (env.versionCheckDisabled) {
-    return;
-  }
-
-  // Skip if auto-upgrade is not enabled
-  if (!upgradeService.isEnabled()) {
-    return;
-  }
-
-  // Skip if the DatabaseService hasn't finished initializing repositories yet.
-  // The initial-check setTimeout fires 60s after process start; on installs
-  // with long-running migrations (e.g. PG migration 030 rebuilding hundreds
-  // of thousands of route_segments rows) that timer can fire mid-migration
-  // and crash on the `settings` getter with `Database not initialized`.
-  // The next 4-hour interval tick will retry once the DB is up.
-  if (!databaseService.isDatabaseReady()) {
-    logger.debug('Skipping auto-upgrade check: database not ready yet (migrations in progress)');
-    return;
-  }
-
-  // Skip if autoUpgradeImmediate is not enabled
-  const autoUpgradeImmediate = await databaseService.settings.getSetting('autoUpgradeImmediate') === 'true';
-  if (!autoUpgradeImmediate) {
-    return;
-  }
-
-  try {
-    logger.debug('🔄 Running scheduled auto-upgrade check...');
-
-    // Fetch latest release from GitHub
-    const response = await fetch('https://api.github.com/repos/Yeraze/meshmonitor/releases/latest');
-
-    if (!response.ok) {
-      logger.warn(`GitHub API returned ${response.status} for scheduled version check`);
-      return;
-    }
-
-    const release = await response.json();
-    const currentVersion = packageJson.version;
-    const latestVersionRaw = release.tag_name;
-
-    // Strip 'v' prefix from version strings for comparison
-    const latestVersion = latestVersionRaw.replace(/^v/, '');
-    const current = currentVersion.replace(/^v/, '');
-
-    // Simple semantic version comparison
-    const isNewerVersion = compareVersions(latestVersion, current) > 0;
-
-    if (!isNewerVersion) {
-      logger.debug(`✓ Already on latest version (${currentVersion})`);
-      return;
-    }
-
-    // Check if Docker image exists for this version
-    const imageReady = await checkDockerImageExists(latestVersion, release.published_at);
-
-    if (!imageReady) {
-      logger.debug(`⏳ Update available (${latestVersion}) but Docker image not ready yet`);
-      return;
-    }
-
-    // Check if an upgrade is already in progress
-    const inProgress = await upgradeService.isUpgradeInProgress();
-    if (inProgress) {
-      logger.debug('ℹ️ Scheduled auto-upgrade skipped: upgrade already in progress');
-      return;
-    }
-
-    // Trigger the upgrade
-    logger.info(`🚀 Scheduled auto-upgrade: triggering upgrade to ${latestVersion}`);
-    const upgradeResult = await upgradeService.triggerUpgrade(
-      { targetVersion: latestVersion, backup: true },
-      currentVersion,
-      'system-scheduled-auto-upgrade'
-    );
-
-    if (upgradeResult.success) {
-      logger.info(`✅ Scheduled auto-upgrade triggered successfully: ${upgradeResult.upgradeId}`);
-      void databaseService.auditLogAsync(
-        null,
-        'auto_upgrade_triggered',
-        'system',
-        `Scheduled auto-upgrade initiated: ${currentVersion} → ${latestVersion}`,
-        null
-      );
-    } else {
-      if (upgradeResult.message === 'An upgrade is already in progress') {
-        logger.debug('ℹ️ Scheduled auto-upgrade skipped: upgrade started by another process');
-      } else {
-        logger.warn(`⚠️ Scheduled auto-upgrade failed to trigger: ${upgradeResult.message}`);
-      }
-    }
-  } catch (error) {
-    logger.error('❌ Error during scheduled auto-upgrade check:', error);
-  }
-}
-
-// Schedule periodic auto-upgrade check (every 4 hours)
-setInterval(() => {
-  checkForAutoUpgrade().catch(error => {
-    logger.error('Error in scheduled auto-upgrade check:', error);
-  });
-}, AUTO_UPGRADE_CHECK_INTERVAL_MS);
-
-// Boot-time upgrade reconciliation: resolve any pending upgrade_history row
-// left behind by the previous container before the 60-second auto-upgrade
-// check timer fires. Without this, the pending row sits until it ages past
-// STALE_TIMEOUT_MS (30 min) and is wrongly marked failed, eventually tripping
-// the circuit breaker even though the watchdog succeeded (issue #3228).
+// A single server-side poller checks GitHub for new releases every 6 hours
+// (first check ~60s after boot), caches the result for the /version/check
+// endpoint, and fires the `upgrade-available` automation event headlessly.
+// In-app upgrade *execution* was retired in v4.13 — this never triggers an
+// upgrade. Skipped entirely when VERSION_CHECK_DISABLED is set.
 setTimeout(async () => {
   try {
-    if (upgradeService.isEnabled()) {
-      await databaseService.waitForReady();
-      await upgradeService.syncPendingUpgradeStatusOnBoot();
-    }
+    await databaseService.waitForReady();
+    versionCheckService.start();
   } catch (error) {
-    logger.error('Error in boot-time upgrade status sync:', error);
+    logger.error('Error starting version-check service:', error);
   }
-}, 10 * 1000); // 10 seconds — well before the 60-second auto-upgrade check
-
-// Run initial auto-upgrade check after a delay to allow system to stabilize
-setTimeout(() => {
-  checkForAutoUpgrade().catch(error => {
-    logger.error('Error in initial auto-upgrade check:', error);
-  });
-}, 60 * 1000); // Wait 1 minute after startup
+}, 10 * 1000);
 
 // Create router for API routes
 const apiRouter = express.Router();

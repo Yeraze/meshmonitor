@@ -916,7 +916,6 @@ async function resetMySQLAutoIncrement(pool: mysql.Pool): Promise<void> {
     'user_notification_preferences',
     'packet_log',
     'backup_history',
-    'upgrade_history',
     'custom_themes',
   ];
 

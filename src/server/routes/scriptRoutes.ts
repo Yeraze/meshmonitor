@@ -173,7 +173,6 @@ export const scriptsEndpoint = (_req: any, res: any) => {
         const ext = path.extname(file).toLowerCase();
         return validExtensions.includes(ext);
       })
-      .filter(file => file !== 'upgrade-watchdog.sh') // Exclude system scripts
       .sort();
 
     // Build script metadata for each file
@@ -773,11 +772,6 @@ router.post(
         return res.status(400).json({ error: `Invalid file extension. Allowed: ${validExtensions.join(', ')}` });
       }
 
-      // Prevent system script overwrite
-      if (sanitizedFilename === 'upgrade-watchdog.sh') {
-        return res.status(400).json({ error: 'Cannot overwrite system script' });
-      }
-
       const scriptsDir = getScriptsDirectory();
       const resolvedScriptsDir = path.resolve(scriptsDir);
       const filePath = path.resolve(path.join(scriptsDir, sanitizedFilename));
@@ -887,11 +881,6 @@ router.delete('/scripts/:filename', requirePermission('settings', 'write'), asyn
 
     // Security: Validate filename
     const sanitizedFilename = path.basename(filename);
-
-    // Prevent deletion of system scripts
-    if (sanitizedFilename === 'upgrade-watchdog.sh') {
-      return res.status(400).json({ error: 'Cannot delete system script' });
-    }
 
     const scriptsDir = getScriptsDirectory();
     const filePath = path.join(scriptsDir, sanitizedFilename);

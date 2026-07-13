@@ -20,14 +20,12 @@ import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
-import { upgradeService } from '../services/upgradeService.js';
-import { notifyUpgradeAvailable } from '../services/automation/automationEngineSingleton.js';
+import { versionCheckService } from '../services/versionCheckService.js';
+import { detectDeploymentMethod } from '../utils/deployment.js';
 import meshtasticManager from '../meshtasticManager.js';
 import {
   serverStartTime,
   isRunningInDocker,
-  compareVersions,
-  checkDockerImageExists,
 } from '../utils/systemInfo.js';
 
 const require = createRequire(import.meta.url);
@@ -121,117 +119,40 @@ router.get('/status', optionalAuth(), async (_req: Request, res: Response) => {
   });
 });
 
-// Version check endpoint - compares current version with latest GitHub release
-let versionCheckCache: { data: any; timestamp: number } | null = null;
-const VERSION_CHECK_CACHE_MS = 5 * 60 * 1000; // 5 minute cache (reduced to detect image availability sooner)
-
+// Version check endpoint — cache read through versionCheckService. The single
+// server-side poller (versionCheckService) performs the GitHub fetch, caches the
+// result, and fires the `upgrade-available` automation event headlessly. This
+// route no longer triggers any upgrade — detection/notification only.
+//
+// `deploymentMethod` tells the frontend which deployment-specific update
+// instructions to show (docker / lxc / kubernetes / manual).
 router.get('/version/check', optionalAuth(), async (_req: Request, res: Response) => {
   if (env.versionCheckDisabled) {
     return res.status(404).send();
   }
-  try {
-    // Check cache first
-    if (versionCheckCache && Date.now() - versionCheckCache.timestamp < VERSION_CHECK_CACHE_MS) {
-      return res.json(versionCheckCache.data);
-    }
 
-    // Fetch latest release from GitHub
-    const response = await fetch('https://api.github.com/repos/Yeraze/meshmonitor/releases/latest');
+  const deploymentMethod = detectDeploymentMethod();
+  const status = await versionCheckService.getStatus();
 
-    if (!response.ok) {
-      logger.warn(`GitHub API returned ${response.status} for version check`);
-      return res.json({ updateAvailable: false, error: 'Unable to check for updates' });
-    }
-
-    const release = await response.json();
-    const currentVersion = packageJson.version;
-    const latestVersionRaw = release.tag_name;
-
-    // Strip 'v' prefix from version strings for comparison
-    const latestVersion = latestVersionRaw.replace(/^v/, '');
-    const current = currentVersion.replace(/^v/, '');
-
-    // Simple semantic version comparison
-    const isNewerVersion = compareVersions(latestVersion, current) > 0;
-
-    // Check if Docker image exists for this version (pass publish time for time-based heuristic)
-    const imageReady = await checkDockerImageExists(latestVersion, release.published_at);
-
-    // Only mark update as available if it's a newer version AND container image exists
-    const updateAvailable = isNewerVersion && imageReady;
-
-    // Check if auto-upgrade immediate is enabled and trigger upgrade automatically
-    let autoUpgradeTriggered = false;
-    if (updateAvailable && upgradeService.isEnabled()) {
-      const autoUpgradeImmediate = await databaseService.settings.getSetting('autoUpgradeImmediate') === 'true';
-      if (autoUpgradeImmediate) {
-        // Check if an upgrade is already in progress before triggering
-        try {
-          const inProgress = await upgradeService.isUpgradeInProgress();
-          if (inProgress) {
-            logger.debug(`ℹ️ Auto-upgrade skipped: upgrade already in progress`);
-          } else {
-            logger.info(`🚀 Auto-upgrade immediate enabled, triggering upgrade to ${latestVersion}`);
-            const upgradeResult = await upgradeService.triggerUpgrade(
-              { targetVersion: latestVersion, backup: true },
-              currentVersion,
-              'system-auto-upgrade'
-            );
-            if (upgradeResult.success) {
-              autoUpgradeTriggered = true;
-              logger.info(`✅ Auto-upgrade triggered successfully: ${upgradeResult.upgradeId}`);
-              void databaseService.auditLogAsync(
-                null,
-                'auto_upgrade_triggered',
-                'system',
-                `Auto-upgrade initiated: ${currentVersion} → ${latestVersion}`,
-                null
-              );
-            } else {
-              // Check if failure was due to upgrade already in progress (race condition)
-              if (upgradeResult.message === 'An upgrade is already in progress') {
-                logger.debug(`ℹ️ Auto-upgrade skipped: upgrade started by another process`);
-              } else {
-                logger.warn(`⚠️ Auto-upgrade failed to trigger: ${upgradeResult.message}`);
-              }
-            }
-          }
-        } catch (upgradeError) {
-          logger.error('❌ Error triggering auto-upgrade:', upgradeError);
-        }
-      }
-    }
-
-    const result = {
-      updateAvailable,
-      currentVersion,
-      latestVersion,
-      releaseUrl: release.html_url,
-      releaseName: release.name,
-      publishedAt: release.published_at,
-      imageReady,
-      autoUpgradeTriggered,
-    };
-
-    // Cache the result
-    versionCheckCache = { data: result, timestamp: Date.now() };
-
-    // Fire the `upgrade-available` automation system event (deduped by version
-    // inside the helper). Runs on cache-miss only, so at most once per ~5 min.
-    if (updateAvailable) {
-      notifyUpgradeAvailable({
-        latestVersion,
-        currentVersion,
-        releaseUrl: release.html_url,
-        releaseName: release.name,
-      }).catch((err) => logger.error('Failed to raise upgrade-available automation event:', err));
-    }
-
-    return res.json(result);
-  } catch (error) {
-    logger.error('Error checking for version updates:', error);
-    return res.json({ updateAvailable: false, error: 'Unable to check for updates' });
+  if (status.error) {
+    // Preserve the historical failure shape (bare object, updateAvailable:false).
+    return res.json({
+      updateAvailable: false,
+      error: status.error,
+      deploymentMethod,
+    });
   }
+
+  return res.json({
+    updateAvailable: status.updateAvailable,
+    currentVersion: status.currentVersion,
+    latestVersion: status.latestVersion,
+    releaseUrl: status.releaseUrl,
+    releaseName: status.releaseName,
+    publishedAt: status.publishedAt,
+    imageReady: status.imageReady,
+    deploymentMethod,
+  });
 });
 
 // Restart/shutdown container endpoint
