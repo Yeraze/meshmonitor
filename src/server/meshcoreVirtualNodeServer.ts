@@ -1211,7 +1211,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       return encodeChannelMsgRecv({
         channelIdx: Number(channelMatch[1]),
         pathLen: wirePathLen,
-        txtType: 0,
+        txtType: TxtType.Plain,
         senderTimestamp,
         text,
       });
