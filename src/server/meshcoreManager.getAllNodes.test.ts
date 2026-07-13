@@ -161,6 +161,25 @@ describe('MeshCoreManager.getAllNodes (node-list-collapses-to-1 regression)', ()
     expect(real?.longitude).toBe(-80.268578);
   });
 
+  it('drops an out-of-range position on a DB-only row with no live contact (read-side backstop)', async () => {
+    // The row an unguarded historical write left in the DB; no live contact
+    // overlays it, so only the read-side final guard can trim it.
+    getNodesBySource.mockResolvedValue([
+      { publicKey: KEY_B, name: 'DB Junk', advType: MeshCoreDeviceType.REPEATER, latitude: 1853.453892, longitude: -1598.745966, isLocalNode: false },
+      { publicKey: KEY_C, name: 'DB Real', advType: MeshCoreDeviceType.REPEATER, latitude: 26.33, longitude: -80.27, isLocalNode: false },
+    ]);
+
+    const m = new MeshCoreManager('src-a');
+    const nodes = await m.getAllNodes();
+
+    const junk = nodes.find((n) => n.publicKey === KEY_B);
+    const real = nodes.find((n) => n.publicKey === KEY_C);
+    expect(junk?.latitude).toBeUndefined();
+    expect(junk?.longitude).toBeUndefined();
+    expect(real?.latitude).toBe(26.33);
+    expect(real?.longitude).toBe(-80.27);
+  });
+
   it('falls back to in-memory contacts when the DB read throws', async () => {
     getNodesBySource.mockRejectedValue(new Error('db down'));
 

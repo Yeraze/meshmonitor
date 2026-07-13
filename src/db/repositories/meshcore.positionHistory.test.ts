@@ -55,6 +55,27 @@ describe('MeshCoreRepository — position history', () => {
     expect(points).toHaveLength(0);
   });
 
+  it('never persists an out-of-range position, and does not clobber a stored valid fix', async () => {
+    // Establish a valid fix.
+    await repo.upsertNode({ publicKey: 'pk-guard', latitude: 26.331349, longitude: -80.268578, lastHeard: 1000 }, 'src-a');
+    // A junk advert (out of range) must NOT overwrite it.
+    await repo.upsertNode({ publicKey: 'pk-guard', latitude: 1853.453892, longitude: -1598.745966, lastHeard: 2000 }, 'src-a');
+
+    const kept = await repo.getNodeByPublicKeyAndSource('pk-guard', 'src-a');
+    expect(kept?.latitude).toBeCloseTo(26.331349);
+    expect(kept?.longitude).toBeCloseTo(-80.268578);
+    // The junk fix is not recorded in the movement trail either.
+    expect(await repo.getPositionHistory('src-a', 'pk-guard')).toHaveLength(1);
+  });
+
+  it('a brand-new node reporting only an out-of-range position is stored with no position', async () => {
+    await repo.upsertNode({ publicKey: 'pk-junk-only', name: 'Junk', latitude: 540.096308, longitude: 4.408389, lastHeard: 1000 }, 'src-a');
+    const row = await repo.getNodeByPublicKeyAndSource('pk-junk-only', 'src-a');
+    expect(row).toBeDefined();
+    expect(row?.latitude ?? null).toBeNull();
+    expect(row?.longitude ?? null).toBeNull();
+  });
+
   it('getPositionHistory honors the `since` window', async () => {
     await repo.upsertNode({ publicKey: 'pk3', latitude: 10, longitude: 10, lastHeard: 1000 }, 'src-a');
     await repo.upsertNode({ publicKey: 'pk3', latitude: 11, longitude: 11, lastHeard: 5000 }, 'src-a');

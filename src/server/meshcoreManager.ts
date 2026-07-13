@@ -5535,18 +5535,6 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // over any persisted row so DB-only fields aren't lost.
     for (const contact of this.contacts.values()) {
       const base = byKey.get(contact.publicKey);
-      let latitude = contact.latitude ?? base?.latitude;
-      let longitude = contact.longitude ?? base?.longitude;
-      // The DB store + migration 116 trim bogus coordinates, but a live
-      // in-memory contact can still carry out-of-range junk (e.g. lat 1853,
-      // lng -1598) or a Null Island default straight from the device's contact
-      // list, and this overlay would otherwise surface it to the node list /
-      // map bounds via getAllNodes(). Drop it so a bad fix reads as "no
-      // position" rather than blowing the map out to nothing (#3763 follow-up).
-      if (isBogusPosition(latitude ?? null, longitude ?? null)) {
-        latitude = undefined;
-        longitude = undefined;
-      }
       byKey.set(contact.publicKey, {
         ...base,
         publicKey: contact.publicKey,
@@ -5555,8 +5543,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         lastHeard: contact.lastSeen ?? base?.lastHeard,
         rssi: contact.rssi ?? base?.rssi,
         snr: contact.snr ?? base?.snr,
-        latitude,
-        longitude,
+        latitude: contact.latitude ?? base?.latitude,
+        longitude: contact.longitude ?? base?.longitude,
       });
     }
 
@@ -5573,6 +5561,20 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       byKey.delete(this.localNode.publicKey);
     }
     nodes.push(...byKey.values());
+
+    // Final guard: never surface a bogus position (out-of-range junk like
+    // lat 1853 / lng -1598, or a Null Island default) to the node list / map
+    // bounds — no matter whether it came from a live in-memory contact or a
+    // stale DB row an unguarded historical write left behind. A bad fix reads
+    // as "no position" instead of blowing the map out to nothing (#3763
+    // follow-up). The write path (repository upsertNode) keeps new garbage out
+    // of the DB; this is the read-side backstop for anything already there.
+    for (const n of nodes) {
+      if (isBogusPosition(n.latitude ?? null, n.longitude ?? null)) {
+        n.latitude = undefined;
+        n.longitude = undefined;
+      }
+    }
     return nodes;
   }
 

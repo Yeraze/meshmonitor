@@ -7,6 +7,7 @@
 import { eq, desc, sql, isNull, isNotNull, and, or, lt, gte, inArray, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
+import { isBogusPosition } from '../../utils/nullIsland.js';
 
 /**
  * meshcore_nodes columns where an incoming `null` in upsertNode means "clear
@@ -311,6 +312,18 @@ export class MeshCoreRepository extends BaseRepository {
     const now = this.now();
     const { meshcoreNodes } = this.tables;
     const existing = await this.getNodeByPublicKeyAndSource(node.publicKey, sourceId);
+
+    // Never persist a bogus coordinate. MeshCore adverts/info syncs sometimes
+    // carry out-of-range junk (e.g. lat 1853, lng -1598) or a Null Island
+    // default; this is the single write choke point for every ingest path
+    // (contact sync, path/info, telemetry), so dropping it here keeps garbage
+    // out of the DB regardless of caller. Undefined (not null) means "not
+    // observed" so the merge PRESERVES any valid stored fix rather than
+    // clobbering it on a transient bad report (#3763 follow-up).
+    if (isBogusPosition(node.latitude ?? null, node.longitude ?? null)) {
+      const { latitude: _blat, longitude: _blon, ...rest } = node;
+      node = rest as typeof node;
+    }
 
     // A telemetry-derived GNSS fix (Cayenne-LPP poll) always wins over the
     // static contact/advert position once one has been recorded — otherwise
