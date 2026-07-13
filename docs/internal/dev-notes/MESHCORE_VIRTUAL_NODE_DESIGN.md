@@ -193,6 +193,15 @@ is **always** refused regardless of the gate. All connects/admin-forwards are au
   pubkey prefix or the app's own trace tag); and the node's raw RX feed bridged to apps as a
   `LogRxData`(0x88) push (#3964). Login/trace/telemetry/advert are **not** gated on
   `allowAdminCommands` — a real node accepts them unconditionally; only config *writes* are gated.
+- **Phase 5 — CLI relay for remote-admin. ✅ IMPLEMENTED (#4106).** `SendTxtMsg` with
+  `txtType=CliData` (the app issuing a CLI command to a node it logged into via `SendLogin`,
+  #4094) is a **different wire operation from a plain chat DM** despite sharing command code 2 —
+  it must go out with `txt_type=CliData` so the remote's `CommonCLI` handles it, not the chat
+  handler. Routed to `meshcoreManager.sendCliCommand` (the same primitive the remote-admin CLI
+  console uses, see `MESHCORE_REMOTE_ADMIN.md`) instead of `sendMessageWithResult`; the reply is
+  queued through the normal `MsgWaiting`→`SyncNextMessage` path, tagged `txtType=CliData` on the
+  way back out so the app renders it as a CLI reply. Gated on `allowAdminCommands` like the other
+  config-mutating commands, since CLI text can include `set`/`reboot`/`setperm`.
 
 ### Protocol subtleties found in testing (don't regress these)
 - **Channel send acks `Ok`, DM send acks `Sent`.** meshcore.js's `sendChannelTextMessage`
@@ -202,6 +211,11 @@ is **always** refused regardless of the gate. All connects/admin-forwards are au
   messages with the synthetic `channel-N` key in `toPublicKey` for messages we *sent* but in
   `fromPublicKey` for messages we *received* (`toPublicKey` unset on RX). Detect it in both
   fields, or incoming channel replies get mis-encoded as a `ContactMsgRecv` and dropped.
+- **`SendTxtMsg`'s `txtType` byte selects the wire operation, not just metadata.** Code 2
+  covers both a plain chat DM (`txtType=Plain`) and a CLI/admin command to a logged-in node
+  (`txtType=CliData`) — same frame shape, different handling entirely (#4106). Ignoring the
+  byte and always treating it as chat means the remote's CLI handler never sees the command
+  and the app times out waiting for a reply that will never come.
 
 ## 6. Key risks & how the plan retires them
 

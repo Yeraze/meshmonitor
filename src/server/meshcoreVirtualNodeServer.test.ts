@@ -147,6 +147,10 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
       neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[];
     } | null>;
   }
+  sendCliCommandMock = vi.fn().mockResolvedValue({ reply: 'ok', elapsedMs: 42 });
+  sendCliCommand(publicKey: string, command: string) {
+    return this.sendCliCommandMock(publicKey, command) as Promise<{ reply: string; elapsedMs: number }>;
+  }
   emitMessage(msg: MeshCoreMessage) { this.emit('message', msg); }
   emitSendConfirmed(data: { ackCode: number; roundTripMs: number }) { this.emit('send_confirmed', data); }
   emitOtaPacket(data: { snr?: number | null; rssi?: number | null; raw_hex?: string | null }) {
@@ -1238,5 +1242,84 @@ describe('MeshCoreVirtualNodeServer — SendBinaryReq/GetNeighbours relay (#3904
     expect(res[0]).toBe(ResponseCodes.Err);
     expect(res[1]).toBe(ErrorCodes.UnsupportedCmd);
     expect(manager.getNeighboursMock).not.toHaveBeenCalled();
+  });
+});
+
+// SendTxtMsg(txtType=CliData): a plain-DM send never reaches the remote's CLI
+// handler, so an app that just logged in as admin (#4095) got no reply and
+// timed out on every follow-up admin action (#4106). Gated on
+// allowAdminCommands like the local Set* config commands (#3904), since a CLI
+// string can mutate remote config.
+describe('MeshCoreVirtualNodeServer — SendTxtMsg CLI relay (#4106)', () => {
+  let server: MeshCoreVirtualNodeServer;
+  let client: TestClient;
+  let manager: FakeManager;
+
+  const REMOTE_KEY = 'b1'.repeat(32); // matches SAMPLE_CONTACTS
+  const REMOTE_PREFIX = Buffer.from(REMOTE_KEY, 'hex').subarray(0, 6);
+
+  async function startWith(allowAdminCommands: boolean): Promise<void> {
+    manager = new FakeManager();
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager, allowAdminCommands, databaseService: CHANNELS_DB });
+    await server.start();
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+  }
+  afterEach(async () => { client?.close(); await server?.stop(); });
+
+  // [2][txtType=1(CliData)][attempt=0][senderTimestamp:u32=0][prefix:6][text]
+  function cliFrame(text: string): number[] {
+    return [CommandCodes.SendTxtMsg, 1, 0, 0, 0, 0, 0, ...REMOTE_PREFIX, ...Buffer.from(text, 'utf8')];
+  }
+
+  it('replies Sent, then delivers the CLI reply as ContactMsgRecv(txtType=CliData) via SyncNextMessage', async () => {
+    await startWith(true);
+    manager.sendCliCommandMock.mockResolvedValueOnce({ reply: 'name: MyRepeater', elapsedMs: 120 });
+    const sentPush = client.expectFrames(2);
+    client.send(cliFrame('get name'));
+    const [sent, waiting] = await sentPush;
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    expect(waiting[0]).toBe(PushCodes.MsgWaiting);
+    expect(manager.sendCliCommandMock).toHaveBeenCalledWith(REMOTE_KEY, 'get name');
+    // Plain-DM send must NOT have been used for a CLI-typed frame.
+    expect(manager.sendMessageWithResultMock).not.toHaveBeenCalled();
+
+    const recv = await client.request([CommandCodes.SyncNextMessage]);
+    expect(recv[0]).toBe(ResponseCodes.ContactMsgRecv);
+    expect(recv.subarray(1, 7)).toEqual(REMOTE_PREFIX);
+    expect(recv[8]).toBe(1); // txtType byte = CliData, not Plain
+    expect(recv.subarray(-'name: MyRepeater'.length).toString('utf8')).toBe('name: MyRepeater');
+  });
+
+  it('replies Err(UnsupportedCmd) and never calls the manager when allowAdminCommands is off', async () => {
+    await startWith(false);
+    const res = await client.request(cliFrame('reboot'));
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.UnsupportedCmd);
+    expect(manager.sendCliCommandMock).not.toHaveBeenCalled();
+    expect(manager.sendMessageWithResultMock).not.toHaveBeenCalled();
+  });
+
+  it('replies Sent but pushes nothing when the CLI command rejects (timeout / not Companion)', async () => {
+    await startWith(true);
+    manager.sendCliCommandMock.mockRejectedValueOnce(new Error('CLI command timed out after 15000ms'));
+    const sent = await client.request(cliFrame('get name'));
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    const second = await Promise.race([
+      client.expectFrames(1).then((f) => f[0]),
+      new Promise<null>((r) => setTimeout(() => r(null), 100)),
+    ]);
+    expect(second).toBeNull();
+  });
+
+  it('still resolves a plain-chat SendTxtMsg (txtType=Plain) via sendMessageWithResult, not the CLI path', async () => {
+    await startWith(true);
+    manager.sendMessageWithResultMock.mockResolvedValueOnce({ ok: true, expectedAckCrc: 0x55, estTimeout: 9000 });
+    // [2][txtType=0][attempt=0][ts:4][prefix:6][text]
+    const frame = [CommandCodes.SendTxtMsg, 0, 0, 0, 0, 0, 0, ...REMOTE_PREFIX, ...Buffer.from('hi', 'utf8')];
+    const sent = await client.request(frame);
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    expect(manager.sendMessageWithResultMock).toHaveBeenCalledWith('hi', REMOTE_KEY, undefined);
+    expect(manager.sendCliCommandMock).not.toHaveBeenCalled();
   });
 });

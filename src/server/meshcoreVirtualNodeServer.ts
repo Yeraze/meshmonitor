@@ -47,6 +47,7 @@ import {
   parseSendTelemetryReq,
   parseSendStatusReq,
   encodeStatusResponsePush,
+  TxtType,
   BinaryRequestTypes,
   parseSendBinaryReq,
   parseGetNeighboursReq,
@@ -137,6 +138,14 @@ export interface MeshCoreVirtualNodeManager {
     total: number;
     neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[];
   } | null>;
+  /**
+   * Send a CLI/admin command to a remote node the app has already logged into
+   * and return its text reply (issue #4106). Used to relay the app's
+   * SendTxtMsg(txtType=CliData) — distinct from a plain chat DM, which uses
+   * `sendMessageWithResult` instead. Throws if the local device isn't a
+   * Companion or the command times out.
+   */
+  sendCliCommand(publicKey: string, command: string): Promise<{ reply: string; elapsedMs: number }>;
   /** EventEmitter surface — the manager emits 'message' with a MeshCoreMessage. */
   on(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
   off(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
@@ -1004,7 +1013,13 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     }
   }
 
-  /** SendTxtMsg → resolve the 6-byte prefix to a contact, forward a DM, reply Sent. */
+  /**
+   * SendTxtMsg → resolve the 6-byte prefix to a contact, forward a DM, reply
+   * Sent. A `txtType=CliData` frame is a CLI/admin command to a node the app
+   * has already logged into (issue #4106) — routed to `handleSendCliTxtMsg`
+   * instead of the plain-DM path, since a normal chat send never reaches the
+   * remote's CLI handler and the app would just time out waiting for a reply.
+   */
   private async handleSendTxtMsg(clientId: string, cmd: ParsedCommand): Promise<void> {
     const text = cmd.text ?? '';
     const prefixHex = (cmd.pubKeyPrefix ?? Buffer.alloc(0)).toString('hex');
@@ -1012,6 +1027,10 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     if (!fullKey) {
       logger.warn(`[MeshCore VN ${this.sourceId}] DM from ${clientId} to unknown contact prefix ${prefixHex}`);
       this.send(clientId, encodeErr(ErrorCodes.NotFound));
+      return;
+    }
+    if (cmd.txtType === TxtType.CliData) {
+      await this.handleSendCliTxtMsg(clientId, fullKey, text);
       return;
     }
     try {
@@ -1036,6 +1055,53 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     } catch (err) {
       logger.error(`[MeshCore VN ${this.sourceId}] DM from ${clientId} threw: ${(err as Error).message}`);
       this.send(clientId, encodeErr(ErrorCodes.BadState));
+    }
+  }
+
+  /** Default reply-timeout hint (ms) returned in Sent responses for CLI commands. */
+  private readonly CLI_REPLY_EST_TIMEOUT_MS = 15_000;
+
+  /**
+   * SendTxtMsg(txtType=CliData) → relay a CLI/admin command to a remote node
+   * the app has already logged into, and push its text reply back (issue
+   * #4106). Gated on `allowAdminCommands` like the local Set* config commands
+   * (issue #3904) — a CLI string can mutate remote config (`set name`,
+   * `reboot`, `setperm`, …), and MeshMonitor's admin toggle is the single
+   * point of control over whether Virtual Node clients can issue ANY
+   * mutating command through this instance, independent of what the remote's
+   * own ACL would otherwise allow.
+   *
+   * On success the reply is queued exactly like an incoming DM (MsgWaiting +
+   * SyncNextMessage) rather than pushed directly, mirroring how a real node
+   * delivers a CLI reply — same ContactMsgRecv frame, `txtType=CliData`
+   * instead of `Plain` so the app renders it in the CLI console, not the chat
+   * thread. On failure/timeout we emit nothing further, mirroring
+   * SendStatusReq/SendTelemetryReq: a real node that never got a CLI reply
+   * doesn't push anything either, so the app's own timeout takes over.
+   */
+  private async handleSendCliTxtMsg(clientId: string, targetPublicKey: string, command: string): Promise<void> {
+    if (!this.allowAdminCommands) {
+      logger.debug(`[MeshCore VN ${this.sourceId}] CLI command blocked from ${clientId} (allowAdminCommands off)`);
+      this.send(clientId, encodeErr(ErrorCodes.UnsupportedCmd));
+      return;
+    }
+    const keyShort = targetPublicKey.substring(0, 12);
+    this.send(clientId, encodeSent(0, 0, this.CLI_REPLY_EST_TIMEOUT_MS));
+    try {
+      const { reply } = await this.options.manager.sendCliCommand(targetPublicKey, command);
+      const client = this.clients.get(clientId);
+      if (!client) return; // client disconnected while the CLI round-trip was in flight
+      client.pendingMessages.push({
+        id: `cli-${targetPublicKey}-${Date.now()}`,
+        fromPublicKey: targetPublicKey,
+        text: reply,
+        timestamp: Math.floor(Date.now() / 1000),
+        messageType: 'cli_reply',
+      });
+      this.send(clientId, encodeMsgWaitingPush());
+      logger.debug(`[MeshCore VN ${this.sourceId}] CLI reply from ${keyShort}… queued for ${clientId} (${reply.length} chars)`);
+    } catch (err) {
+      logger.warn(`[MeshCore VN ${this.sourceId}] CLI command to ${keyShort}… from ${clientId} failed: ${(err as Error).message}`);
     }
   }
 
@@ -1140,7 +1206,10 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     return encodeContactMsgRecv({
       pubKeyPrefix: hexToBytes(msg.fromPublicKey).subarray(0, 6),
       pathLen: wirePathLen,
-      txtType: 0,
+      // A CLI reply we queued ourselves (issue #4106) must round-trip as
+      // CliData, not Plain, so the app routes it to the CLI console instead
+      // of the chat thread — mirroring how a real node tags the reply.
+      txtType: msg.messageType === 'cli_reply' ? TxtType.CliData : TxtType.Plain,
       senderTimestamp,
       text: msg.text,
     });
