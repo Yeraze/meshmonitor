@@ -42,7 +42,7 @@ import {
 import { getSourceColor, resolveSourceColor } from '../../utils/sourceColors';
 import { getOwnNodePositions } from '../../utils/ownNodePositions';
 import { nodePassesTransportFilter } from '../../utils/nodeTransport';
-import { isNullIsland } from '../../utils/nullIsland';
+import { isBogusPosition } from '../../utils/nullIsland';
 import { effectiveMapMaxAgeHours } from '../../utils/mapAge';
 import { resolveMapEndpoint } from '../../utils/nodeHelpers';
 import api from '../../services/api';
@@ -99,7 +99,7 @@ function getNodeLatLng(node: any): { lat: number; lng: number } | null {
   const lat = node?.latitude ?? node?.position?.latitude;
   const lng = node?.longitude ?? node?.position?.longitude;
   // Skip "Null Island" (0,0) — uninitialized/stale GPS default (issue #3763).
-  if (lat != null && lng != null && !isNullIsland(lat, lng)) {
+  if (lat != null && lng != null && !isBogusPosition(lat, lng)) {
     return { lat, lng };
   }
   return null;

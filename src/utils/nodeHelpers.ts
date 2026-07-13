@@ -1,6 +1,6 @@
 import { DeviceInfo } from '../types/device';
 import { ROLE_NAMES, HARDWARE_MODELS } from '../constants/index.js';
-import { isNullIsland } from './nullIsland.js';
+import { isBogusPosition } from './nullIsland.js';
 
 /**
  * Infrastructure node roles (Router, Router Client, Repeater, Router Late)
@@ -132,7 +132,7 @@ export const resolveMapEndpoint = (
   // garbage default (e.g. the 2^15 value 0.0032768) — that would draw a
   // neighbor/route line out to (0, 0) for a node not currently on the map
   // (#02ecd5e0 "Jupiter Dad"). Skip it so the caller omits the line instead.
-  if (embeddedLat != null && embeddedLng != null && !isNullIsland(embeddedLat, embeddedLng)) {
+  if (embeddedLat != null && embeddedLng != null && !isBogusPosition(embeddedLat, embeddedLng)) {
     return [embeddedLat, embeddedLng];
   }
   return null;

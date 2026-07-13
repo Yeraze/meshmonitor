@@ -27,7 +27,7 @@ import { getMeshCoreCredentialStore } from '../services/meshcoreCredentialStore.
 import meshcorePacketLogService from '../services/meshcorePacketLogService.js';
 import meshcorePositionHistoryService from '../services/meshcorePositionHistoryService.js';
 import { resolveAutoAckPreSendDelaySeconds } from '../autoAckDelay.js';
-import { isNullIsland } from '../../utils/nullIsland.js';
+import { isBogusPosition } from '../../utils/nullIsland.js';
 import { decodeMeshCorePacket } from '../../utils/meshcorePacketDecode.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
 import { ok, fail } from '../utils/apiResponse.js';
@@ -2872,7 +2872,7 @@ router.patch(
               // default is never tagged as a real 'contact' position.
               positionSource: (typeof contact.latitude === 'number'
                 && typeof contact.longitude === 'number'
-                && !isNullIsland(contact.latitude, contact.longitude))
+                && !isBogusPosition(contact.latitude, contact.longitude))
                 ? 'contact'
                 : undefined,
               lastHeard: contact.lastSeen ?? null,
@@ -2955,7 +2955,7 @@ router.post(
               // default is never tagged as a real 'contact' position.
               positionSource: (typeof contact.latitude === 'number'
                 && typeof contact.longitude === 'number'
-                && !isNullIsland(contact.latitude, contact.longitude))
+                && !isBogusPosition(contact.latitude, contact.longitude))
                 ? 'contact'
                 : undefined,
               lastHeard: contact.lastSeen ?? null,

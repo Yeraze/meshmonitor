@@ -21,7 +21,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { MySql2Database } from 'drizzle-orm/mysql2';
 import { and, desc, gte, inArray, lt, or, eq } from 'drizzle-orm';
-import { isNullIsland } from '../../utils/nullIsland.js';
+import { isBogusPosition } from '../../utils/nullIsland.js';
 import {
   telemetrySqlite,
   telemetryPostgres,
@@ -385,7 +385,7 @@ export class AnalysisRepository {
       // and /coverage-grid (the grid reuses this pivot). New (0,0) fixes are
       // blocked at ingestion and migration 107 purges the historical rows; this
       // guard also hides any that pre-date the migration run.
-      if (isNullIsland(lat.value, lon)) continue;
+      if (isBogusPosition(lat.value, lon)) continue;
       const alt = altByKey.get(key);
       pivots.push({
         nodeNum: lat.nodeNum,

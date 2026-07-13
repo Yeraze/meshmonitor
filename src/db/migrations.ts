@@ -130,6 +130,7 @@ import { migration as nodeNotesMigration, runMigration112Postgres as runNodeNote
 import { migration as bootstrapOnlyIndexesMigration, runMigration113Postgres as runBootstrapOnlyIndexesPostgres, runMigration113Mysql as runBootstrapOnlyIndexesMysql } from '../server/migrations/113_add_bootstrap_only_indexes.js';
 import { migration as meshcorePathfindingTargetsMigration, runMigration114Postgres as runMeshcorePathfindingTargetsPostgres, runMigration114Mysql as runMeshcorePathfindingTargetsMysql } from '../server/migrations/114_create_meshcore_pathfinding_targets.js';
 import { migration as dropInlineNotifPrefsUserIdUniqueMigration, runMigration115Postgres as runDropInlineNotifPrefsUserIdUniquePostgres, runMigration115Mysql as runDropInlineNotifPrefsUserIdUniqueMysql } from '../server/migrations/115_drop_inline_notif_prefs_user_id_unique.js';
+import { migration as trimOutOfRangeNodePositionsMigration, runMigration116Postgres as runTrimOutOfRangeNodePositionsPostgres, runMigration116Mysql as runTrimOutOfRangeNodePositionsMysql } from '../server/migrations/116_trim_out_of_range_node_positions.js';
 
 // ============================================================================
 // Registry
@@ -1833,4 +1834,19 @@ registry.register({
   sqlite: (db) => dropInlineNotifPrefsUserIdUniqueMigration.up(db),
   postgres: (client) => runDropInlineNotifPrefsUserIdUniquePostgres(client),
   mysql: (pool) => runDropInlineNotifPrefsUserIdUniqueMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 116: One-shot cleanup of pre-existing out-of-range node positions
+// (e.g. MeshCore advert junk like lat 1853 / lng -1598) that predate the
+// isBogusPosition ingestion guard and blow the map's fit-bounds out to nothing.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 116,
+  name: 'trim_out_of_range_node_positions',
+  settingsKey: 'migration_116_trim_out_of_range_node_positions',
+  sqlite: (db) => trimOutOfRangeNodePositionsMigration.up(db),
+  postgres: (client) => runTrimOutOfRangeNodePositionsPostgres(client),
+  mysql: (pool) => runTrimOutOfRangeNodePositionsMysql(pool),
 });

@@ -14,7 +14,7 @@
  * they naturally yield no entry here and the grid is disabled for them —
  * matching the issue's "disabled when the source has no own-node position".
  */
-import { isNullIsland } from './nullIsland';
+import { isBogusPosition } from './nullIsland';
 
 export interface OwnNodePosition {
   sourceId: string;
@@ -35,7 +35,7 @@ function resolveLatLng(node: PositionedNode): { lat: number; lng: number } | nul
   const lng = node?.longitude ?? node?.position?.longitude;
   if (lat == null || lng == null) return null;
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (isNullIsland(lat, lng)) return null;
+  if (isBogusPosition(lat, lng)) return null;
   return { lat, lng };
 }
 
