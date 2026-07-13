@@ -45,7 +45,7 @@ import SectionNav from './components/SectionNav';
 import { ToastProvider, useToast } from './components/ToastContainer';
 import DeviceNotificationToaster from './components/DeviceNotificationToaster';
 import { RebootModal } from './components/RebootModal';
-import { AppBanners } from './components/AppBanners';
+import { AppBanners, type DeploymentMethod } from './components/AppBanners';
 import { AppHeader } from './components/AppHeader';
 import { PurgeDataModal } from './components/PurgeDataModal';
 import { PositionOverrideModal } from './components/PositionOverrideModal';
@@ -62,7 +62,7 @@ import { DeviceInfo, Channel } from './types/device';
 import { MeshMessage } from './types/message';
 import { SortField, SortDirection, NodeFilters } from './types/ui';
 import { ResourceType } from './types/permission';
-import api, { type ChannelDatabaseEntry } from './services/api';
+import api, { ApiError, type ChannelDatabaseEntry } from './services/api';
 import { getPacketStats } from './services/packetApi';
 import { logger } from './utils/logger';
 // generateArrowMarkers moved to useTraceroutePaths hook
@@ -137,13 +137,7 @@ const location = useLocation();
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
   const [releaseUrl, setReleaseUrl] = useState('');
-  const [upgradeEnabled, setUpgradeEnabled] = useState(false);
-  const [upgradeInProgress, setUpgradeInProgress] = useState(false);
-  const [upgradeStatus, setUpgradeStatus] = useState('');
-  const [upgradeProgress, setUpgradeProgress] = useState(0);
-  const [_upgradeId, setUpgradeId] = useState<string | null>(null);
-  const [autoUpgradeBlocked, setAutoUpgradeBlocked] = useState(false);
-  const [autoUpgradeBlockedReason, setAutoUpgradeBlockedReason] = useState<string | null>(null);
+  const [deploymentMethod, setDeploymentMethod] = useState<DeploymentMethod>('manual');
   const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
   const [showPsk, setShowPsk] = useState(false);
   const [showRebootModal, setShowRebootModal] = useState(false);
@@ -229,7 +223,6 @@ const location = useLocation();
   const localNodeIdRef = useRef<string>(''); // Track local node ID for immediate access (bypasses React state delay)
   const pendingMessagesRef = useRef<Map<string, MeshMessage>>(new Map()); // Track pending messages for interval access (bypasses closure stale state)
   const homoglyphEnabledRef = useRef<boolean>(false); // Track homoglyph setting for send handlers
-  const upgradePollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null); // Track upgrade polling interval for cleanup
 
   // Constants for emoji tapbacks
   const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
@@ -1231,252 +1224,60 @@ const location = useLocation();
 
   // TX status is now handled by useTxStatus hook
 
-  // Check for version updates
+  // Check for version updates. The server's versionCheckService does the
+  // actual GitHub polling/caching and gates `updateAvailable` on the Docker
+  // image being ready; this effect just reads the cached result on an
+  // interval and feeds the update banner. A 404 means version checking is
+  // disabled server-side (env.versionCheckDisabled) — stop polling.
   useEffect(() => {
-    const checkForUpdates = async (interval: number) => {
+    let cancelled = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const checkForUpdates = async () => {
       try {
-        const response = await fetch(`${baseUrl}/api/version/check`);
-        if (response.ok) {
-          const data = await response.json();
+        const data = await api.get<{
+          updateAvailable: boolean;
+          currentVersion?: string;
+          latestVersion?: string;
+          releaseUrl?: string;
+          deploymentMethod?: DeploymentMethod;
+        }>('/api/version/check');
 
-          // Always update version info if a newer version exists
-          if (data.latestVersion && data.latestVersion !== data.currentVersion) {
-            setLatestVersion(data.latestVersion);
-            setReleaseUrl(data.releaseUrl);
-          }
+        if (cancelled) return;
 
-          // Only show update available if images are ready
-          if (data.updateAvailable) {
-            setUpdateAvailable(true);
-          } else {
-            setUpdateAvailable(false);
-          }
+        // Always update version info if a newer version exists
+        if (data.latestVersion && data.latestVersion !== data.currentVersion) {
+          setLatestVersion(data.latestVersion);
+          setReleaseUrl(data.releaseUrl || '');
+        }
 
-          // If auto-upgrade was triggered by the server, check for active upgrade status
-          // This handles the case when auto-upgrade immediate is enabled
-          if (data.autoUpgradeTriggered && !upgradeInProgress) {
-            logger.info('Auto-upgrade was triggered by server, checking for active upgrade...');
-            // The upgrade status will be picked up by the checkUpgradeStatus effect
-            // but we can also immediately fetch it here
-            try {
-              const statusResponse = await authFetch(`${baseUrl}/api/upgrade/status`);
-              if (statusResponse.ok) {
-                const statusData = await statusResponse.json();
-                if (statusData.activeUpgrade) {
-                  setUpgradeInProgress(true);
-                  setUpgradeId(statusData.activeUpgrade.upgradeId);
-                  setUpgradeStatus(statusData.activeUpgrade.currentStep);
-                  setUpgradeProgress(statusData.activeUpgrade.progress);
-                  pollUpgradeStatus(statusData.activeUpgrade.upgradeId);
-                }
-              }
-            } catch (statusError) {
-              logger.debug('Failed to fetch upgrade status after auto-upgrade trigger:', statusError);
-            }
-          }
-        } else if (response.status == 404) {
-          clearInterval(interval);
+        setUpdateAvailable(Boolean(data.updateAvailable));
+        if (data.deploymentMethod) {
+          setDeploymentMethod(data.deploymentMethod);
         }
       } catch (error) {
+        if (error instanceof ApiError && error.status === 404) {
+          // Version checking disabled server-side; stop polling.
+          if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+          }
+          return;
+        }
         logger.error('Error checking for updates:', error);
       }
     };
 
+    void checkForUpdates();
+
     // Check for updates every 4 hours
-    const interval = setInterval(checkForUpdates, 4 * 60 * 60 * 1000);
+    intervalId = setInterval(checkForUpdates, 4 * 60 * 60 * 1000);
 
-    void checkForUpdates(interval);
-
-    return () => clearInterval(interval);
-  }, [baseUrl]);
-
-  // Check if auto-upgrade is enabled and if an upgrade is already in progress
-  useEffect(() => {
-    const checkUpgradeStatus = async () => {
-      try {
-        const response = await authFetch(`${baseUrl}/api/upgrade/status`);
-        if (response.ok) {
-          const data = await response.json();
-          setUpgradeEnabled(data.enabled && data.deploymentMethod === 'docker');
-          if (data.autoUpgradeBlock) {
-            setAutoUpgradeBlocked(Boolean(data.autoUpgradeBlock.blocked));
-            setAutoUpgradeBlockedReason(data.autoUpgradeBlock.reason ?? null);
-          }
-
-          // If an upgrade is already in progress (e.g., auto-upgrade was triggered),
-          // set the upgrade state and start polling for status
-          if (data.activeUpgrade && !upgradeInProgress) {
-            logger.info('Active upgrade detected, resuming progress tracking');
-            setUpgradeInProgress(true);
-            setUpgradeId(data.activeUpgrade.upgradeId);
-            setUpgradeStatus(data.activeUpgrade.currentStep);
-            setUpgradeProgress(data.activeUpgrade.progress);
-            setLatestVersion(data.activeUpgrade.toVersion);
-            setUpdateAvailable(true);
-            // Start polling for status updates
-            pollUpgradeStatus(data.activeUpgrade.upgradeId);
-          }
-        }
-      } catch (error) {
-        logger.debug('Auto-upgrade not available:', error);
-      }
-    };
-
-    void checkUpgradeStatus();
-  }, [baseUrl, authFetch]);
-
-  // Cleanup upgrade polling on unmount
-  useEffect(() => {
     return () => {
-      if (upgradePollingIntervalRef.current) {
-        clearInterval(upgradePollingIntervalRef.current);
-        upgradePollingIntervalRef.current = null;
-      }
+      cancelled = true;
+      if (intervalId) clearInterval(intervalId);
     };
   }, []);
-
-  // Handle upgrade trigger
-  const handleUpgrade = async () => {
-    if (!updateAvailable || upgradeInProgress) return;
-
-    try {
-      setUpgradeInProgress(true);
-      setUpgradeStatus('Initiating upgrade...');
-      setUpgradeProgress(0);
-
-      const response = await authFetch(`${baseUrl}/api/upgrade/trigger`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          targetVersion: latestVersion,
-          backup: true,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setUpgradeId(data.upgradeId);
-        setUpgradeStatus('Upgrade initiated...');
-        showToast?.('Upgrade initiated! The application will restart shortly.', 'info');
-
-        // Poll for status updates
-        pollUpgradeStatus(data.upgradeId);
-      } else {
-        showToast?.(`Upgrade failed: ${data.message}`, 'error');
-        setUpgradeInProgress(false);
-        setUpgradeStatus('');
-      }
-    } catch (error) {
-      logger.error('Error triggering upgrade:', error);
-      showToast?.('Failed to trigger upgrade', 'error');
-      setUpgradeInProgress(false);
-      setUpgradeStatus('');
-    }
-  };
-
-  // Acknowledge and clear the auto-upgrade circuit breaker
-  const handleClearAutoUpgradeBlock = async () => {
-    try {
-      const response = await authFetch(`${baseUrl}/api/upgrade/clear-block`, {
-        method: 'POST',
-      });
-      if (response.ok) {
-        setAutoUpgradeBlocked(false);
-        setAutoUpgradeBlockedReason(null);
-        showToast?.('Auto-upgrade unblocked. Scheduled upgrades will resume.', 'success');
-      } else {
-        showToast?.('Failed to clear auto-upgrade block', 'error');
-      }
-    } catch (error) {
-      logger.error('Error clearing auto-upgrade block:', error);
-      showToast?.('Failed to clear auto-upgrade block', 'error');
-    }
-  };
-
-  // Poll upgrade status with exponential backoff
-  const pollUpgradeStatus = (id: string) => {
-    // Clear any existing polling interval
-    if (upgradePollingIntervalRef.current) {
-      clearInterval(upgradePollingIntervalRef.current);
-      upgradePollingIntervalRef.current = null;
-    }
-
-    let attempts = 0;
-    const maxAttempts = 60; // Max attempts before timeout
-    const baseInterval = 10000; // Start at 10 seconds (reduced from 5s to limit server load)
-    const maxInterval = 30000; // Cap at 30 seconds (increased from 15s)
-    let currentInterval = baseInterval;
-
-    const poll = async () => {
-      attempts++;
-
-      try {
-        const response = await authFetch(`${baseUrl}/api/upgrade/status/${id}`);
-        if (response.ok) {
-          const data = await response.json();
-
-          setUpgradeStatus(data.currentStep || data.status);
-          setUpgradeProgress(data.progress || 0);
-
-          // Update status messages
-          if (data.status === 'complete') {
-            if (upgradePollingIntervalRef.current) {
-              clearInterval(upgradePollingIntervalRef.current);
-              upgradePollingIntervalRef.current = null;
-            }
-            showToast?.('Upgrade complete! Reloading...', 'success');
-            setUpgradeStatus('Complete! Reloading...');
-            setUpgradeProgress(100);
-
-            // Reload after 3 seconds
-            setTimeout(() => {
-              window.location.reload();
-            }, 3000);
-            return;
-          } else if (data.status === 'failed') {
-            if (upgradePollingIntervalRef.current) {
-              clearInterval(upgradePollingIntervalRef.current);
-              upgradePollingIntervalRef.current = null;
-            }
-            showToast?.('Upgrade failed. Check logs for details.', 'error');
-            setUpgradeInProgress(false);
-            setUpgradeStatus('Failed');
-            return;
-          }
-
-          // Reset interval on successful response (application is responsive)
-          currentInterval = baseInterval;
-        }
-      } catch (error) {
-        // Connection may be lost during restart - this is expected
-        // Use exponential backoff for retries
-        currentInterval = Math.min(currentInterval * 1.5, maxInterval);
-        logger.debug('Polling upgrade status (connection may be restarting):', error);
-      }
-
-      // Stop polling after max attempts
-      if (attempts >= maxAttempts) {
-        if (upgradePollingIntervalRef.current) {
-          clearInterval(upgradePollingIntervalRef.current);
-          upgradePollingIntervalRef.current = null;
-        }
-        setUpgradeInProgress(false);
-        setUpgradeStatus('Upgrade timeout - check status manually');
-        return;
-      }
-
-      // Schedule next poll with current interval
-      upgradePollingIntervalRef.current = setTimeout(poll, currentInterval) as unknown as ReturnType<
-        typeof setInterval
-      >;
-    };
-
-    // Start polling
-    void poll();
-  };
 
   // Debug effect to track selectedChannel changes and keep ref in sync
   useEffect(() => {
@@ -4705,15 +4506,7 @@ const location = useLocation();
         updateAvailable={updateAvailable}
         latestVersion={latestVersion}
         releaseUrl={releaseUrl}
-        upgradeEnabled={upgradeEnabled}
-        upgradeInProgress={upgradeInProgress}
-        upgradeStatus={upgradeStatus}
-        upgradeProgress={upgradeProgress}
-        onUpgrade={handleUpgrade}
-        onDismissUpdate={() => setUpdateAvailable(false)}
-        autoUpgradeBlocked={autoUpgradeBlocked}
-        autoUpgradeBlockedReason={autoUpgradeBlockedReason}
-        onClearAutoUpgradeBlock={handleClearAutoUpgradeBlock}
+        deploymentMethod={deploymentMethod}
       />
 
       <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />

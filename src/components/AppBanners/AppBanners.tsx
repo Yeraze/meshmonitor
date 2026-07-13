@@ -1,7 +1,15 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ConfigIssue } from '../../hooks/useSecurityCheck';
 import './AppBanners.css';
+
+/** Matches the server's `detectDeploymentMethod()` (src/server/utils/deployment.ts). */
+export type DeploymentMethod = 'docker' | 'lxc' | 'kubernetes' | 'manual';
+
+const UPDATING_DOCS_URL = 'https://yeraze.github.io/meshmonitor/configuration/updating';
+
+/** localStorage key for the per-version dismissal of the update banner. */
+export const DISMISSED_UPDATE_VERSION_KEY = 'meshmonitor_dismissed_update_version';
 
 interface AppBannersProps {
   isTxDisabled: boolean;
@@ -9,15 +17,15 @@ interface AppBannersProps {
   updateAvailable: boolean;
   latestVersion: string;
   releaseUrl: string;
-  upgradeEnabled: boolean;
-  upgradeInProgress: boolean;
-  upgradeStatus: string;
-  upgradeProgress: number;
-  onUpgrade: () => void;
-  onDismissUpdate: () => void;
-  autoUpgradeBlocked?: boolean;
-  autoUpgradeBlockedReason?: string | null;
-  onClearAutoUpgradeBlock?: () => void;
+  deploymentMethod: DeploymentMethod;
+}
+
+function readDismissedVersion(): string | null {
+  try {
+    return localStorage.getItem(DISMISSED_UPDATE_VERSION_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export const AppBanners: React.FC<AppBannersProps> = ({
@@ -26,33 +34,61 @@ export const AppBanners: React.FC<AppBannersProps> = ({
   updateAvailable,
   latestVersion,
   releaseUrl,
-  upgradeEnabled,
-  upgradeInProgress,
-  upgradeStatus,
-  upgradeProgress,
-  onUpgrade,
-  onDismissUpdate,
-  autoUpgradeBlocked = false,
-  autoUpgradeBlockedReason = null,
-  onClearAutoUpgradeBlock,
+  deploymentMethod,
 }) => {
   const { t } = useTranslation();
+  const [dismissedVersion, setDismissedVersion] = useState<string | null>(readDismissedVersion);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
 
-  // Use ref to avoid resetting timer when onDismissUpdate reference changes
-  const onDismissUpdateRef = useRef(onDismissUpdate);
+  // Re-sync from storage if another tab dismissed/cleared it.
   useEffect(() => {
-    onDismissUpdateRef.current = onDismissUpdate;
-  }, [onDismissUpdate]);
+    setDismissedVersion(readDismissedVersion());
+  }, [latestVersion]);
 
-  // Auto-dismiss update banner after 5 seconds (unless upgrade is in progress)
-  useEffect(() => {
-    if (updateAvailable && !upgradeInProgress) {
-      const timer = setTimeout(() => {
-        onDismissUpdateRef.current();
-      }, 5000);
-      return () => clearTimeout(timer);
+  const showUpdateBanner = updateAvailable && !!latestVersion && latestVersion !== dismissedVersion;
+
+  const handleDismissUpdate = () => {
+    try {
+      localStorage.setItem(DISMISSED_UPDATE_VERSION_KEY, latestVersion);
+    } catch {
+      // localStorage unavailable (private browsing, quota, etc.) — dismissal
+      // just won't persist across reloads, which is a harmless degradation.
     }
-  }, [updateAvailable, upgradeInProgress]);
+    setDismissedVersion(latestVersion);
+  };
+
+  const renderUpdateInstructions = () => {
+    switch (deploymentMethod) {
+      case 'docker':
+        return (
+          <>
+            <code className="update-banner-command">
+              docker compose pull && docker compose up -d
+            </code>
+            <span>
+              {t('banners.update_docker_watchtower')}{' '}
+              <a href={UPDATING_DOCS_URL} target="_blank" rel="noopener noreferrer">
+                {t('banners.update_guide_link')}
+              </a>
+            </span>
+          </>
+        );
+      case 'lxc':
+        return <span>{t('banners.update_lxc')}</span>;
+      case 'kubernetes':
+        return <span>{t('banners.update_kubernetes')}</span>;
+      case 'manual':
+      default:
+        return (
+          <span>
+            {t('banners.update_manual')}{' '}
+            <a href={UPDATING_DOCS_URL} target="_blank" rel="noopener noreferrer">
+              {t('banners.update_guide_link')}
+            </a>
+          </span>
+        );
+    }
+  };
 
   return (
     <>
@@ -90,47 +126,8 @@ export const AppBanners: React.FC<AppBannersProps> = ({
         );
       })}
 
-      {/* Auto-Upgrade Blocked Banner (circuit breaker tripped) */}
-      {autoUpgradeBlocked && (() => {
-        const bannersAbove = [isTxDisabled].filter(Boolean).length + configIssues.length;
-        const topOffset =
-          bannersAbove === 0
-            ? 'var(--header-height)'
-            : `calc(var(--header-height) + (var(--banner-height) * ${bannersAbove}))`;
-        return (
-          <div
-            className="warning-banner"
-            style={{ top: topOffset, gap: '1rem' }}
-          >
-            <span>
-              ⚠️ {t('banners.auto_upgrade_blocked', {
-                defaultValue: 'Auto-upgrade halted after repeated failures.',
-              })}
-              {autoUpgradeBlockedReason ? ` ${autoUpgradeBlockedReason}` : ''}
-            </span>
-            {onClearAutoUpgradeBlock && (
-              <button
-                onClick={onClearAutoUpgradeBlock}
-                style={{
-                  marginLeft: '1rem',
-                  padding: '0.25rem 0.75rem',
-                  background: 'rgba(255,255,255,0.2)',
-                  color: 'inherit',
-                  border: '1px solid rgba(255,255,255,0.5)',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                }}
-              >
-                {t('banners.acknowledge', { defaultValue: 'Acknowledge' })}
-              </button>
-            )}
-          </div>
-        );
-      })()}
-
       {/* Update Available Banner */}
-      {updateAvailable &&
+      {showUpdateBanner &&
         (() => {
           // Calculate total warning banners above the update banner
           const warningBannersCount = [isTxDisabled].filter(Boolean).length + configIssues.length;
@@ -141,74 +138,34 @@ export const AppBanners: React.FC<AppBannersProps> = ({
 
           return (
             <div className="update-banner" style={{ top: topOffset }}>
-              <div
-                style={{
-                  flex: 1,
-                  textAlign: 'center',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '1rem',
-                }}
-              >
-                {upgradeInProgress ? (
-                  <>
-                    <span>⚙️ {t('banners.upgrading_to', { version: latestVersion })}</span>
-                    <span style={{ fontSize: '0.9em', opacity: 0.9 }}>{upgradeStatus}</span>
-                    {upgradeProgress > 0 && (
-                      <span style={{ fontSize: '0.9em', opacity: 0.9 }}>({upgradeProgress}%)</span>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <span>🔔 {t('banners.update_available', { version: latestVersion })}</span>
-                    <a
-                      href={releaseUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        color: 'white',
-                        textDecoration: 'underline',
-                        fontWeight: '600',
-                      }}
-                    >
-                      {t('banners.view_release_notes')} →
-                    </a>
-                    {upgradeEnabled && (
-                      <button
-                        onClick={onUpgrade}
-                        disabled={upgradeInProgress}
-                        style={{
-                          padding: '0.4rem 1rem',
-                          backgroundColor: '#10b981',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: upgradeInProgress ? 'not-allowed' : 'pointer',
-                          fontWeight: '600',
-                          opacity: upgradeInProgress ? 0.6 : 1,
-                        }}
-                      >
-                        {t('banners.upgrade_now')}
-                      </button>
-                    )}
-                  </>
-                )}
+              <div className="update-banner-row">
+                <span>🔔 {t('banners.update_available', { version: latestVersion })}</span>
+                <a
+                  href={releaseUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="update-banner-link"
+                >
+                  {t('banners.view_release_notes')} →
+                </a>
+                <button
+                  className="update-banner-toggle"
+                  onClick={() => setDetailsExpanded(prev => !prev)}
+                  aria-expanded={detailsExpanded}
+                >
+                  {detailsExpanded ? t('banners.update_hide_details') : t('banners.update_show_details')}
+                </button>
+                <button
+                  className="banner-dismiss"
+                  onClick={handleDismissUpdate}
+                  aria-label={t('banners.update_dismiss')}
+                >
+                  ×
+                </button>
               </div>
-              <button
-                className="banner-dismiss"
-                onClick={onDismissUpdate}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'white',
-                  fontSize: '1.5rem',
-                  cursor: 'pointer',
-                  padding: '0 0.5rem',
-                }}
-              >
-                ×
-              </button>
+              {detailsExpanded && (
+                <div className="update-banner-details">{renderUpdateInstructions()}</div>
+              )}
             </div>
           );
         })()}

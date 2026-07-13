@@ -1,1 +1,1 @@
-export { AppBanners } from './AppBanners';
+export { AppBanners, type DeploymentMethod } from './AppBanners';

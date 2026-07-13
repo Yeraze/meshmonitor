@@ -3,7 +3,7 @@
  *
  * Renders SettingsTab in `mode="global"` so only global sections are shown:
  * Language, Units & Formats, Appearance, Map, System Backup, Database
- * Maintenance, Auto-Upgrade, and Analytics.
+ * Maintenance, and Analytics.
  */
 
 import { useNavigate } from 'react-router-dom';

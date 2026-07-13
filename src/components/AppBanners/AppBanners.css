@@ -25,8 +25,66 @@
   color: var(--ctp-crust);
   border-bottom: 2px solid var(--ctp-sapphire);
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.update-banner-row {
+  display: flex;
+  flex: 1;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.update-banner-link {
+  color: inherit;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.update-banner-toggle {
+  padding: 0.3rem 0.75rem;
+  background: rgba(255, 255, 255, 0.2);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.update-banner-toggle:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.update-banner-details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding-bottom: 6px;
+  font-size: 0.85em;
+  font-weight: 400;
+}
+
+.update-banner-details a {
+  color: inherit;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.update-banner-command {
+  background: var(--ctp-crust);
+  color: var(--ctp-text);
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.95em;
+  user-select: all;
 }
 
 .banner-dismiss {
