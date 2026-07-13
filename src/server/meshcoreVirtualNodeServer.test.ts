@@ -1310,6 +1310,17 @@ describe('MeshCoreVirtualNodeServer — SendTxtMsg CLI relay (#4106)', () => {
     await new Promise((r) => setTimeout(r, 20));
   });
 
+  it('replies Err(NotFound) for a CLI command to an unknown contact prefix, without calling the manager', async () => {
+    await startWith(true);
+    const unknownPrefix = Buffer.from('ff'.repeat(6), 'hex'); // no matching contact
+    const frame = [CommandCodes.SendTxtMsg, 1, 0, 0, 0, 0, 0, ...unknownPrefix, ...Buffer.from('get name', 'utf8')];
+    const res = await client.request(frame);
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.NotFound);
+    expect(manager.sendCliCommandMock).not.toHaveBeenCalled();
+    expect(manager.sendMessageWithResultMock).not.toHaveBeenCalled();
+  });
+
   it('replies Err(UnsupportedCmd) and never calls the manager when allowAdminCommands is off', async () => {
     await startWith(false);
     const res = await client.request(cliFrame('reboot'));
