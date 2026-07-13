@@ -14,7 +14,7 @@ import {
   SUPPORTED_COMPANION_PROTOCOL_VERSION,
   degreesToFixed,
 } from './meshcoreCompanionCodec.js';
-import type { MeshCoreNode, MeshCoreContact, MeshCoreMessage } from './meshcoreManager.js';
+import type { MeshCoreNode, MeshCoreContact, MeshCoreMessage, MeshCoreLoginResult } from './meshcoreManager.js';
 
 // Audit logging is fire-and-forget; stub it so the test doesn't touch the DB.
 vi.mock('../services/database.js', () => ({
@@ -70,7 +70,10 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   setChannelMock = vi.fn().mockResolvedValue(undefined);
   setOtherParamsMock = vi.fn().mockResolvedValue(true);
   sendAdvertMock = vi.fn().mockResolvedValue(true);
-  loginToNodeMock = vi.fn().mockResolvedValue(true);
+  // Default: a successful login on legacy firmware (no admin flag / version) →
+  // empty result object. Per-test overrides supply isAdmin/firmwareVerLevel to
+  // exercise the firmware >= 1.16 relay (#4094).
+  loginToNodeMock = vi.fn().mockResolvedValue({});
   tracePathRawMock = vi.fn().mockResolvedValue({ pathSnrs: [8, 12], lastSnr: 5.5, pathLen: 2, flags: 0 });
   requestRemoteTelemetryRawMock = vi.fn().mockResolvedValue(Buffer.from([0x01, 0x67, 0x00, 0xdc]));
   requestNodeStatusMock = vi.fn().mockResolvedValue({
@@ -120,7 +123,7 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   }
   sendAdvert() { return this.sendAdvertMock() as Promise<boolean>; }
   loginToNode(publicKey: string, password: string) {
-    return this.loginToNodeMock(publicKey, password) as Promise<boolean>;
+    return this.loginToNodeMock(publicKey, password) as Promise<MeshCoreLoginResult | null>;
   }
   tracePathRaw(path: Uint8Array) {
     return this.tracePathRawMock(path) as Promise<{ pathSnrs: number[]; lastSnr: number; pathLen: number; flags: number } | null>;
@@ -781,9 +784,58 @@ describe('MeshCoreVirtualNodeServer — SendLogin relay (#3904)', () => {
     expect(manager.loginToNodeMock).toHaveBeenCalledWith(REMOTE_KEY, '');
   });
 
+  it('relays the remote admin flag + firmware version in a 14-byte frame (fw >=1.16, #4094)', async () => {
+    await startWith(false);
+    // Firmware >= 1.16 reports is_admin + fw_ver_level; the VN must forward both
+    // so the app grants admin access and unlocks neighbours/owner-info.
+    manager.loginToNodeMock.mockResolvedValueOnce({
+      isAdmin: true,
+      firmwareVerLevel: 2,
+      serverTimestamp: 0x01020304,
+      aclPermissions: 7,
+    });
+    const frames = client.expectFrames(2);
+    client.send(loginFrame(REMOTE_KEY, 'hunter2'));
+    const [sent, push] = await frames;
+
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    expect(push[0]).toBe(PushCodes.LoginSuccess);
+    // [0x85][is_admin:1][pubKeyPrefix:6][server_timestamp:u32LE][acl:1][fw_ver_level:1]
+    expect(push.length).toBe(14);
+    expect(push[1]).toBe(1); // is_admin
+    expect(push.subarray(2, 8)).toEqual(REMOTE_KEY_BYTES.subarray(0, 6));
+    expect(push.readUInt32LE(8)).toBe(0x01020304); // server_timestamp
+    expect(push[12]).toBe(7); // acl_permissions
+    expect(push[13]).toBe(2); // fw_ver_level — drives the app's feature gating
+  });
+
+  it('reports guest (is_admin=0) but still forwards the version when fw is known (#4094)', async () => {
+    await startWith(false);
+    manager.loginToNodeMock.mockResolvedValueOnce({ isAdmin: false, firmwareVerLevel: 2 });
+    const frames = client.expectFrames(2);
+    client.send(loginFrame(REMOTE_KEY, ''));
+    const [, push] = await frames;
+    expect(push[0]).toBe(PushCodes.LoginSuccess);
+    expect(push.length).toBe(14);
+    expect(push[1]).toBe(0); // guest
+    expect(push[13]).toBe(2); // version still unlocks version-gated features
+  });
+
+  it('falls back to the legacy 8-byte frame when the remote reports no version (#4094)', async () => {
+    await startWith(false);
+    // Default mock resolves {} → legacy firmware, no version/admin fields.
+    const frames = client.expectFrames(2);
+    client.send(loginFrame(REMOTE_KEY, 'hunter2'));
+    const [, push] = await frames;
+    expect(push[0]).toBe(PushCodes.LoginSuccess);
+    expect(push.length).toBe(8); // [0x85][is_admin=0][pubKeyPrefix:6]
+    expect(push[1]).toBe(0);
+    expect(push.subarray(2, 8)).toEqual(REMOTE_KEY_BYTES.subarray(0, 6));
+  });
+
   it('replies Sent but pushes nothing when the login fails (app times out on its own)', async () => {
     await startWith(true);
-    manager.loginToNodeMock.mockResolvedValueOnce(false);
+    manager.loginToNodeMock.mockResolvedValueOnce(null);
     const sent = await client.request(loginFrame(REMOTE_KEY, 'bad'));
     expect(sent[0]).toBe(ResponseCodes.Sent);
     // Give the (resolved-false) login a tick; assert no second frame arrived.

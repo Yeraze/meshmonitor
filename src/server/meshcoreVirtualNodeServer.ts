@@ -2,7 +2,7 @@ import { Server, Socket } from 'net';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 import databaseService from '../services/database.js';
-import type { MeshCoreNode, TelemetryMode, MeshCoreContact, MeshCoreMessage, MeshCoreStatus } from './meshcoreManager.js';
+import type { MeshCoreNode, TelemetryMode, MeshCoreContact, MeshCoreMessage, MeshCoreStatus, MeshCoreLoginResult } from './meshcoreManager.js';
 import {
   CommandCodes,
   ErrorCodes,
@@ -97,11 +97,12 @@ export interface MeshCoreVirtualNodeManager {
   /** Broadcast a self-advertisement from the physical node (flood). */
   sendAdvert(): Promise<boolean>;
   /**
-   * Log in to a remote node with a password (issue #3904). Resolves true when
-   * the remote acknowledged the login, false on timeout/failure. An empty
-   * password is a valid guest login.
+   * Log in to a remote node with a password (issue #3904). Resolves a
+   * `MeshCoreLoginResult` (carrying the remote's admin flag + firmware version
+   * level on firmware >= 1.16, #4094) when the remote acknowledged the login,
+   * or `null` on timeout/failure. An empty password is a valid guest login.
    */
-  loginToNode(publicKey: string, password: string): Promise<boolean>;
+  loginToNode(publicKey: string, password: string): Promise<MeshCoreLoginResult | null>;
   /**
    * Trace an explicit path (raw hop hashes) and return the raw SNR results, or
    * null on failure. `lastSnr` is in dB (already /4). Used to relay the app's
@@ -654,14 +655,24 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     // Ack first so the app arms its login timeout, then do the round-trip.
     this.send(clientId, encodeSent(0, 0, this.LOGIN_EST_TIMEOUT_MS));
     try {
-      const ok = await this.options.manager.loginToNode(parsed.publicKey, parsed.password);
-      if (!ok) {
+      const result = await this.options.manager.loginToNode(parsed.publicKey, parsed.password);
+      if (!result) {
         logger.debug(`[MeshCore VN ${this.sourceId}] SendLogin to ${keyShort}… from ${clientId} did not succeed`);
         return;
       }
+      // Relay the remote's admin flag and firmware version level (firmware
+      // >= 1.16, #4094) so the app grants admin access and unlocks the
+      // version-gated neighbours / owner-info features instead of falling back
+      // to guest + "Firmware update required". Legacy firmware leaves these
+      // undefined and the legacy 8-byte frame is emitted.
       const prefix = pubKeyHexToBytes(parsed.publicKey).subarray(0, 6);
-      this.send(clientId, encodeLoginSuccessPush(prefix));
-      logger.debug(`[MeshCore VN ${this.sourceId}] SendLogin to ${keyShort}… from ${clientId} succeeded`);
+      this.send(clientId, encodeLoginSuccessPush(prefix, {
+        isAdmin: result.isAdmin,
+        firmwareVerLevel: result.firmwareVerLevel,
+        serverTimestamp: result.serverTimestamp,
+        aclPermissions: result.aclPermissions,
+      }));
+      logger.debug(`[MeshCore VN ${this.sourceId}] SendLogin to ${keyShort}… from ${clientId} succeeded (admin=${result.isAdmin ?? 'legacy'}, fwLevel=${result.firmwareVerLevel ?? 'legacy'})`);
     } catch (err) {
       logger.warn(`[MeshCore VN ${this.sourceId}] SendLogin to ${keyShort}… from ${clientId} failed: ${(err as Error).message}`);
     }

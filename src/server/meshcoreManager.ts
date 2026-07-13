@@ -630,6 +630,23 @@ interface BridgeResponse {
 }
 
 /**
+ * Result of a successful remote-node login (#4094). Firmware >= 1.16 reports the
+ * remote's admin permission and firmware version level in the LoginSuccess
+ * frame; older firmware omits them (fields left `undefined`). A `null` return
+ * from `loginToNode` means the login itself did not succeed.
+ */
+export interface MeshCoreLoginResult {
+  /** Whether the remote node granted admin access. Undefined on legacy firmware. */
+  isAdmin?: boolean;
+  /** Remote node's FIRMWARE_VER_LEVEL; gates version-locked features in the app. */
+  firmwareVerLevel?: number;
+  /** Remote node's server timestamp echoed in the login response. */
+  serverTimestamp?: number;
+  /** Granular ACL-permissions byte (firmware v7+). */
+  aclPermissions?: number;
+}
+
+/**
  * MeshCore Manager class
  * Handles connection and communication with MeshCore devices
  */
@@ -4330,10 +4347,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /**
    * Login to a remote node for admin access
    */
-  async loginToNode(publicKey: string, password: string): Promise<boolean> {
+  async loginToNode(publicKey: string, password: string): Promise<MeshCoreLoginResult | null> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Admin login requires Companion firmware');
-      return false;
+      return null;
     }
 
     try {
@@ -4346,12 +4363,22 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
       if (response.success) {
         logger.debug(`[MeshCore] Logged into node ${publicKey.substring(0, 8)}...`);
-        return true;
+        // Firmware >= 1.16 reports the remote's admin flag and version level in
+        // the LoginSuccess frame (#4094). Surface them for the Virtual Node to
+        // relay; on older firmware they are undefined and callers fall back to
+        // the legacy guest/no-version behaviour.
+        const d = response.data ?? {};
+        return {
+          isAdmin: typeof d.is_admin === 'number' ? d.is_admin !== 0 : undefined,
+          firmwareVerLevel: typeof d.firmware_ver_level === 'number' ? d.firmware_ver_level : undefined,
+          serverTimestamp: typeof d.server_timestamp === 'number' ? d.server_timestamp : undefined,
+          aclPermissions: typeof d.acl_permissions === 'number' ? d.acl_permissions : undefined,
+        };
       }
-      return false;
+      return null;
     } catch (error) {
       logger.error('[MeshCore] Login failed:', error);
-      return false;
+      return null;
     }
   }
 
@@ -4430,7 +4457,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (this.guestLoggedInNodes.has(publicKey)) return true;
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return false;
     if (!this.connected) return false;
-    const ok = await this.loginToNode(publicKey, '');
+    const ok = (await this.loginToNode(publicKey, '')) !== null;
     if (ok) {
       this.guestLoggedInNodes.add(publicKey);
     }
