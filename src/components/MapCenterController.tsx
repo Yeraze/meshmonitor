@@ -86,13 +86,47 @@ export const MapCenterController: React.FC<MapCenterControllerProps> = ({
       // This avoids multiple move events and competing animations
       map.setView(offsetLatLng, clampedZoom, { animate: true, duration });
 
-      // Reset target after animation completes (slightly longer than the
-      // actual animation duration, which now varies with the zoom jump).
-      const timer = setTimeout(() => {
+      // A real user gesture during the center window must WIN. The animated
+      // setView keeps the map "arriving" at the node for the whole `duration`
+      // (up to ~2s for a big zoom jump, #4046), and `centerTarget` stays armed
+      // until the timer below fires. A wheel/pinch/drag in that window would
+      // otherwise be fought by the in-flight animation continuing to the node —
+      // i.e. "any attempt to adjust zoom resets to the node." On the first
+      // genuine user input we `map.stop()` (cancel our animation so it can't
+      // pull the view back) and finish immediately (clear the armed target).
+      // These DOM events fire ONLY for real interaction — our programmatic
+      // setView never dispatches them — and the selecting click/tap's own
+      // events have already fired by the time this effect runs, so we never
+      // self-abort the very selection that started the centering.
+      const container = map.getContainer();
+      let timer = 0;
+      let finished = false;
+      const cleanup = () => {
+        clearTimeout(timer);
+        container.removeEventListener('wheel', onUserGesture);
+        container.removeEventListener('touchstart', onUserGesture);
+        container.removeEventListener('pointerdown', onUserGesture);
+      };
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        cleanup();
         onCenterComplete();
-      }, duration * 1000 + 50);
+      };
+      function onUserGesture() {
+        map.stop(); // halt the in-flight center animation so it can't pull back
+        finish();
+      }
+      container.addEventListener('wheel', onUserGesture, { passive: true });
+      container.addEventListener('touchstart', onUserGesture, { passive: true });
+      container.addEventListener('pointerdown', onUserGesture, { passive: true });
 
-      return () => clearTimeout(timer);
+      // Reset target after animation completes (slightly longer than the
+      // actual animation duration, which now varies with the zoom jump) unless
+      // a user gesture finished it first.
+      timer = window.setTimeout(finish, duration * 1000 + 50);
+
+      return cleanup;
     } else {
       // Target cleared — allow the next selection (even of the same node) to
       // center again.

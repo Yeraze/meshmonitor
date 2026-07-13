@@ -16,14 +16,19 @@ import {
 
 let currentZoom = 10;
 const setViewMock = vi.fn();
+const stopMock = vi.fn();
+// A real DOM element so the controller can add/remove real gesture listeners.
+const containerEl = document.createElement('div');
+Object.defineProperty(containerEl, 'clientHeight', { value: 800, configurable: true });
 
 vi.mock('react-leaflet', () => ({
   useMap: () => ({
-    getContainer: () => ({ clientHeight: 800 }),
+    getContainer: () => containerEl,
     getZoom: () => currentZoom,
     project: () => L.point(100, 100),
     unproject: (point: L.Point) => L.latLng(point.y, point.x),
     setView: setViewMock,
+    stop: stopMock,
   }),
 }));
 
@@ -33,6 +38,7 @@ describe('MapCenterController (#4046 items 2 + 3)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     setViewMock.mockClear();
+    stopMock.mockClear();
     currentZoom = 10;
   });
   afterEach(() => {
@@ -128,5 +134,64 @@ describe('MapCenterController (#4046 items 2 + 3)', () => {
     rerender(<MapCenterController centerTarget={null} onCenterComplete={() => {}} />);
     rerender(<MapCenterController centerTarget={[1, 2]} onCenterComplete={() => {}} />);
     expect(setViewMock).toHaveBeenCalledTimes(2); // cleared then re-selected → centers again
+  });
+
+  // "Any attempt to adjust zoom resets to the node": a real user gesture during
+  // the (up to ~2s) center window must cancel the centering so the user's
+  // zoom/pan wins, instead of the in-flight animation pulling the view back.
+  describe('user-gesture abort', () => {
+    for (const evt of ['wheel', 'touchstart', 'pointerdown']) {
+      it(`a ${evt} gesture stops the animation and finishes centering immediately (before the timer)`, () => {
+        currentZoom = 3;
+        const onCenterComplete = vi.fn();
+        render(<MapCenterController centerTarget={[1, 2]} onCenterComplete={onCenterComplete} targetZoom={17} />);
+        expect(setViewMock).toHaveBeenCalledTimes(1);
+        expect(onCenterComplete).not.toHaveBeenCalled();
+
+        act(() => {
+          containerEl.dispatchEvent(new Event(evt, { bubbles: true }));
+        });
+
+        // The gesture halts our animation and ends the armed window at once —
+        // no waiting for the duration timer.
+        expect(stopMock).toHaveBeenCalledTimes(1);
+        expect(onCenterComplete).toHaveBeenCalledTimes(1);
+      });
+    }
+
+    it('does not fire onCenterComplete twice when a gesture is followed by the timer', () => {
+      currentZoom = 3;
+      const onCenterComplete = vi.fn();
+      render(<MapCenterController centerTarget={[1, 2]} onCenterComplete={onCenterComplete} targetZoom={17} />);
+
+      act(() => {
+        containerEl.dispatchEvent(new Event('wheel', { bubbles: true }));
+      });
+      expect(onCenterComplete).toHaveBeenCalledTimes(1);
+
+      // Advancing past the (now-cleared) timer must not double-fire.
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+      expect(onCenterComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it('removes gesture listeners after the timer completes (no abort post-window)', () => {
+      currentZoom = 3;
+      const onCenterComplete = vi.fn();
+      render(<MapCenterController centerTarget={[1, 2]} onCenterComplete={onCenterComplete} targetZoom={17} />);
+
+      const duration = computeZoomAnimationDuration(3, 17);
+      act(() => {
+        vi.advanceTimersByTime(duration * 1000 + 60);
+      });
+      expect(onCenterComplete).toHaveBeenCalledTimes(1);
+
+      // A gesture after the window closed must not call stop() again.
+      act(() => {
+        containerEl.dispatchEvent(new Event('wheel', { bubbles: true }));
+      });
+      expect(stopMock).not.toHaveBeenCalled();
+    });
   });
 });
