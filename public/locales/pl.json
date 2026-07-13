@@ -4572,5 +4572,15 @@
     "node_popup.hops_other": "",
     "node_popup.sources_seen_by_one": "",
     "node_popup.sources_seen_by_other": "",
-    "node_popup.meshcore_device": ""
+    "node_popup.meshcore_device": "",
+    "lora_config.amateur_band_warning": "",
+    "meshcore.search_contacts": "",
+    "meshcore.form.allow_admin_help": "",
+    "messages.traceroute_channel": "",
+    "lora_config.fem_lna_mode_description": "",
+    "meshcore.form.allow_admin_commands": "",
+    "messages.exchange_node_info_channel": "",
+    "automation.auto_ack.unsupported_regex": "",
+    "lora_config.fem_lna_mode": "",
+    "lora_config.preset_filtered_note": ""
 }
