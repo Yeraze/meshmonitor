@@ -266,23 +266,30 @@ jobs:
             ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-armv7
 
       - name: Create and push manifest for minor version tag
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' && steps.check_prerelease.outputs.is_prerelease == 'false'
         run: |
           docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.minor }} \
             ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-main \
             ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-armv7
 
       - name: Create and push manifest for major version tag
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' && steps.check_prerelease.outputs.is_prerelease == 'false'
         run: |
           docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.major }} \
             ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-main \
             ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-armv7
 
-      - name: Create and push manifest for latest tag
+      - name: Create and push manifest for latest tag (stable release only)
         if: github.event_name == 'release' && steps.check_prerelease.outputs.is_prerelease == 'false'
         run: |
           docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:latest \
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-main \
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-armv7
+
+      - name: Create and push manifest for dev tag (pre-release only)
+        if: github.event_name == 'release' && steps.check_prerelease.outputs.is_prerelease == 'true'
+        run: |
+          docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:dev \
             ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-main \
             ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-armv7
 
