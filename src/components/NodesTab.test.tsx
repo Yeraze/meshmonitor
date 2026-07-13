@@ -10,6 +10,15 @@
 
 import { describe, it, expect } from 'vitest';
 import { computeNeighborLinkStyle } from './NodesTab';
+import {
+  getEffectivePosition,
+  resolveMarkerCenterTarget,
+} from '../utils/nodeHelpers';
+import {
+  shouldOffsetForPrecision,
+  offsetWithinPrecisionCell,
+} from '../utils/precisionOffset';
+import type { DeviceInfo } from '../types/device';
 
 describe('NodesTab', () => {
   // #4047 Phase 7 WP11 — pins NodesTab's neighbor-link adapter: the 4-tier
@@ -52,6 +61,56 @@ describe('NodesTab', () => {
     });
   });
 
+
+  // Regression for the "clicking a node pans to a random location, not the
+  // node" bug: markers for low-precision/obscured nodes are rendered at an
+  // in-cell OFFSET position (#4016), but the click handler used to pan to the
+  // raw reported cell-center — up to half an accuracy cell (km-scale) away.
+  // resolveMarkerCenterTarget must hand back the same offset position the
+  // marker uses so the map pans exactly to the marker the user clicked.
+  describe('resolveMarkerCenterTarget (click pans to the marker, not the raw center)', () => {
+    const NODE_NUM = 0x1234abcd;
+    const RAW_LAT = 40.0;
+    const RAW_LNG = -74.0;
+    const OBSCURED_BITS = 13; // town-level: a multi-km accuracy cell
+
+    // Build the offset marker position exactly as NodesTab's nodePositions memo does.
+    const buildMarkerPos = (): [number, number] => {
+      const node = {
+        nodeNum: NODE_NUM,
+        user: { id: '!1234abcd' },
+        position: { latitude: RAW_LAT, longitude: RAW_LNG },
+        positionPrecisionBits: OBSCURED_BITS,
+      } as unknown as DeviceInfo;
+      const eff = getEffectivePosition(node);
+      expect(shouldOffsetForPrecision(OBSCURED_BITS, node.positionIsOverride)).toBe(true);
+      return offsetWithinPrecisionCell(
+        eff.latitude as number,
+        eff.longitude as number,
+        OBSCURED_BITS,
+        String(node.user?.id ?? node.nodeNum),
+      );
+    };
+
+    it('returns the offset marker position, which differs materially from the raw center', () => {
+      const markerPos = buildMarkerPos();
+      const nodePositions = new Map<number, [number, number]>([[NODE_NUM, markerPos]]);
+
+      const target = resolveMarkerCenterTarget(NODE_NUM, nodePositions);
+      expect(target).toEqual(markerPos);
+
+      // The whole point of the fix: this is NOT the raw reported center.
+      expect(target).not.toEqual([RAW_LAT, RAW_LNG]);
+      const dLat = Math.abs((target as [number, number])[0] - RAW_LAT);
+      const dLng = Math.abs((target as [number, number])[1] - RAW_LNG);
+      expect(dLat + dLng).toBeGreaterThan(0.001); // ~>100m of divergence at 13 bits
+    });
+
+    it('returns null when the node has no rendered marker (caller falls back to raw center)', () => {
+      const nodePositions = new Map<number, [number, number]>();
+      expect(resolveMarkerCenterTarget(NODE_NUM, nodePositions)).toBeNull();
+    });
+  });
 
   describe('Helper Functions', () => {
     describe('isToday', () => {
