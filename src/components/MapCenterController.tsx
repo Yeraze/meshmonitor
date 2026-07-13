@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import {
   DEFAULT_TARGET_ZOOM,
@@ -32,8 +32,27 @@ export const MapCenterController: React.FC<MapCenterControllerProps> = ({
 }) => {
   const map = useMap();
 
+  // Defensive: center exactly once per distinct target. Without this, any
+  // consumer that passes an unstable `onCenterComplete` (a dependency below)
+  // would re-run this effect on every render and re-fire setView while
+  // `centerTarget` is still set — snapping the map back so the user can't pan
+  // (regression made severe by the #4046 variable animation duration widening
+  // the reset window). Tracking the last-centered target makes this robust
+  // regardless of callback stability.
+  const lastCenteredRef = useRef<[number, number] | null>(null);
+
   useEffect(() => {
     if (centerTarget) {
+      // Skip if we've already centered on this exact target — only a genuinely
+      // new target should move the map.
+      if (
+        lastCenteredRef.current &&
+        lastCenteredRef.current[0] === centerTarget[0] &&
+        lastCenteredRef.current[1] === centerTarget[1]
+      ) {
+        return;
+      }
+      lastCenteredRef.current = centerTarget;
       // Get the map container height to calculate the center offset
       const mapContainer = map.getContainer();
       const mapHeight = mapContainer.clientHeight;
@@ -74,6 +93,10 @@ export const MapCenterController: React.FC<MapCenterControllerProps> = ({
       }, duration * 1000 + 50);
 
       return () => clearTimeout(timer);
+    } else {
+      // Target cleared — allow the next selection (even of the same node) to
+      // center again.
+      lastCenteredRef.current = null;
     }
   }, [centerTarget, onCenterComplete, map, targetZoom]);
 

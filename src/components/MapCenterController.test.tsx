@@ -95,4 +95,38 @@ describe('MapCenterController (#4046 items 2 + 3)', () => {
     render(<MapCenterController centerTarget={null} onCenterComplete={vi.fn()} />);
     expect(setViewMock).not.toHaveBeenCalled();
   });
+
+  it('does NOT re-fire setView when re-rendered with an unstable callback but the SAME target (snap-back guard)', () => {
+    // Reproduces the map-snaps-back bug: a consumer passing a fresh
+    // onCenterComplete each render would otherwise re-run setView on every
+    // re-render while centerTarget is still set.
+    const { rerender } = render(
+      <MapCenterController centerTarget={[1, 2]} onCenterComplete={() => {}} />,
+    );
+    expect(setViewMock).toHaveBeenCalledTimes(1);
+
+    // Re-render several times with a NEW callback identity each time, same target.
+    rerender(<MapCenterController centerTarget={[1, 2]} onCenterComplete={() => {}} />);
+    rerender(<MapCenterController centerTarget={[1, 2]} onCenterComplete={() => {}} />);
+    expect(setViewMock).toHaveBeenCalledTimes(1); // still once — no snap-back
+  });
+
+  it('re-centers when the target changes to a genuinely new node', () => {
+    const { rerender } = render(
+      <MapCenterController centerTarget={[1, 2]} onCenterComplete={() => {}} />,
+    );
+    expect(setViewMock).toHaveBeenCalledTimes(1);
+    rerender(<MapCenterController centerTarget={[3, 4]} onCenterComplete={() => {}} />);
+    expect(setViewMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('allows re-centering the SAME target after it is cleared to null', () => {
+    const { rerender } = render(
+      <MapCenterController centerTarget={[1, 2]} onCenterComplete={() => {}} />,
+    );
+    expect(setViewMock).toHaveBeenCalledTimes(1);
+    rerender(<MapCenterController centerTarget={null} onCenterComplete={() => {}} />);
+    rerender(<MapCenterController centerTarget={[1, 2]} onCenterComplete={() => {}} />);
+    expect(setViewMock).toHaveBeenCalledTimes(2); // cleared then re-selected → centers again
+  });
 });
