@@ -62,6 +62,10 @@ volumes:
     driver: local
 ```
 
+::: tip Choosing an image tag
+The example above uses `:latest` — the stable release track, updated roughly weekly. To follow release candidates instead, switch to `:dev` (~daily updates). For fully reproducible deployments, pin an exact version such as `:4.13.0`. See [Choosing an image tag](/getting-started#quick-start-with-docker-compose) in the Getting Started guide, or the [FAQ](/faq#how-often-does-meshmonitor-release) for a comparison of the two tracks.
+:::
+
 ```bash
 docker compose up -d
 ```

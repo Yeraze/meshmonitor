@@ -122,7 +122,7 @@ Each node is displayed with a color-coded marker indicating its hop count from y
 | 6 | Red | 6 hops |
 | Unknown | Gray | Hop count unavailable |
 
-Router nodes display a tower icon; all other roles use a pin marker.
+Router and ROUTER_LATE nodes display a tower icon; all other roles use a pin marker.
 
 ### Node Popups
 
@@ -145,7 +145,7 @@ When **Show Neighbor Info** is enabled, dashed orange lines connect nodes that r
 
 ### Traceroute Paths
 
-When **Show Paths** is enabled, solid purple lines show traceroute path segments between nodes. MeshMonitor decomposes multi-hop traceroutes into individual point-to-point segments and deduplicates them, keeping the most recent instance. Only traceroutes from the last 24 hours are displayed.
+When **Show Paths** is enabled, traceroute path segments between nodes are drawn with the canonical SNR color scale — green (excellent), yellow (good), orange (fair), red (poor), and dashed gray for unknown SNR. MeshMonitor decomposes multi-hop traceroutes into individual point-to-point segments and deduplicates them, keeping the most recent instance. Only traceroutes from the last 24 hours are displayed.
 
 ### Hop Count Legend
 

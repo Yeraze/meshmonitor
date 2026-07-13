@@ -8,10 +8,16 @@ This document provides comprehensive documentation for all MeshMonitor API endpo
 
 **Content Type:** `application/json`
 
-::: warning MeshMonitor 4.0 — Per-Source API
-Endpoints listed in this reference without a `sourceId` segment (e.g. `GET /api/nodes`, `GET /api/messages`) are **legacy root-path endpoints**. They still work but now emit an HTTP `Warning: 299` header: `"v1 root-path scoping is deprecated; use /api/v1/sources/:sourceId/... instead"` and will be removed in a future release.
+::: warning Breaking change in 4.13 — migrate before upgrading to 4.14
+**As of 4.13, the canonical v1 API shape is `/api/v1/sources/{sourceId}/...`.**
 
-New integrations should use the **per-source v1 API**: `/api/v1/sources/{sourceId}/nodes`, `/api/v1/sources/{sourceId}/messages`, `/api/v1/sources/{sourceId}/telemetry`, etc. Get the list of sources from `GET /api/v1/sources`.
+The old v1 root paths (`/api/v1/nodes`, `/api/v1/messages`, etc.) are kept alive for **one release only**. Every response on those paths carries:
+
+```
+Warning: 299 - "v1 root-path scoping is deprecated; use /api/v1/sources/:sourceId/... instead"
+```
+
+**These paths will be REMOVED in 4.14.** New integrations must use the per-source v1 API. Get the list of sources from `GET /api/v1/sources`.
 :::
 
 ## Table of Contents
@@ -55,19 +61,33 @@ List all configured sources. Authentication required.
 
 ### Per-source resource endpoints
 
-Replace `{sourceId}` with the `id` returned above.
+Replace `{sourceId}` with the `id` returned above, or use the literal string `"default"` to target the primary source.
 
-| Legacy (deprecated)   | Per-source v1 (recommended)                    |
-| --------------------- | ---------------------------------------------- |
-| `GET /api/nodes`      | `GET /api/v1/sources/{sourceId}/nodes`         |
-| `GET /api/messages`   | `GET /api/v1/sources/{sourceId}/messages`      |
-| `GET /api/channels`   | `GET /api/v1/sources/{sourceId}/channels`      |
-| `GET /api/telemetry`  | `GET /api/v1/sources/{sourceId}/telemetry`     |
-| `GET /api/traceroutes`| `GET /api/v1/sources/{sourceId}/traceroutes`   |
-| `GET /api/network`    | `GET /api/v1/sources/{sourceId}/network`       |
-| `GET /api/packets`    | `GET /api/v1/sources/{sourceId}/packets`       |
+| Legacy v1 path (≤ 4.12, deprecated)              | Canonical v1 path (4.13+)                              |
+| ------------------------------------------------- | ------------------------------------------------------- |
+| `GET /api/v1/nodes?sourceId={id}`                | `GET /api/v1/sources/{sourceId}/nodes`                 |
+| `GET /api/v1/messages?sourceId={id}`             | `GET /api/v1/sources/{sourceId}/messages`              |
+| `GET /api/v1/channels?sourceId={id}`             | `GET /api/v1/sources/{sourceId}/channels`              |
+| `GET /api/v1/telemetry?sourceId={id}`            | `GET /api/v1/sources/{sourceId}/telemetry`             |
+| `GET /api/v1/traceroutes?sourceId={id}`          | `GET /api/v1/sources/{sourceId}/traceroutes`           |
+| `GET /api/v1/network?sourceId={id}`              | `GET /api/v1/sources/{sourceId}/network`               |
+| `GET /api/v1/packets?sourceId={id}`              | `GET /api/v1/sources/{sourceId}/packets`               |
+| `GET /api/v1/status?sourceId={id}`               | `GET /api/v1/sources/{sourceId}/status`                |
+| `GET /api/v1/nodes/{nId}/position-history?sourceId={id}` | `GET /api/v1/sources/{sourceId}/nodes/{nId}/position-history` |
 
-Legacy endpoints return the above `Warning: 299` header and will be removed in a future release.
+Legacy v1 root paths return the `Warning: 299` header above and **will be removed in 4.14**.
+
+#### Missing sourceId response
+
+Per-source endpoints return `400` when `sourceId` is absent — there is no silent fallback to the primary source:
+
+```json
+{
+  "success": false,
+  "error": "sourceId is required",
+  "code": "MISSING_SOURCE_ID"
+}
+```
 
 ---
 
@@ -1055,9 +1075,19 @@ All endpoints may return error responses in this format:
 }
 ```
 
+v1 API endpoints use the envelope format:
+
+```json
+{
+  "success": false,
+  "error": "sourceId is required",
+  "code": "MISSING_SOURCE_ID"
+}
+```
+
 **Common Status Codes:**
 - `200` - Success
-- `400` - Bad Request (invalid parameters)
+- `400` - Bad Request (invalid parameters, or missing `sourceId` on a per-source v1 endpoint)
 - `404` - Not Found
 - `500` - Internal Server Error
 - `503` - Service Unavailable (Meshtastic not connected)

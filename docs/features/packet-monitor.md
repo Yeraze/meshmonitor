@@ -2,6 +2,10 @@
 
 The Packet Monitor is a diagnostic tool that displays raw Meshtastic packets as they are received from the mesh network. It provides visibility into the low-level packet traffic for debugging and analysis purposes.
 
+::: tip MeshCore Packet Monitor
+MeshCore sources have their own equivalent — the **OTA Packet Monitor** accessible from the **Packets** tab in the MeshCore source page. It captures raw OTA frames from the companion's `LogRxData` push (route type, payload type, relay chain, SNR/RSSI, and a full hex dump). See the [MeshCore documentation](/features/meshcore#packet-monitor) for details.
+:::
+
 ![Packet Monitor](/images/features/packet-monitor.png)
 
 ## Accessing the Packet Monitor

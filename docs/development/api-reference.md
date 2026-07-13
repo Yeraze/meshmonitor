@@ -19,7 +19,9 @@ The Swagger UI rendered below is identical to the one served by your running Mes
 
 ## Versioning
 
-All endpoints are prefixed with `/api/v1/`. Breaking changes will ship as `/api/v2/` and keep `/api/v1/` working for at least one major release.
+All endpoints are prefixed with `/api/v1/`. When endpoint shapes change within v1, the old shape is kept working for at least one release with a deprecation `Warning` header before removal; larger overhauls would ship as `/api/v2/`.
+
+**4.13 shape change:** mesh-data resources (nodes, messages, channels, telemetry, traceroutes, network, packets, status, position-history) are now served under `/api/v1/sources/{sourceId}/...`. The old root-scoped v1 paths (`/api/v1/nodes?sourceId=...` etc.) still respond with a `Warning: 299` header but are removed in 4.14. Use `"default"` as `{sourceId}` to target the primary source. See the [v1 source-scoping announcement](/blog/2026-07-13-v1-api-source-scoping) for the full migration guide, or [REST_API.md](https://github.com/Yeraze/meshmonitor/blob/main/docs/api/REST_API.md) in the repository for the endpoint-by-endpoint table.
 
 ## Interactive documentation
 

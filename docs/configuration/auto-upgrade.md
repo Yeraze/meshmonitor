@@ -82,10 +82,27 @@ services:
     environment:
       - CHECK_INTERVAL=5            # Check for triggers every 5 seconds
       - CONTAINER_NAME=meshmonitor  # Name of container to upgrade
-      - IMAGE_NAME=ghcr.io/yeraze/meshmonitor  # Image to pull
+      - IMAGE_NAME=ghcr.io/yeraze/meshmonitor  # Image to pull (tag selects your release train — see below)
       - COMPOSE_PROJECT_NAME=meshmonitor  # Docker Compose project name (optional)
       - COMPOSE_PROJECT_DIR=/compose  # Path to docker-compose files
 ```
+
+#### Release trains and IMAGE_NAME
+
+The tag appended to `IMAGE_NAME` determines how frequently the watchdog receives updates:
+
+| IMAGE_NAME value | Track | Cadence |
+|-----------------|-------|---------|
+| `ghcr.io/yeraze/meshmonitor` (no tag, defaults to `:latest`) | Stable | ~weekly |
+| `ghcr.io/yeraze/meshmonitor:latest` | Stable | ~weekly |
+| `ghcr.io/yeraze/meshmonitor:dev` | RC / fast-track | ~daily |
+| `ghcr.io/yeraze/meshmonitor:4.13.0` | Pinned | Never (the watchdog always upgrades to that exact image) |
+
+To switch tracks, update `IMAGE_NAME` in `docker-compose.upgrade.yml` and restart the stack with `docker compose -f docker-compose.yml -f docker-compose.upgrade.yml up -d`.
+
+::: warning :dev is a pre-release track
+`:dev` follows release candidates. It may be briefly older than `:latest` right after a stable release ships, until the next RC is published. Use `:latest` or a pinned version for production.
+:::
 
 ### Disabling Version Check
 
