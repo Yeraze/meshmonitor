@@ -12,7 +12,7 @@ import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, snrToColor } from '../utils/mapHelpers.tsx';
 import { convertSpeed } from '../utils/speedConversion';
-import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, resolveMapEndpoint, TRACEROUTE_DISPLAY_HOURS } from '../utils/nodeHelpers';
+import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, resolveMapEndpoint, resolveMarkerCenterTarget, TRACEROUTE_DISPLAY_HOURS } from '../utils/nodeHelpers';
 import { shouldOffsetForPrecision, offsetWithinPrecisionCell, hasAccuracyCell, precisionCellBounds } from '../utils/precisionOffset';
 import MapLegend from './MapLegend';
 import { formatTime, formatDateTime } from '../utils/datetime';
@@ -926,6 +926,25 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const centerMapOnNodeRef = useRef(centerMapOnNode);
   const showRouteRef = useRef(showRoute);
   const traceroutesRef = useRef(traceroutes);
+  // Kept fresh in the "Update refs" effect below. Lets the stable click
+  // handlers read the current offset-inclusive marker position map.
+  const nodePositionsRef = useRef<Map<number, [number, number]>>(new Map());
+
+  // Center the map on the position the node's MARKER is actually rendered at.
+  // For low-precision/obscured nodes `nodePositions` includes the deterministic
+  // in-cell offset (#4016); `centerMapOnNode`/getEffectivePosition uses the raw
+  // reported cell-center, so panning there jumped up to half an accuracy cell
+  // (km-scale for obscured nodes) away from the marker the user clicked. Prefer
+  // the rendered marker position; fall back to the raw center only for a node
+  // that isn't currently on the map (no entry in nodePositions).
+  const centerOnNodeMarker = useCallback((node: DeviceInfo) => {
+    const markerPos = resolveMarkerCenterTarget(node.nodeNum, nodePositionsRef.current);
+    if (markerPos) {
+      setMapCenterTarget(markerPos);
+    } else {
+      centerMapOnNodeRef.current(node);
+    }
+  }, [setMapCenterTarget]);
 
   // Rich OMS click handler (#4047 Phase 4 WP6) — moved onto the shared
   // NodeMarkersLayer's `onOmsClick(marker, key)`. Replaces the old
@@ -949,7 +968,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     // But if the node has no valid traceroute, fall back to centering on it.
     if (!showRouteRef.current) {
       const node = findNode();
-      if (node) centerMapOnNodeRef.current(node);
+      if (node) centerOnNodeMarker(node);
     } else {
       const hasTraceroute = traceroutesRef.current.some(tr => {
         const matches = tr.toNodeId === nodeId || tr.fromNodeId === nodeId;
@@ -960,7 +979,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       // If no valid traceroute, still center on the node
       if (!hasTraceroute) {
         const node = findNode();
-        if (node) centerMapOnNodeRef.current(node);
+        if (node) centerOnNodeMarker(node);
       }
     }
 
@@ -978,7 +997,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       popup.options.autoPan = false;
     }
     currentMarker.openPopup();
-  }, []); // Empty deps - reads latest values via refs
+    // Reads latest state via refs; centerOnNodeMarker is the one referenced
+    // dependency and is itself referentially stable, so onOmsClick stays stable
+    // and the shared layer's OMS listener effect isn't re-registered.
+  }, [centerOnNodeMarker]);
 
   // Stable callback factories for node item interactions
   const handleNodeClick = useCallback((node: DeviceInfo) => {
@@ -994,7 +1016,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       // to fit the entire traceroute path instead of just centering on the node.
       // But if the node has no valid traceroute, fall back to centering on it.
       if (!showRoute) {
-        centerMapOnNode(node);
+        centerOnNodeMarker(node);
       } else {
         const hasTraceroute = traceroutes.some(tr => {
           const matches = tr.toNodeId === nodeId || tr.fromNodeId === nodeId;
@@ -1003,7 +1025,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                  tr.routeBack && tr.routeBack !== 'null' && tr.routeBack !== '';
         });
         if (!hasTraceroute) {
-          centerMapOnNode(node);
+          centerOnNodeMarker(node);
         }
       }
       // Auto-collapse node list on mobile when a node with position is clicked
@@ -1016,7 +1038,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         }
       }
     };
-  }, [selectedNodeId, setSelectedNodeId, centerMapOnNode, setIsNodeListCollapsed, showRoute, traceroutes]);
+  }, [selectedNodeId, setSelectedNodeId, centerOnNodeMarker, setIsNodeListCollapsed, showRoute, traceroutes]);
 
   const handleFavoriteClick = useCallback((node: DeviceInfo) => {
     return (e: React.MouseEvent) => toggleFavorite(node, e);
@@ -1151,6 +1173,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     centerMapOnNodeRef.current = centerMapOnNode;
     showRouteRef.current = showRoute;
     traceroutesRef.current = traceroutes;
+    nodePositionsRef.current = nodePositions;
   });
 
   // Track previous nodes to detect updates and trigger animations
@@ -1202,7 +1225,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     if (node) {
       // Select and center on the node
       setSelectedNodeId(nodeId);
-      centerMapOnNode(node);
+      centerOnNodeMarker(node);
     }
   };
 

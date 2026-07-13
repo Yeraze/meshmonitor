@@ -138,6 +138,22 @@ export const resolveMapEndpoint = (
   return null;
 };
 
+/**
+ * Resolve the map-center target for a node click. The map must pan to the point
+ * the node's MARKER is actually rendered at — for low-precision/obscured nodes
+ * that is the deterministic in-cell offset position (#4016), NOT the raw
+ * reported cell-center. Centering on the raw center jumped the map up to half an
+ * accuracy cell (km-scale for obscured nodes) away from the marker the user
+ * clicked. Returns the marker position from `nodePositions`, or `null` when the
+ * node isn't currently on the map (caller falls back to the raw center).
+ */
+export const resolveMarkerCenterTarget = (
+  nodeNum: number,
+  nodePositions: Map<number, [number, number]>,
+): [number, number] | null => {
+  return nodePositions.get(nodeNum) ?? null;
+};
+
 export const getRoleName = (role: number | string | undefined): string | null => {
   if (role === undefined || role === null) return null;
   const roleNum = typeof role === 'string' ? parseInt(role) : role;
