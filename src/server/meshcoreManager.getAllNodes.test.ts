@@ -127,6 +127,40 @@ describe('MeshCoreManager.getAllNodes (node-list-collapses-to-1 regression)', ()
     expect(nodes.filter((n) => n.publicKey === KEY_LOCAL)).toHaveLength(1);
   });
 
+  it('drops a live contact\'s out-of-range/junk position (e.g. lat 1853, lng -1598) — reads as no position', async () => {
+    const m = new MeshCoreManager('src-a');
+    // Seed a live contact carrying the observed MeshCore advert garbage directly
+    // into the private map (as a device contact-list sync would).
+    // @ts-expect-error - poke the private in-memory contact map
+    m.contacts.set(KEY_B, {
+      publicKey: KEY_B,
+      advName: 'Junk Node',
+      advType: MeshCoreDeviceType.REPEATER,
+      latitude: 1853.453892,
+      longitude: -1598.745966,
+    });
+    // A second contact with a valid Florida position — must be preserved.
+    // @ts-expect-error - poke the private in-memory contact map
+    m.contacts.set(KEY_C, {
+      publicKey: KEY_C,
+      advName: 'Real Node',
+      advType: MeshCoreDeviceType.REPEATER,
+      latitude: 26.331349,
+      longitude: -80.268578,
+    });
+
+    const nodes = await m.getAllNodes();
+    const junk = nodes.find((n) => n.publicKey === KEY_B);
+    const real = nodes.find((n) => n.publicKey === KEY_C);
+
+    expect(junk).toBeDefined();
+    expect(junk?.latitude).toBeUndefined();
+    expect(junk?.longitude).toBeUndefined();
+    // Valid coordinates are untouched.
+    expect(real?.latitude).toBe(26.331349);
+    expect(real?.longitude).toBe(-80.268578);
+  });
+
   it('falls back to in-memory contacts when the DB read throws', async () => {
     getNodesBySource.mockRejectedValue(new Error('db down'));
 
