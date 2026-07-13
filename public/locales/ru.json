@@ -4008,7 +4008,7 @@
     "dashboard.widget.hop_distribution.hops": "{{count}} прыжки",
     "firmware.rejected_files": "Отклоненные файлы",
     "automation.auto_heap.warning": "При срабатывании MeshMonitor удалит из базы данных устройства 10 узлов, от которых дольше всего не поступало сигналов, и перезагрузит узел. Это может привести к кратковременному разрыву соединения.",
-    "meshcore.disconnect": "",
+    "meshcore.disconnect": "Разъединить",
     "source.sidebar.unified_telemetry": "📡 Единая телеметрия",
     "unified.messages.hop_count_one": "{{count}} прыжок",
     "dashboard.widget.hop_distance_heatmap.hops_axis": "Прыжки",
@@ -4269,5 +4269,6 @@
     "node_popup.sources_seen_by_other": "",
     "node_popup.meshcore_device": "",
     "meshcore.settings.currently_connected": "Подключение установлено. Чтобы изменить настройки подключения, сначала отключитесь.",
-    "meshcore.settings.actions_hint": "Обновите список контактов с устройства или разошлите новое рекламное сообщение."
+    "meshcore.settings.actions_hint": "Обновите список контактов с устройства или разошлите новое рекламное сообщение.",
+    "meshcore.disconnected": "Отключено"
 }
