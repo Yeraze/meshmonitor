@@ -8,7 +8,7 @@
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { appBasename } from '../init';
 import { useAuth } from '../contexts/AuthContext';
-import { isNullIsland } from '../utils/nullIsland';
+import { isBogusPosition } from '../utils/nullIsland';
 import { classifyNodeTransport, type NodeTransportClass } from '../utils/nodeTransport';
 import { unifiedNodeKey } from '../utils/nodeIdentity';
 
@@ -293,7 +293,7 @@ function mergeNodeRecords(records: any[]): any {
   const withPosition = sortedNewestFirst.find((r) => {
     const lat = r?.latitude ?? r?.position?.latitude;
     const lng = r?.longitude ?? r?.position?.longitude;
-    return lat != null && lng != null && !isNullIsland(lat, lng);
+    return lat != null && lng != null && !isBogusPosition(lat, lng);
   });
   if (withPosition) {
     if (withPosition.latitude != null) merged.latitude = withPosition.latitude;

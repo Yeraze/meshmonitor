@@ -1,4 +1,4 @@
-import { isNullIsland } from '../../utils/nullIsland';
+import { isBogusPosition } from '../../utils/nullIsland';
 
 /**
  * Resolve a node's lat/lng from either the flat API shape (`{latitude, longitude}`)
@@ -22,6 +22,6 @@ export function resolveNodeLatLng(
   const lat = node.latitude ?? node.position?.latitude;
   const lng = node.longitude ?? node.position?.longitude;
   if (lat == null || lng == null) return null;
-  if (isNullIsland(lat, lng)) return null;
+  if (isBogusPosition(lat, lng)) return null;
   return [lat, lng];
 }

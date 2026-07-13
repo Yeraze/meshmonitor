@@ -10,7 +10,7 @@
 
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
-import { isNullIsland } from '../utils/nullIsland.js';
+import { isBogusPosition } from '../utils/nullIsland.js';
 import databaseService from '../services/database.js';
 import type { MeshcorePathfindingFilterSettings } from '../services/database.js';
 import { compileUserRegex } from '../utils/safeRegex.js';
@@ -2045,10 +2045,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         this.contacts.delete(contact.publicKey);
         return;
       }
-      // Drop "Null Island" (0,0) fixes — the GPS default before a lock — so a
-      // bogus position never lands in the node row (issue #3763).
-      const atNullIsland = isNullIsland(contact.latitude, contact.longitude);
-      const hasContactPosition = !atNullIsland
+      // Drop bogus positions before they land in the node row: "Null Island"
+      // (0,0) GPS defaults (issue #3763) AND out-of-range junk that MeshCore
+      // adverts sometimes carry — e.g. latitude 1853.45, longitude -1598.75 —
+      // which would otherwise blow the map's auto-fit bounds out to nothing.
+      const bogusPosition = isBogusPosition(contact.latitude, contact.longitude);
+      const hasContactPosition = !bogusPosition
         && typeof contact.latitude === 'number'
         && typeof contact.longitude === 'number';
       await databaseService.meshcore.upsertNode(
@@ -2058,8 +2060,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           // persisting "" into the node row (#3756).
           name: contact.advName || contact.name || null,
           advType: contact.advType ?? null,
-          latitude: atNullIsland ? null : (contact.latitude ?? null),
-          longitude: atNullIsland ? null : (contact.longitude ?? null),
+          latitude: bogusPosition ? null : (contact.latitude ?? null),
+          longitude: bogusPosition ? null : (contact.longitude ?? null),
           // Tag this as the static/advert-cached position (#3908) so
           // upsertNode won't let it clobber an established telemetry GNSS
           // fix. Only tagged when we're actually writing a real coordinate —

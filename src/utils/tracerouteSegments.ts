@@ -23,7 +23,7 @@
 
 // `nullIsland` is pure (no leaflet) — safe to import without breaking the
 // leaflet-free guarantee above.
-import { isNullIsland } from './nullIsland.js';
+import { isBogusPosition } from './nullIsland.js';
 
 // ---------------------------------------------------------------------------
 // #2931 — unknown-hop SNR sentinel (canonical home, re-exported by mapHelpers)
@@ -113,7 +113,7 @@ export function parseSnapshotRoutePositions(
       // default, e.g. the 2^15 value 0.0032768) must NOT anchor a route
       // segment there — skip it so resolveSegmentPosition falls through to the
       // live position (#02ecd5e0 "Jupiter Dad" routes shooting to 0,0).
-      if (isNullIsland(entry.lat, entry.lng)) continue;
+      if (isBogusPosition(entry.lat, entry.lng)) continue;
       result.set(nodeNum, [entry.lat, entry.lng]);
     }
   }
@@ -141,7 +141,7 @@ export function resolveSegmentPosition(
  * for one item, or `null` to skip it entirely.
  *
  * Validity rule: coordinates must both be numbers AND must not be at Null
- * Island — a coordinate within {@link isNullIsland}'s radius of `(0, 0)` is an
+ * Island — a coordinate within {@link isBogusPosition}'s radius of `(0, 0)` is an
  * uninitialized/garbage GPS default and is dropped, while a single axis at
  * exactly 0 (equator or prime meridian, with the other axis far from 0) is a
  * legitimate position and is kept. This uses the shared Null-Island radius
@@ -158,7 +158,7 @@ export function buildLiveNodePositionMap<T>(
     if (!entry) continue;
     const { nodeNum, lat, lng } = entry;
     if (typeof lat !== 'number' || typeof lng !== 'number') continue;
-    if (isNullIsland(lat, lng)) continue;
+    if (isBogusPosition(lat, lng)) continue;
     map.set(nodeNum, [lat, lng]);
   }
   return map;

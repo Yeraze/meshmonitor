@@ -10,7 +10,7 @@ import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager } from './sourceManagerTypes.js';
 import { calculateDistance } from '../utils/distance.js';
-import { isNullIsland } from '../utils/nullIsland.js';
+import { isBogusPosition } from '../utils/nullIsland.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
@@ -6014,7 +6014,7 @@ class MeshtasticManager implements ISourceManager {
     // mesh infrastructure there (issue #3763). This gate fronts both the
     // POSITION_APP path and the NodeInfo position exchange, so a bogus (0,0)
     // never reaches the node row or the position-history telemetry.
-    if (isNullIsland(latitude, longitude)) {
+    if (isBogusPosition(latitude, longitude)) {
       return false;
     }
 

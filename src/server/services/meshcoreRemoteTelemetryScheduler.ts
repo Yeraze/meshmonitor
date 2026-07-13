@@ -31,7 +31,7 @@ import type {
 import type { SourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import { MC_TELEMETRY_PREFIX, nodeNumFromPubkey } from './meshcoreTelemetryPoller.js';
-import { isNullIsland } from '../../utils/nullIsland.js';
+import { isBogusPosition } from '../../utils/nullIsland.js';
 
 /**
  * `adv_type` values for MeshCore contacts. Matches the `MeshCoreDeviceType`
@@ -507,7 +507,7 @@ export class MeshCoreRemoteTelemetryScheduler {
           const gpsVal = gpsRecord.value as Record<string, number>;
           const lat = typeof gpsVal.latitude === 'number' ? gpsVal.latitude : null;
           const lon = typeof gpsVal.longitude === 'number' ? gpsVal.longitude : null;
-          if (lat !== null && lon !== null && !isNullIsland(lat, lon)) {
+          if (lat !== null && lon !== null && !isBogusPosition(lat, lon)) {
             try {
               await this.database.meshcore.upsertNode(
                 {

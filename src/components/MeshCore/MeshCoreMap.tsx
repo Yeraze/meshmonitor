@@ -18,7 +18,7 @@ import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/N
 import PolarGridOverlay from '../PolarGridOverlay';
 import { useSource } from '../../contexts/SourceContext';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
-import { isNullIsland } from '../../utils/nullIsland';
+import { isBogusPosition } from '../../utils/nullIsland';
 import { getPositionHistoryColor } from '../../utils/mapHelpers';
 import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
@@ -235,10 +235,12 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
     () => contacts.filter(c =>
       typeof c.latitude === 'number' && isFinite(c.latitude)
       && typeof c.longitude === 'number' && isFinite(c.longitude)
-      // Skip "Null Island" (0,0) — uninitialized/stale GPS default (issue #3763).
-      // The DB store filters this too, but live in-memory contacts can still
-      // carry a (0,0) fix that reaches the map via getAllNodes().
-      && !isNullIsland(c.latitude, c.longitude)),
+      // Skip bogus positions: "Null Island" (0,0) GPS defaults (issue #3763)
+      // AND out-of-range junk MeshCore adverts carry (e.g. lat 1853, lng -1598)
+      // that would blow the map's fit-bounds out to nothing. The DB store
+      // filters these too, but live in-memory contacts reaching the map via
+      // getAllNodes() can still carry them.
+      && !isBogusPosition(c.latitude, c.longitude)),
     [contacts],
   );
 
@@ -384,7 +386,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
             // real points to draw a segment (a 2-point response that's all
             // Null Island would otherwise store a degenerate 1-point trail).
             const pts = resp.data
-              .filter(p => !isNullIsland(p.latitude, p.longitude))
+              .filter(p => !isBogusPosition(p.latitude, p.longitude))
               .map(p => [p.latitude, p.longitude] as [number, number]);
             if (pts.length >= 2) next.set(publicKey, pts);
           }
