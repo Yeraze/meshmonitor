@@ -63,13 +63,26 @@ export interface BaseMapProps {
  * — never inside it, see docs/internal/dev-notes/MAP_CONSOLIDATION_P1_SPEC.md
  * §2.2/§6.10), and an optional gated MapResizeHandler.
  *
- * The tile layer (both the raster `TileLayer` and vector `VectorTileLayer`
- * branches) is keyed by the resolved tileset id (Phase 7, §2.1) so a tileset
- * swap force-remounts a clean layer instead of react-leaflet patching props
- * onto the old one in place — matches DashboardMap's pre-BaseMap
- * `key={tilesetId}` remount semantics. For the 4 Phase-1 editors, which omit
- * `tilesetId`, the resolved id is the constant `DEFAULT_TILESET_ID`, so the
- * key never changes and there is no remount/behavior change.
+ * Tile-layer keys differ by branch on purpose:
+ *
+ * - **Raster `TileLayer`** is keyed by `maxZoom`, NOT the tileset id. In
+ *   react-leaflet 5's `updateTileLayer`, a `url` change already calls
+ *   `layer.setUrl(url)` for a graceful in-place tile refresh (old tiles stay
+ *   until the new ones load). Keying on the id instead force-remounted the
+ *   layer on every tileset change — including the once-per-load global→user
+ *   `mapTileset` flip — which tore the layer down and left the in-flight tile
+ *   batch `net::ERR_ABORTED`, i.e. a blank/flickering map while loading
+ *   (regression vs NodesTab's pre-BaseMap keyless `TileLayer`). The only
+ *   option `updateGridLayer`/`setUrl` do NOT patch is `maxZoom`, so we remount
+ *   only when the zoom ceiling genuinely changes; same-`maxZoom` swaps (the
+ *   common case, e.g. osm↔carto↔osmHot, all 19) refresh in place.
+ * - **Vector `VectorTileLayer`** is keyed by the resolved tileset id: a
+ *   MapLibre style/url change needs a clean remount, and raster↔vector swaps
+ *   remount anyway (different component type).
+ *
+ * For the 4 Phase-1 editors, which omit `tilesetId`, the resolved id is the
+ * constant `DEFAULT_TILESET_ID` (raster, maxZoom 19), so neither key ever
+ * changes and there is no remount/behavior change.
  *
  * Everything else (markers, draw handlers, view controllers) is the caller's
  * `children`. BaseMap is persistence-agnostic: it takes a controlled
@@ -136,7 +149,7 @@ export function BaseMap({
           )
           : (
             <TileLayer
-              key={resolvedId}
+              key={`raster-${tileset.maxZoom}`}
               url={tileset.url}
               attribution={tileset.attribution}
               maxZoom={tileset.maxZoom}
