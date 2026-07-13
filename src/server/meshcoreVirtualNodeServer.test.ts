@@ -1287,8 +1287,27 @@ describe('MeshCoreVirtualNodeServer — SendTxtMsg CLI relay (#4106)', () => {
     const recv = await client.request([CommandCodes.SyncNextMessage]);
     expect(recv[0]).toBe(ResponseCodes.ContactMsgRecv);
     expect(recv.subarray(1, 7)).toEqual(REMOTE_PREFIX);
-    expect(recv[8]).toBe(1); // txtType byte = CliData, not Plain
+    // ContactMsgRecv layout: [code:1][prefix:6][pathLen:1][txtType:1]… → byte
+    // index 8 is txtType. Must be CliData(1), not Plain(0), so the app routes
+    // the reply to its CLI console instead of the chat thread.
+    expect(recv[8]).toBe(1);
     expect(recv.subarray(-'name: MyRepeater'.length).toString('utf8')).toBe('name: MyRepeater');
+  });
+
+  it('drops the CLI reply silently when the client disconnected mid-round-trip', async () => {
+    await startWith(true);
+    let resolveCli!: (v: { reply: string; elapsedMs: number }) => void;
+    manager.sendCliCommandMock.mockReturnValueOnce(new Promise((resolve) => { resolveCli = resolve; }));
+    client.send(cliFrame('get name'));
+    const sent = await client.expectFrames(1);
+    expect(sent[0][0]).toBe(ResponseCodes.Sent);
+
+    client.close(); // client goes away while the CLI round-trip is still in flight
+    await new Promise((r) => setTimeout(r, 20));
+    // Resolving after disconnect must not throw or leak a queued message onto
+    // a client map entry that no longer exists.
+    expect(() => resolveCli({ reply: 'name: MyRepeater', elapsedMs: 5 })).not.toThrow();
+    await new Promise((r) => setTimeout(r, 20));
   });
 
   it('replies Err(UnsupportedCmd) and never calls the manager when allowAdminCommands is off', async () => {

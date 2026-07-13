@@ -142,8 +142,10 @@ export interface MeshCoreVirtualNodeManager {
    * Send a CLI/admin command to a remote node the app has already logged into
    * and return its text reply (issue #4106). Used to relay the app's
    * SendTxtMsg(txtType=CliData) — distinct from a plain chat DM, which uses
-   * `sendMessageWithResult` instead. Throws if the local device isn't a
-   * Companion or the command times out.
+   * `sendMessageWithResult` instead. Rejects if the local device isn't a
+   * Companion or the command times out; `handleSendCliTxtMsg` catches this
+   * and simply pushes nothing further (mirrors a real node's silence on a
+   * failed CLI round-trip).
    */
   sendCliCommand(publicKey: string, command: string): Promise<{ reply: string; elapsedMs: number }>;
   /** EventEmitter surface — the manager emits 'message' with a MeshCoreMessage. */
@@ -1025,7 +1027,8 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     const prefixHex = (cmd.pubKeyPrefix ?? Buffer.alloc(0)).toString('hex');
     const fullKey = this.resolveContactKey(prefixHex);
     if (!fullKey) {
-      logger.warn(`[MeshCore VN ${this.sourceId}] DM from ${clientId} to unknown contact prefix ${prefixHex}`);
+      const kind = cmd.txtType === TxtType.CliData ? 'CLI command' : 'DM';
+      logger.warn(`[MeshCore VN ${this.sourceId}] ${kind} from ${clientId} to unknown contact prefix ${prefixHex}`);
       this.send(clientId, encodeErr(ErrorCodes.NotFound));
       return;
     }
@@ -1058,8 +1061,18 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     }
   }
 
-  /** Default reply-timeout hint (ms) returned in Sent responses for CLI commands. */
+  /**
+   * Default reply-timeout hint (ms) returned in Sent responses for CLI
+   * commands. Matches `MeshCoreManager.sendCliCommand`'s own default
+   * `timeoutMs` (15_000) — keep these in sync: if the manager's internal
+   * timeout ever grows past this value, a reply could arrive and queue a
+   * MsgWaiting push after the app has already given up waiting on the Sent
+   * response's estimated timeout.
+   */
   private readonly CLI_REPLY_EST_TIMEOUT_MS = 15_000;
+
+  /** Monotonic counter for synthetic CLI-reply message IDs (avoids a same-millisecond collision). */
+  private nextCliReplyId = 1;
 
   /**
    * SendTxtMsg(txtType=CliData) → relay a CLI/admin command to a remote node
@@ -1092,7 +1105,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       const client = this.clients.get(clientId);
       if (!client) return; // client disconnected while the CLI round-trip was in flight
       client.pendingMessages.push({
-        id: `cli-${targetPublicKey}-${Date.now()}`,
+        id: `cli-${targetPublicKey}-${this.nextCliReplyId++}`,
         fromPublicKey: targetPublicKey,
         text: reply,
         timestamp: Math.floor(Date.now() / 1000),
