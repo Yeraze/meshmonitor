@@ -8,7 +8,7 @@ This guide covers various deployment scenarios for MeshMonitor, from development
 
 MeshMonitor supports several deployment options:
 
-- **🐳 Docker Compose** (Recommended) - Easiest setup with auto-upgrade support
+- **🐳 Docker Compose** (Recommended) - Easiest setup; see [Updating MeshMonitor](/configuration/updating) for update notifications and optional unattended updates via Watchtower
 - **☸️ Kubernetes/Helm** - Production-grade orchestration ([separate guide](HELM_GUIDE.md))
 - **📦 Proxmox LXC** - Lightweight containers for Proxmox VE ([separate guide](PROXMOX_LXC_GUIDE.md))
 - **🔧 Bare Metal (Node.js)** - Direct deployment without containers

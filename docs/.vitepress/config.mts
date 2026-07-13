@@ -197,7 +197,7 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: 'Production Deployment', link: '/configuration/production' },
-            { text: '🔄 Automatic Self-Upgrade', link: '/configuration/auto-upgrade' },
+            { text: '🔄 Updating MeshMonitor', link: '/configuration/updating' },
             { text: 'Reducing Node Load', link: '/configuration/node-load' },
             { text: 'Push Notifications', link: '/features/notifications' },
             { text: '🗺️ Custom Tile Servers', link: '/configuration/custom-tile-servers' }
