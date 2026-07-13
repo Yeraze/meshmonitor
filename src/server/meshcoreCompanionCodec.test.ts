@@ -23,6 +23,7 @@ import {
   encodeChannelMsgRecv,
   encodeSent,
   encodeSendConfirmed,
+  encodeLoginSuccessPush,
   encodeLogRxData,
   encodeNoMoreMessages,
   PushCodes,
@@ -77,6 +78,56 @@ describe('meshcoreCompanionCodec — constants stay in sync with meshcore.js', (
 
   it('LogRxData push code matches the library (#3963)', () => {
     expect(PushCodes.LogRxData).toBe(Constants.PushCodes.LogRxData);
+  });
+});
+
+// LoginSuccess relay for firmware >= 1.16 (#4094). The app reads is_admin (byte 1)
+// to grant admin access and fw_ver_level (byte 13) to unlock neighbours/owner-info;
+// a truncated 8-byte frame leaves the app as guest with "Firmware update required".
+describe('meshcoreCompanionCodec — encodeLoginSuccessPush (#4094)', () => {
+  const PREFIX = Buffer.from('a1b2c3d4e5f6', 'hex');
+
+  it('emits the legacy 8-byte frame when no firmware version is known', () => {
+    const frame = encodeLoginSuccessPush(PREFIX);
+    expect(frame.length).toBe(8);
+    expect(frame[0]).toBe(PushCodes.LoginSuccess);
+    expect(frame[1]).toBe(0); // is_admin defaults to guest
+    expect(frame.subarray(2, 8)).toEqual(PREFIX);
+  });
+
+  it('emits a 14-byte admin frame carrying is_admin, timestamp, acl and version', () => {
+    const frame = encodeLoginSuccessPush(PREFIX, {
+      isAdmin: true,
+      firmwareVerLevel: 2,
+      serverTimestamp: 0x01020304,
+      aclPermissions: 7,
+    });
+    expect(frame.length).toBe(14);
+    expect(frame[0]).toBe(PushCodes.LoginSuccess);
+    expect(frame[1]).toBe(1); // is_admin
+    expect(frame.subarray(2, 8)).toEqual(PREFIX);
+    expect(frame.readUInt32LE(8)).toBe(0x01020304);
+    expect(frame[12]).toBe(7); // acl_permissions
+    expect(frame[13]).toBe(2); // fw_ver_level
+  });
+
+  it('round-trips through meshcore.js: admin frame decodes to isAdmin + firmwareVerLevel', async () => {
+    const decoded = await decodeWithMeshcore(
+      PushCodes.LoginSuccess,
+      encodeLoginSuccessPush(PREFIX, { isAdmin: true, firmwareVerLevel: 2, serverTimestamp: 42, aclPermissions: 3 }),
+    );
+    expect(Buffer.from(decoded.pubKeyPrefix)).toEqual(PREFIX);
+    expect(decoded.isAdmin).toBe(1);
+    expect(decoded.serverTimestamp).toBe(42);
+    expect(decoded.aclPermissions).toBe(3);
+    expect(decoded.firmwareVerLevel).toBe(2);
+  });
+
+  it('round-trips through meshcore.js: legacy frame decodes with no version fields', async () => {
+    const decoded = await decodeWithMeshcore(PushCodes.LoginSuccess, encodeLoginSuccessPush(PREFIX));
+    expect(Buffer.from(decoded.pubKeyPrefix)).toEqual(PREFIX);
+    expect(decoded.isAdmin).toBe(0);
+    expect(decoded.firmwareVerLevel).toBeUndefined();
   });
 });
 

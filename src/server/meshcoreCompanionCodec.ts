@@ -704,14 +704,47 @@ export function encodeSendConfirmed(ackCode: number, roundTripMs = 0): Buffer {
  * Encode a LoginSuccess(0x85) push — the node telling the app that a login it
  * initiated (SendLogin) succeeded. `pubKeyPrefix` is the first 6 bytes of the
  * remote node's public key, which is how the app correlates the push to its
- * pending login request. Layout mirrors meshcore.js `onLoginSuccessPush`:
- * `[0x85][reserved:1][pubKeyPrefix:6]`.
+ * pending login request.
+ *
+ * MeshCore firmware >= 1.16 returns a 14-byte frame carrying the remote's admin
+ * flag and firmware version level; the app reads byte 1 to grant admin (vs
+ * guest) access and byte 13 (`fw_ver_level`) to unlock version-gated features
+ * such as neighbours and owner-info (#4094). When those fields are supplied
+ * (i.e. `firmwareVerLevel` is known) we emit the full new-format frame:
+ *   `[0x85][is_admin:1][pubKeyPrefix:6][server_timestamp:u32LE][acl:1][fw_ver_level:1]`
+ * Otherwise (legacy firmware, no version reported) we emit the historical
+ * 8-byte frame `[0x85][is_admin:1][pubKeyPrefix:6]` — matching what pre-1.16
+ * firmware sends, where the app defaults to guest with no version gating.
+ * Layout mirrors meshcore.js `onLoginSuccessPush`.
  */
-export function encodeLoginSuccessPush(pubKeyPrefix: Buffer | Uint8Array): Buffer {
-  const b = Buffer.alloc(1 + 1 + 6);
+export function encodeLoginSuccessPush(
+  pubKeyPrefix: Buffer | Uint8Array,
+  opts?: {
+    isAdmin?: boolean;
+    firmwareVerLevel?: number;
+    serverTimestamp?: number;
+    aclPermissions?: number;
+  },
+): Buffer {
+  const isAdminByte = opts?.isAdmin ? 1 : 0;
+
+  // Legacy 8-byte frame when the remote firmware didn't report a version level.
+  if (opts?.firmwareVerLevel === undefined) {
+    const b = Buffer.alloc(1 + 1 + 6);
+    b[0] = PushCodes.LoginSuccess;
+    b[1] = isAdminByte;
+    Buffer.from(pubKeyPrefix).copy(b, 2, 0, 6);
+    return b;
+  }
+
+  // New 14-byte frame (firmware >= 1.16). Fixed layout → explicit offsets.
+  const b = Buffer.alloc(1 + 1 + 6 + 4 + 1 + 1);
   b[0] = PushCodes.LoginSuccess;
-  b[1] = 0; // reserved
+  b[1] = isAdminByte;
   Buffer.from(pubKeyPrefix).copy(b, 2, 0, 6);
+  b.writeUInt32LE((opts.serverTimestamp ?? 0) >>> 0, 8);
+  b[12] = (opts.aclPermissions ?? 0) & 0xff;
+  b[13] = opts.firmwareVerLevel & 0xff;
   return b;
 }
 

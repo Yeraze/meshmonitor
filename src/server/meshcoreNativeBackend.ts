@@ -1451,8 +1451,24 @@ export class MeshCoreNativeBackend extends EventEmitter {
       case 'login': {
         const publicKey = await this.resolvePublicKey(params.public_key as string);
         if (!publicKey) throw new Error('Login target not found');
-        await c.login(publicKey, String(params.password ?? ''));
-        return { ok: true };
+        // meshcore.js resolves login() with the parsed LoginSuccess push. On
+        // firmware >= 1.16 that carries the remote's is_admin flag and firmware
+        // version level, which the Virtual Node must relay so the app grants
+        // admin access and unlocks version-gated features (neighbours / owner
+        // info). Legacy firmware omits the trailing fields (undefined here).
+        const login = await c.login(publicKey, String(params.password ?? '')) as {
+          isAdmin?: number;
+          serverTimestamp?: number;
+          aclPermissions?: number;
+          firmwareVerLevel?: number;
+        };
+        return {
+          ok: true,
+          is_admin: login?.isAdmin,
+          server_timestamp: login?.serverTimestamp,
+          acl_permissions: login?.aclPermissions,
+          firmware_ver_level: login?.firmwareVerLevel,
+        };
       }
 
       case 'get_status': {
