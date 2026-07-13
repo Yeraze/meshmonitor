@@ -1185,10 +1185,15 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // Use the map tileset from settings
   const activeTileset = mapTileset;
 
-  // Handle center complete
-  const handleCenterComplete = () => {
+  // Handle center complete. MUST be stable: it's a dependency of
+  // MapCenterController's effect, and a new reference every render would
+  // re-run that effect and re-fire map.setView() while mapCenterTarget is
+  // still set — snapping the map back to the node on every re-render (poll,
+  // websocket, etc.) so the user can't pan away. `setMapCenterTarget` is a
+  // stable useState setter.
+  const handleCenterComplete = useCallback(() => {
     setMapCenterTarget(null);
-  };
+  }, [setMapCenterTarget]);
 
   // Handle node click from packet monitor
   const handlePacketNodeClick = (nodeId: string) => {
