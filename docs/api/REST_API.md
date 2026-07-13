@@ -17,20 +17,70 @@ Most endpoints require authentication. MeshMonitor supports:
 
 Public endpoints are limited to health checks and the optional anonymous read-only mode (`DISABLE_ANONYMOUS=false`).
 
-## API Versioning & Per-Source Scoping (4.0)
+## API Versioning & Per-Source Scoping
 
-MeshMonitor 4.0 reshaped the REST API to scope resources by **source** (a mesh node connection). New code should use the v1 per-source paths:
+::: warning Breaking change in 4.13 — v1 root paths are deprecated
+**As of 4.13 the canonical v1 shape is `/api/v1/sources/{sourceId}/...`.**
 
-- `GET /api/v1/sources` — list sources
-- `GET /api/v1/sources/{sourceId}/nodes` — nodes for a specific source
-- `GET /api/v1/sources/{sourceId}/messages` — messages for a specific source
-- `GET /api/v1/sources/{sourceId}/telemetry` — telemetry for a specific source
-- `GET /api/v1/sources/{sourceId}/traceroutes` — traceroutes for a specific source
-- `GET /api/v1/sources/{sourceId}/channels` — channels for a specific source
+The old v1 root paths (`/api/v1/nodes`, `/api/v1/messages`, etc.) are **deprecated for one release only**. Every response on those paths carries:
 
-::: warning Deprecated root-path endpoints
-The legacy root-scoped endpoints below (`GET /api/nodes`, `GET /api/messages`, `GET /api/channels`, `GET /api/telemetry`, `GET /api/traceroutes`, `GET /api/network`, `GET /api/packets`) still work but respond with an HTTP `Warning: 299` header: `"v1 root-path scoping is deprecated; use /api/v1/sources/:sourceId/... instead"`. They will be removed in a future release.
+```
+Warning: 299 - "v1 root-path scoping is deprecated; use /api/v1/sources/:sourceId/... instead"
+```
+
+**These paths will be REMOVED in 4.14. Migrate before upgrading.**
 :::
+
+### Canonical v1 endpoints (4.13+)
+
+All v1 requests require `Authorization: Bearer mm_v1_...` except `GET /api/v1/docs`.
+
+Use `"default"` as the `{sourceId}` to target the primary source without looking up its ID.
+
+Per-source resources:
+- `GET /api/v1/sources` — list sources the token can read
+- `GET /api/v1/sources/{sourceId}/nodes`
+- `GET /api/v1/sources/{sourceId}/messages`
+- `GET /api/v1/sources/{sourceId}/channels`
+- `GET /api/v1/sources/{sourceId}/telemetry`
+- `GET /api/v1/sources/{sourceId}/traceroutes`
+- `GET /api/v1/sources/{sourceId}/network`
+- `GET /api/v1/sources/{sourceId}/packets`
+- `GET /api/v1/sources/{sourceId}/status`
+- `GET /api/v1/sources/{sourceId}/nodes/{nodeId}/position-history`
+
+Deployment-global (no sourceId):
+- `GET /api/v1/solar`
+- `GET /api/v1/channel-database`
+
+### Migration table
+
+| Legacy v1 path (≤ 4.12)                               | Canonical v1 path (4.13+)                         |
+| ------------------------------------------------------ | -------------------------------------------------- |
+| `GET /api/v1/nodes?sourceId=X`                        | `GET /api/v1/sources/X/nodes`                     |
+| `GET /api/v1/messages?sourceId=X`                     | `GET /api/v1/sources/X/messages`                  |
+| `GET /api/v1/channels?sourceId=X`                     | `GET /api/v1/sources/X/channels`                  |
+| `GET /api/v1/telemetry?sourceId=X`                    | `GET /api/v1/sources/X/telemetry`                 |
+| `GET /api/v1/traceroutes?sourceId=X`                  | `GET /api/v1/sources/X/traceroutes`               |
+| `GET /api/v1/network?sourceId=X`                      | `GET /api/v1/sources/X/network`                   |
+| `GET /api/v1/packets?sourceId=X`                      | `GET /api/v1/sources/X/packets`                   |
+| `GET /api/v1/status?sourceId=X`                       | `GET /api/v1/sources/X/status`                    |
+| `GET /api/v1/nodes/{id}/position-history?sourceId=X`  | `GET /api/v1/sources/X/nodes/{id}/position-history` |
+
+### Migration curl example
+
+```bash
+TOKEN="mm_v1_your_token_here"
+SOURCE="01J3ABCDEFG"  # or use "default" for the primary source
+
+# Legacy (≤ 4.12) — DEPRECATED, removed in 4.14
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/v1/nodes?sourceId=$SOURCE"
+
+# Canonical (4.13+)
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8080/api/v1/sources/$SOURCE/nodes"
+```
 
 ## Error Handling
 
@@ -43,9 +93,21 @@ The API uses standard HTTP status codes and returns error responses in the follo
 }
 ```
 
+v1 API errors use the envelope format:
+
+```json
+{
+  "success": false,
+  "error": "sourceId is required",
+  "code": "MISSING_SOURCE_ID"
+}
+```
+
+Per-source v1 endpoints return `400 MISSING_SOURCE_ID` when `sourceId` is absent from a request that requires it. There is no silent fallback to the primary source.
+
 **Common Status Codes:**
 - `200` - Success
-- `400` - Bad Request (invalid parameters)
+- `400` - Bad Request (invalid parameters, or missing `sourceId` on a per-source endpoint)
 - `404` - Not Found
 - `500` - Internal Server Error
 

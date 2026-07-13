@@ -120,6 +120,17 @@ volumes:
     driver: local
 ```
 
+::: tip Choosing an image tag
+| Tag | Track | Cadence | When to use |
+|-----|-------|---------|-------------|
+| `:latest` | Stable | ~weekly | **Default.** Recommended for most users |
+| `:dev` | RC / fast-track | ~daily | You want the newest features immediately and accept RC stability |
+| `:<major>.<minor>` e.g. `:4.13` | Stable line | Each stable in that series | Rolling upgrades pinned to a minor version |
+| `:<version>` e.g. `:4.13.0` | Pinned | Never (immutable) | Full control over exactly which version runs |
+
+`:dev` can briefly lag behind `:latest` right after a stable release ships, until the next RC is published. See the [FAQ](/faq#how-often-does-meshmonitor-release) for more details.
+:::
+
 **That's it!** No need for SESSION_SECRET, COOKIE_SECURE, or other complex settings for basic usage.
 
 ### 2. Start MeshMonitor

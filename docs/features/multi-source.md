@@ -10,7 +10,7 @@ Multi-Source lets a single MeshMonitor deployment talk to **multiple meshes at o
 
 A **source** is one upstream connection MeshMonitor speaks to. Each source has:
 
-- A **type** — `meshtastic_tcp`, `meshcore`, `mqtt_broker` (embedded MQTT broker hosting locally-connected clients), or `mqtt_bridge` (MQTT client to one upstream broker, optionally attached to a sibling `mqtt_broker` for fan-out — see [Embedded MQTT Broker & Bridge](/features/mqtt-broker)). Serial and BLE Meshtastic nodes connect through the Serial Bridge / BLE Bridge sidecars and appear as `meshtastic_tcp` sources pointing at the bridge container. MeshCore connects directly — USB through the UI, TCP via the legacy env-var bootstrap path. No sidecar either way.
+- A **type** — `meshtastic_tcp`, `meshcore`, `mqtt_broker` (embedded MQTT broker hosting locally-connected clients), or `mqtt_bridge` (MQTT client to one upstream broker, optionally attached to a sibling `mqtt_broker` for fan-out — see [Embedded MQTT Broker & Bridge](/features/mqtt-broker)). Serial and BLE Meshtastic nodes connect through the Serial Bridge / BLE Bridge sidecars and appear as `meshtastic_tcp` sources pointing at the bridge container. MeshCore connects directly — USB or TCP through the UI. No sidecar either way.
 - Its own **connection settings** (host, port, device path, credentials)
 - Its own **scheduler** (auto-responder, auto-announce, auto-traceroute, auto-ack)
 - Its own **Virtual Node** endpoint (TCP sources only)
@@ -142,6 +142,24 @@ If you're upgrading from 3.x:
 3. **Re-enable VN per source** — Dashboard → Edit Source → Virtual Node on each TCP source you want to expose
 4. **Review permissions** — the per-source permission matrix may need admin review for non-admin users
 5. **Back up first** — use System Backup from the Settings page before upgrading. The sources table is included.
+
+## REST API
+
+The v1 API reflects the per-source model directly. All mesh-data resources are scoped under `/api/v1/sources/{sourceId}/...`:
+
+```
+GET /api/v1/sources                              # list sources
+GET /api/v1/sources/{sourceId}/nodes
+GET /api/v1/sources/{sourceId}/messages
+GET /api/v1/sources/{sourceId}/channels
+GET /api/v1/sources/{sourceId}/telemetry
+GET /api/v1/sources/{sourceId}/traceroutes
+GET /api/v1/sources/{sourceId}/network
+GET /api/v1/sources/{sourceId}/packets
+GET /api/v1/sources/{sourceId}/status
+```
+
+Use `"default"` as `{sourceId}` to target the primary source. All v1 requests require `Authorization: Bearer mm_v1_...`. See the [API Reference](/development/api-reference) for complete documentation.
 
 ## Related
 

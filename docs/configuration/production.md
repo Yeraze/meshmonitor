@@ -27,12 +27,16 @@ Before deploying to production, ensure:
 
 For single-server deployments:
 
+::: tip Choosing an image tag for production
+Use `ghcr.io/yeraze/meshmonitor:latest` (stable, ~weekly updates) or a pinned version such as `ghcr.io/yeraze/meshmonitor:4.13.0` for full control over when you update. **Do not use `:dev` in production** — it tracks release candidates and may be updated daily with pre-release builds. See the [FAQ](/faq#how-often-does-meshmonitor-release) for a full comparison.
+:::
+
 ```yaml
 version: '3.8'
 
 services:
   meshmonitor:
-    image: meshmonitor:latest
+    image: ghcr.io/yeraze/meshmonitor:latest
     restart: unless-stopped
     environment:
       - MESHTASTIC_NODE_IP=192.168.1.100

@@ -1,5 +1,15 @@
 # MeshMonitor API Documentation
 
+::: warning This document is outdated — use REST_API.md or API_REFERENCE.md instead
+This file predates the v1 API and the per-source architecture. The endpoint paths listed here (`/api/nodes`, `/api/messages`, etc.) may be partially stale.
+
+**For current API documentation:**
+- [REST API overview and v1 endpoint reference](./REST_API.md)
+- [Full API Reference](./API_REFERENCE.md)
+
+**As of 4.13**, the canonical v1 paths are `/api/v1/sources/{sourceId}/nodes`, `/api/v1/sources/{sourceId}/messages`, etc. All v1 requests require `Authorization: Bearer mm_v1_...`. The old root paths (`/api/v1/nodes`, `/api/v1/messages`, …) are deprecated and will be removed in 4.14.
+:::
+
 This document provides comprehensive documentation for the MeshMonitor REST API.
 
 ## Base URL

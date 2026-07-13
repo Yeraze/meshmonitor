@@ -120,6 +120,8 @@ Each MeshCore source has its own multi-pane page accessible by clicking the sour
 
 A map of every contact with valid coordinates, plus a styled row list aligned to the same visual vocabulary as the Meshtastic nodes view. The map honours zoom-based label visibility and falls through to the dashboard map when the source is selected at the dashboard level. A search/filter bar lets you quickly find contacts by name or public key prefix.
 
+On **mobile**, the node list and the map occupy the same area; a toggle button switches between them so the map is always reachable without first selecting a node. On desktop, a collapse button collapses the list to a thin sidebar (preference persisted to `localStorage`).
+
 ### Channels
 
 The device's channels with the most recent message stream. Channel-message senders are now extracted from the `"Name: body"` prefix that MeshCore embeds in the text body, so the sender column and the message body are no longer collapsed into one string.
@@ -505,6 +507,23 @@ Changing radio parameters will disconnect you from nodes using different setting
 :::
 
 Saved radio params are now persisted authoritatively: the backend propagates device-side errors back instead of silently returning success, and the manager optimistically updates `localNode.radio*` then refreshes from the device so the next snapshot reflects the real device state.
+
+## Packet Monitor
+
+The MeshCore page includes a **Packet Monitor** tab (sub-toolbar: **Packets**) that surfaces raw OTA frames captured from the companion's `LogRxData` (0x88) push. This is the MeshCore analogue of the Meshtastic [Packet Monitor](/features/packet-monitor).
+
+Capture is opt-in. The view exposes an **Enable** toggle and retention controls (max packet count, max age in hours) inline; no separate settings page is required. Once enabled, the monitor shows:
+
+- **Timestamp** — when the packet was received
+- **Route type** — direct / flood / etc. (decoded from the OTA frame)
+- **Payload type** — message type in human-readable form where known, raw hex otherwise
+- **Relay chain** — the relay-hash sequence from the packet
+- **Hop count**, **SNR**, and **RSSI**
+- **Raw hex dump** — the full OTA frame, accessible via the detail modal
+
+New packets stream in live over the existing Socket.io connection (no separate subscription is needed). The view can be **paused** and **exported** (`.jsonl` format) for offline analysis. Filtering by payload type and route type narrows the display.
+
+The `packetmonitor:write` permission is required to clear the log; `settings:write` is required to toggle capture on/off and adjust retention.
 
 ## Still Early
 
