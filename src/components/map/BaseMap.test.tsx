@@ -96,18 +96,34 @@ describe('BaseMap', () => {
     expect(rasterTile.getAttribute('data-url')).toBe(OSM_URL);
   });
 
-  // 3b. Tile-key remount (Phase 7 §2.1): the tile layer must remount (fresh
-  // DOM node) when the resolved tileset id changes, and must NOT remount for
-  // an unrelated re-render that leaves the tileset id unchanged.
-  it('remounts the raster tile layer when tilesetId changes', () => {
+  // 3b. Raster tile-layer keying (tile-loading regression fix): the raster
+  // TileLayer is keyed by `maxZoom`, NOT the tileset id. A same-maxZoom tileset
+  // swap must refresh its URL IN PLACE (react-leaflet 5 calls layer.setUrl),
+  // NOT remount — a remount tears the layer down and aborts the in-flight tile
+  // batch (net::ERR_ABORTED), i.e. a blank/flickering map on the once-per-load
+  // global→user mapTileset flip. It must still remount when maxZoom differs
+  // (the one option setUrl/updateGridLayer don't patch).
+  it('refreshes the raster URL in place (no remount) for a same-maxZoom tileset swap (osm↔osmHot, both z19)', () => {
     const { rerender, getByTestId } = render(<BaseMap center={[0, 0]} zoom={3} tilesetId="osm" />);
     const before = getByTestId('raster-tile');
+    expect(before.getAttribute('data-url')).toBe(OSM_URL);
     rerender(<BaseMap center={[0, 0]} zoom={3} tilesetId="osmHot" />);
     const after = getByTestId('raster-tile');
-    expect(after).not.toBe(before);
+    expect(after).toBe(before); // same DOM node — swapped in place, not remounted
+    expect(after.getAttribute('data-url')).toBe('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png');
   });
 
-  it('does not remount the raster tile layer on an unrelated re-render (tilesetId unchanged)', () => {
+  it('remounts the raster tile layer when maxZoom changes (osm z19 → openTopo z17)', () => {
+    const { rerender, getByTestId } = render(<BaseMap center={[0, 0]} zoom={3} tilesetId="osm" />);
+    const before = getByTestId('raster-tile');
+    expect(before.getAttribute('data-maxzoom')).toBe('19');
+    rerender(<BaseMap center={[0, 0]} zoom={3} tilesetId="openTopo" />);
+    const after = getByTestId('raster-tile');
+    expect(after).not.toBe(before);
+    expect(after.getAttribute('data-maxzoom')).toBe('17');
+  });
+
+  it('does not remount the raster tile layer on an unrelated re-render (tileset unchanged)', () => {
     const { rerender, getByTestId } = render(<BaseMap center={[0, 0]} zoom={3} tilesetId="osm" />);
     const before = getByTestId('raster-tile');
     rerender(<BaseMap center={[0, 0]} zoom={4} tilesetId="osm" />);
