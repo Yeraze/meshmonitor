@@ -1,5 +1,5 @@
 {
-    "nav.nodes": "Ноды",
+    "nav.nodes": "Узлы",
     "nav.messages": "Сообщения",
     "nav.channels": "Каналы",
     "nav.info": "Инфо",
@@ -4011,7 +4011,7 @@
     "meshcore.disconnect": "",
     "source.sidebar.unified_telemetry": "📡 Единая телеметрия",
     "unified.messages.hop_count_one": "{{count}} прыжок",
-    "dashboard.widget.hop_distance_heatmap.hops_axis": "Узлы",
+    "dashboard.widget.hop_distance_heatmap.hops_axis": "Прыжки",
     "source.edit": "Редактировать Источник",
     "source.sidebar.github": "GitHub",
     "unified.messages.loading": "Загрузка сообщений…",
@@ -4267,5 +4267,7 @@
     "node_popup.hops_other": "",
     "node_popup.sources_seen_by_one": "",
     "node_popup.sources_seen_by_other": "",
-    "node_popup.meshcore_device": ""
+    "node_popup.meshcore_device": "",
+    "meshcore.settings.currently_connected": "Подключение установлено. Чтобы изменить настройки подключения, сначала отключитесь.",
+    "meshcore.settings.actions_hint": "Обновите список контактов с устройства или разошлите новое рекламное сообщение."
 }
