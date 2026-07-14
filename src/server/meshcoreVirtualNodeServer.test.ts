@@ -17,8 +17,15 @@ import {
 import type { MeshCoreNode, MeshCoreContact, MeshCoreMessage, MeshCoreLoginResult } from './meshcoreManager.js';
 
 // Audit logging is fire-and-forget; stub it so the test doesn't touch the DB.
+// `settings.getSetting` backs the configurable CLI reply-timeout (#4027); default
+// to null (unset) so most tests exercise the built-in 15s fallback. Declared via
+// vi.hoisted so the hoisted vi.mock factory can reference it without a TDZ error.
+const { getSettingMock } = vi.hoisted(() => ({ getSettingMock: vi.fn().mockResolvedValue(null) }));
 vi.mock('../services/database.js', () => ({
-  default: { auditLogAsync: vi.fn().mockResolvedValue(undefined) },
+  default: {
+    auditLogAsync: vi.fn().mockResolvedValue(undefined),
+    settings: { getSetting: (key: string) => getSettingMock(key) },
+  },
 }));
 
 const LOCAL_NODE: MeshCoreNode = {
@@ -148,8 +155,8 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
     } | null>;
   }
   sendCliCommandMock = vi.fn().mockResolvedValue({ reply: 'ok', elapsedMs: 42 });
-  sendCliCommand(publicKey: string, command: string) {
-    return this.sendCliCommandMock(publicKey, command) as Promise<{ reply: string; elapsedMs: number }>;
+  sendCliCommand(publicKey: string, command: string, opts?: { timeoutMs?: number }) {
+    return this.sendCliCommandMock(publicKey, command, opts) as Promise<{ reply: string; elapsedMs: number }>;
   }
   emitMessage(msg: MeshCoreMessage) { this.emit('message', msg); }
   emitSendConfirmed(data: { ackCode: number; roundTripMs: number }) { this.emit('send_confirmed', data); }
@@ -1280,7 +1287,9 @@ describe('MeshCoreVirtualNodeServer — SendTxtMsg CLI relay (#4106)', () => {
     const [sent, waiting] = await sentPush;
     expect(sent[0]).toBe(ResponseCodes.Sent);
     expect(waiting[0]).toBe(PushCodes.MsgWaiting);
-    expect(manager.sendCliCommandMock).toHaveBeenCalledWith(REMOTE_KEY, 'get name');
+    // With no meshcoreCliTimeoutSeconds set (getSettingMock → null), the built-in
+    // 15s default is passed through as the sendCliCommand timeout.
+    expect(manager.sendCliCommandMock).toHaveBeenCalledWith(REMOTE_KEY, 'get name', { timeoutMs: 15_000 });
     // Plain-DM send must NOT have been used for a CLI-typed frame.
     expect(manager.sendMessageWithResultMock).not.toHaveBeenCalled();
 
@@ -1292,6 +1301,30 @@ describe('MeshCoreVirtualNodeServer — SendTxtMsg CLI relay (#4106)', () => {
     // the reply to its CLI console instead of the chat thread.
     expect(recv[8]).toBe(1);
     expect(recv.subarray(-'name: MyRepeater'.length).toString('utf8')).toBe('name: MyRepeater');
+  });
+
+  it('honors the operator-configured meshcoreCliTimeoutSeconds (#4027) for both the Sent estimate and sendCliCommand', async () => {
+    await startWith(true);
+    // Operator raised the CLI timeout to 30s for a slow multi-hop repeater.
+    getSettingMock.mockResolvedValueOnce('30');
+    manager.sendCliCommandMock.mockResolvedValueOnce({ reply: 'ok', elapsedMs: 10 });
+    const sent = await client.request(cliFrame('get name'));
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    // Sent(6): [code][result:i8][expectedAckCrc:u32LE][estTimeout:u32LE] — the
+    // estimate the app waits on must match the configured 30s, not the 15s default.
+    expect(sent.readUInt32LE(6)).toBe(30_000);
+    // …and the same effective timeout must be handed to the manager, so a distant
+    // repeater's reply isn't cut off at 15s (the exact #4106 multi-hop case).
+    expect(manager.sendCliCommandMock).toHaveBeenCalledWith(REMOTE_KEY, 'get name', { timeoutMs: 30_000 });
+  });
+
+  it('falls back to the 15s default when meshcoreCliTimeoutSeconds is out of range', async () => {
+    await startWith(true);
+    getSettingMock.mockResolvedValueOnce('999'); // > 60s clamp → invalid, ignored
+    manager.sendCliCommandMock.mockResolvedValueOnce({ reply: 'ok', elapsedMs: 10 });
+    const sent = await client.request(cliFrame('get name'));
+    expect(sent.readUInt32LE(6)).toBe(15_000);
+    expect(manager.sendCliCommandMock).toHaveBeenCalledWith(REMOTE_KEY, 'get name', { timeoutMs: 15_000 });
   });
 
   it('drops the CLI reply silently when the client disconnected mid-round-trip', async () => {

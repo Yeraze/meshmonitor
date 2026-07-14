@@ -145,9 +145,14 @@ export interface MeshCoreVirtualNodeManager {
    * `sendMessageWithResult` instead. Rejects if the local device isn't a
    * Companion or the command times out; `handleSendCliTxtMsg` catches this
    * and simply pushes nothing further (mirrors a real node's silence on a
-   * failed CLI round-trip).
+   * failed CLI round-trip). `opts.timeoutMs` lets the caller honor the
+   * operator's configurable CLI timeout (#4027) instead of the built-in 15s.
    */
-  sendCliCommand(publicKey: string, command: string): Promise<{ reply: string; elapsedMs: number }>;
+  sendCliCommand(
+    publicKey: string,
+    command: string,
+    opts?: { timeoutMs?: number },
+  ): Promise<{ reply: string; elapsedMs: number }>;
   /** EventEmitter surface — the manager emits 'message' with a MeshCoreMessage. */
   on(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
   off(event: 'message', listener: (msg: MeshCoreMessage) => void): unknown;
@@ -1062,14 +1067,36 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
   }
 
   /**
-   * Default reply-timeout hint (ms) returned in Sent responses for CLI
-   * commands. Matches `MeshCoreManager.sendCliCommand`'s own default
-   * `timeoutMs` (15_000) — keep these in sync: if the manager's internal
-   * timeout ever grows past this value, a reply could arrive and queue a
-   * MsgWaiting push after the app has already given up waiting on the Sent
-   * response's estimated timeout.
+   * Fallback reply-timeout hint (ms) for CLI commands when the operator hasn't
+   * configured `meshcoreCliTimeoutSeconds` (#4027). Matches
+   * `MeshCoreManager.sendCliCommand`'s own default `timeoutMs` (15_000). The
+   * effective value flows through `resolveCliReplyTimeoutMs()` into BOTH the
+   * Sent response's estimate AND the `sendCliCommand` call, so a reply can
+   * never arrive after the app has stopped waiting on the estimate.
    */
   private readonly CLI_REPLY_EST_TIMEOUT_MS = 15_000;
+
+  /**
+   * Resolve the effective CLI reply-timeout (ms), honoring the operator's
+   * global `meshcoreCliTimeoutSeconds` setting (#4027) — the same setting the
+   * remote-admin console routes respect via `resolveCliTimeoutMs`. Clamped to
+   * 1..60s; any unset/out-of-range/invalid value (or a settings read failure)
+   * falls back to the built-in 15s default so the pre-#4027 behavior is
+   * preserved. The app doesn't send a per-call override on this path, so only
+   * the global setting is consulted.
+   */
+  private async resolveCliReplyTimeoutMs(): Promise<number> {
+    try {
+      const raw = await databaseService.settings.getSetting('meshcoreCliTimeoutSeconds');
+      const seconds = raw == null ? NaN : parseInt(raw, 10);
+      if (Number.isFinite(seconds) && seconds >= 1 && seconds <= 60) {
+        return seconds * 1000;
+      }
+    } catch (err) {
+      logger.debug(`[MeshCore VN ${this.sourceId}] CLI timeout setting read failed, using default: ${(err as Error).message}`);
+    }
+    return this.CLI_REPLY_EST_TIMEOUT_MS;
+  }
 
   /** Monotonic counter for synthetic CLI-reply message IDs (avoids a same-millisecond collision). */
   private nextCliReplyId = 1;
@@ -1099,9 +1126,10 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       return;
     }
     const keyShort = targetPublicKey.substring(0, 12);
-    this.send(clientId, encodeSent(0, 0, this.CLI_REPLY_EST_TIMEOUT_MS));
+    const timeoutMs = await this.resolveCliReplyTimeoutMs();
+    this.send(clientId, encodeSent(0, 0, timeoutMs));
     try {
-      const { reply } = await this.options.manager.sendCliCommand(targetPublicKey, command);
+      const { reply } = await this.options.manager.sendCliCommand(targetPublicKey, command, { timeoutMs });
       const client = this.clients.get(clientId);
       if (!client) return; // client disconnected while the CLI round-trip was in flight
       client.pendingMessages.push({

@@ -201,7 +201,11 @@ is **always** refused regardless of the gate. All connects/admin-forwards are au
   console uses, see `MESHCORE_REMOTE_ADMIN.md`) instead of `sendMessageWithResult`; the reply is
   queued through the normal `MsgWaiting`→`SyncNextMessage` path, tagged `txtType=CliData` on the
   way back out so the app renders it as a CLI reply. Gated on `allowAdminCommands` like the other
-  config-mutating commands, since CLI text can include `set`/`reboot`/`setperm`.
+  config-mutating commands, since CLI text can include `set`/`reboot`/`setperm`. The effective
+  reply-timeout honors the operator's `meshcoreCliTimeoutSeconds` setting (#4027) — the same
+  setting the remote-admin console routes respect — and the resolved value is passed to **both**
+  the `Sent` estimate and `sendCliCommand`, so a distant multi-hop repeater's reply isn't cut off
+  at the 15s default the app was told to wait.
 
 ### Protocol subtleties found in testing (don't regress these)
 - **Channel send acks `Ok`, DM send acks `Sent`.** meshcore.js's `sendChannelTextMessage`
