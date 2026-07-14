@@ -109,6 +109,18 @@ export const BinaryRequestTypes = {
   GetNeighbours: 0x06, // REQ_TYPE_GET_NEIGHBOURS
 } as const;
 
+/**
+ * `txt_type` byte carried by SendTxtMsg/SendChannelTxtMsg and ContactMsgRecv
+ * (mirrors meshcore.js `Constants.TxtType`). CliData distinguishes a CLI
+ * command/reply from a normal chat DM — same PAYLOAD_TYPE_TXT_MSG packet,
+ * one byte flipped.
+ */
+export const TxtType = {
+  Plain: 0,
+  CliData: 1,
+  SignedPlain: 2,
+} as const;
+
 /** Error codes carried by an Err(1) response. */
 export const ErrorCodes = {
   UnsupportedCmd: 1,

@@ -17,8 +17,15 @@ import {
 import type { MeshCoreNode, MeshCoreContact, MeshCoreMessage, MeshCoreLoginResult } from './meshcoreManager.js';
 
 // Audit logging is fire-and-forget; stub it so the test doesn't touch the DB.
+// `settings.getSetting` backs the configurable CLI reply-timeout (#4027); default
+// to null (unset) so most tests exercise the built-in 15s fallback. Declared via
+// vi.hoisted so the hoisted vi.mock factory can reference it without a TDZ error.
+const { getSettingMock } = vi.hoisted(() => ({ getSettingMock: vi.fn().mockResolvedValue(null) }));
 vi.mock('../services/database.js', () => ({
-  default: { auditLogAsync: vi.fn().mockResolvedValue(undefined) },
+  default: {
+    auditLogAsync: vi.fn().mockResolvedValue(undefined),
+    settings: { getSetting: (key: string) => getSettingMock(key) },
+  },
 }));
 
 const LOCAL_NODE: MeshCoreNode = {
@@ -146,6 +153,10 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
       total: number;
       neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[];
     } | null>;
+  }
+  sendCliCommandMock = vi.fn().mockResolvedValue({ reply: 'ok', elapsedMs: 42 });
+  sendCliCommand(publicKey: string, command: string, opts?: { timeoutMs?: number }) {
+    return this.sendCliCommandMock(publicKey, command, opts) as Promise<{ reply: string; elapsedMs: number }>;
   }
   emitMessage(msg: MeshCoreMessage) { this.emit('message', msg); }
   emitSendConfirmed(data: { ackCode: number; roundTripMs: number }) { this.emit('send_confirmed', data); }
@@ -1238,5 +1249,140 @@ describe('MeshCoreVirtualNodeServer — SendBinaryReq/GetNeighbours relay (#3904
     expect(res[0]).toBe(ResponseCodes.Err);
     expect(res[1]).toBe(ErrorCodes.UnsupportedCmd);
     expect(manager.getNeighboursMock).not.toHaveBeenCalled();
+  });
+});
+
+// SendTxtMsg(txtType=CliData): a plain-DM send never reaches the remote's CLI
+// handler, so an app that just logged in as admin (#4095) got no reply and
+// timed out on every follow-up admin action (#4106). Gated on
+// allowAdminCommands like the local Set* config commands (#3904), since a CLI
+// string can mutate remote config.
+describe('MeshCoreVirtualNodeServer — SendTxtMsg CLI relay (#4106)', () => {
+  let server: MeshCoreVirtualNodeServer;
+  let client: TestClient;
+  let manager: FakeManager;
+
+  const REMOTE_KEY = 'b1'.repeat(32); // matches SAMPLE_CONTACTS
+  const REMOTE_PREFIX = Buffer.from(REMOTE_KEY, 'hex').subarray(0, 6);
+
+  async function startWith(allowAdminCommands: boolean): Promise<void> {
+    manager = new FakeManager();
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager, allowAdminCommands, databaseService: CHANNELS_DB });
+    await server.start();
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+  }
+  afterEach(async () => { client?.close(); await server?.stop(); });
+
+  // [2][txtType=1(CliData)][attempt=0][senderTimestamp:u32=0][prefix:6][text]
+  function cliFrame(text: string): number[] {
+    return [CommandCodes.SendTxtMsg, 1, 0, 0, 0, 0, 0, ...REMOTE_PREFIX, ...Buffer.from(text, 'utf8')];
+  }
+
+  it('replies Sent, then delivers the CLI reply as ContactMsgRecv(txtType=CliData) via SyncNextMessage', async () => {
+    await startWith(true);
+    manager.sendCliCommandMock.mockResolvedValueOnce({ reply: 'name: MyRepeater', elapsedMs: 120 });
+    const sentPush = client.expectFrames(2);
+    client.send(cliFrame('get name'));
+    const [sent, waiting] = await sentPush;
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    expect(waiting[0]).toBe(PushCodes.MsgWaiting);
+    // With no meshcoreCliTimeoutSeconds set (getSettingMock → null), the built-in
+    // 15s default is passed through as the sendCliCommand timeout.
+    expect(manager.sendCliCommandMock).toHaveBeenCalledWith(REMOTE_KEY, 'get name', { timeoutMs: 15_000 });
+    // Plain-DM send must NOT have been used for a CLI-typed frame.
+    expect(manager.sendMessageWithResultMock).not.toHaveBeenCalled();
+
+    const recv = await client.request([CommandCodes.SyncNextMessage]);
+    expect(recv[0]).toBe(ResponseCodes.ContactMsgRecv);
+    expect(recv.subarray(1, 7)).toEqual(REMOTE_PREFIX);
+    // ContactMsgRecv layout: [code:1][prefix:6][pathLen:1][txtType:1]… → byte
+    // index 8 is txtType. Must be CliData(1), not Plain(0), so the app routes
+    // the reply to its CLI console instead of the chat thread.
+    expect(recv[8]).toBe(1);
+    expect(recv.subarray(-'name: MyRepeater'.length).toString('utf8')).toBe('name: MyRepeater');
+  });
+
+  it('honors the operator-configured meshcoreCliTimeoutSeconds (#4027) for both the Sent estimate and sendCliCommand', async () => {
+    await startWith(true);
+    // Operator raised the CLI timeout to 30s for a slow multi-hop repeater.
+    getSettingMock.mockResolvedValueOnce('30');
+    manager.sendCliCommandMock.mockResolvedValueOnce({ reply: 'ok', elapsedMs: 10 });
+    const sent = await client.request(cliFrame('get name'));
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    // Sent(6): [code][result:i8][expectedAckCrc:u32LE][estTimeout:u32LE] — the
+    // estimate the app waits on must match the configured 30s, not the 15s default.
+    expect(sent.readUInt32LE(6)).toBe(30_000);
+    // …and the same effective timeout must be handed to the manager, so a distant
+    // repeater's reply isn't cut off at 15s (the exact #4106 multi-hop case).
+    expect(manager.sendCliCommandMock).toHaveBeenCalledWith(REMOTE_KEY, 'get name', { timeoutMs: 30_000 });
+  });
+
+  it('falls back to the 15s default when meshcoreCliTimeoutSeconds is out of range', async () => {
+    await startWith(true);
+    getSettingMock.mockResolvedValueOnce('999'); // > 60s clamp → invalid, ignored
+    manager.sendCliCommandMock.mockResolvedValueOnce({ reply: 'ok', elapsedMs: 10 });
+    const sent = await client.request(cliFrame('get name'));
+    expect(sent.readUInt32LE(6)).toBe(15_000);
+    expect(manager.sendCliCommandMock).toHaveBeenCalledWith(REMOTE_KEY, 'get name', { timeoutMs: 15_000 });
+  });
+
+  it('drops the CLI reply silently when the client disconnected mid-round-trip', async () => {
+    await startWith(true);
+    let resolveCli!: (v: { reply: string; elapsedMs: number }) => void;
+    manager.sendCliCommandMock.mockReturnValueOnce(new Promise((resolve) => { resolveCli = resolve; }));
+    client.send(cliFrame('get name'));
+    const sent = await client.expectFrames(1);
+    expect(sent[0][0]).toBe(ResponseCodes.Sent);
+
+    client.close(); // client goes away while the CLI round-trip is still in flight
+    await new Promise((r) => setTimeout(r, 20));
+    // Resolving after disconnect must not throw or leak a queued message onto
+    // a client map entry that no longer exists.
+    expect(() => resolveCli({ reply: 'name: MyRepeater', elapsedMs: 5 })).not.toThrow();
+    await new Promise((r) => setTimeout(r, 20));
+  });
+
+  it('replies Err(NotFound) for a CLI command to an unknown contact prefix, without calling the manager', async () => {
+    await startWith(true);
+    const unknownPrefix = Buffer.from('ff'.repeat(6), 'hex'); // no matching contact
+    const frame = [CommandCodes.SendTxtMsg, 1, 0, 0, 0, 0, 0, ...unknownPrefix, ...Buffer.from('get name', 'utf8')];
+    const res = await client.request(frame);
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.NotFound);
+    expect(manager.sendCliCommandMock).not.toHaveBeenCalled();
+    expect(manager.sendMessageWithResultMock).not.toHaveBeenCalled();
+  });
+
+  it('replies Err(UnsupportedCmd) and never calls the manager when allowAdminCommands is off', async () => {
+    await startWith(false);
+    const res = await client.request(cliFrame('reboot'));
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.UnsupportedCmd);
+    expect(manager.sendCliCommandMock).not.toHaveBeenCalled();
+    expect(manager.sendMessageWithResultMock).not.toHaveBeenCalled();
+  });
+
+  it('replies Sent but pushes nothing when the CLI command rejects (timeout / not Companion)', async () => {
+    await startWith(true);
+    manager.sendCliCommandMock.mockRejectedValueOnce(new Error('CLI command timed out after 15000ms'));
+    const sent = await client.request(cliFrame('get name'));
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    const second = await Promise.race([
+      client.expectFrames(1).then((f) => f[0]),
+      new Promise<null>((r) => setTimeout(() => r(null), 100)),
+    ]);
+    expect(second).toBeNull();
+  });
+
+  it('still resolves a plain-chat SendTxtMsg (txtType=Plain) via sendMessageWithResult, not the CLI path', async () => {
+    await startWith(true);
+    manager.sendMessageWithResultMock.mockResolvedValueOnce({ ok: true, expectedAckCrc: 0x55, estTimeout: 9000 });
+    // [2][txtType=0][attempt=0][ts:4][prefix:6][text]
+    const frame = [CommandCodes.SendTxtMsg, 0, 0, 0, 0, 0, 0, ...REMOTE_PREFIX, ...Buffer.from('hi', 'utf8')];
+    const sent = await client.request(frame);
+    expect(sent[0]).toBe(ResponseCodes.Sent);
+    expect(manager.sendMessageWithResultMock).toHaveBeenCalledWith('hi', REMOTE_KEY, undefined);
+    expect(manager.sendCliCommandMock).not.toHaveBeenCalled();
   });
 });
