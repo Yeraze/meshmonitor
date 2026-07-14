@@ -194,9 +194,11 @@ export async function getChannelByIdHandler(req: Request, res: Response) {
     }
 
     const scope = await resolveCallerScope(req);
-    if (!scope.hasRead) {
-      return forbidden(res, 'channel_database:read permission required');
-    }
+    // No resource-level `channel_database:read` gate here: consistent with the
+    // list endpoint, a per-entry `canRead` grant on this specific entry is
+    // sufficient to read it (the "Virtual Channel Permissions" UI writes only
+    // those per-entry grants). Non-writers without a canRead row fall through to
+    // the 404 below, which also masks the entry's existence.
 
     const channel = await databaseService.channelDatabase.getByIdAsync(id);
     if (!channel) {

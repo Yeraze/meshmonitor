@@ -206,10 +206,27 @@ describe('Legacy mount — GET /:id permission filtering', () => {
     expect(res.status).toBe(404);
   });
 
-  it('non-admin without :read: returns 403', async () => {
+  it('non-admin WITHOUT resource :read but WITH per-entry canRead: returns entry (200, masked PSK)', async () => {
+    // Regression (consistency with GET /): a per-entry canRead grant alone is
+    // enough to read the specific entry — no resource-level channel_database:read
+    // required. No :read grant seeded here.
+    vi.spyOn(databaseService.channelDatabase, 'getPermissionAsync').mockResolvedValue(
+      { userId: harness.limited.id, channelDatabaseId: 1, canViewOnMap: false, canRead: true } as any
+    );
+
     const agent = await harness.loginAs(harness.limited);
     const res = await agent.get('/api/channel-database/1');
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(res.body.data.psk).toBeUndefined();
+    expect(res.body.data.pskPreview).toMatch(/\.\.\.$/);
+  });
+
+  it('non-admin with neither :read nor per-entry canRead: returns 404 (masks existence)', async () => {
+    // No grants; getPermissionAsync returns null (beforeEach default). The entry
+    // is hidden as 404 rather than 403 so its existence isn't revealed.
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get('/api/channel-database/1');
+    expect(res.status).toBe(404);
   });
 });
 

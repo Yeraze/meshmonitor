@@ -2361,7 +2361,9 @@ apiRouter.get('/messages', optionalAuth(), async (req, res) => {
     messages = messages.filter(msg => {
       if (msg.channel === -1) return hasMessagesRead;
       if (isVirtualChannelNumber(msg.channel)) {
-        return isAdmin || canReadVirtualChannelNumber(msg.channel, readableVirtual);
+        // readableVirtual resolves to 'all' for admins, so this already grants
+        // them every virtual channel — no separate isAdmin short-circuit needed.
+        return canReadVirtualChannelNumber(msg.channel, readableVirtual);
       }
       return hasChannelsRead && (isAdmin || authorizedChannelIds.has(msg.channel));
     });

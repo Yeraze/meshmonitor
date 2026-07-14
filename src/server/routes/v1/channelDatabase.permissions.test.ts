@@ -217,9 +217,27 @@ describe('GET /:id — single-entry permission filtering', () => {
     expect(res.status).toBe(404);
   });
 
-  it('non-admin without :read: returns 403', async () => {
+  it('non-admin WITHOUT resource :read but WITH per-entry canRead: returns channel, PSK masked', async () => {
+    // Consistency with GET / — a per-entry canRead grant alone is sufficient to
+    // read the specific entry; no resource-level channel_database:read required.
+    mockDb.checkPermissionAsync.mockResolvedValue(false);
+    mockDb.channelDatabase.getPermissionAsync.mockResolvedValue({
+      userId: 60,
+      channelDatabaseId: 1,
+      canViewOnMap: false,
+      canRead: true,
+    });
+    const res = await request(createApp(readerUser)).get('/api/v1/channel-database/1');
+    expect(res.status).toBe(200);
+    expect(res.body.data.psk).toBeUndefined();
+    expect(res.body.data.pskPreview).toMatch(/\.\.\.$/);
+  });
+
+  it('non-admin with neither :read nor per-entry canRead: returns 404 (masks existence)', async () => {
+    mockDb.checkPermissionAsync.mockResolvedValue(false);
+    mockDb.channelDatabase.getPermissionAsync.mockResolvedValue(null);
     const res = await request(createApp(noPermsUser)).get('/api/v1/channel-database/1');
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 });
 
