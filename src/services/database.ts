@@ -46,7 +46,6 @@ import {
   AutomationVariablesRepository,
   SavedRegionsRepository,
   SolarEstimatesRepository,
-  UpgradeHistoryRepository,
   NewsCacheRepository,
   BackupHistoryRepository,
   AutoTracerouteRepository,
@@ -475,7 +474,6 @@ class DatabaseService {
   public automationVariablesRepo: AutomationVariablesRepository | null = null;
   public savedRegionsRepo: SavedRegionsRepository | null = null;
   public solarEstimatesRepo: SolarEstimatesRepository | null = null;
-  public upgradeHistoryRepo: UpgradeHistoryRepository | null = null;
   public newsCacheRepo: NewsCacheRepository | null = null;
   public backupHistoryRepo: BackupHistoryRepository | null = null;
   public autoTracerouteRepo: AutoTracerouteRepository | null = null;
@@ -557,11 +555,6 @@ class DatabaseService {
   get solarEstimates(): SolarEstimatesRepository {
     if (!this.solarEstimatesRepo) throw new Error('Database not initialized');
     return this.solarEstimatesRepo;
-  }
-
-  get upgradeHistory(): UpgradeHistoryRepository {
-    if (!this.upgradeHistoryRepo) throw new Error('Database not initialized');
-    return this.upgradeHistoryRepo;
   }
 
   get newsCache(): NewsCacheRepository {
@@ -906,7 +899,6 @@ class DatabaseService {
       this.automationVariablesRepo = new AutomationVariablesRepository(drizzleDb, this.drizzleDbType);
       this.savedRegionsRepo = new SavedRegionsRepository(drizzleDb, this.drizzleDbType);
       this.solarEstimatesRepo = new SolarEstimatesRepository(drizzleDb, this.drizzleDbType);
-      this.upgradeHistoryRepo = new UpgradeHistoryRepository(drizzleDb, this.drizzleDbType);
       this.newsCacheRepo = new NewsCacheRepository(drizzleDb, this.drizzleDbType);
       this.backupHistoryRepo = new BackupHistoryRepository(drizzleDb, this.drizzleDbType);
       this.autoTracerouteRepo = new AutoTracerouteRepository(drizzleDb, this.drizzleDbType);
@@ -1112,7 +1104,6 @@ class DatabaseService {
         autoAnnounceUseSchedule: 'false',
         autoAnnounceSchedule: '0 */6 * * *',
         tracerouteIntervalMinutes: '0',
-        autoUpgradeImmediate: 'false',
         autoTimeSyncEnabled: 'false',
         autoTimeSyncIntervalMinutes: '15',
         autoTimeSyncExpirationHours: '24',

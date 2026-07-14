@@ -138,15 +138,8 @@ describe('POST /scripts/import validation', () => {
     expect(res.body.error).toContain('Invalid file extension');
   });
 
-  it('refuses to overwrite the system upgrade script', async () => {
-    const res = await request(app)
-      .post('/scripts/import')
-      .set('Content-Type', 'application/octet-stream')
-      .set('x-filename', 'upgrade-watchdog.sh')
-      .send(Buffer.from('x'));
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe('Cannot overwrite system script');
-  });
+  // The former `upgrade-watchdog.sh` overwrite/delete guard was removed with the
+  // auto-upgrade retirement (v4.13); the script is no longer a system script.
 });
 
 describe('POST /scripts/export validation', () => {
@@ -182,14 +175,6 @@ describe('script dependency endpoints', () => {
     const res = await request(app).post('/scripts/dependencies/install').send({});
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-  });
-});
-
-describe('DELETE /scripts/:filename', () => {
-  it('refuses to delete the system upgrade script', async () => {
-    const res = await request(app).delete('/scripts/upgrade-watchdog.sh');
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe('Cannot delete system script');
   });
 });
 

@@ -61,7 +61,6 @@ import {
   systemBackupHistorySqlite, systemBackupHistoryPostgres, systemBackupHistoryMysql,
   customThemesSqlite, customThemesPostgres, customThemesMysql,
   userMapPreferencesSqlite, userMapPreferencesPostgres, userMapPreferencesMysql,
-  upgradeHistorySqlite, upgradeHistoryPostgres, upgradeHistoryMysql,
   solarEstimatesSqlite, solarEstimatesPostgres, solarEstimatesMysql,
   autoTracerouteNodesSqlite, autoTracerouteNodesPostgres, autoTracerouteNodesMysql,
   meshcorePathfindingTargetsSqlite, meshcorePathfindingTargetsPostgres, meshcorePathfindingTargetsMysql,
@@ -189,7 +188,6 @@ export interface ActiveSchema {
   systemBackupHistory: any;
   customThemes: any;
   userMapPreferences: any;
-  upgradeHistory: any;
   solarEstimates: any;
   autoTracerouteNodes: any;
   // meshcorePathfindingTargets (#4024) is intentionally NOT declared here —
@@ -281,7 +279,6 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     systemBackupHistory: systemBackupHistorySqlite,
     customThemes: customThemesSqlite,
     userMapPreferences: userMapPreferencesSqlite,
-    upgradeHistory: upgradeHistorySqlite,
     solarEstimates: solarEstimatesSqlite,
     autoTracerouteNodes: autoTracerouteNodesSqlite,
     meshcorePathfindingTargets: meshcorePathfindingTargetsSqlite,
@@ -338,7 +335,6 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     systemBackupHistory: systemBackupHistoryPostgres,
     customThemes: customThemesPostgres,
     userMapPreferences: userMapPreferencesPostgres,
-    upgradeHistory: upgradeHistoryPostgres,
     solarEstimates: solarEstimatesPostgres,
     autoTracerouteNodes: autoTracerouteNodesPostgres,
     meshcorePathfindingTargets: meshcorePathfindingTargetsPostgres,
@@ -395,7 +391,6 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     systemBackupHistory: systemBackupHistoryMysql,
     customThemes: customThemesMysql,
     userMapPreferences: userMapPreferencesMysql,
-    upgradeHistory: upgradeHistoryMysql,
     solarEstimates: solarEstimatesMysql,
     autoTracerouteNodes: autoTracerouteNodesMysql,
     meshcorePathfindingTargets: meshcorePathfindingTargetsMysql,

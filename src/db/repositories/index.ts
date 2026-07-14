@@ -39,8 +39,6 @@ export { MapPreferencesRepository } from './mapPreferences.js';
 export { ThemesRepository } from './themes.js';
 export { SolarEstimatesRepository } from './solarEstimates.js';
 export type { SolarEstimate } from './solarEstimates.js';
-export { UpgradeHistoryRepository } from './upgradeHistory.js';
-export type { UpgradeHistoryRecord, NewUpgradeHistory } from './upgradeHistory.js';
 export { NewsCacheRepository } from './newsCache.js';
 export type { NewsCache, UserNewsStatus } from './newsCache.js';
 export { BackupHistoryRepository } from './backupHistory.js';

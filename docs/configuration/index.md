@@ -49,6 +49,9 @@ Configure custom map tile servers for offline operation, custom styling, or orga
 ### [Reducing Node Load](/configuration/node-load)
 Understand how MeshMonitor communicates with your Meshtastic node and how to tune settings to reduce memory pressure on constrained devices (ESP32, Heltec V3/V4, RAK4631).
 
+### [Updating MeshMonitor](/configuration/updating)
+How update notifications work, per-platform update instructions (Docker, LXC, Kubernetes/Helm, bare metal), and an unattended-updates recipe using Watchtower. Replaces the retired Automatic Self-Upgrade sidecar.
+
 ## Environment Variables
 
 MeshMonitor can be configured using environment variables. Here are the most important ones:
@@ -211,7 +214,6 @@ See the [Push Notifications guide](/features/notifications) for setup instructio
 | `BACKUP_DIR` | Directory for database backups | `/data/backups` |
 | `SYSTEM_BACKUP_DIR` | Directory for full system backups | `/data/system-backups` |
 | `RESTORE_FROM_BACKUP` | Path to backup file to restore on startup | None |
-| `AUTO_UPGRADE_ENABLED` | Enable automatic upgrades in Kubernetes | `false` |
 | `VERSION_CHECK_DISABLED` | Disable version check and hide update banner | `false` |
 | `APPRISE_CONFIG_DIR` | Directory for Apprise notification configuration | None |
 | `DUPLICATE_KEY_SCAN_INTERVAL_HOURS` | Hours between duplicate encryption key scans | `24` |

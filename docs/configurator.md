@@ -54,7 +54,7 @@ After deploying with the generated configuration:
 
 ### Additional Settings
 
-- **Automatic Self-Upgrade**: Enable one-click upgrades through the web UI with the upgrade watchdog sidecar.
+- **Watchtower (unattended updates)**: Adds a [Watchtower](/configuration/updating#unattended-updates-with-watchtower) service, label-scoped to only watch the `meshmonitor` container, so new releases are pulled and applied automatically.
 - **Offline Map Tiles**: Add TileServer GL for serving offline map tiles when internet connectivity is limited.
 - **Auto Responder Scripts**: Mount a scripts directory for custom automation scripts.
 - **MQTT Client Proxy**: Route MQTT traffic through MeshMonitor instead of your node's WiFi. Useful for nodes with unreliable connectivity or when using Serial/BLE connections. See [MQTT Client Proxy documentation](/add-ons/mqtt-proxy).

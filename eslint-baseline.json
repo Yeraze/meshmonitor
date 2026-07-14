@@ -20,7 +20,7 @@
   "src/App.tsx": {
     "@typescript-eslint/no-explicit-any": 5,
     "preserve-caught-error": 1,
-    "react-hooks/exhaustive-deps": 22
+    "react-hooks/exhaustive-deps": 20
   },
   "src/cli/migrate-db.ts": {
     "@typescript-eslint/no-explicit-any": 3,
@@ -103,9 +103,6 @@
   },
   "src/components/Dashboard/DashboardNeighborPopup.tsx": {
     "@typescript-eslint/no-explicit-any": 1
-  },
-  "src/components/Dashboard/DashboardNodePopup.tsx": {
-    "@typescript-eslint/no-explicit-any": 2
   },
   "src/components/Dashboard/DashboardSidebar.tsx": {
     "@typescript-eslint/no-explicit-any": 6
@@ -411,7 +408,7 @@
     "react-refresh/only-export-components": 2
   },
   "src/db/activeSchema.ts": {
-    "@typescript-eslint/no-explicit-any": 55
+    "@typescript-eslint/no-explicit-any": 54
   },
   "src/db/drivers/mysql.ts": {
     "preserve-caught-error": 1
@@ -1046,7 +1043,7 @@
     "@typescript-eslint/no-explicit-any": 9
   },
   "src/server/routes/securityRoutes.ts": {
-    "@typescript-eslint/no-explicit-any": 27
+    "@typescript-eslint/no-explicit-any": 26
   },
   "src/server/routes/settingsRoutes.test.ts": {
     "@typescript-eslint/no-unused-vars": 4
@@ -1059,9 +1056,6 @@
     "@typescript-eslint/no-explicit-any": 32
   },
   "src/server/routes/statusRoutes.ts": {
-    "@typescript-eslint/no-explicit-any": 1
-  },
-  "src/server/routes/systemRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 1
   },
   "src/server/routes/telemetryRoutes.ts": {
@@ -1219,9 +1213,6 @@
   "src/server/services/systemRestoreService.ts": {
     "@typescript-eslint/no-explicit-any": 1,
     "no-useless-assignment": 2
-  },
-  "src/server/services/upgradeService.ts": {
-    "@typescript-eslint/no-unused-vars": 4
   },
   "src/server/services/waypointService.ts": {
     "@typescript-eslint/no-explicit-any": 1

@@ -36,7 +36,6 @@ export const BACKUP_TABLES = [
   'auto_traceroute_nodes',
   'packet_log',
   'solar_estimates',
-  'upgrade_history',
   'system_backup_history',
   // 2608: automated remote favorites management config + assignment ledger
   'auto_favorite_targets',

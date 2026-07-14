@@ -149,41 +149,8 @@ export const userMapPreferencesPostgres = pgTable('user_map_preferences', {
   updatedAt: pgBigint('updatedAt', { mode: 'number' }),
 });
 
-// ============ UPGRADE HISTORY ============
-
-export const upgradeHistorySqlite = sqliteTable('upgrade_history', {
-  id: text('id').primaryKey(),
-  fromVersion: text('fromVersion').notNull(),
-  toVersion: text('toVersion').notNull(),
-  deploymentMethod: text('deploymentMethod').notNull(),
-  status: text('status').notNull(),
-  progress: integer('progress').default(0),
-  currentStep: text('currentStep'),
-  logs: text('logs'),
-  backupPath: text('backupPath'),
-  startedAt: integer('startedAt'),
-  completedAt: integer('completedAt'),
-  initiatedBy: text('initiatedBy'),
-  errorMessage: text('errorMessage'),
-  rollbackAvailable: integer('rollbackAvailable', { mode: 'boolean' }),
-});
-
-export const upgradeHistoryPostgres = pgTable('upgrade_history', {
-  id: pgText('id').primaryKey(),
-  fromVersion: pgText('fromVersion').notNull(),
-  toVersion: pgText('toVersion').notNull(),
-  deploymentMethod: pgText('deploymentMethod').notNull(),
-  status: pgText('status').notNull(),
-  progress: pgInteger('progress').default(0),
-  currentStep: pgText('currentStep'),
-  logs: pgText('logs'),
-  backupPath: pgText('backupPath'),
-  startedAt: pgBigint('startedAt', { mode: 'number' }),
-  completedAt: pgBigint('completedAt', { mode: 'number' }),
-  initiatedBy: pgText('initiatedBy'),
-  errorMessage: pgText('errorMessage'),
-  rollbackAvailable: pgBoolean('rollbackAvailable'),
-});
+// NOTE: the `upgrade_history` table (SQLite/Postgres/MySQL) was removed in v4.13
+// (Auto-Upgrade Retirement). Migration 117 drops it. Do not re-add.
 
 // ============ SOLAR ESTIMATES ============
 // Stores forecast data from forecast.solar API
@@ -432,22 +399,7 @@ export const userMapPreferencesMysql = mysqlTable('user_map_preferences', {
   updatedAt: myBigint('updatedAt', { mode: 'number' }),
 });
 
-export const upgradeHistoryMysql = mysqlTable('upgrade_history', {
-  id: myVarchar('id', { length: 64 }).primaryKey(),
-  fromVersion: myVarchar('fromVersion', { length: 32 }).notNull(),
-  toVersion: myVarchar('toVersion', { length: 32 }).notNull(),
-  deploymentMethod: myVarchar('deploymentMethod', { length: 32 }).notNull(),
-  status: myVarchar('status', { length: 32 }).notNull(),
-  progress: myInt('progress').default(0),
-  currentStep: myVarchar('currentStep', { length: 255 }),
-  logs: myText('logs'),
-  backupPath: myVarchar('backupPath', { length: 512 }),
-  startedAt: myBigint('startedAt', { mode: 'number' }),
-  completedAt: myBigint('completedAt', { mode: 'number' }),
-  initiatedBy: myVarchar('initiatedBy', { length: 255 }),
-  errorMessage: myText('errorMessage'),
-  rollbackAvailable: myBoolean('rollbackAvailable'),
-});
+// upgradeHistoryMysql removed in v4.13 (Auto-Upgrade Retirement); migration 117 drops it.
 
 export const solarEstimatesMysql = mysqlTable('solar_estimates', {
   id: mySerial('id').primaryKey(),
@@ -601,11 +553,6 @@ export type NewUserMapPreferenceSqlite = typeof userMapPreferencesSqlite.$inferI
 export type UserMapPreferencePostgres = typeof userMapPreferencesPostgres.$inferSelect;
 export type NewUserMapPreferencePostgres = typeof userMapPreferencesPostgres.$inferInsert;
 
-export type UpgradeHistorySqlite = typeof upgradeHistorySqlite.$inferSelect;
-export type NewUpgradeHistorySqlite = typeof upgradeHistorySqlite.$inferInsert;
-export type UpgradeHistoryPostgres = typeof upgradeHistoryPostgres.$inferSelect;
-export type NewUpgradeHistoryPostgres = typeof upgradeHistoryPostgres.$inferInsert;
-
 export type SolarEstimateSqlite = typeof solarEstimatesSqlite.$inferSelect;
 export type NewSolarEstimateSqlite = typeof solarEstimatesSqlite.$inferInsert;
 export type SolarEstimatePostgres = typeof solarEstimatesPostgres.$inferSelect;
@@ -633,8 +580,6 @@ export type CustomThemeMysql = typeof customThemesMysql.$inferSelect;
 export type NewCustomThemeMysql = typeof customThemesMysql.$inferInsert;
 export type UserMapPreferenceMysql = typeof userMapPreferencesMysql.$inferSelect;
 export type NewUserMapPreferenceMysql = typeof userMapPreferencesMysql.$inferInsert;
-export type UpgradeHistoryMysql = typeof upgradeHistoryMysql.$inferSelect;
-export type NewUpgradeHistoryMysql = typeof upgradeHistoryMysql.$inferInsert;
 export type SolarEstimateMysql = typeof solarEstimatesMysql.$inferSelect;
 export type NewSolarEstimateMysql = typeof solarEstimatesMysql.$inferInsert;
 

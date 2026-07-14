@@ -153,7 +153,7 @@ docker compose up -d
 
 See [Multi-Source](/features/multi-source) for the full feature description.
 
-**Why you might still run multiple instances:** strict tenant isolation (separate databases per organization), separate auto-upgrade schedules, or running different MeshMonitor versions side by side. For most users, a single multi-source instance is the right answer — add nodes from the UI rather than spinning up a second container.
+**Why you might still run multiple instances:** strict tenant isolation (separate databases per organization), separate update schedules, or running different MeshMonitor versions side by side. For most users, a single multi-source instance is the right answer — add nodes from the UI rather than spinning up a second container.
 
 **Bootstrap:** The `MESHTASTIC_NODE_IP` / `MESHTASTIC_TCP_PORT` env vars only seed the **first** source on first boot. Add additional sources (and additional protocols) from the dashboard:
 
@@ -400,7 +400,7 @@ In addition to these rolling tags, every release (stable and RC) gets an **exact
 
 **Why two tracks?** Earlier versions of MeshMonitor released frequently, which created maintenance burden for users on automated upgrade tools. The two-track strategy lets you explicitly opt in to fast updates (`:dev`) or stay on a quieter stable cadence (`:latest`).
 
-To switch tracks on a Docker Compose deployment, update the `image:` tag in your `docker-compose.yml` and restart the container. If you use the [auto-upgrade](/configuration/auto-upgrade) watchdog, update `IMAGE_NAME` in `docker-compose.upgrade.yml` instead.
+To switch tracks on a Docker Compose deployment, update the `image:` tag in your `docker-compose.yml` and restart the container. If you use [Watchtower for unattended updates](/configuration/updating#unattended-updates-with-watchtower), it automatically follows whichever tag your container runs — switching the `image:` tag switches your track there too.
 
 ---
 
@@ -424,7 +424,14 @@ docker compose logs meshmonitor | grep "Version:"
 
 ### I get "container name is already in use" error after auto-upgrade
 
-**Problem:** After using the built-in auto-upgrade feature, manual `docker compose pull && docker compose up` commands fail with:
+::: tip Auto-Upgrade is retired
+The auto-upgrade watchdog sidecar was removed in v4.13. This entry is kept
+for anyone still cleaning up after the old sidecar; see
+[Migrating from the old Auto-Upgrade sidecar](/configuration/updating#migrating-from-the-old-auto-upgrade-sidecar)
+for the full cleanup checklist.
+:::
+
+**Problem:** After using the (now-retired) built-in auto-upgrade feature, manual `docker compose pull && docker compose up` commands fail with:
 
 ```
 Error response from daemon: Conflict. The container name "/meshmonitor" is already in use by container "xxxxx".

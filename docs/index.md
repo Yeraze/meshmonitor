@@ -86,7 +86,7 @@ features:
 
   - icon: 🐳
     title: Flexible Deployment
-    details: Docker Compose, Kubernetes (Helm), Proxmox LXC, or bare metal. SQLite, PostgreSQL, or MySQL. Reverse-proxy-friendly with one-click auto-upgrade.
+    details: Docker Compose, Kubernetes (Helm), Proxmox LXC, or bare metal. SQLite, PostgreSQL, or MySQL. Reverse-proxy-friendly with built-in update notifications.
 ---
 
 ## Quick Start

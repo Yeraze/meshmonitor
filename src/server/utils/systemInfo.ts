@@ -1,10 +1,10 @@
 /**
  * System / version utilities
  *
- * Pure helpers extracted from server.ts so they can be shared between the
- * system route handlers (routes/systemRoutes.ts) and the startup
- * auto-upgrade scheduler (checkForAutoUpgrade in server.ts) without
- * pulling in the whole monolith.
+ * Pure helpers extracted from server.ts. `compareVersions` and
+ * `checkDockerImageExists` are consumed by the versionCheckService poller
+ * (services/versionCheckService.ts); `serverStartTime` / `isRunningInDocker`
+ * are used by the system route handlers (routes/systemRoutes.ts).
  */
 
 import fs from 'fs';

@@ -85,11 +85,6 @@ COPY --from=builder /app/protobufs ./protobufs
 # Fix ownership of dist directory for node user
 RUN chown -R node:node ./dist
 
-# Copy upgrade-related scripts into container
-COPY scripts/upgrade-watchdog.sh /app/scripts/upgrade-watchdog.sh
-COPY scripts/test-docker-socket.sh /app/scripts/test-docker-socket.sh
-RUN chmod +x /app/scripts/upgrade-watchdog.sh /app/scripts/test-docker-socket.sh
-
 # Copy admin password reset script
 COPY reset-admin.mjs /app/reset-admin.mjs
 

@@ -131,6 +131,7 @@ import { migration as bootstrapOnlyIndexesMigration, runMigration113Postgres as 
 import { migration as meshcorePathfindingTargetsMigration, runMigration114Postgres as runMeshcorePathfindingTargetsPostgres, runMigration114Mysql as runMeshcorePathfindingTargetsMysql } from '../server/migrations/114_create_meshcore_pathfinding_targets.js';
 import { migration as dropInlineNotifPrefsUserIdUniqueMigration, runMigration115Postgres as runDropInlineNotifPrefsUserIdUniquePostgres, runMigration115Mysql as runDropInlineNotifPrefsUserIdUniqueMysql } from '../server/migrations/115_drop_inline_notif_prefs_user_id_unique.js';
 import { migration as trimOutOfRangeNodePositionsMigration, runMigration116Postgres as runTrimOutOfRangeNodePositionsPostgres, runMigration116Mysql as runTrimOutOfRangeNodePositionsMysql } from '../server/migrations/116_trim_out_of_range_node_positions.js';
+import { migration as dropUpgradeHistoryMigration, runMigration117Postgres as runDropUpgradeHistoryPostgres, runMigration117Mysql as runDropUpgradeHistoryMysql } from '../server/migrations/117_drop_upgrade_history.js';
 
 // ============================================================================
 // Registry
@@ -1849,4 +1850,18 @@ registry.register({
   sqlite: (db) => trimOutOfRangeNodePositionsMigration.up(db),
   postgres: (client) => runTrimOutOfRangeNodePositionsPostgres(client),
   mysql: (pool) => runTrimOutOfRangeNodePositionsMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 117: Drop the retired `upgrade_history` table and delete the
+// `autoUpgrade*` settings rows (Auto-Upgrade Retirement, v4.13).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 117,
+  name: 'drop_upgrade_history',
+  settingsKey: 'migration_117_drop_upgrade_history',
+  sqlite: (db) => dropUpgradeHistoryMigration.up(db),
+  postgres: (client) => runDropUpgradeHistoryPostgres(client),
+  mysql: (pool) => runDropUpgradeHistoryMysql(pool),
 });

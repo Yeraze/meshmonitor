@@ -419,12 +419,13 @@
 
       <div class="form-group">
         <label class="checkbox-label">
-          <input type="checkbox" v-model="config.enableAutoUpgrade" />
-          Enable Automatic Self-Upgrade
+          <input type="checkbox" v-model="config.enableWatchtower" />
+          Enable Watchtower (unattended updates)
         </label>
         <p class="field-help">
-          Adds a watchdog sidecar container that allows one-click upgrades through the web UI.
-          <a href="/configuration/auto-upgrade" target="_blank">Learn more</a>
+          Adds a <a href="https://github.com/nicholas-fedor/watchtower" target="_blank">Watchtower</a> service,
+          label-scoped so it only watches and updates the <code>meshmonitor</code> container.
+          <a href="/configuration/updating#unattended-updates-with-watchtower" target="_blank">Learn more</a>
         </p>
       </div>
 
@@ -596,7 +597,7 @@
           <li v-if="config.deploymentMode !== 'development'">
             Generate a secure session secret: <code>openssl rand -base64 32</code> and update it in the .env file
           </li>
-          <li>Run <code>docker compose up -d</code> to start MeshMonitor<span v-if="config.enableAutoUpgrade"> (the upgrade watchdog script will be automatically deployed to the data volume)</span></li>
+          <li>Run <code>docker compose up -d</code> to start MeshMonitor<span v-if="config.enableWatchtower"> (Watchtower will start alongside it and begin watching for new images)</span></li>
           <li>Access MeshMonitor at {{ accessUrl }}</li>
           <li>
             <strong>🆕 4.0 — Finish setup in the UI.</strong>
@@ -651,7 +652,7 @@ const config = ref({
   mysqlDb: 'meshmonitor',
   mysqlUser: 'meshmonitor',
   timezone: 'America/New_York',
-  enableAutoUpgrade: false,
+  enableWatchtower: false,
   enableOfflineMaps: false,
   tileServerPort: 8081,
   enableAutoResponderScripts: false,
@@ -766,6 +767,11 @@ const dockerComposeYaml = computed(() => {
   lines.push('  meshmonitor:')
   lines.push('    image: ghcr.io/yeraze/meshmonitor:latest')
   lines.push('    container_name: meshmonitor')
+  if (config.value.enableWatchtower) {
+    // Scopes Watchtower to only this container (WATCHTOWER_LABEL_ENABLE below)
+    lines.push('    labels:')
+    lines.push('      - com.centurylinklabs.watchtower.enable=true')
+  }
   lines.push('    ports:')
   lines.push(`      - "${config.value.webPort}:3001"`)
   if (config.value.planVirtualNode && config.value.connectionType !== 'ble') {
@@ -834,11 +840,6 @@ const dockerComposeYaml = computed(() => {
     lines.push('      - DISABLE_ANONYMOUS=true')
   }
 
-  // Auto-upgrade environment
-  if (config.value.enableAutoUpgrade) {
-    lines.push('      - AUTO_UPGRADE_ENABLED=true')
-  }
-
   // Database configuration
   if (config.value.databaseType === 'postgres') {
     if (config.value.includePostgresContainer) {
@@ -877,37 +878,23 @@ const dockerComposeYaml = computed(() => {
     }
   }
 
-  // Add upgrader sidecar if auto-upgrade is enabled
-  if (config.value.enableAutoUpgrade) {
+  // Add Watchtower if unattended updates are enabled
+  if (config.value.enableWatchtower) {
     lines.push('')
-    lines.push('  # Auto-upgrade watchdog sidecar')
-    lines.push('  meshmonitor-upgrader:')
-    lines.push('    image: docker:latest')
-    lines.push('    container_name: meshmonitor-upgrader')
+    lines.push('  # Watchtower - unattended updates, scoped to the meshmonitor container only')
+    lines.push('  watchtower:')
+    lines.push('    image: nickfedor/watchtower:1.14.2')
+    lines.push('    container_name: watchtower')
     lines.push('    restart: unless-stopped')
     lines.push('    volumes:')
-    lines.push('      # Docker socket for container control')
     lines.push('      - /var/run/docker.sock:/var/run/docker.sock')
-    lines.push('      # Shared data volume for trigger/status files (read-write)')
-    lines.push('      - meshmonitor-data:/data')
-    lines.push('      # Mount docker-compose directory for proper recreation')
-    lines.push('      - .:/compose:ro')
     lines.push('    environment:')
-    lines.push('      - CONTAINER_NAME=meshmonitor')
-    lines.push('      - IMAGE_NAME=ghcr.io/yeraze/meshmonitor')
-    lines.push('      - TRIGGER_FILE=/data/.upgrade-trigger')
-    lines.push('      - STATUS_FILE=/data/.upgrade-status')
-    lines.push('      - CHECK_INTERVAL=5')
-    lines.push('      - COMPOSE_PROJECT_DIR=/compose')
-    lines.push('      - COMPOSE_PROJECT_NAME=meshmonitor')
-    lines.push('    command: /data/.meshmonitor-internal/upgrade-watchdog.sh')
-    lines.push('    depends_on:')
-    lines.push('      - meshmonitor')
-    lines.push('    logging:')
-    lines.push('      driver: "json-file"')
-    lines.push('      options:')
-    lines.push('        max-size: "10m"')
-    lines.push('        max-file: "3"')
+    lines.push('      # Only touch containers labeled watchtower.enable=true (see meshmonitor service above)')
+    lines.push('      - WATCHTOWER_LABEL_ENABLE=true')
+    lines.push('      # Check for new images once a day (seconds)')
+    lines.push('      - WATCHTOWER_POLL_INTERVAL=86400')
+    lines.push('      # Remove old images after a successful update')
+    lines.push('      - WATCHTOWER_CLEANUP=true')
   }
 
   // Add TileServer GL if offline maps are enabled
