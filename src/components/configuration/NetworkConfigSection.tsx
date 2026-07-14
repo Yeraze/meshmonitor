@@ -8,6 +8,9 @@ const ADDRESS_MODE_OPTIONS = [
   { value: 1, label: 'STATIC' },
 ];
 
+// Config.NetworkConfig.ProtocolFlags — currently defines only the UDP_BROADCAST bit
+const UDP_BROADCAST_FLAG = 0x0001;
+
 interface NetworkConfigSectionProps {
   wifiEnabled: boolean;
   setWifiEnabled: (value: boolean) => void;
@@ -21,6 +24,9 @@ interface NetworkConfigSectionProps {
   setRsyslogServer: (value: string) => void;
   addressMode: number;
   setAddressMode: (value: number) => void;
+  // enabled_protocols bitmask (Config.NetworkConfig.ProtocolFlags) — UDP_BROADCAST is the only defined bit
+  enabledProtocols: number;
+  setEnabledProtocols: (value: number) => void;
   // Static IP config
   ipv4Address: string;
   setIpv4Address: (value: string) => void;
@@ -51,6 +57,8 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
   setRsyslogServer,
   addressMode,
   setAddressMode,
+  enabledProtocols,
+  setEnabledProtocols,
   ipv4Address,
   setIpv4Address,
   ipv4Gateway,
@@ -68,7 +76,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
 
   // Track initial values for change detection
   const initialValuesRef = useRef({
-    wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode,
+    wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode, enabledProtocols,
     ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns
   });
 
@@ -82,12 +90,13 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
       ntpServer !== initial.ntpServer ||
       rsyslogServer !== initial.rsyslogServer ||
       addressMode !== initial.addressMode ||
+      enabledProtocols !== initial.enabledProtocols ||
       ipv4Address !== initial.ipv4Address ||
       ipv4Gateway !== initial.ipv4Gateway ||
       ipv4Subnet !== initial.ipv4Subnet ||
       ipv4Dns !== initial.ipv4Dns
     );
-  }, [wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode,
+  }, [wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode, enabledProtocols,
       ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns]);
 
   // Reset to initial values (for SaveBar dismiss)
@@ -99,21 +108,22 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
     setNtpServer(initial.ntpServer);
     setRsyslogServer(initial.rsyslogServer);
     setAddressMode(initial.addressMode);
+    setEnabledProtocols(initial.enabledProtocols);
     setIpv4Address(initial.ipv4Address);
     setIpv4Gateway(initial.ipv4Gateway);
     setIpv4Subnet(initial.ipv4Subnet);
     setIpv4Dns(initial.ipv4Dns);
-  }, [setWifiEnabled, setWifiSsid, setWifiPsk, setNtpServer, setRsyslogServer, setAddressMode,
+  }, [setWifiEnabled, setWifiSsid, setWifiPsk, setNtpServer, setRsyslogServer, setAddressMode, setEnabledProtocols,
       setIpv4Address, setIpv4Gateway, setIpv4Subnet, setIpv4Dns]);
 
   // Update initial values after successful save
   const handleSave = useCallback(async () => {
     await onSave();
     initialValuesRef.current = {
-      wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode,
+      wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode, enabledProtocols,
       ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns
     };
-  }, [onSave, wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode,
+  }, [onSave, wifiEnabled, wifiSsid, wifiPsk, ntpServer, rsyslogServer, addressMode, enabledProtocols,
       ipv4Address, ipv4Gateway, ipv4Subnet, ipv4Dns]);
 
   // Register with SaveBar
@@ -379,6 +389,25 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
           maxLength={33}
           className="setting-input"
           style={{ width: '400px' }}
+        />
+      </div>
+
+      {/* UDP Broadcast */}
+      <div className="setting-item">
+        <label htmlFor="udpBroadcastEnabled">
+          {t('network_config.udp_broadcast')}
+          <span className="setting-description">{t('network_config.udp_broadcast_description')}</span>
+        </label>
+        <input
+          id="udpBroadcastEnabled"
+          type="checkbox"
+          checked={(enabledProtocols & UDP_BROADCAST_FLAG) !== 0}
+          onChange={(e) => setEnabledProtocols(
+            e.target.checked
+              ? enabledProtocols | UDP_BROADCAST_FLAG
+              : enabledProtocols & ~UDP_BROADCAST_FLAG
+          )}
+          className="setting-checkbox"
         />
       </div>
     </div>
