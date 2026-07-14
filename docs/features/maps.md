@@ -24,9 +24,10 @@ The interactive map is the primary visualization tool in MeshMonitor, displaying
 Each node is represented on the map with a marker that provides visual information:
 
 - **Color Coding by SNR (Signal-to-Noise Ratio)**:
-  - 🟢 Green: Excellent signal (SNR > 10 dB)
-  - 🟡 Yellow: Good signal (SNR 0-10 dB)
-  - 🔴 Red: Poor signal (SNR < 0 dB)
+  - 🟢 Green: Excellent signal (SNR ≥ 5 dB)
+  - 🟡 Yellow: Good signal (SNR ≥ 0 dB, < 5 dB)
+  - 🟠 Orange: Fair signal (SNR ≥ -5 dB, < 0 dB)
+  - 🔴 Red: Poor signal (SNR < -5 dB)
   - ⚫ Gray: No signal data available
 
 - **Security Indicators**:
@@ -68,7 +69,7 @@ Click any node marker to view detailed information:
 #### Map Navigation
 
 - **Pan**: Click and drag to move the map
-- **Center on Node**: Click a node in the sidebar to center the map on that node
+- **Center on Node**: Click a node in the sidebar to center the map on that node. The map zooms in to a configurable target level (default 17, adjustable in **Settings → Map**) when the node is far away, but never zooms *out* below your current zoom level.
 - **Fit to Network**: Automatically adjusts zoom to show all active nodes
 
 ### Traceroute Visualization

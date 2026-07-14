@@ -383,6 +383,27 @@ npm start
 
 ## 🔄 Updates & Maintenance
 
+### How often does MeshMonitor release? What's the difference between :dev and :latest? {#how-often-does-meshmonitor-release}
+
+MeshMonitor publishes two rolling Docker image tags, letting you choose your upgrade cadence:
+
+| Tag | Track | Typical cadence | Stability |
+|-----|-------|-----------------|-----------|
+| `ghcr.io/yeraze/meshmonitor:latest` | **Stable** | ~weekly | Production-ready releases |
+| `ghcr.io/yeraze/meshmonitor:dev` | **RC / fast-track** | ~daily | Release candidates — may include work-in-progress |
+
+**`:latest`** is the default and is recommended for most users. It moves only when a stable version ships, so you get a tested build and fewer surprise updates.
+
+**`:dev`** moves with every pre-release (release candidate). It's useful if you want new features or fixes immediately and are comfortable with RC stability. Note that `:dev` can briefly lag behind `:latest` right after a stable release ships — there is a short window where `:dev` points to the last RC while `:latest` has already moved to the new stable build. This resolves once the next RC is published.
+
+In addition to these rolling tags, every release (stable and RC) gets an **exact version tag** (e.g. `:4.13.0`, `:4.13.0-rc3`) for pinning, and stable releases also move the **major** (`:4`) and **major.minor** (`:4.13`) tags for Kubernetes-style rolling upgrades within a version line.
+
+**Why two tracks?** Earlier versions of MeshMonitor released frequently, which created maintenance burden for users on automated upgrade tools. The two-track strategy lets you explicitly opt in to fast updates (`:dev`) or stay on a quieter stable cadence (`:latest`).
+
+To switch tracks on a Docker Compose deployment, update the `image:` tag in your `docker-compose.yml` and restart the container. If you use [Watchtower for unattended updates](/configuration/updating#unattended-updates-with-watchtower), it automatically follows whichever tag your container runs — switching the `image:` tag switches your track there too.
+
+---
+
 ### How do I update MeshMonitor to the latest version?
 
 #### For Docker Deployments:
