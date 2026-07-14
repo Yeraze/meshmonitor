@@ -71,6 +71,13 @@ interface SidebarProps {
   connectedNodeName?: string;
   packetLogEnabled?: boolean;
   /**
+   * True when the user can read at least one virtual (Channel Database)
+   * channel. Lets the Channels entry appear for virtual-channel-only users
+   * (e.g. anonymous on an MQTT source with per-entry canRead grants) who hold
+   * no physical channel_0..7 permission.
+   */
+  hasReadableVirtualChannels?: boolean;
+  /**
    * When true (MQTT Bridge dashboard), hides Device Configuration and Remote
    * Administration entries. These device-level controls don't apply to data
    * sourced from an MQTT bridge.
@@ -92,6 +99,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   baseUrl,
   connectedNodeName,
   packetLogEnabled,
+  hasReadableVirtualChannels = false,
   mqttReadOnly = false,
 }) => {
   const { t } = useTranslation();
@@ -127,14 +135,15 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  // Check if user has permission to read ANY channel
+  // Check if user has permission to read ANY channel — a physical slot
+  // (channel_0..7) or a virtual (Channel Database) channel.
   const hasAnyChannelPermission = () => {
     for (let i = 0; i < 8; i++) {
       if (hasPermission(`channel_${i}` as ResourceType, 'read')) {
         return true;
       }
     }
-    return false;
+    return hasReadableVirtualChannels;
   };
 
   // Check if user has permission to search anything (DMs, channels, or meshcore)

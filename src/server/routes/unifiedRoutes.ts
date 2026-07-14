@@ -14,6 +14,10 @@ import { logger } from '../../utils/logger.js';
 import { PortNum, CHANNEL_DB_OFFSET, modemPresetChannelName } from '../constants/meshtastic.js';
 import { filterPacketsByPermissions, getAllowedChannels } from './packetPermissions.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
+import {
+  getUserReadableVirtualChannelIds,
+  canReadVirtualChannel,
+} from '../utils/virtualChannelPermissions.js';
 import { buildSourceDashboard, getMaxNodeAgeHours } from '../services/sourceDashboardData.js';
 import type { DbChannelDatabase, DbPacketLog } from '../../db/types.js';
 import type { DbMeshCorePacket } from '../../db/repositories/meshcore.js';
@@ -161,41 +165,6 @@ async function loadSourcePresetNames(sourceIds: string[]): Promise<Map<string, s
  *
  * Returns `null` when the id cannot be parsed to a valid packet id.
  */
-/**
- * Virtual channel read access.
- *
- * Virtual channels (MeshMonitor server-side PSKs stored in `channel_database`)
- * use a parallel permission table (`channel_database_permissions`) rather than
- * the generic `checkPermissionAsync` resource/action system used by physical
- * channels. Admins bypass the table; everyone else needs an explicit row with
- * `canRead = true`. The sentinel `'all'` avoids building a full-id set for
- * admins who can read every entry regardless.
- */
-type ReadableVirtualIds = Set<number> | 'all';
-
-async function getUserReadableVirtualChannelIds(
-  user: { id: number } | undefined,
-  isAdmin: boolean,
-): Promise<ReadableVirtualIds> {
-  if (isAdmin) return 'all';
-  if (!user) return new Set();
-  try {
-    const perms = await databaseService.channelDatabase.getPermissionsForUserAsync(user.id);
-    return new Set(
-      perms
-        .filter((p) => p.canRead)
-        .map((p) => p.channelDatabaseId),
-    );
-  } catch (err) {
-    logger.warn('Failed to load virtual channel permissions:', err);
-    return new Set();
-  }
-}
-
-function canReadVirtualChannel(vcId: number, readable: ReadableVirtualIds): boolean {
-  return readable === 'all' || readable.has(vcId);
-}
-
 async function loadEnabledVirtualChannels(): Promise<DbChannelDatabase[]> {
   try {
     const all = await databaseService.channelDatabase.getAllAsync();

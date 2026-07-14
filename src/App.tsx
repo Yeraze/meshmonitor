@@ -444,13 +444,24 @@ const location = useLocation();
     snrColors: schemeColors.snrColors,
   }), [themeColors, schemeColors]);
 
-  // Channel Database entries for displaying names of server-decrypted channels
+  // Channel Database entries for displaying names of server-decrypted channels.
+  // For non-admins the backend filters this to entries they may read, so a
+  // non-empty list also means "the user can read at least one virtual channel".
   const [channelDatabaseEntries, setChannelDatabaseEntries] = useState<ChannelDatabaseEntry[]>([]);
+  // Whether the channel-database fetch has completed at least once. Used to
+  // defer the Channels-tab permission redirect until virtual-channel access is
+  // known, so a virtual-channel-only user isn't bounced off #channels during
+  // the async load.
+  const [channelDatabaseLoaded, setChannelDatabaseLoaded] = useState(false);
 
-  // Fetch Channel Database entries when authenticated
+  // Fetch Channel Database entries (names for server-decrypted / virtual
+  // channels). Anonymous is a real permissioned account too: the backend
+  // honors its per-entry virtual-channel `canRead` grants and returns the
+  // PSK-masked list, so fetch regardless of login state (fails silently with
+  // 403 for users who have no virtual-channel access).
   useEffect(() => {
     const fetchChannelDatabaseEntries = async () => {
-      if (!authStatus?.authenticated) return;
+      if (!authStatus) return;
       try {
         const response = await api.getChannelDatabaseEntries();
         if (response.success && response.data) {
@@ -459,10 +470,12 @@ const location = useLocation();
       } catch (err) {
         // Channel database might not be accessible to all users, fail silently
         logger.debug('Failed to fetch channel database entries:', err);
+      } finally {
+        setChannelDatabaseLoaded(true);
       }
     };
     void fetchChannelDatabaseEntries();
-  }, [authStatus?.authenticated]);
+  }, [authStatus]);
 
   // Show news popup when authenticated user has unread news
   useEffect(() => {
@@ -641,14 +654,19 @@ const location = useLocation();
     const isAuthenticated = authStatus?.authenticated || false;
 
     // Mirrors Sidebar.tsx hasAnyChannelPermission — channels tab is reachable
-    // if the user can read at least one channel (channel_0..channel_7).
+    // if the user can read at least one channel: a physical slot
+    // (channel_0..channel_7) OR a virtual (Channel Database) channel. The
+    // backend filters channelDatabaseEntries to entries this user may read, so
+    // any entry present authorizes the Channels surface. This is what makes the
+    // tab reachable for virtual-channel-only users (e.g. anonymous on an MQTT
+    // source with per-entry canRead grants).
     const hasAnyChannelPermission = () => {
       for (let i = 0; i < 8; i++) {
         if (hasPermission(`channel_${i}` as ResourceType, 'read')) {
           return true;
         }
       }
-      return false;
+      return channelDatabaseEntries.length > 0;
     };
 
     // Define permission requirements for each protected tab.
@@ -680,11 +698,18 @@ const location = useLocation();
       ? (tabPermissions as Record<string, () => boolean>)[activeTab]
       : undefined;
     if (typeof permissionCheck === 'function' && !permissionCheck()) {
+      // The Channels tab may be authorized purely by virtual-channel access,
+      // which isn't known until the channel-database fetch resolves. Defer the
+      // redirect until then so a virtual-channel-only user isn't bounced off
+      // #channels during the async load.
+      if (activeTab === 'channels' && !channelDatabaseLoaded) {
+        return;
+      }
       // User doesn't have permission - redirect to nodes tab
       logger.info(`[Auth] Redirecting from '${activeTab}' tab - insufficient permissions`);
       setActiveTab('nodes');
     }
-  }, [activeTab, authStatus, authLoading, hasPermission, setActiveTab, packetLogEnabled, isMqttBridge]);
+  }, [activeTab, authStatus, authLoading, hasPermission, setActiveTab, packetLogEnabled, isMqttBridge, channelDatabaseEntries, channelDatabaseLoaded]);
 
   // Helper function to safely parse node IDs to node numbers
   const parseNodeId = useCallback((nodeId: string): number => {
@@ -4834,6 +4859,7 @@ const location = useLocation();
         connectedNodeName={connectedNodeName}
         packetLogEnabled={packetLogEnabled}
         onSearchClick={() => setIsSearchOpen(true)}
+        hasReadableVirtualChannels={channelDatabaseEntries.length > 0}
         mqttReadOnly={isMqttBridge}
       />
 

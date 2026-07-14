@@ -119,22 +119,27 @@ function forbidden(res: Response, message: string) {
 export async function getAllChannelsHandler(req: Request, res: Response) {
   try {
     const scope = await resolveCallerScope(req);
-    if (!scope.hasRead) {
-      return forbidden(res, 'channel_database:read permission required');
-    }
-
-    const allChannels = await databaseService.channelDatabase.getAllAsync();
     const includeFullPsk = scope.isAdmin || scope.hasWrite;
+    const allChannels = await databaseService.channelDatabase.getAllAsync();
 
     let visible = allChannels;
     if (!includeFullPsk) {
-      // Filter by per-entry canRead via channel_database_permissions
+      // Filter by per-entry canRead via channel_database_permissions.
       const perms = scope.userId !== null
         ? await databaseService.channelDatabase.getPermissionsForUserAsync(scope.userId)
         : [];
       const readable = new Set(
         perms.filter((p: any) => p.canRead === true).map((p: any) => p.channelDatabaseId)
       );
+      // A per-entry `canRead` grant is sufficient on its own to list the
+      // (PSK-masked) entry. The "Virtual Channel Permissions" UI writes only
+      // these per-entry grants, and MQTT channel access is defined entirely by
+      // them, so requiring the separate resource-level `channel_database:read`
+      // here would silently turn every such grant into a no-op. Only 403 when
+      // the caller has neither the resource read nor any per-entry grant.
+      if (!scope.hasRead && readable.size === 0) {
+        return forbidden(res, 'channel_database:read permission required');
+      }
       visible = allChannels.filter((ch: any) => readable.has(ch.id));
     }
 

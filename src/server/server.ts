@@ -24,6 +24,13 @@ import { getSessionMiddleware } from './auth/sessionConfig.js';
 import { initializeWebSocket } from './services/webSocketService.js';
 import { initializeOIDC } from './auth/oidcAuth.js';
 import { optionalAuth, requireAuth, requirePermission, requireAdmin, hasPermission } from './auth/authMiddleware.js';
+import {
+  getUserReadableVirtualChannelIds,
+  canReadVirtualChannelNumber,
+  isVirtualChannelNumber,
+  virtualChannelDbId,
+  hasAnyReadableVirtualChannel,
+} from './utils/virtualChannelPermissions.js';
 import { transformChannel } from './utils/channelView.js';
 import { apiLimiter } from './middleware/rateLimiters.js';
 import { setupAccessLogger } from './middleware/accessLogger.js';
@@ -2309,10 +2316,16 @@ apiRouter.post('/nodes/scan-duplicate-keys', requirePermission('nodes', 'write')
 apiRouter.get('/messages', optionalAuth(), async (req, res) => {
   try {
     // Check if user has either any channel permission or messages permission
-    const hasChannelsRead = req.user?.isAdmin || (req.user ? await hasPermission(req.user, 'channel_0', 'read') : false);
-    const hasMessagesRead = req.user?.isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read') : false);
+    const isAdmin = req.user?.isAdmin === true;
+    const hasChannelsRead = isAdmin || (req.user ? await hasPermission(req.user, 'channel_0', 'read') : false);
+    const hasMessagesRead = isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read') : false);
+    // Virtual (Channel Database) channels are gated by per-entry `canRead`
+    // grants, not the channel_0..7 RBAC resources. Load them so virtual-channel
+    // readers — including MQTT-bridge and anonymous users — can see their
+    // messages instead of getting a blanket 403 / empty list.
+    const readableVirtual = await getUserReadableVirtualChannelIds(req.user, isAdmin);
 
-    if (!hasChannelsRead && !hasMessagesRead) {
+    if (!hasChannelsRead && !hasMessagesRead && !hasAnyReadableVirtualChannel(readableVirtual)) {
       return res.status(403).json({
         error: 'Insufficient permissions',
         code: 'FORBIDDEN',
@@ -2327,7 +2340,6 @@ apiRouter.get('/messages', optionalAuth(), async (req, res) => {
     // MM-SEC-3: pre-compute the channels this caller may read so we can
     // strip messages from hidden channels even when the caller has the
     // generic `channel_0:read` permission.
-    const isAdmin = req.user?.isAdmin === true;
     const authorizedChannelIds = new Set<number>();
     if (isAdmin) {
       for (let id = 0; id <= 7; id++) authorizedChannelIds.add(id);
@@ -2340,11 +2352,17 @@ apiRouter.get('/messages', optionalAuth(), async (req, res) => {
 
     // Filter messages based on permissions.
     // - DMs (channel -1) require `messages:read`.
-    // - Channel messages require BOTH the legacy `channel_0:read` gate
-    //   above AND a per-channel `channel_${id}:read` for the message's
-    //   actual channel.
+    // - Virtual (Channel Database) channels require a per-entry `canRead`
+    //   grant — the channel_0..7 gate can never authorize a >= CHANNEL_DB_OFFSET
+    //   slot.
+    // - Physical channel messages require BOTH the legacy `channel_0:read` gate
+    //   above AND a per-channel `channel_${id}:read` for the message's actual
+    //   channel.
     messages = messages.filter(msg => {
       if (msg.channel === -1) return hasMessagesRead;
+      if (isVirtualChannelNumber(msg.channel)) {
+        return isAdmin || canReadVirtualChannelNumber(msg.channel, readableVirtual);
+      }
       return hasChannelsRead && (isAdmin || authorizedChannelIds.has(msg.channel));
     });
 
@@ -2421,14 +2439,29 @@ apiRouter.get('/messages/channel/:channel', optionalAuth(), async (req, res) => 
       messageChannel = 0;
     }
 
-    // Check per-channel read permission
-    const channelResource = `channel_${messageChannel}` as import('../types/permission.js').ResourceType;
-    if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, channelResource, 'read') : false)) {
-      return res.status(403).json({
-        error: 'Insufficient permissions',
-        code: 'FORBIDDEN',
-        required: { resource: channelResource, action: 'read' },
-      });
+    // Check per-channel read permission. Virtual (Channel Database) channels
+    // live at >= CHANNEL_DB_OFFSET and are gated by per-entry `canRead` grants
+    // rather than a `channel_${n}` RBAC resource (which is only defined for
+    // slots 0..7).
+    if (isVirtualChannelNumber(messageChannel)) {
+      const isAdmin = req.user?.isAdmin === true;
+      const readableVirtual = await getUserReadableVirtualChannelIds(req.user, isAdmin);
+      if (!isAdmin && !canReadVirtualChannelNumber(messageChannel, readableVirtual)) {
+        return res.status(403).json({
+          error: 'Insufficient permissions',
+          code: 'FORBIDDEN',
+          required: { resource: `channel_database:${virtualChannelDbId(messageChannel)}`, action: 'read' },
+        });
+      }
+    } else {
+      const channelResource = `channel_${messageChannel}` as import('../types/permission.js').ResourceType;
+      if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, channelResource, 'read') : false)) {
+        return res.status(403).json({
+          error: 'Insufficient permissions',
+          code: 'FORBIDDEN',
+          required: { resource: channelResource, action: 'read' },
+        });
+      }
     }
 
     // Fetch limit+1 to accurately detect if more messages exist. When a sourceId
@@ -2476,15 +2509,29 @@ apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
     const { messageIds, channelId, nodeId, beforeTimestamp, allDMs, sourceId: markReadSourceId } = req.body;
     const markReadManager = resolveSourceManager(markReadSourceId);
 
-    // If marking by channelId, check per-channel read permission
+    // If marking by channelId, check per-channel read permission. Virtual
+    // (Channel Database) channels use per-entry `canRead` grants rather than a
+    // `channel_${n}` RBAC resource.
     if (channelId !== undefined && channelId !== null && channelId !== -1) {
-      const channelResource = `channel_${channelId}` as import('../types/permission.js').ResourceType;
-      if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, channelResource, 'read') : false)) {
-        return res.status(403).json({
-          error: 'Insufficient permissions',
-          code: 'FORBIDDEN',
-          required: { resource: channelResource, action: 'read' },
-        });
+      if (isVirtualChannelNumber(channelId)) {
+        const isAdmin = req.user?.isAdmin === true;
+        const readableVirtual = await getUserReadableVirtualChannelIds(req.user, isAdmin);
+        if (!isAdmin && !canReadVirtualChannelNumber(channelId, readableVirtual)) {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            code: 'FORBIDDEN',
+            required: { resource: `channel_database:${virtualChannelDbId(channelId)}`, action: 'read' },
+          });
+        }
+      } else {
+        const channelResource = `channel_${channelId}` as import('../types/permission.js').ResourceType;
+        if (!req.user?.isAdmin && !(req.user ? await hasPermission(req.user, channelResource, 'read') : false)) {
+          return res.status(403).json({
+            error: 'Insufficient permissions',
+            code: 'FORBIDDEN',
+            required: { resource: channelResource, action: 'read' },
+          });
+        }
       }
     }
 
@@ -2539,10 +2586,16 @@ apiRouter.post('/messages/mark-read', optionalAuth(), async (req, res) => {
 apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
   try {
     // Check if user has either any channel permission or messages permission
-    const hasChannelsRead = req.user?.isAdmin || (req.user ? await hasPermission(req.user, 'channel_0', 'read') : false);
-    const hasMessagesRead = req.user?.isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read') : false);
+    const isAdmin = req.user?.isAdmin === true;
+    const hasChannelsRead = isAdmin || (req.user ? await hasPermission(req.user, 'channel_0', 'read') : false);
+    const hasMessagesRead = isAdmin || (req.user ? await hasPermission(req.user, 'messages', 'read') : false);
+    // Virtual (Channel Database) channels are gated by per-entry `canRead`
+    // grants; a virtual-channel-only reader still needs to reach the unread
+    // counts for those channels.
+    const readableVirtual = await getUserReadableVirtualChannelIds(req.user, isAdmin);
+    const hasVirtualRead = hasAnyReadableVirtualChannel(readableVirtual);
 
-    if (!hasChannelsRead && !hasMessagesRead) {
+    if (!hasChannelsRead && !hasMessagesRead && !hasVirtualRead) {
       return res.status(403).json({
         error: 'Insufficient permissions',
         code: 'FORBIDDEN',
@@ -2588,20 +2641,24 @@ apiRouter.get('/messages/unread-counts', optionalAuth(), async (req, res) => {
       }
     }
 
-    // Get channel unread counts if user has channels permission
-    // Only count incoming messages (exclude messages sent by our node)
-    if (hasChannelsRead) {
+    // Get channel unread counts if user can read any channel (physical or
+    // virtual). Only count incoming messages (exclude messages sent by our node).
+    if (hasChannelsRead || hasVirtualRead) {
       const rawCounts = await databaseService.getUnreadCountsByChannelAsync(userId, localNodeInfo?.nodeId, unreadSourceId ?? ALL_SOURCES, excludeMqtt); // intentional cross-source when sourceId omitted
 
       // MM-SEC-3: filter by per-channel read permission as well as mute prefs.
       // The bare `channel_0:read` gate above lets a viewer reach this handler
       // but they must not learn unread counts for channels they cannot read.
-      const isAdmin = req.user?.isAdmin === true;
+      // Virtual (Channel Database) channels use per-entry `canRead` grants.
       const channels: { [channelId: number]: number } = {};
       for (const [channelIdStr, count] of Object.entries(rawCounts)) {
         const channelId = Number(channelIdStr);
         if (mutedChannelIds.has(channelId)) continue;
-        if (!isAdmin && req.user) {
+        if (isVirtualChannelNumber(channelId)) {
+          if (!isAdmin && !canReadVirtualChannelNumber(channelId, readableVirtual)) continue;
+        } else if (!hasChannelsRead) {
+          continue;
+        } else if (!isAdmin && req.user) {
           const channelResource = `channel_${channelId}` as import('../types/permission.js').ResourceType;
           if (!(await hasPermission(req.user, channelResource, 'read'))) continue;
         } else if (!req.user && !isAdmin) {

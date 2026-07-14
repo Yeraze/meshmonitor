@@ -148,6 +148,37 @@ describe('Legacy mount — GET / permission filtering', () => {
     const res = await agent.get('/api/channel-database');
     expect(res.status).toBe(403);
   });
+
+  it('non-admin without resource :read but WITH per-entry canRead: returns filtered list (200, masked PSK)', async () => {
+    // Regression: the "Virtual Channel Permissions" UI writes only per-entry
+    // canRead — it does NOT grant the resource-level channel_database:read. A
+    // user granted read on every virtual channel must still be able to list
+    // them, otherwise the grant is a silent no-op (the anonymous-MQTT bug).
+    // No channel_database:read grant seeded here.
+    vi.spyOn(databaseService.channelDatabase, 'getPermissionsForUserAsync').mockResolvedValue([
+      { userId: harness.limited.id, channelDatabaseId: 1, canViewOnMap: false, canRead: true } as any,
+    ]);
+
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get('/api/channel-database');
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(1);
+    expect(res.body.data[0].id).toBe(1);
+    // PSK stays masked — per-entry read never exposes the raw key.
+    expect(res.body.data[0].psk).toBeUndefined();
+    expect(res.body.data[0].pskPreview).toMatch(/\.\.\.$/);
+  });
+
+  it('non-admin with neither resource :read nor any per-entry canRead: returns 403', async () => {
+    // Per-entry row exists but canRead=false → not readable → still 403.
+    vi.spyOn(databaseService.channelDatabase, 'getPermissionsForUserAsync').mockResolvedValue([
+      { userId: harness.limited.id, channelDatabaseId: 1, canViewOnMap: false, canRead: false } as any,
+    ]);
+
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get('/api/channel-database');
+    expect(res.status).toBe(403);
+  });
 });
 
 // ── describe 3: GET /:id permission filtering ─────────────────────────────────
