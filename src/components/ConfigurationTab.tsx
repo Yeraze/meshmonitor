@@ -138,6 +138,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const [ipv4Gateway, setIpv4Gateway] = useState('');
   const [ipv4Subnet, setIpv4Subnet] = useState('');
   const [ipv4Dns, setIpv4Dns] = useState('');
+  const [enabledProtocols, setEnabledProtocols] = useState(0);
   const [fullNetworkConfig, setFullNetworkConfig] = useState<any>(null);
 
   // Power Config State
@@ -501,6 +502,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           setNtpServer(config.deviceConfig.network.ntpServer || '');
           setRsyslogServer(config.deviceConfig.network.rsyslogServer || '');
           setAddressMode(config.deviceConfig.network.addressMode ?? 0);
+          setEnabledProtocols(config.deviceConfig.network.enabledProtocols || 0);
           // Static IP config
           if (config.deviceConfig.network.ipv4Config) {
             setIpv4Address(config.deviceConfig.network.ipv4Config.ip || '');
@@ -1030,6 +1032,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         ntpServer,
         rsyslogServer,
         addressMode,
+        enabledProtocols,
         // Static IP config - only include if using static address mode
         ipv4Config: addressMode === 1 ? {
           ip: ipv4Address,
@@ -1718,6 +1721,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         if (net.wifiPsk !== undefined) setWifiPsk(net.wifiPsk);
         if (net.ntpServer !== undefined) setNtpServer(net.ntpServer);
         if (net.rsyslogServer !== undefined) setRsyslogServer(net.rsyslogServer);
+        if (net.enabledProtocols !== undefined) setEnabledProtocols(net.enabledProtocols);
         if (net.ipv4Config) {
           if (net.ipv4Config.ip !== undefined) setIpv4Address(net.ipv4Config.ip);
           if (net.ipv4Config.gateway !== undefined) setIpv4Gateway(net.ipv4Config.gateway);
@@ -2317,6 +2321,8 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
             setRsyslogServer={setRsyslogServer}
             addressMode={addressMode}
             setAddressMode={setAddressMode}
+            enabledProtocols={enabledProtocols}
+            setEnabledProtocols={setEnabledProtocols}
             ipv4Address={ipv4Address}
             setIpv4Address={setIpv4Address}
             ipv4Gateway={ipv4Gateway}

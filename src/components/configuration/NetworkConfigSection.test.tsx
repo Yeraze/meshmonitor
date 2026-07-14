@@ -34,6 +34,8 @@ const baseProps = {
   setRsyslogServer: vi.fn(),
   addressMode: 0,
   setAddressMode: vi.fn(),
+  enabledProtocols: 0,
+  setEnabledProtocols: vi.fn(),
   ipv4Address: '',
   setIpv4Address: vi.fn(),
   ipv4Gateway: '',
@@ -62,5 +64,31 @@ describe('NetworkConfigSection — bridged-node inert notice', () => {
   it('does not render the notice when isBridged is omitted', () => {
     render(<NetworkConfigSection {...baseProps} />);
     expect(screen.queryByTestId('network-bridged-note')).toBeNull();
+  });
+});
+
+describe('NetworkConfigSection — UDP broadcast', () => {
+  it('renders unchecked when the UDP_BROADCAST bit (0x0001) is not set', () => {
+    const { container } = render(<NetworkConfigSection {...baseProps} enabledProtocols={0} />);
+    expect(container.querySelector('#udpBroadcastEnabled')).not.toBeChecked();
+  });
+
+  it('renders checked when the UDP_BROADCAST bit is set', () => {
+    const { container } = render(<NetworkConfigSection {...baseProps} enabledProtocols={1} />);
+    expect(container.querySelector('#udpBroadcastEnabled')).toBeChecked();
+  });
+
+  it('preserves other bits when toggling the UDP_BROADCAST bit on', () => {
+    const setEnabledProtocols = vi.fn();
+    const { container } = render(<NetworkConfigSection {...baseProps} enabledProtocols={0x0100} setEnabledProtocols={setEnabledProtocols} />);
+    container.querySelector<HTMLInputElement>('#udpBroadcastEnabled')!.click();
+    expect(setEnabledProtocols).toHaveBeenCalledWith(0x0101);
+  });
+
+  it('preserves other bits when toggling the UDP_BROADCAST bit off', () => {
+    const setEnabledProtocols = vi.fn();
+    const { container } = render(<NetworkConfigSection {...baseProps} enabledProtocols={0x0101} setEnabledProtocols={setEnabledProtocols} />);
+    container.querySelector<HTMLInputElement>('#udpBroadcastEnabled')!.click();
+    expect(setEnabledProtocols).toHaveBeenCalledWith(0x0100);
   });
 });

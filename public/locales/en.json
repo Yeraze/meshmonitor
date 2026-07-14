@@ -3017,6 +3017,8 @@
   "network_config.ntp_server_description": "Custom NTP server address (default: meshtastic.pool.ntp.org). Maximum 33 characters.",
   "network_config.rsyslog_server": "Rsyslog Server",
   "network_config.rsyslog_server_description": "Remote syslog server address (e.g., 192.168.1.100:514). Leave blank to disable.",
+  "network_config.udp_broadcast": "UDP Broadcast",
+  "network_config.udp_broadcast_description": "Broadcast node info and telemetry over UDP on the local network, so other software (e.g. Meshtastic clients on the same LAN) can discover this node without a direct connection.",
   "network_config.save_button": "Save Network Config",
 
   "config.network_saved": "Network configuration saved",
