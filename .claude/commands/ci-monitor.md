@@ -24,6 +24,7 @@ The script polls every 60s, blocks until the picture is decided, and emits exact
 | `0`  | All workflows ended in `success` or `skipped` | Report success and stop |
 | `1`  | At least one workflow ended in `failure` / `cancelled` / `timed_out` | Proceed to Phase 2 |
 | `2`  | Usage / GitHub API error (bad PR number, gh auth failure) | Stop, report the error to the user |
+| `3`  | PR has a **merge conflict** with its base (`mergeable=CONFLICTING`) — CI for the merge ref will never complete | Proceed to Phase 2b (resolve the conflict), do NOT keep waiting on checks |
 
 The `-q` flag suppresses per-cycle status; you only see the final pass/fail line, which keeps the polling out of your context window. Drop the `-q` flag if you want to debug.
 
@@ -57,6 +58,24 @@ Only reached when `watch-ci.sh` returned exit code `1`.
    - `is not a function` — missing method on repository or wrong import
    - `Cannot read properties of undefined` — null/undefined propagation from Drizzle repos
    - `FAIL` lines — test file names and assertion errors
+
+### Phase 2b: Resolve merge conflict (exit 3)
+
+Reached when `watch-ci.sh` exits `3` — the PR is `CONFLICTING` against its base. Waiting longer will never help; resolve it:
+
+1. Confirm and identify the conflicting files:
+   ```bash
+   gh pr view <PR_NUMBER> --json mergeable,mergeStateStatus
+   git -C <worktree> fetch origin main
+   git -C <worktree> merge origin/main    # conflicts print here
+   ```
+2. Resolve each conflicted file **preserving both sides' intent** — main's hunks are already shipped, so adapt OUR changes around them, not vice versa. Repo-specific gotchas:
+   - **`src/db/migrations.ts` conflicts usually mean a migration-number collision.** If main claimed our number, renumber OURS to the next free one: `git mv` the `NNN_*.ts` file, update its exported `runMigrationNNN*` function names, the registry entry (`number`, `settingsKey`), and the import path in `migrations.ts`. Grep for the old `NNN_` prefix and `migration_NNN_` key to catch stragglers. (`migrations.test.ts` is registry-derived — no edit needed.)
+   - `public/locales/en.json`: keep both sides' keys.
+   - `VALID_SETTINGS_KEYS` / `SERVER_ONLY_SETTINGS`: union of both sides.
+3. Verify before pushing: `npm run typecheck`, targeted vitest on the touched areas (JSON reporter, `success: true`), `npm run lint:ci`.
+4. Commit the merge (regular merge commit — never force-push) and `git push origin <branch>`.
+5. Re-run `watch-ci.sh` (back to Phase 1). GitHub may briefly report `mergeable=UNKNOWN` after the push while it recomputes — the script treats that as "keep watching", not a conflict.
 
 ### Phase 3: Fix
 
