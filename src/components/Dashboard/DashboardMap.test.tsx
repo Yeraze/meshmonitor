@@ -7,6 +7,20 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import DashboardMap from './DashboardMap';
 import { darkOverlayColors } from '../../config/overlayColors';
 
+// Shared, mutable mocks for the map instance and settings so individual tests
+// can assert fitBounds behavior and toggle the Default Map Center (issue #4125).
+const mocks = vi.hoisted(() => ({
+  fitBounds: vi.fn(),
+  settings: {
+    mapPinStyle: 'official' as string,
+    overlayColors: undefined as unknown,
+    setMapTileset: undefined as unknown,
+    defaultMapCenterLat: null as number | null,
+    defaultMapCenterLon: null as number | null,
+    defaultMapCenterZoom: null as number | null,
+  },
+}));
+
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
@@ -47,7 +61,7 @@ vi.mock('react-leaflet', () => ({
     <div data-testid="map-polyline" data-positions={JSON.stringify(positions)} />
   ),
   Rectangle: () => <div data-testid="map-rectangle" />,
-  useMap: () => ({ fitBounds: vi.fn(), setView: vi.fn() }),
+  useMap: () => ({ fitBounds: mocks.fitBounds, setView: vi.fn() }),
 }));
 
 // MapContext is normally provided by DashboardPage; in tests we mock the hook
@@ -101,7 +115,7 @@ vi.mock('../../services/api', () => ({
 // SettingsProvider.
 vi.mock('../../contexts/SettingsContext', () => ({
   useDisplaySettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
-  useSettings: () => ({ mapPinStyle: 'official', overlayColors: darkOverlayColors }),
+  useSettings: () => mocks.settings,
 }));
 
 vi.mock('leaflet', () => ({
@@ -279,6 +293,30 @@ describe('DashboardMap', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    // Reset the shared settings mock to "no Default Map Center configured".
+    mocks.settings.mapPinStyle = 'official';
+    mocks.settings.overlayColors = darkOverlayColors;
+    mocks.settings.setMapTileset = vi.fn();
+    mocks.settings.defaultMapCenterLat = null;
+    mocks.settings.defaultMapCenterLon = null;
+    mocks.settings.defaultMapCenterZoom = null;
+  });
+
+  // --- Default Map Center vs auto-fit (issue #4125) ---------------------------
+
+  it('auto-fits bounds to node positions when no Default Map Center is configured', () => {
+    render(<DashboardMap {...defaultProps} nodes={[nodeWithPosition]} />);
+    expect(mocks.fitBounds).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not auto-fit bounds when a Default Map Center is configured (issue #4125)', () => {
+    mocks.settings.defaultMapCenterLat = 27.5;
+    mocks.settings.defaultMapCenterLon = -82.5;
+    mocks.settings.defaultMapCenterZoom = 8;
+    render(<DashboardMap {...defaultProps} nodes={[nodeWithPosition]} />);
+    // A configured default center must win over auto-fit — otherwise the map
+    // pans/zooms out to include stray out-of-region nodes (the reported bug).
+    expect(mocks.fitBounds).not.toHaveBeenCalled();
   });
 
   // --- Features panel collapse (#3912) ---------------------------------------

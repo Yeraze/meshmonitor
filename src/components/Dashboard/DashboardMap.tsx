@@ -112,13 +112,21 @@ function getNodeLatLng(node: any): { lat: number; lng: number } | null {
 interface MapBoundsUpdaterProps {
   positions: [number, number][];
   sourceId: string | null;
+  /**
+   * When true, an admin has configured a Default Map Center (lat/lon/zoom), so
+   * the map should open there and we must NOT auto-fit to node bounds. Mirrors
+   * the per-source classic map priority in NodesTab (issue #4125).
+   */
+  skip: boolean;
 }
 
-function MapBoundsUpdater({ positions, sourceId }: MapBoundsUpdaterProps) {
+function MapBoundsUpdater({ positions, sourceId, skip }: MapBoundsUpdaterProps) {
   const map = useMap();
   const hasFittedRef = useRef(false);
 
   useEffect(() => {
+    // A configured Default Map Center wins over auto-fit (issue #4125).
+    if (skip) return;
     // Only auto-fit once on initial load, then let the user control the view
     if (hasFittedRef.current) return;
     if (positions.length === 0) return;
@@ -149,7 +157,22 @@ export default function DashboardMap({
   onNodeSourceSelect,
   isLoading = false,
 }: DashboardMapProps) {
-  const { mapPinStyle, setMapTileset, overlayColors } = useSettings();
+  const {
+    mapPinStyle,
+    setMapTileset,
+    overlayColors,
+    defaultMapCenterLat,
+    defaultMapCenterLon,
+    defaultMapCenterZoom,
+  } = useSettings();
+
+  // A Default Map Center is only "configured" when all three parts are set.
+  // When configured, the map opens there and auto-fit-to-nodes is suppressed
+  // (issue #4125 — parity with NodesTab.tsx's classic per-source map).
+  const hasConfiguredDefaultCenter =
+    defaultMapCenterLat != null &&
+    defaultMapCenterLon != null &&
+    defaultMapCenterZoom != null;
 
   // Polar grid (#3971): draw a grid centered on each source's own-node position.
   // On the Unified map (sourceId === UNIFIED_SOURCE_ID) that's every source, each
@@ -584,7 +607,7 @@ export default function DashboardMap({
     <div className="dashboard-map-container" style={{ position: 'relative' }}>
       <BaseMap
         center={[defaultCenter.lat, defaultCenter.lng]}
-        zoom={10}
+        zoom={hasConfiguredDefaultCenter ? defaultMapCenterZoom : 10}
         tilesetId={tilesetId}
         customTilesets={customTilesets}
         zoomControl
@@ -599,7 +622,7 @@ export default function DashboardMap({
           />
         )}
 
-        <MapBoundsUpdater positions={nodePositions} sourceId={sourceId} />
+        <MapBoundsUpdater positions={nodePositions} sourceId={sourceId} skip={hasConfiguredDefaultCenter} />
 
         {showLegend && <MapLegend />}
 
