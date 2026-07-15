@@ -135,7 +135,7 @@ function MapBoundsUpdater({ positions, sourceId, skip }: MapBoundsUpdaterProps) 
       map.fitBounds(bounds, { padding: [40, 40] });
       hasFittedRef.current = true;
     }
-  }, [map, positions, sourceId]);
+  }, [map, positions, sourceId, skip]);
 
   return null;
 }
