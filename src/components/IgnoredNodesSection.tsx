@@ -16,6 +16,7 @@ interface IgnoredNode {
   shortName: string | null;
   ignoredAt: number;
   ignoredBy: string | null;
+  reason: 'manual' | 'geo';
 }
 
 const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) => {
@@ -188,6 +189,9 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
                   <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 500 }}>
                     {t('automation.ignored_nodes.col_ignored_at', 'Ignored At')}
                   </th>
+                  <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 500 }}>
+                    {t('automation.ignored_nodes.col_reason', 'Reason')}
+                  </th>
                   <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 500 }}>
                     {t('automation.ignored_nodes.col_actions', 'Actions')}
                   </th>
@@ -207,6 +211,20 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
                     </td>
                     <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-subtext0)' }}>
                       {new Date(node.ignoredAt).toLocaleString()}
+                    </td>
+                    <td style={{ padding: '0.4rem 0.75rem' }}>
+                      <span style={{
+                        fontSize: '11px',
+                        padding: '0.15rem 0.4rem',
+                        background: node.reason === 'geo' ? 'var(--ctp-blue)' : 'var(--ctp-surface2)',
+                        color: node.reason === 'geo' ? 'var(--ctp-base)' : 'var(--ctp-subtext0)',
+                        borderRadius: '4px',
+                        fontWeight: 'bold',
+                      }}>
+                        {node.reason === 'geo'
+                          ? t('automation.ignored_nodes.reason_geo', 'Geo filter')
+                          : t('automation.ignored_nodes.reason_manual', 'Manual')}
+                      </span>
                     </td>
                     <td style={{ padding: '0.4rem 0.75rem', textAlign: 'center' }}>
                       <button
