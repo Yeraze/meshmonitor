@@ -3152,11 +3152,13 @@ class DatabaseService {
    */
   async deleteNodeAsync(nodeNum: number, sourceId: string): Promise<{
     messagesDeleted: number;
+    broadcastMessagesDeleted: number;
     traceroutesDeleted: number;
     telemetryDeleted: number;
     nodeDeleted: boolean;
   }> {
     let messagesDeleted = 0;
+    let broadcastMessagesDeleted = 0;
     let traceroutesDeleted = 0;
     let telemetryDeleted = 0;
     let nodeDeleted = false;
@@ -3165,6 +3167,11 @@ class DatabaseService {
       // Delete DMs to/from this node (scoped to this source)
       if (this.messagesRepo) {
         messagesDeleted = await this.messagesRepo.purgeDirectMessages(nodeNum, sourceId);
+        // Delete channel broadcasts originated by this node (scoped to this source).
+        // Ordering matters: purgeDirectMessages already removed DMs from/to this
+        // node, so purgeMessagesFromNode only counts surviving from-node rows —
+        // i.e. broadcasts — keeping the two counts disjoint.
+        broadcastMessagesDeleted = await this.messagesRepo.purgeMessagesFromNode(nodeNum, sourceId);
       }
 
       // Delete traceroutes for this node (scoped to this source)
@@ -3202,13 +3209,13 @@ class DatabaseService {
       // Also remove from cache (scoped lookup)
       this.nodeCache.delete(nodeNum, sourceId);
 
-      logger.debug(`Deleted node ${nodeNum}@${sourceId}: messages=${messagesDeleted}, traceroutes=${traceroutesDeleted}, telemetry=${telemetryDeleted}, node=${nodeDeleted}`);
+      logger.debug(`Deleted node ${nodeNum}@${sourceId}: messages=${messagesDeleted}, broadcastMessages=${broadcastMessagesDeleted}, traceroutes=${traceroutesDeleted}, telemetry=${telemetryDeleted}, node=${nodeDeleted}`);
     } catch (error) {
       logger.error(`Error deleting node ${nodeNum}@${sourceId}:`, error);
       throw error;
     }
 
-    return { messagesDeleted, traceroutesDeleted, telemetryDeleted, nodeDeleted };
+    return { messagesDeleted, broadcastMessagesDeleted, traceroutesDeleted, telemetryDeleted, nodeDeleted };
   }
 
   /**

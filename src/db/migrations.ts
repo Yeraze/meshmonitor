@@ -134,6 +134,7 @@ import { migration as trimOutOfRangeNodePositionsMigration, runMigration116Postg
 import { migration as dropUpgradeHistoryMigration, runMigration117Postgres as runDropUpgradeHistoryPostgres, runMigration117Mysql as runDropUpgradeHistoryMysql } from '../server/migrations/117_drop_upgrade_history.js';
 import { migration as dropLegacyAuthProviderCheckMigration, runMigration118Postgres as runDropLegacyAuthProviderCheckPostgres, runMigration118Mysql as runDropLegacyAuthProviderCheckMysql } from '../server/migrations/118_drop_legacy_auth_provider_check.js';
 import { migration as themeTilesetsMigration, runMigration119Postgres as runThemeTilesetsPostgres, runMigration119Mysql as runThemeTilesetsMysql } from '../server/migrations/119_add_theme_tilesets.js';
+import { migration as addReasonToIgnoredNodesMigration, runMigration120Postgres as runAddReasonToIgnoredNodesPostgres, runMigration120Mysql as runAddReasonToIgnoredNodesMysql } from '../server/migrations/120_add_reason_to_ignored_nodes.js';
 
 // ============================================================================
 // Registry
@@ -1894,4 +1895,19 @@ registry.register({
   sqlite: (db) => themeTilesetsMigration.up(db),
   postgres: (client) => runThemeTilesetsPostgres(client),
   mysql: (pool) => runThemeTilesetsMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 120: Add `reason` column to `ignored_nodes` (MQTT Geo-Ignore
+// epic, Phase 1) to distinguish manual blocklist entries from geo-fence
+// auto-ignores.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 120,
+  name: 'add_reason_to_ignored_nodes',
+  settingsKey: 'migration_120_add_reason_to_ignored_nodes',
+  sqlite: (db) => addReasonToIgnoredNodesMigration.up(db),
+  postgres: (client) => runAddReasonToIgnoredNodesPostgres(client),
+  mysql: (pool) => runAddReasonToIgnoredNodesMysql(pool),
 });
