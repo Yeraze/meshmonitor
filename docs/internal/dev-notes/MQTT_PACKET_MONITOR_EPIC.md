@@ -113,4 +113,15 @@ PR merged.
 
 ## Deviations / notes
 
-- (running log — update at each phase boundary)
+- Epic tracking issue: #4124.
+- Phase 1 spec: `docs/internal/dev-notes/MQTT_PACKET_MONITOR_PHASE1_SPEC.md`. Implemented
+  as four work packages (WP1 schema/migration/settings → WP2 repository/wiring →
+  WP3 service/ingest-hook ∥ WP4 routes/mount).
+- Lint ratchet: migration 120's PG/MySQL params are typed (`pg.PoolClient` /
+  `mysql2/promise.Pool`) like migration 119 — the 075 template's `any` params predate the
+  ratchet. The one `any` in `ActiveSchema` carries a `#4124` eslint-disable.
+- `decryptedBy` is recorded as `'server'` when a copy had encrypted bytes AND a decoded
+  body after ingest (server-side PSK decrypt). `ingestOutcome` maps `no-decoded`/`no-packet`
+  onto `decode-error`.
+- Grouped-list semantics: with a gateway filter active, `gatewayCount` counts only the
+  selected gateways (filter is in the WHERE clause) — Phase 2 UI should label accordingly.
