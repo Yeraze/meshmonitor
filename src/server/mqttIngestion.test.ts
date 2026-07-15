@@ -266,12 +266,14 @@ describe('ingestServiceEnvelope — POSITION geo evaluation', () => {
     });
 
     expect(result).toMatchObject({ ingested: false, reason: 'geo-ignored' });
+    // No stored NodeInfo for this sender — the ignore entry falls back to the
+    // traceroute-style stub name so the ignore-list UI never shows a blank.
     expect(databaseService.ignoredNodes.addGeoIgnoreAsync).toHaveBeenCalledWith(
       NODE_OUT,
       'bridge-1',
-      expect.any(String),
-      undefined,
-      undefined,
+      expect.stringMatching(/^![0-9a-f]{8}$/),
+      expect.stringMatching(/^Node ![0-9a-f]{8}$/),
+      expect.stringMatching(/^[0-9a-f]{4}$/),
     );
     // Fire-and-forget purge — await a microtask tick so the .then() lands.
     await new Promise((r) => setTimeout(r, 0));

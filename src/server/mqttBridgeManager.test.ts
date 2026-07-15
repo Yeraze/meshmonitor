@@ -46,8 +46,15 @@ const getIgnoredNodesAsync = vi.fn(async (sourceId?: string) =>
   Array.from(ignoredRecords.entries())
     .filter(([key]) => !sourceId || key.startsWith(`${sourceId}:`))
     .map(([key, rec]) => {
-      const [sid, numStr] = key.split(':');
-      return { nodeNum: Number(numStr), sourceId: sid, reason: rec.reason };
+      // Split on the LAST colon — nodeNum is the trailing numeric segment
+      // (mirrors the real cacheKey contract), so a colon-bearing sourceId
+      // can't skew the parse.
+      const colon = key.lastIndexOf(':');
+      return {
+        nodeNum: Number(key.slice(colon + 1)),
+        sourceId: key.slice(0, colon),
+        reason: rec.reason,
+      };
     }));
 
 vi.mock('../services/database.js', () => ({

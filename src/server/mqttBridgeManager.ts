@@ -651,6 +651,16 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     // postFilterPosition increments drops.geo on the out case — run it for
     // every plaintext position (even already-ignored senders) so the counter
     // reflects all out-of-bbox position arrivals.
+    // TODO(Phase 4): drops.geo only sees plaintext positions here; encrypted
+    // out-of-bbox positions are classified post-decrypt in ingestion and are
+    // not counted until per-reason counters land.
+    //
+    // Known one-packet window: `isIgnored` is the cached state at pre-gate
+    // time, and ingestion (which inserts/lifts the geo-ignore) runs
+    // fire-and-forget below. A node's very first out-of-bbox POSITION is
+    // therefore emitted/republished once before the ignore takes effect;
+    // every subsequent packet sees the updated cache. Accepted trade-off of
+    // not blocking the packet loop on ingestion.
     let republishAllowed = !isIgnored;
     if (isPosition) {
       const position = decodePosition(envelope.packet!.decoded!.payload);

@@ -274,13 +274,20 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
         const existing = await databaseService.nodes.getNode(fromNum, sourceId);
         const inserted = await databaseService.ignoredNodes.addGeoIgnoreAsync(
           fromNum, sourceId, fromNodeId,
-          existing?.longName ?? undefined,
-          existing?.shortName ?? undefined,
+          // A node whose first-ever packet is an out-of-bbox POSITION has no
+          // stored NodeInfo — fall back to the same stub naming the
+          // traceroute path uses so the ignore-list UI never shows a blank.
+          existing?.longName ?? `Node ${fromNodeId}`,
+          existing?.shortName ?? fromNodeId.slice(-4),
         );
         if (inserted) {
           // Fire-and-forget full purge (messages incl. broadcasts, telemetry,
           // traceroutes, neighbors, packet logs, node row). Ingestion must not
-          // block the packet loop on a multi-table cascade.
+          // block the packet loop on a multi-table cascade. The ignore-cache
+          // entry is already live (awaited above), so the gate drops the
+          // node's subsequent traffic while the purge runs; a write racing
+          // the cascade is last-writer-wins on the node row, which the next
+          // packet's gate makes moot.
           void databaseService.deleteNodeAsync(fromNum, sourceId).catch((err) =>
             logger.warn(`Geo-purge failed for ${fromNodeId}@${sourceId}: ${err}`));
         }
