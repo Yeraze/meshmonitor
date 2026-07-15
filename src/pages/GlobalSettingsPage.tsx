@@ -34,7 +34,8 @@ function GlobalSettingsInner() {
     preferredSortDirection,
     timeFormat,
     dateFormat,
-    mapTileset,
+    mapTilesetLight,
+    mapTilesetDark,
     mapPinStyle,
     iconStyle,
     theme,
@@ -57,7 +58,7 @@ function GlobalSettingsInner() {
     setPreferredSortDirection,
     setTimeFormat,
     setDateFormat,
-    setMapTileset,
+    setMapTilesets,
     setMapPinStyle,
     setIconStyle,
     setLanguage,
@@ -100,7 +101,8 @@ function GlobalSettingsInner() {
         preferredSortDirection={preferredSortDirection}
         timeFormat={timeFormat}
         dateFormat={dateFormat}
-        mapTileset={mapTileset}
+        mapTilesetLight={mapTilesetLight}
+        mapTilesetDark={mapTilesetDark}
         mapPinStyle={mapPinStyle}
         iconStyle={iconStyle}
         theme={theme}
@@ -126,7 +128,7 @@ function GlobalSettingsInner() {
         onPreferredSortDirectionChange={setPreferredSortDirection}
         onTimeFormatChange={setTimeFormat}
         onDateFormatChange={setDateFormat}
-        onMapTilesetChange={setMapTileset}
+        onMapTilesetsChange={setMapTilesets}
         onMapPinStyleChange={setMapPinStyle}
         onIconStyleChange={setIconStyle}
         onLanguageChange={setLanguage}

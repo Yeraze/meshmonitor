@@ -133,6 +133,7 @@ import { migration as dropInlineNotifPrefsUserIdUniqueMigration, runMigration115
 import { migration as trimOutOfRangeNodePositionsMigration, runMigration116Postgres as runTrimOutOfRangeNodePositionsPostgres, runMigration116Mysql as runTrimOutOfRangeNodePositionsMysql } from '../server/migrations/116_trim_out_of_range_node_positions.js';
 import { migration as dropUpgradeHistoryMigration, runMigration117Postgres as runDropUpgradeHistoryPostgres, runMigration117Mysql as runDropUpgradeHistoryMysql } from '../server/migrations/117_drop_upgrade_history.js';
 import { migration as dropLegacyAuthProviderCheckMigration, runMigration118Postgres as runDropLegacyAuthProviderCheckPostgres, runMigration118Mysql as runDropLegacyAuthProviderCheckMysql } from '../server/migrations/118_drop_legacy_auth_provider_check.js';
+import { migration as themeTilesetsMigration, runMigration119Postgres as runThemeTilesetsPostgres, runMigration119Mysql as runThemeTilesetsMysql } from '../server/migrations/119_add_theme_tilesets.js';
 
 // ============================================================================
 // Registry
@@ -1879,4 +1880,18 @@ registry.register({
   sqlite: (db) => dropLegacyAuthProviderCheckMigration.up(db),
   postgres: (client) => runDropLegacyAuthProviderCheckPostgres(client),
   mysql: (pool) => runDropLegacyAuthProviderCheckMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 119: Separate light/dark map tilesets while preserving customized
+// legacy selections. Implements issue #4096.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 119,
+  name: 'add_theme_tilesets',
+  settingsKey: 'migration_119_add_theme_tilesets',
+  sqlite: (db) => themeTilesetsMigration.up(db),
+  postgres: (client) => runThemeTilesetsPostgres(client),
+  mysql: (pool) => runThemeTilesetsMysql(pool),
 });

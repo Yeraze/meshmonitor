@@ -123,7 +123,7 @@ const defaultSettingsResponse = {
   language: 'en',
 };
 
-const createFetchMock = (settings = defaultSettingsResponse, ok = true) => {
+const createFetchMock = (settings: Record<string, any> = defaultSettingsResponse, ok = true) => {
   mockFetch.mockImplementation((url: string) => {
     if (url.includes('/api/settings')) {
       return Promise.resolve({
@@ -290,6 +290,28 @@ describe('SettingsContext Types', () => {
       expect(keys.dateFormat).toBe('dateFormat');
       expect(keys.distanceUnit).toBe('distanceUnit');
     });
+  });
+});
+
+describe('per-theme map tileset helpers', () => {
+  it('uses smart defaults only for the untouched legacy selection', async () => {
+    const { resolveLegacyMapTilesets } = await import('./SettingsContext');
+    expect(resolveLegacyMapTilesets(null)).toEqual({ light: 'osm', dark: 'cartoDark' });
+    expect(resolveLegacyMapTilesets('osm')).toEqual({ light: 'osm', dark: 'cartoDark' });
+    expect(resolveLegacyMapTilesets('openTopo')).toEqual({ light: 'openTopo', dark: 'openTopo' });
+    expect(resolveLegacyMapTilesets('custom-7')).toEqual({ light: 'custom-7', dark: 'custom-7' });
+  });
+
+  it('resolves explicit and system appearance modes', async () => {
+    const { getActiveAppearanceMode, getEffectiveTileset } = await import('./SettingsContext');
+    expect(getEffectiveTileset('light', 'cartoDark', 'osm', true)).toBe('osm');
+    expect(getEffectiveTileset('dark', 'cartoDark', 'osm', false)).toBe('cartoDark');
+    expect(getEffectiveTileset('system', 'cartoDark', 'osm', true)).toBe('cartoDark');
+    expect(getEffectiveTileset('system', 'cartoDark', 'osm', false)).toBe('osm');
+    expect(getActiveAppearanceMode('dark', false)).toBe('dark');
+    expect(getActiveAppearanceMode('light', true)).toBe('light');
+    expect(getActiveAppearanceMode('system', true)).toBe('dark');
+    expect(getActiveAppearanceMode('system', false)).toBe('light');
   });
 });
 
@@ -1338,6 +1360,77 @@ describe('SettingsProvider', () => {
 
     expect(contextValue.overlayScheme).toBeDefined();
     expect(contextValue.overlayColors).toBeDefined();
+  });
+
+  it('uses the new defaults for an untouched legacy OSM preference', async () => {
+    localStorage.setItem('mapTileset', 'osm');
+    mockFetch.mockReset();
+    createFetchMock({ appearanceMode: 'system', mapTileset: 'osm' });
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+    let contextValue: any;
+    const Consumer = () => { contextValue = useSettings(); return <div />; };
+
+    await act(async () => { render(<SettingsProvider><Consumer /></SettingsProvider>); });
+    await waitFor(() => expect(contextValue.isLoading).toBe(false));
+
+    expect(contextValue.mapTilesetLight).toBe('osm');
+    expect(contextValue.mapTilesetDark).toBe('cartoDark');
+    expect(contextValue.mapTileset).toBe('cartoDark');
+    expect(contextValue.activeMapTilesetMode).toBe('dark');
+  });
+
+  it('preserves a customized legacy tileset in both slots', async () => {
+    localStorage.setItem('mapTileset', 'custom-7');
+    mockFetch.mockReset();
+    createFetchMock({ appearanceMode: 'system', mapTileset: 'custom-7' });
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+    let contextValue: any;
+    const Consumer = () => { contextValue = useSettings(); return <div />; };
+
+    await act(async () => { render(<SettingsProvider><Consumer /></SettingsProvider>); });
+    await waitFor(() => expect(contextValue.isLoading).toBe(false));
+
+    expect(contextValue.mapTilesetLight).toBe('custom-7');
+    expect(contextValue.mapTilesetDark).toBe('custom-7');
+  });
+
+  it('switches the effective tileset when system appearance changes', async () => {
+    mockSystemIsDark = false;
+    installMatchMediaMock();
+    mockFetch.mockReset();
+    createFetchMock({ appearanceMode: 'system', mapTilesetLight: 'cartoLight', mapTilesetDark: 'cartoDark' });
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+    let contextValue: any;
+    const Consumer = () => { contextValue = useSettings(); return <div />; };
+
+    await act(async () => { render(<SettingsProvider><Consumer /></SettingsProvider>); });
+    await waitFor(() => expect(contextValue.mapTileset).toBe('cartoLight'));
+    expect(contextValue.activeMapTilesetMode).toBe('light');
+    await setMockSystemAppearance(true);
+    expect(contextValue.mapTileset).toBe('cartoDark');
+    expect(contextValue.activeMapTilesetMode).toBe('dark');
+  });
+
+  it('updates only the active slot and posts both preferences', async () => {
+    mockFetch.mockReset();
+    createFetchMock({ appearanceMode: 'dark', mapTilesetLight: 'osm', mapTilesetDark: 'cartoDark' });
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+    let contextValue: any;
+    const Consumer = () => { contextValue = useSettings(); return <div />; };
+
+    await act(async () => { render(<SettingsProvider><Consumer /></SettingsProvider>); });
+    await waitFor(() => expect(contextValue.isLoading).toBe(false));
+    await act(async () => { contextValue.setMapTileset('custom-night'); });
+
+    expect(contextValue.mapTilesetLight).toBe('osm');
+    expect(contextValue.mapTilesetDark).toBe('custom-night');
+    const post = mockFetch.mock.calls.find(([url, options]) =>
+      String(url).includes('/api/user/map-preferences') && options?.method === 'POST');
+    expect(JSON.parse(post?.[1]?.body as string)).toEqual({
+      mapTileset: 'custom-night',
+      mapTilesetLight: 'osm',
+      mapTilesetDark: 'custom-night',
+    });
   });
 
   it('should provide customThemes as array', async () => {

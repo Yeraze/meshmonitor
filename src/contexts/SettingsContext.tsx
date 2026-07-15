@@ -32,6 +32,7 @@ export type MapPinStyle = 'meshmonitor' | 'official';
 export type IconStyle = 'lucide' | 'emoji';
 export type NodeHopsCalculation = 'nodeinfo' | 'traceroute' | 'messages';
 export type AppearanceMode = 'system' | 'dark' | 'light';
+export type ActiveAppearanceMode = 'dark' | 'light';
 
 // Built-in theme types
 export type BuiltInTheme =
@@ -51,6 +52,13 @@ interface ThemePreferences {
   lightTheme: Theme;
   effectiveTheme: Theme;
 }
+
+interface MapTilesetPreferences {
+  light: TilesetId;
+  dark: TilesetId;
+}
+
+export const DEFAULT_DARK_TILESET_ID: TilesetId = 'cartoDark';
 
 // Custom theme definition from the API
 export interface CustomTheme {
@@ -82,6 +90,9 @@ interface SettingsContextType {
   timeFormat: TimeFormat;
   dateFormat: DateFormat;
   mapTileset: TilesetId;
+  mapTilesetLight: TilesetId;
+  mapTilesetDark: TilesetId;
+  activeMapTilesetMode: ActiveAppearanceMode;
   overlayScheme: OverlayScheme;
   overlayColors: OverlayColors;
   mapPinStyle: MapPinStyle;
@@ -143,6 +154,7 @@ interface SettingsContextType {
   setTimeFormat: (format: TimeFormat) => void;
   setDateFormat: (format: DateFormat) => void;
   setMapTileset: (tilesetId: TilesetId) => void;
+  setMapTilesets: (light: TilesetId, dark: TilesetId) => void;
   setMapPinStyle: (style: MapPinStyle) => void;
   setIconStyle: (style: IconStyle) => void;
   setNeighborInfoMinZoom: (zoom: number) => void;
@@ -235,6 +247,43 @@ const getEffectiveTheme = (mode: AppearanceMode, darkTheme: Theme, lightTheme: T
   return systemIsDark ? darkTheme : lightTheme;
 };
 
+// eslint-disable-next-line react-refresh/only-export-components -- #4096 pure helper exported for focused tests
+export const getEffectiveTileset = (
+  mode: AppearanceMode,
+  darkTileset: TilesetId,
+  lightTileset: TilesetId,
+  systemIsDark: boolean,
+): TilesetId => {
+  if (mode === 'dark') return darkTileset;
+  if (mode === 'light') return lightTileset;
+  return systemIsDark ? darkTileset : lightTileset;
+};
+
+// eslint-disable-next-line react-refresh/only-export-components -- #4096 pure helper exported for focused tests
+export const getActiveAppearanceMode = (
+  mode: AppearanceMode,
+  systemIsDark: boolean,
+): ActiveAppearanceMode => (
+  mode === 'dark' || (mode === 'system' && systemIsDark) ? 'dark' : 'light'
+);
+
+// eslint-disable-next-line react-refresh/only-export-components -- #4096 pure helper exported for focused tests
+export const resolveLegacyMapTilesets = (legacyTileset: string | null | undefined): MapTilesetPreferences => {
+  if (!legacyTileset || legacyTileset === DEFAULT_TILESET_ID) {
+    return { light: DEFAULT_TILESET_ID, dark: DEFAULT_DARK_TILESET_ID };
+  }
+  return { light: legacyTileset, dark: legacyTileset };
+};
+
+const getInitialMapTilesets = (): MapTilesetPreferences => {
+  const legacy = resolveLegacyMapTilesets(localStorage.getItem('mapTileset'));
+  const light = localStorage.getItem('mapTilesetLight') || legacy.light;
+  const dark = localStorage.getItem('mapTilesetDark') || legacy.dark;
+  localStorage.setItem('mapTilesetLight', light);
+  localStorage.setItem('mapTilesetDark', dark);
+  return { light, dark };
+};
+
 const getInitialThemePreferences = (): ThemePreferences => {
   const storedMode = localStorage.getItem('appearanceMode');
   const storedDarkTheme = localStorage.getItem('darkTheme');
@@ -264,6 +313,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const { getToken: getCsrfToken } = useCsrf();
   const [isLoading, setIsLoading] = useState(true);
   const [initialThemePreferences] = useState<ThemePreferences>(() => getInitialThemePreferences());
+  const [initialMapTilesets] = useState<MapTilesetPreferences>(() => getInitialMapTilesets());
   const [systemIsDark, setSystemIsDark] = useState<boolean>(() => prefersDarkMode());
 
   const [maxNodeAgeHours, setMaxNodeAgeHoursState] = useState<number>(() => {
@@ -350,15 +400,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     return 'MM/DD/YYYY';
   });
 
-  const [mapTileset, setMapTilesetState] = useState<TilesetId>(() => {
-    const saved = localStorage.getItem('mapTileset');
-    // Return saved value if exists (could be predefined or custom tileset ID)
-    // Validation happens later when customTilesets are loaded
-    if (saved) {
-      return saved;
-    }
-    return DEFAULT_TILESET_ID;
-  });
+  const [mapTilesetLight, setMapTilesetLightState] = useState<TilesetId>(initialMapTilesets.light);
+  const [mapTilesetDark, setMapTilesetDarkState] = useState<TilesetId>(initialMapTilesets.dark);
 
   const [mapPinStyle, setMapPinStyleState] = useState<MapPinStyle>(() => {
     const saved = localStorage.getItem('mapPinStyle');
@@ -413,6 +456,13 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const [lightTheme, setLightThemeState] = useState<Theme>(() => {
     return initialThemePreferences.lightTheme;
   });
+
+  const activeMapTilesetMode = React.useMemo(
+    () => getActiveAppearanceMode(appearanceMode, systemIsDark),
+    [appearanceMode, systemIsDark],
+  );
+
+  const mapTileset = activeMapTilesetMode === 'dark' ? mapTilesetDark : mapTilesetLight;
 
   const [language, setLanguageState] = useState<string>(() => {
     const saved = localStorage.getItem('language');
@@ -601,18 +651,18 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     localStorage.setItem('dateFormat', format);
   };
 
-  const setMapTileset = async (tilesetId: TilesetId) => {
-    setMapTilesetState(tilesetId);
+  const setMapTilesets = async (light: TilesetId, dark: TilesetId) => {
+    setMapTilesetLightState(light);
+    setMapTilesetDarkState(dark);
+    localStorage.setItem('mapTilesetLight', light);
+    localStorage.setItem('mapTilesetDark', dark);
 
-    // Save to server (fire and forget, no localStorage)
+    const effective = getEffectiveTileset(appearanceMode, dark, light, systemIsDark);
+    localStorage.setItem('mapTileset', effective);
+
     try {
       const csrfToken = getCsrfToken();
-      console.log('[SettingsContext] Saving map tileset to server:', tilesetId);
-      console.log('[SettingsContext] CSRF token:', csrfToken ? 'present' : 'MISSING');
-      console.log('[SettingsContext] Base URL:', baseUrl);
-
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
-
       if (csrfToken) {
         headers['X-CSRF-Token'] = csrfToken;
       }
@@ -621,17 +671,27 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
         method: 'POST',
         headers,
         credentials: 'include',
-        body: JSON.stringify({ mapTileset: tilesetId })
+        body: JSON.stringify({
+          mapTileset: effective,
+          mapTilesetLight: light,
+          mapTilesetDark: dark,
+        }),
       });
 
-      console.log('[SettingsContext] Save response status:', response.status);
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[SettingsContext] Save failed:', errorText);
+        logger.debug('Failed to save per-theme map tilesets:', errorText);
       }
     } catch (error) {
-      console.error('[SettingsContext] Failed to save map tileset preference to server:', error);
-      logger.debug('Failed to save map tileset preference to server:', error);
+      logger.debug('Failed to save per-theme map tilesets:', error);
+    }
+  };
+
+  const setMapTileset = (tilesetId: TilesetId) => {
+    if (activeMapTilesetMode === 'dark') {
+      void setMapTilesets(mapTilesetLight, tilesetId);
+    } else {
+      void setMapTilesets(tilesetId, mapTilesetDark);
     }
   };
 
@@ -1252,10 +1312,14 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             localStorage.setItem('dateFormat', settings.dateFormat);
           }
 
-          if (settings.mapTileset) {
-            // Accept both predefined and custom tileset IDs
-            setMapTilesetState(settings.mapTileset);
-            localStorage.setItem('mapTileset', settings.mapTileset);
+          if (settings.mapTileset || settings.mapTilesetLight || settings.mapTilesetDark) {
+            const legacyTilesets = resolveLegacyMapTilesets(settings.mapTileset);
+            const nextLight = settings.mapTilesetLight || legacyTilesets.light;
+            const nextDark = settings.mapTilesetDark || legacyTilesets.dark;
+            setMapTilesetLightState(nextLight);
+            setMapTilesetDarkState(nextDark);
+            localStorage.setItem('mapTilesetLight', nextLight);
+            localStorage.setItem('mapTilesetDark', nextDark);
           }
 
           if (settings.mapPinStyle) {
@@ -1478,10 +1542,16 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             if (prefsResponse.ok) {
               const { preferences } = await prefsResponse.json();
 
-              // If user has saved map tileset preference, use it (overrides global setting)
-              if (preferences && preferences.mapTileset) {
-                setMapTilesetState(preferences.mapTileset);
-                logger.debug(`✅ Loaded user map tileset preference: ${preferences.mapTileset}`);
+              // User preferences override the global per-theme defaults.
+              if (preferences && (preferences.mapTileset || preferences.mapTilesetLight || preferences.mapTilesetDark)) {
+                const legacyTilesets = resolveLegacyMapTilesets(preferences.mapTileset);
+                const nextLight = preferences.mapTilesetLight || legacyTilesets.light;
+                const nextDark = preferences.mapTilesetDark || legacyTilesets.dark;
+                setMapTilesetLightState(nextLight);
+                setMapTilesetDarkState(nextDark);
+                localStorage.setItem('mapTilesetLight', nextLight);
+                localStorage.setItem('mapTilesetDark', nextDark);
+                logger.debug(`✅ Loaded user map tileset preferences: light=${nextLight}, dark=${nextDark}`);
               }
               // If preferences is null (anonymous user), global setting is already loaded
             }
@@ -1526,6 +1596,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     applyAppearancePreferences(appearanceMode, darkTheme, lightTheme, systemIsDark);
   }, [appearanceMode, applyAppearancePreferences, darkTheme, lightTheme, systemIsDark]);
 
+  React.useEffect(() => {
+    localStorage.setItem('mapTileset', mapTileset);
+  }, [mapTileset]);
+
   // Load mute preferences on mount (server-side, requires auth)
   React.useEffect(() => {
     void loadMutePreferences();
@@ -1564,6 +1638,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     timeFormat,
     dateFormat,
     mapTileset,
+    mapTilesetLight,
+    mapTilesetDark,
+    activeMapTilesetMode,
     overlayScheme,
     overlayColors,
     mapPinStyle,
@@ -1615,6 +1692,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setTimeFormat,
     setDateFormat,
     setMapTileset,
+    setMapTilesets,
     setMapPinStyle,
     setIconStyle,
     setNeighborInfoMinZoom,
@@ -1702,6 +1780,9 @@ export const useMapSettings = () => {
   const s = useSettings();
   return {
     mapTileset: s.mapTileset, setMapTileset: s.setMapTileset,
+    mapTilesetLight: s.mapTilesetLight, mapTilesetDark: s.mapTilesetDark,
+    setMapTilesets: s.setMapTilesets,
+    activeMapTilesetMode: s.activeMapTilesetMode,
     mapPinStyle: s.mapPinStyle, setMapPinStyle: s.setMapPinStyle,
     iconStyle: s.iconStyle, setIconStyle: s.setIconStyle,
     neighborInfoMinZoom: s.neighborInfoMinZoom, setNeighborInfoMinZoom: s.setNeighborInfoMinZoom,
