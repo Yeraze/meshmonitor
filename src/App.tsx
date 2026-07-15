@@ -291,7 +291,8 @@ const location = useLocation();
     preferredSortDirection,
     timeFormat,
     dateFormat,
-    mapTileset,
+    mapTilesetLight,
+    mapTilesetDark,
     mapPinStyle,
     iconStyle,
     theme,
@@ -319,7 +320,7 @@ const location = useLocation();
     setPreferredSortDirection,
     setTimeFormat,
     setDateFormat,
-    setMapTileset,
+    setMapTilesets,
     setMapPinStyle,
     setIconStyle,
     setLanguage,
@@ -4883,7 +4884,8 @@ const location = useLocation();
             preferredSortDirection={preferredSortDirection}
             timeFormat={timeFormat}
             dateFormat={dateFormat}
-            mapTileset={mapTileset}
+            mapTilesetLight={mapTilesetLight}
+            mapTilesetDark={mapTilesetDark}
             mapPinStyle={mapPinStyle}
             iconStyle={iconStyle}
             theme={theme}
@@ -4909,7 +4911,7 @@ const location = useLocation();
             onPreferredSortDirectionChange={setPreferredSortDirection}
             onTimeFormatChange={setTimeFormat}
             onDateFormatChange={setDateFormat}
-            onMapTilesetChange={setMapTileset}
+            onMapTilesetsChange={setMapTilesets}
             onMapPinStyleChange={setMapPinStyle}
             onIconStyleChange={setIconStyle}
             onLanguageChange={setLanguage}

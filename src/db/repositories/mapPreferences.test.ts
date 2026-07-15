@@ -56,3 +56,20 @@ describe('userMapPreferences — positionHistoryPointsOnly toggle (#3492)', () =
     expect(mysql.name).toBe('position_history_points_only');
   });
 });
+
+describe('userMapPreferences — per-theme tilesets (#4096)', () => {
+  it('maps both themed fields to snake_case columns on all three backends', () => {
+    for (const table of [
+      schema.userMapPreferencesSqlite,
+      schema.userMapPreferencesPostgres,
+      schema.userMapPreferencesMysql,
+    ]) {
+      const columns = table as unknown as {
+        mapTilesetLight: { name: string };
+        mapTilesetDark: { name: string };
+      };
+      expect(columns.mapTilesetLight.name).toBe('map_tileset_light');
+      expect(columns.mapTilesetDark.name).toBe('map_tileset_dark');
+    }
+  });
+});

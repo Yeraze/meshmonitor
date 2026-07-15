@@ -23,7 +23,7 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
   onTilesetChange
 }) => {
   const { t } = useTranslation();
-  const { customTilesets } = useSettings();
+  const { customTilesets, activeMapTilesetMode } = useSettings();
   const tilesets = getAllTilesets(customTilesets);
   const [isCollapsed, setIsCollapsed] = useState(true);
 
@@ -35,7 +35,11 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
     >
       <div className={`tileset-selector ${isCollapsed ? 'collapsed' : ''}`}>
         <div className="tileset-header">
-          <div className="tileset-selector-title">{t('tileset.map_style')}</div>
+          <div className="tileset-selector-title">
+            {activeMapTilesetMode === 'dark'
+              ? t('tileset.map_style_dark', 'Map Style (Dark mode)')
+              : t('tileset.map_style_light', 'Map Style (Light mode)')}
+          </div>
           <button
             className="tileset-collapse-btn"
             onClick={() => setIsCollapsed(!isCollapsed)}

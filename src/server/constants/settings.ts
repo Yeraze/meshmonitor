@@ -88,6 +88,8 @@ export const VALID_SETTINGS_KEYS = [
   'timeFormat',
   'dateFormat',
   'mapTileset',
+  'mapTilesetLight',
+  'mapTilesetDark',
   'packet_log_enabled',
   'packet_log_max_count',
   'packet_log_max_age_hours',

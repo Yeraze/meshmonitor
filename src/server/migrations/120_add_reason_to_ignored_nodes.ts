@@ -1,5 +1,5 @@
 /**
- * Migration 119: add a `reason` column to `ignored_nodes` (MQTT Geo-Ignore
+ * Migration 120: add a `reason` column to `ignored_nodes` (MQTT Geo-Ignore
  * epic, Phase 1).
  *
  * Distinguishes nodes that were manually blocklisted by a user
@@ -30,12 +30,12 @@ export const migration = {
 
 // ─── PostgreSQL ────────────────────────────────────────────────────────────────
 
-export async function runMigration119Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration120Postgres(client: import('pg').PoolClient): Promise<void> {
   await addColumnIfMissingPostgres(client, 'ignored_nodes', 'reason', '"reason" TEXT NOT NULL DEFAULT \'manual\'');
 }
 
 // ─── MySQL ─────────────────────────────────────────────────────────────────────
 
-export async function runMigration119Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration120Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   await addColumnIfMissingMysql(pool, 'ignored_nodes', 'reason', "reason VARCHAR(16) NOT NULL DEFAULT 'manual'");
 }

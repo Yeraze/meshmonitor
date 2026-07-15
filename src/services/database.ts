@@ -4786,7 +4786,9 @@ class DatabaseService {
    * Save user's map preferences - delegates to MapPreferencesRepository (Drizzle ORM)
    */
   async saveMapPreferencesAsync(userId: number, preferences: {
-    mapTileset?: string;
+    mapTileset?: string | null;
+    mapTilesetLight?: string | null;
+    mapTilesetDark?: string | null;
     showPaths?: boolean;
     showNeighborInfo?: boolean;
     showRoute?: boolean;

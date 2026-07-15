@@ -33,6 +33,8 @@ export class MapPreferencesRepository extends BaseRepository {
 
       return {
         mapTileset: row.mapTileset ?? null,
+        mapTilesetLight: row.mapTilesetLight ?? null,
+        mapTilesetDark: row.mapTilesetDark ?? null,
         showPaths: row.showPaths ?? false,
         showNeighborInfo: row.showNeighborInfo ?? false,
         showRoute: row.showRoute ?? true,
@@ -59,7 +61,9 @@ export class MapPreferencesRepository extends BaseRepository {
    * Save map preferences for a user (upsert).
    */
   async saveMapPreferences(userId: number, preferences: {
-    mapTileset?: string;
+    mapTileset?: string | null;
+    mapTilesetLight?: string | null;
+    mapTilesetDark?: string | null;
     showPaths?: boolean;
     showNeighborInfo?: boolean;
     showRoute?: boolean;
@@ -87,6 +91,8 @@ export class MapPreferencesRepository extends BaseRepository {
       if (existing.length > 0) {
         const set: Record<string, any> = {};
         if (preferences.mapTileset !== undefined) set.mapTileset = preferences.mapTileset;
+        if (preferences.mapTilesetLight !== undefined) set.mapTilesetLight = preferences.mapTilesetLight;
+        if (preferences.mapTilesetDark !== undefined) set.mapTilesetDark = preferences.mapTilesetDark;
         if (preferences.showPaths !== undefined) set.showPaths = preferences.showPaths;
         if (preferences.showNeighborInfo !== undefined) set.showNeighborInfo = preferences.showNeighborInfo;
         if (preferences.showRoute !== undefined) set.showRoute = preferences.showRoute;
@@ -111,6 +117,8 @@ export class MapPreferencesRepository extends BaseRepository {
         await this.db.insert(table).values({
           userId,
           mapTileset: preferences.mapTileset ?? null,
+          mapTilesetLight: preferences.mapTilesetLight ?? null,
+          mapTilesetDark: preferences.mapTilesetDark ?? null,
           showPaths: preferences.showPaths ?? false,
           showNeighborInfo: preferences.showNeighborInfo ?? false,
           showRoute: preferences.showRoute ?? true,
