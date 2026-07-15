@@ -39,7 +39,6 @@ import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import type { MqttBrokerManager, MqttBrokerLocalPacket } from './mqttBrokerManager.js';
 import type { Source } from '../db/repositories/sources.js';
 import databaseService from '../services/database.js';
-import { ALL_SOURCES } from '../db/repositories/index.js';
 import { logger } from '../utils/logger.js';
 import { loadAllNodesAsDeviceInfo } from './utils/dbNodeMapper.js';
 import type { DeviceInfo } from './meshtasticManager.js';
@@ -306,7 +305,6 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
   async start(): Promise<void> {
     this.attachParentBroker();
     await bootstrapMqttChannelDatabase(this.sourceId);
-    await this.seedDownlinkMembership();
 
     // Per-source auto-delete-by-distance (#3901). Started up front so the
     // publish_only early-return below doesn't skip it. Background concern —
@@ -405,58 +403,6 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       this.reconnectCoordinator = null;
     }
     this.brokerGatewayNum = null;
-  }
-
-  /**
-   * Pre-seed the downlink filter's geo-membership cache with:
-   *   1. Any node our local (non-MQTT) sources have heard directly —
-   *      "trusted" because the operator clearly considers them part of
-   *      their mesh. These pass the bbox filter regardless of whether we
-   *      have a stored position for them. Without this, a node attached
-   *      to a TCP source whose GPS hasn't reported a position yet would
-   *      have its MQTT-relayed text/telemetry silently geo-dropped.
-   *   2. Any node from any source whose stored position is inside the bbox.
-   *
-   * Without this seed the fail-closed filter drops every non-POSITION
-   * packet from a node until that node next broadcasts a position — which
-   * can be hours and is reset on every restart.
-   */
-  private async seedDownlinkMembership(): Promise<void> {
-    try {
-      const allSources = await databaseService.sources.getAllSources();
-      const localSourceIds = allSources
-        .filter((s) => s.type !== 'mqtt_bridge' && s.type !== 'mqtt_broker')
-        .map((s) => s.id);
-
-      // Trusted local-mesh nodes (any source we operate directly).
-      const trustedNums = new Set<number>();
-      for (const sid of localSourceIds) {
-        const localNodes = await databaseService.nodes.getAllNodes(sid);
-        for (const n of localNodes) trustedNums.add(n.nodeNum);
-      }
-      const trustedSeeded = this.downlinkFilter.seedTrustedNodes(trustedNums);
-
-      // intentional cross-source: in-bbox positions are pooled from all sources to seed the downlink filter
-      const allNodes = await databaseService.nodes.getAllNodes(ALL_SOURCES);
-      const entries = allNodes
-        .filter((n) => typeof n.latitude === 'number' && typeof n.longitude === 'number')
-        .map((n) => ({
-          nodeNum: n.nodeNum,
-          latitudeDeg: n.latitude as number,
-          longitudeDeg: n.longitude as number,
-        }));
-      const positionSeeded = this.downlinkFilter.seedMembership(entries);
-
-      if (trustedSeeded > 0 || positionSeeded > 0) {
-        logger.info(
-          `MQTT bridge ${this.sourceId} seeded ${trustedSeeded} trusted local-mesh node(s) + ` +
-            `${positionSeeded} in-bbox position(s) into downlink membership cache`,
-        );
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.warn(`MQTT bridge ${this.sourceId} membership seed failed: ${message}`);
-    }
   }
 
   getStatus(): MqttBridgeStatus {
@@ -686,23 +632,30 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
 
     if (!this.downlinkFilter.preFilter(topic, envelope)) return;
 
-    // Apply geo filter early — position packets outside the bbox must
-    // not be republished to the local broker, otherwise they'd pollute
-    // the nodeDBs of devices connected to it. Passing `from` to
-    // postFilterPosition lets the filter cache this node's membership
-    // so non-position packets can be gated by `passesMembership` below.
     const fromNum = typeof envelope.packet?.from === 'number' ? envelope.packet.from >>> 0 : null;
-    if (envelope.packet?.decoded?.portnum === PortNum.POSITION_APP) {
-      const position = decodePosition(envelope.packet.decoded.payload);
-      if (!this.downlinkFilter.postFilterPosition(position, fromNum ?? undefined)) return;
-    } else {
-      // Fail-closed: drop non-position traffic from senders we haven't
-      // already classified as inside the bbox. Encrypted packets (no
-      // decoded portnum) also flow through here — `decoded` would be
-      // undefined, the strict equality above is false, and we end up
-      // gated on membership too. That's intentional: an encrypted
-      // packet from an unknown sender should also be dropped.
-      if (!this.downlinkFilter.passesMembership(fromNum)) return;
+    const decodedPortnum = envelope.packet?.decoded?.portnum;
+    const hasDecoded = envelope.packet?.decoded != null && typeof decodedPortnum === 'number';
+    const isPosition = decodedPortnum === PortNum.POSITION_APP;
+    const isIgnored = fromNum !== null &&
+      databaseService.ignoredNodes.isIgnoredCached(fromNum, this.sourceId);
+
+    // Early-drop provably-non-position decoded traffic from ignored senders.
+    // Encrypted packets (no decoded portnum) can't be proven non-position, so
+    // they flow to ingestion, which re-drops non-position payloads from ignored
+    // senders after decrypt. POSITION always flows so post-decrypt evaluation
+    // can lift/re-ignore (reappearance path).
+    if (isIgnored && hasDecoded && !isPosition) return;
+
+    // Republish decision: never republish an ignored sender's traffic; never
+    // republish an out-of-bbox plaintext position (pollutes local nodeDBs).
+    // postFilterPosition increments drops.geo on the out case — run it for
+    // every plaintext position (even already-ignored senders) so the counter
+    // reflects all out-of-bbox position arrivals.
+    let republishAllowed = !isIgnored;
+    if (isPosition) {
+      const position = decodePosition(envelope.packet!.decoded!.payload);
+      const inside = this.downlinkFilter.postFilterPosition(position);
+      if (!inside) republishAllowed = false;
     }
 
     ingestServiceEnvelope({
@@ -722,16 +675,21 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     // this bridge as its `mqttLink` client-proxy target — issue #3134) can
     // relay the upstream packet to their device. Shape matches
     // MqttBrokerLocalPacket so listeners can target either source type.
-    this.emit('local-packet', {
-      topic,
-      payload,
-      retained,
-      envelope,
-      clientId: null,
-    });
+    // Gated on !isIgnored — an ignored sender's traffic must not reach
+    // client-proxy devices either.
+    if (!isIgnored) {
+      this.emit('local-packet', {
+        topic,
+        payload,
+        retained,
+        envelope,
+        clientId: null,
+      });
+    }
 
-    // Republish to local broker so devices see it. Skip if no parent attached.
-    if (this.parentBroker) {
+    // Republish to local broker so devices see it. Skip if no parent attached
+    // or if this packet failed the ignore/geo republish gate above.
+    if (this.parentBroker && republishAllowed) {
       // Apply downlink topic rewrite (#3166) right at the publish boundary —
       // ingestion, filters, and the local-packet event all stay on the
       // original topic. Echo recorded under the post-rewrite topic so the
