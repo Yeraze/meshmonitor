@@ -13,6 +13,7 @@ import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { resolveSourceManager } from './utils/resolveSourceManager.js';
 import { validateFilterNameRegexOnSave } from './utils/filterNameRegex.js';
 import { canonicalMessageTime, messageReceivedAt } from './utils/messageTime.js';
+import { getMapTilesetValidationError, normalizeMapTilesetPayload } from './utils/mapTilesetPreferences.js';
 import { pivotPositionHistory } from './utils/positionHistoryPivot.js';
 import protobufService from './protobufService.js';
 
@@ -4147,7 +4148,7 @@ apiRouter.post('/user/map-preferences', requireAuth(), async (req, res) => {
       return res.status(403).json({ error: 'Cannot save preferences for anonymous user' });
     }
 
-    const { mapTileset, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, positionHistoryPointsOnly, positionHistoryHours, mapMaxAgeHours } = req.body;
+    const { mapTileset, mapTilesetLight, mapTilesetDark, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, positionHistoryPointsOnly, positionHistoryHours, mapMaxAgeHours } = req.body;
 
     // Validate boolean values
     const booleanFields = { showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, positionHistoryPointsOnly };
@@ -4157,9 +4158,10 @@ apiRouter.post('/user/map-preferences', requireAuth(), async (req, res) => {
       }
     }
 
-    // Validate mapTileset (optional string)
-    if (mapTileset !== undefined && mapTileset !== null && typeof mapTileset !== 'string') {
-      return res.status(400).json({ error: 'mapTileset must be a string or null' });
+    // Validate tileset IDs (optional strings). Custom IDs are valid here.
+    const tilesetValidationError = getMapTilesetValidationError({ mapTileset, mapTilesetLight, mapTilesetDark });
+    if (tilesetValidationError) {
+      return res.status(400).json({ error: tilesetValidationError });
     }
 
     // Validate positionHistoryHours (optional number or null)
@@ -4173,8 +4175,9 @@ apiRouter.post('/user/map-preferences', requireAuth(), async (req, res) => {
     }
 
     // Save preferences
+    const normalizedTilesets = normalizeMapTilesetPayload({ mapTileset, mapTilesetLight, mapTilesetDark });
     await databaseService.saveMapPreferencesAsync(req.user!.id, {
-      mapTileset,
+      ...normalizedTilesets,
       showPaths,
       showNeighborInfo,
       showRoute,

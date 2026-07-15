@@ -19,7 +19,7 @@ import FirmwareUpdateSection from './configuration/FirmwareUpdateSection';
 import ChannelDatabaseSection from './configuration/ChannelDatabaseSection';
 import { CustomThemeManagement } from './CustomThemeManagement';
 import { CustomTilesetManager } from './CustomTilesetManager';
-import { type Theme, type AppearanceMode, type NodeHopsCalculation, useSettings } from '../contexts/SettingsContext';
+import { getEffectiveTileset, type Theme, type AppearanceMode, type NodeHopsCalculation, useSettings } from '../contexts/SettingsContext';
 import { type SortOption as DashboardSortOption } from './Dashboard/types';
 import { useUI } from '../contexts/UIContext';
 import { LanguageSelector } from './LanguageSelector';
@@ -54,7 +54,8 @@ interface SettingsTabProps {
   preferredSortDirection: SortDirection;
   timeFormat: TimeFormat;
   dateFormat: DateFormat;
-  mapTileset: TilesetId;
+  mapTilesetLight: TilesetId;
+  mapTilesetDark: TilesetId;
   mapPinStyle: MapPinStyle;
   iconStyle: IconStyle;
   theme: Theme;
@@ -80,7 +81,7 @@ interface SettingsTabProps {
   onPreferredSortDirectionChange: (direction: SortDirection) => void;
   onTimeFormatChange: (format: TimeFormat) => void;
   onDateFormatChange: (format: DateFormat) => void;
-  onMapTilesetChange: (tilesetId: TilesetId) => void;
+  onMapTilesetsChange: (light: TilesetId, dark: TilesetId) => void;
   onMapPinStyleChange: (style: MapPinStyle) => void;
   onIconStyleChange: (style: IconStyle) => void;
   onLanguageChange: (language: string) => void;
@@ -123,7 +124,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   preferredSortDirection,
   timeFormat,
   dateFormat,
-  mapTileset,
+  mapTilesetLight,
+  mapTilesetDark,
   mapPinStyle,
   iconStyle,
   language,
@@ -148,7 +150,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   onPreferredSortDirectionChange,
   onTimeFormatChange,
   onDateFormatChange,
-  onMapTilesetChange,
+  onMapTilesetsChange,
   onMapPinStyleChange,
   onIconStyleChange,
   onLanguageChange,
@@ -226,7 +228,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localPreferredSortDirection, setLocalPreferredSortDirection] = useState(preferredSortDirection);
   const [localTimeFormat, setLocalTimeFormat] = useState(timeFormat);
   const [localDateFormat, setLocalDateFormat] = useState(dateFormat);
-  const [localMapTileset, setLocalMapTileset] = useState(mapTileset);
+  const [localMapTilesetLight, setLocalMapTilesetLight] = useState(mapTilesetLight);
+  const [localMapTilesetDark, setLocalMapTilesetDark] = useState(mapTilesetDark);
   const [localMapPinStyle, setLocalMapPinStyle] = useState(mapPinStyle);
   const [localIconStyle, setLocalIconStyle] = useState(iconStyle);
   const [localNeighborInfoMinZoom, setLocalNeighborInfoMinZoom] = useState(neighborInfoMinZoom);
@@ -412,7 +415,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalPreferredSortDirection(preferredSortDirection);
     setLocalTimeFormat(timeFormat);
     setLocalDateFormat(dateFormat);
-    setLocalMapTileset(mapTileset);
+    setLocalMapTilesetLight(mapTilesetLight);
+    setLocalMapTilesetDark(mapTilesetDark);
     setLocalMapPinStyle(mapPinStyle);
     setLocalIconStyle(iconStyle);
     setLocalNeighborInfoMinZoom(neighborInfoMinZoom);
@@ -434,7 +438,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalSolarMonitoringAzimuth(solarMonitoringAzimuth);
     setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
     setLocalHideIncompleteNodes(!showIncompleteNodes);
-  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, nodeHopsCalculation, preferredDashboardSortOption, linkPreviewsEnabled, meshcoreChannelRetryEnabled, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme]);
+  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle, nodeHopsCalculation, preferredDashboardSortOption, linkPreviewsEnabled, meshcoreChannelRetryEnabled, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme]);
 
   // Default solar monitoring lat/long to device position if still at 0
   useEffect(() => {
@@ -474,7 +478,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localPreferredSortDirection !== preferredSortDirection ||
       localTimeFormat !== timeFormat ||
       localDateFormat !== dateFormat ||
-      localMapTileset !== mapTileset ||
+      localMapTilesetLight !== mapTilesetLight ||
+      localMapTilesetDark !== mapTilesetDark ||
       localMapPinStyle !== mapPinStyle ||
       localIconStyle !== iconStyle ||
       localNeighborInfoMinZoom !== neighborInfoMinZoom ||
@@ -509,8 +514,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       JSON.stringify(localAnalyticsConfig) !== initialAnalyticsConfig ||
       localAppriseApiServerUrl !== initialAppriseApiServerUrl;
     setHasChanges(changed);
-  }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localMapCenterTargetZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, localNodeHopsCalculation, localDashboardSortOption,
-      maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTileset, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
+  }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTilesetLight, localMapTilesetDark, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localMapCenterTargetZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, localNodeHopsCalculation, localDashboardSortOption,
+      maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours, initialPacketMonitorSettings,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude, localSolarMonitoringAzimuth, localSolarMonitoringDeclination,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
@@ -538,7 +543,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalPreferredSortDirection(preferredSortDirection);
     setLocalTimeFormat(timeFormat);
     setLocalDateFormat(dateFormat);
-    setLocalMapTileset(mapTileset);
+    setLocalMapTilesetLight(mapTilesetLight);
+    setLocalMapTilesetDark(mapTilesetDark);
     setLocalMapPinStyle(mapPinStyle);
     setLocalIconStyle(iconStyle);
     setLocalDefaultMapCenterLat(defaultMapCenterLat);
@@ -574,7 +580,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes,
       inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours,
       favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat,
-      dateFormat, mapTileset, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
+      dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
       solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes,
       linkPreviewsEnabled, meshcoreChannelRetryEnabled,
@@ -590,6 +596,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       : true;
     return systemIsDark ? localDarkTheme : localLightTheme;
   }, [localAppearanceMode, localDarkTheme, localLightTheme]);
+
+  const getLocalEffectiveTileset = useCallback((): TilesetId => {
+    const systemIsDark = typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : true;
+    return getEffectiveTileset(localAppearanceMode, localMapTilesetDark, localMapTilesetLight, systemIsDark);
+  }, [localAppearanceMode, localMapTilesetDark, localMapTilesetLight]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -609,7 +622,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         preferredSortDirection: localPreferredSortDirection,
         timeFormat: localTimeFormat,
         dateFormat: localDateFormat,
-        mapTileset: localMapTileset,
+        mapTileset: getLocalEffectiveTileset(),
+        mapTilesetLight: localMapTilesetLight,
+        mapTilesetDark: localMapTilesetDark,
         mapPinStyle: localMapPinStyle,
         iconStyle: localIconStyle,
         neighborInfoMinZoom: localNeighborInfoMinZoom.toString(),
@@ -666,7 +681,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onPreferredSortDirectionChange(localPreferredSortDirection);
       onTimeFormatChange(localTimeFormat);
       onDateFormatChange(localDateFormat);
-      onMapTilesetChange(localMapTileset);
+      onMapTilesetsChange(localMapTilesetLight, localMapTilesetDark);
       onMapPinStyleChange(localMapPinStyle);
       onIconStyleChange(localIconStyle);
       setNeighborInfoMinZoom(localNeighborInfoMinZoom);
@@ -715,14 +730,14 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours,
       localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours,
       localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection,
-      localTimeFormat, localDateFormat, localMapTileset, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localMapCenterTargetZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, getLocalEffectiveTheme,
+      localTimeFormat, localDateFormat, localMapTilesetLight, localMapTilesetDark, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localMapCenterTargetZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, getLocalEffectiveTheme, getLocalEffectiveTileset,
       localNodeHopsCalculation, localDashboardSortOption, localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude,
       localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localLinkPreviewsEnabled, setLinkPreviewsEnabled, localMeshcoreChannelRetryEnabled, setMeshcoreChannelRetryEnabled, localHideIncompleteNodes, localHomoglyphEnabled, localLocalStatsIntervalMinutes, localMeshcoreCliTimeoutSeconds,
       onMaxNodeAgeChange, onInactiveNodeThresholdHoursChange, onInactiveNodeCheckIntervalMinutesChange,
       onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange, onPositionHistoryLineStyleChange,
       onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
-      onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetChange,
+      onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetsChange,
       onMapPinStyleChange, setNeighborInfoMinZoom, setDefaultMapCenterLat, setDefaultMapCenterLon, setDefaultMapCenterZoom, setMapCenterTargetZoom, setDefaultLandingPage, setAppearanceMode, setDarkTheme, setLightTheme, setNodeHopsCalculation, setPreferredDashboardSortOption, onSolarMonitoringEnabledChange,
       onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange, onSolarMonitoringAzimuthChange,
       onSolarMonitoringDeclinationChange, setShowIncompleteNodes, showToast, t,
@@ -843,7 +858,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setLocalPreferredSortDirection('asc');
       setLocalTimeFormat('24');
       setLocalDateFormat('MM/DD/YYYY');
-      setLocalMapTileset('osm');
+      setLocalMapTilesetLight('osm');
+      setLocalMapTilesetDark('cartoDark');
       setLocalMapPinStyle('meshmonitor');
       setLocalAppearanceMode('system');
       setLocalDarkTheme('mocha');
@@ -872,7 +888,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onPreferredSortDirectionChange('asc');
       onTimeFormatChange('24');
       onDateFormatChange('MM/DD/YYYY');
-      onMapTilesetChange('osm');
+      onMapTilesetsChange('osm', 'cartoDark');
       onMapPinStyleChange('meshmonitor');
       setAppearanceMode('system');
       setDarkTheme('mocha');
@@ -1455,14 +1471,33 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         {show('settings-map') && <div id="settings-map" className="settings-section">
           <h3>{t('settings.map')}</h3>
           <div className="setting-item">
-            <label htmlFor="mapTileset">
-              {t('settings.map_tileset_label')}
-              <span className="setting-description">{t('settings.map_tileset_description')}</span>
+            <label htmlFor="mapTilesetLight">
+              {t('settings.map_tileset_light_label', 'Light Mode Tileset')}
+              <span className="setting-description">{t('settings.map_tileset_light_description', 'Map style used when the light appearance is active')}</span>
             </label>
             <select
-              id="mapTileset"
-              value={localMapTileset}
-              onChange={(e) => setLocalMapTileset(e.target.value as TilesetId)}
+              id="mapTilesetLight"
+              value={localMapTilesetLight}
+              onChange={(e) => setLocalMapTilesetLight(e.target.value as TilesetId)}
+              className="setting-input"
+            >
+              {getAllTilesets(customTilesets).map((tileset) => (
+                <option key={tileset.id} value={tileset.id}>
+                  {tileset.name} {tileset.description && `- ${tileset.description}`}
+                  {tileset.isCustom && ' [Custom]'}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="mapTilesetDark">
+              {t('settings.map_tileset_dark_label', 'Dark Mode Tileset')}
+              <span className="setting-description">{t('settings.map_tileset_dark_description', 'Map style used when the dark appearance is active')}</span>
+            </label>
+            <select
+              id="mapTilesetDark"
+              value={localMapTilesetDark}
+              onChange={(e) => setLocalMapTilesetDark(e.target.value as TilesetId)}
               className="setting-input"
             >
               {getAllTilesets(customTilesets).map((tileset) => (
