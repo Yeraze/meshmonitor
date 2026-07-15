@@ -13,7 +13,7 @@
  * from the test CREATEs — these tests isolate repository semantics from the
  * sources lifecycle.
  */
-import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll, beforeAll, vi } from 'vitest';
 import * as schema from '../schema/index.js';
 import { IgnoredNodesRepository } from './ignoredNodes.js';
 import {
@@ -415,6 +415,49 @@ function runIgnoredNodesTests(getBackend: () => TestBackend) {
 
     const lifted = await repo.liftGeoIgnoreAsync(99999, SRC_A);
     expect(lifted).toBe(false);
+  });
+
+  it('liftGeoIgnoreAsync - concurrent manual upgrade between read and delete keeps node ignored (phantom un-ignore regression)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // Seed a geo row so liftGeoIgnoreAsync's initial SELECT sees reason='geo'.
+    await repo.addGeoIgnoreAsync(12345, SRC_A, '!abcd1234', 'Far Node', 'FN');
+
+    // Interleave: intercept the guarded DELETE and upgrade the row to
+    // 'manual' first — simulating a concurrent addIgnoredNodeAsync winning
+    // the race between liftGeoIgnoreAsync's initial read and its delete.
+    // Reaching into the repo's protected drizzle handle to interleave the
+    // race deterministically.
+    const db: any = (repo as any).db;
+    const origDelete = db.delete.bind(db);
+    const deleteSpy = vi.spyOn(db, 'delete').mockImplementationOnce((table: unknown) => ({
+      where: (cond: unknown) => (async () => {
+        await repo.addIgnoredNodeAsync(12345, SRC_A, '!abcd1234', 'Test Node', 'TN', 'admin');
+        // Pass-through to the real drizzle builder.
+        return await origDelete(table as any).where(cond as any);
+      })(),
+    }));
+
+    try {
+      const lifted = await repo.liftGeoIgnoreAsync(12345, SRC_A);
+
+      // The lift must observe that the row survived (now 'manual') and
+      // report failure WITHOUT evicting the cache entry.
+      expect(lifted).toBe(false);
+      expect(repo.isIgnoredCached(12345, SRC_A)).toBe(true);
+      expect(await repo.isNodeIgnoredAsync(12345, SRC_A)).toBe(true);
+
+      const nodes = await repo.getIgnoredNodesAsync(SRC_A);
+      expect(nodes).toHaveLength(1);
+      expect(nodes[0].reason).toBe('manual');
+      expect(nodes[0].ignoredBy).toBe('admin');
+    } finally {
+      deleteSpy.mockRestore();
+    }
   });
 }
 

@@ -221,19 +221,18 @@ export class IgnoredNodesRepository extends BaseRepository {
    */
   async liftGeoIgnoreAsync(nodeNum: number, sourceId: string): Promise<boolean> {
     const { ignoredNodes } = this.tables;
+    const rowScope = and(eq(ignoredNodes.nodeNum, nodeNum), eq(ignoredNodes.sourceId, sourceId));
+
     const rows = await this.db
       .select({ reason: ignoredNodes.reason })
       .from(ignoredNodes)
-      .where(and(eq(ignoredNodes.nodeNum, nodeNum), eq(ignoredNodes.sourceId, sourceId)));
+      .where(rowScope);
 
     const reason = rows[0]?.reason;
     if (reason !== 'geo') {
       // Absent, or a manual ignore the geo filter must not touch.
       return false;
     }
-
-    // Mirror update first (see removeIgnoredNodeAsync).
-    this.ignoredCache.delete(this.cacheKey(nodeNum, sourceId));
 
     await this.db
       .delete(ignoredNodes)
@@ -243,6 +242,30 @@ export class IgnoredNodesRepository extends BaseRepository {
         eq(ignoredNodes.reason, 'geo'),
       ));
 
+    // Cache eviction happens AFTER the delete is confirmed — deliberately
+    // opposite to the mirror-first convention used by the add paths. Adds are
+    // safe to mirror early (worst case: the node is briefly ignored a moment
+    // sooner). A removal is not: between the SELECT above and the DELETE, a
+    // concurrent addIgnoredNodeAsync may have upgraded the row to 'manual',
+    // making our reason='geo'-guarded DELETE a no-op. Evicting the cache
+    // first would then leave a live 'manual' DB row invisible to
+    // isIgnoredCached until the next prime (phantom un-ignore). So we
+    // re-check the row after the delete; MySQL lacks .returning(), so a
+    // dialect-agnostic re-SELECT is used instead of delete-returning (see
+    // the same constraint noted in nodes.ts).
+    const remaining = await this.db
+      .select({ nodeNum: ignoredNodes.nodeNum })
+      .from(ignoredNodes)
+      .where(rowScope);
+
+    if (remaining.length > 0) {
+      // A concurrent manual upgrade won the race — the node is still (and
+      // must remain) ignored. Leave the cache entry in place.
+      logger.debug(`Geo-ignore lift for node ${nodeNum} on source ${sourceId} lost race to a manual upgrade; leaving ignore in place`);
+      return false;
+    }
+
+    this.ignoredCache.delete(this.cacheKey(nodeNum, sourceId));
     logger.debug(`Lifted geo-ignore for node ${nodeNum} on source ${sourceId}`);
     return true;
   }
