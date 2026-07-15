@@ -20,6 +20,13 @@ vi.mock('../services/database.js', () => ({
     insertTracerouteAsync: vi.fn(async () => undefined),
     insertRouteSegment: vi.fn(),
     insertRouteSegmentAsync: vi.fn(async () => undefined),
+    deleteNodeAsync: vi.fn(async () => ({
+      messagesDeleted: 0,
+      broadcastMessagesDeleted: 0,
+      traceroutesDeleted: 0,
+      telemetryDeleted: 0,
+      nodeDeleted: true,
+    })),
     nodes: {
       getNode: vi.fn(async () => null),
       getNodesByNums: vi.fn(async () => new Map()),
@@ -45,6 +52,11 @@ vi.mock('../services/database.js', () => ({
       // method is kept mocked too for any other callers.
       findOrCreatePassiveByNameAsync: vi.fn(async () => undefined),
       findOrCreateByNameAndHashAsync: vi.fn(async () => undefined),
+    },
+    ignoredNodes: {
+      isIgnoredCached: vi.fn(() => false),
+      addGeoIgnoreAsync: vi.fn(async () => true),
+      liftGeoIgnoreAsync: vi.fn(async () => true),
     },
   },
 }));
@@ -107,100 +119,12 @@ function envFor(from: number, portnum: number): ServiceEnvelopeShape {
   };
 }
 
-describe('ingestServiceEnvelope — fail-closed membership', () => {
+describe('ingestServiceEnvelope — fail-open back-compat (#4115)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  it('drops a TEXT_MESSAGE from an unknown sender when bbox is enabled', async () => {
-    const filter = new MqttPacketFilter({ geo: ON_BBOX });
-    const result = await ingestServiceEnvelope({
-      sourceId: 'bridge-1',
-      envelope: envFor(NODE_UNKNOWN, 1 /* TEXT_MESSAGE_APP */),
-      filter,
-    });
-    expect(result.ingested).toBe(false);
-    expect(result.reason).toBe('geo-filtered');
-    expect(databaseService.messages.insertMessage).not.toHaveBeenCalled();
-    expect(databaseService.upsertNodeAsync).not.toHaveBeenCalled();
-    expect(filter.getDropCounters().geo).toBe(1);
-  });
-
-  it('drops NODEINFO from an unknown sender when bbox is enabled', async () => {
-    const filter = new MqttPacketFilter({ geo: ON_BBOX });
-    const result = await ingestServiceEnvelope({
-      sourceId: 'bridge-1',
-      envelope: envFor(NODE_UNKNOWN, 4 /* NODEINFO_APP */),
-      filter,
-    });
-    expect(result.ingested).toBe(false);
-    expect(result.reason).toBe('geo-filtered');
-    expect(databaseService.upsertNodeAsync).not.toHaveBeenCalled();
-  });
-
-  it('drops TELEMETRY from an unknown sender when bbox is enabled', async () => {
-    const filter = new MqttPacketFilter({ geo: ON_BBOX });
-    const result = await ingestServiceEnvelope({
-      sourceId: 'bridge-1',
-      envelope: envFor(NODE_UNKNOWN, 67 /* TELEMETRY_APP */),
-      filter,
-    });
-    expect(result.ingested).toBe(false);
-    expect(result.reason).toBe('geo-filtered');
-    expect(databaseService.insertTelemetryAsync).not.toHaveBeenCalled();
-  });
-
-  it('allows a TEXT_MESSAGE after the same sender posted an in-bbox POSITION', async () => {
-    const filter = new MqttPacketFilter({ geo: ON_BBOX });
-
-    // Step 1: position learns NODE_IN as 'in'.
-    const posResult = await ingestServiceEnvelope({
-      sourceId: 'bridge-1',
-      envelope: envFor(NODE_IN, 3 /* POSITION_APP */),
-      filter,
-    });
-    expect(posResult.ingested).toBe(true);
-    expect(filter.getMembershipSize()).toBe(1);
-
-    // Step 2: text message from the same sender now passes the gate.
-    vi.clearAllMocks();
-    const txtResult = await ingestServiceEnvelope({
-      sourceId: 'bridge-1',
-      envelope: envFor(NODE_IN, 1 /* TEXT_MESSAGE_APP */),
-      filter,
-    });
-    expect(txtResult.ingested).toBe(true);
-    expect(databaseService.messages.insertMessage).toHaveBeenCalledTimes(1);
-  });
-
-  it('blocks TEXT_MESSAGE after the same sender posted an out-of-bbox POSITION', async () => {
-    // Override processPayload for this test to return an out-of-bbox position.
-    const { default: protobuf } = await import('./meshtasticProtobufService.js');
-    (protobuf.processPayload as any).mockImplementationOnce(() => ({
-      latitudeI: 492_000_000, // Vancouver — outside ON_BBOX
-      longitudeI: -1_230_000_000,
-    }));
-
-    const filter = new MqttPacketFilter({ geo: ON_BBOX });
-
-    // Position is out → bbox rejects, cache marks NODE_OUT as 'out'.
-    const posResult = await ingestServiceEnvelope({
-      sourceId: 'bridge-1',
-      envelope: envFor(NODE_OUT, 3 /* POSITION_APP */),
-      filter,
-    });
-    expect(posResult.ingested).toBe(false);
-    expect(posResult.reason).toBe('geo-filtered');
-
-    // Subsequent text from the same sender — known-out → drop.
-    const txtResult = await ingestServiceEnvelope({
-      sourceId: 'bridge-1',
-      envelope: envFor(NODE_OUT, 1 /* TEXT_MESSAGE_APP */),
-      filter,
-    });
-    expect(txtResult.ingested).toBe(false);
-    expect(txtResult.reason).toBe('geo-filtered');
-    expect(databaseService.messages.insertMessage).not.toHaveBeenCalled();
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(false);
+    (databaseService.ignoredNodes.addGeoIgnoreAsync as any).mockResolvedValue(true);
+    (databaseService.ignoredNodes.liftGeoIgnoreAsync as any).mockResolvedValue(true);
   });
 
   it('passes everything when no filter is supplied (back-compat)', async () => {
@@ -213,6 +137,17 @@ describe('ingestServiceEnvelope — fail-closed membership', () => {
     expect(databaseService.messages.insertMessage).toHaveBeenCalledTimes(1);
   });
 
+  it('passes non-position packets when a filter without bbox is supplied', async () => {
+    const filter = new MqttPacketFilter({});
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_UNKNOWN, 1 /* TEXT_MESSAGE_APP */),
+      filter,
+    });
+    expect(result.ingested).toBe(true);
+    expect(filter.getDropCounters().geo).toBe(0);
+  });
+
   it('passes non-position packets when bbox is configured with empty bounds', async () => {
     const filter = new MqttPacketFilter({ geo: {} });
     const result = await ingestServiceEnvelope({
@@ -222,6 +157,226 @@ describe('ingestServiceEnvelope — fail-closed membership', () => {
     });
     expect(result.ingested).toBe(true);
     expect(filter.getDropCounters().geo).toBe(0);
+  });
+
+  // #4115: ingestion-level gating is fail-open by construction. A bbox being
+  // configured no longer causes non-position traffic from an unknown/never-
+  // seen sender to be dropped — MqttPacketFilter carries no membership state
+  // anymore, and ignore/lift/purge decisions are made solely off the
+  // ignored_nodes table, keyed off actual POSITION observations.
+  it('ingests a NODEINFO from an unknown sender even when a bbox IS configured', async () => {
+    const filter = new MqttPacketFilter({ geo: ON_BBOX });
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_UNKNOWN, 4 /* NODEINFO_APP */),
+      filter,
+    });
+    expect(result.ingested).toBe(true);
+    expect(databaseService.upsertNodeAsync).toHaveBeenCalled();
+  });
+
+  it('ingests a TEXT_MESSAGE from an unknown sender even when a bbox IS configured', async () => {
+    const filter = new MqttPacketFilter({ geo: ON_BBOX });
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_UNKNOWN, 1 /* TEXT_MESSAGE_APP */),
+      filter,
+    });
+    expect(result.ingested).toBe(true);
+    expect(databaseService.messages.insertMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ingestServiceEnvelope — ignore gate (defense-in-depth)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(false);
+    (databaseService.ignoredNodes.addGeoIgnoreAsync as any).mockResolvedValue(true);
+    (databaseService.ignoredNodes.liftGeoIgnoreAsync as any).mockResolvedValue(true);
+  });
+
+  it('drops a TEXT_MESSAGE from an ignored sender without touching insertMessage/upsertNode', async () => {
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(true);
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_OUT, 1 /* TEXT_MESSAGE_APP */),
+    });
+    expect(result).toMatchObject({ ingested: false, reason: 'ignored' });
+    expect(databaseService.messages.insertMessage).not.toHaveBeenCalled();
+    expect(databaseService.upsertNodeAsync).not.toHaveBeenCalled();
+  });
+
+  it('drops TELEMETRY from an ignored sender without touching insertTelemetryAsync/upsertNode', async () => {
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(true);
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_OUT, 67 /* TELEMETRY_APP */),
+    });
+    expect(result).toMatchObject({ ingested: false, reason: 'ignored' });
+    expect(databaseService.insertTelemetryAsync).not.toHaveBeenCalled();
+    expect(databaseService.upsertNodeAsync).not.toHaveBeenCalled();
+  });
+
+  it('drops NODEINFO from an ignored sender without touching upsertNode', async () => {
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(true);
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_OUT, 4 /* NODEINFO_APP */),
+    });
+    expect(result).toMatchObject({ ingested: false, reason: 'ignored' });
+    expect(databaseService.upsertNodeAsync).not.toHaveBeenCalled();
+  });
+
+  it('ingests non-position traffic from a non-ignored sender', async () => {
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(false);
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 1 /* TEXT_MESSAGE_APP */),
+    });
+    expect(result.ingested).toBe(true);
+    expect(databaseService.messages.insertMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ingestServiceEnvelope — POSITION geo evaluation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(false);
+    (databaseService.ignoredNodes.addGeoIgnoreAsync as any).mockResolvedValue(true);
+    (databaseService.ignoredNodes.liftGeoIgnoreAsync as any).mockResolvedValue(true);
+  });
+
+  const outOfBboxOnce = async () => {
+    const { default: protobuf } = await import('./meshtasticProtobufService.js');
+    (protobuf.processPayload as any).mockImplementationOnce(() => ({
+      latitudeI: 492_000_000, // Vancouver — outside ON_BBOX
+      longitudeI: -1_230_000_000,
+    }));
+  };
+
+  it('geo-ignores an out-of-bbox position and purges once (addGeoIgnoreAsync → true)', async () => {
+    await outOfBboxOnce();
+    (databaseService.ignoredNodes.addGeoIgnoreAsync as any).mockResolvedValueOnce(true);
+    const filter = new MqttPacketFilter({ geo: ON_BBOX });
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_OUT, 3 /* POSITION_APP */),
+      filter,
+    });
+
+    expect(result).toMatchObject({ ingested: false, reason: 'geo-ignored' });
+    expect(databaseService.ignoredNodes.addGeoIgnoreAsync).toHaveBeenCalledWith(
+      NODE_OUT,
+      'bridge-1',
+      expect.any(String),
+      undefined,
+      undefined,
+    );
+    // Fire-and-forget purge — await a microtask tick so the .then() lands.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(databaseService.deleteNodeAsync).toHaveBeenCalledTimes(1);
+    expect(databaseService.upsertNodeAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not re-purge an already geo-ignored node (addGeoIgnoreAsync → false)', async () => {
+    await outOfBboxOnce();
+    (databaseService.ignoredNodes.addGeoIgnoreAsync as any).mockResolvedValueOnce(false);
+    const filter = new MqttPacketFilter({ geo: ON_BBOX });
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_OUT, 3 /* POSITION_APP */),
+      filter,
+    });
+
+    expect(result).toMatchObject({ ingested: false, reason: 'geo-ignored' });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(databaseService.deleteNodeAsync).not.toHaveBeenCalled();
+  });
+
+  it('lifts a geo-ignore and ingests on reappearance (in-bbox position)', async () => {
+    // Sender starts geo-ignored; lift succeeds and clears the cached flag —
+    // mirrors the real repository behavior of isIgnoredCached flipping after
+    // a successful liftGeoIgnoreAsync.
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(true);
+    (databaseService.ignoredNodes.liftGeoIgnoreAsync as any).mockImplementationOnce(async () => {
+      (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(false);
+      return true;
+    });
+    const filter = new MqttPacketFilter({ geo: ON_BBOX });
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 3 /* POSITION_APP */),
+      filter,
+    });
+
+    expect(databaseService.ignoredNodes.liftGeoIgnoreAsync).toHaveBeenCalledWith(NODE_IN, 'bridge-1');
+    expect(result.ingested).toBe(true);
+    expect(databaseService.upsertNodeAsync).toHaveBeenCalled();
+  });
+
+  it('does not lift a MANUAL ignore, and the in-bbox position still does not ingest', async () => {
+    // liftGeoIgnoreAsync is TOCTOU-safe and never touches a manual reason —
+    // it returns false and isIgnoredCached stays true.
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(true);
+    (databaseService.ignoredNodes.liftGeoIgnoreAsync as any).mockResolvedValueOnce(false);
+    const filter = new MqttPacketFilter({ geo: ON_BBOX });
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 3 /* POSITION_APP */),
+      filter,
+    });
+
+    expect(databaseService.ignoredNodes.liftGeoIgnoreAsync).toHaveBeenCalledWith(NODE_IN, 'bridge-1');
+    expect(result).toMatchObject({ ingested: false, reason: 'ignored' });
+    expect(databaseService.upsertNodeAsync).not.toHaveBeenCalled();
+  });
+
+  it('drops a coordless position from an ignored sender as "ignored"', async () => {
+    const { default: protobuf } = await import('./meshtasticProtobufService.js');
+    (protobuf.processPayload as any).mockImplementationOnce(() => ({}));
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(true);
+    const filter = new MqttPacketFilter({ geo: ON_BBOX });
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_OUT, 3 /* POSITION_APP */),
+      filter,
+    });
+
+    expect(result).toMatchObject({ ingested: false, reason: 'ignored' });
+    expect(databaseService.upsertNodeAsync).not.toHaveBeenCalled();
+  });
+
+  it('ingests a coordless position from a non-ignored sender (fail-open, classifies unknown)', async () => {
+    const { default: protobuf } = await import('./meshtasticProtobufService.js');
+    (protobuf.processPayload as any).mockImplementationOnce(() => ({}));
+    const filter = new MqttPacketFilter({ geo: ON_BBOX });
+
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_UNKNOWN, 3 /* POSITION_APP */),
+      filter,
+    });
+
+    expect(result.ingested).toBe(true);
+    expect(databaseService.upsertNodeAsync).toHaveBeenCalled();
+  });
+
+  it('ingests a position normally with no geo filter configured, without touching ignore/lift/purge', async () => {
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 3 /* POSITION_APP */),
+      // No filter → classifyPosition treats it as 'no-geo'.
+    });
+
+    expect(result.ingested).toBe(true);
+    expect(databaseService.ignoredNodes.addGeoIgnoreAsync).not.toHaveBeenCalled();
+    expect(databaseService.ignoredNodes.liftGeoIgnoreAsync).not.toHaveBeenCalled();
+    expect(databaseService.deleteNodeAsync).not.toHaveBeenCalled();
   });
 });
 
