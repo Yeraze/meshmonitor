@@ -1,5 +1,5 @@
 /**
- * Migration 120: Create mqtt_packet_log table.
+ * Migration 121: Create mqtt_packet_log table.
  *
  * Stores one row per gateway reception of an MQTT-bridged Meshtastic packet
  * (ServiceEnvelope), powering the MQTT Packet Monitor. Unlike the Meshtastic
@@ -13,7 +13,7 @@
 import type { Database } from 'better-sqlite3';
 import { logger } from '../../utils/logger.js';
 
-const LABEL = 'Migration 120';
+const LABEL = 'Migration 121';
 const TABLE = 'mqtt_packet_log';
 
 // ============ SQLite ============
@@ -67,7 +67,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration120Postgres(client: import('pg').PoolClient): Promise<void> {
+export async function runMigration121Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): creating ${TABLE}...`);
 
   await client.query(`
@@ -109,7 +109,7 @@ export async function runMigration120Postgres(client: import('pg').PoolClient): 
 
 // ============ MySQL ============
 
-export async function runMigration120Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
+export async function runMigration121Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): creating ${TABLE}...`);
 
   const conn = await pool.getConnection();

@@ -15,7 +15,7 @@ given, match it exactly so tests and callers line up.
 
 | Mechanism | Location | How Phase 1 uses it |
 |-----------|----------|---------------------|
-| **Migration idempotency helpers** — `CREATE TABLE IF NOT EXISTS` (SQLite/PG native), MySQL `information_schema.TABLES` pre-check | `src/server/migrations/075_meshcore_packet_log.ts` is the exact template | Migration 120 copies 075's structure verbatim (3 exports, same guards). No new helper needed — a fresh table only needs `IF NOT EXISTS` (SQLite/PG) and the MySQL existence pre-check pattern already in 075. |
+| **Migration idempotency helpers** — `CREATE TABLE IF NOT EXISTS` (SQLite/PG native), MySQL `information_schema.TABLES` pre-check | `src/server/migrations/075_meshcore_packet_log.ts` is the exact template | Migration 121 copies 075's structure verbatim (3 exports, same guards). No new helper needed — a fresh table only needs `IF NOT EXISTS` (SQLite/PG) and the MySQL existence pre-check pattern already in 075. |
 | **Migration registry** | `src/db/migrations.ts` (import block ~L92–136, `registry.register({ number, name, settingsKey, sqlite, postgres, mysql })` entries; 119 entry at ~L1891) | Add one import line + one `registry.register` entry for 120. The count test (`src/db/migrations.test.ts`) is registry-derived — **no edit needed**. |
 | **Active schema table map** | `src/db/activeSchema.ts` (three dialect blocks ~L299/355/411, `any`-typed field ~L217, re-export ~L99) | Add `mqttPacketLog` in all four spots so `this.tables.mqttPacketLog` resolves per driver. |
 | **Schema re-export barrel** | `src/db/schema/index.ts` (L37 exports `meshcorePacketLog.js`) | Add `export * from './mqttPacketLog.js';`. |
@@ -58,14 +58,14 @@ table + repository + the grouped/gateway query surface is genuinely new.
 
 ## 2. File-by-file changes with concrete signatures
 
-### 2.1 `src/server/migrations/120_mqtt_packet_log.ts` (NEW)
+### 2.1 `src/server/migrations/121_mqtt_packet_log.ts` (NEW)
 
-Copy the structure of `075_meshcore_packet_log.ts` exactly. `LABEL = 'Migration 120'`,
+Copy the structure of `075_meshcore_packet_log.ts` exactly. `LABEL = 'Migration 121'`,
 `TABLE = 'mqtt_packet_log'`. Three exports:
 
 - `export const migration = { up(db: Database): void, down(db): void }` — SQLite.
-- `export async function runMigration120Postgres(client: any): Promise<void>`.
-- `export async function runMigration120Mysql(pool: any): Promise<void>` — with the
+- `export async function runMigration121Postgres(client: any): Promise<void>`.
+- `export async function runMigration121Mysql(pool: any): Promise<void>` — with the
   `information_schema.TABLES` pre-check + `conn.release()` in `finally`, as in 075.
 
 **Columns** (SQLite DDL shown; PG uses quoted camelCase + `BIGINT`/`GENERATED ALWAYS AS
@@ -112,17 +112,17 @@ IDENTITY`; MySQL uses `SERIAL`/`BIGINT`/`VARCHAR`/`INT`/`DOUBLE` as in 075):
 
 Add near L136:
 ```ts
-import { migration as mqttPacketLogMigration, runMigration120Postgres, runMigration120Mysql } from '../server/migrations/120_mqtt_packet_log.js';
+import { migration as mqttPacketLogMigration, runMigration121Postgres, runMigration121Mysql } from '../server/migrations/121_mqtt_packet_log.js';
 ```
 Add after the 119 `registry.register` block (~L1897):
 ```ts
 registry.register({
-  number: 120,
+  number: 121,
   name: 'mqtt_packet_log',
-  settingsKey: 'migration_120_mqtt_packet_log',
+  settingsKey: 'migration_121_mqtt_packet_log',
   sqlite: (db) => mqttPacketLogMigration.up(db),
-  postgres: (client) => runMigration120Postgres(client),
-  mysql: (pool) => runMigration120Mysql(pool),
+  postgres: (client) => runMigration121Postgres(client),
+  mysql: (pool) => runMigration121Mysql(pool),
 });
 ```
 
@@ -557,11 +557,11 @@ stay raw-SQL-free.
 
 ## 4. Test plan (exact files + cases)
 
-### 4.1 `src/server/migrations/120_mqtt_packet_log.test.ts` (NEW)
+### 4.1 `src/server/migrations/121_mqtt_packet_log.test.ts` (NEW)
 Model on `119_add_theme_tilesets.test.ts`.
 - SQLite: `migration.up(db)` twice on a fresh `:memory:` DB → no throw (idempotent); assert the
   table exists and an insert of a full row round-trips.
-- PostgreSQL: `runMigration120Postgres({ query: vi.fn().mockResolvedValue({ rows: [] }) })` → assert
+- PostgreSQL: `runMigration121Postgres({ query: vi.fn().mockResolvedValue({ rows: [] }) })` → assert
   called with `CREATE TABLE IF NOT EXISTS` + the three `CREATE INDEX IF NOT EXISTS` statements.
 - MySQL: mocked pool/conn (`getConnection`→`{ query, release }`); first `information_schema.TABLES`
   returns `[[], []]` (absent) → `CREATE TABLE` runs; second run returns a row (present) → create
@@ -635,7 +635,7 @@ Dependency order: **WP1 → WP2 → {WP3, WP4 in parallel}**. WP3 and WP4 both d
 (repository + DatabaseService getter) but not on each other.
 
 ### WP1 — Schema, migration, registration, settings keys  *(sequential, first)*
-Files: `120_mqtt_packet_log.ts`, `120_mqtt_packet_log.test.ts`, `schema/mqttPacketLog.ts`,
+Files: `121_mqtt_packet_log.ts`, `121_mqtt_packet_log.test.ts`, `schema/mqttPacketLog.ts`,
 `activeSchema.ts` (4 spots), `schema/index.ts`, `migrations.ts` (import + register),
 `constants/settings.ts` (3 keys).
 **Acceptance:** migration test green (idempotent, 3 backends); `buildActiveSchema('sqlite'|'postgres'|'mysql').mqttPacketLog` resolves; `npm test src/db/migrations.test.ts src/db/activeSchema.test.ts` green; typecheck green.

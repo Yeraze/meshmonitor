@@ -55,7 +55,7 @@ we want to keep every copy:
   (src/server/constants/settings.ts ~93–98); global (not per-source), values are strings,
   enabled = `'1'`.
 - **Permissions:** reuse the existing `packetmonitor` resource (per-source scoped).
-- **Latest migration:** 119 → this epic uses **120**.
+- **Latest migration:** 119 → this epic uses **121** (120 was taken by the geo-ignore epic mid-flight).
 - **MQTT source pages** render through `<App>` (src/main.tsx:86–102); tab gating in
   src/App.tsx:676–684; `packetmonitor` tab renders `PacketMonitorPanel` at App.tsx:5196.
 
@@ -66,7 +66,7 @@ we want to keep every copy:
 Branch: `feature/mqtt-packet-monitor` (worktree `../meshmonitor-wt-mqtt-packetmon`).
 
 Deliverables:
-- Migration **120** `mqtt_packet_log` (SQLite/PG/MySQL, idempotent, indexed) — one row per
+- Migration **121** `mqtt_packet_log` (SQLite/PG/MySQL, idempotent, indexed) — one row per
   gateway reception: sourceId, packetId, fromNode(+id), toNode(+id), channel (wire hash),
   channelId (envelope name), gatewayId, gatewayNodeNum, timestamp (server ms), rxTime,
   rxSnr, rxRssi, hopLimit, hopStart, portnum(+name, nullable), encrypted, decryptedBy,
@@ -117,7 +117,7 @@ PR merged.
 - Phase 1 spec: `docs/internal/dev-notes/MQTT_PACKET_MONITOR_PHASE1_SPEC.md`. Implemented
   as four work packages (WP1 schema/migration/settings → WP2 repository/wiring →
   WP3 service/ingest-hook ∥ WP4 routes/mount).
-- Lint ratchet: migration 120's PG/MySQL params are typed (`pg.PoolClient` /
+- Lint ratchet: migration 121's PG/MySQL params are typed (`pg.PoolClient` /
   `mysql2/promise.Pool`) like migration 119 — the 075 template's `any` params predate the
   ratchet. The one `any` in `ActiveSchema` carries a `#4124` eslint-disable.
 - `decryptedBy` is recorded as `'server'` when a copy had encrypted bytes AND a decoded

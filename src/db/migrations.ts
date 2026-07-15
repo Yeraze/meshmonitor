@@ -134,7 +134,8 @@ import { migration as trimOutOfRangeNodePositionsMigration, runMigration116Postg
 import { migration as dropUpgradeHistoryMigration, runMigration117Postgres as runDropUpgradeHistoryPostgres, runMigration117Mysql as runDropUpgradeHistoryMysql } from '../server/migrations/117_drop_upgrade_history.js';
 import { migration as dropLegacyAuthProviderCheckMigration, runMigration118Postgres as runDropLegacyAuthProviderCheckPostgres, runMigration118Mysql as runDropLegacyAuthProviderCheckMysql } from '../server/migrations/118_drop_legacy_auth_provider_check.js';
 import { migration as themeTilesetsMigration, runMigration119Postgres as runThemeTilesetsPostgres, runMigration119Mysql as runThemeTilesetsMysql } from '../server/migrations/119_add_theme_tilesets.js';
-import { migration as mqttPacketLogMigration, runMigration120Postgres, runMigration120Mysql } from '../server/migrations/120_mqtt_packet_log.js';
+import { migration as addReasonToIgnoredNodesMigration, runMigration120Postgres as runAddReasonToIgnoredNodesPostgres, runMigration120Mysql as runAddReasonToIgnoredNodesMysql } from '../server/migrations/120_add_reason_to_ignored_nodes.js';
+import { migration as mqttPacketLogMigration, runMigration121Postgres, runMigration121Mysql } from '../server/migrations/121_mqtt_packet_log.js';
 
 // ============================================================================
 // Registry
@@ -1898,16 +1899,31 @@ registry.register({
 });
 
 // ---------------------------------------------------------------------------
-// Migration 120: Create mqtt_packet_log table, powering the MQTT Packet
+// Migration 120: Add `reason` column to `ignored_nodes` (MQTT Geo-Ignore
+// epic, Phase 1) to distinguish manual blocklist entries from geo-fence
+// auto-ignores.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 120,
+  name: 'add_reason_to_ignored_nodes',
+  settingsKey: 'migration_120_add_reason_to_ignored_nodes',
+  sqlite: (db) => addReasonToIgnoredNodesMigration.up(db),
+  postgres: (client) => runAddReasonToIgnoredNodesPostgres(client),
+  mysql: (pool) => runAddReasonToIgnoredNodesMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 121: Create mqtt_packet_log table, powering the MQTT Packet
 // Monitor (Phase 1). One row per gateway reception of an MQTT-bridged
 // ServiceEnvelope; grouped/dedup view is built at query time.
 // ---------------------------------------------------------------------------
 
 registry.register({
-  number: 120,
+  number: 121,
   name: 'mqtt_packet_log',
-  settingsKey: 'migration_120_mqtt_packet_log',
+  settingsKey: 'migration_121_mqtt_packet_log',
   sqlite: (db) => mqttPacketLogMigration.up(db),
-  postgres: (client) => runMigration120Postgres(client),
-  mysql: (pool) => runMigration120Mysql(pool),
+  postgres: (client) => runMigration121Postgres(client),
+  mysql: (pool) => runMigration121Mysql(pool),
 });

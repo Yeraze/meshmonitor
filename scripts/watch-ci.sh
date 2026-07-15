@@ -19,6 +19,11 @@
 #       (the script returns as soon as the failing workflow is observed —
 #        it does NOT wait for the rest to finish)
 #   2 — usage / GitHub API error
+#   3 — PR has a merge conflict with its base (mergeable=CONFLICTING).
+#       Checked each poll cycle (a conflict can appear mid-watch when another
+#       PR merges to the base). Without this, a conflicted PR whose checks
+#       never start would keep the watcher waiting forever. PR mode only —
+#       plain branches have no mergeability.
 #
 # Flags:
 #   -q   quiet — suppress per-cycle status output. Only the final summary
@@ -91,11 +96,31 @@ resolve_sha() {
   fi
 }
 
+# PR-mode merge-conflict probe. GitHub recomputes `mergeable` asynchronously,
+# so the value can be UNKNOWN (still computing) or empty (transient API
+# failure) — both mean "keep watching"; only a definitive CONFLICTING counts.
+is_conflicting() {
+  [ -z "$PR_NUMBER" ] && return 1
+  local m
+  m=$(gh pr view "$PR_NUMBER" --json mergeable -q .mergeable 2>/dev/null || true)
+  [ "$m" = "CONFLICTING" ]
+}
+
 last_summary=""
 LAST_SHA=""
 
 while true; do
   TIMESTAMP=$(date '+%H:%M:%S')
+
+  # A conflicted PR can sit with checks that never start (or a merge that can
+  # never happen) — surface it immediately instead of waiting on CI forever.
+  if is_conflicting; then
+    echo "✗ MERGE CONFLICT — PR #$PR_NUMBER is not mergeable into its base (mergeable=CONFLICTING). Merge the base branch into $BRANCH, resolve, push, then re-run. Inspect with: gh pr view $PR_NUMBER --json mergeable,mergeStateStatus"
+    if command -v notify-send &>/dev/null; then
+      notify-send "Merge Conflict" "PR #$PR_NUMBER ($BRANCH)" --urgency=critical 2>/dev/null || true
+    fi
+    exit 3
+  fi
 
   # Re-resolve the tip each cycle so a new push is tracked automatically. On a
   # transient resolution failure, reuse the last known tip rather than crashing.

@@ -322,6 +322,21 @@ export class MessagesRepository extends BaseRepository {
   }
 
   /**
+   * Purge all messages ORIGINATED by a node (fromNodeNum == node), including
+   * channel broadcasts that purgeDirectMessages excludes. Scoped by source.
+   */
+  async purgeMessagesFromNode(nodeNum: number, sourceId?: string): Promise<number> {
+    const { messages } = this.tables;
+    const condition = and(eq(messages.fromNodeNum, nodeNum), this.withSourceScope(messages, sourceId));
+    const [{ deletedCount }] = await this.db
+      .select({ deletedCount: count() })
+      .from(messages)
+      .where(condition);
+    await this.db.delete(messages).where(condition);
+    return deletedCount;
+  }
+
+  /**
    * SQLite-only synchronous insert of a message (INSERT OR IGNORE).
    * Mirrors `insertMessage()` but runs synchronously so the legacy sync
    * facade on `DatabaseService` can keep its non-async signature.

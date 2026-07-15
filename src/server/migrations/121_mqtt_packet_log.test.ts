@@ -1,8 +1,8 @@
 import Database from 'better-sqlite3';
 import { describe, expect, it, vi } from 'vitest';
-import { migration, runMigration120Postgres, runMigration120Mysql } from './120_mqtt_packet_log.js';
+import { migration, runMigration121Postgres, runMigration121Mysql } from './121_mqtt_packet_log.js';
 
-describe('Migration 120 — mqtt_packet_log table', () => {
+describe('Migration 121 — mqtt_packet_log table', () => {
   describe('SQLite', () => {
     it('creates the table and is idempotent (second up() does not throw)', () => {
       const db = new Database(':memory:');
@@ -79,7 +79,7 @@ describe('Migration 120 — mqtt_packet_log table', () => {
     it('creates the table and the three indexes with IF NOT EXISTS', async () => {
       const client = { query: vi.fn().mockResolvedValue({ rows: [] }) } as any;
 
-      await runMigration120Postgres(client);
+      await runMigration121Postgres(client);
 
       expect(client.query).toHaveBeenCalledTimes(4);
       expect(client.query.mock.calls[0][0]).toContain('CREATE TABLE IF NOT EXISTS mqtt_packet_log');
@@ -102,7 +102,7 @@ describe('Migration 120 — mqtt_packet_log table', () => {
       const absentConn = makeConn([]);
       const absentPool = { getConnection: vi.fn().mockResolvedValue(absentConn) };
 
-      await runMigration120Mysql(absentPool);
+      await runMigration121Mysql(absentPool);
 
       expect(absentConn.query).toHaveBeenCalledTimes(2);
       expect(absentConn.query.mock.calls[1][0]).toContain('CREATE TABLE mqtt_packet_log');
@@ -112,7 +112,7 @@ describe('Migration 120 — mqtt_packet_log table', () => {
       const presentConn = makeConn([{ TABLE_NAME: 'mqtt_packet_log' }]);
       const presentPool = { getConnection: vi.fn().mockResolvedValue(presentConn) };
 
-      await runMigration120Mysql(presentPool);
+      await runMigration121Mysql(presentPool);
 
       expect(presentConn.query).toHaveBeenCalledTimes(1); // only the existence check
       expect(presentConn.release).toHaveBeenCalledTimes(1);
