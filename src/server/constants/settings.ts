@@ -96,6 +96,9 @@ export const VALID_SETTINGS_KEYS = [
   'meshcore_packet_log_enabled',
   'meshcore_packet_log_max_count',
   'meshcore_packet_log_max_age_hours',
+  'mqtt_packet_log_enabled',
+  'mqtt_packet_log_max_count',
+  'mqtt_packet_log_max_age_hours',
   // Rolling retention window (days) for the MeshCore position-history trail (#3852).
   'meshcore_position_history_retention_days',
   'solarMonitoringEnabled',

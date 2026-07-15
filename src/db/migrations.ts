@@ -134,6 +134,7 @@ import { migration as trimOutOfRangeNodePositionsMigration, runMigration116Postg
 import { migration as dropUpgradeHistoryMigration, runMigration117Postgres as runDropUpgradeHistoryPostgres, runMigration117Mysql as runDropUpgradeHistoryMysql } from '../server/migrations/117_drop_upgrade_history.js';
 import { migration as dropLegacyAuthProviderCheckMigration, runMigration118Postgres as runDropLegacyAuthProviderCheckPostgres, runMigration118Mysql as runDropLegacyAuthProviderCheckMysql } from '../server/migrations/118_drop_legacy_auth_provider_check.js';
 import { migration as themeTilesetsMigration, runMigration119Postgres as runThemeTilesetsPostgres, runMigration119Mysql as runThemeTilesetsMysql } from '../server/migrations/119_add_theme_tilesets.js';
+import { migration as mqttPacketLogMigration, runMigration120Postgres, runMigration120Mysql } from '../server/migrations/120_mqtt_packet_log.js';
 
 // ============================================================================
 // Registry
@@ -1894,4 +1895,19 @@ registry.register({
   sqlite: (db) => themeTilesetsMigration.up(db),
   postgres: (client) => runThemeTilesetsPostgres(client),
   mysql: (pool) => runThemeTilesetsMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 120: Create mqtt_packet_log table, powering the MQTT Packet
+// Monitor (Phase 1). One row per gateway reception of an MQTT-bridged
+// ServiceEnvelope; grouped/dedup view is built at query time.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 120,
+  name: 'mqtt_packet_log',
+  settingsKey: 'migration_120_mqtt_packet_log',
+  sqlite: (db) => mqttPacketLogMigration.up(db),
+  postgres: (client) => runMigration120Postgres(client),
+  mysql: (pool) => runMigration120Mysql(pool),
 });
