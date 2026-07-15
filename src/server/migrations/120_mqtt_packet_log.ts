@@ -67,7 +67,7 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
-export async function runMigration120Postgres(client: any): Promise<void> {
+export async function runMigration120Postgres(client: import('pg').PoolClient): Promise<void> {
   logger.info(`${LABEL} (PostgreSQL): creating ${TABLE}...`);
 
   await client.query(`
@@ -109,7 +109,7 @@ export async function runMigration120Postgres(client: any): Promise<void> {
 
 // ============ MySQL ============
 
-export async function runMigration120Mysql(pool: any): Promise<void> {
+export async function runMigration120Mysql(pool: import('mysql2/promise').Pool): Promise<void> {
   logger.info(`${LABEL} (MySQL): creating ${TABLE}...`);
 
   const conn = await pool.getConnection();
@@ -119,7 +119,7 @@ export async function runMigration120Mysql(pool: any): Promise<void> {
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
       [TABLE],
     );
-    if ((existRows as any[]).length === 0) {
+    if ((existRows as unknown[]).length === 0) {
       await conn.query(`
         CREATE TABLE ${TABLE} (
           id SERIAL PRIMARY KEY,

@@ -185,6 +185,7 @@ export interface ActiveSchema {
 
   // Packet logging
   packetLog: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4124 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   mqttPacketLog: any;
 
   // Miscellaneous tables
