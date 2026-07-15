@@ -5,6 +5,50 @@ import { createServer, type Server } from 'net';
 
 const upsertNode = vi.fn();
 const insertTelemetry = vi.fn();
+const insertMessage = vi.fn(async () => true);
+const deleteNode = vi.fn(async () => ({
+  messagesDeleted: 0,
+  broadcastMessagesDeleted: 0,
+  traceroutesDeleted: 0,
+  telemetryDeleted: 0,
+  nodeDeleted: true,
+}));
+const getNode = vi.fn(async () => null);
+
+// Stateful fake for ignored_nodes (Phase 2 geo-ignore). Mirrors the real
+// IgnoredNodesRepository's cache-key shape (`${sourceId}:${nodeNum}`) and its
+// reason semantics (geo-ignore is insert-if-absent; lift only removes
+// reason='geo', never 'manual') closely enough for the bridge-path coverage
+// below. See src/server/mqttBrokerManager.test.ts for the sibling fake used
+// by the broker-path (manual-ignore-only) tests.
+const ignoredRecords = new Map<string, { reason: 'manual' | 'geo' }>();
+function ignoreKey(nodeNum: number, sourceId: string): string {
+  return `${sourceId}:${nodeNum}`;
+}
+const isIgnoredCached = vi.fn((nodeNum: number, sourceId: string) =>
+  ignoredRecords.has(ignoreKey(nodeNum, sourceId)));
+const addGeoIgnoreAsync = vi.fn(async (nodeNum: number, sourceId: string) => {
+  const key = ignoreKey(nodeNum, sourceId);
+  if (ignoredRecords.has(key)) return false;
+  ignoredRecords.set(key, { reason: 'geo' });
+  return true;
+});
+const liftGeoIgnoreAsync = vi.fn(async (nodeNum: number, sourceId: string) => {
+  const key = ignoreKey(nodeNum, sourceId);
+  const rec = ignoredRecords.get(key);
+  if (!rec || rec.reason !== 'geo') return false;
+  ignoredRecords.delete(key);
+  return true;
+});
+const isNodeIgnoredAsync = vi.fn(async (nodeNum: number, sourceId: string) =>
+  ignoredRecords.has(ignoreKey(nodeNum, sourceId)));
+const getIgnoredNodesAsync = vi.fn(async (sourceId?: string) =>
+  Array.from(ignoredRecords.entries())
+    .filter(([key]) => !sourceId || key.startsWith(`${sourceId}:`))
+    .map(([key, rec]) => {
+      const [sid, numStr] = key.split(':');
+      return { nodeNum: Number(numStr), sourceId: sid, reason: rec.reason };
+    }));
 
 vi.mock('../services/database.js', () => ({
   default: {
@@ -12,6 +56,21 @@ vi.mock('../services/database.js', () => ({
     insertTelemetryAsync: async (...a: unknown[]) => insertTelemetry(...a),
     insertTracerouteAsync: vi.fn(async () => undefined),
     insertRouteSegmentAsync: vi.fn(async () => undefined),
+    deleteNodeAsync: async (...a: unknown[]) => deleteNode(...a),
+    nodes: {
+      getNode: async (...a: unknown[]) => getNode(...a),
+    },
+    messages: {
+      insertMessage: async (...a: unknown[]) => insertMessage(...a),
+      getMessage: vi.fn(async () => null),
+    },
+    ignoredNodes: {
+      isIgnoredCached: (...a: unknown[]) => isIgnoredCached(...(a as [number, string])),
+      addGeoIgnoreAsync: async (...a: unknown[]) => addGeoIgnoreAsync(...(a as [number, string])),
+      liftGeoIgnoreAsync: async (...a: unknown[]) => liftGeoIgnoreAsync(...(a as [number, string])),
+      isNodeIgnoredAsync: async (...a: unknown[]) => isNodeIgnoredAsync(...(a as [number, string])),
+      getIgnoredNodesAsync: async (...a: unknown[]) => getIgnoredNodesAsync(...(a as [string | undefined])),
+    },
   },
 }));
 
@@ -19,6 +78,7 @@ import { MqttBrokerManager } from './mqttBrokerManager.js';
 import { MqttBridgeManager } from './mqttBridgeManager.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
+import databaseService from '../services/database.js';
 import { PortNum } from './constants/meshtastic.js';
 import { loadProtobufDefinitions, getProtobufRoot } from './protobufLoader.js';
 
@@ -96,6 +156,58 @@ function buildPositionEnvelope(opts: {
   return Buffer.from(bytes);
 }
 
+function buildNodeInfoEnvelope(opts: {
+  from: number;
+  longName: string;
+  shortName: string;
+  channelId: string;
+  gatewayId: string;
+  packetId?: number;
+}): Buffer {
+  const r = getProtobufRoot();
+  if (!r) throw new Error('protobuf root not loaded');
+  const User = r.lookupType('meshtastic.User');
+  const userPayload = User.encode(
+    User.create({ longName: opts.longName, shortName: opts.shortName, hwModel: 9 }),
+  ).finish();
+  const bytes = meshtasticProtobufService.encodeServiceEnvelope({
+    packet: {
+      from: opts.from,
+      to: 0xffffffff,
+      channel: 0,
+      id: opts.packetId ?? 0xabcdef02,
+      decoded: { portnum: PortNum.NODEINFO_APP, payload: userPayload, bitfield: 1 },
+    },
+    channelId: opts.channelId,
+    gatewayId: opts.gatewayId,
+  });
+  if (!bytes) throw new Error('encode failed');
+  return Buffer.from(bytes);
+}
+
+function buildTextEnvelope(opts: {
+  from: number;
+  text: string;
+  channelId: string;
+  gatewayId: string;
+  packetId?: number;
+}): Buffer {
+  const textPayload = new TextEncoder().encode(opts.text);
+  const bytes = meshtasticProtobufService.encodeServiceEnvelope({
+    packet: {
+      from: opts.from,
+      to: 0xffffffff,
+      channel: 0,
+      id: opts.packetId ?? 0xabcdef03,
+      decoded: { portnum: PortNum.TEXT_MESSAGE_APP, payload: textPayload, bitfield: 1 },
+    },
+    channelId: opts.channelId,
+    gatewayId: opts.gatewayId,
+  });
+  if (!bytes) throw new Error('encode failed');
+  return Buffer.from(bytes);
+}
+
 describe('MqttBridgeManager', () => {
   let upstreamPort: number;
   let localPort: number;
@@ -111,6 +223,15 @@ describe('MqttBridgeManager', () => {
   beforeEach(async () => {
     upsertNode.mockClear();
     insertTelemetry.mockClear();
+    insertMessage.mockClear();
+    deleteNode.mockClear();
+    getNode.mockClear();
+    isIgnoredCached.mockClear();
+    addGeoIgnoreAsync.mockClear();
+    liftGeoIgnoreAsync.mockClear();
+    isNodeIgnoredAsync.mockClear();
+    getIgnoredNodesAsync.mockClear();
+    ignoredRecords.clear();
 
     upstreamPort = await ephemeralPort();
     localPort = await ephemeralPort();
@@ -136,18 +257,17 @@ describe('MqttBridgeManager', () => {
     await stopUpstream(upstream);
   });
 
-  it('passes downlink packets through filter and ingests + republishes to local broker', async () => {
-    bridge = new MqttBridgeManager('test-bridge', 'Bridge', {
-      brokerSourceId: 'local-broker',
-      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
-      subscriptions: ['msh/CA/#'],
-      downlinkFilters: {
-        topics: { block: ['msh/CA/QC/#'] },
-        geo: { minLat: 43, maxLat: 45, minLng: -80, maxLng: -77 },
-      },
-    });
-    await sourceManagerRegistry.addManager(bridge);
+  // ---------------------------------------------------------------------------
+  // Geo-ignore gating (MQTT Geo-Ignore epic, Phase 2, #4115). MqttPacketFilter
+  // no longer tracks node membership — handleDownlink instead consults
+  // databaseService.ignoredNodes (isIgnoredCached / addGeoIgnoreAsync /
+  // liftGeoIgnoreAsync / isNodeIgnoredAsync), which ingestServiceEnvelope
+  // populates on POSITION evaluation. These tests replace the old
+  // "fail-closed membership" coverage with the new fail-open-by-default +
+  // ignore-list model.
+  // ---------------------------------------------------------------------------
 
+  async function connectUpstream(): Promise<void> {
     upstreamClient = connect(`mqtt://127.0.0.1:${upstreamPort}`, { reconnectPeriod: 0 });
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(() => reject(new Error('upstream connect timeout')), 3000);
@@ -156,75 +276,192 @@ describe('MqttBridgeManager', () => {
         resolve();
       });
     });
+  }
 
-    // Subscribe to the local broker so we can confirm republish.
-    const localClient = connect(`mqtt://127.0.0.1:${localPort}`, {
+  async function connectLocalSubscriber(): Promise<{
+    client: MqttClient;
+    messages: Array<{ topic: string; payload: Buffer }>;
+  }> {
+    const client = connect(`mqtt://127.0.0.1:${localPort}`, {
       username: 'u',
       password: 'p',
       reconnectPeriod: 0,
     });
-    const localMessages: Array<{ topic: string; payload: Buffer }> = [];
+    const messages: Array<{ topic: string; payload: Buffer }> = [];
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(() => reject(new Error('local connect timeout')), 3000);
-      localClient.once('connect', () => {
+      client.once('connect', () => {
         clearTimeout(t);
         resolve();
       });
     });
     await new Promise<void>((resolve, reject) => {
-      localClient.subscribe('msh/#', { qos: 0 }, (err) => (err ? reject(err) : resolve()));
+      client.subscribe('msh/#', { qos: 0 }, (err) => (err ? reject(err) : resolve()));
     });
-    localClient.on('message', (topic, payload) => {
-      localMessages.push({ topic, payload });
+    client.on('message', (topic, payload) => {
+      messages.push({ topic, payload });
     });
+    return { client, messages };
+  }
 
-    // Inside the bbox, allowed by topic → should pass.
+  const GEO_BBOX = { minLat: 43, maxLat: 45, minLng: -80, maxLng: -77 };
+
+  it('#4115: with a bbox configured, a NODEINFO from a never-seen sender still ingests (fail-open)', async () => {
+    bridge = new MqttBridgeManager('test-bridge', 'Bridge', {
+      brokerSourceId: 'local-broker',
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: ['msh/CA/#'],
+      downlinkFilters: { geo: GEO_BBOX },
+    });
+    await sourceManagerRegistry.addManager(bridge);
+    await connectUpstream();
+
+    const NEVER_SEEN = 0xf68f52d8;
+    const envelope = buildNodeInfoEnvelope({
+      from: NEVER_SEEN,
+      longName: 'New Node',
+      shortName: 'NEW',
+      channelId: 'LongFast',
+      gatewayId: '!f68f52d8',
+      packetId: 0x50000001,
+    });
+    upstreamClient!.publish('msh/CA/ON/PTBO', envelope);
+
+    await vi.waitFor(() => {
+      expect(bridge.getStatus().downlinkIngested).toBeGreaterThanOrEqual(1);
+    }, { timeout: 3000 });
+    expect(upsertNode).toHaveBeenCalled();
+  });
+
+  it('drops an out-of-bbox POSITION, geo-ignores the sender (reason: geo), and does not republish', async () => {
+    bridge = new MqttBridgeManager('test-bridge', 'Bridge', {
+      brokerSourceId: 'local-broker',
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: ['msh/CA/#'],
+      downlinkFilters: { geo: GEO_BBOX },
+    });
+    await sourceManagerRegistry.addManager(bridge);
+    await connectUpstream();
+    const { client: localClient, messages: localMessages } = await connectLocalSubscriber();
+
+    const OUT_NODE = 0x22222222;
+    const outBboxEnvelope = buildPositionEnvelope({
+      from: OUT_NODE,
+      latI: 420_000_000, // outside GEO_BBOX (minLat 43)
+      lngI: -780_000_000,
+      channelId: 'LongFast',
+      gatewayId: '!22222222',
+      packetId: 0x10000002,
+    });
+    upstreamClient!.publish('msh/CA/ON/PTBO', outBboxEnvelope);
+
+    await vi.waitFor(async () => {
+      expect(await databaseService.ignoredNodes.isNodeIgnoredAsync(OUT_NODE, 'test-bridge')).toBe(true);
+    }, { timeout: 3000 });
+
+    const records = await databaseService.ignoredNodes.getIgnoredNodesAsync('test-bridge');
+    const rec = records.find((r) => r.nodeNum === OUT_NODE);
+    expect(rec?.reason).toBe('geo');
+
+    expect(bridge.getStatus().downlinkDrops.geo).toBe(1);
+
+    // Give any (incorrect) republish a moment to land before asserting absence.
+    await new Promise((r) => setTimeout(r, 200));
+    expect(localMessages.some((m) => m.topic === 'msh/CA/ON/PTBO')).toBe(false);
+
+    await new Promise<void>((r) => localClient.end(true, {}, () => r()));
+  });
+
+  it('ingests and republishes an in-bbox POSITION normally', async () => {
+    bridge = new MqttBridgeManager('test-bridge', 'Bridge', {
+      brokerSourceId: 'local-broker',
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: ['msh/CA/#'],
+      downlinkFilters: { geo: GEO_BBOX },
+    });
+    await sourceManagerRegistry.addManager(bridge);
+    await connectUpstream();
+    const { client: localClient, messages: localMessages } = await connectLocalSubscriber();
+
+    const IN_NODE = 0x11111111;
     const inBboxEnvelope = buildPositionEnvelope({
-      from: 0x11111111,
+      from: IN_NODE,
       latI: 440_000_000,
       lngI: -780_000_000,
       channelId: 'LongFast',
       gatewayId: '!11111111',
       packetId: 0x10000001,
     });
+    upstreamClient!.publish('msh/CA/ON/PTBO', inBboxEnvelope);
 
-    // Outside the bbox → should drop on postFilterPosition.
+    await vi.waitFor(() => {
+      expect(bridge.getStatus().downlinkIngested).toBeGreaterThanOrEqual(1);
+    }, { timeout: 3000 });
+    await vi.waitFor(() => {
+      expect(localMessages.some((m) => m.topic === 'msh/CA/ON/PTBO')).toBe(true);
+    }, { timeout: 3000 });
+    expect(bridge.getStatus().downlinkDrops.geo).toBe(0);
+
+    await new Promise<void>((r) => localClient.end(true, {}, () => r()));
+  });
+
+  it('drops subsequent TEXT from a geo-ignored sender: not ingested, not republished, no local-packet emit', async () => {
+    bridge = new MqttBridgeManager('test-bridge', 'Bridge', {
+      brokerSourceId: 'local-broker',
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: ['msh/CA/#'],
+      downlinkFilters: { geo: GEO_BBOX },
+    });
+    await sourceManagerRegistry.addManager(bridge);
+    await connectUpstream();
+    const { client: localClient, messages: localMessages } = await connectLocalSubscriber();
+
+    const localPackets: Array<{ topic: string }> = [];
+    bridge.on('local-packet', (p: { topic: string }) => {
+      localPackets.push({ topic: p.topic });
+    });
+
+    const OUT_NODE = 0x22222222;
     const outBboxEnvelope = buildPositionEnvelope({
-      from: 0x22222222,
+      from: OUT_NODE,
       latI: 420_000_000,
       lngI: -780_000_000,
       channelId: 'LongFast',
       gatewayId: '!22222222',
       packetId: 0x10000002,
     });
+    upstreamClient!.publish('msh/CA/ON/PTBO', outBboxEnvelope);
 
-    // Blocked topic → should drop in preFilter.
-    const blockedEnvelope = buildPositionEnvelope({
-      from: 0x33333333,
-      latI: 440_000_000,
-      lngI: -780_000_000,
+    // Wait for the POSITION to actually land the geo-ignore (async) so the
+    // subsequent TEXT packet's synchronous isIgnoredCached() check sees it.
+    await vi.waitFor(async () => {
+      expect(await databaseService.ignoredNodes.isNodeIgnoredAsync(OUT_NODE, 'test-bridge')).toBe(true);
+    }, { timeout: 3000 });
+
+    // Snapshot counters after the (already-ignored-by-the-time-it-lands)
+    // POSITION packet — its own local-packet emission raced the async
+    // ignore write and may have already fired once; what matters is that
+    // the FOLLOWING TEXT packet adds nothing further.
+    const ingestedBefore = bridge.getStatus().downlinkIngested;
+    const localPacketsBefore = localPackets.length;
+    const localMessagesBefore = localMessages.length;
+
+    const textEnvelope = buildTextEnvelope({
+      from: OUT_NODE,
+      text: 'hello from an ignored sender',
       channelId: 'LongFast',
-      gatewayId: '!33333333',
-      packetId: 0x10000003,
+      gatewayId: '!22222222',
+      packetId: 0x10000010,
     });
+    upstreamClient!.publish('msh/CA/ON/PTBO', textEnvelope);
 
-    upstreamClient.publish('msh/CA/ON/PTBO', inBboxEnvelope);
-    upstreamClient.publish('msh/CA/ON/PTBO', outBboxEnvelope);
-    upstreamClient.publish('msh/CA/QC/MTL', blockedEnvelope);
+    // Let the (non-)flow settle.
+    await new Promise((r) => setTimeout(r, 300));
 
-    // Let the messages flow.
-    await new Promise((r) => setTimeout(r, 500));
-
-    const status = bridge.getStatus();
-    expect(status.downlinkIn).toBeGreaterThanOrEqual(3);
-    // Only the in-bbox passes filtering AND ingests.
-    expect(status.downlinkIngested).toBe(1);
-    expect(status.downlinkDrops.topic).toBeGreaterThanOrEqual(1);
-    expect(status.downlinkDrops.geo).toBeGreaterThanOrEqual(1);
-
-    // Republish: only the in-bbox should make it to the local broker.
-    const republishedFromBridge = localMessages.filter((m) => m.topic === 'msh/CA/ON/PTBO');
-    expect(republishedFromBridge.length).toBe(1);
+    expect(bridge.getStatus().downlinkIngested).toBe(ingestedBefore);
+    expect(localPackets.length).toBe(localPacketsBefore);
+    expect(localMessages.length).toBe(localMessagesBefore);
+    expect(insertMessage).not.toHaveBeenCalled();
 
     await new Promise<void>((r) => localClient.end(true, {}, () => r()));
   });
