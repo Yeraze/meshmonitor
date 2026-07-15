@@ -12,7 +12,12 @@ import { Aedes } from 'aedes';
 import { createServer, type Server } from 'net';
 
 vi.mock('../services/database.js', () => ({
-  default: {},
+  default: {
+    // Phase 2 gating consults the ignore-list cache on every downlink packet
+    // (handleDownlink + ingestServiceEnvelope) — an empty mock crashes with
+    // "Cannot read properties of undefined (reading 'isIgnoredCached')".
+    ignoredNodes: { isIgnoredCached: () => false },
+  },
 }));
 
 import { MqttBrokerClient } from './transports/mqttBrokerClient.js';
