@@ -41,6 +41,7 @@ const POSTGRES_CREATE = `
     "shortName" TEXT,
     "ignoredBy" TEXT,
     "ignoredAt" BIGINT NOT NULL,
+    "reason" TEXT NOT NULL DEFAULT 'manual',
     PRIMARY KEY ("nodeNum", "sourceId")
   )
 `;
@@ -55,6 +56,7 @@ const MYSQL_CREATE = `
     \`shortName\` VARCHAR(255),
     \`ignoredBy\` VARCHAR(255),
     \`ignoredAt\` BIGINT NOT NULL,
+    \`reason\` VARCHAR(16) NOT NULL DEFAULT 'manual',
     PRIMARY KEY (\`nodeNum\`, \`sourceId\`)
   )
 `;
@@ -289,6 +291,130 @@ function runIgnoredNodesTests(getBackend: () => TestBackend) {
     expect(freshRepo.isIgnoredCached(11111, SRC_A)).toBe(true);
     expect(freshRepo.isIgnoredCached(22222, SRC_B)).toBe(true);
     expect(freshRepo.isIgnoredCached(33333, SRC_A)).toBe(false);
+  });
+
+  // --- reason semantics (MQTT Geo-Ignore epic, Phase 1) ---
+
+  it('addIgnoredNodeAsync - stamps reason "manual" and exposes it via getIgnoredNodesAsync', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.addIgnoredNodeAsync(12345, SRC_A, '!abcd1234', 'Test Node', 'TN', 'admin');
+
+    const nodes = await repo.getIgnoredNodesAsync(SRC_A);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].reason).toBe('manual');
+  });
+
+  it('addGeoIgnoreAsync - inserts with reason "geo" and is cached', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.addGeoIgnoreAsync(12345, SRC_A, '!abcd1234', 'Far Node', 'FN');
+
+    const nodes = await repo.getIgnoredNodesAsync(SRC_A);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].reason).toBe('geo');
+    expect(nodes[0].ignoredBy).toBe('geo-filter');
+    expect(repo.isIgnoredCached(12345, SRC_A)).toBe(true);
+  });
+
+  it('addGeoIgnoreAsync - does not downgrade an existing manual ignore', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.addIgnoredNodeAsync(12345, SRC_A, '!abcd1234', 'Test Node', 'TN', 'admin');
+    await repo.addGeoIgnoreAsync(12345, SRC_A, '!abcd1234', 'Test Node', 'TN');
+
+    const nodes = await repo.getIgnoredNodesAsync(SRC_A);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].reason).toBe('manual');
+    expect(nodes[0].ignoredBy).toBe('admin');
+  });
+
+  it('addGeoIgnoreAsync - idempotent, a second call produces a single geo row', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.addGeoIgnoreAsync(12345, SRC_A, '!abcd1234', 'Far Node', 'FN');
+    await repo.addGeoIgnoreAsync(12345, SRC_A, '!abcd1234', 'Far Node', 'FN');
+
+    const nodes = await repo.getIgnoredNodesAsync(SRC_A);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].reason).toBe('geo');
+  });
+
+  it('addIgnoredNodeAsync - upgrades an existing geo ignore to manual', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.addGeoIgnoreAsync(12345, SRC_A, '!abcd1234', 'Far Node', 'FN');
+    await repo.addIgnoredNodeAsync(12345, SRC_A, '!abcd1234', 'Test Node', 'TN', 'admin');
+
+    const nodes = await repo.getIgnoredNodesAsync(SRC_A);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].reason).toBe('manual');
+    expect(nodes[0].ignoredBy).toBe('admin');
+  });
+
+  it('liftGeoIgnoreAsync - on a geo ignore removes the row and returns true', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.addGeoIgnoreAsync(12345, SRC_A, '!abcd1234', 'Far Node', 'FN');
+
+    const lifted = await repo.liftGeoIgnoreAsync(12345, SRC_A);
+    expect(lifted).toBe(true);
+
+    expect(await repo.isNodeIgnoredAsync(12345, SRC_A)).toBe(false);
+    expect(repo.isIgnoredCached(12345, SRC_A)).toBe(false);
+  });
+
+  it('liftGeoIgnoreAsync - on a manual ignore is a no-op and returns false', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.addIgnoredNodeAsync(12345, SRC_A, '!abcd1234', 'Test Node', 'TN', 'admin');
+
+    const lifted = await repo.liftGeoIgnoreAsync(12345, SRC_A);
+    expect(lifted).toBe(false);
+
+    expect(await repo.isNodeIgnoredAsync(12345, SRC_A)).toBe(true);
+    expect(repo.isIgnoredCached(12345, SRC_A)).toBe(true);
+    const nodes = await repo.getIgnoredNodesAsync(SRC_A);
+    expect(nodes[0].reason).toBe('manual');
+  });
+
+  it('liftGeoIgnoreAsync - on an absent row returns false', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const lifted = await repo.liftGeoIgnoreAsync(99999, SRC_A);
+    expect(lifted).toBe(false);
   });
 }
 

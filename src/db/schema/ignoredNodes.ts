@@ -38,6 +38,7 @@ export const ignoredNodesSqlite = sqliteTable('ignored_nodes', {
   shortName: text('shortName'),
   ignoredAt: integer('ignoredAt').notNull(),
   ignoredBy: text('ignoredBy'),
+  reason: text('reason').notNull().default('manual'),
 }, (table) => ({
   pk: sqlitePrimaryKey({ columns: [table.nodeNum, table.sourceId] }),
 }));
@@ -52,6 +53,7 @@ export const ignoredNodesPostgres = pgTable('ignored_nodes', {
   shortName: pgText('shortName'),
   ignoredAt: pgBigint('ignoredAt', { mode: 'number' }).notNull(),
   ignoredBy: pgText('ignoredBy'),
+  reason: pgText('reason').notNull().default('manual'),
 }, (table) => ({
   pk: pgPrimaryKey({ columns: [table.nodeNum, table.sourceId] }),
 }));
@@ -66,6 +68,7 @@ export const ignoredNodesMysql = mysqlTable('ignored_nodes', {
   shortName: myVarchar('shortName', { length: 255 }),
   ignoredAt: myBigint('ignoredAt', { mode: 'number' }).notNull(),
   ignoredBy: myVarchar('ignoredBy', { length: 255 }),
+  reason: myVarchar('reason', { length: 16 }).notNull().default('manual'),
 }, (table) => ({
   pk: myPrimaryKey({ columns: [table.nodeNum, table.sourceId] }),
 }));

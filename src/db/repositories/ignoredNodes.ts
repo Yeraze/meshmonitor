@@ -31,6 +31,7 @@ export interface IgnoredNodeRecord {
   shortName: string | null;
   ignoredAt: number;
   ignoredBy: string | null;
+  reason: 'manual' | 'geo';
 }
 
 /**
@@ -137,6 +138,10 @@ export class IgnoredNodesRepository extends BaseRepository {
       shortName: shortName ?? null,
       ignoredAt: now,
       ignoredBy: ignoredBy ?? null,
+      // A manual ignore always wins: it upgrades a pre-existing geo-filter
+      // row (reason: 'geo') to 'manual', matching operator intent — an
+      // explicit block should never silently revert to auto-managed.
+      reason: 'manual',
     };
     const insertData: any = { nodeNum, sourceId, ...setData };
 
@@ -167,6 +172,79 @@ export class IgnoredNodesRepository extends BaseRepository {
       .delete(ignoredNodes)
       .where(and(eq(ignoredNodes.nodeNum, nodeNum), eq(ignoredNodes.sourceId, sourceId)));
     logger.debug(`Removed node ${nodeNum} from ignore list for source ${sourceId}`);
+  }
+
+  /**
+   * Add a node to the per-source ignore list on behalf of the geo-fence
+   * filter (MQTT Geo-Ignore epic, Phase 1). Insert-if-absent only — unlike
+   * `addIgnoredNodeAsync`, this MUST NOT clobber a pre-existing row. A node
+   * a human already blocklisted manually (`reason: 'manual'`) stays manual;
+   * re-running the geo filter against an already-geo-ignored node is a
+   * harmless no-op (idempotent).
+   */
+  async addGeoIgnoreAsync(
+    nodeNum: number,
+    sourceId: string,
+    nodeId: string,
+    longName?: string,
+    shortName?: string,
+  ): Promise<void> {
+    const { ignoredNodes } = this.tables;
+    const insertData = {
+      nodeNum,
+      sourceId,
+      nodeId,
+      longName: longName ?? null,
+      shortName: shortName ?? null,
+      ignoredAt: Date.now(),
+      ignoredBy: 'geo-filter',
+      reason: 'geo',
+    };
+
+    // Mirror update first (see addIgnoredNodeAsync) so the ignore is visible
+    // to the synchronous upsert path without waiting on the DB round-trip.
+    // Safe even when the insert below is a no-op (row already existed): the
+    // node was already ignored under either reason, so the cache was already
+    // set (or is being correctly set for the very first time here).
+    this.ignoredCache.add(this.cacheKey(nodeNum, sourceId));
+
+    await this.insertIgnore(ignoredNodes, insertData);
+
+    logger.debug(`Geo-ignored node ${nodeNum} (${nodeId}) for source ${sourceId}`);
+  }
+
+  /**
+   * Lift a geo-fence ignore (MQTT Geo-Ignore epic, Phase 1). Only removes
+   * rows with `reason: 'geo'` — a manually-ignored node is left untouched
+   * (the geo filter must never silently un-block an operator's explicit
+   * decision). Returns whether a geo-ignore row was actually removed.
+   */
+  async liftGeoIgnoreAsync(nodeNum: number, sourceId: string): Promise<boolean> {
+    const { ignoredNodes } = this.tables;
+    const rows = await this.db
+      .select({ reason: ignoredNodes.reason })
+      .from(ignoredNodes)
+      .where(and(eq(ignoredNodes.nodeNum, nodeNum), eq(ignoredNodes.sourceId, sourceId)));
+
+    const reason = rows[0]?.reason;
+    if (reason !== 'geo') {
+      // Absent, or a manual ignore the geo filter must not touch.
+      return false;
+    }
+
+    // Mirror update first (see removeIgnoredNodeAsync).
+    this.ignoredCache.delete(this.cacheKey(nodeNum, sourceId));
+
+    await this.db
+      .delete(ignoredNodes)
+      .where(and(
+        eq(ignoredNodes.nodeNum, nodeNum),
+        eq(ignoredNodes.sourceId, sourceId),
+        eq(ignoredNodes.reason, 'geo'),
+      ));
+
+    logger.debug(`Lifted geo-ignore for node ${nodeNum} on source ${sourceId}`);
+    return true;
   }
 
   /**

@@ -133,6 +133,7 @@ import { migration as dropInlineNotifPrefsUserIdUniqueMigration, runMigration115
 import { migration as trimOutOfRangeNodePositionsMigration, runMigration116Postgres as runTrimOutOfRangeNodePositionsPostgres, runMigration116Mysql as runTrimOutOfRangeNodePositionsMysql } from '../server/migrations/116_trim_out_of_range_node_positions.js';
 import { migration as dropUpgradeHistoryMigration, runMigration117Postgres as runDropUpgradeHistoryPostgres, runMigration117Mysql as runDropUpgradeHistoryMysql } from '../server/migrations/117_drop_upgrade_history.js';
 import { migration as dropLegacyAuthProviderCheckMigration, runMigration118Postgres as runDropLegacyAuthProviderCheckPostgres, runMigration118Mysql as runDropLegacyAuthProviderCheckMysql } from '../server/migrations/118_drop_legacy_auth_provider_check.js';
+import { migration as addReasonToIgnoredNodesMigration, runMigration119Postgres as runAddReasonToIgnoredNodesPostgres, runMigration119Mysql as runAddReasonToIgnoredNodesMysql } from '../server/migrations/119_add_reason_to_ignored_nodes.js';
 
 // ============================================================================
 // Registry
@@ -1879,4 +1880,19 @@ registry.register({
   sqlite: (db) => dropLegacyAuthProviderCheckMigration.up(db),
   postgres: (client) => runDropLegacyAuthProviderCheckPostgres(client),
   mysql: (pool) => runDropLegacyAuthProviderCheckMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 119: Add `reason` column to `ignored_nodes` (MQTT Geo-Ignore
+// epic, Phase 1) to distinguish manual blocklist entries from geo-fence
+// auto-ignores.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 119,
+  name: 'add_reason_to_ignored_nodes',
+  settingsKey: 'migration_119_add_reason_to_ignored_nodes',
+  sqlite: (db) => addReasonToIgnoredNodesMigration.up(db),
+  postgres: (client) => runAddReasonToIgnoredNodesPostgres(client),
+  mysql: (pool) => runAddReasonToIgnoredNodesMysql(pool),
 });
