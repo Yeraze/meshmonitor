@@ -64,18 +64,18 @@ pre-decryption in `handleDownlink`.
 ## Phases
 
 ### Phase 1 — Data layer: ignore reasons + full-purge cascade
-- [ ] Migration (all 3 backends, idempotent, registry-registered): add
+- [x] Migration (all 3 backends, idempotent, registry-registered): add
   `reason TEXT NOT NULL DEFAULT 'manual'` to `ignored_nodes`.
-- [ ] `IgnoredNodesRepository`: reason-aware add/list; `addGeoIgnoreAsync`,
+- [x] `IgnoredNodesRepository`: reason-aware add/list; `addGeoIgnoreAsync`,
   `liftGeoIgnoreAsync` (removes only `reason='geo'` rows); records expose reason.
-- [ ] Messages repo: `purgeMessagesFromNode(nodeNum, sourceId)` (channel
+- [x] Messages repo: `purgeMessagesFromNode(nodeNum, sourceId)` (channel
   broadcasts); wire into `deleteNodeAsync` cascade.
-- [ ] `ignoredNodeRoutes` + `IgnoredNodesSection.tsx`: surface reason (badge),
+- [x] `ignoredNodeRoutes` + `IgnoredNodesSection.tsx`: surface reason (badge),
   manual unignore allowed for geo entries.
-- [ ] Tests: repo unit + perSource isolation + migration + route tests
+- [x] Tests: repo unit + perSource isolation + migration + route tests
   (route-test harness).
 - **Exit:** primitives shipped inert (no behavior change to ingestion); suite
-  green; PR merged.
+  green. **PR #4123 MERGED** 2026-07-15 (squash 2f828caa; migration renumbered 119→120 after #4118 took 119; review fixes: TOCTOU cache-eviction in liftGeoIgnoreAsync, source-qualified UI key, harness teardown guard; also shipped watch-ci.sh merge-conflict detection exit 3).
 
 ### Phase 2 — Core gating rearchitecture (the behavior flip)
 - [ ] `MqttBridgeManager.handleDownlink`: remove fail-closed
