@@ -3,6 +3,21 @@ import { connect, type MqttClient } from 'mqtt';
 
 const upsertNode = vi.fn();
 const insertTelemetry = vi.fn();
+const insertMessage = vi.fn(async () => true);
+
+// Stateful fake for the manual-ignore gate (mqttIngestion.ts's defense-in-depth
+// check: `databaseService.ignoredNodes.isIgnoredCached(fromNum, sourceId)`).
+// Mirrors the real IgnoredNodesRepository's cache-key shape (`${sourceId}:${nodeNum}`)
+// closely enough for `addIgnoredNodeAsync` to make `isIgnoredCached` true, which is
+// all the Phase 2 broker-path coverage below needs.
+const ignoredCache = new Set<string>();
+function ignoreKey(nodeNum: number, sourceId: string): string {
+  return `${sourceId}:${nodeNum}`;
+}
+const addIgnoredNodeAsync = vi.fn(async (nodeNum: number, sourceId: string) => {
+  ignoredCache.add(ignoreKey(nodeNum, sourceId));
+});
+const isIgnoredCached = vi.fn((nodeNum: number, sourceId: string) => ignoredCache.has(ignoreKey(nodeNum, sourceId)));
 
 vi.mock('../services/database.js', () => ({
   default: {
@@ -10,11 +25,19 @@ vi.mock('../services/database.js', () => ({
     insertTelemetryAsync: async (...a: unknown[]) => insertTelemetry(...a),
     insertTracerouteAsync: vi.fn(async () => undefined),
     insertRouteSegmentAsync: vi.fn(async () => undefined),
+    messages: {
+      insertMessage: async (...a: unknown[]) => insertMessage(...a),
+    },
+    ignoredNodes: {
+      addIgnoredNodeAsync: async (...a: unknown[]) => addIgnoredNodeAsync(...(a as [number, string])),
+      isIgnoredCached: (...a: unknown[]) => isIgnoredCached(...(a as [number, string])),
+    },
   },
 }));
 
 import { MqttBrokerManager } from './mqttBrokerManager.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
+import databaseService from '../services/database.js';
 import { PortNum } from './constants/meshtastic.js';
 import { loadProtobufDefinitions, getProtobufRoot } from './protobufLoader.js';
 
@@ -92,6 +115,10 @@ describe('MqttBrokerManager', () => {
   beforeEach(async () => {
     upsertNode.mockClear();
     insertTelemetry.mockClear();
+    insertMessage.mockClear();
+    addIgnoredNodeAsync.mockClear();
+    isIgnoredCached.mockClear();
+    ignoredCache.clear();
     port = await ephemeralPort();
     manager = new MqttBrokerManager('test-broker', 'Test Broker', {
       listener: { port, host: '127.0.0.1' },
@@ -200,6 +227,81 @@ describe('MqttBrokerManager', () => {
     const status = manager.getStatus();
     expect(status.packetsDropped).toBeGreaterThanOrEqual(1);
     expect(status.packetsIngested).toBe(0);
+  });
+
+  // Phase 2 (MQTT Geo-Ignore epic, #4115/#4123): mqttIngestion.ts now applies
+  // a defense-in-depth ignore gate — `databaseService.ignoredNodes.isIgnoredCached`
+  // — to every non-POSITION packet, regardless of caller. This is a DELIBERATE
+  // broker-path behavior change: previously a manually-ignored node's packets
+  // published to a mqtt_broker source were never dropped at ingestion (the
+  // ignore list only affected the TCP/serial path). As of Phase 2, a manual
+  // ignore now suppresses MQTT ingestion too.
+  it('drops packets from a manually-ignored sender at ingestion (Phase 2 behavior change), while a non-ignored sender still ingests', async () => {
+    const IGNORED_NODE = 0x7ff80a49;
+    const OK_NODE = 0x7ff80a4a;
+
+    await databaseService.ignoredNodes.addIgnoredNodeAsync(
+      IGNORED_NODE, 'test-broker', '!7ff80a49', 'Ignored Node', 'IGN', 'admin',
+    );
+    expect(databaseService.ignoredNodes.isIgnoredCached(IGNORED_NODE, 'test-broker')).toBe(true);
+
+    client = connect(`mqtt://127.0.0.1:${port}`, {
+      username: 'mm',
+      password: 's3cret',
+      reconnectPeriod: 0,
+    });
+    await waitForEvent(client, 'connect');
+
+    const ignoredEnvelope = buildNodeInfoEnvelope({
+      from: IGNORED_NODE,
+      channelId: 'LongFast',
+      gatewayId: '!7ff80a49',
+      longName: 'Ignored Node',
+      shortName: 'IGN',
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      client!.publish(
+        'msh/US/2/e/LongFast/!7ff80a49',
+        ignoredEnvelope,
+        { qos: 0 },
+        (err) => (err ? reject(err) : resolve()),
+      );
+    });
+
+    // ingestServiceEnvelope resolves the 'ignored' result asynchronously —
+    // poll for the drop counter instead of asserting on the immediate tick.
+    await vi.waitFor(() => {
+      const s = manager.getStatus();
+      expect(s.packetsIn).toBeGreaterThanOrEqual(1);
+      expect(s.packetsDropped).toBeGreaterThanOrEqual(1);
+    });
+    expect(manager.getStatus().packetsIngested).toBe(0);
+    expect(upsertNode).not.toHaveBeenCalled();
+
+    // A non-ignored sender's packet on the same broker still ingests normally.
+    const okEnvelope = buildNodeInfoEnvelope({
+      from: OK_NODE,
+      channelId: 'LongFast',
+      gatewayId: '!7ff80a4a',
+      longName: 'OK Node',
+      shortName: 'OK',
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      client!.publish(
+        'msh/US/2/e/LongFast/!7ff80a4a',
+        okEnvelope,
+        { qos: 0 },
+        (err) => (err ? reject(err) : resolve()),
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(manager.getStatus().packetsIngested).toBeGreaterThanOrEqual(1);
+    });
+    const okUpsert = upsertNode.mock.calls.find((c) => (c[0] as Record<string, unknown>).nodeNum === OK_NODE);
+    expect(okUpsert).toBeDefined();
   });
 });
 
