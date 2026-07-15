@@ -199,7 +199,7 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
               </thead>
               <tbody>
                 {ignoredNodes.map((node) => (
-                  <tr key={node.nodeNum} style={{ borderTop: '1px solid var(--ctp-surface1)' }}>
+                  <tr key={`${node.sourceId}:${node.nodeNum}`} style={{ borderTop: '1px solid var(--ctp-surface1)' }}>
                     <td style={{ padding: '0.4rem 0.75rem', color: 'var(--ctp-text)', fontFamily: 'monospace' }}>
                       {node.nodeId}
                     </td>

@@ -24,6 +24,9 @@ describe('ignoredNodeRoutes — reason surfacing + permissions', () => {
   let harness: RouteTestHarness;
 
   afterEach(async () => {
+    // Guard: a failure inside createRouteTestApp leaves harness unset — don't
+    // let teardown mask the real error with a TypeError.
+    if (!harness) return;
     // Cascades ignored_nodes rows for sourceA/sourceB (FK ON DELETE CASCADE).
     await harness.cleanup();
   });
