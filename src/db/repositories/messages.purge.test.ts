@@ -40,6 +40,10 @@ describe('MessagesRepository sync purge helpers', () => {
     insertNode.run(NODE1_NUM, NODE1_ID, now, now);
     insertNode.run(NODE2_NUM, NODE2_ID, now, now);
     insertNode.run(NODE3_NUM, NODE3_ID, now, now);
+    // Broadcast target node, referenced by messages whose toNodeId is '!ffffffff'.
+    db.prepare(
+      "INSERT OR IGNORE INTO nodes (nodeNum, nodeId, sourceId, createdAt, updatedAt) VALUES (?, ?, 'default', ?, ?)",
+    ).run(0xffffffff, '!ffffffff', now, now);
 
     repo = new MessagesRepository(drizzleDb, 'sqlite');
   });
@@ -145,6 +149,37 @@ describe('MessagesRepository sync purge helpers', () => {
 
       const remaining = db.prepare('SELECT id FROM messages ORDER BY id').all() as { id: string }[];
       expect(remaining.map(r => r.id)).toEqual(['bcast']);
+    });
+  });
+
+  describe('purgeMessagesFromNode', () => {
+    it('deletes broadcasts and DMs originated by the node, scoped to source', async () => {
+      // NODE1's own broadcast on src-a — purgeDirectMessages excludes this
+      // (toNodeId is the broadcast address), but purgeMessagesFromNode should
+      // catch it because fromNodeNum matches.
+      await insertMsg('bcast-n1-a', NODE1_NUM, NODE1_ID, 0xffffffff, '!ffffffff', 0, 'src-a');
+      // DM originated by NODE1 on src-a
+      await insertMsg('dm-n1-to-n2', NODE1_NUM, NODE1_ID, NODE2_NUM, NODE2_ID, 0, 'src-a');
+      // DM addressed TO NODE1 (not originated by it) — must survive
+      await insertMsg('dm-n3-to-n1', NODE3_NUM, NODE3_ID, NODE1_NUM, NODE1_ID, 0, 'src-a');
+      // Other nodes' broadcasts on src-a — must survive
+      await insertMsg('bcast-n2-a', NODE2_NUM, NODE2_ID, 0xffffffff, '!ffffffff', 0, 'src-a');
+      await insertMsg('bcast-n3-a', NODE3_NUM, NODE3_ID, 0xffffffff, '!ffffffff', 0, 'src-a');
+      // NODE1's broadcast on a second source — must survive (source scoping)
+      await insertMsg('bcast-n1-b', NODE1_NUM, NODE1_ID, 0xffffffff, '!ffffffff', 0, 'src-b');
+
+      const deleted = await repo.purgeMessagesFromNode(NODE1_NUM, 'src-a');
+      expect(deleted).toBe(2); // bcast-n1-a + dm-n1-to-n2
+
+      const remaining = db.prepare('SELECT id FROM messages ORDER BY id').all() as { id: string }[];
+      expect(remaining.map(r => r.id)).toEqual(
+        ['bcast-n1-b', 'bcast-n2-a', 'bcast-n3-a', 'dm-n3-to-n1'].sort()
+      );
+    });
+
+    it('does not throw when called with a sourceId (regression parity with sibling purge helpers)', async () => {
+      await insertMsg('m1', NODE1_NUM, NODE1_ID, 0xffffffff, '!ffffffff', 0, 'src-a');
+      await expect(repo.purgeMessagesFromNode(NODE1_NUM, 'src-a')).resolves.not.toThrow();
     });
   });
 });

@@ -150,3 +150,50 @@ describe('DatabaseService.deleteNodeAsync — packet_log integration (#2637)', (
     expect(remainingIds).toEqual([103, 104]);
   });
 });
+
+describe('DatabaseService.deleteNodeAsync — broadcastMessagesDeleted (Geo-Ignore Phase 1 WP2)', () => {
+  beforeAll(async () => {
+    await databaseService.waitForReady();
+    for (let i = 0; i < 50 && !databaseService.messagesRepo; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  });
+
+  it('purges the node-originated broadcast alongside its DMs and reports broadcastMessagesDeleted', async () => {
+    const rawDb = (databaseService as any).db;
+    rawDb.exec('DELETE FROM messages');
+    rawDb.exec('DELETE FROM nodes WHERE nodeNum != 0');
+
+    // Seed the node under test, a peer, and the broadcast pseudo-node (FK target
+    // for toNodeNum on broadcast messages).
+    await databaseService.upsertNodeAsync({ nodeNum: 3001, nodeId: '!00000bb9', longName: 'Chatty', shortName: 'CH', sourceId: 'srcA' } as any);
+    await databaseService.upsertNodeAsync({ nodeNum: 3002, nodeId: '!00000bba', longName: 'Peer', shortName: 'PR', sourceId: 'srcA' } as any);
+    await databaseService.upsertNodeAsync({ nodeNum: 4294967295, nodeId: '!ffffffff', longName: 'Broadcast', shortName: 'BC', sourceId: 'srcA' } as any);
+
+    const now = Date.now();
+    rawDb.exec(`
+      INSERT INTO messages (id, fromNodeNum, toNodeNum, fromNodeId, toNodeId, text, channel, timestamp, createdAt, sourceId)
+      VALUES
+        ('srcA_3001_1', 3001, 4294967295, '!00000bb9', '!ffffffff', 'channel broadcast from Chatty', 0, ${now}, ${now}, 'srcA'),
+        ('srcA_3001_2', 3001, 3002, '!00000bb9', '!00000bba', 'DM Chatty to Peer', 0, ${now + 1}, ${now + 1}, 'srcA'),
+        ('srcA_3002_1', 3002, 3001, '!00000bba', '!00000bb9', 'DM Peer to Chatty', 0, ${now + 2}, ${now + 2}, 'srcA'),
+        ('srcA_3002_2', 3002, 4294967295, '!00000bba', '!ffffffff', 'channel broadcast from Peer', 0, ${now + 3}, ${now + 3}, 'srcA');
+    `);
+
+    const beforeMessages = rawDb.prepare('SELECT id FROM messages ORDER BY id').all() as { id: string }[];
+    expect(beforeMessages.map(m => m.id)).toEqual(['srcA_3001_1', 'srcA_3001_2', 'srcA_3002_1', 'srcA_3002_2']);
+
+    const result = await databaseService.deleteNodeAsync(3001, 'srcA');
+
+    // Existing field still behaves as before this change: purgeDirectMessages
+    // deletes DMs both to and from the node (Chatty->Peer AND Peer->Chatty).
+    expect(result.nodeDeleted).toBe(true);
+    expect(result.messagesDeleted).toBe(2);
+    // New field: the channel broadcast originated by Chatty. Peer's own
+    // broadcast is untouched since it's a different fromNodeNum.
+    expect(result.broadcastMessagesDeleted).toBe(1);
+
+    const remainingMessages = rawDb.prepare('SELECT id FROM messages ORDER BY id').all() as { id: string }[];
+    expect(remainingMessages.map(m => m.id)).toEqual(['srcA_3002_2']);
+  });
+});
