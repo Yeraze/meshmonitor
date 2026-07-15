@@ -2905,6 +2905,12 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
     const hasMessagesRead = checkPerm('messages', 'read');
     const hasInfoRead = checkPerm('info', 'read');
     const canViewPrivate = checkPerm('nodes_private', 'read');
+    // Virtual (Channel Database) channels are gated by per-entry `canRead`
+    // grants, not the channel_0..7 RBAC resources. Load them so a
+    // virtual-channel-only caller (e.g. anonymous on an MQTT bridge) sees the
+    // messages/channels feeding the per-source Channels tab.
+    const readableVirtual = await getUserReadableVirtualChannelIds(user, user?.isAdmin === true);
+    const hasVirtualRead = hasAnyReadableVirtualChannel(readableVirtual);
 
     // 1. Connection status (always available)
     // If the caller named a sourceId but the registry has no manager for it
@@ -2945,9 +2951,10 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       result.nodes = [];
     }
 
-    // 3. Messages (requires any channel permission OR messages permission)
+    // 3. Messages (requires any channel permission OR messages permission OR
+    //    a readable virtual channel)
     try {
-      if (hasChannelsRead || hasMessagesRead) {
+      if (hasChannelsRead || hasMessagesRead || hasVirtualRead) {
         // Scope messages to the requesting source. Per-source tabs must only
         // see messages their own source actually ingested — cross-source
         // visibility belongs in the dedicated unified views (/unified/messages).
@@ -2985,6 +2992,10 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
         //   per-channel `channel_${id}:read` for the message's actual channel.
         messages = messages.filter(msg => {
           if (msg.channel === -1) return hasMessagesRead;
+          // Virtual channels use per-entry canRead, independent of channel_0..7.
+          if (isVirtualChannelNumber(msg.channel)) {
+            return canReadVirtualChannelNumber(msg.channel, readableVirtual);
+          }
           return hasChannelsRead && (isAdminCaller || authorizedChannelIds.has(msg.channel));
         });
 
@@ -3012,8 +3023,10 @@ apiRouter.get('/poll', optionalAuth(), async (req, res) => {
       const filteredUnreadChannels: { [channelId: number]: number } = {};
       for (const [channelIdStr, count] of Object.entries(allUnreadChannels)) {
         const channelId = parseInt(channelIdStr);
-        const channelResource = `channel_${channelId}` as import('../types/permission.js').ResourceType;
-        const hasChannelRead = checkPerm(channelResource, 'read');
+        // Virtual channels use per-entry canRead; physical channels use RBAC.
+        const hasChannelRead = isVirtualChannelNumber(channelId)
+          ? canReadVirtualChannelNumber(channelId, readableVirtual)
+          : checkPerm(`channel_${channelId}` as import('../types/permission.js').ResourceType, 'read');
 
         if (hasChannelRead) {
           filteredUnreadChannels[channelId] = count;
