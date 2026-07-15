@@ -325,6 +325,46 @@ function runIgnoredNodesTests(getBackend: () => TestBackend) {
     expect(repo.isIgnoredCached(12345, SRC_A)).toBe(true);
   });
 
+  it('addGeoIgnoreAsync - returns true when a new geo-ignore row is inserted', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const inserted = await repo.addGeoIgnoreAsync(12345, SRC_A, '!abcd1234', 'Far Node', 'FN');
+    expect(inserted).toBe(true);
+  });
+
+  it('addGeoIgnoreAsync - returns false on a second call against an already geo-ignored node', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const first = await repo.addGeoIgnoreAsync(12345, SRC_A, '!abcd1234', 'Far Node', 'FN');
+    const second = await repo.addGeoIgnoreAsync(12345, SRC_A, '!abcd1234', 'Far Node', 'FN');
+    expect(first).toBe(true);
+    expect(second).toBe(false);
+  });
+
+  it('addGeoIgnoreAsync - returns false against a manually-ignored node and leaves it manual', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.addIgnoredNodeAsync(12345, SRC_A, '!abcd1234', 'Test Node', 'TN', 'admin');
+    const inserted = await repo.addGeoIgnoreAsync(12345, SRC_A, '!abcd1234', 'Test Node', 'TN');
+    expect(inserted).toBe(false);
+
+    const nodes = await repo.getIgnoredNodesAsync(SRC_A);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].reason).toBe('manual');
+  });
+
   it('addGeoIgnoreAsync - does not downgrade an existing manual ignore', async () => {
     const backend = getBackend();
     if (!backend.available) {
