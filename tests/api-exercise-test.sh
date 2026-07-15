@@ -585,12 +585,14 @@ check "GET /api/firmware/releases" "$(api GET /api/firmware/releases)" 200
 check "GET /api/firmware/backups" "$(api GET /api/firmware/backups)" 200
 
 # ─── Upgrade ───────────────────────────────────────────────
+# Auto-upgrade was retired in 4.13 (#4108): endpoints return 410 FEATURE_RETIRED
+# until their removal in 4.14.
 
 echo ""
-echo -e "${BLUE}=== Upgrade ===${NC}"
+echo -e "${BLUE}=== Upgrade (retired) ===${NC}"
 
-check "GET /api/upgrade/history" "$(api GET /api/upgrade/history)" 200
-check "GET /api/upgrade/status" "$(api GET /api/upgrade/status)" 200
+check "GET /api/upgrade/history" "$(api GET /api/upgrade/history)" 410
+check "GET /api/upgrade/status" "$(api GET /api/upgrade/status)" 410
 
 # ─── MeshCore ──────────────────────────────────────────────
 
