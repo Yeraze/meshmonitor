@@ -132,6 +132,7 @@ import { migration as meshcorePathfindingTargetsMigration, runMigration114Postgr
 import { migration as dropInlineNotifPrefsUserIdUniqueMigration, runMigration115Postgres as runDropInlineNotifPrefsUserIdUniquePostgres, runMigration115Mysql as runDropInlineNotifPrefsUserIdUniqueMysql } from '../server/migrations/115_drop_inline_notif_prefs_user_id_unique.js';
 import { migration as trimOutOfRangeNodePositionsMigration, runMigration116Postgres as runTrimOutOfRangeNodePositionsPostgres, runMigration116Mysql as runTrimOutOfRangeNodePositionsMysql } from '../server/migrations/116_trim_out_of_range_node_positions.js';
 import { migration as dropUpgradeHistoryMigration, runMigration117Postgres as runDropUpgradeHistoryPostgres, runMigration117Mysql as runDropUpgradeHistoryMysql } from '../server/migrations/117_drop_upgrade_history.js';
+import { migration as dropLegacyAuthProviderCheckMigration, runMigration118Postgres as runDropLegacyAuthProviderCheckPostgres, runMigration118Mysql as runDropLegacyAuthProviderCheckMysql } from '../server/migrations/118_drop_legacy_auth_provider_check.js';
 
 // ============================================================================
 // Registry
@@ -1864,4 +1865,18 @@ registry.register({
   sqlite: (db) => dropUpgradeHistoryMigration.up(db),
   postgres: (client) => runDropUpgradeHistoryPostgres(client),
   mysql: (pool) => runDropUpgradeHistoryMysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 118: Drop legacy CHECK (auth_provider IN ('local', 'oidc'))
+// from SQLite `users` so proxy auth (#4119) can insert authProvider='proxy'.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 118,
+  name: 'drop_legacy_auth_provider_check',
+  settingsKey: 'migration_118_drop_legacy_auth_provider_check',
+  sqlite: (db) => dropLegacyAuthProviderCheckMigration.up(db),
+  postgres: (client) => runDropLegacyAuthProviderCheckPostgres(client),
+  mysql: (pool) => runDropLegacyAuthProviderCheckMysql(pool),
 });
