@@ -148,6 +148,60 @@ describe('Legacy mount — GET / permission filtering', () => {
     const res = await agent.get('/api/channel-database');
     expect(res.status).toBe(403);
   });
+
+  it('non-admin without resource :read but WITH per-entry canRead: returns filtered list (200, masked PSK)', async () => {
+    // Regression: the "Virtual Channel Permissions" UI writes only per-entry
+    // canRead — it does NOT grant the resource-level channel_database:read. A
+    // user granted read on every virtual channel must still be able to list
+    // them, otherwise the grant is a silent no-op (the anonymous-MQTT bug).
+    // No channel_database:read grant seeded here.
+    vi.spyOn(databaseService.channelDatabase, 'getPermissionsForUserAsync').mockResolvedValue([
+      { userId: harness.limited.id, channelDatabaseId: 1, canViewOnMap: false, canRead: true } as any,
+    ]);
+
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get('/api/channel-database');
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(1);
+    expect(res.body.data[0].id).toBe(1);
+    // PSK stays masked — per-entry read never exposes the raw key.
+    expect(res.body.data[0].psk).toBeUndefined();
+    expect(res.body.data[0].pskPreview).toMatch(/\.\.\.$/);
+  });
+
+  it('non-admin with neither resource :read nor any per-entry canRead: returns 403', async () => {
+    // Per-entry row exists but canRead=false → not readable → still 403.
+    vi.spyOn(databaseService.channelDatabase, 'getPermissionsForUserAsync').mockResolvedValue([
+      { userId: harness.limited.id, channelDatabaseId: 1, canViewOnMap: false, canRead: false } as any,
+    ]);
+
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get('/api/channel-database');
+    expect(res.status).toBe(403);
+  });
+
+  it('ANONYMOUS (unauthenticated) with per-entry canRead: lists entries (200, not 401)', async () => {
+    // The read route uses optionalAuth, not requireAuth — an anonymous account
+    // with per-entry grants must reach the handler and get its filtered list,
+    // not hit a 401 auth wall. This is what populates the frontend Channels tab
+    // for anonymous viewers on an MQTT source.
+    vi.spyOn(databaseService.channelDatabase, 'getPermissionsForUserAsync').mockResolvedValue([
+      { userId: harness.anonymous.id, channelDatabaseId: 1, canViewOnMap: false, canRead: true } as any,
+    ]);
+
+    const agent = await harness.loginAs(null); // unauthenticated → anonymous user
+    const res = await agent.get('/api/channel-database');
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(1);
+    expect(res.body.data[0].psk).toBeUndefined();
+  });
+
+  it('ANONYMOUS with no grants: GET / reaches the handler (403), not a 401 auth wall', async () => {
+    // getPermissionsForUserAsync default mock returns [] (beforeEach).
+    const agent = await harness.loginAs(null);
+    const res = await agent.get('/api/channel-database');
+    expect(res.status).toBe(403);
+  });
 });
 
 // ── describe 3: GET /:id permission filtering ─────────────────────────────────
@@ -175,10 +229,27 @@ describe('Legacy mount — GET /:id permission filtering', () => {
     expect(res.status).toBe(404);
   });
 
-  it('non-admin without :read: returns 403', async () => {
+  it('non-admin WITHOUT resource :read but WITH per-entry canRead: returns entry (200, masked PSK)', async () => {
+    // Regression (consistency with GET /): a per-entry canRead grant alone is
+    // enough to read the specific entry — no resource-level channel_database:read
+    // required. No :read grant seeded here.
+    vi.spyOn(databaseService.channelDatabase, 'getPermissionAsync').mockResolvedValue(
+      { userId: harness.limited.id, channelDatabaseId: 1, canViewOnMap: false, canRead: true } as any
+    );
+
     const agent = await harness.loginAs(harness.limited);
     const res = await agent.get('/api/channel-database/1');
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(res.body.data.psk).toBeUndefined();
+    expect(res.body.data.pskPreview).toMatch(/\.\.\.$/);
+  });
+
+  it('non-admin with neither :read nor per-entry canRead: returns 404 (masks existence)', async () => {
+    // No grants; getPermissionAsync returns null (beforeEach default). The entry
+    // is hidden as 404 rather than 403 so its existence isn't revealed.
+    const agent = await harness.loginAs(harness.limited);
+    const res = await agent.get('/api/channel-database/1');
+    expect(res.status).toBe(404);
   });
 });
 

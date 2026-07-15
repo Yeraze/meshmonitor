@@ -151,9 +151,12 @@ describe('GET /api/v1/channel-database/:id', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns 403 for non-admin', async () => {
+  it('returns 404 for non-admin without a per-entry canRead grant (masks existence)', async () => {
+    // GET /:id no longer requires resource-level channel_database:read — a
+    // per-entry canRead grant alone suffices (consistent with GET /). A caller
+    // with no grant gets 404 so the entry's existence isn't revealed.
     const res = await request(createApp(regularUser)).get('/api/v1/channel-database/1');
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it('returns 404 when channel not found', async () => {
