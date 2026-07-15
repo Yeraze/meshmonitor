@@ -38,6 +38,7 @@ import {
   AnalysisRepository,
   WaypointsRepository,
   MeshCoreRepository,
+  MqttPacketLogRepository,
   EstimatedPositionsRepository,
   AutoFavoriteTargetsRepository,
   SourcePkiKeysRepository,
@@ -466,6 +467,7 @@ class DatabaseService {
   public analysisRepo: AnalysisRepository | null = null;
   public waypointsRepo: WaypointsRepository | null = null;
   public meshcoreRepo: MeshCoreRepository | null = null;
+  public mqttPacketLogRepo: MqttPacketLogRepository | null = null;
   public estimatedPositionsRepo: EstimatedPositionsRepository | null = null;
   public autoFavoriteTargetsRepo: AutoFavoriteTargetsRepository | null = null;
   public sourcePkiKeysRepo: SourcePkiKeysRepository | null = null;
@@ -650,6 +652,11 @@ class DatabaseService {
   get meshcore(): MeshCoreRepository {
     if (!this.meshcoreRepo) throw new Error('Database not initialized');
     return this.meshcoreRepo;
+  }
+
+  get mqttPacketLog(): MqttPacketLogRepository {
+    if (!this.mqttPacketLogRepo) throw new Error('Database not initialized');
+    return this.mqttPacketLogRepo;
   }
 
   get estimatedPositions(): EstimatedPositionsRepository {
@@ -891,6 +898,7 @@ class DatabaseService {
       this.analysisRepo = new AnalysisRepository(drizzleDb as any, this.drizzleDbType);
       this.waypointsRepo = new WaypointsRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreRepo = new MeshCoreRepository(drizzleDb, this.drizzleDbType);
+      this.mqttPacketLogRepo = new MqttPacketLogRepository(drizzleDb, this.drizzleDbType);
       this.estimatedPositionsRepo = new EstimatedPositionsRepository(drizzleDb, this.drizzleDbType);
       this.autoFavoriteTargetsRepo = new AutoFavoriteTargetsRepository(drizzleDb, this.drizzleDbType);
       this.sourcePkiKeysRepo = new SourcePkiKeysRepository(drizzleDb, this.drizzleDbType);
