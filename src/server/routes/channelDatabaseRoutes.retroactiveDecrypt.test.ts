@@ -12,6 +12,7 @@ import request from 'supertest';
 
 vi.mock('../auth/authMiddleware.js', () => ({
   requireAuth: () => (_req: any, _res: any, next: any) => next(),
+  optionalAuth: () => (_req: any, _res: any, next: any) => next(),
 }));
 
 vi.mock('../../services/database.js', () => ({

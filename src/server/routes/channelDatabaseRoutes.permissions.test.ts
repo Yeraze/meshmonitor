@@ -179,6 +179,29 @@ describe('Legacy mount — GET / permission filtering', () => {
     const res = await agent.get('/api/channel-database');
     expect(res.status).toBe(403);
   });
+
+  it('ANONYMOUS (unauthenticated) with per-entry canRead: lists entries (200, not 401)', async () => {
+    // The read route uses optionalAuth, not requireAuth — an anonymous account
+    // with per-entry grants must reach the handler and get its filtered list,
+    // not hit a 401 auth wall. This is what populates the frontend Channels tab
+    // for anonymous viewers on an MQTT source.
+    vi.spyOn(databaseService.channelDatabase, 'getPermissionsForUserAsync').mockResolvedValue([
+      { userId: harness.anonymous.id, channelDatabaseId: 1, canViewOnMap: false, canRead: true } as any,
+    ]);
+
+    const agent = await harness.loginAs(null); // unauthenticated → anonymous user
+    const res = await agent.get('/api/channel-database');
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(1);
+    expect(res.body.data[0].psk).toBeUndefined();
+  });
+
+  it('ANONYMOUS with no grants: GET / reaches the handler (403), not a 401 auth wall', async () => {
+    // getPermissionsForUserAsync default mock returns [] (beforeEach).
+    const agent = await harness.loginAs(null);
+    const res = await agent.get('/api/channel-database');
+    expect(res.status).toBe(403);
+  });
 });
 
 // ── describe 3: GET /:id permission filtering ─────────────────────────────────
