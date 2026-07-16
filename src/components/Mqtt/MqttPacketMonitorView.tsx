@@ -304,7 +304,11 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
           >
             <Filter size={14} />
           </button>
-          <button className="mqpm-btn" onClick={() => void load()} title={t('common.refresh', 'Refresh')}>
+          <button
+            className="mqpm-btn"
+            onClick={() => { void load(); void loadGateways(); }}
+            title={t('common.refresh', 'Refresh')}
+          >
             <RefreshCw size={14} />
           </button>
           {canClear && (
@@ -334,7 +338,13 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
             <button
               type="button"
               className={`mqpm-btn ${selectedGateways.length > 0 ? 'active' : ''}`}
-              onClick={() => setGatewayDropdownOpen(o => !o)}
+              onClick={() => {
+                // Refresh the gateway list on closed->open so the panel is
+                // always fresh at the moment of use — new gateways appear
+                // over time and mount-only loading left the list stale.
+                if (!gatewayDropdownOpen) void loadGateways();
+                setGatewayDropdownOpen(o => !o);
+              }}
             >
               {t('mqtt.packets.gateways', 'Gateways')}
               {' '}

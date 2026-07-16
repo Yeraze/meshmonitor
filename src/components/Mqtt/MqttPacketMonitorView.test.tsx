@@ -251,6 +251,52 @@ describe('MqttPacketMonitorView', () => {
     });
   });
 
+  it('refreshes the gateway list when the dropdown is opened', async () => {
+    installFetchRouter({ packets: [basePacket()], gateways: [baseGateway()] });
+
+    render(<MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />);
+    await screen.findByText('hello world');
+
+    fireEvent.click(screen.getByTitle('Filters'));
+    csrfFetchMock.mockClear();
+
+    // Opening the dropdown (closed -> open) must refetch /gateways so the
+    // list is fresh at the moment of use (regression: mount-only loading
+    // left the panel permanently stale/empty on live sources).
+    fireEvent.click(screen.getByRole('button', { name: /Gateways/ }));
+
+    await waitFor(() => {
+      const gatewaysCall = csrfFetchMock.mock.calls.find(
+        ([url]) => typeof url === 'string' && url.includes('/gateways')
+      );
+      expect(gatewaysCall).toBeTruthy();
+    });
+
+    // Closing the dropdown (open -> closed) must NOT refetch.
+    csrfFetchMock.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /Gateways/ }));
+    const gatewaysCallAfterClose = csrfFetchMock.mock.calls.find(
+      ([url]) => typeof url === 'string' && url.includes('/gateways')
+    );
+    expect(gatewaysCallAfterClose).toBeUndefined();
+  });
+
+  it('Refresh reloads both the packet list and the gateway list', async () => {
+    installFetchRouter({ packets: [basePacket()], gateways: [baseGateway()] });
+
+    render(<MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />);
+    await screen.findByText('hello world');
+
+    csrfFetchMock.mockClear();
+    fireEvent.click(screen.getByTitle('Refresh'));
+
+    await waitFor(() => {
+      const urls = csrfFetchMock.mock.calls.map(([url]) => url as string);
+      expect(urls.some(u => u.includes('/gateways'))).toBe(true);
+      expect(urls.some(u => u.includes('/mqtt/packets?'))).toBe(true);
+    });
+  });
+
   it('skips the poll tick while paused', async () => {
     installFetchRouter({ packets: [basePacket()] });
 
