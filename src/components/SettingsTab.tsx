@@ -96,7 +96,7 @@ interface SettingsTabProps {
 const GLOBAL_SECTIONS = new Set([
   'settings-language', 'settings-units', 'settings-appearance', 'settings-link-previews', 'settings-meshcore-messaging', 'settings-map',
   'settings-security',
-  'settings-apprise-server', 'settings-backup', 'settings-channel-database',
+  'settings-apprise-server', 'settings-elevation', 'settings-backup', 'settings-channel-database',
   'settings-maintenance', 'settings-analytics',
   // Position estimation is a single global, cross-source batch job (issue
   // #3271) — it belongs in global Settings, not the per-source Automation tab.
@@ -278,6 +278,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [initialAppriseApiServerUrl, setInitialAppriseApiServerUrl] = useState<string>('');
   const [isTestingApprise, setIsTestingApprise] = useState<boolean>(false);
   const [appriseTestResult, setAppriseTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  // Elevation / Terrain source settings (#4111 Phase 3 WP-3). Mirrors the
+  // Apprise API Server pattern above: local+initial pair for dirty-tracking,
+  // admins receive the unmasked `elevationSourceUrl` (stripSecretSettings
+  // returns the full map to admins).
+  const [localElevationEnabled, setLocalElevationEnabled] = useState(false);
+  const [initialElevationEnabled, setInitialElevationEnabled] = useState(false);
+  const [localElevationSourceUrl, setLocalElevationSourceUrl] = useState('');
+  const [initialElevationSourceUrl, setInitialElevationSourceUrl] = useState('');
+  const [elevationTestResult, setElevationTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [elevationTesting, setElevationTesting] = useState(false);
   const { showToast } = useToast();
 
   // Fetch system status to determine if running in Docker
@@ -392,6 +402,19 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             : '';
           setLocalAppriseApiServerUrl(appriseApiServerUrl);
           setInitialAppriseApiServerUrl(appriseApiServerUrl);
+
+          // Load Elevation/Terrain source settings (#4111 P3). Defaults to
+          // enabled unless the server explicitly stored 'false' — mirrors
+          // useElevationEnabled()'s semantics. Admins receive the unmasked
+          // elevationSourceUrl value.
+          const elevationEnabledOn = settings.elevationEnabled !== 'false';
+          setLocalElevationEnabled(elevationEnabledOn);
+          setInitialElevationEnabled(elevationEnabledOn);
+          const elevationSourceUrl = typeof settings.elevationSourceUrl === 'string'
+            ? settings.elevationSourceUrl
+            : '';
+          setLocalElevationSourceUrl(elevationSourceUrl);
+          setInitialElevationSourceUrl(elevationSourceUrl);
         }
       } catch (error) {
         logger.error('Failed to fetch server settings:', error);
@@ -512,7 +535,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       nodeDimmingMinOpacity !== initialNodeDimmingSettings.minOpacity ||
       localAnalyticsProvider !== initialAnalyticsProvider ||
       JSON.stringify(localAnalyticsConfig) !== initialAnalyticsConfig ||
-      localAppriseApiServerUrl !== initialAppriseApiServerUrl;
+      localAppriseApiServerUrl !== initialAppriseApiServerUrl ||
+      localElevationEnabled !== initialElevationEnabled ||
+      localElevationSourceUrl !== initialElevationSourceUrl;
     setHasChanges(changed);
   }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTilesetLight, localMapTilesetDark, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localMapCenterTargetZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, localNodeHopsCalculation, localDashboardSortOption,
       maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
@@ -526,7 +551,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localMeshcoreCliTimeoutSeconds, initialMeshcoreCliTimeoutSeconds,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, initialNodeDimmingSettings,
       localAnalyticsProvider, localAnalyticsConfig, initialAnalyticsProvider, initialAnalyticsConfig,
-      localAppriseApiServerUrl, initialAppriseApiServerUrl]);
+      localAppriseApiServerUrl, initialAppriseApiServerUrl,
+      localElevationEnabled, initialElevationEnabled, localElevationSourceUrl, initialElevationSourceUrl]);
 
   // Reset local state to current saved values (for SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -577,6 +603,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalAnalyticsProvider(initialAnalyticsProvider);
     try { setLocalAnalyticsConfig(JSON.parse(initialAnalyticsConfig)); } catch { setLocalAnalyticsConfig({}); }
     setLocalAppriseApiServerUrl(initialAppriseApiServerUrl);
+    setLocalElevationEnabled(initialElevationEnabled);
+    setLocalElevationSourceUrl(initialElevationSourceUrl);
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes,
       inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours,
       favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat,
@@ -586,7 +614,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       linkPreviewsEnabled, meshcoreChannelRetryEnabled,
       initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialMeshcoreCliTimeoutSeconds, initialNodeDimmingSettings,
       setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity,
-      initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl]);
+      initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl,
+      initialElevationEnabled, initialElevationSourceUrl]);
 
   const getLocalEffectiveTheme = useCallback((): Theme => {
     if (localAppearanceMode === 'dark') return localDarkTheme;
@@ -658,6 +687,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         analyticsProvider: localAnalyticsProvider,
         analyticsConfig: JSON.stringify(localAnalyticsConfig),
         appriseApiServerUrl: localAppriseApiServerUrl.trim(),
+        elevationEnabled: localElevationEnabled ? 'true' : 'false',
+        elevationSourceUrl: localElevationSourceUrl.trim(),
       };
 
       // Save to server
@@ -717,6 +748,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setInitialAnalyticsProvider(localAnalyticsProvider);
       setInitialAnalyticsConfig(JSON.stringify(localAnalyticsConfig));
       setInitialAppriseApiServerUrl(localAppriseApiServerUrl.trim());
+      setInitialElevationEnabled(localElevationEnabled);
+      setInitialElevationSourceUrl(localElevationSourceUrl.trim());
 
       showToast(t('settings.saved_success'), 'success');
       setHasChanges(false);
@@ -742,7 +775,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange, onSolarMonitoringAzimuthChange,
       onSolarMonitoringDeclinationChange, setShowIncompleteNodes, showToast, t,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
-      localAnalyticsProvider, localAnalyticsConfig, localAppriseApiServerUrl]);
+      localAnalyticsProvider, localAnalyticsConfig, localAppriseApiServerUrl,
+      localElevationEnabled, localElevationSourceUrl]);
 
   // Register with SaveBar
   useSaveBar({
@@ -796,6 +830,38 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setIsTestingApprise(false);
     }
   }, [csrfFetch, baseUrl, localAppriseApiServerUrl, t]);
+
+  // Probes the (unsaved) elevation source URL via ApiService.testElevationSource
+  // (#4111 P3 WP-3) — a raw fetch is banned in components per CLAUDE.md, and
+  // this exercises the POST /api/elevation/test route added in Phase 1.
+  const handleTestElevation = useCallback(async () => {
+    setElevationTesting(true);
+    setElevationTestResult(null);
+    try {
+      const result = await apiService.testElevationSource(localElevationSourceUrl.trim());
+      setElevationTestResult(
+        result.success
+          ? {
+              ok: true,
+              message: t(
+                'settings.elevation_test_success',
+                'OK — {{type}}, {{elev}} m in {{ms}} ms',
+                {
+                  type: result.detectedType,
+                  elev: result.sampleElevation ?? 'n/a',
+                  ms: result.latencyMs,
+                }
+              ),
+            }
+          : { ok: false, message: result.error ?? t('settings.elevation_test_failure_generic', 'Test failed') }
+      );
+    } catch (error) {
+      logger.error('Failed to test elevation source:', error);
+      setElevationTestResult({ ok: false, message: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setElevationTesting(false);
+    }
+  }, [localElevationSourceUrl, t]);
 
   const handleFetchSolarEstimates = async () => {
     setIsFetchingSolarEstimates(true);
@@ -1138,6 +1204,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         { id: 'settings-packet-monitor', label: t('settings.packet_monitor') },
         { id: 'settings-solar', label: t('settings.solar_monitoring') },
         ...(isAdmin ? [{ id: 'settings-apprise-server', label: t('settings.apprise_server_section', 'Apprise API Server') }] : []),
+        ...(isAdmin ? [{ id: 'settings-elevation', label: t('settings.elevation_section', 'Elevation / Terrain') }] : []),
         { id: 'settings-backup', label: t('settings.system_backup', 'System Backup') },
         ...(isAdmin ? [{ id: 'settings-channel-database', label: t('channel_database.title', 'Channel Database') }] : []),
         // Only show Database Maintenance for SQLite - it uses SQLite-specific features like VACUUM
@@ -2013,6 +2080,73 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   }}
                 >
                   {appriseTestResult.message}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>}
+
+        {show('settings-elevation') && isAdmin && <div id="settings-elevation" className="settings-section">
+          <h3>{t('settings.elevation_section', 'Elevation / Terrain')}</h3>
+          <p className="setting-description">
+            {t(
+              'settings.elevation_section_description',
+              'Powers the Map Analysis Link Profile tool\'s terrain chart. Elevation samples are fetched server-side from a public AWS Terrarium DEM tile source by default; you can point it at a different source below.'
+            )}
+          </p>
+          <div className="setting-item">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                id="elevationEnabled"
+                type="checkbox"
+                checked={localElevationEnabled}
+                onChange={(e) => setLocalElevationEnabled(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.elevation_enabled_label', 'Enable terrain elevation')}</span>
+            </label>
+            <span className="setting-description">
+              {t('settings.elevation_enabled_description', 'Turns off the Link Profile tool\'s terrain chart when disabled.')}
+            </span>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="elevationSourceUrl">
+              {t('settings.elevation_source_url_label', 'Elevation Source URL')}
+              <span className="setting-description">
+                {t('settings.elevation_source_url_description', 'Leave empty to use the default public AWS Terrarium source.')}
+              </span>
+            </label>
+            <input
+              id="elevationSourceUrl"
+              type="text"
+              value={localElevationSourceUrl}
+              onChange={(e) => setLocalElevationSourceUrl(e.target.value)}
+              placeholder="https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png"
+              className="setting-input"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <div style={{ marginTop: '0.75rem' }}>
+              <button
+                type="button"
+                onClick={handleTestElevation}
+                disabled={elevationTesting}
+                className="save-button"
+                style={{ width: 'auto', padding: '0.5rem 1rem' }}
+              >
+                {elevationTesting
+                  ? t('settings.elevation_testing', 'Testing…')
+                  : t('settings.elevation_test', 'Test')}
+              </button>
+              {elevationTestResult && (
+                <p
+                  className="setting-description"
+                  style={{
+                    marginTop: '0.5rem',
+                    color: elevationTestResult.ok ? 'var(--color-success, #10b981)' : 'var(--color-error, #ef4444)',
+                  }}
+                >
+                  {elevationTestResult.message}
                 </p>
               )}
             </div>

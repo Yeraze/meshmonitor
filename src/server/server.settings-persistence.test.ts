@@ -419,6 +419,12 @@ describe('Settings Persistence', () => {
         // Apprise API server URL (#3012) — loaded directly by SettingsTab,
         // not surfaced via SettingsContext (admin-only field, no global hook).
         'appriseApiServerUrl',
+        // Elevation/Terrain source settings (#4111 Phase 3 WP-3) — loaded
+        // directly by SettingsTab (admin-only field, no global hook), same
+        // as appriseApiServerUrl above. `elevationEnabled` is also read
+        // publicly via GET /api/settings by useElevationEnabled(), but that's
+        // a direct fetch, not SettingsContext.
+        'elevationEnabled', 'elevationSourceUrl',
       ];
 
       const keysNotLoaded = SETTINGS_TAB_SENDS.filter(

@@ -99,13 +99,15 @@ const ChartTooltip: React.FC<{
 
 const LinkProfileDrawer: React.FC = () => {
   const { distanceUnit } = useSettings();
-  const { linkProfileMode, linkEndpoints, setLinkProfileMode, setLinkEndpoints } = useMapAnalysisCtx();
+  const { linkProfileMode, linkEndpoints, setLinkProfileMode, setLinkEndpoints, setLinkVerdict } =
+    useMapAnalysisCtx();
   const [endpointA, endpointB] = linkEndpoints;
 
   const onClose = useCallback(() => {
     setLinkProfileMode(false);
     setLinkEndpoints([]);
-  }, [setLinkProfileMode, setLinkEndpoints]);
+    setLinkVerdict(null);
+  }, [setLinkProfileMode, setLinkEndpoints, setLinkVerdict]);
 
   // Local budget-input state, seeded from documented defaults. Edits
   // recompute the analysis client-side — they never trigger a refetch.
@@ -169,6 +171,19 @@ const LinkProfileDrawer: React.FC = () => {
         : null,
     [analysis, freqMhz, txPowerDbm, txGainDbi, rxGainDbi, cableLossDb, rxSensitivityDbm]
   );
+
+  // Mirror the computed verdict into context so the map-path Polyline
+  // (`LinkProfileController`, rendered outside the drawer) can color itself
+  // to match (#4111 Phase 3 WP-3). Cleared whenever there's no resolved
+  // analysis (no pair picked yet, loading, error, all-null terrain) and on
+  // unmount, so a closed/reset drawer never leaves a stale color behind.
+  useEffect(() => {
+    setLinkVerdict(analysis?.verdict ?? null);
+  }, [analysis?.verdict, setLinkVerdict]);
+
+  useEffect(() => {
+    return () => setLinkVerdict(null);
+  }, [setLinkVerdict]);
 
   const allTerrainNull = profile ? profile.samples.every(s => s.elevation === null) : false;
 

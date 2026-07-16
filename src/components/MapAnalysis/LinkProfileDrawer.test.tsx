@@ -46,12 +46,14 @@ let mockLinkProfileMode = true;
 let mockLinkEndpoints: LinkEndpoint[] = [];
 let setLinkProfileModeSpy: ReturnType<typeof vi.fn>;
 let setLinkEndpointsSpy: ReturnType<typeof vi.fn>;
+let setLinkVerdictSpy: ReturnType<typeof vi.fn>;
 vi.mock('./MapAnalysisContext', () => ({
   useMapAnalysisCtx: () => ({
     linkProfileMode: mockLinkProfileMode,
     linkEndpoints: mockLinkEndpoints,
     setLinkProfileMode: setLinkProfileModeSpy,
     setLinkEndpoints: setLinkEndpointsSpy,
+    setLinkVerdict: setLinkVerdictSpy,
   }),
 }));
 
@@ -134,6 +136,7 @@ describe('LinkProfileDrawer', () => {
     mockLinkEndpoints = [];
     setLinkProfileModeSpy = vi.fn();
     setLinkEndpointsSpy = vi.fn();
+    setLinkVerdictSpy = vi.fn();
     getElevationProfileMock.mockReset();
     mockAutoRadioDefaults = { freqMhz: null, rxSensitivityDbm: null, provenance: null };
   });
@@ -219,7 +222,7 @@ describe('LinkProfileDrawer', () => {
     expect(marginDd.className).toContain('link-margin-negative');
   });
 
-  it('calls setLinkProfileMode(false) and clears endpoints when closed', async () => {
+  it('calls setLinkProfileMode(false), clears endpoints and verdict when closed', async () => {
     mockLinkEndpoints = [endpointA, endpointB];
     getElevationProfileMock.mockResolvedValue(OBSTRUCTED_PROFILE);
     renderDrawer();
@@ -228,6 +231,37 @@ describe('LinkProfileDrawer', () => {
     fireEvent.click(screen.getByRole('button', { name: /close link profile/i }));
     expect(setLinkProfileModeSpy).toHaveBeenCalledWith(false);
     expect(setLinkEndpointsSpy).toHaveBeenCalledWith([]);
+    expect(setLinkVerdictSpy).toHaveBeenCalledWith(null);
+  });
+
+  // #4111 Phase 3 WP-3: the drawer mirrors its computed verdict into
+  // MapAnalysisContext so the map-path Polyline can color itself to match.
+  describe('verdict -> context mirroring (#4111 P3 WP-3)', () => {
+    it('writes the resolved verdict to context once analysis is available', async () => {
+      mockLinkEndpoints = [endpointA, endpointB];
+      getElevationProfileMock.mockResolvedValue(OBSTRUCTED_PROFILE);
+      renderDrawer();
+
+      await screen.findByText('+31.2 dB');
+      expect(setLinkVerdictSpy).toHaveBeenCalledWith('obstructed');
+    });
+
+    it('clears the context verdict on unmount', async () => {
+      mockLinkEndpoints = [endpointA, endpointB];
+      getElevationProfileMock.mockResolvedValue(OBSTRUCTED_PROFILE);
+      const { unmount } = renderDrawer();
+      await screen.findByText('+31.2 dB');
+      setLinkVerdictSpy.mockClear();
+
+      unmount();
+      expect(setLinkVerdictSpy).toHaveBeenCalledWith(null);
+    });
+
+    it('writes a null verdict while there is no resolved analysis yet (e.g. only one endpoint picked)', () => {
+      mockLinkEndpoints = [endpointA];
+      renderDrawer();
+      expect(setLinkVerdictSpy).toHaveBeenCalledWith(null);
+    });
   });
 
   // #4111 Phase 3 WP-2: per-source auto-frequency/RX-sensitivity seeding,

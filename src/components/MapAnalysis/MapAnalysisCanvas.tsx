@@ -45,6 +45,7 @@ export default function MapAnalysisCanvas() {
     setLinkProfileMode,
     linkEndpoints,
     setLinkEndpoints,
+    linkVerdict,
   } = useMapAnalysisCtx();
 
   // #3636: measurement endpoints, from the same visible+positioned node list
@@ -111,6 +112,7 @@ export default function MapAnalysisCanvas() {
             endpoints={linkEndpoints}
             onPick={setLinkEndpoints}
             onExit={() => setLinkProfileMode(false)}
+            verdict={linkVerdict}
           />
         )}
         <Pane name="waypoints" style={{ zIndex: 650 }}>

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
 import { useMapAnalysisConfig } from '../../hooks/useMapAnalysisConfig';
-import type { LinkEndpoint } from '../../utils/linkProfile';
+import type { LinkEndpoint, LinkVerdict } from '../../utils/linkProfile';
 
 export interface SelectedTarget {
   type: 'node' | 'segment' | 'neighbor' | 'trail';
@@ -49,6 +49,14 @@ type CtxShape = ReturnType<typeof useMapAnalysisConfig> & {
   /** Picked endpoints (0..2) for the Link Profile tool; transient, not persisted. */
   linkEndpoints: LinkEndpoint[];
   setLinkEndpoints: (e: LinkEndpoint[]) => void;
+  /**
+   * Computed verdict for the current Link Profile analysis (#4111 Phase 3
+   * WP-3); written by `LinkProfileDrawer` once `analyzeLinkProfile` resolves
+   * and cleared when the drawer unmounts/endpoints reset. Read by the Canvas
+   * to color the map-path Polyline drawn by `LinkProfileController`.
+   */
+  linkVerdict: LinkVerdict | null;
+  setLinkVerdict: (v: LinkVerdict | null) => void;
 };
 
 const Ctx = createContext<CtxShape | null>(null);
@@ -61,6 +69,7 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
   const [measureMode, setMeasureMode] = useState(false);
   const [linkProfileMode, setLinkProfileMode] = useState(false);
   const [linkEndpoints, setLinkEndpoints] = useState<LinkEndpoint[]>([]);
+  const [linkVerdict, setLinkVerdict] = useState<LinkVerdict | null>(null);
   return (
     <Ctx.Provider
       value={{
@@ -77,6 +86,8 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
         setLinkProfileMode,
         linkEndpoints,
         setLinkEndpoints,
+        linkVerdict,
+        setLinkVerdict,
       }}
     >
       {children}
