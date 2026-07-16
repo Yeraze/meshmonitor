@@ -276,6 +276,15 @@ export const VALID_SETTINGS_KEYS = [
   // traffic (DMs, adverts, requests) unless a channel overrides it. Empty =
   // unscoped (legacy '*' / null region).
   'meshcoreDefaultScope',
+  // Terrain Link Profile / elevation backend (#4111 Phase 1). Global (not
+  // per-source) — elevation is source-agnostic public DEM data.
+  // `elevationEnabled` is the public availability flag the Map Analysis page
+  // reads via GET /api/settings; `elevationSourceUrl` may embed an API key
+  // (custom Open-Topo-Data-compatible source) so it is also listed in
+  // SECRET_SETTINGS_KEYS below — server-only, never needed client-side since
+  // every elevation fetch is server-proxied.
+  'elevationEnabled',
+  'elevationSourceUrl',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];
@@ -501,6 +510,9 @@ export const SECRET_SETTINGS_KEYS = new Set<string>([
   'vapid_private_key',
   'securityDigestAppriseUrl',
   'analyticsConfig',
+  // May embed an API key; server-only (all elevation fetches are
+  // server-proxied, so no frontend consumer ever needs the raw URL).
+  'elevationSourceUrl',
 ]);
 
 /**
