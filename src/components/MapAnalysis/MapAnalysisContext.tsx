@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
 import { useMapAnalysisConfig } from '../../hooks/useMapAnalysisConfig';
+import type { LinkEndpoint } from '../../utils/linkProfile';
 
 export interface SelectedTarget {
   type: 'node' | 'segment' | 'neighbor' | 'trail';
@@ -38,6 +39,16 @@ type CtxShape = ReturnType<typeof useMapAnalysisConfig> & {
   /** Node-to-node LOS distance measurement tool active (issue #3636); transient, not persisted. */
   measureMode: boolean;
   setMeasureMode: (m: boolean) => void;
+  /**
+   * Terrain Link Profile two-point picker active (#4111 Phase 2); transient,
+   * not persisted. Mutually exclusive with `measureMode` — enforced by the
+   * toolbar's button handlers, not here (see `MapAnalysisToolbar.tsx`).
+   */
+  linkProfileMode: boolean;
+  setLinkProfileMode: (m: boolean) => void;
+  /** Picked endpoints (0..2) for the Link Profile tool; transient, not persisted. */
+  linkEndpoints: LinkEndpoint[];
+  setLinkEndpoints: (e: LinkEndpoint[]) => void;
 };
 
 const Ctx = createContext<CtxShape | null>(null);
@@ -48,6 +59,8 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
   const [nodeFilter, setNodeFilter] = useState('');
   const [followPaused, setFollowPaused] = useState(false);
   const [measureMode, setMeasureMode] = useState(false);
+  const [linkProfileMode, setLinkProfileMode] = useState(false);
+  const [linkEndpoints, setLinkEndpoints] = useState<LinkEndpoint[]>([]);
   return (
     <Ctx.Provider
       value={{
@@ -60,6 +73,10 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
         setFollowPaused,
         measureMode,
         setMeasureMode,
+        linkProfileMode,
+        setLinkProfileMode,
+        linkEndpoints,
+        setLinkEndpoints,
       }}
     >
       {children}

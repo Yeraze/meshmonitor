@@ -6,6 +6,9 @@ import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { useAnalysisNodes } from './useAnalysisNodes';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
+import LinkProfileController from './LinkProfileController';
+import LinkProfileDrawer from './LinkProfileDrawer';
+import type { LinkEndpoint } from '../../utils/linkProfile';
 import { BaseMap } from '../map/BaseMap';
 import NodeMarkersLayer from './layers/NodeMarkersLayer';
 import TraceroutePathsLayer from './layers/TraceroutePathsLayer';
@@ -34,7 +37,15 @@ export default function MapAnalysisCanvas() {
     customTilesets,
     setMapTileset,
   } = useSettings();
-  const { config, measureMode, setMeasureMode } = useMapAnalysisCtx();
+  const {
+    config,
+    measureMode,
+    setMeasureMode,
+    linkProfileMode,
+    setLinkProfileMode,
+    linkEndpoints,
+    setLinkEndpoints,
+  } = useMapAnalysisCtx();
 
   // #3636: measurement endpoints, from the same visible+positioned node list
   // the markers layer uses so the two never disagree.
@@ -47,6 +58,13 @@ export default function MapAnalysisCanvas() {
       label: a.node.shortName ?? undefined,
     })),
     [analysisNodes],
+  );
+
+  // #4111 Phase 2 (WP-D): Link Profile picker candidates — same underlying
+  // node list as `measurePoints`, tagged `isNode:true` per `LinkEndpoint`.
+  const linkEndpointCandidates: LinkEndpoint[] = useMemo(
+    () => measurePoints.map((p) => ({ ...p, isNode: true })),
+    [measurePoints],
   );
 
   const center: [number, number] = [
@@ -71,6 +89,15 @@ export default function MapAnalysisCanvas() {
             active={measureMode}
             points={measurePoints}
             onExit={() => setMeasureMode(false)}
+          />
+        )}
+        {linkProfileMode && (
+          <LinkProfileController
+            active={linkProfileMode}
+            points={linkEndpointCandidates}
+            endpoints={linkEndpoints}
+            onPick={setLinkEndpoints}
+            onExit={() => setLinkProfileMode(false)}
           />
         )}
         <Pane name="waypoints" style={{ zIndex: 650 }}>
@@ -109,6 +136,7 @@ export default function MapAnalysisCanvas() {
       <TimeSliderControl />
       <MapLegend />
       <FollowResumeButton />
+      <LinkProfileDrawer />
     </div>
   );
 }

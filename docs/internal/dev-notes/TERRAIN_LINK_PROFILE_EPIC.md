@@ -60,7 +60,7 @@ Branch: `feature/elevation-backend` (worktree ../meshmonitor-elevation-backend)
 - **Exit criteria:** API returns correct profiles for known coordinates (unit-tested with mocked
   fetches); custom-source test endpoint works; suite green; merged.
 
-### Phase 2 — Link Profile tool in Map Analysis ⬜
+### Phase 2 — Link Profile tool in Map Analysis ✅
 Branch: `feature/link-profile-tool` (worktree ../meshmonitor-link-profile)
 
 - Pure math utils (`src/utils/` mirroring measureDistance.ts): Fresnel zone radius (n=1),
@@ -86,6 +86,9 @@ Branch: `feature/link-profile-polish`
 - Map overlay: picked path colored by obstruction result.
 - Edge cases: missing DEM data (ocean/voids), antimeridian crossing, same-point selection,
   very long paths (sample-count clamp).
+- **From Phase 2 browser validation:** Terrarium void/bathymetry artifacts (extreme negatives,
+  e.g. −12000 m spike observed over Lake Pontchartrain) blow out the chart Y-domain — clamp or
+  null-out absurd DEM values (e.g. < −500 m) in the provider or the chart domain.
 - Elevation-source settings UI (SettingsTab) w/ test button, if not landed in Ph1/2.
 - Docs: README/docs feature section; CLAUDE.md/dev-notes updates if invariants added.
 - **Exit criteria:** frequency auto-populates per source; graceful degradation on missing data;
@@ -100,3 +103,12 @@ Branch: `feature/link-profile-polish`
   (may embed API keys; server-only); `/profile` public via optionalAuth + dedicated
   elevationLimiter (20/min prod, private-IP exempt); `/test` behind settings:write; testSource
   default probe = Everest summit (distinguishes a working provider from ocean-0 responses).
+- 2026-07-16: Phase 1 merged: PR #4143 (squash 8b68ac2e).
+- 2026-07-16: Phase 2 implemented (WP-A math/hooks/API 108bf9f3, WP-B drawer f056d8e3,
+  WP-C picker/context/toolbar dab7f1c5, WP-D canvas wiring e7c4f809). Full suite 9,400 passed /
+  0 failed; lint:ci + vite build clean. Browser-validated on live Terrarium data: pick → drawer →
+  verdict (math hand-checked: 89.4 km @ 915 MHz → FSPL 130.7 dB, RX −106.4 dBm, margin +22.6 dB);
+  budget edits recompute with zero refetch; Escape fully exits. Decisions: DEM+AGL model (node GPS
+  altitude ignored — datum mismatch); snap-within-24px else raw point (no modifier key); drawer =
+  absolute overlay in canvas; useElevationEnabled gates the toolbar button. Known issue punted to
+  Phase 3: Terrarium void/bathymetry extreme negatives distort the chart Y-domain.
