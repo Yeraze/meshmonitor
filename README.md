@@ -244,6 +244,7 @@ MeshMonitor supports multiple deployment methods:
 
 - **Multi-Protocol, Multi-Source** - Monitor Meshtastic (TCP/Serial/BLE), MeshCore (USB/TCP), and MQTT brokers from a single deployment, with per-source permissions, schedulers, and Virtual Nodes
 - **Embedded MQTT Broker** - Optional built-in broker with bidirectional bridges to public upstreams and topic/channel/portnum/geo filtering
+- **MQTT Geo Filtering** - With a bounding box configured on an MQTT bridge source, nodes that report a position outside the box are automatically ignored and have all their stored data purged (messages, telemetry, traceroutes, etc.); they reappear automatically the moment they report an in-bounds position. Nodes that never report a position always flow through (no more silent hiding, unlike previous releases). Manually-ignored nodes are never auto-un-ignored. Changing the bounding box retroactively re-applies the rule to already-stored nodes.
 - **Analysis & Reports (4.2)** - Cross-source analytical workspace at `/reports`; first report is Solar Monitoring Analysis with auto-detection of solar-powered nodes, production overlay, healthy-level reference lines, and multi-day battery forecast simulation
 - **Real-time Mesh Monitoring** - Live node discovery, telemetry, and message tracking across every connected source
 - **Modern UI** - Catppuccin theme with message reactions and threading
