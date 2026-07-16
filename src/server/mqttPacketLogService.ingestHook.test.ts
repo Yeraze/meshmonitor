@@ -53,6 +53,14 @@ vi.mock('../services/database.js', () => ({
     mqttPacketLog: {
       insertPacket: vi.fn(async () => undefined),
     },
+    // Geo-ignore epic (#4115): the ingest pipeline gates on the per-source
+    // ignore list and auto-ignores out-of-bbox positions.
+    ignoredNodes: {
+      isIgnoredCached: vi.fn(() => false),
+      addGeoIgnoreAsync: vi.fn(async () => true),
+      liftGeoIgnoreAsync: vi.fn(async () => true),
+    },
+    deleteNodeAsync: vi.fn(async () => undefined),
   },
 }));
 
@@ -119,6 +127,9 @@ async function flush(): Promise<void> {
 describe('MQTT Packet Monitor — ingestion hook', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks does not remove implementations set via mockReturnValue —
+    // re-pin the ignore gate to "not ignored" so per-test overrides don't leak.
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(false);
     _resetMqttIngestCachesForTest();
     channelDecryptionService.invalidateCache();
     channelDecryptionService.setEnabled(true);
@@ -162,21 +173,42 @@ describe('MQTT Packet Monitor — ingestion hook', () => {
     expect(row.portnum).toBeNull();
   });
 
-  it('logs a geo-filtered copy with portnum still populated (decode happened before the gate)', async () => {
-    const filter = new MqttPacketFilter({ geo: { minLat: 43, maxLat: 45, minLng: -80, maxLng: -77 } });
+  it('logs an ignored-sender copy with portnum still populated (decode happened before the gate)', async () => {
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(true);
     const result = await ingestServiceEnvelope({
       sourceId: 'bridge-1',
-      envelope: envFor({ from: 0x22222222, portnum: 1 }), // unknown sender, non-position
-      filter,
+      envelope: envFor({ from: 0x22222222, portnum: 1 }), // ignored sender, non-position
     });
     expect(result.ingested).toBe(false);
-    expect(result.reason).toBe('geo-filtered');
+    expect(result.reason).toBe('ignored');
 
     await flush();
     expect(databaseService.mqttPacketLog.insertPacket).toHaveBeenCalledTimes(1);
     const row = (databaseService.mqttPacketLog.insertPacket as any).mock.calls[0][0];
-    expect(row.ingestOutcome).toBe('geo-filtered');
+    expect(row.ingestOutcome).toBe('ignored');
     expect(row.portnum).toBe(1);
+  });
+
+  it('logs a geo-ignored copy when an out-of-bbox POSITION triggers the auto-ignore', async () => {
+    const { default: protobuf } = await import('./meshtasticProtobufService.js');
+    (protobuf.processPayload as any).mockImplementationOnce(() => ({
+      latitudeI: 492_000_000, // Vancouver — far outside the Ontario bbox below
+      longitudeI: -1_230_000_000,
+    }));
+    const filter = new MqttPacketFilter({ geo: { minLat: 43, maxLat: 45, minLng: -80, maxLng: -77 } });
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor({ from: 0x22222222, portnum: PortNum.POSITION_APP }),
+      filter,
+    });
+    expect(result.ingested).toBe(false);
+    expect(result.reason).toBe('geo-ignored');
+
+    await flush();
+    expect(databaseService.mqttPacketLog.insertPacket).toHaveBeenCalledTimes(1);
+    const row = (databaseService.mqttPacketLog.insertPacket as any).mock.calls[0][0];
+    expect(row.ingestOutcome).toBe('geo-ignored');
+    expect(row.portnum).toBe(PortNum.POSITION_APP);
   });
 
   it('logs an unsupported-portnum copy', async () => {

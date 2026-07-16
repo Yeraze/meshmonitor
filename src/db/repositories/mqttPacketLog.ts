@@ -15,7 +15,8 @@ import { BaseRepository } from './base.js';
 export type MqttIngestOutcome =
   | 'ingested'
   | 'encrypted'
-  | 'geo-filtered'
+  | 'ignored' // sender on the per-source ignore list (#4115 geo-ignore epic)
+  | 'geo-ignored' // geo-fence auto-ignore triggered by an out-of-bbox position
   | 'unsupported-portnum'
   | 'decode-error';
 
