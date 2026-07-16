@@ -22,6 +22,13 @@
 export interface MessagesReadOnlyState {
   /** Hide the DM message log and the compose field. */
   dmReadOnly: boolean;
+  /**
+   * WHY the DM log/composer is hidden, so the UI can explain itself instead
+   * of just disappearing (#4139). `null` when `dmReadOnly` is false. When
+   * both conditions hold, `'unmessageable'` wins — it's the more specific,
+   * more actionable explanation for the user.
+   */
+  dmReadOnlyReason: 'mqtt' | 'unmessageable' | null;
   /** Hide the mesh-transmit action buttons (traceroute/telemetry/nodeinfo/…). */
   actionsReadOnly: boolean;
 }
@@ -31,9 +38,13 @@ export function computeMessagesReadOnlyState(opts: {
   isUnmessagable: boolean | undefined;
 }): MessagesReadOnlyState {
   const { mqttReadOnly, isUnmessagable } = opts;
+  const dmReadOnly = mqttReadOnly || isUnmessagable === true;
   return {
     // DMs are suppressed by either condition.
-    dmReadOnly: mqttReadOnly || isUnmessagable === true,
+    dmReadOnly,
+    // Unmessageable is the more specific/actionable reason, so it wins when
+    // both apply.
+    dmReadOnlyReason: !dmReadOnly ? null : isUnmessagable === true ? 'unmessageable' : 'mqtt',
     // Action buttons are suppressed ONLY by the MQTT-bridge mirror — an
     // unmessageable node still responds to these channel-routed requests.
     actionsReadOnly: mqttReadOnly,

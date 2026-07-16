@@ -778,7 +778,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   //                      channel-routed packets, not DMs, so an unmessageable
   //                      node still answers them — only the MQTT-bridge mirror
   //                      suppresses them (#3831).
-  const { dmReadOnly, actionsReadOnly } = computeMessagesReadOnlyState({
+  const { dmReadOnly, dmReadOnlyReason, actionsReadOnly } = computeMessagesReadOnlyState({
     mqttReadOnly,
     isUnmessagable: selectedNode?.isUnmessagable,
   });
@@ -1381,6 +1381,31 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 {isDeviceDbWarningMitigatable(selectedNode)
                   ? t('messages.not_in_device_db_key_known', 'This node is not in the connected device\'s database. MeshMonitor will attempt to restore the saved key when you send a direct message.')
                   : t('messages.not_in_device_db', 'This node is not in your radio\'s database. Direct messages will fail until the node exchanges keys with your radio. Use "Exchange Node Info" to request key exchange.')}
+              </div>
+            )}
+
+            {/*
+              Unmessageable-node banner (#4139) - explains why the DM log/composer
+              below is hidden, instead of the composer just silently disappearing.
+              Only shown for the unmessageable reason — the MQTT-bridge mirror case
+              already hides the action buttons too, which is self-explanatory from
+              the source picker, so it doesn't get a banner here.
+            */}
+            {dmReadOnlyReason === 'unmessageable' && (
+              <div
+                style={{
+                  backgroundColor: 'var(--ctp-yellow, #f9e2af)',
+                  color: 'var(--ctp-base, #1e1e2e)',
+                  padding: '10px 12px',
+                  marginBottom: '10px',
+                  borderRadius: '4px',
+                  textAlign: 'center',
+                }}
+              >
+                {t(
+                  'messages.unmessageable_banner',
+                  'This node reports itself as unmessageable (router/repeater/sensor) — it cannot receive direct messages.'
+                )}
               </div>
             )}
 

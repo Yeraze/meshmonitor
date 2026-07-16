@@ -2092,6 +2092,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           💬
                         </button>
                       )}
+                      {hasPermission('messages', 'read') && node.isUnmessagable && (
+                        <span
+                          className="node-indicator-icon"
+                          title={t('nodes.unmessageable', 'This node reports itself as unmessageable (router/repeater/sensor) — it cannot receive direct messages')}
+                        >
+                          🚫
+                        </span>
+                      )}
                       {!isNodeComplete(node) && hasPermission('nodes', 'write') && (
                         <button
                           className="dm-icon"
