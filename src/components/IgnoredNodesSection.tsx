@@ -32,6 +32,9 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
   const [isLoading, setIsLoading] = useState(true);
   const [removingNodeNum, setRemovingNodeNum] = useState<number | null>(null);
 
+  const geoCount = ignoredNodes.filter(n => n.reason === 'geo').length;
+  const manualCount = ignoredNodes.length - geoCount;
+
   const sourceQuery = currentSourceId ? `?sourceId=${encodeURIComponent(currentSourceId)}` : '';
 
   const fetchIgnoredNodes = useCallback(async () => {
@@ -149,6 +152,13 @@ const IgnoredNodesSection: React.FC<IgnoredNodesSectionProps> = ({ baseUrl }) =>
             </div>
             <div style={{ fontSize: '12px', color: 'var(--ctp-subtext0)' }}>
               {t('automation.ignored_nodes.total_ignored', 'Ignored Nodes')}
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
+              {t('automation.ignored_nodes.count_summary', '{{count}} ignored · {{geo}} geo · {{manual}} manual', {
+                count: ignoredNodes.length,
+                geo: geoCount,
+                manual: manualCount,
+              })}
             </div>
           </div>
         </div>

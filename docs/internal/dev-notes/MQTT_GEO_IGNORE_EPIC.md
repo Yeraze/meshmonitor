@@ -1,7 +1,7 @@
 # MQTT Geo-Ignore Rearchitecture — Epic Plan
 
 **Issue:** #4115 (nodes entirely missing from MQTT sources)
-**Status:** In progress
+**Status:** Phase 4 in review — epic complete on merge of Phase 4 PR (Closes #4115)
 **Owner decisions captured:** 2026-07-15
 
 ## Goal
@@ -99,26 +99,35 @@ pre-decryption in `handleDownlink`.
   suite green. **PR #4131 MERGED** 2026-07-15 (squash 0a9b7e27; review adds: stub display names for never-seen geo-ignored nodes, one-packet-window docs, purge-once via addGeoIgnoreAsync boolean; CI fix: ignoredNodes stub in empty database mocks of mode/permission bridge suites).
 
 ### Phase 3 — Retroactive sweep on config change + bridge start
-- [ ] Sweep service (new, small): for a bridge source with a bbox — stored
+- [x] Sweep service (new, small): for a bridge source with a bbox — stored
   effective position outside → geo-ignore + purge; geo-ignored entries whose
   node would now be inside (or bbox removed) → lift. No action for
   position-less nodes.
-- [ ] Trigger on bridge start (replaces old seed step) and on source config
+- [x] Trigger on bridge start (replaces old seed step) and on source config
   save when `downlinkFilters.geo` changes (sourceRoutes update path).
-- [ ] Log summary (`ignored N, purged N, lifted N`); expose last-sweep stats on
+- [x] Log summary (`ignored N, purged N, lifted N`); expose last-sweep stats on
   bridge status.
-- [ ] Tests: sweep unit tests + config-change integration + perSource.
+- [x] Tests: sweep unit tests + config-change integration + perSource.
 - **Exit:** enabling/widening/narrowing bbox converges the DB without restart;
-  suite green; PR merged.
+  suite green. **PR #4132 MERGED** 2026-07-16 (squash b16e7f23; incl. repair of #4114 packet-monitor semantic conflict: ingest outcome union now `ignored`/`geo-ignored`).
 
 ### Phase 4 — Observability + docs
-- [ ] Source status: per-reason drop counters (geo-ignored drops), ignore-list
-  size, last sweep summary in the source UI.
-- [ ] Log first-drop-per-node at info with node id (no spam after).
-- [ ] Docs: README MQTT filtering section; new
+- [x] Source status: per-reason drop counters (geo-ignored drops), ignore-list
+  size, last sweep summary in the source UI. (`MqttBridgeConfigurationView.tsx`
+  surfaces `downlinkDrops.geo`/`uplinkDrops.geo` and a `lastGeoSweep` summary
+  line — scanned/ignored/purged/lifted/duration — sourced from
+  `MqttBridgeStatus.lastGeoSweep`; the existing Ignored Nodes list UI
+  (`IgnoredNodesSection.tsx`) continues to surface list contents/size.)
+- [x] Log first-drop-per-node at info with node id (no spam after).
+  (`firstDropForNode`/`droppedOnce` in `mqttIngestion.ts`, wired into
+  `ingestServiceEnvelope`'s single logging point for `'ignored'` /
+  `'geo-ignored'` outcomes.)
+- [x] Docs: README MQTT filtering section; new
   `docs/internal/dev-notes/MQTT_GEO_IGNORE.md` (behavior, reappearance rules,
-  purge scope); CLAUDE.md pointer if invariants moved.
-- [ ] Update this epic doc to complete; close #4115 with summary.
+  purge scope); CLAUDE.md pointer if invariants moved. (No CLAUDE.md
+  invariants moved — multi-source/raw-SQL/response-envelope rules are
+  unaffected by this epic, so no pointer was added.)
+- [x] Update this epic doc to complete; close #4115 with summary.
 - **Exit:** docs merged; #4115 closed.
 
 ## Migration/upgrade behavior notes
