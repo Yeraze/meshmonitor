@@ -60,11 +60,24 @@ export default function MapAnalysisCanvas() {
     [analysisNodes],
   );
 
-  // #4111 Phase 2 (WP-D): Link Profile picker candidates — same underlying
-  // node list as `measurePoints`, tagged `isNode:true` per `LinkEndpoint`.
+  // #4111 Phase 2 (WP-D) / Phase 3 (WP-2): Link Profile picker candidates —
+  // built directly from `analysisNodes` (not `measurePoints`) so each
+  // candidate carries the radio identity (`sourceId`/`nodeNum`/`isMeshCore`)
+  // that `useAutoRadioDefaults` needs to resolve a per-source frequency/RX
+  // suggestion once picked.
   const linkEndpointCandidates: LinkEndpoint[] = useMemo(
-    () => measurePoints.map((p) => ({ ...p, isNode: true })),
-    [measurePoints],
+    () =>
+      analysisNodes.map((a) => ({
+        id: a.key,
+        lat: a.latLng[0],
+        lng: a.latLng[1],
+        label: a.node.shortName ?? undefined,
+        isNode: true,
+        sourceId: a.node.sourceId,
+        nodeNum: a.node.nodeNum,
+        isMeshCore: a.node.isMeshCore ?? false,
+      })),
+    [analysisNodes],
   );
 
   const center: [number, number] = [
