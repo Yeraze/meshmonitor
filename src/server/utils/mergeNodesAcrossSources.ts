@@ -12,8 +12,9 @@
  *
  * The merge picks the newest row by `lastHeard` (then `updatedAt` as a
  * tiebreaker) and back-fills any empty fields from older rows. The two
- * user-intent booleans (`isFavorite`, `isIgnored`) are OR'd across sources
- * so a flag set in any source is honored in the unified view.
+ * user-intent booleans (`isFavorite`, `isIgnored`, `favoriteLocked`, and
+ * `hideFromMap`) are OR'd across sources so a flag set in any source is
+ * honored in the unified view.
  */
 import type { DbNode } from '../../db/types.js';
 

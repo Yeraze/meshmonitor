@@ -1823,6 +1823,20 @@ apiRouter.post('/nodes/:nodeId/hide-from-map', requirePermission('nodes', 'write
       return;
     }
 
+    // `allSources` is optional, but if present it must be a real boolean —
+    // otherwise a stray `"true"` string would silently fall through to the
+    // per-source path (the branch below tests `=== true`). Reject the
+    // ambiguity rather than guess.
+    if (allSources !== undefined && typeof allSources !== 'boolean') {
+      const errorResponse: ApiErrorResponse = {
+        error: 'allSources must be a boolean',
+        code: 'INVALID_PARAMETER_TYPE',
+        details: 'Expected boolean value for optional allSources parameter',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
+
     if (typeof hfmSourceId !== 'string' || hfmSourceId.length === 0) {
       const errorResponse: ApiErrorResponse = {
         error: 'sourceId is required',
