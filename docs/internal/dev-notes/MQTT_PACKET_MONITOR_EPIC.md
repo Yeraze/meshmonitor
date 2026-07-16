@@ -61,7 +61,7 @@ we want to keep every copy:
 
 ## Phases
 
-### Phase 1 — Backend capture + API  [ ]
+### Phase 1 — Backend capture + API  [x]  (PR #4127, merged 2026-07-15)
 
 Branch: `feature/mqtt-packet-monitor` (worktree `../meshmonitor-wt-mqtt-packetmon`).
 
@@ -125,3 +125,10 @@ PR merged.
   onto `decode-error`.
 - Grouped-list semantics: with a gateway filter active, `gatewayCount` counts only the
   selected gateways (filter is in the WHERE clause) — Phase 2 UI should label accordingly.
+- Cross-epic collision (2026-07-15): the geo-ignore epic (#4115) ran concurrently.
+  Its Phase 1 took migration 120 (ours renumbered to 121); its Phase 2 replaced the
+  'geo-filtered' ingest reason with 'ignored'/'geo-ignored' after our merge (briefly
+  breaking main), and its Phase 3 (#4132) landed the alignment fix — our hotfix PR
+  #4133 was closed as superseded. Ingest outcomes are now
+  ingested | encrypted | ignored | geo-ignored | unsupported-portnum | decode-error.
+- Phase 2 spec: docs/internal/dev-notes/MQTT_PACKET_MONITOR_PHASE2_SPEC.md.
