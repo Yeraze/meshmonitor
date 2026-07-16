@@ -43,6 +43,14 @@ export interface MapAnalysisConfig {
   layers: Record<LayerKey, LayerConfig>;
   /** Per-category marker visibility (issue #3546); missing key = visible. */
   nodeTypes: Record<NodeTypeCategory, boolean>;
+  /**
+   * Per-transport-class marker visibility (issue #4129) — mirrors the
+   * Dashboard/NodesTab "Show RF / UDP / MQTT" toggles. Each node is classified
+   * by its last packet's transport mechanism (see `utils/nodeTransport`), so
+   * both the built-in MQTT broker and an external `mqtt_bridge` source are
+   * covered as MQTT. All true = show everything (the default).
+   */
+  transports: { rf: boolean; udp: boolean; mqtt: boolean };
   sources: string[]; // empty = "all"
   timeSlider: {
     enabled: boolean;
@@ -77,6 +85,7 @@ export const DEFAULT_CONFIG: MapAnalysisConfig = {
     accuracyRegions: { enabled: false, lookbackHours: null },
   },
   nodeTypes: { ...ALL_NODE_TYPES_VISIBLE },
+  transports: { rf: true, udp: true, mqtt: true },
   sources: [],
   timeSlider: { enabled: false },
   inspectorOpen: true,
@@ -106,6 +115,7 @@ function load(): MapAnalysisConfig {
       ...parsed,
       layers: { ...DEFAULT_CONFIG.layers, ...(parsed.layers ?? {}) },
       nodeTypes: { ...ALL_NODE_TYPES_VISIBLE, ...(parsed.nodeTypes ?? {}) },
+      transports: { ...DEFAULT_CONFIG.transports, ...(parsed.transports ?? {}) },
       timeSlider: { ...DEFAULT_CONFIG.timeSlider, ...(parsed.timeSlider ?? {}) },
       selectedNodeIds: Array.isArray(parsed.selectedNodeIds) ? parsed.selectedNodeIds : [],
       followMode: typeof parsed.followMode === 'boolean' ? parsed.followMode : false,
@@ -165,6 +175,13 @@ export function useMapAnalysisConfig() {
     }));
   }, []);
 
+  const setTransportEnabled = useCallback((klass: 'rf' | 'udp' | 'mqtt', enabled: boolean) => {
+    setConfig((prev) => ({
+      ...prev,
+      transports: { ...prev.transports, [klass]: enabled },
+    }));
+  }, []);
+
   const setSources = useCallback((sources: string[]) => {
     setConfig((prev) => ({ ...prev, sources }));
   }, []);
@@ -197,6 +214,7 @@ export function useMapAnalysisConfig() {
     setLayerLookback,
     setLayerOptions,
     setNodeTypeEnabled,
+    setTransportEnabled,
     setSources,
     setSelectedNodeIds,
     setFollowMode,

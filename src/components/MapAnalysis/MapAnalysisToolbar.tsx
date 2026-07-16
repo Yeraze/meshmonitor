@@ -4,6 +4,7 @@ import { useDashboardSources } from '../../hooks/useDashboardData';
 import LayerToggleButton from './LayerToggleButton';
 import SourceMultiSelect from './SourceMultiSelect';
 import NodeTypeFilterControl from './NodeTypeFilterControl';
+import TransportFilterControl from './TransportFilterControl';
 import NodeSearchControl from './NodeSearchControl';
 import NodeMultiSelect from './NodeMultiSelect';
 import TracerouteControls from './TracerouteControls';
@@ -140,6 +141,7 @@ export default function MapAnalysisToolbar() {
         onChange={setSources}
       />
       <NodeTypeFilterControl />
+      <TransportFilterControl />
       <NodeSearchControl />
       <NodeMultiSelect nodes={nodeOptions} value={config.selectedNodeIds} onChange={setSelectedNodeIds} />
       <button

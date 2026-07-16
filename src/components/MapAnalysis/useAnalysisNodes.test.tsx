@@ -129,6 +129,39 @@ describe('useAnalysisNodes', () => {
     expect(first).toEqual(second);
   });
 
+  it('hides MQTT-transport nodes when Show MQTT is off, keeping RF nodes (#4129)', () => {
+    mockUseDashboardUnifiedData.mockReturnValue({
+      nodes: [
+        // No transportMechanism -> classified RF (stays).
+        { ...MOCK_NODES[0], nodeNum: 20, nodeId: '!00000014' },
+        // transportMechanism 5 == MQTT (dropped when Show MQTT is off).
+        { ...MOCK_NODES[0], nodeNum: 21, nodeId: '!00000015', latitude: 33, longitude: -93, transportMechanism: 5 },
+      ],
+    });
+    localStorage.setItem(
+      'mapAnalysis.config.v1',
+      JSON.stringify({ version: 1, transports: { rf: true, udp: true, mqtt: false } }),
+    );
+    const { result } = renderHook(() => useAnalysisNodes(), { wrapper });
+    const nums = result.current.map((n) => n.node.nodeNum).sort();
+    expect(nums).toEqual([20]);
+  });
+
+  it('keeps a node visible via its RF class even when MQTT is off (additive union, #4129)', () => {
+    mockUseDashboardUnifiedData.mockReturnValue({
+      nodes: [
+        // Seen via BOTH RF and MQTT across sources -> stays while RF is on.
+        { ...MOCK_NODES[0], nodeNum: 22, nodeId: '!00000016', transportMechanism: 5, transportClasses: ['rf', 'mqtt'] },
+      ],
+    });
+    localStorage.setItem(
+      'mapAnalysis.config.v1',
+      JSON.stringify({ version: 1, transports: { rf: true, udp: true, mqtt: false } }),
+    );
+    const { result } = renderHook(() => useAnalysisNodes(), { wrapper });
+    expect(result.current.map((n) => n.node.nodeNum)).toEqual([22]);
+  });
+
   it('applies the config.sources allow-list', () => {
     localStorage.setItem(
       'mapAnalysis.config.v1',
