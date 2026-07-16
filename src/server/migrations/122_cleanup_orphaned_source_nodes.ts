@@ -27,8 +27,9 @@ import { logger } from '../../utils/logger.js';
 
 const LABEL = 'Migration 122';
 
-// SQLite / MySQL: bare identifiers (both dialects use camelCase `sourceId`
-// unquoted for the `nodes` table, matching every other nodes.* migration).
+// SQLite: bare identifiers (camelCase `sourceId` unquoted for the `nodes`
+// table, matching every other nodes.* migration). SQLite has no cross-column
+// collation conflict, so the simple `NOT IN` subquery is fine here.
 const DELETE_SQL = `DELETE FROM nodes
   WHERE sourceId IS NOT NULL
     AND sourceId NOT IN (SELECT id FROM sources)`;
@@ -69,7 +70,19 @@ export async function runMigration122Postgres(client: any): Promise<void> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mysql pool is untyped in the migration runner (matches all sibling migrations)
 export async function runMigration122Mysql(pool: any): Promise<void> {
   logger.info(`${LABEL} (MySQL): deleting orphaned node rows...`);
-  const [res] = await pool.query(DELETE_SQL);
+  // `nodes.sourceId` and `sources.id` can carry different collations on
+  // MySQL 8 (e.g. utf8mb4_unicode_ci vs the server-default utf8mb4_0900_ai_ci),
+  // so a plain `sourceId NOT IN (SELECT id FROM sources)` throws
+  // "Illegal mix of collations" on the implicit `=`. Use a LEFT JOIN anti-join
+  // and force BOTH sides of the join to a common explicit collation so the
+  // comparison is well-defined regardless of each column's declared collation.
+  const [res] = await pool.query(
+    `DELETE n FROM nodes n
+     LEFT JOIN sources s
+       ON n.sourceId COLLATE utf8mb4_general_ci = s.id COLLATE utf8mb4_general_ci
+     WHERE n.sourceId IS NOT NULL
+       AND s.id IS NULL`,
+  );
   const affected = (res as { affectedRows?: number } | undefined)?.affectedRows ?? 0;
   if (affected > 0) {
     logger.info(`${LABEL} (MySQL): deleted ${affected} orphaned node row(s)`);
