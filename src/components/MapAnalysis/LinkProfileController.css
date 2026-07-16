@@ -1,0 +1,21 @@
+/* #4111 Phase 2: distance label for the Terrain Link Profile two-point
+   picker. Applied to the permanent Leaflet tooltip anchored at the picked
+   line's midpoint. Amber to stay visually distinct from the cyan Measure
+   tool label (`.measure-distance-label`) while the two share the same pill
+   styling convention. */
+.leaflet-tooltip.link-profile-label {
+  background: #0f172a;
+  color: #e2e8f0;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-weight: 600;
+  font-size: 0.8rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+}
+
+/* Center-direction tooltips have no callout arrow; hide any pseudo just in case. */
+.leaflet-tooltip.link-profile-label::before {
+  display: none;
+}

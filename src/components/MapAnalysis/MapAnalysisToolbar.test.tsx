@@ -11,9 +11,21 @@ import { MapAnalysisProvider } from './MapAnalysisContext';
 vi.mock('../../hooks/useDashboardData', () => ({
   useDashboardSources: () => ({ data: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] }),
   // The Polar Grid toggle resolves own-node positions via these hooks (#3971).
-  useDashboardUnifiedData: () => ({ nodes: [] }),
+  useDashboardUnifiedData: () => ({ nodes: unifiedNodes }),
   useSourceStatuses: () => new Map(),
 }));
+
+// #4111 Phase 2: Link Profile button gate. Mutable per-test so a single mock
+// factory can serve both the "feature off" and "feature on" cases.
+let elevationEnabled = true;
+vi.mock('../../hooks/useElevationEnabled', () => ({
+  useElevationEnabled: () => elevationEnabled,
+}));
+
+// Two positioned nodes so `analysisNodes.length >= 2` (both Measure and Link
+// Profile buttons require this to enable). Empty by default so the existing
+// "0 nodes" tests above keep exercising the disabled state.
+let unifiedNodes: Array<{ nodeNum: number; latitude: number; longitude: number }> = [];
 
 const wrapper = ({ children }: { children: React.ReactNode }) => {
   const qc = new QueryClient();
@@ -27,7 +39,11 @@ const wrapper = ({ children }: { children: React.ReactNode }) => {
 };
 
 describe('MapAnalysisToolbar', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    elevationEnabled = true;
+    unifiedNodes = [];
+  });
 
   it('renders all 7 layer toggles', () => {
     render(<MapAnalysisToolbar />, { wrapper });
@@ -75,5 +91,51 @@ describe('MapAnalysisToolbar', () => {
     const stored = JSON.parse(localStorage.getItem('mapAnalysis.config.v1')!);
     expect(stored.autoZoom).toBe(true);
     expect(stored.followMode).toBe(false);
+  });
+
+  // #4111 Phase 2: Terrain Link Profile toolbar button.
+  describe('Link Profile button (#4111)', () => {
+    it('is hidden entirely when elevationEnabled is false', () => {
+      elevationEnabled = false;
+      render(<MapAnalysisToolbar />, { wrapper });
+      expect(screen.queryByRole('button', { name: /link profile/i })).toBeNull();
+    });
+
+    it('is present but disabled when elevationEnabled is true with fewer than two positioned nodes', () => {
+      elevationEnabled = true;
+      unifiedNodes = [];
+      render(<MapAnalysisToolbar />, { wrapper });
+      const btn = screen.getByRole('button', { name: /link profile/i });
+      expect(btn).toBeInTheDocument();
+      expect(btn).toBeDisabled();
+    });
+
+    it('is enabled with two positioned nodes and toggles linkProfileMode, clearing measureMode', () => {
+      elevationEnabled = true;
+      unifiedNodes = [
+        { nodeNum: 1, latitude: 10, longitude: 20 },
+        { nodeNum: 2, latitude: 11, longitude: 21 },
+      ];
+      render(<MapAnalysisToolbar />, { wrapper });
+      const measureBtn = screen.getByRole('button', { name: 'Measure' });
+      const linkBtn = screen.getByRole('button', { name: 'Link Profile' });
+      expect(measureBtn).not.toBeDisabled();
+      expect(linkBtn).not.toBeDisabled();
+
+      // Turn Measure on first.
+      fireEvent.click(measureBtn);
+      expect(measureBtn).toHaveClass('active');
+      expect(linkBtn).not.toHaveClass('active');
+
+      // Turning Link Profile on must clear Measure (mutual exclusivity).
+      fireEvent.click(linkBtn);
+      expect(linkBtn).toHaveClass('active');
+      expect(measureBtn).not.toHaveClass('active');
+
+      // Turning Measure back on must clear Link Profile.
+      fireEvent.click(measureBtn);
+      expect(measureBtn).toHaveClass('active');
+      expect(linkBtn).not.toHaveClass('active');
+    });
   });
 });

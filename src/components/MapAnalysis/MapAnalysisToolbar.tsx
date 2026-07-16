@@ -11,6 +11,7 @@ import TracerouteControls from './TracerouteControls';
 import { useAnalysisNodes } from './useAnalysisNodes';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { useOwnNodePositions } from '../../hooks/useOwnNodePositions';
+import { useElevationEnabled } from '../../hooks/useElevationEnabled';
 import { LayerKey } from '../../hooks/useMapAnalysisConfig';
 import {
   usePositions,
@@ -49,9 +50,12 @@ export default function MapAnalysisToolbar() {
     setAutoZoom,
     measureMode,
     setMeasureMode,
+    linkProfileMode,
+    setLinkProfileMode,
     reset,
   } = useMapAnalysisCtx();
   const { data: sources = [] } = useDashboardSources();
+  const elevationEnabled = useElevationEnabled();
 
   // Node picker (issue #3788): deduped/sorted options built from the same
   // shared node hook the markers layer uses, so the picker never lists a node
@@ -172,7 +176,11 @@ export default function MapAnalysisToolbar() {
       <button
         type="button"
         className={`map-analysis-layer-btn ${measureMode ? 'active' : ''}`}
-        onClick={() => setMeasureMode(!measureMode)}
+        onClick={() => {
+          setMeasureMode(!measureMode);
+          // Mutually exclusive with the Link Profile picker (#4111 Phase 2).
+          if (!measureMode) setLinkProfileMode(false);
+        }}
         disabled={analysisNodes.length < 2}
         title={analysisNodes.length < 2
           ? 'Need at least two positioned nodes to measure'
@@ -180,6 +188,28 @@ export default function MapAnalysisToolbar() {
       >
         Measure
       </button>
+      {/* #4111 Phase 2: terrain link profile two-point picker. Hidden entirely
+          when the server has elevation sampling disabled (nothing to profile);
+          disabled until at least two positioned nodes exist for UX parity
+          with Measure, even though the controller itself also accepts an
+          arbitrary (non-node) map point as either endpoint. */}
+      {elevationEnabled && (
+        <button
+          type="button"
+          className={`map-analysis-layer-btn ${linkProfileMode ? 'active' : ''}`}
+          onClick={() => {
+            setLinkProfileMode(!linkProfileMode);
+            // Mutually exclusive with the Measure tool.
+            if (!linkProfileMode) setMeasureMode(false);
+          }}
+          disabled={analysisNodes.length < 2}
+          title={analysisNodes.length < 2
+            ? 'Need at least two positioned nodes for a link profile'
+            : 'Profile terrain, Fresnel clearance, and link budget between two points'}
+        >
+          Link Profile
+        </button>
+      )}
       {UNTIMED_LAYERS.map(({ key, label }) => (
         <LayerToggleButton
           key={key}
