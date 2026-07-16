@@ -12,6 +12,14 @@
  * is a node with a matching, radio-reporting source — the drawer then keeps
  * its documented 915 MHz / −129 dBm defaults. No network fetch of its own;
  * reuses the already-polled `useDashboardSources()` query.
+ *
+ * WP-2 follow-up (browser-validation fix): a unified-merged node's bare
+ * `sourceId` is whichever source most recently reported it (see
+ * `mergeNodeRecords` in `useDashboardData.ts`), which for a multi-source node
+ * is frequently a radio-less MQTT bridge. `LinkEndpoint.sourceIds` carries
+ * the node's FULL source membership (newest-first, primary `sourceId`
+ * first) — we walk endpoint A's full list, then endpoint B's, and seed from
+ * the first source in that order that actually reports a `radio.frequencyMhz`.
  */
 import { useMemo } from 'react';
 import { useDashboardSources } from './useDashboardData';
@@ -27,22 +35,38 @@ export interface AutoRadioDefaults {
 
 const EMPTY_DEFAULTS: AutoRadioDefaults = { freqMhz: null, rxSensitivityDbm: null, provenance: null };
 
+/** Every source id that reported this endpoint's node, primary first, truthy-filtered. Empty for non-node endpoints. */
+function candidateSourceIds(endpoint?: LinkEndpoint): string[] {
+  if (!endpoint?.isNode) return [];
+  const ids = endpoint.sourceIds ?? [endpoint.sourceId];
+  return ids.filter((id): id is string => !!id);
+}
+
 export function useAutoRadioDefaults(a?: LinkEndpoint, b?: LinkEndpoint): AutoRadioDefaults {
   const { data: sources } = useDashboardSources();
 
+  // Computed outside the memo (plain, cheap array ops) and reduced to stable
+  // string keys so the memo's dependency array doesn't churn on `a`/`b`
+  // object identity or need to read `a`/`b` directly (exhaustive-deps stays
+  // satisfied with primitive deps — no suppression).
+  const aIdsKey = candidateSourceIds(a).join(',');
+  const bIdsKey = candidateSourceIds(b).join(',');
+
   return useMemo((): AutoRadioDefaults => {
-    const candidateSourceId =
-      a?.isNode && a.sourceId ? a.sourceId : b?.isNode && b.sourceId ? b.sourceId : undefined;
-    if (!candidateSourceId || !sources) return EMPTY_DEFAULTS;
+    if (!sources) return EMPTY_DEFAULTS;
 
-    const source = sources.find(s => s.id === candidateSourceId);
-    const radio = source?.radio;
-    if (!source || !radio || radio.frequencyMhz == null) return EMPTY_DEFAULTS;
+    const orderedIds = [...(aIdsKey ? aIdsKey.split(',') : []), ...(bIdsKey ? bIdsKey.split(',') : [])];
+    for (const id of orderedIds) {
+      const source = sources.find(s => s.id === id);
+      const radio = source?.radio;
+      if (!source || !radio || radio.frequencyMhz == null) continue;
 
-    const rxSensitivityDbm =
-      radio.modemPreset != null ? rxSensitivityForModemPreset(radio.modemPreset) : null;
-    const provenance = `from ${source.name}${radio.regionName ? ` (${radio.regionName})` : ''}`;
+      const rxSensitivityDbm =
+        radio.modemPreset != null ? rxSensitivityForModemPreset(radio.modemPreset) : null;
+      const provenance = `from ${source.name}${radio.regionName ? ` (${radio.regionName})` : ''}`;
+      return { freqMhz: radio.frequencyMhz, rxSensitivityDbm, provenance };
+    }
 
-    return { freqMhz: radio.frequencyMhz, rxSensitivityDbm, provenance };
-  }, [sources, a?.sourceId, a?.isNode, b?.sourceId, b?.isNode]);
+    return EMPTY_DEFAULTS;
+  }, [sources, aIdsKey, bIdsKey]);
 }

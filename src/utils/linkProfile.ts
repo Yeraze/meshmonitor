@@ -23,6 +23,15 @@ export interface LinkEndpoint extends MeasurePoint {
   isNode: boolean;
   /** Source that reported the node endpoint, for per-source auto-frequency (#4111 P3). */
   sourceId?: string;
+  /**
+   * Every source that reported this node — newest-first, primary (`sourceId`)
+   * first (#4111 P3 WP-2 follow-up). A unified-merged node's bare `sourceId`
+   * is whichever source last reported it, which for a multi-source node is
+   * frequently an MQTT bridge with no local radio (`radio: null`). Auto-
+   * frequency detection must walk this full list to find a radio-reporting
+   * source instead of giving up on the (possibly radio-less) primary.
+   */
+  sourceIds?: string[];
   /** Node number of the picked node endpoint (#4111 P3). */
   nodeNum?: number;
   /** True when the node endpoint is a MeshCore node (#4111 P3). */

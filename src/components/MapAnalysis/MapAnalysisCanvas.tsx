@@ -63,9 +63,13 @@ export default function MapAnalysisCanvas() {
 
   // #4111 Phase 2 (WP-D) / Phase 3 (WP-2): Link Profile picker candidates —
   // built directly from `analysisNodes` (not `measurePoints`) so each
-  // candidate carries the radio identity (`sourceId`/`nodeNum`/`isMeshCore`)
-  // that `useAutoRadioDefaults` needs to resolve a per-source frequency/RX
-  // suggestion once picked.
+  // candidate carries the radio identity (`sourceId`/`sourceIds`/`nodeNum`/
+  // `isMeshCore`) that `useAutoRadioDefaults` needs to resolve a per-source
+  // frequency/RX suggestion once picked. `sourceIds` carries the FULL
+  // membership list (`node.sources`) — a unified-merged node's bare
+  // `sourceId` is just whichever source most recently reported it, which is
+  // frequently a radio-less MQTT bridge for a multi-source node (#4111 P3
+  // WP-2 follow-up).
   const linkEndpointCandidates: LinkEndpoint[] = useMemo(
     () =>
       analysisNodes.map((a) => ({
@@ -75,6 +79,7 @@ export default function MapAnalysisCanvas() {
         label: a.node.shortName ?? undefined,
         isNode: true,
         sourceId: a.node.sourceId,
+        sourceIds: a.node.sources?.map((s) => s.sourceId) ?? (a.node.sourceId ? [a.node.sourceId] : []),
         nodeNum: a.node.nodeNum,
         isMeshCore: a.node.isMeshCore ?? false,
       })),
