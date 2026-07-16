@@ -100,6 +100,30 @@ import {
   MqttPacketFilter,
 } from './mqttPacketFilter.js';
 
+/**
+ * First-drop-per-node tracker for ignore/geo-ignore noise suppression (see
+ * `ingestServiceEnvelope`). Bounded so a source with many rotating/spoofed
+ * node numbers can't leak memory; on overflow we simply clear and restart
+ * logging at info for the next drop per node — this is a best-effort
+ * logging aid, not correctness state.
+ */
+const droppedOnce = new Set<string>();
+const DROPPED_ONCE_MAX = 10_000;
+/** true the first time this (source,node) pair is dropped since process start.
+ *  Best-effort noise suppression, not correctness state — on overflow the set
+ *  is simply cleared and logging restarts. */
+export function firstDropForNode(sourceId: string, nodeNum: number): boolean {
+  const key = `${sourceId}:${nodeNum}`;
+  if (droppedOnce.has(key)) return false;
+  if (droppedOnce.size >= DROPPED_ONCE_MAX) droppedOnce.clear();
+  droppedOnce.add(key);
+  return true;
+}
+/** Exposed for tests to reset between cases. */
+export function __resetFirstDropCacheForTest(): void {
+  droppedOnce.clear();
+}
+
 export interface MqttIngestionInput {
   sourceId: string;
   envelope: ServiceEnvelopeShape;
@@ -514,6 +538,18 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
 export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<MqttIngestionResult> {
   const result = await ingestServiceEnvelopeInner(input);
   void mqttPacketLogService.logEnvelope(input.sourceId, input.envelope, result);
+  if (
+    (result.reason === 'ignored' || result.reason === 'geo-ignored') &&
+    typeof input.envelope.packet?.from === 'number'
+  ) {
+    const fromNum = input.envelope.packet.from >>> 0;
+    const nodeId = nodeNumToId(fromNum);
+    if (firstDropForNode(input.sourceId, fromNum)) {
+      logger.info(`MQTT ${input.sourceId}: dropping ${result.reason} node ${nodeId} (subsequent drops silenced)`);
+    } else {
+      logger.debug(`MQTT ${input.sourceId}: ${result.reason} drop for node ${nodeId}`);
+    }
+  }
   return result;
 }
 

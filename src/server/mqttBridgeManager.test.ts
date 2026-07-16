@@ -81,12 +81,33 @@ vi.mock('../services/database.js', () => ({
   },
 }));
 
+// mqttGeoSweepService is mocked at the module level (rather than let a real
+// sweep run) because `start()` now fires a sweep on every single test in
+// this file via `sourceManagerRegistry.addManager()`, and the database mock
+// above has no `nodes.getAllNodes` — a real sweep would throw on every test.
+// The dedicated "geo sweep integration" block below asserts on this mock's
+// call args instead of on sweep side effects.
+const runSweep = vi.fn(async () => ({
+  sourceId: 'unset',
+  timestamp: Date.now(),
+  scanned: 0,
+  ignored: 0,
+  purged: 0,
+  lifted: 0,
+  durationMs: 0,
+}));
+
+vi.mock('./services/mqttGeoSweepService.js', () => ({
+  mqttGeoSweepService: { runSweep: (...a: unknown[]) => runSweep(...a) },
+}));
+
 import { MqttBrokerManager } from './mqttBrokerManager.js';
 import { MqttBridgeManager } from './mqttBridgeManager.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import databaseService from '../services/database.js';
 import { PortNum } from './constants/meshtastic.js';
+import type { GeoSweepStats } from './services/mqttGeoSweepService.js';
 import { loadProtobufDefinitions, getProtobufRoot } from './protobufLoader.js';
 
 async function ephemeralPort(): Promise<number> {
@@ -239,6 +260,7 @@ describe('MqttBridgeManager', () => {
     isNodeIgnoredAsync.mockClear();
     getIgnoredNodesAsync.mockClear();
     ignoredRecords.clear();
+    runSweep.mockClear();
 
     upstreamPort = await ephemeralPort();
     localPort = await ephemeralPort();
@@ -1121,5 +1143,62 @@ describe('MqttBridgeManager', () => {
     expect(bridge.getStatus().uplinkOkToMqttDrops).toBe(0);
 
     await new Promise<void>((r) => localClient.end(true, {}, () => r()));
+  });
+
+  // ---------------------------------------------------------------------------
+  // Geo sweep integration (MQTT Geo-Ignore epic, Phase 3, WP2). WP1 built
+  // mqttGeoSweepService.runSweep in isolation; these tests cover the bridge
+  // manager's wiring — start() kicks off an add-only sweep, and getStatus()
+  // surfaces the most recent sweep's stats via the GeoSweepStatsSink duck
+  // type (recordGeoSweepStats). runSweep itself is mocked module-wide above
+  // (the database mock has no nodes.getAllNodes), so these assert on the
+  // call args / sink plumbing rather than sweep side effects.
+  // ---------------------------------------------------------------------------
+
+  it('#4115 Phase 3: getStatus().lastGeoSweep is null before any sweep completes', () => {
+    bridge = new MqttBridgeManager('geo-sweep-status', 'GeoSweepStatus', {
+      brokerSourceId: 'local-broker',
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: ['msh/#'],
+    });
+    expect(bridge.getStatus().lastGeoSweep).toBeNull();
+  });
+
+  it('#4115 Phase 3: start() runs an add-only geo sweep scoped to this source and its configured bbox', async () => {
+    const geo = { minLat: 43, maxLat: 45, minLng: -80, maxLng: -77 };
+    bridge = new MqttBridgeManager('geo-sweep-start', 'GeoSweepStart', {
+      brokerSourceId: 'local-broker',
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: ['msh/#'],
+      downlinkFilters: { geo },
+    });
+    await sourceManagerRegistry.addManager(bridge);
+
+    expect(runSweep).toHaveBeenCalledWith(
+      'geo-sweep-start',
+      geo,
+      expect.objectContaining({ lift: false }),
+    );
+  });
+
+  it('#4115 Phase 3: recordGeoSweepStats (the GeoSweepStatsSink callback) updates getStatus().lastGeoSweep', () => {
+    bridge = new MqttBridgeManager('geo-sweep-record', 'GeoSweepRecord', {
+      brokerSourceId: 'local-broker',
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: ['msh/#'],
+    });
+    const stats: GeoSweepStats = {
+      sourceId: 'geo-sweep-record',
+      timestamp: 123456,
+      scanned: 4,
+      ignored: 2,
+      purged: 2,
+      lifted: 0,
+      durationMs: 5,
+    };
+
+    bridge.recordGeoSweepStats(stats);
+
+    expect(bridge.getStatus().lastGeoSweep).toEqual(stats);
   });
 });

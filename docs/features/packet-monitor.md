@@ -6,6 +6,10 @@ The Packet Monitor is a diagnostic tool that displays raw Meshtastic packets as 
 MeshCore sources have their own equivalent — the **OTA Packet Monitor** accessible from the **Packets** tab in the MeshCore source page. It captures raw OTA frames from the companion's `LogRxData` push (route type, payload type, relay chain, SNR/RSSI, and a full hex dump). See the [MeshCore documentation](/features/meshcore#packet-monitor) for details.
 :::
 
+::: tip MQTT Packet Monitor
+MQTT sources (`mqtt_broker` and `mqtt_bridge`) also have their own gateway-aware equivalent — see [MQTT sources](#mqtt-sources) below.
+:::
+
 ![Packet Monitor](/images/features/packet-monitor.png)
 
 ## Accessing the Packet Monitor
@@ -117,6 +121,52 @@ A user with `packetmonitor:read`, `channel_0:read`, and `channel_1:read` (but no
 - Non-DM packets on channels 0 and 1
 - **Not** direct message text packets (they need `messages:read` for those)
 :::
+
+## MQTT sources
+
+MQTT sources (`mqtt_broker` and `mqtt_bridge`) render a different, gateway-aware
+Packet Monitor on the same tab. MQTT's defining trait is that a single mesh packet
+can be relayed to the broker by **multiple gateway nodes**, each publishing its own
+copy with its own reception time, RSSI, SNR, and hop counts — so the MQTT view is
+built around deduplicating those copies back into one packet per entry while still
+exposing every gateway's reception details.
+
+### Deduplicated packet list
+
+The main table shows each packet **once**, regardless of how many gateways relayed
+it, with a **Gateways** column giving the number of distinct gateways that reported
+it (and a Receptions count in the tooltip for the total number of copies received).
+Clicking a row opens a detail view listing **every gateway** that received the
+packet, with that gateway's specific time, RSSI, SNR, and computed hop count
+(`hopStart - hopLimit`) for that reception.
+
+### Gateway filter
+
+Use the **Gateways** dropdown in the filter panel to narrow the list to packets
+heard by one or more specific gateways (multi-select, with Select all / Clear
+affordances). Gateways are labeled with their resolved node name when the gateway
+is present in the node list for the source, otherwise by their hex gateway ID. When
+a gateway filter is active, the Gateways column and filter panel note that the
+count reflects **only the selected gateways**, not the packet's full gateway set.
+
+### Capture opt-in and retention
+
+Like the MeshCore OTA Packet Monitor, MQTT packet capture is **opt-in** — enable it
+from the banner shown when capture is off, or from the filter panel (requires
+`settings:write`). Capture is controlled by the `mqtt_packet_log_enabled` setting,
+with retention governed by `mqtt_packet_log_max_count` (default 5000 rows — higher
+than the other monitors because each row is one gateway reception, not one packet)
+and `mqtt_packet_log_max_age_hours` (default 24 hours).
+
+### Encrypted, ignored, and geo-ignored copies are still captured
+
+The MQTT capture records **every copy that reaches ingestion**, not just packets
+that were successfully decoded — including copies that could not be decrypted,
+copies dropped by geo-ignore filtering, and copies with an unsupported portnum.
+These are flagged with an outcome badge (`encrypted`, `ignored`, `geo-ignored`,
+`unsupported-portnum`, or `decode-error`) in place of the decoded packet type, so
+the monitor stays useful for diagnosing why a packet's contents aren't visible
+elsewhere in MeshMonitor.
 
 ## Use Cases
 

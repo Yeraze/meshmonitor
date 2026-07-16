@@ -50,7 +50,7 @@ export const mqttPacketLogSqlite = sqliteTable('mqtt_packet_log', {
   encrypted: integer('encrypted').notNull().default(0),
   /** 'server' when MeshMonitor decrypted an encrypted copy server-side, else null. */
   decryptedBy: text('decryptedBy'),
-  /** 'ingested' | 'encrypted' | 'geo-filtered' | 'unsupported-portnum' | 'decode-error'. */
+  /** 'ingested' | 'encrypted' | 'ignored' | 'geo-ignored' | 'unsupported-portnum' | 'decode-error'. */
   ingestOutcome: text('ingestOutcome').notNull(),
   payloadSize: integer('payloadSize'),
   /** Text preview (TEXT_MESSAGE_APP only in Phase 1) or null. */

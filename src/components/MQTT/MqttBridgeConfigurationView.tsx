@@ -21,6 +21,8 @@ import { logger } from '../../utils/logger';
 import { CollapsibleSection } from '../MeshCore/CollapsibleSection';
 import BBoxMapEditor, { type BBoxValue } from '../BBoxMapEditor';
 import { bboxToFormStrings } from '../../pages/DashboardPage.bboxSeed';
+import { useSourceStatuses } from '../../hooks/useDashboardData';
+import { formatRelativeTime } from '../../utils/datetime';
 import {
   buildBridgeConfig,
   formFromBridgeConfig,
@@ -30,6 +32,25 @@ import {
   type BridgeConfigForm,
   type UplinkTopicMode,
 } from './mqttBridgeConfig';
+
+/**
+ * Shape of the geo-filter-observability fields we read off GET
+ * /api/sources/:id/status (via useSourceStatuses). Deliberately a narrow,
+ * local slice — not an import of a server-side type — since the status
+ * endpoint's payload crosses the client/server boundary as plain JSON.
+ */
+interface GeoFilterSourceStatus {
+  downlinkDrops?: { geo?: number };
+  uplinkDrops?: { geo?: number };
+  lastGeoSweep?: {
+    timestamp: number;
+    scanned: number;
+    ignored: number;
+    purged: number;
+    lifted: number;
+    durationMs: number;
+  } | null;
+}
 
 interface SourceSummary {
   id: string;
@@ -66,6 +87,14 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
   const { hasPermission } = useAuth();
   const csrfFetch = useCsrfFetch();
   const canWrite = hasPermission('sources', 'write');
+
+  // Read-only geo-filter observability (Phase 4 WP2) — reuses the dashboard's
+  // 15s-polling status hook rather than opening a second polling loop.
+  const sourceStatuses = useSourceStatuses([sourceId]);
+  const geoStatus = sourceStatuses.get(sourceId) as GeoFilterSourceStatus | null | undefined;
+  const downlinkGeoDrops = geoStatus?.downlinkDrops?.geo ?? 0;
+  const uplinkGeoDrops = geoStatus?.uplinkDrops?.geo ?? 0;
+  const lastGeoSweep = geoStatus?.lastGeoSweep ?? null;
 
   const [form, setForm] = useState<BridgeConfigForm>(emptyBridgeForm());
   const [brokers, setBrokers] = useState<SourceSummary[]>([]);
@@ -441,6 +470,41 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
             </div>
           )}
         </fieldset>
+      </CollapsibleSection>
+
+      {/* --- Geo filter status (read-only observability, Phase 4 WP2) --- */}
+      <CollapsibleSection title={t('mqtt_bridge_config.geo_status.title', 'Geo filter status')}>
+        <div style={{ fontSize: 13, color: 'var(--ctp-text)' }}>
+          {t(
+            'mqtt_bridge_config.geo_status.dropped_summary',
+            'Out-of-bbox positions dropped — downlink: {{downlink}} · uplink: {{uplink}}',
+            { downlink: downlinkGeoDrops, uplink: uplinkGeoDrops },
+          )}
+        </div>
+        <span style={{ ...labelStyle, display: 'block', marginTop: 4 }}>
+          {t(
+            'mqtt_bridge_config.geo_status.dropped_note',
+            'Counts plaintext positions only — encrypted positions are evaluated after decryption and are not counted here.',
+          )}
+        </span>
+        <div style={{ fontSize: 13, color: 'var(--ctp-text)', marginTop: 12 }}>
+          {lastGeoSweep ? (
+            t(
+              'mqtt_bridge_config.geo_status.last_sweep',
+              'Last sweep {{time}}: scanned {{scanned}} · ignored {{ignored}} · purged {{purged}} · lifted {{lifted}} ({{duration}} ms)',
+              {
+                time: formatRelativeTime(lastGeoSweep.timestamp),
+                scanned: lastGeoSweep.scanned,
+                ignored: lastGeoSweep.ignored,
+                purged: lastGeoSweep.purged,
+                lifted: lastGeoSweep.lifted,
+                duration: lastGeoSweep.durationMs,
+              },
+            )
+          ) : (
+            t('mqtt_bridge_config.geo_status.no_sweep', 'No sweep has run yet.')
+          )}
+        </div>
       </CollapsibleSection>
 
       {/* --- Publish (uplink) filters — #3294. Channel multiselect is primary;
