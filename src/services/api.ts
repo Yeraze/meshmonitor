@@ -1,5 +1,6 @@
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
+import type { ElevationProfile } from '../types/elevation';
 import {
   sanitizeTextInput,
   validateChannel,
@@ -1537,6 +1538,25 @@ class ApiService {
     }>;
   }> {
     return this.get('/api/news/unread');
+  }
+
+  /**
+   * Terrain elevation profile between two coordinates (#4111). POST is
+   * CSRF-guarded; `post()` attaches the token automatically. Unwraps the
+   * `{ success, data }` envelope — `request()` returns the raw body, so
+   * `.data` must be read explicitly here (see the MQTT-monitor unwrap
+   * gotcha documented in CLAUDE.md).
+   */
+  async getElevationProfile(
+    pointA: { lat: number; lng: number },
+    pointB: { lat: number; lng: number },
+    samples?: number,
+  ): Promise<ElevationProfile> {
+    const res = await this.post<{ success: boolean; data: ElevationProfile }>(
+      '/api/elevation/profile',
+      samples != null ? { pointA, pointB, samples } : { pointA, pointB },
+    );
+    return res.data;
   }
 }
 
