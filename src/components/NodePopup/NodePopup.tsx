@@ -26,7 +26,7 @@ import type { DeviceInfo } from '../../types/device';
 import type { ResourceType } from '../../types/permission';
 import type { DbTraceroute } from '../../services/database';
 import { NodeCard } from '../map/popups/NodeCard';
-import { IdentityItems, SignalItems, LastHeardFooter, TracerouteBody, NodeActions, type NodeActionSpec } from '../map/popups/sections';
+import { IdentityItems, SignalItems, PositionItem, LastHeardFooter, TracerouteBody, NodeActions, type NodeActionSpec } from '../map/popups/sections';
 import { toNodeCardModel, useRecentTraceroute } from '../map/popups/nodeCardModel';
 
 interface NodePopupProps {
@@ -79,8 +79,16 @@ export const NodePopup: React.FC<NodePopupProps> = ({
 
   if (!nodePopup || !node) return null;
 
+  // Surface the node's reported coordinates as text (issue #4130) so users can
+  // eyeball a position (e.g. a bogus 0,0 fix) without opening a map. Reuses the
+  // shared popup-family PositionItem/altitude renderers.
+  const pos = node.position?.latitude != null && node.position?.longitude != null
+    ? { lat: node.position.latitude, lng: node.position.longitude }
+    : undefined;
+
   const model = toNodeCardModel(node, 'meshtastic', {
     nodeFallbackLabel: t('node_popup.node_fallback', { nodeNum: node.nodeNum }),
+    pos,
   });
 
   const hasTracerouteFeatures = hasPermission('traceroute', 'write') && !!onTraceroute;
@@ -142,7 +150,8 @@ export const NodePopup: React.FC<NodePopupProps> = ({
           <>
             <div className="node-popup-grid">
               <IdentityItems model={model} />
-              <SignalItems model={model} showPluggedIn snrDecimals={1} />
+              <SignalItems model={model} showAltitude showPluggedIn snrDecimals={1} />
+              {pos && <PositionItem position={pos} />}
             </div>
             <LastHeardFooter
               lastHeard={model.lastHeard}
