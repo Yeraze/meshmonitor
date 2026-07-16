@@ -2850,6 +2850,8 @@
   "node_details.uptime": "Uptime",
   "node_details.node_id": "Node ID",
   "node_details.role": "Role",
+  "node_details.position": "Position",
+  "node_details.elevation": "Elevation",
   "node_details.channel": "Channel",
   "node_details.firmware": "Firmware",
   "node_details.hops_away": "Hops Away",

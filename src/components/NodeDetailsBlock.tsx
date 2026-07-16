@@ -316,6 +316,27 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
           </div>
         )}
 
+        {/* Position (#4130) — lat/lon as plain text so a bad fix (e.g. 0,0) is
+            visible without opening a map. */}
+        {node.position?.latitude != null && node.position?.longitude != null && (
+          <div className="node-detail-card">
+            <div className="node-detail-label">{t('node_details.position', 'Position')}</div>
+            <div className="node-detail-value">
+              {node.position.latitude.toFixed(5)}, {node.position.longitude.toFixed(5)}
+            </div>
+          </div>
+        )}
+
+        {/* Elevation (#4130) */}
+        {node.position?.altitude != null && (
+          <div className="node-detail-card">
+            <div className="node-detail-label">{t('node_details.elevation', 'Elevation')}</div>
+            <div className="node-detail-value">
+              {node.position.altitude}m
+            </div>
+          </div>
+        )}
+
         {/* Channel */}
         {node.channel !== undefined && (
           <div className="node-detail-card">
