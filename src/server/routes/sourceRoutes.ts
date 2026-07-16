@@ -20,7 +20,7 @@ import {
   buildSourceDashboard,
 } from '../services/sourceDashboardData.js';
 import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from '../services/sourcePkiKeyStore.js';
-import { mqttGeoSweepService, type GeoSweepStats } from '../services/mqttGeoSweepService.js';
+import { mqttGeoSweepService, type GeoSweepStatsSink } from '../services/mqttGeoSweepService.js';
 import type { MqttFilterConfig } from '../mqttPacketFilter.js';
 
 const router = Router();
@@ -700,12 +700,18 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
           (existing.config as { downlinkFilters?: MqttFilterConfig }).downlinkFilters?.geo ?? null;
         const newGeo =
           (source.config as { downlinkFilters?: MqttFilterConfig }).downlinkFilters?.geo ?? null;
-        const geoChanged = JSON.stringify(oldGeo) !== JSON.stringify(newGeo);
+        // Field-by-field comparison — immune to JSON key-order differences
+        // between the stored config and the request body (a false "changed"
+        // would only cost a no-op sweep, but there's no reason to pay it).
+        const bboxField = (g: MqttFilterConfig['geo'] | null, k: 'minLat' | 'maxLat' | 'minLng' | 'maxLng') =>
+          typeof g?.[k] === 'number' ? g[k] : null;
+        const geoChanged = (['minLat', 'maxLat', 'minLng', 'maxLng'] as const).some(
+          (k) => bboxField(oldGeo, k) !== bboxField(newGeo, k),
+        );
         if (geoChanged) {
           const mgr = sourceManagerRegistry.getManager(source.id);
-          const sink = mgr && 'recordGeoSweepStats' in mgr
-            ? (mgr as unknown as { recordGeoSweepStats: (s: GeoSweepStats) => void })
-            : undefined;
+          const sink: GeoSweepStatsSink | undefined =
+            mgr && 'recordGeoSweepStats' in mgr ? (mgr as unknown as GeoSweepStatsSink) : undefined;
           // Connect-independent DB convergence with lift:true — the ONLY path
           // allowed to lift geo-ignores (it alone knows the bbox changed). Bbox
           // removal/any change readmits geo-ignored nodes; still-outside ones

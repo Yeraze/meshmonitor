@@ -5,7 +5,7 @@ import { MqttPacketFilter, type MqttFilterConfig } from '../mqttPacketFilter.js'
 
 export interface GeoSweepStats {
   sourceId: string;
-  timestamp: number; // Date.now() at completion
+  timestamp: number; // completion time; start time = timestamp - durationMs
   scanned: number; // position-bearing, not-already-ignored node rows evaluated
   ignored: number; // addGeoIgnoreAsync returned true (new geo rows)
   purged: number; // deleteNodeAsync calls that succeeded
@@ -120,6 +120,10 @@ class MqttGeoSweepService {
       const nodeNum = Number(node.nodeNum); // BIGINT coercion (PostgreSQL/MySQL)
 
       // Already-ignored nodes (geo or manual) are skipped — nothing to do.
+      // In-memory cache lookup only (primed at server boot); on a cold cache
+      // an already-ignored node falls through harmlessly: addGeoIgnoreAsync
+      // is insert-if-absent and returns false, so no re-purge — the miss only
+      // inflates `scanned`.
       if (databaseService.ignoredNodes.isIgnoredCached(nodeNum, sourceId)) continue;
 
       // Effective position honors a user-set override (issue #2847), same as
