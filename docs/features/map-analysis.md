@@ -157,6 +157,73 @@ Tints node markers by hop count from each source's local node. Adjacent (0-hop) 
 
 Drops a colored dot at each position fix, colored by the SNR recorded for that packet. Distinct from trails: trails show *where* a node went, SNR overlay shows *how well it was heard* at each point.
 
+## Terrain Link Profile
+
+The **Link Profile** tool answers a different question than the layers above: *would a link between these two specific points actually close?* Pick two points — nodes or arbitrary spots on the map — and it fetches a terrain elevation profile between them, renders a line-of-sight/Fresnel-zone chart, and computes a full RF link budget with a clear/marginal/obstructed verdict. It's comparable to [site.meshtastic.org](https://site.meshtastic.org)'s link-planning view, but source-agnostic (works for both Meshtastic and MeshCore nodes) and driven by your own map data.
+
+### Availability
+
+The **Link Profile** toolbar button only appears when your server administrator has enabled terrain elevation (see [Elevation / Terrain settings](/features/settings#elevation-terrain-link-profile)). It's disabled (grayed out) until at least two positioned nodes exist on the map, for the same reason the Measure tool is — though the picker itself accepts arbitrary map points too, once it's active.
+
+### Picking two points
+
+1. Click **Link Profile** in the toolbar. The cursor becomes a crosshair and any active Measure session is cancelled (the two tools are mutually exclusive).
+2. Click a point on the map:
+   - Clicking within about 24 pixels of a node marker **snaps** to that node — its live position, source, and radio identity are captured for auto-frequency detection (see below).
+   - Clicking anywhere else drops an **arbitrary point** at the exact clicked coordinates, with a hollow marker ring instead of a filled one.
+3. Click a second point the same way. The two points are connected by a line on the map and the profile drawer slides up from the bottom.
+4. Clicking a third time restarts the pick from a new first point (A), so you can explore several links without reopening the tool.
+5. Press **Escape** at any point to clear the current pick and exit the tool.
+
+### Reading the drawer
+
+The bottom drawer has two halves:
+
+- **Chart** — a terrain profile plotted against distance: a filled brown area for the DEM terrain (adjusted for Earth curvature), a green line-of-sight (LOS) line between the two antenna tops (dashed where the path is obstructed), and an amber dashed line marking the lower bound of the first Fresnel zone. The tightest clearance point along the path is marked with a colored dot matching the verdict.
+- **Stats + inputs** — a verdict pill (**Clear** / **Marginal** / **Obstructed**) with the computed link margin in dB, a stat list (distance, frequency, FSPL, RX power, margin, Fresnel clearance %), and the editable link-budget inputs described below.
+
+The **verdict** is computed from Fresnel-zone clearance along the path:
+
+| Verdict | Meaning |
+| --- | --- |
+| **Clear** | At least 60% of the first Fresnel zone is unobstructed everywhere along the path. |
+| **Marginal** | Line of sight is unobstructed, but less than 60% of the first Fresnel zone is clear at the tightest point. |
+| **Obstructed** | Terrain (plus Earth-curvature bulge) crosses the direct line-of-sight line somewhere along the path. |
+
+Once a verdict is available, the connecting line on the map itself recolors to match (green/amber/red) — so you can see the result without having the drawer's chart in view. It reverts to a neutral amber while no verdict is available yet (still loading, or the pair was just cleared).
+
+### Link budget inputs
+
+Nine inputs drive the analysis; editing any of them recomputes instantly with no refetch (only the terrain samples require a network round-trip — everything else is client-side math):
+
+| Input | Default | Notes |
+| --- | --- | --- |
+| Frequency | 915 MHz | Auto-fills from the picked node's radio config when available (see below) |
+| Antenna height AGL (A and B) | 2 m | Above-ground-level height at each endpoint; node GPS altitude is intentionally **not** used (see [Limitations](#limitations-v1)) |
+| TX power | 20 dBm | |
+| TX / RX antenna gain | 2.15 dBi each | Standard dipole reference gain |
+| Cable loss | 0 dB | |
+| RX sensitivity | −129 dBm | Auto-fills from the picked node's modem preset when known (see below) |
+| Earth k-factor | 4/3 | Standard atmospheric-refraction curvature factor |
+
+**Per-source auto-detection:** when one of your picked points snapped to a node, the tool looks up that node's source and auto-fills:
+
+- **Frequency** — the source's configured center frequency (derived from the Meshtastic region + channel + modem preset, or the MeshCore radio's configured frequency), shown with a small provenance hint like *"from Home Base (US)"* under the field.
+- **RX sensitivity** — for Meshtastic sources with a known modem preset, computed from the standard LoRa link-budget formula (`S = -174 + 10·log10(BW) + noise figure + SNR floor for the preset's spreading factor`) rather than a hardcoded table.
+
+If both points are arbitrary (non-node) locations, or the source doesn't expose radio config, the fields keep their 915 MHz / −129 dBm defaults. **Manual edits always win** — once you type into a field, auto-fill stops touching it for that endpoint pair. Picking a *new* pair resets that and re-seeds from the new pair's source, if any.
+
+### Graceful degradation
+
+- **Open water or a DEM gap** — if every sample along the path has no elevation data, the drawer shows "No terrain data for this path" instead of a broken chart.
+- **Same point picked twice, a path over 500 km, or invalid coordinates** — the drawer shows a plain-language message instead of a raw error.
+- **Elevation disabled server-side** — the drawer explains that terrain elevation is turned off, rather than failing silently.
+- **Antimeridian-crossing links** (e.g. one endpoint near +179° longitude, the other near −179°) draw the short way across the map instead of wrapping all the way around.
+
+### Limitations
+
+The terrain data (SRTM-derived, roughly 90 m per pixel) is a bare-earth elevation model — it does **not** account for buildings, trees, or other vegetation, so a "Clear" verdict is a first-pass estimate of geometric line-of-sight, not a guarantee of a working RF link. Node GPS altitude is not factored into antenna height; only the DEM terrain height plus your entered AGL value is used.
+
 ## Time slider
 
 The slider appears bottom-center when enabled. It has two handles defining a `[start, end]` window inside the loaded lookback range. Movement is purely client-side — no refetch — and applies only to time-bounded layers (trails, heatmap, SNR overlay, traceroutes, neighbors). Markers, rings, and hop shading always reflect the current state.
