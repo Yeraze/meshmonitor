@@ -22,7 +22,7 @@ import NodesTab from './components/NodesTab';
 import MessagesTab from './components/MessagesTab';
 import ChannelsTab from './components/ChannelsTab';
 import PacketMonitorPanel from './components/PacketMonitorPanel';
-import MqttPacketMonitorView from './components/Mqtt/MqttPacketMonitorView';
+import MqttPacketMonitorView from './components/MQTT/MqttPacketMonitorView';
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection';
 import { AutomationTokenReference } from './components/AutomationTokenReference';
 import { buildMeshtasticTokenGroups } from './components/meshtasticAutomationTokens';
