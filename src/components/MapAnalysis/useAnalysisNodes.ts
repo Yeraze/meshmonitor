@@ -7,6 +7,7 @@ import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { resolveNodeLatLng, type MaybePositionedNode } from './nodePositionUtil';
 import { nodeMatchesSearch } from './nodeSearch';
 import { getNodeTypeCategory } from '../../utils/nodeTypeCategory';
+import { nodePassesTransportFilter } from '../../utils/nodeTransport';
 import { unifiedNodeKey } from '../../utils/nodeIdentity';
 import { shouldOffsetForPrecision, offsetWithinPrecisionCell } from '../../utils/precisionOffset';
 import type { NodeSourceRef } from '../Dashboard/DashboardNodePopup';
@@ -37,6 +38,12 @@ export interface NodeRecord extends MaybePositionedNode {
   positionPrecisionBits?: number | null;
   /** True when the position is a user override — excluded from the #4016 offset. */
   positionIsOverride?: boolean | null;
+  /** Most-recent transport mechanism; drives the #4129 Show RF/UDP/MQTT filter. */
+  transportMechanism?: number | null;
+  /** Legacy MQTT flag honored when `transportMechanism` is missing (#4129). */
+  viaMqtt?: boolean | null;
+  /** Union of transport classes across sources (unified merge); makes the #4129 filter additive. */
+  transportClasses?: Array<'rf' | 'udp' | 'mqtt'> | null;
 }
 
 export interface AnalysisNode {
@@ -81,6 +88,18 @@ export function useAnalysisNodes(): AnalysisNode[] {
           if (!nodeMatchesSearch(node, nodeFilter)) return false;
           // Node-type filter (issue #3546): hide categories the user toggled off.
           if (config.nodeTypes[getNodeTypeCategory(node)] === false) return false;
+          // Transport filter (issue #4129): Show RF / UDP / MQTT. Additive across
+          // sources via the same per-node classifier the Dashboard/NodesTab maps
+          // use, so an mqtt_bridge-relayed node is covered as MQTT.
+          if (
+            !nodePassesTransportFilter(node, {
+              showRfNodes: config.transports.rf,
+              showUdpNodes: config.transports.udp,
+              showMqttNodes: config.transports.mqtt,
+            })
+          ) {
+            return false;
+          }
           if (config.sources.length === 0) return true;
           // Source filter: a unified-merged node can be reported by several sources
           // (node.sources). It must stay visible if ANY of those is enabled — not
@@ -105,5 +124,5 @@ export function useAnalysisNodes(): AnalysisNode[] {
         return { node, latLng: finalLatLng, key };
       })
       .filter((entry): entry is AnalysisNode => entry.key !== null);
-  }, [nodes, nodeFilter, config.nodeTypes, config.sources]);
+  }, [nodes, nodeFilter, config.nodeTypes, config.transports, config.sources]);
 }
