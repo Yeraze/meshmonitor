@@ -5990,13 +5990,13 @@ class MeshtasticManager implements ISourceManager {
   /**
    * Validate position coordinates.
    *
-   * When the fix is position-precision obscured (a Meshtastic POSITION_APP fix
-   * carries `precision_bits`), pass `precisionBits` so a re-centered (0,0) fix —
-   * which arrives as `(offset, offset)` and would otherwise clear the Null Island
-   * box — is still rejected (issue #3763 follow-up). Callers without precision
-   * (e.g. the NodeInfo position exchange) omit it, preserving prior behavior.
+   * When the fix is position-precision obscured (both POSITION_APP and NodeInfo
+   * embedded positions carry `precision_bits`), pass `precisionBits` so a
+   * re-centered (0,0) fix — which arrives as `(offset, offset)` and would
+   * otherwise clear the Null Island box — is still rejected (issue #3763
+   * follow-up). Callers without precision omit it, preserving prior behavior.
    */
-  private isValidPosition(latitude: number, longitude: number, precisionBits?: number): boolean {
+  private isValidPosition(latitude: number, longitude: number, precisionBits?: number | null): boolean {
     // Check for valid numbers
     if (typeof latitude !== 'number' || typeof longitude !== 'number') {
       return false;
@@ -8056,15 +8056,20 @@ class MeshtasticManager implements ISourceManager {
           nodeInfo.position.longitudeI
         );
 
+        // Extract position precision if present in NodeInfo's embedded Position.
+        // The protobuf decoder normalizes a missing precision_bits field to 0, so we
+        // treat 0 as "absent" here and leave any existing positionPrecisionBits intact.
+        // We must NOT fall back to the local channel's positionPrecision — that record
+        // reflects this MeshMonitor instance's channel config, not the remote node's,
+        // and was causing every node's accuracy box to track the local node (issue #3030).
+        // Read before validation so the Null Island check can back out the firmware's
+        // precision re-centering offset for an obscured (0,0) fix (issue #3763), matching
+        // the POSITION_APP path — otherwise a true-(0,0) node that only sends NodeInfo
+        // (no POSITION_APP) would slip past the box as (offset, offset).
+        const precisionBits = nodeInfo.position.precisionBits ?? nodeInfo.position.precision_bits;
+
         // Validate coordinates before saving
-        if (this.isValidPosition(coords.latitude, coords.longitude)) {
-          // Extract position precision if present in NodeInfo's embedded Position.
-          // The protobuf decoder normalizes a missing precision_bits field to 0, so we
-          // treat 0 as "absent" here and leave any existing positionPrecisionBits intact.
-          // We must NOT fall back to the local channel's positionPrecision — that record
-          // reflects this MeshMonitor instance's channel config, not the remote node's,
-          // and was causing every node's accuracy box to track the local node (issue #3030).
-          const precisionBits = nodeInfo.position.precisionBits ?? nodeInfo.position.precision_bits;
+        if (this.isValidPosition(coords.latitude, coords.longitude, precisionBits)) {
           const channelIndex = nodeInfo.channel !== undefined ? nodeInfo.channel : 0;
 
           // Guard against precision downgrade (issue #3513): only update lat/lon from NodeInfo

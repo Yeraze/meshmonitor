@@ -145,6 +145,15 @@ describe('isNullIslandWithPrecision', () => {
     expect(isNullIslandWithPrecision(0.0131072, 0.0131072, 0)).toBe(false);  // disabled, no offset
   });
 
+  it('does not flag when only one axis sits at the offset (defensive — firmware cannot emit this)', () => {
+    // Meshtastic applies the same precision to both axes, so an asymmetric offset
+    // can't occur on the wire; asserting it documents that a single near-origin axis
+    // is not Null Island (the other axis is a real, far-from-zero coordinate).
+    const offset14 = precisionOffsetDegrees(14);
+    expect(isNullIslandWithPrecision(offset14, 20, 14)).toBe(false);
+    expect(isNullIslandWithPrecision(20, offset14, 14)).toBe(false);
+  });
+
   it('never flags a real position after backing out the (small) offset', () => {
     expect(isNullIslandWithPrecision(37.7749, -122.4194, 14)).toBe(false); // San Francisco
     expect(isNullIslandWithPrecision(51.4778, 0.0001, 14)).toBe(false);    // Greenwich, real lat

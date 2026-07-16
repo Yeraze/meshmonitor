@@ -73,6 +73,10 @@ export function isNullIslandWithPrecision(
 ): boolean {
   if (latitude == null || longitude == null) return false;
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+  // The firmware masks/re-centers latitudeI and longitudeI independently with the
+  // SAME precisionBits, so both axes carry the identical offset — subtract it from
+  // each. (An asymmetric offset can't occur on the wire; if it somehow did, only a
+  // coordinate near BOTH recovered origins would flag, which is the intended box.)
   const offset = precisionOffsetDegrees(precisionBits);
   return isNullIsland(latitude - offset, longitude - offset);
 }
