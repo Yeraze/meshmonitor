@@ -822,6 +822,63 @@ describe('ApiService BASE_URL Support', () => {
     });
   });
 
+  describe('Elevation API Methods (#4111 P3 WP-1)', () => {
+    beforeEach(() => {
+      (apiService as any).configFetched = true;
+      (apiService as any).baseUrl = '';
+    });
+
+    it('testElevationSource POSTs { url } and returns the unwrapped .data envelope', async () => {
+      const testResult = {
+        success: true,
+        detectedType: 'terrarium',
+        sampleElevation: 1608.5,
+        latencyMs: 123,
+      };
+      mockFetch.mockResolvedValue(createMockResponse({ success: true, data: testResult }));
+
+      const result = await apiService.testElevationSource('https://example.com/{z}/{x}/{y}.png');
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/elevation/test', expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ url: 'https://example.com/{z}/{x}/{y}.png' }),
+      }));
+      // Unwrapped: the caller receives the inner TestResult, not the envelope.
+      expect(result).toEqual(testResult);
+    });
+
+    it('testElevationSource includes lat/lng when a probe point is given', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({
+        success: true,
+        data: { success: true, detectedType: 'json', sampleElevation: 10, latencyMs: 50 },
+      }));
+
+      await apiService.testElevationSource('https://api.example.com/v1/dem', { lat: 40, lng: -105 });
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/elevation/test', expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ url: 'https://api.example.com/v1/dem', lat: 40, lng: -105 }),
+      }));
+    });
+
+    it('testElevationSource returns a success:false probe outcome without throwing', async () => {
+      const failedProbe = {
+        success: false,
+        detectedType: 'json',
+        sampleElevation: null,
+        latencyMs: 45,
+        httpStatus: 503,
+        error: 'Upstream unavailable',
+      };
+      mockFetch.mockResolvedValue(createMockResponse({ success: true, data: failedProbe }));
+
+      const result = await apiService.testElevationSource('https://down.example.com/dem');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Upstream unavailable');
+    });
+  });
+
   describe('ApiError handling', () => {
     const createErrorResponse = (status: number, body: any, headers: Record<string, string> = {}) => ({
       ok: false,
