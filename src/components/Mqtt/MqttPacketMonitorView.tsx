@@ -16,17 +16,19 @@
  * must be unwrapped via `body.data` (§2 of the spec — "the envelope
  * gotcha").
  *
- * This is WP1 (types + view shell + App integration): the gateway
- * multi-select dropdown (WP2) and the packet detail modal (WP3) are stubbed
- * here and land in follow-up work packages.
+ * WP1 shipped the toolbar/banner/table/polling/settings shell. WP2 adds the
+ * gateway multi-select filter (§4 of the spec). The packet detail modal
+ * (WP3) mounts near the end of the JSX.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Filter, Trash2, Pause, Play, RefreshCw } from 'lucide-react';
+import { Filter, Trash2, Pause, Play, RefreshCw, ChevronDown } from 'lucide-react';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNodes } from '../../hooks/useServerData';
 import type { MqttGroupedPacket, MqttGateway } from './mqttPacketTypes';
+import MqttPacketDetailModal from './MqttPacketDetailModal';
 import './MqttPacketMonitor.css';
 
 interface MqttPacketMonitorViewProps {
@@ -90,10 +92,11 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
 
   const [packets, setPackets] = useState<MqttGroupedPacket[]>([]);
   const [total, setTotal] = useState(0);
-  const [, setGateways] = useState<MqttGateway[]>([]);
+  const [gateways, setGateways] = useState<MqttGateway[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
+  const [gatewayDropdownOpen, setGatewayDropdownOpen] = useState(false);
 
   const [showFilters, setShowFilters] = useState(() =>
     safeJsonParse(localStorage.getItem('mqttPacketMonitor.showFilters'), false)
@@ -119,6 +122,19 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
   pausedRef.current = paused;
 
   const hasLoadedOnceRef = useRef(false);
+  const gatewayDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close the gateway dropdown when clicking outside it.
+  useEffect(() => {
+    if (!gatewayDropdownOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (gatewayDropdownRef.current && !gatewayDropdownRef.current.contains(event.target as Node)) {
+        setGatewayDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [gatewayDropdownOpen]);
 
   // Persist filter/UI state to localStorage.
   useEffect(() => {
@@ -169,9 +185,11 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json();
       const payload = body.data ?? body;
-      setGateways(Array.isArray(payload.gateways) ? payload.gateways : []);
+      const list: MqttGateway[] = Array.isArray(payload.gateways) ? payload.gateways : [];
+      list.sort((a, b) => b.receptionCount - a.receptionCount);
+      setGateways(list);
     } catch {
-      // Non-fatal: the gateway filter (WP2) simply stays empty.
+      // Non-fatal: the gateway filter simply stays empty.
       setGateways([]);
     }
   }, [csrfFetch, prefix]);
@@ -231,6 +249,20 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
       setError(err instanceof Error ? err.message : 'Failed to clear packets');
     }
   }, [csrfFetch, prefix, t]);
+
+  const toggleGateway = useCallback((gatewayId: string, checked: boolean) => {
+    setSelectedGateways(prev => (
+      checked ? [...prev, gatewayId] : prev.filter(id => id !== gatewayId)
+    ));
+  }, []);
+
+  const selectAllGateways = useCallback(() => {
+    setSelectedGateways(gateways.map(g => g.gatewayId));
+  }, [gateways]);
+
+  const clearGatewaySelection = useCallback(() => {
+    setSelectedGateways([]);
+  }, []);
 
   const renderFrom = useCallback((p: MqttGroupedPacket): string => {
     return nodeName(p.fromNode) ?? p.fromNodeId ?? '—';
@@ -298,7 +330,45 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
 
       {showFilters && (
         <div className="mqpm-filters">
-          {/* TODO(WP2): gateway multi-select dropdown mounts here (mqpm-gateway-dropdown). */}
+          <div className="mqpm-gateway-dropdown" ref={gatewayDropdownRef}>
+            <button
+              type="button"
+              className={`mqpm-btn ${selectedGateways.length > 0 ? 'active' : ''}`}
+              onClick={() => setGatewayDropdownOpen(o => !o)}
+            >
+              {t('mqtt.packets.gateways', 'Gateways')}
+              {' '}
+              ({selectedGateways.length > 0 ? selectedGateways.length : t('common.all', 'all')})
+              <ChevronDown size={12} />
+            </button>
+            {gatewayDropdownOpen && (
+              <div className="mqpm-gateway-dropdown-panel">
+                <div className="mqpm-gateway-dropdown-actions">
+                  <button type="button" onClick={selectAllGateways}>
+                    {t('mqtt.packets.selectAll', 'Select all')}
+                  </button>
+                  <button type="button" onClick={clearGatewaySelection}>
+                    {t('mqtt.packets.clearSelection', 'Clear')}
+                  </button>
+                </div>
+                {gateways.length === 0 ? (
+                  <div className="mqpm-gateway-option">{t('common.none', 'None')}</div>
+                ) : (
+                  gateways.map(gw => (
+                    <label key={gw.gatewayId} className="mqpm-gateway-option">
+                      <input
+                        type="checkbox"
+                        checked={selectedGateways.includes(gw.gatewayId)}
+                        onChange={e => toggleGateway(gw.gatewayId, e.target.checked)}
+                      />
+                      <span>{nodeName(gw.gatewayNodeNum) ?? gw.gatewayId}</span>
+                      <span className="mqpm-gateway-option-count">{gw.receptionCount}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
           <label>
             {t('mqtt.packets.encrypted', 'Encrypted')}
             <select
@@ -319,16 +389,9 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
               onChange={e => setPortnumFilter(e.target.value === '' ? '' : Number(e.target.value))}
             />
           </label>
-          {/* TODO(WP2): mqpm-gateway-dropdown multi-select mounts here; for now
-              expose a minimal clear affordance so selectedGateways (persisted,
-              wired into `load()`) can be reset without editing localStorage. */}
           {selectedGateways.length > 0 && (
             <div className="mqpm-filter-note">
               {t('mqtt.packets.gatewayCountFiltered', 'Gateway counts reflect the selected gateways only.')}
-              {' '}
-              <button className="mqpm-btn" onClick={() => setSelectedGateways([])}>
-                {t('mqtt.packets.clearSelection', 'Clear')}
-              </button>
             </div>
           )}
           {canWriteSettings && (
@@ -385,7 +448,13 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
                 <th>{t('mqtt.packets.to', 'To')}</th>
                 <th>{t('mqtt.packets.type', 'Type')}</th>
                 <th>{t('mqtt.packets.channel', 'Channel')}</th>
-                <th>{t('mqtt.packets.gateways', 'Gateways')}</th>
+                <th
+                  title={selectedGateways.length > 0
+                    ? t('mqtt.packets.gatewayCountFiltered', 'Gateway counts reflect the selected gateways only.')
+                    : undefined}
+                >
+                  {t('mqtt.packets.gatewayCount', 'Gateways')}
+                </th>
                 <th>{t('mqtt.packets.size', 'Size')}</th>
                 <th>{t('mqtt.packets.preview', 'Preview')}</th>
               </tr>
@@ -423,8 +492,16 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
         )}
       </div>
 
-      {/* WP3: MqttPacketDetailModal mounts here (createPortal on selectedPacket). */}
-      {selectedPacket && null}
+      {selectedPacket && createPortal(
+        <MqttPacketDetailModal
+          packet={selectedPacket}
+          prefix={prefix}
+          csrfFetch={csrfFetch}
+          nodeName={nodeName}
+          onClose={() => setSelectedPacket(null)}
+        />,
+        document.body
+      )}
     </div>
   );
 };
