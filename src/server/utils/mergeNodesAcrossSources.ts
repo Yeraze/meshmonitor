@@ -12,8 +12,9 @@
  *
  * The merge picks the newest row by `lastHeard` (then `updatedAt` as a
  * tiebreaker) and back-fills any empty fields from older rows. The two
- * user-intent booleans (`isFavorite`, `isIgnored`) are OR'd across sources
- * so a flag set in any source is honored in the unified view.
+ * user-intent booleans (`isFavorite`, `isIgnored`, `favoriteLocked`, and
+ * `hideFromMap`) are OR'd across sources so a flag set in any source is
+ * honored in the unified view.
  */
 import type { DbNode } from '../../db/types.js';
 
@@ -57,6 +58,12 @@ export function mergeNodesAcrossSources(rows: DbNode[]): DbNode[] {
     winner.isFavorite = group.some((n) => n.isFavorite === true);
     winner.isIgnored = group.some((n) => n.isIgnored === true);
     winner.favoriteLocked = group.some((n) => n.favoriteLocked === true);
+    // #4137: hidden-anywhere -> hidden in the unified view (matches
+    // isFavorite/isIgnored semantics above), instead of winner-takes-all by
+    // lastHeard. This alone doesn't fully fix stale hides from a since-removed
+    // source's orphaned rows — see the all-sources toggle (setNodeHideFromMapAllSourcesAsync)
+    // and the source-delete cleanup (purgeAllNodesAsync + migration 122) for that.
+    winner.hideFromMap = group.some((n) => n.hideFromMap === true);
 
     const maxLastHeard = group.reduce(
       (max, n) => Math.max(max, n.lastHeard ?? 0),

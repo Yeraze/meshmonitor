@@ -556,6 +556,37 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * Set `hideFromMap` on EVERY row for this nodeNum, regardless of sourceId
+   * (issue #4137). The per-source setNodeHideFromMapAsync (database.ts) only
+   * flips the row for one sourceId; since mergeNodesAcrossSources now ORs
+   * hideFromMap across sources (hidden-anywhere -> hidden), un-hiding from a
+   * unified/cross-source view has to clear every source's row, or a stale
+   * `true` on another source's row keeps the node hidden forever.
+   *
+   * Returns the number of rows affected (cheap: driven by a row count select,
+   * not a database-specific affected-rows API — those differ across
+   * SQLite/PostgreSQL/MySQL drivers).
+   */
+  async setNodeHideFromMapAllSourcesAsync(nodeNum: number, hidden: boolean): Promise<number> {
+    const { nodes } = this.tables;
+
+    const existing = await this.db
+      .select({ sourceId: nodes.sourceId })
+      .from(nodes)
+      .where(eq(nodes.nodeNum, nodeNum));
+    const affected = existing.length;
+
+    if (affected > 0) {
+      // Reuses updateNode's cross-source update + cache sync (avoids a second
+      // `.set(... as any)` site — Drizzle's update-builder typing needs the
+      // cast, and updateNode already carries it).
+      await this.updateNode(nodeNum, { hideFromMap: hidden, updatedAt: this.now() });
+    }
+
+    return affected;
+  }
+
+  /**
    * Update the lastMessageHops for a node, scoped per-source.
    *
    * After migration 029 (nodeNum, sourceId) is the composite PK, so packet

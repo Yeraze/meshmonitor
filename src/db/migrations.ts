@@ -136,6 +136,7 @@ import { migration as dropLegacyAuthProviderCheckMigration, runMigration118Postg
 import { migration as themeTilesetsMigration, runMigration119Postgres as runThemeTilesetsPostgres, runMigration119Mysql as runThemeTilesetsMysql } from '../server/migrations/119_add_theme_tilesets.js';
 import { migration as addReasonToIgnoredNodesMigration, runMigration120Postgres as runAddReasonToIgnoredNodesPostgres, runMigration120Mysql as runAddReasonToIgnoredNodesMysql } from '../server/migrations/120_add_reason_to_ignored_nodes.js';
 import { migration as mqttPacketLogMigration, runMigration121Postgres, runMigration121Mysql } from '../server/migrations/121_mqtt_packet_log.js';
+import { migration as cleanupOrphanedSourceNodesMigration, runMigration122Postgres, runMigration122Mysql } from '../server/migrations/122_cleanup_orphaned_source_nodes.js';
 
 // ============================================================================
 // Registry
@@ -1926,4 +1927,20 @@ registry.register({
   sqlite: (db) => mqttPacketLogMigration.up(db),
   postgres: (client) => runMigration121Postgres(client),
   mysql: (pool) => runMigration121Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 122: One-shot cleanup of `nodes` rows orphaned by a previously
+// deleted source (issue #4137). DELETE /api/sources/:id now purges a
+// source's node rows at delete time going forward — this sweeps rows left
+// behind by every deletion that happened before that fix landed.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 122,
+  name: 'cleanup_orphaned_source_nodes',
+  settingsKey: 'migration_122_cleanup_orphaned_source_nodes',
+  sqlite: (db) => cleanupOrphanedSourceNodesMigration.up(db),
+  postgres: (client) => runMigration122Postgres(client),
+  mysql: (pool) => runMigration122Mysql(pool),
 });

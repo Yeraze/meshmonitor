@@ -1290,7 +1290,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               setShowActionsMenu(false);
                             }}
                           >
-                            🗺️ {t('messages.show_on_map')}
+                            {/* #4137: distinct icon/label from the hide/show toggle below
+                                ("Show on Map" is the un-hide label) so this pure pan action
+                                is never mistaken for the toggle. */}
+                            🎯 {t('messages.center_on_map', 'Center on Map')}
                           </button>
                         )}
                         {hasPermission('nodes', 'write') && (
@@ -1896,7 +1899,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               marginTop: '1rem',
               marginBottom: '1rem'
             }}>
-              {/* Show on Map */}
+              {/* Center on Map (#4137: renamed from "Show on Map" — distinct from the
+                  hide/show toggle's un-hide label of the same former text) */}
               {selectedNode?.position?.latitude != null && selectedNode?.position?.longitude != null && (
                 <button
                   onClick={() => handleShowOnMap(selectedDMNode)}
@@ -1912,7 +1916,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     fontSize: '0.9rem'
                   }}
                 >
-                  🗺️ {t('messages.show_on_map')}
+                  🎯 {t('messages.center_on_map', 'Center on Map')}
                 </button>
               )}
 
