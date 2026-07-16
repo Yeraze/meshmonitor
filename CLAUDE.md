@@ -21,7 +21,7 @@
 | Migrations | `src/server/migrations/NNN_*.ts` (75+ total), registry in `src/db/migrations.ts` |
 | Backup/restore | `src/server/services/systemBackupService.ts`, `systemRestoreService.ts` |
 | Routes | `src/server/routes/*` |
-| Packet monitors | Meshtastic: `packet_log` table + `packetLogService.ts` + `packetRoutes.ts` + `PacketMonitorPanel.tsx`. MeshCore (OTA via `LogRxData`): `meshcore_packet_log` table + `meshcorePacketLogService.ts` + `/packets` routes in `meshcoreRoutes.ts` + `MeshCorePacketMonitorView.tsx`. Both opt-in (`*_packet_log_enabled`). |
+| Packet monitors | Meshtastic: `packet_log` table + `packetLogService.ts` + `packetRoutes.ts` + `PacketMonitorPanel.tsx`. MeshCore (OTA via `LogRxData`): `meshcore_packet_log` table + `meshcorePacketLogService.ts` + `/packets` routes in `meshcoreRoutes.ts` + `MeshCorePacketMonitorView.tsx`. MQTT (per-gateway receptions, N rows per packet, deduped at query time): `mqtt_packet_log` table + `mqttPacketLogService.ts` + `mqttPacketRoutes.ts` (`/api/sources/:id/mqtt/packets`), hooked via the `ingestServiceEnvelope` wrapper. All opt-in (`*_packet_log_enabled`). |
 | Frontend pages | `src/pages/*` (`Unified*Page` = multi-source aware) |
 | Shared map shell | `src/components/map/` — `BaseMap` (MapContainer + raster/vector tile branch + optional TilesetSelector/resize). New map surfaces MUST compose `BaseMap` instead of hand-rolling `MapContainer`; shared layers land here during epic #4047. |
 | ESLint config | `eslint.config.mjs` (raw-SQL ban lives here) |

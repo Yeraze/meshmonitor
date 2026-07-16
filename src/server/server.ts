@@ -649,6 +649,7 @@ import newsRoutes from './routes/newsRoutes.js';
 import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
+import mqttPacketRoutes from './routes/mqttPacketRoutes.js';
 // meshcoreConfigFromSource / ensureMeshCoreManagerStarted moved to bootstrapSources.ts
 import { isMeshCoreManager, isMeshtasticManager } from './sourceManagerTypes.js';
 import { MeshCoreTelemetryPoller, setMeshCoreTelemetryPoller } from './services/meshcoreTelemetryPoller.js';
@@ -765,6 +766,13 @@ apiRouter.use('/messages', optionalAuth(), messageRoutes);
 // the global `meshcore` permission resource; the new frontend talks to
 // the per-source surface only.
 apiRouter.use('/sources/:id/meshcore', meshcoreRoutes);
+
+// MQTT Packet Monitor routes — nested under `/api/sources/:id/mqtt/packets`
+// so each request resolves the retention log bound to a specific source.
+// No source-type check (mirrors meshcore): retained rows stay readable while
+// a source is disconnected or reconfigured. See
+// docs/internal/dev-notes/MQTT_PACKET_MONITOR_PHASE1_SPEC.md §2.11/§2.12.
+apiRouter.use('/sources/:id/mqtt/packets', mqttPacketRoutes);
 
 // Link preview routes
 apiRouter.use('/', linkPreviewRoutes);
