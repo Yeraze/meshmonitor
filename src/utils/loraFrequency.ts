@@ -170,6 +170,81 @@ export function getModemPresetChannelName(modemPreset?: number): string | undefi
 }
 
 /**
+ * Numeric center frequency (MHz) for a Meshtastic LoRa config, or `null` when
+ * it can't be computed (region unset/unknown, invalid channel). Honors
+ * `overrideFrequency` (delegates to `calculateLoRaFrequency`, which already
+ * does) so the region-bounds table / DJB2 slot math is not duplicated here —
+ * this is a thin numeric sibling of the existing string formatter
+ * (#4111 P3 WP-1).
+ */
+export function loRaCenterFrequencyMhz(
+  region: number,
+  channelNum: number,
+  overrideFrequency: number,
+  frequencyOffset: number,
+  bandwidth: number = 250,
+  channelName?: string,
+  modemPreset?: number
+): number | null {
+  const formatted = calculateLoRaFrequency(
+    region,
+    channelNum,
+    overrideFrequency,
+    frequencyOffset,
+    bandwidth,
+    channelName,
+    modemPreset
+  );
+  const freq = parseFloat(formatted);
+  return Number.isFinite(freq) ? freq : null;
+}
+
+/**
+ * RegionCode → short name (e.g. 1 → "US"), for provenance hints (#4111 P3
+ * WP-1). Values mirror the region comments in `regionFrequencyBounds` above,
+ * which mirror `meshtastic/protobufs` `config.proto`'s `Config.LoRaConfig.RegionCode`.
+ */
+export const REGION_SHORT_NAME: Record<number, string> = {
+  1: 'US',
+  2: 'EU_433',
+  3: 'EU_868',
+  4: 'CN',
+  5: 'JP',
+  6: 'ANZ',
+  7: 'KR',
+  8: 'TW',
+  9: 'RU',
+  10: 'IN',
+  11: 'NZ_865',
+  12: 'TH',
+  13: 'LORA_24',
+  14: 'UA_433',
+  15: 'UA_868',
+  16: 'MY_433',
+  17: 'MY_919',
+  18: 'SG_923',
+  19: 'PH_433',
+  20: 'PH_868',
+  21: 'PH_915',
+  22: 'ANZ_433',
+  23: 'KZ_433',
+  24: 'KZ_863',
+  25: 'NP_865',
+  26: 'BR_902',
+  27: 'ITU1_2M',
+  28: 'ITU2_2M',
+  29: 'EU_866',
+  30: 'EU_874',
+  31: 'EU_917',
+  32: 'EU_N_868',
+  33: 'ITU3_2M',
+  34: 'ITU1_70CM',
+  35: 'ITU2_70CM',
+  36: 'ITU3_70CM',
+  37: 'ITU2_125CM',
+};
+
+/**
  * DJB2 hash algorithm — matches the Meshtastic firmware's hash() function
  * in RadioInterface.cpp. Used to compute the default frequency slot when
  * channelNum is 0 (not explicitly set by the user).

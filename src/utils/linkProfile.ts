@@ -21,6 +21,12 @@ import {
 /** A picked endpoint for the Link Profile tool. `isNode=false` = arbitrary map point. */
 export interface LinkEndpoint extends MeasurePoint {
   isNode: boolean;
+  /** Source that reported the node endpoint, for per-source auto-frequency (#4111 P3). */
+  sourceId?: string;
+  /** Node number of the picked node endpoint (#4111 P3). */
+  nodeNum?: number;
+  /** True when the node endpoint is a MeshCore node (#4111 P3). */
+  isMeshCore?: boolean;
 }
 
 // Client mirror of the backend `ProfileSample` (kept in `types/elevation.ts`
@@ -29,6 +35,24 @@ export interface LinkEndpoint extends MeasurePoint {
 export type { ElevationSample };
 
 export type LinkVerdict = 'clear' | 'marginal' | 'obstructed';
+
+/**
+ * Shared verdict copy/coloring, promoted from `LinkProfileDrawer.tsx`'s local
+ * consts (#4111 P3 WP-1) so the map-path Polyline (a later work package) can
+ * reuse the same values the drawer displays. The drawer keeps its own local
+ * copies for now — a later package switches it to import these.
+ */
+export const VERDICT_LABEL: Record<LinkVerdict, string> = {
+  clear: 'Clear',
+  marginal: 'Marginal',
+  obstructed: 'Obstructed',
+};
+
+export const VERDICT_COLOR: Record<LinkVerdict, string> = {
+  clear: '#22c55e',
+  marginal: '#f59e0b',
+  obstructed: '#ef4444',
+};
 
 /** Fraction of the first Fresnel zone that must remain clear to call a link "clear" (not just "marginal"). */
 export const DEFAULT_FRESNEL_CLEAR_THRESHOLD = 0.6;

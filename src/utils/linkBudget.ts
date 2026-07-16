@@ -86,6 +86,74 @@ export function earthBulgeMeters(
   return (d1M * d2M) / (2 * kFactor * earthRadiusM);
 }
 
+/**
+ * Demodulator SNR floor (dB) per LoRa spreading factor, from the Semtech
+ * SX1262 datasheet's sensitivity table (#4111 P3 WP-1).
+ */
+export const LORA_SNR_LIMIT_DB: Record<number, number> = {
+  7: -7.5,
+  8: -10,
+  9: -12.5,
+  10: -15,
+  11: -17.5,
+  12: -20,
+};
+
+/** SX1262 receiver noise figure (dB), used as the default in `loRaSensitivityDbm`. */
+export const DEFAULT_NOISE_FIGURE_DB = 6;
+
+/**
+ * LoRa receiver sensitivity (dBm): `S = -174 + 10*log10(BW_Hz) + NF + SNR_min(SF)`.
+ * The standard thermal-noise link-budget formula (-174 dBm/Hz is the thermal
+ * noise floor at room temperature) — computed rather than a transcribed
+ * magic table, so it's derived and unit-testable (#4111 P3 WP-1, spec §0.2).
+ *
+ * Returns `null` for an unknown spreading factor or non-positive bandwidth.
+ */
+export function loRaSensitivityDbm(
+  spreadingFactor: number,
+  bandwidthKhz: number,
+  noiseFigureDb: number = DEFAULT_NOISE_FIGURE_DB,
+): number | null {
+  const snrMinDb = LORA_SNR_LIMIT_DB[spreadingFactor];
+  if (snrMinDb === undefined || bandwidthKhz <= 0) return null;
+  return -174 + 10 * Math.log10(bandwidthKhz * 1000) + noiseFigureDb + snrMinDb;
+}
+
+/**
+ * Meshtastic modem-preset enum → (SF, BW kHz). Mirrors the `params` strings in
+ * `src/components/configuration/constants.ts` `MODEM_PRESET_OPTIONS` (BW) plus
+ * the firmware's `modemPresetToParams` switch (SF) — see that file for the
+ * per-preset descriptions. Preset `2` (`VERY_LONG_SLOW`) is intentionally
+ * omitted: it is deprecated/removed from `MODEM_PRESET_OPTIONS` and is not a
+ * selectable preset in the UI, so `rxSensitivityForModemPreset(2)` returns
+ * `null` like any other unknown value.
+ */
+export const MODEM_PRESET_PARAMS: Record<number, { sf: number; bwKhz: number }> = {
+  0: { sf: 11, bwKhz: 250 },  // LONG_FAST
+  1: { sf: 12, bwKhz: 125 },  // LONG_SLOW
+  3: { sf: 10, bwKhz: 250 },  // MEDIUM_SLOW
+  4: { sf: 9, bwKhz: 250 },   // MEDIUM_FAST
+  5: { sf: 8, bwKhz: 250 },   // SHORT_SLOW
+  6: { sf: 7, bwKhz: 250 },   // SHORT_FAST
+  7: { sf: 11, bwKhz: 125 },  // LONG_MODERATE
+  8: { sf: 7, bwKhz: 500 },   // SHORT_TURBO
+  9: { sf: 11, bwKhz: 500 },  // LONG_TURBO
+  10: { sf: 9, bwKhz: 125 },  // LITE_FAST
+  11: { sf: 10, bwKhz: 125 }, // LITE_SLOW
+  12: { sf: 7, bwKhz: 62.5 }, // NARROW_FAST
+  13: { sf: 8, bwKhz: 62.5 }, // NARROW_SLOW
+};
+
+/** RX sensitivity (dBm) for a Meshtastic modem preset, or `null` if unknown. */
+export function rxSensitivityForModemPreset(
+  modemPreset: number,
+  noiseFigureDb: number = DEFAULT_NOISE_FIGURE_DB,
+): number | null {
+  const params = MODEM_PRESET_PARAMS[modemPreset];
+  return params ? loRaSensitivityDbm(params.sf, params.bwKhz, noiseFigureDb) : null;
+}
+
 /** Inputs to a full link-budget calculation, independent of path geometry. */
 export interface LinkBudgetInputs {
   txPowerDbm: number;
