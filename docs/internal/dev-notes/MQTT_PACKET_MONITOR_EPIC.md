@@ -61,7 +61,7 @@ we want to keep every copy:
 
 ## Phases
 
-### Phase 1 — Backend capture + API  [ ]
+### Phase 1 — Backend capture + API  [x]  (PR #4127, merged 2026-07-15)
 
 Branch: `feature/mqtt-packet-monitor` (worktree `../meshmonitor-wt-mqtt-packetmon`).
 
@@ -95,18 +95,20 @@ No user-visible change (setting defaults off).
 ### Phase 2 — Frontend UI + validation  [ ]
 
 Deliverables:
-- `src/components/Mqtt/MqttPacketMonitorView.tsx` (+ CSS + `MqttPacketDetailModal.tsx`),
+- [x] `src/components/Mqtt/MqttPacketMonitorView.tsx` (+ CSS + `MqttPacketDetailModal.tsx`),
   modeled on the MeshCore view: toolbar (pause, filter, refresh, clear, enable banner),
   deduplicated packet table (time, from, to, type, channel, gateway count, size, preview),
   **gateway multi-select filter** fed by GET /gateways, row click → detail modal with the
   packet's fields plus a per-gateway receptions table (gateway id/name, time, RSSI, SNR,
   hops). Poll ~5 s; respects `packetmonitor` permissions; settings inputs gated on
   settings:write.
-- App.tsx: `packetmonitor` tab renders the MQTT view for `mqtt_broker`/`mqtt_bridge`
+- [x] App.tsx: `packetmonitor` tab renders the MQTT view for `mqtt_broker`/`mqtt_bridge`
   sources; tab gating updated so MQTT sources see the tab when permitted.
-- i18n keys (en locale).
-- Browser validation via dev-container deploy + chrome-devtools.
-- Docs (README/docs feature blurb) + epic plan checkbox updates.
+- [x] i18n keys (en locale) — `mqtt.packets.*` (36 keys) + `common.filters`/`common.broadcast`.
+- [x] Tests — `MqttPacketDetailModal.test.tsx` (9 cases) + `MqttPacketMonitorView.test.tsx`
+  (9 cases), full Vitest suite/lint:ci/typecheck green.
+- [x] Browser validation via dev-container deploy + chrome-devtools (2026-07-16, live Florida MQTT source: 59 gateways, 231 grouped packets, 8-gateway detail modal, gateway filter narrows 222→37; found+fixed stale gateway-list bug 6028eac3).
+- [x] Docs — `docs/features/packet-monitor.md` "MQTT sources" section + this checkbox update.
 
 Exit criteria: UI validated in the browser against a live MQTT source, suite/lint/CI green,
 PR merged.
@@ -125,3 +127,10 @@ PR merged.
   onto `decode-error`.
 - Grouped-list semantics: with a gateway filter active, `gatewayCount` counts only the
   selected gateways (filter is in the WHERE clause) — Phase 2 UI should label accordingly.
+- Cross-epic collision (2026-07-15): the geo-ignore epic (#4115) ran concurrently.
+  Its Phase 1 took migration 120 (ours renumbered to 121); its Phase 2 replaced the
+  'geo-filtered' ingest reason with 'ignored'/'geo-ignored' after our merge (briefly
+  breaking main), and its Phase 3 (#4132) landed the alignment fix — our hotfix PR
+  #4133 was closed as superseded. Ingest outcomes are now
+  ingested | encrypted | ignored | geo-ignored | unsupported-portnum | decode-error.
+- Phase 2 spec: docs/internal/dev-notes/MQTT_PACKET_MONITOR_PHASE2_SPEC.md.
