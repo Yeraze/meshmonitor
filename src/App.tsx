@@ -22,6 +22,7 @@ import NodesTab from './components/NodesTab';
 import MessagesTab from './components/MessagesTab';
 import ChannelsTab from './components/ChannelsTab';
 import PacketMonitorPanel from './components/PacketMonitorPanel';
+import MqttPacketMonitorView from './components/Mqtt/MqttPacketMonitorView';
 import AutoAcknowledgeSection from './components/AutoAcknowledgeSection';
 import { AutomationTokenReference } from './components/AutomationTokenReference';
 import { buildMeshtasticTokenGroups } from './components/meshtasticAutomationTokens';
@@ -121,6 +122,8 @@ function App() {
   // MQTT Bridge mirror dashboard — strip send capability + device-config
   // surfaces; the bridge feeds us inbound packets only.
   const isMqttBridge = sourceType === 'mqtt_bridge';
+  const isMqttBroker = sourceType === 'mqtt_broker';
+  const isMqtt = isMqttBridge || isMqttBroker;
   const navigate = useNavigate();
 const location = useLocation();
   const webSocketConnected = useWebSocketConnected();
@@ -681,7 +684,9 @@ const location = useLocation();
       admin: () => !isMqttBridge && isAdmin,
       audit: () => hasPermission('audit', 'read'),
       security: () => hasPermission('security', 'read'),
-      packetmonitor: () => packetLogEnabled && hasPermission('packetmonitor', 'read'),
+      packetmonitor: () => isMqtt
+        ? hasPermission('packetmonitor', 'read')
+        : (packetLogEnabled && hasPermission('packetmonitor', 'read')),
     };
 
     // Check if current tab requires permission. `activeTab` is user-controllable
@@ -703,7 +708,7 @@ const location = useLocation();
       logger.info(`[Auth] Redirecting from '${activeTab}' tab - insufficient permissions`);
       setActiveTab('nodes');
     }
-  }, [activeTab, authStatus, authLoading, hasPermission, setActiveTab, packetLogEnabled, isMqttBridge, channelDatabaseEntries, channelDatabaseLoaded]);
+  }, [activeTab, authStatus, authLoading, hasPermission, setActiveTab, packetLogEnabled, isMqttBridge, isMqttBroker, isMqtt, channelDatabaseEntries, channelDatabaseLoaded]);
 
   // Helper function to safely parse node IDs to node numbers
   const parseNodeId = useCallback((nodeId: string): number => {
@@ -5196,7 +5201,11 @@ const location = useLocation();
         {activeTab === 'packetmonitor' && (
           <ErrorBoundary fallbackTitle="Packet Monitor failed to load">
             <div style={{ height: 'calc(100dvh - var(--header-height, 60px) - 4rem)', overflow: 'hidden' }}>
-              <PacketMonitorPanel onClose={() => setActiveTab('nodes')} />
+              {isMqtt && sourceId ? (
+                <MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />
+              ) : (
+                <PacketMonitorPanel onClose={() => setActiveTab('nodes')} />
+              )}
             </div>
           </ErrorBoundary>
         )}

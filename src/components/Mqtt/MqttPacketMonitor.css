@@ -1,0 +1,445 @@
+/* MQTT Packet Monitor — cloned from MeshCorePacketMonitor.css (mcpm-* -> mqpm-*).
+   Kept as a separate file/prefix so the two monitors stay decoupled per
+   MQTT_PACKET_MONITOR_PHASE2_SPEC.md §3.4. */
+.mqtt-packet-monitor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--ctp-base);
+  overflow: hidden;
+}
+
+.mqpm-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--ctp-mantle);
+  border-bottom: 1px solid var(--ctp-surface2);
+  flex-shrink: 0;
+}
+
+.mqpm-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ctp-text);
+}
+
+.mqpm-count {
+  font-size: 12px;
+  color: var(--ctp-subtext0);
+  padding: 4px 8px;
+  background: var(--ctp-crust);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+}
+
+.mqpm-header-controls {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  align-items: center;
+}
+
+.mqpm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ctp-text);
+  transition: all 0.2s;
+}
+
+.mqpm-btn:hover:not(:disabled) {
+  background: var(--ctp-crust);
+  border-color: var(--ctp-blue);
+}
+
+.mqpm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mqpm-btn.active {
+  border-color: var(--ctp-blue);
+  color: var(--ctp-blue);
+}
+
+.mqpm-btn-danger:hover:not(:disabled) {
+  border-color: var(--ctp-red);
+  color: var(--ctp-red);
+}
+
+.mqpm-disabled-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--ctp-mantle);
+  border-bottom: 1px solid var(--ctp-surface2);
+  color: var(--ctp-subtext0);
+  font-size: 13px;
+}
+
+.mqpm-disabled-banner span {
+  flex: 1;
+}
+
+.mqpm-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--ctp-mantle);
+  border-bottom: 1px solid var(--ctp-surface2);
+  position: relative;
+}
+
+.mqpm-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ctp-subtext0);
+}
+
+.mqpm-filters select,
+.mqpm-filters input[type='number'] {
+  padding: 6px 10px;
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-sm);
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  font-size: 13px;
+}
+
+.mqpm-filters .mqpm-toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-end;
+}
+
+.mqpm-filter-note {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--ctp-yellow);
+}
+
+.mqpm-error {
+  padding: 8px 16px;
+  background: var(--ctp-crust);
+  color: var(--ctp-red);
+  font-size: 13px;
+  border-bottom: 1px solid var(--ctp-surface2);
+}
+
+.mqpm-table-container {
+  flex: 1;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mqpm-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 32px;
+  text-align: center;
+  color: var(--ctp-subtext0);
+}
+
+.mqpm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.mqpm-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 8px 12px;
+  background: var(--ctp-mantle);
+  color: var(--ctp-subtext0);
+  font-weight: 600;
+  border-bottom: 1px solid var(--ctp-surface2);
+  white-space: nowrap;
+}
+
+.mqpm-row {
+  cursor: pointer;
+  border-bottom: 1px solid var(--ctp-surface0);
+}
+
+.mqpm-row:hover {
+  background: var(--ctp-mantle);
+}
+
+.mqpm-row td {
+  padding: 6px 12px;
+  color: var(--ctp-text);
+  white-space: nowrap;
+}
+
+.mqpm-mono {
+  font-family: var(--font-mono);
+}
+
+.mqpm-preview {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mqpm-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--ctp-crust);
+  color: var(--ctp-blue);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* Outcome badge color variants (mirrors .mcpm-decode-note's color-mix approach). */
+.mqpm-badge-encrypted {
+  color: var(--ctp-yellow);
+  background: color-mix(in srgb, var(--ctp-yellow) 15%, transparent);
+}
+
+.mqpm-badge-ignored {
+  color: var(--ctp-peach);
+  background: color-mix(in srgb, var(--ctp-peach) 15%, transparent);
+}
+
+.mqpm-badge-geo-ignored {
+  color: var(--ctp-peach);
+  background: color-mix(in srgb, var(--ctp-peach) 15%, transparent);
+}
+
+.mqpm-badge-error {
+  color: var(--ctp-red);
+  background: color-mix(in srgb, var(--ctp-red) 15%, transparent);
+}
+
+.mqpm-route {
+  color: var(--ctp-subtext0);
+  font-size: 12px;
+}
+
+.mqpm-detail-row td {
+  padding: 8px 16px;
+  background: var(--ctp-crust);
+  border-bottom: 1px solid var(--ctp-surface2);
+}
+
+.mqpm-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ctp-subtext1);
+}
+
+.mqpm-detail strong {
+  color: var(--ctp-text);
+}
+
+.mqpm-raw {
+  font-family: var(--font-mono);
+  word-break: break-all;
+  white-space: normal;
+}
+
+/* ── Gateway multi-select dropdown (wired up in WP2; CSS lands now) ───────── */
+.mqpm-gateway-dropdown {
+  position: relative;
+}
+
+.mqpm-gateway-dropdown-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 220px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--ctp-base);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  padding: 6px;
+}
+
+.mqpm-gateway-dropdown-actions {
+  display: flex;
+  gap: 8px;
+  padding: 4px 6px 8px;
+  border-bottom: 1px solid var(--ctp-surface1);
+  margin-bottom: 4px;
+}
+
+.mqpm-gateway-dropdown-actions button {
+  background: none;
+  border: none;
+  color: var(--ctp-blue);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.mqpm-gateway-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--ctp-text);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.mqpm-gateway-option:hover {
+  background: var(--ctp-mantle);
+}
+
+.mqpm-gateway-option-count {
+  margin-left: auto;
+  color: var(--ctp-subtext0);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* ── Packet detail modal (mounts in WP3; CSS lands now) ───────────────────── */
+.mqpm-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.mqpm-modal-content {
+  background: var(--ctp-base);
+  border: 2px solid var(--ctp-blue);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  max-width: 640px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mqpm-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: var(--ctp-mantle);
+  border-bottom: 1px solid var(--ctp-surface2);
+}
+
+.mqpm-modal-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--ctp-text);
+}
+
+.mqpm-modal-close {
+  background: none;
+  border: none;
+  color: var(--ctp-subtext0);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+}
+.mqpm-modal-close:hover { color: var(--ctp-text); }
+
+.mqpm-modal-body {
+  padding: 0.75rem 1rem 1rem;
+  overflow-y: auto;
+}
+
+.mqpm-dl-section {
+  margin-bottom: 0.85rem;
+}
+
+.mqpm-dl-section h5 {
+  margin: 0 0 0.4rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ctp-blue);
+  border-bottom: 1px solid var(--ctp-surface1);
+  padding-bottom: 0.2rem;
+}
+
+.mqpm-dl-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 0.5rem;
+  padding: 2px 0;
+  font-size: 0.82rem;
+  align-items: baseline;
+}
+
+.mqpm-dl-label {
+  color: var(--ctp-subtext0);
+}
+
+.mqpm-dl-value {
+  color: var(--ctp-text);
+  min-width: 0;
+}
+
+.mqpm-dl-wrap {
+  word-break: break-all;
+  white-space: normal;
+}
+
+/* Per-gateway receptions table inside the detail modal. */
+.mqpm-recv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.mqpm-recv-table th {
+  text-align: left;
+  padding: 4px 8px;
+  color: var(--ctp-subtext0);
+  font-weight: 600;
+  border-bottom: 1px solid var(--ctp-surface2);
+  white-space: nowrap;
+}
+
+.mqpm-recv-table td {
+  padding: 4px 8px;
+  color: var(--ctp-text);
+  border-bottom: 1px solid var(--ctp-surface0);
+  white-space: nowrap;
+}
+
+.mqpm-decode-note {
+  font-size: 0.78rem;
+  color: var(--ctp-yellow);
+  background: color-mix(in srgb, var(--ctp-yellow) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ctp-yellow) 30%, transparent);
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+}
