@@ -20,6 +20,8 @@ import {
   buildSourceDashboard,
 } from '../services/sourceDashboardData.js';
 import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from '../services/sourcePkiKeyStore.js';
+import { mqttGeoSweepService, type GeoSweepStats } from '../services/mqttGeoSweepService.js';
+import type { MqttFilterConfig } from '../mqttPacketFilter.js';
 
 const router = Router();
 
@@ -685,6 +687,37 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         await sourceManagerRegistry.addManager(manager);
       } catch (err) {
         logger.warn(`Could not restart MQTT manager for source ${source.id}:`, err);
+      }
+
+      // Config-change geo sweep (MQTT Geo-Ignore epic, Phase 3, WP3).
+      // The bridge's own start() sweep above (buildMqttManagerForSource →
+      // addManager) always runs with lift:false — it has no old bbox to diff
+      // against. When the geo bbox itself changed, run an explicit LIFT+ADD
+      // sweep here so nodes the new bbox no longer excludes reappear
+      // immediately instead of waiting for their next POSITION packet.
+      if (source.type === 'mqtt_bridge') {
+        const oldGeo =
+          (existing.config as { downlinkFilters?: MqttFilterConfig }).downlinkFilters?.geo ?? null;
+        const newGeo =
+          (source.config as { downlinkFilters?: MqttFilterConfig }).downlinkFilters?.geo ?? null;
+        const geoChanged = JSON.stringify(oldGeo) !== JSON.stringify(newGeo);
+        if (geoChanged) {
+          const mgr = sourceManagerRegistry.getManager(source.id);
+          const sink = mgr && 'recordGeoSweepStats' in mgr
+            ? (mgr as unknown as { recordGeoSweepStats: (s: GeoSweepStats) => void })
+            : undefined;
+          // Connect-independent DB convergence with lift:true — the ONLY path
+          // allowed to lift geo-ignores (it alone knows the bbox changed). Bbox
+          // removal/any change readmits geo-ignored nodes; still-outside ones
+          // self-correct on their next POSITION via the realtime path. The
+          // restarted manager's own start() sweep (lift:false) is an idempotent
+          // add-pass repeat, serialized by the service's per-source guard.
+          try {
+            await mqttGeoSweepService.runSweep(source.id, newGeo ?? undefined, { lift: true, sink });
+          } catch (err) {
+            logger.warn(`Geo sweep after config change failed for source ${source.id}:`, err);
+          }
+        }
       }
     } else if (wasEnabled && isNowEnabled && source.type === 'meshcore' && newAutoConnect && config !== undefined) {
       // MeshCore source config changed while enabled and autoConnect on —
