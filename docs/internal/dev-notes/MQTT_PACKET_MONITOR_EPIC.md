@@ -107,7 +107,7 @@ Deliverables:
 - [x] i18n keys (en locale) — `mqtt.packets.*` (36 keys) + `common.filters`/`common.broadcast`.
 - [x] Tests — `MqttPacketDetailModal.test.tsx` (9 cases) + `MqttPacketMonitorView.test.tsx`
   (9 cases), full Vitest suite/lint:ci/typecheck green.
-- [ ] Browser validation via dev-container deploy + chrome-devtools.
+- [x] Browser validation via dev-container deploy + chrome-devtools (2026-07-16, live Florida MQTT source: 59 gateways, 231 grouped packets, 8-gateway detail modal, gateway filter narrows 222→37; found+fixed stale gateway-list bug 6028eac3).
 - [x] Docs — `docs/features/packet-monitor.md` "MQTT sources" section + this checkbox update.
 
 Exit criteria: UI validated in the browser against a live MQTT source, suite/lint/CI green,
