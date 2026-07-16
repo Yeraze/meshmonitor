@@ -77,7 +77,7 @@ Branch: `feature/link-profile-tool` (worktree ../meshmonitor-link-profile)
 - **Exit criteria:** end-to-end in browser: pick two nodes → drawer shows profile + Fresnel +
   budget verdict; matches site.meshtastic.org for a reference link; suite green; merged.
 
-### Phase 3 — Polish, auto-frequency, docs ⬜
+### Phase 3 — Polish, auto-frequency, docs ✅
 Branch: `feature/link-profile-polish`
 
 - Per-source frequency auto-detection: Meshtastic region enum → center MHz map (honor
@@ -112,3 +112,15 @@ Branch: `feature/link-profile-polish`
   altitude ignored — datum mismatch); snap-within-24px else raw point (no modifier key); drawer =
   absolute overlay in canvas; useElevationEnabled gates the toolbar button. Known issue punted to
   Phase 3: Terrarium void/bathymetry extreme negatives distort the chart Y-domain.
+- 2026-07-16: Phase 2 merged: PR #4147 (squash d9aafbd9; user-approved merge).
+- 2026-07-16: Phase 3 implemented (WP-1 radio math + public `radio` on GET /api/sources + DEM
+  clamp 58f25c76..3bd0e1ee; WP-2 auto-freq/RX seeding + drawer edge UX 01fc25e4; WP-3 verdict
+  coloring + antimeridian + settings UI 36804aec; WP-4 docs 368ebf50). Two browser-validation
+  fixes: 6d414d51 (auto-freq must walk node.sources[] — merged nodes' primary sourceId is often
+  a radio-less MQTT bridge) and 5f249c0d (empty-URL Test probes the default Terrarium source,
+  "(default source)" suffix); 558855c1 rounds seeded RX to 0.1 dB. Live-validated: seed 913.125
+  "from Sandbox (US)", RX −126.5 from preset; verdict-red path; DEM clamp fixed the −12000 m
+  Y-axis blowout; Test button "OK — terrarium, 8732 m in 297 ms (default source)". Decisions:
+  rejected gated per-endpoint config fetches in favor of one public `radio` summary field
+  (frequency/region are public RF info); RX sensitivity computed (−174+10log10(BW)+NF+SNRmin),
+  not a magic table; DEM clamp bounds −500..9000 m at the provider boundary.
