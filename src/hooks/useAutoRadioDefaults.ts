@@ -61,8 +61,11 @@ export function useAutoRadioDefaults(a?: LinkEndpoint, b?: LinkEndpoint): AutoRa
       const radio = source?.radio;
       if (!source || !radio || radio.frequencyMhz == null) continue;
 
-      const rxSensitivityDbm =
+      // Rounded to 0.1 dB — this seeds a visible <input>, and the raw formula
+      // output (e.g. -126.52059991327963) is noise past the first decimal.
+      const rawSensitivity =
         radio.modemPreset != null ? rxSensitivityForModemPreset(radio.modemPreset) : null;
+      const rxSensitivityDbm = rawSensitivity != null ? Math.round(rawSensitivity * 10) / 10 : null;
       const provenance = `from ${source.name}${radio.regionName ? ` (${radio.regionName})` : ''}`;
       return { freqMhz: radio.frequencyMhz, rxSensitivityDbm, provenance };
     }
