@@ -44,7 +44,7 @@ Sonnet implementers per phase. Each phase = one merged PR.
 
 ## Phases
 
-### Phase 1 — Backend elevation service ⬜
+### Phase 1 — Backend elevation service ✅
 Branch: `feature/elevation-backend` (worktree ../meshmonitor-elevation-backend)
 
 - Elevation provider abstraction: default Terrarium tile provider (PNG decode server-side) +
@@ -94,3 +94,9 @@ Branch: `feature/link-profile-polish`
 ## Status log
 
 - 2026-07-16: Epic created; interview complete; Phase 1 dispatched.
+- 2026-07-16: Phase 1 implemented (WP1 utils, WP2 provider/service/settings, WP3 routes).
+  Full suite 9321 passed / 0 failed; typecheck + lint:ci clean. Decisions: POST-only /profile;
+  Float32 tile cache capped 64 tiles (16 MB ceiling); `elevationSourceUrl` in SECRET_SETTINGS_KEYS
+  (may embed API keys; server-only); `/profile` public via optionalAuth + dedicated
+  elevationLimiter (20/min prod, private-IP exempt); `/test` behind settings:write; testSource
+  default probe = Everest summit (distinguishes a working provider from ocean-0 responses).
