@@ -95,18 +95,20 @@ No user-visible change (setting defaults off).
 ### Phase 2 — Frontend UI + validation  [ ]
 
 Deliverables:
-- `src/components/Mqtt/MqttPacketMonitorView.tsx` (+ CSS + `MqttPacketDetailModal.tsx`),
+- [x] `src/components/Mqtt/MqttPacketMonitorView.tsx` (+ CSS + `MqttPacketDetailModal.tsx`),
   modeled on the MeshCore view: toolbar (pause, filter, refresh, clear, enable banner),
   deduplicated packet table (time, from, to, type, channel, gateway count, size, preview),
   **gateway multi-select filter** fed by GET /gateways, row click → detail modal with the
   packet's fields plus a per-gateway receptions table (gateway id/name, time, RSSI, SNR,
   hops). Poll ~5 s; respects `packetmonitor` permissions; settings inputs gated on
   settings:write.
-- App.tsx: `packetmonitor` tab renders the MQTT view for `mqtt_broker`/`mqtt_bridge`
+- [x] App.tsx: `packetmonitor` tab renders the MQTT view for `mqtt_broker`/`mqtt_bridge`
   sources; tab gating updated so MQTT sources see the tab when permitted.
-- i18n keys (en locale).
-- Browser validation via dev-container deploy + chrome-devtools.
-- Docs (README/docs feature blurb) + epic plan checkbox updates.
+- [x] i18n keys (en locale) — `mqtt.packets.*` (36 keys) + `common.filters`/`common.broadcast`.
+- [x] Tests — `MqttPacketDetailModal.test.tsx` (9 cases) + `MqttPacketMonitorView.test.tsx`
+  (9 cases), full Vitest suite/lint:ci/typecheck green.
+- [ ] Browser validation via dev-container deploy + chrome-devtools.
+- [x] Docs — `docs/features/packet-monitor.md` "MQTT sources" section + this checkbox update.
 
 Exit criteria: UI validated in the browser against a live MQTT source, suite/lint/CI green,
 PR merged.
