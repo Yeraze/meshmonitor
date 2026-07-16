@@ -44,3 +44,17 @@ export interface SourceRadioSummary {
   /** Meshtastic only — drives RX-sensitivity auto-seed. */
   modemPreset?: number;
 }
+
+/**
+ * Frontend mirror of `src/server/services/elevationProvider.ts`'s
+ * `DEFAULT_TERRARIUM_URL` (#4111 P3 WP-3 follow-up). The server module can't
+ * be imported client-side, so this is duplicated by hand — keep both values
+ * in sync if the default source ever changes. Used by the Settings tab's
+ * elevation Test button so testing an empty source-URL field probes the same
+ * URL the backend actually falls back to (`elevationProvider.ts`'s
+ * `sourceUrl && sourceUrl.trim().length > 0 ? sourceUrl.trim() : DEFAULT_TERRARIUM_URL`),
+ * instead of sending an empty `url` and surfacing the route's 400 validation
+ * error.
+ */
+export const DEFAULT_TERRARIUM_URL =
+  'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';

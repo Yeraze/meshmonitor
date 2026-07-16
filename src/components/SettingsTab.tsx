@@ -32,6 +32,7 @@ import { useAuth } from '../contexts/AuthContext';
 import GeoJsonLayerManager from './GeoJsonLayerManager';
 import MapStyleManager from './MapStyleManager';
 import { useDashboardSources } from '../hooks/useDashboardData';
+import { DEFAULT_TERRARIUM_URL } from '../types/elevation';
 
 type DistanceUnit = 'km' | 'mi';
 type PositionHistoryLineStyle = 'linear' | 'spline';
@@ -834,24 +835,34 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // Probes the (unsaved) elevation source URL via ApiService.testElevationSource
   // (#4111 P3 WP-3) — a raw fetch is banned in components per CLAUDE.md, and
   // this exercises the POST /api/elevation/test route added in Phase 1.
+  //
+  // An empty/whitespace field means "use the default public Terrarium
+  // source" (per the field's own helper text), so Test must probe that
+  // default rather than send an empty `url` — the route 400s on that with a
+  // raw "Request body must include a url" message that leaked into the UI
+  // (browser-validation follow-up to #4111 P3 WP-3).
   const handleTestElevation = useCallback(async () => {
     setElevationTesting(true);
     setElevationTestResult(null);
+    const trimmedUrl = localElevationSourceUrl.trim();
+    const usedDefault = trimmedUrl.length === 0;
+    const effectiveUrl = usedDefault ? DEFAULT_TERRARIUM_URL : trimmedUrl;
     try {
-      const result = await apiService.testElevationSource(localElevationSourceUrl.trim());
+      const result = await apiService.testElevationSource(effectiveUrl);
       setElevationTestResult(
         result.success
           ? {
               ok: true,
-              message: t(
-                'settings.elevation_test_success',
-                'OK — {{type}}, {{elev}} m in {{ms}} ms',
-                {
-                  type: result.detectedType,
-                  elev: result.sampleElevation ?? 'n/a',
-                  ms: result.latencyMs,
-                }
-              ),
+              message:
+                t(
+                  'settings.elevation_test_success',
+                  'OK — {{type}}, {{elev}} m in {{ms}} ms',
+                  {
+                    type: result.detectedType,
+                    elev: result.sampleElevation ?? 'n/a',
+                    ms: result.latencyMs,
+                  }
+                ) + (usedDefault ? ` ${t('settings.elevation_test_default_source_suffix', '(default source)')}` : ''),
             }
           : { ok: false, message: result.error ?? t('settings.elevation_test_failure_generic', 'Test failed') }
       );
@@ -2121,7 +2132,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               type="text"
               value={localElevationSourceUrl}
               onChange={(e) => setLocalElevationSourceUrl(e.target.value)}
-              placeholder="https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png"
+              placeholder={DEFAULT_TERRARIUM_URL}
               className="setting-input"
               autoComplete="off"
               spellCheck={false}

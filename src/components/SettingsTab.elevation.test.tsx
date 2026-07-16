@@ -22,6 +22,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import SettingsTab from './SettingsTab';
+import { DEFAULT_TERRARIUM_URL } from '../types/elevation';
 
 // ---------------------------------------------------------------------------
 // react-i18next: the global setup.ts mock only handles the 2-arg (key,
@@ -352,6 +353,77 @@ describe('SettingsTab — Elevation / Terrain section (#4111 Phase 3 WP-3)', () 
 
     expect(testElevationSourceMock).toHaveBeenCalledWith('https://probe.example/tiles');
     expect(await screen.findByText(/OK — terrarium, 123.4 m in 42 ms/)).toBeInTheDocument();
+  });
+
+  // Browser-validation follow-up to WP-3: clicking Test with an empty URL
+  // field was sending an empty `url` and surfacing the route's raw 400
+  // "Request body must include a url" message, even though the field's own
+  // helper text says an empty value falls back to the default public
+  // Terrarium source. Test must probe what will actually be used.
+  describe('Test button with an empty source URL (default-fallback follow-up)', () => {
+    it('sends the default Terrarium URL instead of an empty string', async () => {
+      testElevationSourceMock.mockResolvedValue({
+        success: true,
+        detectedType: 'terrarium',
+        sampleElevation: 8732,
+        latencyMs: 294,
+      });
+      renderSettings();
+      // serverSettings.elevationSourceUrl is '' in beforeEach — field starts empty.
+      const urlInput = (await screen.findByLabelText(/Elevation Source URL/i)) as HTMLInputElement;
+      expect(urlInput.value).toBe('');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Test' }));
+
+      expect(testElevationSourceMock).toHaveBeenCalledWith(DEFAULT_TERRARIUM_URL);
+    });
+
+    it('trims a whitespace-only field before falling back to the default URL', async () => {
+      testElevationSourceMock.mockResolvedValue({
+        success: true,
+        detectedType: 'terrarium',
+        sampleElevation: 100,
+        latencyMs: 50,
+      });
+      renderSettings();
+      const urlInput = (await screen.findByLabelText(/Elevation Source URL/i)) as HTMLInputElement;
+      fireEvent.change(urlInput, { target: { value: '   ' } });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Test' }));
+
+      expect(testElevationSourceMock).toHaveBeenCalledWith(DEFAULT_TERRARIUM_URL);
+    });
+
+    it('labels a successful default-source probe result as "(default source)"', async () => {
+      testElevationSourceMock.mockResolvedValue({
+        success: true,
+        detectedType: 'terrarium',
+        sampleElevation: 8732,
+        latencyMs: 294,
+      });
+      renderSettings();
+      fireEvent.click(await screen.findByRole('button', { name: 'Test' }));
+
+      expect(
+        await screen.findByText(/OK — terrarium, 8732 m in 294 ms \(default source\)/)
+      ).toBeInTheDocument();
+    });
+
+    it('does not append the "(default source)" label when an explicit URL was tested', async () => {
+      testElevationSourceMock.mockResolvedValue({
+        success: true,
+        detectedType: 'terrarium',
+        sampleElevation: 123.4,
+        latencyMs: 42,
+      });
+      renderSettings();
+      const urlInput = (await screen.findByLabelText(/Elevation Source URL/i)) as HTMLInputElement;
+      fireEvent.change(urlInput, { target: { value: 'https://probe.example/tiles' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Test' }));
+
+      const message = await screen.findByText(/OK — terrarium, 123.4 m in 42 ms/);
+      expect(message.textContent).not.toMatch(/default source/);
+    });
   });
 
   it('Test button renders the server-reported error on a failed probe', async () => {
