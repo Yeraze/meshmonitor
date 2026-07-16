@@ -382,6 +382,76 @@ describe('ingestServiceEnvelope — POSITION geo evaluation', () => {
   });
 });
 
+describe('ingestServiceEnvelope — POSITION Null Island guard (#3763)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(false);
+    (databaseService.ignoredNodes.addGeoIgnoreAsync as any).mockResolvedValue(true);
+    (databaseService.ignoredNodes.liftGeoIgnoreAsync as any).mockResolvedValue(true);
+  });
+
+  const positionOnce = async (pos: Record<string, unknown>) => {
+    const { default: protobuf } = await import('./meshtasticProtobufService.js');
+    (protobuf.processPayload as any).mockImplementationOnce(() => pos);
+  };
+
+  it('strips a Null Island (0,0) fix but still refreshes the node (no geo filter → no-geo path)', async () => {
+    await positionOnce({ latitudeI: 0, longitudeI: 0, altitude: 0 });
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 3 /* POSITION_APP */),
+    });
+    expect(result.ingested).toBe(true);
+    expect(databaseService.upsertNodeAsync).toHaveBeenCalledTimes(1);
+    // lastHeard still refreshes, but the (0,0) coords are dropped so upsertNode's
+    // `?? existing` merge preserves any previously stored good position.
+    const arg = (databaseService.upsertNodeAsync as any).mock.calls[0][0];
+    expect(arg.latitude).toBeUndefined();
+    expect(arg.longitude).toBeUndefined();
+  });
+
+  it('strips a precision-obscured (0,0) fix that arrives re-centered as (offset, offset)', async () => {
+    // A true-(0,0) node on a 14-bit-precision channel transmits latitudeI = longitudeI = 2^17.
+    await positionOnce({ latitudeI: 131072, longitudeI: 131072, precisionBits: 14 });
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 3 /* POSITION_APP */),
+    });
+    expect(result.ingested).toBe(true);
+    const arg = (databaseService.upsertNodeAsync as any).mock.calls[0][0];
+    expect(arg.latitude).toBeUndefined();
+    expect(arg.longitude).toBeUndefined();
+  });
+
+  it('strips (0,0) even when it falls INSIDE a configured bbox spanning the origin (geo-filter gap)', async () => {
+    // The geo-bbox classifier would pass (0,0) as 'in' here — the Null Island
+    // guard is what actually rejects it.
+    await positionOnce({ latitudeI: 0, longitudeI: 0 });
+    const filter = new MqttPacketFilter({ geo: { minLat: -1, maxLat: 1, minLng: -1, maxLng: 1 } });
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 3 /* POSITION_APP */),
+      filter,
+    });
+    expect(result.ingested).toBe(true);
+    const arg = (databaseService.upsertNodeAsync as any).mock.calls[0][0];
+    expect(arg.latitude).toBeUndefined();
+    expect(arg.longitude).toBeUndefined();
+  });
+
+  it('stores a legitimate position unchanged (guard does not over-reject)', async () => {
+    // Default POSITION mock: latitudeI 437_000_000 / lngI -793_000_000 → (43.7, -79.3).
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 3 /* POSITION_APP */),
+    });
+    expect(result.ingested).toBe(true);
+    const arg = (databaseService.upsertNodeAsync as any).mock.calls[0][0];
+    expect(arg.latitude).toBeCloseTo(43.7, 5);
+    expect(arg.longitude).toBeCloseTo(-79.3, 5);
+  });
+});
+
 describe('ingestServiceEnvelope — TEXT_MESSAGE_APP tapbacks', () => {
   beforeEach(() => {
     vi.clearAllMocks();

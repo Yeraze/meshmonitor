@@ -92,6 +92,7 @@ import { calculateDistance } from '../utils/distance.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
 import { resolveLastHeardSec } from './utils/replayGuard.js';
+import { isBogusPosition } from '../utils/nullIsland.js';
 import { logger } from '../utils/logger.js';
 import {
   nodeNumToId,
@@ -347,6 +348,22 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
       const latI = position.latitudeI ?? position.latitude_i;
       const lngI = position.longitudeI ?? position.longitude_i;
       const alt = position.altitude;
+      const lat = typeof latI === 'number' ? latI / 1e7 : undefined;
+      const lng = typeof lngI === 'number' ? lngI / 1e7 : undefined;
+      // Reject bogus fixes before they reach the node row — Null Island (0,0),
+      // a position-precision-obscured (0,0) that arrives re-centered as
+      // (offset, offset), and out-of-range junk (issue #3763). The geo-bbox
+      // classifier above does NOT catch these: with no bbox configured ('no-geo')
+      // or a bbox spanning the equator/prime meridian, (0,0) sails through. MQTT
+      // relays Meshtastic packets, so pass the sender's precision_bits to enable
+      // the de-offset in isBogusPosition. A bogus fix still refreshes lastHeard;
+      // undefined lat/lon is preserved by upsertNode's `?? existing` merge, so it
+      // never overwrites a previously stored good position with garbage.
+      const precisionBits = position.precisionBits ?? position.precision_bits ?? undefined;
+      const positionIsBogus = isBogusPosition(lat ?? null, lng ?? null, precisionBits);
+      if (positionIsBogus) {
+        logger.debug(`MQTT: dropping bogus position (${lat}, ${lng}) precisionBits=${precisionBits} from ${fromNodeId}`);
+      }
       const node: Partial<DbNode> = {
         nodeNum: fromNum,
         nodeId: fromNodeId,
@@ -359,8 +376,8 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         // CHANNEL_DB_OFFSET-encoded virtual-channel id for the map
         // filter to honor Virtual Channel Permissions.
         channel: effectiveChannel,
-        latitude: typeof latI === 'number' ? latI / 1e7 : undefined,
-        longitude: typeof lngI === 'number' ? lngI / 1e7 : undefined,
+        latitude: positionIsBogus ? undefined : lat,
+        longitude: positionIsBogus ? undefined : lng,
         altitude: typeof alt === 'number' ? alt : undefined,
         viaMqtt: true,
         transportMechanism: TransportMechanism.MQTT,
