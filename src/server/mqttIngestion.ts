@@ -13,6 +13,7 @@
 
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
+import mqttPacketLogService from './services/mqttPacketLogService.js';
 import databaseService from '../services/database.js';
 
 /**
@@ -119,7 +120,17 @@ export interface MqttIngestionResult {
   portnum?: number;
 }
 
-export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<MqttIngestionResult> {
+/**
+ * Decode a Meshtastic ServiceEnvelope into rows in the nodes/messages/
+ * positions/telemetry tables, attributed to `input.sourceId`. Has ~15
+ * early-return paths, one per ingest outcome — see `MqttIngestionResult`.
+ *
+ * Renamed from the former exported `ingestServiceEnvelope` (body unchanged)
+ * so the exported wrapper below can log every outcome from a single return
+ * point instead of touching each early return. See
+ * docs/internal/dev-notes/MQTT_PACKET_MONITOR_PHASE1_SPEC.md §2.10.
+ */
+async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<MqttIngestionResult> {
   const { sourceId, envelope, filter } = input;
   const packet = envelope.packet;
   if (!packet) return { ingested: false, reason: 'no-packet' };
@@ -489,6 +500,21 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
     default:
       return { ingested: false, reason: 'unsupported-portnum', portnum };
   }
+}
+
+/**
+ * Public entry point — thin wrapper around `ingestServiceEnvelopeInner` that
+ * logs the outcome to the MQTT Packet Monitor exactly once, from the single
+ * return point here, regardless of which early return the inner function
+ * took. Fire-and-forget: the packet-log write never delays or can fail the
+ * ingest pipeline. Because the log call reads `packet.decoded` *after* the
+ * inner run, server-decrypted copies correctly record `decryptedBy:'server'`
+ * and their resolved portnum/preview.
+ */
+export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<MqttIngestionResult> {
+  const result = await ingestServiceEnvelopeInner(input);
+  void mqttPacketLogService.logEnvelope(input.sourceId, input.envelope, result);
+  return result;
 }
 
 /**

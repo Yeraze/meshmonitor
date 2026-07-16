@@ -83,3 +83,11 @@ export { SourcePkiKeysRepository } from './sourcePkiKeys.js';
 export type { DbSourcePkiKey } from './sourcePkiKeys.js';
 export { DeadDropRepository } from './deadDrop.js';
 export type { DeadDropMessageInput } from './deadDrop.js';
+export { MqttPacketLogRepository } from './mqttPacketLog.js';
+export type {
+  DbMqttPacket,
+  MqttIngestOutcome,
+  MqttGroupedQuery,
+  MqttGroupedPacket,
+  MqttGateway,
+} from './mqttPacketLog.js';

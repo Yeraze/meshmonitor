@@ -56,6 +56,8 @@ export const TABLE_ORDER = [
   // user_news_status FKs to users (already migrated above)
   'user_news_status',
   'packet_log',
+  // 4124: MQTT packet monitor reception log (per-gateway rows; sourceId, no FKs)
+  'mqtt_packet_log',
   'backup_history',
   'custom_themes',
   'user_map_preferences',
@@ -104,7 +106,7 @@ export const SOURCE_SCOPED_TABLES = new Set([
   // every backend, so the `sourceId` backfill check never applies to it.
   'embed_profiles', 'meshcore_nodes', 'meshcore_messages',
   'meshcore_neighbor_info', 'meshcore_packet_log',
-  'meshcore_heard_repeaters',
+  'meshcore_heard_repeaters', 'mqtt_packet_log',
   'auto_favorite_targets', 'auto_favorite_assignments',
   'dead_drop_messages',
 ]);
