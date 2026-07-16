@@ -49,6 +49,7 @@ import {
 } from './mqttBridgePublisherPool.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
+import { mqttGeoSweepService, type GeoSweepStats } from './services/mqttGeoSweepService.js';
 
 /**
  * Direction the bridge is permitted to operate in against the upstream
@@ -219,6 +220,11 @@ export interface MqttBridgeStatus extends SourceStatus {
    * mode or when no `local-packet` traffic has been seen yet.
    */
   publishers: Record<string, PublisherStatus>;
+  /**
+   * Stats from the most recent MQTT Geo-Ignore retroactive sweep (Phase 3),
+   * or `null` before the first sweep completes. See `mqttGeoSweepService`.
+   */
+  lastGeoSweep: GeoSweepStats | null;
 }
 
 interface EchoEntry { topic: string; packetId: number; expiresAt: number }
@@ -276,6 +282,8 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
    */
   private brokerGatewayNum: number | null = null;
   private readonly distanceDeleteScheduler: DistanceDeleteScheduler;
+  /** Stats from the most recent geo sweep (MQTT Geo-Ignore epic, Phase 3). */
+  private lastGeoSweep: GeoSweepStats | null = null;
 
   constructor(sourceId: string, sourceName: string, config: MqttBridgeSourceConfig) {
     super();
@@ -297,6 +305,14 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     this.distanceDeleteScheduler.stop();
   }
 
+  /**
+   * Sink for `mqttGeoSweepService.runSweep` (MQTT Geo-Ignore epic, Phase 3).
+   * Satisfies `GeoSweepStatsSink` via duck typing.
+   */
+  recordGeoSweepStats(stats: GeoSweepStats): void {
+    this.lastGeoSweep = stats;
+  }
+
   /** Resolves the configured forwarding mode, defaulting to `'per_gateway'`. */
   private getForwardingMode(): MqttBridgeForwardingMode {
     return this.config.forwardingMode ?? 'per_gateway';
@@ -311,6 +327,16 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
     // a settings-read hiccup must not stop the bridge from coming up.
     this.distanceDeleteScheduler.start().catch((err) =>
       logger.error(`Failed to start distance-delete scheduler for source ${this.sourceId}:`, err));
+
+    // Retroactive geo sweep (MQTT Geo-Ignore epic, Phase 3). Add-only
+    // (`lift: false`): a plain restart has no previous bbox to diff against,
+    // so lifting on every boot would permanently readmit nodes that were
+    // silently purged under a still-current bbox. Lifting only happens on
+    // the config-save path, which knows the bbox actually changed. Fire-
+    // and-forget — a background concern that must not delay bridge startup.
+    mqttGeoSweepService
+      .runSweep(this.sourceId, this.config.downlinkFilters?.geo, { lift: false, sink: this })
+      .catch(err => logger.error(`Geo sweep failed for source ${this.sourceId}:`, err));
 
     const mode = this.getMode();
     const forwardingMode = this.getForwardingMode();
@@ -434,6 +460,7 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       forwardingMode: this.getForwardingMode(),
       publishers: this.publisherPool?.getStatus() ?? {},
       uplinkOkToMqttDrops: this.uplinkOkToMqttDrops,
+      lastGeoSweep: this.lastGeoSweep,
     };
   }
 
