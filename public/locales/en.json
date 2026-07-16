@@ -4249,9 +4249,16 @@
   "news.category.feature": "Feature",
   "news.category.maintenance": "Maintenance",
 
+  "mqtt_bridge_config.geo_status.title": "Geo filter status",
+  "mqtt_bridge_config.geo_status.dropped_summary": "Out-of-bbox positions dropped — downlink: {{downlink}} · uplink: {{uplink}}",
+  "mqtt_bridge_config.geo_status.dropped_note": "Counts plaintext positions only — encrypted positions are evaluated after decryption and are not counted here.",
+  "mqtt_bridge_config.geo_status.last_sweep": "Last sweep {{time}}: scanned {{scanned}} · ignored {{ignored}} · purged {{purged}} · lifted {{lifted}} ({{duration}} ms)",
+  "mqtt_bridge_config.geo_status.no_sweep": "No sweep has run yet.",
+
   "automation.ignored_nodes.title": "Ignored Nodes",
   "automation.ignored_nodes.description": "Nodes on this list stay ignored permanently. MeshMonitor re-applies the ignored flag automatically whenever a listed node reappears without it — for example after inactive-node cleanup, or when the device's node database fills up and clears the ignore on its own.",
   "automation.ignored_nodes.total_ignored": "Ignored Nodes",
+  "automation.ignored_nodes.count_summary": "{{count}} ignored · {{geo}} geo · {{manual}} manual",
   "automation.ignored_nodes.empty": "No nodes are currently ignored.",
   "automation.ignored_nodes.col_node_id": "Node ID",
   "automation.ignored_nodes.col_long_name": "Long Name",
