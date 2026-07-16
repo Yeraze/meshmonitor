@@ -103,16 +103,19 @@ export interface MqttIngestionInput {
   sourceId: string;
   envelope: ServiceEnvelopeShape;
   /**
-   * Geo filter applied to POSITION_APP payloads after decode. Pass the
-   * same MqttPacketFilter instance used for preFilter so its drop counter
-   * stays consistent.
+   * Geo filter used to classify POSITION_APP payloads after decode. Pass the
+   * same MqttPacketFilter instance used for preFilter. `filter.classifyPosition`
+   * performs a pure bbox classification ('in' | 'out' | 'unknown' | 'no-geo')
+   * against the decoded position — it no longer tracks membership or drop
+   * counters; ignore/lift/purge state lives in the `ignored_nodes` table via
+   * `databaseService.ignoredNodes` instead.
    */
   filter?: MqttPacketFilter;
 }
 
 export interface MqttIngestionResult {
   ingested: boolean;
-  reason?: 'no-packet' | 'no-decoded' | 'encrypted' | 'unsupported-portnum' | 'geo-filtered' | 'decode-error';
+  reason?: 'no-packet' | 'no-decoded' | 'encrypted' | 'unsupported-portnum' | 'ignored' | 'geo-ignored' | 'decode-error';
   portnum?: number;
 }
 
@@ -209,13 +212,15 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
   const effectiveChannel =
     channelDatabaseId !== null ? CHANNEL_DB_OFFSET + channelDatabaseId : rawSlot;
 
-  // Fail-closed geo membership: when a bbox is configured on the filter,
-  // only allow packets from senders we've previously decoded a position
-  // for AND that position was inside the bbox. POSITION_APP is exempt
-  // here because the bbox check on the position payload (below) is what
-  // populates the membership cache in the first place.
-  if (filter && portnum !== PortNum.POSITION_APP && !filter.passesMembership(fromNum)) {
-    return { ingested: false, reason: 'geo-filtered', portnum };
+  // Defense-in-depth ignore gate. Ignored senders' non-POSITION traffic never
+  // ingests — covers the broker-manager caller (which shares this function and
+  // has no handleDownlink pre-gate) and any encrypted packet that decrypted to
+  // a non-position payload. POSITION flows through to its case below so the
+  // node can reappear (lift) or be re-evaluated. Applies to BOTH reasons
+  // (manual + geo).
+  if (portnum !== PortNum.POSITION_APP &&
+      databaseService.ignoredNodes.isIgnoredCached(fromNum, sourceId)) {
+    return { ingested: false, reason: 'ignored', portnum };
   }
 
   switch (portnum) {
@@ -260,9 +265,50 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
 
     case PortNum.POSITION_APP: {
       const position = payload as PositionShape & Record<string, any>;
-      if (filter && !filter.postFilterPosition(position, fromNum)) {
-        return { ingested: false, reason: 'geo-filtered', portnum };
+      const geo = filter ? filter.classifyPosition(position) : 'no-geo';
+
+      if (geo === 'out') {
+        // Outside the boundary. Capture display names before purge so the
+        // ignore-list UI shows a real name, then geo-ignore (insert-if-absent)
+        // and purge ONCE on the transition. Never clobbers a manual ignore.
+        const existing = await databaseService.nodes.getNode(fromNum, sourceId);
+        const inserted = await databaseService.ignoredNodes.addGeoIgnoreAsync(
+          fromNum, sourceId, fromNodeId,
+          // A node whose first-ever packet is an out-of-bbox POSITION has no
+          // stored NodeInfo — fall back to the same stub naming the
+          // traceroute path uses so the ignore-list UI never shows a blank.
+          existing?.longName ?? `Node ${fromNodeId}`,
+          existing?.shortName ?? fromNodeId.slice(-4),
+        );
+        if (inserted) {
+          // Fire-and-forget full purge (messages incl. broadcasts, telemetry,
+          // traceroutes, neighbors, packet logs, node row). Ingestion must not
+          // block the packet loop on a multi-table cascade. The ignore-cache
+          // entry is already live (awaited above), so the gate drops the
+          // node's subsequent traffic while the purge runs; a write racing
+          // the cascade is last-writer-wins on the node row, which the next
+          // packet's gate makes moot.
+          void databaseService.deleteNodeAsync(fromNum, sourceId).catch((err) =>
+            logger.warn(`Geo-purge failed for ${fromNodeId}@${sourceId}: ${err}`));
+        }
+        return { ingested: false, reason: 'geo-ignored', portnum };
       }
+
+      if (geo === 'in') {
+        // Inside → node reappears. Lift a geo-ignore if one exists (no-op for
+        // manual / absent). liftGeoIgnoreAsync is TOCTOU-safe.
+        await databaseService.ignoredNodes.liftGeoIgnoreAsync(fromNum, sourceId);
+      }
+
+      // After any lift attempt, a still-ignored sender must NOT ingest — this
+      // catches manual ignores with an in-bounds position, a geo lift that lost
+      // the race to a manual upgrade, and coordless ('unknown') positions from
+      // an ignored node. A never-ignored node (or one just lifted) passes.
+      if (databaseService.ignoredNodes.isIgnoredCached(fromNum, sourceId)) {
+        return { ingested: false, reason: 'ignored', portnum };
+      }
+
+      // Fail-open ingest ('in' reappearance, 'unknown', or 'no-geo').
       const latI = position.latitudeI ?? position.latitude_i;
       const lngI = position.longitudeI ?? position.longitude_i;
       const alt = position.altitude;

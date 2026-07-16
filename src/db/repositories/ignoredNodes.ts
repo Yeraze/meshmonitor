@@ -181,6 +181,12 @@ export class IgnoredNodesRepository extends BaseRepository {
    * a human already blocklisted manually (`reason: 'manual'`) stays manual;
    * re-running the geo filter against an already-geo-ignored node is a
    * harmless no-op (idempotent).
+   *
+   * Returns whether a NEW geo-ignore row was actually inserted. `false` on
+   * conflict — the node was already ignored (either `reason: 'geo'` or
+   * `reason: 'manual'`) and the insert was a no-op. Callers use this to
+   * purge-once on the geo transition (Phase 2): only act on the true→false
+   * edge, not on every repeated geo-filter pass over an already-ignored node.
    */
   async addGeoIgnoreAsync(
     nodeNum: number,
@@ -188,7 +194,7 @@ export class IgnoredNodesRepository extends BaseRepository {
     nodeId: string,
     longName?: string,
     shortName?: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const { ignoredNodes } = this.tables;
     const insertData = {
       nodeNum,
@@ -208,9 +214,14 @@ export class IgnoredNodesRepository extends BaseRepository {
     // set (or is being correctly set for the very first time here).
     this.ignoredCache.add(this.cacheKey(nodeNum, sourceId));
 
-    await this.insertIgnore(ignoredNodes, insertData);
+    const result = await this.insertIgnore(ignoredNodes, insertData);
+    const inserted = this.getAffectedRows(result) > 0;
 
-    logger.debug(`Geo-ignored node ${nodeNum} (${nodeId}) for source ${sourceId}`);
+    if (inserted) {
+      logger.debug(`Geo-ignored node ${nodeNum} (${nodeId}) for source ${sourceId}`);
+    }
+
+    return inserted;
   }
 
   /**

@@ -4,7 +4,16 @@
  * Pure filter functions that decide whether a Meshtastic ServiceEnvelope
  * (decoded from an MQTT message) should pass through a bridge or be
  * dropped. Supports topic patterns (MQTT wildcards), channel/node/portnum
- * allow-block lists, and geographic bounding boxes for position payloads.
+ * allow-block lists, and a geographic bounding box for position payloads.
+ *
+ * The geo filter is a pure bbox classifier + republish gate: it classifies
+ * a decoded Position payload as inside/outside/unknown/unconfigured
+ * (`classifyPosition`) and gates republish of POSITION_APP packets on that
+ * classification (`postFilterPosition`). It has no memory of nodes and no
+ * side effects beyond the `drops.geo` counter. Persistent ignore-list
+ * gating for a node's *other* traffic (TEXT, TELEMETRY, NODEINFO, ...)
+ * lives downstream in the MQTT bridge/ingestion layer, keyed off the
+ * `ignored_nodes` table (MQTT Geo-Ignore epic, Phase 2) — not here.
  */
 
 import { PortNum } from './constants/meshtastic.js';
@@ -52,18 +61,6 @@ export interface PositionShape {
   longitude_i?: number;
 }
 
-/**
- * Per-node bbox membership decision, cached the first time we see a
- * position for that nodeNum and refreshed on every subsequent position.
- *
- * Used by `passesMembership` to apply the bbox to *all* portnums (not just
- * POSITION_APP). Nodes we've never seen a position for are treated as
- * unknown and rejected — see "fail-closed" semantics in the class doc.
- */
-type GeoMembership = 'in' | 'out';
-
-const MEMBERSHIP_MAX = 10_000;
-
 export class MqttPacketFilter {
   private readonly topicAllow: RegExp[];
   private readonly topicBlock: RegExp[];
@@ -74,7 +71,6 @@ export class MqttPacketFilter {
   private readonly portAllow: Set<number> | null;
   private readonly portBlock: Set<number>;
   private readonly geo: MqttFilterConfig['geo'] | null;
-  private readonly membership = new Map<number, GeoMembership>();
   private readonly drops: MqttFilterDropCounters = {
     topic: 0,
     channel: 0,
@@ -162,123 +158,50 @@ export class MqttPacketFilter {
   }
 
   /**
-   * Geographic bounding box filter applied after decoding a Position
-   * payload. Returns true if the position is inside the configured
-   * bbox (or no bbox configured), false to drop.
+   * Pure bbox classification of a decoded Position payload. Never touches
+   * the drop counters or any other state — safe to call speculatively.
    *
-   * If `fromNum` is provided AND the bbox is enabled AND the position
-   * carries valid coordinates, the result is cached as the node's
-   * membership (in / out). `passesMembership` then uses that cache to
-   * decide non-position portnums.
+   * - `'no-geo'` — no bbox is configured (nothing to classify against).
+   * - `'unknown'` — bbox is configured but the position is null, or lacks
+   *   usable coordinates (camelCase `latitudeI`/`longitudeI` or snake_case
+   *   `latitude_i`/`longitude_i`).
+   * - `'in'` / `'out'` — the decoded coordinates relative to the bbox.
    */
-  postFilterPosition(position: PositionShape | null, fromNum?: number): boolean {
-    if (!this.geo || !position) return true;
+  classifyPosition(position: PositionShape | null): 'in' | 'out' | 'unknown' | 'no-geo' {
+    if (!this.hasGeoBounds()) return 'no-geo';
+    if (!position) return 'unknown';
     const latI = position.latitudeI ?? position.latitude_i;
     const lngI = position.longitudeI ?? position.longitude_i;
-    if (typeof latI !== 'number' || typeof lngI !== 'number') return true;
+    if (typeof latI !== 'number' || typeof lngI !== 'number') return 'unknown';
     const lat = latI / 1e7;
     const lng = lngI / 1e7;
-    const { minLat, maxLat, minLng, maxLng } = this.geo;
+    const { minLat, maxLat, minLng, maxLng } = this.geo!;
     const inside =
       (typeof minLat !== 'number' || lat >= minLat) &&
       (typeof maxLat !== 'number' || lat <= maxLat) &&
       (typeof minLng !== 'number' || lng >= minLng) &&
       (typeof maxLng !== 'number' || lng <= maxLng);
+    return inside ? 'in' : 'out';
+  }
 
-    if (typeof fromNum === 'number' && this.hasGeoBounds()) {
-      this.recordMembership(fromNum >>> 0, inside ? 'in' : 'out');
-    }
-
-    if (!inside) {
+  /**
+   * Geographic bounding box republish gate applied after decoding a
+   * Position payload. Returns true if the packet should pass through
+   * (position is inside the bbox, position is unclassifiable, or no bbox
+   * is configured), false to drop. Increments `drops.geo` only when the
+   * position classifies as `'out'`.
+   *
+   * Delegates entirely to `classifyPosition` — this method carries no
+   * membership/caching state of its own. Ignore-list gating of a node's
+   * non-position traffic lives in the bridge/ingestion layer.
+   */
+  postFilterPosition(position: PositionShape | null): boolean {
+    const classification = this.classifyPosition(position);
+    if (classification === 'out') {
       this.drops.geo++;
       return false;
     }
     return true;
-  }
-
-  /**
-   * Non-position fail-closed membership check.
-   *
-   * When the bbox is enabled, every packet (TEXT, TELEMETRY, NODEINFO,
-   * NEIGHBORINFO, encrypted, ...) is gated on the sender having a
-   * known-inside-the-bbox membership. Senders we've never decoded a
-   * position for, or that last reported a position outside the bbox,
-   * are dropped — increments `drops.geo`.
-   *
-   * No-op (passes everything) when the bbox is not configured.
-   */
-  passesMembership(fromNum: number | null | undefined): boolean {
-    if (!this.hasGeoBounds()) return true;
-    if (typeof fromNum !== 'number') {
-      this.drops.geo++;
-      return false;
-    }
-    const status = this.membership.get(fromNum >>> 0);
-    if (status === 'in') return true;
-    this.drops.geo++;
-    return false;
-  }
-
-  /** Test/debug helper — current membership cache size. */
-  getMembershipSize(): number {
-    return this.membership.size;
-  }
-
-  /**
-   * Pre-seed the membership cache with "trusted" nodes — those we know
-   * belong to the operator's mesh regardless of whether we have a stored
-   * position for them. Used to flow MQTT-relayed packets from nodes that
-   * our TCP/Meshcore sources have heard directly but whose position
-   * hasn't been decoded yet (e.g. a base station with GPS disabled).
-   *
-   * Bypasses the bbox check on purpose: if a node is part of the local
-   * mesh, its MQTT-relayed traffic should land regardless of geometry.
-   * No-op when no bbox is configured (everything already passes).
-   */
-  seedTrustedNodes(nodeNums: Iterable<number>): number {
-    if (!this.hasGeoBounds()) return 0;
-    let seeded = 0;
-    for (const num of nodeNums) {
-      if (!Number.isFinite(num)) continue;
-      this.recordMembership(num >>> 0, 'in');
-      seeded++;
-    }
-    return seeded;
-  }
-
-  /**
-   * Pre-seed the membership cache with nodes whose persisted positions are
-   * inside the bbox. Used by MqttBridgeManager on start so that nodes
-   * already known to be in-region don't have to re-broadcast a POSITION_APP
-   * packet before their TEXT/TELEMETRY/NODEINFO traffic is accepted.
-   *
-   * Only seeds 'in' — never 'out'. An out-of-region node may have moved,
-   * so we leave it unknown and let the next POSITION_APP packet update it.
-   * Returns the number of entries actually marked. No-op when no bbox is
-   * configured or for entries with invalid/zero coords.
-   */
-  seedMembership(
-    entries: Array<{ nodeNum: number; latitudeDeg: number; longitudeDeg: number }>,
-  ): number {
-    if (!this.hasGeoBounds()) return 0;
-    const { minLat, maxLat, minLng, maxLng } = this.geo!;
-    let seeded = 0;
-    for (const e of entries) {
-      const lat = e.latitudeDeg;
-      const lng = e.longitudeDeg;
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-      // 0,0 is the sentinel for "no position" elsewhere in the codebase.
-      if (lat === 0 && lng === 0) continue;
-      const inside =
-        (typeof minLat !== 'number' || lat >= minLat) &&
-        (typeof maxLat !== 'number' || lat <= maxLat) &&
-        (typeof minLng !== 'number' || lng >= minLng) &&
-        (typeof maxLng !== 'number' || lng <= maxLng);
-      if (!inside) continue;
-      this.recordMembership(e.nodeNum >>> 0, 'in');
-      seeded++;
-    }
-    return seeded;
   }
 
   getDropCounters(): MqttFilterDropCounters {
@@ -301,18 +224,6 @@ export class MqttPacketFilter {
       typeof this.geo.minLng === 'number' ||
       typeof this.geo.maxLng === 'number'
     );
-  }
-
-  private recordMembership(nodeNum: number, status: GeoMembership): void {
-    // FIFO eviction at MEMBERSHIP_MAX. Re-inserting a key bumps it to the
-    // end of insertion order, which makes refreshed nodes effectively MRU.
-    if (this.membership.has(nodeNum)) {
-      this.membership.delete(nodeNum);
-    } else if (this.membership.size >= MEMBERSHIP_MAX) {
-      const oldest = this.membership.keys().next().value;
-      if (oldest !== undefined) this.membership.delete(oldest);
-    }
-    this.membership.set(nodeNum, status);
   }
 }
 
