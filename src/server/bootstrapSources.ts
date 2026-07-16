@@ -251,8 +251,28 @@ export async function bootstrapSources(deps: BootstrapDeps): Promise<void> {
     // with env-var config. This covers all-MeshCore, all-disabled-tcp, and
     // autoConnect:false installs. Disposition (open Q1): keep unless explicitly
     // decided to drop in WP3 (recommendation: keep, it's the behavior-preserving choice).
-    await deps.fallbackManager.connect();
-    logger.debug('Meshtastic manager connected (legacy mode, no sources configured)');
+    //
+    // #4020: this connect MUST NOT be allowed to reject out of bootstrapSources.
+    // On a MeshCore-only install there is no real Meshtastic node, so this
+    // fallback connect fails (ECONNREFUSED/timeout) and — before this guard —
+    // the rejection propagated all the way up to the startup try/catch in
+    // server.ts, aborting every scheduler started AFTER bootstrapSources
+    // (low-battery notifications, inactive-node notifications, backup scheduler,
+    // etc.). That is why MeshCore-only users never saw low-battery alerts fire
+    // and never got any `[low-battery]` diagnostics: the service was never
+    // started, so no code in it ran. The manager's own retry logic reconnects
+    // if a node ever appears, so swallow the initial failure — mirroring the
+    // per-source try/catch above ("don't let one failed source block others").
+    try {
+      await deps.fallbackManager.connect();
+      logger.debug('Meshtastic manager connected (legacy mode, no sources configured)');
+    } catch (err) {
+      logger.warn(
+        'Fallback Meshtastic connect failed (expected on MeshCore-only or node-down-at-boot installs); ' +
+          'continuing startup so global schedulers still start:',
+        err,
+      );
+    }
   } else {
     logger.debug(`Started ${enabledSources.length} source manager(s)`);
   }
