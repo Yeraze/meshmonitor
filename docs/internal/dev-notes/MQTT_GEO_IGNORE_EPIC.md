@@ -99,17 +99,17 @@ pre-decryption in `handleDownlink`.
   suite green. **PR #4131 MERGED** 2026-07-15 (squash 0a9b7e27; review adds: stub display names for never-seen geo-ignored nodes, one-packet-window docs, purge-once via addGeoIgnoreAsync boolean; CI fix: ignoredNodes stub in empty database mocks of mode/permission bridge suites).
 
 ### Phase 3 — Retroactive sweep on config change + bridge start
-- [ ] Sweep service (new, small): for a bridge source with a bbox — stored
+- [x] Sweep service (new, small): for a bridge source with a bbox — stored
   effective position outside → geo-ignore + purge; geo-ignored entries whose
   node would now be inside (or bbox removed) → lift. No action for
   position-less nodes.
-- [ ] Trigger on bridge start (replaces old seed step) and on source config
+- [x] Trigger on bridge start (replaces old seed step) and on source config
   save when `downlinkFilters.geo` changes (sourceRoutes update path).
-- [ ] Log summary (`ignored N, purged N, lifted N`); expose last-sweep stats on
+- [x] Log summary (`ignored N, purged N, lifted N`); expose last-sweep stats on
   bridge status.
-- [ ] Tests: sweep unit tests + config-change integration + perSource.
+- [x] Tests: sweep unit tests + config-change integration + perSource.
 - **Exit:** enabling/widening/narrowing bbox converges the DB without restart;
-  suite green; PR merged.
+  suite green. **PR #4132 MERGED** 2026-07-16 (squash b16e7f23; incl. repair of #4114 packet-monitor semantic conflict: ingest outcome union now `ignored`/`geo-ignored`).
 
 ### Phase 4 — Observability + docs
 - [ ] Source status: per-reason drop counters (geo-ignored drops), ignore-list
