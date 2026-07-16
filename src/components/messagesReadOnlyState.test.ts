@@ -5,6 +5,7 @@ describe('computeMessagesReadOnlyState (#3831)', () => {
   it('normal messageable node: nothing is read-only', () => {
     expect(computeMessagesReadOnlyState({ mqttReadOnly: false, isUnmessagable: false })).toEqual({
       dmReadOnly: false,
+      dmReadOnlyReason: null,
       actionsReadOnly: false,
     });
   });
@@ -15,6 +16,7 @@ describe('computeMessagesReadOnlyState (#3831)', () => {
     // unmessageable node still answers them. dmReadOnly is true, actions are NOT.
     expect(computeMessagesReadOnlyState({ mqttReadOnly: false, isUnmessagable: true })).toEqual({
       dmReadOnly: true,
+      dmReadOnlyReason: 'unmessageable',
       actionsReadOnly: false,
     });
   });
@@ -22,13 +24,15 @@ describe('computeMessagesReadOnlyState (#3831)', () => {
   it('MQTT-bridge mirror: both DMs and action buttons are read-only', () => {
     expect(computeMessagesReadOnlyState({ mqttReadOnly: true, isUnmessagable: false })).toEqual({
       dmReadOnly: true,
+      dmReadOnlyReason: 'mqtt',
       actionsReadOnly: true,
     });
   });
 
-  it('MQTT mirror AND unmessageable: both read-only', () => {
+  it('MQTT mirror AND unmessageable: both read-only, unmessageable reason wins (#4139)', () => {
     expect(computeMessagesReadOnlyState({ mqttReadOnly: true, isUnmessagable: true })).toEqual({
       dmReadOnly: true,
+      dmReadOnlyReason: 'unmessageable',
       actionsReadOnly: true,
     });
   });
@@ -36,6 +40,7 @@ describe('computeMessagesReadOnlyState (#3831)', () => {
   it('treats undefined isUnmessagable as messageable (only strict true gates DMs)', () => {
     expect(computeMessagesReadOnlyState({ mqttReadOnly: false, isUnmessagable: undefined })).toEqual({
       dmReadOnly: false,
+      dmReadOnlyReason: null,
       actionsReadOnly: false,
     });
   });
