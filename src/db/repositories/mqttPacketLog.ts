@@ -15,7 +15,8 @@ import { BaseRepository } from './base.js';
 export type MqttIngestOutcome =
   | 'ingested'
   | 'encrypted'
-  | 'geo-filtered'
+  | 'ignored'
+  | 'geo-ignored'
   | 'unsupported-portnum'
   | 'decode-error';
 

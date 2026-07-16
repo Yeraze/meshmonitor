@@ -78,25 +78,25 @@ pre-decryption in `handleDownlink`.
   green. **PR #4123 MERGED** 2026-07-15 (squash 2f828caa; migration renumbered 119→120 after #4118 took 119; review fixes: TOCTOU cache-eviction in liftGeoIgnoreAsync, source-qualified UI key, harness teardown guard; also shipped watch-ci.sh merge-conflict detection exit 3).
 
 ### Phase 2 — Core gating rearchitecture (the behavior flip)
-- [ ] `MqttBridgeManager.handleDownlink`: remove fail-closed
+- [x] `MqttBridgeManager.handleDownlink`: remove fail-closed
   `passesMembership` ingestion gating + membership seeding
   (`seedDownlinkMembership`); add early drop of **non-POSITION** packets from
   ignored senders via `isIgnoredCached`; POSITION always flows to ingestion.
-- [ ] `ingestServiceEnvelope` POSITION_APP case: post-decrypt geo evaluation —
+- [x] `ingestServiceEnvelope` POSITION_APP case: post-decrypt geo evaluation —
   outside → `addGeoIgnoreAsync` + async purge + drop position; inside →
   `liftGeoIgnoreAsync` (reappear) + normal ingest.
-- [ ] Also early-drop ignored senders inside `ingestServiceEnvelope`
+- [x] Also early-drop ignored senders inside `ingestServiceEnvelope`
   (defense-in-depth for the broker-manager caller which shares this path).
-- [ ] Republish-to-local-broker path: skip packets from ignored senders;
+- [x] Republish-to-local-broker path: skip packets from ignored senders;
   plaintext out-of-bbox positions still not republished.
-- [ ] Remove/retire membership machinery in `MqttPacketFilter`
+- [x] Remove/retire membership machinery in `MqttPacketFilter`
   (`passesMembership`, `seedTrustedNodes`, `seedMembership`, membership map)
   — keep bbox math + other filters. Geo drop counter stays.
-- [ ] Rewrite affected tests (bridge fail-closed tests become fail-open +
+- [x] Rewrite affected tests (bridge fail-closed tests become fail-open +
   ignore-list tests); new perSource tests for geo-ignore/lift/purge.
 - **Exit:** the #4115 scenario passes in tests (GPS-less node's NODEINFO/TEXT
   ingested; out-of-bounds node purged+ignored; in-bounds position lifts);
-  suite green; PR merged.
+  suite green. **PR #4131 MERGED** 2026-07-15 (squash 0a9b7e27; review adds: stub display names for never-seen geo-ignored nodes, one-packet-window docs, purge-once via addGeoIgnoreAsync boolean; CI fix: ignoredNodes stub in empty database mocks of mode/permission bridge suites).
 
 ### Phase 3 — Retroactive sweep on config change + bridge start
 - [ ] Sweep service (new, small): for a bridge source with a bbox — stored

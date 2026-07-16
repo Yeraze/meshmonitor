@@ -160,8 +160,10 @@ function mapOutcome(result: MqttIngestionResult): MqttIngestOutcome {
   switch (result.reason) {
     case 'encrypted':
       return 'encrypted';
-    case 'geo-filtered':
-      return 'geo-filtered';
+    case 'ignored':
+      return 'ignored';
+    case 'geo-ignored':
+      return 'geo-ignored';
     case 'unsupported-portnum':
       return 'unsupported-portnum';
     case 'decode-error':
