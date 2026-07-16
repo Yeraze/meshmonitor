@@ -162,3 +162,23 @@ export const meshcoreDeviceLimiter = rateLimit({
   },
   ...rateLimitConfig,
 });
+
+// Elevation profile/test — each call fans out to N outbound tile fetches, so
+// this is stricter than general API. Private network IPs (RFC 1918 + loopback)
+// are exempt via rateLimitConfig's keyGenerator/skip behavior below.
+// Default: 20/min production, 120/min development.
+export const elevationLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: env.isProduction ? 20 : 120,
+  message: 'Too many elevation requests, please slow down',
+  skip: (req) => isPrivateNetworkIp(req.ip ?? ''),
+  handler: (req, res) => {
+    const ip = req.ip || 'unknown';
+    logger.warn(`🚫 Rate limit exceeded for ELEVATION - IP: ${ip}, Path: ${req.path}`);
+    res.status(429).json({
+      error: 'Too many elevation requests, please slow down',
+      retryAfter: '1 minute'
+    });
+  },
+  ...rateLimitConfig,
+});
