@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { isNullIsland, isValidLatLng, isBogusPosition, NULL_ISLAND_EPSILON } from './nullIsland.js';
+import {
+  isNullIsland,
+  isValidLatLng,
+  isBogusPosition,
+  isNullIslandWithPrecision,
+  precisionOffsetDegrees,
+  NULL_ISLAND_EPSILON,
+} from './nullIsland.js';
 
 describe('isNullIsland', () => {
   it('flags exactly (0, 0)', () => {
@@ -83,5 +90,80 @@ describe('isBogusPosition', () => {
     expect(isBogusPosition(null, null)).toBe(false);
     expect(isBogusPosition(26.33, null)).toBe(false);
     expect(isBogusPosition(undefined, -80.27)).toBe(false);
+  });
+
+  it('rejects a position-precision-obscured (0,0) fix only when precisionBits is supplied', () => {
+    // A node truly at (0,0) on a 14-bit-precision channel transmits (offset, offset).
+    const offset14 = precisionOffsetDegrees(14); // 0.0131072°
+    // Without precision context it clears the plain box (regression the fix addresses)...
+    expect(isBogusPosition(offset14, offset14)).toBe(false);
+    // ...but with the sender's precisionBits it is correctly rejected.
+    expect(isBogusPosition(offset14, offset14, 14)).toBe(true);
+  });
+
+  it('still accepts a real position when precisionBits is supplied', () => {
+    expect(isBogusPosition(26.33, -80.27, 14)).toBe(false);
+    expect(isBogusPosition(-33.8688, 151.2093, 10)).toBe(false);
+  });
+});
+
+describe('precisionOffsetDegrees', () => {
+  it('computes 2^(31 - bits) * 1e-7 for obscured precision', () => {
+    expect(precisionOffsetDegrees(16)).toBeCloseTo(0.0032768, 12); // 2^15 * 1e-7
+    expect(precisionOffsetDegrees(14)).toBeCloseTo(0.0131072, 12); // 2^17 * 1e-7 — the ~0.013 reports
+    expect(precisionOffsetDegrees(12)).toBeCloseTo(0.0524288, 12); // 2^19 * 1e-7
+  });
+
+  it('returns 0 for full precision, disabled precision, or unknown values', () => {
+    expect(precisionOffsetDegrees(32)).toBe(0); // full precision
+    expect(precisionOffsetDegrees(0)).toBe(0);  // disabled
+    expect(precisionOffsetDegrees(undefined)).toBe(0);
+    expect(precisionOffsetDegrees(null)).toBe(0);
+    expect(precisionOffsetDegrees(NaN)).toBe(0);
+  });
+});
+
+describe('isNullIslandWithPrecision', () => {
+  it('rejects a true-(0,0) fix re-centered by any obscured precision level', () => {
+    // For a masked origin of 0, the received coordinate is exactly the offset.
+    for (const bits of [16, 15, 14, 13, 12, 11, 10]) {
+      const offset = precisionOffsetDegrees(bits);
+      expect(isNullIslandWithPrecision(offset, offset, bits)).toBe(true);
+    }
+  });
+
+  it('handles the realistic decoded coordinate (latitudeI/1e7), not just the exact offset', () => {
+    // latitudeI = longitudeI = 2^17 for a true-(0,0) node at 14-bit precision.
+    const decoded = 131072 / 1e7; // how meshtasticProtobufService.convertCoordinates yields it
+    expect(isNullIslandWithPrecision(decoded, decoded, 14)).toBe(true);
+  });
+
+  it('is identical to the plain box when precision is undefined / full / disabled', () => {
+    expect(isNullIslandWithPrecision(0, 0, undefined)).toBe(true);
+    expect(isNullIslandWithPrecision(0.0131072, 0.0131072, undefined)).toBe(false);
+    expect(isNullIslandWithPrecision(0.0131072, 0.0131072, 32)).toBe(false); // full precision, no offset
+    expect(isNullIslandWithPrecision(0.0131072, 0.0131072, 0)).toBe(false);  // disabled, no offset
+  });
+
+  it('does not flag when only one axis sits at the offset (defensive — firmware cannot emit this)', () => {
+    // Meshtastic applies the same precision to both axes, so an asymmetric offset
+    // can't occur on the wire; asserting it documents that a single near-origin axis
+    // is not Null Island (the other axis is a real, far-from-zero coordinate).
+    const offset14 = precisionOffsetDegrees(14);
+    expect(isNullIslandWithPrecision(offset14, 20, 14)).toBe(false);
+    expect(isNullIslandWithPrecision(20, offset14, 14)).toBe(false);
+  });
+
+  it('never flags a real position after backing out the (small) offset', () => {
+    expect(isNullIslandWithPrecision(37.7749, -122.4194, 14)).toBe(false); // San Francisco
+    expect(isNullIslandWithPrecision(51.4778, 0.0001, 14)).toBe(false);    // Greenwich, real lat
+    // Coarsest offset is ~0.21° (10 bits) — still nowhere near a populated coordinate.
+    expect(isNullIslandWithPrecision(1.0, 1.0, 10)).toBe(false);
+  });
+
+  it('returns false for missing / non-finite coordinates', () => {
+    expect(isNullIslandWithPrecision(null, 0, 14)).toBe(false);
+    expect(isNullIslandWithPrecision(0, undefined, 14)).toBe(false);
+    expect(isNullIslandWithPrecision(NaN, 0, 14)).toBe(false);
   });
 });
