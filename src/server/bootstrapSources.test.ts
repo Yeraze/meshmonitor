@@ -570,6 +570,29 @@ describe('bootstrapSources — startup pin-test matrix (WP1)', () => {
       }));
       expect(ensureMeshCoreManagerStarted).toHaveBeenCalledOnce();
     });
+
+    // #4020 regression: on a MeshCore-only install the S4 fallback connect has
+    // no real Meshtastic node to reach and rejects. Before the fix that
+    // rejection escaped bootstrapSources and aborted the startup try/catch in
+    // server.ts, so every scheduler started AFTER bootstrapSources (low-battery
+    // + inactive-node notifications, backup scheduler, ...) never started —
+    // which is why MeshCore-only users never got low-battery alerts and saw no
+    // `[low-battery]` diagnostics. bootstrapSources must swallow the failure
+    // and resolve so the caller keeps starting those schedulers.
+    it('(#4020) resolves (does NOT throw) when the S4 fallback connect rejects', async () => {
+      const row = makeMeshCoreSource('mc-1');
+      const db = makeDbStub([row]);
+      fallbackManager.connect.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      await expect(
+        bootstrapSources(makeDeps({
+          db, registry, fallbackManager: fallbackManager as any,
+          makeMeshtastic: meshFactory.factory,
+        })),
+      ).resolves.toBeUndefined();
+      // The MeshCore source still came up — startup was not aborted mid-way.
+      expect(ensureMeshCoreManagerStarted).toHaveBeenCalledOnce();
+      expect(fallbackManager.connect).toHaveBeenCalledOnce();
+    });
   });
 
   // -------------------------------------------------------------------------
