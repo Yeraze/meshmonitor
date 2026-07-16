@@ -44,7 +44,8 @@ describe('buildMqttPacketLogRow', () => {
     const cases: Array<[MqttIngestionResult, string]> = [
       [{ ingested: true, portnum: 1 }, 'ingested'],
       [{ ingested: false, reason: 'encrypted' }, 'encrypted'],
-      [{ ingested: false, reason: 'geo-filtered' }, 'geo-filtered'],
+      [{ ingested: false, reason: 'ignored' }, 'ignored'],
+      [{ ingested: false, reason: 'geo-ignored' }, 'geo-ignored'],
       [{ ingested: false, reason: 'unsupported-portnum' }, 'unsupported-portnum'],
       [{ ingested: false, reason: 'decode-error' }, 'decode-error'],
       [{ ingested: false, reason: 'no-decoded' }, 'decode-error'],
@@ -59,7 +60,7 @@ describe('buildMqttPacketLogRow', () => {
     it('ingested:true always wins even if a reason is also set', () => {
       const row = buildMqttPacketLogRow('src-a', envelope(), {
         ingested: true,
-        reason: 'geo-filtered' as any,
+        reason: 'geo-ignored' as any,
         portnum: 1,
       });
       expect(row?.ingestOutcome).toBe('ingested');
