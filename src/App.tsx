@@ -4237,6 +4237,19 @@ const location = useLocation();
   // Toggle the per-node "Hide from Map" flag (issue #3549). Display-only: the
   // node stays visible everywhere except map markers. Mirrors toggleIgnored's
   // optimistic-update + per-source pending-request pattern, minus device sync.
+  //
+  // #4137: App.tsx is only ever mounted per-source (via SourceProvider under
+  // /source/:sourceId/*) — there is no separate "unified" caller of this
+  // toggle today. But since mergeNodesAcrossSources now ORs hideFromMap across
+  // sources for every cross-source consumer (Dashboard, Map Analysis, the
+  // unified node list — see mergeNodesAcrossSources.ts), a node stays hidden
+  // there forever unless EVERY source that ever hid it gets cleared. A
+  // per-source-only clear reproduces the exact "can't un-hide" bug reported
+  // in #4137. This is the only hide/show entry point in the UI, so it always
+  // converges the flag across every source for this nodeNum (allSources:
+  // true) rather than only the row for the currently-viewed source.
+  // sourceId is still sent and still required server-side — it remains the
+  // permission anchor for the write, just not the update scope.
   const toggleHideFromMap = async (node: DeviceInfo, event: React.MouseEvent) => {
     event.stopPropagation();
 
@@ -4270,6 +4283,7 @@ const location = useLocation();
         body: JSON.stringify({
           hideFromMap: newStatus,
           sourceId,
+          allSources: true,
         }),
       });
 

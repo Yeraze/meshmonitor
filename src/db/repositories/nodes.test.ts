@@ -982,6 +982,57 @@ function runNodesTests(getBackend: () => TestBackend) {
     expect(node!.lastMessageHops).toBe(3);
   });
 
+  // --- setNodeHideFromMapAllSourcesAsync (#4137) ---
+
+  it('setNodeHideFromMapAllSourcesAsync - sets hideFromMap on every source row for the nodeNum', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertNode(makeNode(1600, { hideFromMap: true }), 'src-a');
+    await repo.upsertNode(makeNode(1600, { hideFromMap: false }), 'src-b');
+
+    const affected = await repo.setNodeHideFromMapAllSourcesAsync(1600, false);
+    expect(affected).toBe(2);
+
+    const nodeA = await repo.getNode(1600, 'src-a');
+    const nodeB = await repo.getNode(1600, 'src-b');
+    expect(nodeA!.hideFromMap).toBe(false);
+    expect(nodeB!.hideFromMap).toBe(false);
+  });
+
+  it('setNodeHideFromMapAllSourcesAsync - only touches rows for the target nodeNum (per-source isolation)', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertNode(makeNode(1601, { hideFromMap: false }), 'src-a');
+    await repo.upsertNode(makeNode(1602, { hideFromMap: false }), 'src-a');
+
+    const affected = await repo.setNodeHideFromMapAllSourcesAsync(1601, true);
+    expect(affected).toBe(1);
+
+    const node1601 = await repo.getNode(1601, 'src-a');
+    const node1602 = await repo.getNode(1602, 'src-a');
+    expect(node1601!.hideFromMap).toBe(true);
+    expect(node1602!.hideFromMap).toBe(false);
+  });
+
+  it('setNodeHideFromMapAllSourcesAsync - returns 0 for a nodeNum with no rows', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const affected = await repo.setNodeHideFromMapAllSourcesAsync(999999, true);
+    expect(affected).toBe(0);
+  });
+
   // --- getNodesWithPublicKeys ---
 
   it('getNodesWithPublicKeys - returns only nodes with non-empty publicKey', async () => {

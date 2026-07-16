@@ -786,6 +786,19 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
     if (!deleted) {
       return res.status(404).json({ error: 'Source not found' });
     }
+
+    // #4137: deleteSource only removes the `sources` row — it does not cascade
+    // to `nodes` (or messages/telemetry/etc). Left behind, those orphaned node
+    // rows keep contributing a stale hideFromMap (and other flags) to the
+    // unified merge forever, with no UI path left to clean them up since the
+    // owning source no longer exists. Best-effort: don't fail the delete
+    // request if this cleanup has a problem.
+    try {
+      await databaseService.purgeAllNodesAsync(req.params.id);
+    } catch (purgeError) {
+      logger.warn(`Failed to purge nodes for deleted source ${req.params.id}:`, purgeError);
+    }
+
     res.json({ success: true });
   } catch (error) {
     logger.error('Error deleting source:', error);

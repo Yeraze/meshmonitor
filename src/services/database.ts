@@ -5244,6 +5244,33 @@ class DatabaseService {
     logger.debug(`🗺️ Node ${nodeNum}@${sourceId} hideFromMap ${hidden ? 'enabled' : 'disabled'}`);
   }
 
+  /**
+   * Set `hideFromMap` across EVERY source's row for this nodeNum (issue #4137).
+   * Used when toggling map visibility from a unified/cross-source view, where
+   * "un-hide" needs to converge every source's row — not just the single
+   * winning row that mergeNodesAcrossSources happened to pick — or a stale
+   * `true` on another source keeps the node hidden in the unified view forever.
+   * Delegates to the Drizzle-based NodesRepository so it works identically
+   * across SQLite/PostgreSQL/MySQL (unlike the per-source method above, which
+   * still branches on backend for legacy reasons).
+   */
+  async setNodeHideFromMapAllSourcesAsync(nodeNum: number, hidden: boolean): Promise<number> {
+    if (!this.nodesRepo) {
+      throw new Error('Nodes repository not initialized');
+    }
+
+    const affected = await this.nodesRepo.setNodeHideFromMapAllSourcesAsync(nodeNum, hidden);
+
+    if (affected === 0) {
+      const nodeId = `!${nodeNum.toString(16).padStart(8, '0')}`;
+      logger.warn(`⚠️ Failed to update hideFromMap (all sources) for node ${nodeId} (${nodeNum}): node not found in database`);
+      throw new Error(`Node ${nodeId} not found`);
+    }
+
+    logger.debug(`🗺️ Node ${nodeNum} hideFromMap ${hidden ? 'enabled' : 'disabled'} across ${affected} source row(s) (#4137)`);
+    return affected;
+  }
+
   async handleAutoWelcomeEnabledAsync(): Promise<number> {
     const migrationKey = 'auto_welcome_first_enabled';
     const migrationCompleted = this.getSetting(migrationKey);

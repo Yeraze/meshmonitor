@@ -107,6 +107,7 @@ const databaseMock = {
   setNodeFavorite: vi.fn((_nodeNum: number, _isFavorite: boolean, _sourceId: string, _favoriteLocked?: boolean) => undefined),
   setNodeFavoriteLocked: vi.fn((_nodeNum: number, _favoriteLocked: boolean, _sourceId: string) => undefined),
   setNodeHideFromMapAsync: vi.fn(async (_nodeNum: number, _hidden: boolean, _sourceId: string) => undefined),
+  setNodeHideFromMapAllSourcesAsync: vi.fn(async (_nodeNum: number, _hidden: boolean) => 2),
   setNodeNotesAsync: vi.fn(async (_nodeNum: number, _notes: string, _sourceId: string) => undefined),
   purgeAllNodes: vi.fn(),
   purgeAllTelemetry: vi.fn(),
@@ -236,11 +237,11 @@ describe('Server API Endpoints', () => {
       }
     });
 
-    // Mirrors apiRouter.post('/nodes/:nodeId/hide-from-map') validation contract (#3549)
+    // Mirrors apiRouter.post('/nodes/:nodeId/hide-from-map') validation contract (#3549, allSources added for #4137)
     app.post('/api/nodes/:nodeId/hide-from-map', async (req, res) => {
       try {
         const { nodeId } = req.params;
-        const { hideFromMap, sourceId } = req.body;
+        const { hideFromMap, sourceId, allSources } = req.body;
 
         if (typeof hideFromMap !== 'boolean') {
           res.status(400).json({ error: 'hideFromMap must be a boolean' });
@@ -259,7 +260,11 @@ describe('Server API Endpoints', () => {
         }
         const nodeNum = parseInt(nodeNumStr, 16);
 
-        await databaseMock.setNodeHideFromMapAsync(nodeNum, hideFromMap, sourceId);
+        if (allSources === true) {
+          await databaseMock.setNodeHideFromMapAllSourcesAsync(nodeNum, hideFromMap);
+        } else {
+          await databaseMock.setNodeHideFromMapAsync(nodeNum, hideFromMap, sourceId);
+        }
         res.json({ success: true, nodeNum, hideFromMap });
       } catch (error) {
         res.status(500).json({ error: 'Failed to set node hideFromMap' });
@@ -698,6 +703,37 @@ describe('Server API Endpoints', () => {
         .expect(400);
 
       expect(response.body.error).toBe('Invalid nodeId format');
+    });
+
+    it('POST /api/nodes/:nodeId/hide-from-map with allSources:true clears every source\'s row (#4137)', async () => {
+      const response = await request(app)
+        .post('/api/nodes/!00000001/hide-from-map')
+        .send({ hideFromMap: false, sourceId: 'default', allSources: true })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.hideFromMap).toBe(false);
+      expect(databaseMock.setNodeHideFromMapAllSourcesAsync).toHaveBeenCalledWith(1, false);
+      expect(databaseMock.setNodeHideFromMapAsync).not.toHaveBeenCalled();
+    });
+
+    it('POST /api/nodes/:nodeId/hide-from-map still requires sourceId even with allSources:true (#4137)', async () => {
+      const response = await request(app)
+        .post('/api/nodes/!00000001/hide-from-map')
+        .send({ hideFromMap: false, allSources: true })
+        .expect(400);
+
+      expect(response.body.error).toBe('sourceId is required');
+    });
+
+    it('POST /api/nodes/:nodeId/hide-from-map without allSources still targets a single source (#4137)', async () => {
+      const response = await request(app)
+        .post('/api/nodes/!00000001/hide-from-map')
+        .send({ hideFromMap: true, sourceId: 'default' })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(databaseMock.setNodeHideFromMapAsync).toHaveBeenCalledWith(1, true, 'default');
     });
 
     it('POST /api/nodes/:nodeId/notes should set the note (#3921)', async () => {

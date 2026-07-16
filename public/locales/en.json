@@ -418,6 +418,7 @@
   "messages.traceroute_channel": "Choose channel for traceroute",
   "messages.show_on_map": "Show on Map",
   "messages.show_on_map_title": "Show this node on the map",
+  "messages.center_on_map": "Center on Map",
   "messages.history_button": "Show History",
   "messages.history_title": "View traceroute history for this node",
   "messages.exchange_position": "Exchange Position",

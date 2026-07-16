@@ -101,6 +101,24 @@ describe('mergeNodesAcrossSources (issue #3135)', () => {
     expect(merged.isIgnored).toBe(true);
   });
 
+  it('ORs hideFromMap across sources (#4137): winner false + older true -> merged true', () => {
+    const rows: DbNode[] = [
+      makeNode(401, { hideFromMap: false, lastHeard: 2000 }),
+      makeNode(401, { hideFromMap: true, lastHeard: 1000 }),
+    ];
+    const [merged] = mergeNodesAcrossSources(rows);
+    expect(merged.hideFromMap).toBe(true);
+  });
+
+  it('#4137: hideFromMap stays false when every source has it false', () => {
+    const rows: DbNode[] = [
+      makeNode(402, { hideFromMap: false, lastHeard: 2000 }),
+      makeNode(402, { hideFromMap: false, lastHeard: 1000 }),
+    ];
+    const [merged] = mergeNodesAcrossSources(rows);
+    expect(merged.hideFromMap).toBe(false);
+  });
+
   it('exposes the max lastHeard / updatedAt across the group', () => {
     const rows: DbNode[] = [
       makeNode(500, { lastHeard: 5000, updatedAt: 5500 }),

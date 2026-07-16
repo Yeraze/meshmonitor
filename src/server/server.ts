@@ -1811,7 +1811,7 @@ apiRouter.delete('/nodes/:nodeId/position-override', requirePermission('nodes', 
 apiRouter.post('/nodes/:nodeId/hide-from-map', requirePermission('nodes', 'write', { sourceIdFrom: 'body' }), async (req, res) => {
   try {
     const { nodeId } = req.params;
-    const { hideFromMap, sourceId: hfmSourceId } = req.body;
+    const { hideFromMap, sourceId: hfmSourceId, allSources } = req.body;
 
     if (typeof hideFromMap !== 'boolean') {
       const errorResponse: ApiErrorResponse = {
@@ -1849,7 +1849,17 @@ apiRouter.post('/nodes/:nodeId/hide-from-map', requirePermission('nodes', 'write
 
     const nodeNum = parseInt(nodeNumStr, 16);
 
-    await databaseService.setNodeHideFromMapAsync(nodeNum, hideFromMap, hfmSourceId);
+    // #4137: unified/cross-source views toggle the logical node, not one
+    // source's row. hideFromMap is map-visibility metadata (not a
+    // security-sensitive field), so requiring write permission on the
+    // request's anchor sourceId is a sufficient permission check even
+    // though the write fans out to every source's row for this nodeNum —
+    // sourceId above remains required and stays the RBAC anchor either way.
+    if (allSources === true) {
+      await databaseService.setNodeHideFromMapAllSourcesAsync(nodeNum, hideFromMap);
+    } else {
+      await databaseService.setNodeHideFromMapAsync(nodeNum, hideFromMap, hfmSourceId);
+    }
 
     res.json({
       success: true,
