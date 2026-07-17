@@ -48,11 +48,15 @@ describe('Migration 123: re-file MQTT directed messages (SQLite)', () => {
     insert(db, { id: 'mqtt-dm-nontext',toNodeNum: 0x11223344, channel: 8,  portnum: 3, viaMqtt: 1 }); // untouched (not TEXT)
     insert(db, { id: 'tcp-dm',         toNodeNum: 0x11223344, channel: 8,  portnum: 1, viaMqtt: 0 }); // untouched (not MQTT)
     insert(db, { id: 'mqtt-dm-already',toNodeNum: 0x11223344, channel: -1, portnum: 1, viaMqtt: 1 }); // already correct
+    insert(db, { id: 'mqtt-dm-zero',   toNodeNum: 0,          channel: 8,  portnum: 1, viaMqtt: 1 }); // unset `to` (0) → directed, per TCP path
   });
 
   it('sets channel -1 only for MQTT-sourced directed TEXT messages', () => {
     migration.up(db);
     expect(channelOf(db, 'mqtt-dm')).toBe(-1);
+    // toNodeNum = 0 (unset proto `to`) is a directed address (0 != broadcast),
+    // matching the ingestion gate and the TCP path — it migrates to -1 too.
+    expect(channelOf(db, 'mqtt-dm-zero')).toBe(-1);
   });
 
   it('leaves broadcasts, non-text, and TCP rows untouched', () => {
