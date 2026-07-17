@@ -199,7 +199,7 @@ Nine inputs drive the analysis; editing any of them recomputes instantly with no
 | Input | Default | Notes |
 | --- | --- | --- |
 | Frequency | 915 MHz | Auto-fills from the picked node's radio config when available (see below) |
-| Antenna height AGL (A and B) | 2 m | Above-ground-level height at each endpoint; node GPS altitude is intentionally **not** used (see [Limitations](#limitations-v1)) |
+| Antenna height AGL (A and B) | 2 m | Above-ground-level height at each endpoint; node GPS altitude is intentionally **not** used (see [Limitations](#limitations)) |
 | TX power | 20 dBm | |
 | TX / RX antenna gain | 2.15 dBi each | Standard dipole reference gain |
 | Cable loss | 0 dB | |
@@ -211,7 +211,7 @@ Nine inputs drive the analysis; editing any of them recomputes instantly with no
 - **Frequency** — the source's configured center frequency (derived from the Meshtastic region + channel + modem preset, or the MeshCore radio's configured frequency), shown with a small provenance hint like *"from Home Base (US)"* under the field.
 - **RX sensitivity** — for Meshtastic sources with a known modem preset, computed from the standard LoRa link-budget formula (`S = -174 + 10·log10(BW) + noise figure + SNR floor for the preset's spreading factor`) rather than a hardcoded table.
 
-If both points are arbitrary (non-node) locations, or the source doesn't expose radio config, the fields keep their 915 MHz / −129 dBm defaults. **Manual edits always win** — once you type into a field, auto-fill stops touching it for that endpoint pair. Picking a *new* pair resets that and re-seeds from the new pair's source, if any.
+For a node seen by several sources (say, a Meshtastic radio *and* an MQTT bridge), the tool checks all of them and uses the first source that actually reports radio config — so a node whose most recent packet arrived over MQTT still auto-fills from its radio-bearing source. If both points are arbitrary (non-node) locations, or none of the node's sources expose radio config (pure MQTT sources don't), the fields keep their 915 MHz / −129 dBm defaults. **Manual edits always win** — once you type into a field, auto-fill stops touching it for that endpoint pair. Picking a *new* pair resets that and re-seeds from the new pair's source, if any.
 
 ### Graceful degradation
 

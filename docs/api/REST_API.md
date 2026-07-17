@@ -528,6 +528,87 @@ curl -X DELETE http://localhost:8080/api/messages/direct-messages/123456789
 
 ---
 
+## Elevation / Terrain Profile
+
+Powers the Map Analysis **Link Profile** tool (terrain line-of-sight / Fresnel-zone link planning). Elevation data is fetched server-side from the configured DEM source (default: public AWS Terrarium tiles) — see the [Elevation / Terrain settings](../features/settings.md#elevation-terrain-link-profile).
+
+### Get Elevation Profile
+
+#### POST /api/elevation/profile
+
+Samples terrain elevation along the great-circle path between two coordinates. Public (no authentication), but rate-limited to **20 requests/minute per IP** in production (private/internal IPs exempt). Returns `403 ELEVATION_DISABLED` when the admin has disabled elevation.
+
+**Request body:**
+```json
+{
+  "pointA": { "lat": 37.75, "lng": -122.45 },
+  "pointB": { "lat": 37.87, "lng": -122.25 },
+  "samples": 256
+}
+```
+
+- `samples` is optional; clamped to 64–512 (default 256).
+- Path length is capped at 500 km (`400 PATH_TOO_LONG`).
+- Identical points are rejected (`400 IDENTICAL_POINTS`); out-of-range coordinates return `400 INVALID_COORDINATES`.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "distanceMeters": 21334.2,
+    "provider": "terrarium",
+    "samples": [
+      { "distance": 0, "lat": 37.75, "lng": -122.45, "elevation": 52.3 },
+      { "distance": 83.7, "lat": 37.7505, "lng": -122.4492, "elevation": 54.1 }
+    ]
+  }
+}
+```
+
+- `elevation` is metres above sea level, or `null` where the DEM has no usable data (voids, open water artifacts, implausible values outside −500…9000 m).
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/api/elevation/profile \
+  -H "Content-Type: application/json" \
+  -d '{"pointA":{"lat":37.75,"lng":-122.45},"pointB":{"lat":37.87,"lng":-122.25}}'
+```
+
+### Test Elevation Source
+
+#### POST /api/elevation/test
+
+Probes a candidate DEM source URL and reports what it found. Requires `settings:write` permission (admin). The URL's shape is auto-detected: a `{z}/{x}/{y}` template is treated as a Terrarium-encoded tile source, anything else as an Open-Topo-Data-compatible JSON point API.
+
+**Request body:**
+```json
+{
+  "url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+  "lat": 27.9881,
+  "lng": 86.925
+}
+```
+
+- `lat`/`lng` are optional; the default probe coordinate is near Mount Everest's summit so a working source is distinguishable from one that returns 0 everywhere.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "success": true,
+    "detectedType": "terrarium",
+    "sampleElevation": 8732,
+    "latencyMs": 294
+  }
+}
+```
+
+A failing probe still returns HTTP 200 — the probe outcome (`data.success: false` plus `data.error`) is the payload, not a request error.
+
+---
+
 ## Statistics
 
 ### Get System Statistics

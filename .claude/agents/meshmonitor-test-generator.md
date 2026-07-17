@@ -1,7 +1,7 @@
 ---
 name: meshmonitor-test-generator
 description: Use when implementing new features or fixing bugs in MeshMonitor. Generates comprehensive tests using Vitest and Testing Library.
-tools: read, write, bash, grep
+tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 ---
 

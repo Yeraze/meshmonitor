@@ -180,7 +180,7 @@ Each subagent has YAML frontmatter:
 ---
 name: unique-agent-name          # kebab-case identifier
 description: When to use this    # Helps Claude decide when to invoke
-tools: read, write, bash, grep   # Limited tool access (optional)
+tools: Read, Write, Bash, Grep   # Limited tool access (optional) — names are case-sensitive
 model: sonnet                    # Model to use (optional)
 ---
 ```
