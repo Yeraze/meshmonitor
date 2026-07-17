@@ -181,6 +181,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setEnableAudioNotifications,
     linkPreviewsEnabled,
     setLinkPreviewsEnabled,
+    discardInvalidPositions,
+    setDiscardInvalidPositions,
     meshcoreChannelRetryEnabled,
     setMeshcoreChannelRetryEnabled,
     nodeDimmingEnabled,
@@ -248,6 +250,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localPacketLogMaxCount, setLocalPacketLogMaxCount] = useState(1000);
   const [localPacketLogMaxAgeHours, setLocalPacketLogMaxAgeHours] = useState(24);
   const [localLinkPreviewsEnabled, setLocalLinkPreviewsEnabled] = useState(linkPreviewsEnabled);
+  const [localDiscardInvalidPositions, setLocalDiscardInvalidPositions] = useState(discardInvalidPositions);
   const [localMeshcoreChannelRetryEnabled, setLocalMeshcoreChannelRetryEnabled] = useState(meshcoreChannelRetryEnabled);
   const [localSolarMonitoringEnabled, setLocalSolarMonitoringEnabled] = useState(solarMonitoringEnabled);
   const [localSolarMonitoringLatitude, setLocalSolarMonitoringLatitude] = useState(solarMonitoringLatitude);
@@ -360,6 +363,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const linkPreviewsOn = !(settings.linkPreviewsEnabled === '0' || settings.linkPreviewsEnabled === 'false');
           setLocalLinkPreviewsEnabled(linkPreviewsOn);
 
+          // Load discard-invalid-positions (default enabled). Absent key => enabled.
+          const discardInvalidOn = !(settings.discardInvalidPositions === '0' || settings.discardInvalidPositions === 'false');
+          setLocalDiscardInvalidPositions(discardInvalidOn);
+
           // Load MeshCore channel-send auto-retry (#3979). Absent key => disabled.
           const meshcoreChannelRetryOn = settings.meshcoreChannelRetryEnabled === '1' || settings.meshcoreChannelRetryEnabled === 'true';
           setLocalMeshcoreChannelRetryEnabled(meshcoreChannelRetryOn);
@@ -455,6 +462,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalNodeHopsCalculation(nodeHopsCalculation);
     setLocalDashboardSortOption(preferredDashboardSortOption);
     setLocalLinkPreviewsEnabled(linkPreviewsEnabled);
+    setLocalDiscardInvalidPositions(discardInvalidPositions);
     setLocalMeshcoreChannelRetryEnabled(meshcoreChannelRetryEnabled);
     setLocalSolarMonitoringEnabled(solarMonitoringEnabled);
     setLocalSolarMonitoringLatitude(solarMonitoringLatitude);
@@ -462,7 +470,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalSolarMonitoringAzimuth(solarMonitoringAzimuth);
     setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
     setLocalHideIncompleteNodes(!showIncompleteNodes);
-  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle, nodeHopsCalculation, preferredDashboardSortOption, linkPreviewsEnabled, meshcoreChannelRetryEnabled, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme]);
+  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle, nodeHopsCalculation, preferredDashboardSortOption, linkPreviewsEnabled, discardInvalidPositions, meshcoreChannelRetryEnabled, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme]);
 
   // Default solar monitoring lat/long to device position if still at 0
   useEffect(() => {
@@ -526,6 +534,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localSolarMonitoringAzimuth !== solarMonitoringAzimuth ||
       localSolarMonitoringDeclination !== solarMonitoringDeclination ||
       localLinkPreviewsEnabled !== linkPreviewsEnabled ||
+      localDiscardInvalidPositions !== discardInvalidPositions ||
       localMeshcoreChannelRetryEnabled !== meshcoreChannelRetryEnabled ||
       localHideIncompleteNodes !== !showIncompleteNodes ||
       localHomoglyphEnabled !== initialHomoglyphEnabled ||
@@ -546,6 +555,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude, localSolarMonitoringAzimuth, localSolarMonitoringDeclination,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       localLinkPreviewsEnabled, linkPreviewsEnabled,
+      localDiscardInvalidPositions, discardInvalidPositions,
       localMeshcoreChannelRetryEnabled, meshcoreChannelRetryEnabled,
       localHideIncompleteNodes, showIncompleteNodes, localHomoglyphEnabled, initialHomoglyphEnabled,
       localLocalStatsIntervalMinutes, initialLocalStatsIntervalMinutes,
@@ -593,6 +603,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalSolarMonitoringAzimuth(solarMonitoringAzimuth);
     setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
     setLocalLinkPreviewsEnabled(linkPreviewsEnabled);
+    setLocalDiscardInvalidPositions(discardInvalidPositions);
     setLocalMeshcoreChannelRetryEnabled(meshcoreChannelRetryEnabled);
     setLocalHideIncompleteNodes(!showIncompleteNodes);
     setLocalHomoglyphEnabled(initialHomoglyphEnabled);
@@ -612,7 +623,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
       solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes,
-      linkPreviewsEnabled, meshcoreChannelRetryEnabled,
+      linkPreviewsEnabled, discardInvalidPositions, meshcoreChannelRetryEnabled,
       initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialMeshcoreCliTimeoutSeconds, initialNodeDimmingSettings,
       setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity,
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl,
@@ -676,6 +687,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         solarMonitoringAzimuth: localSolarMonitoringAzimuth.toString(),
         solarMonitoringDeclination: localSolarMonitoringDeclination.toString(),
         linkPreviewsEnabled: localLinkPreviewsEnabled ? '1' : '0',
+        discardInvalidPositions: localDiscardInvalidPositions ? '1' : '0',
         meshcoreChannelRetryEnabled: localMeshcoreChannelRetryEnabled ? '1' : '0',
         hideIncompleteNodes: localHideIncompleteNodes ? '1' : '0',
         homoglyphEnabled: String(localHomoglyphEnabled),
@@ -733,6 +745,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onSolarMonitoringAzimuthChange(localSolarMonitoringAzimuth);
       onSolarMonitoringDeclinationChange(localSolarMonitoringDeclination);
       setLinkPreviewsEnabled(localLinkPreviewsEnabled);
+      setDiscardInvalidPositions(localDiscardInvalidPositions);
       setMeshcoreChannelRetryEnabled(localMeshcoreChannelRetryEnabled);
       setShowIncompleteNodes(!localHideIncompleteNodes);
 
@@ -767,7 +780,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localTimeFormat, localDateFormat, localMapTilesetLight, localMapTilesetDark, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localMapCenterTargetZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, getLocalEffectiveTheme, getLocalEffectiveTileset,
       localNodeHopsCalculation, localDashboardSortOption, localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude,
-      localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localLinkPreviewsEnabled, setLinkPreviewsEnabled, localMeshcoreChannelRetryEnabled, setMeshcoreChannelRetryEnabled, localHideIncompleteNodes, localHomoglyphEnabled, localLocalStatsIntervalMinutes, localMeshcoreCliTimeoutSeconds,
+      localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localLinkPreviewsEnabled, setLinkPreviewsEnabled, localDiscardInvalidPositions, setDiscardInvalidPositions, localMeshcoreChannelRetryEnabled, setMeshcoreChannelRetryEnabled, localHideIncompleteNodes, localHomoglyphEnabled, localLocalStatsIntervalMinutes, localMeshcoreCliTimeoutSeconds,
       onMaxNodeAgeChange, onInactiveNodeThresholdHoursChange, onInactiveNodeCheckIntervalMinutesChange,
       onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange, onPositionHistoryLineStyleChange,
       onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
@@ -952,6 +965,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setLocalSolarMonitoringAzimuth(0);
       setLocalSolarMonitoringDeclination(30);
       setLocalLinkPreviewsEnabled(true);
+      setLocalDiscardInvalidPositions(true);
       setLocalMeshcoreChannelRetryEnabled(false);
 
       // Update parent component with defaults
@@ -978,6 +992,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onSolarMonitoringAzimuthChange(0);
       onSolarMonitoringDeclinationChange(30);
       setLinkPreviewsEnabled(true);
+      setDiscardInvalidPositions(true);
       setMeshcoreChannelRetryEnabled(false);
 
       // Update initial packet monitor settings
@@ -1548,6 +1563,20 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
         {show('settings-map') && <div id="settings-map" className="settings-section">
           <h3>{t('settings.map')}</h3>
+          <div className="setting-item">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={localDiscardInvalidPositions}
+                onChange={(e) => setLocalDiscardInvalidPositions(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.discard_invalid_positions', 'Discard invalid positions')}</span>
+            </label>
+            <span className="setting-description">
+              {t('settings.discard_invalid_positions_description', 'When enabled (default), GPS fixes at Null Island (0,0) — including precision-obscured ones — are discarded on ingest across all sources. Disable to store (0,0) reports as received so you can see which nodes transmit them. Out-of-range / garbage coordinates are always discarded.')}
+            </span>
+          </div>
           <div className="setting-item">
             <label htmlFor="mapTilesetLight">
               {t('settings.map_tileset_light_label', 'Light Mode Tileset')}

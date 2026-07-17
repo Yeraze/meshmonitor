@@ -162,6 +162,12 @@ export const VALID_SETTINGS_KEYS = [
   // Global privacy toggle (issue #3416): when '0'/'false', the /api/link-preview
   // endpoint refuses to fetch external URLs and the UI renders no preview cards.
   'linkPreviewsEnabled',
+  // Global Map toggle (default ON = '1'). When enabled (historical behavior),
+  // Null Island (0,0) fixes — including precision-obscured ones — are discarded
+  // on ingest across every source. When '0'/'false', those (0,0) reports are
+  // stored as received so operators can see nodes transmitting them. Non-finite /
+  // out-of-range junk is always discarded regardless. See positionIngestConfig.ts.
+  'discardInvalidPositions',
   // Global opt-in (issue #3979, default OFF): when enabled, an AUTOMATED MeshCore
   // channel/broadcast send that hears ZERO repeaters within 30s is resent exactly
   // once. Applies only to automated senders (Automation Engine action.sendMessage,

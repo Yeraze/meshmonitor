@@ -14,6 +14,7 @@ import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
+import { parseDiscardInvalidPositions } from '../../utils/positionIngestConfig.js';
 import { securityDigestService } from '../services/securityDigestService.js';
 import { invalidatePkiDmGlobalCache } from '../services/sourcePkiKeyStore.js';
 import { VALID_SETTINGS_KEYS, stripSecretSettings } from '../constants/settings.js';
@@ -131,6 +132,9 @@ export interface SettingsCallbacks {
   setAutomationAirtimeCutoffSource?: (source: string, sourceId?: string | null) => void;
   handleAutoWelcomeEnabled?: () => number;
   invalidateHtmlCache?: () => void;
+  // Global (default ON): push the new discard-invalid-positions value into the
+  // cached ingest gate so it takes effect immediately, no restart.
+  setDiscardInvalidPositions?: (enabled: boolean) => void;
   // Per-source (#3901): the scheduler reads the source's own interval, so no
   // intervalHours arg. A null sourceId is a no-op (no global scheduler).
   restartAutoDeleteByDistanceService?: (sourceId?: string | null) => void;
@@ -714,6 +718,12 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
     if ('analyticsProvider' in filteredSettings || 'analyticsConfig' in filteredSettings) {
       callbacks.invalidateHtmlCache?.();
       logger.debug('📊 Analytics settings updated - HTML cache invalidated');
+    }
+
+    if ('discardInvalidPositions' in filteredSettings) {
+      const enabled = parseDiscardInvalidPositions(filteredSettings.discardInvalidPositions);
+      callbacks.setDiscardInvalidPositions?.(enabled);
+      logger.debug(`🗺️ discardInvalidPositions set to ${enabled} — ingest gate updated`);
     }
 
     if ('autoWelcomeEnabled' in filteredSettings) {

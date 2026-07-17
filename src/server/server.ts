@@ -21,6 +21,7 @@ import protobufService from './protobufService.js';
 (global as any).meshtasticManager = meshtasticManager;
 import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
+import { setDiscardInvalidPositions, parseDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { getSessionMiddleware } from './auth/sessionConfig.js';
 import { initializeWebSocket } from './services/webSocketService.js';
 import { initializeOIDC } from './auth/oidcAuth.js';
@@ -423,6 +424,13 @@ setTimeout(async () => {
     // Start the Automation Engine (#3653) — loads enabled automations and
     // subscribes to the event bus so they fire on live mesh traffic.
     await startAutomationEngine();
+
+    // Seed the global "discard invalid GPS positions" ingest gate from settings
+    // (default ON = discard, the historical behavior). Refreshed live on save via
+    // the setDiscardInvalidPositions callback registered below.
+    setDiscardInvalidPositions(
+      parseDiscardInvalidPositions(await databaseService.settings.getSetting('discardInvalidPositions')),
+    );
 
     // Start inactive node notification service with validation
     const inactiveThresholdHoursRaw = parseInt(await databaseService.settings.getSetting('inactiveNodeThresholdHours') || '24', 10);
@@ -917,6 +925,7 @@ setSettingsCallbacks({
   },
   handleAutoWelcomeEnabled: () => { databaseService.handleAutoWelcomeEnabledAsync().catch(() => {}); return 0; },
   invalidateHtmlCache,
+  setDiscardInvalidPositions: (enabled) => setDiscardInvalidPositions(enabled),
   // Auto-delete-by-distance is per-source (#3901): route the restart/stop to
   // the owning source manager so each source schedules against its own settings.
   // There is no global singleton — a null sourceId is a no-op.

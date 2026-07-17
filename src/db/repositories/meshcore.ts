@@ -7,7 +7,8 @@
 import { eq, desc, sql, isNull, isNotNull, and, or, lt, gte, inArray, type SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
-import { isBogusPosition } from '../../utils/nullIsland.js';
+import { shouldDiscardPosition } from '../../utils/nullIsland.js';
+import { getDiscardInvalidPositions } from '../../utils/positionIngestConfig.js';
 
 /**
  * meshcore_nodes columns where an incoming `null` in upsertNode means "clear
@@ -320,7 +321,9 @@ export class MeshCoreRepository extends BaseRepository {
     // out of the DB regardless of caller. Undefined (not null) means "not
     // observed" so the merge PRESERVES any valid stored fix rather than
     // clobbering it on a transient bad report (#3763 follow-up).
-    if (isBogusPosition(node.latitude ?? null, node.longitude ?? null)) {
+    // The (0,0) discard honors the global `discardInvalidPositions` setting;
+    // out-of-range junk (e.g. lat 1853 from advert corruption) is always dropped.
+    if (shouldDiscardPosition(node.latitude ?? null, node.longitude ?? null, undefined, getDiscardInvalidPositions())) {
       const { latitude: _blat, longitude: _blon, ...rest } = node;
       node = rest as typeof node;
     }
