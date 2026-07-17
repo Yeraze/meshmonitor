@@ -494,6 +494,44 @@ describe('ingestServiceEnvelope — discardInvalidPositions=false stores (0,0)',
   });
 });
 
+describe('ingestServiceEnvelope — TEXT_MESSAGE_APP directed vs broadcast channel (#4152)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(false);
+  });
+
+  const textEnvelopeTo = (to: number): ServiceEnvelopeShape => ({
+    channelId: 'LongFast',
+    gatewayId: '!00000001',
+    packet: {
+      id: 0xabcd1234,
+      from: NODE_IN,
+      to,
+      channel: 0,
+      decoded: { portnum: 1 /* TEXT_MESSAGE_APP */, payload: new Uint8Array([0]) } as any,
+    },
+  });
+
+  it('routes a directed (non-broadcast) message to the DM view via channel -1', async () => {
+    // Regression #4152: a non-PKI text message addressed to a specific node
+    // must land in the direct-message view (channel -1), matching the TCP path,
+    // instead of being bucketed into its LoRa channel and rendered as a broadcast.
+    const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: textEnvelopeTo(0x11223344) });
+    expect(result.ingested).toBe(true);
+    const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
+    expect(inserted.channel).toBe(-1);
+    expect(inserted.toNodeNum).toBe(0x11223344);
+  });
+
+  it('leaves a broadcast message on its channel (not -1)', async () => {
+    const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: textEnvelopeTo(0xffffffff) });
+    expect(result.ingested).toBe(true);
+    const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
+    expect(inserted.channel).not.toBe(-1);
+    expect(inserted.toNodeNum).toBe(0xffffffff);
+  });
+});
+
 describe('ingestServiceEnvelope — TEXT_MESSAGE_APP tapbacks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
