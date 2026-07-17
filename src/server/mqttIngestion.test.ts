@@ -403,11 +403,14 @@ describe('ingestServiceEnvelope — POSITION Null Island guard (#3763)', () => {
     });
     expect(result.ingested).toBe(true);
     expect(databaseService.upsertNodeAsync).toHaveBeenCalledTimes(1);
-    // lastHeard still refreshes, but the (0,0) coords are dropped so upsertNode's
-    // `?? existing` merge preserves any previously stored good position.
+    // lastHeard still refreshes (node was heard), but the (0,0) coords AND
+    // altitude are dropped so upsertNode's `?? existing` merge preserves any
+    // previously stored good position.
     const arg = (databaseService.upsertNodeAsync as any).mock.calls[0][0];
+    expect(arg.lastHeard).toBeDefined();
     expect(arg.latitude).toBeUndefined();
     expect(arg.longitude).toBeUndefined();
+    expect(arg.altitude).toBeUndefined(); // even though the payload carried altitude: 0
   });
 
   it('strips a precision-obscured (0,0) fix that arrives re-centered as (offset, offset)', async () => {

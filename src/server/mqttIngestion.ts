@@ -360,7 +360,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
       // undefined lat/lon is preserved by upsertNode's `?? existing` merge, so it
       // never overwrites a previously stored good position with garbage.
       const precisionBits = position.precisionBits ?? position.precision_bits ?? undefined;
-      const positionIsBogus = isBogusPosition(lat ?? null, lng ?? null, precisionBits);
+      const positionIsBogus = isBogusPosition(lat, lng, precisionBits);
       if (positionIsBogus) {
         logger.debug(`MQTT: dropping bogus position (${lat}, ${lng}) precisionBits=${precisionBits} from ${fromNodeId}`);
       }
@@ -378,7 +378,9 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         channel: effectiveChannel,
         latitude: positionIsBogus ? undefined : lat,
         longitude: positionIsBogus ? undefined : lng,
-        altitude: typeof alt === 'number' ? alt : undefined,
+        // Drop altitude too on a bogus fix — an altitude with no trustworthy
+        // horizontal position is not worth persisting.
+        altitude: positionIsBogus ? undefined : (typeof alt === 'number' ? alt : undefined),
         viaMqtt: true,
         transportMechanism: TransportMechanism.MQTT,
         lastHeard: lastHeardSec,
