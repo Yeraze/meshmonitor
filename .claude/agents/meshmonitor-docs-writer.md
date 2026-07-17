@@ -1,7 +1,7 @@
 ---
 name: meshmonitor-docs-writer
 description: Use when features need documentation. Creates/updates README, API docs, code comments, and PR descriptions for MeshMonitor.
-tools: read, write, grep
+tools: Read, Write, Edit, Grep, Glob, Bash
 model: sonnet
 ---
 

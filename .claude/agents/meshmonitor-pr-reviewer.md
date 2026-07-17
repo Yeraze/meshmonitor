@@ -1,7 +1,7 @@
 ---
 name: meshmonitor-pr-reviewer
 description: Use proactively before creating PRs for MeshMonitor. Reviews code against testing requirements, commit standards, and project conventions.
-tools: read, grep, bash
+tools: Read, Grep, Bash, Glob
 model: sonnet
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: meshmonitor-bug-investigator
 description: Use when debugging issues in MeshMonitor. Investigates bugs, analyzes root causes, and proposes fixes with regression tests.
-tools: read, grep, bash, write
+tools: Read, Grep, Bash, Write, Edit, Glob
 model: opus
 ---
 
