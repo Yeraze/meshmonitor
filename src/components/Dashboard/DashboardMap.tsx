@@ -29,7 +29,8 @@ import PolarGridOverlay from '../PolarGridOverlay';
 import MapLegend from '../MapLegend';
 import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
-import { precisionCellBounds, hasAccuracyCell, shouldOffsetForPrecision, offsetWithinPrecisionCell } from '../../utils/precisionOffset';
+import { precisionCellBounds, hasAccuracyCell, applyPrecisionCellOffsets } from '../../utils/precisionOffset';
+import { unifiedNodeKey } from '../../utils/nodeIdentity';
 import type { GeoJsonLayer } from '../../server/services/geojsonService.js';
 import { useMapContext } from '../../contexts/MapContext';
 import { useSettings } from '../../contexts/SettingsContext';
@@ -285,26 +286,28 @@ export default function DashboardMap({
   // reference instead of drifting per-node inside the marker map loop below.
   const nowMs = Date.now();
   const cutoffTime = nowMs / 1000 - effectiveMaxAge * 60 * 60;
-  const nodesWithPosition = nodes
+  const nodesWithTruePos = nodes
     .filter((n) => !n.isIgnored)
     .filter((n) => !n.hideFromMap) // #3549: per-node "Hide from Map" suppresses the marker only
     .filter((n) => n.isFavorite || (n.lastHeard != null && n.lastHeard >= cutoffTime))
     .filter((n) => nodePassesTransportFilter(n, { showRfNodes, showUdpNodes, showMqttNodes }))
-    .map((n) => {
-      const truePos = getNodeLatLng(n);
-      if (!truePos) return { node: n, pos: null };
-      // #4016: offset obscured low-precision markers within their accuracy cell,
-      // so `pos` (used by the marker, neighbor/traceroute endpoints, and the
-      // measurement tool) declutters same-cell nodes. The accuracy rectangle
-      // below recomputes the TRUE center from the node, so it stays put.
-      if (shouldOffsetForPrecision(n.positionPrecisionBits, n.positionIsOverride)) {
-        const id = String(n.nodeId ?? n.user?.id ?? n.nodeNum);
-        const [lat, lng] = offsetWithinPrecisionCell(truePos.lat, truePos.lng, n.positionPrecisionBits as number, id);
-        return { node: n, pos: { lat, lng } };
-      }
-      return { node: n, pos: truePos };
-    })
-    .filter((entry): entry is { node: any; pos: { lat: number; lng: number } } => entry.pos !== null);
+    .map((n) => ({ node: n, truePos: getNodeLatLng(n) }))
+    .filter((e): e is { node: any; truePos: { lat: number; lng: number } } => e.truePos !== null);
+
+  // #4016/#4155: offset obscured low-precision markers within their accuracy cell
+  // via the shared occupancy-gated helper — lone nodes stay centered, 2+ same-cell
+  // nodes spread — identical to every other map surface. `pos` (used by the marker,
+  // neighbor/traceroute endpoints, and the measurement tool) thus declutters. The
+  // accuracy rectangle below recomputes the TRUE center from the node, so it stays put.
+  const nodesWithPosition = applyPrecisionCellOffsets(
+    nodesWithTruePos.map(({ node, truePos }) => ({
+      item: node,
+      id: unifiedNodeKey(node) ?? String(node.nodeNum),
+      latLng: [truePos.lat, truePos.lng] as [number, number],
+      bits: node.positionPrecisionBits,
+      isOverride: node.positionIsOverride,
+    })),
+  ).map(({ item: node, latLng }) => ({ node, pos: { lat: latLng[0], lng: latLng[1] } }));
 
   // Array form of node positions for MapBoundsUpdater (fit bounds).
   const nodePositions: [number, number][] = nodesWithPosition.map((e) => [e.pos.lat, e.pos.lng]);

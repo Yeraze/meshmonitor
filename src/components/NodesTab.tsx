@@ -13,7 +13,8 @@ import { createNodeIcon, getHopColor } from '../utils/mapIcons';
 import { getPositionHistoryColor, generateHeadingAwarePath, generatePositionHistoryArrows, snrToColor } from '../utils/mapHelpers.tsx';
 import { convertSpeed } from '../utils/speedConversion';
 import { getEffectivePosition, getRoleName, hasValidEffectivePosition, isNodeComplete, parseNodeId, resolveMapEndpoint, resolveMarkerCenterTarget, TRACEROUTE_DISPLAY_HOURS } from '../utils/nodeHelpers';
-import { shouldOffsetForPrecision, offsetWithinPrecisionCell, hasAccuracyCell, precisionCellBounds } from '../utils/precisionOffset';
+import { applyPrecisionCellOffsets, hasAccuracyCell, precisionCellBounds } from '../utils/precisionOffset';
+import { unifiedNodeKey } from '../utils/nodeIdentity';
 import MapLegend from './MapLegend';
 import { formatTime, formatDateTime } from '../utils/datetime';
 import { getDistanceToNode, calculateDistance, formatDistance } from '../utils/distance';
@@ -1362,22 +1363,25 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // Creating new [lat, lng] arrays causes React-Leaflet to move markers, destroying spiderfier state
   // Uses getEffectivePosition to respect position overrides (Issue #1526)
   const nodePositions = React.useMemo(() => {
+    // #4016/#4155: offset obscured low-precision markers within their accuracy
+    // cell via the shared occupancy-gated helper — lone nodes stay centered, 2+
+    // same-cell nodes spread — identical to every other map surface. Overridden
+    // positions are never moved; the accuracy Rectangle below keeps using
+    // node.position (the true center).
+    const offset = applyPrecisionCellOffsets(
+      nodesWithPosition
+        .map(node => ({ node, eff: getEffectivePosition(node) }))
+        .filter(e => e.eff.latitude != null && e.eff.longitude != null)
+        .map(({ node, eff }) => ({
+          item: node,
+          id: unifiedNodeKey(node) ?? String(node.nodeNum),
+          latLng: [eff.latitude as number, eff.longitude as number] as [number, number],
+          bits: node.positionPrecisionBits,
+          isOverride: node.positionIsOverride,
+        })),
+    );
     const posMap = new Map<number, [number, number]>();
-    nodesWithPosition.forEach(node => {
-      const effectivePos = getEffectivePosition(node);
-      if (effectivePos.latitude != null && effectivePos.longitude != null) {
-        let lat = effectivePos.latitude;
-        let lng = effectivePos.longitude;
-        // #4016: offset obscured low-precision markers within their accuracy cell
-        // so same-cell nodes declutter. Overridden positions return false from
-        // shouldOffsetForPrecision, so they stay exact; the accuracy Rectangle
-        // below keeps using node.position (the true center).
-        if (shouldOffsetForPrecision(node.positionPrecisionBits, node.positionIsOverride)) {
-          [lat, lng] = offsetWithinPrecisionCell(lat, lng, node.positionPrecisionBits as number, String(node.user?.id ?? node.nodeNum));
-        }
-        posMap.set(node.nodeNum, [lat, lng]);
-      }
-    });
+    for (const { item: node, latLng } of offset) posMap.set(node.nodeNum, latLng);
     return posMap;
   }, [nodesWithPosition.map(n => {
     const pos = getEffectivePosition(n);

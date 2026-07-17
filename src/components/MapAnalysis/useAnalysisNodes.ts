@@ -9,7 +9,7 @@ import { nodeMatchesSearch } from './nodeSearch';
 import { getNodeTypeCategory } from '../../utils/nodeTypeCategory';
 import { nodePassesTransportFilter } from '../../utils/nodeTransport';
 import { unifiedNodeKey } from '../../utils/nodeIdentity';
-import { shouldOffsetForPrecision, offsetWithinPrecisionCell, precisionCellKey } from '../../utils/precisionOffset';
+import { applyPrecisionCellOffsets } from '../../utils/precisionOffset';
 import type { NodeSourceRef } from '../Dashboard/DashboardNodePopup';
 
 /**
@@ -112,36 +112,21 @@ export function useAnalysisNodes(): AnalysisNode[] {
         },
       );
 
-    // #4155: count how many *visible* offsettable nodes share each accuracy cell.
-    // The #4016 within-cell offset only declutters same-cell stacks; a node alone
-    // in its cell has nothing to declutter, and offsetting it just pushes a marker
-    // off the reported center (potentially to a cell edge) for no reason. So we
-    // spread only cells with 2+ occupants and leave lone nodes at their center.
-    const cellOccupancy = new Map<string, number>();
-    for (const { node, latLng } of visible) {
-      const bits = node.positionPrecisionBits;
-      if (shouldOffsetForPrecision(bits, node.positionIsOverride)) {
-        const cell = precisionCellKey(latLng[0], latLng[1], bits);
-        cellOccupancy.set(cell, (cellOccupancy.get(cell) ?? 0) + 1);
-      }
-    }
-
-    return visible
-      .map(({ node, latLng }) => {
-        const key = unifiedNodeKey(node);
-        // #4016 within-cell offset, gated on cell occupancy (#4155). Applied here
-        // (the single latLng source) so markers, Follow, bounds, the measurement
-        // tool, and the popup all use the same position.
-        const bits = node.positionPrecisionBits;
-        let finalLatLng = latLng;
-        if (shouldOffsetForPrecision(bits, node.positionIsOverride)) {
-          const cell = precisionCellKey(latLng[0], latLng[1], bits);
-          if ((cellOccupancy.get(cell) ?? 0) >= 2) {
-            finalLatLng = offsetWithinPrecisionCell(latLng[0], latLng[1], bits, key ?? String(node.nodeNum));
-          }
-        }
-        return { node, latLng: finalLatLng, key };
-      })
+    // #4016/#4155 obscured-GPS marker offset, via the shared occupancy-gated
+    // helper so every map surface declutters identically (lone nodes stay
+    // centered; 2+ same-cell nodes spread). Applied here — the single latLng
+    // source — so markers, Follow, bounds, the measurement tool, and the popup
+    // all use the same position.
+    return applyPrecisionCellOffsets(
+      visible.map(({ node, latLng }) => ({
+        item: node,
+        id: unifiedNodeKey(node) ?? String(node.nodeNum),
+        latLng,
+        bits: node.positionPrecisionBits,
+        isOverride: node.positionIsOverride,
+      })),
+    )
+      .map(({ item: node, latLng }) => ({ node, latLng, key: unifiedNodeKey(node) }))
       .filter((entry): entry is AnalysisNode => entry.key !== null);
   }, [nodes, nodeFilter, config.nodeTypes, config.transports, config.sources]);
 }
