@@ -4442,6 +4442,10 @@ const location = useLocation();
   const visibleNodeNums = useMemo(() => {
     const visibleNodes = processedNodes.filter(node => {
       if (!node.position?.latitude || !node.position?.longitude) return false;
+      // #4162/#3549: "Hide from Map" suppresses the marker (NodesTab drops it
+      // at nodesWithPosition), so it must also drop from this visible set —
+      // otherwise route-segment / neighbor lines dangle to a marker-less node.
+      if (node.hideFromMap) return false;
       if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes })) return false;
       if (!showIncompleteNodes && !isNodeComplete(node)) return false;
       if (!showEstimatedPositions && node.user?.id && nodesWithEstimatedPosition.has(node.user.id)) return false;

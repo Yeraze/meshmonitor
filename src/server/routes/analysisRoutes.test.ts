@@ -173,7 +173,7 @@ describe('GET /positions', () => {
     mockDb.nodes.getAllNodes.mockResolvedValue([
       { nodeNum: 99, channel: 1, positionOverrideIsPrivate: true },
     ]);
-    // Admin bypasses all node-level filters; these mocks should not be consulted
+    // Admin bypasses the permission gates; these mocks should not affect the result
     mockDb.getUserPermissionSetAsync.mockResolvedValue({});
     mockDb.checkPermissionAsync.mockResolvedValue(false);
 
@@ -181,8 +181,51 @@ describe('GET /positions', () => {
     const res = await request(app).get('/positions?since=0');
     expect(res.status).toBe(200);
     expect(res.body.items).toHaveLength(1);
-    // Admin path: getAllNodes should not be called (filter is skipped)
-    expect(mockDb.nodes.getAllNodes).not.toHaveBeenCalled();
+  });
+
+  // #4162/#4163 — "Hide from Map" is a display gate that applies to every user,
+  // admins included, so hidden nodes contribute no heatmap/coverage density.
+  it('admin: hides positions for nodes with hideFromMap set', async () => {
+    const visible = { nodeNum: 1, sourceId: 'src-a', latitude: 1, longitude: 1, altitude: null, timestamp: 1000 };
+    const hidden = { nodeNum: 2, sourceId: 'src-a', latitude: 2, longitude: 2, altitude: null, timestamp: 1000 };
+    mockDb.analysis.getPositions.mockResolvedValue({
+      items: [visible, hidden], pageSize: 500, hasMore: false, nextCursor: null,
+    });
+    mockDb.nodes.getAllNodes.mockResolvedValue([
+      { nodeNum: 1, channel: 0, hideFromMap: false },
+      { nodeNum: 2, channel: 0, hideFromMap: true },
+    ]);
+
+    const app = createApp(adminUser);
+    const res = await request(app).get('/positions?since=0');
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].nodeNum).toBe(1);
+  });
+
+  it('regular user: hides positions for nodes with hideFromMap set', async () => {
+    const visible = { nodeNum: 1, sourceId: 'src-a', latitude: 1, longitude: 1, altitude: null, timestamp: 1000 };
+    const hidden = { nodeNum: 2, sourceId: 'src-a', latitude: 2, longitude: 2, altitude: null, timestamp: 1000 };
+    mockDb.analysis.getPositions.mockResolvedValue({
+      items: [visible, hidden], pageSize: 500, hasMore: false, nextCursor: null,
+    });
+    // Both nodes are on channel 0 with viewOnMap granted; only hideFromMap differs.
+    mockDb.nodes.getAllNodes.mockResolvedValue([
+      { nodeNum: 1, channel: 0, hideFromMap: false },
+      { nodeNum: 2, channel: 0, hideFromMap: true },
+    ]);
+    mockDb.getUserPermissionSetAsync.mockResolvedValue({
+      channel_0: { viewOnMap: true, read: true, write: false },
+    });
+    mockDb.checkPermissionAsync.mockImplementation((_uid: number, resource: string) =>
+      Promise.resolve(resource !== 'nodes_private'),
+    );
+
+    const app = createApp(regularUser);
+    const res = await request(app).get('/positions?since=0');
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].nodeNum).toBe(1);
   });
 });
 
@@ -295,6 +338,23 @@ describe('GET /coverage-grid', () => {
     // postFilter should be provided (non-null function)
     const firstCall = mockDb.analysis.getCoverageGrid.mock.calls[0][0];
     expect(typeof firstCall.postFilter).toBe('function');
+  });
+
+  // #4162/#4163 — the coverage grid must exclude hidden-node density too. The
+  // grid is server-binned, so we assert the postFilter handed to
+  // getCoverageGrid drops a hideFromMap node (admin path: display gate only).
+  it('admin: coverage-grid postFilter drops hideFromMap nodes', async () => {
+    mockDb.nodes.getAllNodes.mockResolvedValue([
+      { nodeNum: 1, channel: 0, hideFromMap: false },
+      { nodeNum: 2, channel: 0, hideFromMap: true },
+    ]);
+    const app = createApp(adminUser);
+    // Unique cache key so this isn't served from a prior test's cache.
+    await request(app).get('/coverage-grid?since=7777&zoom=8');
+    const call = mockDb.analysis.getCoverageGrid.mock.calls[0][0];
+    expect(typeof call.postFilter).toBe('function');
+    expect(call.postFilter({ sourceId: 'src-a', nodeNum: 1 })).toBe(true);
+    expect(call.postFilter({ sourceId: 'src-a', nodeNum: 2 })).toBe(false);
   });
 });
 

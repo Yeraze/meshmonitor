@@ -106,6 +106,35 @@ describe('resolveSegmentPosition', () => {
     const live = new Map<number, [number, number]>();
     expect(resolveSegmentPosition(1, snapshot, live)).toBeNull();
   });
+
+  // #4162 — requireLive gate: a node absent from the rendered-marker map
+  // (aged out / purged / hidden) must not anchor a dangling route segment,
+  // even if the historical snapshot still holds a position for it.
+  describe('requireLive (#4162)', () => {
+    it('drops a node that has a snapshot but is absent from liveNodes', () => {
+      const snapshot = new Map<number, [number, number]>([[1, [1, 1]]]);
+      const live = new Map<number, [number, number]>();
+      expect(resolveSegmentPosition(1, snapshot, live, true)).toBeNull();
+    });
+
+    it('still prefers the snapshot position when the node IS live', () => {
+      const snapshot = new Map<number, [number, number]>([[1, [1, 1]]]);
+      const live = new Map<number, [number, number]>([[1, [9, 9]]]);
+      expect(resolveSegmentPosition(1, snapshot, live, true)).toEqual([1, 1]);
+    });
+
+    it('falls back to the live position for a live node with no snapshot', () => {
+      const snapshot = new Map<number, [number, number]>();
+      const live = new Map<number, [number, number]>([[1, [9, 9]]]);
+      expect(resolveSegmentPosition(1, snapshot, live, true)).toEqual([9, 9]);
+    });
+
+    it('defaults (requireLive=false) to the legacy snapshot-then-live behavior', () => {
+      const snapshot = new Map<number, [number, number]>([[1, [1, 1]]]);
+      const live = new Map<number, [number, number]>();
+      expect(resolveSegmentPosition(1, snapshot, live)).toEqual([1, 1]);
+    });
+  });
 });
 
 describe('hasReturnPath (#2051)', () => {

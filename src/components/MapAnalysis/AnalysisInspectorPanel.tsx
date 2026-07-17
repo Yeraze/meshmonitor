@@ -36,6 +36,7 @@ interface NodeRecord extends MaybePositionedNode {
     airUtilTx?: number | null;
     uptimeSeconds?: number | null;
   } | null;
+  hideFromMap?: boolean | null;
 }
 
 interface HopEntry {
@@ -99,6 +100,10 @@ export default function AnalysisInspectorPanel() {
   const positionByKey = useMemo(() => {
     const map = new Map<string, [number, number]>();
     for (const n of (nodes ?? []) as NodeRecord[]) {
+      // #4162/#3549: exclude "Hide from Map" nodes so the traceroute summary
+      // (distinct links / observations) counts only marker-visible neighbours,
+      // matching the rendered map.
+      if (n.hideFromMap) continue;
       const ll = resolveNodeLatLng(n);
       if (ll) map.set(`${n.sourceId ?? ''}:${Number(n.nodeNum)}`, ll);
     }

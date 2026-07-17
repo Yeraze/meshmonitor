@@ -68,8 +68,18 @@ function parseSinceMs(raw: unknown): number {
 }
 
 /**
- * Build a synchronous position-row filter that enforces per-channel viewOnMap
- * and positionOverrideIsPrivate gating. Returns null for admins (allow all).
+ * Build a synchronous position-row filter enforcing two kinds of gate:
+ *
+ *  - `hideFromMap` (#4162/#4163): a DISPLAY gate applied to EVERYONE, admins
+ *    included. A node with "Hide from Map" set has no marker on any map
+ *    surface (`useAnalysisNodes`/`embedPublicRoutes` drop it), so its
+ *    historical position telemetry must not contribute heatmap or
+ *    coverage-grid density either.
+ *  - per-channel `viewOnMap` + `positionOverrideIsPrivate`: PERMISSION gates
+ *    applied only to non-admins.
+ *
+ * Returns null only when there is nothing to enforce (admin AND no node is
+ * hidden), so the caller can skip filtering entirely.
  *
  * Pre-fetches all permissions and node metadata once so the returned predicate
  * is pure and cheap to call per item — avoids N async DB round-trips inside
@@ -79,9 +89,38 @@ async function buildPositionFilter(
   user: any,
   sourceIds: string[],
 ): Promise<((pos: PositionRow) => boolean) | null> {
-  if (user?.isAdmin) return null;
-
+  const isAdmin = !!user?.isAdmin;
   const userId: number | null = user?.id ?? null;
+
+  // Batch-load node metadata for all nodes across permitted sources so the
+  // filter predicate runs synchronously. `hideFromMap` is read for every user
+  // (display gate); channel/positionOverrideIsPrivate only feed the non-admin
+  // permission gates below.
+  const nodeInfoByKey = new Map<
+    string,
+    { channel: number; positionOverrideIsPrivate: boolean; hideFromMap: boolean }
+  >();
+  let anyHidden = false;
+  for (const srcId of sourceIds) {
+    const nodes = await databaseService.nodes.getAllNodes(srcId);
+    for (const n of nodes) {
+      const hidden = !!n.hideFromMap;
+      if (hidden) anyHidden = true;
+      nodeInfoByKey.set(`${srcId}:${n.nodeNum}`, {
+        channel: n.channel ?? 0,
+        positionOverrideIsPrivate: !!n.positionOverrideIsPrivate,
+        hideFromMap: hidden,
+      });
+    }
+  }
+
+  // Admins bypass the permission gates. When no node is hidden there is
+  // nothing left to enforce, so skip filtering entirely.
+  if (isAdmin) {
+    if (!anyHidden) return null;
+    return (pos: PositionRow): boolean =>
+      !nodeInfoByKey.get(`${pos.sourceId}:${pos.nodeNum}`)?.hideFromMap;
+  }
 
   // Fetch channel permission sets once per source
   const permsBySource = new Map<string, Record<string, { viewOnMap?: boolean } | undefined>>();
@@ -100,22 +139,12 @@ async function buildPositionFilter(
     ? await databaseService.checkPermissionAsync(userId, 'nodes_private', 'read')
     : false;
 
-  // Batch-load node metadata (channel, positionOverrideIsPrivate) for all nodes
-  // across permitted sources so the filter predicate runs synchronously.
-  const nodeInfoByKey = new Map<string, { channel: number; positionOverrideIsPrivate: boolean }>();
-  for (const srcId of sourceIds) {
-    const nodes = await databaseService.nodes.getAllNodes(srcId);
-    for (const n of nodes) {
-      nodeInfoByKey.set(`${srcId}:${n.nodeNum}`, {
-        channel: n.channel ?? 0,
-        positionOverrideIsPrivate: !!n.positionOverrideIsPrivate,
-      });
-    }
-  }
-
   return (pos: PositionRow): boolean => {
     const info = nodeInfoByKey.get(`${pos.sourceId}:${pos.nodeNum}`)
-      ?? { channel: 0, positionOverrideIsPrivate: false };
+      ?? { channel: 0, positionOverrideIsPrivate: false, hideFromMap: false };
+
+    // #4162/#4163: hidden nodes have no marker, so contribute no density.
+    if (info.hideFromMap) return false;
 
     // Block private-position nodes unless the user has nodes_private:read
     if (info.positionOverrideIsPrivate && !canViewPrivate) return false;
