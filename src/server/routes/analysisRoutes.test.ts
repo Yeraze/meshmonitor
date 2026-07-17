@@ -419,6 +419,30 @@ describe('GET /coverage-grid', () => {
     expect(call.postFilter({ sourceId: 'src-a', nodeNum: 1 })).toBe(true);
     expect(call.postFilter({ sourceId: 'src-a', nodeNum: 2 })).toBe(false);
   });
+
+  // #4163 follow-up — symmetry with the admin case: the non-admin coverage-grid
+  // postFilter must also drop orphaned density, even when the (would-be) channel
+  // is one the user can view on the map. Guards against the deleted node being
+  // defaulted onto channel 0 and slipping past the permission gate.
+  it('non-admin: coverage-grid postFilter drops orphaned (deleted-node) positions', async () => {
+    mockDb.nodes.getAllNodes.mockResolvedValue([
+      { nodeNum: 1, channel: 0, hideFromMap: false },
+    ]);
+    // Channel 0 is viewable, so an orphan defaulted onto it would otherwise pass.
+    mockDb.getUserPermissionSetAsync.mockResolvedValue({
+      channel_0: { viewOnMap: true, read: true, write: false },
+    });
+    mockDb.checkPermissionAsync.mockImplementation((_uid: number, resource: string) =>
+      Promise.resolve(resource !== 'nodes_private'),
+    );
+    const app = createApp(regularUser);
+    await request(app).get('/coverage-grid?since=5555&zoom=8');
+    const call = mockDb.analysis.getCoverageGrid.mock.calls[0][0];
+    expect(typeof call.postFilter).toBe('function');
+    // Node 1 exists on a viewable channel → kept; node 2 was deleted → dropped.
+    expect(call.postFilter({ sourceId: 'src-a', nodeNum: 1 })).toBe(true);
+    expect(call.postFilter({ sourceId: 'src-a', nodeNum: 2 })).toBe(false);
+  });
 });
 
 describe('GET /hop-counts', () => {
