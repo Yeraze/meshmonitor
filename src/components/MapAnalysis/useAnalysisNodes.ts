@@ -121,7 +121,7 @@ export function useAnalysisNodes(): AnalysisNode[] {
     for (const { node, latLng } of visible) {
       const bits = node.positionPrecisionBits;
       if (shouldOffsetForPrecision(bits, node.positionIsOverride)) {
-        const cell = precisionCellKey(latLng[0], latLng[1], bits as number);
+        const cell = precisionCellKey(latLng[0], latLng[1], bits);
         cellOccupancy.set(cell, (cellOccupancy.get(cell) ?? 0) + 1);
       }
     }
@@ -135,9 +135,9 @@ export function useAnalysisNodes(): AnalysisNode[] {
         const bits = node.positionPrecisionBits;
         let finalLatLng = latLng;
         if (shouldOffsetForPrecision(bits, node.positionIsOverride)) {
-          const cell = precisionCellKey(latLng[0], latLng[1], bits as number);
+          const cell = precisionCellKey(latLng[0], latLng[1], bits);
           if ((cellOccupancy.get(cell) ?? 0) >= 2) {
-            finalLatLng = offsetWithinPrecisionCell(latLng[0], latLng[1], bits as number, key ?? String(node.nodeNum));
+            finalLatLng = offsetWithinPrecisionCell(latLng[0], latLng[1], bits, key ?? String(node.nodeNum));
           }
         }
         return { node, latLng: finalLatLng, key };

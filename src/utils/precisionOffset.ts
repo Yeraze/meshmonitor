@@ -59,7 +59,7 @@ export function hasAccuracyCell(
 export function shouldOffsetForPrecision(
   bits: number | null | undefined,
   isOverride: boolean | null | undefined,
-): boolean {
+): bits is number {
   if (isOverride) return false;
   if (bits == null) return false;
   return bits >= 1 && bits <= OBSCURED_PRECISION_MAX_BITS;

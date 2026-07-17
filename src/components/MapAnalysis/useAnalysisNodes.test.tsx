@@ -136,6 +136,21 @@ describe('useAnalysisNodes', () => {
     expect(Math.abs(b[0] - 30)).toBeLessThan(0.01);
   });
 
+  it('does NOT merge same-position nodes of different precision into one cell (#4155)', () => {
+    mockUseDashboardUnifiedData.mockReturnValue({
+      nodes: [
+        // Same reported (30,-90) but different precision -> different cell sizes ->
+        // different cells. Each is alone in its own cell, so both stay centered.
+        { ...MOCK_NODES[0], nodeNum: 10, nodeId: '!0000000a', latitude: 30, longitude: -90, positionPrecisionBits: 16 },
+        { ...MOCK_NODES[0], nodeNum: 15, nodeId: '!0000000f', latitude: 30, longitude: -90, positionPrecisionBits: 14 },
+      ],
+    });
+    const { result } = renderHook(() => useAnalysisNodes(), { wrapper });
+    const byNum = (num: number) => result.current.find((n) => n.node.nodeNum === num)!;
+    expect(byNum(10).latLng).toEqual([30, -90]);
+    expect(byNum(15).latLng).toEqual([30, -90]);
+  });
+
   it('offset is deterministic across renders for shared-cell nodes (#4016)', () => {
     const shared = [
       { ...MOCK_NODES[0], nodeNum: 10, nodeId: '!0000000a', latitude: 30, longitude: -90, positionPrecisionBits: 16 },
