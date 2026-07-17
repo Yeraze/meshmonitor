@@ -92,10 +92,11 @@ describe('useAnalysisNodes', () => {
     expect(result.current.some((n) => n.node.nodeNum === 3)).toBe(false);
   });
 
-  it('offsets a low-precision node within its cell but leaves others centered (#4016)', () => {
+  it('leaves a LONE low-precision node at its reported center (#4155)', () => {
     mockUseDashboardUnifiedData.mockReturnValue({
       nodes: [
-        // Low precision (16 bits) -> marker offset from the reported center.
+        // Low precision (16 bits) but ALONE in its cell -> now stays centered
+        // (was offset pre-#4155; a lone marker has nothing to declutter).
         { ...MOCK_NODES[0], nodeNum: 10, nodeId: '!0000000a', latitude: 30, longitude: -90, positionPrecisionBits: 16 },
         // Full precision -> unchanged.
         { ...MOCK_NODES[0], nodeNum: 11, nodeId: '!0000000b', latitude: 40, longitude: -100, positionPrecisionBits: 32 },
@@ -108,24 +109,42 @@ describe('useAnalysisNodes', () => {
     const { result } = renderHook(() => useAnalysisNodes(), { wrapper });
     const byNum = (num: number) => result.current.find((n) => n.node.nodeNum === num)!;
 
-    // Offset node: moved off the exact center, but still within the ~728m cell (~0.0065deg).
-    const offset = byNum(10).latLng;
-    expect(offset[0]).not.toBe(30);
-    expect(offset[1]).not.toBe(-90);
-    expect(Math.abs(offset[0] - 30)).toBeLessThan(0.01);
-
-    // Full-precision, missing-precision, and overridden nodes stay dead-center.
+    expect(byNum(10).latLng).toEqual([30, -90]); // lone obscured node -> dead-center
     expect(byNum(11).latLng).toEqual([40, -100]);
     expect(byNum(12).latLng).toEqual([41, -101]);
     expect(byNum(13).latLng).toEqual([42, -102]);
   });
 
-  it('offset is deterministic across renders (#4016)', () => {
+  it('spreads 2+ low-precision nodes that share an accuracy cell (#4155/#4016)', () => {
     mockUseDashboardUnifiedData.mockReturnValue({
-      nodes: [{ ...MOCK_NODES[0], nodeNum: 10, nodeId: '!0000000a', latitude: 30, longitude: -90, positionPrecisionBits: 16 }],
+      nodes: [
+        // Two obscured nodes reporting the SAME snapped cell (same lat/lng + bits).
+        { ...MOCK_NODES[0], nodeNum: 10, nodeId: '!0000000a', latitude: 30, longitude: -90, positionPrecisionBits: 16 },
+        { ...MOCK_NODES[0], nodeNum: 14, nodeId: '!0000000e', latitude: 30, longitude: -90, positionPrecisionBits: 16 },
+      ],
     });
-    const first = renderHook(() => useAnalysisNodes(), { wrapper }).result.current[0].latLng;
-    const second = renderHook(() => useAnalysisNodes(), { wrapper }).result.current[0].latLng;
+    const { result } = renderHook(() => useAnalysisNodes(), { wrapper });
+    const byNum = (num: number) => result.current.find((n) => n.node.nodeNum === num)!;
+
+    const a = byNum(10).latLng;
+    const b = byNum(14).latLng;
+    // Both pushed off the shared center, to distinct spots, still within the cell.
+    expect(a).not.toEqual([30, -90]);
+    expect(b).not.toEqual([30, -90]);
+    expect(a).not.toEqual(b);
+    expect(Math.abs(a[0] - 30)).toBeLessThan(0.01);
+    expect(Math.abs(b[0] - 30)).toBeLessThan(0.01);
+  });
+
+  it('offset is deterministic across renders for shared-cell nodes (#4016)', () => {
+    const shared = [
+      { ...MOCK_NODES[0], nodeNum: 10, nodeId: '!0000000a', latitude: 30, longitude: -90, positionPrecisionBits: 16 },
+      { ...MOCK_NODES[0], nodeNum: 14, nodeId: '!0000000e', latitude: 30, longitude: -90, positionPrecisionBits: 16 },
+    ];
+    mockUseDashboardUnifiedData.mockReturnValue({ nodes: shared });
+    const first = renderHook(() => useAnalysisNodes(), { wrapper }).result.current.find((n) => n.node.nodeNum === 10)!.latLng;
+    mockUseDashboardUnifiedData.mockReturnValue({ nodes: shared });
+    const second = renderHook(() => useAnalysisNodes(), { wrapper }).result.current.find((n) => n.node.nodeNum === 10)!.latLng;
     expect(first).toEqual(second);
   });
 

@@ -109,3 +109,19 @@ export function offsetWithinPrecisionCell(
   const lngOffset = (fy - 0.5) * lngSizeDeg;
   return [lat + latOffset, lng + lngOffset];
 }
+
+/**
+ * Stable key identifying the accuracy cell a reported position falls in, used to
+ * count how many nodes share a cell before deciding whether to offset (issue
+ * #4155). Firmware snaps an obscured position to its cell, so same-cell nodes of
+ * the same precision report identical coordinates and floor to identical grid
+ * indices. `bits` is part of the key because a different precision means a
+ * different cell size — i.e. a different cell — so two nodes only "share a cell"
+ * when both their snapped position AND their precision match.
+ */
+export function precisionCellKey(lat: number, lng: number, bits: number): string {
+  const size = precisionCellSizeDegrees(bits);
+  const latIdx = Math.floor(lat / size);
+  const lngIdx = Math.floor(lng / size);
+  return `${bits}:${latIdx}:${lngIdx}`;
+}

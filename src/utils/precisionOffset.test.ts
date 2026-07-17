@@ -5,6 +5,7 @@ import {
   shouldOffsetForPrecision,
   hasAccuracyCell,
   offsetWithinPrecisionCell,
+  precisionCellKey,
   OBSCURED_PRECISION_MAX_BITS,
 } from './precisionOffset';
 
@@ -96,5 +97,30 @@ describe('offsetWithinPrecisionCell', () => {
     const dNear = Math.abs(near[0] - lat);
     const dFar = Math.abs(far[0] - lat);
     expect(dFar).toBeGreaterThan(dNear);
+  });
+});
+
+describe('precisionCellKey', () => {
+  it('is identical for the same reported position and precision (same cell)', () => {
+    expect(precisionCellKey(30, -90, 16)).toBe(precisionCellKey(30, -90, 16));
+  });
+
+  it('differs when the precision differs (different cell size = different cell)', () => {
+    expect(precisionCellKey(30, -90, 16)).not.toBe(precisionCellKey(30, -90, 14));
+  });
+
+  it('differs for positions in different cells', () => {
+    const size = precisionCellSizeDegrees(16);
+    // Two points more than a full cell apart fall in different cells.
+    expect(precisionCellKey(30, -90, 16)).not.toBe(precisionCellKey(30 + size * 2, -90, 16));
+  });
+
+  it('groups two near-center points of the same snapped cell together', () => {
+    const size = precisionCellSizeDegrees(16);
+    // Points within the same cell (both < one cell apart, same grid index).
+    const baseLatIdx = Math.floor(30 / size);
+    const a = (baseLatIdx + 0.25) * size;
+    const b = (baseLatIdx + 0.75) * size;
+    expect(precisionCellKey(a, -90, 16)).toBe(precisionCellKey(b, -90, 16));
   });
 });
