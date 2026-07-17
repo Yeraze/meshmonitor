@@ -115,8 +115,16 @@ export async function resolveBroadcastChannel(
   db: typeof databaseService,
 ): Promise<number> {
   const channels = await db.channels.getAllChannels(manager.sourceId);
+  // A candidate must be an ENABLED slot. A DISABLED channel (role 0) has no key
+  // configured on the node, so the firmware refuses to encode a packet on that
+  // index and NAKs the sender NO_CHANNEL (6) — traceroute never leaves the node
+  // (issue #4173). Disabled slots are stored with a NULL psk, which would
+  // otherwise pass isMeshReadablePsk() below and, if lower-numbered than the
+  // primary, get selected (e.g. private-key PRIMARY at 0 + disabled slots 1–7).
+  // Among enabled slots we still prefer a mesh-readable (default-key/unencrypted)
+  // one so every intermediate node can decrypt & append the hop (issue #3696).
   const readable = channels
-    .filter((ch) => isValidChannelIndex(ch.id) && isMeshReadablePsk(ch.psk))
+    .filter((ch) => isValidChannelIndex(ch.id) && ch.role !== 0 && isMeshReadablePsk(ch.psk))
     .sort((a, b) => a.id - b.id);
 
   if (readable.length > 0) {
@@ -124,9 +132,9 @@ export async function resolveBroadcastChannel(
   }
 
   logger.warn(
-    `resolveBroadcastChannel: source ${manager.sourceId} has no default-keyed (mesh-readable) channel ` +
-      `among its ${channels.length} channel(s); falling back to channel 0. Traceroutes may show ` +
-      '"Unknown" hops because intermediate nodes cannot decrypt an encrypted-channel payload (issue #3696).',
+    `resolveBroadcastChannel: source ${manager.sourceId} has no ENABLED default-keyed (mesh-readable) ` +
+      `channel among its ${channels.length} channel(s); falling back to channel 0 (the PRIMARY slot, which ` +
+      'is always enabled). Traceroutes may show "Unknown" hops if the primary uses a private key (issue #3696).',
   );
   return 0;
 }
