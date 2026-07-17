@@ -11,10 +11,13 @@ jobs:
   test:
     name: Test Suite
     runs-on: ubuntu-latest
-    # Backstop: no matrix leg should ever run this long. Guards against a hung
-    # step (e.g. the coverage generator wedging on a specific Node major, as
-    # @vitest/coverage-v8 did on Node 24) blocking merges for 30+ minutes.
-    timeout-minutes: 20
+    # Loose catastrophic backstop only. The PRECISE guard for the known coverage
+    # wedge is the step-level `timeout-minutes` on "Generate coverage report"
+    # below; this job cap just stops a totally runaway leg. Keep it comfortably
+    # above a slow-runner full run (setup + test:run + the ≤10m coverage step) so
+    # it never clips a legitimately-slow-but-progressing run — an earlier 20m cap
+    # cancelled the 22.x leg mid-coverage on a slow day.
+    timeout-minutes: 45
 
     services:
       postgres:
