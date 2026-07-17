@@ -14,6 +14,7 @@ import { optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
+import { parseDiscardInvalidPositions } from '../../utils/positionIngestConfig.js';
 import { securityDigestService } from '../services/securityDigestService.js';
 import { invalidatePkiDmGlobalCache } from '../services/sourcePkiKeyStore.js';
 import { VALID_SETTINGS_KEYS, stripSecretSettings } from '../constants/settings.js';
@@ -720,8 +721,7 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
     }
 
     if ('discardInvalidPositions' in filteredSettings) {
-      const raw = filteredSettings.discardInvalidPositions;
-      const enabled = !(raw === '0' || raw === 'false');
+      const enabled = parseDiscardInvalidPositions(filteredSettings.discardInvalidPositions);
       callbacks.setDiscardInvalidPositions?.(enabled);
       logger.debug(`🗺️ discardInvalidPositions set to ${enabled} — ingest gate updated`);
     }

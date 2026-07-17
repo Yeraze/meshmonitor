@@ -37,3 +37,12 @@ export function setDiscardInvalidPositions(enabled: boolean): void {
 export function parseDiscardInvalidPositions(raw: string | null | undefined): boolean {
   return !(raw === '0' || raw === 'false');
 }
+
+/**
+ * Reset the cached flag to its factory default (`true`). Exported for test
+ * isolation only — a suite that flips the flag must restore it in teardown so it
+ * cannot bleed into other tests (the flag is a process-global module singleton).
+ */
+export function __resetDiscardInvalidPositionsForTest(): void {
+  discardInvalidPositions = true;
+}

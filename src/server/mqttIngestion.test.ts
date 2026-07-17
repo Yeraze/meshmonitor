@@ -95,7 +95,7 @@ vi.mock('./meshtasticProtobufService.js', () => ({
 }));
 
 import { ingestServiceEnvelope, _resetMqttIngestCachesForTest } from './mqttIngestion.js';
-import { setDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
+import { setDiscardInvalidPositions, __resetDiscardInvalidPositionsForTest } from '../utils/positionIngestConfig.js';
 import { MqttPacketFilter, type ServiceEnvelopeShape } from './mqttPacketFilter.js';
 import databaseService from '../services/database.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
@@ -463,7 +463,7 @@ describe('ingestServiceEnvelope — discardInvalidPositions=false stores (0,0)',
     setDiscardInvalidPositions(false); // operator opted to keep bad positions
   });
   afterEach(() => {
-    setDiscardInvalidPositions(true); // restore the default for other suites
+    __resetDiscardInvalidPositionsForTest(); // restore the default for other suites
   });
 
   it('stores a Null Island (0,0) fix when the discard setting is disabled', async () => {
