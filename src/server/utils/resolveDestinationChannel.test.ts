@@ -156,4 +156,33 @@ describe('resolveBroadcastChannel', () => {
     ]);
     expect(await resolveBroadcastChannel(manager, db)).toBe(4);
   });
+
+  it('does NOT select a DISABLED slot even though its NULL psk looks mesh-readable (#4173)', async () => {
+    // Reporter's config: PRIMARY(0) uses a private key; slots 1–7 are DISABLED
+    // (role 0) with a NULL psk. A disabled slot has no key on the node, so
+    // encoding a traceroute on it NAKs NO_CHANNEL (6). The disabled NULL-psk
+    // slots must be skipped and we fall back to the enabled PRIMARY slot 0.
+    getAllChannels.mockResolvedValue([
+      { id: 0, psk: 'cHJpdmF0ZWtleQ==', role: 1 }, // PRIMARY, private key
+      { id: 1, psk: null, role: 0 },               // DISABLED
+      { id: 2, psk: null, role: 0 },               // DISABLED
+    ]);
+    expect(await resolveBroadcastChannel(manager, db)).toBe(0);
+  });
+
+  it('skips a DISABLED (null-psk) slot in favor of a lower-priority enabled default-keyed one', async () => {
+    getAllChannels.mockResolvedValue([
+      { id: 1, psk: null, role: 0 },   // DISABLED (null psk) — must be skipped
+      { id: 2, psk: 'AQ==', role: 2 }, // enabled SECONDARY on the default key
+    ]);
+    expect(await resolveBroadcastChannel(manager, db)).toBe(2);
+  });
+
+  it('selects an enabled default-keyed SECONDARY over a private PRIMARY', async () => {
+    getAllChannels.mockResolvedValue([
+      { id: 0, psk: 'cHJpdmF0ZQ==', role: 1 }, // PRIMARY, private
+      { id: 3, psk: 'AQ==', role: 2 },         // enabled default-key SECONDARY
+    ]);
+    expect(await resolveBroadcastChannel(manager, db)).toBe(3);
+  });
 });
