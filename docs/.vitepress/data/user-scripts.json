@@ -686,5 +686,27 @@
       "Color-coded status (🟢 Good / 🟡 Fair / 🔴 Poor)",
       "No API key or external Python packages required"
     ]
+  },
+  {
+    "name": "Meshview Link Responder",
+    "filename": "meshview-link-responder.sh",
+    "icon": "🔗",
+    "description": "Listens for the !meshview trigger word anywhere in a message and replies via DM with a direct link to that message's packet detail page on your Meshview instance.",
+    "language": "Shell",
+    "tags": ["Meshview", "Example", "MQTT", "DM"],
+    "githubPath": "Yeraze/meshmonitor/examples/auto-responder-scripts/meshview-link-responder.sh",
+    "exampleTrigger": "{before:.+|^}!meshview{after:.+|$}",
+    "requirements": [
+      "POSIX shell (included in MeshMonitor)",
+      "A Meshview instance fed by your mesh's MQTT bridge (e.g. https://meshview.bayme.sh or self-hosted)",
+      "Edit MESHVIEW_BASE_URL in the script to point at your Meshview instance"
+    ],
+    "author": "madeofstown",
+    "features": [
+      "Matches the !meshview trigger anywhere in the message text",
+      "Always replies via DM (private: true), regardless of the triggering channel",
+      "Links straight to the triggering packet's detail page on Meshview",
+      "No external dependencies — POSIX shell only"
+    ]
   }
 ]
