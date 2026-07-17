@@ -9,7 +9,7 @@ import { nodeMatchesSearch } from './nodeSearch';
 import { getNodeTypeCategory } from '../../utils/nodeTypeCategory';
 import { nodePassesTransportFilter } from '../../utils/nodeTransport';
 import { unifiedNodeKey } from '../../utils/nodeIdentity';
-import { shouldOffsetForPrecision, offsetWithinPrecisionCell } from '../../utils/precisionOffset';
+import { shouldOffsetForPrecision, offsetWithinPrecisionCell, precisionCellKey } from '../../utils/precisionOffset';
 import type { NodeSourceRef } from '../Dashboard/DashboardNodePopup';
 
 /**
@@ -74,7 +74,7 @@ export function useAnalysisNodes(): AnalysisNode[] {
   const { nodes } = useDashboardUnifiedData(sources, sourceIds.length > 0);
 
   return useMemo(() => {
-    return ((nodes ?? []) as NodeRecord[])
+    const visible = ((nodes ?? []) as NodeRecord[])
       .map((n) => ({ node: n, latLng: resolveNodeLatLng(n) }))
       .filter(
         (
@@ -110,17 +110,36 @@ export function useAnalysisNodes(): AnalysisNode[] {
             : (node.sourceId ? [node.sourceId] : []);
           return nodeSourceIds.some((id) => config.sources.includes(id));
         },
-      )
+      );
+
+    // #4155: count how many *visible* offsettable nodes share each accuracy cell.
+    // The #4016 within-cell offset only declutters same-cell stacks; a node alone
+    // in its cell has nothing to declutter, and offsetting it just pushes a marker
+    // off the reported center (potentially to a cell edge) for no reason. So we
+    // spread only cells with 2+ occupants and leave lone nodes at their center.
+    const cellOccupancy = new Map<string, number>();
+    for (const { node, latLng } of visible) {
+      const bits = node.positionPrecisionBits;
+      if (shouldOffsetForPrecision(bits, node.positionIsOverride)) {
+        const cell = precisionCellKey(latLng[0], latLng[1], bits);
+        cellOccupancy.set(cell, (cellOccupancy.get(cell) ?? 0) + 1);
+      }
+    }
+
+    return visible
       .map(({ node, latLng }) => {
         const key = unifiedNodeKey(node);
-        // #4016: obscured low-precision nodes are deterministically offset within
-        // their accuracy cell so they don't imply false precision or stack on one
-        // point. Applied here (the single latLng source) so markers, Follow,
-        // bounds, the measurement tool, and the popup all use the same position.
+        // #4016 within-cell offset, gated on cell occupancy (#4155). Applied here
+        // (the single latLng source) so markers, Follow, bounds, the measurement
+        // tool, and the popup all use the same position.
         const bits = node.positionPrecisionBits;
-        const finalLatLng = shouldOffsetForPrecision(bits, node.positionIsOverride)
-          ? offsetWithinPrecisionCell(latLng[0], latLng[1], bits as number, key ?? String(node.nodeNum))
-          : latLng;
+        let finalLatLng = latLng;
+        if (shouldOffsetForPrecision(bits, node.positionIsOverride)) {
+          const cell = precisionCellKey(latLng[0], latLng[1], bits);
+          if ((cellOccupancy.get(cell) ?? 0) >= 2) {
+            finalLatLng = offsetWithinPrecisionCell(latLng[0], latLng[1], bits, key ?? String(node.nodeNum));
+          }
+        }
         return { node, latLng: finalLatLng, key };
       })
       .filter((entry): entry is AnalysisNode => entry.key !== null);
