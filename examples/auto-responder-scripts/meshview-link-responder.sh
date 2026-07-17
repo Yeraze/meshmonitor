@@ -13,16 +13,13 @@
 # Trigger: {before:.+|^}!meshview{after:.+|$}
 #
 # Environment variables available:
-# - MESSAGE: Full message text
-# - FROM_NODE: Sender node number
-# - NODE_ID: Destination node ID (e.g., !abcd1234) - for Geofence/AutoResponder3
 # - PACKET_ID: Message packet ID
 ####
 
 # =============================================================================
 # CONFIGURATION - Edit these variables for your Meshview instance
 # =============================================================================
-MESHVIEW_BASE_URL=https://meshview.bayme.sh # Base URL of your Meshview instance
+MESHVIEW_BASE_URL="https://meshview.bayme.sh" # Base URL of your Meshview instance
 # =============================================================================
 
 # Construct the MeshView link for the specific packet
