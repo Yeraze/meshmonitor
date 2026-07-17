@@ -417,6 +417,14 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         (decodedAny.reply_id as number | undefined);
       const replyId =
         typeof rawReplyId === 'number' && rawReplyId > 0 ? rawReplyId >>> 0 : undefined;
+      // A message directed at a specific node (not broadcast / ^all) belongs in
+      // the direct-message view, not a channel. Mirror the TCP/radio path
+      // (meshtasticManager.processTextMessageProtobuf forces channelIndex = -1 for
+      // toNum !== 4294967295, independent of PKI status). Without this, an
+      // MQTT-sourced directed message is bucketed into its channel and renders as
+      // an ordinary broadcast in both per-source chat and Unified Messages (#4152).
+      const isDirectMessage = toNum !== null && toNum !== 0xffffffff;
+      const messageChannel = isDirectMessage ? -1 : effectiveChannel;
       const msg: DbMessage = {
         // Row ID uses the TCP convention `${sourceId}_${fromNum}_${packetId}`
         // — underscores, fromNum middle, packetId last — so the unified
@@ -431,7 +439,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         fromNodeId,
         toNodeId,
         text,
-        channel: effectiveChannel,
+        channel: messageChannel,
         portnum,
         timestamp: nowMs,
         // Guard against rxTime === 0: MQTT gateway packets frequently arrive

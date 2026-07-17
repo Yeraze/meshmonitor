@@ -137,6 +137,7 @@ import { migration as themeTilesetsMigration, runMigration119Postgres as runThem
 import { migration as addReasonToIgnoredNodesMigration, runMigration120Postgres as runAddReasonToIgnoredNodesPostgres, runMigration120Mysql as runAddReasonToIgnoredNodesMysql } from '../server/migrations/120_add_reason_to_ignored_nodes.js';
 import { migration as mqttPacketLogMigration, runMigration121Postgres, runMigration121Mysql } from '../server/migrations/121_mqtt_packet_log.js';
 import { migration as cleanupOrphanedSourceNodesMigration, runMigration122Postgres, runMigration122Mysql } from '../server/migrations/122_cleanup_orphaned_source_nodes.js';
+import { migration as fixMqttDirectedMessageChannelMigration, runMigration123Postgres, runMigration123Mysql } from '../server/migrations/123_fix_mqtt_directed_message_channel.js';
 
 // ============================================================================
 // Registry
@@ -1943,4 +1944,20 @@ registry.register({
   sqlite: (db) => cleanupOrphanedSourceNodesMigration.up(db),
   postgres: (client) => runMigration122Postgres(client),
   mysql: (pool) => runMigration122Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 123: One-shot re-filing of pre-existing MQTT-sourced directed
+// messages (TEXT_MESSAGE_APP addressed to a specific node) from their LoRa
+// channel to channel -1, so they render in the DM view instead of as
+// broadcasts — matching the TCP path and the #4152 ingestion fix.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 123,
+  name: 'fix_mqtt_directed_message_channel',
+  settingsKey: 'migration_123_fix_mqtt_directed_message_channel',
+  sqlite: (db) => fixMqttDirectedMessageChannelMigration.up(db),
+  postgres: (client) => runMigration123Postgres(client),
+  mysql: (pool) => runMigration123Mysql(pool),
 });
