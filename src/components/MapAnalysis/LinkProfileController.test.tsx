@@ -23,16 +23,33 @@ vi.mock('react-leaflet', () => ({
     mouseEventToLatLng: (e: MouseEvent) => ({ lat: e.clientY, lng: e.clientX }),
     latLngToContainerPoint: ([lat, lng]: [number, number]) => ({ x: lng, y: lat }),
   }),
-  CircleMarker: ({ center, pathOptions }: { center: [number, number]; pathOptions: { fillOpacity: number } }) => (
+  CircleMarker: ({
+    center,
+    pathOptions,
+  }: {
+    center: [number, number];
+    pathOptions: { fillOpacity: number; color: string };
+  }) => (
     <div
       data-testid="link-ring"
       data-lat={center[0]}
       data-lng={center[1]}
       data-filled={pathOptions.fillOpacity > 0}
+      data-color={pathOptions.color}
     />
   ),
-  Polyline: ({ positions, children }: { positions: [number, number][]; children?: React.ReactNode }) => (
-    <div data-testid="link-line" data-positions={JSON.stringify(positions)}>{children}</div>
+  Polyline: ({
+    positions,
+    pathOptions,
+    children,
+  }: {
+    positions: [number, number][];
+    pathOptions: { color: string };
+    children?: React.ReactNode;
+  }) => (
+    <div data-testid="link-line" data-positions={JSON.stringify(positions)} data-color={pathOptions.color}>
+      {children}
+    </div>
   ),
   Tooltip: ({ children }: { children?: React.ReactNode }) => (
     <div data-testid="link-label">{children}</div>
@@ -68,6 +85,7 @@ function Harness(props: Partial<LinkProfileControllerProps> & { points?: LinkEnd
         props.onPick?.(next);
       }}
       onExit={props.onExit}
+      verdict={props.verdict}
     />
   );
 }
@@ -124,9 +142,14 @@ describe('LinkProfileController', () => {
     clickAt(105, 100); // near A
     clickAt(895, 100); // near C
     const line = screen.getByTestId('link-line');
+    // The drawn line's B longitude is unwrapped into A's 360-degree window
+    // (#4111 Phase 3 WP-3 antimeridian fix) — A=100, C=900 differ by 800, so
+    // the rendered position is 900 - 2*360 = 180 (the "line" test fixture
+    // isn't real geography, but the unwrap math is deterministic for any
+    // input). The tooltip label still uses the true (non-unwrapped) endpoints.
     expect(JSON.parse(line.getAttribute('data-positions')!)).toEqual([
       [100, 100],
-      [100, 900],
+      [100, 180],
     ]);
     expect(screen.getByTestId('link-label').textContent).toMatch(/km$/);
   });
@@ -196,5 +219,58 @@ describe('LinkProfileController', () => {
     expect(onPick).toHaveBeenCalledWith([
       expect.objectContaining({ id: 'a', lat: 100, lng: 100, isNode: true }),
     ]);
+  });
+
+  describe('verdict coloring (#4111 Phase 3 WP-3)', () => {
+    it('defaults to amber (pending) when no verdict is supplied', () => {
+      render(<Harness />);
+      clickAt(105, 100);
+      clickAt(895, 100);
+      expect(screen.getByTestId('link-line').getAttribute('data-color')).toBe('#f59e0b');
+      for (const ring of screen.getAllByTestId('link-ring')) {
+        expect(ring.getAttribute('data-color')).toBe('#f59e0b');
+      }
+    });
+
+    it('defaults to amber (pending) when verdict is explicitly null', () => {
+      render(<Harness verdict={null} />);
+      clickAt(105, 100);
+      clickAt(895, 100);
+      expect(screen.getByTestId('link-line').getAttribute('data-color')).toBe('#f59e0b');
+    });
+
+    it.each([
+      ['clear', '#22c55e'],
+      ['marginal', '#f59e0b'],
+      ['obstructed', '#ef4444'],
+    ] as const)('colors the line and rings %s -> %s', (verdict, color) => {
+      render(<Harness verdict={verdict} />);
+      clickAt(105, 100);
+      clickAt(895, 100);
+      expect(screen.getByTestId('link-line').getAttribute('data-color')).toBe(color);
+      for (const ring of screen.getAllByTestId('link-ring')) {
+        expect(ring.getAttribute('data-color')).toBe(color);
+      }
+    });
+  });
+
+  describe('antimeridian unwrap (#4111 Phase 3 WP-3)', () => {
+    it('draws the short way across +/-180 instead of the long way around', () => {
+      const antimeridianPoints: LinkEndpoint[] = [
+        { id: 'east', lat: 100, lng: 179, label: 'East', isNode: true },
+        { id: 'west', lat: 100, lng: -179, label: 'West', isNode: true },
+      ];
+      render(<Harness points={antimeridianPoints} />);
+      // East point sits at container (179,100); West at (-179,100) — click
+      // directly on each so the snap logic resolves them unambiguously.
+      clickAt(179, 100);
+      clickAt(-179, 100);
+      const line = screen.getByTestId('link-line');
+      const positions = JSON.parse(line.getAttribute('data-positions')!);
+      expect(positions[0]).toEqual([100, 179]);
+      // -179 unwrapped into A's (179) 360-degree window is 181, not -179 —
+      // a short 2-degree hop instead of the 358-degree long way around.
+      expect(positions[1][1]).toBeCloseTo(181, 5);
+    });
   });
 });

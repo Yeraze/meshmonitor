@@ -1,6 +1,6 @@
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
-import type { ElevationProfile } from '../types/elevation';
+import type { ElevationProfile, ElevationTestResult } from '../types/elevation';
 import {
   sanitizeTextInput,
   validateChannel,
@@ -1555,6 +1555,25 @@ class ApiService {
     const res = await this.post<{ success: boolean; data: ElevationProfile }>(
       '/api/elevation/profile',
       samples != null ? { pointA, pointB, samples } : { pointA, pointB },
+    );
+    return res.data;
+  }
+
+  /**
+   * Probes an elevation source URL via `POST /api/elevation/test` (admin
+   * only, `settings:write`) — powers the Settings tab's Test button (#4111
+   * P3). Unwraps the `{ success, data }` envelope like `getElevationProfile`
+   * above. A `success:false` result is a valid probe outcome (bad URL,
+   * unreachable host, etc.), not a thrown error — callers branch on
+   * `result.success`.
+   */
+  async testElevationSource(
+    url: string,
+    probe?: { lat: number; lng: number },
+  ): Promise<ElevationTestResult> {
+    const res = await this.post<{ success: boolean; data: ElevationTestResult }>(
+      '/api/elevation/test',
+      probe ? { url, lat: probe.lat, lng: probe.lng } : { url },
     );
     return res.data;
   }

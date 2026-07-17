@@ -7,7 +7,8 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { MeshtasticManager } from '../meshtasticManager.js';
 import { meshcoreConfigFromSource, ensureMeshCoreManagerStarted } from '../meshcoreConfig.js';
 import { MeshCoreManager } from '../meshcoreManager.js';
-import { isMeshCoreManager } from '../sourceManagerTypes.js';
+import { isMeshCoreManager, isMeshtasticManager } from '../sourceManagerTypes.js';
+import { loRaCenterFrequencyMhz, REGION_SHORT_NAME } from '../../utils/loraFrequency.js';
 import { MqttBrokerManager, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
@@ -236,6 +237,60 @@ function stripSourceSecrets<T extends { config?: unknown } | null | undefined>(
   return { ...source, config: rest };
 }
 
+// Public, non-secret per-source radio summary attached to GET /api/sources
+// below (#4111 P3 WP-1). Center frequency / region is inherently public RF
+// information — it is broadcast over the air and printed on every node's
+// config screen — so exposing it on the already-public sources list carries
+// no secret. This is the ONE additive backend field for the Terrain Link
+// Profile tool's per-source frequency auto-detection; see
+// docs/internal/dev-notes/LINK_PROFILE_POLISH_SPEC.md §0.1 for the full
+// rationale (rejected alternative: gated per-endpoint fetches).
+interface SourceRadioSummary {
+  frequencyMhz: number | null;
+  /** Meshtastic only. */
+  regionName?: string;
+  /** Meshtastic only — drives RX-sensitivity auto-seed. */
+  modemPreset?: number;
+}
+
+// Wrapped in try/catch so a manager that throws from getCurrentConfig()/
+// localNode access can never break the sources list (returns null instead).
+function computeSourceRadioSummary(sourceId: string): SourceRadioSummary | null {
+  try {
+    const mgr = sourceManagerRegistry.getManager(sourceId);
+    if (!mgr) return null;
+    if (isMeshtasticManager(mgr)) {
+      const lora = mgr.getCurrentConfig()?.deviceConfig?.lora;
+      if (!lora) return null;
+      const region = Number(lora.region ?? 0);
+      const frequencyMhz = loRaCenterFrequencyMhz(
+        region,
+        Number(lora.channelNum ?? 0),
+        Number(lora.overrideFrequency ?? 0),
+        Number(lora.frequencyOffset ?? 0),
+        Number(lora.bandwidth ?? 250),
+        undefined,
+        Number(lora.modemPreset ?? 0),
+      );
+      return {
+        frequencyMhz,
+        regionName: REGION_SHORT_NAME[region],
+        modemPreset: Number(lora.modemPreset ?? 0),
+      };
+    }
+    if (isMeshCoreManager(mgr)) {
+      // localNode is a private field on MeshCoreManager — use the public
+      // accessor rather than reaching into it directly.
+      const freq = mgr.getLocalNode()?.radioFreq;
+      return { frequencyMhz: typeof freq === 'number' && Number.isFinite(freq) ? freq : null };
+    }
+    return null; // MQTT / bridge sources have no local radio.
+  } catch (error) {
+    logger.debug(`Error computing radio summary for source ${sourceId}:`, error);
+    return null;
+  }
+}
+
 // List all sources — public so the landing page can redirect unauthenticated users
 // to the single-source view (or show the login button on the source list page).
 // Sensitive config fields are not exposed.
@@ -255,6 +310,7 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
       config: s.config,
+      radio: computeSourceRadioSummary(s.id),
     }, isAdmin));
     res.json(projected);
   } catch (error) {

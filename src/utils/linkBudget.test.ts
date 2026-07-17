@@ -5,6 +5,10 @@ import {
   fsplDb,
   earthBulgeMeters,
   computeLinkBudget,
+  loRaSensitivityDbm,
+  rxSensitivityForModemPreset,
+  LORA_SNR_LIMIT_DB,
+  MODEM_PRESET_PARAMS,
 } from './linkBudget';
 
 describe('wavelengthMeters', () => {
@@ -94,6 +98,84 @@ describe('earthBulgeMeters', () => {
   it('does not throw for negative distances', () => {
     expect(Number.isNaN(earthBulgeMeters(-100, 5000))).toBe(false);
     expect(earthBulgeMeters(-100, 5000)).toBe(0);
+  });
+});
+
+describe('loRaSensitivityDbm (#4111 P3 WP-1)', () => {
+  // S = -174 + 10*log10(BW_Hz) + NF + SNR_min(SF), NF defaults to 6 dB.
+  // Deviation from LINK_PROFILE_POLISH_SPEC.md §3: the spec's test-plan table
+  // lists "loRaSensitivityDbm(11,250) ≈ -126.5 (±0.5)", but plugging SF=11
+  // into the spec's own formula + LORA_SNR_LIMIT_DB table gives -131.52, not
+  // -126.5 (-174 + 53.9794 + 6 - 17.5 = -131.5206). -126.52 is what SF=9
+  // produces instead (-174 + 53.9794 + 6 - 12.5). Asserting the value the
+  // locked formula actually computes, since the formula (not the example
+  // number) is the source of truth (spec §0.2: "computed, not a magic table").
+  it('SF11/BW250kHz: matches the formula (-174 + 10log10(250000) + 6 - 17.5)', () => {
+    expect(loRaSensitivityDbm(11, 250)).toBeCloseTo(-131.521, 2);
+  });
+
+  it('SF9/BW250kHz: -126.52 (the value the spec\'s example number actually matches)', () => {
+    expect(loRaSensitivityDbm(9, 250)).toBeCloseTo(-126.521, 2);
+  });
+
+  it('higher SF yields a lower (more negative / better) sensitivity at fixed BW', () => {
+    const sf7 = loRaSensitivityDbm(7, 250)!;
+    const sf9 = loRaSensitivityDbm(9, 250)!;
+    const sf11 = loRaSensitivityDbm(11, 250)!;
+    expect(sf9).toBeLessThan(sf7);
+    expect(sf11).toBeLessThan(sf9);
+  });
+
+  it('narrower BW yields a lower (more negative / better) sensitivity at fixed SF', () => {
+    const bw250 = loRaSensitivityDbm(11, 250)!;
+    const bw125 = loRaSensitivityDbm(11, 125)!;
+    expect(bw125).toBeLessThan(bw250);
+  });
+
+  it('returns null for an unknown spreading factor', () => {
+    expect(loRaSensitivityDbm(6, 250)).toBeNull();
+    expect(loRaSensitivityDbm(13, 250)).toBeNull();
+  });
+
+  it('returns null for non-positive bandwidth', () => {
+    expect(loRaSensitivityDbm(11, 0)).toBeNull();
+    expect(loRaSensitivityDbm(11, -10)).toBeNull();
+  });
+
+  it('a higher noise figure raises (worsens) sensitivity', () => {
+    const nf6 = loRaSensitivityDbm(11, 250, 6)!;
+    const nf10 = loRaSensitivityDbm(11, 250, 10)!;
+    expect(nf10).toBeGreaterThan(nf6);
+  });
+
+  it('LORA_SNR_LIMIT_DB covers every SF used by MODEM_PRESET_PARAMS', () => {
+    for (const { sf } of Object.values(MODEM_PRESET_PARAMS)) {
+      expect(LORA_SNR_LIMIT_DB[sf]).toBeDefined();
+    }
+  });
+});
+
+describe('rxSensitivityForModemPreset (#4111 P3 WP-1)', () => {
+  it('preset 0 (LONG_FAST, SF11/BW250) is finite', () => {
+    const result = rxSensitivityForModemPreset(0);
+    expect(result).not.toBeNull();
+    expect(Number.isFinite(result)).toBe(true);
+    expect(result).toBeCloseTo(-131.521, 2);
+  });
+
+  it('returns null for preset 2 (VERY_LONG_SLOW — deprecated, not in MODEM_PRESET_PARAMS)', () => {
+    expect(rxSensitivityForModemPreset(2)).toBeNull();
+  });
+
+  it('returns null for an out-of-range preset value', () => {
+    expect(rxSensitivityForModemPreset(999)).toBeNull();
+  });
+
+  it('every preset 0-13 except 2 resolves to a finite sensitivity', () => {
+    for (let preset = 0; preset <= 13; preset++) {
+      if (preset === 2) continue;
+      expect(Number.isFinite(rxSensitivityForModemPreset(preset))).toBe(true);
+    }
   });
 });
 

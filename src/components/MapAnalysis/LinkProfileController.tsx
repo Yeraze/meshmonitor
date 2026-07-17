@@ -2,11 +2,15 @@ import React, { useEffect, useRef } from 'react';
 import { CircleMarker, Polyline, Tooltip, useMap } from 'react-leaflet';
 import { useSettings } from '../../contexts/SettingsContext';
 import { nearestPoint, measureLabel } from '../../utils/measureDistance';
-import type { LinkEndpoint } from '../../utils/linkProfile';
+import type { LinkEndpoint, LinkVerdict } from '../../utils/linkProfile';
+import { VERDICT_COLOR } from '../../utils/linkProfile';
 import './LinkProfileController.css';
 
 /** Screen-space snap threshold (px) for treating a click as "on" a node. */
 const SNAP_PX = 24;
+
+/** Amber shown while the drawer hasn't resolved a verdict yet (or none applies). */
+const PENDING_COLOR = '#f59e0b';
 
 export interface LinkProfileControllerProps {
   /** When false the tool is inert (no cursor change, no listeners fire visibly). */
@@ -19,6 +23,13 @@ export interface LinkProfileControllerProps {
   onPick: (next: LinkEndpoint[]) => void;
   /** Called when the user presses Escape so the parent can flip `active` off. */
   onExit?: () => void;
+  /**
+   * Computed Link Profile verdict for the current endpoint pair (#4111 Phase
+   * 3 WP-3), owned by the drawer via `MapAnalysisContext`. Colors the
+   * connecting Polyline + endpoint rings via the shared `VERDICT_COLOR`;
+   * falls back to amber while `null` (pending/no analysis yet).
+   */
+  verdict?: LinkVerdict | null;
 }
 
 /**
@@ -47,6 +58,7 @@ const LinkProfileController: React.FC<LinkProfileControllerProps> = ({
   endpoints,
   onPick,
   onExit,
+  verdict,
 }) => {
   const { distanceUnit } = useSettings();
   const map = useMap();
@@ -137,14 +149,26 @@ const LinkProfileController: React.FC<LinkProfileControllerProps> = ({
   if (!enabled) return null;
 
   const [endpointA, endpointB] = endpoints;
+  // Verdict-driven color (#4111 Phase 3 WP-3): amber while pending (no
+  // resolved analysis yet), otherwise the shared clear/marginal/obstructed
+  // color also used by the drawer's chart and stat pill.
+  const verdictColor = verdict ? VERDICT_COLOR[verdict] : PENDING_COLOR;
   const ringStyle = (endpoint: LinkEndpoint) => ({
-    color: '#f59e0b',
+    color: verdictColor,
     weight: 3,
-    fillColor: '#f59e0b',
+    fillColor: verdictColor,
     // Filled for a snapped node, hollow for an arbitrary map point — visually
     // distinguishes the two endpoint kinds (spec §2.7).
     fillOpacity: endpoint.isNode ? 0.6 : 0,
   });
+
+  // Antimeridian fix (#4111 Phase 3 WP-3): unwrap endpoint B's longitude into
+  // the same 360° window as endpoint A before building the Polyline so a
+  // link crossing +/-180 draws the short way across the map instead of
+  // wrapping the long way around. Only affects the drawn line's coordinates —
+  // the endpoint CircleMarker and any API calls keep the true lng.
+  const bLngUnwrapped =
+    endpointA && endpointB ? endpointB.lng + 360 * Math.round((endpointA.lng - endpointB.lng) / 360) : undefined;
 
   return (
     <>
@@ -154,13 +178,13 @@ const LinkProfileController: React.FC<LinkProfileControllerProps> = ({
       {endpointB && (
         <CircleMarker center={[endpointB.lat, endpointB.lng]} radius={12} pathOptions={ringStyle(endpointB)} />
       )}
-      {endpointA && endpointB && (
+      {endpointA && endpointB && bLngUnwrapped !== undefined && (
         <Polyline
           positions={[
             [endpointA.lat, endpointA.lng],
-            [endpointB.lat, endpointB.lng],
+            [endpointB.lat, bLngUnwrapped],
           ]}
-          pathOptions={{ color: '#f59e0b', weight: 3 }}
+          pathOptions={{ color: verdictColor, weight: 3 }}
         >
           <Tooltip permanent direction="center" className="link-profile-label">
             {measureLabel(endpointA, endpointB, distanceUnit)}

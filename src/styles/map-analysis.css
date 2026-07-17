@@ -717,3 +717,12 @@
 .map-analysis-link-drawer-form input.map-analysis-tr-num {
   width: 90px;
 }
+
+/* Auto-frequency provenance hint (#4111 P3 WP-2) — sits under the Frequency
+   input, only while the auto-seeded value hasn't been manually overridden. */
+.link-profile-provenance {
+  font-size: 10px;
+  color: #64748b;
+  text-align: right;
+  margin-top: -4px;
+}

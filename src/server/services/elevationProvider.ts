@@ -51,6 +51,29 @@ const JSON_CACHE_MAX = 10_000;
 const JSON_BATCH_SIZE = 100;
 
 /**
+ * Below this metres a Terrarium/DEM sample is a void/bathymetry artifact, not
+ * real terrain (#4111 P3 WP-1) — e.g. Terrarium encodes Lake Pontchartrain as
+ * roughly -12000 m. Real terrain (including below-sea-level basins like Death
+ * Valley at -86 m) never approaches this.
+ */
+const MIN_VALID_ELEVATION_M = -500;
+
+/** Defensive upper clamp — no terrestrial point exceeds Everest (~8849 m). */
+const MAX_VALID_ELEVATION_M = 9000;
+
+/**
+ * Clamps a raw provider elevation to `null` when it falls outside the
+ * physically-plausible range, so DEM voids/bathymetry artifacts surface as
+ * "no data" (excluded from verdict/worst by `analyzeLinkProfile`) rather than
+ * as wildly wrong terrain (#4111 P3 WP-1, spec §0.3).
+ */
+export function sanitizeElevation(v: number | null): number | null {
+  if (v === null || !Number.isFinite(v)) return null;
+  if (v < MIN_VALID_ELEVATION_M || v > MAX_VALID_ELEVATION_M) return null;
+  return v;
+}
+
+/**
  * URL-shape detection: a `{z}`/`{x}`/`{y}` slippy-tile template is a
  * terrarium PNG source; anything else is treated as an Open-Topo-Data
  * compatible JSON point API.
@@ -147,7 +170,11 @@ export class TerrariumTileProvider implements ElevationProvider {
         const tile = await this.getTile(key, group.x, group.y);
         if (!tile) return; // Fetch/decode failure — leave this tile's points as null.
         for (const { index, px, py } of group.members) {
-          results[index] = tile[py * TILE_SIZE + px];
+          // Clamp DEM voids/bathymetry artifacts (e.g. Terrarium's ~-12000 m
+          // over Lake Pontchartrain) to null (#4111 P3 WP-1). Applied at read
+          // time (not cache-write time) so it covers both fresh-fetch and
+          // cache-hit paths without changing the cached Float32Array's dtype.
+          results[index] = sanitizeElevation(tile[py * TILE_SIZE + px]);
         }
       })
     );
@@ -274,7 +301,9 @@ export class JsonPointProvider implements ElevationProvider {
       const items = body.results ?? [];
       for (let j = 0; j < indices.length; j++) {
         const index = indices[j];
-        const elevation = items[j]?.elevation ?? null;
+        // Clamp DEM voids/out-of-range values (e.g. a `-9999` no-data sentinel)
+        // to null before caching so a bad sample is never re-served (#4111 P3 WP-1).
+        const elevation = sanitizeElevation(items[j]?.elevation ?? null);
         results[index] = elevation;
         jsonCache.set(jsonCacheKey(points[index].lat, points[index].lng), elevation);
       }

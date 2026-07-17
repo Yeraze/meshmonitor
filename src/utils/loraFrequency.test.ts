@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { calculateLoRaFrequency, djb2Hash, getModemPresetChannelName } from './loraFrequency';
+import {
+  calculateLoRaFrequency,
+  djb2Hash,
+  getModemPresetChannelName,
+  loRaCenterFrequencyMhz,
+  REGION_SHORT_NAME,
+} from './loraFrequency';
 
 describe('calculateLoRaFrequency', () => {
   // Default bandwidth is 250 kHz (LongFast preset)
@@ -278,6 +284,52 @@ describe('calculateLoRaFrequency', () => {
       const slot = djb2Hash('MediumFast') % numChannels;
       expect(slot).toBeGreaterThanOrEqual(0);
       expect(slot).toBeLessThan(numChannels);
+    });
+  });
+
+  describe('loRaCenterFrequencyMhz (#4111 P3 WP-1 numeric sibling)', () => {
+    it('US LongFast default (channelNum 0, modemPreset 0) → ~906.875 MHz', () => {
+      // Mirrors the DJB2-hash test above but through the numeric API: hashName
+      // resolves via MODEM_PRESET_CHANNEL_NAMES[0] === 'LongFast', slot 19.
+      const result = loRaCenterFrequencyMhz(1, 0, 0, 0, 250, undefined, 0);
+      expect(result).toBeCloseTo(906.875, 3);
+    });
+
+    it('honors overrideFrequency when set', () => {
+      const result = loRaCenterFrequencyMhz(1, 21, 915.0, 0.5, 250);
+      expect(result).toBeCloseTo(915.5, 3);
+    });
+
+    it('returns null for region 0 (unset/unknown)', () => {
+      expect(loRaCenterFrequencyMhz(0, 1, 0, 0)).toBeNull();
+    });
+
+    it('returns null for an unknown region code', () => {
+      expect(loRaCenterFrequencyMhz(999, 1, 0, 0)).toBeNull();
+    });
+
+    it('returns null for an invalid (out-of-range) channel', () => {
+      expect(loRaCenterFrequencyMhz(1, 105, 0, 0)).toBeNull();
+    });
+
+    it('matches the string API for a plain in-range channel', () => {
+      const asString = calculateLoRaFrequency(1, 21, 0, 0);
+      const asNumber = loRaCenterFrequencyMhz(1, 21, 0, 0);
+      expect(asNumber).toBeCloseTo(parseFloat(asString), 3);
+    });
+  });
+
+  describe('REGION_SHORT_NAME', () => {
+    it('maps region 1 to "US"', () => {
+      expect(REGION_SHORT_NAME[1]).toBe('US');
+    });
+
+    it('maps region 3 to "EU_868"', () => {
+      expect(REGION_SHORT_NAME[3]).toBe('EU_868');
+    });
+
+    it('has no entry for region 0 (UNSET)', () => {
+      expect(REGION_SHORT_NAME[0]).toBeUndefined();
     });
   });
 

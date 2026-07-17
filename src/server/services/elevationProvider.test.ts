@@ -22,6 +22,7 @@ import {
   detectProviderType,
   decodeTerrariumTile,
   resolveProvider,
+  sanitizeElevation,
   TerrariumTileProvider,
   JsonPointProvider,
   DEFAULT_TERRARIUM_URL,
@@ -126,6 +127,48 @@ describe('decodeTerrariumTile', () => {
   });
 });
 
+describe('sanitizeElevation (#4111 P3 WP-1 DEM void clamp)', () => {
+  it('nulls a Terrarium bathymetry void (e.g. Lake Pontchartrain ~-12000m)', () => {
+    expect(sanitizeElevation(-12000)).toBeNull();
+  });
+
+  it('nulls a value at/below the -500m floor', () => {
+    expect(sanitizeElevation(-500.01)).toBeNull();
+    expect(sanitizeElevation(-501)).toBeNull();
+  });
+
+  it('nulls a defensive out-of-range high value (>9000m)', () => {
+    expect(sanitizeElevation(9000.01)).toBeNull();
+    expect(sanitizeElevation(20000)).toBeNull();
+  });
+
+  it('passes through a valid ocean (0m) sample unchanged', () => {
+    expect(sanitizeElevation(0)).toBe(0);
+  });
+
+  it('passes through a valid +100m sample unchanged', () => {
+    expect(sanitizeElevation(100)).toBe(100);
+  });
+
+  it('passes through a valid below-sea-level-but-real sample (e.g. Death Valley -86m)', () => {
+    expect(sanitizeElevation(-86)).toBe(-86);
+  });
+
+  it('passes through the boundary values (-500m and 9000m) unchanged', () => {
+    expect(sanitizeElevation(-500)).toBe(-500);
+    expect(sanitizeElevation(9000)).toBe(9000);
+  });
+
+  it('nulls a null input', () => {
+    expect(sanitizeElevation(null)).toBeNull();
+  });
+
+  it('nulls a non-finite input', () => {
+    expect(sanitizeElevation(NaN)).toBeNull();
+    expect(sanitizeElevation(Infinity)).toBeNull();
+  });
+});
+
 describe('TerrariumTileProvider.sample', () => {
   const point = { lat: 40.0, lng: -105.0 }; // arbitrary land coordinate
 
@@ -195,6 +238,28 @@ describe('TerrariumTileProvider.sample', () => {
     expect(results).toEqual([500, 500]);
     expect(mockSafeFetch).toHaveBeenCalledTimes(1);
   });
+
+  it('nulls a Terrarium bathymetry-void pixel (#4111 P3 WP-1)', async () => {
+    const tile = makeUniformTerrariumTile(-12000, TILE_SIZE);
+    mockSafeFetch.mockResolvedValue(fakeResponse({ ok: true, buffer: tile }));
+
+    const voidPoint = { lat: 30.0, lng: -90.1 }; // roughly Lake Pontchartrain
+    const provider = new TerrariumTileProvider(DEFAULT_TERRARIUM_URL);
+    const [elevation] = await provider.sample([voidPoint]);
+
+    expect(elevation).toBeNull();
+  });
+
+  it('nulls a defensive out-of-range high pixel (>9000m, #4111 P3 WP-1)', async () => {
+    const tile = makeUniformTerrariumTile(12000, TILE_SIZE);
+    mockSafeFetch.mockResolvedValue(fakeResponse({ ok: true, buffer: tile }));
+
+    const highPoint = { lat: 27.98, lng: 86.92 }; // arbitrary — value is what's under test
+    const provider = new TerrariumTileProvider(DEFAULT_TERRARIUM_URL);
+    const [elevation] = await provider.sample([highPoint]);
+
+    expect(elevation).toBeNull();
+  });
 });
 
 describe('JsonPointProvider.sample', () => {
@@ -260,6 +325,20 @@ describe('JsonPointProvider.sample', () => {
 
     expect(results).toHaveLength(150);
     expect(mockSafeFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('nulls a -9999-style no-data sentinel elevation (#4111 P3 WP-1)', async () => {
+    mockSafeFetch.mockResolvedValue(
+      fakeJsonResponse({
+        ok: true,
+        body: { results: [{ elevation: -9999, location: { lat: 8, lng: 8 } }] },
+      })
+    );
+
+    const provider = new JsonPointProvider(template);
+    const results = await provider.sample([{ lat: 8, lng: 8 }]);
+
+    expect(results).toEqual([null]);
   });
 
   it('substitutes a {locations} placeholder when present in the template', async () => {

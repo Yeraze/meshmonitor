@@ -11,6 +11,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { isBogusPosition } from '../utils/nullIsland';
 import { classifyNodeTransport, type NodeTransportClass } from '../utils/nodeTransport';
 import { unifiedNodeKey } from '../utils/nodeIdentity';
+import type { SourceRadioSummary } from '../types/elevation';
 
 /**
  * A data source configured in MeshMonitor
@@ -23,6 +24,13 @@ export interface DashboardSource {
   config?: Record<string, unknown>;
   createdAt?: number;
   updatedAt?: number;
+  /**
+   * Public, non-secret per-source radio summary (#4111 P3 WP-1) — center
+   * frequency / region, used by the Link Profile tool's per-source
+   * auto-frequency detection. `null` for sources with no local radio (MQTT)
+   * or when the manager isn't reachable; absent on older cached responses.
+   */
+  radio?: SourceRadioSummary | null;
 }
 
 /**

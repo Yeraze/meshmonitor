@@ -4,6 +4,15 @@ All notable changes to MeshMonitor will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Map Analysis: Terrain Link Profile tool** — pick two points (nodes or arbitrary map locations) to get a terrain elevation profile, line-of-sight, and Fresnel-zone chart, plus a full RF link budget (FSPL, antenna gains/heights, cable loss, RX sensitivity) with a clear/marginal/obstructed verdict, comparable to site.meshtastic.org's link-planning view. Frequency and RX sensitivity auto-fill per source (Meshtastic region/modem-preset, MeshCore radio config) with a "from &lt;source&gt;" provenance hint, always overridable by hand; the picked link on the map recolors to match the verdict once computed. (#4111, #4143, #4147)
+- **Elevation source settings** — a new admin-only **Elevation / Terrain** settings section enables/disables the Link Profile tool's terrain data and lets you point it at a custom DEM source (tile-template or Open-Topo-Data-compatible JSON API), with a Test button reporting the detected source type, sample elevation, and latency. Defaults to the public AWS Terrarium (SRTM-derived) tile set; all fetches happen server-side through the existing SSRF-guarded outbound path. (#4111)
+
+### Fixed
+- **Map Analysis: implausible DEM elevation values no longer distort the Link Profile chart** — open-water/void artifacts in some elevation tile sources (observed as extreme negative spikes, e.g. −12000 m over Lake Pontchartrain) are now discarded server-side instead of blowing out the chart's vertical scale. (#4111)
+
 ## [4.13.0] - 2026-07-15
 
 ### Added

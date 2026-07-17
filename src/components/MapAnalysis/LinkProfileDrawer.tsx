@@ -14,7 +14,7 @@
  * RX sensitivity, k-factor) recomputes `analyzeLinkProfile`/
  * `computeLinkBudget` client-side via `useMemo` — no refetch.
  */
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import {
   ComposedChart,
   Area,
@@ -30,8 +30,9 @@ import {
 import { useSettings } from '../../contexts/SettingsContext';
 import { ApiError } from '../../services/api';
 import { useElevationProfile } from '../../hooks/useElevationProfile';
+import { useAutoRadioDefaults } from '../../hooks/useAutoRadioDefaults';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
-import { analyzeLinkProfile, type LinkVerdict } from '../../utils/linkProfile';
+import { analyzeLinkProfile, VERDICT_LABEL, VERDICT_COLOR } from '../../utils/linkProfile';
 import { computeLinkBudget, DEFAULT_K_FACTOR } from '../../utils/linkBudget';
 import { formatDistance } from '../../utils/distance';
 
@@ -43,17 +44,15 @@ const DEFAULT_GAIN_DBI = 2.15;
 const DEFAULT_CABLE_LOSS_DB = 0;
 const DEFAULT_RX_SENSITIVITY_DBM = -129;
 
-const VERDICT_LABEL: Record<LinkVerdict, string> = {
-  clear: 'Clear',
-  marginal: 'Marginal',
-  obstructed: 'Obstructed',
+// Friendly copy for the elevation-profile error codes the server can return
+// (#4111 P3 WP-2 — elevationService.ts §"Validation order"). Falls back to a
+// generic message for anything else (network failure, unmapped code, etc).
+const FRIENDLY_ERROR_BY_CODE: Record<string, string> = {
+  IDENTICAL_POINTS: 'Pick two different points.',
+  PATH_TOO_LONG: 'That link is too long to profile (max 500 km).',
+  INVALID_COORDINATES: 'One of the points has invalid coordinates.',
 };
-
-const VERDICT_COLOR: Record<LinkVerdict, string> = {
-  clear: '#22c55e',
-  marginal: '#f59e0b',
-  obstructed: '#ef4444',
-};
+const GENERIC_ERROR_MESSAGE = 'Failed to load the elevation profile. Please try again.';
 
 interface ChartTooltipPayloadItem {
   dataKey?: string;
@@ -100,13 +99,15 @@ const ChartTooltip: React.FC<{
 
 const LinkProfileDrawer: React.FC = () => {
   const { distanceUnit } = useSettings();
-  const { linkProfileMode, linkEndpoints, setLinkProfileMode, setLinkEndpoints } = useMapAnalysisCtx();
+  const { linkProfileMode, linkEndpoints, setLinkProfileMode, setLinkEndpoints, setLinkVerdict } =
+    useMapAnalysisCtx();
   const [endpointA, endpointB] = linkEndpoints;
 
   const onClose = useCallback(() => {
     setLinkProfileMode(false);
     setLinkEndpoints([]);
-  }, [setLinkProfileMode, setLinkEndpoints]);
+    setLinkVerdict(null);
+  }, [setLinkProfileMode, setLinkEndpoints, setLinkVerdict]);
 
   // Local budget-input state, seeded from documented defaults. Edits
   // recompute the analysis client-side — they never trigger a refetch.
@@ -119,6 +120,28 @@ const LinkProfileDrawer: React.FC = () => {
   const [cableLossDb, setCableLossDb] = useState(DEFAULT_CABLE_LOSS_DB);
   const [rxSensitivityDbm, setRxSensitivityDbm] = useState(DEFAULT_RX_SENSITIVITY_DBM);
   const [kFactor, setKFactor] = useState(DEFAULT_K_FACTOR);
+
+  // Per-source auto-frequency/RX-sensitivity suggestion for the picked pair
+  // (#4111 P3 WP-2). Manual edits always win: an auto value only overwrites
+  // the field while the user hasn't touched it *for this endpoint pair* —
+  // picking a new pair resets both "edited" flags so the new pair re-seeds.
+  const auto = useAutoRadioDefaults(endpointA, endpointB);
+  const [freqEdited, setFreqEdited] = useState(false);
+  const [rxEdited, setRxEdited] = useState(false);
+  const pairKey = `${endpointA?.id ?? ''}|${endpointB?.id ?? ''}`;
+
+  useEffect(() => {
+    setFreqEdited(false);
+    setRxEdited(false);
+  }, [pairKey]);
+
+  useEffect(() => {
+    if (!freqEdited && auto.freqMhz != null) setFreqMhz(auto.freqMhz);
+  }, [pairKey, auto.freqMhz, freqEdited]);
+
+  useEffect(() => {
+    if (!rxEdited && auto.rxSensitivityDbm != null) setRxSensitivityDbm(auto.rxSensitivityDbm);
+  }, [pairKey, auto.rxSensitivityDbm, rxEdited]);
 
   const { data: profile, isLoading, error } = useElevationProfile(endpointA, endpointB);
 
@@ -149,6 +172,19 @@ const LinkProfileDrawer: React.FC = () => {
     [analysis, freqMhz, txPowerDbm, txGainDbi, rxGainDbi, cableLossDb, rxSensitivityDbm]
   );
 
+  // Mirror the computed verdict into context so the map-path Polyline
+  // (`LinkProfileController`, rendered outside the drawer) can color itself
+  // to match (#4111 Phase 3 WP-3). Cleared whenever there's no resolved
+  // analysis (no pair picked yet, loading, error, all-null terrain) and on
+  // unmount, so a closed/reset drawer never leaves a stale color behind.
+  useEffect(() => {
+    setLinkVerdict(analysis?.verdict ?? null);
+  }, [analysis?.verdict, setLinkVerdict]);
+
+  useEffect(() => {
+    return () => setLinkVerdict(null);
+  }, [setLinkVerdict]);
+
   const allTerrainNull = profile ? profile.samples.every(s => s.elevation === null) : false;
 
   const worstPoint = useMemo(() => {
@@ -157,6 +193,14 @@ const LinkProfileDrawer: React.FC = () => {
   }, [analysis]);
 
   const isElevationDisabled = error instanceof ApiError && error.code === 'ELEVATION_DISABLED';
+
+  // Friendly per-code copy for the elevation-profile error branch (#4111 P3
+  // WP-2). Falls back to the generic message for unmapped codes / non-ApiError
+  // failures (e.g. a network error).
+  const errorMessage =
+    error instanceof ApiError && error.code && FRIENDLY_ERROR_BY_CODE[error.code]
+      ? FRIENDLY_ERROR_BY_CODE[error.code]
+      : GENERIC_ERROR_MESSAGE;
 
   // Nothing to show: tool is off and no endpoints were ever picked. Hooks
   // above are still called unconditionally (react-hooks rule) — this guard
@@ -179,9 +223,7 @@ const LinkProfileDrawer: React.FC = () => {
             Terrain elevation is disabled on this server.
           </div>
         ) : error ? (
-          <div className="map-analysis-link-drawer-error">
-            Failed to load the elevation profile. Please try again.
-          </div>
+          <div className="map-analysis-link-drawer-error">{errorMessage}</div>
         ) : allTerrainNull ? (
           <div className="map-analysis-link-drawer-empty">No terrain data for this path.</div>
         ) : analysis ? (
@@ -307,9 +349,13 @@ const LinkProfileDrawer: React.FC = () => {
               onChange={e => {
                 const v = Number(e.target.value);
                 if (!Number.isNaN(v)) setFreqMhz(v);
+                setFreqEdited(true);
               }}
             />
           </label>
+          {auto.provenance && !freqEdited && (
+            <span className="link-profile-provenance">{auto.provenance}</span>
+          )}
           <label>
             Antenna A height AGL (m)
             <input
@@ -391,6 +437,7 @@ const LinkProfileDrawer: React.FC = () => {
               onChange={e => {
                 const v = Number(e.target.value);
                 if (!Number.isNaN(v)) setRxSensitivityDbm(v);
+                setRxEdited(true);
               }}
             />
           </label>

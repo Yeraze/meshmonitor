@@ -425,6 +425,26 @@ Description: Offline OpenStreetMap tiles via TileServer GL
 
 **Learn More**: See [Custom Tile Servers](/configuration/custom-tile-servers) for detailed setup instructions, TileServer GL integration, and troubleshooting.
 
+## Elevation / Terrain (Link Profile) {#elevation-terrain-link-profile}
+
+**Description**: Controls the digital elevation model (DEM) source that powers the [Map Analysis Link Profile tool](/features/map-analysis#terrain-link-profile) — the two-point terrain/line-of-sight/Fresnel-zone link-planning tool. Admin-only settings; visible under **Settings → Elevation / Terrain**.
+
+**Fields**:
+- **Enable terrain elevation** — turns the Link Profile tool's terrain chart on or off. When disabled, the toolbar button disappears from Map Analysis for every user and any in-flight request returns an explicit "disabled" message rather than failing silently. Enabled by default.
+- **Elevation Source URL** — an optional custom DEM source. Leave empty to use the default: the public AWS/Mapzen "Terrarium" tile set (`elevation-tiles-prod.s3.amazonaws.com`), a free, no-API-key, SRTM-derived dataset. Treated as a server-side secret (like the Apprise API Server URL) — it's never sent to the browser except back to an admin who already has `settings:write`, since it may embed an API key.
+
+**Source auto-detection**: the URL you enter is auto-detected as one of two shapes:
+- A **tile-template** URL containing `{z}`, `{x}`, and `{y}` placeholders — sampled and decoded the same way as the default Terrarium source.
+- An **[Open-Topo-Data](https://www.opentopodata.org/)-compatible JSON** point API — queried in batches instead of tiles.
+
+**Test button**: probes the configured URL server-side and reports the detected source type, a sample elevation (queried near Mount Everest's summit by default, to distinguish a working provider from a source that just returns 0 for everything), and the round-trip latency — without needing to pick two points on the map first.
+
+**Notes**:
+- All elevation fetches happen **server-side** through the same SSRF-guarded outbound-request path used elsewhere in MeshMonitor — the browser never talks to the DEM source directly, and a custom source URL can't be used to probe your internal network.
+- Elevation data is source-agnostic: it isn't tied to any particular Meshtastic/MeshCore/MQTT source, so this is a single server-wide setting, not a per-source one.
+- Implausible DEM samples (below −500 m or above 9000 m — an artifact of open-water/void pixels in some tile sets, not real terrain) are discarded server-side and shown as gaps in the Link Profile chart rather than distorting it.
+- The `POST /api/elevation/profile` endpoint used by the tool is public (unauthenticated) but rate-limited to 20 requests/minute per IP in production (requests from private/internal IPs are exempt); the Test button's endpoint requires `settings:write`.
+
 ## Display Preferences
 
 ### Default Landing Page {#default-landing-page}
