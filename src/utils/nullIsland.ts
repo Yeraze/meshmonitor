@@ -125,3 +125,29 @@ export function isBogusPosition(
   if (latitude == null || longitude == null) return false;
   return !isValidLatLng(latitude, longitude) || isNullIslandWithPrecision(latitude, longitude, precisionBits);
 }
+
+/**
+ * Ingest-time "should this fix be discarded" predicate, honoring the global
+ * `discardInvalidPositions` setting (see `src/utils/positionIngestConfig.ts`).
+ *
+ * A non-finite or out-of-WGS-84-range coordinate is **always** discarded — it is
+ * unstorable and would blow out the map's auto-fit bounds, and no operator wants
+ * it regardless of the setting. Null Island (0, 0) — including a
+ * position-precision-obscured (0, 0) that arrives re-centered as
+ * `(offset, offset)` — is discarded only when `discardNullIsland` is true (the
+ * default / current behavior). Turning the setting off lets a genuine (0, 0)
+ * report through so operators can see which nodes are transmitting it.
+ *
+ * When `discardNullIsland` is true this is exactly {@link isBogusPosition}.
+ * Null/undefined inputs return `false` (no position to reject).
+ */
+export function shouldDiscardPosition(
+  latitude: number | null | undefined,
+  longitude: number | null | undefined,
+  precisionBits: number | null | undefined,
+  discardNullIsland: boolean,
+): boolean {
+  if (latitude == null || longitude == null) return false;
+  if (!isValidLatLng(latitude, longitude)) return true; // always drop unstorable / out-of-range junk
+  return discardNullIsland && isNullIslandWithPrecision(latitude, longitude, precisionBits);
+}

@@ -123,6 +123,8 @@ interface SettingsContextType {
   enableAudioNotifications: boolean;
   /** Global toggle: fetch & render OpenGraph link preview cards for URLs in messages. */
   linkPreviewsEnabled: boolean;
+  /** Global Map toggle (default true): discard Null Island (0,0) fixes on ingest. */
+  discardInvalidPositions: boolean;
   /**
    * Global opt-in (issue #3979, default false): auto-retry an AUTOMATED MeshCore
    * channel send once, 30s later, when zero repeaters were heard. Automated
@@ -179,6 +181,7 @@ interface SettingsContextType {
   setSolarMonitoringDeclination: (declination: number) => void;
   setEnableAudioNotifications: (enabled: boolean) => void;
   setLinkPreviewsEnabled: (enabled: boolean) => void;
+  setDiscardInvalidPositions: (enabled: boolean) => void;
   setMeshcoreChannelRetryEnabled: (enabled: boolean) => void;
   mutedChannels: MutedChannel[];
   mutedDMs: MutedDM[];
@@ -486,6 +489,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   // Link preview setting - server-backed (global). Defaults to true to preserve
   // the previous always-on behavior; loaded from the server in loadServerSettings.
   const [linkPreviewsEnabled, setLinkPreviewsEnabledState] = useState<boolean>(true);
+
+  // Discard invalid GPS positions on ingest — default true (discard = historical
+  // behavior); loaded from the server in loadServerSettings.
+  const [discardInvalidPositions, setDiscardInvalidPositionsState] = useState<boolean>(true);
 
   // MeshCore automated-channel-send auto-retry (issue #3979) - server-backed
   // (global). Defaults to false (opt-in); loaded from the server in
@@ -909,6 +916,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   // Link preview setter updates state only - value is persisted server-side
   const setLinkPreviewsEnabled = (enabled: boolean) => {
     setLinkPreviewsEnabledState(enabled);
+  };
+
+  // Discard-invalid-positions setter updates state only - persisted server-side
+  const setDiscardInvalidPositions = (enabled: boolean) => {
+    setDiscardInvalidPositionsState(enabled);
   };
 
   // MeshCore channel-retry setter updates state only - persisted server-side
@@ -1434,6 +1446,13 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             setLinkPreviewsEnabledState(enabled);
           }
 
+          // Discard invalid positions - database-only. Absent key means default
+          // (enabled = discard); only an explicit '0'/'false' turns it off.
+          if (settings.discardInvalidPositions !== undefined) {
+            const enabled = !(settings.discardInvalidPositions === '0' || settings.discardInvalidPositions === 'false');
+            setDiscardInvalidPositionsState(enabled);
+          }
+
           // MeshCore channel-send auto-retry (#3979) - database-only. Absent key
           // means default (disabled); only an explicit '1'/'true' turns it on.
           if (settings.meshcoreChannelRetryEnabled !== undefined) {
@@ -1660,6 +1679,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     customTilesets,
     isLoadingThemes,
     linkPreviewsEnabled,
+    discardInvalidPositions,
     meshcoreChannelRetryEnabled,
     solarMonitoringEnabled,
     solarMonitoringLatitude,
@@ -1711,6 +1731,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     updateCustomTileset,
     deleteCustomTileset,
     setLinkPreviewsEnabled,
+    setDiscardInvalidPositions,
     setMeshcoreChannelRetryEnabled,
     setSolarMonitoringEnabled,
     setSolarMonitoringLatitude,

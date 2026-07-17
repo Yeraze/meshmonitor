@@ -7,7 +7,7 @@
  * database when the bbox is enabled.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../services/database.js', () => ({
   default: {
@@ -95,6 +95,7 @@ vi.mock('./meshtasticProtobufService.js', () => ({
 }));
 
 import { ingestServiceEnvelope, _resetMqttIngestCachesForTest } from './mqttIngestion.js';
+import { setDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { MqttPacketFilter, type ServiceEnvelopeShape } from './mqttPacketFilter.js';
 import databaseService from '../services/database.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
@@ -452,6 +453,44 @@ describe('ingestServiceEnvelope — POSITION Null Island guard (#3763)', () => {
     const arg = (databaseService.upsertNodeAsync as any).mock.calls[0][0];
     expect(arg.latitude).toBeCloseTo(43.7, 5);
     expect(arg.longitude).toBeCloseTo(-79.3, 5);
+  });
+});
+
+describe('ingestServiceEnvelope — discardInvalidPositions=false stores (0,0)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (databaseService.ignoredNodes.isIgnoredCached as any).mockReturnValue(false);
+    setDiscardInvalidPositions(false); // operator opted to keep bad positions
+  });
+  afterEach(() => {
+    setDiscardInvalidPositions(true); // restore the default for other suites
+  });
+
+  it('stores a Null Island (0,0) fix when the discard setting is disabled', async () => {
+    const { default: protobuf } = await import('./meshtasticProtobufService.js');
+    (protobuf.processPayload as any).mockImplementationOnce(() => ({ latitudeI: 0, longitudeI: 0 }));
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 3 /* POSITION_APP */),
+    });
+    expect(result.ingested).toBe(true);
+    const arg = (databaseService.upsertNodeAsync as any).mock.calls[0][0];
+    expect(arg.latitude).toBe(0);
+    expect(arg.longitude).toBe(0);
+  });
+
+  it('still discards out-of-range junk even when the discard setting is disabled', async () => {
+    const { default: protobuf } = await import('./meshtasticProtobufService.js');
+    // latitudeI 1_853_000_000 / 1e7 → 185.3° (out of WGS-84 range)
+    (protobuf.processPayload as any).mockImplementationOnce(() => ({ latitudeI: 1_853_000_000, longitudeI: 100_000_000 }));
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor(NODE_IN, 3 /* POSITION_APP */),
+    });
+    expect(result.ingested).toBe(true);
+    const arg = (databaseService.upsertNodeAsync as any).mock.calls[0][0];
+    expect(arg.latitude).toBeUndefined();
+    expect(arg.longitude).toBeUndefined();
   });
 });
 

@@ -131,6 +131,9 @@ export interface SettingsCallbacks {
   setAutomationAirtimeCutoffSource?: (source: string, sourceId?: string | null) => void;
   handleAutoWelcomeEnabled?: () => number;
   invalidateHtmlCache?: () => void;
+  // Global (default ON): push the new discard-invalid-positions value into the
+  // cached ingest gate so it takes effect immediately, no restart.
+  setDiscardInvalidPositions?: (enabled: boolean) => void;
   // Per-source (#3901): the scheduler reads the source's own interval, so no
   // intervalHours arg. A null sourceId is a no-op (no global scheduler).
   restartAutoDeleteByDistanceService?: (sourceId?: string | null) => void;
@@ -714,6 +717,13 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
     if ('analyticsProvider' in filteredSettings || 'analyticsConfig' in filteredSettings) {
       callbacks.invalidateHtmlCache?.();
       logger.debug('📊 Analytics settings updated - HTML cache invalidated');
+    }
+
+    if ('discardInvalidPositions' in filteredSettings) {
+      const raw = filteredSettings.discardInvalidPositions;
+      const enabled = !(raw === '0' || raw === 'false');
+      callbacks.setDiscardInvalidPositions?.(enabled);
+      logger.debug(`🗺️ discardInvalidPositions set to ${enabled} — ingest gate updated`);
     }
 
     if ('autoWelcomeEnabled' in filteredSettings) {

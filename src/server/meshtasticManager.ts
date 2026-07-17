@@ -10,7 +10,8 @@ import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager } from './sourceManagerTypes.js';
 import { calculateDistance } from '../utils/distance.js';
-import { isBogusPosition } from '../utils/nullIsland.js';
+import { shouldDiscardPosition } from '../utils/nullIsland.js';
+import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
@@ -6023,7 +6024,9 @@ class MeshtasticManager implements ISourceManager {
     // When precisionBits is supplied the check backs out the firmware's
     // position-precision re-centering offset first, so an obscured (0,0) fix
     // (which arrives as e.g. (0.0131, 0.0131) at 14 bits) is still caught.
-    if (isBogusPosition(latitude, longitude, precisionBits)) {
+    // The (0,0) discard is gated on the global `discardInvalidPositions` setting;
+    // out-of-range junk is already rejected by the range checks above regardless.
+    if (shouldDiscardPosition(latitude, longitude, precisionBits, getDiscardInvalidPositions())) {
       return false;
     }
 

@@ -92,7 +92,8 @@ import { calculateDistance } from '../utils/distance.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
 import { resolveLastHeardSec } from './utils/replayGuard.js';
-import { isBogusPosition } from '../utils/nullIsland.js';
+import { shouldDiscardPosition } from '../utils/nullIsland.js';
+import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { logger } from '../utils/logger.js';
 import {
   nodeNumToId,
@@ -356,11 +357,12 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
       // classifier above does NOT catch these: with no bbox configured ('no-geo')
       // or a bbox spanning the equator/prime meridian, (0,0) sails through. MQTT
       // relays Meshtastic packets, so pass the sender's precision_bits to enable
-      // the de-offset in isBogusPosition. A bogus fix still refreshes lastHeard;
-      // undefined lat/lon is preserved by upsertNode's `?? existing` merge, so it
-      // never overwrites a previously stored good position with garbage.
+      // the de-offset. A bogus fix still refreshes lastHeard; undefined lat/lon is
+      // preserved by upsertNode's `?? existing` merge, so it never overwrites a
+      // previously stored good position with garbage. The (0,0) discard honors the
+      // global `discardInvalidPositions` setting; out-of-range junk is always dropped.
       const precisionBits = position.precisionBits ?? position.precision_bits ?? undefined;
-      const positionIsBogus = isBogusPosition(lat, lng, precisionBits);
+      const positionIsBogus = shouldDiscardPosition(lat, lng, precisionBits, getDiscardInvalidPositions());
       if (positionIsBogus) {
         logger.debug(`MQTT: dropping bogus position (${lat}, ${lng}) precisionBits=${precisionBits} from ${fromNodeId}`);
       }

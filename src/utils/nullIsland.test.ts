@@ -5,6 +5,7 @@ import {
   isBogusPosition,
   isNullIslandWithPrecision,
   precisionOffsetDegrees,
+  shouldDiscardPosition,
   NULL_ISLAND_EPSILON,
 } from './nullIsland.js';
 
@@ -165,5 +166,39 @@ describe('isNullIslandWithPrecision', () => {
     expect(isNullIslandWithPrecision(null, 0, 14)).toBe(false);
     expect(isNullIslandWithPrecision(0, undefined, 14)).toBe(false);
     expect(isNullIslandWithPrecision(NaN, 0, 14)).toBe(false);
+  });
+});
+
+describe('shouldDiscardPosition', () => {
+  it('equals isBogusPosition when discardNullIsland is true (default behavior)', () => {
+    expect(shouldDiscardPosition(0, 0, undefined, true)).toBe(true);              // null island
+    expect(shouldDiscardPosition(0.0005, -0.0009, undefined, true)).toBe(true);   // near null island
+    expect(shouldDiscardPosition(precisionOffsetDegrees(14), precisionOffsetDegrees(14), 14, true)).toBe(true); // obscured (0,0)
+    expect(shouldDiscardPosition(1853.45, 1819.63, undefined, true)).toBe(true);  // out of range
+    expect(shouldDiscardPosition(26.33, -80.27, undefined, true)).toBe(false);    // real position
+  });
+
+  it('lets Null Island (incl. precision-obscured) through when discardNullIsland is false', () => {
+    expect(shouldDiscardPosition(0, 0, undefined, false)).toBe(false);
+    expect(shouldDiscardPosition(0.0005, -0.0009, undefined, false)).toBe(false);
+    expect(shouldDiscardPosition(precisionOffsetDegrees(14), precisionOffsetDegrees(14), 14, false)).toBe(false);
+  });
+
+  it('ALWAYS discards out-of-range / non-finite junk, even when discardNullIsland is false', () => {
+    expect(shouldDiscardPosition(1853.45, 1819.63, undefined, false)).toBe(true); // out of range
+    expect(shouldDiscardPosition(90.0001, 0, undefined, false)).toBe(true);        // lat just over 90
+    expect(shouldDiscardPosition(NaN, 0, undefined, false)).toBe(true);
+    expect(shouldDiscardPosition(0, Infinity, undefined, false)).toBe(true);
+  });
+
+  it('never discards a real position regardless of the flag', () => {
+    expect(shouldDiscardPosition(26.33, -80.27, undefined, false)).toBe(false);
+    expect(shouldDiscardPosition(51.4778, 0.0001, undefined, false)).toBe(false); // Greenwich, real lat
+  });
+
+  it('returns false for missing coordinates (no position to discard)', () => {
+    expect(shouldDiscardPosition(null, null, undefined, true)).toBe(false);
+    expect(shouldDiscardPosition(26.33, null, undefined, true)).toBe(false);
+    expect(shouldDiscardPosition(undefined, -80.27, undefined, false)).toBe(false);
   });
 });
