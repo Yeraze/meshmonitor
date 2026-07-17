@@ -339,6 +339,23 @@ describe('GET /coverage-grid', () => {
     const firstCall = mockDb.analysis.getCoverageGrid.mock.calls[0][0];
     expect(typeof firstCall.postFilter).toBe('function');
   });
+
+  // #4162/#4163 — the coverage grid must exclude hidden-node density too. The
+  // grid is server-binned, so we assert the postFilter handed to
+  // getCoverageGrid drops a hideFromMap node (admin path: display gate only).
+  it('admin: coverage-grid postFilter drops hideFromMap nodes', async () => {
+    mockDb.nodes.getAllNodes.mockResolvedValue([
+      { nodeNum: 1, channel: 0, hideFromMap: false },
+      { nodeNum: 2, channel: 0, hideFromMap: true },
+    ]);
+    const app = createApp(adminUser);
+    // Unique cache key so this isn't served from a prior test's cache.
+    await request(app).get('/coverage-grid?since=7777&zoom=8');
+    const call = mockDb.analysis.getCoverageGrid.mock.calls[0][0];
+    expect(typeof call.postFilter).toBe('function');
+    expect(call.postFilter({ sourceId: 'src-a', nodeNum: 1 })).toBe(true);
+    expect(call.postFilter({ sourceId: 'src-a', nodeNum: 2 })).toBe(false);
+  });
 });
 
 describe('GET /hop-counts', () => {
