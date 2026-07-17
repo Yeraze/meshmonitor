@@ -157,21 +157,21 @@ export interface PrecisionOffsetInput<T> {
 export function applyPrecisionCellOffsets<T>(
   nodes: ReadonlyArray<PrecisionOffsetInput<T>>,
 ): Array<{ item: T; latLng: [number, number] }> {
-  // Pass 1: count offsettable nodes per accuracy cell.
+  // Pass 1: for each node resolve its accuracy cell (null when not offsettable)
+  // and count occupancy. `shouldOffsetForPrecision` is evaluated once per node
+  // here; it also narrows `bits` to a number, which we capture for pass 2.
   const occupancy = new Map<string, number>();
-  for (const n of nodes) {
-    if (shouldOffsetForPrecision(n.bits, n.isOverride)) {
-      const cell = precisionCellKey(n.latLng[0], n.latLng[1], n.bits);
-      occupancy.set(cell, (occupancy.get(cell) ?? 0) + 1);
-    }
-  }
+  const cellOf = nodes.map((n) => {
+    if (!shouldOffsetForPrecision(n.bits, n.isOverride)) return null;
+    const cell = precisionCellKey(n.latLng[0], n.latLng[1], n.bits);
+    occupancy.set(cell, (occupancy.get(cell) ?? 0) + 1);
+    return { cell, bits: n.bits };
+  });
   // Pass 2: offset only nodes whose cell has 2+ occupants.
-  return nodes.map((n) => {
-    if (shouldOffsetForPrecision(n.bits, n.isOverride)) {
-      const cell = precisionCellKey(n.latLng[0], n.latLng[1], n.bits);
-      if ((occupancy.get(cell) ?? 0) >= 2) {
-        return { item: n.item, latLng: offsetWithinPrecisionCell(n.latLng[0], n.latLng[1], n.bits, n.id) };
-      }
+  return nodes.map((n, i) => {
+    const c = cellOf[i];
+    if (c && (occupancy.get(c.cell) ?? 0) >= 2) {
+      return { item: n.item, latLng: offsetWithinPrecisionCell(n.latLng[0], n.latLng[1], c.bits, n.id) };
     }
     return { item: n.item, latLng: n.latLng };
   });

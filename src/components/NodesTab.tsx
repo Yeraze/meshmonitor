@@ -1397,24 +1397,24 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // node" effect and this component's `onOmsClick`.
 
   // #3636: measurement endpoints — nearest-node snapping picks from these.
+  // Use the OFFSET marker position (nodePositions), not the raw center, so the
+  // measure tool snaps to the pin the user sees — matching DashboardMap and the
+  // #4016/#4155 single-position rule (measure/bounds/markers all agree).
   const measurePoints: MeasurePoint[] = React.useMemo(
     () => nodesWithPosition
       .map(node => {
-        const pos = getEffectivePosition(node);
-        if (pos.latitude == null || pos.longitude == null) return null;
+        const pos = nodePositions.get(node.nodeNum);
+        if (!pos) return null;
         return {
           id: String(node.user?.id ?? node.nodeNum),
-          lat: pos.latitude,
-          lng: pos.longitude,
+          lat: pos[0],
+          lng: pos[1],
           label: node.user?.shortName,
         } as MeasurePoint;
       })
       .filter((p): p is MeasurePoint => p !== null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on a position+label signature; label included so tooltip names refresh
-    [nodesWithPosition.map(n => {
-      const pos = getEffectivePosition(n);
-      return `${n.nodeNum}-${pos.latitude}-${pos.longitude}-${n.user?.shortName ?? ''}`;
-    }).join(',')],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on nodePositions (offset) + a label signature so tooltip names refresh
+    [nodePositions, nodesWithPosition.map(n => `${n.nodeNum}-${n.user?.shortName ?? ''}`).join(',')],
   );
 
   const showLabel = mapZoom >= 13;
