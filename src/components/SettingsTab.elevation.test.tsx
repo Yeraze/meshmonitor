@@ -87,9 +87,14 @@ vi.mock('../contexts/AuthContext', () => ({
   }),
 }));
 
-vi.mock('../contexts/UIContext', () => ({
-  useUI: () => ({ showIncompleteNodes: true, setShowIncompleteNodes: vi.fn() }),
-}));
+vi.mock('../contexts/UIContext', () => {
+  // Must be a STABLE object: setShowIncompleteNodes sits in the settings-load
+  // effect's dependency array, and a fresh vi.fn() per render re-runs that
+  // effect on every render — each re-fetch then clobbers in-test edits with
+  // the server values (the CI-order-dependent failure this suite had).
+  const ui = { showIncompleteNodes: true, setShowIncompleteNodes: vi.fn() };
+  return { useUI: () => ui };
+});
 
 vi.mock('./ToastContainer', () => ({
   useToast: () => ({ showToast: vi.fn() }),
@@ -302,12 +307,26 @@ describe('SettingsTab — Elevation / Terrain section (#4111 Phase 3 WP-3)', () 
   });
 
   it('persists an edited enable toggle and source URL into the save POST body', async () => {
+    // The initial URL must differ from the local-state default ('') so the
+    // load barrier below can tell "settings fetch landed" apart from "still
+    // showing defaults" — elevationEnabled alone can't (both are true).
+    serverSettings = { elevationEnabled: 'true', elevationSourceUrl: 'https://initial.example/{z}/{x}/{y}.png' };
     renderSettings();
     const urlInput = (await screen.findByLabelText(/Elevation Source URL/i)) as HTMLInputElement;
     const checkbox = document.getElementById('elevationEnabled') as HTMLInputElement;
 
+    // Load barrier: the settings fetch populates local state asynchronously;
+    // interacting before it lands lets the load overwrite the edits below
+    // (failed deterministically on loaded CI runners, passed in isolation).
+    await waitFor(() => expect(urlInput.value).toBe('https://initial.example/{z}/{x}/{y}.png'));
+    expect(checkbox.checked).toBe(true);
+
     fireEvent.click(checkbox);
     fireEvent.change(urlInput, { target: { value: 'https://custom.example/{z}/{x}/{y}.png' } });
+    // PROBE: the URL change forces a re-render; a controlled checkbox whose
+    // state never committed would snap back to checked here.
+    await waitFor(() => expect(checkbox.checked).toBe(false));
+    await waitFor(() => expect(urlInput.value).toBe('https://custom.example/{z}/{x}/{y}.png'));
 
     expect(saveBarCapture.current).not.toBeNull();
     await saveBarCapture.current!.onSave();
@@ -323,8 +342,11 @@ describe('SettingsTab — Elevation / Terrain section (#4111 Phase 3 WP-3)', () 
   });
 
   it('handleSave dependency-array regression guard: an edit to ONLY the source URL is reflected in the very next save', async () => {
+    // Distinctive initial URL = load barrier signal (see the persistence test).
+    serverSettings = { elevationEnabled: 'true', elevationSourceUrl: 'https://initial.example/{z}/{x}/{y}.png' };
     renderSettings();
     const urlInput = (await screen.findByLabelText(/Elevation Source URL/i)) as HTMLInputElement;
+    await waitFor(() => expect(urlInput.value).toBe('https://initial.example/{z}/{x}/{y}.png'));
 
     // Edit nothing else — isolates the elevationSourceUrl dependency. If it
     // were missing from handleSave's useCallback deps (the CLAUDE.md
