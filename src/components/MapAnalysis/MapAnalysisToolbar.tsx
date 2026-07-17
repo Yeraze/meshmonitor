@@ -1,5 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  ArrowLeft, LocateFixed, Maximize, Clock, Ruler, Mountain, RotateCcw,
+  MapPin, Palette, Flag, CircleDashed, Radar, Route, Share2, Flame, Spline, Signal,
+} from 'lucide-react';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import LayerToggleButton from './LayerToggleButton';
 import SourceMultiSelect from './SourceMultiSelect';
@@ -23,18 +27,19 @@ import {
 const LOOKBACK_OPTIONS: Array<number | null> = [1, 6, 24, 72, 168, 720];
 const SNR_LOOKBACK_OPTIONS: Array<number | null> = [null, 1, 6, 24, 72, 168, 720];
 
-const TIMED_LAYERS: { key: LayerKey; label: string; options: Array<number | null> }[] = [
-  { key: 'traceroutes', label: 'Traceroutes', options: LOOKBACK_OPTIONS },
-  { key: 'neighbors',   label: 'Neighbors',   options: LOOKBACK_OPTIONS },
-  { key: 'heatmap',     label: 'Heatmap',     options: LOOKBACK_OPTIONS },
-  { key: 'trails',      label: 'Trails',      options: LOOKBACK_OPTIONS },
-  { key: 'snrOverlay',  label: 'SNR Overlay', options: SNR_LOOKBACK_OPTIONS },
+const ICON = 16;
+const TIMED_LAYERS: { key: LayerKey; label: string; options: Array<number | null>; icon: ReactNode }[] = [
+  { key: 'traceroutes', label: 'Traceroutes', options: LOOKBACK_OPTIONS,     icon: <Route size={ICON} /> },
+  { key: 'neighbors',   label: 'Neighbors',   options: LOOKBACK_OPTIONS,     icon: <Share2 size={ICON} /> },
+  { key: 'heatmap',     label: 'Heatmap',     options: LOOKBACK_OPTIONS,     icon: <Flame size={ICON} /> },
+  { key: 'trails',      label: 'Trails',      options: LOOKBACK_OPTIONS,     icon: <Spline size={ICON} /> },
+  { key: 'snrOverlay',  label: 'SNR Overlay', options: SNR_LOOKBACK_OPTIONS, icon: <Signal size={ICON} /> },
 ];
-const UNTIMED_LAYERS: { key: LayerKey; label: string }[] = [
-  { key: 'markers',     label: 'Markers' },
-  { key: 'hopShading',  label: 'Hop Shading' },
-  { key: 'waypoints',   label: 'Waypoints' },
-  { key: 'accuracyRegions', label: 'Accuracy Regions' },
+const UNTIMED_LAYERS: { key: LayerKey; label: string; icon: ReactNode }[] = [
+  { key: 'markers',     label: 'Markers',          icon: <MapPin size={ICON} /> },
+  { key: 'hopShading',  label: 'Hop Shading',      icon: <Palette size={ICON} /> },
+  { key: 'waypoints',   label: 'Waypoints',        icon: <Flag size={ICON} /> },
+  { key: 'accuracyRegions', label: 'Accuracy Regions', icon: <CircleDashed size={ICON} /> },
 ];
 
 export default function MapAnalysisToolbar() {
@@ -133,11 +138,12 @@ export default function MapAnalysisToolbar() {
     <div className="map-analysis-toolbar-row">
       <button
         type="button"
-        className="map-analysis-back"
+        className="map-analysis-back icon-only"
         onClick={() => navigate('/')}
         title="Back to Sources"
+        aria-label="Back to Sources"
       >
-        ← Sources
+        <ArrowLeft size={ICON} />
       </button>
       <SourceMultiSelect
         sources={sources.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name }))}
@@ -150,32 +156,36 @@ export default function MapAnalysisToolbar() {
       <NodeMultiSelect nodes={nodeOptions} value={config.selectedNodeIds} onChange={setSelectedNodeIds} />
       <button
         type="button"
-        className={`map-analysis-layer-btn ${config.followMode ? 'active' : ''}`}
+        className={`map-analysis-layer-btn icon-only ${config.followMode ? 'active' : ''}`}
         onClick={() => setFollowMode(!config.followMode)}
-        title="Recenter on the selected nodes as they move (keeps zoom)"
+        title="Follow — recenter on the selected nodes as they move (keeps zoom)"
+        aria-label="Follow"
       >
-        Follow
+        <LocateFixed size={ICON} />
       </button>
       <button
         type="button"
-        className={`map-analysis-layer-btn ${config.autoZoom ? 'active' : ''}`}
+        className={`map-analysis-layer-btn icon-only ${config.autoZoom ? 'active' : ''}`}
         onClick={() => setAutoZoom(!config.autoZoom)}
-        title="Zoom to fit the selected nodes as they move"
+        title="Auto-zoom — zoom to fit the selected nodes as they move"
+        aria-label="Auto-zoom"
       >
-        Auto-zoom
+        <Maximize size={ICON} />
       </button>
       <button
         type="button"
-        className={`map-analysis-layer-btn ${config.timeSlider.enabled ? 'active' : ''}`}
+        className={`map-analysis-layer-btn icon-only ${config.timeSlider.enabled ? 'active' : ''}`}
         onClick={() => setTimeSlider({ enabled: !config.timeSlider.enabled })}
+        title="Time Slider"
+        aria-label="Time Slider"
       >
-        Time Slider
+        <Clock size={ICON} />
       </button>
       {/* #3636: node-to-node LOS distance measurement tool. Disabled until at
           least two positioned nodes exist, matching the "Features"-panel maps. */}
       <button
         type="button"
-        className={`map-analysis-layer-btn ${measureMode ? 'active' : ''}`}
+        className={`map-analysis-layer-btn icon-only ${measureMode ? 'active' : ''}`}
         onClick={() => {
           setMeasureMode(!measureMode);
           // Mutually exclusive with the Link Profile picker (#4111 Phase 2).
@@ -183,10 +193,11 @@ export default function MapAnalysisToolbar() {
         }}
         disabled={analysisNodes.length < 2}
         title={analysisNodes.length < 2
-          ? 'Need at least two positioned nodes to measure'
+          ? 'Measure — need at least two positioned nodes'
           : 'Measure straight-line distance between two nodes'}
+        aria-label="Measure"
       >
-        Measure
+        <Ruler size={ICON} />
       </button>
       {/* #4111 Phase 2: terrain link profile two-point picker. Hidden entirely
           when the server has elevation sampling disabled (nothing to profile);
@@ -196,7 +207,7 @@ export default function MapAnalysisToolbar() {
       {elevationEnabled && (
         <button
           type="button"
-          className={`map-analysis-layer-btn ${linkProfileMode ? 'active' : ''}`}
+          className={`map-analysis-layer-btn icon-only ${linkProfileMode ? 'active' : ''}`}
           onClick={() => {
             setLinkProfileMode(!linkProfileMode);
             // Mutually exclusive with the Measure tool.
@@ -204,31 +215,35 @@ export default function MapAnalysisToolbar() {
           }}
           disabled={analysisNodes.length < 2}
           title={analysisNodes.length < 2
-            ? 'Need at least two positioned nodes for a link profile'
-            : 'Profile terrain, Fresnel clearance, and link budget between two points'}
+            ? 'Link Profile — need at least two positioned nodes'
+            : 'Link Profile — terrain, Fresnel clearance, and link budget between two points'}
+          aria-label="Link Profile"
         >
-          Link Profile
+          <Mountain size={ICON} />
         </button>
       )}
-      {UNTIMED_LAYERS.map(({ key, label }) => (
+      {UNTIMED_LAYERS.map(({ key, label, icon }) => (
         <LayerToggleButton
           key={key}
           label={label}
+          icon={icon}
           enabled={config.layers[key].enabled}
           onToggle={(next) => setLayerEnabled(key, next)}
         />
       ))}
       <LayerToggleButton
         label="Polar Grid"
+        icon={<Radar size={ICON} />}
         enabled={config.layers.polarGrid.enabled && hasOwnNode}
         onToggle={(next) => setLayerEnabled('polarGrid', next)}
         disabled={!hasOwnNode}
-        title={hasOwnNode ? undefined : 'No source has a known own-node position'}
+        title={hasOwnNode ? undefined : 'Polar Grid — no source has a known own-node position'}
       />
-      {TIMED_LAYERS.map(({ key, label, options }) => (
+      {TIMED_LAYERS.map(({ key, label, options, icon }) => (
         <LayerToggleButton
           key={key}
           label={label}
+          icon={icon}
           enabled={config.layers[key].enabled}
           onToggle={(next) => setLayerEnabled(key, next)}
           lookbackHours={config.layers[key].lookbackHours}
@@ -251,11 +266,13 @@ export default function MapAnalysisToolbar() {
       )}
       <button
         type="button"
-        className="map-analysis-reset"
+        className="map-analysis-reset icon-only"
         onClick={reset}
         style={{ marginLeft: 'auto' }}
+        title="Reset"
+        aria-label="Reset"
       >
-        Reset
+        <RotateCcw size={ICON} />
       </button>
     </div>
   );
