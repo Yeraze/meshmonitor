@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 export interface LayerToggleButtonProps {
   label: string;
@@ -13,6 +13,8 @@ export interface LayerToggleButtonProps {
   disabled?: boolean;
   /** Tooltip shown on the button — useful to explain a disabled state. */
   title?: string;
+  /** Icon rendered in place of the text label; `label` becomes the tooltip + accessible name. */
+  icon?: ReactNode;
 }
 
 export default function LayerToggleButton({
@@ -26,6 +28,7 @@ export default function LayerToggleButton({
   errored,
   disabled,
   title,
+  icon,
 }: LayerToggleButtonProps) {
   const [popOpen, setPopOpen] = useState(false);
   const showChevron = !!lookbackOptions && !!onLookbackChange;
@@ -36,10 +39,13 @@ export default function LayerToggleButton({
         type="button"
         onClick={() => onToggle(!enabled)}
         disabled={disabled}
-        title={title}
-        className={`map-analysis-layer-btn ${enabled ? 'active' : ''}`}
+        // Tooltip: the disabled-explanation title when given, otherwise the label
+        // (so the icon-only button still tells you what it is on hover).
+        title={title ?? label}
+        aria-label={label}
+        className={`map-analysis-layer-btn ${enabled ? 'active' : ''} ${icon ? 'icon-only' : ''}`}
       >
-        {label}
+        {icon ?? label}
         {loading && <span className="map-analysis-layer-spinner" data-testid="layer-spinner" />}
       </button>
       {showChevron && (

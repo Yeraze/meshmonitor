@@ -127,6 +127,23 @@
   background: #1d4ed8;
   border-color: #1d4ed8;
 }
+/* Icon-only toolbar buttons (#4111 follow-up): the text label moves to the
+   tooltip/aria-label, so center the icon and use a compact square-ish footprint
+   to declutter the toolbar row. */
+.map-analysis-layer-btn.icon-only,
+.map-analysis-back.icon-only,
+.map-analysis-reset.icon-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 9px;
+}
+.map-analysis-layer-btn.icon-only svg,
+.map-analysis-back.icon-only svg,
+.map-analysis-reset.icon-only svg {
+  display: block;
+}
 .map-analysis-layer-chevron {
   background: #1e1e1e;
   color: #aaa;
