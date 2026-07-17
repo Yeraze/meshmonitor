@@ -11,6 +11,10 @@ jobs:
   test:
     name: Test Suite
     runs-on: ubuntu-latest
+    # Backstop: no matrix leg should ever run this long. Guards against a hung
+    # step (e.g. the coverage generator wedging on a specific Node major, as
+    # @vitest/coverage-v8 did on Node 24) blocking merges for 30+ minutes.
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -78,8 +82,14 @@ jobs:
       - name: Run type checking
         run: npm run typecheck
 
+      # The "extras" (test-type check + coverage + Codecov upload) run on ONE
+      # Node version. Deliberately kept OFF 24.x: @vitest/coverage-v8 (v8
+      # provider + forks pool) hangs indefinitely during coverage *generation*
+      # on Node 24, which wedged this job for 30+ min on several PRs while the
+      # plain test run passed on every version. 22.x (LTS) runs it cleanly. The
+      # test suite itself still runs on all matrix versions, incl. 24.x.
       - name: Type-check tests (non-blocking)
-        if: matrix.node-version == '24.x'
+        if: matrix.node-version == '22.x'
         run: npm run typecheck:tests
         # NON-BLOCKING: ~283 pre-existing test-type errors (mock/signature drift).
         # Flip to blocking (remove continue-on-error) once `npm run typecheck:tests` is clean (0 errors).
@@ -90,11 +100,16 @@ jobs:
         run: npm run test:run
 
       - name: Generate coverage report
-        if: matrix.node-version == '24.x'  # Only generate coverage on one version
+        if: matrix.node-version == '22.x'  # Only generate coverage on one version
         run: npm run test:coverage
+        # Best-effort + bounded: coverage is reporting-only (the Codecov upload
+        # below is already fail_ci_if_error:false). If the generator ever wedges
+        # again, this times out and is ignored rather than blocking the merge.
+        timeout-minutes: 10
+        continue-on-error: true
 
       - name: Upload coverage to Codecov
-        if: matrix.node-version == '24.x'
+        if: matrix.node-version == '22.x'
         uses: codecov/codecov-action@v7
         with:
           files: ./coverage/coverage-final.json
