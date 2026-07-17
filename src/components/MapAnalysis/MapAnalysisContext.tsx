@@ -57,6 +57,15 @@ type CtxShape = ReturnType<typeof useMapAnalysisConfig> & {
    */
   linkVerdict: LinkVerdict | null;
   setLinkVerdict: (v: LinkVerdict | null) => void;
+  /**
+   * Geographic point under the cursor on the Link Profile elevation graph
+   * (#4111 follow-up). `LinkProfileDrawer` sets it on chart mousemove (from the
+   * hovered sample's lat/lng) and clears it on mouseleave / reset; the Canvas
+   * renders a marker there via `LinkProfileHoverLayer` so the graph cursor maps
+   * to a spot on the terrain.
+   */
+  hoverPoint: { lat: number; lng: number } | null;
+  setHoverPoint: (p: { lat: number; lng: number } | null) => void;
 };
 
 const Ctx = createContext<CtxShape | null>(null);
@@ -70,6 +79,7 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
   const [linkProfileMode, setLinkProfileMode] = useState(false);
   const [linkEndpoints, setLinkEndpoints] = useState<LinkEndpoint[]>([]);
   const [linkVerdict, setLinkVerdict] = useState<LinkVerdict | null>(null);
+  const [hoverPoint, setHoverPoint] = useState<{ lat: number; lng: number } | null>(null);
   return (
     <Ctx.Provider
       value={{
@@ -88,6 +98,8 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
         setLinkEndpoints,
         linkVerdict,
         setLinkVerdict,
+        hoverPoint,
+        setHoverPoint,
       }}
     >
       {children}

@@ -8,6 +8,7 @@ import MeasureDistanceController from '../MeasureDistanceController';
 import type { MeasurePoint } from '../../utils/measureDistance';
 import LinkProfileController from './LinkProfileController';
 import LinkProfileDrawer from './LinkProfileDrawer';
+import LinkProfileHoverLayer from './LinkProfileHoverLayer';
 import type { LinkEndpoint } from '../../utils/linkProfile';
 import { BaseMap } from '../map/BaseMap';
 import NodeMarkersLayer from './layers/NodeMarkersLayer';
@@ -151,6 +152,11 @@ export default function MapAnalysisCanvas() {
             paint over them, but above the data layers so the range rings read. */}
         <Pane name="polarGrid" style={{ zIndex: 550 }}>
           {config.layers.polarGrid.enabled && <PolarGridLayer />}
+        </Pane>
+        {/* Link Profile graph-hover marker — highest z so the cursor point reads
+            above every data layer. Renders only while hovering the graph. */}
+        <Pane name="linkProfileHover" style={{ zIndex: 700 }}>
+          <LinkProfileHoverLayer />
         </Pane>
       </BaseMap>
       <TimeSliderControl />

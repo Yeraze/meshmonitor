@@ -23,8 +23,24 @@ import type { LinkEndpoint } from '../../utils/linkProfile';
 import type { ElevationProfile } from '../../types/elevation';
 
 vi.mock('recharts', () => ({
-  ComposedChart: ({ children }: { children?: React.ReactNode }) => (
-    <div data-testid="composed-chart">{children}</div>
+  ComposedChart: ({
+    children,
+    onMouseMove,
+    onMouseLeave,
+  }: {
+    children?: React.ReactNode;
+    onMouseMove?: (s: { activeTooltipIndex?: number; isTooltipActive?: boolean }) => void;
+    onMouseLeave?: () => void;
+  }) => (
+    <div data-testid="composed-chart">
+      {/* Test hooks to drive Recharts' hover callbacks with a synthetic state. */}
+      <button
+        data-testid="chart-hover-1"
+        onClick={() => onMouseMove?.({ activeTooltipIndex: 1, isTooltipActive: true })}
+      />
+      <button data-testid="chart-leave" onClick={() => onMouseLeave?.()} />
+      {children}
+    </div>
   ),
   Area: () => null,
   Line: () => null,
@@ -47,6 +63,7 @@ let mockLinkEndpoints: LinkEndpoint[] = [];
 let setLinkProfileModeSpy: ReturnType<typeof vi.fn>;
 let setLinkEndpointsSpy: ReturnType<typeof vi.fn>;
 let setLinkVerdictSpy: ReturnType<typeof vi.fn>;
+let setHoverPointSpy: ReturnType<typeof vi.fn>;
 vi.mock('./MapAnalysisContext', () => ({
   useMapAnalysisCtx: () => ({
     linkProfileMode: mockLinkProfileMode,
@@ -54,6 +71,8 @@ vi.mock('./MapAnalysisContext', () => ({
     setLinkProfileMode: setLinkProfileModeSpy,
     setLinkEndpoints: setLinkEndpointsSpy,
     setLinkVerdict: setLinkVerdictSpy,
+    hoverPoint: null,
+    setHoverPoint: setHoverPointSpy,
   }),
 }));
 
@@ -137,6 +156,7 @@ describe('LinkProfileDrawer', () => {
     setLinkProfileModeSpy = vi.fn();
     setLinkEndpointsSpy = vi.fn();
     setLinkVerdictSpy = vi.fn();
+    setHoverPointSpy = vi.fn();
     getElevationProfileMock.mockReset();
     mockAutoRadioDefaults = { freqMhz: null, rxSensitivityDbm: null, provenance: null };
   });
@@ -181,6 +201,20 @@ describe('LinkProfileDrawer', () => {
 
     const marginDd = screen.getByText('+31.2 dB');
     expect(marginDd.className).toContain('link-margin-positive');
+  });
+
+  it('sets the hover point from the sample under the graph cursor and clears on leave (#4111)', async () => {
+    mockLinkEndpoints = [endpointA, endpointB];
+    getElevationProfileMock.mockResolvedValue(OBSTRUCTED_PROFILE);
+    renderDrawer();
+    await screen.findByTestId('composed-chart'); // profile resolved, chart mounted
+
+    fireEvent.click(screen.getByTestId('chart-hover-1'));
+    // OBSTRUCTED_PROFILE.samples[1] = { lat: 0.15, lng: 0 }
+    expect(setHoverPointSpy).toHaveBeenCalledWith({ lat: 0.15, lng: 0 });
+
+    fireEvent.click(screen.getByTestId('chart-leave'));
+    expect(setHoverPointSpy).toHaveBeenCalledWith(null);
   });
 
   it('renders distance in miles when the user prefers miles', async () => {

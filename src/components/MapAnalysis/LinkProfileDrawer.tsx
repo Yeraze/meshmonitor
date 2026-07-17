@@ -97,9 +97,13 @@ const ChartTooltip: React.FC<{
   );
 };
 
+/** The state object Recharts hands to `<ComposedChart onMouseMove>` — derived
+ *  from its own prop type so it can't drift from the installed Recharts version. */
+type ChartMouseState = Parameters<NonNullable<React.ComponentProps<typeof ComposedChart>['onMouseMove']>>[0];
+
 const LinkProfileDrawer: React.FC = () => {
   const { distanceUnit } = useSettings();
-  const { linkProfileMode, linkEndpoints, setLinkProfileMode, setLinkEndpoints, setLinkVerdict } =
+  const { linkProfileMode, linkEndpoints, setLinkProfileMode, setLinkEndpoints, setLinkVerdict, setHoverPoint } =
     useMapAnalysisCtx();
   const [endpointA, endpointB] = linkEndpoints;
 
@@ -107,7 +111,8 @@ const LinkProfileDrawer: React.FC = () => {
     setLinkProfileMode(false);
     setLinkEndpoints([]);
     setLinkVerdict(null);
-  }, [setLinkProfileMode, setLinkEndpoints, setLinkVerdict]);
+    setHoverPoint(null);
+  }, [setLinkProfileMode, setLinkEndpoints, setLinkVerdict, setHoverPoint]);
 
   // Local budget-input state, seeded from documented defaults. Edits
   // recompute the analysis client-side — they never trigger a refetch.
@@ -144,6 +149,26 @@ const LinkProfileDrawer: React.FC = () => {
   }, [pairKey, auto.rxSensitivityDbm, rxEdited]);
 
   const { data: profile, isLoading, error } = useElevationProfile(endpointA, endpointB);
+
+  // Sync the elevation-graph cursor to a marker on the map: each chart row is
+  // index-parallel with the fetched sample, which carries the exact lat/lng of
+  // that point along the link. On mousemove set the hovered sample's coordinate;
+  // clear it when the cursor leaves the plot. The mousemove state type is derived
+  // from Recharts' own onMouseMove prop so it always matches the chart's contract.
+  const handleChartMouseMove = useCallback(
+    (state: ChartMouseState) => {
+      // Recharts types activeTooltipIndex as string | number — coerce to an int.
+      const idx = Number(state?.activeTooltipIndex);
+      if (!profile || !state?.isTooltipActive || !Number.isInteger(idx) || idx < 0) {
+        setHoverPoint(null);
+        return;
+      }
+      const sample = profile.samples[idx];
+      setHoverPoint(sample ? { lat: sample.lat, lng: sample.lng } : null);
+    },
+    [profile, setHoverPoint]
+  );
+  const handleChartMouseLeave = useCallback(() => setHoverPoint(null), [setHoverPoint]);
 
   const analysis = useMemo(
     () =>
@@ -182,8 +207,11 @@ const LinkProfileDrawer: React.FC = () => {
   }, [analysis?.verdict, setLinkVerdict]);
 
   useEffect(() => {
-    return () => setLinkVerdict(null);
-  }, [setLinkVerdict]);
+    return () => {
+      setLinkVerdict(null);
+      setHoverPoint(null);
+    };
+  }, [setLinkVerdict, setHoverPoint]);
 
   const allTerrainNull = profile ? profile.samples.every(s => s.elevation === null) : false;
 
@@ -228,7 +256,12 @@ const LinkProfileDrawer: React.FC = () => {
           <div className="map-analysis-link-drawer-empty">No terrain data for this path.</div>
         ) : analysis ? (
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={analysis.points} margin={{ top: 10, right: 20, bottom: 5, left: 0 }}>
+            <ComposedChart
+              data={analysis.points}
+              margin={{ top: 10, right: 20, bottom: 5, left: 0 }}
+              onMouseMove={handleChartMouseMove}
+              onMouseLeave={handleChartMouseLeave}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="#333" />
               <XAxis
                 dataKey="distanceKm"
