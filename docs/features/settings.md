@@ -437,7 +437,7 @@ Description: Offline OpenStreetMap tiles via TileServer GL
 - A **tile-template** URL containing `{z}`, `{x}`, and `{y}` placeholders — sampled and decoded the same way as the default Terrarium source.
 - An **[Open-Topo-Data](https://www.opentopodata.org/)-compatible JSON** point API — queried in batches instead of tiles.
 
-**Test button**: probes the configured URL server-side and reports the detected source type, a sample elevation (queried near Mount Everest's summit by default, to distinguish a working provider from a source that just returns 0 for everything), and the round-trip latency — without needing to pick two points on the map first.
+**Test button**: probes the configured URL server-side and reports the detected source type, a sample elevation (queried near Mount Everest's summit by default, to distinguish a working provider from a source that just returns 0 for everything), and the round-trip latency — without needing to pick two points on the map first. With the URL field empty, it probes the default Terrarium source and labels the result "(default source)", so you can verify the out-of-the-box configuration too.
 
 **Notes**:
 - All elevation fetches happen **server-side** through the same SSRF-guarded outbound-request path used elsewhere in MeshMonitor — the browser never talks to the DEM source directly, and a custom source URL can't be used to probe your internal network.
