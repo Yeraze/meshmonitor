@@ -78,6 +78,13 @@ jobs:
       - name: Run type checking
         run: npm run typecheck
 
+      # Test-file type check runs on ONE Node version (non-blocking; tracks
+      # toward a clean tsconfig.tests). Coverage generation + Codecov upload were
+      # removed (#4172): they ran on a single leg, produced no enforced signal
+      # (no token, no thresholds, no PR status check, no badge — Codecov was
+      # already fail_ci_if_error:false), and @vitest/coverage-v8 hung for 30+ min
+      # on Node 24, repeatedly blocking merges. `npm run test:coverage` remains
+      # available for ad-hoc local reports.
       - name: Type-check tests (non-blocking)
         if: matrix.node-version == '24.x'
         run: npm run typecheck:tests
@@ -88,19 +95,6 @@ jobs:
 
       - name: Run tests
         run: npm run test:run
-
-      - name: Generate coverage report
-        if: matrix.node-version == '24.x'  # Only generate coverage on one version
-        run: npm run test:coverage
-
-      - name: Upload coverage to Codecov
-        if: matrix.node-version == '24.x'
-        uses: codecov/codecov-action@v7
-        with:
-          files: ./coverage/coverage-final.json
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false  # Don't fail if codecov is down
 
   build:
     name: Build Check
