@@ -20,6 +20,7 @@ interface NodeRecord extends MaybePositionedNode {
   nodeNum: number;
   sourceId?: string;
   snr?: number | null;
+  hideFromMap?: boolean | null;
 }
 
 interface SnrDot {
@@ -98,6 +99,22 @@ export default function SnrOverlayLayer() {
     return m;
   }, [unified.nodes]);
 
+  // nodeNum -> merged node record. The SNR dot ALWAYS renders at the merged
+  // node's position (`resolveNodeLatLng`), the same coordinate NodeMarkersLayer
+  // and the trail endpoints use — so the dot can never detach from the marker.
+  // (#4166: the old windowed path picked a raw per-fix position by highest
+  // packet timestamp with no source priority, which for a node heard over both
+  // LoRa and MQTT with diverging positions could land on the other source's
+  // fix instead of the merged/marker position.)
+  const nodeByNum = useMemo(() => {
+    const m = new Map<number, NodeRecord>();
+    for (const n of (unified.nodes ?? []) as NodeRecord[]) {
+      const num = Number(n.nodeNum);
+      if (!m.has(num)) m.set(num, n);
+    }
+    return m;
+  }, [unified.nodes]);
+
   const ts = config.timeSlider;
   const dots: SnrDot[] = useMemo(() => {
     if (isLastMode) {
@@ -106,6 +123,8 @@ export default function SnrOverlayLayer() {
       for (const n of (unified.nodes ?? []) as NodeRecord[]) {
         const num = Number(n.nodeNum);
         if (seen.has(num)) continue;
+        // #4163-class: a "Hide from Map" node has no marker, so no SNR dot.
+        if (n.hideFromMap) continue;
         const ll = resolveNodeLatLng(n);
         if (!ll) continue;
         seen.add(num);
@@ -113,38 +132,40 @@ export default function SnrOverlayLayer() {
       }
       return out;
     }
-    // Windowed: dedupe to one dot per nodeNum (across sources) keeping the
-    // newest fix's coordinates. The same node can appear under multiple
-    // sources; per issue #2884 the overlay shows one marker per node.
-    // Time-slider filter is applied against the kept timestamp.
-    const latest = new Map<number, SnrDot>();
+    // Windowed: `positionItems` decides only WHICH nodes had a fix in the
+    // window (and the newest such fix's timestamp, for the time-slider filter);
+    // the dot POSITION comes from the merged node record so it stays pinned to
+    // the marker. A node with in-window fixes but no merged record / no
+    // resolvable position / hidden has no marker, so it gets no dot either.
+    const latestTs = new Map<number, number>();
     for (const p of positionItems as PositionRecord[]) {
       const num = Number(p.nodeNum);
-      const prev = latest.get(num);
-      if (!prev || p.timestamp > prev.timestamp) {
-        latest.set(num, {
-          nodeNum: num,
-          latitude: p.latitude,
-          longitude: p.longitude,
-          timestamp: p.timestamp,
-        });
-      }
+      const prev = latestTs.get(num);
+      if (prev === undefined || p.timestamp > prev) latestTs.set(num, p.timestamp);
     }
-    const all = Array.from(latest.values());
+    const out: SnrDot[] = [];
+    for (const [num, timestamp] of latestTs) {
+      const node = nodeByNum.get(num);
+      if (!node || node.hideFromMap) continue;
+      const ll = resolveNodeLatLng(node);
+      if (!ll) continue;
+      out.push({ nodeNum: num, latitude: ll[0], longitude: ll[1], timestamp });
+    }
     if (
       !ts.enabled ||
       ts.windowStartMs === undefined ||
       ts.windowEndMs === undefined
     ) {
-      return all;
+      return out;
     }
-    return all.filter(
+    return out.filter(
       (d) => d.timestamp >= ts.windowStartMs! && d.timestamp <= ts.windowEndMs!,
     );
   }, [
     isLastMode,
     positionItems,
     unified.nodes,
+    nodeByNum,
     ts.enabled,
     ts.windowStartMs,
     ts.windowEndMs,
