@@ -125,3 +125,54 @@ export function precisionCellKey(lat: number, lng: number, bits: number): string
   const lngIdx = Math.floor(lng / size);
   return `${bits}:${latIdx}:${lngIdx}`;
 }
+
+/**
+ * One node fed to {@link applyPrecisionCellOffsets}: an opaque `item` carried
+ * through untouched, a stable hash `id` (use `unifiedNodeKey` semantics so the
+ * SAME node lands on the SAME in-cell spot on every map), the node's TRUE reported
+ * center `latLng`, and its precision/override flags.
+ */
+export interface PrecisionOffsetInput<T> {
+  item: T;
+  id: string;
+  latLng: [number, number];
+  bits: number | null | undefined;
+  isOverride: boolean | null | undefined;
+}
+
+/**
+ * Occupancy-gated within-cell offset for a set of positioned nodes — the single
+ * shared implementation used by every map surface (Dashboard, NodesTab, Map
+ * Analysis) so obscured-GPS markers declutter identically everywhere.
+ *
+ * A node is offset to a deterministic spot inside its accuracy cell (#4016) ONLY
+ * when 2+ offsettable nodes share that cell (#4155); a node alone in its cell
+ * stays at its true reported center (offsetting a lone marker just implies a
+ * position it never reported). Nodes with fine/absent precision or a user
+ * override are never moved. Pure and deterministic given the same input.
+ *
+ * Returns each input's `item` paired with its resolved `latLng` (offset where the
+ * cell has 2+ occupants, true center otherwise), in the input order.
+ */
+export function applyPrecisionCellOffsets<T>(
+  nodes: ReadonlyArray<PrecisionOffsetInput<T>>,
+): Array<{ item: T; latLng: [number, number] }> {
+  // Pass 1: for each node resolve its accuracy cell (null when not offsettable)
+  // and count occupancy. `shouldOffsetForPrecision` is evaluated once per node
+  // here; it also narrows `bits` to a number, which we capture for pass 2.
+  const occupancy = new Map<string, number>();
+  const cellOf = nodes.map((n) => {
+    if (!shouldOffsetForPrecision(n.bits, n.isOverride)) return null;
+    const cell = precisionCellKey(n.latLng[0], n.latLng[1], n.bits);
+    occupancy.set(cell, (occupancy.get(cell) ?? 0) + 1);
+    return { cell, bits: n.bits };
+  });
+  // Pass 2: offset only nodes whose cell has 2+ occupants.
+  return nodes.map((n, i) => {
+    const c = cellOf[i];
+    if (c && (occupancy.get(c.cell) ?? 0) >= 2) {
+      return { item: n.item, latLng: offsetWithinPrecisionCell(n.latLng[0], n.latLng[1], c.bits, n.id) };
+    }
+    return { item: n.item, latLng: n.latLng };
+  });
+}

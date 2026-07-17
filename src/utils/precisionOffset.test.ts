@@ -6,6 +6,7 @@ import {
   hasAccuracyCell,
   offsetWithinPrecisionCell,
   precisionCellKey,
+  applyPrecisionCellOffsets,
   OBSCURED_PRECISION_MAX_BITS,
 } from './precisionOffset';
 
@@ -122,5 +123,57 @@ describe('precisionCellKey', () => {
     const a = (baseLatIdx + 0.25) * size;
     const b = (baseLatIdx + 0.75) * size;
     expect(precisionCellKey(a, -90, 16)).toBe(precisionCellKey(b, -90, 16));
+  });
+});
+
+describe('applyPrecisionCellOffsets', () => {
+  const inp = (item: string, latLng: [number, number], bits: number | null | undefined, isOverride = false) =>
+    ({ item, id: item, latLng, bits, isOverride });
+
+  it('leaves a lone offsettable node at its true center', () => {
+    const out = applyPrecisionCellOffsets([inp('a', [30, -90], 16)]);
+    expect(out).toEqual([{ item: 'a', latLng: [30, -90] }]);
+  });
+
+  it('spreads 2+ nodes sharing a cell to distinct in-cell spots', () => {
+    const out = applyPrecisionCellOffsets([inp('a', [30, -90], 16), inp('b', [30, -90], 16)]);
+    const a = out.find((o) => o.item === 'a')!.latLng;
+    const b = out.find((o) => o.item === 'b')!.latLng;
+    expect(a).not.toEqual([30, -90]);
+    expect(b).not.toEqual([30, -90]);
+    expect(a).not.toEqual(b);
+    const half = precisionCellSizeDegrees(16) / 2;
+    expect(Math.abs(a[0] - 30)).toBeLessThanOrEqual(half);
+    expect(Math.abs(b[0] - 30)).toBeLessThanOrEqual(half);
+  });
+
+  it('does NOT merge same-position nodes of different precision (different cells)', () => {
+    const out = applyPrecisionCellOffsets([inp('a', [30, -90], 16), inp('b', [30, -90], 14)]);
+    // Each is alone in its own (differently-sized) cell -> both stay centered.
+    expect(out.find((o) => o.item === 'a')!.latLng).toEqual([30, -90]);
+    expect(out.find((o) => o.item === 'b')!.latLng).toEqual([30, -90]);
+  });
+
+  it('never offsets full-precision, missing-precision, or overridden nodes even when co-located', () => {
+    const out = applyPrecisionCellOffsets([
+      inp('full', [30, -90], 32),
+      inp('missing', [30, -90], null),
+      inp('override', [30, -90], 16, true),
+    ]);
+    expect(out).toEqual([
+      { item: 'full', latLng: [30, -90] },
+      { item: 'missing', latLng: [30, -90] },
+      { item: 'override', latLng: [30, -90] },
+    ]);
+  });
+
+  it('preserves input order and item identity', () => {
+    const out = applyPrecisionCellOffsets([inp('x', [10, 10], 32), inp('y', [20, 20], 32)]);
+    expect(out.map((o) => o.item)).toEqual(['x', 'y']);
+  });
+
+  it('is deterministic across calls', () => {
+    const args = [inp('a', [30, -90], 16), inp('b', [30, -90], 16)];
+    expect(applyPrecisionCellOffsets(args)).toEqual(applyPrecisionCellOffsets(args));
   });
 });
