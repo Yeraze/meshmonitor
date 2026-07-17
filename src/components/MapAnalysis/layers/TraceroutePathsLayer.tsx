@@ -31,6 +31,7 @@ interface NodeRecord extends MaybePositionedNode {
   longName?: string | null;
   shortName?: string | null;
   nodeId?: string | null;
+  hideFromMap?: boolean | null;
 }
 
 /**
@@ -94,6 +95,11 @@ export default function TraceroutePathsLayer() {
   const positionByKey = useMemo(() => {
     const map = new Map<string, [number, number]>();
     for (const n of (nodes ?? []) as NodeRecord[]) {
+      // #4162/#3549: "Hide from Map" nodes have no marker (useAnalysisNodes
+      // drops them), so exclude them from the endpoint-position map —
+      // analyzeTraceroutes drops any segment whose endpoint is missing here,
+      // which stops route segments dangling to a marker-less node.
+      if (n.hideFromMap) continue;
       const ll = resolveNodeLatLng(n);
       if (ll) map.set(`${n.sourceId ?? ''}:${Number(n.nodeNum)}`, ll);
     }

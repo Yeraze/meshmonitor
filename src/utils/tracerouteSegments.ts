@@ -126,12 +126,24 @@ export function parseSnapshotRoutePositions(
  * normalized to `[lat, lng]` tuples — normalizing a consumer's own live-node
  * shape (digest array, raw node map with `latitudeI/longitudeI` vs
  * `latitude/longitude`, etc.) is the caller's job, not this function's.
+ *
+ * `requireLive` (issue #4162): when true, a node absent from `liveNodes`
+ * resolves to `null` (drop the hop) even if the snapshot still holds a
+ * historical position for it. `liveNodes` is the caller's *rendered-marker*
+ * position map, so this keeps route segments attached to actual markers —
+ * a node that has aged out, been purged, or is hidden ("Hide from Map") has
+ * no marker and must not anchor a dangling line. When the node IS live, the
+ * #1862 snapshot-then-live preference is preserved. Route-segment overlays
+ * pass `true`; the single-traceroute display leaves it `false` so it can show
+ * every hop (including hidden/aged relays) of one specific traceroute.
  */
 export function resolveSegmentPosition(
   nodeNum: number,
   snapshot: Map<number, [number, number]>,
   liveNodes: Map<number, [number, number]>,
+  requireLive = false,
 ): [number, number] | null {
+  if (requireLive && !liveNodes.has(nodeNum)) return null;
   return snapshot.get(nodeNum) ?? liveNodes.get(nodeNum) ?? null;
 }
 

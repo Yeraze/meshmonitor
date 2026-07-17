@@ -437,8 +437,11 @@ export default function DashboardMap({
       const toNum = Number(tr?.toNodeNum);
       if (!Number.isFinite(fromNum) || !Number.isFinite(toNum)) continue;
       const snapshot = parseSnapshotRoutePositions(tr?.routePositions);
+      // #4162: gate on the rendered-marker map (`positionByNodeNum` is built
+      // from `nodesWithPosition`, which excludes hidden/aged nodes) so route
+      // segments never dangle to a node that has no marker.
       const resolvePosition = (nodeNum: number): [number, number] | null =>
-        resolveSegmentPosition(nodeNum, snapshot, positionByNodeNum);
+        resolveSegmentPosition(nodeNum, snapshot, positionByNodeNum, true);
       const keyPrefix = `tr-${tr.sourceId ?? 'x'}-${tr.id}`;
       const decomposed = decomposeTraceroute(
         {
