@@ -227,6 +227,53 @@ describe('GET /positions', () => {
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].nodeNum).toBe(1);
   });
+
+  // #4163 follow-up — telemetry is not cascade-deleted with its node, so bulk
+  // deletes that skip telemetry ("Clean up inactive nodes", "Prune Outside
+  // ROI") leave orphaned position rows. They have no node record, hence no
+  // marker, so they must not appear as heatmap/trail density for any user.
+  it('admin: hides positions for nodes that no longer exist (orphaned telemetry)', async () => {
+    const live = { nodeNum: 1, sourceId: 'src-a', latitude: 1, longitude: 1, altitude: null, timestamp: 1000 };
+    const orphan = { nodeNum: 2, sourceId: 'src-a', latitude: 2, longitude: 2, altitude: null, timestamp: 1000 };
+    mockDb.analysis.getPositions.mockResolvedValue({
+      items: [live, orphan], pageSize: 500, hasMore: false, nextCursor: null,
+    });
+    // Only node 1 still exists; node 2 was deleted but its telemetry remains.
+    mockDb.nodes.getAllNodes.mockResolvedValue([
+      { nodeNum: 1, channel: 0, hideFromMap: false },
+    ]);
+
+    const app = createApp(adminUser);
+    const res = await request(app).get('/positions?since=0');
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].nodeNum).toBe(1);
+  });
+
+  it('regular user: hides positions for nodes that no longer exist (orphaned telemetry)', async () => {
+    const live = { nodeNum: 1, sourceId: 'src-a', latitude: 1, longitude: 1, altitude: null, timestamp: 1000 };
+    const orphan = { nodeNum: 2, sourceId: 'src-a', latitude: 2, longitude: 2, altitude: null, timestamp: 1000 };
+    mockDb.analysis.getPositions.mockResolvedValue({
+      items: [live, orphan], pageSize: 500, hasMore: false, nextCursor: null,
+    });
+    // Only node 1 still exists. Channel 0 has viewOnMap granted, so if the
+    // orphan were defaulted onto channel 0 it would leak — assert it doesn't.
+    mockDb.nodes.getAllNodes.mockResolvedValue([
+      { nodeNum: 1, channel: 0, hideFromMap: false },
+    ]);
+    mockDb.getUserPermissionSetAsync.mockResolvedValue({
+      channel_0: { viewOnMap: true, read: true, write: false },
+    });
+    mockDb.checkPermissionAsync.mockImplementation((_uid: number, resource: string) =>
+      Promise.resolve(resource !== 'nodes_private'),
+    );
+
+    const app = createApp(regularUser);
+    const res = await request(app).get('/positions?since=0');
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0].nodeNum).toBe(1);
+  });
 });
 
 describe('GET /traceroutes', () => {
@@ -353,6 +400,46 @@ describe('GET /coverage-grid', () => {
     await request(app).get('/coverage-grid?since=7777&zoom=8');
     const call = mockDb.analysis.getCoverageGrid.mock.calls[0][0];
     expect(typeof call.postFilter).toBe('function');
+    expect(call.postFilter({ sourceId: 'src-a', nodeNum: 1 })).toBe(true);
+    expect(call.postFilter({ sourceId: 'src-a', nodeNum: 2 })).toBe(false);
+  });
+
+  // #4163 follow-up — the coverage grid must also exclude density from
+  // orphaned telemetry whose owning node was deleted/pruned.
+  it('admin: coverage-grid postFilter drops orphaned (deleted-node) positions', async () => {
+    mockDb.nodes.getAllNodes.mockResolvedValue([
+      { nodeNum: 1, channel: 0, hideFromMap: false },
+    ]);
+    const app = createApp(adminUser);
+    // Unique cache key so this isn't served from a prior test's cache.
+    await request(app).get('/coverage-grid?since=6666&zoom=8');
+    const call = mockDb.analysis.getCoverageGrid.mock.calls[0][0];
+    expect(typeof call.postFilter).toBe('function');
+    // Node 1 still exists → kept; node 2 was deleted (not in getAllNodes) → dropped.
+    expect(call.postFilter({ sourceId: 'src-a', nodeNum: 1 })).toBe(true);
+    expect(call.postFilter({ sourceId: 'src-a', nodeNum: 2 })).toBe(false);
+  });
+
+  // #4163 follow-up — symmetry with the admin case: the non-admin coverage-grid
+  // postFilter must also drop orphaned density, even when the (would-be) channel
+  // is one the user can view on the map. Guards against the deleted node being
+  // defaulted onto channel 0 and slipping past the permission gate.
+  it('non-admin: coverage-grid postFilter drops orphaned (deleted-node) positions', async () => {
+    mockDb.nodes.getAllNodes.mockResolvedValue([
+      { nodeNum: 1, channel: 0, hideFromMap: false },
+    ]);
+    // Channel 0 is viewable, so an orphan defaulted onto it would otherwise pass.
+    mockDb.getUserPermissionSetAsync.mockResolvedValue({
+      channel_0: { viewOnMap: true, read: true, write: false },
+    });
+    mockDb.checkPermissionAsync.mockImplementation((_uid: number, resource: string) =>
+      Promise.resolve(resource !== 'nodes_private'),
+    );
+    const app = createApp(regularUser);
+    await request(app).get('/coverage-grid?since=5555&zoom=8');
+    const call = mockDb.analysis.getCoverageGrid.mock.calls[0][0];
+    expect(typeof call.postFilter).toBe('function');
+    // Node 1 exists on a viewable channel → kept; node 2 was deleted → dropped.
     expect(call.postFilter({ sourceId: 'src-a', nodeNum: 1 })).toBe(true);
     expect(call.postFilter({ sourceId: 'src-a', nodeNum: 2 })).toBe(false);
   });

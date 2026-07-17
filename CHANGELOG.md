@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Elevation source settings** — a new admin-only **Elevation / Terrain** settings section enables/disables the Link Profile tool's terrain data and lets you point it at a custom DEM source (tile-template or Open-Topo-Data-compatible JSON API), with a Test button reporting the detected source type, sample elevation, and latency. Defaults to the public AWS Terrarium (SRTM-derived) tile set; all fetches happen server-side through the existing SSRF-guarded outbound path. (#4111)
 
 ### Fixed
+- **Map Analysis: heatmap/coverage overlay no longer shows density for deleted nodes** — position telemetry is not cascade-deleted when a node is removed, so bulk deletes that skip telemetry ("Clean up inactive nodes", "Prune Outside ROI") left orphaned lat/lon rows behind. The #4163 fix gated hidden-but-live nodes; it could not gate *deleted* nodes because their node record is gone. The heatmap and position-trail queries now drop any position whose owning node no longer exists (for every user, admins included) — a markerless position contributes no density — covering both existing orphaned rows and any future ones. (#4163)
 - **Map Analysis: implausible DEM elevation values no longer distort the Link Profile chart** — open-water/void artifacts in some elevation tile sources (observed as extreme negative spikes, e.g. −12000 m over Lake Pontchartrain) are now discarded server-side instead of blowing out the chart's vertical scale. (#4111)
 
 ## [4.13.0] - 2026-07-15
