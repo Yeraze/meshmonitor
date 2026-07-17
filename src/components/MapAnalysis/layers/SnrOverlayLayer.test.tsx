@@ -34,9 +34,18 @@ vi.mock('../../../hooks/useMapAnalysisData', () => ({
       // into the single newest fix across all sources.
       { nodeNum: 1, sourceId: 'b', latitude: 33, longitude: -93, timestamp: 150 },
       { nodeNum: 2, sourceId: 'a', latitude: 31, longitude: -91, timestamp: 50 },
+      // #4166 — node 3 heard over two sources with DIVERGING positions. The
+      // newest raw fix is source b at (99, 99), ts=300 — but the merged node
+      // record (below) resolves to source a's (50, -110). The dot must follow
+      // the MERGED/marker position, not the newest raw fix.
+      { nodeNum: 3, sourceId: 'b', latitude: 99, longitude: 99, timestamp: 300 },
+      { nodeNum: 3, sourceId: 'a', latitude: 50, longitude: -110, timestamp: 250 },
+      // Node 20 is "Hide from Map" (merged record below) — it has an in-window
+      // fix but must produce NO dot.
+      { nodeNum: 20, sourceId: 'a', latitude: 45, longitude: -105, timestamp: 300 },
     ],
     isLoading: false,
-    progress: { percent: 100, loaded: 4, estimatedTotal: 4 },
+    progress: { percent: 100, loaded: 7, estimatedTotal: 7 },
   }),
 }));
 vi.mock('../../../hooks/useDashboardData', () => ({
@@ -52,6 +61,10 @@ vi.mock('../../../hooks/useDashboardData', () => ({
       { nodeNum: 12, sourceId: 'a', snr: -3 },
       { nodeNum: 1, sourceId: 'a', latitude: 35, longitude: -95, snr: -10 },
       { nodeNum: 2, sourceId: 'a', latitude: 31, longitude: -91 /* no snr */ },
+      // #4166 — node 3's merged/marker position is source a's (50, -110).
+      { nodeNum: 3, sourceId: 'a', latitude: 50, longitude: -110, snr: 1 },
+      // #4163-class — hidden node with a position; must produce no dot.
+      { nodeNum: 20, sourceId: 'a', latitude: 45, longitude: -105, snr: 5, hideFromMap: true },
     ],
     traceroutes: [],
     neighborInfo: [],
@@ -100,9 +113,20 @@ describe('SnrOverlayLayer', () => {
     setConfig({ enabled: true, lookbackHours: null });
     renderWith(<SnrOverlayLayer />);
     const dots = screen.getAllByTestId('snr-dot');
-    // Unified positioned nodes: 10, 11 (twice across sources collapses), 1, 2.
-    // Node 12 has no position. Total = 4.
-    expect(dots).toHaveLength(4);
+    // Unified positioned, non-hidden nodes: 10, 11 (twice across sources
+    // collapses), 1, 2, 3. Node 12 has no position; node 20 is hideFromMap.
+    // Total = 5.
+    expect(dots).toHaveLength(5);
+  });
+
+  it('"Last" mode omits hideFromMap nodes (#4163-class — no marker, no dot)', () => {
+    setConfig({ enabled: true, lookbackHours: null });
+    renderWith(<SnrOverlayLayer />);
+    // Node 20 (hideFromMap) sits at lat=45 — it must not render.
+    const hidden = screen.getAllByTestId('snr-dot').find(
+      (d) => d.getAttribute('data-lat') === '45',
+    );
+    expect(hidden).toBeUndefined();
   });
 
   it('colors each dot by the node\'s most recent SNR (matches MapLegend thresholds)', () => {
@@ -121,17 +145,40 @@ describe('SnrOverlayLayer', () => {
     expect(byNum('31')!.getAttribute('data-color')).toBe('#888');
   });
 
-  it('windowed mode dedupes to the latest position per nodeNum across all sources', () => {
+  it('windowed mode renders one dot per nodeNum pinned to the merged marker position', () => {
     setConfig({ enabled: true, lookbackHours: 24 });
     renderWith(<SnrOverlayLayer />);
     const dots = screen.getAllByTestId('snr-dot');
-    // node 1 (3 fixes across sources) collapses to 1 dot, node 2 to 1 dot.
-    expect(dots).toHaveLength(2);
-    // Node 1's newest fix is timestamp=200 (lat=35, lng=-95). Multi-source
-    // older fixes must not win.
+    // Nodes with in-window fixes: 1, 2, 3, 20. Node 20 is hidden → dropped.
+    // node 1 (3 fixes across sources) and node 2 each collapse to one dot.
+    expect(dots).toHaveLength(3);
+    // Node 1 renders at its merged position (lat=35, lng=-95).
     const node1 = dots.find((d) => d.getAttribute('data-lat') === '35');
     expect(node1).toBeDefined();
     expect(node1!.getAttribute('data-lng')).toBe('-95');
+  });
+
+  it('windowed mode follows the merged/marker position, not the newest raw fix (#4166)', () => {
+    setConfig({ enabled: true, lookbackHours: 24 });
+    renderWith(<SnrOverlayLayer />);
+    const dots = screen.getAllByTestId('snr-dot');
+    // Node 3's newest raw fix is source b at (99, 99), ts=300 — but its merged
+    // record resolves to source a's (50, -110). The dot must be at (50, -110).
+    const wrong = dots.find((d) => d.getAttribute('data-lat') === '99');
+    expect(wrong).toBeUndefined();
+    const node3 = dots.find((d) => d.getAttribute('data-lat') === '50');
+    expect(node3).toBeDefined();
+    expect(node3!.getAttribute('data-lng')).toBe('-110');
+  });
+
+  it('windowed mode omits hideFromMap nodes even when they have an in-window fix (#4163-class)', () => {
+    setConfig({ enabled: true, lookbackHours: 24 });
+    renderWith(<SnrOverlayLayer />);
+    // Node 20 (hideFromMap) has an in-window fix at lat=45 but must not render.
+    const hidden = screen.getAllByTestId('snr-dot').find(
+      (d) => d.getAttribute('data-lat') === '45',
+    );
+    expect(hidden).toBeUndefined();
   });
 
   it('windowed mode excludes positions outside the time slider window', () => {
