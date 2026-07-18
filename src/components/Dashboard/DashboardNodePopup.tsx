@@ -32,7 +32,7 @@ interface DashboardNodePopupProps {
 }
 
 export default function DashboardNodePopup({ node, pos, onSourceSelect }: DashboardNodePopupProps) {
-  const { timeFormat, dateFormat } = useDisplaySettings();
+  const { timeFormat, dateFormat, distanceUnit } = useDisplaySettings();
 
   const model = toNodeCardModel(node, 'meshtastic', { pos });
 
@@ -43,7 +43,7 @@ export default function DashboardNodePopup({ node, pos, onSourceSelect }: Dashbo
         <>
           <div className="node-popup-grid">
             <IdentityItems model={model} idFullWidth />
-            <SignalItems model={model} showAltitude />
+            <SignalItems model={model} showAltitude distanceUnit={distanceUnit} />
             <PositionItem position={pos} />
           </div>
           <LastHeardFooter

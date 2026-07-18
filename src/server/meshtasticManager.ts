@@ -6098,6 +6098,11 @@ class MeshtasticManager implements ISourceManager {
         // firmware's precision re-centering offset for obscured (0,0) fixes (issue #3763).
         const precisionBits = position.precisionBits ?? position.precision_bits ?? undefined;
 
+        // Meshtastic Position.location_source (LocSource enum): 0=UNSET, 1=MANUAL,
+        // 2=INTERNAL GPS, 3=EXTERNAL GPS. Decoded off the wire but previously
+        // dropped before storage (issue #4176). Surfaced in the node popups.
+        const locationSource = position.locationSource ?? position.location_source ?? undefined;
+
         // Validate coordinates
         if (!this.isValidPosition(coords.latitude, coords.longitude, precisionBits)) {
           logger.warn(`⚠️ Invalid position coordinates: lat=${coords.latitude}, lon=${coords.longitude}. Skipping position update.`);
@@ -6259,7 +6264,8 @@ class MeshtasticManager implements ISourceManager {
             positionPrecisionBits: precisionBits,
             positionGpsAccuracy: gpsAccuracy,
             positionHdop: hdop,
-            positionTimestamp: now
+            positionTimestamp: now,
+            positionLocationSource: locationSource
           };
 
           // Only include SNR/RSSI if they have valid values. -128 is the
@@ -8071,6 +8077,10 @@ class MeshtasticManager implements ISourceManager {
         // (no POSITION_APP) would slip past the box as (offset, offset).
         const precisionBits = nodeInfo.position.precisionBits ?? nodeInfo.position.precision_bits;
 
+        // Meshtastic Position.location_source (LocSource enum) — see POSITION_APP
+        // path for the value map. Persisted for the node popups (issue #4176).
+        const locationSource = nodeInfo.position.locationSource ?? nodeInfo.position.location_source;
+
         // Validate coordinates before saving
         if (this.isValidPosition(coords.latitude, coords.longitude, precisionBits)) {
           const channelIndex = nodeInfo.channel !== undefined ? nodeInfo.channel : 0;
@@ -8101,6 +8111,11 @@ class MeshtasticManager implements ISourceManager {
               nodeData.positionPrecisionBits = precisionBits;
               nodeData.positionChannel = channelIndex;
               nodeData.positionTimestamp = Date.now();
+            }
+            // location_source is meaningful independent of precision bits, so
+            // record it whenever the node reports one (#4176).
+            if (locationSource !== undefined && locationSource !== 0) {
+              nodeData.positionLocationSource = locationSource;
             }
           } else {
             logger.debug(
@@ -14064,6 +14079,9 @@ class MeshtasticManager implements ISourceManager {
       }
       if (node.positionGpsAccuracy !== null && node.positionGpsAccuracy !== undefined) {
         deviceInfo.positionGpsAccuracy = node.positionGpsAccuracy;
+      }
+      if (node.positionLocationSource !== null && node.positionLocationSource !== undefined) {
+        deviceInfo.positionLocationSource = node.positionLocationSource;
       }
 
       // Add position override fields

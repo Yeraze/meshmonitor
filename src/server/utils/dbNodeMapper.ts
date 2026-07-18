@@ -92,6 +92,9 @@ export function mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number): Device
   if (node.positionGpsAccuracy !== null && node.positionGpsAccuracy !== undefined) {
     deviceInfo.positionGpsAccuracy = node.positionGpsAccuracy;
   }
+  if (node.positionLocationSource !== null && node.positionLocationSource !== undefined) {
+    deviceInfo.positionLocationSource = node.positionLocationSource;
+  }
   if (node.positionOverrideEnabled !== null && node.positionOverrideEnabled !== undefined) {
     deviceInfo.positionOverrideEnabled = Boolean(node.positionOverrideEnabled);
   }

@@ -404,6 +404,7 @@ export class NodesRepository extends BaseRepository {
           keySecurityIssueDetails: nodeData.keySecurityIssueDetails !== undefined ? nodeData.keySecurityIssueDetails : existingNode.keySecurityIssueDetails,
           positionChannel: nodeData.positionChannel ?? existingNode.positionChannel,
           positionPrecisionBits: nodeData.positionPrecisionBits ?? existingNode.positionPrecisionBits,
+          positionLocationSource: nodeData.positionLocationSource ?? existingNode.positionLocationSource,
           positionTimestamp: this.coerceBigintField(nodeData.positionTimestamp ?? existingNode.positionTimestamp),
           positionOverrideEnabled: nodeData.positionOverrideEnabled ?? existingNode.positionOverrideEnabled,
           latitudeOverride: nodeData.latitudeOverride ?? existingNode.latitudeOverride,
@@ -459,6 +460,7 @@ export class NodesRepository extends BaseRepository {
         keySecurityIssueDetails: nodeData.keySecurityIssueDetails ?? null,
         positionChannel: nodeData.positionChannel ?? null,
         positionPrecisionBits: nodeData.positionPrecisionBits ?? null,
+        positionLocationSource: nodeData.positionLocationSource ?? null,
         positionTimestamp: this.coerceBigintField(nodeData.positionTimestamp),
         positionOverrideEnabled: nodeData.positionOverrideEnabled ?? false,
         latitudeOverride: nodeData.latitudeOverride ?? null,
@@ -521,6 +523,7 @@ export class NodesRepository extends BaseRepository {
         keySecurityIssueDetails: nodeData.keySecurityIssueDetails ?? null,
         positionChannel: nodeData.positionChannel ?? null,
         positionPrecisionBits: nodeData.positionPrecisionBits ?? null,
+        positionLocationSource: nodeData.positionLocationSource ?? null,
         positionTimestamp: this.coerceBigintField(nodeData.positionTimestamp),
         positionOverrideEnabled: nodeData.positionOverrideEnabled ?? false,
         latitudeOverride: nodeData.latitudeOverride ?? null,
@@ -1640,6 +1643,7 @@ export class NodesRepository extends BaseRepository {
       }
       if (nodeData.positionChannel !== undefined) updateSet.positionChannel = nodeData.positionChannel;
       if (nodeData.positionPrecisionBits !== undefined) updateSet.positionPrecisionBits = nodeData.positionPrecisionBits;
+      if (nodeData.positionLocationSource !== undefined) updateSet.positionLocationSource = nodeData.positionLocationSource;
       if (nodeData.positionTimestamp !== undefined) updateSet.positionTimestamp = nodeData.positionTimestamp;
       // Per-source blocklist is authoritative (issue #2601): re-apply the ignore
       // flag on update when the caller signals the node is still blocklisted,
@@ -1689,6 +1693,7 @@ export class NodesRepository extends BaseRepository {
         keySecurityIssueDetails: nodeData.keySecurityIssueDetails || null,
         positionChannel: nodeData.positionChannel !== undefined ? nodeData.positionChannel : null,
         positionPrecisionBits: nodeData.positionPrecisionBits !== undefined ? nodeData.positionPrecisionBits : null,
+        positionLocationSource: nodeData.positionLocationSource !== undefined ? nodeData.positionLocationSource : null,
         positionTimestamp: nodeData.positionTimestamp !== undefined ? nodeData.positionTimestamp : null,
         isIgnored: wasIgnored,
         createdAt: now,

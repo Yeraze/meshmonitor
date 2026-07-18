@@ -112,6 +112,33 @@ describe('toNodeCardModel — meshtastic', () => {
     expect(model.hwModelName).toBeNull();
     expect(model.sources).toBeUndefined();
     expect(model.position).toBeUndefined();
+    // #4176: precision + location source default to null when absent
+    expect(model.positionPrecisionBits).toBeNull();
+    expect(model.positionLocationSource).toBeNull();
+  });
+
+  it('maps position accuracy + location source when present (#4176)', () => {
+    const model = toNodeCardModel(
+      {
+        nodeNum: 5,
+        longName: 'GPS Node',
+        positionPrecisionBits: 18,
+        positionLocationSource: 2,
+      },
+      'meshtastic',
+    );
+    expect(model.positionPrecisionBits).toBe(18);
+    expect(model.positionLocationSource).toBe(2);
+  });
+
+  it('leaves precision/location-source null when the fields are non-numeric (#4176)', () => {
+    // toNodeCardModel accepts `unknown`, so malformed input needs no cast.
+    const model = toNodeCardModel(
+      { nodeNum: 5, positionPrecisionBits: 'x', positionLocationSource: null },
+      'meshtastic',
+    );
+    expect(model.positionPrecisionBits).toBeNull();
+    expect(model.positionLocationSource).toBeNull();
   });
 
   it('tolerates non-object raw input', () => {

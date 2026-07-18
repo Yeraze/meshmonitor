@@ -138,6 +138,7 @@ import { migration as addReasonToIgnoredNodesMigration, runMigration120Postgres 
 import { migration as mqttPacketLogMigration, runMigration121Postgres, runMigration121Mysql } from '../server/migrations/121_mqtt_packet_log.js';
 import { migration as cleanupOrphanedSourceNodesMigration, runMigration122Postgres, runMigration122Mysql } from '../server/migrations/122_cleanup_orphaned_source_nodes.js';
 import { migration as fixMqttDirectedMessageChannelMigration, runMigration123Postgres, runMigration123Mysql } from '../server/migrations/123_fix_mqtt_directed_message_channel.js';
+import { migration as addPositionLocationSourceMigration, runMigration124Postgres, runMigration124Mysql } from '../server/migrations/124_add_position_location_source.js';
 
 // ============================================================================
 // Registry
@@ -1960,4 +1961,19 @@ registry.register({
   sqlite: (db) => fixMqttDirectedMessageChannelMigration.up(db),
   postgres: (client) => runMigration123Postgres(client),
   mysql: (pool) => runMigration123Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 124: Add `positionLocationSource` to `nodes` — persists the
+// Meshtastic Position.location_source (manual / internal GPS / external GPS),
+// which was decoded off the wire but dropped before storage (issue #4176).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 124,
+  name: 'add_position_location_source',
+  settingsKey: 'migration_124_add_position_location_source',
+  sqlite: (db) => addPositionLocationSourceMigration.up(db),
+  postgres: (client) => runMigration124Postgres(client),
+  mysql: (pool) => runMigration124Mysql(pool),
 });

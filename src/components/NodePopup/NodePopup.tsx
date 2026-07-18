@@ -150,7 +150,7 @@ export const NodePopup: React.FC<NodePopupProps> = ({
           <>
             <div className="node-popup-grid">
               <IdentityItems model={model} />
-              <SignalItems model={model} showAltitude showPluggedIn snrDecimals={1} />
+              <SignalItems model={model} showAltitude showPluggedIn snrDecimals={1} distanceUnit={distanceUnit} />
               {pos && <PositionItem position={pos} />}
             </div>
             <LastHeardFooter
