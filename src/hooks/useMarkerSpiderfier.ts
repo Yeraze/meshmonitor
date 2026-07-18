@@ -37,16 +37,40 @@ interface SpiderfierInternals {
  * identically everywhere (issue #3612).
  *
  * These values come from the per-source NodesTab map (`SpiderfierController`),
- * which is the working reference. A 50px `nearbyDistance` is deliberately
- * larger than the library default (20px) so that co-located nodes — including
- * estimated-position nodes that collapse onto the same anchor point — are
- * reliably grouped and separable.
+ * which is the working reference.
+ *
+ * `nearbyDistance` (issue #4199): the pixel radius OMS uses to decide, at click
+ * time, which registered markers belong to the clicked marker's group — it
+ * compares each marker's CURRENT `getLatLng()` (in layer pixels) against the
+ * clicked marker's, purely by screen proximity. This was 50px, which is 2.5x
+ * the library default (20px) and far wider than a marker's icon-overlap zone.
+ * At that radius OMS pulled in — and, on a standalone hit, selected/opened the
+ * popup of — a genuinely-separate, unrelated node that merely happened to sit
+ * within 50px on screen, instead of fanning out the pile the user aimed at.
+ * #4155 made this reachable in more places: a node alone in its precision cell
+ * now renders at its true reported center (it used to always be jittered within
+ * the cell), so an unrelated node can land at a fixed point close to an
+ * intended cluster.
+ *
+ * 20px still reliably groups every pile that genuinely needs fanning, because
+ * those are always within ~a marker's width of each other on screen:
+ *  - exact-coincident anchors (estimated-position nodes, multi-source nodes at
+ *    identical coords) are 0px apart — caught by any radius >= 1;
+ *  - same-precision-cell piles overlap visually only at the low zooms where the
+ *    accuracy cell (and thus the #4016 within-cell offset spread) collapses to a
+ *    few pixels — also well within 20px. At higher zoom the within-cell offset
+ *    already declutters them, so they no longer need a click to separate.
+ * Markers 20-50px apart are visually distinct and individually clickable, so
+ * excluding them from the group is the correct behavior, not a regression.
  */
 export const SHARED_SPIDERFIER_OPTIONS: SpiderfierOptions = {
   /** Keep markers fanned out after clicking so each is individually selectable. */
   keepSpiderfied: true,
-  /** Pixel radius for detecting overlapping markers — 50px catches markers at (near-)identical coords. */
-  nearbyDistance: 50,
+  /** Pixel radius for detecting overlapping markers — matches genuine icon
+   *  overlap so a separate node up to 50px away isn't grouped/selected in place
+   *  of the intended pile (issue #4199). (Near-)identical coords are 0px apart
+   *  and always caught. */
+  nearbyDistance: 20,
   /** Number of markers before switching from circle to spiral layout. */
   circleSpiralSwitchover: 9,
   /** Distance between markers in circle layout (pixels). */
