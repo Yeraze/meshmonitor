@@ -29,7 +29,7 @@ import { applyHomoglyphOptimization } from '../utils/homoglyph';
 import { calculateDistance, formatDistance, getDistanceToNode } from '../utils/distance';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
 import { getMessageContentMatchNodeIds } from '../utils/messageContentFilter';
-import { isNodeComplete, isInfrastructureNode, hasValidPosition, parseNodeId } from '../utils/nodeHelpers';
+import { isNodeComplete, isInfrastructureNode, hasValidPosition, parseNodeId, formatSenderLabel } from '../utils/nodeHelpers';
 import { getEffectiveHops } from '../utils/nodeHops';
 import { scrollInputIntoView } from '../utils/scrollInputIntoView';
 import { useMapContext } from '../contexts/MapContext';
@@ -506,6 +506,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     (nodeId: string): string => {
       const node = nodes.find(n => n.user?.id === nodeId);
       return (node?.user?.shortName && node.user.shortName.trim()) || nodeId.slice(-4);
+    },
+    [nodes]
+  );
+
+  // Per-message sender label: "Long Name (SHRT)" (issue #4193). Kept as a
+  // separate helper rather than folded into getNodeName so the fallback
+  // chain there is untouched; see formatSenderLabel in nodeHelpers.ts for
+  // the pure formatting rules (no duplicate/empty parenthetical).
+  const getSenderLabel = useCallback(
+    (nodeId: string): string => {
+      const node = nodes.find(n => n.user?.id === nodeId);
+      return formatSenderLabel(node?.user?.longName, node?.user?.shortName, nodeId);
     },
     [nodes]
   );
@@ -1534,7 +1546,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         )}
                         <div className="message-item traceroute">
                           <div className="message-header">
-                            <span className="message-from">{getNodeName(msg.from)}</span>
+                            <span className="message-from">{getSenderLabel(msg.from)}</span>
                             <span className="message-time">
                               {formatMessageTime(currentDate, timeFormat, dateFormat)}
                               <HopCountDisplay
