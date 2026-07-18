@@ -2997,6 +2997,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         const sentMessage: MeshCoreMessage = {
           id: msgId,
           fromPublicKey: this.localNode?.publicKey || 'local',
+          // Stamp our own display name so the Unified Messages feed labels
+          // self-sent messages by name instead of falling back to the raw
+          // public key (#4194). Received channel messages carry the sender
+          // name inline via the "Name: " body prefix; our own sends have no
+          // such prefix, so without this `fromName` the unified `senderLabel`
+          // has nothing but `fromNodeId` (the full pubkey) to show.
+          fromName: this.localNode?.name ?? undefined,
           toPublicKey: sentToPublicKey,
           text: text,
           timestamp: Date.now(),
@@ -4570,6 +4577,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         const sentMessage: MeshCoreMessage = {
           id: `sent-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
           fromPublicKey: this.localNode?.publicKey || 'local',
+          // Label self-sent room posts by our own name in the Unified feed
+          // rather than the raw public key (#4194); see the channel/DM send site.
+          fromName: this.localNode?.name ?? undefined,
           toPublicKey: roomPublicKey,
           text,
           timestamp: Date.now(),
