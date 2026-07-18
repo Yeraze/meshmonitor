@@ -9,9 +9,10 @@ import { MODEM_PRESET_OPTIONS, FEM_LNA_MODE_OPTIONS, AMATEUR_RADIO_REGIONS, isAm
 describe('LoRaConfigSection', () => {
   describe('Modem Preset Constants', () => {
     it('should have correct number of modem presets', () => {
-      // 0-9 from earlier protobuf revisions, plus 10-13 added in v2.7.23
-      // (LITE_FAST, LITE_SLOW, NARROW_FAST, NARROW_SLOW)
-      expect(MODEM_PRESET_OPTIONS).toHaveLength(13);
+      // 0-9 from earlier protobuf revisions, 10-13 added in v2.7.23
+      // (LITE_FAST, LITE_SLOW, NARROW_FAST, NARROW_SLOW), plus
+      // MEDIUM_TURBO (16) from firmware 2.8 (#4074)
+      expect(MODEM_PRESET_OPTIONS).toHaveLength(14);
     });
 
     it('should have LONG_FAST as first preset', () => {
@@ -23,10 +24,10 @@ describe('LoRaConfigSection', () => {
       });
     });
 
-    it('should have NARROW_SLOW as last preset', () => {
+    it('should have MEDIUM_TURBO as last preset', () => {
       const lastPreset = MODEM_PRESET_OPTIONS[MODEM_PRESET_OPTIONS.length - 1];
-      expect(lastPreset.name).toBe('NARROW_SLOW');
-      expect(lastPreset.value).toBe(13);
+      expect(lastPreset.name).toBe('MEDIUM_TURBO');
+      expect(lastPreset.value).toBe(16);
     });
 
     it('should include LONG_TURBO at value 9', () => {

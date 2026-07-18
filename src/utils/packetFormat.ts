@@ -55,6 +55,8 @@ export const getPortnumColor = (portnum: number): string => {
       return '#ff5722'; // ALERT - deep orange
     case 32:
       return '#2196f3'; // REPLY - light blue
+    case 37:
+      return '#3f51b5'; // MESH_BEACON_APP - indigo
     case 64: // SERIAL - brown
     case 65: // STORE_FORWARD - brown
     case 66:

@@ -25,12 +25,13 @@ describe('isViaMqtt', () => {
     expect(isViaMqtt(TransportMechanism.API)).toBe(false);
   });
 
-  it('should return false for LORA_SECONDARY transport mechanism', () => {
-    expect(isViaMqtt(TransportMechanism.LORA_SECONDARY)).toBe(false);
+  it('should return false for LORA_ALT1 (secondary radio) transport mechanism', () => {
+    expect(isViaMqtt(TransportMechanism.LORA_ALT1)).toBe(false);
   });
 
-  it('should return false for SERIAL transport mechanism', () => {
-    expect(isViaMqtt(TransportMechanism.SERIAL)).toBe(false);
+  it('should return false for LORA_ALT2 and LORA_ALT3 transport mechanisms', () => {
+    expect(isViaMqtt(TransportMechanism.LORA_ALT2)).toBe(false);
+    expect(isViaMqtt(TransportMechanism.LORA_ALT3)).toBe(false);
   });
 
   it('should return false for MULTICAST_UDP transport mechanism', () => {
@@ -126,6 +127,7 @@ describe('getPortNumName', () => {
     expect(getPortNumName(3)).toBe('POSITION_APP');
     expect(getPortNumName(67)).toBe('TELEMETRY_APP');
     expect(getPortNumName(70)).toBe('TRACEROUTE_APP');
+    expect(getPortNumName(37)).toBe('MESH_BEACON_APP');
   });
 
   it('returns UNKNOWN for unknown portnums', () => {

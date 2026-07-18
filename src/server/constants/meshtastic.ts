@@ -29,6 +29,7 @@ export const PortNum = {
   PAXCOUNTER_APP: 34,
   STORE_FORWARD_PLUSPLUS_APP: 35,
   NODE_STATUS_APP: 36,
+  MESH_BEACON_APP: 37, // MeshBeacon periodic broadcast (firmware 2.8+)
   SERIAL_APP: 64,
   STORE_FORWARD_APP: 65,
   RANGE_TEST_APP: 66,
