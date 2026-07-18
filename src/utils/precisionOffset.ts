@@ -25,6 +25,25 @@ const METERS_PER_DEGREE = 111_111;
  */
 export const OBSCURED_PRECISION_MAX_BITS = 18;
 
+/**
+ * Cap the marker jitter magnitude at the size of this precision cell (#4155).
+ * Coarser (fewer-bit) cells are enormous — a 1-bit cell spans more than half the
+ * globe — so scaling the jitter to the node's own cell would fling the marker
+ * absurd (multi-km to continental) distances from its reported point. 15 bits
+ * ≈ a 1,456 m cell; markers in any coarser cell jitter no further than that.
+ * For bits ≥ 15 the true cell is already smaller, so the cap is a no-op and
+ * behavior is unchanged. The drawn accuracy rectangle stays honest (full true
+ * cell) — only the marker offset is capped, so it still lands inside the square.
+ */
+export const OFFSET_MAGNITUDE_CAP_BITS = 15;
+
+/**
+ * Cell occupancy at which the occupancy-based offset scale reaches its maximum
+ * (#4155). Below this, the scale grows logarithmically with the number of nodes
+ * sharing the cell; at/above it, the full (capped) within-cell spread is used.
+ */
+export const OFFSET_SPREAD_SATURATION_OCCUPANCY = 8;
+
 /** Full accuracy-cell side length in meters for a given precision. */
 export function precisionCellSizeMeters(bits: number): number {
   return Math.pow(2, 32 - bits) * 1e-7 * METERS_PER_DEGREE;
@@ -87,18 +106,47 @@ export function precisionCellBounds(
 }
 
 /**
+ * Offset-magnitude scale in `[0,1]` for a precision cell shared by `occupancy`
+ * nodes (#4155). A lone node returns 0 (nothing to declutter — leave it at its
+ * true center). For 2+ occupants the scale grows LOGARITHMICALLY with the count
+ * and saturates at 1 by {@link OFFSET_SPREAD_SATURATION_OCCUPANCY}: a more
+ * crowded cell spreads its markers across more of the cell, but stepping 2→3
+ * nudges the spread far less than 1→2, so lightly-shared cells aren't
+ * over-spread.
+ */
+export function occupancyOffsetScale(occupancy: number): number {
+  if (occupancy < 2) return 0;
+  const scale = Math.log2(occupancy) / Math.log2(OFFSET_SPREAD_SATURATION_OCCUPANCY);
+  return Math.min(1, scale);
+}
+
+/**
  * Deterministically offset (lat, lng) to a stable point within the node's
  * accuracy cell. The offset is a pure function of `id`, so it is identical across
- * re-renders/polls (the marker never jumps). The result stays within
- * `± halfCell` of the input — i.e. inside the accuracy rectangle.
+ * re-renders/polls (the marker never jumps).
+ *
+ * The jitter magnitude is bounded two ways, both of which only ever SHRINK it —
+ * so the result always stays within `± halfCell` of the input, i.e. inside the
+ * drawn accuracy rectangle:
+ *  - capped at an {@link OFFSET_MAGNITUDE_CAP_BITS}-bit cell so coarse-precision
+ *    markers don't fling far from their reported point (#4155);
+ *  - scaled by `spread` in `[0,1]` (occupancy-based, see
+ *    {@link occupancyOffsetScale}) — `1` uses the full capped cell.
  */
 export function offsetWithinPrecisionCell(
   lat: number,
   lng: number,
   bits: number,
   id: string,
+  spread: number = 1,
 ): [number, number] {
-  const sizeDeg = precisionCellSizeDegrees(bits);
+  // Cap the effective cell at OFFSET_MAGNITUDE_CAP_BITS before scaling by
+  // occupancy. min() (not the raw cell) is what bounds coarse-precision jitter.
+  const cappedSizeDeg = Math.min(
+    precisionCellSizeDegrees(bits),
+    precisionCellSizeDegrees(OFFSET_MAGNITUDE_CAP_BITS),
+  );
+  const sizeDeg = cappedSizeDeg * spread;
   // Two independent fractions in [0,1) from one id.
   const fx = (djb2Hash(id) % 1_000_000) / 1_000_000;
   const fy = (djb2Hash(`${id}:y`) % 1_000_000) / 1_000_000;
@@ -151,6 +199,17 @@ export interface PrecisionOffsetInput<T> {
  * position it never reported). Nodes with fine/absent precision or a user
  * override are never moved. Pure and deterministic given the same input.
  *
+ * The offset magnitude is refined two ways (#4155): it scales LOGARITHMICALLY
+ * with the cell's occupancy ({@link occupancyOffsetScale}) so a crowded cell
+ * spreads wider than a barely-shared one, and it is capped at an
+ * {@link OFFSET_MAGNITUDE_CAP_BITS}-bit cell ({@link offsetWithinPrecisionCell})
+ * so coarse-precision markers don't scatter kilometers away. Because a node is
+ * only ever offset when 2+ nodes of the SAME precision share the SAME cell
+ * ({@link precisionCellKey} folds `bits` into the key), two nodes with
+ * overlapping but differently-sized accuracy regions are each alone in their own
+ * cell and stay put — so the offset can never push them closer together than
+ * their true centers.
+ *
  * Returns each input's `item` paired with its resolved `latLng` (offset where the
  * cell has 2+ occupants, true center otherwise), in the input order.
  */
@@ -167,11 +226,14 @@ export function applyPrecisionCellOffsets<T>(
     occupancy.set(cell, (occupancy.get(cell) ?? 0) + 1);
     return { cell, bits: n.bits };
   });
-  // Pass 2: offset only nodes whose cell has 2+ occupants.
+  // Pass 2: offset only nodes whose cell has 2+ occupants, scaling the jitter
+  // logarithmically by that cell's occupancy (#4155).
   return nodes.map((n, i) => {
     const c = cellOf[i];
-    if (c && (occupancy.get(c.cell) ?? 0) >= 2) {
-      return { item: n.item, latLng: offsetWithinPrecisionCell(n.latLng[0], n.latLng[1], c.bits, n.id) };
+    const occ = c ? (occupancy.get(c.cell) ?? 0) : 0;
+    if (c && occ >= 2) {
+      const spread = occupancyOffsetScale(occ);
+      return { item: n.item, latLng: offsetWithinPrecisionCell(n.latLng[0], n.latLng[1], c.bits, n.id, spread) };
     }
     return { item: n.item, latLng: n.latLng };
   });
