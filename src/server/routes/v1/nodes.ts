@@ -13,19 +13,16 @@ import { filterNodesByChannelPermission, maskNodeLocationByChannel } from '../..
 import { findCopyCandidates, copyNodeInfo } from '../../services/nodeInfoCopyService.js';
 
 // mergeParams so this router picks up :sourceId when mounted under
-// /sources/:sourceId (new shape). At the root /nodes mount it's undefined
-// and the handlers fall back to ?sourceId= for backward compat.
+// /sources/:sourceId. `attachSource` resolves the param (incl. the `default`
+// alias) before any handler runs.
 const router = express.Router({ mergeParams: true });
 
 /**
- * Resolve the effective source scope for a request. Path param wins over
- * query param; both undefined means "no scope" (legacy cross-source view).
+ * Resolve the effective source scope for a request from the :sourceId path
+ * param (always present under the /sources/:sourceId mount).
  */
 function getScopedSourceId(req: Request): string | undefined {
-  const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
-  if (fromPath) return fromPath;
-  const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
-  return fromQuery;
+  return typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
 }
 
 /**

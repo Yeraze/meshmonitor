@@ -11,7 +11,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
-import { ALL_SOURCES } from '../../../db/repositories/index.js';
 
 // Token constants
 const VALID_TEST_TOKEN = 'mm_v1_test_token_12345678901234567890';
@@ -227,7 +226,19 @@ vi.mock('../../../services/database.js', () => {
       getPositionTelemetryByNodeAsync: vi.fn(async () => testPositionTelemetry),
       // Traceroutes methods
       getAllTraceroutes: vi.fn(() => testTraceroutes),
-      getAllTraceroutesAsync: vi.fn(async () => testTraceroutes)
+      getAllTraceroutesAsync: vi.fn(async () => testTraceroutes),
+      // Sources — attachSource resolves the :sourceId path param (incl. the
+      // `default` alias) via these before any per-source handler runs.
+      sources: {
+        getAllSources: vi.fn(async () => [
+          { id: 'test-source', name: 'Test Source', type: 'meshtastic_tcp', enabled: true, createdAt: 1 },
+        ]),
+        getSource: vi.fn(async (id: string) =>
+          typeof id === 'string' && id.length > 0
+            ? { id, name: id, type: 'meshtastic_tcp', enabled: true, createdAt: 1 }
+            : null
+        ),
+      }
     }
   };
 });
@@ -384,10 +395,10 @@ describe('GET /api/v1/', () => {
   });
 });
 
-describe('GET /api/v1/nodes', () => {
+describe('GET /api/v1/sources/test-source/nodes', () => {
   it('should return list of nodes with standard response format', async () => {
     const response = await request(app)
-      .get('/api/v1/nodes')
+      .get('/api/v1/sources/test-source/nodes')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -400,7 +411,7 @@ describe('GET /api/v1/nodes', () => {
 
   it('should include Yeraze Station G2 in node list', async () => {
     const response = await request(app)
-      .get('/api/v1/nodes')
+      .get('/api/v1/sources/test-source/nodes')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -410,10 +421,10 @@ describe('GET /api/v1/nodes', () => {
   });
 });
 
-describe('GET /api/v1/nodes/:id', () => {
+describe('GET /api/v1/sources/test-source/nodes/:id', () => {
   it('should return single node by ID', async () => {
     const response = await request(app)
-      .get('/api/v1/nodes/2882400002')
+      .get('/api/v1/sources/test-source/nodes/2882400002')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -424,7 +435,7 @@ describe('GET /api/v1/nodes/:id', () => {
 
   it('should return 404 for non-existent node', async () => {
     const response = await request(app)
-      .get('/api/v1/nodes/999999999')
+      .get('/api/v1/sources/test-source/nodes/999999999')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(404);
 
@@ -433,10 +444,10 @@ describe('GET /api/v1/nodes/:id', () => {
   });
 });
 
-describe('GET /api/v1/messages', () => {
+describe('GET /api/v1/sources/test-source/messages', () => {
   it('should return messages with standard response format', async () => {
     const response = await request(app)
-      .get('/api/v1/messages')
+      .get('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -448,7 +459,7 @@ describe('GET /api/v1/messages', () => {
 
   it('should filter messages by channel', async () => {
     const response = await request(app)
-      .get('/api/v1/messages?channel=0')
+      .get('/api/v1/sources/test-source/messages?channel=0')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -456,10 +467,10 @@ describe('GET /api/v1/messages', () => {
   });
 });
 
-describe('GET /api/v1/telemetry', () => {
+describe('GET /api/v1/sources/test-source/telemetry', () => {
   it('should return telemetry data', async () => {
     const response = await request(app)
-      .get('/api/v1/telemetry')
+      .get('/api/v1/sources/test-source/telemetry')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -470,7 +481,7 @@ describe('GET /api/v1/telemetry', () => {
 
   it('should filter telemetry by node ID', async () => {
     const response = await request(app)
-      .get('/api/v1/telemetry?nodeId=2882400001')
+      .get('/api/v1/sources/test-source/telemetry?nodeId=2882400001')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -478,10 +489,10 @@ describe('GET /api/v1/telemetry', () => {
   });
 });
 
-describe('GET /api/v1/traceroutes', () => {
+describe('GET /api/v1/sources/test-source/traceroutes', () => {
   it('should return traceroute data', async () => {
     const response = await request(app)
-      .get('/api/v1/traceroutes')
+      .get('/api/v1/sources/test-source/traceroutes')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -492,10 +503,10 @@ describe('GET /api/v1/traceroutes', () => {
   });
 });
 
-describe('GET /api/v1/packets', () => {
+describe('GET /api/v1/sources/test-source/packets', () => {
   it('should return packet log data', async () => {
     const response = await request(app)
-      .get('/api/v1/packets')
+      .get('/api/v1/sources/test-source/packets')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -508,7 +519,7 @@ describe('GET /api/v1/packets', () => {
 
   it('should support filtering by portnum', async () => {
     const response = await request(app)
-      .get('/api/v1/packets?portnum=1')
+      .get('/api/v1/sources/test-source/packets?portnum=1')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -517,7 +528,7 @@ describe('GET /api/v1/packets', () => {
 
   it('should support pagination', async () => {
     const response = await request(app)
-      .get('/api/v1/packets?offset=0&limit=1')
+      .get('/api/v1/sources/test-source/packets?offset=0&limit=1')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -526,10 +537,10 @@ describe('GET /api/v1/packets', () => {
   });
 });
 
-describe('GET /api/v1/packets/:id', () => {
+describe('GET /api/v1/sources/:sourceId/packets/:id', () => {
   it('should return single packet by ID scoped to the source', async () => {
     const response = await request(app)
-      .get('/api/v1/packets/1?sourceId=test-source')
+      .get('/api/v1/sources/test-source/packets/1')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -537,18 +548,9 @@ describe('GET /api/v1/packets/:id', () => {
     expect(response.body).toHaveProperty('data');
   });
 
-  it('should 400 MISSING_SOURCE_ID when sourceId is omitted', async () => {
-    const response = await request(app)
-      .get('/api/v1/packets/1')
-      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
-      .expect(400);
-
-    expect(response.body).toHaveProperty('code', 'MISSING_SOURCE_ID');
-  });
-
   it('should 404 for a packet belonging to a different source (no cross-source read)', async () => {
     const response = await request(app)
-      .get('/api/v1/packets/1?sourceId=other-source')
+      .get('/api/v1/sources/other-source/packets/1')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(404);
 
@@ -557,7 +559,7 @@ describe('GET /api/v1/packets/:id', () => {
 
   it('should return 404 for non-existent packet', async () => {
     const response = await request(app)
-      .get('/api/v1/packets/999999?sourceId=test-source')
+      .get('/api/v1/sources/test-source/packets/999999')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(404);
 
@@ -656,11 +658,11 @@ describe('GET /api/v1/solar/range', () => {
 describe('API Response Format Consistency', () => {
   it('all list endpoints should have consistent response structure', async () => {
     const endpoints = [
-      '/api/v1/nodes',
-      '/api/v1/messages',
-      '/api/v1/telemetry',
-      '/api/v1/traceroutes',
-      '/api/v1/packets',
+      '/api/v1/sources/test-source/nodes',
+      '/api/v1/sources/test-source/messages',
+      '/api/v1/sources/test-source/telemetry',
+      '/api/v1/sources/test-source/traceroutes',
+      '/api/v1/sources/test-source/packets',
       '/api/v1/solar'
     ];
 
@@ -682,7 +684,7 @@ describe('API Response Format Consistency', () => {
 
   it('all error responses should have consistent structure', async () => {
     const response = await request(app)
-      .get('/api/v1/nodes/999999999')
+      .get('/api/v1/sources/test-source/nodes/999999999')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(404);
 
@@ -692,10 +694,10 @@ describe('API Response Format Consistency', () => {
   });
 });
 
-describe('POST /api/v1/messages', () => {
+describe('POST /api/v1/sources/test-source/messages', () => {
   it('should send a channel message successfully', async () => {
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: 'Hello from API test!',
@@ -714,7 +716,7 @@ describe('POST /api/v1/messages', () => {
 
   it('should send a direct message successfully', async () => {
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: 'Private message via API',
@@ -732,7 +734,7 @@ describe('POST /api/v1/messages', () => {
 
   it('should reject request without text', async () => {
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         channel: 0
@@ -746,7 +748,7 @@ describe('POST /api/v1/messages', () => {
 
   it('should reject request with empty text', async () => {
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: '',
@@ -760,7 +762,7 @@ describe('POST /api/v1/messages', () => {
 
   it('should reject request with both channel and toNodeId', async () => {
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: 'Test message',
@@ -776,7 +778,7 @@ describe('POST /api/v1/messages', () => {
 
   it('should reject request without channel or toNodeId', async () => {
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: 'Test message'
@@ -790,7 +792,7 @@ describe('POST /api/v1/messages', () => {
 
   it('should reject invalid channel number', async () => {
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: 'Test message',
@@ -805,7 +807,7 @@ describe('POST /api/v1/messages', () => {
 
   it('should reject invalid toNodeId format', async () => {
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: 'Test message',
@@ -820,7 +822,7 @@ describe('POST /api/v1/messages', () => {
 
   it('should support optional replyId', async () => {
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: 'This is a reply',
@@ -835,7 +837,7 @@ describe('POST /api/v1/messages', () => {
 
   it('should trim whitespace from message text', async () => {
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: '  Trimmed message  ',
@@ -848,7 +850,7 @@ describe('POST /api/v1/messages', () => {
 
   it('should accept short node IDs (1-8 hex chars)', async () => {
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: 'Short node ID test',
@@ -862,7 +864,7 @@ describe('POST /api/v1/messages', () => {
 
   it('should reject whitespace-only text', async () => {
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: '   ',
@@ -875,7 +877,7 @@ describe('POST /api/v1/messages', () => {
   });
 });
 
-describe('POST /api/v1/messages - Permission Tests', () => {
+describe('POST /api/v1/sources/test-source/messages - Permission Tests', () => {
   it('should reject channel message without channel permission', async () => {
     // Override checkPermissionAsync to deny channel_0:write
     const databaseService = await import('../../../services/database.js');
@@ -887,7 +889,7 @@ describe('POST /api/v1/messages - Permission Tests', () => {
     );
 
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: 'Should be denied',
@@ -913,7 +915,7 @@ describe('POST /api/v1/messages - Permission Tests', () => {
     );
 
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: 'Should be denied',
@@ -928,7 +930,7 @@ describe('POST /api/v1/messages - Permission Tests', () => {
   });
 });
 
-describe('POST /api/v1/messages - Error Handling', () => {
+describe('POST /api/v1/sources/test-source/messages - Error Handling', () => {
   it('should return 503 when not connected to node', async () => {
     // Mock sendTextMessage to throw a "Not connected" error
     const meshtasticManager = await import('../../meshtasticManager.js');
@@ -937,7 +939,7 @@ describe('POST /api/v1/messages - Error Handling', () => {
     );
 
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: 'Test message',
@@ -958,7 +960,7 @@ describe('POST /api/v1/messages - Error Handling', () => {
     );
 
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: 'Test message',
@@ -971,7 +973,7 @@ describe('POST /api/v1/messages - Error Handling', () => {
   });
 });
 
-describe('POST /api/v1/messages - Multi-Message Breakup', () => {
+describe('POST /api/v1/sources/test-source/messages - Multi-Message Breakup', () => {
   it('should send short messages directly without splitting', async () => {
     const meshtasticManager = await import('../../meshtasticManager.js');
     // mockMessageQueue is the per-manager queue stub used by the meshtasticManager mock above.
@@ -981,7 +983,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     vi.mocked(mockMessageQueue.enqueue).mockClear();
 
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: 'Short message',
@@ -1010,7 +1012,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     const longMessage = 'A'.repeat(250);
 
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: longMessage,
@@ -1049,7 +1051,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     const longMessage = 'B'.repeat(450);
 
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: longMessage,
@@ -1082,7 +1084,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     const longMessage = 'C'.repeat(450);
 
     await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: longMessage,
@@ -1112,7 +1114,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     const exactMessage = 'D'.repeat(200);
 
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: exactMessage,
@@ -1141,7 +1143,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     const emojiMessage = '😀'.repeat(51);
 
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: emojiMessage,
@@ -1161,7 +1163,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     const longMessage = 'E'.repeat(300);
 
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: longMessage,
@@ -1183,7 +1185,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     const longMessage = 'F'.repeat(300);
 
     await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: longMessage,
@@ -1208,7 +1210,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     const veryLongMessage = 'X'.repeat(800);
 
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: veryLongMessage,
@@ -1234,7 +1236,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     const maxAllowedMessage = 'Y'.repeat(600);
 
     const response = await request(app)
-      .post('/api/v1/messages')
+      .post('/api/v1/sources/test-source/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .send({
         text: maxAllowedMessage,
@@ -1248,10 +1250,10 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
   });
 });
 
-describe('GET /api/v1/nodes/:nodeId/position-history', () => {
+describe('GET /api/v1/sources/test-source/nodes/:nodeId/position-history', () => {
   it('should reject requests without API token', async () => {
     const response = await request(app)
-      .get('/api/v1/nodes/2882400001/position-history')
+      .get('/api/v1/sources/test-source/nodes/2882400001/position-history')
       .expect(401);
 
     expect(response.body).toHaveProperty('error');
@@ -1262,7 +1264,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
     vi.mocked(databaseService.default.checkPermissionAsync).mockResolvedValueOnce(false);
 
     const response = await request(app)
-      .get('/api/v1/nodes/2882400001/position-history')
+      .get('/api/v1/sources/test-source/nodes/2882400001/position-history')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(403);
 
@@ -1289,7 +1291,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
     );
 
     const response = await request(app)
-      .get('/api/v1/nodes/2882400001/position-history')
+      .get('/api/v1/sources/test-source/nodes/2882400001/position-history')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(403);
 
@@ -1299,7 +1301,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should return position history with correct response format', async () => {
     const response = await request(app)
-      .get('/api/v1/nodes/2882400001/position-history')
+      .get('/api/v1/sources/test-source/nodes/2882400001/position-history')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -1316,7 +1318,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should return positions sorted ascending by timestamp', async () => {
     const response = await request(app)
-      .get('/api/v1/nodes/2882400001/position-history')
+      .get('/api/v1/sources/test-source/nodes/2882400001/position-history')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -1329,7 +1331,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should include correct fields in position data', async () => {
     const response = await request(app)
-      .get('/api/v1/nodes/2882400001/position-history')
+      .get('/api/v1/sources/test-source/nodes/2882400001/position-history')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -1354,7 +1356,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should respect limit parameter', async () => {
     const response = await request(app)
-      .get('/api/v1/nodes/2882400001/position-history?limit=2')
+      .get('/api/v1/sources/test-source/nodes/2882400001/position-history?limit=2')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -1366,7 +1368,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should respect offset parameter', async () => {
     const response = await request(app)
-      .get('/api/v1/nodes/2882400001/position-history?offset=1&limit=10')
+      .get('/api/v1/sources/test-source/nodes/2882400001/position-history?offset=1&limit=10')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -1378,7 +1380,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should filter positions by before parameter', async () => {
     const response = await request(app)
-      .get('/api/v1/nodes/2882400001/position-history?before=2500')
+      .get('/api/v1/sources/test-source/nodes/2882400001/position-history?before=2500')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -1391,7 +1393,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should filter positions by before parameter', async () => {
     const response = await request(app)
-      .get('/api/v1/nodes/2882400001/position-history?before=2500')
+      .get('/api/v1/sources/test-source/nodes/2882400001/position-history?before=2500')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -1407,7 +1409,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
     vi.mocked(databaseService.default.telemetry.getPositionTelemetryByNode).mockClear();
 
     await request(app)
-      .get('/api/v1/nodes/2882400001/position-history?since=1500')
+      .get('/api/v1/sources/test-source/nodes/2882400001/position-history?since=1500')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -1415,7 +1417,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
       '2882400001',
       5000, // 1000 * 5 internal limit
       1500, // since parameter
-      ALL_SOURCES // sourceId (no scope in legacy root call -> intentional cross-source)
+      'test-source' // sourceId resolved from the :sourceId path param
     );
   });
 
@@ -1424,7 +1426,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
     vi.mocked(databaseService.default.telemetry.getPositionTelemetryByNode).mockResolvedValueOnce([]);
 
     const response = await request(app)
-      .get('/api/v1/nodes/2882400001/position-history')
+      .get('/api/v1/sources/test-source/nodes/2882400001/position-history')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -1436,7 +1438,7 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
 
   it('should cap limit at 10000', async () => {
     const response = await request(app)
-      .get('/api/v1/nodes/2882400001/position-history?limit=50000')
+      .get('/api/v1/sources/test-source/nodes/2882400001/position-history?limit=50000')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
       .expect(200);
 
@@ -1444,23 +1446,32 @@ describe('GET /api/v1/nodes/:nodeId/position-history', () => {
   });
 });
 
-describe('V1 deprecation shim (legacy root paths — issue #2773)', () => {
-  it('adds a Warning: 299 header to legacy /api/v1/nodes', async () => {
+describe('V1 legacy root paths removed in 4.14 (issue #4117)', () => {
+  it('404s the removed legacy root shape /api/v1/nodes', async () => {
     const response = await request(app)
       .get('/api/v1/nodes')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
 
-    expect(response.status).toBe(200);
-    expect(response.headers.warning).toBeDefined();
-    expect(response.headers.warning).toMatch(/^299 - /);
-    expect(response.headers.warning).toMatch(/\/api\/v1\/sources\/:sourceId\//);
+    expect(response.status).toBe(404);
   });
 
-  it('adds a Warning: 299 header to legacy /api/v1/messages', async () => {
+  it('404s the removed legacy root shape /api/v1/messages', async () => {
     const response = await request(app)
       .get('/api/v1/messages')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
 
-    expect(response.headers.warning).toMatch(/^299 - /);
+    expect(response.status).toBe(404);
+  });
+
+  it('still serves the canonical per-source shape via the default alias', async () => {
+    const response = await request(app)
+      .get('/api/v1/sources/default/nodes')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('success', true);
+    expect(Array.isArray(response.body.data)).toBe(true);
+    // No deprecation Warning header on the canonical shape.
+    expect(response.headers.warning).toBeUndefined();
   });
 });

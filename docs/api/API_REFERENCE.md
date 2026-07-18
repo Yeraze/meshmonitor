@@ -8,16 +8,10 @@ This document provides comprehensive documentation for all MeshMonitor API endpo
 
 **Content Type:** `application/json`
 
-::: warning Breaking change in 4.13 — migrate before upgrading to 4.14
-**As of 4.13, the canonical v1 API shape is `/api/v1/sources/{sourceId}/...`.**
+::: warning Breaking change — v1 root paths were removed in 4.14
+**The canonical v1 API shape is `/api/v1/sources/{sourceId}/...`.**
 
-The old v1 root paths (`/api/v1/nodes`, `/api/v1/messages`, etc.) are kept alive for **one release only**. Every response on those paths carries:
-
-```
-Warning: 299 - "v1 root-path scoping is deprecated; use /api/v1/sources/:sourceId/... instead"
-```
-
-**These paths will be REMOVED in 4.14.** New integrations must use the per-source v1 API. Get the list of sources from `GET /api/v1/sources`.
+The old v1 root paths (`/api/v1/nodes`, `/api/v1/messages`, etc.) were deprecated in 4.13 with a one-release `Warning: 299` grace period and **removed in 4.14** — they now return `404`. Integrations must use the per-source v1 API. Get the list of sources from `GET /api/v1/sources`.
 :::
 
 ## Table of Contents
@@ -75,7 +69,7 @@ Replace `{sourceId}` with the `id` returned above, or use the literal string `"d
 | `GET /api/v1/status?sourceId={id}`               | `GET /api/v1/sources/{sourceId}/status`                |
 | `GET /api/v1/nodes/{nId}/position-history?sourceId={id}` | `GET /api/v1/sources/{sourceId}/nodes/{nId}/position-history` |
 
-Legacy v1 root paths return the `Warning: 299` header above and **will be removed in 4.14**.
+The legacy v1 root paths in the left column were **removed in 4.14** (after a one-release `Warning: 299` deprecation in 4.13) and now return `404`. The table is retained for migration reference.
 
 #### Missing sourceId response
 

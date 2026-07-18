@@ -646,7 +646,6 @@ import auditRoutes from './routes/auditRoutes.js';
 import securityRoutes from './routes/securityRoutes.js';
 import packetRoutes from './routes/packetRoutes.js';
 import solarRoutes from './routes/solarRoutes.js';
-import upgradeRoutes from './routes/upgradeRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import linkPreviewRoutes from './routes/linkPreviewRoutes.js';
 import scriptContentRoutes from './routes/scriptContentRoutes.js';
@@ -762,9 +761,6 @@ apiRouter.use('/solar', optionalAuth(), solarRoutes);
 
 // News routes (public feed, authenticated status endpoints)
 apiRouter.use('/news', newsRoutes);
-
-// Upgrade routes (requires authentication)
-apiRouter.use('/upgrade', upgradeRoutes);
 
 // Message routes (requires appropriate write permissions)
 apiRouter.use('/messages', optionalAuth(), messageRoutes);

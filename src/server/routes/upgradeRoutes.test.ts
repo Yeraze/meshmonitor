@@ -1,22 +1,23 @@
 /**
- * Upgrade Routes tests — retired 410 stubs (Auto-Upgrade Retirement, v4.13).
+ * Upgrade Routes tests — routes fully removed (Auto-Upgrade Retirement Phase 3, v4.14).
  *
- * The router no longer performs any upgrade work; every endpoint returns
- * `410 Gone` with the shared `fail()` envelope so older frontends get a clean
- * machine-readable response (and a docs link) instead of 404 HTML.
+ * v4.13 kept `/api/upgrade/*` mounted as `410 Gone` stubs for one grace-period
+ * release. v4.14 removes the router entirely (issue #4117), so those paths now
+ * fall through to a plain 404 like any unknown route — no more 410 stubs.
  *
  * Uses the real route test harness (createRouteTestApp) per CLAUDE.md.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import upgradeRoutes from './upgradeRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 
-describe('upgradeRoutes (retired)', () => {
+describe('upgradeRoutes (removed in 4.14)', () => {
   let harness: RouteTestHarness;
 
   beforeEach(async () => {
+    // No `/api/upgrade` mount — the router is gone. Mount only a health marker
+    // so the harness app is otherwise valid.
     harness = await createRouteTestApp({
-      mount: (app) => app.use('/api/upgrade', upgradeRoutes),
+      mount: (app) => app.get('/api/health', (_req, res) => res.json({ ok: true })),
     });
   });
 
@@ -34,25 +35,14 @@ describe('upgradeRoutes (retired)', () => {
   ];
 
   for (const { method, path } of endpoints) {
-    it(`${method.toUpperCase()} ${path} → 410 FEATURE_RETIRED`, async () => {
+    it(`${method.toUpperCase()} ${path} → 404 (not 410)`, async () => {
       const agent = await harness.loginAs(harness.admin);
       const res =
         method === 'post' ? await agent.post(path).send({}) : await agent.get(path);
 
-      expect(res.status).toBe(410);
-      expect(res.body).toMatchObject({
-        success: false,
-        code: 'FEATURE_RETIRED',
-      });
-      expect(res.body.error).toContain(
-        'https://yeraze.github.io/meshmonitor/configuration/updating',
-      );
+      // Router removed entirely — no 410 FEATURE_RETIRED stub anymore.
+      expect(res.status).toBe(404);
+      expect(res.body?.code).not.toBe('FEATURE_RETIRED');
     });
   }
-
-  it('still requires authentication (401 when unauthenticated)', async () => {
-    const agent = await harness.loginAs(null);
-    const res = await agent.post('/api/upgrade/trigger').send({});
-    expect(res.status).toBe(401);
-  });
 });

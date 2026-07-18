@@ -14,8 +14,9 @@
  *   /api/v1/sources/:sourceId/nodes/:nodeId/position-history
  *   /api/v1/solar, /api/v1/channel-database — deployment-global (unchanged)
  *
- *   /api/v1/{nodes,messages,...}?sourceId=... — legacy shape, kept alive for
- *     one release with a `Warning: 299` header via `deprecationShim`.
+ * The legacy root shape (`/api/v1/{nodes,messages,...}?sourceId=...`) shipped
+ * with a one-release `Warning: 299` deprecation grace period in 4.13 and was
+ * removed in 4.14 — those root paths now 404.
  *
  * Every per-source sub-router opts into `Router({ mergeParams: true })` so
  * `req.params.sourceId` threads through both mounts. `attachSource` runs
@@ -39,7 +40,6 @@ import docsRouter from './docs.js';
 import statusRouter from './status.js';
 import sourcesRouter from './sources.js';
 import { attachSource } from './sourceParam.js';
-import { deprecationShim } from './deprecatedShim.js';
 import actionsRouter from './actions.js';
 
 const router = express.Router();
@@ -74,7 +74,7 @@ router.get('/', (_req, res) => {
     },
     note:
       'Per-source paths are canonical. Legacy root paths (e.g. /api/v1/nodes?sourceId=...) ' +
-      'still work but emit a `Warning: 299` header and will be removed in a future release.',
+      'were removed in 4.14 — use the per-source shape.',
   });
 });
 
@@ -133,17 +133,5 @@ router.use(
 // apply `attachSource` per-route inside `actionsRouter` rather than at the
 // mount level.
 router.use('/sources/:sourceId/actions', actionsRouter);
-
-// Deprecated legacy routes (root-scoped). Same handlers, but gated by the
-// `deprecationShim` that stamps a `Warning: 299` header on every response
-// and logs once per request. Removed in the next release.
-router.use('/nodes', deprecationShim('nodes'), positionHistoryRouter, nodesRouter);
-router.use('/channels', deprecationShim('channels'), channelsRouter);
-router.use('/telemetry', deprecationShim('telemetry'), telemetryRouter);
-router.use('/traceroutes', deprecationShim('traceroutes'), traceroutesRouter);
-router.use('/messages', deprecationShim('messages'), messagesRouter);
-router.use('/network', deprecationShim('network'), networkRouter);
-router.use('/packets', deprecationShim('packets'), packetsRouter);
-router.use('/status', deprecationShim('status'), statusRouter);
 
 export default router;
