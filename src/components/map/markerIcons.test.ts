@@ -327,3 +327,95 @@ describe('createNodeIcon — Meshtastic ROUTER_LATE renders as repeater tower (#
     expect(iconHtml('mtRouter', true)).toBe(iconHtml('mtRouterLate', false));
   });
 });
+
+describe('createNodeIcon — official pinStyle keeps the short-name visible for infra roles (#4154)', () => {
+  it('ROUTER short name is NOT suppressed by the role glyph in official style', () => {
+    const icon = createNodeIcon({
+      hops: 1,
+      shortName: 'RTR1',
+      roleCategory: 'mtRouter',
+      pinStyle: 'official',
+    }) as unknown as FixtureDivIconOptions;
+
+    // The pre-#4154 bug: roleInner truthy meant the <text> short-name node
+    // never rendered at all for ROUTER/ROUTER_LATE in official style.
+    expect(icon.html).toContain('RTR1');
+    expect(icon.html).toContain('<text');
+  });
+
+  it('ROUTER_LATE short name is NOT suppressed by the role glyph in official style', () => {
+    const icon = createNodeIcon({
+      hops: 1,
+      shortName: 'RTL2',
+      roleCategory: 'mtRouterLate',
+      pinStyle: 'official',
+    }) as unknown as FixtureDivIconOptions;
+
+    expect(icon.html).toContain('RTL2');
+    expect(icon.html).toContain('<text');
+  });
+
+  it('infra roles still get a distinguishing corner badge carrying the role glyph', () => {
+    const icon = createNodeIcon({
+      hops: 1,
+      shortName: 'RTR1',
+      roleCategory: 'mtRouter',
+      pinStyle: 'official',
+    }) as unknown as FixtureDivIconOptions;
+    const plain = createNodeIcon({
+      hops: 1,
+      shortName: 'RTR1',
+      roleCategory: 'standard',
+      pinStyle: 'official',
+    }) as unknown as FixtureDivIconOptions;
+
+    // Badge is present for the infra role and absent for a standard node —
+    // the badge is how official style now differentiates infra without
+    // hiding the short name.
+    expect(icon.html).not.toEqual(plain.html);
+    // The badge wrapper is absolutely positioned in the bottom-right corner.
+    expect(icon.html).toContain('bottom: -2px');
+    expect(icon.html).toContain('right: -2px');
+    expect(plain.html).not.toContain('bottom: -2px');
+  });
+
+  it('MeshCore role glyphs (issue #3546) also keep the short name visible in official style', () => {
+    const icon = createNodeIcon({
+      hops: 1,
+      shortName: 'SNS1',
+      roleCategory: 'sensor',
+      pinStyle: 'official',
+    }) as unknown as FixtureDivIconOptions;
+
+    expect(icon.html).toContain('SNS1');
+    expect(icon.html).toContain('<text');
+    // Still gets the differentiating corner badge.
+    expect(icon.html).toContain('bottom: -2px');
+  });
+
+  it('emoji short names still render via the emoji overlay (no <text>), unaffected by role', () => {
+    const icon = createNodeIcon({
+      hops: 1,
+      shortName: '🛰️',
+      roleCategory: 'mtRouter',
+      pinStyle: 'official',
+    }) as unknown as FixtureDivIconOptions;
+
+    expect(icon.html).toContain('🛰️');
+    // Emoji path never used <text>; it overlays a plain div instead.
+    expect(icon.html).not.toContain('<text');
+    // Badge still shows for the infra role.
+    expect(icon.html).toContain('bottom: -2px');
+  });
+
+  it('standard-role nodes are unaffected: no badge markup at all', () => {
+    const icon = createNodeIcon({
+      hops: 1,
+      shortName: 'PLAIN',
+      pinStyle: 'official',
+    }) as unknown as FixtureDivIconOptions;
+
+    expect(icon.html).toContain('PLAIN');
+    expect(icon.html).not.toContain('bottom: -2px');
+  });
+});
