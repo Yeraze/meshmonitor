@@ -76,6 +76,29 @@ describe('validateAutomationGraph', () => {
     expect(validateAutomationGraph(withCond({ mode: 'bogus' })).valid).toBe(false);
   });
 
+  it('action.deviceReboot: optional targetNodeNum validates present/absent (#4126)', () => {
+    const withReboot = (params: Record<string, unknown>): AutomationGraph => ({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.schedule', params: { cron: '0 3 * * *' } },
+        { id: 'a', type: 'action.deviceReboot', params },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    // absent → valid (local-only reboot, unchanged behavior)
+    expect(validateAutomationGraph(withReboot({})).valid).toBe(true);
+    // blank string → valid (treated as absent)
+    expect(validateAutomationGraph(withReboot({ targetNodeNum: '' })).valid).toBe(true);
+    // positive node number → valid (remote-admin reboot)
+    expect(validateAutomationGraph(withReboot({ targetNodeNum: 123456789 })).valid).toBe(true);
+    // zero / negative / non-integer → error
+    expect(validateAutomationGraph(withReboot({ targetNodeNum: 0 })).valid).toBe(false);
+    const neg = validateAutomationGraph(withReboot({ targetNodeNum: -1 }));
+    expect(neg.valid).toBe(false);
+    expect(neg.errors.join(' ')).toMatch(/positive node number/);
+    expect(validateAutomationGraph(withReboot({ targetNodeNum: 1.5 })).valid).toBe(false);
+  });
+
   it('rejects non-object config', () => {
     expect(validateAutomationGraph(null).valid).toBe(false);
     expect(validateAutomationGraph(42).errors[0]).toMatch(/must be an object/);

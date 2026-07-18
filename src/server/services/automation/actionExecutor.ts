@@ -45,9 +45,11 @@ export interface ActionDeps {
     telemetryType?: TelemetryKind;
   }): Promise<unknown>;
   /** Reboot the physical device behind a source (#3995). `seconds` is the
-   *  Meshtastic reboot delay; MeshCore ignores it. Throws on an unreachable/
-   *  unsupported source so the run-log records a failed step. */
-  rebootDevice(a: { sourceId: string | null; seconds?: number }): Promise<unknown>;
+   *  Meshtastic reboot delay; MeshCore ignores it. `targetNodeNum` (#4126) is an
+   *  optional remote node to reboot over the mesh via the Meshtastic session-passkey
+   *  admin mechanism — omitted = reboot the source's locally-connected node.
+   *  Throws on an unreachable/unsupported source so the run-log records a failed step. */
+  rebootDevice(a: { sourceId: string | null; seconds?: number; targetNodeNum?: number }): Promise<unknown>;
   notify(a: { sourceId: string | null; title: string; body: string; type?: string; urls?: string[] }): Promise<unknown>;
   /** Run a user script file (in $DATA_DIR/scripts) with the given env. Never throws — returns the outcome. */
   runScript(a: { scriptPath: string; env: Record<string, string>; timeoutMs?: number }):
@@ -378,20 +380,36 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
     }
 
     case 'action.deviceReboot': {
-      // Reboot the physical device (#3995). Targets a SOURCE's local node, not a
-      // subject node — so there's no nodeNum. `seconds` is the Meshtastic reboot
-      // delay (default handled by the manager); MeshCore ignores it. Supports the
-      // same multi-source select as sendMessage/requestData so a source-less
-      // schedule trigger can pick which radio(s) to reboot.
+      // Reboot the physical device (#3995). By default targets a SOURCE's local
+      // node — so there's no nodeNum. `seconds` is the Meshtastic reboot delay
+      // (default handled by the manager); MeshCore ignores it. Supports the same
+      // multi-source select as sendMessage/requestData so a source-less schedule
+      // trigger can pick which radio(s) to reboot.
+      //
+      // #4126: an optional `targetNodeNum` reboots a REMOTE node over the mesh via
+      // the source's Meshtastic session-passkey admin mechanism. When set, it is
+      // forwarded to the manager's remote-admin reboot; when blank/absent the
+      // local-only path is unchanged.
       const secondsRaw = p.seconds != null ? Number(p.seconds) : undefined;
       const seconds = secondsRaw != null && Number.isFinite(secondsRaw) && secondsRaw >= 0
         ? Math.floor(secondsRaw) : undefined;
+      const targetRaw = p.targetNodeNum != null && p.targetNodeNum !== '' ? Number(p.targetNodeNum) : undefined;
+      const targetNodeNum = targetRaw != null && Number.isFinite(targetRaw) && targetRaw > 0
+        ? Math.floor(targetRaw) : undefined;
       const sourceIds = Array.isArray(p.sourceIds) && p.sourceIds.length > 0
         ? (p.sourceIds as unknown[]).map(String)
         : [sourceId];
       const results: unknown[] = [];
       for (const sid of sourceIds) {
-        results.push(await deps.rebootDevice({ sourceId: sid, seconds }));
+        // A remote-admin target rides the Meshtastic session-passkey mechanism,
+        // which MeshCore sources don't have. In a mixed multi-source select,
+        // skip those as a recorded no-op (matching tapback/nodeManage) instead
+        // of hard-failing the whole action and starving later sources.
+        if (targetNodeNum != null && await isMeshCoreSource(ctx, sid)) {
+          results.push({ skipped: true, reason: 'remote-admin reboot is not supported on MeshCore' });
+          continue;
+        }
+        results.push(await deps.rebootDevice({ sourceId: sid, seconds, targetNodeNum }));
       }
       return results.length === 1 ? results[0] : results;
     }
