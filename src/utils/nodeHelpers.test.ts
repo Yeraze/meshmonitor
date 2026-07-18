@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getEffectivePosition, getRoleName, getHardwareModelName, getNodeName, getNodeShortName, hasValidEffectivePosition, isNodeComplete, resolveMapEndpoint } from './nodeHelpers';
+import { getEffectivePosition, getRoleName, getHardwareModelName, getNodeName, getNodeShortName, hasValidEffectivePosition, isNodeComplete, resolveMapEndpoint, formatLocationSource } from './nodeHelpers';
 import { setDiscardInvalidPositionsDisplay } from './positionDisplayConfig';
 import { ROLE_NAMES, HARDWARE_MODELS } from '../constants/index.js';
 import type { DeviceInfo } from '../types/device';
@@ -655,5 +655,24 @@ describe('Node Helpers', () => {
       };
       expect(hasValidEffectivePosition(node)).toBe(true);
     });
+  });
+});
+
+describe('formatLocationSource (#4176)', () => {
+  it('labels each Meshtastic LocSource enum value', () => {
+    expect(formatLocationSource(1)).toBe('Manual');
+    expect(formatLocationSource(2)).toBe('Internal GPS');
+    expect(formatLocationSource(3)).toBe('External GPS');
+  });
+
+  it('returns null for LOC_UNSET (0), null, and undefined', () => {
+    expect(formatLocationSource(0)).toBeNull();
+    expect(formatLocationSource(null)).toBeNull();
+    expect(formatLocationSource(undefined)).toBeNull();
+  });
+
+  it('returns null for any unknown/out-of-range value', () => {
+    expect(formatLocationSource(4)).toBeNull();
+    expect(formatLocationSource(-1)).toBeNull();
   });
 });

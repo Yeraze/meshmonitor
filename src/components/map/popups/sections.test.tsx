@@ -136,6 +136,45 @@ describe('SignalItems', () => {
     render(<><SignalItems model={model} showAltitude /></>);
     expect(screen.getByText('42m')).toBeInTheDocument();
   });
+
+  it('renders position accuracy from precision bits, unit-aware (#4176)', () => {
+    const model = toNodeCardModel({ nodeNum: 1, positionPrecisionBits: 18 }, 'meshtastic');
+    const { unmount } = render(<><SignalItems model={model} /></>);
+    // 18 bits ≈ 91 m in the Meshtastic accuracy table (metric default).
+    expect(screen.getByText('~91 m')).toBeInTheDocument();
+    unmount();
+
+    render(<><SignalItems model={model} distanceUnit="mi" /></>);
+    // Imperial rendering — feet, not metres.
+    expect(screen.getByText(/ft$/)).toBeInTheDocument();
+  });
+
+  it('hides position accuracy when precision bits are 0/absent (#4176)', () => {
+    const disabled = toNodeCardModel({ nodeNum: 1, positionPrecisionBits: 0 }, 'meshtastic');
+    const { unmount } = render(<><SignalItems model={disabled} /></>);
+    expect(screen.queryByText('🎯')).not.toBeInTheDocument();
+    unmount();
+
+    const absent = toNodeCardModel({ nodeNum: 1 }, 'meshtastic');
+    render(<><SignalItems model={absent} /></>);
+    expect(screen.queryByText('🎯')).not.toBeInTheDocument();
+  });
+
+  it('renders the location-source label, hiding UNSET/absent (#4176)', () => {
+    const internal = toNodeCardModel({ nodeNum: 1, positionLocationSource: 2 }, 'meshtastic');
+    const { unmount } = render(<><SignalItems model={internal} /></>);
+    expect(screen.getByText('Internal GPS')).toBeInTheDocument();
+    unmount();
+
+    const manual = toNodeCardModel({ nodeNum: 1, positionLocationSource: 1 }, 'meshtastic');
+    const r2 = render(<><SignalItems model={manual} /></>);
+    expect(screen.getByText('Manual')).toBeInTheDocument();
+    r2.unmount();
+
+    const unset = toNodeCardModel({ nodeNum: 1, positionLocationSource: 0 }, 'meshtastic');
+    render(<><SignalItems model={unset} /></>);
+    expect(screen.queryByText('🛰️')).not.toBeInTheDocument();
+  });
 });
 
 describe('PositionItem', () => {

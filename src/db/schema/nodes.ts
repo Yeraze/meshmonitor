@@ -65,6 +65,9 @@ export const nodesSqlite = sqliteTable('nodes', {
   positionGpsAccuracy: real('positionGpsAccuracy'),
   positionHdop: real('positionHdop'),
   positionTimestamp: integer('positionTimestamp'),
+  // Meshtastic Position.location_source (LocSource enum): 0=UNSET, 1=MANUAL,
+  // 2=INTERNAL GPS, 3=EXTERNAL GPS. Nullable; 0/null hidden in the UI (#4176).
+  positionLocationSource: integer('positionLocationSource'),
   // Position override
   positionOverrideEnabled: integer('positionOverrideEnabled', { mode: 'boolean' }).default(false),
   latitudeOverride: real('latitudeOverride'),
@@ -152,6 +155,9 @@ export const nodesPostgres = pgTable('nodes', {
   positionGpsAccuracy: pgReal('positionGpsAccuracy'),
   positionHdop: pgReal('positionHdop'),
   positionTimestamp: pgBigint('positionTimestamp', { mode: 'number' }),
+  // Meshtastic Position.location_source (LocSource enum): 0=UNSET, 1=MANUAL,
+  // 2=INTERNAL GPS, 3=EXTERNAL GPS. Nullable; 0/null hidden in the UI (#4176).
+  positionLocationSource: pgInteger('positionLocationSource'),
   // Position override
   positionOverrideEnabled: pgBoolean('positionOverrideEnabled').default(false),
   latitudeOverride: pgDoublePrecision('latitudeOverride'),
@@ -238,6 +244,9 @@ export const nodesMysql = mysqlTable('nodes', {
   positionGpsAccuracy: myDouble('positionGpsAccuracy'),
   positionHdop: myDouble('positionHdop'),
   positionTimestamp: myBigint('positionTimestamp', { mode: 'number' }),
+  // Meshtastic Position.location_source (LocSource enum): 0=UNSET, 1=MANUAL,
+  // 2=INTERNAL GPS, 3=EXTERNAL GPS. Nullable; 0/null hidden in the UI (#4176).
+  positionLocationSource: myInt('positionLocationSource'),
   // Position override
   positionOverrideEnabled: myBoolean('positionOverrideEnabled').default(false),
   latitudeOverride: myDouble('latitudeOverride'),

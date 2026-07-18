@@ -18,6 +18,8 @@ import type { DeviceInfo } from '../../../types/device';
 import type { DbTraceroute } from '../../../services/database';
 import { formatDateTime, formatRelativeTime } from '../../../utils/datetime';
 import { formatTracerouteRoute } from '../../../utils/traceroute';
+import { formatPrecisionAccuracy } from '../../../utils/distance';
+import { formatLocationSource } from '../../../utils/nodeHelpers';
 import type { TimeFormat, DateFormat } from '../../../contexts/SettingsContext';
 import type { NodeCardModel, NodeSourceRef } from './nodeCardModel';
 
@@ -103,6 +105,9 @@ export interface SignalItemsProps {
    *  value. Pass a decimal count to round; omit to render raw (Dashboard's
    *  current, byte-identical behavior). */
   snrDecimals?: number;
+  /** Distance unit for the position-accuracy readout (#4176). Coerced to
+   *  'km'/'mi' for `formatPrecisionAccuracy` ('nm' falls back to metric). */
+  distanceUnit?: 'km' | 'mi' | 'nm';
 }
 
 /** Hops / SNR / battery / altitude grid items. */
@@ -112,12 +117,18 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
   showAltitude = false,
   showPluggedIn = false,
   snrDecimals,
+  distanceUnit = 'km',
 }) => {
   const { t } = useTranslation();
   const hops = model.hops;
   const hasAltitude = showAltitude && model.altitude != null;
   const showHopsRow = showHops && hops != null && hops < 999;
   const isPluggedIn = showPluggedIn && model.battery === 101;
+  // Position accuracy + location source (#4176). Hidden when unset/disabled.
+  const precisionBits = model.positionPrecisionBits;
+  const showPrecision = precisionBits != null && precisionBits > 0;
+  const precisionUnit: 'km' | 'mi' = distanceUnit === 'mi' ? 'mi' : 'km';
+  const locationSourceLabel = formatLocationSource(model.positionLocationSource);
 
   return (
     <>
@@ -152,6 +163,18 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
         <div className="node-popup-item">
           <span className="node-popup-icon">⛰️</span>
           <span className="node-popup-value">{model.altitude}m</span>
+        </div>
+      )}
+      {showPrecision && (
+        <div className="node-popup-item">
+          <span className="node-popup-icon" title={t('node_popup.position_accuracy', 'Position accuracy')}>🎯</span>
+          <span className="node-popup-value">{formatPrecisionAccuracy(precisionBits, precisionUnit)}</span>
+        </div>
+      )}
+      {locationSourceLabel && (
+        <div className="node-popup-item">
+          <span className="node-popup-icon" title={t('node_popup.location_source', 'Location source')}>🛰️</span>
+          <span className="node-popup-value">{locationSourceLabel}</span>
         </div>
       )}
     </>

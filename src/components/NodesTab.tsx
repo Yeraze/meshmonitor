@@ -1632,7 +1632,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         <>
                           <div className="node-popup-grid">
                             <IdentityItems model={cardModel} />
-                            <SignalItems model={infoSignalModel} showAltitude />
+                            <SignalItems model={infoSignalModel} showAltitude distanceUnit={distanceUnit} />
                           </div>
                           <LastHeardFooter
                             lastHeard={cardModel.lastHeard}

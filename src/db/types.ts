@@ -76,6 +76,7 @@ export interface DbNode {
   positionGpsAccuracy?: number | null;
   positionHdop?: number | null;
   positionTimestamp?: number | null;
+  positionLocationSource?: number | null;
   positionOverrideEnabled?: boolean | null;
   latitudeOverride?: number | null;
   longitudeOverride?: number | null;

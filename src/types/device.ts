@@ -53,6 +53,9 @@ export interface DeviceInfo {
   // Position precision fields
   positionPrecisionBits?: number; // Position precision (0-32 bits, higher = more precise)
   positionGpsAccuracy?: number; // GPS accuracy in meters
+  // Meshtastic Position.location_source (LocSource): 0=UNSET, 1=MANUAL,
+  // 2=INTERNAL GPS, 3=EXTERNAL GPS (#4176)
+  positionLocationSource?: number;
   // Position override fields
   positionOverrideEnabled?: boolean;
   latitudeOverride?: number;

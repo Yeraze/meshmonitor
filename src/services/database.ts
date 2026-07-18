@@ -113,6 +113,7 @@ export interface DbNode {
   positionGpsAccuracy?: number; // GPS accuracy in meters
   positionHdop?: number; // Horizontal Dilution of Precision
   positionTimestamp?: number; // When this position was received (for upgrade/downgrade logic)
+  positionLocationSource?: number; // Meshtastic Position.location_source: 0=UNSET, 1=MANUAL, 2=INTERNAL GPS, 3=EXTERNAL GPS (#4176)
   // Position override (Migration 040, updated in Migration 047 to boolean)
   positionOverrideEnabled?: boolean; // false = disabled, true = enabled
   latitudeOverride?: number; // Override latitude

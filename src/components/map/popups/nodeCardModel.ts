@@ -52,6 +52,12 @@ export interface NodeCardModel {
   snr?: number | null;
   battery?: number | null;
   altitude?: number | null;
+  /** Meshtastic position precision (0-32 bits). Rendered as a human accuracy
+   *  estimate ("~91 m") via `formatPrecisionAccuracy`; 0/null hidden. (#4176) */
+  positionPrecisionBits?: number | null;
+  /** Meshtastic `Position.location_source` (LocSource enum): 0=UNSET, 1=MANUAL,
+   *  2=INTERNAL GPS, 3=EXTERNAL GPS. 0/null hidden. (#4176) */
+  positionLocationSource?: number | null;
   position?: { lat: number; lng: number };
   /** Epoch SECONDS, normalized across variants (MeshCore's `lastSeen` is raw
    *  epoch-ms and is divided down when building this field). */
@@ -126,6 +132,11 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
 
   const lastHeard = typeof node.lastHeard === 'number' ? node.lastHeard : null;
 
+  // Position accuracy + source live flat on the DeviceInfo (surfaced by the
+  // server's mapDbNodeToDeviceInfo / dbNodeMapper). Display-only (#4176).
+  const positionPrecisionBits = typeof node.positionPrecisionBits === 'number' ? node.positionPrecisionBits : null;
+  const positionLocationSource = typeof node.positionLocationSource === 'number' ? node.positionLocationSource : null;
+
   const sources = Array.isArray(node.sources) ? (node.sources as NodeSourceRef[]) : undefined;
 
   return {
@@ -139,6 +150,8 @@ function toMeshtasticModel(raw: unknown, opts?: ToNodeCardModelOptions): NodeCar
     snr,
     battery,
     altitude,
+    positionPrecisionBits,
+    positionLocationSource,
     position: opts?.pos,
     lastHeard,
     sources,

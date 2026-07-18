@@ -294,6 +294,21 @@ const formatHardwareName = (name: string): string => {
     .join(' ');
 };
 
+/**
+ * Human label for a Meshtastic `Position.location_source` (LocSource enum):
+ *   0 = LOC_UNSET, 1 = LOC_MANUAL, 2 = LOC_INTERNAL (GPS), 3 = LOC_EXTERNAL (GPS).
+ * Returns `null` for unset (0), null, or undefined so the caller hides the row.
+ * (Issue #4176.)
+ */
+export const formatLocationSource = (src: number | null | undefined): string | null => {
+  switch (src) {
+    case 1: return 'Manual';
+    case 2: return 'Internal GPS';
+    case 3: return 'External GPS';
+    default: return null; // 0 (LOC_UNSET), null, undefined, or any unknown value
+  }
+};
+
 export const getHardwareModelName = (hwModel: number | undefined): string | null => {
   if (hwModel === undefined || hwModel === null) return null;
   const modelName = HARDWARE_MODELS[hwModel];
