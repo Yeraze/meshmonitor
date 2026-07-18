@@ -18,6 +18,13 @@
  *
  * Conflating the two (the pre-#3831 `effectiveReadOnly` flag) wrongly hid the
  * action buttons for unmessageable nodes. Keep them separate.
+ *
+ * `is_unmessagable` is only a NodeInfo *self-report*, not an enforced protocol
+ * restriction, so it can be stale or simply wrong. `overrideUnmessageable`
+ * (#4153) lets the user say "message anyway" and bypass the DM gate for that
+ * node. It must NEVER bypass the MQTT case — MQTT is a hard transport
+ * limitation (no send capability at all), not a self-report, so overriding it
+ * wouldn't work and isn't offered in the UI.
  */
 export interface MessagesReadOnlyState {
   /** Hide the DM message log and the compose field. */
@@ -36,15 +43,22 @@ export interface MessagesReadOnlyState {
 export function computeMessagesReadOnlyState(opts: {
   mqttReadOnly: boolean;
   isUnmessagable: boolean | undefined;
+  /**
+   * User opted to "message anyway" for the currently-selected node (#4153).
+   * Only ever suppresses the `isUnmessagable` gate — MQTT's `mqttReadOnly`
+   * always forces `dmReadOnly` regardless of this flag. Defaults to `false`.
+   */
+  overrideUnmessageable?: boolean;
 }): MessagesReadOnlyState {
-  const { mqttReadOnly, isUnmessagable } = opts;
-  const dmReadOnly = mqttReadOnly || isUnmessagable === true;
+  const { mqttReadOnly, isUnmessagable, overrideUnmessageable = false } = opts;
+  const unmessageableGate = isUnmessagable === true && !overrideUnmessageable;
+  const dmReadOnly = mqttReadOnly || unmessageableGate;
   return {
     // DMs are suppressed by either condition.
     dmReadOnly,
     // Unmessageable is the more specific/actionable reason, so it wins when
     // both apply.
-    dmReadOnlyReason: !dmReadOnly ? null : isUnmessagable === true ? 'unmessageable' : 'mqtt',
+    dmReadOnlyReason: !dmReadOnly ? null : unmessageableGate ? 'unmessageable' : 'mqtt',
     // Action buttons are suppressed ONLY by the MQTT-bridge mirror — an
     // unmessageable node still responds to these channel-routed requests.
     actionsReadOnly: mqttReadOnly,
