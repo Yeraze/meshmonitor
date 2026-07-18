@@ -11,6 +11,7 @@ import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
 import { filterNodesByChannelPermission, maskNodeLocationByChannel } from '../../utils/nodeEnhancer.js';
 import { findCopyCandidates, copyNodeInfo } from '../../services/nodeInfoCopyService.js';
+import { resolvedSourceIdFromPath } from './sourceParam.js';
 
 // mergeParams so this router picks up :sourceId when mounted under
 // /sources/:sourceId (new shape). At the root /nodes mount it's undefined
@@ -22,7 +23,7 @@ const router = express.Router({ mergeParams: true });
  * query param; both undefined means "no scope" (legacy cross-source view).
  */
 function getScopedSourceId(req: Request): string | undefined {
-  const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+  const fromPath = resolvedSourceIdFromPath(req);
   if (fromPath) return fromPath;
   const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
   return fromQuery;

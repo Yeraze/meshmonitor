@@ -7,6 +7,7 @@
 import express, { Request } from 'express';
 import packetLogService from '../../services/packetLogService.js';
 import { logger } from '../../../utils/logger.js';
+import { resolvedSourceIdFromPath } from './sourceParam.js';
 
 /** Normalize a `since` timestamp to milliseconds (auto-detect seconds vs ms) */
 function normalizeSinceToMs(value: string): number {
@@ -16,7 +17,7 @@ function normalizeSinceToMs(value: string): number {
 
 /** Resolve sourceId from path or query. */
 function getScopedSourceId(req: Request): string | undefined {
-  const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+  const fromPath = resolvedSourceIdFromPath(req);
   if (fromPath) return fromPath;
   const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
   return fromQuery;

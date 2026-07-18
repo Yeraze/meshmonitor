@@ -17,7 +17,7 @@ import databaseService from '../../../services/database.js';
 import { resolveSourceManager } from '../../utils/resolveSourceManager.js';
 import { logger } from '../../../utils/logger.js';
 import { PortNum } from '../../constants/meshtastic.js';
-import { attachSource } from './sourceParam.js';
+import { attachSource, resolvedSourceIdFromPath } from './sourceParam.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -78,7 +78,7 @@ function pruneNeighborRateLimit(): void {
 
 router.post('/traceroute', attachSource('traceroute', 'write'), async (req: Request, res: Response) => {
   try {
-    const sourceId = req.params.sourceId as string;
+    const sourceId = resolvedSourceIdFromPath(req) as string;
     const destinationNum = resolveDestination(req.body);
     if (destinationNum === null) {
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
@@ -110,7 +110,7 @@ router.post('/traceroute', attachSource('traceroute', 'write'), async (req: Requ
 
 router.post('/request-position', attachSource('messages', 'write'), async (req: Request, res: Response) => {
   try {
-    const sourceId = req.params.sourceId as string;
+    const sourceId = resolvedSourceIdFromPath(req) as string;
     const destinationNum = resolveDestination(req.body);
     if (destinationNum === null) {
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
@@ -167,7 +167,7 @@ router.post('/request-position', attachSource('messages', 'write'), async (req: 
 
 router.post('/request-nodeinfo', attachSource('messages', 'write'), async (req: Request, res: Response) => {
   try {
-    const sourceId = req.params.sourceId as string;
+    const sourceId = resolvedSourceIdFromPath(req) as string;
     const destinationNum = resolveDestination(req.body);
     if (destinationNum === null) {
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });
@@ -223,7 +223,7 @@ router.post('/request-nodeinfo', attachSource('messages', 'write'), async (req: 
 
 router.post('/request-neighbors', attachSource('traceroute', 'write'), async (req: Request, res: Response) => {
   try {
-    const sourceId = req.params.sourceId as string;
+    const sourceId = resolvedSourceIdFromPath(req) as string;
     const destinationNum = resolveDestination(req.body);
     if (destinationNum === null) {
       return res.status(400).json({ success: false, error: 'Destination node is required (destination, nodeId, or nodeNum)' });

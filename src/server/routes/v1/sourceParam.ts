@@ -147,3 +147,30 @@ export function attachSource(
 export interface RequestWithSource extends Request {
   source: Source;
 }
+
+/**
+ * Request that MAY have passed through `attachSource`. `source` is present only
+ * on the canonical per-source mounts; it is undefined on the legacy root mounts
+ * (`/api/v1/nodes?sourceId=`), where `attachSource` never runs.
+ */
+interface MaybeRequestWithSource extends Request {
+  source?: Source;
+}
+
+/**
+ * Resolve the concrete source id for a path-scoped request.
+ *
+ * Prefers `req.source.id` (attached by `attachSource`) over the raw `:sourceId`
+ * path param. This is load-bearing for the `default` alias: `attachSource`
+ * normalises `req.params.sourceId` to the resolved id, but Express RE-DERIVES
+ * `req.params` for each `mergeParams` sub-router from the matched URL — so a
+ * handler inside a sub-router reads the raw URL literal (e.g. `"default"`), NOT
+ * the normalised value. `req.source` is a request-level property that survives
+ * the re-derivation, so it carries the concrete resolved Source. Returns
+ * `undefined` on the legacy root mounts, where callers fall back to `?sourceId=`.
+ */
+export function resolvedSourceIdFromPath(req: Request): string | undefined {
+  const fromSource = (req as MaybeRequestWithSource).source?.id;
+  if (typeof fromSource === 'string' && fromSource) return fromSource;
+  return typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+}
