@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getEffectivePosition, getRoleName, getHardwareModelName, getNodeName, getNodeShortName, hasValidEffectivePosition, isNodeComplete, resolveMapEndpoint, formatLocationSource } from './nodeHelpers';
+import { getEffectivePosition, getRoleName, getHardwareModelName, getNodeName, getNodeShortName, formatSenderLabel, hasValidEffectivePosition, isNodeComplete, resolveMapEndpoint, formatLocationSource } from './nodeHelpers';
 import { setDiscardInvalidPositionsDisplay } from './positionDisplayConfig';
 import { ROLE_NAMES, HARDWARE_MODELS } from '../constants/index.js';
 import type { DeviceInfo } from '../types/device';
@@ -252,6 +252,45 @@ describe('Node Helpers', () => {
         }
       ];
       expect(getNodeShortName(nodesWithWhitespace, '!test1234')).toBe('ABC');
+    });
+  });
+
+  describe('formatSenderLabel (#4193)', () => {
+    it('appends the short name when it adds information', () => {
+      expect(formatSenderLabel('Test Node Alpha', 'TNA', '!abc12345')).toBe('Test Node Alpha (TNA)');
+    });
+
+    it('shows just the long name when there is no short name', () => {
+      expect(formatSenderLabel('Test Node Alpha', undefined, '!abc12345')).toBe('Test Node Alpha');
+      expect(formatSenderLabel('Test Node Alpha', null, '!abc12345')).toBe('Test Node Alpha');
+      expect(formatSenderLabel('Test Node Alpha', '', '!abc12345')).toBe('Test Node Alpha');
+      expect(formatSenderLabel('Test Node Alpha', '   ', '!abc12345')).toBe('Test Node Alpha');
+    });
+
+    it('shows just the long name when the short name is identical', () => {
+      expect(formatSenderLabel('Alice', 'Alice', '!abc12345')).toBe('Alice');
+    });
+
+    it('does not duplicate the short name when there is no long name', () => {
+      // getNodeName-style resolution would already have fallen back to the
+      // short name as the primary display value here — must not render
+      // "TNA (TNA)".
+      expect(formatSenderLabel(undefined, 'TNA', '!abc12345')).toBe('TNA');
+      expect(formatSenderLabel('', 'TNA', '!abc12345')).toBe('TNA');
+    });
+
+    it('falls back to the provided fallback (e.g. node ID) when both names are missing', () => {
+      expect(formatSenderLabel(undefined, undefined, '!abc12345')).toBe('!abc12345');
+      expect(formatSenderLabel('', '', '!abc12345')).toBe('!abc12345');
+    });
+
+    it('renders emoji short names as-is', () => {
+      expect(formatSenderLabel('Test Node Alpha', '😀', '!abc12345')).toBe('Test Node Alpha (😀)');
+    });
+
+    it('trims whitespace from both names before comparing/rendering', () => {
+      expect(formatSenderLabel('  Alice  ', '  ALC  ', '!abc12345')).toBe('Alice (ALC)');
+      expect(formatSenderLabel('  Alice  ', '  Alice  ', '!abc12345')).toBe('Alice');
     });
   });
 

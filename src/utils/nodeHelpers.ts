@@ -322,6 +322,33 @@ export const getNodeName = (nodes: DeviceInfo[], nodeId: string): string => {
   return node?.user?.longName || nodeId;
 };
 
+/**
+ * Format a per-message sender label as "Long Name (SHRT)" — the same
+ * "Name (SHORT)" pattern already used by node pickers/recipient lists.
+ *
+ * Takes the RAW long/short name fields (not fallback-chained display
+ * strings like `getNodeName`/`getNodeShortName`) so it can tell whether
+ * appending the parenthetical short name actually adds information:
+ *   - No short name, or shortName === longName → just the primary name.
+ *   - No long name (primary falls back to shortName, then to `fallback`,
+ *     typically the node ID) → don't render `SHRT (SHRT)`.
+ *   - Otherwise → `Long Name (SHRT)`.
+ * (Issue #4193.)
+ */
+export const formatSenderLabel = (
+  longName: string | null | undefined,
+  shortName: string | null | undefined,
+  fallback: string
+): string => {
+  const trimmedLong = longName?.trim() || '';
+  const trimmedShort = shortName?.trim() || '';
+  const primary = trimmedLong || trimmedShort || fallback;
+  if (trimmedShort && primary !== trimmedShort) {
+    return `${primary} (${trimmedShort})`;
+  }
+  return primary;
+};
+
 export const getNodeShortName = (nodes: DeviceInfo[], nodeId: string): string => {
   if (!nodeId) return '';
   const node = nodes.find(n => n.user?.id === nodeId);
