@@ -1,4 +1,5 @@
-import { isBogusPosition } from '../../utils/nullIsland';
+import { shouldDiscardPosition } from '../../utils/nullIsland';
+import { getDiscardInvalidPositions } from '../../utils/positionDisplayConfig';
 
 /**
  * Resolve a node's lat/lng from either the flat API shape (`{latitude, longitude}`)
@@ -22,6 +23,10 @@ export function resolveNodeLatLng(
   const lat = node.latitude ?? node.position?.latitude;
   const lng = node.longitude ?? node.position?.longitude;
   if (lat == null || lng == null) return null;
-  if (isBogusPosition(lat, lng)) return null;
+  // Null Island (0,0) is normally dropped (uninitialized/stale GPS default,
+  // #3763), but the global "Discard invalid positions" toggle can allow it so
+  // operators can spot misconfigured nodes (#4157). Out-of-range junk is always
+  // dropped regardless.
+  if (shouldDiscardPosition(lat, lng, undefined, getDiscardInvalidPositions())) return null;
   return [lat, lng];
 }

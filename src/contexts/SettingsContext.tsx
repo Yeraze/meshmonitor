@@ -11,6 +11,7 @@ import { type OverlayScheme, getSchemeForTileset, getOverlayColors, type Overlay
 import i18n from '../config/i18n';
 import { type TapbackEmoji, DEFAULT_TAPBACK_EMOJIS } from '../components/EmojiPickerModal/EmojiPickerModal';
 import { DEFAULT_TARGET_ZOOM } from '../utils/mapZoomAnimation';
+import { setDiscardInvalidPositionsDisplay } from '../utils/positionDisplayConfig';
 
 /** A per-channel mute rule. muteUntil = null means indefinite. */
 export interface MutedChannel {
@@ -918,8 +919,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setLinkPreviewsEnabledState(enabled);
   };
 
-  // Discard-invalid-positions setter updates state only - persisted server-side
+  // Discard-invalid-positions setter updates state only - persisted server-side.
+  // Also sync the module mirror SYNCHRONOUSLY (#4157) so the map display filters
+  // (pure utils that can't read context) honor the toggle on the very next render
+  // — an effect would lag a frame, leaving (0,0) hidden until the next data poll.
   const setDiscardInvalidPositions = (enabled: boolean) => {
+    setDiscardInvalidPositionsDisplay(enabled);
     setDiscardInvalidPositionsState(enabled);
   };
 
@@ -1450,6 +1455,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
           // (enabled = discard); only an explicit '0'/'false' turns it off.
           if (settings.discardInvalidPositions !== undefined) {
             const enabled = !(settings.discardInvalidPositions === '0' || settings.discardInvalidPositions === 'false');
+            setDiscardInvalidPositionsDisplay(enabled); // keep the display-filter mirror in sync (#4157)
             setDiscardInvalidPositionsState(enabled);
           }
 

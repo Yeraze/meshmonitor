@@ -8,7 +8,8 @@
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { appBasename } from '../init';
 import { useAuth } from '../contexts/AuthContext';
-import { isBogusPosition } from '../utils/nullIsland';
+import { isBogusPosition, shouldDiscardPosition } from '../utils/nullIsland';
+import { getDiscardInvalidPositions } from '../utils/positionDisplayConfig';
 import { classifyNodeTransport, type NodeTransportClass } from '../utils/nodeTransport';
 import { unifiedNodeKey } from '../utils/nodeIdentity';
 import type { SourceRadioSummary } from '../types/elevation';
@@ -298,11 +299,23 @@ function mergeNodeRecords(records: any[]): any {
   // sources have the true position). Flat (API) and nested position shapes are
   // both supported; lat/lng/nested-position/precision are carried from the SAME
   // record so the marker and its accuracy cell stay consistent.
-  const withPosition = sortedNewestFirst.find((r) => {
-    const lat = r?.latitude ?? r?.position?.latitude;
-    const lng = r?.longitude ?? r?.position?.longitude;
-    return lat != null && lng != null && !isBogusPosition(lat, lng);
-  });
+  const withPosition =
+    sortedNewestFirst.find((r) => {
+      const lat = r?.latitude ?? r?.position?.latitude;
+      const lng = r?.longitude ?? r?.position?.longitude;
+      return lat != null && lng != null && !isBogusPosition(lat, lng);
+    }) ??
+    // #4157: with the "Discard invalid positions" toggle OFF, a real fix above
+    // still wins, but fall back to a Null-Island (0,0) fix when that's ALL any
+    // source reported — so a node that only ever reports (0,0) is visible on the
+    // map instead of positionless. Out-of-range / NaN junk is still rejected.
+    (getDiscardInvalidPositions()
+      ? undefined
+      : sortedNewestFirst.find((r) => {
+          const lat = r?.latitude ?? r?.position?.latitude;
+          const lng = r?.longitude ?? r?.position?.longitude;
+          return lat != null && lng != null && !shouldDiscardPosition(lat, lng, undefined, false);
+        }));
   if (withPosition) {
     if (withPosition.latitude != null) merged.latitude = withPosition.latitude;
     if (withPosition.longitude != null) merged.longitude = withPosition.longitude;
