@@ -229,14 +229,14 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
     const circleSize = size;
     const emojiName = shortName && isEmoji(shortName);
 
-    // A role glyph replaces the short-name text so MeshCore node types stay
-    // distinguishable in the official circle style too (issue #3546).
-    const markerSvg = roleInner ? `
-      <svg width="${circleSize}" height="${circleSize}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="24" cy="24" r="20" fill="white" fill-opacity="0.95" stroke="${color}" stroke-width="${strokeWidth}" />
-        ${roleInner}
-      </svg>
-    ` : emojiName ? `
+    // Issue #4154: the always-visible short-name text is the entire point of
+    // this pin style, so it must render for every role — a role glyph must
+    // NOT swap it out (that was the pre-#4154 behavior, and it hid
+    // ROUTER/ROUTER_LATE short names behind the repeater-tower glyph).
+    // Infrastructure roles are instead differentiated with a small corner
+    // badge (below), layered on top the same way emojiOverlay layers over
+    // the base circle.
+    const markerSvg = emojiName ? `
       <svg width="${circleSize}" height="${circleSize}" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
         <circle cx="24" cy="24" r="20" fill="white" fill-opacity="0.95" stroke="${color}" stroke-width="${strokeWidth}" />
       </svg>
@@ -247,7 +247,7 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
       </svg>
     `;
 
-    const emojiOverlay = emojiName && !roleInner ? `
+    const emojiOverlay = emojiName ? `
       <div style="
         position: absolute;
         top: 0;
@@ -263,6 +263,25 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
       ">${shortName}</div>
     ` : '';
 
+    // Small corner badge carrying the role glyph (router tower, sensor,
+    // room-server, companion) so infrastructure nodes stay visually
+    // distinguishable without ever hiding the short-name text (issue #4154,
+    // follow-up to #3546). Reuses roleGlyphMarkerSvg — the same
+    // glyph-over-white-circle drawing already used for MeshCore markers and
+    // legend swatches — scaled down and pinned to the bottom-right corner.
+    const roleBadgeSize = Math.round(circleSize * 0.42);
+    const roleBadge = roleInner && roleCategory ? `
+      <div style="
+        position: absolute;
+        bottom: -2px;
+        right: -2px;
+        width: ${roleBadgeSize}px;
+        height: ${roleBadgeSize}px;
+        filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+        pointer-events: none;
+      ">${roleGlyphMarkerSvg(roleCategory, color, roleBadgeSize)}</div>
+    ` : '';
+
     const classes = [
       animate ? 'node-icon-pulse' : '',
       highlightSelected ? 'node-icon-highlight' : ''
@@ -272,6 +291,7 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
       <div class="${classes}" style="position: relative; width: ${circleSize}px; height: ${circleSize}px;">
         ${markerSvg}
         ${emojiOverlay}
+        ${roleBadge}
       </div>
     `;
 
