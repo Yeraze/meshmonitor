@@ -267,7 +267,7 @@ Firmware 2.8 is **not released yet** (the latest is v2.7.26). This applies only 
 
 What 2.8 changes:
 
-- **Fresh flash: position precision defaults to off.** Previously a new device broadcast position at roughly 364 m precision out of the box; on 2.8 it defaults to **off**, so a freshly flashed node shares no location until you enable it.
+- **Fresh flash: position precision defaults to off.** Previously a new device broadcast a reduced-precision position out of the box (position precision 13); on 2.8 it defaults to **off**, so a freshly flashed node shares no location until you enable it.
 - **First boot after upgrading runs a one-time migration.** On the first boot after the upgrade, the firmware **disables position broadcast and all five telemetry mesh-broadcast types** (device, environment, air quality, power, and health metrics) — but **only on public / default-PSK channels**. Channels using a **private PSK keep their existing settings** untouched.
 - **MQTT map-report location is switched off.** The map-report **location** is turned off, while map reporting itself stays enabled — so the node **remains on the map anonymously, just without a location**.
 - **The migration runs only once.** Anything you re-enable afterward **stays enabled** — the firmware won't turn it off again on later boots.
