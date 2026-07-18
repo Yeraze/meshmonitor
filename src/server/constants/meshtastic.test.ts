@@ -126,6 +126,7 @@ describe('getPortNumName', () => {
     expect(getPortNumName(3)).toBe('POSITION_APP');
     expect(getPortNumName(67)).toBe('TELEMETRY_APP');
     expect(getPortNumName(70)).toBe('TRACEROUTE_APP');
+    expect(getPortNumName(37)).toBe('MESH_BEACON_APP');
   });
 
   it('returns UNKNOWN for unknown portnums', () => {

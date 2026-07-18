@@ -257,6 +257,30 @@ Two things you might notice:
 
 ---
 
+### My node stopped sharing position or telemetry after upgrading to firmware 2.8
+
+Firmware 2.8 makes position and telemetry broadcast **opt-in**. If a node goes quiet on the map or stops reporting telemetry after the upgrade, this is **expected firmware behavior, not a MeshMonitor bug** — the device is no longer broadcasting that data by default.
+
+::: info Not released yet
+Firmware 2.8 is **not released yet** (the latest is v2.7.26). This applies only once you upgrade to 2.8.
+:::
+
+What 2.8 changes:
+
+- **Fresh flash: position precision defaults to off.** Previously a new device broadcast position at roughly 364 m precision out of the box; on 2.8 it defaults to **off**, so a freshly flashed node shares no location until you enable it.
+- **First boot after upgrading runs a one-time migration.** On the first boot after the upgrade, the firmware **disables position broadcast and all five telemetry mesh-broadcast types** (device, environment, air quality, power, and health metrics) — but **only on public / default-PSK channels**. Channels using a **private PSK keep their existing settings** untouched.
+- **MQTT map-report location is switched off.** The map-report **location** is turned off, while map reporting itself stays enabled — so the node **remains on the map anonymously, just without a location**.
+- **The migration runs only once.** Anything you re-enable afterward **stays enabled** — the firmware won't turn it off again on later boots.
+
+**To restore sharing**, re-enable it in the Meshtastic app:
+
+1. **Position** — under Position settings, set a **position precision** to start broadcasting location again.
+2. **Telemetry** — under the Telemetry module, re-enable the **broadcast** options for the metric types you want to share (device, environment, air quality, power, health).
+
+MeshMonitor **keeps all previously collected history** — nothing you already gathered is lost. Only **new** position and telemetry updates stop arriving until you re-enable them on the device.
+
+---
+
 ## 🔐 User Management
 
 ### How do I reset a user's password as an admin?
@@ -998,4 +1022,4 @@ If your issue isn't covered here:
 
 ---
 
-**Last updated:** 2026-02-03
+**Last updated:** 2026-07-18

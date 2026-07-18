@@ -85,7 +85,8 @@ export const MODEM_PRESET_OPTIONS: ModemPresetOption[] = [
   { value: 10, name: 'LITE_FAST', description: 'Lite Fast - EU 866MHz SRD (similar to MEDIUM_FAST)', params: 'BW: 125kHz' },
   { value: 11, name: 'LITE_SLOW', description: 'Lite Slow - EU 866MHz SRD (similar to LONG_FAST)', params: 'BW: 125kHz' },
   { value: 12, name: 'NARROW_FAST', description: 'Narrow Fast - EU 868MHz (similar to SHORT_SLOW, half rate)', params: 'BW: 62.5kHz' },
-  { value: 13, name: 'NARROW_SLOW', description: 'Narrow Slow - EU 868MHz (similar to LONG_FAST)', params: 'BW: 62.5kHz' }
+  { value: 13, name: 'NARROW_SLOW', description: 'Narrow Slow - EU 868MHz (similar to LONG_FAST)', params: 'BW: 62.5kHz' },
+  { value: 16, name: 'MEDIUM_TURBO', description: 'Medium Range - Turbo (500 kHz, faster than Medium Fast)', params: 'BW: 500kHz, SF: 9, CR: 4/5' }
 ];
 
 export const REGION_OPTIONS: RegionOption[] = [
@@ -244,7 +245,8 @@ const PRESET_BANDWIDTH_KHZ: Record<number, { normal: number; wide: number }> = {
   6: { normal: 250, wide: 812.5 },   // SHORT_FAST
   7: { normal: 125, wide: 406.25 },  // LONG_MODERATE
   8: { normal: 500, wide: 1625 },    // SHORT_TURBO
-  9: { normal: 500, wide: 1625 }     // LONG_TURBO
+  9: { normal: 500, wide: 1625 },    // LONG_TURBO
+  16: { normal: 500, wide: 1625 }    // MEDIUM_TURBO
 };
 const DEFAULT_PRESET_BW = { normal: 250, wide: 812.5 }; // LONG_FAST fallback
 
@@ -334,7 +336,8 @@ export const PRESET_MAP: Record<string, number> = {
   'LITE_FAST': 10,
   'LITE_SLOW': 11,
   'NARROW_FAST': 12,
-  'NARROW_SLOW': 13
+  'NARROW_SLOW': 13,
+  'MEDIUM_TURBO': 16
 };
 
 // Mapping from string region names to numeric values

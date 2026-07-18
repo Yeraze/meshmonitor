@@ -21,6 +21,7 @@ const LONG_MODERATE = 7;
 const SHORT_TURBO = 8;
 const LONG_TURBO = 9;
 const NARROW_FAST = 12; // not in firmware switch -> LONG_FAST/250 kHz fallback
+const MEDIUM_TURBO = 16;
 
 // Guards against RegionCode drift from meshtastic/protobufs config.proto (#3927).
 // When upstream adds a RegionCode value, extend REGION_OPTIONS and bump the max here.
@@ -62,11 +63,13 @@ describe('getPresetBandwidthKHz', () => {
     expect(getPresetBandwidthKHz(LONG_MODERATE, false)).toBe(125);
     expect(getPresetBandwidthKHz(SHORT_TURBO, false)).toBe(500);
     expect(getPresetBandwidthKHz(LONG_TURBO, false)).toBe(500);
+    expect(getPresetBandwidthKHz(MEDIUM_TURBO, false)).toBe(500);
   });
 
   it('returns wide-LoRa bandwidths for the 2.4 GHz band', () => {
     expect(getPresetBandwidthKHz(LONG_FAST, true)).toBe(812.5);
     expect(getPresetBandwidthKHz(SHORT_TURBO, true)).toBe(1625);
+    expect(getPresetBandwidthKHz(MEDIUM_TURBO, true)).toBe(1625);
   });
 
   it('falls back to LONG_FAST (250 kHz) for presets not in the firmware switch', () => {
@@ -82,6 +85,10 @@ describe('isPresetLegalForRegion', () => {
     expect(isPresetLegalForRegion(EU_868, LONG_TURBO)).toBe(false);
   });
 
+  it('EU_868 (0.25 MHz span) rejects MEDIUM_TURBO (500 kHz)', () => {
+    expect(isPresetLegalForRegion(EU_868, MEDIUM_TURBO)).toBe(false);
+  });
+
   it('EU_868 still allows presets that fit (<= 250 kHz)', () => {
     expect(isPresetLegalForRegion(EU_868, LONG_FAST)).toBe(true);
     expect(isPresetLegalForRegion(EU_868, LONG_SLOW)).toBe(true);
@@ -91,6 +98,7 @@ describe('isPresetLegalForRegion', () => {
   it('RU (exactly 0.5 MHz span) allows the 500 kHz presets', () => {
     expect(isPresetLegalForRegion(RU, SHORT_TURBO)).toBe(true);
     expect(isPresetLegalForRegion(RU, LONG_TURBO)).toBe(true);
+    expect(isPresetLegalForRegion(RU, MEDIUM_TURBO)).toBe(true);
   });
 
   it('wide US band allows every preset', () => {
@@ -119,11 +127,13 @@ describe('getLegalPresetOptions', () => {
     const values = getLegalPresetOptions(EU_868, LONG_FAST).map((o) => o.value);
     expect(values).not.toContain(SHORT_TURBO);
     expect(values).not.toContain(LONG_TURBO);
+    expect(values).not.toContain(MEDIUM_TURBO);
     expect(values).toContain(LONG_FAST);
   });
 
   it('returns every preset for a wide region', () => {
     expect(getLegalPresetOptions(US, LONG_FAST)).toHaveLength(MODEM_PRESET_OPTIONS.length);
+    expect(getLegalPresetOptions(US, LONG_FAST).map((o) => o.value)).toContain(MEDIUM_TURBO);
   });
 
   it('retains an illegal current preset so the picker is never blank', () => {

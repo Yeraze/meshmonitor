@@ -31,7 +31,14 @@ const modemPresetNames: { [key: number]: string } = {
   4: 'MEDIUM_FAST',
   5: 'SHORT_SLOW',
   6: 'SHORT_FAST',
-  7: 'LONG_MODERATE'
+  7: 'LONG_MODERATE',
+  8: 'SHORT_TURBO',
+  9: 'LONG_TURBO',
+  10: 'LITE_FAST',
+  11: 'LITE_SLOW',
+  12: 'NARROW_FAST',
+  13: 'NARROW_SLOW',
+  16: 'MEDIUM_TURBO'
 };
 
 const regionNames: { [key: number]: string } = {

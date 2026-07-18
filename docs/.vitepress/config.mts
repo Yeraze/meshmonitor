@@ -105,6 +105,7 @@ export default defineConfig({
             { text: 'Analysis & Reports', link: '/features/analysis-reports' },
             { text: 'Link Quality & Smart Hops', link: '/features/link-quality' },
             { text: 'Telemetry Widgets', link: '/features/telemetry-widgets' },
+            { text: 'Traffic Management', link: '/features/traffic-management' },
             { text: 'Solar Monitoring', link: '/features/solar-monitoring' },
             { text: 'Packet Monitor', link: '/features/packet-monitor' }
           ]
