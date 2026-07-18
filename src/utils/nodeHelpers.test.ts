@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getEffectivePosition, getRoleName, getHardwareModelName, getNodeName, getNodeShortName, hasValidEffectivePosition, isNodeComplete, resolveMapEndpoint } from './nodeHelpers';
+import { setDiscardInvalidPositionsDisplay } from './positionDisplayConfig';
 import { ROLE_NAMES, HARDWARE_MODELS } from '../constants/index.js';
 import type { DeviceInfo } from '../types/device';
 
@@ -31,6 +32,16 @@ describe('resolveMapEndpoint (#3642)', () => {
     // But the rendered marker still wins even if the record embeds garbage.
     const onMap = new Map<number, [number, number]>([[0x02ecd5e0, [26.9221888, -80.1374208]]]);
     expect(resolveMapEndpoint(onMap, 0x02ecd5e0, 0.0032768, 0.0032768)).toEqual([26.9221888, -80.1374208]);
+  });
+
+  it('DOES fall back to a Null-Island embedded position when the discard setting is off (#4157)', () => {
+    setDiscardInvalidPositionsDisplay(false);
+    try {
+      const markers = new Map<number, [number, number]>();
+      expect(resolveMapEndpoint(markers, 0x02ecd5e0, 0.0032768, 0.0032768)).toEqual([0.0032768, 0.0032768]);
+    } finally {
+      setDiscardInvalidPositionsDisplay(true); // restore default
+    }
   });
 });
 

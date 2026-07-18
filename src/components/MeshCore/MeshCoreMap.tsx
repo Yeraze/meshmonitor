@@ -18,7 +18,8 @@ import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/N
 import PolarGridOverlay from '../PolarGridOverlay';
 import { useSource } from '../../contexts/SourceContext';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
-import { isBogusPosition } from '../../utils/nullIsland';
+import { shouldDiscardPosition } from '../../utils/nullIsland';
+import { getDiscardInvalidPositions } from '../../utils/positionDisplayConfig';
 import { getPositionHistoryColor } from '../../utils/mapHelpers';
 import api from '../../services/api';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
@@ -240,7 +241,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
       // that would blow the map's fit-bounds out to nothing. The DB store
       // filters these too, but live in-memory contacts reaching the map via
       // getAllNodes() can still carry them.
-      && !isBogusPosition(c.latitude, c.longitude)),
+      && !shouldDiscardPosition(c.latitude, c.longitude, undefined, getDiscardInvalidPositions())),
     [contacts],
   );
 
@@ -386,7 +387,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
             // real points to draw a segment (a 2-point response that's all
             // Null Island would otherwise store a degenerate 1-point trail).
             const pts = resp.data
-              .filter(p => !isBogusPosition(p.latitude, p.longitude))
+              .filter(p => !shouldDiscardPosition(p.latitude, p.longitude, undefined, getDiscardInvalidPositions()))
               .map(p => [p.latitude, p.longitude] as [number, number]);
             if (pts.length >= 2) next.set(publicKey, pts);
           }

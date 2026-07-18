@@ -43,7 +43,8 @@ import {
 import { getSourceColor, resolveSourceColor } from '../../utils/sourceColors';
 import { getOwnNodePositions } from '../../utils/ownNodePositions';
 import { nodePassesTransportFilter } from '../../utils/nodeTransport';
-import { isBogusPosition } from '../../utils/nullIsland';
+import { shouldDiscardPosition } from '../../utils/nullIsland';
+import { getDiscardInvalidPositions } from '../../utils/positionDisplayConfig';
 import { effectiveMapMaxAgeHours } from '../../utils/mapAge';
 import { resolveMapEndpoint } from '../../utils/nodeHelpers';
 import api from '../../services/api';
@@ -100,7 +101,7 @@ function getNodeLatLng(node: any): { lat: number; lng: number } | null {
   const lat = node?.latitude ?? node?.position?.latitude;
   const lng = node?.longitude ?? node?.position?.longitude;
   // Skip "Null Island" (0,0) — uninitialized/stale GPS default (issue #3763).
-  if (lat != null && lng != null && !isBogusPosition(lat, lng)) {
+  if (lat != null && lng != null && !shouldDiscardPosition(lat, lng, undefined, getDiscardInvalidPositions())) {
     return { lat, lng };
   }
   return null;

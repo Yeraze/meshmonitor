@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement } from 'react';
+import { setDiscardInvalidPositionsDisplay } from '../utils/positionDisplayConfig';
 import {
   useDashboardSources,
   useDashboardSourceData,
@@ -278,6 +279,46 @@ describe('mergeUnifiedSourceData', () => {
     expect(n.longitude).toBe(-80.1374208);
     expect(n.positionPrecisionBits).toBe(13); // precision from the same real record, not the garbage one
     expect(n.lastHeard).toBe(5000);
+  });
+
+  it('leaves a Null-Island-only node positionless when the discard toggle is ON (#4157)', () => {
+    setDiscardInvalidPositionsDisplay(true); // default
+    const merged = mergeUnifiedSourceData([
+      { nodes: [{ nodeNum: 500, lastHeard: 2000, latitude: 0, longitude: 0 }], traceroutes: [], neighborInfo: [], channels: [] },
+      { nodes: [{ nodeNum: 500, lastHeard: 1000, latitude: 0, longitude: 0 }], traceroutes: [], neighborInfo: [], channels: [] },
+    ]);
+    const n = merged.nodes[0] as any;
+    expect(n.latitude).toBeUndefined();
+    expect(n.longitude).toBeUndefined();
+  });
+
+  it('surfaces a Null-Island-only node at (0,0) when the discard toggle is OFF (#4157)', () => {
+    setDiscardInvalidPositionsDisplay(false);
+    try {
+      const merged = mergeUnifiedSourceData([
+        { nodes: [{ nodeNum: 501, lastHeard: 2000, latitude: 0, longitude: 0 }], traceroutes: [], neighborInfo: [], channels: [] },
+      ]);
+      const n = merged.nodes[0] as any;
+      expect(n.latitude).toBe(0);
+      expect(n.longitude).toBe(0);
+    } finally {
+      setDiscardInvalidPositionsDisplay(true);
+    }
+  });
+
+  it('still prefers a real fix over a Null-Island fix even with the toggle OFF (#4157)', () => {
+    setDiscardInvalidPositionsDisplay(false);
+    try {
+      const merged = mergeUnifiedSourceData([
+        { nodes: [{ nodeNum: 502, lastHeard: 2000, latitude: 0, longitude: 0 }], traceroutes: [], neighborInfo: [], channels: [] },       // newest, Null Island
+        { nodes: [{ nodeNum: 502, lastHeard: 1000, latitude: 35.0, longitude: -80.0 }], traceroutes: [], neighborInfo: [], channels: [] }, // older, real fix
+      ]);
+      const n = merged.nodes[0] as any;
+      expect(n.latitude).toBe(35.0); // real fix wins despite the (0,0) record being newer
+      expect(n.longitude).toBe(-80.0);
+    } finally {
+      setDiscardInvalidPositionsDisplay(true);
+    }
   });
 
   it('only marks merged node as ignored when EVERY source has it ignored', () => {
