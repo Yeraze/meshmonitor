@@ -166,14 +166,31 @@ export function createMeshActionDeps(): ActionDeps {
       throw new Error(`source "${sourceId}" cannot perform node requests`);
     },
 
-    async rebootDevice({ sourceId, seconds }) {
+    async rebootDevice({ sourceId, seconds, targetNodeNum }) {
       // Reboot the physical device (#3995). Both protocol managers expose a
       // `rebootDevice` method: Meshtastic `rebootDevice(seconds)` (void), MeshCore
       // `rebootDevice()` (Companion-only; resolves `false` on failure / repeater
       // firmware, ignores the seconds arg). Calling with `seconds` is safe for
       // both — MeshCore drops the extra argument.
       if (!sourceId) throw new Error('automation reboot action requires a target source');
-      const raw = resolveManager(sourceId) as { rebootDevice?: (seconds?: number) => Promise<unknown> } | undefined;
+      const raw = resolveManager(sourceId) as {
+        rebootDevice?: (seconds?: number) => Promise<unknown>;
+        sendRebootCommand?: (destinationNodeNum: number, seconds?: number) => Promise<unknown>;
+      } | undefined;
+
+      // #4126: remote-admin reboot. When a target node is specified, reboot that
+      // node over the mesh via the Meshtastic session-passkey admin mechanism
+      // (`sendRebootCommand`). This is Meshtastic-only — MeshCore managers have no
+      // such method, so a target on a MeshCore source is a clear error.
+      if (targetNodeNum != null) {
+        if (!raw || typeof raw.sendRebootCommand !== 'function') {
+          throw new Error(`source "${sourceId}" cannot send a remote-admin reboot (Meshtastic sources only)`);
+        }
+        // sendRebootCommand defaults `seconds` to 10 when undefined.
+        await (seconds != null ? raw.sendRebootCommand(targetNodeNum, seconds) : raw.sendRebootCommand(targetNodeNum));
+        return { rebooted: true, targetNodeNum };
+      }
+
       if (!raw || typeof raw.rebootDevice !== 'function') {
         throw new Error(`source "${sourceId}" cannot reboot (no connected device)`);
       }

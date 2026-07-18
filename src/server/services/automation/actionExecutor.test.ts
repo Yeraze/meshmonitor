@@ -408,6 +408,35 @@ describe('executeAction', () => {
     expect(calls[1].args).toEqual({ sourceId: 'default', seconds: undefined });
   });
 
+  it('deviceReboot: forwards a remote targetNodeNum to rebootDevice (#4126)', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.deviceReboot', { seconds: 15, targetNodeNum: 123456789 }),
+      ctx({ from: 1 }, 'default'),
+      deps,
+    );
+    expect(calls).toEqual([
+      { fn: 'rebootDevice', args: { sourceId: 'default', seconds: 15, targetNodeNum: 123456789 } },
+    ]);
+  });
+
+  it('deviceReboot: no targetNodeNum ⇒ local-only reboot (targetNodeNum undefined)', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(node('action.deviceReboot', { seconds: 20 }), ctx({ from: 1 }, 'default'), deps);
+    expect(calls[0].args.targetNodeNum).toBeUndefined();
+    expect(calls[0].args).toMatchObject({ sourceId: 'default', seconds: 20 });
+  });
+
+  it('deviceReboot: ignores a blank/invalid targetNodeNum (falls back to local)', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(node('action.deviceReboot', { targetNodeNum: '' }), ctx({ from: 1 }, 'default'), deps);
+    await executeAction(node('action.deviceReboot', { targetNodeNum: 0 }), ctx({ from: 1 }, 'default'), deps);
+    await executeAction(node('action.deviceReboot', { targetNodeNum: 'nope' }), ctx({ from: 1 }, 'default'), deps);
+    expect(calls[0].args.targetNodeNum).toBeUndefined();
+    expect(calls[1].args.targetNodeNum).toBeUndefined();
+    expect(calls[2].args.targetNodeNum).toBeUndefined();
+  });
+
   // ── requestData (#3835) ────────────────────────────────────────────────────
   it('requestData: telemetry passes op/target/channel/telemetryType (the #3835 case)', async () => {
     const { calls, deps } = recorder();

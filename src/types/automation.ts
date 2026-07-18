@@ -377,6 +377,14 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
               errors.push(`action.deviceReboot "${n.id}" requires params.seconds ≥ 0`);
             }
           }
+          // `targetNodeNum` is optional (#4126). Blank/absent = local-only reboot;
+          // a positive integer = remote-admin reboot over the mesh (Meshtastic).
+          if (p.targetNodeNum != null && p.targetNodeNum !== '') {
+            const target = Number(p.targetNodeNum);
+            if (!Number.isInteger(target) || target <= 0) {
+              errors.push(`action.deviceReboot "${n.id}" requires params.targetNodeNum to be a positive node number`);
+            }
+          }
           break;
         case 'action.delay': {
           const secs = Number(p.seconds);

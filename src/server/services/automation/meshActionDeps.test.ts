@@ -261,4 +261,38 @@ describe('createMeshActionDeps rebootDevice — device reboot action (#3995)', (
     const deps = createMeshActionDeps();
     await expect(deps.rebootDevice({ sourceId: null })).rejects.toThrow(/requires a target source/);
   });
+
+  // ── remote-admin reboot (#4126) ────────────────────────────────────────────
+  it('with a targetNodeNum, calls sendRebootCommand(target, seconds) not the local rebootDevice', async () => {
+    const sendRebootCommand = vi.fn().mockResolvedValue(undefined);
+    const rebootDevice = vi.fn().mockResolvedValue(undefined);
+    getManager.mockReturnValue({ sendTextMessage: vi.fn(), sendRebootCommand, rebootDevice });
+    const deps = createMeshActionDeps();
+
+    const result = await deps.rebootDevice({ sourceId: 'mt', seconds: 15, targetNodeNum: 123456789 });
+
+    expect(sendRebootCommand).toHaveBeenCalledWith(123456789, 15);
+    expect(rebootDevice).not.toHaveBeenCalled();
+    expect(result).toEqual({ rebooted: true, targetNodeNum: 123456789 });
+  });
+
+  it('with a targetNodeNum and no seconds, lets the manager apply its own default', async () => {
+    const sendRebootCommand = vi.fn().mockResolvedValue(undefined);
+    getManager.mockReturnValue({ sendTextMessage: vi.fn(), sendRebootCommand, rebootDevice: vi.fn() });
+    const deps = createMeshActionDeps();
+
+    await deps.rebootDevice({ sourceId: 'mt', targetNodeNum: 42 });
+
+    expect(sendRebootCommand).toHaveBeenCalledWith(42);
+  });
+
+  it('throws when a targetNodeNum is set on a source without sendRebootCommand (e.g. MeshCore)', async () => {
+    // MeshCore managers expose rebootDevice() but no sendRebootCommand — a remote
+    // target is Meshtastic-only.
+    getManager.mockReturnValue({ sendMessage: vi.fn(), rebootDevice: vi.fn() });
+    const deps = createMeshActionDeps();
+
+    await expect(deps.rebootDevice({ sourceId: 'mc', targetNodeNum: 42 }))
+      .rejects.toThrow(/remote-admin reboot \(Meshtastic sources only\)/);
+  });
 });
