@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
+import { REGION_OPTIONS } from './constants';
 
 interface ImportConfigModalProps {
   isOpen: boolean;
@@ -41,27 +42,13 @@ const modemPresetNames: { [key: number]: string } = {
   16: 'MEDIUM_TURBO'
 };
 
-const regionNames: { [key: number]: string } = {
-  0: 'UNSET',
-  1: 'US',
-  2: 'EU_433',
-  3: 'EU_868',
-  4: 'CN',
-  5: 'JP',
-  6: 'ANZ',
-  7: 'KR',
-  8: 'TW',
-  9: 'RU',
-  10: 'IN',
-  11: 'NZ_865',
-  12: 'TH',
-  13: 'UA_433',
-  14: 'UA_868',
-  15: 'MY_433',
-  16: 'MY_919',
-  17: 'SG_923',
-  18: 'LORA_24'
-};
+// Derived from REGION_OPTIONS (the authoritative protobuf-enum-ordered table)
+// instead of a hand-maintained duplicate: the old literal table had codes 13-18
+// shifted by one (13 showed UA_433 instead of LORA_24) and knew nothing about
+// codes 19+ (PH_*, ANZ_433, KZ_*, NP_865, BR_902, ...).
+const regionNames: { [key: number]: string } = Object.fromEntries(
+  REGION_OPTIONS.map((o) => [o.value, o.label.split(' - ')[0]])
+);
 
 export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, onClose, onImportSuccess, nodeNum }) => {
   const { t } = useTranslation();
