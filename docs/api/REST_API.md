@@ -19,16 +19,10 @@ Public endpoints are limited to health checks and the optional anonymous read-on
 
 ## API Versioning & Per-Source Scoping
 
-::: warning Breaking change in 4.13 — v1 root paths are deprecated
-**As of 4.13 the canonical v1 shape is `/api/v1/sources/{sourceId}/...`.**
+::: warning Breaking change — v1 root paths were removed in 4.14
+**The canonical v1 shape is `/api/v1/sources/{sourceId}/...`.**
 
-The old v1 root paths (`/api/v1/nodes`, `/api/v1/messages`, etc.) are **deprecated for one release only**. Every response on those paths carries:
-
-```
-Warning: 299 - "v1 root-path scoping is deprecated; use /api/v1/sources/:sourceId/... instead"
-```
-
-**These paths will be REMOVED in 4.14. Migrate before upgrading.**
+The old v1 root paths (`/api/v1/nodes`, `/api/v1/messages`, etc.) were deprecated in 4.13 with a one-release `Warning: 299` grace period and **removed in 4.14** — they now return `404`. Migrate to the per-source shape.
 :::
 
 ### Canonical v1 endpoints (4.13+)

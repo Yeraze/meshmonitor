@@ -12,12 +12,9 @@ import { getEffectiveDbNodePosition } from '../../utils/nodeEnhancer.js';
 
 const router = express.Router({ mergeParams: true });
 
-/** Resolve sourceId from path or query. */
+/** Resolve sourceId from the :sourceId path param. */
 function getScopedSourceId(req: Request): string | undefined {
-  const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
-  if (fromPath) return fromPath;
-  const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
-  return fromQuery;
+  return typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
 }
 
 /**

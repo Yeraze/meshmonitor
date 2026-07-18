@@ -14,10 +14,9 @@ const router = express.Router({ mergeParams: true });
 
 router.get('/', async (req: Request, res: Response) => {
   try {
-    // Scope priority: path (:sourceId via mergeParams) → query (legacy).
-    const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
-    const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
-    const statusSourceId = fromPath ?? fromQuery;
+    // Scope to the :sourceId path param (resolved by attachSource, incl. the
+    // `default` alias) on the /sources/:sourceId mount.
+    const statusSourceId = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
     const statusManager = resolveSourceManager(statusSourceId);
 
     const localNodeNum = await databaseService.settings.getSetting('localNodeNum');
