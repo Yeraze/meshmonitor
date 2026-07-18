@@ -401,6 +401,14 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
         : [sourceId];
       const results: unknown[] = [];
       for (const sid of sourceIds) {
+        // A remote-admin target rides the Meshtastic session-passkey mechanism,
+        // which MeshCore sources don't have. In a mixed multi-source select,
+        // skip those as a recorded no-op (matching tapback/nodeManage) instead
+        // of hard-failing the whole action and starving later sources.
+        if (targetNodeNum != null && await isMeshCoreSource(ctx, sid)) {
+          results.push({ skipped: true, reason: 'remote-admin reboot is not supported on MeshCore' });
+          continue;
+        }
         results.push(await deps.rebootDevice({ sourceId: sid, seconds, targetNodeNum }));
       }
       return results.length === 1 ? results[0] : results;

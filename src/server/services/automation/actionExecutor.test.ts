@@ -437,6 +437,38 @@ describe('executeAction', () => {
     expect(calls[2].args.targetNodeNum).toBeUndefined();
   });
 
+  it('deviceReboot: mixed-source select + targetNodeNum skips MeshCore sources instead of failing the action', async () => {
+    const { calls, deps } = recorder();
+    // A remote-admin target rides Meshtastic's session-passkey mechanism, which
+    // MeshCore lacks. In a mixed multi-select the MeshCore source must be a
+    // recorded no-op (like tapback/nodeManage) — NOT a hard failure that starves
+    // the remaining Meshtastic sources of their reboot.
+    const mixedCtx: EngineEvalContext = {
+      trigger: { triggerType: 'trigger.schedule', sourceId: null, timestamp: 1000, fields: {} },
+      vars: { getValue: async () => null } as unknown as VariableResolver,
+      data: {
+        getNode: async () => null,
+        getTelemetry: async () => null,
+        getSourceProtocol: async (sid: string) => (sid === 'mc' ? 'meshcore' : 'meshtastic'),
+      },
+      varCtx: { sourceId: null, nodeNum: undefined },
+      now: 1000,
+    };
+    const result = await executeAction(
+      node('action.deviceReboot', { sourceIds: ['radioA', 'mc'], targetNodeNum: 42 }),
+      mixedCtx,
+      deps,
+    );
+    // Only the Meshtastic source reached the deps; the MeshCore entry is a skip record.
+    expect(calls).toEqual([
+      { fn: 'rebootDevice', args: { sourceId: 'radioA', seconds: undefined, targetNodeNum: 42 } },
+    ]);
+    expect(result).toEqual([
+      6, // recorder's rebootDevice return for the Meshtastic source
+      { skipped: true, reason: 'remote-admin reboot is not supported on MeshCore' },
+    ]);
+  });
+
   // ── requestData (#3835) ────────────────────────────────────────────────────
   it('requestData: telemetry passes op/target/channel/telemetryType (the #3835 case)', async () => {
     const { calls, deps } = recorder();
