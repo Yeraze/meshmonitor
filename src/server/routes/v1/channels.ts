@@ -11,12 +11,13 @@ import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
 import { ResourceType } from '../../../types/permission.js';
 import { transformChannel } from '../../utils/channelView.js';
+import { resolvedSourceIdFromPath } from './sourceParam.js';
 
 const router = express.Router({ mergeParams: true });
 
 /** Resolve sourceId from path (new /sources/:sourceId mount) or query (legacy). */
 function getScopedSourceId(req: Request): string | undefined {
-  const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+  const fromPath = resolvedSourceIdFromPath(req);
   if (fromPath) return fromPath;
   const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
   return fromQuery;

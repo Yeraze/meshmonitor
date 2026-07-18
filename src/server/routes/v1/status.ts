@@ -9,13 +9,14 @@ import express, { Request, Response } from 'express';
 import databaseService from '../../../services/database.js';
 import { resolveSourceManager } from '../../utils/resolveSourceManager.js';
 import { logger } from '../../../utils/logger.js';
+import { resolvedSourceIdFromPath } from './sourceParam.js';
 
 const router = express.Router({ mergeParams: true });
 
 router.get('/', async (req: Request, res: Response) => {
   try {
     // Scope priority: path (:sourceId via mergeParams) → query (legacy).
-    const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+    const fromPath = resolvedSourceIdFromPath(req);
     const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
     const statusSourceId = fromPath ?? fromQuery;
     const statusManager = resolveSourceManager(statusSourceId);

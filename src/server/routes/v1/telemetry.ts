@@ -9,12 +9,13 @@ import databaseService from '../../../services/database.js';
 import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
 import { checkNodeChannelAccess, maskTelemetryByChannel } from '../../utils/nodeEnhancer.js';
+import { resolvedSourceIdFromPath } from './sourceParam.js';
 
 const router = express.Router({ mergeParams: true });
 
 /** Resolve sourceId from path or query. */
 function getScopedSourceId(req: Request): string | undefined {
-  const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+  const fromPath = resolvedSourceIdFromPath(req);
   if (fromPath) return fromPath;
   const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
   return fromQuery;

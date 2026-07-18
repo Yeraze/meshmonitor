@@ -17,6 +17,7 @@ import { ResourceType } from '../../../types/permission.js';
 import { messageLimiter } from '../../middleware/rateLimiters.js';
 import { logger } from '../../../utils/logger.js';
 import { MAX_MESSAGE_BYTES, PortNum } from '../../constants/meshtastic.js';
+import { resolvedSourceIdFromPath } from './sourceParam.js';
 
 /** Maximum number of message parts allowed when splitting long messages */
 const MAX_MESSAGE_PARTS = 3;
@@ -72,7 +73,7 @@ const router = express.Router({ mergeParams: true });
 
 /** Resolve sourceId from path (new /sources/:sourceId mount) or query/body (legacy). */
 function getScopedSourceId(req: Request): string | undefined {
-  const fromPath = typeof req.params.sourceId === 'string' ? req.params.sourceId : undefined;
+  const fromPath = resolvedSourceIdFromPath(req);
   if (fromPath) return fromPath;
   const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
   if (fromQuery) return fromQuery;
