@@ -44,4 +44,54 @@ describe('computeMessagesReadOnlyState (#3831)', () => {
       actionsReadOnly: false,
     });
   });
+
+  describe('overrideUnmessageable ("message anyway", #4153)', () => {
+    it('isUnmessagable=true, override=false: DMs stay hidden (banner shows)', () => {
+      expect(
+        computeMessagesReadOnlyState({ mqttReadOnly: false, isUnmessagable: true, overrideUnmessageable: false })
+      ).toEqual({
+        dmReadOnly: true,
+        dmReadOnlyReason: 'unmessageable',
+        actionsReadOnly: false,
+      });
+    });
+
+    it('isUnmessagable=true, override=true: DMs revealed (composer shows)', () => {
+      expect(
+        computeMessagesReadOnlyState({ mqttReadOnly: false, isUnmessagable: true, overrideUnmessageable: true })
+      ).toEqual({
+        dmReadOnly: false,
+        dmReadOnlyReason: null,
+        actionsReadOnly: false,
+      });
+    });
+
+    it('mqttReadOnly=true, override=true: STILL read-only — override never bypasses MQTT', () => {
+      expect(
+        computeMessagesReadOnlyState({ mqttReadOnly: true, isUnmessagable: false, overrideUnmessageable: true })
+      ).toEqual({
+        dmReadOnly: true,
+        dmReadOnlyReason: 'mqtt',
+        actionsReadOnly: true,
+      });
+    });
+
+    it('mqttReadOnly=true AND isUnmessagable=true, override=true: still read-only via MQTT', () => {
+      expect(
+        computeMessagesReadOnlyState({ mqttReadOnly: true, isUnmessagable: true, overrideUnmessageable: true })
+      ).toEqual({
+        dmReadOnly: true,
+        dmReadOnlyReason: 'mqtt',
+        actionsReadOnly: true,
+      });
+    });
+
+    it('defaults overrideUnmessageable to false when omitted', () => {
+      expect(computeMessagesReadOnlyState({ mqttReadOnly: false, isUnmessagable: true })).toEqual({
+        dmReadOnly: true,
+        dmReadOnlyReason: 'unmessageable',
+        actionsReadOnly: false,
+      });
+    });
+  });
 });

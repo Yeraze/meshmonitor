@@ -318,6 +318,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   // State for "Jump to Bottom" button
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
 
+  // "Message anyway" override (#4153) for the unmessageable-node DM banner.
+  // `is_unmessagable` is only a NodeInfo self-report, not an enforced
+  // protocol restriction, so it can be stale/wrong. Keyed per-nodeId (not a
+  // single boolean) so overriding one conversation never unlocks another —
+  // switching selectedDMNode naturally looks up a different key, so nothing
+  // leaks between conversations. Cleared on reload (not persisted).
+  const [unmessageableOverrides, setUnmessageableOverrides] = useState<Set<string>>(new Set());
+
   // Handle scroll to detect if user has scrolled up
   const handleScroll = useCallback(() => {
     const container = dmMessagesContainerRef.current;
@@ -781,6 +789,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const { dmReadOnly, dmReadOnlyReason, actionsReadOnly } = computeMessagesReadOnlyState({
     mqttReadOnly,
     isUnmessagable: selectedNode?.isUnmessagable,
+    // Only ever suppresses the unmessageable gate — never bypasses MQTT
+    // (enforced inside computeMessagesReadOnlyState itself).
+    overrideUnmessageable: selectedDMNode ? unmessageableOverrides.has(selectedDMNode) : false,
   });
 
   return (
@@ -1393,6 +1404,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               Only shown for the unmessageable reason — the MQTT-bridge mirror case
               already hides the action buttons too, which is self-explanatory from
               the source picker, so it doesn't get a banner here.
+
+              #4153: `is_unmessagable` is only a NodeInfo self-report, not an
+              enforced protocol restriction — it can be stale or wrong — so the
+              banner offers a "Message anyway" override. The override is keyed
+              per-nodeId (unmessageableOverrides), so it never leaks between
+              conversations, and it is NEVER offered for the MQTT reason (a
+              hard transport limitation, not a self-report — enforced inside
+              computeMessagesReadOnlyState, not just in this banner).
             */}
             {dmReadOnlyReason === 'unmessageable' && (
               <div
@@ -1408,6 +1427,37 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 {t(
                   'messages.unmessageable_banner',
                   'This node reports itself as unmessageable (router/repeater/sensor) — it cannot receive direct messages.'
+                )}
+                {selectedDMNode && (
+                  <>
+                    {' '}
+                    <button
+                      onClick={() => {
+                        const nodeId = selectedDMNode;
+                        setUnmessageableOverrides(prev => {
+                          const next = new Set(prev);
+                          next.add(nodeId);
+                          return next;
+                        });
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        color: 'var(--ctp-blue, #1e66f5)',
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        fontSize: 'inherit',
+                      }}
+                      title={t(
+                        'messages.unmessageable_override_title',
+                        'This flag is self-reported and may be stale or wrong. Try messaging this node anyway.'
+                      )}
+                    >
+                      {t('messages.unmessageable_override_button', 'Message anyway')}
+                    </button>
+                  </>
                 )}
               </div>
             )}
