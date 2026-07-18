@@ -30,9 +30,9 @@ info:
     `/api/v1/solar` and `/api/v1/channel-database` remain deployment-global
     (no source scope).
 
-    Legacy root paths (`/api/v1/nodes?sourceId=...`, etc.) still respond for
-    one release but attach a `Warning: 299` response header and will be
-    removed in a future release.
+    Legacy root paths (`/api/v1/nodes?sourceId=...`, etc.) were removed in
+    4.14 after a one-release deprecation grace period — they now return 404.
+    Use the per-source shape instead.
 
     ## Authentication
     All v1 API endpoints require API token authentication using Bearer tokens in the Authorization header.
@@ -1188,7 +1188,7 @@ paths:
       description: |
         Returns nodes visible for the given source, filtered by the token's
         per-source channel read permissions. This is the canonical replacement
-        for the deprecated root-level `GET /api/v1/nodes?sourceId=...`.
+        for the removed root-level `GET /api/v1/nodes?sourceId=...` shape.
       parameters:
         - name: active
           in: query
@@ -1225,52 +1225,6 @@ paths:
           description: Insufficient permissions on the source
         '404':
           description: Source not found
-
-  /nodes:
-    get:
-      tags:
-        - Nodes
-      deprecated: true
-      summary: Get all nodes (DEPRECATED — use /sources/{sourceId}/nodes)
-      description: |
-        DEPRECATED. Returns `Warning: 299` header. Use
-        `GET /api/v1/sources/{sourceId}/nodes` instead.
-        Retrieve all nodes, optionally filtered by `?sourceId=`.
-      parameters:
-        - name: active
-          in: query
-          description: Filter to only active nodes (within last N days)
-          required: false
-          schema:
-            type: boolean
-            default: false
-        - name: sinceDays
-          in: query
-          description: Number of days to consider for active nodes filter
-          required: false
-          schema:
-            type: integer
-            default: 7
-            minimum: 1
-      responses:
-        '200':
-          description: Nodes retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NodeListResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
 
   /nodes/{nodeId}:
     get:

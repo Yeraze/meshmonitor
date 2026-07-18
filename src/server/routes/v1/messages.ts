@@ -72,14 +72,9 @@ async function getAccessibleChannels(userId: number | null, isAdmin: boolean, so
 
 const router = express.Router({ mergeParams: true });
 
-/** Resolve sourceId from path (new /sources/:sourceId mount) or query/body (legacy). */
+/** Resolve sourceId from the :sourceId path param. */
 function getScopedSourceId(req: Request): string | undefined {
-  const fromPath = resolvedSourceIdFromPath(req);
-  if (fromPath) return fromPath;
-  const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
-  if (fromQuery) return fromQuery;
-  const fromBody = typeof req.body?.sourceId === 'string' ? req.body.sourceId : undefined;
-  return fromBody;
+  return resolvedSourceIdFromPath(req);
 }
 
 /**
