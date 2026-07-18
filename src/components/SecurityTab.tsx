@@ -73,10 +73,16 @@ interface DeadNodesResponse {
 interface SecurityTabProps {
   onTabChange?: (tab: TabType) => void;
   onSelectDMNode?: (nodeId: string) => void;
-  setNewMessage?: (message: string) => void;
+  /**
+   * Select a DM node AND pre-fill the compose draft atomically. Must be used
+   * (rather than separate select + setNewMessage calls) so the #4183
+   * draft-scoping effect doesn't treat the switch as a conversation change
+   * and wipe the pre-filled notification text.
+   */
+  openDmWithDraft?: (nodeId: string, message: string) => void;
 }
 
-export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectDMNode, setNewMessage }) => {
+export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectDMNode, openDmWithDraft }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
   // Resolve a concrete sourceId (context source, else the primary) — the
@@ -299,7 +305,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
       return;
     }
 
-    if (onTabChange && onSelectDMNode && setNewMessage) {
+    if (onTabChange && openDmWithDraft) {
       // Convert nodeNum to hex string with leading ! for DM node ID
       const nodeId = `!${node.nodeNum.toString(16).padStart(8, '0')}`;
 
@@ -311,12 +317,12 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
         message = `MeshMonitor Security Notification: Your node has a key shared with ${duplicateCount} other nearby nodes. Read more: https://bit.ly/4okVACV`;
       }
 
-      // Set the node, message, and switch to messages tab
-      onSelectDMNode(nodeId);
-      setNewMessage(message);
+      // Select the node + pre-fill the draft atomically (survives the #4183
+      // draft-scoping clear), then switch to the messages tab.
+      openDmWithDraft(nodeId, message);
       onTabChange('messages');
     }
-  }, [onTabChange, onSelectDMNode, setNewMessage, hasPermission, t]);
+  }, [onTabChange, openDmWithDraft, hasPermission, t]);
 
   const handleExport = useCallback(async (format: 'csv' | 'json') => {
     try {

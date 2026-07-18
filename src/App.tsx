@@ -515,6 +515,7 @@ const location = useLocation();
     setSelectedChannel,
     newMessage,
     setNewMessage,
+    openDmWithDraft,
     replyingTo,
     setReplyingTo,
     pendingMessages: _pendingMessages, // Not used directly - we use pendingMessagesRef for interval access
@@ -5213,7 +5214,7 @@ const location = useLocation();
         )}
         {activeTab === 'security' && (
           <ErrorBoundary fallbackTitle="Security failed to load">
-          <SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} setNewMessage={setNewMessage} />
+          <SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} openDmWithDraft={openDmWithDraft} />
           </ErrorBoundary>
         )}
         {activeTab === 'packetmonitor' && (
