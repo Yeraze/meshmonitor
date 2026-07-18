@@ -520,6 +520,7 @@
     "settings.analytics": "",
     "settings.solar_latitude_description": "",
     "node_details.air_utilization_tx": "",
+    "node_details.noise_floor": "",
     "hardware.tbeam_v0p7": "",
     "messages.scan_for_admin": "",
     "common.show_more": "",

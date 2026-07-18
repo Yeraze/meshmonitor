@@ -285,6 +285,16 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
             </div>
           )}
 
+          {/* Noise Floor */}
+          {deviceMetrics?.noiseFloor !== undefined && (
+            <div className="node-detail-card">
+              <div className="node-detail-label">{t('node_details.noise_floor')}</div>
+              <div className="node-detail-value">
+                {formatRSSI(deviceMetrics.noiseFloor)}
+              </div>
+            </div>
+          )}
+
           {/* Uptime */}
           {deviceMetrics?.uptimeSeconds !== undefined && (
             <div className="node-detail-card">

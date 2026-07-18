@@ -19,6 +19,8 @@ export interface DeviceInfo {
     channelUtilization?: number;
     airUtilTx?: number;
     uptimeSeconds?: number;
+    /** Radio noise floor in dBm, from LocalStats telemetry (#3396). */
+    noiseFloor?: number;
   };
   hopsAway?: number;
   lastMessageHops?: number; // Hops from most recent packet (hopStart - hopLimit)

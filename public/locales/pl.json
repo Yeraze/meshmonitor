@@ -2720,6 +2720,7 @@
     "node_details.signal_rssi": "Sygnał (RSSI)",
     "node_details.channel_utilization": "Wykorzystanie kanału",
     "node_details.air_utilization_tx": "Wykorzystanie pasma TX",
+    "node_details.noise_floor": "Poziom szumów",
     "node_details.uptime": "Czas działania",
     "node_details.node_id": "Identyfikator węzła",
     "node_details.role": "Rola",

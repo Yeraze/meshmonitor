@@ -386,6 +386,7 @@
     "system_backup.toast_creating": "",
     "settings.solar_latitude_description": "",
     "node_details.air_utilization_tx": "",
+    "node_details.noise_floor": "",
     "hardware.tbeam_v0p7": "",
     "common.show_more": "",
     "admin_commands.selected": "",

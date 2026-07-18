@@ -2852,6 +2852,7 @@
   "node_details.signal_rssi": "Signal (RSSI)",
   "node_details.channel_utilization": "Channel Utilization",
   "node_details.air_utilization_tx": "Air Utilization TX",
+  "node_details.noise_floor": "Noise Floor",
   "node_details.uptime": "Uptime",
   "node_details.node_id": "Node ID",
   "node_details.role": "Role",

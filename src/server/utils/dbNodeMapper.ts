@@ -18,7 +18,7 @@ import { mergeNodesAcrossSources } from './mergeNodesAcrossSources.js';
 import type { DeviceInfo } from '../meshtasticManager.js';
 import { logger } from '../../utils/logger.js';
 
-export function mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number): DeviceInfo {
+export function mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number, noiseFloor?: number): DeviceInfo {
   const deviceInfo: any = {
     nodeNum: node.nodeNum,
     user: {
@@ -34,6 +34,7 @@ export function mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number): Device
       channelUtilization: node.channelUtilization,
       airUtilTx: node.airUtilTx,
       uptimeSeconds,
+      noiseFloor,
     },
     lastHeard: node.lastHeard,
     snr: node.snr,
@@ -138,12 +139,14 @@ export function mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number): Device
  * `mergeNodesAcrossSources` (issue #3135).
  */
 export async function loadAllNodesAsDeviceInfo(sourceId?: string): Promise<DeviceInfo[]> {
-  const uptimeMap = await databaseService.telemetry.getLatestTelemetryValueForAllNodes(
-    'uptimeSeconds',
-    sourceId,
-  );
+  const [uptimeMap, noiseFloorMap] = await Promise.all([
+    databaseService.telemetry.getLatestTelemetryValueForAllNodes('uptimeSeconds', sourceId),
+    databaseService.telemetry.getLatestTelemetryValueForAllNodes('noiseFloor', sourceId),
+  ]);
   // intentional cross-source when sourceId omitted: caller wants unified view across all sources
   const dbNodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
   const effective = sourceId ? dbNodes : mergeNodesAcrossSources(dbNodes);
-  return effective.map(node => mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId)));
+  return effective.map(node =>
+    mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId), noiseFloorMap.get(node.nodeId)),
+  );
 }
