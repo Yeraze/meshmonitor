@@ -80,4 +80,21 @@ describe('nextComposeDraftState', () => {
     const other = nextComposeDraftState(away.key, 'ch:0');
     expect(other).toEqual({ key: 'ch:0', clear: true });
   });
+
+  it('does not clear when the tracked key was pre-marked to the target (openDmWithDraft pre-fill)', () => {
+    // SecurityTab's "Send Notification" selects a node AND pre-fills the draft
+    // in the same React batch. MessagingContext.openDmWithDraft pre-marks the
+    // tracked key to the target conversation before the effect runs, so the
+    // effect observes a same-key transition and keeps the pre-filled draft —
+    // even though a different conversation was active beforehand. (Without the
+    // pre-mark, the transition would be dm:!previous -> dm:!target = clear.)
+    expect(nextComposeDraftState('dm:!previous', 'dm:!target')).toEqual({
+      key: 'dm:!target',
+      clear: true, // the unmarked transition WOULD clear — hence the pre-mark
+    });
+    expect(nextComposeDraftState('dm:!target', 'dm:!target')).toEqual({
+      key: 'dm:!target',
+      clear: false, // pre-marked: same-key no-op, pre-filled draft survives
+    });
+  });
 });

@@ -18,6 +18,8 @@ interface MessagingContextType {
   setSelectedChannel: React.Dispatch<React.SetStateAction<number>>;
   newMessage: string;
   setNewMessage: React.Dispatch<React.SetStateAction<string>>;
+  /** Select a DM node and pre-fill the compose draft atomically (survives the #4183 draft-scoping clear). */
+  openDmWithDraft: (nodeId: string, message: string) => void;
   replyingTo: MeshMessage | null;
   setReplyingTo: React.Dispatch<React.SetStateAction<MeshMessage | null>>;
   pendingMessages: Map<string, MeshMessage>;
@@ -75,6 +77,17 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
     if (clear) setNewMessage('');
   }, [activeTab, selectedDMNode, selectedChannel]);
 
+  // Open a DM with a pre-filled draft — e.g. SecurityTab's "Send Notification"
+  // button. The selection change and the pre-fill land in the same React batch,
+  // so the scoping effect above would otherwise see a conversation change and
+  // wipe the just-pre-filled draft. Pre-marking the compose-target key makes
+  // the effect's transition a same-key no-op, preserving the draft.
+  const openDmWithDraft = useCallback((nodeId: string, message: string) => {
+    composeConvKeyRef.current = `dm:${nodeId}`;
+    setSelectedDMNode(nodeId);
+    setNewMessage(message);
+  }, []);
+
   // Use TanStack Query hooks for unread counts - only enable when authenticated.
   // Exclude MQTT messages from the count when the user has opted to hide them,
   // so the sidebar dot and channel badges don't light up for MQTT-only traffic.
@@ -121,6 +134,7 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
         setSelectedChannel,
         newMessage,
         setNewMessage,
+        openDmWithDraft,
         replyingTo,
         setReplyingTo,
         pendingMessages,
