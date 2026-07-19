@@ -31,6 +31,11 @@ export async function loadProtobufDefinitions(): Promise<protobuf.Root> {
 
     await root.load(protoPath);
 
+    // Apply the 2.7 TrafficManagement compat patch immediately after the main
+    // load (mesh.proto imports module_config.proto) so a failure loading any
+    // of the later, unrelated protos can't leave TM in a broken state.
+    restoreLegacyTrafficManagementFields(root);
+
     // Load admin.proto explicitly (not imported by mesh.proto)
     const adminProtoPath = path.join(protoRoot, 'meshtastic/admin.proto');
     await root.load(adminProtoPath);
@@ -56,11 +61,81 @@ export async function loadProtobufDefinitions(): Promise<protobuf.Root> {
     await root.load(storeForwardProtoPath);
     logger.debug('✅ Loaded storeforward.proto for Store & Forward support');
 
+    // Load mesh_beacon.proto for MeshBeacon support (2.8 preview; not imported
+    // by mesh.proto). MESH_BEACON_APP payload decode lands with #3854.
+    const meshBeaconProtoPath = path.join(protoRoot, 'meshtastic/mesh_beacon.proto');
+    await root.load(meshBeaconProtoPath);
+    logger.debug('✅ Loaded mesh_beacon.proto for MeshBeacon support');
+
     logger.debug('✅ Successfully loaded Meshtastic protobuf definitions');
     return root;
   } catch (error) {
     logger.error('❌ Failed to load protobuf definitions:', error);
     throw error;
+  }
+}
+
+/**
+ * 2.7-compat schema patch for TrafficManagementConfig.
+ *
+ * The protobufs submodule is pinned to a 2.8-preview develop commit
+ * (ba16bfc, ahead of v2.7.26) to enable MeshBeacon/XEdDSA work (#3854,
+ * #3548, #3923). That range includes upstream commit d4f7ddb, which
+ * REMOVED the v2.7.x TrafficManagementConfig bool-toggle fields (tags
+ * 1,2,3,5,7,10,12,13,14 are now `reserved`) in favor of a
+ * "non-zero implies enabled" convention for firmware 2.8.
+ *
+ * Shipping 2.7-alpha firmware (v2.7.20+) still uses those tags on the
+ * wire, and MeshMonitor's Traffic Management config UI still reads and
+ * writes them. Because the runtime schema comes straight from the
+ * submodule's .proto files, dropping the fields would silently break TM
+ * configuration for every existing user: encode would omit `enabled`
+ * (tag 1) so the module could never be turned on, and decode would
+ * discard the device's reported toggle state.
+ *
+ * `reserved` constrains the schema, not the wire — so re-adding the
+ * fields here restores byte-for-byte v2.7.26 encode/decode behavior for
+ * this one message while the rest of the schema tracks the 2.8 preview.
+ *
+ * REMOVE when firmware 2.8 ships and the TM config path grows a
+ * version-aware dual schema (gate exists: supportsTrafficManagement()).
+ * Tracked on #3548.
+ *
+ * Exported for tests (idempotency coverage); production code should rely on
+ * loadProtobufDefinitions() calling it.
+ */
+export function restoreLegacyTrafficManagementFields(protoRoot: protobuf.Root): void {
+  const legacyFields: Array<[name: string, id: number, type: string]> = [
+    ['enabled', 1, 'bool'],
+    ['positionDedupEnabled', 2, 'bool'],
+    ['positionPrecisionBits', 3, 'uint32'],
+    ['nodeinfoDirectResponse', 5, 'bool'],
+    ['rateLimitEnabled', 7, 'bool'],
+    ['dropUnknownEnabled', 10, 'bool'],
+    ['exhaustHopTelemetry', 12, 'bool'],
+    ['exhaustHopPosition', 13, 'bool'],
+    ['routerPreserveHops', 14, 'bool'],
+  ];
+  try {
+    const tmm = protoRoot.lookupType('meshtastic.ModuleConfig.TrafficManagementConfig');
+    // Clear the reserved ranges/names so Type#add doesn't reject the ids.
+    // Blunt on purpose: this wipes ALL reservations on this one message, so an
+    // unrelated future upstream reservation (e.g. tags 15+) would be lost too.
+    // Acceptable for a shim this short-lived; revisit if upstream reserves
+    // anything else here before the shim is removed.
+    tmm.reserved = [];
+    for (const [name, id, type] of legacyFields) {
+      // Skip anything upstream may have restored (or that a future tag
+      // re-introduces) so this patch stays idempotent and non-clobbering.
+      if (!tmm.fields[name] && !tmm.fieldsById[id]) {
+        tmm.add(new protobuf.Field(name, id, type));
+      }
+    }
+    logger.debug('✅ Restored legacy TrafficManagementConfig fields (2.7 firmware compat)');
+  } catch (error) {
+    // TM config would silently stop working — make that loud, but don't
+    // take down every other protobuf consumer with it.
+    logger.error('❌ Failed to restore legacy TrafficManagementConfig fields — Traffic Management configuration will not work against 2.7 firmware:', error);
   }
 }
 
