@@ -108,6 +108,29 @@
   color: var(--ctp-red);
 }
 
+/* Signal Trend Badge (#4110) */
+.signal-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15em;
+}
+
+.signal-trend-arrow {
+  font-size: 0.9em;
+}
+
+.signal-trend-improving {
+  color: var(--ctp-green);
+}
+
+.signal-trend-stable {
+  color: var(--ctp-subtext0, var(--ctp-text));
+}
+
+.signal-trend-degrading {
+  color: var(--ctp-red);
+}
+
 /* Utilization Color Indicators */
 .utilization-good {
   color: var(--ctp-green);

@@ -3,6 +3,12 @@ import { optionalAuth, requireAuth, requirePermission, hasPermission } from '../
 import { requireSourceId } from '../utils/requireSourceId.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
+import { ok, fail } from '../utils/apiResponse.js';
+import {
+  computeSignalTrend,
+  SIGNAL_TREND_TELEMETRY_TYPES,
+  SIGNAL_TREND_LOOKBACK_MS,
+} from '../services/signalTrend.js';
 import { logger } from '../../utils/logger.js';
 import { isValidNodeNum } from '../constants/meshtastic.js';
 import {
@@ -243,6 +249,44 @@ router.get('/telemetry/:nodeId/linkquality', optionalAuth(), requireSourceId('qu
   } catch (error) {
     logger.error('Error fetching link quality history:', error);
     res.status(500).json({ error: 'Failed to fetch link quality history' });
+  }
+});
+
+// Get the derived signal trend / link-attenuation indicator for a node (#4110).
+// Compares the node's trailing-24h RSSI/SNR against a prior-7d baseline and
+// factors in noise-floor drift; returns a compact trend badge payload.
+router.get('/telemetry/:nodeId/signal-trend', optionalAuth(), requireSourceId('query'), async (req: Request, res: Response) => {
+  try {
+    // Allow users with info read OR dashboard read (same gate as linkquality)
+    if (
+      !req.user?.isAdmin &&
+      !(req.user ? await hasPermission(req.user, 'info', 'read') : false) &&
+      !(req.user ? await hasPermission(req.user, 'dashboard', 'read') : false)
+    ) {
+      return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
+    }
+
+    const { nodeId } = req.params;
+
+    // Check channel-based access for this node (source-scoped, #3745)
+    if (!await checkNodeChannelAccess(nodeId, req.user, req.query.sourceId as string | undefined)) {
+      return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
+    }
+
+    const sourceId = req.query.sourceId as string;
+    const now = Date.now();
+    const samples = await databaseService.telemetry.getSignalTrendSamples(
+      nodeId,
+      SIGNAL_TREND_TELEMETRY_TYPES,
+      now - SIGNAL_TREND_LOOKBACK_MS,
+      sourceId
+    );
+
+    const result = computeSignalTrend(samples, now);
+    return ok(res, result);
+  } catch (error) {
+    logger.error('Error computing signal trend:', error);
+    return fail(res, 500, 'SIGNAL_TREND_ERROR', 'Failed to compute signal trend');
   }
 });
 

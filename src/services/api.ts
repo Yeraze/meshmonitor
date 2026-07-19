@@ -10,6 +10,28 @@ import {
 } from '../utils/validation';
 import { logger } from '../utils/logger.js';
 
+export type SignalTrend = 'improving' | 'stable' | 'degrading' | 'insufficient';
+
+/** Per-metric day-vs-week window stats returned by the signal-trend endpoint (#4110). */
+export interface SignalTrendMetric {
+  recent: number;
+  baseline: number;
+  delta: number;
+  recentCount: number;
+  baselineCount: number;
+  unit: string;
+}
+
+/** Response of GET /api/telemetry/:nodeId/signal-trend (#4110). */
+export interface SignalTrendResult {
+  trend: SignalTrend;
+  basis: 'rssi' | 'snr' | null;
+  rssi: SignalTrendMetric | null;
+  snr: SignalTrendMetric | null;
+  noiseFloor: SignalTrendMetric | null;
+  noiseFloorRising: boolean;
+}
+
 /**
  * Error thrown by ApiService.request when the server returns a non-OK response.
  * Callers can distinguish by `status` (e.g. 429 for rate limit) and `code`
@@ -761,6 +783,21 @@ class ApiService {
     }
     const data = await response.json();
     return data.success ? data.data : {};
+  }
+
+  /**
+   * Fetch the derived signal trend / link-attenuation indicator for a node
+   * (issue #4110). `sourceId` is required by the endpoint — callers must only
+   * invoke this when a concrete source is selected.
+   */
+  async getSignalTrend(nodeId: string, sourceId: string): Promise<SignalTrendResult> {
+    const qs = `?sourceId=${encodeURIComponent(sourceId)}`;
+    // The server wraps the payload as { success, data }; ApiService.request does
+    // not unwrap, so read body.data explicitly.
+    const body = await this.get<{ success: boolean; data: SignalTrendResult }>(
+      `/api/telemetry/${encodeURIComponent(nodeId)}/signal-trend${qs}`,
+    );
+    return body.data;
   }
 
   async updateTracerouteInterval(minutes: number) {
