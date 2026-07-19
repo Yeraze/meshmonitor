@@ -18,7 +18,7 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import type protobuf from 'protobufjs';
-import { loadProtobufDefinitions } from './protobufLoader.js';
+import { loadProtobufDefinitions, restoreLegacyTrafficManagementFields } from './protobufLoader.js';
 
 let root: protobuf.Root;
 
@@ -89,12 +89,25 @@ describe('TrafficManagementConfig 2.7 compat patch', () => {
   it('decodes 2.7-firmware wire bytes back to the toggle state (no field loss)', () => {
     const tmm = root.lookupType('meshtastic.ModuleConfig.TrafficManagementConfig');
     // What a 2.7-alpha device reports for an enabled module with
-    // router_preserve_hops (tag 14 -> 0x70) and exhaust_hop_position (tag 13 -> 0x68).
-    const deviceBytes = Uint8Array.from([0x08, 0x01, 0x68, 0x01, 0x70, 0x01]);
+    // position_precision_bits=13 (tag 3 -> 0x18 0x0d, the only non-bool
+    // restored field), exhaust_hop_position (tag 13 -> 0x68), and
+    // router_preserve_hops (tag 14 -> 0x70).
+    const deviceBytes = Uint8Array.from([0x08, 0x01, 0x18, 0x0d, 0x68, 0x01, 0x70, 0x01]);
     const decoded = tmm.toObject(tmm.decode(deviceBytes)) as Record<string, unknown>;
     expect(decoded.enabled).toBe(true);
+    expect(decoded.positionPrecisionBits).toBe(13);
     expect(decoded.exhaustHopPosition).toBe(true);
     expect(decoded.routerPreserveHops).toBe(true);
+  });
+
+  it('is idempotent — re-running the patch neither throws nor duplicates fields', () => {
+    const tmm = root.lookupType('meshtastic.ModuleConfig.TrafficManagementConfig');
+    const fieldCountBefore = Object.keys(tmm.fields).length;
+    expect(() => restoreLegacyTrafficManagementFields(root)).not.toThrow();
+    expect(Object.keys(tmm.fields).length).toBe(fieldCountBefore);
+    // The restored fields are still intact after the second pass.
+    expect(tmm.fields.enabled?.id).toBe(1);
+    expect(tmm.fields.routerPreserveHops?.id).toBe(14);
   });
 });
 

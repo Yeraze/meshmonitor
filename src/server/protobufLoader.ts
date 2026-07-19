@@ -31,6 +31,11 @@ export async function loadProtobufDefinitions(): Promise<protobuf.Root> {
 
     await root.load(protoPath);
 
+    // Apply the 2.7 TrafficManagement compat patch immediately after the main
+    // load (mesh.proto imports module_config.proto) so a failure loading any
+    // of the later, unrelated protos can't leave TM in a broken state.
+    restoreLegacyTrafficManagementFields(root);
+
     // Load admin.proto explicitly (not imported by mesh.proto)
     const adminProtoPath = path.join(protoRoot, 'meshtastic/admin.proto');
     await root.load(adminProtoPath);
@@ -61,8 +66,6 @@ export async function loadProtobufDefinitions(): Promise<protobuf.Root> {
     const meshBeaconProtoPath = path.join(protoRoot, 'meshtastic/mesh_beacon.proto');
     await root.load(meshBeaconProtoPath);
     logger.debug('✅ Loaded mesh_beacon.proto for MeshBeacon support');
-
-    restoreLegacyTrafficManagementFields(root);
 
     logger.debug('✅ Successfully loaded Meshtastic protobuf definitions');
     return root;
@@ -97,8 +100,11 @@ export async function loadProtobufDefinitions(): Promise<protobuf.Root> {
  * REMOVE when firmware 2.8 ships and the TM config path grows a
  * version-aware dual schema (gate exists: supportsTrafficManagement()).
  * Tracked on #3548.
+ *
+ * Exported for tests (idempotency coverage); production code should rely on
+ * loadProtobufDefinitions() calling it.
  */
-function restoreLegacyTrafficManagementFields(protoRoot: protobuf.Root): void {
+export function restoreLegacyTrafficManagementFields(protoRoot: protobuf.Root): void {
   const legacyFields: Array<[name: string, id: number, type: string]> = [
     ['enabled', 1, 'bool'],
     ['positionDedupEnabled', 2, 'bool'],
@@ -113,11 +119,15 @@ function restoreLegacyTrafficManagementFields(protoRoot: protobuf.Root): void {
   try {
     const tmm = protoRoot.lookupType('meshtastic.ModuleConfig.TrafficManagementConfig');
     // Clear the reserved ranges/names so Type#add doesn't reject the ids.
+    // Blunt on purpose: this wipes ALL reservations on this one message, so an
+    // unrelated future upstream reservation (e.g. tags 15+) would be lost too.
+    // Acceptable for a shim this short-lived; revisit if upstream reserves
+    // anything else here before the shim is removed.
     tmm.reserved = [];
     for (const [name, id, type] of legacyFields) {
       // Skip anything upstream may have restored (or that a future tag
       // re-introduces) so this patch stays idempotent and non-clobbering.
-      if (!tmm.fields[name] && !tmm.fieldsById?.[id]) {
+      if (!tmm.fields[name] && !tmm.fieldsById[id]) {
         tmm.add(new protobuf.Field(name, id, type));
       }
     }
