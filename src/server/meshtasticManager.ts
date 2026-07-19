@@ -455,6 +455,20 @@ export interface MeshtasticMqttLink {
   mqttBrokerSourceId?: string;
 }
 
+/**
+ * A telemetry want_response request we sent and are still awaiting a reply for.
+ * Tracked so we can detect + auto-retry the firmware NeighborInfo-hijack
+ * (issue #4210 / meshtastic/firmware#11071). Keyed by the request's packet id,
+ * which the firmware echoes back as a reply's `request_id`.
+ */
+interface PendingTelemetryRequest {
+  destination: number;
+  channel: number;
+  telemetryType?: 'device' | 'environment' | 'airQuality' | 'power';
+  sentAt: number;
+  retried: boolean;
+}
+
 class MeshtasticManager implements ISourceManager {
   public sourceId: string;
   private sourceConfigOverride: { host?: string; port?: number; heartbeatIntervalSeconds?: number; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean; passiveResyncStaleMs?: number } | null = null;
@@ -551,6 +565,16 @@ class MeshtasticManager implements ISourceManager {
   // Most recent Channel Utilization (%) self-reported by the local node, or null
   // if no device telemetry has been seen yet.
   private localChannelUtilization: number | null = null;
+  // issue #4210 / meshtastic/firmware#11071: a remote node with neighbor_info
+  // enabled hijacks our TELEMETRY_APP want_response with a promiscuous NeighborInfo
+  // reply (its request_id == our request's packet id). The hijack arms the node's
+  // 3-minute NeighborInfo cooldown, so an immediate retry of the same request
+  // returns real telemetry (hardware-verified A/B). We track outstanding telemetry
+  // requests here (keyed by packet id) so the inbound-NeighborInfo path can
+  // auto-retry once. Per-manager (never global) so replies stay on the same source.
+  private pendingTelemetryRequests = new Map<number, PendingTelemetryRequest>();
+  private static readonly TELEMETRY_REQUEST_TTL_MS = 3 * 60 * 1000;
+  private static readonly TELEMETRY_REQUEST_MAX_PENDING = 256;
   // Where the cutoff reads ChUtil from: the local node, or the averaged
   // strongest-RSSI 0-hop infrastructure neighbours.
   private automationAirtimeCutoffSource: AirtimeCutoffSource = DEFAULT_AIRTIME_CUTOFF_SOURCE;
@@ -6634,6 +6658,14 @@ class MeshtasticManager implements ISourceManager {
       const packetTimestamp = telemetry.time ? Number(telemetry.time) * 1000 : undefined;
       const packetId = meshPacket.id ? Number(meshPacket.id) : undefined;
 
+      // A real telemetry reply means our want_response was NOT hijacked — clear
+      // any matching pending request so no auto-retry fires (issue #4210). The
+      // reply's request_id echoes the original telemetry request's packet id.
+      const replyRequestId = meshPacket.decoded?.requestId ? Number(meshPacket.decoded.requestId) : 0;
+      if (replyRequestId) {
+        this.resolvePendingTelemetryRequest(replyRequestId);
+      }
+
       // Track PKI encryption
       await this.trackPKIEncryption(meshPacket, fromNum);
 
@@ -7769,6 +7801,12 @@ class MeshtasticManager implements ISourceManager {
       const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
 
       logger.debug(`🏠 Neighbor info received from ${fromNodeId}:`, neighborInfo);
+
+      // issue #4210 / meshtastic/firmware#11071: if this NeighborInfo is actually
+      // the firmware's promiscuous hijack of a telemetry want_response we sent
+      // (matched by request_id), auto-retry the telemetry request once. The
+      // NeighborInfo is still valid neighbor data, so processing continues below.
+      await this.maybeRetryHijackedTelemetry(meshPacket);
 
       // MQTT-sourced neighbor info IS persisted (issue #3271): the global, batch
       // position estimator pools the MQTT neighbor graph for extra resolution.
@@ -8921,13 +8959,97 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * Prune expired pending telemetry requests and bound the map size.
+   * Map iteration order is insertion order, so the first keys are the oldest.
+   */
+  private pruneExpiredTelemetryRequests(now: number): void {
+    for (const [key, entry] of this.pendingTelemetryRequests) {
+      if (now - entry.sentAt > MeshtasticManager.TELEMETRY_REQUEST_TTL_MS) {
+        this.pendingTelemetryRequests.delete(key);
+      }
+    }
+    while (this.pendingTelemetryRequests.size > MeshtasticManager.TELEMETRY_REQUEST_MAX_PENDING) {
+      const oldestKey = this.pendingTelemetryRequests.keys().next().value;
+      if (oldestKey === undefined) break;
+      this.pendingTelemetryRequests.delete(oldestKey);
+    }
+  }
+
+  /**
+   * Record an outgoing telemetry want_response so a firmware NeighborInfo hijack
+   * of its reply can be detected and auto-retried (issue #4210).
+   * @param retried true for the auto-retry send itself, so it is never retried again.
+   */
+  private recordPendingTelemetryRequest(
+    packetId: number,
+    destination: number,
+    channel: number,
+    telemetryType: 'device' | 'environment' | 'airQuality' | 'power' | undefined,
+    retried: boolean
+  ): void {
+    if (!packetId) return;
+    const now = Date.now();
+    this.pendingTelemetryRequests.set(packetId, { destination, channel, telemetryType, sentAt: now, retried });
+    this.pruneExpiredTelemetryRequests(now);
+  }
+
+  /**
+   * A telemetry reply arrived — clear the matching pending request so no
+   * (unnecessary) auto-retry fires. Matched by the reply's request_id.
+   */
+  private resolvePendingTelemetryRequest(requestId: number): void {
+    if (requestId && this.pendingTelemetryRequests.delete(requestId)) {
+      logger.debug(`📊 Telemetry reply resolved pending request ${requestId} (no retry needed)`);
+    }
+  }
+
+  /**
+   * Detect the firmware NeighborInfo-hijack of a telemetry want_response
+   * (issue #4210 / meshtastic/firmware#11071) and auto-retry the telemetry
+   * request exactly once. The inbound NeighborInfo is still valid neighbor data
+   * and is processed/stored normally by the caller — this only handles the retry.
+   */
+  private async maybeRetryHijackedTelemetry(meshPacket: { decoded?: { requestId?: number | null } }): Promise<void> {
+    const requestId = meshPacket?.decoded?.requestId ? Number(meshPacket.decoded.requestId) : 0;
+    if (!requestId) return;
+
+    const now = Date.now();
+    this.pruneExpiredTelemetryRequests(now);
+    const pending = this.pendingTelemetryRequests.get(requestId);
+    if (!pending) return;
+
+    if (now - pending.sentAt > MeshtasticManager.TELEMETRY_REQUEST_TTL_MS) {
+      this.pendingTelemetryRequests.delete(requestId);
+      return;
+    }
+
+    const destLabel = `!${pending.destination.toString(16).padStart(8, '0')}`;
+    if (pending.retried) {
+      // Already auto-retried once; the retry was hijacked too (or this is a
+      // duplicate NeighborInfo). Do not retry again — just let it be (no loop).
+      this.pendingTelemetryRequests.delete(requestId);
+      logger.info(`📊 Telemetry request ${requestId} to ${destLabel} was hijacked by a NeighborInfo reply again after auto-retry — giving up (firmware #11071)`);
+      return;
+    }
+
+    pending.retried = true;
+    logger.info(`📊 Telemetry request ${requestId} (${pending.telemetryType ?? 'device'}) to ${destLabel} was hijacked by a promiscuous NeighborInfo reply (firmware #11071); the hijack armed the node's 3-min cooldown, so auto-retrying the telemetry request once`);
+    try {
+      await this.sendTelemetryRequest(pending.destination, pending.channel, pending.telemetryType, { isAutoRetry: true });
+    } catch (error) {
+      logger.warn(`Failed to auto-retry hijacked telemetry request to ${destLabel}:`, error);
+    }
+  }
+
+  /**
    * Send a telemetry request to a remote node
    * This sends an empty telemetry packet with wantResponse=true to request telemetry data
    */
   async sendTelemetryRequest(
     destination: number,
     channel: number = 0,
-    telemetryType?: 'device' | 'environment' | 'airQuality' | 'power'
+    telemetryType?: 'device' | 'environment' | 'airQuality' | 'power',
+    options?: { isAutoRetry?: boolean }
   ): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
@@ -8970,6 +9092,12 @@ class MeshtasticManager implements ISourceManager {
         `Telemetry request (${typeLabel}) to !${destination.toString(16).padStart(8, '0')}`,
         { destination, telemetryType: typeLabel, packetId, requestId }
       );
+
+      // Track this outstanding request so the firmware NeighborInfo-hijack
+      // (issue #4210) can be detected + auto-retried. Firmware echoes the
+      // request's MeshPacket id back as the reply's request_id, so key by packetId.
+      // The auto-retry send is recorded as already-retried to prevent a loop.
+      this.recordPendingTelemetryRequest(packetId, destination, channel, telemetryType, options?.isAutoRetry ?? false);
 
       return { packetId, requestId };
     } catch (error) {
