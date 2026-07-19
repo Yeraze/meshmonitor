@@ -15,6 +15,7 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
 import { parseDiscardInvalidPositions } from '../../utils/positionIngestConfig.js';
+import { parseNoIndexEnabled } from '../../utils/robotsConfig.js';
 import { securityDigestService } from '../services/securityDigestService.js';
 import { invalidatePkiDmGlobalCache } from '../services/sourcePkiKeyStore.js';
 import { VALID_SETTINGS_KEYS, stripSecretSettings } from '../constants/settings.js';
@@ -135,6 +136,9 @@ export interface SettingsCallbacks {
   // Global (default ON): push the new discard-invalid-positions value into the
   // cached ingest gate so it takes effect immediately, no restart.
   setDiscardInvalidPositions?: (enabled: boolean) => void;
+  // Global (default OFF): push the new no-index value into the cached gate so
+  // the X-Robots-Tag header + /robots.txt body take effect immediately (#4202).
+  setNoIndexEnabled?: (enabled: boolean) => void;
   // Per-source (#3901): the scheduler reads the source's own interval, so no
   // intervalHours arg. A null sourceId is a no-op (no global scheduler).
   restartAutoDeleteByDistanceService?: (sourceId?: string | null) => void;
@@ -724,6 +728,12 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
       const enabled = parseDiscardInvalidPositions(filteredSettings.discardInvalidPositions);
       callbacks.setDiscardInvalidPositions?.(enabled);
       logger.debug(`🗺️ discardInvalidPositions set to ${enabled} — ingest gate updated`);
+    }
+
+    if ('noIndexEnabled' in filteredSettings) {
+      const enabled = parseNoIndexEnabled(filteredSettings.noIndexEnabled);
+      callbacks.setNoIndexEnabled?.(enabled);
+      logger.debug(`🤖 noIndexEnabled set to ${enabled} — robots gate updated`);
     }
 
     if ('autoWelcomeEnabled' in filteredSettings) {

@@ -95,7 +95,7 @@ interface SettingsTabProps {
 }
 
 const GLOBAL_SECTIONS = new Set([
-  'settings-language', 'settings-units', 'settings-appearance', 'settings-link-previews', 'settings-meshcore-messaging', 'settings-map',
+  'settings-language', 'settings-units', 'settings-appearance', 'settings-link-previews', 'settings-privacy', 'settings-meshcore-messaging', 'settings-map',
   'settings-security',
   'settings-apprise-server', 'settings-elevation', 'settings-backup', 'settings-channel-database',
   'settings-maintenance', 'settings-analytics',
@@ -183,6 +183,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLinkPreviewsEnabled,
     discardInvalidPositions,
     setDiscardInvalidPositions,
+    noIndexEnabled,
+    setNoIndexEnabled,
     meshcoreChannelRetryEnabled,
     setMeshcoreChannelRetryEnabled,
     nodeDimmingEnabled,
@@ -251,6 +253,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [localPacketLogMaxAgeHours, setLocalPacketLogMaxAgeHours] = useState(24);
   const [localLinkPreviewsEnabled, setLocalLinkPreviewsEnabled] = useState(linkPreviewsEnabled);
   const [localDiscardInvalidPositions, setLocalDiscardInvalidPositions] = useState(discardInvalidPositions);
+  const [localNoIndexEnabled, setLocalNoIndexEnabled] = useState(noIndexEnabled);
   const [localMeshcoreChannelRetryEnabled, setLocalMeshcoreChannelRetryEnabled] = useState(meshcoreChannelRetryEnabled);
   const [localSolarMonitoringEnabled, setLocalSolarMonitoringEnabled] = useState(solarMonitoringEnabled);
   const [localSolarMonitoringLatitude, setLocalSolarMonitoringLatitude] = useState(solarMonitoringLatitude);
@@ -367,6 +370,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const discardInvalidOn = !(settings.discardInvalidPositions === '0' || settings.discardInvalidPositions === 'false');
           setLocalDiscardInvalidPositions(discardInvalidOn);
 
+          // Load no-index (#4202). Absent key => disabled.
+          const noIndexOn = settings.noIndexEnabled === '1' || settings.noIndexEnabled === 'true';
+          setLocalNoIndexEnabled(noIndexOn);
+
           // Load MeshCore channel-send auto-retry (#3979). Absent key => disabled.
           const meshcoreChannelRetryOn = settings.meshcoreChannelRetryEnabled === '1' || settings.meshcoreChannelRetryEnabled === 'true';
           setLocalMeshcoreChannelRetryEnabled(meshcoreChannelRetryOn);
@@ -463,6 +470,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalDashboardSortOption(preferredDashboardSortOption);
     setLocalLinkPreviewsEnabled(linkPreviewsEnabled);
     setLocalDiscardInvalidPositions(discardInvalidPositions);
+    setLocalNoIndexEnabled(noIndexEnabled);
     setLocalMeshcoreChannelRetryEnabled(meshcoreChannelRetryEnabled);
     setLocalSolarMonitoringEnabled(solarMonitoringEnabled);
     setLocalSolarMonitoringLatitude(solarMonitoringLatitude);
@@ -535,6 +543,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localSolarMonitoringDeclination !== solarMonitoringDeclination ||
       localLinkPreviewsEnabled !== linkPreviewsEnabled ||
       localDiscardInvalidPositions !== discardInvalidPositions ||
+      localNoIndexEnabled !== noIndexEnabled ||
       localMeshcoreChannelRetryEnabled !== meshcoreChannelRetryEnabled ||
       localHideIncompleteNodes !== !showIncompleteNodes ||
       localHomoglyphEnabled !== initialHomoglyphEnabled ||
@@ -556,6 +565,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       localLinkPreviewsEnabled, linkPreviewsEnabled,
       localDiscardInvalidPositions, discardInvalidPositions,
+      localNoIndexEnabled, noIndexEnabled,
       localMeshcoreChannelRetryEnabled, meshcoreChannelRetryEnabled,
       localHideIncompleteNodes, showIncompleteNodes, localHomoglyphEnabled, initialHomoglyphEnabled,
       localLocalStatsIntervalMinutes, initialLocalStatsIntervalMinutes,
@@ -604,6 +614,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
     setLocalLinkPreviewsEnabled(linkPreviewsEnabled);
     setLocalDiscardInvalidPositions(discardInvalidPositions);
+    setLocalNoIndexEnabled(noIndexEnabled);
     setLocalMeshcoreChannelRetryEnabled(meshcoreChannelRetryEnabled);
     setLocalHideIncompleteNodes(!showIncompleteNodes);
     setLocalHomoglyphEnabled(initialHomoglyphEnabled);
@@ -623,7 +634,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
       solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes,
-      linkPreviewsEnabled, discardInvalidPositions, meshcoreChannelRetryEnabled,
+      linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled,
       initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialMeshcoreCliTimeoutSeconds, initialNodeDimmingSettings,
       setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity,
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl,
@@ -688,6 +699,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         solarMonitoringDeclination: localSolarMonitoringDeclination.toString(),
         linkPreviewsEnabled: localLinkPreviewsEnabled ? '1' : '0',
         discardInvalidPositions: localDiscardInvalidPositions ? '1' : '0',
+        noIndexEnabled: localNoIndexEnabled ? '1' : '0',
         meshcoreChannelRetryEnabled: localMeshcoreChannelRetryEnabled ? '1' : '0',
         hideIncompleteNodes: localHideIncompleteNodes ? '1' : '0',
         homoglyphEnabled: String(localHomoglyphEnabled),
@@ -746,6 +758,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       onSolarMonitoringDeclinationChange(localSolarMonitoringDeclination);
       setLinkPreviewsEnabled(localLinkPreviewsEnabled);
       setDiscardInvalidPositions(localDiscardInvalidPositions);
+      setNoIndexEnabled(localNoIndexEnabled);
       setMeshcoreChannelRetryEnabled(localMeshcoreChannelRetryEnabled);
       setShowIncompleteNodes(!localHideIncompleteNodes);
 
@@ -780,7 +793,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       localTimeFormat, localDateFormat, localMapTilesetLight, localMapTilesetDark, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localMapCenterTargetZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, getLocalEffectiveTheme, getLocalEffectiveTileset,
       localNodeHopsCalculation, localDashboardSortOption, localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours,
       localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude,
-      localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localLinkPreviewsEnabled, setLinkPreviewsEnabled, localDiscardInvalidPositions, setDiscardInvalidPositions, localMeshcoreChannelRetryEnabled, setMeshcoreChannelRetryEnabled, localHideIncompleteNodes, localHomoglyphEnabled, localLocalStatsIntervalMinutes, localMeshcoreCliTimeoutSeconds,
+      localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localLinkPreviewsEnabled, setLinkPreviewsEnabled, localDiscardInvalidPositions, setDiscardInvalidPositions, localNoIndexEnabled, setNoIndexEnabled, localMeshcoreChannelRetryEnabled, setMeshcoreChannelRetryEnabled, localHideIncompleteNodes, localHomoglyphEnabled, localLocalStatsIntervalMinutes, localMeshcoreCliTimeoutSeconds,
       onMaxNodeAgeChange, onInactiveNodeThresholdHoursChange, onInactiveNodeCheckIntervalMinutesChange,
       onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange, onPositionHistoryLineStyleChange,
       onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
@@ -1221,6 +1234,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         { id: 'settings-sorting', label: t('settings.sorting') },
         { id: 'settings-appearance', label: t('settings.appearance') },
         { id: 'settings-link-previews', label: t('settings.link_previews', 'Link Previews') },
+        { id: 'settings-privacy', label: t('settings.privacy', 'Privacy') },
         { id: 'settings-meshcore-messaging', label: t('settings.meshcore_messaging', 'MeshCore Messaging') },
         { id: 'settings-map', label: t('settings.map') },
         { id: 'settings-node-display', label: t('settings.node_display') },
@@ -1521,6 +1535,23 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           </h3>
           <p className="setting-description">
             {t('settings.link_previews_description', 'When enabled, MeshMonitor fetches and displays a preview card (title, description, image) for the first URL in a message. The fetch is performed server-side. Disable this to stop all outbound requests to link targets — URLs still render as clickable text.')}
+          </p>
+        </div>}
+
+        {show('settings-privacy') && <div id="settings-privacy" className="settings-section">
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={localNoIndexEnabled}
+                onChange={(e) => setLocalNoIndexEnabled(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.no_index_enabled', 'Discourage search engine & LLM indexing')}</span>
+            </label>
+          </h3>
+          <p className="setting-description">
+            {t('settings.no_index_description', 'When enabled, MeshMonitor adds an "X-Robots-Tag: noindex, nofollow" header to every response and serves a disallow-all /robots.txt, asking search engines and LLM crawlers not to index this dashboard. Both are advisory — a crawler must choose to honor them. The robots.txt body is served in addition to the header because some reverse proxies (e.g. Cloudflare tunnels) strip custom headers at the edge.')}
           </p>
         </div>}
 

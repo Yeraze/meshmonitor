@@ -168,6 +168,11 @@ export const VALID_SETTINGS_KEYS = [
   // stored as received so operators can see nodes transmitting them. Non-finite /
   // out-of-range junk is always discarded regardless. See positionIngestConfig.ts.
   'discardInvalidPositions',
+  // Global privacy toggle (issue #4202, default OFF): when enabled, the server
+  // emits an `X-Robots-Tag: noindex, nofollow` header on every response AND
+  // serves a disallow-all `/robots.txt`, discouraging search engines and LLM
+  // crawlers from indexing a publicly-exposed dashboard. See robotsConfig.ts.
+  'noIndexEnabled',
   // Global opt-in (issue #3979, default OFF): when enabled, an AUTOMATED MeshCore
   // channel/broadcast send that hears ZERO repeaters within 30s is resent exactly
   // once. Applies only to automated senders (Automation Engine action.sendMessage,
