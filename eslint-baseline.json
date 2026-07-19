@@ -29,46 +29,24 @@
   "src/components/APITokenManagement.tsx": {
     "react-hooks/exhaustive-deps": 1
   },
-  "src/components/AddWidgetModal.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 6
-  },
   "src/components/AdminCommandsTab.tsx": {
     "@typescript-eslint/no-explicit-any": 62,
     "@typescript-eslint/no-unused-vars": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 25,
     "no-case-declarations": 2,
     "preserve-caught-error": 2,
     "react-hooks/exhaustive-deps": 1
   },
-  "src/components/AdvancedNodeFilterPopup/AdvancedNodeFilterPopup.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 18
-  },
-  "src/components/AirtimeCutoffSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
-  "src/components/Analysis/AnalysisTab.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
   "src/components/Analysis/SolarMonitoringReport.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 6,
     "no-restricted-syntax": 1
-  },
-  "src/components/AppBanners/AppBanners.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 5
-  },
-  "src/components/AppHeader/AppHeader.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 4
   },
   "src/components/AuditLogTab.tsx": {
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/AutoAcknowledgeSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 16,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/AutoAnnounceSection.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1,
     "no-restricted-syntax": 2,
     "react-hooks/exhaustive-deps": 3
   },
@@ -77,7 +55,6 @@
   },
   "src/components/AutoFavoriteSection.tsx": {
     "@typescript-eslint/no-unused-vars": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/AutoHeapManagementSection.tsx": {
@@ -85,44 +62,31 @@
     "react-hooks/exhaustive-deps": 2
   },
   "src/components/AutoKeyManagementSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 8,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/AutoLocalStatsSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 8,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/AutoResponderSection.tsx": {
     "@typescript-eslint/no-explicit-any": 6,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 30,
     "no-restricted-syntax": 1,
     "react-hooks/exhaustive-deps": 2
   },
-  "src/components/AutoTimeSyncSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
   "src/components/AutoTracerouteSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 17,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/AutoWelcomeSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/ChangePasswordModal.tsx": {
     "@typescript-eslint/no-explicit-any": 1
   },
-  "src/components/ChannelSoundPicker.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
   "src/components/ChannelsTab.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 43,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/ConfigurationTab.tsx": {
     "@typescript-eslint/no-explicit-any": 4,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 10,
     "react-hooks/exhaustive-deps": 2
   },
   "src/components/CopyNodeInfoModal/CopyNodeInfoModal.tsx": {
@@ -131,40 +95,26 @@
   },
   "src/components/CustomThemeManagement.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3,
     "no-restricted-syntax": 2
-  },
-  "src/components/CustomTilesetManager.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 13
   },
   "src/components/Dashboard/DashboardMap.tsx": {
     "@typescript-eslint/no-explicit-any": 9,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2,
     "no-restricted-syntax": 1
   },
   "src/components/Dashboard/DashboardNeighborPopup.tsx": {
-    "@typescript-eslint/no-explicit-any": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 6
+    "@typescript-eslint/no-explicit-any": 1
   },
   "src/components/Dashboard/DashboardSidebar.tsx": {
     "@typescript-eslint/no-explicit-any": 6
   },
-  "src/components/Dashboard/components/DashboardFilters.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
   "src/components/Dashboard/hooks/useDashboardData.ts": {
     "no-useless-assignment": 1
   },
-  "src/components/DistanceDistributionWidget.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
   "src/components/EmbedMap.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 16,
     "no-restricted-syntax": 5
   },
   "src/components/EmojiPickerModal/EmojiPickerModal.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 25,
     "react-refresh/only-export-components": 1
   },
   "src/components/GeoJsonLayerManager.tsx": {
@@ -178,19 +128,11 @@
   },
   "src/components/GeofenceTriggersSection.tsx": {
     "@typescript-eslint/no-unused-vars": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 5,
     "no-restricted-syntax": 1,
     "react-hooks/exhaustive-deps": 1
   },
-  "src/components/HopCountDisplay.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
-  "src/components/HopDistanceHeatmapWidget.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
   "src/components/InfoTab.tsx": {
     "@typescript-eslint/no-explicit-any": 11,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3,
     "no-restricted-syntax": 1,
     "react-hooks/exhaustive-deps": 7
   },
@@ -198,39 +140,19 @@
     "react-hooks/exhaustive-deps": 2
   },
   "src/components/LinkQualityChart.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 4,
     "react-refresh/only-export-components": 1
   },
-  "src/components/LinkQualityGraph.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
   "src/components/MQTT/MqttBridgeConfigurationView.tsx": {
-    "@typescript-eslint/no-explicit-any": 3,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
+    "@typescript-eslint/no-explicit-any": 3
   },
   "src/components/MQTT/mqttBridgeConfig.ts": {
     "@typescript-eslint/no-explicit-any": 10
   },
-  "src/components/MapAnalysis/AnalysisInspectorPanel.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3
-  },
-  "src/components/MapAnalysis/LinkProfileDrawer.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
   "src/components/MapAnalysis/MapAnalysisContext.tsx": {
     "react-refresh/only-export-components": 1
   },
-  "src/components/MapAnalysis/MapLegend.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
-  "src/components/MapAnalysis/TimeSliderControl.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
   "src/components/MapAnalysis/layers/NeighborLinksLayer.tsx": {
     "@typescript-eslint/no-explicit-any": 2
-  },
-  "src/components/MapLegend.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
   },
   "src/components/MapStyleManager.tsx": {
     "no-restricted-syntax": 1
@@ -238,12 +160,8 @@
   "src/components/MeshCore/CliConsoleBody.tsx": {
     "react-hooks/exhaustive-deps": 1
   },
-  "src/components/MeshCore/CollapsibleSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
   "src/components/MeshCore/MeshCoreAutoAckSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 2,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
+    "@typescript-eslint/no-explicit-any": 2
   },
   "src/components/MeshCore/MeshCoreAutoAnnounceSection.tsx": {
     "@typescript-eslint/no-explicit-any": 2
@@ -251,53 +169,20 @@
   "src/components/MeshCore/MeshCoreAutoResponderSection.tsx": {
     "@typescript-eslint/no-explicit-any": 3
   },
-  "src/components/MeshCore/MeshCoreAutomationsView.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
   "src/components/MeshCore/MeshCoreChannelsConfigSection.tsx": {
     "@typescript-eslint/no-explicit-any": 3
   },
   "src/components/MeshCore/MeshCoreChannelsView.tsx": {
-    "@typescript-eslint/no-explicit-any": 2,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 5
+    "@typescript-eslint/no-explicit-any": 2
   },
   "src/components/MeshCore/MeshCoreConfigurationView.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 6,
     "react-hooks/exhaustive-deps": 3
-  },
-  "src/components/MeshCore/MeshCoreContactDetailPanel.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 5
-  },
-  "src/components/MeshCore/MeshCoreDirectMessagesView.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 7
   },
   "src/components/MeshCore/MeshCoreInfoView.tsx": {
     "no-restricted-syntax": 1
   },
   "src/components/MeshCore/MeshCoreMap.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1,
     "no-restricted-syntax": 1
-  },
-  "src/components/MeshCore/MeshCoreMessageStream.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 12
-  },
-  "src/components/MeshCore/MeshCoreNodesView.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 8
-  },
-  "src/components/MeshCore/MeshCorePacketDetailModal.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
-  "src/components/MeshCore/MeshCoreRemoteConsole.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
-  "src/components/MeshCore/MeshCoreRemoteStatsPanel.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
-  "src/components/MeshCore/MeshCoreRoomsView.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
-  "src/components/MeshCore/MeshCoreSettingsView.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3
   },
   "src/components/MeshCore/MeshCoreTimerTriggersSection.tsx": {
     "@typescript-eslint/no-explicit-any": 5
@@ -305,51 +190,25 @@
   "src/components/MeshCore/hooks/useMeshCoreUnread.ts": {
     "@typescript-eslint/no-explicit-any": 2
   },
-  "src/components/MeshCore/meshcoreAutomationTokens.ts": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
-  "src/components/MeshCore/meshcoreRole.ts": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 4
-  },
-  "src/components/MessageEmojiButton/MessageEmojiButton.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
-  "src/components/MessageStatusIndicator.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 5
-  },
   "src/components/MessagesTab.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 58,
     "react-hooks/exhaustive-deps": 2
-  },
-  "src/components/NodeDetailsBlock.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 5
-  },
-  "src/components/NodeFilterPopup.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
   },
   "src/components/NodesTab.tsx": {
     "@typescript-eslint/no-explicit-any": 8,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 36,
     "no-restricted-syntax": 5,
     "no-useless-assignment": 1,
     "react-hooks/exhaustive-deps": 5
   },
   "src/components/NotificationsTab.tsx": {
     "@typescript-eslint/no-explicit-any": 2,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 56,
     "no-useless-escape": 1,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/PacketMonitorPanel.tsx": {
-    "@typescript-eslint/no-unused-vars": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 6
+    "@typescript-eslint/no-unused-vars": 1
   },
   "src/components/PacketRateChart.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 4,
     "react-refresh/only-export-components": 1
-  },
-  "src/components/PacketRateGraphs.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
   },
   "src/components/PacketStatsChart.tsx": {
     "react-refresh/only-export-components": 1
@@ -364,114 +223,69 @@
     "no-restricted-syntax": 1
   },
   "src/components/RebootModal.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 7,
     "prefer-const": 1,
     "react-hooks/exhaustive-deps": 1
   },
-  "src/components/RelayNodeModal.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
   "src/components/RemoteAdminScannerSection.tsx": {
     "@typescript-eslint/no-explicit-any": 5,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/RouteSegmentTraceroutesModal.tsx": {
-    "@typescript-eslint/no-unused-vars": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 4
-  },
-  "src/components/ScriptTestModal.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3
+    "@typescript-eslint/no-unused-vars": 1
   },
   "src/components/SecurityTab.tsx": {
     "@typescript-eslint/no-explicit-any": 2,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 11,
     "no-restricted-syntax": 1,
     "react-hooks/exhaustive-deps": 2
   },
   "src/components/SettingsTab.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 5,
     "no-restricted-syntax": 3,
     "react-hooks/exhaustive-deps": 4
   },
   "src/components/SmartHopsChart.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 4,
     "react-refresh/only-export-components": 1
   },
-  "src/components/SmartHopsGraphs.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
   "src/components/TelemetryChart.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 5,
     "react-refresh/only-export-components": 2
-  },
-  "src/components/TelemetryGraphs.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3
-  },
-  "src/components/TelemetryRequestModal.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 4
-  },
-  "src/components/ThemeDocumentation.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
   },
   "src/components/ThemeEditor.tsx": {
     "@typescript-eslint/no-explicit-any": 5
   },
-  "src/components/TilesetSelector.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
   "src/components/TimerTriggersSection.tsx": {
     "@typescript-eslint/no-unused-vars": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 6,
     "no-restricted-syntax": 1,
     "react-hooks/exhaustive-deps": 1
-  },
-  "src/components/Toast.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 4
   },
   "src/components/ToastContainer.tsx": {
     "react-refresh/only-export-components": 2
   },
   "src/components/TracerouteHistoryModal.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/TracerouteWidget.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3,
     "react-hooks/exhaustive-deps": 1
   },
-  "src/components/UserMenu.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
   "src/components/UsersTab.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/VectorTileLayer.tsx": {
     "@typescript-eslint/no-explicit-any": 4
   },
   "src/components/WaypointEditorModal.tsx": {
-    "@typescript-eslint/no-explicit-any": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 14
+    "@typescript-eslint/no-explicit-any": 1
   },
   "src/components/admin-commands/AutoFavoriteManagementSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 4,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 6
-  },
-  "src/components/admin-commands/CollapsibleSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
+    "@typescript-eslint/no-explicit-any": 4
   },
   "src/components/admin-commands/DeviceConfigurationSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 5,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3
+    "@typescript-eslint/no-explicit-any": 5
   },
   "src/components/admin-commands/ModuleConfigurationSection.tsx": {
     "@typescript-eslint/no-explicit-any": 5
   },
   "src/components/admin-commands/RadioConfigurationSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 3,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 9
+    "@typescript-eslint/no-explicit-any": 3
   },
   "src/components/admin-commands/channelLoadingUtils.ts": {
     "@typescript-eslint/no-explicit-any": 3
@@ -483,158 +297,66 @@
     "@typescript-eslint/no-explicit-any": 1,
     "no-case-declarations": 1
   },
-  "src/components/auto-responder/PatternExamples.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 6
-  },
-  "src/components/auto-responder/ScriptDependenciesPanel.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3
-  },
-  "src/components/auto-responder/ScriptManagement.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 10
-  },
   "src/components/auto-responder/TriggerItem.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 8,
     "react-hooks/exhaustive-deps": 2
   },
-  "src/components/auto-responder/utils.ts": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 4
-  },
   "src/components/automations/AutomationBuilder.tsx": {
-    "@typescript-eslint/no-explicit-any": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
+    "@typescript-eslint/no-explicit-any": 1
   },
   "src/components/automations/AutomationTester.tsx": {
-    "@typescript-eslint/no-explicit-any": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 6
+    "@typescript-eslint/no-explicit-any": 1
   },
   "src/components/automations/AutomationsPage.tsx": {
-    "@typescript-eslint/no-explicit-any": 8,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 7
+    "@typescript-eslint/no-explicit-any": 8
   },
   "src/components/automations/SubstitutionsHelp.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2,
     "react-refresh/only-export-components": 2
-  },
-  "src/components/automations/TokenTextField.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
-  "src/components/automations/catalog.ts": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
   },
   "src/components/automations/compile.ts": {
     "@typescript-eslint/no-explicit-any": 2
   },
   "src/components/automations/outcomeMeta.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 6,
     "react-refresh/only-export-components": 1
-  },
-  "src/components/configuration/AudioConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
   },
   "src/components/configuration/BackupManagementSection.tsx": {
     "no-restricted-syntax": 6,
     "react-hooks/exhaustive-deps": 1
   },
-  "src/components/configuration/CannedMessageConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3
-  },
   "src/components/configuration/ChannelDatabaseSection.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2,
     "react-hooks/exhaustive-deps": 2
   },
   "src/components/configuration/ChannelsConfigSection.tsx": {
-    "@typescript-eslint/no-explicit-any": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 16
+    "@typescript-eslint/no-explicit-any": 1
   },
   "src/components/configuration/DatabaseMaintenanceSection.tsx": {
     "no-restricted-syntax": 5,
     "react-hooks/exhaustive-deps": 1
   },
-  "src/components/configuration/DetectionSensorConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
   "src/components/configuration/DeviceConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 8,
     "react-hooks/exhaustive-deps": 1
   },
-  "src/components/configuration/DisplayConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3
-  },
   "src/components/configuration/ExportConfigModal.tsx": {
-    "@typescript-eslint/no-explicit-any": 4,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
-  "src/components/configuration/ExternalNotificationConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
+    "@typescript-eslint/no-explicit-any": 4
   },
   "src/components/configuration/FirmwareUpdateSection.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 4,
     "react-hooks/exhaustive-deps": 1
-  },
-  "src/components/configuration/GpioPinSummary.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
   },
   "src/components/configuration/ImportConfigModal.tsx": {
     "@typescript-eslint/no-explicit-any": 5,
     "@typescript-eslint/no-unused-vars": 2,
     "no-restricted-syntax": 1
   },
-  "src/components/configuration/LoRaConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 4
-  },
   "src/components/configuration/MQTTConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 5,
     "no-restricted-syntax": 1
   },
-  "src/components/configuration/NeighborInfoSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
-  "src/components/configuration/NetworkConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 4
-  },
-  "src/components/configuration/NodeIdentitySection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
-  "src/components/configuration/PkiDmDecryptionSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 4
-  },
-  "src/components/configuration/PositionConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3
-  },
-  "src/components/configuration/PowerConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3
-  },
-  "src/components/configuration/SecurityConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 4
-  },
-  "src/components/configuration/SerialConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
-  "src/components/configuration/StoreForwardConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
   "src/components/configuration/SystemBackupSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3,
     "no-restricted-syntax": 6,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/configuration/TelemetryConfigSection.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 3,
     "react-hooks/exhaustive-deps": 1
-  },
-  "src/components/map/layers/WaypointsLayer.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 9
-  },
-  "src/components/map/popups/NodeCard.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
-  },
-  "src/components/map/popups/sections.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 26
-  },
-  "src/components/meshtasticAutomationTokens.ts": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
   },
   "src/components/settings/EmbedSettings.tsx": {
     "@typescript-eslint/no-explicit-any": 3
@@ -847,21 +569,10 @@
   },
   "src/pages/DashboardPage.tsx": {
     "@typescript-eslint/no-explicit-any": 10,
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2,
     "no-restricted-syntax": 9
   },
-  "src/pages/MeshCoreSourcePage.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
-  "src/pages/ReportsPage.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1
-  },
   "src/pages/UnifiedMessagesPage.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 1,
     "no-restricted-syntax": 3
-  },
-  "src/pages/UnifiedPacketMonitorPage.tsx": {
-    "meshmonitor-ui/no-hardcoded-ui-glyph": 2
   },
   "src/pages/UnifiedTelemetryPage.tsx": {
     "no-restricted-syntax": 1

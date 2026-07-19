@@ -1,7 +1,13 @@
-const UI_GLYPH_PATTERN = /(?:\p{Extended_Pictographic}|[★☆✓✔✕✖✗⚠ℹ▶◀▲▼→←↑↓])/u;
+const EMOJI_PATTERN = /\p{Extended_Pictographic}/u;
+const LEADING_UI_SYMBOL_PATTERN = /^\s*[★☆✓✔✕✖✗⚠ℹ▶◀▲▼→←↑↓]/u;
 
 export function containsHardcodedUiGlyph(value) {
-  return typeof value === 'string' && UI_GLYPH_PATTERN.test(value);
+  if (typeof value !== 'string') return false;
+  // Copyright, registered, and trademark marks are legal/text notation, not UI icons.
+  const normalized = value.replace(/[©®™]/gu, '');
+  // Mid-sentence arrows describe direction/relationships; a leading arrow is an icon.
+  const emojiCandidate = normalized.replace(/[↔→←↑↓]/gu, '');
+  return EMOJI_PATTERN.test(emojiCandidate) || LEADING_UI_SYMBOL_PATTERN.test(normalized);
 }
 
 export const noHardcodedUiGlyph = {
@@ -17,6 +23,12 @@ export const noHardcodedUiGlyph = {
   },
   create(context) {
     const report = (node, value) => {
+      const insideDiagnosticCall = context.sourceCode.getAncestors(node).some((ancestor) =>
+        ancestor.type === 'CallExpression' &&
+        ancestor.callee?.type === 'MemberExpression' &&
+        ancestor.callee.object?.type === 'Identifier' &&
+        ['logger', 'console'].includes(ancestor.callee.object.name));
+      if (insideDiagnosticCall) return;
       if (containsHardcodedUiGlyph(value)) {
         context.report({ node, messageId: 'hardcoded' });
       }
@@ -35,4 +47,3 @@ export const noHardcodedUiGlyph = {
     };
   },
 };
-

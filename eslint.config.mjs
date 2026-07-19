@@ -154,7 +154,6 @@ export default [
       'src/components/icons/**',
     ],
     rules: {
-      'meshmonitor-ui/no-hardcoded-ui-glyph': 'error',
       'no-restricted-syntax': [
         'error',
         {
@@ -170,6 +169,30 @@ export default [
           message: "Raw globalThis.fetch() is banned in components/pages. Use ApiService or a query hook.",
         },
       ],
+    },
+  },
+  {
+    // #4215: app-owned interface icons must come from the typed UiIcon registry.
+    // These narrow exceptions contain user-selected or on-mesh protocol content.
+    files: ['src/components/**', 'src/pages/**'],
+    ignores: [
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      '**/*.spec.ts',
+      '**/*.spec.tsx',
+      'src/components/icons/**',
+      'src/components/EmojiPickerModal/**',
+      'src/components/WaypointEditorModal.tsx',
+      'src/components/map/layers/WaypointsLayer.tsx',
+      'src/components/AutoAcknowledgeSection.tsx',
+      'src/components/AutoWelcomeSection.tsx',
+      'src/components/MeshCore/MeshCoreAutoAckSection.tsx',
+      'src/components/meshtasticAutomationTokens.ts',
+      'src/components/automations/catalog.ts',
+      'src/components/automations/AutomationsPage.tsx',
+    ],
+    rules: {
+      'meshmonitor-ui/no-hardcoded-ui-glyph': 'error',
     },
   },
   {
