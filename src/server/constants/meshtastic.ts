@@ -5,6 +5,8 @@
  * See: https://github.com/meshtastic/protobufs/
  */
 
+import { MODEM_PRESET_CHANNEL_NAMES } from '../../utils/loraFrequency.js';
+
 /**
  * Port numbers for different Meshtastic application types.
  * From meshtastic.PortNum enum in portnums.proto
@@ -252,17 +254,10 @@ export function getStoreForwardRequestResponseName(rr: number): string {
  * from the user-friendly "Long Fast" labels we render elsewhere. Anything
  * touching channel hashes or MQTT topic naming must use these.
  */
-export const MODEM_PRESET_CHANNEL_NAMES: Record<number, string> = {
-  0: 'LongFast',
-  1: 'LongSlow',
-  2: 'VeryLongSlow',  // deprecated in firmware, retained for legacy enum values
-  3: 'MediumSlow',
-  4: 'MediumFast',
-  5: 'ShortSlow',
-  6: 'ShortFast',
-  7: 'LongModerate',
-  8: 'ShortTurbo',
-};
+// Canonical copy lives in src/utils/loraFrequency.ts (single source of truth
+// for firmware-derived default channel names — verified against firmware
+// DisplayFormatters.cpp). Re-exported here for existing server consumers.
+export { MODEM_PRESET_CHANNEL_NAMES };
 
 /** Returns the firmware-derived channel name for a modem preset, or null. */
 export function modemPresetChannelName(modemPreset: number | undefined | null): string | null {

@@ -141,27 +141,39 @@ export function calculateLoRaFrequency(
 }
 
 /**
- * Map modem preset enum values to the CamelCase channel names used by the
- * Meshtastic firmware for DJB2 hashing when the channel name is empty.
- * These match the firmware's Channel::getName() fallback values.
+ * Map modem preset enum values to the CamelCase channel names the Meshtastic
+ * firmware derives when a channel has no explicit name. These strings feed
+ * DJB2 hashing (frequency-slot calculation, channel hash) and MQTT channelId
+ * derivation, so they MUST match the firmware byte-for-byte.
  *
- * Reference: meshtastic/firmware ChannelFile.cpp
+ * CANONICAL COPY — the server (`constants/meshtastic.ts`) and the Virtual Node
+ * server re-export this map; do not fork it again.
+ *
+ * Source of truth: meshtastic/firmware `src/DisplayFormatters.cpp`,
+ * `getModemPresetDisplayName(preset, useShortName=false, usePreset)` —
+ * reached via `Channels::getName()` for unnamed channels. Verified against
+ * firmware `develop` 2026-07-19 (#3854/#4200 follow-up). Note the firmware
+ * string for LONG_MODERATE is "LongMod" (NOT "LongModerate" — the value this
+ * map carried until then, which produced wrong hashes for that preset).
  */
-const MODEM_PRESET_CHANNEL_NAMES: { [key: number]: string } = {
+export const MODEM_PRESET_CHANNEL_NAMES: { [key: number]: string } = {
   0: 'LongFast',
-  1: 'LongSlow',
-  2: 'VeryLongSlow',
+  1: 'LongSlow',      // deprecated in firmware 2.7, retained for legacy enum values
+  2: 'VeryLongSlow',  // deprecated in firmware 2.5, retained for legacy enum values
   3: 'MediumSlow',
   4: 'MediumFast',
   5: 'ShortSlow',
   6: 'ShortFast',
-  7: 'LongModerate',
+  7: 'LongMod',
   8: 'ShortTurbo',
   9: 'LongTurbo',
   10: 'LiteFast',
   11: 'LiteSlow',
   12: 'NarrowFast',
   13: 'NarrowSlow',
+  14: 'TinyFast',
+  15: 'TinySlow',
+  16: 'MediumTurbo',  // firmware 2.8 (#10988); numerically ahead of the protobufs repo enum
 };
 
 export function getModemPresetChannelName(modemPreset?: number): string | undefined {

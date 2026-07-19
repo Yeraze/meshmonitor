@@ -7,6 +7,7 @@ import protobufService from './protobufService.js';
 import { MeshtasticManager } from './meshtasticManager.js';
 import databaseService from '../services/database.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
+import { MODEM_PRESET_CHANNEL_NAMES } from '../utils/loraFrequency.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -38,18 +39,11 @@ export interface VirtualNodeConfig {
  * config; if it's not present, they default `uplink_enabled=false` and drop
  * the packet. We mirror the firmware fallback here so VN-supplied channels
  * carry a name that matches the topic.
+ *
+ * Canonical copy lives in src/utils/loraFrequency.ts (verified against
+ * firmware DisplayFormatters.cpp); re-exported here for VN consumers/tests.
  */
-export const MODEM_PRESET_CHANNEL_NAMES: Record<number, string> = {
-  0: 'LongFast',
-  1: 'LongSlow',
-  2: 'VeryLongSlow',
-  3: 'MediumSlow',
-  4: 'MediumFast',
-  5: 'ShortSlow',
-  6: 'ShortFast',
-  7: 'LongModerate',
-  8: 'ShortTurbo',
-};
+export { MODEM_PRESET_CHANNEL_NAMES };
 
 export function getPrimaryChannelNameFallback(modemPreset: unknown): string | undefined {
   if (typeof modemPreset !== 'number') return undefined;

@@ -911,6 +911,13 @@ export class MeshtasticProtobufService {
           const waypoint = Waypoint.decode(payload);
           return waypoint;
 
+        case PortNum.MESH_BEACON_APP: {
+          // MeshBeacon (firmware 2.8+, #3854): beacon-mode broadcast carrying a
+          // text message plus an optional channel/region/preset "offer".
+          const MeshBeacon = root.lookupType('meshtastic.MeshBeacon');
+          return MeshBeacon.decode(payload);
+        }
+
         default:
           logger.debug(`⚠️ Unhandled port number: ${portnum}`);
           return payload;

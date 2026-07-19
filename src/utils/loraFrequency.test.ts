@@ -351,3 +351,26 @@ describe('calculateLoRaFrequency', () => {
     });
   });
 });
+
+// The preset→default-channel-name strings feed DJB2 frequency-slot hashing and
+// MQTT channelId derivation, so they must match firmware DisplayFormatters.cpp
+// byte-for-byte (verified against firmware develop, #3854/#4200 follow-up).
+describe('getModemPresetChannelName (firmware DisplayFormatters.cpp parity)', () => {
+  it('returns "LongMod" for LONG_MODERATE (7) — not the old wrong "LongModerate"', () => {
+    // The pre-fix value "LongModerate" hashed to a different frequency slot
+    // than the radio actually uses (firmware hashes "LongMod").
+    expect(getModemPresetChannelName(7)).toBe('LongMod');
+  });
+
+  it('covers the newer presets in firmware enum order (TINY_FAST=14, TINY_SLOW=15)', () => {
+    expect(getModemPresetChannelName(9)).toBe('LongTurbo');
+    expect(getModemPresetChannelName(14)).toBe('TinyFast');
+    expect(getModemPresetChannelName(15)).toBe('TinySlow');
+    expect(getModemPresetChannelName(16)).toBe('MediumTurbo');
+  });
+
+  it('returns undefined for unknown preset values', () => {
+    expect(getModemPresetChannelName(99)).toBeUndefined();
+    expect(getModemPresetChannelName(undefined)).toBeUndefined();
+  });
+});

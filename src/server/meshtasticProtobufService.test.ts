@@ -626,4 +626,51 @@ describe('MeshtasticProtobufService', () => {
       expect(result.rr).toBe(65);
     });
   });
+
+  // MeshBeacon (firmware 2.8+, #3854): MESH_BEACON_APP payloads decode via the
+  // 2.8-preview protobufs pin (#4205).
+  describe('processPayload - MESH_BEACON_APP', () => {
+    it('decodes a text-only beacon', () => {
+      if (!requireProtobufs()) return;
+
+      const root = getProtobufRoot()!;
+      const MeshBeacon = root.lookupType('meshtastic.MeshBeacon');
+      const payload = MeshBeacon.encode(MeshBeacon.create({
+        message: 'Join our mesh!',
+      })).finish();
+
+      const result = service.processPayload(37, payload as any);
+      expect(result).toBeDefined();
+      expect(result.message).toBe('Join our mesh!');
+    });
+
+    it('decodes a beacon with a channel/preset offer', () => {
+      if (!requireProtobufs()) return;
+
+      const root = getProtobufRoot()!;
+      const MeshBeacon = root.lookupType('meshtastic.MeshBeacon');
+      const payload = MeshBeacon.encode(MeshBeacon.create({
+        message: 'Community mesh nearby',
+        offerChannel: { name: 'Community', psk: new Uint8Array([1]) },
+        offerRegion: 1, // US
+        offerPreset: 4, // MEDIUM_FAST
+      })).finish();
+
+      const result = service.processPayload(37, payload as any);
+      expect(result).toBeDefined();
+      expect(result.message).toBe('Community mesh nearby');
+      expect(result.offerChannel?.name).toBe('Community');
+      expect(result.offerPreset).toBe(4);
+    });
+
+    it('returns the raw payload (not a crash) for malformed beacon bytes', () => {
+      if (!requireProtobufs()) return;
+
+      // Truncated/garbage bytes: processPayload catches decode errors and
+      // falls back to returning the raw payload.
+      const garbage = Uint8Array.from([0x0a, 0xff, 0xff]);
+      const result = service.processPayload(37, garbage as any);
+      expect(result).toBeDefined();
+    });
+  });
 });
