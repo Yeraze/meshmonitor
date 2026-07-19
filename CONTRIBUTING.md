@@ -116,6 +116,13 @@ describe('YourFeature', () => {
 
 ## 🤖 Automated Checks
 
+### Interface icons
+
+- Use the shared `UiIcon` component and a semantic registry name for app-owned interface icons. Do not hardcode emoji, checkmarks, arrows, stars, or similar Unicode glyphs in components or translated UI copy.
+- Use `BrandIcon` for supported brands. Brand SVG data comes from Simple Icons and must record its source and version; do not substitute a lookalike emoji.
+- User-authored content and protocol/domain data (for example messages, reactions, waypoint symbols, and script-selected emoji) remain data, not interface icons. Any new source-level exception needs an issue-referenced ESLint disable explaining why it is content rather than UI.
+- `npm run lint:ci` blocks new hardcoded UI glyphs. Existing violations are ratcheted while they are migrated to `UiIcon`.
+
 Our CI/CD pipeline runs automatically on all PRs:
 
 ### GitHub Actions Workflows

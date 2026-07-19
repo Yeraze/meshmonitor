@@ -1469,7 +1469,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="setting-item">
             <label htmlFor="iconStyle">
               {t('settings.icon_style_label', 'Icon Style')}
-              <span className="setting-description">{t('settings.icon_style_description', 'Choose between modern Lucide icons or classic emoji icons for the navigation sidebar.')}</span>
+              <span className="setting-description">{t('settings.icon_style_description', 'Choose between modern Lucide icons or classic emoji icons throughout the interface.')}</span>
             </label>
             <select
               id="iconStyle"

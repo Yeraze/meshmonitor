@@ -1,11 +1,7 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Map, MessageSquare, Home, Mail, BarChart3, Activity, Info, Satellite, Bot,
-  Bell, Settings, ChevronLeft, ChevronRight,
-} from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useSettings } from '../../contexts/SettingsContext';
+import { UiIcon, type UiIconName } from '../icons';
 
 export type MeshCoreView = 'nodes' | 'channels' | 'rooms' | 'dms' | 'telemetry' | 'packets' | 'info' | 'configuration' | 'automations' | 'notifications' | 'settings';
 
@@ -24,57 +20,24 @@ interface Item {
   id: MeshCoreView;
   labelKey: string;
   fallback: string;
+  icon: UiIconName;
 }
 
 const ITEMS: Item[] = [
-  { id: 'nodes', labelKey: 'meshcore.nav.nodes', fallback: 'Nodes' },
-  { id: 'channels', labelKey: 'meshcore.nav.channels', fallback: 'Channels' },
-  { id: 'rooms', labelKey: 'meshcore.nav.rooms', fallback: 'Rooms' },
+  { id: 'nodes', labelKey: 'meshcore.nav.nodes', fallback: 'Nodes', icon: 'nodes' },
+  { id: 'channels', labelKey: 'meshcore.nav.channels', fallback: 'Channels', icon: 'channels' },
+  { id: 'rooms', labelKey: 'meshcore.nav.rooms', fallback: 'Rooms', icon: 'home' },
   // id/key remain 'dms' for backward-compat; the visible label was renamed to
   // 'Node Details' to reflect the view's full scope (#3867).
-  { id: 'dms', labelKey: 'meshcore.nav.dms', fallback: 'Node Details' },
-  { id: 'telemetry', labelKey: 'meshcore.nav.telemetry', fallback: 'Telemetry' },
-  { id: 'packets', labelKey: 'meshcore.nav.packets', fallback: 'Packet Monitor' },
-  { id: 'info', labelKey: 'meshcore.nav.info', fallback: 'Node Info' },
-  { id: 'configuration', labelKey: 'meshcore.nav.configuration', fallback: 'Configuration' },
-  { id: 'automations', labelKey: 'meshcore.nav.automations', fallback: 'Automations' },
-  { id: 'notifications', labelKey: 'meshcore.nav.notifications', fallback: 'Notifications' },
-  { id: 'settings', labelKey: 'meshcore.nav.settings', fallback: 'Settings' },
+  { id: 'dms', labelKey: 'meshcore.nav.dms', fallback: 'Node Details', icon: 'directMessages' },
+  { id: 'telemetry', labelKey: 'meshcore.nav.telemetry', fallback: 'Telemetry', icon: 'telemetry' },
+  { id: 'packets', labelKey: 'meshcore.nav.packets', fallback: 'Packet Monitor', icon: 'activity' },
+  { id: 'info', labelKey: 'meshcore.nav.info', fallback: 'Node Info', icon: 'info' },
+  { id: 'configuration', labelKey: 'meshcore.nav.configuration', fallback: 'Configuration', icon: 'configuration' },
+  { id: 'automations', labelKey: 'meshcore.nav.automations', fallback: 'Automations', icon: 'bot' },
+  { id: 'notifications', labelKey: 'meshcore.nav.notifications', fallback: 'Notifications', icon: 'notifications' },
+  { id: 'settings', labelKey: 'meshcore.nav.settings', fallback: 'Settings', icon: 'settings' },
 ];
-
-// Lucide icon components — chosen to match the main sidebar (Sidebar.tsx) for
-// shared concepts: nodes→Map, channels→MessageSquare, dms→Mail (messages),
-// packets→Activity (packetmonitor), info→Info, configuration→Satellite,
-// automations→Bot (automation), settings→Settings.
-const LUCIDE_ICONS: Record<MeshCoreView, React.ReactNode> = {
-  nodes: <Map size={20} />,
-  channels: <MessageSquare size={20} />,
-  rooms: <Home size={20} />,
-  dms: <Mail size={20} />,
-  telemetry: <BarChart3 size={20} />,
-  packets: <Activity size={20} />,
-  info: <Info size={20} />,
-  configuration: <Satellite size={20} />,
-  automations: <Bot size={20} />,
-  notifications: <Bell size={20} />,
-  settings: <Settings size={20} />,
-};
-
-// Emoji fallbacks for the 'emoji' icon style, aligned with the main sidebar's
-// emoji for shared concepts so both navs look identical in either mode.
-const EMOJI_ICONS: Record<MeshCoreView, string> = {
-  nodes: '🗺️',
-  channels: '💬',
-  rooms: '🏠',
-  dms: '📧',
-  telemetry: '📊',
-  packets: '📈',
-  info: 'ℹ️',
-  configuration: '📡',
-  automations: '🤖',
-  notifications: '🔔',
-  settings: '⚙️',
-};
 
 export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
   view,
@@ -86,20 +49,10 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
 }) => {
   const { t } = useTranslation();
   const { authStatus, hasPermission } = useAuth();
-  const { iconStyle } = useSettings();
   const isAuthenticated = authStatus?.authenticated ?? false;
   const canReadConfig = hasPermission('configuration', 'read');
   const canReadAutomation = hasPermission('automation', 'read');
   const canReadPackets = hasPermission('packetmonitor', 'read');
-
-  // Mirror Sidebar.tsx: honor the global icon-style setting so MeshCore renders
-  // the same lucide icons (default) or emoji fallbacks as the rest of the app.
-  const renderIcon = useMemo(() => {
-    const useEmoji = iconStyle === 'emoji';
-    return (id: MeshCoreView) => useEmoji
-      ? <span style={{ fontSize: '1.1rem' }}>{EMOJI_ICONS[id]}</span>
-      : LUCIDE_ICONS[id];
-  }, [iconStyle]);
 
   return (
     <aside className={`meshcore-sub-toolbar ${expanded ? 'expanded' : 'collapsed'}`}>
@@ -120,7 +73,7 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
             title={!expanded ? label : undefined}
           >
             <span className="icon">
-              {renderIcon(item.id)}
+              <UiIcon name={item.icon} size={20} />
               {unread[item.id] && <span className="meshcore-nav-unread-dot" aria-hidden="true" />}
             </span>
             <span className="label">{label}</span>
@@ -135,7 +88,7 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
           ? t('meshcore.nav.collapse', 'Collapse')
           : t('meshcore.nav.expand', 'Expand')}
       >
-        {expanded ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+        <UiIcon name={expanded ? 'back' : 'forward'} size={18} />
       </button>
     </aside>
   );

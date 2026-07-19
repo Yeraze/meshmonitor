@@ -26,6 +26,7 @@ import { version } from '../../../package.json';
 import type { DashboardSource, SourceStatus, UnifiedStatus } from '../../hooks/useDashboardData';
 import { UNIFIED_SOURCE_ID } from '../../hooks/useDashboardData';
 import { useAuth } from '../../contexts/AuthContext';
+import { BrandIcon, UiIcon } from '../icons';
 
 // Persisted, user-resizable sidebar width (issue #3356). The width is stored
 // in localStorage so it survives reloads; min/max bounds keep the layout from
@@ -659,7 +660,8 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                     title={permMsg}
                     aria-label={permMsg}
                   >
-                    ⚠ {t('source.permission_restricted', 'restricted')}
+                    <UiIcon name="alert" size={14} />
+                    {t('source.permission_restricted', 'restricted')}
                   </span>
                 ) : null;
               })()}
@@ -685,7 +687,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                 const connected = entries.filter(([, e]) => e.connected).length;
                 const allConnected = connected === total;
                 const lines = entries.map(([clientId, e]) => {
-                  const state = e.connected ? '✓' : '✗';
+                  const state = e.connected ? 'connected' : 'disconnected';
                   const errSuffix = e.lastError ? ` — ${e.lastError}` : '';
                   return `${state} ${clientId}  (${e.publishes} pub${e.publishes === 1 ? '' : 's'})${errSuffix}`;
                 });
@@ -718,7 +720,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
               {isAuthenticated ? (
                 <span className="dashboard-node-count">{t('source.node_count', { count: nodeCount })}</span>
               ) : (
-                <span className="dashboard-lock-icon">🔒</span>
+                <span className="dashboard-lock-icon"><UiIcon name="encrypted" size={16} /></span>
               )}
               {!isUnified && isAdmin && source.enabled &&
                 (source.config as any)?.autoConnect === false &&
@@ -819,7 +821,8 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             className="dashboard-sidebar-link dashboard-sidebar-link--active"
             onClick={() => navigate('/automations')}
           >
-            {t('source.sidebar.automations', '🤖 Automation Engine')}
+            <UiIcon name="bot" size={18} />
+            {t('source.sidebar.automations', 'Automation Engine')}
           </button>
         )}
       </div>
@@ -834,14 +837,14 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
                 title={t('source.sidebar.users')}
                 onClick={() => navigate('/users')}
               >
-                👥
+                <UiIcon name="users" size={18} />
               </button>
               <button
                 className="dashboard-sidebar-footer-btn"
                 title={t('source.sidebar.settings')}
                 onClick={() => navigate('/settings')}
               >
-                ⚙️
+                <UiIcon name="settings" size={18} />
               </button>
             </>
           )}
@@ -851,7 +854,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             onClick={onNewsClick}
             disabled={!onNewsClick}
           >
-            📰
+            <UiIcon name="news" size={18} />
           </button>
           <a
             className="dashboard-sidebar-footer-btn"
@@ -860,7 +863,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             rel="noopener noreferrer"
             title={t('source.sidebar.github')}
           >
-            🐙
+            <BrandIcon brand="github" size={18} />
           </a>
           <a
             className="dashboard-sidebar-footer-btn"
@@ -869,7 +872,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
             rel="noopener noreferrer"
             title={t('source.sidebar.website')}
           >
-            🔗
+            <UiIcon name="link" size={18} />
           </a>
         </div>
       </div>

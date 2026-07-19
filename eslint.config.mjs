@@ -5,6 +5,7 @@ import typescriptParser from '@typescript-eslint/parser';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
+import { noHardcodedUiGlyph } from './scripts/eslint-rules/no-hardcoded-ui-glyph.mjs';
 
 export default [
   {
@@ -44,6 +45,11 @@ export default [
       '@typescript-eslint': typescript,
       'react-hooks': fixupPluginRules(reactHooks),
       'react-refresh': reactRefresh,
+      'meshmonitor-ui': {
+        rules: {
+          'no-hardcoded-ui-glyph': noHardcodedUiGlyph,
+        },
+      },
     },
     rules: {
       ...js.configs.recommended.rules,
@@ -140,8 +146,15 @@ export default [
     // semantics). The SQL-ban selectors are not needed here — components/pages never
     // touch the DB directly.
     files: ['src/components/**', 'src/pages/**'],
-    ignores: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx'],
+    ignores: [
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      '**/*.spec.ts',
+      '**/*.spec.tsx',
+      'src/components/icons/**',
+    ],
     rules: {
+      'meshmonitor-ui/no-hardcoded-ui-glyph': 'error',
       'no-restricted-syntax': [
         'error',
         {
