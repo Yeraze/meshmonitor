@@ -9,6 +9,7 @@ import { getEffectiveHops } from '../utils/nodeHops';
 import { TimeFormat, DateFormat, useSettings } from '../contexts/SettingsContext';
 import { useMapContext } from '../contexts/MapContext';
 import { useChannels, useDeviceConfig } from '../hooks/useServerData';
+import apiService, { SignalTrendResult } from '../services/api';
 import './NodeDetailsBlock.css';
 
 interface NodeDetailsBlockProps {
@@ -23,11 +24,58 @@ interface NodeDetailsBlockProps {
   canEditNotes?: boolean;
   /** Persist the edited note. Resolves on success, rejects on failure. */
   onSaveNotes?: (notes: string) => Promise<void>;
+  /**
+   * Active source id. Required to fetch the per-node signal trend badge (#4110);
+   * when absent (or a MeshCore/no-source context) the badge is simply omitted.
+   */
+  sourceId?: string | null;
 }
 
 const MAX_NODE_NOTES_LENGTH = 2000;
 
-const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY', canEditNotes = false, onSaveNotes }) => {
+/** Arrow glyph for a signal trend direction (#4110). */
+function signalTrendArrow(trend: SignalTrendResult['trend']): string {
+  switch (trend) {
+    case 'improving': return '▲';
+    case 'degrading': return '▼';
+    default: return '→';
+  }
+}
+
+/**
+ * Build a human-readable tooltip summarizing the day-vs-week deltas behind a
+ * signal-trend badge (#4110). Kept plain-text so it works as a `title` attr.
+ * `translate` is i18next's `t` so the descriptive words are localized (the
+ * RSSI/SNR acronyms and dB units are left as-is).
+ */
+function buildSignalTrendTooltip(
+  trend: SignalTrendResult,
+  translate: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  const parts: string[] = [];
+  const signed = (n: number) => `${n >= 0 ? '+' : ''}${n}`;
+  const metricLine = (label: string, m: NonNullable<SignalTrendResult['rssi']>) =>
+    translate('node_details.signal_trend_tooltip_metric', {
+      label,
+      delta: signed(m.delta),
+      unit: m.unit,
+      recent: m.recent,
+      baseline: m.baseline,
+      defaultValue: `${label} ${signed(m.delta)} ${m.unit} (24h avg ${m.recent} vs 7d ${m.baseline})`,
+    });
+  if (trend.rssi) parts.push(metricLine('RSSI', trend.rssi));
+  if (trend.snr) parts.push(metricLine('SNR', trend.snr));
+  if (trend.noiseFloorRising && trend.noiseFloor) {
+    parts.push(translate('node_details.signal_trend_tooltip_noise', {
+      delta: signed(trend.noiseFloor.delta),
+      unit: trend.noiseFloor.unit,
+      defaultValue: `Noise floor rising ${signed(trend.noiseFloor.delta)} ${trend.noiseFloor.unit}`,
+    }));
+  }
+  return parts.join('\n');
+}
+
+const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = '24', dateFormat = 'MM/DD/YYYY', canEditNotes = false, onSaveNotes, sourceId }) => {
   const { t } = useTranslation();
   const { channels } = useChannels();
   const { currentNodeId } = useDeviceConfig();
@@ -52,9 +100,32 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
   const [notesSaving, setNotesSaving] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
 
+  // #4110: derived signal trend / link-attenuation badge. Fetched from the
+  // backend (which computes it from stored RSSI/SNR/noise-floor telemetry) when
+  // a concrete source is selected. Null while loading or when unavailable.
+  // Deliberately fetched once per node selection (not polled): the trend is a
+  // day-vs-week aggregate, so sub-session refresh would not change the verdict.
+  const [signalTrend, setSignalTrend] = useState<SignalTrendResult | null>(null);
+  const nodeIdForTrend = node?.user?.id
+    ?? (nodeNum != null ? `!${nodeNum.toString(16).padStart(8, '0')}` : null);
+
   useEffect(() => {
     localStorage.setItem('nodeDetailsCollapsed', isCollapsed.toString());
   }, [isCollapsed]);
+
+  useEffect(() => {
+    // The endpoint requires a sourceId; skip the fetch entirely without one.
+    if (!nodeIdForTrend || !sourceId) {
+      setSignalTrend(null);
+      return;
+    }
+    let cancelled = false;
+    setSignalTrend(null);
+    apiService.getSignalTrend(nodeIdForTrend, sourceId)
+      .then(result => { if (!cancelled) setSignalTrend(result); })
+      .catch(() => { if (!cancelled) setSignalTrend(null); });
+    return () => { cancelled = true; };
+  }, [nodeIdForTrend, sourceId]);
 
   // Re-sync draft/baseline whenever the selected node or its stored note changes.
   useEffect(() => {
@@ -261,6 +332,25 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
               <div className="node-detail-label">{t('node_details.signal_rssi')}</div>
               <div className="node-detail-value">
                 {formatRSSI(rssi)}
+              </div>
+            </div>
+          )}
+
+          {/* Signal Trend (#4110) — derived link-attenuation badge. Rendered
+              only when there is enough history to say something meaningful. */}
+          {signalTrend && signalTrend.trend !== 'insufficient' && (
+            <div className="node-detail-card">
+              <div className="node-detail-label">{t('node_details.signal_trend', 'Signal Trend')}</div>
+              <div
+                className={`node-detail-value signal-trend signal-trend-${signalTrend.trend}`}
+                title={buildSignalTrendTooltip(signalTrend, t)}
+              >
+                <span className="signal-trend-arrow" aria-hidden="true">{signalTrendArrow(signalTrend.trend)}</span>
+                {' '}
+                {t(`node_details.signal_trend_${signalTrend.trend}`,
+                  signalTrend.trend === 'improving' ? 'Improving'
+                    : signalTrend.trend === 'degrading' ? 'Degrading'
+                    : 'Stable')}
               </div>
             </div>
           )}

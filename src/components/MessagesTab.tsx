@@ -2268,6 +2268,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 node={selectedNode}
                 timeFormat={timeFormat}
                 dateFormat={dateFormat}
+                sourceId={sourceId}
                 canEditNotes={hasPermission('nodes', 'write')}
                 onSaveNotes={async (notes) => {
                   if (!selectedNode.user?.id) throw new Error('Node has no ID');

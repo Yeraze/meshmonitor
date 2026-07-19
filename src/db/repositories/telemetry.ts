@@ -247,6 +247,54 @@ export class TelemetryRepository extends BaseRepository {
   }
 
   /**
+   * Fetch raw signal telemetry samples (RSSI / local SNR / noise floor) for a
+   * node since a cutoff, for the signal-trend computation (issue #4110).
+   *
+   * Returns a lean projection ({ telemetryType, timestamp, value }) rather than
+   * full DbTelemetry rows — the trend math only needs those three fields, and
+   * the windowing/averaging happens in the pure `computeSignalTrend` helper.
+   *
+   * Source-scoped like every other per-node query: pass a concrete sourceId to
+   * isolate one source, or ALL_SOURCES to pool them.
+   */
+  async getSignalTrendSamples(
+    nodeId: string,
+    telemetryTypes: readonly string[],
+    sinceTimestamp: number,
+    sourceId?: SourceScope,
+    limit?: number
+  ): Promise<Array<{ telemetryType: string; timestamp: number; value: number }>> {
+    const { telemetry } = this.tables;
+    const conditions = [
+      eq(telemetry.nodeId, nodeId),
+      inArray(telemetry.telemetryType, telemetryTypes as string[]),
+      gte(telemetry.timestamp, sinceTimestamp),
+    ];
+    const sourceScope = this.withSourceScope(telemetry, sourceId);
+    if (sourceScope) conditions.push(sourceScope);
+
+    // Fetch most-recent-first and cap the result set (guardrail against a chatty
+    // node dumping tens of thousands of rows). DESC order keeps the recent
+    // window fully covered when the cap bites.
+    const base = this.db
+      .select({
+        telemetryType: telemetry.telemetryType,
+        timestamp: telemetry.timestamp,
+        value: telemetry.value,
+      })
+      .from(telemetry)
+      .where(and(...conditions))
+      .orderBy(desc(telemetry.timestamp));
+    const rows = limit !== undefined ? await base.limit(limit) : await base;
+
+    return rows.map((r: { telemetryType: string; timestamp: number | bigint; value: number | bigint }) => ({
+      telemetryType: r.telemetryType,
+      timestamp: Number(r.timestamp),
+      value: Number(r.value),
+    }));
+  }
+
+  /**
    * Get position telemetry (latitude, longitude, altitude, groundSpeed, groundTrack) for a node
    */
   async getPositionTelemetryByNode(
