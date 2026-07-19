@@ -162,6 +162,8 @@ export interface MeshPacket {
   encrypted?: Uint8Array;
   /** Transport mechanism - see TransportMechanism enum in constants/meshtastic.ts */
   transportMechanism?: number;
+  /** Firmware 2.8+: device verified the packet's XEdDSA signature (#3923). */
+  xeddsaSigned?: boolean;
 }
 
 export interface Data {

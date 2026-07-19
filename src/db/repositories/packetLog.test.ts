@@ -39,6 +39,35 @@ describe('PacketLogRepository - Packet Log Queries', () => {
     db.close();
   });
 
+  // #3923 — firmware 2.8 XEdDSA signature flag round-trips through insert →
+  // select, and packets without it stay NULL (unknown), never false.
+  describe('xeddsa_signed persistence (#3923)', () => {
+    it('persists true through insertPacketLog and reads it back', async () => {
+      await repo.insertPacketLog({
+        packet_id: 99,
+        timestamp: Date.now(),
+        from_node: 100,
+        portnum: 1,
+        portnum_name: 'TEXT_MESSAGE_APP',
+        encrypted: false,
+        direction: 'rx',
+        xeddsa_signed: true,
+      } as any, 'default');
+
+      const packets = await repo.getPacketLogs({});
+      const signed = packets.find(p => p.packet_id === 99);
+      expect(signed).toBeDefined();
+      expect(signed!.xeddsa_signed).toBe(true);
+    });
+
+    it('leaves the flag NULL (unknown) when the packet carries none', async () => {
+      const packets = await repo.getPacketLogs({});
+      const pre28 = packets.find(p => p.packet_id === 1);
+      expect(pre28).toBeDefined();
+      expect(pre28!.xeddsa_signed ?? null).toBeNull();
+    });
+  });
+
   describe('getPacketLogs', () => {
     it('returns packets with joined node names', async () => {
       const packets = await repo.getPacketLogs({});

@@ -5310,7 +5310,8 @@ class MeshtasticManager implements ISourceManager {
           hop_start: meshPacket.hopStart,
           want_ack: meshPacket.wantAck,
           priority: meshPacket.priority,
-          transport_mechanism: meshPacket.transportMechanism
+          transport_mechanism: meshPacket.transportMechanism,
+          xeddsa_signed: meshPacket.xeddsaSigned
         };
 
         // Include encrypted payload bytes if packet is encrypted
@@ -5351,6 +5352,9 @@ class MeshtasticManager implements ISourceManager {
           priority: meshPacket.priority ?? undefined,
           payload_preview: payloadPreview ?? undefined,
           metadata: JSON.stringify(metadata),
+          // Firmware 2.8 XEdDSA signature-verified flag (#3923); undefined
+          // (pre-2.8 firmware) stays NULL = unknown.
+          xeddsa_signed: meshPacket.xeddsaSigned ?? undefined,
           // 'tx' ONLY for genuine local transmissions (internal, fresh, no RX
           // metadata). A spoofed packet claiming our node number is a reception.
           direction: spoof.isGenuineLocalTx ? 'tx' : 'rx',

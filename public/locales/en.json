@@ -1287,6 +1287,7 @@
   "packet_monitor.column.via": "Via",
   "packet_monitor.direction_rx": "Received",
   "packet_monitor.direction_tx": "Transmitted",
+  "packet_monitor.xeddsa_signed": "Signed packet: XEdDSA signature verified by the device (firmware 2.8+)",
   "packet_monitor.broadcast": "Broadcast",
   "packet_monitor.direct": "Direct",
   "packet_monitor.encrypted": "<ENCRYPTED>",

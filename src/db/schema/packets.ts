@@ -35,6 +35,7 @@ export const packetLogSqlite = sqliteTable('packet_log', {
   decrypted_by: text('decrypted_by'), // 'node' | 'server' | null
   decrypted_channel_id: integer('decrypted_channel_id'), // FK to channel_database.id
   transport_mechanism: integer('transport_mechanism'), // TransportMechanism enum value (0=INTERNAL, 1=LORA, 5=MQTT, etc.)
+  xeddsa_signed: integer('xeddsa_signed', { mode: 'boolean' }), // firmware 2.8 XEdDSA signature verified (#3923); NULL = unknown/pre-2.8
   // Source association (nullable — NULL = legacy default source)
   sourceId: text('sourceId'),
   // Impersonation flag (#2584): set when a packet claims from == this source's
@@ -73,6 +74,7 @@ export const packetLogPostgres = pgTable('packet_log', {
   decrypted_by: pgText('decrypted_by'), // 'node' | 'server' | null
   decrypted_channel_id: pgInteger('decrypted_channel_id'), // FK to channel_database.id
   transport_mechanism: pgInteger('transport_mechanism'), // TransportMechanism enum value (0=INTERNAL, 1=LORA, 5=MQTT, etc.)
+  xeddsa_signed: pgBoolean('xeddsa_signed'), // firmware 2.8 XEdDSA signature verified (#3923); NULL = unknown/pre-2.8
   // Source association (nullable — NULL = legacy default source)
   sourceId: pgText('sourceId'),
   spoof_suspected: pgBoolean('spoof_suspected'),
@@ -109,6 +111,7 @@ export const packetLogMysql = mysqlTable('packet_log', {
   decrypted_by: myVarchar('decrypted_by', { length: 16 }), // 'node' | 'server' | null
   decrypted_channel_id: myInt('decrypted_channel_id'), // FK to channel_database.id
   transport_mechanism: myInt('transport_mechanism'), // TransportMechanism enum value (0=INTERNAL, 1=LORA, 5=MQTT, etc.)
+  xeddsa_signed: myBoolean('xeddsa_signed'), // firmware 2.8 XEdDSA signature verified (#3923); NULL = unknown/pre-2.8
   // Source association (nullable — NULL = legacy default source)
   sourceId: myVarchar('sourceId', { length: 36 }),
   spoof_suspected: myBoolean('spoof_suspected'),

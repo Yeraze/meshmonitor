@@ -733,6 +733,15 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                             title={packet.portnum_name || ''}
                           >
                             {packet.portnum_name || packet.portnum}
+                            {/* Firmware 2.8 XEdDSA: device verified the packet's signature (#3923) */}
+                            {packet.xeddsa_signed && (
+                              <span
+                                className="xeddsa-shield"
+                                title={t('packet_monitor.xeddsa_signed', 'Signed packet: XEdDSA signature verified by the device (firmware 2.8+)')}
+                              >
+                                {' '}🛡️
+                              </span>
+                            )}
                           </td>
                           <td className="channel" style={{ width: '110px' }} title={packet.encrypted && packet.channel !== undefined && packet.channel > 7 ? `Encrypted channel (hash: ${packet.channel})` : undefined}>
                             {packet.encrypted && packet.channel !== undefined && packet.channel > 7 ? `?? (ch: ${packet.channel})` : (packet.channel ?? t('common.na'))}
@@ -879,6 +888,11 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     payload_size: selectedPacket.payload_size,
                     want_ack: selectedPacket.want_ack,
                     priority: selectedPacket.priority,
+                    // Firmware 2.8 XEdDSA signature flag (#3923); shown only
+                    // when known (pre-2.8 packets have no value either way).
+                    ...(selectedPacket.xeddsa_signed != null
+                      ? { xeddsa_signed: selectedPacket.xeddsa_signed }
+                      : {}),
                     payload_preview: selectedPacket.payload_preview,
                   };
 

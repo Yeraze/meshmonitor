@@ -139,6 +139,7 @@ import { migration as mqttPacketLogMigration, runMigration121Postgres, runMigrat
 import { migration as cleanupOrphanedSourceNodesMigration, runMigration122Postgres, runMigration122Mysql } from '../server/migrations/122_cleanup_orphaned_source_nodes.js';
 import { migration as fixMqttDirectedMessageChannelMigration, runMigration123Postgres, runMigration123Mysql } from '../server/migrations/123_fix_mqtt_directed_message_channel.js';
 import { migration as addPositionLocationSourceMigration, runMigration124Postgres, runMigration124Mysql } from '../server/migrations/124_add_position_location_source.js';
+import { migration as addXeddsaSignedMigration, runMigration125Postgres, runMigration125Mysql } from '../server/migrations/125_add_xeddsa_signed_to_packet_log.js';
 
 // ============================================================================
 // Registry
@@ -1976,4 +1977,16 @@ registry.register({
   sqlite: (db) => addPositionLocationSourceMigration.up(db),
   postgres: (client) => runMigration124Postgres(client),
   mysql: (pool) => runMigration124Mysql(pool),
+});
+
+// Migration 125: Add `xeddsa_signed` to `packet_log` — persists the firmware
+// 2.8 XEdDSA signature-verified flag per packet so the Packet Monitor can
+// render a signature shield (#3923). NULL = unknown/pre-2.8.
+registry.register({
+  number: 125,
+  name: 'add_xeddsa_signed_to_packet_log',
+  settingsKey: 'migration_125_add_xeddsa_signed_to_packet_log',
+  sqlite: (db) => addXeddsaSignedMigration.up(db),
+  postgres: (client) => runMigration125Postgres(client),
+  mysql: (pool) => runMigration125Mysql(pool),
 });
