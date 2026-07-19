@@ -64,5 +64,47 @@ describe('Trust Proxy Environment Configuration', () => {
       expect(config.trustProxyProvided).toBe(true);
       expect(config.trustProxy).toBe(false);
     });
+
+    it('should treat an IP/CIDR string as a string value', () => {
+      process.env.TRUST_PROXY = '10.0.0.0/8';
+      resetEnvironmentConfig();
+
+      const config = getEnvironmentConfig();
+
+      expect(config.trustProxyProvided).toBe(true);
+      expect(config.trustProxy).toBe('10.0.0.0/8');
+    });
+  });
+
+  describe('Case-insensitive booleans (issue #4216)', () => {
+    it.each(['TRUE', 'True', 'tRuE'])('should parse TRUST_PROXY=%s as boolean true', (value) => {
+      process.env.TRUST_PROXY = value;
+      resetEnvironmentConfig();
+
+      const config = getEnvironmentConfig();
+
+      expect(config.trustProxyProvided).toBe(true);
+      expect(config.trustProxy).toBe(true);
+    });
+
+    it.each(['FALSE', 'False', 'fAlSe'])('should parse TRUST_PROXY=%s as boolean false', (value) => {
+      process.env.TRUST_PROXY = value;
+      resetEnvironmentConfig();
+
+      const config = getEnvironmentConfig();
+
+      expect(config.trustProxyProvided).toBe(true);
+      expect(config.trustProxy).toBe(false);
+    });
+
+    it('should tolerate surrounding whitespace', () => {
+      process.env.TRUST_PROXY = '  true  ';
+      resetEnvironmentConfig();
+
+      const config = getEnvironmentConfig();
+
+      expect(config.trustProxyProvided).toBe(true);
+      expect(config.trustProxy).toBe(true);
+    });
   });
 });

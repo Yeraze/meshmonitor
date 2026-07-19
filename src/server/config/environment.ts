@@ -122,7 +122,7 @@ function parseRateLimit(
 
 /**
  * Parse trust proxy setting
- * Supports: 'true', 'false', numbers (1, 2, etc.), or IP/CIDR strings
+ * Supports: 'true', 'false' (case-insensitive), numbers (1, 2, etc.), or IP/CIDR strings
  * See: https://expressjs.com/en/guide/behind-proxies.html
  */
 function parseTrustProxy(
@@ -134,22 +134,24 @@ function parseTrustProxy(
     return { value: defaultValue, wasProvided: false };
   }
 
-  // Handle boolean values
-  if (envValue === 'true') {
+  const trimmed = envValue.trim();
+
+  // Handle boolean values (case-insensitive: TRUE, False, etc.)
+  if (trimmed.toLowerCase() === 'true') {
     return { value: true, wasProvided: true };
   }
-  if (envValue === 'false') {
+  if (trimmed.toLowerCase() === 'false') {
     return { value: false, wasProvided: true };
   }
 
-  // Handle numeric values (1, 2, etc.)
-  const parsed = parseInt(envValue, 10);
-  if (!isNaN(parsed)) {
-    return { value: parsed, wasProvided: true };
+  // Handle numeric values (1, 2, etc.) — whole-string match only, so IP
+  // addresses like "10.0.0.0/8" aren't truncated to their leading digits
+  if (/^\d+$/.test(trimmed)) {
+    return { value: parseInt(trimmed, 10), wasProvided: true };
   }
 
   // Otherwise treat as string (IP address or CIDR notation)
-  return { value: envValue, wasProvided: true };
+  return { value: trimmed, wasProvided: true };
 }
 
 /**
