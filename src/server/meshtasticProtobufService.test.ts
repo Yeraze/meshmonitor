@@ -253,6 +253,24 @@ describe('MeshtasticProtobufService', () => {
       expect(service.getPortNumName('TRACEROUTE_APP')).toBe(service.getPortNumName(70));
       expect(service.getPortNumName('ADMIN_APP')).toBe(service.getPortNumName(6));
     });
+
+    // #3854 — the service keeps its own portnum tables; a portnum missing from
+    // them is silently dropped when protobufjs surfaces the string enum form,
+    // and labels as UNKNOWN_N in the Packet Monitor. Guard the 2.8 additions.
+    it('knows MESH_BEACON_APP (37) in both string and numeric form', () => {
+      expect(service.normalizePortNum('MESH_BEACON_APP')).toBe(37);
+      expect(service.getPortNumName(37)).toBe('MESH_BEACON_APP');
+      expect(service.getPortNumName('MESH_BEACON_APP')).toBe('MESH_BEACON_APP');
+    });
+
+    it('knows the other 2.8-era portnums the constants table carries', () => {
+      expect(service.normalizePortNum('NODE_STATUS_APP')).toBe(36);
+      expect(service.getPortNumName(35)).toBe('STORE_FORWARD_PLUSPLUS_APP');
+      expect(service.getPortNumName(36)).toBe('NODE_STATUS_APP');
+      expect(service.getPortNumName(75)).toBe('LORAWAN_BRIDGE');
+      expect(service.getPortNumName(78)).toBe('ATAK_PLUGIN_V2');
+      expect(service.getPortNumName(112)).toBe('GROUPALARM_APP');
+    });
   });
 
   describe('createNodeInfo', () => {
@@ -667,10 +685,11 @@ describe('MeshtasticProtobufService', () => {
       if (!requireProtobufs()) return;
 
       // Truncated/garbage bytes: processPayload catches decode errors and
-      // falls back to returning the raw payload.
+      // falls back to returning the raw payload bytes (not a decoded object).
       const garbage = Uint8Array.from([0x0a, 0xff, 0xff]);
       const result = service.processPayload(37, garbage as any);
-      expect(result).toBeDefined();
+      expect(result).toBeInstanceOf(Uint8Array);
+      expect(Array.from(result as Uint8Array)).toEqual([0x0a, 0xff, 0xff]);
     });
   });
 });
