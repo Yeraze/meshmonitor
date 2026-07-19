@@ -22,6 +22,8 @@ import protobufService from './protobufService.js';
 import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
 import { setDiscardInvalidPositions, parseDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
+import { setNoIndexEnabled, parseNoIndexEnabled } from '../utils/robotsConfig.js';
+import { robotsTagMiddleware, robotsTxtHandler } from './middleware/robotsTag.js';
 import { getSessionMiddleware } from './auth/sessionConfig.js';
 import { initializeWebSocket } from './services/webSocketService.js';
 import { initializeOIDC } from './auth/oidcAuth.js';
@@ -171,6 +173,11 @@ app.use(helmet(helmetConfig));
 // Dynamic CSP middleware - adds custom tile server hostnames from database,
 // and sets frame-ancestors from IFRAME_ALLOWED_ORIGINS when configured.
 app.use(dynamicCspMiddleware(env.isProduction, env.cookieSecure, env.iframeAllowedOrigins));
+
+// Optional "discourage indexing" header (issue #4202). When the global
+// `noIndexEnabled` setting is on, tag every response with
+// `X-Robots-Tag: noindex, nofollow`. No-op otherwise.
+app.use(robotsTagMiddleware);
 
 // Security: CORS configuration with allowed origins
 const getAllowedOrigins = () => {
@@ -430,6 +437,12 @@ setTimeout(async () => {
     // the setDiscardInvalidPositions callback registered below.
     setDiscardInvalidPositions(
       parseDiscardInvalidPositions(await databaseService.settings.getSetting('discardInvalidPositions')),
+    );
+
+    // Seed the global "discourage indexing" gate from settings (default OFF).
+    // Refreshed live on save via the setNoIndexEnabled callback registered below.
+    setNoIndexEnabled(
+      parseNoIndexEnabled(await databaseService.settings.getSetting('noIndexEnabled')),
     );
 
     // Start inactive node notification service with validation
@@ -926,6 +939,7 @@ setSettingsCallbacks({
   handleAutoWelcomeEnabled: () => { databaseService.handleAutoWelcomeEnabledAsync().catch(() => {}); return 0; },
   invalidateHtmlCache,
   setDiscardInvalidPositions: (enabled) => setDiscardInvalidPositions(enabled),
+  setNoIndexEnabled: (enabled) => setNoIndexEnabled(enabled),
   // Auto-delete-by-distance is per-source (#3901): route the restart/stop to
   // the owning source manager so each source schedules against its own settings.
   // There is no global singleton — a null sourceId is a no-op.
@@ -5923,6 +5937,9 @@ if (BASE_URL) {
     staticMiddleware(req, res, next);
   });
 
+  // Serve robots.txt (before SPA fallback) — dynamic body gated on noIndexEnabled (#4202)
+  app.get(`${BASE_URL}/robots.txt`, robotsTxtHandler);
+
   // Serve embed page (before SPA fallback)
   app.get(`${BASE_URL}/embed/:profileId`, createEmbedCspMiddleware(), async (_req: express.Request, res: express.Response) => {
     if (!cachedRewrittenEmbedHtml) {
@@ -5982,6 +5999,9 @@ if (BASE_URL) {
   // bypassing analytics injection entirely — which is the bug that caused
   // GA4 tags to silently not appear on root deployments.
   app.use(express.static(buildPath, { index: false }));
+
+  // Serve robots.txt (before SPA fallback) — dynamic body gated on noIndexEnabled (#4202)
+  app.get('/robots.txt', robotsTxtHandler);
 
   // Serve embed page (before SPA fallback)
   app.get('/embed/:profileId', createEmbedCspMiddleware(), async (_req: express.Request, res: express.Response) => {

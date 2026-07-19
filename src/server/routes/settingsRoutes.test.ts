@@ -503,6 +503,52 @@ describe('settingsRoutes', () => {
   // panel (e.g. the MQTT broker) must restart THAT source's per-source scheduler
   // — not fall through to a global singleton. Regression: previously the
   // per-source save branch never restarted any distance scheduler at all.
+  describe('POST /api/settings — noIndexEnabled robots gate (#4202)', () => {
+    const setNoIndexSpy = vi.fn();
+
+    beforeEach(() => {
+      setSettingsCallbacks({ setNoIndexEnabled: setNoIndexSpy });
+      setNoIndexSpy.mockClear();
+    });
+
+    afterAll(() => {
+      setSettingsCallbacks({});
+    });
+
+    it('pushes true into the gate when enabled', async () => {
+      const app = createApp(adminUser);
+
+      const res = await request(app)
+        .post('/api/settings')
+        .send({ noIndexEnabled: '1' });
+
+      expect(res.status).toBe(200);
+      expect(setNoIndexSpy).toHaveBeenCalledWith(true);
+    });
+
+    it('pushes false into the gate when disabled', async () => {
+      const app = createApp(adminUser);
+
+      const res = await request(app)
+        .post('/api/settings')
+        .send({ noIndexEnabled: '0' });
+
+      expect(res.status).toBe(200);
+      expect(setNoIndexSpy).toHaveBeenCalledWith(false);
+    });
+
+    it('leaves the gate untouched when the payload has no noIndexEnabled key', async () => {
+      const app = createApp(adminUser);
+
+      const res = await request(app)
+        .post('/api/settings')
+        .send({ meshName: 'Somewhere' });
+
+      expect(res.status).toBe(200);
+      expect(setNoIndexSpy).not.toHaveBeenCalled();
+    });
+  });
+
   describe('POST /api/settings — per-source auto-delete-by-distance (#3901)', () => {
     const restartSpy = vi.fn();
     const stopSpy = vi.fn();

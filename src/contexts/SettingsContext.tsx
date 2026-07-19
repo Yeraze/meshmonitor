@@ -126,6 +126,8 @@ interface SettingsContextType {
   linkPreviewsEnabled: boolean;
   /** Global Map toggle (default true): discard Null Island (0,0) fixes on ingest. */
   discardInvalidPositions: boolean;
+  /** Global privacy toggle (issue #4202, default false): emit X-Robots-Tag: noindex, nofollow + disallow-all /robots.txt. */
+  noIndexEnabled: boolean;
   /**
    * Global opt-in (issue #3979, default false): auto-retry an AUTOMATED MeshCore
    * channel send once, 30s later, when zero repeaters were heard. Automated
@@ -183,6 +185,7 @@ interface SettingsContextType {
   setEnableAudioNotifications: (enabled: boolean) => void;
   setLinkPreviewsEnabled: (enabled: boolean) => void;
   setDiscardInvalidPositions: (enabled: boolean) => void;
+  setNoIndexEnabled: (enabled: boolean) => void;
   setMeshcoreChannelRetryEnabled: (enabled: boolean) => void;
   mutedChannels: MutedChannel[];
   mutedDMs: MutedDM[];
@@ -494,6 +497,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   // Discard invalid GPS positions on ingest — default true (discard = historical
   // behavior); loaded from the server in loadServerSettings.
   const [discardInvalidPositions, setDiscardInvalidPositionsState] = useState<boolean>(true);
+
+  // Discourage search-engine / LLM indexing (issue #4202) — server-backed
+  // (global). Defaults to false (opt-in); loaded from the server in
+  // loadServerSettings.
+  const [noIndexEnabled, setNoIndexEnabledState] = useState<boolean>(false);
 
   // MeshCore automated-channel-send auto-retry (issue #3979) - server-backed
   // (global). Defaults to false (opt-in); loaded from the server in
@@ -926,6 +934,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const setDiscardInvalidPositions = (enabled: boolean) => {
     setDiscardInvalidPositionsDisplay(enabled);
     setDiscardInvalidPositionsState(enabled);
+  };
+
+  // No-index setter updates state only - value is persisted server-side
+  const setNoIndexEnabled = (enabled: boolean) => {
+    setNoIndexEnabledState(enabled);
   };
 
   // MeshCore channel-retry setter updates state only - persisted server-side
@@ -1459,6 +1472,13 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             setDiscardInvalidPositionsState(enabled);
           }
 
+          // No-index (issue #4202) - database-only. Absent key means default
+          // (disabled); only an explicit '1'/'true' turns it on.
+          if (settings.noIndexEnabled !== undefined) {
+            const enabled = settings.noIndexEnabled === '1' || settings.noIndexEnabled === 'true';
+            setNoIndexEnabledState(enabled);
+          }
+
           // MeshCore channel-send auto-retry (#3979) - database-only. Absent key
           // means default (disabled); only an explicit '1'/'true' turns it on.
           if (settings.meshcoreChannelRetryEnabled !== undefined) {
@@ -1686,6 +1706,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     isLoadingThemes,
     linkPreviewsEnabled,
     discardInvalidPositions,
+    noIndexEnabled,
     meshcoreChannelRetryEnabled,
     solarMonitoringEnabled,
     solarMonitoringLatitude,
@@ -1738,6 +1759,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     deleteCustomTileset,
     setLinkPreviewsEnabled,
     setDiscardInvalidPositions,
+    setNoIndexEnabled,
     setMeshcoreChannelRetryEnabled,
     setSolarMonitoringEnabled,
     setSolarMonitoringLatitude,
