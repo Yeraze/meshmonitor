@@ -50,7 +50,7 @@ import { resolveLastHopName } from './utils/lastHop.js';
 import { resolveLastHeardSec } from './utils/replayGuard.js';
 import { autoAckIsZeroHop, autoAckCellKey, resolveAutoAckReplyRouting } from './utils/autoAckDecision.js';
 import { scriptDependencyEnv } from './utils/scriptRunner.js';
-import { canonicalMessageTime } from './utils/messageTime.js';
+import { canonicalMessageTime, plausibleRxTime } from './utils/messageTime.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
@@ -5813,7 +5813,11 @@ class MeshtasticManager implements ISourceManager {
           // undefined (not Date.now()) when the device didn't report a time —
           // matches the MQTT ingestion convention so `rxTime` never conflates
           // "no device time" with "server time" (review follow-up on #4206).
-          rxTime: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : undefined,
+          // Also filtered through plausibleRxTime so an unsynced-RTC node's
+          // boot-uptime value never lands in the DB, matching the MQTT path
+          // (mqttIngestion.ts) rather than relying solely on the display-time
+          // fallback in canonicalMessageTime().
+          rxTime: plausibleRxTime(meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : undefined) ?? undefined,
           hopStart: hopStart,
           hopLimit: hopLimit,
           relayNode: meshPacket.relayNode ?? undefined, // Last byte of the node that relayed this message
