@@ -298,6 +298,7 @@ export function UiIcon({
       className={className}
       size={size}
       strokeWidth={strokeWidth}
+      fill={name === 'favorite' ? 'currentColor' : 'none'}
       role={title ? 'img' : undefined}
       aria-label={title}
       aria-hidden={title ? undefined : true}
