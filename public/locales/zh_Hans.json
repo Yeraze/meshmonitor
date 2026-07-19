@@ -1842,6 +1842,7 @@
     "node_details.signal_rssi": "信号（RSSI）",
     "node_details.channel_utilization": "频道占用",
     "node_details.air_utilization_tx": "空中占用（发送）",
+    "node_details.noise_floor": "噪声基底",
     "node_details.uptime": "运行时长",
     "node_details.node_id": "节点 ID",
     "node_details.role": "角色",

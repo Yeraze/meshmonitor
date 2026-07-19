@@ -624,6 +624,7 @@
     "system_backup.toast_creating": "Création de la sauvegarde système...",
     "settings.solar_latitude_description": "Position nord‑sud sur la Terre (-90 sud à +90 nord)",
     "node_details.air_utilization_tx": "Utilisation de l'air TX",
+    "node_details.noise_floor": "Plancher de bruit",
     "hardware.tbeam_v0p7": "T‑Beam V0.7",
     "admin_commands.selected": "Sélectionné",
     "settings.settings_management": "Gestion des paramètres",

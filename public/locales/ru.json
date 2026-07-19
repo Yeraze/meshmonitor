@@ -1594,6 +1594,7 @@
     "theme_gallery.persistence_desc": "Выбранная вами тема сохраняется автоматически и не меняется между сессиями. Все темы работают на всех страницах и компонентах.",
     "automation.auto_traceroute.limit_to_nodes_description": "При включении этой функции трассировка будет выполняться только для выбранных узлов. При отключении этой функции трассировка будет выполняться для всех узлов.",
     "node_details.air_utilization_tx": "Использование эфира TX",
+    "node_details.noise_floor": "Уровень шума",
     "admin_commands.selected": "Выбранный",
     "detectionsensor_config.save_button": "Сохранить датчик обнаружения",
     "storeforward_config.title": "Хранение и пересылка",

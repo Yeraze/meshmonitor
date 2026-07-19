@@ -13957,21 +13957,23 @@ class MeshtasticManager implements ISourceManager {
 
   // Async version that fetches uptimes in a single bulk query - works with all DB backends
   async getAllNodesAsync(sourceId?: string): Promise<DeviceInfo[]> {
-    const uptimeMap = await databaseService.telemetry.getLatestTelemetryValueForAllNodes(
-      'uptimeSeconds',
-      sourceId,
-    );
+    const [uptimeMap, noiseFloorMap] = await Promise.all([
+      databaseService.telemetry.getLatestTelemetryValueForAllNodes('uptimeSeconds', sourceId),
+      databaseService.telemetry.getLatestTelemetryValueForAllNodes('noiseFloor', sourceId),
+    ]);
     // intentional cross-source when sourceId omitted: caller wants unified view across all sources
     const dbNodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
     // Without a sourceId the caller wants the unified view, so collapse the
     // per-source rows into one entry per nodeNum. Issue #3135.
     const effective = sourceId ? dbNodes : mergeNodesAcrossSources(dbNodes);
-    return effective.map(node => this.mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId)));
+    return effective.map(node =>
+      this.mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId), noiseFloorMap.get(node.nodeId)),
+    );
   }
 
 
   // Shared mapping logic for converting a DB node to DeviceInfo
-  private mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number): DeviceInfo {
+  private mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number, noiseFloor?: number): DeviceInfo {
       const deviceInfo: any = {
         nodeNum: node.nodeNum,
         user: {
@@ -13986,7 +13988,8 @@ class MeshtasticManager implements ISourceManager {
           voltage: node.voltage,
           channelUtilization: node.channelUtilization,
           airUtilTx: node.airUtilTx,
-          uptimeSeconds
+          uptimeSeconds,
+          noiseFloor
         },
         lastHeard: node.lastHeard,
         snr: node.snr,
