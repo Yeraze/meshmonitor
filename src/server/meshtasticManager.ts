@@ -5802,7 +5802,14 @@ class MeshtasticManager implements ISourceManager {
           text: messageText,
           channel: channelIndex,
           portnum: PortNum.TEXT_MESSAGE_APP,
-          timestamp: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
+          // Server receipt time, always — matches the MQTT ingestion path
+          // (mqttIngestion.ts) and the telemetry convention (raw device time
+          // preserved separately, never used as the canonical `timestamp`).
+          // Previously this mirrored `rxTime`, so a node with an unsynced RTC
+          // (reporting seconds-since-boot instead of epoch seconds) stored an
+          // implausible ~1970 value as `timestamp` too, defeating the display
+          // fallback in canonicalMessageTime() (#4206).
+          timestamp: Date.now(),
           rxTime: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
           hopStart: hopStart,
           hopLimit: hopLimit,

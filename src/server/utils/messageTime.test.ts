@@ -20,6 +20,18 @@ describe('canonicalMessageTime', () => {
   it('treats a negative rxTime as missing', () => {
     expect(canonicalMessageTime({ rxTime: -5, timestamp: 99 })).toBe(99);
   });
+
+  it('falls back to timestamp when rxTime is a small nonzero boot-uptime value (unsynced RTC, #4206)', () => {
+    // Regression: a node without a valid RTC reports rxTime as seconds-since-boot
+    // (e.g. 114571s -> 114571000ms, ~1970-01-02), which is nonzero and would pass
+    // a naive `rxTime > 0` check. Must fall back to the server timestamp instead
+    // of rendering an early-1970 date.
+    expect(canonicalMessageTime({ rxTime: 114_571_000, timestamp: 1_700_000_000_000 })).toBe(1_700_000_000_000);
+  });
+
+  it('accepts a plausible rxTime just above the floor', () => {
+    expect(canonicalMessageTime({ rxTime: 1_577_836_800_001, timestamp: 1 })).toBe(1_577_836_800_001);
+  });
 });
 
 describe('messageReceivedAt', () => {
