@@ -28,12 +28,19 @@ describe('Migration 125 — add xeddsa_signed to packet_log', () => {
     };
     expect(row.xeddsa_signed).toBeNull();
 
-    // The column accepts the boolean values.
+    // The column accepts both boolean values — 0 (explicitly unsigned) must
+    // remain distinguishable from NULL (unknown).
     db.prepare('UPDATE packet_log SET xeddsa_signed = 1 WHERE from_node = 1').run();
     const updated = db.prepare('SELECT xeddsa_signed FROM packet_log WHERE from_node = 1').get() as {
       xeddsa_signed: number | null;
     };
     expect(updated.xeddsa_signed).toBe(1);
+
+    db.prepare('UPDATE packet_log SET xeddsa_signed = 0 WHERE from_node = 1').run();
+    const cleared = db.prepare('SELECT xeddsa_signed FROM packet_log WHERE from_node = 1').get() as {
+      xeddsa_signed: number | null;
+    };
+    expect(cleared.xeddsa_signed).toBe(0);
     db.close();
   });
 

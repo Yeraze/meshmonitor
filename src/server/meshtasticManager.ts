@@ -5310,9 +5310,15 @@ class MeshtasticManager implements ISourceManager {
           hop_start: meshPacket.hopStart,
           want_ack: meshPacket.wantAck,
           priority: meshPacket.priority,
-          transport_mechanism: meshPacket.transportMechanism,
-          xeddsa_signed: meshPacket.xeddsaSigned
+          transport_mechanism: meshPacket.transportMechanism
         };
+
+        // XEdDSA flag has its own packet_log column; only mirror it into the
+        // metadata blob when actually signed (like encrypted_payload) so every
+        // pre-2.8 packet doesn't carry a redundant undefined field. (#3923)
+        if (meshPacket.xeddsaSigned) {
+          metadata.xeddsa_signed = true;
+        }
 
         // Include encrypted payload bytes if packet is encrypted
         if (isEncrypted && meshPacket.encrypted) {

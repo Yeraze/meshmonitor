@@ -609,6 +609,10 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                     <col style={{ width: '60px' }} />
                     <col style={{ width: '35px' }} />
                     <col style={{ width: '45px' }} />
+                    {/* Date col was missing here while the header colgroup and the
+                        row cells both have it, shifting every body column by one
+                        (flagged in #4209 review; pre-existing). */}
+                    <col style={{ width: '55px' }} />
                     <col style={{ width: '110px' }} />
                     <col style={{ width: '140px' }} />
                     <col style={{ width: '140px' }} />

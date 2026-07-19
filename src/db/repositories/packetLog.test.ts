@@ -66,6 +66,24 @@ describe('PacketLogRepository - Packet Log Queries', () => {
       expect(pre28).toBeDefined();
       expect(pre28!.xeddsa_signed ?? null).toBeNull();
     });
+
+    it('persists explicit false as boolean false — distinct from NULL/unknown', async () => {
+      await repo.insertPacketLog({
+        packet_id: 98,
+        timestamp: Date.now(),
+        from_node: 100,
+        portnum: 1,
+        portnum_name: 'TEXT_MESSAGE_APP',
+        encrypted: false,
+        direction: 'rx',
+        xeddsa_signed: false,
+      } as any, 'default');
+
+      const packets = await repo.getPacketLogs({});
+      const unsigned = packets.find(p => p.packet_id === 98);
+      expect(unsigned).toBeDefined();
+      expect(unsigned!.xeddsa_signed).toBe(false);
+    });
   });
 
   describe('getPacketLogs', () => {
