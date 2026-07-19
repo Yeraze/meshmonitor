@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { canonicalMessageTime, messageReceivedAt } from './messageTime.js';
+import { canonicalMessageTime, messageReceivedAt, plausibleRxTime } from './messageTime.js';
+
+describe('plausibleRxTime', () => {
+  it('returns a plausible rxTime unchanged', () => {
+    expect(plausibleRxTime(1_700_000_000_000)).toBe(1_700_000_000_000);
+  });
+
+  it('returns null for 0, a boot-uptime value, negative, null, or undefined', () => {
+    expect(plausibleRxTime(0)).toBeNull();
+    expect(plausibleRxTime(114_571_000)).toBeNull();
+    expect(plausibleRxTime(-5)).toBeNull();
+    expect(plausibleRxTime(null)).toBeNull();
+    expect(plausibleRxTime(undefined)).toBeNull();
+  });
+});
 
 describe('canonicalMessageTime', () => {
   it('prefers a positive rxTime over timestamp', () => {
@@ -43,5 +57,11 @@ describe('messageReceivedAt', () => {
     // createdAt missing AND rxTime 0 → must land on timestamp, not epoch.
     expect(messageReceivedAt({ createdAt: null, rxTime: 0, timestamp: 1000 })).toBe(1000);
     expect(messageReceivedAt({ rxTime: 0, timestamp: 1000 })).toBe(1000);
+  });
+
+  it('falls back through the chain without leaking a boot-uptime rxTime (#4206)', () => {
+    expect(
+      messageReceivedAt({ createdAt: null, rxTime: 114_571_000, timestamp: 1_700_000_000_000 })
+    ).toBe(1_700_000_000_000);
   });
 });
