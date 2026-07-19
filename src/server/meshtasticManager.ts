@@ -456,17 +456,22 @@ export interface MeshtasticMqttLink {
 }
 
 /**
- * A telemetry want_response request we sent and are still awaiting a reply for.
- * Tracked so we can detect + auto-retry the firmware NeighborInfo-hijack
- * (issue #4210 / meshtastic/firmware#11071). Keyed by the request's packet id,
- * which the firmware echoes back as a reply's `request_id`.
+ * A telemetry want_response "sequence" we sent and are still awaiting a reply
+ * for. Tracked so we can detect + auto-retry the firmware NeighborInfo-hijack
+ * (issue #4210 / meshtastic/firmware#11071). The original request AND each
+ * auto-retry share one object; `packetIds` holds every packet id (original +
+ * retries) so a telemetry reply matching ANY of them resolves the whole
+ * sequence. The pending map keys every one of those packet ids to this object.
  */
 interface PendingTelemetryRequest {
   destination: number;
   channel: number;
   telemetryType?: 'device' | 'environment' | 'airQuality' | 'power';
-  sentAt: number;
-  retried: boolean;
+  sentAt: number;         // when the ORIGINAL request was sent (drives TTL)
+  retried: boolean;       // the hijack auto-retry sequence has already started (loop-guard)
+  resolved: boolean;      // a telemetry reply arrived for some request in this sequence
+  packetIds: Set<number>; // every packet id belonging to this logical request
+  retryTimers: Array<ReturnType<typeof setTimeout>>;
 }
 
 class MeshtasticManager implements ISourceManager {
@@ -573,16 +578,20 @@ class MeshtasticManager implements ISourceManager {
   // requests here (keyed by packet id) so the inbound-NeighborInfo path can
   // auto-retry once. Per-manager (never global) so replies stay on the same source.
   private pendingTelemetryRequests = new Map<number, PendingTelemetryRequest>();
+  // TTL comfortably covers the full ~70s two-retry schedule plus margin.
   private static readonly TELEMETRY_REQUEST_TTL_MS = 3 * 60 * 1000;
   private static readonly TELEMETRY_REQUEST_MAX_PENDING = 256;
-  // Delay before firing the auto-retry (issue #4210). LoRa is half-duplex: the
-  // remote node JUST transmitted the hijacking NeighborInfo, so an instant retry
-  // (~5ms later, hardware-verified twice) reaches it while it is still
-  // transmitting / before RX re-enables and is silently dropped. 5s safely
-  // clears the node's TX + airtime while staying far inside the firmware's
-  // 3-min NeighborInfo cooldown (and the request's 3-min pending TTL); the
-  // frontend telemetry loading state is 30s, so the delay is invisible to users.
-  private static readonly TELEMETRY_HIJACK_RETRY_DELAY_MS = 5000;
+  // Auto-retry schedule after a NeighborInfo hijack (issue #4210), two spaced
+  // retries inside the firmware's 3-min NeighborInfo cooldown. LoRa is
+  // half-duplex AND the hijacking NeighborInfo is want_ack'd, so the node keeps
+  // RETRANSMITTING it for ~10-30s; a retry that lands during that window is
+  // dropped. Hardware delay-sweep: a 5s retry recovered 0/4, a ~38s retry cleanly
+  // recovered real telemetry. Retry #1 at 30s (safely past the want_ack
+  // retransmission window); retry #2 at 70s from the hijack (RF-loss backstop,
+  // still well inside the 3-min cooldown). The frontend telemetry loading state
+  // is 30s, so a recovery on retry #1 is essentially invisible to users.
+  private static readonly TELEMETRY_HIJACK_RETRY_DELAY_MS = 30000;
+  private static readonly TELEMETRY_HIJACK_RETRY_2_DELAY_MS = 70000;
   // Outstanding auto-retry timers, so they can be cancelled on disconnect/teardown.
   private telemetryRetryTimers = new Set<ReturnType<typeof setTimeout>>();
   // Where the cutoff reads ChUtil from: the local node, or the averaged
@@ -8977,102 +8986,173 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
-   * Prune expired pending telemetry requests and bound the map size.
-   * Map iteration order is insertion order, so the first keys are the oldest.
+   * Forget a telemetry sequence entirely: cancel its outstanding retry timers
+   * and remove every packet-id key that points to it from the pending map.
+   */
+  private forgetTelemetrySequence(entry: PendingTelemetryRequest): void {
+    for (const timer of entry.retryTimers) {
+      clearTimeout(timer);
+      this.telemetryRetryTimers.delete(timer);
+    }
+    entry.retryTimers = [];
+    for (const pid of entry.packetIds) {
+      this.pendingTelemetryRequests.delete(pid);
+    }
+  }
+
+  /**
+   * Prune expired pending telemetry sequences (by original sentAt) and bound
+   * the map size. Map iteration order is insertion order, so the first keys are
+   * the oldest.
    */
   private pruneExpiredTelemetryRequests(now: number): void {
-    for (const [key, entry] of this.pendingTelemetryRequests) {
+    for (const [, entry] of this.pendingTelemetryRequests) {
       if (now - entry.sentAt > MeshtasticManager.TELEMETRY_REQUEST_TTL_MS) {
-        this.pendingTelemetryRequests.delete(key);
+        this.forgetTelemetrySequence(entry);
       }
     }
     while (this.pendingTelemetryRequests.size > MeshtasticManager.TELEMETRY_REQUEST_MAX_PENDING) {
       const oldestKey = this.pendingTelemetryRequests.keys().next().value;
       if (oldestKey === undefined) break;
-      this.pendingTelemetryRequests.delete(oldestKey);
+      const oldest = this.pendingTelemetryRequests.get(oldestKey);
+      if (oldest) this.forgetTelemetrySequence(oldest);
+      else this.pendingTelemetryRequests.delete(oldestKey);
     }
   }
 
   /**
-   * Record an outgoing telemetry want_response so a firmware NeighborInfo hijack
-   * of its reply can be detected and auto-retried (issue #4210).
-   * @param retried true for the auto-retry send itself, so it is never retried again.
+   * Record a NEW outgoing telemetry want_response so a firmware NeighborInfo
+   * hijack of its reply can be detected and auto-retried (issue #4210). Only
+   * original (non-retry) sends start a sequence; auto-retries are linked onto
+   * the existing sequence by {@link maybeRetryHijackedTelemetry}.
    */
   private recordPendingTelemetryRequest(
     packetId: number,
     destination: number,
     channel: number,
-    telemetryType: 'device' | 'environment' | 'airQuality' | 'power' | undefined,
-    retried: boolean
+    telemetryType: 'device' | 'environment' | 'airQuality' | 'power' | undefined
   ): void {
     if (!packetId) return;
     const now = Date.now();
-    this.pendingTelemetryRequests.set(packetId, { destination, channel, telemetryType, sentAt: now, retried });
+    this.pendingTelemetryRequests.set(packetId, {
+      destination,
+      channel,
+      telemetryType,
+      sentAt: now,
+      retried: false,
+      resolved: false,
+      packetIds: new Set([packetId]),
+      retryTimers: [],
+    });
     this.pruneExpiredTelemetryRequests(now);
   }
 
   /**
-   * A telemetry reply arrived — clear the matching pending request so no
-   * (unnecessary) auto-retry fires. Matched by the reply's request_id.
+   * A telemetry reply arrived — resolve the matching sequence (matched by the
+   * reply's request_id against any of its packet ids), cancel any outstanding
+   * retry timers, and drop it so no further (unnecessary) retries fire.
    */
   private resolvePendingTelemetryRequest(requestId: number): void {
-    if (requestId && this.pendingTelemetryRequests.delete(requestId)) {
-      logger.debug(`📊 Telemetry reply resolved pending request ${requestId} (no retry needed)`);
-    }
+    if (!requestId) return;
+    const entry = this.pendingTelemetryRequests.get(requestId);
+    if (!entry) return;
+    entry.resolved = true;
+    this.forgetTelemetrySequence(entry);
+    logger.debug(`📊 Telemetry reply resolved pending request ${requestId} (cancelled any pending retries)`);
   }
 
   /**
    * Detect the firmware NeighborInfo-hijack of a telemetry want_response
-   * (issue #4210 / meshtastic/firmware#11071) and auto-retry the telemetry
-   * request exactly once. The inbound NeighborInfo is still valid neighbor data
-   * and is processed/stored normally by the caller — this only handles the retry.
+   * (issue #4210 / meshtastic/firmware#11071) and kick off the two-retry
+   * recovery sequence (30s + 70s) at most once. The inbound NeighborInfo is
+   * still valid neighbor data and is processed/stored normally by the caller —
+   * this only handles the retry scheduling.
    */
   private async maybeRetryHijackedTelemetry(meshPacket: { decoded?: { requestId?: number | null } }): Promise<void> {
     const requestId = meshPacket?.decoded?.requestId ? Number(meshPacket.decoded.requestId) : 0;
     if (!requestId) return;
 
     const now = Date.now();
-    this.pruneExpiredTelemetryRequests(now);
-    const pending = this.pendingTelemetryRequests.get(requestId);
-    if (!pending) return;
+    this.pruneExpiredTelemetryRequests(now); // drops the entry if it has expired
+    const entry = this.pendingTelemetryRequests.get(requestId);
+    if (!entry) return;
 
-    if (now - pending.sentAt > MeshtasticManager.TELEMETRY_REQUEST_TTL_MS) {
-      this.pendingTelemetryRequests.delete(requestId);
-      return;
-    }
-
-    const destLabel = `!${pending.destination.toString(16).padStart(8, '0')}`;
-    if (pending.retried) {
-      // Already auto-retried once; the retry was hijacked too (or this is a
-      // duplicate NeighborInfo). Do not retry again — just let it be (no loop).
-      this.pendingTelemetryRequests.delete(requestId);
-      logger.info(`📊 Telemetry request ${requestId} to ${destLabel} was hijacked by a NeighborInfo reply again after auto-retry — giving up (firmware #11071)`);
+    if (entry.retried) {
+      // The recovery sequence is already running (or this is a duplicate
+      // hijack NeighborInfo). Loop-guard: do not start a second sequence.
       return;
     }
 
     // Mark retried FIRST (before scheduling) so a second hijack arriving during
-    // the delay window hits the `pending.retried` branch above and does not
-    // schedule a second retry — the one-shot loop-guard holds across the delay.
-    pending.retried = true;
-    const delaySeconds = Math.round(MeshtasticManager.TELEMETRY_HIJACK_RETRY_DELAY_MS / 1000);
-    logger.info(`📊 Telemetry request ${requestId} (${pending.telemetryType ?? 'device'}) to ${destLabel} was hijacked by a promiscuous NeighborInfo reply (firmware #11071); the hijack armed the node's 3-min cooldown, so auto-retrying the telemetry request once in ${delaySeconds}s (LoRa is half-duplex — an instant retry is dropped while the node is still transmitting)`);
+    // the retry window is ignored by the guard above — the sequence runs once.
+    entry.retried = true;
+    const destLabel = `!${entry.destination.toString(16).padStart(8, '0')}`;
+    const s1 = Math.round(MeshtasticManager.TELEMETRY_HIJACK_RETRY_DELAY_MS / 1000);
+    const s2 = Math.round(MeshtasticManager.TELEMETRY_HIJACK_RETRY_2_DELAY_MS / 1000);
+    logger.info(`📊 Telemetry request ${requestId} (${entry.telemetryType ?? 'device'}) to ${destLabel} was hijacked by a promiscuous NeighborInfo reply (firmware #11071); scheduling auto-retries at ${s1}s and ${s2}s (the node keeps retransmitting the want_ack'd NeighborInfo for ~10-30s, so an instant/5s retry is dropped — hardware-verified that ~30s+ recovers telemetry)`);
 
-    // Schedule the actual re-send after a short delay so the node has finished
-    // its TX and re-enabled RX (see TELEMETRY_HIJACK_RETRY_DELAY_MS comment).
+    this.scheduleTelemetryRetry(entry, 1);
+  }
+
+  /**
+   * Schedule one attempt of the hijack-recovery sequence. Attempt 1 fires at
+   * TELEMETRY_HIJACK_RETRY_DELAY_MS (30s) from the hijack; attempt 2 fires at
+   * TELEMETRY_HIJACK_RETRY_2_DELAY_MS (70s) from the hijack, i.e. the delta
+   * after attempt 1.
+   */
+  private scheduleTelemetryRetry(entry: PendingTelemetryRequest, attempt: 1 | 2): void {
+    const delay = attempt === 1
+      ? MeshtasticManager.TELEMETRY_HIJACK_RETRY_DELAY_MS
+      : MeshtasticManager.TELEMETRY_HIJACK_RETRY_2_DELAY_MS - MeshtasticManager.TELEMETRY_HIJACK_RETRY_DELAY_MS;
+
     const timer = setTimeout(() => {
+      entry.retryTimers = entry.retryTimers.filter((t) => t !== timer);
       this.telemetryRetryTimers.delete(timer);
-      if (!this.isConnected || !this.transport) {
-        logger.debug(`📊 Skipping auto-retry of telemetry request ${requestId} to ${destLabel} — manager no longer connected`);
-        return;
-      }
-      this.sendTelemetryRequest(pending.destination, pending.channel, pending.telemetryType, { isAutoRetry: true })
-        .catch((error) => {
-          logger.warn(`Failed to auto-retry hijacked telemetry request to ${destLabel}:`, error);
-        });
-    }, MeshtasticManager.TELEMETRY_HIJACK_RETRY_DELAY_MS);
+      this.fireTelemetryRetry(entry, attempt);
+    }, delay);
     // Do not keep the event loop alive solely for this timer.
     if (typeof timer.unref === 'function') timer.unref();
+    entry.retryTimers.push(timer);
     this.telemetryRetryTimers.add(timer);
+  }
+
+  /**
+   * Fire one auto-retry attempt: only send if the sequence is still unresolved
+   * (no telemetry reply has cleared it) and the manager is still connected.
+   * After a successful attempt-1 send, schedule attempt 2.
+   */
+  private fireTelemetryRetry(entry: PendingTelemetryRequest, attempt: 1 | 2): void {
+    const destLabel = `!${entry.destination.toString(16).padStart(8, '0')}`;
+    if (entry.resolved) {
+      logger.debug(`📊 Skipping telemetry auto-retry #${attempt} to ${destLabel} — telemetry already received`);
+      return;
+    }
+    if (!this.isConnected || !this.transport) {
+      logger.debug(`📊 Skipping telemetry auto-retry #${attempt} to ${destLabel} — manager no longer connected`);
+      return;
+    }
+
+    const atSeconds = attempt === 1
+      ? Math.round(MeshtasticManager.TELEMETRY_HIJACK_RETRY_DELAY_MS / 1000)
+      : Math.round(MeshtasticManager.TELEMETRY_HIJACK_RETRY_2_DELAY_MS / 1000);
+    logger.info(`📊 Auto-retry #${attempt} (${atSeconds}s after hijack) of telemetry request to ${destLabel} (firmware #11071 NeighborInfo hijack recovery)`);
+
+    this.sendTelemetryRequest(entry.destination, entry.channel, entry.telemetryType, { isAutoRetry: true })
+      .then(({ packetId }) => {
+        // Link this retry's packet id so its telemetry reply resolves the
+        // sequence (and cancels a later retry). Skip if resolved meanwhile.
+        if (!entry.resolved && packetId) {
+          entry.packetIds.add(packetId);
+          this.pendingTelemetryRequests.set(packetId, entry);
+        }
+      })
+      .catch((error) => {
+        logger.warn(`Failed to auto-retry hijacked telemetry request to ${destLabel}:`, error);
+      });
+
+    if (attempt === 1) {
+      this.scheduleTelemetryRetry(entry, 2);
+    }
   }
 
   /**
@@ -9130,8 +9210,12 @@ class MeshtasticManager implements ISourceManager {
       // Track this outstanding request so the firmware NeighborInfo-hijack
       // (issue #4210) can be detected + auto-retried. Firmware echoes the
       // request's MeshPacket id back as the reply's request_id, so key by packetId.
-      // The auto-retry send is recorded as already-retried to prevent a loop.
-      this.recordPendingTelemetryRequest(packetId, destination, channel, telemetryType, options?.isAutoRetry ?? false);
+      // Auto-retry sends are NOT recorded as new sequences — they are linked onto
+      // the existing sequence by maybeRetryHijackedTelemetry so a reply to a
+      // retry resolves (and stops) the whole sequence.
+      if (!options?.isAutoRetry) {
+        this.recordPendingTelemetryRequest(packetId, destination, channel, telemetryType);
+      }
 
       return { packetId, requestId };
     } catch (error) {
