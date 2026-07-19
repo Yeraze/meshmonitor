@@ -1844,6 +1844,8 @@
     "node_details.signal_trend_improving": "",
     "node_details.signal_trend_stable": "",
     "node_details.signal_trend_degrading": "",
+    "node_details.signal_trend_tooltip_metric": "",
+    "node_details.signal_trend_tooltip_noise": "",
     "node_details.channel_utilization": "频道占用",
     "node_details.air_utilization_tx": "空中占用（发送）",
     "node_details.noise_floor": "噪声基底",

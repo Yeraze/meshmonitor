@@ -85,4 +85,14 @@ describe('TelemetryRepository.getSignalTrendSamples (#4110)', () => {
     expect(typeof rows[0].timestamp).toBe('number');
     expect(typeof rows[0].value).toBe('number');
   });
+
+  it('caps the result set at the limit, keeping the most recent rows', async () => {
+    for (let i = 0; i < 5; i++) {
+      await insert(RSSI_TELEMETRY_TYPE, T0 + i * 1000, -90 - i, 'src-a');
+    }
+    const rows = await repo.getSignalTrendSamples(NODE, SIGNAL_TREND_TELEMETRY_TYPES, 0, 'src-a', 2);
+    expect(rows).toHaveLength(2);
+    // DESC order → the two newest timestamps.
+    expect(rows.map(r => r.timestamp).sort((a, b) => b - a)).toEqual([T0 + 4000, T0 + 3000]);
+  });
 });

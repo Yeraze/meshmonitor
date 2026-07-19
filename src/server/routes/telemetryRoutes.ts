@@ -8,6 +8,7 @@ import {
   computeSignalTrend,
   SIGNAL_TREND_TELEMETRY_TYPES,
   SIGNAL_TREND_LOOKBACK_MS,
+  SIGNAL_TREND_MAX_SAMPLES,
 } from '../services/signalTrend.js';
 import { logger } from '../../utils/logger.js';
 import { isValidNodeNum } from '../constants/meshtastic.js';
@@ -279,7 +280,8 @@ router.get('/telemetry/:nodeId/signal-trend', optionalAuth(), requireSourceId('q
       nodeId,
       SIGNAL_TREND_TELEMETRY_TYPES,
       now - SIGNAL_TREND_LOOKBACK_MS,
-      sourceId
+      sourceId,
+      SIGNAL_TREND_MAX_SAMPLES
     );
 
     const result = computeSignalTrend(samples, now);

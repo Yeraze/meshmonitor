@@ -53,6 +53,16 @@ export const BASELINE_WINDOW_MS = 7 * DAY_MS;
 export const SIGNAL_TREND_LOOKBACK_MS = RECENT_WINDOW_MS + BASELINE_WINDOW_MS;
 
 /**
+ * Upper bound on rows fetched for a single trend computation — a guardrail
+ * against a pathologically chatty node (e.g. an un-deduped MQTT firehose)
+ * pulling tens of thousands of rows into memory. Well above the realistic
+ * ceiling: signal telemetry is written at most ~once per 10 min per type
+ * (~1150/type over 8 days), so real nodes never hit this. Rows are fetched
+ * most-recent-first, so the recent window is always covered when capped.
+ */
+export const SIGNAL_TREND_MAX_SAMPLES = 20000;
+
+/**
  * Minimum samples required in EACH window for a metric to be usable. Below this
  * a day-vs-week average is dominated by single-packet variance, so we prefer to
  * say nothing over guessing.
@@ -187,6 +197,10 @@ export function computeSignalTrend(
   const snr = computeMetric(samples, SNR_TELEMETRY_TYPE, 'dB', now);
   const noiseFloor = computeMetric(samples, NOISE_FLOOR_TELEMETRY_TYPE, 'dBm', now);
 
+  // `>=` (not `>`) is deliberate: a noise-floor rise that exactly cancels an
+  // equal SNR drop lands the path delta in the 'stable' dead-band, and we still
+  // want the tooltip to attribute that stability to the RF environment. Do not
+  // "fix" this to `>`.
   const noiseFloorRising =
     noiseFloor !== null && noiseFloor.delta >= NOISE_FLOOR_RISE_THRESHOLD_DB;
 

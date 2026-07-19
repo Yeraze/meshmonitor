@@ -45,17 +45,32 @@ function signalTrendArrow(trend: SignalTrendResult['trend']): string {
 /**
  * Build a human-readable tooltip summarizing the day-vs-week deltas behind a
  * signal-trend badge (#4110). Kept plain-text so it works as a `title` attr.
+ * `translate` is i18next's `t` so the descriptive words are localized (the
+ * RSSI/SNR acronyms and dB units are left as-is).
  */
-function buildSignalTrendTooltip(trend: SignalTrendResult): string {
+function buildSignalTrendTooltip(
+  trend: SignalTrendResult,
+  translate: (key: string, opts?: Record<string, unknown>) => string,
+): string {
   const parts: string[] = [];
-  if (trend.rssi) {
-    parts.push(`RSSI ${trend.rssi.delta >= 0 ? '+' : ''}${trend.rssi.delta} ${trend.rssi.unit} (24h ${trend.rssi.recent} vs 7d ${trend.rssi.baseline})`);
-  }
-  if (trend.snr) {
-    parts.push(`SNR ${trend.snr.delta >= 0 ? '+' : ''}${trend.snr.delta} ${trend.snr.unit} (24h ${trend.snr.recent} vs 7d ${trend.snr.baseline})`);
-  }
+  const signed = (n: number) => `${n >= 0 ? '+' : ''}${n}`;
+  const metricLine = (label: string, m: NonNullable<SignalTrendResult['rssi']>) =>
+    translate('node_details.signal_trend_tooltip_metric', {
+      label,
+      delta: signed(m.delta),
+      unit: m.unit,
+      recent: m.recent,
+      baseline: m.baseline,
+      defaultValue: `${label} ${signed(m.delta)} ${m.unit} (24h avg ${m.recent} vs 7d ${m.baseline})`,
+    });
+  if (trend.rssi) parts.push(metricLine('RSSI', trend.rssi));
+  if (trend.snr) parts.push(metricLine('SNR', trend.snr));
   if (trend.noiseFloorRising && trend.noiseFloor) {
-    parts.push(`Noise floor rising ${trend.noiseFloor.delta >= 0 ? '+' : ''}${trend.noiseFloor.delta} ${trend.noiseFloor.unit}`);
+    parts.push(translate('node_details.signal_trend_tooltip_noise', {
+      delta: signed(trend.noiseFloor.delta),
+      unit: trend.noiseFloor.unit,
+      defaultValue: `Noise floor rising ${signed(trend.noiseFloor.delta)} ${trend.noiseFloor.unit}`,
+    }));
   }
   return parts.join('\n');
 }
@@ -88,6 +103,8 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
   // #4110: derived signal trend / link-attenuation badge. Fetched from the
   // backend (which computes it from stored RSSI/SNR/noise-floor telemetry) when
   // a concrete source is selected. Null while loading or when unavailable.
+  // Deliberately fetched once per node selection (not polled): the trend is a
+  // day-vs-week aggregate, so sub-session refresh would not change the verdict.
   const [signalTrend, setSignalTrend] = useState<SignalTrendResult | null>(null);
   const nodeIdForTrend = node?.user?.id
     ?? (nodeNum != null ? `!${nodeNum.toString(16).padStart(8, '0')}` : null);
@@ -326,7 +343,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
               <div className="node-detail-label">{t('node_details.signal_trend', 'Signal Trend')}</div>
               <div
                 className={`node-detail-value signal-trend signal-trend-${signalTrend.trend}`}
-                title={buildSignalTrendTooltip(signalTrend)}
+                title={buildSignalTrendTooltip(signalTrend, t)}
               >
                 <span className="signal-trend-arrow" aria-hidden="true">{signalTrendArrow(signalTrend.trend)}</span>
                 {' '}

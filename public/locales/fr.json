@@ -827,6 +827,8 @@
     "node_details.signal_trend_improving": "",
     "node_details.signal_trend_stable": "",
     "node_details.signal_trend_degrading": "",
+    "node_details.signal_trend_tooltip_metric": "",
+    "node_details.signal_trend_tooltip_noise": "",
     "tileset_manager.setup_guide": "Voir le guide de configuration",
     "settings.sort_last_heard": "Dernier entendu",
     "settings.shutdown_button": "Arrêter",

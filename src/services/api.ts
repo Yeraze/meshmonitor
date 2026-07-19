@@ -791,11 +791,14 @@ class ApiService {
    * invoke this when a concrete source is selected.
    */
   async getSignalTrend(nodeId: string, sourceId: string): Promise<SignalTrendResult> {
+    // Validate the node id up front (throws on a malformed id) for consistency
+    // with getTelemetry and the other node-scoped methods.
+    const validatedNodeId = validateNodeId(nodeId);
     const qs = `?sourceId=${encodeURIComponent(sourceId)}`;
     // The server wraps the payload as { success, data }; ApiService.request does
     // not unwrap, so read body.data explicitly.
     const body = await this.get<{ success: boolean; data: SignalTrendResult }>(
-      `/api/telemetry/${encodeURIComponent(nodeId)}/signal-trend${qs}`,
+      `/api/telemetry/${encodeURIComponent(validatedNodeId ?? nodeId)}/signal-trend${qs}`,
     );
     return body.data;
   }

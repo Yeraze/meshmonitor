@@ -2722,6 +2722,8 @@
     "node_details.signal_trend_improving": "",
     "node_details.signal_trend_stable": "",
     "node_details.signal_trend_degrading": "",
+    "node_details.signal_trend_tooltip_metric": "",
+    "node_details.signal_trend_tooltip_noise": "",
     "node_details.channel_utilization": "Wykorzystanie kanału",
     "node_details.air_utilization_tx": "Wykorzystanie pasma TX",
     "node_details.noise_floor": "Poziom szumów",

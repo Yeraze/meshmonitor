@@ -261,7 +261,8 @@ export class TelemetryRepository extends BaseRepository {
     nodeId: string,
     telemetryTypes: readonly string[],
     sinceTimestamp: number,
-    sourceId?: SourceScope
+    sourceId?: SourceScope,
+    limit?: number
   ): Promise<Array<{ telemetryType: string; timestamp: number; value: number }>> {
     const { telemetry } = this.tables;
     const conditions = [
@@ -272,14 +273,19 @@ export class TelemetryRepository extends BaseRepository {
     const sourceScope = this.withSourceScope(telemetry, sourceId);
     if (sourceScope) conditions.push(sourceScope);
 
-    const rows = await this.db
+    // Fetch most-recent-first and cap the result set (guardrail against a chatty
+    // node dumping tens of thousands of rows). DESC order keeps the recent
+    // window fully covered when the cap bites.
+    const base = this.db
       .select({
         telemetryType: telemetry.telemetryType,
         timestamp: telemetry.timestamp,
         value: telemetry.value,
       })
       .from(telemetry)
-      .where(and(...conditions));
+      .where(and(...conditions))
+      .orderBy(desc(telemetry.timestamp));
+    const rows = limit !== undefined ? await base.limit(limit) : await base;
 
     return rows.map((r: { telemetryType: string; timestamp: number | bigint; value: number | bigint }) => ({
       telemetryType: r.telemetryType,
