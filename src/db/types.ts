@@ -341,6 +341,8 @@ export interface DbPacketLog {
   decrypted_by?: 'node' | 'server' | null;
   decrypted_channel_id?: number | null;
   transport_mechanism?: number | null;
+  /** Firmware 2.8 XEdDSA signature verified (#3923). NULL/undefined = unknown (pre-2.8 packet or feature). */
+  xeddsa_signed?: boolean | null;
   sourceId?: string | null;
   /** Impersonation flag (#2584): packet claims from == our local node but arrived over RF and wasn't sent by us. */
   spoof_suspected?: boolean | null;

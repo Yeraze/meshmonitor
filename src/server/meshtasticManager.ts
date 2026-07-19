@@ -5313,6 +5313,13 @@ class MeshtasticManager implements ISourceManager {
           transport_mechanism: meshPacket.transportMechanism
         };
 
+        // XEdDSA flag has its own packet_log column; only mirror it into the
+        // metadata blob when actually signed (like encrypted_payload) so every
+        // pre-2.8 packet doesn't carry a redundant undefined field. (#3923)
+        if (meshPacket.xeddsaSigned) {
+          metadata.xeddsa_signed = true;
+        }
+
         // Include encrypted payload bytes if packet is encrypted
         if (isEncrypted && meshPacket.encrypted) {
           // Convert Uint8Array to hex string for storage
@@ -5351,6 +5358,9 @@ class MeshtasticManager implements ISourceManager {
           priority: meshPacket.priority ?? undefined,
           payload_preview: payloadPreview ?? undefined,
           metadata: JSON.stringify(metadata),
+          // Firmware 2.8 XEdDSA signature-verified flag (#3923); undefined
+          // (pre-2.8 firmware) stays NULL = unknown.
+          xeddsa_signed: meshPacket.xeddsaSigned ?? undefined,
           // 'tx' ONLY for genuine local transmissions (internal, fresh, no RX
           // metadata). A spoofed packet claiming our node number is a reception.
           direction: spoof.isGenuineLocalTx ? 'tx' : 'rx',

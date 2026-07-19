@@ -75,6 +75,9 @@ export class PacketLogRepository extends BaseRepository {
       to_node: row.to_node != null ? Number(row.to_node) : row.to_node,
       relay_node: row.relay_node != null ? Number(row.relay_node) : row.relay_node,
       created_at: row.created_at != null ? Number(row.created_at) : row.created_at,
+      // Booleans arrive as 0/1 on SQLite/MySQL and true/false on PG — coerce,
+      // but preserve NULL (= unknown, pre-2.8) rather than folding it to false. (#3923)
+      xeddsa_signed: row.xeddsa_signed == null ? null : Boolean(row.xeddsa_signed),
       // PostgreSQL lowercases unquoted aliases — normalize for frontend
       from_node_longName: row.from_node_longName ?? row.from_node_longname ?? null,
       to_node_longName: row.to_node_longName ?? row.to_node_longname ?? null,
@@ -112,6 +115,7 @@ export class PacketLogRepository extends BaseRepository {
         direction: packet.direction ?? 'rx',
         created_at: Date.now(),
         transport_mechanism: packet.transport_mechanism ?? null,
+        xeddsa_signed: packet.xeddsa_signed ?? null,
         decrypted_by: packet.decrypted_by ?? null,
         decrypted_channel_id: packet.decrypted_channel_id ?? null,
       };
