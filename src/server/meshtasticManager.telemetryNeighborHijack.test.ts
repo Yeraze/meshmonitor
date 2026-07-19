@@ -6,11 +6,13 @@
  * enabled, the firmware's promiscuous NeighborInfoModule can answer with a
  * NeighborInfo (port 71) reply whose request_id == our telemetry request's
  * packet id, hijacking the reply. The hijack arms the node's 3-minute cooldown,
- * so an immediate retry returns real telemetry. These tests cover the manager
- * bookkeeping + one-shot auto-retry.
+ * so a retry returns real telemetry — but because LoRa is half-duplex the retry
+ * must be DELAYED (an instant retry reaches the node while it is still
+ * transmitting and is dropped; verified twice on hardware). These tests cover
+ * the manager bookkeeping + the delayed, one-shot auto-retry.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockGetNode = vi.fn();
 const mockUpsertNode = vi.fn();
@@ -40,6 +42,7 @@ vi.mock('../utils/logger.js', () => ({
 const DEST = 0x0a0b0c0d;
 const CHANNEL = 2;
 const REQ_ID = 0x12345678;
+const RETRY_DELAY_MS = 5000;
 
 /** A minimal inbound NeighborInfo MeshPacket carrying decoded.requestId. */
 function neighborInfoPacket(requestId: number) {
@@ -55,6 +58,7 @@ describe('MeshtasticManager - telemetry NeighborInfo hijack auto-retry (#4210)',
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
     mockGetNode.mockResolvedValue({ nodeNum: DEST, hopsAway: 1 });
     mockGetNodesByNums.mockResolvedValue(new Map());
     mockUpsertNode.mockResolvedValue(undefined);
@@ -64,7 +68,16 @@ describe('MeshtasticManager - telemetry NeighborInfo hijack auto-retry (#4210)',
     const module = await import('./meshtasticManager.js');
     manager = module.default;
     manager.pendingTelemetryRequests.clear();
+    for (const t of manager.telemetryRetryTimers) clearTimeout(t);
+    manager.telemetryRetryTimers.clear();
     manager.sourceId = 'default';
+    // The delayed retry only fires while the manager is connected.
+    manager.isConnected = true;
+    manager.transport = { disconnect: vi.fn() };
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   function seedPending(overrides: Partial<any> = {}) {
@@ -78,16 +91,25 @@ describe('MeshtasticManager - telemetry NeighborInfo hijack auto-retry (#4210)',
     });
   }
 
-  it('auto-retries exactly once when an inbound NeighborInfo matches a pending telemetry request', async () => {
+  it('does not retry immediately, then auto-retries exactly once after the delay', async () => {
     seedPending();
     const sendSpy = vi.spyOn(manager, 'sendTelemetryRequest').mockResolvedValue({ packetId: 1, requestId: 1 });
 
     await manager.processNeighborInfoProtobuf(neighborInfoPacket(REQ_ID), { neighbors: [] });
 
+    // Retry is scheduled, NOT fired inline.
+    expect(sendSpy).not.toHaveBeenCalled();
+    // Pending entry is marked retried immediately so a duplicate NeighborInfo won't re-fire.
+    expect(manager.pendingTelemetryRequests.get(REQ_ID)?.retried).toBe(true);
+
+    // Not yet at the delay boundary.
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS - 1);
+    expect(sendSpy).not.toHaveBeenCalled();
+
+    // Delay elapses → the retry fires exactly once with the same args.
+    await vi.advanceTimersByTimeAsync(1);
     expect(sendSpy).toHaveBeenCalledTimes(1);
     expect(sendSpy).toHaveBeenCalledWith(DEST, CHANNEL, 'environment', { isAutoRetry: true });
-    // Pending entry is marked retried so a duplicate NeighborInfo won't re-fire.
-    expect(manager.pendingTelemetryRequests.get(REQ_ID)?.retried).toBe(true);
     sendSpy.mockRestore();
   });
 
@@ -100,13 +122,16 @@ describe('MeshtasticManager - telemetry NeighborInfo hijack auto-retry (#4210)',
       { neighbors: [{ nodeId: 0x55555555, snr: 5, lastRxTime: 100 }] }
     );
 
-    // Retry fired AND neighbor rows were persisted.
-    expect(sendSpy).toHaveBeenCalledTimes(1);
+    // Neighbor rows persisted regardless of the (delayed) retry.
     expect(mockDeleteNeighbor).toHaveBeenCalledWith(0x0a0b0c0d, 'default');
     expect(mockInsertNeighborBatch).toHaveBeenCalledTimes(1);
     const [records] = mockInsertNeighborBatch.mock.calls[0];
     expect(records).toHaveLength(1);
     expect(records[0].neighborNodeNum).toBe(0x55555555);
+
+    // And the retry still fires after the delay.
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
+    expect(sendSpy).toHaveBeenCalledTimes(1);
     sendSpy.mockRestore();
   });
 
@@ -118,6 +143,7 @@ describe('MeshtasticManager - telemetry NeighborInfo hijack auto-retry (#4210)',
 
     const sendSpy = vi.spyOn(manager, 'sendTelemetryRequest').mockResolvedValue({ packetId: 1, requestId: 1 });
     await manager.processNeighborInfoProtobuf(neighborInfoPacket(REQ_ID), { neighbors: [] });
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
     expect(sendSpy).not.toHaveBeenCalled();
     sendSpy.mockRestore();
   });
@@ -127,6 +153,7 @@ describe('MeshtasticManager - telemetry NeighborInfo hijack auto-retry (#4210)',
     const sendSpy = vi.spyOn(manager, 'sendTelemetryRequest').mockResolvedValue({ packetId: 1, requestId: 1 });
 
     await manager.processNeighborInfoProtobuf(neighborInfoPacket(0xdeadbeef), { neighbors: [] });
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
 
     expect(sendSpy).not.toHaveBeenCalled();
     // Unrelated pending entry is untouched.
@@ -135,26 +162,61 @@ describe('MeshtasticManager - telemetry NeighborInfo hijack auto-retry (#4210)',
   });
 
   it('does not retry for an unsolicited NeighborInfo (no request_id, no pending request)', async () => {
-    // No pending entries seeded.
     const sendSpy = vi.spyOn(manager, 'sendTelemetryRequest').mockResolvedValue({ packetId: 1, requestId: 1 });
 
     await manager.processNeighborInfoProtobuf(
       { from: 0x0a0b0c0d, id: 1, decoded: { portnum: 71 } },
       { neighbors: [] }
     );
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
 
     expect(sendSpy).not.toHaveBeenCalled();
     sendSpy.mockRestore();
   });
 
-  it('retries at most once — a second matching NeighborInfo does not re-fire', async () => {
+  it('retries at most once — a second matching NeighborInfo during the delay window does not schedule a second retry', async () => {
+    seedPending();
+    const sendSpy = vi.spyOn(manager, 'sendTelemetryRequest').mockResolvedValue({ packetId: 1, requestId: 1 });
+
+    // First hijack schedules the retry.
+    await manager.processNeighborInfoProtobuf(neighborInfoPacket(REQ_ID), { neighbors: [] });
+    // Second hijack arrives mid-delay — must NOT schedule another retry.
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS / 2);
+    await manager.processNeighborInfoProtobuf(neighborInfoPacket(REQ_ID), { neighbors: [] });
+
+    // Let all timers drain.
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    sendSpy.mockRestore();
+  });
+
+  it('does not fire the retry if the manager disconnected before the timer elapses', async () => {
     seedPending();
     const sendSpy = vi.spyOn(manager, 'sendTelemetryRequest').mockResolvedValue({ packetId: 1, requestId: 1 });
 
     await manager.processNeighborInfoProtobuf(neighborInfoPacket(REQ_ID), { neighbors: [] });
-    await manager.processNeighborInfoProtobuf(neighborInfoPacket(REQ_ID), { neighbors: [] });
+    // In-flight timer guard: manager loses connection before the delay elapses.
+    manager.isConnected = false;
+    manager.transport = null;
 
-    expect(sendSpy).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
+    expect(sendSpy).not.toHaveBeenCalled();
+    sendSpy.mockRestore();
+  });
+
+  it('disconnect() cancels scheduled retry timers and clears pending requests', async () => {
+    seedPending();
+    const sendSpy = vi.spyOn(manager, 'sendTelemetryRequest').mockResolvedValue({ packetId: 1, requestId: 1 });
+
+    await manager.processNeighborInfoProtobuf(neighborInfoPacket(REQ_ID), { neighbors: [] });
+    expect(manager.telemetryRetryTimers.size).toBe(1);
+
+    manager.disconnect();
+    expect(manager.telemetryRetryTimers.size).toBe(0);
+    expect(manager.pendingTelemetryRequests.size).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
+    expect(sendSpy).not.toHaveBeenCalled();
     sendSpy.mockRestore();
   });
 
@@ -164,6 +226,7 @@ describe('MeshtasticManager - telemetry NeighborInfo hijack auto-retry (#4210)',
     const sendSpy = vi.spyOn(manager, 'sendTelemetryRequest').mockResolvedValue({ packetId: 1, requestId: 1 });
 
     await manager.processNeighborInfoProtobuf(neighborInfoPacket(REQ_ID), { neighbors: [] });
+    await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
 
     expect(sendSpy).not.toHaveBeenCalled();
     // Expired entry is pruned.
@@ -171,8 +234,7 @@ describe('MeshtasticManager - telemetry NeighborInfo hijack auto-retry (#4210)',
     sendSpy.mockRestore();
   });
 
-  it('records an outgoing telemetry request as pending, keyed by packet id', async () => {
-    // Drive the record helper directly (avoids the transport/protobuf machinery).
+  it('records an outgoing telemetry request as pending, keyed by packet id', () => {
     manager.recordPendingTelemetryRequest(REQ_ID, DEST, CHANNEL, 'device', false);
     const entry = manager.pendingTelemetryRequests.get(REQ_ID);
     expect(entry).toMatchObject({ destination: DEST, channel: CHANNEL, telemetryType: 'device', retried: false });

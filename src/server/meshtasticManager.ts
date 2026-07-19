@@ -575,6 +575,16 @@ class MeshtasticManager implements ISourceManager {
   private pendingTelemetryRequests = new Map<number, PendingTelemetryRequest>();
   private static readonly TELEMETRY_REQUEST_TTL_MS = 3 * 60 * 1000;
   private static readonly TELEMETRY_REQUEST_MAX_PENDING = 256;
+  // Delay before firing the auto-retry (issue #4210). LoRa is half-duplex: the
+  // remote node JUST transmitted the hijacking NeighborInfo, so an instant retry
+  // (~5ms later, hardware-verified twice) reaches it while it is still
+  // transmitting / before RX re-enables and is silently dropped. 5s safely
+  // clears the node's TX + airtime while staying far inside the firmware's
+  // 3-min NeighborInfo cooldown (and the request's 3-min pending TTL); the
+  // frontend telemetry loading state is 30s, so the delay is invisible to users.
+  private static readonly TELEMETRY_HIJACK_RETRY_DELAY_MS = 5000;
+  // Outstanding auto-retry timers, so they can be cancelled on disconnect/teardown.
+  private telemetryRetryTimers = new Set<ReturnType<typeof setTimeout>>();
   // Where the cutoff reads ChUtil from: the local node, or the averaged
   // strongest-RSSI 0-hop infrastructure neighbours.
   private automationAirtimeCutoffSource: AirtimeCutoffSource = DEFAULT_AIRTIME_CUTOFF_SOURCE;
@@ -1915,6 +1925,14 @@ class MeshtasticManager implements ISourceManager {
     // Clear per-packet dedup sets (no longer relevant after disconnect)
     this.autoAckProcessedPackets.clear();
     this.autoResponderProcessedPackets.clear();
+
+    // Cancel any scheduled telemetry hijack auto-retries (issue #4210) — a retry
+    // fired after disconnect would throw; drop the pending map too.
+    for (const timer of this.telemetryRetryTimers) {
+      clearTimeout(timer);
+    }
+    this.telemetryRetryTimers.clear();
+    this.pendingTelemetryRequests.clear();
 
     logger.debug('Disconnected from Meshtastic node');
   }
@@ -9032,13 +9050,29 @@ class MeshtasticManager implements ISourceManager {
       return;
     }
 
+    // Mark retried FIRST (before scheduling) so a second hijack arriving during
+    // the delay window hits the `pending.retried` branch above and does not
+    // schedule a second retry — the one-shot loop-guard holds across the delay.
     pending.retried = true;
-    logger.info(`📊 Telemetry request ${requestId} (${pending.telemetryType ?? 'device'}) to ${destLabel} was hijacked by a promiscuous NeighborInfo reply (firmware #11071); the hijack armed the node's 3-min cooldown, so auto-retrying the telemetry request once`);
-    try {
-      await this.sendTelemetryRequest(pending.destination, pending.channel, pending.telemetryType, { isAutoRetry: true });
-    } catch (error) {
-      logger.warn(`Failed to auto-retry hijacked telemetry request to ${destLabel}:`, error);
-    }
+    const delaySeconds = Math.round(MeshtasticManager.TELEMETRY_HIJACK_RETRY_DELAY_MS / 1000);
+    logger.info(`📊 Telemetry request ${requestId} (${pending.telemetryType ?? 'device'}) to ${destLabel} was hijacked by a promiscuous NeighborInfo reply (firmware #11071); the hijack armed the node's 3-min cooldown, so auto-retrying the telemetry request once in ${delaySeconds}s (LoRa is half-duplex — an instant retry is dropped while the node is still transmitting)`);
+
+    // Schedule the actual re-send after a short delay so the node has finished
+    // its TX and re-enabled RX (see TELEMETRY_HIJACK_RETRY_DELAY_MS comment).
+    const timer = setTimeout(() => {
+      this.telemetryRetryTimers.delete(timer);
+      if (!this.isConnected || !this.transport) {
+        logger.debug(`📊 Skipping auto-retry of telemetry request ${requestId} to ${destLabel} — manager no longer connected`);
+        return;
+      }
+      this.sendTelemetryRequest(pending.destination, pending.channel, pending.telemetryType, { isAutoRetry: true })
+        .catch((error) => {
+          logger.warn(`Failed to auto-retry hijacked telemetry request to ${destLabel}:`, error);
+        });
+    }, MeshtasticManager.TELEMETRY_HIJACK_RETRY_DELAY_MS);
+    // Do not keep the event loop alive solely for this timer.
+    if (typeof timer.unref === 'function') timer.unref();
+    this.telemetryRetryTimers.add(timer);
   }
 
   /**
