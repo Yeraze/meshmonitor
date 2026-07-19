@@ -92,6 +92,7 @@ import { calculateDistance } from '../utils/distance.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
 import { resolveLastHeardSec } from './utils/replayGuard.js';
+import { plausibleRxTime } from './utils/messageTime.js';
 import { shouldDiscardPosition } from '../utils/nullIsland.js';
 import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { logger } from '../utils/logger.js';
@@ -442,11 +443,13 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         channel: messageChannel,
         portnum,
         timestamp: nowMs,
-        // Guard against rxTime === 0: MQTT gateway packets frequently arrive
-        // with an unset (0) receive time. Storing 0 makes the unified view's
-        // `rxTime ?? timestamp` canonical resolve to Unix epoch (Dec 31 1969).
-        // Treat anything <= 0 as "no rxTime" so display falls back to timestamp.
-        rxTime: typeof packet.rxTime === 'number' && packet.rxTime > 0 ? packet.rxTime * 1000 : undefined,
+        // Guard against an implausible rxTime: MQTT gateway packets frequently
+        // arrive with an unset (0) receive time, and unsynced-RTC nodes report
+        // a small nonzero boot-uptime value instead. Either would make the
+        // unified view's canonical resolve land on an early-1970 date, so
+        // plausibleRxTime (shared with canonicalMessageTime, #4206) filters
+        // both out at ingestion rather than only at display time.
+        rxTime: plausibleRxTime(typeof packet.rxTime === 'number' ? packet.rxTime * 1000 : undefined) ?? undefined,
         rxSnr: typeof packet.rxSnr === 'number' ? packet.rxSnr : undefined,
         rxRssi: typeof packet.rxRssi === 'number' ? packet.rxRssi : undefined,
         viaMqtt: true,
@@ -992,9 +995,10 @@ async function ingestStoreForward(
       channel: effectiveChannel,
       portnum: PortNum.TEXT_MESSAGE_APP,
       timestamp: nowMs,
-      // See TEXT_MESSAGE_APP case: drop rxTime === 0 (unset gateway time) so it
-      // doesn't render as Unix epoch in the unified view's canonical timestamp.
-      rxTime: typeof packet.rxTime === 'number' && packet.rxTime > 0 ? packet.rxTime * 1000 : undefined,
+      // See TEXT_MESSAGE_APP case: drop an implausible rxTime (unset gateway
+      // time, or an unsynced-RTC node's boot-uptime value) so it doesn't
+      // render as an early-1970 date via the unified view's canonical timestamp.
+      rxTime: plausibleRxTime(typeof packet.rxTime === 'number' ? packet.rxTime * 1000 : undefined) ?? undefined,
       rxSnr: typeof packet.rxSnr === 'number' ? packet.rxSnr : undefined,
       rxRssi: typeof packet.rxRssi === 'number' ? packet.rxRssi : undefined,
       viaMqtt: true,

@@ -19,6 +19,7 @@ import {
   canReadVirtualChannel,
 } from '../utils/virtualChannelPermissions.js';
 import { buildSourceDashboard, getMaxNodeAgeHours } from '../services/sourceDashboardData.js';
+import { canonicalMessageTime, plausibleRxTime } from '../utils/messageTime.js';
 import type { DbChannelDatabase, DbPacketLog } from '../../db/types.js';
 import type { DbMeshCorePacket } from '../../db/repositories/meshcore.js';
 
@@ -702,12 +703,13 @@ router.get('/messages', async (req: Request, res: Response) => {
         }
 
         for (const m of msgs) {
-          // Treat rxTime <= 0 as missing, not as a real device time. MQTT
-          // gateway packets can carry rxTime === 0 (unset receive time); a
-          // plain `rxTime ?? timestamp` would pick 0 (nullish coalescing only
-          // falls through on null/undefined) and render Unix epoch (Dec 1969).
-          const rxTime = typeof m.rxTime === 'number' && m.rxTime > 0 ? m.rxTime : null;
-          const canonical = (rxTime ?? m.timestamp) as number;
+          // Resolve through the shared helpers so this view's dedup timestamp
+          // and per-reception rxTime use the same implausible-rxTime guard as
+          // message display (#4206, building on #3263) — an MQTT unset rxTime
+          // of 0, or an unsynced-RTC node's small boot-uptime value, must not
+          // win over the real timestamp.
+          const canonical = canonicalMessageTime(m);
+          const rxTime = plausibleRxTime(m.rxTime);
           const reqId = (m.requestId ?? null) as number | null;
           const fromNum = Number(m.fromNodeNum);
           // Dedup key priority:

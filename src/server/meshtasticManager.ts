@@ -50,7 +50,7 @@ import { resolveLastHopName } from './utils/lastHop.js';
 import { resolveLastHeardSec } from './utils/replayGuard.js';
 import { autoAckIsZeroHop, autoAckCellKey, resolveAutoAckReplyRouting } from './utils/autoAckDecision.js';
 import { scriptDependencyEnv } from './utils/scriptRunner.js';
-import { canonicalMessageTime } from './utils/messageTime.js';
+import { canonicalMessageTime, plausibleRxTime } from './utils/messageTime.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
 import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
@@ -365,7 +365,7 @@ type TextMessage = {
   portnum: 1; // TEXT_MESSAGE_APP
   requestId?: number; // For Virtual Node messages, preserve packet ID for ACK matching
   timestamp: number;
-  rxTime: number;
+  rxTime?: number;
   hopStart?: number;
   hopLimit?: number;
   relayNode?: number; // Last byte of the node that relayed this message
@@ -5833,8 +5833,22 @@ class MeshtasticManager implements ISourceManager {
           text: messageText,
           channel: channelIndex,
           portnum: PortNum.TEXT_MESSAGE_APP,
-          timestamp: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
-          rxTime: meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : Date.now(),
+          // Server receipt time, always — matches the MQTT ingestion path
+          // (mqttIngestion.ts) and the telemetry convention (raw device time
+          // preserved separately, never used as the canonical `timestamp`).
+          // Previously this mirrored `rxTime`, so a node with an unsynced RTC
+          // (reporting seconds-since-boot instead of epoch seconds) stored an
+          // implausible ~1970 value as `timestamp` too, defeating the display
+          // fallback in canonicalMessageTime() (#4206).
+          timestamp: Date.now(),
+          // undefined (not Date.now()) when the device didn't report a time —
+          // matches the MQTT ingestion convention so `rxTime` never conflates
+          // "no device time" with "server time" (review follow-up on #4206).
+          // Also filtered through plausibleRxTime so an unsynced-RTC node's
+          // boot-uptime value never lands in the DB, matching the MQTT path
+          // (mqttIngestion.ts) rather than relying solely on the display-time
+          // fallback in canonicalMessageTime().
+          rxTime: plausibleRxTime(meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : undefined) ?? undefined,
           hopStart: hopStart,
           hopLimit: hopLimit,
           relayNode: meshPacket.relayNode ?? undefined, // Last byte of the node that relayed this message

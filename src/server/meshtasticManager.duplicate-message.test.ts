@@ -279,6 +279,27 @@ describe('MeshtasticManager - Duplicate message suppression', () => {
       );
     });
 
+    it('drops a small nonzero boot-uptime rxTime instead of storing it (unsynced RTC, #4206)', async () => {
+      // Regression: a node without a valid RTC reports rxTime as seconds-since-boot
+      // (e.g. 114571s), which is nonzero and would previously be stored verbatim.
+      // Must be filtered the same way mqttIngestion.ts filters it at ingestion,
+      // so the DB doesn't accumulate implausible rxTime values.
+      mockInsertMessage.mockReturnValue(true);
+
+      const packet = { ...makeMeshPacket(0x11223344, 0xffffffff), rxTime: 114_571 };
+      await (manager as any).processTextMessageProtobuf(packet, 'Boot-uptime clock');
+
+      expect(mockInsertMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rxTime: undefined,
+          timestamp: expect.any(Number),
+        }),
+        expect.anything()
+      );
+      const inserted = mockInsertMessage.mock.calls[0][0];
+      expect(inserted.timestamp).toBeGreaterThan(1_600_000_000_000);
+    });
+
     it('should emit correct message data to WebSocket when new', async () => {
       mockInsertMessage.mockReturnValue(true);
 

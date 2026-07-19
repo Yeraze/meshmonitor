@@ -648,6 +648,17 @@ describe('ingestServiceEnvelope — TEXT_MESSAGE_APP rxTime', () => {
     expect(inserted.timestamp).toBeGreaterThan(0);
   });
 
+  it('drops a small nonzero boot-uptime rxTime (unsynced RTC, #4206)', async () => {
+    // Regression: a node without a valid RTC reports rxTime as seconds-since-boot
+    // (e.g. 114571s), which passes the old `rxTime > 0` guard and would resolve
+    // to ~1970-01-02 in the unified view. Must be dropped the same as rxTime === 0.
+    const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: textEnvelope(114_571) });
+    expect(result.ingested).toBe(true);
+    const inserted = (databaseService.messages.insertMessage as any).mock.calls[0][0];
+    expect(inserted.rxTime).toBeUndefined();
+    expect(inserted.timestamp).toBeGreaterThan(0);
+  });
+
   it('preserves a real rxTime, converting seconds to milliseconds', async () => {
     const result = await ingestServiceEnvelope({ sourceId: 'bridge-1', envelope: textEnvelope(1_700_000_000) });
     expect(result.ingested).toBe(true);
