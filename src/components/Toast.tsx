@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { UiIcon, type UiIconName } from './icons';
 
 export interface ToastProps {
   id: string;
@@ -24,12 +25,13 @@ const Toast: React.FC<ToastProps> = ({ id, message, type, duration = 5000, onClo
     info: 'var(--ctp-blue)'
   }[type];
 
-  const icon = {
-    success: '✓',
-    error: '✕',
-    warning: '⚠',
-    info: 'ℹ'
-  }[type];
+  const icons: Record<ToastProps['type'], UiIconName> = {
+    success: 'check',
+    error: 'error',
+    warning: 'alert',
+    info: 'info'
+  };
+  const icon = icons[type];
 
   return (
     <div
@@ -48,7 +50,7 @@ const Toast: React.FC<ToastProps> = ({ id, message, type, duration = 5000, onClo
         marginBottom: '0.5rem'
       }}
     >
-      <span style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{icon}</span>
+      <span style={{ fontSize: '1.5rem', fontWeight: 'bold' }}><UiIcon name={icon} /></span>
       <span style={{ flex: 1, fontSize: '0.95rem' }}>{message}</span>
       <button
         onClick={() => onClose(id)}
@@ -65,7 +67,7 @@ const Toast: React.FC<ToastProps> = ({ id, message, type, duration = 5000, onClo
         onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
         onMouseLeave={(e) => e.currentTarget.style.opacity = '0.8'}
       >
-        ×
+        <UiIcon name="close" size={16} />
       </button>
     </div>
   );

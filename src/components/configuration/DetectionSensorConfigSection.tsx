@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
 // Trigger type options matching protobuf enum
@@ -257,7 +258,7 @@ const DetectionSensorConfigSection: React.FC<DetectionSensorConfigSectionProps> 
                 gap: '0.5rem'
               }}
             >
-              <span>{showAdvanced ? '▼' : '▶'}</span>
+              <span><UiIcon name={showAdvanced ? 'chevronDown' : 'forward'} /></span>
               {t('detectionsensor_config.advanced_settings')}
             </button>
           </div>

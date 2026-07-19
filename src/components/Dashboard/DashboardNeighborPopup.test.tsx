@@ -27,14 +27,16 @@ describe('DashboardNeighborPopup', () => {
     );
 
     // Header shows both endpoints with a bidirectional indicator.
-    expect(screen.getByText(/Alpha\s*↔\s*Bravo/)).toBeInTheDocument();
+    const title = screen.getByText((_, element) => element?.classList.contains('node-popup-title') ?? false);
+    expect(title).toHaveTextContent(/Alpha.*Bravo/);
+    expect(title.querySelector('[data-ui-icon="bidirectional"]')).toBeInTheDocument();
     expect(screen.getByText(/Bidirectional/)).toBeInTheDocument();
 
     // Forward direction: Alpha → Bravo with its own SNR.
-    expect(screen.getByText(/Alpha → Bravo: SNR 5\.25 dB/)).toBeInTheDocument();
+    expect(screen.getByText(/Alpha to Bravo: SNR 5\.25 dB/)).toBeInTheDocument();
     // Reverse direction: Bravo → Alpha with the reverse SNR (would be lost
     // without the reverse-data backfill).
-    expect(screen.getByText(/Bravo → Alpha: SNR -2\.50 dB/)).toBeInTheDocument();
+    expect(screen.getByText(/Bravo to Alpha: SNR -2\.50 dB/)).toBeInTheDocument();
   });
 
   it('shows a single direction and a one-way indicator when not bidirectional', () => {
@@ -55,11 +57,13 @@ describe('DashboardNeighborPopup', () => {
     );
 
     // Exact match targets the header title (the SNR row's text is longer).
-    expect(screen.getByText('Solo → Mate')).toBeInTheDocument();
+    const title = screen.getByText((_, element) => element?.classList.contains('node-popup-title') ?? false);
+    expect(title).toHaveTextContent(/Solo.*Mate/);
+    expect(title.querySelector('[data-ui-icon="forward"]')).toBeInTheDocument();
     expect(screen.getByText(/One-way · MQTT/)).toBeInTheDocument();
-    expect(screen.getByText(/Solo → Mate: SNR 8\.00 dB/)).toBeInTheDocument();
+    expect(screen.getByText(/Solo to Mate: SNR 8\.00 dB/)).toBeInTheDocument();
     // No reverse row when there's no reverse data.
-    expect(screen.queryByText(/Mate → Solo/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Mate to Solo/)).not.toBeInTheDocument();
   });
 
   it('renders an em dash when a direction has no SNR', () => {
@@ -80,7 +84,7 @@ describe('DashboardNeighborPopup', () => {
       />,
     );
 
-    expect(screen.getByText(/X → Y: SNR —/)).toBeInTheDocument();
-    expect(screen.getByText(/Y → X: SNR 1\.50 dB/)).toBeInTheDocument();
+    expect(screen.getByText(/X to Y: SNR —/)).toBeInTheDocument();
+    expect(screen.getByText(/Y to X: SNR 1\.50 dB/)).toBeInTheDocument();
   });
 });

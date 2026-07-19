@@ -12,6 +12,7 @@ import SubstitutionsHelpDrawer from './SubstitutionsHelp';
 import GeofenceFieldInput from './GeofenceFieldInput';
 import TokenTextField from './TokenTextField';
 import type { GeofenceShape } from '../auto-responder/types';
+import { UiIcon } from '../icons';
 
 export interface VariableOption { name: string; type: string; }
 export interface SourceOption { id: string; name: string; type?: string; enabled?: boolean; }
@@ -235,7 +236,7 @@ function BlockListEditor({ blocks, options, triggerType, variables, sources, cha
               onChange={(e) => update(i, { type: e.target.value, params: defaultParams(e.target.value, triggerType) })}>
               {options.map((o) => <option key={o.type} value={o.type}>{o.label}</option>)}
             </select>
-            <button className="ae-btn ae-btn--ghost" onClick={() => onChange(blocks.filter((_, j) => j !== i))}>✕</button>
+            <button className="ae-btn ae-btn--ghost" onClick={() => onChange(blocks.filter((_, j) => j !== i))} aria-label="Remove block"><UiIcon name="close" size={15} /></button>
           </div>
           <BlockFields block={b} triggerType={triggerType} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} onParams={(p) => update(i, { ...b, params: p })} />
         </div>

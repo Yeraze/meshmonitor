@@ -17,6 +17,7 @@ import { useElevationEnabled } from '../../hooks/useElevationEnabled';
 import { useElevationProfile } from '../../hooks/useElevationProfile';
 import { calculateDistance, formatDistance } from '../../utils/distance';
 import { resolveNeighborEndpoints, type EndpointNodeRecord } from './neighborLinkEndpoints';
+import { UiIcon } from '../icons';
 
 interface NodeRecord extends MaybePositionedNode {
   nodeNum: number;
@@ -160,7 +161,7 @@ export default function AnalysisInspectorPanel() {
         aria-label="Expand detail pane"
         onClick={() => setInspectorOpen(true)}
       >
-        ‹
+        <UiIcon name="back" />
       </button>
     );
   }
@@ -173,7 +174,7 @@ export default function AnalysisInspectorPanel() {
         aria-label="Collapse detail pane"
         onClick={() => setInspectorOpen(false)}
       >
-        ›
+        <UiIcon name="forward" />
       </button>
       {body}
     </aside>
@@ -436,7 +437,7 @@ export default function AnalysisInspectorPanel() {
     <>
       <h3>Route Segment</h3>
       <div className="subtitle">
-        !{(selected.fromNodeNum ?? 0).toString(16)} → !{(selected.toNodeNum ?? 0).toString(16)}
+        !{(selected.fromNodeNum ?? 0).toString(16)} <UiIcon name="forward" size={14} /> !{(selected.toNodeNum ?? 0).toString(16)}
       </div>
       <hr />
       <dl>

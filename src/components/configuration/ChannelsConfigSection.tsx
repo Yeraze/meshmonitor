@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import {
   DndContext,
   closestCenter,
@@ -464,7 +465,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
             }}
             title={t('channels_config.view_docs')}
           >
-            ❓
+            <UiIcon name="help" />
           </a>
         </h3>
         <p className="setting-description" style={{ marginBottom: '1rem' }}>
@@ -542,8 +543,8 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                           {t('channels_config.slot', { slot: hasReorderChanges ? displaySlot : slotId })}: {channel ? (
                             <>
                               {channel.name || <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('channels_config.unnamed')}</span>}
-                              {!hasReorderChanges && channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}>★ {t('channels_config.primary')}</span>}
-                              {hasReorderChanges && displaySlot === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}>★ {t('channels_config.primary')}</span>}
+                              {!hasReorderChanges && channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
+                              {hasReorderChanges && displaySlot === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
                               {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}>⊘ {t('channels_config.disabled')}</span>}
                             </>
                           ) : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('channels_config.empty')}</span>}
@@ -553,23 +554,23 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                       {(() => {
                         const status = channelEncryptionStatus(channel);
                         if (status === 'secure') {
-                          return <div title={t('channels.encrypted_secure')}>🔒 {t('channels_config.encrypted_secure')}</div>;
+                          return <div title={t('channels.encrypted_secure')}><UiIcon name="encrypted" /> {t('channels_config.encrypted_secure')}</div>;
                         } else if (status === 'default') {
-                          return <div title={t('channels.encrypted_default')}>🔐 {t('channels_config.encrypted_default')}</div>;
+                          return <div title={t('channels.encrypted_default')}><UiIcon name="encryptedKey" /> {t('channels_config.encrypted_default')}</div>;
                         } else {
-                          return <div title={t('channels.unencrypted')}>🔓 {t('channels_config.unencrypted')}</div>;
+                          return <div title={t('channels.unencrypted')}><UiIcon name="unencrypted" /> {t('channels_config.unencrypted')}</div>;
                         }
                       })()}
                       <div>
-                        {channel.uplinkEnabled ? `↑ ${t('channels_config.uplink')} ` : ''}
-                        {channel.downlinkEnabled ? `↓ ${t('channels_config.downlink')}` : ''}
+                        {channel.uplinkEnabled && <><UiIcon name="sortAscending" /> {t('channels_config.uplink')} </>}
+                        {channel.downlinkEnabled && <><UiIcon name="sortDescending" /> {t('channels_config.downlink')}</>}
                         {!channel.uplinkEnabled && !channel.downlinkEnabled && t('channels_config.no_bridge')}
                       </div>
                       {(channel.positionPrecision ?? 0) > 0 && (
                         <div>
-                          {slotId === autoPositionChannelId
-                            ? `📍 ${t('channels_config.location_auto_broadcast')}`
-                            : `📌 ${t('channels_config.location_enabled')}`}
+                          <UiIcon name={slotId === autoPositionChannelId ? 'location' : 'pin'} /> {slotId === autoPositionChannelId
+                            ? t('channels_config.location_auto_broadcast')
+                            : t('channels_config.location_enabled')}
                           {` (${formatPrecisionAccuracy(channel.positionPrecision ?? 0, distanceUnit)})`}
                         </div>
                       )}
@@ -578,7 +579,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                           style={{ marginTop: '0.5rem', color: 'var(--ctp-yellow)', fontSize: '0.85rem' }}
                           title={t('channels_config.collision_tooltip', 'This channel shares its encryption key with a Channel Database (server-side decryption) entry under a different name, so its messages are filed under that entry instead.')}
                         >
-                          ⚠️ {t('channels_config.collision_warning', {
+                          <UiIcon name="alert" /> {t('channels_config.collision_warning', {
                             defaultValue: 'Key shared with Channel Database entry "{{names}}" — messages may appear under that name instead of here.',
                             names: collisionDbNamesByChannelId.get(channel.id)!.join('", "'),
                           })}
@@ -600,7 +601,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                       cursor: 'pointer'
                     }}
                   >
-                    ✏️ {t('common.edit')}
+                    <UiIcon name="edit" /> {t('common.edit')}
                   </button>
                   {channel && (
                     <button
@@ -615,7 +616,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                         cursor: 'pointer'
                       }}
                     >
-                      📥 {t('common.export')}
+                      <UiIcon name="download" /> {t('common.export')}
                     </button>
                   )}
                   <button
@@ -630,7 +631,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                       cursor: 'pointer'
                     }}
                   >
-                    📤 {t('common.import')}
+                    <UiIcon name="upload" /> {t('common.import')}
                   </button>
                   {slotId > 0 && channel && channel.role !== 0 && (
                     <button
@@ -645,7 +646,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                         cursor: 'pointer'
                       }}
                     >
-                      🗑️ {t('common.delete')}
+                      <UiIcon name="delete" /> {t('common.delete')}
                     </button>
                   )}
                 </div>
@@ -669,7 +670,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                 }}>
                   <h4 style={{ margin: 0, color: 'var(--ctp-text)' }}>
                     {ch?.name || t('channels_config.empty')}
-                    {ch?.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}>★ {t('channels_config.primary')}</span>}
+                    {ch?.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
                   </h4>
                 </div>
               );

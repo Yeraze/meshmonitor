@@ -18,6 +18,7 @@ import { MeshCoreMessage, MeshCoreActions, ConnectionStatus } from './hooks/useM
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
+import { UiIcon } from '../icons';
 
 const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = (): boolean =>
@@ -256,7 +257,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               className="meshcore-mobile-back-btn"
               onClick={() => setMobileShowContent(false)}
             >
-              ◀ {t('common.back', 'Back')}
+              <UiIcon name="back" size={15} /> {t('common.back', 'Back')}
             </button>
             {activeRoom && (
               <span className="meshcore-mobile-back-title">

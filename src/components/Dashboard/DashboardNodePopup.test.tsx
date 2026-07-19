@@ -190,9 +190,9 @@ describe('DashboardNodePopup', () => {
         }}
       />,
     );
-    const icons = Array.from(container.querySelectorAll('.node-popup-icon')).map(el => el.textContent);
+    const icons = Array.from(container.querySelectorAll('.node-popup-icon [data-ui-icon]')).map(el => el.getAttribute('data-ui-icon'));
     // ID, Role, Hardware, Hops, SNR, Battery, Altitude, Position — vs. the
     // pre-Phase-5 order of ID, Role, Hops, Hardware, Battery, SNR, Altitude.
-    expect(icons).toEqual(['🆔', '👤', '🖥️', '🔗', '📶', '🔋', '⛰️', '📍']);
+    expect(icons).toEqual(['identity', 'user', 'monitor', 'link', 'wifi', 'battery', 'altitude', 'location']);
   });
 });

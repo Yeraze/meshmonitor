@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
 /**
@@ -170,7 +171,7 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
           }}
           title={t('security_config.view_docs')}
         >
-          ❓
+          <UiIcon name="help" />
         </a>
       </h3>
 
@@ -209,7 +210,7 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
               }}
               title={t('common.copy_to_clipboard')}
             >
-              📋
+              <UiIcon name="copy" />
             </button>
           )}
         </div>
@@ -250,12 +251,12 @@ const SecurityConfigSection: React.FC<SecurityConfigSectionProps> = ({
               }}
               title={t('common.copy_to_clipboard')}
             >
-              📋
+              <UiIcon name="copy" />
             </button>
           )}
         </div>
         <span className="setting-description" style={{ display: 'block', marginTop: '0.25rem', color: 'var(--ctp-yellow)' }}>
-          ⚠️ {t('security_config.private_key_warning')}
+          <UiIcon name="alert" /> {t('security_config.private_key_warning')}
         </span>
       </div>
 

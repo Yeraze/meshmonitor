@@ -35,6 +35,7 @@ import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { analyzeLinkProfile, VERDICT_LABEL, VERDICT_COLOR } from '../../utils/linkProfile';
 import { computeLinkBudget, DEFAULT_K_FACTOR } from '../../utils/linkBudget';
 import { formatDistance } from '../../utils/distance';
+import { UiIcon } from '../icons';
 
 // Documented defaults (LINK_PROFILE_TOOL_SPEC.md §0.7).
 const DEFAULT_FREQ_MHZ = 915;
@@ -338,7 +339,7 @@ const LinkProfileDrawer: React.FC = () => {
             aria-label="Close link profile"
             title="Close"
           >
-            ✕
+            <UiIcon name="close" size={16} />
           </button>
         </div>
 

@@ -20,6 +20,7 @@ import api from '../services/api';
 import { logger } from '../utils/logger';
 import { Channel } from '../types/device';
 import { useSource } from '../contexts/SourceContext';
+import { UiIcon } from './icons';
 import {
   NOTIFICATION_SOUNDS,
   DEFAULT_SOUND_ID,
@@ -126,11 +127,11 @@ const ChannelSoundPicker: React.FC = () => {
               value={value}
               onChange={e => handleChange(row.id, e.target.value)}
             >
-              <option value={SILENT_SOUND_ID}>🔕 {t('settings.channel_sound_silent', 'Silent')}</option>
+              <option value={SILENT_SOUND_ID}>{t('settings.channel_sound_silent', 'Silent')}</option>
               <optgroup label={t('settings.channel_sound_group_standard', 'Standard')}>
                 {STANDARD_SOUNDS.map(s => (
                   <option key={s.id} value={s.id}>
-                    {s.emoji} {s.label}
+                    {s.label}
                     {s.id === DEFAULT_SOUND_ID ? ` (${t('common.default', 'Default')})` : ''}
                   </option>
                 ))}
@@ -138,7 +139,7 @@ const ChannelSoundPicker: React.FC = () => {
               <optgroup label={t('settings.channel_sound_group_fun', 'Fun')}>
                 {FUN_SOUNDS.map(s => (
                   <option key={s.id} value={s.id}>
-                    {s.emoji} {s.label}
+                    {s.label}
                   </option>
                 ))}
               </optgroup>
@@ -152,7 +153,7 @@ const ChannelSoundPicker: React.FC = () => {
               title={t('settings.channel_sound_preview', 'Preview sound')}
               style={{ padding: '0.35rem 0.75rem' }}
             >
-              ▶ {t('settings.channel_sound_preview', 'Preview')}
+              <UiIcon name="play" size={15} /> {t('settings.channel_sound_preview', 'Preview')}
             </button>
           </div>
         );

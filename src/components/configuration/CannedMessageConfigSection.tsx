@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
 // Input event character options matching protobuf enum
@@ -152,7 +153,7 @@ const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
           }}
           title={t('cannedmsg_config.view_docs')}
         >
-          ❓
+          <UiIcon name="help" />
         </a>
       </h3>
 
@@ -264,7 +265,7 @@ const CannedMessageConfigSection: React.FC<CannedMessageConfigSectionProps> = ({
                 gap: '0.5rem'
               }}
             >
-              <span>{showAdvanced ? '▼' : '▶'}</span>
+              <span><UiIcon name={showAdvanced ? 'chevronDown' : 'forward'} /></span>
               {t('cannedmsg_config.advanced_settings')}
             </button>
           </div>

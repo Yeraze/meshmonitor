@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useUI } from '../contexts/UIContext';
 import { useChannels } from '../hooks/useServerData';
+import { UiIcon } from './icons';
 
 // Meshtastic default PSK (base64 encoded single byte 0x01 = default/unencrypted)
 const DEFAULT_UNENCRYPTED_PSK = 'AQ==';
@@ -93,7 +94,7 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
                 const isSecure = isSecureChannel(channelId);
                 return (
                   <option key={channelId} value={channelId}>
-                    {t('node_filter.channel_number', { number: channelId })}{channel?.name ? ` (${channel.name})` : ''}{isSecure ? ' 🔒' : ''}
+                    {t('node_filter.channel_number', { number: channelId })}{channel?.name ? ` (${channel.name})` : ''}{isSecure && <> <UiIcon name="encrypted" size={13} /></>}
                   </option>
                 );
               })}

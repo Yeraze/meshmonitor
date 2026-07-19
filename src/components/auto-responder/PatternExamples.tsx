@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { UiIcon } from '../icons';
 
 interface PatternExamplesProps {
   onSelectPattern: (pattern: string) => void;
@@ -34,15 +35,15 @@ const PatternExamples: React.FC<PatternExamplesProps> = ({ onSelectPattern }) =>
           color: 'var(--ctp-blue)'
         }}
       >
-        <span>💡 Pattern Examples & Templates</span>
-        <span style={{ fontSize: '1.2rem' }}>{showExamples ? '▼' : '▶'}</span>
+        <span><UiIcon name="sparkles" size={15} /> Pattern Examples & Templates</span>
+        <UiIcon name={showExamples ? 'chevronDown' : 'forward'} size={17} />
       </button>
       {showExamples && (
         <div style={{ padding: '1rem', fontSize: '0.85rem' }}>
           {/* Common Meshtastic Commands */}
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontWeight: 'bold', color: 'var(--ctp-blue)', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
-              📡 Common Meshtastic Commands
+              <UiIcon name="radio" size={15} /> Common Meshtastic Commands
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <button
@@ -242,7 +243,7 @@ const PatternExamples: React.FC<PatternExamplesProps> = ({ onSelectPattern }) =>
                   {' '}- Current date (timezone-aware)
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.3rem', fontStyle: 'italic' }}>
-                  💡 Scripts can access <code style={{ background: 'var(--ctp-surface1)', padding: '1px 3px', borderRadius: '2px' }}>TZ</code> environment variable for server's configured timezone
+                  <UiIcon name="info" size={13} /> Scripts can access <code style={{ background: 'var(--ctp-surface1)', padding: '1px 3px', borderRadius: '2px' }}>TZ</code> environment variable for server's configured timezone
                 </div>
               </div>
             </div>
@@ -321,7 +322,7 @@ const PatternExamples: React.FC<PatternExamplesProps> = ({ onSelectPattern }) =>
             fontSize: '0.8rem',
             lineHeight: '1.6'
           }}>
-            <strong>💡 Quick Tips:</strong><br/>
+            <strong><UiIcon name="info" size={13} /> Quick Tips:</strong><br/>
             • <strong>Click any pattern</strong> above to insert it into the trigger field<br/>
             • Use <code style={{ background: 'var(--ctp-surface2)', padding: '2px 4px', borderRadius: '2px' }}>{`{param}`}</code> for default matching (single word, no spaces)<br/>
             • Use <code style={{ background: 'var(--ctp-surface2)', padding: '2px 4px', borderRadius: '2px' }}>{`{param:regex}`}</code> for custom regex patterns<br/>
@@ -338,4 +339,3 @@ const PatternExamples: React.FC<PatternExamplesProps> = ({ onSelectPattern }) =>
 };
 
 export default PatternExamples;
-

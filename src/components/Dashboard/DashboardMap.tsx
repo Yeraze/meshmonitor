@@ -55,6 +55,7 @@ import { TraceroutePathsLayer } from '../map/layers/TraceroutePathsLayer';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from '../map/layers/AccuracyRegionsLayer';
 import { snrToNeighborOpacity, dedupByUnorderedPair } from '../../utils/neighborLinks';
+import { UiIcon } from '../icons';
 import {
   parseSnapshotRoutePositions,
   resolveSegmentPosition,
@@ -719,7 +720,7 @@ export default function DashboardMap({
               onClick={() => setIsMapControlsCollapsed(!isMapControlsCollapsed)}
               title={isMapControlsCollapsed ? 'Expand controls' : 'Collapse controls'}
             >
-              {isMapControlsCollapsed ? '▼' : '▲'}
+              <UiIcon name={isMapControlsCollapsed ? 'chevronDown' : 'chevronUp'} size={16} />
             </button>
           </div>
           {!isMapControlsCollapsed && (

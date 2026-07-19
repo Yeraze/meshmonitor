@@ -26,6 +26,7 @@ import { MeshCorePage } from '../components/MeshCore/MeshCorePage';
 import type { ConnectionStatus } from '../components/MeshCore/hooks/useMeshCore';
 import '../components/MeshCore/MeshCoreTab.css';
 import '../components/AppHeader/AppHeader.css';
+import { UiIcon } from '../components/icons';
 
 function MeshCoreSourceInner() {
   const { t } = useTranslation();
@@ -76,7 +77,7 @@ function MeshCoreSourceInner() {
           onClick={() => navigate('/', { state: { showList: true } })}
           title={t('source.sidebar.open_sources', 'Sources')}
         >
-          {t('unified.back_to_sources', '← Sources')}
+          <UiIcon name="back" size={16} /> {t('unified.back_to_sources', 'Sources')}
         </button>
         <div className="dashboard-topbar-logo">
           <img

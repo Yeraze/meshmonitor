@@ -1,5 +1,6 @@
 import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface StoreForwardConfigSectionProps {
@@ -99,7 +100,7 @@ const StoreForwardConfigSection: React.FC<StoreForwardConfigSectionProps> = ({
           }}
           title={t('storeforward_config.view_docs')}
         >
-          ❓
+          <UiIcon name="help" />
         </a>
       </h3>
 

@@ -5,6 +5,7 @@
  * notify title/body): `{{ trigger.* }}` per trigger type, `{{ var.* }}`, `{{ NOW }}`.
  * Used by both the builder (next to the message fields) and the Test panel.
  */
+import { UiIcon } from '../icons';
 
 // All `{{ trigger.* }}` tokens, by trigger type. `sourceId`/`timestamp` are added to every group.
 export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
@@ -51,7 +52,7 @@ export default function SubstitutionsHelpDrawer({ triggerType, variables, onClos
   // beside the builder while you keep editing the page.
   return (
     <aside className="ae-drawer" role="complementary" aria-label="Substitutions reference">
-      <button className="ae-btn ae-btn--ghost ae-drawer-close" onClick={onClose}>✕</button>
+      <button className="ae-btn ae-btn--ghost ae-drawer-close" onClick={onClose} aria-label="Close substitutions reference"><UiIcon name="close" size={16} /></button>
       <h2>Substitutions</h2>
       <p className="ae-muted">Insert these <code>{'{{ … }}'}</code> tokens in any text field (message, notify title/body). An unknown or empty value renders blank.</p>
 

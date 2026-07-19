@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettings, type Theme } from '../contexts/SettingsContext';
 import './ThemeDocumentation.css';
+import { UiIcon } from './icons';
 
 interface ThemeInfo {
   id: Theme;
@@ -261,7 +262,7 @@ const ThemeCard: React.FC<ThemeCardProps> = ({ themeInfo, isDarkTheme, isLightTh
 
       {themeInfo.accessibility && (
         <div className="accessibility-badge">
-          <span className="badge-icon">♿</span>
+          <span className="badge-icon"><UiIcon name="accessibility" size={16} /></span>
           <span className="badge-text">{themeInfo.accessibility}</span>
         </div>
       )}

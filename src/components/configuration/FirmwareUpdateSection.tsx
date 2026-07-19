@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useToast } from '../ToastContainer';
@@ -764,7 +765,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                 }}
               >
                 {t('firmware.rejected_files', 'Rejected Files')} ({effectiveStatus.rejectedFiles.length})
-                {showRejectedFiles ? ' \u25B2' : ' \u25BC'}
+                {' '}<UiIcon name={showRejectedFiles ? 'chevronUp' : 'chevronDown'} size={14} />
               </button>
               {showRejectedFiles && (
                 <ul style={{
@@ -889,7 +890,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
                   }
                 >
                   {isClearingMarker
-                    ? '⏳ Working...'
+                    ? <><UiIcon name="time" /> Working...</>
                     : t('firmware.recovery_clear_retry', "I've Recovered via USB — Clear Flag & Retry")}
                 </button>
                 <button className="danger-button" onClick={handleCancel}>
@@ -900,7 +901,7 @@ const FirmwareUpdateSection: React.FC<FirmwareUpdateSectionProps> = ({ baseUrl }
               <>
             {effectiveStatus.state === 'awaiting-confirm' && (
               <button className="save-button" onClick={handleConfirm} disabled={isConfirming}>
-                {isConfirming ? '⏳ Working...' : t('firmware.wizard_confirm', 'Confirm & Proceed')}
+                {isConfirming ? <><UiIcon name="time" /> Working...</> : t('firmware.wizard_confirm', 'Confirm & Proceed')}
               </button>
             )}
             {(effectiveStatus.state === 'awaiting-confirm' || effectiveStatus.state === 'in-progress') && (

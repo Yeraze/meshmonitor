@@ -5,7 +5,7 @@ import {
 } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { getMeshCoreMessageContentMatchKeys } from '../../utils/messageContentFilter';
-import { meshcoreRoleIcon, meshcoreRoleLabelKey, meshcoreRoleLabel } from './meshcoreRole';
+import { meshcoreRoleIconName, meshcoreRoleLabelKey, meshcoreRoleLabel } from './meshcoreRole';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { MeshCoreContactDetailPanel } from './MeshCoreContactDetailPanel';
 import { MeshCoreNodeTelemetryConfig } from './MeshCoreNodeTelemetryConfig';
@@ -20,6 +20,7 @@ import {
   canonicalizePeerKey,
   isChannelPseudoKey,
 } from './meshcoreUnreadStore';
+import { UiIcon } from '../icons';
 
 interface MeshCoreDirectMessagesViewProps {
   messages: MeshCoreMessage[];
@@ -350,7 +351,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               : t('nodes.collapse_node_list', 'Collapse node list')}
             aria-expanded={!isCollapsed}
           >
-            {isCollapsed ? '▶' : '◀'}
+            <UiIcon name={isCollapsed ? 'forward' : 'back'} size={18} />
           </button>
           {!isCollapsed && (
             <>
@@ -370,7 +371,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   <option value="all">{t('meshcore.filter_all_types', 'All types')}</option>
                   {DM_TYPE_FILTER_OPTIONS.map((adv) => (
                     <option key={adv} value={String(adv)}>
-                      {`${meshcoreRoleIcon(adv)} ${t(meshcoreRoleLabelKey(adv), meshcoreRoleLabel(adv))}`}
+                      {t(meshcoreRoleLabelKey(adv), meshcoreRoleLabel(adv))}
                     </option>
                   ))}
                 </select>
@@ -395,7 +396,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                     ? t('meshcore.ascending', 'Ascending')
                     : t('meshcore.descending', 'Descending')}
                 >
-                  {sortDirection === 'asc' ? '↑' : '↓'}
+                  <UiIcon name={sortDirection === 'asc' ? 'sortAscending' : 'sortDescending'} />
                 </button>
               </div>
             </>
@@ -418,7 +419,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 onClick={() => setSearchQuery('')}
                 aria-label={t('common.clear', 'Clear')}
               >
-                ×
+                <UiIcon name="close" size={16} />
               </button>
             )}
           </div>
@@ -435,7 +436,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               const c = contactsByKey.get(key);
               const name = c?.advName || c?.name || `${key.substring(0, 8)}…`;
               const isFavorite = favoriteByKey.get(key) ?? false;
-              const roleIcon = meshcoreRoleIcon(c?.advType);
+              const roleIcon = meshcoreRoleIconName(c?.advType);
               const hasUnread = unreadPeers.has(key);
               return (
                 <button
@@ -458,11 +459,11 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                         aria-label={t(meshcoreRoleLabelKey(c?.advType), meshcoreRoleLabel(c?.advType))}
                         title={t(meshcoreRoleLabelKey(c?.advType), meshcoreRoleLabel(c?.advType))}
                       >
-                        {roleIcon}
+                        <UiIcon name={roleIcon} size={16} />
                       </span>
                     )}
                     {isFavorite && (
-                      <span className="mc-dm-row-favorite" aria-label={t('meshcore.favorite.is_favorite', 'Favorite')} title={t('meshcore.favorite.is_favorite', 'Favorite')}>★</span>
+                      <span className="mc-dm-row-favorite" aria-label={t('meshcore.favorite.is_favorite', 'Favorite')} title={t('meshcore.favorite.is_favorite', 'Favorite')}><UiIcon name="favorite" size={15} /></span>
                     )}
                     <span className="mc-node-row-display-name">{name}</span>
                   </div>
@@ -482,7 +483,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
               className="meshcore-mobile-back-btn"
               onClick={() => setMobileShowContent(false)}
             >
-              ◀ {t('common.back', 'Back')}
+              <UiIcon name="back" size={16} /> {t('common.back', 'Back')}
             </button>
             {selected && (
               <span className="meshcore-mobile-back-title">{selectedContactName}</span>
@@ -505,7 +506,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                       onClick={() => void handleClearConversation()}
                       title={t('meshcore.clear_conversation', 'Clear conversation')}
                     >
-                      🗑️ {t('meshcore.clear_conversation', 'Clear conversation')}
+                      <UiIcon name="delete" size={16} /> {t('meshcore.clear_conversation', 'Clear conversation')}
                     </button>
                   </div>
                 )}

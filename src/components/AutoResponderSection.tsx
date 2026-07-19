@@ -23,6 +23,7 @@ import {
 import TriggerItem from './auto-responder/TriggerItem';
 import PatternExamples from './auto-responder/PatternExamples';
 import ScriptManagement from './auto-responder/ScriptManagement';
+import { UiIcon } from './icons';
 
 const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   enabled,
@@ -582,7 +583,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
             }}
             title={t('auto_responder.view_docs')}
           >
-            ❓
+            <UiIcon name="help" size={18} />
           </a>
         </h2>
       </div>
@@ -727,10 +728,9 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     {availableScripts.length === 0 ? t('auto_responder.no_scripts_found') : t('auto_responder.select_script')}
                   </option>
                   {availableScripts.map((script) => {
-                    const langEmoji = script.language === 'Python' ? '🐍' : script.language === 'JavaScript' ? '📘' : script.language === 'Shell' ? '💻' : '📄';
                     const display = script.name
-                      ? `${script.emoji || langEmoji} ${script.name} | ${script.filename} | ${script.language}`
-                      : `${langEmoji} ${script.filename}`;
+                      ? `${script.emoji ? `${script.emoji} ` : ''}${script.name} | ${script.filename} | ${script.language}`
+                      : script.filename;
                     return (
                     <option key={script.path} value={script.path}>
                         {display}
@@ -815,7 +815,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                 gap: '0.25rem',
                 marginTop: '0.25rem'
               }}>
-                <span>⚠️</span>
+                <UiIcon name="alert" size={14} />
                 <span>{newTriggerValidation.error}</span>
               </div>
             )}
@@ -860,7 +860,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
               return (
                 <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'var(--ctp-surface0)', border: '1px solid var(--ctp-overlay0)', borderRadius: '4px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--ctp-green)', fontWeight: 'bold' }}>✓ {t('auto_responder.valid')}</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--ctp-green)', fontWeight: 'bold' }}><UiIcon name="check" size={14} /> {t('auto_responder.valid')}</span>
                     <span style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)' }}>
                       {t('auto_responder.pattern_count', { count: patterns.length })}
                       {uniqueParams.length > 0 && ` • ${t('auto_responder.parameter_count', { count: uniqueParams.length })}`}
@@ -1050,7 +1050,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   
                   {/* Test Section - Merged pattern matching and response testing */}
                   <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--ctp-overlay0)' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.5rem', fontWeight: 'bold' }}>🧪 Test:</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)', marginBottom: '0.5rem', fontWeight: 'bold' }}><UiIcon name="test" size={14} /> Test:</div>
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'stretch' }}>
                       <input
                         type="text"
@@ -1164,7 +1164,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                           }}
                           title="Test the actual HTTP request or script execution with this message"
                         >
-                          {newTriggerLiveTestResult?.loading ? 'Testing...' : '🧪 Test'}
+                          {newTriggerLiveTestResult?.loading ? 'Testing...' : <><UiIcon name="test" size={14} /> Test</>}
                         </button>
                       )}
                     </div>
@@ -1178,7 +1178,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             borderRadius: '4px' 
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                              <span style={{ color: 'var(--ctp-green)', fontWeight: 'bold', fontSize: '0.85rem' }}>✓ Match Found!</span>
+                              <span style={{ color: 'var(--ctp-green)', fontWeight: 'bold', fontSize: '0.85rem' }}><UiIcon name="check" size={14} /> Match Found!</span>
                               <span style={{ fontSize: '0.7rem', color: 'var(--ctp-subtext0)' }}>
                                 Pattern: {testMatch.matchedPattern || formatTriggerPatterns(newTrigger)}
                               </span>
@@ -1345,7 +1345,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                         cursor: 'pointer'
                                       }}
                                     >
-                                      📋 Copy
+                                      <UiIcon name="copy" size={14} /> Copy
                                     </button>
                                   </div>
                                 ) : null}
@@ -1361,7 +1361,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                             color: 'var(--ctp-red)',
                             fontSize: '0.85rem'
                           }}>
-                            ✗ No match - This message does not match your trigger pattern
+                            <UiIcon name="close" size={14} /> No match - This message does not match your trigger pattern
                           </div>
                         )}
                       </div>
@@ -1728,7 +1728,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                         cursor: quickTestResult?.loading ? 'wait' : 'pointer'
                       }}
                     >
-                      {quickTestResult?.loading ? '⏳ Testing...' : '🧪 Test'}
+                      {quickTestResult?.loading ? 'Testing...' : <><UiIcon name="test" size={14} /> Test</>}
                     </button>
                   );
                 })()}
@@ -1748,7 +1748,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     {realtimeMatch ? (
                       <div>
                         <div style={{ marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          <span style={{ color: 'var(--ctp-green)', fontWeight: 'bold' }}>✓ Matches:</span>
+                          <span style={{ color: 'var(--ctp-green)', fontWeight: 'bold' }}><UiIcon name="check" size={14} /> Matches:</span>
                           {(() => {
                             const pattern = realtimeMatch.matchedPattern || '';
                             const segments: Array<{ text: string; type: 'literal' | 'parameter'; paramName?: string; startPos: number; endPos: number }> = [];
@@ -1869,7 +1869,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                         </div>
                         {allMatches.length > 1 && (
                           <div style={{ color: 'var(--ctp-peach)', marginTop: '0.25rem', fontSize: '0.75rem' }}>
-                            ⚠️ Warning: {allMatches.length} triggers match this message (conflict!)
+                            <UiIcon name="alert" size={14} /> Warning: {allMatches.length} triggers match this message (conflict!)
                           </div>
                         )}
 
@@ -1976,7 +1976,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                     marginTop: '0.25rem'
                                   }}
                                 >
-                                  📋 Copy
+                                  <UiIcon name="copy" size={14} /> Copy
                                 </button>
                               </div>
                             ) : null}
@@ -1984,7 +1984,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                         )}
                       </div>
                     ) : (
-                      <div style={{ color: 'var(--ctp-red)' }}>✗ No matching trigger</div>
+                      <div style={{ color: 'var(--ctp-red)' }}><UiIcon name="close" size={14} /> No matching trigger</div>
                     )}
                   </div>
                 );
@@ -2058,7 +2058,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                               color: 'var(--ctp-text)'
                             }}
                           >
-                            {showDetails ? '▼' : '▶'} Details
+                            <UiIcon name={showDetails ? 'chevronDown' : 'forward'} size={14} /> Details
                           </button>
                         )}
                         {match && (
@@ -2074,7 +2074,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                               color: 'var(--ctp-text)'
                             }}
                           >
-                            {showDebug ? '▼' : '▶'} Debug
+                            <UiIcon name={showDebug ? 'chevronDown' : 'forward'} size={14} /> Debug
                           </button>
                         )}
                       </div>
@@ -2088,7 +2088,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                           fontSize: '0.75rem',
                           color: 'var(--ctp-peach)'
                         }}>
-                          ⚠️ Conflict: {allMatches.length} triggers match this message
+                          <UiIcon name="alert" size={14} /> Conflict: {allMatches.length} triggers match this message
                         </div>
                       )}
                       {match ? (
@@ -2109,11 +2109,11 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                           </div>
                           {match.params && Object.keys(match.params).length > 0 && (
                             <div style={{ color: 'var(--ctp-subtext0)', marginBottom: '0.15rem' }}>
-                              📋 {Object.entries(match.params).map(([k, v]) => `${k}="${v}"`).join(', ')}
+                              <UiIcon name="copy" size={14} /> {Object.entries(match.params).map(([k, v]) => `${k}="${v}"`).join(', ')}
                             </div>
                           )}
                           <div style={{ color: 'var(--ctp-subtext1)', marginBottom: '0.15rem' }}>
-                            💬 {generateSampleResponse(match.trigger!, message)}
+                            <UiIcon name="messages" size={14} /> {generateSampleResponse(match.trigger!, message)}
                           </div>
                           {(match.trigger?.responseType === 'http' || match.trigger?.responseType === 'script') && (
                             <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
@@ -2190,7 +2190,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                   fontWeight: 'bold'
                                 }}
                               >
-                                {liveTestResults[index]?.loading ? 'Testing...' : '🧪 Test'}
+                                {liveTestResults[index]?.loading ? 'Testing...' : <><UiIcon name="test" size={14} /> Test</>}
                               </button>
                               {liveTestResults[index] && !liveTestResults[index].loading && (
                                 <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'var(--ctp-surface1)', borderRadius: '4px', fontSize: '0.75rem' }}>
@@ -2220,7 +2220,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                                           cursor: 'pointer'
                                         }}
                                       >
-                                        📋 Copy
+                                        <UiIcon name="copy" size={14} /> Copy
                                       </button>
                                     </div>
                                   ) : null}
@@ -2319,7 +2319,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                         </div>
                       ) : (
                         <div style={{ marginLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>
-                          ✗ No matching trigger
+                          <UiIcon name="close" size={14} /> No matching trigger
                         </div>
                       )}
                     </div>
@@ -2432,7 +2432,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                   e.currentTarget.style.background = 'var(--ctp-blue)';
                 }}
               >
-                📁 Choose File...
+                <UiIcon name="file" size={14} /> Choose File...
               </label>
               <div id="script-import-filename" style={{ 
                 color: 'var(--ctp-subtext0)', 
@@ -2523,7 +2523,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                       const filename = script.replace('/data/scripts/', '');
                       return (
                         <div key={script} style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: 'var(--ctp-text)' }}>
-                          {getFileIcon(filename)} {filename}
+                          <UiIcon name={getFileIcon(filename)} size={14} /> {filename}
                         </div>
                       );
                     })}
@@ -2557,7 +2557,7 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
                     fontWeight: 'bold'
                   }}
                 >
-                  {isExporting ? 'Exporting...' : '📥 Download ZIP'}
+                  {isExporting ? 'Exporting...' : <><UiIcon name="download" size={14} /> Download ZIP</>}
                 </button>
               </div>
             </div>

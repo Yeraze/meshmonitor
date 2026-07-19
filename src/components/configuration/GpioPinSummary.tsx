@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 
 interface PinUsage {
   pin: number;
@@ -155,7 +156,7 @@ const GpioPinSummary: React.FC<GpioPinSummaryProps> = (props) => {
           color: '#ff6b6b',
           fontSize: '0.85rem'
         }}>
-          <strong>⚠️ {t('gpio_summary.conflict_warning')}</strong>
+          <strong><UiIcon name="alert" /> {t('gpio_summary.conflict_warning')}</strong>
         </div>
       )}
 
@@ -191,7 +192,7 @@ const GpioPinSummary: React.FC<GpioPinSummaryProps> = (props) => {
               <tr key={pin} style={rowStyle}>
                 <td style={{ ...cellStyle, fontFamily: 'monospace', fontWeight: 'bold' }}>
                   {pin}
-                  {isConflict && <span style={{ marginLeft: '0.25rem' }}>⚠️</span>}
+                  {isConflict && <span style={{ marginLeft: '0.25rem' }}><UiIcon name="alert" size={14} /></span>}
                 </td>
                 <td style={cellStyle}>
                   {usages.map((usage, idx) => (

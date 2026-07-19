@@ -3,10 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { MeshCoreNode } from './hooks/useMeshCore';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMap } from './MeshCoreMap';
-import { meshcoreRoleIcon, meshcoreRoleLabelKey, meshcoreRoleLabel } from './meshcoreRole';
+import { meshcoreRoleIconName, meshcoreRoleLabelKey, meshcoreRoleLabel } from './meshcoreRole';
 import { useToast } from '../ToastContainer';
 import { useSettings } from '../../contexts/SettingsContext';
 import { formatTimeOrDate } from '../../utils/datetime';
+import { UiIcon } from '../icons';
 
 type DiscoverMode = 'nearby' | 'repeaters' | 'sensors';
 
@@ -297,7 +298,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
               : t('nodes.collapse_node_list', 'Collapse node list')}
             aria-expanded={!isListCollapsed}
           >
-            {isListCollapsed ? '▶' : '◀'}
+            <UiIcon name={isListCollapsed ? 'forward' : 'back'} size={18} />
           </button>
           {!isListCollapsed && (
           <>
@@ -371,7 +372,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                 ? t('meshcore.ascending', 'Ascending')
                 : t('meshcore.descending', 'Descending')}
             >
-              {sortDirection === 'asc' ? '↑' : '↓'}
+              <UiIcon name={sortDirection === 'asc' ? 'sortAscending' : 'sortDescending'} />
             </button>
           </div>
           </>
@@ -394,7 +395,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
               onClick={() => setSearchQuery('')}
               aria-label={t('common.clear', 'Clear')}
             >
-              ×
+              <UiIcon name="close" size={16} />
             </button>
           )}
         </div>
@@ -406,7 +407,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                 : t('meshcore.no_nodes', 'No nodes seen yet')}
             </div>
           ) : rows.map(row => {
-            const roleIcon = meshcoreRoleIcon(row.advType);
+            const roleIcon = meshcoreRoleIconName(row.advType);
             return (
             // Wrapper div (not a button) so the details quick-access can be a
             // real sibling <button> — nested buttons are invalid HTML.
@@ -428,7 +429,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                       aria-label={t(meshcoreRoleLabelKey(row.advType), meshcoreRoleLabel(row.advType))}
                       title={t(meshcoreRoleLabelKey(row.advType), meshcoreRoleLabel(row.advType))}
                     >
-                      {roleIcon}
+                      <UiIcon name={roleIcon} size={16} />
                     </span>
                   )}
                   <span className="mc-node-row-display-name">{row.name}</span>
@@ -439,7 +440,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                   {row.lastHeard && (
                     <span>{formatTimeOrDate(new Date(row.lastHeard), timeFormat, dateFormat)}</span>
                   )}
-                  {row.hasPosition && <span>📍</span>}
+                  {row.hasPosition && <span><UiIcon name="location" size={14} /></span>}
                 </div>
                 <div className="mc-node-row-key">
                   {row.publicKey.substring(0, 16)}…
@@ -459,7 +460,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                   disabled={favoriteBusy === row.publicKey}
                   onClick={() => void handleToggleFavorite(row.publicKey, !row.isFavorite)}
                 >
-                  {row.isFavorite ? '★' : '☆'}
+                  <UiIcon name={row.isFavorite ? 'favorite' : 'favoriteOff'} size={17} />
                 </button>
               )}
               {onNavigateToDm && (
@@ -470,7 +471,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                   aria-label={t('meshcore.node_row.details', 'More details')}
                   onClick={() => onNavigateToDm(row.publicKey)}
                 >
-                  ›
+                  <UiIcon name="forward" size={16} />
                 </button>
               )}
             </div>
@@ -488,7 +489,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
               className="meshcore-mobile-back-btn"
               onClick={() => setMobileShowContent(false)}
             >
-              ◀ {t('common.back', 'Back')}
+              <UiIcon name="back" size={16} /> {t('common.back', 'Back')}
             </button>
             {selectedRow && (
               <span className="meshcore-mobile-back-title">{selectedRow.name}</span>

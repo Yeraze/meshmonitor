@@ -6,6 +6,7 @@
 
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from './icons';
 import { useAuth } from '../contexts/AuthContext';
 import { logger } from '../utils/logger';
 import ChangePasswordModal from './ChangePasswordModal';
@@ -72,9 +73,9 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
         onClick={() => setShowMenu(!showMenu)}
         title={t('user_menu.logged_in_as', { name: displayName })}
       >
-        <span className="user-icon">👤</span>
+        <span className="user-icon"><UiIcon name="user" /></span>
         <span className="user-name">{displayName}</span>
-        {isAdmin && <span className="admin-badge" title={t('user_menu.administrator')}>⭐</span>}
+        {isAdmin && <span className="admin-badge" title={t('user_menu.administrator')}><UiIcon name="favorite" size={14} /></span>}
       </button>
 
       {showMenu && (

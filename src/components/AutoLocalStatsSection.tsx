@@ -5,6 +5,7 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { DEVICE_ROLES } from '../utils/deviceRole';
 import { useSaveBar } from '../hooks/useSaveBar';
+import { UiIcon } from './icons';
 
 interface AutoLocalStatsSectionProps {
   intervalMinutes: number;
@@ -522,7 +523,7 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
                       <input type="checkbox" checked={filterNodesEnabled}
                         onChange={(e) => { e.stopPropagation(); setFilterNodesEnabled(e.target.checked); }}
                         onClick={(e) => e.stopPropagation()} style={{ width: 'auto', margin: 0, cursor: 'pointer' }} />
-                      <span>{expandedSections.nodes ? '▼' : '▶'}</span>
+                      <span><UiIcon name={expandedSections.nodes ? 'chevronDown' : 'forward'} size={14} /></span>
                       {t('automation.auto_localstats.specific_nodes')}
                       {filterNodesEnabled && selectedNodeNums.length > 0 && (<span style={badgeStyle}>{selectedNodeNums.length}</span>)}
                     </span>
@@ -567,7 +568,7 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
                       <input type="checkbox" checked={filterRolesEnabled}
                         onChange={(e) => { e.stopPropagation(); setFilterRolesEnabled(e.target.checked); }}
                         onClick={(e) => e.stopPropagation()} style={{ width: 'auto', margin: 0, cursor: 'pointer' }} />
-                      <span>{expandedSections.roles ? '▼' : '▶'}</span>
+                      <span><UiIcon name={expandedSections.roles ? 'chevronDown' : 'forward'} size={14} /></span>
                       {t('automation.auto_localstats.filter_by_role')}
                       {filterRolesEnabled && filterRoles.length > 0 && (<span style={badgeStyle}>{filterRoles.length}</span>)}
                     </span>
@@ -611,7 +612,7 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
                       <input type="checkbox" checked={filterRegexEnabled}
                         onChange={(e) => { e.stopPropagation(); setFilterRegexEnabled(e.target.checked); }}
                         onClick={(e) => e.stopPropagation()} style={{ width: 'auto', margin: 0, cursor: 'pointer' }} />
-                      <span>{expandedSections.regex ? '▼' : '▶'}</span>
+                      <span><UiIcon name={expandedSections.regex ? 'chevronDown' : 'forward'} size={14} /></span>
                       {t('automation.auto_localstats.filter_by_name')}
                       {filterRegexEnabled && filterNameRegex !== '.*' && (<span style={badgeStyle}>1</span>)}
                     </span>
@@ -632,7 +633,7 @@ const AutoLocalStatsSection: React.FC<AutoLocalStatsSectionProps> = ({
                       <input type="checkbox" checked={filterLastHeardEnabled}
                         onChange={(e) => { e.stopPropagation(); setFilterLastHeardEnabled(e.target.checked); }}
                         onClick={(e) => e.stopPropagation()} style={{ width: 'auto', margin: 0, cursor: 'pointer' }} />
-                      <span>{expandedSections.lastHeard ? '▼' : '▶'}</span>
+                      <span><UiIcon name={expandedSections.lastHeard ? 'chevronDown' : 'forward'} size={14} /></span>
                       {t('automation.auto_localstats.filter_by_last_heard')}
                       {filterLastHeardEnabled && (<span style={badgeStyle}>{filterLastHeardHours}h</span>)}
                     </span>

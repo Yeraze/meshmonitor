@@ -4,6 +4,7 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { useToast } from './ToastContainer';
+import { UiIcon } from './icons';
 
 interface AirtimeCutoffSectionProps {
   baseUrl: string;
@@ -194,6 +195,7 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
           fontSize: '13px',
           fontWeight: 500,
         }}>
+          {!disabled && <UiIcon name={gated ? 'pause' : 'check'} size={15} style={{ marginRight: '0.4rem' }} />}
           {disabled
             ? t('automation.airtime_cutoff.status_disabled', 'Airtime cutoff is disabled (threshold 0).')
             : util == null
@@ -201,8 +203,8 @@ const AirtimeCutoffSection: React.FC<AirtimeCutoffSectionProps> = ({ baseUrl }) 
                   ? t('automation.airtime_cutoff.status_unknown_neighbors', 'Waiting for 0-hop infrastructure (router) neighbours to report Channel Utilization…')
                   : t('automation.airtime_cutoff.status_unknown', 'Waiting for the connected node to report Channel Utilization…'))
               : gated
-                ? t('automation.airtime_cutoff.status_paused', '⏸ Automations paused — {{source}} Channel Utilization {{util}}% exceeds {{threshold}}%.', { source: sourceLabel, util: utilDisplay, threshold: status?.threshold ?? localThreshold })
-                : t('automation.airtime_cutoff.status_active', '✓ Automations active — {{source}} Channel Utilization {{util}}% is under {{threshold}}%.', { source: sourceLabel, util: utilDisplay, threshold: status?.threshold ?? localThreshold })}
+                ? t('automation.airtime_cutoff.status_paused', 'Automations paused — {{source}} Channel Utilization {{util}}% exceeds {{threshold}}%.', { source: sourceLabel, util: utilDisplay, threshold: status?.threshold ?? localThreshold })
+                : t('automation.airtime_cutoff.status_active', 'Automations active — {{source}} Channel Utilization {{util}}% is under {{threshold}}%.', { source: sourceLabel, util: utilDisplay, threshold: status?.threshold ?? localThreshold })}
           {!disabled && util != null && statusSource === 'neighbors' && (
             <span style={{ fontWeight: 400, opacity: 0.85 }}>
               {' '}{t('automation.airtime_cutoff.status_neighbors_suffix', '(averaged from {{count}} infrastructure node(s))', { count: sampleCount })}

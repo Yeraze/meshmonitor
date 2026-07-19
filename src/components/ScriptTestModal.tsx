@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { UiIcon } from './icons';
 
 export type ScriptTestTriggerType = 'auto-responder' | 'geofence' | 'timer';
 
@@ -428,7 +429,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                   }}
                 >
                   <span style={{ transform: showConsole ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>
-                    &#9654;
+                    <UiIcon name="forward" size={14} />
                   </span>
                   {t('script_test.console_output', 'Console Output')}
                 </button>
@@ -480,7 +481,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
                   }}
                 >
                   <span style={{ transform: showWouldSend ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>
-                    &#9654;
+                    <UiIcon name="forward" size={14} />
                   </span>
                   {t('script_test.would_send', 'Would Send to Mesh')}
                 </button>
@@ -566,7 +567,7 @@ const ScriptTestModal: React.FC<ScriptTestModalProps> = ({
               }}
             >
               <span style={{ transform: showEnvVars ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>
-                &#9654;
+                <UiIcon name="forward" size={14} />
               </span>
               {t('script_test.environment', 'Environment Variables')}
             </button>

@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface TelemetryConfigSectionProps {
@@ -186,7 +187,7 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
           }}
           title={t('telemetry_config.view_docs')}
         >
-          ❓
+          <UiIcon name="help" />
         </a>
       </h3>
 
@@ -338,7 +339,7 @@ const TelemetryConfigSection: React.FC<TelemetryConfigSectionProps> = ({
             gap: '0.5rem'
           }}
         >
-          <span>{showAdvanced ? '▼' : '▶'}</span>
+          <span><UiIcon name={showAdvanced ? 'chevronDown' : 'forward'} /></span>
           {t('telemetry_config.advanced_settings')}
         </button>
       </div>

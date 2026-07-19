@@ -3,6 +3,7 @@ import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { BrandIcon } from './BrandIcon';
 import { UiIcon, UI_ICON_DEFINITIONS } from './UiIcon';
+import { IconStyleProvider } from '../../contexts/IconStyleContext';
 
 describe('UiIcon', () => {
   it('renders Lucide by default without a SettingsProvider', () => {
@@ -13,6 +14,17 @@ describe('UiIcon', () => {
 
   it('renders the registered emoji in emoji mode', () => {
     const { container } = render(<UiIcon name="delete" iconStyle="emoji" size={20} />);
+    expect(container.querySelector('svg')).toBeNull();
+    expect(container.textContent).toBe(UI_ICON_DEFINITIONS.delete.emoji);
+  });
+
+  it('switches mode through the lightweight settings bridge', () => {
+    const { container, rerender } = render(
+      <IconStyleProvider value="lucide"><UiIcon name="delete" /></IconStyleProvider>,
+    );
+    expect(container.querySelector('svg')).not.toBeNull();
+
+    rerender(<IconStyleProvider value="emoji"><UiIcon name="delete" /></IconStyleProvider>);
     expect(container.querySelector('svg')).toBeNull();
     expect(container.textContent).toBe(UI_ICON_DEFINITIONS.delete.emoji);
   });

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from './icons';
 import '../styles/settings.css';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { TemperatureUnit } from '../utils/temperature';
@@ -1200,7 +1201,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           }}
           title={t('settings.view_docs')}
         >
-          ❓
+          <UiIcon name="help" />
         </a>
         <a
           href="https://ko-fi.com/yeraze"
@@ -1226,7 +1227,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#74a0e0'}
           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#89b4fa'}
         >
-          ❤️ {t('settings.support')}</a>
+          <UiIcon name="heart" /> {t('settings.support')}</a>
       </div>
       <SectionNav items={[
         { id: 'settings-language', label: t('settings.language') },
@@ -2421,7 +2422,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         </div>}
 
         {show('settings-danger') && <div id="settings-danger" className="settings-section danger-zone">
-          <h3>⚠️ {t('settings.danger_zone')}</h3>
+          <h3><UiIcon name="alert" /> {t('settings.danger_zone')}</h3>
           <p className="danger-zone-description">{t('settings.danger_zone_description')}</p>
 
           <div className="danger-action">
@@ -2491,7 +2492,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 onClick={handleRestartContainer}
                 disabled={isRestarting}
               >
-                {isRestarting ? (isDocker ? t('settings.restarting') : t('settings.shutting_down')) : (isDocker ? '🔄 ' + t('settings.restart_button') : '🛑 ' + t('settings.shutdown_button'))}
+                {isRestarting
+                  ? (isDocker ? t('settings.restarting') : t('settings.shutting_down'))
+                  : <><UiIcon name={isDocker ? 'refresh' : 'power'} /> {isDocker ? t('settings.restart_button') : t('settings.shutdown_button')}</>}
               </button>
             </div>
           )}

@@ -1,5 +1,6 @@
 import React, { useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface NodeIdentitySectionProps {
@@ -87,7 +88,7 @@ const NodeIdentitySection: React.FC<NodeIdentitySectionProps> = ({
           }}
           title={t('node_identity.view_docs')}
         >
-          ❓
+          <UiIcon name="help" />
         </a>
       </h3>
       <div className="setting-item">

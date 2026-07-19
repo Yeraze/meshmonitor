@@ -4,6 +4,7 @@ import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSaveBar } from '../hooks/useSaveBar';
+import { UiIcon, type UiIconName } from './icons';
 
 interface AutoKeyManagementSectionProps {
   enabled: boolean;
@@ -166,20 +167,20 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
     return action.split(' ')[0];
   };
 
-  const getActionIcon = (action: string, success: boolean | null): string => {
+  const getActionIcon = (action: string, success: boolean | null): UiIconName => {
     switch (getActionBase(action)) {
       case 'exchange':
-        return success === null ? '\u23f3' : success ? '\u2705' : '\u274c'; // hourglass, checkmark, x
+        return success === null ? 'time' : success ? 'check' : 'error';
       case 'purge':
-        return success ? '\ud83d\uddd1\ufe0f' : '\u274c'; // wastebasket, x
+        return success ? 'delete' : 'error';
       case 'fixed':
-        return '\u2705'; // checkmark
+        return 'check';
       case 'exhausted':
-        return '\u26a0\ufe0f'; // warning
+        return 'alert';
       case 'mismatch':
-        return '\u26a0\ufe0f'; // warning
+        return 'alert';
       default:
-        return '?';
+        return 'help';
     }
   };
 
@@ -445,7 +446,7 @@ const AutoKeyManagementSection: React.FC<AutoKeyManagementSectionProps> = ({
                         {entry.newKeyFragment || '-'}
                       </td>
                       <td style={{ padding: '0.4rem 0.75rem', textAlign: 'center' }}>
-                        {getActionIcon(entry.action, entry.success)}
+                        <UiIcon name={getActionIcon(entry.action, entry.success)} size={14} />
                       </td>
                     </tr>
                   ))}

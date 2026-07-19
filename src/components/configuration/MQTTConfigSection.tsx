@@ -1,5 +1,6 @@
 import React, { useRef, useMemo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import { useSource } from '../../contexts/SourceContext';
@@ -303,7 +304,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           }}
           title={t('mqtt_config.view_docs')}
         >
-          ❓
+          <UiIcon name="help" />
         </a>
       </h3>
       {isBridged && (
@@ -322,7 +323,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           }}
         >
           <strong style={{ color: 'var(--ctp-blue, #89b4fa)' }}>
-            🌉 {t('mqtt_config.bridged_recommend_title', 'This is a bridged node')}
+            <UiIcon name="network" /> {t('mqtt_config.bridged_recommend_title', 'This is a bridged node')}
           </strong>
           <div style={{ marginTop: 4 }}>
             {t(
@@ -348,7 +349,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           }}
         >
           <strong style={{ color: 'var(--ctp-red, #f38ba8)' }}>
-            🔒 {t('mqtt_config.permission_denied', "You don't have permission to modify MQTT settings for this source.")}
+            <UiIcon name="encrypted" /> {t('mqtt_config.permission_denied', "You don't have permission to modify MQTT settings for this source.")}
           </strong>
         </div>
       )}
@@ -371,7 +372,7 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
           }}
         >
           <strong style={{ color: 'var(--ctp-yellow, #f9e2af)' }}>
-            ⚠️ {t('mqtt_config.proxy_warning_title', 'Client proxy is enabled but no broker is linked')}
+            <UiIcon name="alert" /> {t('mqtt_config.proxy_warning_title', 'Client proxy is enabled but no broker is linked')}
           </strong>
           <div style={{ marginTop: 6 }}>
             {t(

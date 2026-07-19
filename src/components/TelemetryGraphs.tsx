@@ -20,6 +20,7 @@ import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
 import { getTelemetryLabel } from './TelemetryChart';
 import { compareTelemetryGraphs } from '../utils/telemetryGraphOrder';
+import { UiIcon } from './icons';
 
 /** Telemetry types that represent discrete integer values where fractional display is meaningless */
 const INTEGER_TELEMETRY_TYPES = new Set([
@@ -278,7 +279,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
               aria-label={getSolarVisibility(type) ? t('telemetry.hide_solar') : t('telemetry.show_solar')}
               title={getSolarVisibility(type) ? t('telemetry.hide_solar') : t('telemetry.show_solar')}
             >
-              {getSolarVisibility(type) ? '\u2600' : '\u263C'}
+              <UiIcon name={getSolarVisibility(type) ? 'sun' : 'visibilityOff'} size={15} />
             </button>
           )}
           <button
@@ -286,7 +287,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
             onClick={createToggleFavorite(type)}
             aria-label={favorites.has(type) ? t('telemetry.remove_favorite') : t('telemetry.add_favorite')}
           >
-            {favorites.has(type) ? '★' : '☆'}
+            <UiIcon name={favorites.has(type) ? 'favorite' : 'favoriteOff'} size={15} />
           </button>
           <button
             className="graph-menu-btn"

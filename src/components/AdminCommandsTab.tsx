@@ -16,6 +16,7 @@ import { ModuleConfigurationSection } from './admin-commands/ModuleConfiguration
 import { useAdminCommandsState } from './admin-commands/useAdminCommandsState';
 import { buildNodeOptions, filterNodes, sortNodeOptionsForRemoteAdmin, type NodeOption } from './admin-commands/nodeOptionsUtils';
 import { createEmptyChannelSlot, createChannelFromResponse, isRetryableChannelError, countLoadedChannels } from './admin-commands/channelLoadingUtils';
+import { UiIcon } from './icons';
 
 interface AdminCommandsTabProps {
   nodes: any[];
@@ -187,7 +188,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
   const CollapsibleSection = useMemo(() => {
     const Component: React.FC<{
       id: string;
-      title: string;
+      title: React.ReactNode;
       children: React.ReactNode;
       defaultExpanded?: boolean;
       headerActions?: React.ReactNode;
@@ -226,7 +227,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
                 display: 'inline-block'
               }}>
-                ▶
+                <UiIcon name="forward" size={15} />
               </span>
               <h3 style={{ margin: 0, borderBottom: 'none', paddingBottom: 0, flex: 1 }}>{title}</h3>
             </div>
@@ -2324,10 +2325,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           />
         )}
         {status === 'success' && (
-          <span style={{ color: 'var(--ctp-green)', fontSize: '1rem', fontWeight: 'bold' }} title={t('admin_commands.section_loaded')}>✓</span>
+          <span style={{ color: 'var(--ctp-green)', fontSize: '1rem', fontWeight: 'bold' }} title={t('admin_commands.section_loaded')}><UiIcon name="check" /></span>
         )}
         {status === 'error' && (
-          <span style={{ color: 'var(--ctp-red)', fontSize: '1rem', fontWeight: 'bold' }} title={t('admin_commands.section_load_failed')}>✗</span>
+          <span style={{ color: 'var(--ctp-red)', fontSize: '1rem', fontWeight: 'bold' }} title={t('admin_commands.section_load_failed')}><UiIcon name="error" /></span>
         )}
         <button
           onClick={() => handleLoadSingleConfig(configType)}
@@ -2423,7 +2424,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                       </div>
                     </div>
                     {selectedNodeNum === node.nodeNum && (
-                      <span style={{ color: 'var(--ctp-blue)', fontSize: '1.2rem' }}>✓</span>
+                      <span style={{ color: 'var(--ctp-blue)', fontSize: '1.2rem' }}><UiIcon name="check" /></span>
                     )}
                   </div>
                 ))}
@@ -3035,18 +3036,18 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                       {t('admin_commands.channel_slot', { index })}: {channel ? (
                         <>
                           {channel.name && channel.name.trim().length > 0 ? channel.name : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('admin_commands.unnamed')}</span>}
-                          {channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}>★ {t('admin_commands.primary')}</span>}
-                          {channel.role === 2 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-green)', fontSize: '0.8rem' }}>● {t('admin_commands.secondary')}</span>}
-                          {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}>⊘ {t('admin_commands.disabled')}</span>}
+                          {channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('admin_commands.primary')}</span>}
+                          {channel.role === 2 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-green)', fontSize: '0.8rem' }}><UiIcon name="radio" size={13} /> {t('admin_commands.secondary')}</span>}
+                          {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}><UiIcon name="power" size={13} /> {t('admin_commands.disabled')}</span>}
                         </>
                       ) : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('admin_commands.empty')}</span>}
                     </h4>
                     {channel && (
                       <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--ctp-subtext1)' }}>
-                        <div>{channel.psk && channel.psk !== 'AQ==' ? `🔒 ${t('admin_commands.encrypted')}` : `🔓 ${t('admin_commands.unencrypted')}`}</div>
+                        <div><UiIcon name={channel.psk && channel.psk !== 'AQ==' ? 'encrypted' : 'unencrypted'} /> {channel.psk && channel.psk !== 'AQ==' ? t('admin_commands.encrypted') : t('admin_commands.unencrypted')}</div>
                         <div>
-                          {channel.uplinkEnabled ? `↑ ${t('admin_commands.uplink')} ` : ''}
-                          {channel.downlinkEnabled ? `↓ ${t('admin_commands.downlink')}` : ''}
+                          {channel.uplinkEnabled && <><UiIcon name="sortAscending" /> {t('admin_commands.uplink')} </>}
+                          {channel.downlinkEnabled && <><UiIcon name="sortDescending" /> {t('admin_commands.downlink')}</>}
                           {!channel.uplinkEnabled && !channel.downlinkEnabled && t('admin_commands.no_bridge')}
                         </div>
                       </div>
@@ -3067,7 +3068,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                         opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1
                       }}
                     >
-                      ✏️ {t('common.edit')}
+                      <UiIcon name="edit" /> {t('common.edit')}
                     </button>
                     {channel && (
                       <button
@@ -3084,7 +3085,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                           opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1
                         }}
                       >
-                        📥 {t('common.export')}
+                        <UiIcon name="download" /> {t('common.export')}
                       </button>
                     )}
                     <button
@@ -3101,7 +3102,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                         opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1
                       }}
                     >
-                      📤 {t('common.import')}
+                      <UiIcon name="upload" /> {t('common.import')}
                     </button>
                   </div>
                 </div>
@@ -3274,7 +3275,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               opacity: (selectedNodeNum === null || isExecuting) ? 0.5 : 1
             }}
           >
-            📥 {t('admin_commands.import_configuration')}
+            <UiIcon name="import" /> {t('admin_commands.import_configuration')}
           </button>
           <button
             onClick={() => {
@@ -3301,7 +3302,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             }}
             title={t('admin_commands.export_config_tooltip')}
           >
-            {`📤 ${t('admin_commands.export_configuration')}`}
+            <UiIcon name="upload" /> {t('admin_commands.export_configuration')}
           </button>
         </div>
       </CollapsibleSection>
@@ -3386,7 +3387,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                             fontSize: '0.75rem',
                             fontWeight: '600'
                           }}>
-                            ⭐ {t('admin_commands.favorite')}
+                            <UiIcon name="favorite" /> {t('admin_commands.favorite')}
                           </span>
                         )}
                         {node.isIgnored && (
@@ -3398,7 +3399,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                             fontSize: '0.75rem',
                             fontWeight: '600'
                           }}>
-                            🚫 {t('admin_commands.ignored')}
+                            <UiIcon name="blocked" /> {t('admin_commands.ignored')}
                           </span>
                         )}
                       </div>
@@ -3408,7 +3409,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                       </div>
                     </div>
                     {nodeManagementNodeNum === node.nodeNum && (
-                      <span style={{ color: 'var(--ctp-blue)', fontSize: '1.2rem' }}>✓</span>
+                      <span style={{ color: 'var(--ctp-blue)', fontSize: '1.2rem' }}><UiIcon name="check" /></span>
                     )}
                   </div>
                 ))}
@@ -3431,8 +3432,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 {t('admin_commands.selected')}: {selectedNode?.longName || t('admin_commands.node_fallback', { nodeNum: nodeManagementNodeNum })}
                 {(isFavorite || isIgnored) && (
                   <span style={{ marginLeft: '0.5rem' }}>
-                    {isFavorite && <span style={{ color: 'var(--ctp-yellow)' }}>⭐ {t('admin_commands.favorite')}</span>}
-                    {isIgnored && <span style={{ color: 'var(--ctp-red)', marginLeft: '0.5rem' }}>🚫 {t('admin_commands.ignored')}</span>}
+                    {isFavorite && <span style={{ color: 'var(--ctp-yellow)' }}><UiIcon name="favorite" /> {t('admin_commands.favorite')}</span>}
+                    {isIgnored && <span style={{ color: 'var(--ctp-red)', marginLeft: '0.5rem' }}><UiIcon name="blocked" /> {t('admin_commands.ignored')}</span>}
                   </span>
                 )}
               </div>
@@ -3442,7 +3443,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '1.5rem' }}>
           <div style={{ flex: 1, minWidth: '200px' }}>
-            <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}>⭐ {t('admin_commands.favorites')}</h4>
+            <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}><UiIcon name="favorite" /> {t('admin_commands.favorites')}</h4>
             {(() => {
               const isDisabled = isExecuting || nodeManagementNodeNum === null;
 
@@ -3489,7 +3490,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             })()}
           </div>
           <div style={{ flex: 1, minWidth: '200px' }}>
-            <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}>🚫 {t('admin_commands.ignored_nodes')}</h4>
+            <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}><UiIcon name="blocked" /> {t('admin_commands.ignored_nodes')}</h4>
             {(() => {
               const isDisabled = isExecuting || nodeManagementNodeNum === null;
 
@@ -3829,10 +3830,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       {/* Reboot and Purge Command Section - Moved to bottom, matching Device page style */}
       <CollapsibleSection
         id="admin-reboot-purge"
-        title={`⚠️ ${t('admin_commands.warning')}`}
+        title={<><UiIcon name="alert" /> {t('admin_commands.warning')}</>}
         className="danger-zone"
       >
-        <h2 style={{ color: '#ff4444', marginTop: 0, marginBottom: '1rem' }}>⚠️ {t('admin_commands.warning')}</h2>
+        <h2 style={{ color: '#ff4444', marginTop: 0, marginBottom: '1rem' }}><UiIcon name="alert" /> {t('admin_commands.warning')}</h2>
         <p style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
           {t('admin_commands.warning_message')}
         </p>
@@ -3869,7 +3870,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                 opacity: (isExecuting || selectedNodeNum === null) ? 0.6 : 1
               }}
             >
-              🔄 {t('admin_commands.reboot_device')}
+              <UiIcon name="refresh" /> {t('admin_commands.reboot_device')}
             </button>
           </div>
           <button
@@ -3887,7 +3888,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               opacity: (isExecuting || selectedNodeNum === null) ? 0.6 : 1
             }}
           >
-            🗑️ {t('admin_commands.purge_node_database')}
+            <UiIcon name="delete" /> {t('admin_commands.purge_node_database')}
           </button>
         </div>
       </CollapsibleSection>

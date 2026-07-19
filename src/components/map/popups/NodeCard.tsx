@@ -13,6 +13,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NodeCardHeader } from './sections';
 import type { NodeCardModel } from './nodeCardModel';
+import { UiIcon } from '../../icons';
 
 export type NodeCardTab = 'info' | 'traceroute';
 
@@ -48,14 +49,14 @@ export const NodeCard: React.FC<NodeCardProps> = ({ model, sections, tracerouteB
             onClick={() => setActiveTab('info')}
             title={t('node_popup.tab_info', 'Node Info')}
           >
-            ℹ️
+            <UiIcon name="info" />
           </button>
           <button
             className={`node-popup-tab ${activeTab === 'traceroute' ? 'active' : ''}`}
             onClick={() => setActiveTab('traceroute')}
             title={t('node_popup.tab_traceroute', 'Traceroute')}
           >
-            📡
+            <UiIcon name="radioSignal" />
           </button>
         </div>
       )}

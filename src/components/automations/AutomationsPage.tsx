@@ -13,6 +13,7 @@ import apiService from '../../services/api';
 import AutomationBuilder, { type VariableOption, type SourceOption, type UnifiedChannelOption, type ScriptOption } from './AutomationBuilder';
 import AutomationTester from './AutomationTester';
 import LiveTracePanel from './LiveTracePanel';
+import { UiIcon } from '../icons';
 import { compile, decompile, type WorkflowForm } from './compile';
 import './AutomationsPage.css';
 
@@ -70,7 +71,7 @@ export default function AutomationsPage() {
     <div className="ae-page">
       <div className="ae-container">
         <div className="ae-topbar">
-          <button className="ae-btn ae-btn--ghost" onClick={() => { window.location.href = `${appBasename}/`; }}>← Dashboard</button>
+          <button className="ae-btn ae-btn--ghost" onClick={() => { window.location.href = `${appBasename}/`; }}><UiIcon name="back" size={15} /> Dashboard</button>
         </div>
         <h1 className="ae-title">Automation Engine</h1>
         <p className="ae-subtitle">Advanced Mode (beta) — global “when this happens, do that” workflows across every source.</p>
@@ -111,7 +112,7 @@ function AutomationsList() {
   if (runsFor) return <RunLog automation={runsFor} onClose={() => setRunsFor(null)} />;
   if (traceFor) return (
     <div>
-      <button className="ae-btn ae-btn--ghost" onClick={() => setTraceFor(null)} style={{ marginBottom: '0.75rem' }}>← Back</button>
+      <button className="ae-btn ae-btn--ghost" onClick={() => setTraceFor(null)} style={{ marginBottom: '0.75rem' }}><UiIcon name="back" size={15} /> Back</button>
       <LiveTracePanel automationId={traceFor.id} automationName={traceFor.name} enabled={traceFor.enabled} onClose={() => setTraceFor(null)} />
     </div>
   );
@@ -235,7 +236,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
   return (
     <div>
       <div className="ae-btn-row" style={{ marginBottom: '0.75rem' }}>
-        <button className="ae-btn ae-btn--ghost" onClick={onClose}>← Back</button>
+        <button className="ae-btn ae-btn--ghost" onClick={onClose}><UiIcon name="back" size={15} /> Back</button>
         <span style={{ marginLeft: 'auto' }} />
         {mode === 'builder'
           ? <button className="ae-btn" onClick={switchToJson}>Advanced (JSON)</button>
@@ -265,7 +266,7 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
       {errors.length > 0 && <ul className="ae-error-list">{errors.map((er, i) => <li key={i}>{er}</li>)}</ul>}
       <div className="ae-btn-row" style={{ marginTop: '0.75rem' }}>
         <button className="ae-btn ae-btn--primary" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save automation'}</button>
-        <button className="ae-btn" onClick={() => setShowTest((s) => !s)}>{showTest ? 'Hide test' : '▶ Test'}</button>
+        <button className="ae-btn" onClick={() => setShowTest((s) => !s)}>{!showTest && <UiIcon name="play" size={15} />} {showTest ? 'Hide test' : 'Test'}</button>
       </div>
 
       {showTest && <AutomationTester getConfig={getTestConfig} variables={variables} sources={sources} />}
@@ -278,7 +279,7 @@ function RunLog({ automation, onClose }: { automation: Automation; onClose: () =
   useEffect(() => { apiService.get<Run[]>(`/api/automations/${automation.id}/runs`).then(setRuns).catch(() => setRuns([])); }, [automation.id]);
   return (
     <div>
-      <button className="ae-btn ae-btn--ghost" onClick={onClose} style={{ marginBottom: '0.75rem' }}>← Back</button>
+      <button className="ae-btn ae-btn--ghost" onClick={onClose} style={{ marginBottom: '0.75rem' }}><UiIcon name="back" size={15} /> Back</button>
       <h2 className="ae-title" style={{ fontSize: '1.25rem' }}>Runs: {automation.name}</h2>
       {runs.length === 0 && <div className="ae-empty">No runs yet.</div>}
       {runs.map((r) => (
@@ -395,7 +396,7 @@ function VariablesHelpDrawer({ onClose }: { onClose: () => void }) {
     <>
       <div className="ae-drawer-overlay" onClick={onClose} />
       <div className="ae-drawer">
-        <button className="ae-btn ae-btn--ghost ae-drawer-close" onClick={onClose}>✕</button>
+        <button className="ae-btn ae-btn--ghost ae-drawer-close" onClick={onClose} aria-label="Close variables help"><UiIcon name="close" size={16} /></button>
         <h2>Variables</h2>
         <p className="ae-muted">Reusable values you can read and write from automations, referenced as <code>{'{{ var.name }}'}</code>.</p>
 

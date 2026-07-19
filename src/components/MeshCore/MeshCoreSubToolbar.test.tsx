@@ -10,8 +10,8 @@ vi.mock('../../contexts/AuthContext', () => ({
 }));
 
 let iconStyle: 'lucide' | 'emoji' = 'lucide';
-vi.mock('../../contexts/SettingsContext', () => ({
-  useSettingsOptional: () => ({ iconStyle }),
+vi.mock('../../contexts/IconStyleContext', () => ({
+  useIconStyleOptional: () => iconStyle,
 }));
 
 vi.mock('react-i18next', () => ({

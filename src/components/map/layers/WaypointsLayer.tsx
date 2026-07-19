@@ -24,6 +24,7 @@ import {
 import { useMapAnalysisCtx } from '../../MapAnalysis/MapAnalysisContext';
 import { useWaypoints } from '../../../hooks/useWaypoints';
 import type { Waypoint } from '../../../types/waypoint';
+import { UiIcon } from '../../icons';
 
 const FALLBACK_EMOJI = '\u{1F4CD}';
 const EMOJI_VS = '️'; // emoji-presentation variation selector
@@ -147,27 +148,27 @@ export function PerSourceWaypoints({
                 <div className="node-popup-content">
                   {wp.description && (
                     <div className="node-popup-item" style={{ gridColumn: '1 / -1' }}>
-                      <span className="node-popup-icon">📝</span>
+                      <span className="node-popup-icon"><UiIcon name="text" size={15} /></span>
                       <span className="node-popup-value">{wp.description}</span>
                     </div>
                   )}
 
                   <div className="node-popup-grid">
                     <div className="node-popup-item">
-                      <span className="node-popup-icon">📡</span>
+                      <span className="node-popup-icon"><UiIcon name="radio" size={15} /></span>
                       <span className="node-popup-value">{source.name ?? source.id}</span>
                     </div>
                     <div className="node-popup-item">
-                      <span className="node-popup-icon">👤</span>
+                      <span className="node-popup-icon"><UiIcon name="user" size={15} /></span>
                       <span className="node-popup-value">{ownerLabel}</span>
                     </div>
                     <div className="node-popup-item">
-                      <span className="node-popup-icon">⏳</span>
+                      <span className="node-popup-icon"><UiIcon name="time" size={15} /></span>
                       <span className="node-popup-value">{formatExpire(wp.expireAt)}</span>
                     </div>
                     {wp.lockedTo && (
                       <div className="node-popup-item">
-                        <span className="node-popup-icon">🔒</span>
+                        <span className="node-popup-icon"><UiIcon name="encrypted" size={15} /></span>
                         <span className="node-popup-value">
                           !{Number(wp.lockedTo).toString(16).padStart(8, '0')}
                         </span>
@@ -175,7 +176,7 @@ export function PerSourceWaypoints({
                     )}
                     {wp.isVirtual && (
                       <div className="node-popup-item">
-                        <span className="node-popup-icon">👻</span>
+                        <span className="node-popup-icon"><UiIcon name="visibilityOff" size={15} /></span>
                         <span className="node-popup-value">Virtual (local-only)</span>
                       </div>
                     )}
@@ -188,7 +189,7 @@ export function PerSourceWaypoints({
                           type="button"
                           onClick={() => actions.onEdit?.(wp)}
                         >
-                          ✏️ Edit
+                          <UiIcon name="edit" size={14} /> Edit
                         </button>
                       )}
                       {actions.canDelete && (
@@ -197,7 +198,7 @@ export function PerSourceWaypoints({
                           className="danger"
                           onClick={() => actions.onDelete?.(wp)}
                         >
-                          🗑 Delete
+                          <UiIcon name="delete" size={14} /> Delete
                         </button>
                       )}
                     </div>

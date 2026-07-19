@@ -42,6 +42,7 @@ const FitBounds: React.FC<{ bounds: [[number, number], [number, number]] }> = ({
 // TracerouteData interface removed - now using PollTraceroute from useTraceroutes hook
 
 import type { MapNodeInfo } from '../types/device';
+import { UiIcon } from './icons';
 
 /**
  * Extended NodeInfo with position data for map rendering
@@ -369,12 +370,12 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
                   {getNodeName(hop.nodeNum)}
                   {!hasPosition && (
                     <span className="traceroute-no-pos-icon" title="No position data">
-                      📍
+                      <UiIcon name="location" size={13} />
                     </span>
                   )}
                   {hop.snr !== undefined && <span className="traceroute-snr" title={isUnknownSnr(hop.snr) ? 'Unknown SNR (MQTT-bridged hop, decrypt failure, or old firmware)' : undefined}>{isUnknownSnr(hop.snr) ? '?' : `${hop.snr.toFixed(1)} dB`}</span>}
                 </span>
-                {idx < fullPath.length - 1 && <span className="traceroute-arrow">→</span>}
+                {idx < fullPath.length - 1 && <span className="traceroute-arrow"><UiIcon name="forward" size={14} /></span>}
               </React.Fragment>
             );
           })}
@@ -467,7 +468,7 @@ const TracerouteWidget: React.FC<TracerouteWidgetProps> = ({
                       className="traceroute-map-warning"
                       title={t('dashboard.widget.traceroute.no_position_warning')}
                     >
-                      ⚠️
+                      <UiIcon name="alert" size={14} />
                     </span>
                   )}
                 </button>

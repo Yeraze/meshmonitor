@@ -37,6 +37,7 @@ import { logger } from '../utils/logger';
 import { appBasename } from '../init';
 import { getReservedLandingPath, isReservedLandingValue } from '../utils/defaultLandingPage';
 import '../styles/dashboard.css';
+import { UiIcon } from '../components/icons';
 
 
 // ---------------------------------------------------------------------------
@@ -960,7 +961,7 @@ function DashboardInner() {
           aria-expanded={mobileSidebarOpen}
           onClick={() => setMobileSidebarOpen((v) => !v)}
         >
-          {mobileSidebarOpen ? '✕' : '☰'}
+          <UiIcon name={mobileSidebarOpen ? 'close' : 'menu'} size={20} />
         </button>
         <div className="dashboard-topbar-logo">
           <img src={`${appBasename}/logo.png`} alt={t('source.topbar.logo_alt')} className="dashboard-topbar-logo-img" />
@@ -1398,7 +1399,7 @@ function DashboardInner() {
                         void navigate(`/source/${editingSourceId}/#mqtt-config`);
                       }}
                     >
-                      {t('source.form.mqtt_bridge_advanced_open', 'Configuration')} →
+                      {t('source.form.mqtt_bridge_advanced_open', 'Configuration')} <UiIcon name="forward" size={14} />
                     </button>
                   )}
                 </div>

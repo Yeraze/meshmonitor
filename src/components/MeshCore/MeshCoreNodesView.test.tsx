@@ -80,10 +80,10 @@ describe('MeshCoreNodesView — sort controls', () => {
 describe('MeshCoreNodesView — role icon (#3647)', () => {
   it('renders a role icon to the LEFT of the name and no text role label', () => {
     render(<MeshCoreNodesView nodes={nodes} contacts={contacts} />);
-    // Companion (advType=1) → 📱, one per row.
+    // Companion (advType=1) uses the shared smartphone icon, one per row.
     const icons = document.querySelectorAll('.mc-node-row-name .mc-node-role-icon');
     expect(icons).toHaveLength(3);
-    expect(icons[0].textContent).toBe('📱');
+    expect(icons[0].querySelector('.lucide-smartphone')).not.toBeNull();
     // The old text role label (.mc-node-row-type) is gone.
     expect(document.querySelector('.mc-node-row-type')).toBeNull();
     // The icon precedes the display name within the row.
