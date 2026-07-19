@@ -650,7 +650,7 @@ describe('Virtual Node Server - Primary Channel Name Fallback', () => {
       expect(MODEM_PRESET_CHANNEL_NAMES[4]).toBe('MediumFast');
     });
 
-    it('should cover all nine canonical preset values', () => {
+    it('should cover every firmware-named preset value (DisplayFormatters.cpp)', () => {
       expect(MODEM_PRESET_CHANNEL_NAMES[0]).toBe('LongFast');
       expect(MODEM_PRESET_CHANNEL_NAMES[1]).toBe('LongSlow');
       expect(MODEM_PRESET_CHANNEL_NAMES[2]).toBe('VeryLongSlow');
@@ -658,8 +658,19 @@ describe('Virtual Node Server - Primary Channel Name Fallback', () => {
       expect(MODEM_PRESET_CHANNEL_NAMES[4]).toBe('MediumFast');
       expect(MODEM_PRESET_CHANNEL_NAMES[5]).toBe('ShortSlow');
       expect(MODEM_PRESET_CHANNEL_NAMES[6]).toBe('ShortFast');
-      expect(MODEM_PRESET_CHANNEL_NAMES[7]).toBe('LongModerate');
+      // Firmware DisplayFormatters.cpp returns "LongMod" for LONG_MODERATE —
+      // NOT "LongModerate", which this map wrongly carried before the fix.
+      expect(MODEM_PRESET_CHANNEL_NAMES[7]).toBe('LongMod');
       expect(MODEM_PRESET_CHANNEL_NAMES[8]).toBe('ShortTurbo');
+      expect(MODEM_PRESET_CHANNEL_NAMES[9]).toBe('LongTurbo');
+      expect(MODEM_PRESET_CHANNEL_NAMES[10]).toBe('LiteFast');
+      expect(MODEM_PRESET_CHANNEL_NAMES[11]).toBe('LiteSlow');
+      expect(MODEM_PRESET_CHANNEL_NAMES[12]).toBe('NarrowFast');
+      expect(MODEM_PRESET_CHANNEL_NAMES[13]).toBe('NarrowSlow');
+      // Note the enum order: TINY_FAST is 14, TINY_SLOW is 15.
+      expect(MODEM_PRESET_CHANNEL_NAMES[14]).toBe('TinyFast');
+      expect(MODEM_PRESET_CHANNEL_NAMES[15]).toBe('TinySlow');
+      expect(MODEM_PRESET_CHANNEL_NAMES[16]).toBe('MediumTurbo');
     });
   });
 

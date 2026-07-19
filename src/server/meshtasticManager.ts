@@ -2,7 +2,7 @@ import databaseService, { type DbMessage } from '../services/database.js';
 import { ALL_SOURCES } from '../db/repositories/index.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService, { convertIpv4ConfigToStrings } from './protobufService.js';
-import { getProtobufRoot } from './protobufLoader.js';
+import { getProtobufRoot, type MeshBeaconPayload } from './protobufLoader.js';
 import { TcpTransport } from './tcpTransport.js';
 import { VirtualNodeServer, type VirtualNodeConfig } from './virtualNodeServer.js';
 import type { ITransport } from './transports/transport.js';
@@ -5263,6 +5263,17 @@ class MeshtasticManager implements ISourceManager {
             } else if (portnum === PortNum.NEIGHBORINFO_APP) {
               // NEIGHBORINFO
               payloadPreview = '[NeighborInfo]';
+            } else if (portnum === PortNum.MESH_BEACON_APP) {
+              // MESH_BEACON (firmware 2.8+) - show beacon text and what's offered
+              const beacon = processedPayload as MeshBeaconPayload;
+              const text = typeof beacon?.message === 'string' ? beacon.message.substring(0, 60) : '';
+              const offers: string[] = [];
+              const offerChannelName = beacon?.offerChannel?.name || beacon?.offer_channel?.name;
+              if (offerChannelName) offers.push(`channel "${offerChannelName}"`);
+              const offerPreset = beacon?.offerPreset ?? beacon?.offer_preset;
+              if (offerPreset !== undefined && offerPreset !== null) offers.push(`preset ${offerPreset}`);
+              const offerSuffix = offers.length > 0 ? ` (offers ${offers.join(', ')})` : '';
+              payloadPreview = `[MeshBeacon: "${text}"${offerSuffix}]`;
             } else if (portnum === PortNum.STORE_FORWARD_APP) {
               // STORE & FORWARD - show request/response type and relevant details
               const sf = processedPayload as any;
@@ -5520,6 +5531,16 @@ class MeshtasticManager implements ISourceManager {
           case PortNum.WAYPOINT_APP:
             await this.processWaypointMessage(meshPacket, processedPayload as any);
             break;
+          case PortNum.MESH_BEACON_APP: {
+            // MeshBeacon (firmware 2.8+, #3854): decoded and captured in the
+            // Packet Monitor (preview + full decoded payload in metadata).
+            // Deliberately NOT stored as a message yet — whether beacons get a
+            // dedicated view/message type is an open design question on #3854,
+            // deferred until real-world 2.8 beacon traffic exists to learn from.
+            const beacon = processedPayload as MeshBeaconPayload;
+            logger.debug(`📡 MeshBeacon from ${meshPacket.from}: "${typeof beacon?.message === 'string' ? beacon.message : ''}" (offerChannel=${beacon?.offerChannel?.name ?? 'none'})`);
+            break;
+          }
           default:
             logger.debug(`🤷 Unhandled portnum: ${normalizedPortNum} (${meshtasticProtobufService.getPortNumName(portnum)})`);
         }

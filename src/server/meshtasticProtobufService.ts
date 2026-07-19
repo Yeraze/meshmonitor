@@ -911,6 +911,13 @@ export class MeshtasticProtobufService {
           const waypoint = Waypoint.decode(payload);
           return waypoint;
 
+        case PortNum.MESH_BEACON_APP: {
+          // MeshBeacon (firmware 2.8+, #3854): beacon-mode broadcast carrying a
+          // text message plus an optional channel/region/preset "offer".
+          const MeshBeacon = root.lookupType('meshtastic.MeshBeacon');
+          return MeshBeacon.decode(payload);
+        }
+
         default:
           logger.debug(`⚠️ Unhandled port number: ${portnum}`);
           return payload;
@@ -954,6 +961,9 @@ export class MeshtasticProtobufService {
         'REPLY_APP': 32,
         'IP_TUNNEL_APP': 33,
         'PAXCOUNTER_APP': 34,
+        'STORE_FORWARD_PLUSPLUS_APP': 35,
+        'NODE_STATUS_APP': 36,
+        'MESH_BEACON_APP': 37,
         'SERIAL_APP': 64,
         'STORE_FORWARD_APP': 65,
         'RANGE_TEST_APP': 66,
@@ -965,8 +975,11 @@ export class MeshtasticProtobufService {
         'ATAK_PLUGIN': 72,
         'MAP_REPORT_APP': 73,
         'POWERSTRESS_APP': 74,
+        'LORAWAN_BRIDGE': 75,
         'RETICULUM_TUNNEL_APP': 76,
         'CAYENNE_APP': 77,
+        'ATAK_PLUGIN_V2': 78,
+        'GROUPALARM_APP': 112,
         'PRIVATE_APP': 256,
         'ATAK_FORWARDER': 257,
         'MAX': 511
@@ -1014,6 +1027,9 @@ export class MeshtasticProtobufService {
       32: 'REPLY_APP',
       33: 'IP_TUNNEL_APP',
       34: 'PAXCOUNTER_APP',
+      35: 'STORE_FORWARD_PLUSPLUS_APP',
+      36: 'NODE_STATUS_APP',
+      37: 'MESH_BEACON_APP',
       64: 'SERIAL_APP',
       65: 'STORE_FORWARD_APP',
       66: 'RANGE_TEST_APP',
@@ -1025,8 +1041,11 @@ export class MeshtasticProtobufService {
       72: 'ATAK_PLUGIN',
       73: 'MAP_REPORT_APP',
       74: 'POWERSTRESS_APP',
+      75: 'LORAWAN_BRIDGE',
       76: 'RETICULUM_TUNNEL_APP',
       77: 'CAYENNE_APP',
+      78: 'ATAK_PLUGIN_V2',
+      112: 'GROUPALARM_APP',
       256: 'PRIVATE_APP',
       257: 'ATAK_FORWARDER',
       511: 'MAX'

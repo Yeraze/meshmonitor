@@ -253,6 +253,24 @@ describe('MeshtasticProtobufService', () => {
       expect(service.getPortNumName('TRACEROUTE_APP')).toBe(service.getPortNumName(70));
       expect(service.getPortNumName('ADMIN_APP')).toBe(service.getPortNumName(6));
     });
+
+    // #3854 — the service keeps its own portnum tables; a portnum missing from
+    // them is silently dropped when protobufjs surfaces the string enum form,
+    // and labels as UNKNOWN_N in the Packet Monitor. Guard the 2.8 additions.
+    it('knows MESH_BEACON_APP (37) in both string and numeric form', () => {
+      expect(service.normalizePortNum('MESH_BEACON_APP')).toBe(37);
+      expect(service.getPortNumName(37)).toBe('MESH_BEACON_APP');
+      expect(service.getPortNumName('MESH_BEACON_APP')).toBe('MESH_BEACON_APP');
+    });
+
+    it('knows the other 2.8-era portnums the constants table carries', () => {
+      expect(service.normalizePortNum('NODE_STATUS_APP')).toBe(36);
+      expect(service.getPortNumName(35)).toBe('STORE_FORWARD_PLUSPLUS_APP');
+      expect(service.getPortNumName(36)).toBe('NODE_STATUS_APP');
+      expect(service.getPortNumName(75)).toBe('LORAWAN_BRIDGE');
+      expect(service.getPortNumName(78)).toBe('ATAK_PLUGIN_V2');
+      expect(service.getPortNumName(112)).toBe('GROUPALARM_APP');
+    });
   });
 
   describe('createNodeInfo', () => {
@@ -624,6 +642,54 @@ describe('MeshtasticProtobufService', () => {
       const result = service.processPayload(65, payload as any);
       expect(result).toBeDefined();
       expect(result.rr).toBe(65);
+    });
+  });
+
+  // MeshBeacon (firmware 2.8+, #3854): MESH_BEACON_APP payloads decode via the
+  // 2.8-preview protobufs pin (#4205).
+  describe('processPayload - MESH_BEACON_APP', () => {
+    it('decodes a text-only beacon', () => {
+      if (!requireProtobufs()) return;
+
+      const root = getProtobufRoot()!;
+      const MeshBeacon = root.lookupType('meshtastic.MeshBeacon');
+      const payload = MeshBeacon.encode(MeshBeacon.create({
+        message: 'Join our mesh!',
+      })).finish();
+
+      const result = service.processPayload(37, payload as any);
+      expect(result).toBeDefined();
+      expect(result.message).toBe('Join our mesh!');
+    });
+
+    it('decodes a beacon with a channel/preset offer', () => {
+      if (!requireProtobufs()) return;
+
+      const root = getProtobufRoot()!;
+      const MeshBeacon = root.lookupType('meshtastic.MeshBeacon');
+      const payload = MeshBeacon.encode(MeshBeacon.create({
+        message: 'Community mesh nearby',
+        offerChannel: { name: 'Community', psk: new Uint8Array([1]) },
+        offerRegion: 1, // US
+        offerPreset: 4, // MEDIUM_FAST
+      })).finish();
+
+      const result = service.processPayload(37, payload as any);
+      expect(result).toBeDefined();
+      expect(result.message).toBe('Community mesh nearby');
+      expect(result.offerChannel?.name).toBe('Community');
+      expect(result.offerPreset).toBe(4);
+    });
+
+    it('returns the raw payload (not a crash) for malformed beacon bytes', () => {
+      if (!requireProtobufs()) return;
+
+      // Truncated/garbage bytes: processPayload catches decode errors and
+      // falls back to returning the raw payload bytes (not a decoded object).
+      const garbage = Uint8Array.from([0x0a, 0xff, 0xff]);
+      const result = service.processPayload(37, garbage as any);
+      expect(result).toBeInstanceOf(Uint8Array);
+      expect(Array.from(result as Uint8Array)).toEqual([0x0a, 0xff, 0xff]);
     });
   });
 });

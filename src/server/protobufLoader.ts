@@ -210,3 +210,18 @@ export interface NodeInfo {
   lastHeard?: number;
   deviceMetrics?: any;
 }
+
+/**
+ * Decoded MESH_BEACON_APP payload (firmware 2.8+, #3854). protobufjs may
+ * surface fields in camelCase or snake_case depending on conversion options,
+ * so both spellings are modeled.
+ */
+export interface MeshBeaconPayload {
+  message?: string;
+  offerChannel?: { name?: string };
+  offer_channel?: { name?: string };
+  offerRegion?: number;
+  offer_region?: number;
+  offerPreset?: number;
+  offer_preset?: number;
+}
