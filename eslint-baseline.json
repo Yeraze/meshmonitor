@@ -1290,9 +1290,6 @@
   "src/utils/logger.ts": {
     "@typescript-eslint/no-explicit-any": 4
   },
-  "src/utils/loraFrequency.test.ts": {
-    "@typescript-eslint/no-unused-vars": 1
-  },
   "src/utils/meshcoreHelpers.test.ts": {
     "@typescript-eslint/no-unused-vars": 1
   },

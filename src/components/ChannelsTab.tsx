@@ -28,6 +28,7 @@ import RelayNodeModal from './RelayNodeModal';
 import { logger } from '../utils/logger';
 import { MessageStatusIndicator } from './MessageStatusIndicator';
 import { useNodes } from '../hooks/useServerData';
+import { UiIcon } from './icons';
 
 // Default PSK value (publicly known key - not truly secure)
 const DEFAULT_PUBLIC_PSK = 'AQ==';
@@ -585,16 +586,24 @@ export default function ChannelsTab({
                   const displayName = channelConfig?.name || getChannelName(channelId);
                   const unread = unreadCounts[channelId] || 0;
                   const encryptionStatus = channelEncryptionStatus(channelConfig);
-                  const uplink = channelConfig?.uplinkEnabled ? '↑' : '';
-                  const downlink = channelConfig?.downlinkEnabled ? '↓' : '';
-                  const encryptionIcon = encryptionStatus === 'secure' ? '🔒' : encryptionStatus === 'default' ? '🔐' : '🔓';
+                  const uplink = channelConfig?.uplinkEnabled ? t('channels.mqtt_uplink', 'Uplink') : '';
+                  const downlink = channelConfig?.downlinkEnabled ? t('channels.mqtt_downlink', 'Downlink') : '';
+                  const encryptionLabel = encryptionStatus === 'secure'
+                    ? t('channels.encrypted_secure')
+                    : encryptionStatus === 'default'
+                      ? t('channels.encrypted_default')
+                      : t('channels.unencrypted');
                   const channelConfig2 = channels.find(c => c.id === channelId);
                   const hasLocation = (channelConfig2?.positionPrecision ?? 0) > 0;
-                  const locationIcon = channelId === autoPositionChannelId ? '📍' : hasLocation ? '📌' : '';
+                  const locationLabel = channelId === autoPositionChannelId
+                    ? t('channels.location_auto_position')
+                    : hasLocation
+                      ? t('channels.location_enabled')
+                      : '';
 
                   return (
                     <option key={channelId} value={channelId}>
-                      {encryptionIcon}{locationIcon ? ` ${locationIcon}` : ''} {displayName} #{channelId} {uplink}
+                      [{encryptionLabel}]{locationLabel ? ` [${locationLabel}]` : ''} {displayName} #{channelId} {uplink}
                       {downlink} {unread > 0 ? `(${unread})` : ''}
                     </option>
                   );
@@ -628,7 +637,7 @@ export default function ChannelsTab({
                   style={{ padding: '0.4rem 0.55rem', fontSize: '0.9rem' }}
                   aria-label={isChannelMuted(selectedChannel) ? 'Muted' : 'Mute channel'}
                 >
-                  {isChannelMuted(selectedChannel) ? '🔇' : '🔔'}
+                  <UiIcon name={isChannelMuted(selectedChannel) ? 'muted' : 'notifications'} />
                 </button>
                 {showMuteMenu === selectedChannel && (
                   <>
@@ -656,7 +665,7 @@ export default function ChannelsTab({
                           onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                           onClick={() => handleUnmuteChannel(selectedChannel)}
                         >
-                          🔔 {t('notifications.unmute', 'Unmute')}
+                          <UiIcon name="unmute" /> {t('notifications.unmute', 'Unmute')}
                         </button>
                       )}
                       <button
@@ -665,7 +674,7 @@ export default function ChannelsTab({
                         onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                         onClick={() => handleMuteChannel(selectedChannel, null)}
                       >
-                        🔇 {t('notifications.mute_indefinite', 'Mute indefinitely')}
+                        <UiIcon name="muted" /> {t('notifications.mute_indefinite', 'Mute indefinitely')}
                       </button>
                       <button
                         style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
@@ -673,7 +682,7 @@ export default function ChannelsTab({
                         onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                         onClick={() => handleMuteChannel(selectedChannel, Date.now() + 60 * 60 * 1000)}
                       >
-                        🕐 {t('notifications.mute_1h', 'Mute for 1 hour')}
+                        <UiIcon name="time" /> {t('notifications.mute_1h', 'Mute for 1 hour')}
                       </button>
                       <button
                         style={{ display: 'block', width: '100%', padding: '0.5rem 1rem', background: 'none', border: 'none', color: 'var(--ctp-text)', cursor: 'pointer', textAlign: 'left', fontSize: '0.85rem' }}
@@ -681,7 +690,7 @@ export default function ChannelsTab({
                         onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                         onClick={() => handleMuteChannel(selectedChannel, Date.now() + 7 * 24 * 60 * 60 * 1000)}
                       >
-                        📅 {t('notifications.mute_1w', 'Mute for 1 week')}
+                        <UiIcon name="calendar" /> {t('notifications.mute_1w', 'Mute for 1 week')}
                       </button>
                     </div>
                   </>
@@ -719,7 +728,7 @@ export default function ChannelsTab({
                 aria-haspopup="true"
                 aria-expanded={showChannelMenu}
               >
-                ⋯
+                <UiIcon name="more" />
               </button>
               {showChannelMenu && (
                 <>
@@ -732,20 +741,20 @@ export default function ChannelsTab({
                       className="channel-overflow-item"
                       onClick={() => { setShowChannelMenu(false); handleInfoLinkClick(selectedChannel); }}
                     >
-                      ℹ️ {t('channels.info_link')}
+                      <UiIcon name="info" /> {t('channels.info_link')}
                     </button>
                     <button
                       className="channel-overflow-item"
                       onClick={() => { setShowChannelMenu(false); void markMessagesAsRead(undefined, selectedChannel); }}
                     >
-                      ✅ {t('channels.mark_all_read_button')}
+                      <UiIcon name="checkAll" /> {t('channels.mark_all_read_button')}
                     </button>
                     {!mqttReadOnly && (
                       <button
                         className="channel-overflow-item"
                         onClick={() => setShowMqttMessages(!showMqttMessages)}
                       >
-                        {showMqttMessages ? '☑️' : '⬜'} {t('channels.show_mqtt_messages')}
+                        <UiIcon name={showMqttMessages ? 'check' : 'close'} /> {t('channels.show_mqtt_messages')}
                       </button>
                     )}
                     <div className="channel-overflow-divider" />
@@ -754,26 +763,26 @@ export default function ChannelsTab({
                         className="channel-overflow-item"
                         onClick={() => handleUnmuteChannel(selectedChannel)}
                       >
-                        🔔 {t('notifications.unmute', 'Unmute')}
+                        <UiIcon name="unmute" /> {t('notifications.unmute', 'Unmute')}
                       </button>
                     )}
                     <button
                       className="channel-overflow-item"
                       onClick={() => handleMuteChannel(selectedChannel, null)}
                     >
-                      🔇 {t('notifications.mute_indefinite', 'Mute indefinitely')}
+                      <UiIcon name="muted" /> {t('notifications.mute_indefinite', 'Mute indefinitely')}
                     </button>
                     <button
                       className="channel-overflow-item"
                       onClick={() => handleMuteChannel(selectedChannel, Date.now() + 60 * 60 * 1000)}
                     >
-                      🕐 {t('notifications.mute_1h', 'Mute for 1 hour')}
+                      <UiIcon name="time" /> {t('notifications.mute_1h', 'Mute for 1 hour')}
                     </button>
                     <button
                       className="channel-overflow-item"
                       onClick={() => handleMuteChannel(selectedChannel, Date.now() + 7 * 24 * 60 * 60 * 1000)}
                     >
-                      📅 {t('notifications.mute_1w', 'Mute for 1 week')}
+                      <UiIcon name="calendar" /> {t('notifications.mute_1w', 'Mute for 1 week')}
                     </button>
                   </div>
                 </>
@@ -820,32 +829,32 @@ export default function ChannelsTab({
                             if (status === 'secure') {
                               return (
                                 <span className="encryption-icon secure" title={t('channels.encrypted_secure')}>
-                                  🔒
+                                  <UiIcon name="encrypted" />
                                 </span>
                               );
                             } else if (status === 'default') {
                               return (
                                 <span className="encryption-icon default-key" title={t('channels.encrypted_default')}>
-                                  🔐
+                                  <UiIcon name="encryptedKey" />
                                 </span>
                               );
                             } else {
                               return (
                                 <span className="encryption-icon unencrypted" title={t('channels.unencrypted')}>
-                                  🔓
+                                  <UiIcon name="unencrypted" />
                                 </span>
                               );
                             }
                           })()}
                           {isChannelMuted(channelId) && (
-                            <span title={t('notifications.muted', 'Notifications muted')}>🔇</span>
+                            <span title={t('notifications.muted', 'Notifications muted')}><UiIcon name="muted" /></span>
                           )}
                           {channelId === autoPositionChannelId && (
                             <span
                               className="location-icon"
                               title={t('channels.location_auto_position')}
                             >
-                              📍
+                              <UiIcon name="location" />
                             </span>
                           )}
                           {channelId !== autoPositionChannelId && (channels.find(c => c.id === channelId)?.positionPrecision ?? 0) > 0 && (
@@ -853,7 +862,7 @@ export default function ChannelsTab({
                               className="location-icon"
                               title={t('channels.location_enabled')}
                             >
-                              📌
+                              <UiIcon name="pin" />
                             </span>
                           )}
                           <a
@@ -877,13 +886,13 @@ export default function ChannelsTab({
                             className={`arrow-icon uplink ${channelConfig?.uplinkEnabled ? 'enabled' : 'disabled'}`}
                             title={t('channels.mqtt_uplink')}
                           >
-                            ↑
+                            <UiIcon name="sortAscending" />
                           </span>
                           <span
                             className={`arrow-icon downlink ${channelConfig?.downlinkEnabled ? 'enabled' : 'disabled'}`}
                             title={t('channels.mqtt_downlink')}
                           >
-                            ↓
+                            <UiIcon name="sortDescending" />
                           </span>
                         </div>
                       </div>
@@ -914,7 +923,7 @@ export default function ChannelsTab({
                       fontSize: '0.9rem',
                     }}
                   >
-                    <span>🔑</span>
+                    <UiIcon name="key" />
                     <span>{t('channels.channel_database_readonly')}</span>
                   </div>
                 )}
@@ -950,7 +959,7 @@ export default function ChannelsTab({
                             gap: '0.5rem',
                           }}
                         >
-                          <span>↓</span> {t('channels.jump_to_bottom', 'Jump to Bottom')}
+                          <UiIcon name="sortDescending" /> {t('channels.jump_to_bottom', 'Jump to Bottom')}
                         </button>
                       </div>
                     )}
@@ -1029,7 +1038,7 @@ export default function ChannelsTab({
                                   )}
                                   {msg.replyId && !isReaction && (
                                     <div className="replied-message">
-                                      <div className="reply-arrow">↳</div>
+                                      <div className="reply-arrow"><UiIcon name="reply" size={14} /></div>
                                       <div className="reply-content">
                                         {repliedMessage ? (
                                           <>
@@ -1055,7 +1064,7 @@ export default function ChannelsTab({
                                             title={t('channels.resend_button_title')}
                                             aria-label={t('channels.resend_button_title')}
                                           >
-                                            ↻
+                                            <UiIcon name="refresh" size={15} />
                                           </button>
                                         ) : (
                                           <button
@@ -1067,7 +1076,7 @@ export default function ChannelsTab({
                                             title={t('channels.reply_button_title')}
                                             aria-label={t('channels.reply_button_title')}
                                           >
-                                            ↩
+                                            <UiIcon name="reply" size={15} />
                                           </button>
                                         )
                                       )}
@@ -1079,7 +1088,7 @@ export default function ChannelsTab({
                                           title={t('channels.emoji_button_title')}
                                           aria-label={t('channels.emoji_button_title')}
                                         >
-                                          😄
+                                          <UiIcon name="reaction" size={15} />
                                         </button>
                                       )}
                                       <button
@@ -1088,7 +1097,7 @@ export default function ChannelsTab({
                                         title={t('channels.delete_button_title')}
                                         aria-label={t('channels.delete_button_title')}
                                       >
-                                        🗑️
+                                        <UiIcon name="delete" size={15} />
                                       </button>
                                     </div>
                                   )}
@@ -1098,7 +1107,7 @@ export default function ChannelsTab({
                                         className="message-spoof-warning"
                                         title={t('channels.spoof_warning_title', 'This message claims to be from your node but arrived over RF — someone may be impersonating your node.')}
                                       >
-                                        ⚠️ {t('channels.spoof_warning', 'Possible impersonation of your node')}
+                                        <UiIcon name="alert" size={15} /> {t('channels.spoof_warning', 'Possible impersonation of your node')}
                                       </div>
                                     )}
                                     <div className="message-text-row">
@@ -1209,7 +1218,7 @@ export default function ChannelsTab({
                             title="Send alert bell"
                             aria-label="Send alert bell"
                           >
-                            🔔
+                            <UiIcon name="notifications" size={16} />
                           </button>
                           <button
                             onClick={() => onSendPosition?.(selectedChannel)}
@@ -1217,14 +1226,14 @@ export default function ChannelsTab({
                             title="Send position"
                             aria-label="Send position"
                           >
-                            📍
+                            <UiIcon name="location" size={16} />
                           </button>
                           <button
                             onClick={() => handleSendMessage(selectedChannel)}
                             disabled={!newMessage.trim()}
                             className="send-btn"
                           >
-                            →
+                            <UiIcon name="send" size={16} />
                           </button>
                         </div>
                       )}
@@ -1490,7 +1499,7 @@ export default function ChannelsTab({
                       gap: '0.25rem',
                       color: 'var(--ctp-blue)',
                     }}>
-                      🔑 {t('channels.channel_database', 'Channel Database')}
+                      <UiIcon name="key" /> {t('channels.channel_database', 'Channel Database')}
                     </span>
                   </span>
                 </div>

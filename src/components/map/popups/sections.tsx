@@ -22,6 +22,7 @@ import { formatPrecisionAccuracy } from '../../../utils/distance';
 import { formatLocationSource } from '../../../utils/nodeHelpers';
 import type { TimeFormat, DateFormat } from '../../../contexts/SettingsContext';
 import type { NodeCardModel, NodeSourceRef } from './nodeCardModel';
+import { UiIcon, type UiIconName } from '../../icons';
 
 /* ------------------------------------------------------------------ */
 /* Header                                                              */
@@ -68,19 +69,19 @@ export const IdentityItems: React.FC<IdentityItemsProps> = ({ model, idFullWidth
   <>
     {model.nodeId && (
       <div className={`node-popup-item${idFullWidth ? ' node-popup-item-full' : ''}`}>
-        <span className="node-popup-icon">🆔</span>
+        <span className="node-popup-icon"><UiIcon name="identity" /></span>
         <span className="node-popup-value">{model.nodeId}</span>
       </div>
     )}
     {model.roleName && (
       <div className="node-popup-item">
-        <span className="node-popup-icon">👤</span>
+        <span className="node-popup-icon"><UiIcon name="user" /></span>
         <span className="node-popup-value">{model.roleName}</span>
       </div>
     )}
     {model.hwModelName && (
       <div className="node-popup-item node-popup-item-full">
-        <span className="node-popup-icon">🖥️</span>
+        <span className="node-popup-icon"><UiIcon name="monitor" /></span>
         <span className="node-popup-value">{model.hwModelName}</span>
       </div>
     )}
@@ -134,7 +135,7 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
     <>
       {showHopsRow && hops != null && (
         <div className={`node-popup-item${!hasAltitude ? ' node-popup-item-full' : ''}`}>
-          <span className="node-popup-icon">🔗</span>
+          <span className="node-popup-icon"><UiIcon name="link" /></span>
           <span className="node-popup-value">
             {t('node_popup.hops', {
               count: hops,
@@ -145,7 +146,7 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
       )}
       {model.snr != null && (
         <div className="node-popup-item">
-          <span className="node-popup-icon">📶</span>
+          <span className="node-popup-icon"><UiIcon name="wifi" /></span>
           <span className="node-popup-value">
             {snrDecimals != null ? model.snr.toFixed(snrDecimals) : model.snr} dB
           </span>
@@ -153,7 +154,7 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
       )}
       {model.battery != null && (
         <div className="node-popup-item">
-          <span className="node-popup-icon">{isPluggedIn ? '🔌' : '🔋'}</span>
+          <span className="node-popup-icon"><UiIcon name={isPluggedIn ? 'batteryCharging' : 'battery'} /></span>
           <span className="node-popup-value">
             {isPluggedIn ? t('node_popup.power_plugged', 'Plugged In') : `${model.battery}%`}
           </span>
@@ -161,19 +162,19 @@ export const SignalItems: React.FC<SignalItemsProps> = ({
       )}
       {showAltitude && model.altitude != null && (
         <div className="node-popup-item">
-          <span className="node-popup-icon">⛰️</span>
+          <span className="node-popup-icon"><UiIcon name="altitude" /></span>
           <span className="node-popup-value">{model.altitude}m</span>
         </div>
       )}
       {showPrecision && (
         <div className="node-popup-item">
-          <span className="node-popup-icon" title={t('node_popup.position_accuracy', 'Position accuracy')}>🎯</span>
+          <span className="node-popup-icon" title={t('node_popup.position_accuracy', 'Position accuracy')}><UiIcon name="target" /></span>
           <span className="node-popup-value">{formatPrecisionAccuracy(precisionBits, precisionUnit)}</span>
         </div>
       )}
       {locationSourceLabel && (
         <div className="node-popup-item">
-          <span className="node-popup-icon" title={t('node_popup.location_source', 'Location source')}>🛰️</span>
+          <span className="node-popup-icon" title={t('node_popup.location_source', 'Location source')}><UiIcon name="configuration" /></span>
           <span className="node-popup-value">{locationSourceLabel}</span>
         </div>
       )}
@@ -192,7 +193,7 @@ export interface PositionItemProps {
 /** Full-width lat/lng (5-dp), Dashboard/MapAnalysis only. */
 export const PositionItem: React.FC<PositionItemProps> = ({ position }) => (
   <div className="node-popup-item node-popup-item-full">
-    <span className="node-popup-icon">📍</span>
+    <span className="node-popup-icon"><UiIcon name="location" /></span>
     <span className="node-popup-value">
       {position.lat.toFixed(5)}, {position.lng.toFixed(5)}
     </span>
@@ -213,7 +214,7 @@ export interface LastHeardFooterProps {
   dateFormat: DateFormat;
 }
 
-/** `.node-popup-footer` 🕐 last-heard/last-seen, shown by every consumer. */
+/** `.node-popup-footer` last-heard/last-seen, shown by every consumer. */
 export const LastHeardFooter: React.FC<LastHeardFooterProps> = ({
   lastHeard,
   mode,
@@ -226,7 +227,7 @@ export const LastHeardFooter: React.FC<LastHeardFooterProps> = ({
     : formatDateTime(new Date(lastHeard * 1000), timeFormat, dateFormat);
   return (
     <div className="node-popup-footer">
-      <span className="node-popup-icon">🕐</span>
+      <span className="node-popup-icon"><UiIcon name="time" /></span>
       {text}
     </div>
   );
@@ -264,7 +265,7 @@ export const SourcesList: React.FC<SourcesListProps> = ({ sources, nodeId, onSou
             className="node-popup-source-row node-popup-source-row-button"
             disabled={!clickable}
             onClick={clickable ? () => onSourceSelect!(s, nodeId) : undefined}
-            title={clickable ? `Open ${s.sourceName} → Node Details` : undefined}
+            title={clickable ? `Open ${s.sourceName} Node Details` : undefined}
           >
             <span className={`node-popup-protocol-badge protocol-${s.protocol.toLowerCase()}`}>
               {s.protocol}
@@ -300,36 +301,36 @@ export const MeshCoreDetails: React.FC<MeshCoreDetailsProps> = ({ model }) => {
   return (
     <>
       <div className="node-popup-item node-popup-item-full">
-        <span className="node-popup-icon">🖥️</span>
+        <span className="node-popup-icon"><UiIcon name="monitor" /></span>
         <span className="node-popup-value">{t('node_popup.meshcore_device', 'MeshCore Device')}</span>
       </div>
       {mc.publicKey && (
         <div className="node-popup-item node-popup-item-full">
-          <span className="node-popup-icon">🆔</span>
+          <span className="node-popup-icon"><UiIcon name="identity" /></span>
           <span className="node-popup-value">{mc.publicKey.substring(0, 16)}…</span>
         </div>
       )}
       {mc.rssi != null && (
         <div className="node-popup-item">
-          <span className="node-popup-icon">📶</span>
+          <span className="node-popup-icon"><UiIcon name="radioSignal" /></span>
           <span className="node-popup-value">{mc.rssi} dBm</span>
         </div>
       )}
       {mc.snr != null && (
         <div className="node-popup-item">
-          <span className="node-popup-icon">📡</span>
+          <span className="node-popup-icon"><UiIcon name="wifi" /></span>
           <span className="node-popup-value">{mc.snr} dB</span>
         </div>
       )}
       {mc.pathLen != null && (
         <div className="node-popup-item">
-          <span className="node-popup-icon">🔗</span>
+          <span className="node-popup-icon"><UiIcon name="link" /></span>
           <span className="node-popup-value">{hopCountLabel(mc.pathLen)}</span>
         </div>
       )}
       {mc.outPath && (
         <div className="node-popup-item node-popup-item-full">
-          <span className="node-popup-icon">🛰️</span>
+          <span className="node-popup-icon"><UiIcon name="route" /></span>
           <span className="node-popup-value">{mc.outPath}</span>
         </div>
       )}
@@ -429,7 +430,7 @@ export const TracerouteBody: React.FC<TracerouteBodyProps> = ({
 
       {onRunTraceroute && (
         <button className="node-popup-btn" onClick={onRunTraceroute} disabled={runDisabled}>
-          {running ? <span className="spinner"></span> : '📡'} {t('node_popup.traceroute', 'Traceroute')}
+          {running ? <span className="spinner"></span> : <UiIcon name="radioSignal" />} {t('node_popup.traceroute', 'Traceroute')}
         </button>
       )}
     </>
@@ -455,7 +456,7 @@ export interface NodeActionSpec {
 }
 
 interface ActionMeta {
-  icon: string;
+  icon: UiIconName;
   key: string;
   defaultLabel: string;
   /** Which danger-tier class (if any) the button carries, matching
@@ -464,12 +465,12 @@ interface ActionMeta {
 }
 
 const ACTION_META: Record<NodeActionKind, ActionMeta> = {
-  'more-details': { icon: '🔍', key: 'node_popup.more_details', defaultLabel: 'More Details' },
-  'show-on-map': { icon: '🗺️', key: 'node_popup.show_on_map', defaultLabel: 'Show on Map' },
-  'copy-nodeinfo': { icon: '📋', key: 'nodes.copy_nodeinfo_title', defaultLabel: 'Copy NodeInfo' },
-  'navigate-to-dm': { icon: '🔍', key: 'node_popup.more_details', defaultLabel: 'More Details' },
-  delete: { icon: '🗑️', key: 'node_popup.delete_node', defaultLabel: 'Delete', danger: 'red' },
-  purge: { icon: '⚠️', key: 'node_popup.purge_node', defaultLabel: 'Purge from Device', danger: 'maroon' },
+  'more-details': { icon: 'search', key: 'node_popup.more_details', defaultLabel: 'More Details' },
+  'show-on-map': { icon: 'map', key: 'node_popup.show_on_map', defaultLabel: 'Show on Map' },
+  'copy-nodeinfo': { icon: 'copy', key: 'nodes.copy_nodeinfo_title', defaultLabel: 'Copy NodeInfo' },
+  'navigate-to-dm': { icon: 'search', key: 'node_popup.more_details', defaultLabel: 'More Details' },
+  delete: { icon: 'delete', key: 'node_popup.delete_node', defaultLabel: 'Delete', danger: 'red' },
+  purge: { icon: 'alert', key: 'node_popup.purge_node', defaultLabel: 'Purge from Device', danger: 'maroon' },
 };
 
 export interface NodeActionsProps {
@@ -491,7 +492,7 @@ export const NodeActions: React.FC<NodeActionsProps> = ({ actions }) => {
         const meta = ACTION_META[a.kind];
         return (
           <button key={a.kind} className="node-popup-btn" onClick={a.onClick} disabled={a.disabled}>
-            {meta.icon} {t(meta.key, meta.defaultLabel)}
+            <UiIcon name={meta.icon} /> {t(meta.key, meta.defaultLabel)}
           </button>
         );
       })}
@@ -506,7 +507,7 @@ export const NodeActions: React.FC<NodeActionsProps> = ({ actions }) => {
                 onClick={a.onClick}
                 disabled={a.disabled}
               >
-                {meta.icon} {t(meta.key, meta.defaultLabel)}
+                <UiIcon name={meta.icon} /> {t(meta.key, meta.defaultLabel)}
               </button>
             );
           })}

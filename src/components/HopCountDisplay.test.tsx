@@ -11,7 +11,7 @@ describe('HopCountDisplay', () => {
       render(<HopCountDisplay viaStoreForward={true} />);
       const sfIcon = screen.getByLabelText(/store_forward/i);
       expect(sfIcon).toBeDefined();
-      expect(sfIcon.textContent).toBe('📦');
+      expect(sfIcon.querySelector('[data-ui-icon="package"]')).toBeInTheDocument();
     });
 
     it('does not show S&F icon when viaStoreForward is false', () => {
@@ -63,7 +63,7 @@ describe('HopCountDisplay', () => {
       render(<HopCountDisplay viaMqtt={true} />);
       const mqttIcon = screen.getByLabelText(/mqtt/i);
       expect(mqttIcon).toBeDefined();
-      expect(mqttIcon.textContent).toBe('🌐');
+      expect(mqttIcon.querySelector('[data-ui-icon="network"]')).toBeInTheDocument();
     });
 
     it('does not show MQTT icon when viaMqtt is false', () => {

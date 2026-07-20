@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
+import { UiIcon } from '../icons';
 
 /**
  * Floating time-window slider that overlays the map. When enabled, drives the
@@ -30,7 +31,7 @@ export default function TimeSliderControl() {
   return (
     <div className="map-analysis-time-slider" data-testid="time-slider">
       <div className="map-analysis-time-slider-label">
-        Window: {new Date(start).toLocaleString()} → {new Date(end).toLocaleString()}
+        Window: {new Date(start).toLocaleString()} <UiIcon name="forward" size={14} /> {new Date(end).toLocaleString()}
       </div>
       <input
         aria-label="Window start"

@@ -14,6 +14,7 @@ import { usePacketRates, type PacketRatesResponse } from '../hooks/usePacketRate
 import { formatChartAxisTimestamp } from '../utils/datetime';
 import { PACKET_RATE_RX_TYPE, PACKET_RATE_TX_TYPE } from './PacketRateGraphs';
 import type { TelemetryNodeInfo } from '../types/device';
+import { UiIcon } from './icons';
 
 interface FavoriteChart {
   nodeId: string;
@@ -196,8 +197,7 @@ const PacketRateChart: React.FC<PacketRateChartProps> = ({
             onClick={handleRemoveClick}
             aria-label={t('dashboard.remove_from_dashboard')}
           >
-            ✕
-          </button>
+            <UiIcon name="close" size={15} />          </button>
         </div>
         <div className="dashboard-loading-chart">{t('dashboard.loading_chart')}</div>
       </div>
@@ -219,8 +219,7 @@ const PacketRateChart: React.FC<PacketRateChartProps> = ({
             onClick={handleRemoveClick}
             aria-label={t('dashboard.remove_from_dashboard')}
           >
-            ✕
-          </button>
+            <UiIcon name="close" size={15} />          </button>
         </div>
         <div className="dashboard-error-chart">{t('dashboard.error_chart')}</div>
       </div>
@@ -242,8 +241,7 @@ const PacketRateChart: React.FC<PacketRateChartProps> = ({
             onClick={handleRemoveClick}
             aria-label={t('dashboard.remove_from_dashboard')}
           >
-            ✕
-          </button>
+            <UiIcon name="close" size={15} />          </button>
         </div>
         <div className="dashboard-no-data">{t('info.no_rate_data')}</div>
       </div>
@@ -264,8 +262,7 @@ const PacketRateChart: React.FC<PacketRateChartProps> = ({
           onClick={handleRemoveClick}
           aria-label={t('dashboard.remove_from_dashboard')}
         >
-          ✕
-        </button>
+          <UiIcon name="close" size={15} />        </button>
       </div>
       <ResponsiveContainer width="100%" height={200}>
         <ComposedChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>

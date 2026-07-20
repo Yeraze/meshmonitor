@@ -4,6 +4,7 @@ import type { NodeFilters, SecurityFilter } from '../../types/ui';
 import type { Channel } from '../../types/device';
 import { ROLE_NAMES } from '../../constants';
 import './AdvancedNodeFilterPopup.css';
+import { UiIcon } from '../icons';
 
 interface AdvancedNodeFilterPopupProps {
   isOpen: boolean;
@@ -113,7 +114,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
         <div className="filter-popup-header">
           <h4>{t('node_filter.title', 'Filter Nodes')}</h4>
           <button className="filter-popup-close" onClick={onClose}>
-            ✕
+            <UiIcon name="close" size={16} />
           </button>
         </div>
         <div className="filter-popup-content">
@@ -143,7 +144,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
           <div className="filter-section">
             <div className="filter-section-title">
               <span className="filter-icon-wrapper">
-                <span className="filter-icon">⚠️</span>
+                <span className="filter-icon"><UiIcon name="alert" /></span>
               </span>
               <span>{t('node_filter.security', 'Security')}</span>
             </div>
@@ -166,7 +167,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
                   checked={securityFilter === 'flaggedOnly'}
                   onChange={e => onSecurityFilterChange(e.target.value as SecurityFilter)}
                 />
-                <span>⚠️ {t('node_filter.flagged_only', 'Flagged Only')}</span>
+                <span><UiIcon name="alert" /> {t('node_filter.flagged_only', 'Flagged Only')}</span>
               </label>
               <label className="filter-radio">
                 <input
@@ -191,7 +192,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
                 onChange={e => onNodeFiltersChange({ ...nodeFilters, showTelemetry: e.target.checked })}
               />
               <span className="filter-label-with-icon">
-                <span className="filter-icon">📊</span>
+                <span className="filter-icon"><UiIcon name="telemetry" /></span>
                 <span>{t('node_filter.telemetry', 'Telemetry data')}</span>
               </span>
             </label>
@@ -203,7 +204,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
                 onChange={e => onNodeFiltersChange({ ...nodeFilters, showEnvironment: e.target.checked })}
               />
               <span className="filter-label-with-icon">
-                <span className="filter-icon">☀️</span>
+                <span className="filter-icon"><UiIcon name="weather" /></span>
                 <span>{t('node_filter.environment', 'Environment metrics')}</span>
               </span>
             </label>
@@ -215,7 +216,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
                 onChange={e => onNodeFiltersChange({ ...nodeFilters, showPosition: e.target.checked })}
               />
               <span className="filter-label-with-icon">
-                <span className="filter-icon">📍</span>
+                <span className="filter-icon"><UiIcon name="location" /></span>
                 <span>{t('node_filter.position', 'Position data')}</span>
               </span>
             </label>
@@ -227,7 +228,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
                 onChange={e => onNodeFiltersChange({ ...nodeFilters, showPKI: e.target.checked })}
               />
               <span className="filter-label-with-icon">
-                <span className="filter-icon">🔐</span>
+                <span className="filter-icon"><UiIcon name="encryptedKey" /></span>
                 <span>{t('node_filter.pkc', 'Public Key Crypto')}</span>
               </span>
             </label>
@@ -239,7 +240,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
                 onChange={e => onNodeFiltersChange({ ...nodeFilters, showRemoteAdmin: e.target.checked })}
               />
               <span className="filter-label-with-icon">
-                <span className="filter-icon">🛠️</span>
+                <span className="filter-icon"><UiIcon name="wrench" /></span>
                 <span>{t('node_filter.remote_admin', 'Remote Admin')}</span>
               </span>
             </label>
@@ -251,7 +252,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
                 onChange={e => onNodeFiltersChange({ ...nodeFilters, showMqtt: e.target.checked })}
               />
               <span className="filter-label-with-icon">
-                <span className="filter-icon">🌐</span>
+                <span className="filter-icon"><UiIcon name="network" /></span>
                 <span>{t('node_filter.mqtt', 'MQTT nodes')}</span>
               </span>
             </label>
@@ -263,7 +264,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
                 onChange={e => onNodeFiltersChange({ ...nodeFilters, showUnknown: e.target.checked })}
               />
               <span className="filter-label-with-icon">
-                <span className="filter-icon">❓</span>
+                <span className="filter-icon"><UiIcon name="help" /></span>
                 <span>{t('node_filter.unknown', 'Unknown nodes')}</span>
               </span>
             </label>
@@ -275,7 +276,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
                 onChange={e => onNodeFiltersChange({ ...nodeFilters, showIgnored: e.target.checked })}
               />
               <span className="filter-label-with-icon">
-                <span className="filter-icon">🚫</span>
+                <span className="filter-icon"><UiIcon name="blocked" /></span>
                 <span>{t('node_filter.ignored', 'Show ignored nodes')}</span>
               </span>
             </label>
@@ -287,7 +288,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
                 onChange={e => onNodeFiltersChange({ ...nodeFilters, showFavoriteLocked: e.target.checked })}
               />
               <span className="filter-label-with-icon">
-                <span className="filter-icon">🔒</span>
+                <span className="filter-icon"><UiIcon name="encrypted" /></span>
                 <span>{t('node_filter.favorite_locked', 'Favorite locked')}</span>
               </span>
             </label>
@@ -296,7 +297,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
           <div className="filter-section">
             <div className="filter-section-title">
               <span className="filter-icon-wrapper">
-                <span className="filter-icon">🔋</span>
+                <span className="filter-icon"><UiIcon name="battery" /></span>
               </span>
               <span>{t('node_filter.power_source', 'Power Source')}</span>
             </div>
@@ -319,7 +320,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
                   checked={nodeFilters.powerSource === 'powered'}
                   onChange={e => onNodeFiltersChange({ ...nodeFilters, powerSource: e.target.value as 'powered' })}
                 />
-                <span>🔌 {t('node_filter.powered_only', 'Powered only')}</span>
+                <span><UiIcon name="batteryCharging" /> {t('node_filter.powered_only', 'Powered only')}</span>
               </label>
               <label className="filter-radio">
                 <input
@@ -329,7 +330,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
                   checked={nodeFilters.powerSource === 'battery'}
                   onChange={e => onNodeFiltersChange({ ...nodeFilters, powerSource: e.target.value as 'battery' })}
                 />
-                <span>🔋 {t('node_filter.battery_only', 'Battery only')}</span>
+                <span><UiIcon name="battery" /> {t('node_filter.battery_only', 'Battery only')}</span>
               </label>
             </div>
           </div>
@@ -337,7 +338,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
           <div className="filter-section">
             <div className="filter-section-title">
               <span className="filter-icon-wrapper">
-                <span className="filter-icon">🔗</span>
+                <span className="filter-icon"><UiIcon name="link" /></span>
               </span>
               <span>{t('node_filter.hops_away', 'Hops Away')}</span>
             </div>
@@ -371,7 +372,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
           <div className="filter-section">
             <div className="filter-section-title">
               <span className="filter-icon-wrapper">
-                <span className="filter-icon">👤</span>
+                <span className="filter-icon"><UiIcon name="user" /></span>
               </span>
               <span>{t('node_filter.device_role', 'Device Role')}</span>
             </div>
@@ -392,7 +393,7 @@ export const AdvancedNodeFilterPopup: React.FC<AdvancedNodeFilterPopupProps> = (
           <div className="filter-section">
             <div className="filter-section-title">
               <span className="filter-icon-wrapper">
-                <span className="filter-icon">📡</span>
+                <span className="filter-icon"><UiIcon name="radioSignal" /></span>
               </span>
               <span>{t('node_filter.channel', 'Channel')}</span>
             </div>

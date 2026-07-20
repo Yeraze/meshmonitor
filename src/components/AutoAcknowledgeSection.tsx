@@ -14,6 +14,7 @@ import {
   matrixToSettings,
 } from '../utils/autoAckMatrix';
 import { hasRE2IncompatibleConstructs } from '../utils/autoAckRegex';
+import { UiIcon } from './icons';
 
 interface AutoAcknowledgeSectionProps {
   enabled: boolean;
@@ -343,7 +344,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             }}
             title={t('automation.view_docs')}
           >
-            ❓
+            <UiIcon name="help" />
           </a>
         </h2>
       </div>

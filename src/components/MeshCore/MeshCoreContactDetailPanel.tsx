@@ -16,6 +16,7 @@ import { MeshCoreRemoteConsole } from './MeshCoreRemoteConsole';
 import type { MeshCoreActions, TracePathResult } from './hooks/useMeshCore';
 import api from '../../services/api';
 import '../NodeDetailsBlock.css';
+import { UiIcon } from '../icons';
 
 const DEVICE_TYPE_KEYS: Record<number, string> = {
   0: 'meshcore.device_type.unknown',
@@ -482,7 +483,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
             ? t('meshcore.contact_details.expand', 'Expand contact details')
             : t('meshcore.contact_details.collapse', 'Collapse contact details')}
         >
-          {isCollapsed ? '▼' : '▲'}
+          <UiIcon name={isCollapsed ? 'chevronDown' : 'chevronUp'} size={15} />
         </button>
       </div>
       {!isCollapsed && (
@@ -957,13 +958,13 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                       </span>
                       <button type="button" className="btn-secondary" disabled={editorSaving || i === 0}
                         aria-label={t('meshcore.contact_details.edit_path_move_up', 'Move hop up')}
-                        onClick={() => moveHop(i, -1)} style={{ padding: '0.1rem 0.4rem' }}>↑</button>
+                        onClick={() => moveHop(i, -1)} style={{ padding: '0.1rem 0.4rem' }}><UiIcon name="chevronUp" size={14} /></button>
                       <button type="button" className="btn-secondary" disabled={editorSaving || i === editorHops.length - 1}
                         aria-label={t('meshcore.contact_details.edit_path_move_down', 'Move hop down')}
-                        onClick={() => moveHop(i, 1)} style={{ padding: '0.1rem 0.4rem' }}>↓</button>
+                        onClick={() => moveHop(i, 1)} style={{ padding: '0.1rem 0.4rem' }}><UiIcon name="chevronDown" size={14} /></button>
                       <button type="button" className="btn-secondary" disabled={editorSaving}
                         aria-label={t('meshcore.contact_details.edit_path_remove_hop', 'Remove hop')}
-                        onClick={() => removeHop(i)} style={{ padding: '0.1rem 0.4rem' }}>✕</button>
+                        onClick={() => removeHop(i)} style={{ padding: '0.1rem 0.4rem' }}><UiIcon name="close" size={14} /></button>
                     </li>
                   );
                 })}

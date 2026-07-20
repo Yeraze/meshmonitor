@@ -13,34 +13,34 @@ import {
 // ─── getFileIcon ──────────────────────────────────────────────────────────────
 
 describe('getFileIcon', () => {
-  it('returns 🐍 for .py files', () => {
-    expect(getFileIcon('script.py')).toBe('🐍');
+  it('returns the code icon name for .py files', () => {
+    expect(getFileIcon('script.py')).toBe('code');
   });
 
-  it('returns 📘 for .js files', () => {
-    expect(getFileIcon('app.js')).toBe('📘');
+  it('returns the code icon name for .js files', () => {
+    expect(getFileIcon('app.js')).toBe('code');
   });
 
-  it('returns 📘 for .mjs files', () => {
-    expect(getFileIcon('module.mjs')).toBe('📘');
+  it('returns the code icon name for .mjs files', () => {
+    expect(getFileIcon('module.mjs')).toBe('code');
   });
 
-  it('returns 💻 for .sh files', () => {
-    expect(getFileIcon('run.sh')).toBe('💻');
+  it('returns the terminal icon name for .sh files', () => {
+    expect(getFileIcon('run.sh')).toBe('terminal');
   });
 
-  it('returns 📄 for unknown extensions', () => {
-    expect(getFileIcon('file.txt')).toBe('📄');
-    expect(getFileIcon('data.json')).toBe('📄');
+  it('returns the file-code icon name for unknown extensions', () => {
+    expect(getFileIcon('file.txt')).toBe('fileCode');
+    expect(getFileIcon('data.json')).toBe('fileCode');
   });
 
-  it('returns 📄 for files without extension', () => {
-    expect(getFileIcon('Makefile')).toBe('📄');
+  it('returns the file-code icon name for files without extension', () => {
+    expect(getFileIcon('Makefile')).toBe('fileCode');
   });
 
   it('is case-insensitive for extensions', () => {
-    expect(getFileIcon('SCRIPT.PY')).toBe('🐍');
-    expect(getFileIcon('APP.JS')).toBe('📘');
+    expect(getFileIcon('SCRIPT.PY')).toBe('code');
+    expect(getFileIcon('APP.JS')).toBe('code');
   });
 });
 

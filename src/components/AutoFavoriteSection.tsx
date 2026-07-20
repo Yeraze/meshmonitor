@@ -6,6 +6,7 @@ import { useSource } from '../contexts/SourceContext';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { useToast } from './ToastContainer';
 import { ROLE_NAMES, DeviceRole } from '../constants';
+import { UiIcon } from './icons';
 
 interface AutoFavoriteSectionProps {
   baseUrl: string;
@@ -345,7 +346,7 @@ const AutoFavoriteSection: React.FC<AutoFavoriteSectionProps> = ({ baseUrl }) =>
                             ? t('automation.auto_favorite.already_locked', 'Already locked')
                             : t('automation.auto_favorite.lock_tooltip', 'Lock this node to prevent automation changes')}
                         >
-                          {node.favoriteLocked ? '🔒' : '🔓 Lock'}
+                          <UiIcon name={node.favoriteLocked ? 'encrypted' : 'unlock'} size={13} /> {!node.favoriteLocked && 'Lock'}
                         </button>
                       </td>
                     </tr>

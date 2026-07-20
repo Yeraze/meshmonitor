@@ -6,6 +6,7 @@ import type { LocalNodeInfo, BasicNodeInfo } from '../../types/device';
 import type { ConnectionStatus } from '../../types/ui';
 import UserMenu from '../UserMenu';
 import './AppHeader.css';
+import { UiIcon } from '../icons';
 
 interface DeviceInfoProp {
   localNodeInfo?: LocalNodeInfo;
@@ -121,7 +122,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             onClick={onBackToSources}
             title="Back to source list"
           >
-            ← Sources
+            <UiIcon name="back" size={16} /> Sources
           </button>
         )}
         <div className="header-title">
@@ -150,7 +151,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               className={`update-method-indicator ${webSocketConnected ? 'websocket' : 'polling'}`}
               title={webSocketConnected ? 'Real-time via WebSocket' : 'Polling every 5 seconds'}
             >
-              {webSocketConnected ? '⚡' : '🔄'}
+              <UiIcon name={webSocketConnected ? 'zap' : 'refresh'} size={15} />
             </span>
           </div>
 
@@ -170,7 +171,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           <UserMenu onLogout={onLogout} />
         ) : (
           <button className="login-button" onClick={onShowLoginModal}>
-            <span>🔒</span>
+            <span><UiIcon name="encrypted" size={15} /></span>
             <span>{t('header.login')}</span>
           </button>
         )}

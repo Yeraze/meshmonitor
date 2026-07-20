@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { UiIcon } from './icons';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
 import { useToast } from './ToastContainer';
@@ -1881,7 +1882,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
         <div style={{ flex: 1, minWidth: 0 }}>
 
       <div id="config-danger" className="settings-section danger-zone" style={{ marginBottom: '2rem' }}>
-        <h2 style={{ color: '#ff4444', marginTop: 0 }}>⚠️ {t('config.warning_title')}</h2>
+        <h2 style={{ color: '#ff4444', marginTop: 0 }}><UiIcon name="alert" /> {t('config.warning_title')}</h2>
         <p style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
           {t('config.warning_text')}
         </p>
@@ -1904,7 +1905,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
               opacity: isSaving ? 0.6 : 1
             }}
           >
-            🔄 {t('config.reboot_device')}
+            <UiIcon name="refresh" /> {t('config.reboot_device')}
           </button>
           <button
             onClick={handlePurgeNodeDb}
@@ -1921,7 +1922,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
               opacity: isSaving ? 0.6 : 1
             }}
           >
-            🗑️ {t('config.purge_node_db')}
+            <UiIcon name="delete" /> {t('config.purge_node_db')}
           </button>
           <button
             onClick={handleReloadConfig}
@@ -1940,11 +1941,11 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
           >
             {isReloading ? (
               <>
-                <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>🔄</span>
+                <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}><UiIcon name="refresh" /></span>
                 {' '}{t('config.reloading')}
               </>
             ) : (
-              <>🔃 {t('config.reload_config')}</>
+              <><UiIcon name="refresh" /> {t('config.reload_config')}</>
             )}
           </button>
         </div>
@@ -1965,7 +1966,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
                 gap: '0.5rem'
               }}
             >
-              <span>{showChanges ? '▼' : '▶'}</span>
+              <span><UiIcon name={showChanges ? 'chevronDown' : 'forward'} /></span>
               {t('config.changes_detected', { count: configChanges.length })}
             </button>
             {showChanges && (
@@ -2020,7 +2021,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
               fontWeight: 'bold'
             }}
           >
-            📥 {t('config.import_config')}
+            <UiIcon name="import" /> {t('config.import_config')}
           </button>
           <button
             onClick={() => setIsExportModalOpen(true)}
@@ -2035,7 +2036,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
               fontWeight: 'bold'
             }}
           >
-            📤 {t('config.export_config')}
+            <UiIcon name="upload" /> {t('config.export_config')}
           </button>
         </div>
 

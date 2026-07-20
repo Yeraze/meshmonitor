@@ -14,6 +14,7 @@
  */
 
 import { formatRelativeTime } from '../../utils/datetime';
+import { UiIcon } from '../icons';
 
 interface DashboardNeighborPopupProps {
   link: any;
@@ -56,7 +57,7 @@ export default function DashboardNeighborPopup({ link }: DashboardNeighborPopupP
     <div className="node-popup neighbor-popup">
       <div className="node-popup-header">
         <div className="node-popup-title">
-          {nodeName} {bidirectional ? '↔' : '→'} {neighborName}
+          {nodeName} <UiIcon name={bidirectional ? 'bidirectional' : 'forward'} size={15} /> {neighborName}
         </div>
         <span className="node-popup-subtitle">
           {bidirectional ? 'Bidirectional' : 'One-way'} · {TRANSPORT_LABEL[transportClass] ?? transportClass}
@@ -66,18 +67,18 @@ export default function DashboardNeighborPopup({ link }: DashboardNeighborPopupP
       <div className="node-popup-content">
         <div className="node-popup-grid">
           <div className="node-popup-item node-popup-item-full">
-            <span className="node-popup-icon">📶</span>
+            <span className="node-popup-icon"><UiIcon name="wifi" size={16} /></span>
             <span className="node-popup-value">
-              {nodeName} → {neighborName}: SNR {formatSnr(link?.snr)}
+              {nodeName} to {neighborName}: SNR {formatSnr(link?.snr)}
               {forwardHeard ? ` · heard ${forwardHeard}` : ''}
             </span>
           </div>
 
           {hasReverse && (
             <div className="node-popup-item node-popup-item-full">
-              <span className="node-popup-icon">📶</span>
+              <span className="node-popup-icon"><UiIcon name="wifi" size={16} /></span>
               <span className="node-popup-value">
-                {neighborName} → {nodeName}: SNR {formatSnr(link?.reverseSnr)}
+                {neighborName} to {nodeName}: SNR {formatSnr(link?.reverseSnr)}
                 {reverseHeard ? ` · heard ${reverseHeard}` : ''}
               </span>
             </div>

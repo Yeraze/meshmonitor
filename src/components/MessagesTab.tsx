@@ -55,6 +55,7 @@ import apiService from '../services/api';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSource } from '../contexts/SourceContext';
 import { computeMessagesReadOnlyState } from './messagesReadOnlyState';
+import { UiIcon } from './icons';
 
 // Types for node with message metadata
 interface NodeWithMessages extends DeviceInfo {
@@ -100,7 +101,7 @@ const DistanceDisplay = React.memo<{
         marginLeft: '0.5rem',
       }}
     >
-      📏 {distance}
+      <UiIcon name="ruler" size={14} /> {distance}
     </span>
   );
 });
@@ -816,7 +817,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             onClick={() => setIsMessagesNodeListCollapsed(!isMessagesNodeListCollapsed)}
             title={isMessagesNodeListCollapsed ? t('nodes.expand_node_list') : t('nodes.collapse_node_list')}
           >
-            {isMessagesNodeListCollapsed ? '▶' : '◀'}
+            <UiIcon name={isMessagesNodeListCollapsed ? 'forward' : 'back'} size={18} />
           </button>
           {!isMessagesNodeListCollapsed && (
             <div className="sidebar-header-content">
@@ -848,7 +849,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     aria-label={t('common.clear_filter')}
                     type="button"
                   >
-                    ✕
+                    <UiIcon name="close" size={16} />
                   </button>
                 )}
               </div>
@@ -891,29 +892,29 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     >
                       <div className="node-header">
                         <div className="node-name">
-                          {node.isFavorite && <span className="favorite-indicator">⭐</span>}
+                          {node.isFavorite && <span className="favorite-indicator"><UiIcon name="favorite" size={15} /></span>}
                           <div className="node-name-text">
                             <div className="node-longname">{node.user?.longName || t('messages.node_fallback', { nodeNum: node.nodeNum })}</div>
                           </div>
                         </div>
                         <div className="node-actions">
                           {node.position && node.position.latitude != null && node.position.longitude != null && (
-                            <span className="node-indicator-icon" title={t('nodes.location')}>📍</span>
+                            <span className="node-indicator-icon" title={t('nodes.location')}><UiIcon name="location" size={15} /></span>
                           )}
                           {node.viaMqtt && (
-                            <span className="node-indicator-icon" title={t('nodes.via_mqtt')}>🌐</span>
+                            <span className="node-indicator-icon" title={t('nodes.via_mqtt')}><UiIcon name="network" size={15} /></span>
                           )}
                           {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
-                            <span className="node-indicator-icon" title={t('nodes.has_telemetry')}>📊</span>
+                            <span className="node-indicator-icon" title={t('nodes.has_telemetry')}><UiIcon name="telemetry" size={15} /></span>
                           )}
                           {node.user?.id && nodesWithWeatherTelemetry.has(node.user.id) && (
-                            <span className="node-indicator-icon" title={t('nodes.has_weather')}>☀️</span>
+                            <span className="node-indicator-icon" title={t('nodes.has_weather')}><UiIcon name="weather" size={15} /></span>
                           )}
                           {node.user?.id && nodesWithPKC.has(node.user.id) && (
-                            <span className="node-indicator-icon" title={t('nodes.has_pkc')}>🔐</span>
+                            <span className="node-indicator-icon" title={t('nodes.has_pkc')}><UiIcon name="encryptedKey" size={15} /></span>
                           )}
                           {node.user?.id && isDMMuted(node.user.id) && (
-                            <span className="node-indicator-icon" title={t('notifications.muted', 'Notifications muted')}>🔇</span>
+                            <span className="node-indicator-icon" title={t('notifications.muted', 'Notifications muted')}><UiIcon name="muted" size={15} /></span>
                           )}
                           {(node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) && (
                             <span
@@ -926,7 +927,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 cursor: 'help',
                               }}
                             >
-                              {node.keyMismatchDetected ? '🔓' : '⚠️'}
+                              <UiIcon name={node.keyMismatchDetected ? 'unlock' : 'alert'} size={16} />
                             </span>
                           )}
                           <div
@@ -935,7 +936,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             title={stickyNodes.has(node.nodeNum) ? t('messages.unpin_node') : t('messages.pin_node')}
                             style={{ cursor: 'pointer' }}
                           >
-                            {stickyNodes.has(node.nodeNum) && <span className="pin-indicator">📌</span>}
+                            {stickyNodes.has(node.nodeNum) && <span className="pin-indicator"><UiIcon name="pin" size={14} /></span>}
                             {node.user?.shortName || '-'}
                           </div>
                         </div>
@@ -977,7 +978,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             }}
                           >
                             <span className="stat" title={t('messages.total_messages_title')}>
-                              💬 {node.messageCount}
+                              <UiIcon name="messages" size={14} /> {node.messageCount}
                             </span>
                             {node.lastMessageTime > 0 && (
                               <span
@@ -994,7 +995,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                     : undefined
                                 }
                               >
-                                🕒 {formatRelativeTime(node.lastMessageTime)}
+                                <UiIcon name="time" size={14} /> {formatRelativeTime(node.lastMessageTime)}
                               </span>
                             )}
                           </div>
@@ -1004,19 +1005,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       <div className="node-stats">
                         {node.hopsAway === 0 && node.snr != null && (
                           <span className="stat" title={t('nodes.snr')}>
-                            📶 {node.snr.toFixed(1)}dB
+                            <UiIcon name="wifi" size={14} /> {node.snr.toFixed(1)}dB
                           </span>
                         )}
                         {node.hopsAway === 0 && node.rssi != null && (
                           <span className="stat" title={t('nodes.rssi')}>
-                            📡 {node.rssi}dBm
+                            <UiIcon name="radioSignal" size={14} /> {node.rssi}dBm
                           </span>
                         )}
                         {(node.hopsAway != null || node.lastMessageHops != null) && (() => {
                           const effectiveHops = getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
                           return effectiveHops < 999 ? (
                             <span className="stat" title={t('nodes.hops_away')}>
-                              🔗 {effectiveHops} {t('nodes.hop', { count: effectiveHops })}
+                              <UiIcon name="link" size={14} /> {effectiveHops} {t('nodes.hop', { count: effectiveHops })}
                             </span>
                           ) : null;
                         })()}
@@ -1076,14 +1077,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 const battery =
                   node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null
                     ? node.deviceMetrics.batteryLevel === 101
-                      ? ' 🔌'
+                      ? ` ${t('node_popup.power_plugged', 'Plugged In')}`
                       : ` ${node.deviceMetrics.batteryLevel}%`
                     : '';
                 const unread = node.unreadCount > 0 ? ` (${node.unreadCount})` : '';
 
                 return (
                   <option key={node.user?.id || node.nodeNum} value={node.user?.id || ''}>
-                    {node.isFavorite ? '⭐ ' : ''}
+                    {node.isFavorite ? `[${t('meshcore.favorite.is_favorite', 'Favorite')}] ` : ''}
                     {displayName} ({shortName}){snr}
                     {battery}
                     {unread}
@@ -1113,7 +1114,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     title={t('messages.actions_menu_title')}
                     style={{ padding: '0.5rem 1rem', fontSize: '0.9rem', whiteSpace: 'nowrap' }}
                   >
-                    {t('messages.actions_menu')} ▼
+                    {t('messages.actions_menu')} <UiIcon name="chevronDown" size={15} />
                   </button>
 
                   {showActionsMenu && (
@@ -1129,7 +1130,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               setShowActionsMenu(false);
                             }}
                           >
-                            🔔 {t('notifications.unmute', 'Unmute notifications')}
+                            <UiIcon name="unmute" /> {t('notifications.unmute', 'Unmute notifications')}
                           </button>
                         ) : (
                           <>
@@ -1140,7 +1141,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 setShowActionsMenu(false);
                               }}
                             >
-                              🔇 {t('notifications.mute_indefinite', 'Mute notifications indefinitely')}
+                              <UiIcon name="muted" /> {t('notifications.mute_indefinite', 'Mute notifications indefinitely')}
                             </button>
                             <button
                               className="actions-menu-item"
@@ -1149,7 +1150,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 setShowActionsMenu(false);
                               }}
                             >
-                              🕐 {t('notifications.mute_1h', 'Mute for 1 hour')}
+                              <UiIcon name="time" /> {t('notifications.mute_1h', 'Mute for 1 hour')}
                             </button>
                             <button
                               className="actions-menu-item"
@@ -1158,7 +1159,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 setShowActionsMenu(false);
                               }}
                             >
-                              📅 {t('notifications.mute_1w', 'Mute for 1 week')}
+                              <UiIcon name="calendar" /> {t('notifications.mute_1w', 'Mute for 1 week')}
                             </button>
                           </>
                         )}
@@ -1178,7 +1179,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 }}
                                 disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
                               >
-                                🗺️ {t('messages.traceroute_button')}
+                                <UiIcon name="route" /> {t('messages.traceroute_button')}
                                 {tracerouteLoading === selectedDMNode && <span className="spinner"></span>}
                               </button>
                             )}
@@ -1189,7 +1190,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 setShowActionsMenu(false);
                               }}
                             >
-                              📜 {t('messages.history_button')}
+                              <UiIcon name="list" /> {t('messages.history_button')}
                             </button>
                           </>
                         )}
@@ -1209,7 +1210,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               }}
                               disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode}
                             >
-                              📍 {t('messages.exchange_position')}
+                              <UiIcon name="location" /> {t('messages.exchange_position')}
                               {positionLoading === selectedDMNode && <span className="spinner"></span>}
                             </button>
                             <button
@@ -1220,7 +1221,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               }}
                               disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode}
                             >
-                              🔑 {t('messages.exchange_node_info')}
+                              <UiIcon name="key" /> {t('messages.exchange_node_info')}
                               {nodeInfoLoading === selectedDMNode && <span className="spinner"></span>}
                             </button>
                             <button
@@ -1231,7 +1232,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               }}
                               disabled={connectionStatus !== 'connected' || telemetryRequestLoading === selectedDMNode}
                             >
-                              📊 {t('messages.request_telemetry')}
+                              <UiIcon name="telemetry" /> {t('messages.request_telemetry')}
                               {telemetryRequestLoading === selectedDMNode && <span className="spinner"></span>}
                             </button>
                           </>
@@ -1247,7 +1248,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               setShowActionsMenu(false);
                             }}
                           >
-                            📋 {t('nodes.copy_nodeinfo_title')}
+                            <UiIcon name="copy" /> {t('nodes.copy_nodeinfo_title')}
                           </button>
                         )}
 
@@ -1262,7 +1263,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             }}
                             disabled={connectionStatus !== 'connected' || adminScanLoading === selectedDMNode}
                           >
-                            🔍 {t('messages.scan_for_admin')}
+                            <UiIcon name="search" /> {t('messages.scan_for_admin')}
                             {adminScanLoading === selectedDMNode && <span className="spinner"></span>}
                           </button>
                         )}
@@ -1278,7 +1279,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 setShowActionsMenu(false);
                               }}
                             >
-                              {selectedNode.isFavorite ? `⭐ ${t('nodes.remove_favorite')}` : `☆ ${t('nodes.add_favorite')}`}
+                              <UiIcon name={selectedNode.isFavorite ? 'favorite' : 'favoriteOff'} /> {selectedNode.isFavorite ? t('nodes.remove_favorite') : t('nodes.add_favorite')}
                             </button>
                             <button
                               className="actions-menu-item"
@@ -1287,7 +1288,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 setShowActionsMenu(false);
                               }}
                             >
-                              {selectedNode.favoriteLocked ? `🔓 ${t('nodes.unlock_favorite', 'Remove Favorite Lock')}` : `🔒 ${t('nodes.lock_favorite', 'Set Favorite Lock')}`}
+                              <UiIcon name={selectedNode.favoriteLocked ? 'unlock' : 'encrypted'} /> {selectedNode.favoriteLocked ? t('nodes.unlock_favorite', 'Remove Favorite Lock') : t('nodes.lock_favorite', 'Set Favorite Lock')}
                             </button>
                             <button
                               className="actions-menu-item"
@@ -1296,7 +1297,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 setShowActionsMenu(false);
                               }}
                             >
-                              {selectedNode.isIgnored ? `👁️ ${t('messages.unignore_node')}` : `🚫 ${t('messages.ignore_node')}`}
+                              <UiIcon name={selectedNode.isIgnored ? 'unencrypted' : 'blocked'} /> {selectedNode.isIgnored ? t('messages.unignore_node') : t('messages.ignore_node')}
                             </button>
                           </>
                         )}
@@ -1316,7 +1317,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             {/* #4137: distinct icon/label from the hide/show toggle below
                                 ("Show on Map" is the un-hide label) so this pure pan action
                                 is never mistaken for the toggle. */}
-                            🎯 {t('messages.center_on_map', 'Center on Map')}
+                            <UiIcon name="target" /> {t('messages.center_on_map', 'Center on Map')}
                           </button>
                         )}
                         {hasPermission('nodes', 'write') && (
@@ -1327,7 +1328,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               setShowActionsMenu(false);
                             }}
                           >
-                            📍 {t('messages.override_position')}
+                            <UiIcon name="location" /> {t('messages.override_position')}
                           </button>
                         )}
                         {hasPermission('nodes', 'write') && selectedNode && (
@@ -1338,9 +1339,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               setShowActionsMenu(false);
                             }}
                           >
-                            {selectedNode.hideFromMap
-                              ? `🗺️ ${t('messages.unhide_from_map', 'Show on Map')}`
-                              : `🙈 ${t('messages.hide_from_map', 'Hide from Map')}`}
+                            <UiIcon name={selectedNode.hideFromMap ? 'map' : 'visibilityOff'} /> {selectedNode.hideFromMap
+                              ? t('messages.unhide_from_map', 'Show on Map')
+                              : t('messages.hide_from_map', 'Hide from Map')}
                           </button>
                         )}
 
@@ -1355,7 +1356,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 setShowActionsMenu(false);
                               }}
                             >
-                              🗑️ {t('messages.purge_data')}
+                              <UiIcon name="delete" /> {t('messages.purge_data')}
                             </button>
                           </>
                         )}
@@ -1379,7 +1380,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   textAlign: 'center',
                 }}
               >
-                {selectedNode.keyMismatchDetected ? '🔓' : '⚠️'} {selectedNode.keyMismatchDetected ? t('messages.key_mismatch') : t('messages.security_risk')}
+                <UiIcon name={selectedNode.keyMismatchDetected ? 'unlock' : 'alert'} /> {selectedNode.keyMismatchDetected ? t('messages.key_mismatch') : t('messages.security_risk')}
               </div>
             )}
 
@@ -1509,7 +1510,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       gap: '0.5rem',
                     }}
                   >
-                    <span>↓</span> {t('channels.jump_to_bottom', 'Jump to Bottom')}
+                    <UiIcon name="sortDescending" size={16} /> {t('channels.jump_to_bottom', 'Jump to Bottom')}
                   </button>
                 </div>
               )}
@@ -1631,7 +1632,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                   title={t('messages.reply_button_title')}
                                   aria-label={t('messages.reply_button_title')}
                                 >
-                                  ↩
+                                  <UiIcon name="reply" size={15} />
                                 </button>
                               )}
                               <button
@@ -1640,7 +1641,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 title={t('messages.emoji_button_title')}
                                 aria-label={t('messages.emoji_button_title')}
                               >
-                                😄
+                                <UiIcon name="reaction" size={15} />
                               </button>
                               <button
                                 className="delete-button"
@@ -1648,7 +1649,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 title={t('messages.delete_button_title')}
                                 aria-label={t('messages.delete_button_title')}
                               >
-                                🗑️
+                                <UiIcon name="delete" size={15} />
                               </button>
                             </div>
                           )}
@@ -1771,7 +1772,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       title="Send alert bell"
                       aria-label="Send alert bell"
                     >
-                      🔔
+                      <UiIcon name="notifications" size={16} />
                     </button>
                     <button
                       onClick={() => handleSendDirectMessage(selectedDMNode)}
@@ -1779,7 +1780,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       className="send-btn"
                       aria-label={t('common.send')}
                     >
-                      →
+                      <UiIcon name="send" size={16} />
                     </button>
                   </div>
                 )}
@@ -1978,7 +1979,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     fontSize: '0.9rem'
                   }}
                 >
-                  🎯 {t('messages.center_on_map', 'Center on Map')}
+                  <UiIcon name="target" /> {t('messages.center_on_map', 'Center on Map')}
                 </button>
               )}
 
@@ -2000,7 +2001,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       fontSize: '0.9rem'
                     }}
                   >
-                    {tracerouteLoading === selectedDMNode ? <span className="spinner"></span> : '📡'} {t('messages.traceroute_button')}
+                    {tracerouteLoading === selectedDMNode ? <span className="spinner"></span> : <UiIcon name="radioSignal" />} {t('messages.traceroute_button')}
                   </button>
                   {channels.length > 1 && (
                     <button
@@ -2086,7 +2087,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       fontSize: '0.9rem'
                     }}
                   >
-                    {nodeInfoLoading === selectedDMNode ? <span className="spinner"></span> : '🔑'} {t('messages.exchange_node_info')}
+                    {nodeInfoLoading === selectedDMNode ? <span className="spinner"></span> : <UiIcon name="key" />} {t('messages.exchange_node_info')}
                   </button>
                   {channels.length > 1 && (
                     <button
@@ -2172,7 +2173,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       fontSize: '0.9rem'
                     }}
                   >
-                    {positionLoading === selectedDMNode ? <span className="spinner"></span> : '📍'} {t('messages.exchange_position')}
+                    {positionLoading === selectedDMNode ? <span className="spinner"></span> : <UiIcon name="location" />} {t('messages.exchange_position')}
                   </button>
                   {channels.length > 1 && (
                     <button
@@ -2258,7 +2259,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     fontSize: '0.9rem'
                   }}
                 >
-                  {neighborInfoLoading === selectedDMNode ? <span className="spinner"></span> : '🏠'} {t('messages.request_neighbor_info')}
+                  {neighborInfoLoading === selectedDMNode ? <span className="spinner"></span> : <UiIcon name="home" />} {t('messages.request_neighbor_info')}
                 </button>
               )}
             </div>
@@ -2283,7 +2284,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               (selectedNode.keyIsLowEntropy || selectedNode.duplicateKeyDetected || selectedNode.keySecurityIssueDetails) && (
                 <div className="node-details-block" style={{ marginTop: '1rem' }}>
                   <h3 className="node-details-title" style={{ color: '#f44336' }}>
-                    ⚠️ {t('messages.security_issue_title')}
+                    <UiIcon name="alert" /> {t('messages.security_issue_title')}
                   </h3>
                   <div className="node-details-grid">
                     <div className="node-detail-card" style={{ gridColumn: '1 / -1', borderLeft: '4px solid #f44336' }}>

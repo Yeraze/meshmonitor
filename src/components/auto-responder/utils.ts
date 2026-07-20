@@ -1,13 +1,15 @@
+import type { UiIconName } from '../icons';
+
 /**
  * Gets file icon based on extension
  */
-export const getFileIcon = (filename: string): string => {
+export const getFileIcon = (filename: string): UiIconName => {
   const ext = filename.split('.').pop()?.toLowerCase();
   switch (ext) {
-    case 'py': return '🐍';
-    case 'js': case 'mjs': return '📘';
-    case 'sh': return '💻';
-    default: return '📄';
+    case 'sh': return 'terminal';
+    case 'py':
+    case 'js': case 'mjs': return 'code';
+    default: return 'fileCode';
   }
 };
 
@@ -371,4 +373,3 @@ export const getExampleValueForParam = (paramName: string, pattern?: string): st
   
   return 'example';
 };
-

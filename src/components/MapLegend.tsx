@@ -6,6 +6,7 @@ import { DraggableOverlay } from './DraggableOverlay';
 import { MESHCORE_CATEGORIES, NODE_TYPE_CATEGORY_META } from '../utils/nodeTypeCategory';
 import { roleGlyphMarkerSvg } from '../utils/mapIcons';
 import './MapLegend.css';
+import { UiIcon } from './icons';
 
 // Color for the node-type glyph swatches. Matches the MeshCore map's marker
 // accent (the only surface that currently opts into the node-type legend).
@@ -86,7 +87,7 @@ const MapLegend: React.FC<MapLegendProps> = ({ positionHistory, unmappedCount, s
             onMouseDown={(e) => e.stopPropagation()}
             title={isCollapsed ? 'Expand legend' : 'Collapse legend'}
           >
-            {isCollapsed ? '▼' : '▲'}
+            <UiIcon name={isCollapsed ? 'chevronDown' : 'chevronUp'} size={15} />
           </button>
         </div>
         {!isCollapsed && (

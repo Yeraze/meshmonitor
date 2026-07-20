@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import Modal from './common/Modal';
 import type { Waypoint, WaypointInput } from '../types/waypoint';
 import './WaypointEditorModal.css';
+import { UiIcon } from './icons';
 
 const DEFAULT_EMOJIS = ['📍', '🏠', '🏕️', '⛺', '🚗', '🛟', '⚠️', '⭐', '🚩', '🛠️'];
 
@@ -193,7 +194,7 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
             className="form-button form-button-secondary"
             onClick={onPickLocation}
           >
-            📍 Pick on map…
+            <UiIcon name="location" size={15} /> Pick on map…
           </button>
         )}
 

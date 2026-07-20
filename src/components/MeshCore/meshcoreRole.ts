@@ -1,6 +1,8 @@
+import type { UiIconName } from '../icons';
+
 /**
  * Shared MeshCore advert-type (role) presentation: the i18n label key and a
- * compact role icon. Used by the node list (map page) and the Direct Messages
+ * compact semantic role icon. Used by the node list (map page) and the Direct Messages
  * peer list so the role is shown consistently as an icon to the LEFT of the
  * node name (#3647).
  *
@@ -29,13 +31,13 @@ export const MESHCORE_DEVICE_TYPE_LABELS: Record<number, string> = {
  * for unknown/unset types so callers can skip rendering rather than showing a
  * meaningless glyph.
  */
-export function meshcoreRoleIcon(advType: number | null | undefined): string {
+export function meshcoreRoleIconName(advType: number | null | undefined): UiIconName | null {
   switch (advType) {
-    case 1: return '📱'; // Companion
-    case 2: return '📡'; // Repeater
-    case 3: return '🏠'; // Room Server
-    case 4: return '🌡️'; // Sensor
-    default: return '';   // Unknown / unset
+    case 1: return 'companion';
+    case 2: return 'repeater';
+    case 3: return 'home';
+    case 4: return 'sensor';
+    default: return null;
   }
 }
 

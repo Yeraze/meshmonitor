@@ -86,7 +86,7 @@ describe('RouteSegmentTraceroutesModal - Node Direction Display', () => {
    * - NOT: toNodeName → fromNodeName (which was the bug)
    */
   it('should display traceroute title in correct direction: fromNode → toNode', () => {
-    render(
+    const { container } = render(
       <RouteSegmentTraceroutesModal
         nodeNum1={100}
         nodeNum2={200}
@@ -99,8 +99,8 @@ describe('RouteSegmentTraceroutesModal - Node Direction Display', () => {
     // The traceroute title should show the direction correctly
     // fromNodeNum=100 (Local Node), toNodeNum=200 (Remote Node)
     // Title should display: "Local Node → Remote Node"
-    const titleText = screen.getByText(/Local Node → Remote Node/);
-    expect(titleText).toBeInTheDocument();
+    expect(container.textContent).toMatch(/Local Node.*Remote Node/);
+    expect(container.querySelector('[data-ui-icon="forward"]')).toBeInTheDocument();
   });
 
   /**
@@ -128,7 +128,7 @@ describe('RouteSegmentTraceroutesModal - Node Direction Display', () => {
    * Test that the segment label in the modal header is bidirectional (uses ↔)
    */
   it('should display segment label with bidirectional arrow', () => {
-    render(
+    const { container } = render(
       <RouteSegmentTraceroutesModal
         nodeNum1={100}
         nodeNum2={200}
@@ -139,14 +139,15 @@ describe('RouteSegmentTraceroutesModal - Node Direction Display', () => {
     );
 
     // The segment label shows bidirectional because segments work both ways
-    expect(screen.getByText(/Local Node ↔ Remote Node/)).toBeInTheDocument();
+    expect(container.textContent).toMatch(/Local Node.*Remote Node/);
+    expect(container.querySelector('[data-ui-icon="bidirectional"]')).toBeInTheDocument();
   });
 
   /**
    * Test with swapped node parameters to ensure consistency
    */
   it('should maintain correct direction regardless of nodeNum parameter order', () => {
-    const { rerender } = render(
+    const { rerender, container } = render(
       <RouteSegmentTraceroutesModal
         nodeNum1={100}
         nodeNum2={200}
@@ -157,7 +158,8 @@ describe('RouteSegmentTraceroutesModal - Node Direction Display', () => {
     );
 
     // First render: node1=100, node2=200
-    expect(screen.getByText(/Local Node → Remote Node/)).toBeInTheDocument();
+    expect(container.textContent).toMatch(/Local Node.*Remote Node/);
+    expect(container.querySelector('[data-ui-icon="forward"]')).toBeInTheDocument();
 
     // Rerender with swapped parameters
     rerender(
@@ -171,7 +173,8 @@ describe('RouteSegmentTraceroutesModal - Node Direction Display', () => {
     );
 
     // The traceroute direction should still be correct (based on traceroute data, not params)
-    expect(screen.getByText(/Local Node → Remote Node/)).toBeInTheDocument();
+    expect(container.textContent).toMatch(/Local Node.*Remote Node/);
+    expect(container.querySelector('[data-ui-icon="forward"]')).toBeInTheDocument();
   });
 
   /**

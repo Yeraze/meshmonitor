@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ConnectionStatus, MeshCoreActions, SavedRegion } from './hooks/useMeshCore';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
+import { UiIcon } from '../icons';
 
 // MeshCoreDeviceType.COMPANION — active discovery is companion-only.
 const DEVICE_TYPE_COMPANION = 1;
@@ -378,7 +379,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
                           cursor: isSaved ? 'default' : 'pointer', opacity: isSaved ? 0.5 : 1,
                         }}
                       >
-                        {isSaved ? '✓' : '＋'}
+                        <UiIcon name={isSaved ? 'check' : 'plus'} size={14} />
                       </button>
                     </span>
                   );
@@ -441,7 +442,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
                   aria-label={t('meshcore.regions.delete', 'Delete "{{name}}"', { name: region.name })}
                   style={{ padding: '0 0.2rem', border: 'none', background: 'transparent', cursor: 'pointer' }}
                 >
-                  ✕
+                  <UiIcon name="close" size={14} />
                 </button>
               </span>
             ))}
@@ -486,7 +487,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
             onClick={() => void handlePurgeAllMessages()}
             disabled={purgingMessages}
           >
-            🗑️ {purgingMessages
+            <UiIcon name="delete" size={15} /> {purgingMessages
               ? t('meshcore.settings.purging', 'Purging…')
               : t('meshcore.settings.purge_all_messages', 'Purge all messages')}
           </button>

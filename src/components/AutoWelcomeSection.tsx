@@ -6,6 +6,7 @@ import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSaveBar } from '../hooks/useSaveBar';
+import { UiIcon } from './icons';
 
 interface AutoWelcomeSectionProps {
   enabled: boolean;
@@ -237,7 +238,7 @@ const AutoWelcomeSection: React.FC<AutoWelcomeSectionProps> = ({
             }}
             title={t('automation.view_docs')}
           >
-            ❓
+            <UiIcon name="help" size={18} />
           </a>
         </h2>
         <div className="automation-button-container" style={{ display: 'flex', gap: '0.75rem' }}>

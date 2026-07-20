@@ -6,6 +6,9 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { NodeCard } from './NodeCard';
 import type { NodeCardModel } from './nodeCardModel';
 
+vi.mock('../../../contexts/SettingsContext', () => ({
+}));
+
 // Always resolve to the key itself (ignoring any string/object default) so
 // assertions are deterministic regardless of English copy.
 vi.mock('react-i18next', () => ({

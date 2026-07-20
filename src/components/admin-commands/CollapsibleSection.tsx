@@ -1,4 +1,5 @@
 import React from 'react';
+import { UiIcon } from '../icons';
 
 interface CollapsibleSectionProps {
   id: string;
@@ -53,7 +54,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
           <span style={{ fontSize: '0.875rem', transition: 'transform 0.2s', transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
-            ▶
+            <UiIcon name="forward" size={15} />
           </span>
           <h3 style={{ margin: 0, fontSize: nested ? '0.95rem' : '1rem', fontWeight: nested ? 500 : 600, color: 'var(--ctp-text)' }}>
             {title}
@@ -77,4 +78,3 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
 };
 
 export default CollapsibleSection;
-

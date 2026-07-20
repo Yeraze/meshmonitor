@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { useSource } from '../../contexts/SourceContext';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import apiService from '../../services/api';
+import { UiIcon } from '../icons';
 
 interface PkiDmStatus {
   enabled: boolean;
@@ -75,7 +76,7 @@ const PkiDmDecryptionSection: React.FC = () => {
 
   return (
     <div className="config-section" id="config-pki-dm">
-      <h3>{t('config.pki_dm.title', '🔓 PKI Direct Message Decryption')}</h3>
+      <h3><UiIcon name="unlock" /> {t('config.pki_dm.title', 'PKI Direct Message Decryption')}</h3>
       <p className="config-description">
         {t(
           'config.pki_dm.description',
@@ -85,7 +86,7 @@ const PkiDmDecryptionSection: React.FC = () => {
 
       {!status.globallyEnabled && (
         <div className="config-warning" role="alert">
-          {t('config.pki_dm.globally_disabled', 'PKI direct message decryption is turned off globally. Enable it under Settings → Security before turning it on per source.')}
+          {t('config.pki_dm.globally_disabled', 'PKI direct message decryption is turned off globally. Enable it under the Security section in Settings before turning it on per source.')}
         </div>
       )}
 
@@ -106,10 +107,11 @@ const PkiDmDecryptionSection: React.FC = () => {
       </label>
 
       <div className="config-pki-dm__state">
+        {status.enabled && <UiIcon name={status.keyStored ? 'check' : 'time'} />}{' '}
         {status.enabled
           ? status.keyStored
-            ? t('config.pki_dm.key_stored', '✓ Private key stored — DMs to this node will be decrypted.')
-            : t('config.pki_dm.key_pending', '⏳ Enabled — the key will be extracted the next time this source connects.')
+            ? t('config.pki_dm.key_stored', 'Private key stored — DMs to this node will be decrypted.')
+            : t('config.pki_dm.key_pending', 'Enabled — the key will be extracted the next time this source connects.')
           : t('config.pki_dm.disabled', 'Disabled — PKI DMs to this node are not decrypted server-side.')}
       </div>
 

@@ -120,7 +120,8 @@ describe('TracerouteHistoryModal - Node Direction Display', () => {
 
     // Check for the correct order - both node names and translation keys should be present
     const headerText = screen.getByText(/Local Node/).closest('div');
-    expect(headerText?.textContent).toMatch(/traceroute_history\.from.*Local Node.*→.*traceroute_history\.to.*Remote Node/);
+    expect(headerText?.textContent).toMatch(/traceroute_history\.from.*Local Node.*traceroute_history\.to.*Remote Node/);
+    expect(headerText?.querySelector('[data-ui-icon="forward"]')).toBeInTheDocument();
   });
 
   /**

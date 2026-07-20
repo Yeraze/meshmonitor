@@ -6,6 +6,7 @@ import { DeviceInfo } from '../types/device';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatNodeName, formatTracerouteRoute } from '../utils/traceroute';
 import Modal from './common/Modal';
+import { UiIcon } from './icons';
 
 interface RouteSegmentTraceroutesModalProps {
   nodeNum1: number;
@@ -80,7 +81,7 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
     >
       <div style={{ overflowY: 'auto', maxHeight: 'calc(80vh - 100px)' }}>
         <div style={{ marginBottom: '1.5rem' }}>
-          <strong>{t('route_segment.segment')}:</strong> {node1Name} ↔ {node2Name}
+          <strong>{t('route_segment.segment')}:</strong> {node1Name} <UiIcon name="bidirectional" size={14} /> {node2Name}
         </div>
 
         {relevantTraceroutes.length === 0 && (
@@ -123,7 +124,7 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
                     <div>
                       <strong>#{relevantTraceroutes.length - index}</strong>{' '}
                       <span style={{ color: 'var(--ctp-subtext0)' }}>
-                        {fromName} → {toName}
+                        {fromName} <UiIcon name="forward" size={14} /> {toName}
                       </span>
                       <span style={{ marginLeft: '1rem', color: 'var(--ctp-subtext0)' }}>
                         {formatDateTime(new Date(tr.timestamp || tr.createdAt || Date.now()), timeFormat, dateFormat)}
@@ -135,7 +136,7 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
                   </div>
 
                   <div style={{ marginBottom: '0.5rem' }}>
-                    <strong style={{ color: 'var(--ctp-green)' }}>→ {t('traceroute_history.forward')}:</strong>{' '}
+                    <strong style={{ color: 'var(--ctp-green)' }}><UiIcon name="forward" size={14} /> {t('traceroute_history.forward')}:</strong>{' '}
                     <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
                       {formatTracerouteRoute(
                         tr.route,
@@ -154,7 +155,7 @@ const RouteSegmentTraceroutesModal: React.FC<RouteSegmentTraceroutesModalProps> 
                   </div>
 
                   <div>
-                    <strong style={{ color: 'var(--ctp-yellow)' }}>← {t('traceroute_history.return')}:</strong>{' '}
+                    <strong style={{ color: 'var(--ctp-yellow)' }}><UiIcon name="back" size={14} /> {t('traceroute_history.return')}:</strong>{' '}
                     <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
                       {formatTracerouteRoute(
                         tr.routeBack,

@@ -1,54 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Map, MessageSquare, Mail, Search, Info, LayoutDashboard, Radio, Activity,
-  Settings, Bot, Satellite, Bell, Users, Zap, ClipboardList, Shield,
-} from 'lucide-react';
 import './Sidebar.css';
 import { TabType } from '../types/ui';
 import { ResourceType } from '../types/permission';
-import { useSettings } from '../contexts/SettingsContext';
 import packageJson from '../../package.json';
-
-/** Emoji fallbacks for each navigation icon */
-const EMOJI_ICONS: Record<string, string> = {
-  nodes: '🗺️',
-  channels: '💬',
-  messages: '📧',
-  search: '🔍',
-  info: 'ℹ️',
-  dashboard: '📊',
-  meshcore: '📻',
-  packetmonitor: '📈',
-  settings: '⚙️',
-  automation: '🤖',
-  configuration: '📡',
-  notifications: '🔔',
-  users: '👥',
-  admin: '⚡',
-  audit: '📋',
-  security: '🛡️',
-};
-
-/** Lucide icon components for each navigation icon */
-const LUCIDE_ICONS: Record<string, React.ReactNode> = {
-  nodes: <Map size={20} />,
-  channels: <MessageSquare size={20} />,
-  messages: <Mail size={20} />,
-  search: <Search size={20} />,
-  info: <Info size={20} />,
-  dashboard: <LayoutDashboard size={20} />,
-  meshcore: <Radio size={20} />,
-  packetmonitor: <Activity size={20} />,
-  settings: <Settings size={20} />,
-  automation: <Bot size={20} />,
-  configuration: <Satellite size={20} />,
-  notifications: <Bell size={20} />,
-  users: <Users size={20} />,
-  admin: <Zap size={20} />,
-  audit: <ClipboardList size={20} />,
-  security: <Shield size={20} />,
-};
+import { BrandIcon, UiIcon, type UiIconName } from './icons';
 
 interface UnreadCountsData {
   channels?: {[channelId: number]: number};
@@ -103,14 +59,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   mqttReadOnly = false,
 }) => {
   const { t } = useTranslation();
-  const { iconStyle } = useSettings();
-
-  const icon = useMemo(() => {
-    const useEmoji = iconStyle === 'emoji';
-    return (name: string) => useEmoji
-      ? <span style={{ fontSize: '1.2rem' }}>{EMOJI_ICONS[name] || '❓'}</span>
-      : (LUCIDE_ICONS[name] || null);
-  }, [iconStyle]);
+  const icon = (name: UiIconName) => <UiIcon name={name} size={20} />;
 
   // Pin state persisted to localStorage - when pinned, sidebar won't auto-collapse on nav click
   const [isPinned, setIsPinned] = useState(() => {
@@ -243,7 +192,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <NavItem
               id="messages"
               label={t('nav.messages')}
-              icon={icon('messages')}
+              icon={icon('directMessages')}
               onClick={onMessagesClick}
               showNotification={
                 unreadCountsData?.directMessages
@@ -272,7 +221,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <NavItem id="dashboard" label={t('nav.dashboard')} icon={icon('dashboard')} />
           )}
           {packetLogEnabled && hasPermission('packetmonitor', 'read') && (
-            <NavItem id="packetmonitor" label={t('nav.packet_monitor', 'Packet Monitor')} icon={icon('packetmonitor')} />
+            <NavItem id="packetmonitor" label={t('nav.packet_monitor', 'Packet Monitor')} icon={icon('activity')} />
           )}
         </div>
 
@@ -282,7 +231,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <NavItem id="settings" label={t('nav.settings')} icon={icon('settings')} />
           )}
           {!mqttReadOnly && hasPermission('automation', 'read') && (
-            <NavItem id="automation" label={t('nav.automation')} icon={icon('automation')} />
+            <NavItem id="automation" label={t('nav.automation')} icon={icon('bot')} />
           )}
           {!mqttReadOnly && hasPermission('configuration', 'read') && (
             <NavItem id="configuration" label={t('nav.device')} icon={icon('configuration')} />
@@ -305,12 +254,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <>
                   <NavItem id="users" label={t('nav.users')} icon={icon('users')} />
                   {!mqttReadOnly && (
-                    <NavItem id="admin" label={t('nav.admin_commands')} icon={icon('admin')} />
+                    <NavItem id="admin" label={t('nav.admin_commands')} icon={icon('zap')} />
                   )}
                 </>
               )}
               {hasPermission('audit', 'read') && (
-                <NavItem id="audit" label={t('nav.audit_log')} icon={icon('audit')} />
+                <NavItem id="audit" label={t('nav.audit_log')} icon={icon('reports')} />
               )}
               {hasPermission('security', 'read') && (
                 <NavItem id="security" label={t('nav.security')} icon={icon('security')} />
@@ -329,9 +278,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               onClick={onNewsClick}
               title={t('news.view_news')}
             >
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
-              </svg>
+              <UiIcon name="news" size={20} />
             </button>
             <a
               href="https://github.com/Yeraze/meshmonitor"
@@ -340,9 +287,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               className="github-link"
               title={t('common.view_on_github')}
             >
-              <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor">
-                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
-              </svg>
+              <BrandIcon brand="github" size={20} />
             </a>
           </>
         )}
@@ -353,9 +298,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               onClick={onNewsClick}
               title={t('news.view_news')}
             >
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
-              </svg>
+              <UiIcon name="news" size={20} />
             </button>
             <a
               href="https://github.com/Yeraze/meshmonitor"
@@ -364,9 +307,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               className="github-link"
               title={t('common.view_on_github')}
             >
-              <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor">
-                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
-              </svg>
+              <BrandIcon brand="github" size={20} />
             </a>
           </>
         )}
@@ -379,7 +320,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             onClick={togglePin}
             title={isPinned ? t('nav.unpin_sidebar') : t('nav.pin_sidebar')}
           >
-            📌
+            <UiIcon name="pin" size={18} />
           </button>
         )}
         <button
@@ -387,7 +328,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           onClick={() => setIsCollapsed(!isCollapsed)}
           title={isCollapsed ? t('nav.expand_sidebar') : t('nav.collapse_sidebar')}
         >
-          {isCollapsed ? '▶' : '◀'}
+          <UiIcon name={isCollapsed ? 'forward' : 'back'} size={18} />
         </button>
       </div>
     </aside>

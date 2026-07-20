@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { DeviceRole, isRelayRole } from '../constants';
 import './RelayNodeModal.css';
+import { UiIcon } from './icons';
 
 interface Node {
   nodeNum: number;
@@ -177,13 +178,13 @@ const RelayNodeModal: React.FC<RelayNodeModalProps> = ({
                       <span className="node-name">
                         {node.heardDirectly && (
                           <span className="direct-indicator" title={t('relay_modal.heard_directly')}>
-                            ✓
+                            <UiIcon name="check" size={14} />
                           </span>
                         )}
                         {node.longName} ({node.shortName})
                         {isRelayRole(node.role) && (
                           <span className="relay-indicator" title={t('relay_modal.likely_relay')}>
-                            📡
+                            <UiIcon name="repeater" size={14} />
                           </span>
                         )}
                       </span>

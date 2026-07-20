@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { ROLE_OPTIONS, TIMEZONE_PRESETS, REBROADCAST_MODE_OPTIONS, BUZZER_MODE_OPTIONS } from './constants';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
@@ -186,7 +187,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
           }}
           title={t('device_config.view_docs')}
         >
-          ❓
+          <UiIcon name="help" />
         </a>
       </h3>
       <div className="setting-item">
@@ -229,7 +230,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
                 {ROLE_OPTIONS.find(opt => opt.value === role)?.description || ''}
               </div>
             </div>
-            <span style={{ fontSize: '1.2em', marginLeft: '1rem', flexShrink: 0 }}>{isRoleDropdownOpen ? '▲' : '▼'}</span>
+            <span style={{ fontSize: '1.2em', marginLeft: '1rem', flexShrink: 0 }}><UiIcon name={isRoleDropdownOpen ? 'chevronUp' : 'chevronDown'} /></span>
           </div>
           {isRoleDropdownOpen && (
             <div
@@ -331,7 +332,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
                 </div>
               )}
             </div>
-            <span style={{ fontSize: '1.2em', marginLeft: '1rem', flexShrink: 0 }}>{isTimezoneDropdownOpen ? '▲' : '▼'}</span>
+            <span style={{ fontSize: '1.2em', marginLeft: '1rem', flexShrink: 0 }}><UiIcon name={isTimezoneDropdownOpen ? 'chevronUp' : 'chevronDown'} /></span>
           </div>
           {isTimezoneDropdownOpen && (
             <div
@@ -510,7 +511,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
               fontSize: '0.9rem'
             }}
           >
-            <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>⚠️</span>
+            <span style={{ fontSize: '1.1rem', lineHeight: 1 }}><UiIcon name="alert" /></span>
             <span>
               {t('device_config.rebroadcast_warning',
                 'This mode may prevent the Channel Database from decrypting packets from distant nodes, as encrypted packets won\'t be forwarded to MeshMonitor for analysis.'
@@ -609,7 +610,7 @@ const DeviceConfigSection: React.FC<DeviceConfigSectionProps> = ({
             gap: '0.5rem'
           }}
         >
-          <span>{showAdvanced ? '▼' : '▶'}</span>
+          <span><UiIcon name={showAdvanced ? 'chevronDown' : 'forward'} /></span>
           {t('device_config.advanced_settings')}
         </button>
       </div>

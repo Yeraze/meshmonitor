@@ -1,30 +1,29 @@
 import React, { useState } from 'react';
 import { ScriptMetadata } from './types';
 import ScriptDependenciesPanel from './ScriptDependenciesPanel';
+import { UiIcon, type UiIconName } from '../icons';
 
 /**
- * Get language emoji for display
+ * Get the semantic language icon for display.
  */
-const getLanguageEmoji = (language: string): string => {
+const getLanguageIcon = (language: string): UiIconName => {
   switch (language.toLowerCase()) {
-    case 'python': return '🐍';
-    case 'javascript': return '📘';
-    case 'shell': return '💻';
-    default: return '📄';
+    case 'shell': return 'terminal';
+    case 'python':
+    case 'javascript': return 'code';
+    default: return 'fileCode';
   }
 };
 
 /**
  * Format script for list display
- * Returns: "emoji name | filename | language" or "langEmoji filename" if no metadata
+ * Script-authored emoji is content and remains visible when supplied.
  */
 const formatScriptListDisplay = (script: ScriptMetadata): string => {
-  const langEmoji = getLanguageEmoji(script.language);
   if (script.name) {
-    const emoji = script.emoji || langEmoji;
-    return `${emoji} ${script.name} | ${script.filename} | ${script.language}`;
+    return `${script.emoji ? `${script.emoji} ` : ''}${script.name} | ${script.filename} | ${script.language}`;
   }
-  return `${langEmoji} ${script.filename}`;
+  return script.filename;
 };
 
 interface ScriptManagementProps {
@@ -75,8 +74,8 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
           color: 'var(--ctp-blue)'
         }}
       >
-        <span>📜 Script Management</span>
-        <span style={{ fontSize: '1.2rem' }}>{showScriptManagement ? '▼' : '▶'}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}><UiIcon name="list" size={16} /> Script Management</span>
+        <UiIcon name={showScriptManagement ? 'chevronDown' : 'forward'} size={18} />
       </button>
 
       {showScriptManagement && (
@@ -102,7 +101,7 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                 fontWeight: 'bold'
               }}
             >
-              {isImporting ? 'Importing...' : '📥 Import Script'}
+              {isImporting ? 'Importing...' : <><UiIcon name="import" size={15} /> Import Script</>}
             </button>
             <button
               onClick={onExportClick}
@@ -118,7 +117,7 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                 fontWeight: 'bold'
               }}
             >
-              {isExporting ? 'Exporting...' : '📤 Export Scripts'}
+              {isExporting ? 'Exporting...' : <><UiIcon name="upload" size={15} /> Export Scripts</>}
             </button>
             {availableScripts.length > 0 && (
               <>
@@ -207,6 +206,7 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                       style={{ cursor: 'pointer' }}
                     />
                     <span style={{ flex: '1', fontSize: '0.9rem' }}>
+                      {!script.emoji && <UiIcon name={getLanguageIcon(script.language)} size={15} style={{ marginRight: '0.35rem' }} />}
                       {formatScriptListDisplay(script)}
                     </span>
                     <button
@@ -223,7 +223,7 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
                         fontWeight: 'bold'
                       }}
                     >
-                      {isDeleting === script.filename ? 'Deleting...' : '🗑️ Delete'}
+                      {isDeleting === script.filename ? 'Deleting...' : <><UiIcon name="delete" size={14} /> Delete</>}
                     </button>
                   </div>
                 );
@@ -238,4 +238,3 @@ const ScriptManagement: React.FC<ScriptManagementProps> = ({
 };
 
 export default ScriptManagement;
-

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import apiService from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { ROLE_NAMES, DeviceRole } from '../../constants/index';
+import { UiIcon, type UiIconName } from '../icons';
 
 /**
  * Automated Remote Favorites Management (issue #2608).
@@ -172,14 +173,14 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
     if (!status) return null;
     let color: string;
     let label: string;
-    let icon: string;
-    if (status === 'confirmed') { color = 'var(--ctp-green)'; icon = '✓'; label = t('auto_favorite.ack_confirmed', 'confirmed'); }
-    else if (status === 'timeout') { color = 'var(--ctp-yellow)'; icon = '⏱'; label = t('auto_favorite.ack_timeout', 'no ack'); }
-    else { color = 'var(--ctp-red)'; icon = '✕'; label = status; }
+    let icon: UiIconName;
+    if (status === 'confirmed') { color = 'var(--ctp-green)'; icon = 'check'; label = t('auto_favorite.ack_confirmed', 'confirmed'); }
+    else if (status === 'timeout') { color = 'var(--ctp-yellow)'; icon = 'timer'; label = t('auto_favorite.ack_timeout', 'no ack'); }
+    else { color = 'var(--ctp-red)'; icon = 'error'; label = status; }
     return (
       <span title={t('auto_favorite.ack_tooltip', 'Result of the last favorite command’s routing ACK')}
         style={{ color, fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
-        {icon} {label}
+        <UiIcon name={icon} size={13} /> {label}
       </span>
     );
   };
@@ -225,7 +226,7 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
 
   return (
     <div id="admin-auto-favorites" className="settings-section">
-      <h3>⭐ {t('auto_favorite.title', 'Automatic Favorites Management')}</h3>
+      <h3><UiIcon name="favorite" /> {t('auto_favorite.title', 'Automatic Favorites Management')}</h3>
 
       <p style={{ color: 'var(--ctp-subtext0)', marginBottom: '0.75rem' }}>
         {t('auto_favorite.description',
@@ -242,7 +243,7 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
         fontSize: '0.9rem',
         lineHeight: 1.5,
       }}>
-        <strong>⚠️ {t('auto_favorite.caveats_title', 'Before you enable this')}</strong>
+        <strong><UiIcon name="alert" /> {t('auto_favorite.caveats_title', 'Before you enable this')}</strong>
         <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem' }}>
           <li>
             {t('auto_favorite.caveat_ack',
@@ -385,7 +386,7 @@ const AutoFavoriteManagementSection: React.FC<AutoFavoriteManagementSectionProps
               style={{ opacity: isRunning ? 0.6 : 1 }}
               title={t('auto_favorite.run_now_title', 'Run one cycle immediately (sends packets over the mesh)')}
             >
-              {isRunning ? t('auto_favorite.running', 'Running…') : `▶️ ${t('auto_favorite.run_now', 'Run Cycle Now')}`}
+              {isRunning ? t('auto_favorite.running', 'Running…') : <><UiIcon name="play" /> {t('auto_favorite.run_now', 'Run Cycle Now')}</>}
             </button>
           </div>
         </>

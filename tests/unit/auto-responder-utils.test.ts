@@ -170,33 +170,32 @@ describe('formatTriggerPatterns', () => {
 });
 
 describe('getFileIcon', () => {
-  it('should return Python icon for .py files', () => {
-    expect(getFileIcon('script.py')).toBe('🐍');
-    expect(getFileIcon('weather.py')).toBe('🐍');
-    expect(getFileIcon('path/to/script.py')).toBe('🐍');
+  it('should return the code icon name for .py files', () => {
+    expect(getFileIcon('script.py')).toBe('code');
+    expect(getFileIcon('weather.py')).toBe('code');
+    expect(getFileIcon('path/to/script.py')).toBe('code');
   });
 
-  it('should return JavaScript icon for .js files', () => {
-    expect(getFileIcon('script.js')).toBe('📘');
-    expect(getFileIcon('weather.mjs')).toBe('📘');
-    expect(getFileIcon('path/to/script.js')).toBe('📘');
+  it('should return the code icon name for .js files', () => {
+    expect(getFileIcon('script.js')).toBe('code');
+    expect(getFileIcon('weather.mjs')).toBe('code');
+    expect(getFileIcon('path/to/script.js')).toBe('code');
   });
 
-  it('should return shell icon for .sh files', () => {
-    expect(getFileIcon('script.sh')).toBe('💻');
-    expect(getFileIcon('weather.sh')).toBe('💻');
+  it('should return the terminal icon name for .sh files', () => {
+    expect(getFileIcon('script.sh')).toBe('terminal');
+    expect(getFileIcon('weather.sh')).toBe('terminal');
   });
 
-  it('should return default icon for unknown extensions', () => {
-    expect(getFileIcon('script.txt')).toBe('📄');
-    expect(getFileIcon('script')).toBe('📄');
-    expect(getFileIcon('script.unknown')).toBe('📄');
+  it('should return the file-code icon name for unknown extensions', () => {
+    expect(getFileIcon('script.txt')).toBe('fileCode');
+    expect(getFileIcon('script')).toBe('fileCode');
+    expect(getFileIcon('script.unknown')).toBe('fileCode');
   });
 
   it('should handle case-insensitive extensions', () => {
-    expect(getFileIcon('script.PY')).toBe('🐍');
-    expect(getFileIcon('script.JS')).toBe('📘');
-    expect(getFileIcon('script.SH')).toBe('💻');
+    expect(getFileIcon('script.PY')).toBe('code');
+    expect(getFileIcon('script.JS')).toBe('code');
+    expect(getFileIcon('script.SH')).toBe('terminal');
   });
 });
-

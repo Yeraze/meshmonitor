@@ -17,7 +17,6 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('../contexts/SettingsContext', () => ({
-  useSettings: () => ({ iconStyle: 'lucide' }),
 }));
 
 const baseProps = {

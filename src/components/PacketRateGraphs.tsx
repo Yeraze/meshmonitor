@@ -16,6 +16,7 @@ import { formatChartAxisTimestamp } from '../utils/datetime';
 import { useFavorites, useToggleFavorite } from '../hooks/useFavorites';
 import { useToast } from './ToastContainer';
 import { useSource } from '../contexts/SourceContext';
+import { UiIcon } from './icons';
 
 // Telemetry type constants for favorites
 export const PACKET_RATE_RX_TYPE = 'packetRateRx';
@@ -246,7 +247,7 @@ const PacketRateGraphs: React.FC<PacketRateGraphsProps> = React.memo(
                 onClick={createToggleFavorite(telemetryType)}
                 aria-label={isFavorited ? t('telemetry.remove_favorite') : t('telemetry.add_favorite')}
               >
-                {isFavorited ? '★' : '☆'}
+                <UiIcon name={isFavorited ? 'favorite' : 'favoriteOff'} size={15} />
               </button>
             </div>
           </div>

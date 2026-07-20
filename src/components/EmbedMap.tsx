@@ -12,6 +12,7 @@ import { BaseMap } from './map/BaseMap';
 import { TraceroutePathsLayer } from './map/layers/TraceroutePathsLayer';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
 import type { TracerouteRenderSegment } from '../utils/tracerouteSegments';
+import { UiIcon } from './icons';
 
 interface EmbedConfig {
   id: string;
@@ -314,20 +315,20 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
           <div className="embed-popup-header">Traceroute Segment</div>
           <div className="embed-popup-grid">
             <div className="embed-popup-item embed-popup-item-full">
-              <span className="embed-popup-icon">📡</span>
+              <span className="embed-popup-icon"><UiIcon name="route" size={16} /></span>
               <span className="embed-popup-value">
                 {wire ? `${wire.fromName} ↔ ${wire.toName}` : `Node ${seg.fromNodeNum} ↔ Node ${seg.toNodeNum}`}
               </span>
             </div>
             {seg.avgSnr != null && (
               <div className="embed-popup-item">
-                <span className="embed-popup-icon">📶</span>
+                <span className="embed-popup-icon"><UiIcon name="wifi" size={16} /></span>
                 <span className="embed-popup-value">{seg.avgSnr.toFixed(1)} dB</span>
               </div>
             )}
             {seg.isMqtt && (
               <div className="embed-popup-item embed-popup-item-full">
-                <span className="embed-popup-icon">🌐</span>
+                <span className="embed-popup-icon"><UiIcon name="network" size={16} /></span>
                 <span className="embed-popup-value">via MQTT</span>
               </div>
             )}
@@ -357,12 +358,12 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
             <div className="embed-popup-header">Neighbor Connection</div>
             <div className="embed-popup-grid">
               <div className="embed-popup-item embed-popup-item-full">
-                <span className="embed-popup-icon">🔗</span>
+                <span className="embed-popup-icon"><UiIcon name="link" size={16} /></span>
                 <span className="embed-popup-value">{seg.nodeName} &harr; {seg.neighborName}</span>
               </div>
               {seg.snr != null && (
                 <div className="embed-popup-item">
-                  <span className="embed-popup-icon">📶</span>
+                  <span className="embed-popup-icon"><UiIcon name="wifi" size={16} /></span>
                   <span className="embed-popup-value">{seg.snr} dB</span>
                 </div>
               )}
@@ -490,7 +491,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
                       {/* Node ID */}
                       {node.nodeId && (
                         <div className="embed-popup-item">
-                          <span className="embed-popup-icon">🆔</span>
+                          <span className="embed-popup-icon"><UiIcon name="identity" size={16} /></span>
                           <span className="embed-popup-value">{node.nodeId}</span>
                         </div>
                       )}
@@ -498,7 +499,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
                       {/* Role */}
                       {roleName && (
                         <div className="embed-popup-item">
-                          <span className="embed-popup-icon">👤</span>
+                          <span className="embed-popup-icon"><UiIcon name="user" size={16} /></span>
                           <span className="embed-popup-value">{roleName}</span>
                         </div>
                       )}
@@ -506,7 +507,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
                       {/* Hardware model - full width */}
                       {hwModelName && (
                         <div className="embed-popup-item embed-popup-item-full">
-                          <span className="embed-popup-icon">🖥️</span>
+                          <span className="embed-popup-icon"><UiIcon name="monitor" size={16} /></span>
                           <span className="embed-popup-value">{hwModelName}</span>
                         </div>
                       )}
@@ -514,7 +515,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
                       {/* Hops */}
                       {hops < 999 && (
                         <div className="embed-popup-item">
-                          <span className="embed-popup-icon">🔗</span>
+                          <span className="embed-popup-icon"><UiIcon name="link" size={16} /></span>
                           <span className="embed-popup-value">{hops} hop{hops !== 1 ? 's' : ''}</span>
                         </div>
                       )}
@@ -522,7 +523,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
                       {/* Altitude */}
                       {node.position?.altitude != null && (
                         <div className="embed-popup-item">
-                          <span className="embed-popup-icon">⛰️</span>
+                          <span className="embed-popup-icon"><UiIcon name="altitude" size={16} /></span>
                           <span className="embed-popup-value">{node.position.altitude}m</span>
                         </div>
                       )}
@@ -530,7 +531,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
                       {/* SNR */}
                       {node.snr != null && (
                         <div className="embed-popup-item">
-                          <span className="embed-popup-icon">📶</span>
+                          <span className="embed-popup-icon"><UiIcon name="wifi" size={16} /></span>
                           <span className="embed-popup-value">{node.snr} dB</span>
                         </div>
                       )}
@@ -538,7 +539,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
                       {/* Channel */}
                       {node.channel != null && (
                         <div className="embed-popup-item">
-                          <span className="embed-popup-icon">📻</span>
+                          <span className="embed-popup-icon"><UiIcon name="radio" size={16} /></span>
                           <span className="embed-popup-value">Ch {node.channel}</span>
                         </div>
                       )}
@@ -546,7 +547,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
 
                     {/* Footer: last heard */}
                     <div className="embed-popup-footer">
-                      <span className="embed-popup-icon">🕐</span>
+                      <span className="embed-popup-icon"><UiIcon name="time" size={16} /></span>
                       <span>{formatTimestamp(node.lastHeard)}</span>
                       <span className="embed-popup-ago">({formatLastHeard(node.lastHeard)})</span>
                     </div>

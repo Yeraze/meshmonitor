@@ -6,6 +6,7 @@ import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatDateTime } from '../utils/datetime';
+import { UiIcon } from './icons';
 
 interface RemoteAdminScannerSectionProps {
   baseUrl: string;
@@ -466,14 +467,14 @@ const RemoteAdminScannerSection: React.FC<RemoteAdminScannerSectionProps> = ({
                               color: 'var(--ctp-green)',
                               fontSize: '14px'
                             }} title={t('automation.remote_admin_scanner.status_has_admin')}>
-                              ✓
+                              <UiIcon name="check" size={14} />
                             </span>
                           ) : (
                             <span style={{
                               color: 'var(--ctp-red)',
                               fontSize: '14px'
                             }} title={t('automation.remote_admin_scanner.status_no_admin')}>
-                              ✗
+                              <UiIcon name="close" size={14} />
                             </span>
                           )}
                         </td>

@@ -14,7 +14,7 @@
     "start": "node dist/server/server.js",
     "preview": "vite preview",
     "lint": "eslint .",
-    "lint:ci": "node scripts/lint-ratchet.mjs",
+    "lint:ci": "node --test scripts/eslint-rules/no-hardcoded-ui-glyph.node-test.mjs && node scripts/check-ui-locale-glyphs.mjs && node scripts/lint-ratchet.mjs",
     "lint:baseline": "node scripts/lint-ratchet.mjs --update",
     "typecheck": "tsc --noEmit",
     "typecheck:tests": "tsc -p tsconfig.tests.json --noEmit",

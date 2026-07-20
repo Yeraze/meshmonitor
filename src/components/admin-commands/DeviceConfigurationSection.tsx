@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { ROLE_OPTIONS, REBROADCAST_MODE_OPTIONS, BUZZER_MODE_OPTIONS, TIMEZONE_PRESETS } from '../configuration/constants';
 
 interface DeviceConfigurationSectionProps {
@@ -303,7 +304,7 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
                   {ROLE_OPTIONS.find(opt => opt.value === deviceRole)?.description || ''}
                 </div>
               </div>
-              <span style={{ fontSize: '1.2em', marginLeft: '1rem', flexShrink: 0 }}>{isRoleDropdownOpen ? '▲' : '▼'}</span>
+              <span style={{ fontSize: '1.2em', marginLeft: '1rem', flexShrink: 0 }}><UiIcon name={isRoleDropdownOpen ? 'chevronUp' : 'chevronDown'} /></span>
             </div>
             {isRoleDropdownOpen && (
               <div
@@ -379,7 +380,7 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
                 maxWidth: '800px',
               }}
             >
-              <span aria-hidden="true" style={{ fontSize: '1.1em', flexShrink: 0 }}>⚠️</span>
+              <span aria-hidden="true" style={{ fontSize: '1.1em', flexShrink: 0 }}><UiIcon name="alert" /></span>
               <span>
                 <strong>{t('admin_commands.router_mode_warning_title', 'Router mode')}</strong>
                 {' — '}
@@ -1203,4 +1204,3 @@ export const DeviceConfigurationSection: React.FC<DeviceConfigurationSectionProp
     </CollapsibleSection>
   );
 };
-

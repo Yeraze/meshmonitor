@@ -31,6 +31,7 @@ import { renderMessageWithLinks } from '../utils/linkRenderer';
 import { foldUnifiedMessagePages } from '../utils/unifiedMessageAccumulator';
 import LinkPreview from '../components/LinkPreview';
 import '../styles/unified.css';
+import { UiIcon } from '../components/icons';
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
 
@@ -506,7 +507,7 @@ export default function UnifiedMessagesPage() {
         {!canReadAnyMessages && <div className="unified-empty">{t('unified.messages.sign_in_required')}</div>}
         {canReadAnyMessages && overshadowNames.length > 0 && (
           <div className="unified-warning" role="status">
-            ⚠️ {t('unified.messages.channel_collision_warning', {
+            <UiIcon name="alert" size={16} /> {t('unified.messages.channel_collision_warning', {
               defaultValue: 'This channel shares its key with "{{names}}" (a Channel Database / device channel under a different name). Messages may be split between those tabs — reconcile the names on the Channels page.',
               names: overshadowNames.join('", "'),
             })}

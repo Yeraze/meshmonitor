@@ -105,7 +105,7 @@ describe('DashboardSidebar', () => {
 
   it('shows lock icon and not node count for unauthenticated users', () => {
     renderSidebar({ isAuthenticated: false });
-    const locks = screen.getAllByText('🔒');
+    const locks = document.querySelectorAll('.dashboard-lock-icon .lucide-lock');
     expect(locks.length).toBeGreaterThan(0);
     expect(screen.queryByText(/source\.node_count/)).not.toBeInTheDocument();
   });
@@ -326,9 +326,9 @@ describe('DashboardSidebar', () => {
       expect(badge.classList.contains('dashboard-publisher-partial')).toBe(false);
       // Tooltip lists each publisher's clientId + state + publish count.
       const title = badge.getAttribute('title') ?? '';
-      expect(title).toContain('✓ !aabbccdd');
+      expect(title).toContain('connected !aabbccdd');
       expect(title).toContain('(5 pubs)');
-      expect(title).toContain('✓ !11223344');
+      expect(title).toContain('connected !11223344');
       expect(title).toContain('(2 pubs)');
     });
 

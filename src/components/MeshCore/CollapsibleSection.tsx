@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { UiIcon } from '../icons';
 
 interface CollapsibleSectionProps {
   title: string;
@@ -34,7 +35,7 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
       >
         <h3>{title}</h3>
         <span className={`meshcore-collapsible-chevron ${expanded ? 'expanded' : ''}`}>
-          ▶
+          <UiIcon name="forward" size={15} />
         </span>
       </div>
       <div className={`meshcore-collapsible-body ${expanded ? 'expanded' : 'collapsed'}`}>

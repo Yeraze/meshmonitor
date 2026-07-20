@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
 // Address mode options from protobufs
@@ -151,7 +152,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
           }}
           title={t('network_config.view_docs')}
         >
-          ❓
+          <UiIcon name="help" />
         </a>
       </h3>
 
@@ -171,7 +172,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
           }}
         >
           <strong style={{ color: 'var(--ctp-blue, #89b4fa)' }}>
-            🌉 {t('network_config.bridged_inert_title', 'This is a bridged node')}
+            <UiIcon name="network" /> {t('network_config.bridged_inert_title', 'This is a bridged node')}
           </strong>
           <div style={{ marginTop: 4 }}>
             {t(
@@ -247,7 +248,7 @@ const NetworkConfigSection: React.FC<NetworkConfigSectionProps> = ({
                   cursor: 'pointer'
                 }}
               >
-                {showPassword ? '🙈' : '👁️'}
+                <UiIcon name={showPassword ? 'visibilityOff' : 'unencrypted'} />
               </button>
             </div>
           </div>

@@ -12,6 +12,7 @@ import apiService from '../../services/api';
 import type { VariableOption, SourceOption } from './AutomationBuilder';
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
 import { OUTCOME_META } from './outcomeMeta';
+import { UiIcon } from '../icons';
 
 export interface SimResult {
   matched: boolean;
@@ -182,7 +183,7 @@ export default function AutomationTester({ getConfig, variables, sources }: Prop
       )}
 
       <div className="ae-btn-row" style={{ marginTop: '0.6rem' }}>
-        <button className="ae-btn ae-btn--primary" disabled={running} onClick={run}>{running ? 'Running…' : '▶ Run test'}</button>
+        <button className="ae-btn ae-btn--primary" disabled={running} onClick={run}>{running ? 'Running…' : <><UiIcon name="play" size={15} /> Run test</>}</button>
       </div>
 
       {error && <div className="ae-error-list" style={{ marginTop: '0.5rem' }}>{error}</div>}
@@ -271,7 +272,7 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
       <div className="ae-test-sent">
         {p.title ? <strong>{String(p.title)}</strong> : null}{p.title ? ' — ' : ''}{String(p.body ?? '')}
         {Array.isArray(p.urls) && (p.urls as unknown[]).length > 0 &&
-          <div className="ae-muted" style={{ marginTop: '0.2rem' }}>→ {(p.urls as string[]).join(', ')}</div>}
+          <div className="ae-muted" style={{ marginTop: '0.2rem' }}><UiIcon name="forward" size={14} /> {(p.urls as string[]).join(', ')}</div>}
       </div>
     );
   } else if (a.type === 'action.nodeManage') {
@@ -280,7 +281,7 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
     const op = String(p.op ?? '');
     const tt = op === 'telemetry' && p.telemetryType ? ` (${String(p.telemetryType)})` : '';
     // advert announces broadly (and MeshCore adverts carry no channel) — omit the target/channel.
-    const tgt = op === 'advert' ? '' : ` → ${p.target ? `node ${p.target}` : '(triggering node)'} on ch ${p.channel ?? 0}`;
+    const tgt = op === 'advert' ? '' : ` to ${p.target ? `node ${p.target}` : '(triggering node)'} on ch ${p.channel ?? 0}`;
     headline = `Request ${op}${tt}${tgt}`;
   } else if (a.type === 'action.deviceReboot') {
     headline = `Reboot device${p.seconds != null ? ` (delay ${String(p.seconds)}s)` : ''}`;
@@ -316,10 +317,10 @@ function TestResult({ result }: { result: SimResult }) {
           <div className="ae-trace">
             {result.steps.length === 0 && <div className="ae-muted">No steps.</div>}
             {result.steps.map((s, i) => {
-              const m = OUTCOME_META[s.outcome] ?? { icon: '·', cls: 'muted', label: s.outcome };
+              const m = OUTCOME_META[s.outcome] ?? { icon: 'info' as const, cls: 'muted', label: s.outcome };
               return (
                 <div className={`ae-trace-step ae-trace-step--${m.cls}`} key={i}>
-                  <span className="ae-trace-icon">{m.icon}</span>
+                  <span className="ae-trace-icon"><UiIcon name={m.icon} size={15} /></span>
                   <span className="ae-trace-type">{s.type}</span>
                   <span className="ae-muted">{m.label}{s.error ? ` — ${s.error}` : ''}</span>
                 </div>

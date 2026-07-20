@@ -8,6 +8,7 @@
  */
 import { useMemo, useRef } from 'react';
 import { tokenize, diagnoseTokens, validTokenSet } from './tokenHints';
+import { UiIcon } from '../icons';
 
 export default function TokenTextField({ value, onChange, multiline, placeholder, triggerType, variableNames }: {
   value: string;
@@ -73,7 +74,7 @@ export default function TokenTextField({ value, onChange, multiline, placeholder
         <div className="ae-token-bar">
           {diags.map((d) => (
             <div key={d.token} className={`ae-token-diag ae-token-diag--${d.severity}`}>
-              <span className="ae-token-diag-icon">{d.severity === 'error' ? '✕' : '⚠'}</span>
+              <span className="ae-token-diag-icon"><UiIcon name={d.severity === 'error' ? 'error' : 'alert'} size={14} /></span>
               <code>{`{{ ${d.token} }}`}</code> {d.detail}
             </div>
           ))}

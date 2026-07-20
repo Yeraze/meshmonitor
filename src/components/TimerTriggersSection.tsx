@@ -8,30 +8,17 @@ import { useSourceQuery } from '../hooks/useSourceQuery';
 import { Channel } from '../types/device';
 import { useSaveBar } from '../hooks/useSaveBar';
 import ScriptTestModal from './ScriptTestModal';
-
-/**
- * Get language emoji for display
- */
-const getLanguageEmoji = (language: string): string => {
-  switch (language.toLowerCase()) {
-    case 'python': return '🐍';
-    case 'javascript': return '📘';
-    case 'shell': return '💻';
-    default: return '📄';
-  }
-};
+import { UiIcon } from './icons';
 
 /**
  * Format script for dropdown display
- * Returns: "emoji | name | filename | language" or "langEmoji filename" if no metadata
+ * Preserves script-authored emoji but adds no app-owned glyphs to native options.
  */
 const formatScriptDisplay = (script: ScriptMetadata): string => {
-  const langEmoji = getLanguageEmoji(script.language);
   if (script.name) {
-    const emoji = script.emoji || langEmoji;
-    return `${emoji} ${script.name} | ${script.filename} | ${script.language}`;
+    return `${script.emoji ? `${script.emoji} ` : ''}${script.name} | ${script.filename} | ${script.language}`;
   }
-  return `${langEmoji} ${script.filename}`;
+  return script.filename;
 };
 
 // Available tokens for text message expansion (same as auto-announce)
@@ -638,7 +625,7 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
 
   // Find script metadata for display
   const scriptMeta = trigger.scriptPath ? availableScripts.find(s => s.path === trigger.scriptPath) : undefined;
-  const scriptEmoji = scriptMeta?.emoji || getLanguageEmoji(scriptMeta?.language || '');
+  const scriptEmoji = scriptMeta?.emoji;
   const scriptDisplayName = scriptMeta?.name || filename;
 
   return (
@@ -839,11 +826,11 @@ const TimerTriggerItem: React.FC<TimerTriggerItemProps> = ({
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
               {responseType === 'script' ? (
-                <>{scriptEmoji} {scriptDisplayName}</>
+                <>{scriptEmoji || <UiIcon name="fileCode" size={14} />} {scriptDisplayName}</>
               ) : (
-                <>💬 {trigger.response && trigger.response.length > 40 ? trigger.response.substring(0, 40) + '...' : trigger.response}</>
+                <><UiIcon name="messages" size={14} /> {trigger.response && trigger.response.length > 40 ? trigger.response.substring(0, 40) + '...' : trigger.response}</>
               )}
-              {' → Ch '}{trigger.channel ?? 0}: {channels.find(c => c.id === (trigger.channel ?? 0))?.name || `Channel ${trigger.channel ?? 0}`}
+              {' '}<UiIcon name="forward" size={14} /> Ch {trigger.channel ?? 0}: {channels.find(c => c.id === (trigger.channel ?? 0))?.name || `Channel ${trigger.channel ?? 0}`}
             </div>
             {trigger.lastRun && (
               <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.25rem' }}>
