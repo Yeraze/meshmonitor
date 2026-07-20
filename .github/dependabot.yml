@@ -14,6 +14,12 @@ updates:
     labels:
       - "dependencies"
       - "npm"
+    ignore:
+      # TypeScript 7's native compiler drops the JS compiler API that
+      # @typescript-eslint depends on, breaking lint:ci. Hold major bumps
+      # until the tooling ecosystem ships TS7-native support.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
       development-dependencies:
         patterns:
