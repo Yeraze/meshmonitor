@@ -12,6 +12,11 @@ import {
 import { getTracerouteOptions } from '../../hooks/useMapAnalysisConfig';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { resolveNodeLatLng, type MaybePositionedNode } from './nodePositionUtil';
+import { useSettings } from '../../contexts/SettingsContext';
+import { useElevationEnabled } from '../../hooks/useElevationEnabled';
+import { useElevationProfile } from '../../hooks/useElevationProfile';
+import { calculateDistance, formatDistance } from '../../utils/distance';
+import { resolveNeighborEndpoints, type EndpointNodeRecord } from './neighborLinkEndpoints';
 
 interface NodeRecord extends MaybePositionedNode {
   nodeNum: number;
@@ -51,7 +56,16 @@ interface HopEntry {
  * placeholder otherwise. Hidden entirely when `inspectorOpen` is false.
  */
 export default function AnalysisInspectorPanel() {
-  const { config, selected, setInspectorOpen } = useMapAnalysisCtx();
+  const {
+    config,
+    selected,
+    setInspectorOpen,
+    setLinkEndpoints,
+    setLinkProfileMode,
+    setMeasureMode,
+  } = useMapAnalysisCtx();
+  const { distanceUnit } = useSettings();
+  const elevationEnabled = useElevationEnabled();
   const { data: sources = [] } = useDashboardSources();
   const sourceList = sources as Array<{ id: string; name: string }>;
   const sourceIds =
@@ -118,6 +132,25 @@ export default function AnalysisInspectorPanel() {
     visibleNodeNums: null,
     timeWindow: null,
   });
+
+  // Neighbor-link terrain integration (epic #3826, Phase 1, WP-2). Resolved
+  // unconditionally (top-level hook, before the early returns) — the memo
+  // itself returns null for non-neighbor selections.
+  const neighborEndpoints = useMemo(
+    () =>
+      selected?.type === 'neighbor'
+        ? resolveNeighborEndpoints(selected, (nodes ?? []) as EndpointNodeRecord[])
+        : null,
+    [selected, nodes],
+  );
+  // Same query key as LinkProfileDrawer's useElevationProfile call ⇒ shared
+  // cache (§2.1 of the spec). Disabled (undefined endpoints) unless elevation
+  // is enabled AND both endpoints resolved, so browsing with elevation off or
+  // over unpositioned links issues no elevation requests at all.
+  const profileEndpointA = elevationEnabled ? neighborEndpoints?.a : undefined;
+  const profileEndpointB = elevationEnabled ? neighborEndpoints?.b : undefined;
+  const { data: neighborProfile, isLoading: neighborElevLoading } =
+    useElevationProfile(profileEndpointA, profileEndpointB);
 
   if (!config.inspectorOpen) {
     return (
@@ -190,6 +223,11 @@ export default function AnalysisInspectorPanel() {
   const formatLinkQuality = (v: number | null | undefined): string => {
     if (v === null || v === undefined || !Number.isFinite(v)) return '—';
     return `${v.toFixed(1)}/10`;
+  };
+
+  const formatElevation = (v: number | null | undefined): string => {
+    if (v === null || v === undefined || !Number.isFinite(v)) return '—';
+    return `${Math.round(v)} m`;
   };
 
   if (selected.type === 'node') {
@@ -285,6 +323,22 @@ export default function AnalysisInspectorPanel() {
       ? `${selected.publicKey?.substring(0, 8) ?? ''} ↔ ${selected.neighborPublicKey?.substring(0, 8) ?? ''}`
       : `!${(selected.nodeNum ?? 0).toString(16)} ↔ !${(selected.neighborNum ?? 0).toString(16)}`;
     const snr = selected.snr;
+    // Terrain integration (epic #3826, Phase 1, WP-2): distance is shown
+    // whenever both endpoints resolve to a position; endpoint elevations +
+    // the "View terrain profile" action are additionally gated on
+    // `elevationEnabled`, mirroring the toolbar's Link Profile button.
+    const distKm = neighborEndpoints
+      ? calculateDistance(
+          neighborEndpoints.a.lat,
+          neighborEndpoints.a.lng,
+          neighborEndpoints.b.lat,
+          neighborEndpoints.b.lng,
+        )
+      : null;
+    const showElevations = elevationEnabled && !!neighborEndpoints;
+    const samples = neighborProfile?.samples;
+    const endpointElevA = samples && samples.length > 0 ? samples[0].elevation : undefined;
+    const endpointElevB = samples && samples.length > 0 ? samples[samples.length - 1].elevation : undefined;
     return wrap(
       <>
         <h3>Neighbor Link</h3>
@@ -301,7 +355,34 @@ export default function AnalysisInspectorPanel() {
           <dd>{snr === null || snr === undefined ? '—' : `${snr.toFixed(2)} dB`}</dd>
           <dt>Reported</dt>
           <dd>{formatTime(selected.timestamp)}</dd>
+          {neighborEndpoints && (
+            <>
+              <dt>Distance</dt>
+              <dd>{distKm !== null ? formatDistance(distKm, distanceUnit) : '—'}</dd>
+            </>
+          )}
+          {showElevations && (
+            <>
+              <dt>Node Elevation</dt>
+              <dd>{neighborElevLoading ? '…' : formatElevation(endpointElevA)}</dd>
+              <dt>Neighbor Elevation</dt>
+              <dd>{neighborElevLoading ? '…' : formatElevation(endpointElevB)}</dd>
+            </>
+          )}
         </dl>
+        {elevationEnabled && neighborEndpoints && (
+          <button
+            type="button"
+            className="map-analysis-link-profile-action"
+            onClick={() => {
+              setMeasureMode(false);
+              setLinkEndpoints([neighborEndpoints.a, neighborEndpoints.b]);
+              setLinkProfileMode(true);
+            }}
+          >
+            View terrain profile
+          </button>
+        )}
       </>,
     );
   }

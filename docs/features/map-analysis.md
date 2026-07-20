@@ -153,6 +153,8 @@ The inspector also shows a per-node summary: distinct links, in/out counts, obse
 
 Polylines connecting each node to the neighbors reported in its NeighborInfo packets. Edges use opacity to indicate signal quality and are rendered dashed to distinguish them from active traceroute paths.
 
+Clicking a neighbor link opens it in the inspector, which shows the link's great-circle **distance** alongside the reported SNR. When the server has elevation enabled, the inspector also shows the **ground elevation** at each endpoint and a **View terrain profile** button that opens the [Terrain Link Profile](#terrain-link-profile) drawer pre-loaded with the link's two endpoints — the same terrain/Fresnel/link-budget analysis as picking the points by hand, one click from any neighbor link. This works for both Meshtastic and MeshCore neighbor links, as long as both endpoints have known positions.
+
 ### Coverage heatmap
 
 A heat layer built from accumulated position fixes. At low zoom the server returns a **pre-binned coverage grid** for performance; at high zoom (≳12) the client falls back to raw position points. If the result set exceeds 50,000 points, the newest 50k are shown with a banner suggesting a narrower lookback.
@@ -253,6 +255,7 @@ The right-side dock mirrors your current map selection.
 - **Empty:** "Click a node or route segment".
 - **Node selected:** short/long name, node num, hop count, neighbor count, last position timestamp, last SNR/RSSI, list of sources currently reporting it, and a link out to that source's Nodes tab.
 - **Segment selected:** from/to nodes, the last ten traceroutes for the segment with their forward/back SNR, and an **Open full history** button that opens the existing `RouteSegmentTraceroutesModal`.
+- **Neighbor link selected:** both endpoint nodes, reporting source, SNR, and the link's great-circle distance. With elevation enabled, also the ground elevation at each endpoint and a **View terrain profile** shortcut into the Link Profile drawer.
 
 The inspector is collapsible — toggle it from the far-right toolbar button.
 
