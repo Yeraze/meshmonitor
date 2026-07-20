@@ -147,10 +147,10 @@ export default function AnalysisInspectorPanel() {
   // cache (§2.1 of the spec). Disabled (undefined endpoints) unless elevation
   // is enabled AND both endpoints resolved, so browsing with elevation off or
   // over unpositioned links issues no elevation requests at all.
-  const elevA = elevationEnabled ? neighborEndpoints?.a : undefined;
-  const elevB = elevationEnabled ? neighborEndpoints?.b : undefined;
+  const profileEndpointA = elevationEnabled ? neighborEndpoints?.a : undefined;
+  const profileEndpointB = elevationEnabled ? neighborEndpoints?.b : undefined;
   const { data: neighborProfile, isLoading: neighborElevLoading } =
-    useElevationProfile(elevA, elevB);
+    useElevationProfile(profileEndpointA, profileEndpointB);
 
   if (!config.inspectorOpen) {
     return (
@@ -337,8 +337,8 @@ export default function AnalysisInspectorPanel() {
       : null;
     const showElevations = elevationEnabled && !!neighborEndpoints;
     const samples = neighborProfile?.samples;
-    const elevA = samples && samples.length > 0 ? samples[0].elevation : undefined;
-    const elevB = samples && samples.length > 0 ? samples[samples.length - 1].elevation : undefined;
+    const endpointElevA = samples && samples.length > 0 ? samples[0].elevation : undefined;
+    const endpointElevB = samples && samples.length > 0 ? samples[samples.length - 1].elevation : undefined;
     return wrap(
       <>
         <h3>Neighbor Link</h3>
@@ -364,9 +364,9 @@ export default function AnalysisInspectorPanel() {
           {showElevations && (
             <>
               <dt>Node Elevation</dt>
-              <dd>{neighborElevLoading ? '…' : formatElevation(elevA)}</dd>
+              <dd>{neighborElevLoading ? '…' : formatElevation(endpointElevA)}</dd>
               <dt>Neighbor Elevation</dt>
-              <dd>{neighborElevLoading ? '…' : formatElevation(elevB)}</dd>
+              <dd>{neighborElevLoading ? '…' : formatElevation(endpointElevB)}</dd>
             </>
           )}
         </dl>
