@@ -40,6 +40,7 @@ cleanup() {
         echo "  docker compose -f docker-compose.reverse-proxy-test.yml down -v"
         echo "  docker compose -f docker-compose-config-import-test.yml down -v"
         echo "  docker compose -f docker-compose.virtual-node-cli-test.yml down -v"
+        echo "  docker compose -f docker-compose.meshcore-test.yml down -v"
         return 0
     fi
 
@@ -51,6 +52,7 @@ cleanup() {
     docker compose -f docker-compose.reverse-proxy-test.yml down -v 2>/dev/null || true
     docker compose -f docker-compose-config-import-test.yml down -v 2>/dev/null || true
     docker compose -f docker-compose.virtual-node-cli-test.yml down -v 2>/dev/null || true
+    docker compose -f docker-compose.meshcore-test.yml down -v 2>/dev/null || true
 
     # Cleanup backup/restore test artifacts
     docker stop meshmonitor-backup-source-test 2>/dev/null || true
@@ -84,6 +86,7 @@ cleanup() {
     rm -f docker-compose.db-backing-sqlite-test.yml 2>/dev/null || true
     rm -f docker-compose.db-backing-postgres-test.yml 2>/dev/null || true
     rm -f docker-compose.db-backing-mysql-test.yml 2>/dev/null || true
+    rm -f docker-compose.meshcore-test.yml 2>/dev/null || true
 
     # Remove cookie files
     rm -f /tmp/meshmonitor-cookies.txt 2>/dev/null || true
@@ -382,6 +385,25 @@ else
 fi
 echo ""
 
+echo "=========================================="
+echo -e "${BLUE}Running MeshCore Hardware Test${NC}"
+echo "=========================================="
+echo ""
+
+# MeshCore companion connect + handshake against the two USB companions.
+# Hard-required (no secret dependency in Phase 1).
+if bash "$SCRIPT_DIR/test-meshcore.sh"; then
+    MESHCORE_RESULT="PASSED"
+    echo ""
+    echo -e "${GREEN}✓ MeshCore Hardware test PASSED${NC}"
+else
+    MESHCORE_RESULT="FAILED"
+    echo ""
+    echo -e "${RED}✗ MeshCore Hardware test FAILED${NC}"
+    abort_remaining "MeshCore Hardware Test"
+fi
+echo ""
+
 # Summary
 echo "=========================================="
 echo "System Test Results"
@@ -458,6 +480,12 @@ elif [ "$API_EXERCISE_RESULT" = "SKIPPED" ]; then
     echo -e "API Exercise (3 DBs):    ${YELLOW}⊘ SKIPPED${NC}"
 else
     echo -e "API Exercise (3 DBs):    ${RED}✗ FAILED${NC}"
+fi
+
+if [ "$MESHCORE_RESULT" = "PASSED" ]; then
+    echo -e "MeshCore Hardware Test:   ${GREEN}✓ PASSED${NC}"
+else
+    echo -e "MeshCore Hardware Test:   ${RED}✗ FAILED${NC}"
 fi
 
 echo ""
@@ -545,11 +573,17 @@ else
     echo "| API Exercise (3 DBs) | ❌ FAILED |" >> "$REPORT_FILE"
 fi
 
+if [ "$MESHCORE_RESULT" = "PASSED" ]; then
+    echo "| MeshCore Hardware Test | ✅ PASSED |" >> "$REPORT_FILE"
+else
+    echo "| MeshCore Hardware Test | ❌ FAILED |" >> "$REPORT_FILE"
+fi
+
 echo "" >> "$REPORT_FILE"
 
 # Overall result (config import is optional, so only fail if it actually failed, not if skipped)
 REQUIRED_TESTS_PASSED=true
-if [ "$QUICKSTART_RESULT" != "PASSED" ] || [ "$SECURITY_RESULT" != "PASSED" ] || [ "$V1_API_RESULT" != "PASSED" ] || [ "$REVERSE_PROXY_RESULT" != "PASSED" ] || [ "$OIDC_RESULT" != "PASSED" ] || [ "$VIRTUAL_NODE_CLI_RESULT" != "PASSED" ] || [ "$BACKUP_RESTORE_RESULT" != "PASSED" ] || [ "$DB_MIGRATION_RESULT" != "PASSED" ] || [ "$DB_BACKING_RESULT" != "PASSED" ] || [ "$API_EXERCISE_RESULT" != "PASSED" ]; then
+if [ "$QUICKSTART_RESULT" != "PASSED" ] || [ "$SECURITY_RESULT" != "PASSED" ] || [ "$V1_API_RESULT" != "PASSED" ] || [ "$REVERSE_PROXY_RESULT" != "PASSED" ] || [ "$OIDC_RESULT" != "PASSED" ] || [ "$VIRTUAL_NODE_CLI_RESULT" != "PASSED" ] || [ "$BACKUP_RESTORE_RESULT" != "PASSED" ] || [ "$DB_MIGRATION_RESULT" != "PASSED" ] || [ "$DB_BACKING_RESULT" != "PASSED" ] || [ "$API_EXERCISE_RESULT" != "PASSED" ] || [ "$MESHCORE_RESULT" != "PASSED" ]; then
     REQUIRED_TESTS_PASSED=false
 fi
 
@@ -676,6 +710,9 @@ else
     fi
     if [ "$DB_BACKING_RESULT" != "PASSED" ]; then
         echo "- **DB Backing Consistency:** Database backing consistency test failed" >> "$REPORT_FILE"
+    fi
+    if [ "$MESHCORE_RESULT" != "PASSED" ]; then
+        echo "- **MeshCore Hardware Test:** MeshCore companion connect/handshake test failed" >> "$REPORT_FILE"
     fi
 
     echo -e "${RED}=========================================="
