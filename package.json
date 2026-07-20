@@ -70,7 +70,7 @@
     "maplibre-gl": "^5.24.0",
     "morgan": "^1.11.0",
     "mqtt": "^5.15.2",
-    "mysql2": "^3.22.6",
+    "mysql2": "^3.23.1",
     "node-notifier": "^10.0.1",
     "openid-client": "^6.8.4",
     "otplib": "^13.4.1",
