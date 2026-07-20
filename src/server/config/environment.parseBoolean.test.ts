@@ -50,10 +50,55 @@ describe('parseBoolean via COOKIE_SECURE', () => {
     expect(getEnvironmentConfig().cookieSecure).toBe(true);
   });
 
+  it('should report wasProvided=true for valid values', () => {
+    process.env.COOKIE_SECURE = 'TRUE';
+    resetEnvironmentConfig();
+
+    expect(getEnvironmentConfig().cookieSecureProvided).toBe(true);
+  });
+
   it('should fall back to the default for invalid values', () => {
     process.env.COOKIE_SECURE = 'yes';
     resetEnvironmentConfig();
 
-    expect(getEnvironmentConfig().cookieSecure).toBe(false);
+    const config = getEnvironmentConfig();
+
+    expect(config.cookieSecure).toBe(false);
+    expect(config.cookieSecureProvided).toBe(false);
+  });
+});
+
+describe('VERSION_CHECK_DISABLED parsing', () => {
+  const originalValue = process.env.VERSION_CHECK_DISABLED;
+
+  afterEach(() => {
+    if (originalValue !== undefined) {
+      process.env.VERSION_CHECK_DISABLED = originalValue;
+    } else {
+      delete process.env.VERSION_CHECK_DISABLED;
+    }
+    resetEnvironmentConfig();
+  });
+
+  it('should default to false when not set', () => {
+    delete process.env.VERSION_CHECK_DISABLED;
+    resetEnvironmentConfig();
+
+    expect(getEnvironmentConfig().versionCheckDisabled).toBe(false);
+  });
+
+  // Previously a raw `== "true"` comparison, so TRUE silently became false
+  it.each(['true', 'TRUE', 'True'])('should parse VERSION_CHECK_DISABLED=%s as true', (value) => {
+    process.env.VERSION_CHECK_DISABLED = value;
+    resetEnvironmentConfig();
+
+    expect(getEnvironmentConfig().versionCheckDisabled).toBe(true);
+  });
+
+  it.each(['false', 'FALSE', 'False'])('should parse VERSION_CHECK_DISABLED=%s as false', (value) => {
+    process.env.VERSION_CHECK_DISABLED = value;
+    resetEnvironmentConfig();
+
+    expect(getEnvironmentConfig().versionCheckDisabled).toBe(false);
   });
 });
