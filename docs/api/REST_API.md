@@ -607,6 +607,53 @@ Probes a candidate DEM source URL and reports what it found. Requires `settings:
 
 A failing probe still returns HTTP 200 — the probe outcome (`data.success: false` plus `data.error`) is the payload, not a request error.
 
+### Get 3D Terrain Capabilities
+
+#### GET /api/elevation/capabilities
+
+Reports whether the [Map Analysis 3D terrain view](../features/map-analysis.md#3d-terrain-view) can be offered, without exposing the configured `elevationSourceUrl` (a secret setting). Public (no authentication), no outbound network calls — derived from settings already loaded server-side.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "enabled": true,
+    "terrainTiles": true,
+    "provider": "terrarium"
+  }
+}
+```
+
+- `enabled` — mirrors the admin's **Enable terrain elevation** setting.
+- `provider` — `"terrarium"` or `"json"`, auto-detected from the configured (or default) elevation source URL, same detection used by `POST /test`.
+- `terrainTiles` — `true` only when `enabled` **and** `provider === "terrarium"`. A JSON point-API source can power the 2D Link Profile but has no tiles to build a 3D surface from, so `terrainTiles` is `false` in that case even though `enabled` is `true`.
+
+### Get Terrain Tile
+
+#### GET /api/elevation/tiles/{z}/{x}/{y}
+
+Proxies a single Terrarium-encoded DEM tile from the configured (or default) elevation source, for MapLibre GL's `raster-dem` terrain source in the 3D view. Public (no authentication), rate-limited to **600 requests/minute per IP** in production (private/internal IPs exempt) — a single 3D view load legitimately fetches dozens of tiles.
+
+Returns raw `image/png` bytes on success (**not** the `{success, data}` envelope) with:
+```
+Content-Type: image/png
+Cache-Control: public, max-age=604800, immutable
+```
+
+**Example:**
+```bash
+curl http://localhost:8080/api/elevation/tiles/10/163/395 --output tile.png
+```
+
+**Errors** (JSON envelope, `Cache-Control: no-store`):
+- `403 ELEVATION_DISABLED` — the admin has disabled elevation.
+- `409 TERRAIN_TILES_UNAVAILABLE` — the configured elevation source is a JSON point API, which has no tiles to serve. There is no fallback to the public Terrarium source in this case.
+- `400 INVALID_TILE_COORDS` — `z`, `x`, or `y` isn't a valid integer, or `x`/`y` falls outside `[0, 2^z − 1]` for the given zoom (zoom is capped at 15, the source's native maximum).
+- `502 TILE_FETCH_FAILED` — the upstream tile fetch failed (network error, non-OK response, or the SSRF guard blocked the request).
+
+The resolved source URL (and any embedded API key) is never included in a response or error message.
+
 ---
 
 ## Statistics

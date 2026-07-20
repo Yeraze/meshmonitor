@@ -470,6 +470,10 @@ Description: Offline OpenStreetMap tiles via TileServer GL
 - Implausible DEM samples (below −500 m or above 9000 m — an artifact of open-water/void pixels in some tile sets, not real terrain) are discarded server-side and shown as gaps in the Link Profile chart rather than distorting it.
 - The `POST /api/elevation/profile` endpoint used by the tool is public (unauthenticated) but rate-limited to 20 requests/minute per IP in production (requests from private/internal IPs are exempt); the Test button's endpoint requires `settings:write`.
 
+::: tip Also powers the 3D terrain view (New in 4.14)
+This same elevation source drives Map Analysis's [3D terrain view](/features/map-analysis#3d-terrain-view). A **tile-template** URL (the default Terrarium source, or a custom one) works for both the 2D Link Profile chart and the 3D pitched-terrain map. A **JSON point API** source only supports the 2D Link Profile — there are no tiles to build a 3D surface from, so the 3D toggle stays disabled with an explanatory tooltip for that configuration (no fallback to the default tile source is attempted).
+:::
+
 ## Display Preferences
 
 ### Default Landing Page {#default-landing-page}

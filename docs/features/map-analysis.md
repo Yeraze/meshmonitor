@@ -45,6 +45,7 @@ The toolbar runs across the top of the canvas. From left to right:
 | **Time slider toggle** | Show/hide the floating time-window slider. |
 | **Measure** | Straight-line distance between two positioned nodes. Disabled until at least two positioned nodes exist; mutually exclusive with Link Profile. |
 | **Link Profile** | Terrain, Fresnel clearance, and link-budget verdict between two points. See [Terrain Link Profile](#terrain-link-profile). Only shown when the server has elevation enabled. |
+| **3D** (box icon) | Toggle between the flat 2D map and a pitched-terrain 3D view. See [3D terrain view](#3d-terrain-view). Disabled with a tooltip when elevation is off or the configured elevation source can't serve DEM tiles. |
 | **Layer buttons (×8)** | Toggle each visualization layer on/off. The right-edge chevron opens a popover for layer-specific options (lookback window, sub-options). |
 | **Progress bar** | Shows aggregate loading state while any layer is fetching. |
 | **Inspector toggle** | Show/hide the right-side detail panel. |
@@ -243,6 +244,41 @@ For a node seen by several sources (say, a Meshtastic radio *and* an MQTT bridge
 ### Limitations
 
 The terrain data (SRTM-derived, roughly 90 m per pixel) is a bare-earth elevation model — it does **not** account for buildings, trees, or other vegetation, so a "Clear" verdict is a first-pass estimate of geometric line-of-sight, not a guarantee of a working RF link. Node GPS altitude is not factored into antenna height; only the DEM terrain height plus your entered AGL value is used.
+
+## 3D terrain view
+
+::: tip New in 4.14
+:::
+
+The toolbar's **3D** button (box icon) switches the canvas from the flat Leaflet map to a pitched-terrain [MapLibre GL](https://maplibre.org/) view — the current basemap draped over a real elevation surface with hillshading, so you can tilt and rotate to see how terrain actually sits between nodes.
+
+### Requirements
+
+The button is disabled with an explanatory tooltip unless all of the following hold:
+
+- **Elevation is enabled** on the server (**Settings → Elevation / Terrain**). If it isn't, the tooltip reads *"Elevation is disabled."*
+- **The configured elevation source serves DEM tiles.** 3D terrain needs a Terrarium-encoded tile source (the default public AWS/Mapzen source, or a custom tile-template URL). If the admin has instead configured an Open-Topo-Data-style **JSON point API** — which the 2D [Terrain Link Profile](#terrain-link-profile) tool can still use — there's no tile source to build a 3D surface from, and the tooltip reads *"3D terrain is unavailable with the configured elevation source."* There is deliberately no fallback to the public terrarium tiles in this case: an admin who configured a JSON source did so on purpose (often for an air-gapped or cost-controlled deployment), and silently routing 3D traffic elsewhere would leak requests to a provider they explicitly opted away from.
+- **Your browser supports WebGL.** If it doesn't, the 3D map degrades to a plain-language message and the view automatically switches back to 2D rather than showing a blank canvas.
+
+### Using the 3D view
+
+- **Navigate** with the built-in MapLibre control: drag to pan, scroll/pinch to zoom, right-drag (or two-finger drag) to pitch and rotate. A compass resets bearing to north.
+- **Terrain exaggeration** — a slider (0–2×, default **1.3×**) vertically stretches the DEM so subtle elevation changes read more clearly. It's a per-session view setting, not persisted between visits.
+- **Node markers** render with short-name labels at their real position, draped onto the terrain surface. Click a marker to select it — the same inspector panel used in 2D opens with that node's details.
+- **Basemap** — the 3D view reuses whichever raster tileset you have selected for the 2D map. If your selected tileset is **vector-only**, 3D can't drape a vector style over terrain yet, so it substitutes the default OpenStreetMap raster basemap and shows a small note; your 2D tileset selection is unaffected.
+
+The **2D/3D toggle state persists per-browser** alongside the rest of your Map Analysis toolbar configuration.
+
+### What's not in 3D yet
+
+The 3D view is a foundation, not full layer parity. Not yet available while in 3D mode (all still work normally after switching back to 2D):
+
+- Neighbor links and traceroute paths
+- Coverage heatmap, position trails, range rings, hop shading, and the SNR overlay
+- The time slider
+- Launching the Terrain Link Profile tool directly from the 3D canvas
+
+These are planned for a follow-up phase of the 3D map work.
 
 ## Time slider
 
