@@ -74,7 +74,7 @@
     "node-notifier": "^10.0.1",
     "openid-client": "^6.8.4",
     "otplib": "^13.4.1",
-    "pbf": "^4.0.2",
+    "pbf": "^5.1.2",
     "pg": "^8.22.0",
     "pngjs": "^7.0.0",
     "protobufjs": "^8.7.1",
