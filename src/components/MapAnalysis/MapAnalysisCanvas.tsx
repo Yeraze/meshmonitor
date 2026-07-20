@@ -141,6 +141,10 @@ export default function MapAnalysisCanvas() {
     },
     [analysisNodes, setSelected],
   );
+  // WebGL unavailable on this machine (probe failed or map construction
+  // threw): Base3DMap renders its own fallback message, but we also route
+  // the user back to the working 2D map so they aren't stranded in 3D mode.
+  const handle3DUnsupported = useCallback(() => setViewMode('2d'), [setViewMode]);
 
   if (effectiveViewMode === '3d') {
     return (
@@ -152,6 +156,7 @@ export default function MapAnalysisCanvas() {
           terrainTileUrl={terrainTileUrl}
           nodes={node3DFeatures}
           onNodeClick={handleNode3DClick}
+          onUnsupported={handle3DUnsupported}
         />
         {basemap3D.usedFallback && (
           <div className="map-analysis-3d-fallback-note">

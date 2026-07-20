@@ -145,6 +145,7 @@ vi.mock('../map/Base3DMap', () => ({
     basemap: { tiles: string[]; usedFallback: boolean };
     terrainTileUrl: string;
     onNodeClick?: (key: string) => void;
+    onUnsupported?: () => void;
   }) => (
     <div data-testid="base-3d-map" data-terrain-url={props.terrainTileUrl}>
       {props.nodes.map((n) => (
@@ -157,6 +158,14 @@ vi.mock('../map/Base3DMap', () => ({
           {n.label}
         </button>
       ))}
+      {/* Lets tests simulate the real component's WebGL-unavailable signal. */}
+      <button
+        type="button"
+        data-testid="base-3d-trigger-unsupported"
+        onClick={() => props.onUnsupported?.()}
+      >
+        trigger-unsupported
+      </button>
     </div>
   ),
 }));
@@ -310,6 +319,20 @@ describe('MapAnalysisCanvas', () => {
       persist3d();
       render(<MapAnalysisCanvas />, { wrapper });
       expect(screen.getByTestId('base-3d-map')).toBeInTheDocument();
+    });
+
+    it('flips back to the 2D map when Base3DMap reports WebGL is unsupported', () => {
+      persist3d();
+      render(<MapAnalysisCanvas />, { wrapper });
+      expect(screen.getByTestId('base-3d-map')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('base-3d-trigger-unsupported'));
+
+      expect(screen.queryByTestId('base-3d-map')).toBeNull();
+      expect(screen.getByTestId('map-container')).toBeInTheDocument();
+      // The corrected viewMode also persists so the next visit doesn't retry 3D.
+      const stored = JSON.parse(localStorage.getItem('mapAnalysis.config.v1')!);
+      expect(stored.viewMode).toBe('2d');
     });
   });
 });

@@ -26,6 +26,14 @@ export interface Base3DMapProps {
   nodes: Node3DFeature[];
   /** Fired when a node's circle marker is clicked, with its `key`. */
   onNodeClick?: (key: string) => void;
+  /**
+   * Fired at most once per component instance when WebGL is unavailable and
+   * the 3D map cannot be constructed (probe failed or the maplibre Map
+   * constructor threw). Callers should switch the user back to a working 2D
+   * view; the component itself renders a non-crashing fallback message
+   * either way.
+   */
+  onUnsupported?: () => void;
   className?: string;
 }
 
@@ -43,6 +51,20 @@ const DEFAULT_EXAGGERATION = 1.3;
 const EXAGGERATION_MIN = 0;
 const EXAGGERATION_MAX = 2;
 const EXAGGERATION_STEP = 0.1;
+
+/**
+ * Cheap WebGL availability probe. A passing probe does NOT guarantee the
+ * real map context succeeds (driver blocklists, exhausted contexts), so the
+ * `new maplibregl.Map` call is additionally try/caught — belt and braces.
+ */
+function isWebGlAvailable(): boolean {
+  try {
+    const canvas = document.createElement('canvas');
+    return Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'));
+  } catch {
+    return false;
+  }
+}
 
 /** Build a GeoJSON FeatureCollection from the `nodes` prop for the `nodes` source. */
 function toNodesFeatureCollection(nodes: Node3DFeature[]): GeoJSON.FeatureCollection {
@@ -86,49 +108,79 @@ export function Base3DMap({
   terrainTileUrl,
   nodes,
   onNodeClick,
+  onUnsupported,
   className,
 }: Base3DMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [webglUnavailable, setWebglUnavailable] = useState(false);
   const [exaggeration, setExaggeration] = useState(DEFAULT_EXAGGERATION);
 
   // Latest props, readable from stable callbacks (click handler, basemap sync)
   // without adding them as effect deps that would force a map/layer rebuild.
   const onNodeClickRef = useRef(onNodeClick);
   onNodeClickRef.current = onNodeClick;
+  const onUnsupportedRef = useRef(onUnsupported);
+  onUnsupportedRef.current = onUnsupported;
+  // Notify-once guard: refs survive StrictMode's dev double-mount (the same
+  // component instance is remounted with state/refs preserved), so
+  // `onUnsupported` fires exactly once even when the mount effect runs twice.
+  const unsupportedNotifiedRef = useRef(false);
 
   // ---- Mount / unmount: create the map exactly once ------------------------
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const map = new maplibregl.Map({
-      container,
-      style: {
-        version: 8,
-        sources: {
-          [BASEMAP_SOURCE_ID]: {
-            type: 'raster',
-            tiles: basemap.tiles,
-            tileSize: 256,
-            maxzoom: basemap.maxZoom,
-            attribution: basemap.attribution,
+    const markUnsupported = () => {
+      setWebglUnavailable(true);
+      if (!unsupportedNotifiedRef.current) {
+        unsupportedNotifiedRef.current = true;
+        onUnsupportedRef.current?.();
+      }
+    };
+
+    if (!isWebGlAvailable()) {
+      markUnsupported();
+      return;
+    }
+
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container,
+        style: {
+          version: 8,
+          sources: {
+            [BASEMAP_SOURCE_ID]: {
+              type: 'raster',
+              tiles: basemap.tiles,
+              tileSize: 256,
+              maxzoom: basemap.maxZoom,
+              attribution: basemap.attribution,
+            },
           },
+          layers: [
+            {
+              id: BASEMAP_LAYER_ID,
+              type: 'raster',
+              source: BASEMAP_SOURCE_ID,
+            },
+          ],
         },
-        layers: [
-          {
-            id: BASEMAP_LAYER_ID,
-            type: 'raster',
-            source: BASEMAP_SOURCE_ID,
-          },
-        ],
-      },
-      center: [center[1], center[0]],
-      zoom,
-      pitch: INITIAL_PITCH,
-      attributionControl: false,
-    });
+        center: [center[1], center[0]],
+        zoom,
+        pitch: INITIAL_PITCH,
+        attributionControl: false,
+      });
+    } catch (err) {
+      // Real case: the probe can pass while the actual context creation still
+      // fails ("Failed to initialize WebGL") — degrade instead of crashing.
+      console.warn('Base3DMap: WebGL map construction failed', err);
+      markUnsupported();
+      return;
+    }
     mapRef.current = map;
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
@@ -260,19 +312,25 @@ export function Base3DMap({
   return (
     <div className={`base-3d-map ${className ?? ''}`.trim()}>
       <div ref={containerRef} className="base-3d-map-canvas" data-testid="base-3d-map-canvas" />
-      <div className="base-3d-map-exaggeration" data-testid="base-3d-map-exaggeration">
-        <label htmlFor="base-3d-map-exaggeration-input">Terrain exaggeration</label>
-        <input
-          id="base-3d-map-exaggeration-input"
-          type="range"
-          min={EXAGGERATION_MIN}
-          max={EXAGGERATION_MAX}
-          step={EXAGGERATION_STEP}
-          value={exaggeration}
-          onChange={handleExaggerationChange}
-        />
-        <span>{exaggeration.toFixed(1)}x</span>
-      </div>
+      {webglUnavailable ? (
+        <div className="base-3d-map-unsupported" data-testid="base-3d-map-unsupported" role="alert">
+          3D view requires WebGL, which is not available in this browser
+        </div>
+      ) : (
+        <div className="base-3d-map-exaggeration" data-testid="base-3d-map-exaggeration">
+          <label htmlFor="base-3d-map-exaggeration-input">Terrain exaggeration</label>
+          <input
+            id="base-3d-map-exaggeration-input"
+            type="range"
+            min={EXAGGERATION_MIN}
+            max={EXAGGERATION_MAX}
+            step={EXAGGERATION_STEP}
+            value={exaggeration}
+            onChange={handleExaggerationChange}
+          />
+          <span>{exaggeration.toFixed(1)}x</span>
+        </div>
+      )}
     </div>
   );
 }

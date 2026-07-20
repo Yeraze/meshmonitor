@@ -2,8 +2,8 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act } from 'react';
-import { render, fireEvent, cleanup } from '@testing-library/react';
+import { act, StrictMode } from 'react';
+import { render, fireEvent, cleanup, screen } from '@testing-library/react';
 import { Base3DMap, type Node3DFeature } from './Base3DMap';
 import type { Basemap3DSource } from '../../config/basemap3d';
 
@@ -22,6 +22,8 @@ type Listener = (...args: unknown[]) => void;
 const { FakeMap, FakeNavigationControl, FakeAttributionControl } = vi.hoisted(() => {
   class FakeMap {
     static instances: FakeMap[] = [];
+    /** When true, the constructor throws like a real WebGL-init failure. */
+    static throwOnConstruct = false;
     options: any;
     handlers: Record<string, Listener> = {};
     layerHandlers: Record<string, Listener> = {};
@@ -51,6 +53,9 @@ const { FakeMap, FakeNavigationControl, FakeAttributionControl } = vi.hoisted(()
     });
 
     constructor(options: any) {
+      if (FakeMap.throwOnConstruct) {
+        throw new Error('Failed to initialize WebGL');
+      }
       this.options = options;
       FakeMap.instances.push(this);
     }
@@ -116,12 +121,22 @@ function currentFakeMap(): InstanceType<typeof FakeMap> {
   return m;
 }
 
+// jsdom has no WebGL: HTMLCanvasElement#getContext('webgl'/'webgl2') returns
+// null, which would trip the component's availability probe in every test.
+// Default the probe to "available"; the WebGL-unavailable suite overrides it.
+let getContextSpy: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
   FakeMap.instances = [];
+  FakeMap.throwOnConstruct = false;
+  getContextSpy = vi
+    .spyOn(HTMLCanvasElement.prototype, 'getContext')
+    .mockReturnValue({} as unknown as RenderingContext);
 });
 
 afterEach(() => {
   cleanup();
+  getContextSpy.mockRestore();
 });
 
 describe('Base3DMap', () => {
@@ -260,5 +275,80 @@ describe('Base3DMap', () => {
     const call = nodesSource.setData.mock.calls[0][0];
     expect(call.features).toHaveLength(3);
     expect(call.features[2].properties.key).toBe('node-3');
+  });
+
+  describe('WebGL unavailable', () => {
+    it('probe failure: no crash, no map constructed, fallback message, onUnsupported once', () => {
+      getContextSpy.mockReturnValue(null);
+      const onUnsupported = vi.fn();
+      expect(() =>
+        render(
+          <Base3DMap
+            center={[40.0, -105.0]}
+            zoom={12}
+            basemap={basemap}
+            terrainTileUrl={terrainTileUrl}
+            nodes={nodes}
+            onUnsupported={onUnsupported}
+          />,
+        ),
+      ).not.toThrow();
+
+      expect(FakeMap.instances).toHaveLength(0);
+      expect(screen.getByTestId('base-3d-map-unsupported')).toHaveTextContent(/requires WebGL/i);
+      expect(onUnsupported).toHaveBeenCalledTimes(1);
+    });
+
+    it('constructor throw (probe passed): no crash, fallback message, onUnsupported once', () => {
+      // Probe stays truthy (belt), but the real context creation fails (braces).
+      FakeMap.throwOnConstruct = true;
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const onUnsupported = vi.fn();
+      expect(() =>
+        render(
+          <Base3DMap
+            center={[40.0, -105.0]}
+            zoom={12}
+            basemap={basemap}
+            terrainTileUrl={terrainTileUrl}
+            nodes={nodes}
+            onUnsupported={onUnsupported}
+          />,
+        ),
+      ).not.toThrow();
+
+      expect(FakeMap.instances).toHaveLength(0);
+      expect(screen.getByTestId('base-3d-map-unsupported')).toBeInTheDocument();
+      expect(onUnsupported).toHaveBeenCalledTimes(1);
+      warnSpy.mockRestore();
+    });
+
+    it('StrictMode double-mount fires onUnsupported exactly once', () => {
+      getContextSpy.mockReturnValue(null);
+      const onUnsupported = vi.fn();
+      render(
+        <StrictMode>
+          <Base3DMap
+            center={[40.0, -105.0]}
+            zoom={12}
+            basemap={basemap}
+            terrainTileUrl={terrainTileUrl}
+            nodes={nodes}
+            onUnsupported={onUnsupported}
+          />
+        </StrictMode>,
+      );
+
+      expect(screen.getByTestId('base-3d-map-unsupported')).toBeInTheDocument();
+      expect(onUnsupported).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders no exaggeration slider in the unsupported state', () => {
+      getContextSpy.mockReturnValue(null);
+      render(
+        <Base3DMap center={[40.0, -105.0]} zoom={12} basemap={basemap} terrainTileUrl={terrainTileUrl} nodes={nodes} />,
+      );
+      expect(screen.queryByTestId('base-3d-map-exaggeration')).toBeNull();
+    });
   });
 });

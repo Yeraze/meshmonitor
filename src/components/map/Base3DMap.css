@@ -40,3 +40,19 @@
   min-width: 2.5em;
   text-align: right;
 }
+
+/* Centered fallback shown when WebGL is unavailable (probe failed or the
+   maplibre Map constructor threw) — the caller is expected to route back to
+   2D via onUnsupported, but this keeps the pane meaningful either way. */
+.base-3d-map-unsupported {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #e2e8f0;
+  font-size: 0.9rem;
+}
