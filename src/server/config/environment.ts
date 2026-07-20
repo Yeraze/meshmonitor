@@ -19,8 +19,8 @@ import { logger } from '../../utils/logger.js';
 /**
  * Parse boolean environment variable
  * - undefined → defaultValue
- * - 'true' → true
- * - 'false' → false
+ * - 'true' (case-insensitive) → true
+ * - 'false' (case-insensitive) → false
  * - anything else → defaultValue with warning
  */
 function parseBoolean(
@@ -32,11 +32,13 @@ function parseBoolean(
     return { value: defaultValue, wasProvided: false };
   }
 
-  if (envValue === 'true') {
+  const normalized = envValue.trim().toLowerCase();
+
+  if (normalized === 'true') {
     return { value: true, wasProvided: true };
   }
 
-  if (envValue === 'false') {
+  if (normalized === 'false') {
     return { value: false, wasProvided: true };
   }
 
@@ -495,7 +497,11 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     50
   );
 
-  const versionCheckDisabled = process.env.VERSION_CHECK_DISABLED == "true";
+  const versionCheckDisabled = parseBoolean(
+    'VERSION_CHECK_DISABLED',
+    process.env.VERSION_CHECK_DISABLED,
+    false
+  );
 
   // Meshtastic
   const meshtasticNodeIp = {
@@ -741,7 +747,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
   logger.debug(`   ALLOWED_ORIGINS: ${allowedOrigins.value || '*'} (${src(allowedOrigins.wasProvided)})`);
   logger.debug(`   IFRAME_ALLOWED_ORIGINS: ${iframeAllowedOrigins.value.length > 0 ? iframeAllowedOrigins.value.join(',') : '(not set - iframe embedding blocked)'} (${src(iframeAllowedOrigins.wasProvided)})`);
   logger.debug(`   TRUST_PROXY: ${trustProxy.value} (${src(trustProxy.wasProvided)})`);
-  logger.info(`   VERSION_CHECK_DISABLED: ${versionCheckDisabled}`);
+  logger.info(`   VERSION_CHECK_DISABLED: ${versionCheckDisabled.value} (${src(versionCheckDisabled.wasProvided)})`);
   logger.debug('   --- Session/Security ---');
   logger.debug(`   SESSION_SECRET: ${sessionSecretProvided ? '***provided***' : '(auto-generated)'}`);
   logger.debug(`   SESSION_COOKIE_NAME: ${sessionCookieName.value} (${src(sessionCookieName.wasProvided)})`);
@@ -831,7 +837,7 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
     iframeAllowedOriginsProvided: iframeAllowedOrigins.wasProvided,
     trustProxy: trustProxy.value,
     trustProxyProvided: trustProxy.wasProvided,
-    versionCheckDisabled: versionCheckDisabled,
+    versionCheckDisabled: versionCheckDisabled.value,
 
     // Session/Security
     sessionSecret,
