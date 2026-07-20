@@ -1,6 +1,6 @@
 # Epic — MeshCore System Tests
 
-**Status:** Phase 1 in progress
+**Status:** Phase 1 COMPLETE (validated against live hardware) — Phase 2 next
 **Branch prefix:** `feature/meshcore-system-tests` (Phase 1), `feature/meshcore-system-tests-phase2`, `-phase3`
 **Orchestrator:** `/epic` run started 2026-07-20
 
@@ -93,7 +93,7 @@ the `system-test` label). Coverage:
 
 ## Phases
 
-### Phase 1 — Harness + connect/handshake  ⬜
+### Phase 1 — Harness + connect/handshake  ✅ COMPLETE (2026-07-20)
 `tests/test-meshcore.sh`: generate `docker-compose.meshcore-test.yml` inline
 (image `meshmonitor:test`, distinct port, fresh named volume, device mappings +
 `group_add` copied from `docker-compose.dev.local.yml`); boot; `/api/poll`
@@ -106,6 +106,30 @@ new hard-required phase into `tests/system-tests.sh` (result var +
 **Exit:** `bash tests/test-meshcore.sh` passes locally against the two connected
 companions; both sources reach a stable companion connection; phase integrated
 into `system-tests.sh` and reports PASS; typecheck + full vitest suite green.
+
+**Outcome / deviations (Phase 1):**
+- Delivered `tests/test-meshcore.sh` + a hard-required "MeshCore Hardware Test"
+  phase in `tests/system-tests.sh`. Commits `06824fd3`, `b87f9647`, `af379963`.
+- **Readiness:** polls `GET /api/health` for HTTP 200 (NOT `/api/poll` — this
+  container boots with zero sources, so `/api/poll`'s `"connection"` field never
+  appears).
+- **Device access:** `group_add: ["20","46"]` (dialout + plugdev, numeric GIDs).
+  Numeric because the production `meshmonitor:test` image's `/etc/group` may lack
+  the names. **plugdev (46) is required** — one companion (ttyUSB2) is plugdev,
+  not dialout. `docker-compose.dev.local.yml` was ALSO updated (main checkout,
+  gitignored) to add plugdev so the normal dev container reaches both companions.
+- **DEVIATION — auto-detect ports:** the interview assumed the two companions
+  were on fixed dialout ports; live probing found they're on **ttyUSB2
+  (`Yeraze MC Sandbox`, plugdev) + ttyUSB3 (`Yeraze MC BLE Sandbox`, dialout)**,
+  and enumeration can drift. So the harness maps all four ttyUSB, creates a
+  candidate source per port, and **auto-selects the two that report
+  `deviceTypeName:"COMPANION"`** (env override: `MESHCORE_CANDIDATE_PORTS`),
+  deleting the non-companion sources for a clean two-source state. `SRC_A_ID`/
+  `SRC_B_ID` + node names/pubkeys are echoed for Phase 2/3 reuse.
+- **Validated on live hardware** 2026-07-20: both companions connected + handshook
+  (167/168 contacts), full vitest suite green (3157 suites, 0 failures),
+  typecheck clean.
+- See [[reference_meshcore_hw_rig_ports]] (auto-memory) for the rig port facts.
 
 ### Phase 2 — Messaging (companion↔companion + repeater DM auto-ack)  ⬜
 Extend the script: resolve node A's source id and node B's public key (from B's
