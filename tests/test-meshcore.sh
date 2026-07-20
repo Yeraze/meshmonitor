@@ -415,7 +415,7 @@ assert_handshake() {
 
     # Nodes populated
     NODES=$(curl -s "$BASE_URL/api/sources/$SRC_ID/meshcore/nodes" -b "$COOKIE_FILE")
-    NODE_COUNT=$(echo "$NODES" | jq -r '.count // (.data | length)')
+    NODE_COUNT=$(echo "$NODES" | jq -r '.count // (.data | length) // 0')
     if [ -z "$NODE_COUNT" ] || [ "$NODE_COUNT" -lt 1 ]; then
         echo -e "${RED}✗ FAIL${NC}: $LABEL has nodes.count=$NODE_COUNT (expected >=1)"
         echo "   Response: $NODES"
@@ -430,7 +430,7 @@ assert_handshake() {
     local CONTACTS=""
     while [ $CONTACT_ELAPSED -lt $CONTACT_MAX_WAIT ]; do
         CONTACTS=$(curl -s "$BASE_URL/api/sources/$SRC_ID/meshcore/contacts" -b "$COOKIE_FILE")
-        CONTACT_COUNT=$(echo "$CONTACTS" | jq -r '.count // (.data | length)')
+        CONTACT_COUNT=$(echo "$CONTACTS" | jq -r '.count // (.data | length) // 0')
         if [ -n "$CONTACT_COUNT" ] && [ "$CONTACT_COUNT" -ge 1 ] 2>/dev/null; then
             break
         fi
