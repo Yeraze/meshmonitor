@@ -64,6 +64,8 @@ export interface MapAnalysisConfig {
   followMode: boolean;
   /** Auto-zoom: fit the selected nodes' bounds (+15% margin) each update (issue #3788 P2). */
   autoZoom: boolean;
+  /** 2D (Leaflet) vs 3D (MapLibre GL) map rendering on Map Analysis (#3826 Phase 2). */
+  viewMode: '2d' | '3d';
 }
 
 const ALL_NODE_TYPES_VISIBLE = Object.fromEntries(
@@ -92,6 +94,7 @@ export const DEFAULT_CONFIG: MapAnalysisConfig = {
   selectedNodeIds: [],
   followMode: false,
   autoZoom: false,
+  viewMode: '2d',
 };
 
 /** Read the traceroute options off a config, layering stored values over defaults. */
@@ -120,6 +123,7 @@ function load(): MapAnalysisConfig {
       selectedNodeIds: Array.isArray(parsed.selectedNodeIds) ? parsed.selectedNodeIds : [],
       followMode: typeof parsed.followMode === 'boolean' ? parsed.followMode : false,
       autoZoom: typeof parsed.autoZoom === 'boolean' ? parsed.autoZoom : false,
+      viewMode: parsed.viewMode === '3d' ? '3d' : DEFAULT_CONFIG.viewMode,
     };
   } catch {
     return DEFAULT_CONFIG;
@@ -198,6 +202,10 @@ export function useMapAnalysisConfig() {
     setConfig((prev) => ({ ...prev, autoZoom: v }));
   }, []);
 
+  const setViewMode = useCallback((v: MapAnalysisConfig['viewMode']) => {
+    setConfig((prev) => ({ ...prev, viewMode: v }));
+  }, []);
+
   const setTimeSlider = useCallback((ts: Partial<MapAnalysisConfig['timeSlider']>) => {
     setConfig((prev) => ({ ...prev, timeSlider: { ...prev.timeSlider, ...ts } }));
   }, []);
@@ -219,6 +227,7 @@ export function useMapAnalysisConfig() {
     setSelectedNodeIds,
     setFollowMode,
     setAutoZoom,
+    setViewMode,
     setTimeSlider,
     setInspectorOpen,
     reset,
