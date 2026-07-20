@@ -51,6 +51,10 @@ cleanup() {
 
     echo ""
     echo "Cleaning up..."
+    # Phase 2: kill the Socket.IO ack-listener helper if it's still running,
+    # and remove its temp output files plus the send-status scratch file.
+    [ -n "$HELPER_PID" ] && kill "$HELPER_PID" 2>/dev/null
+    rm -f "$ACK_OUT" "$ACK_ERR" "/tmp/mc_send.$$" 2>/dev/null
     docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
     rm -f "$COMPOSE_FILE"
     rm -f "$COOKIE_FILE"
@@ -453,10 +457,189 @@ assert_handshake "$SRC_A_ID" "Companion A"
 assert_handshake "$SRC_B_ID" "Companion B"
 echo ""
 
+# ==========================================
+# Phase 2: Messaging assertions (DM, channel, repeater auto-ack)
+# ==========================================
+# Phase 2 temp-file/PID vars, declared up front so cleanup() can reference
+# them even if a test fails before they are ever assigned.
+ACK_OUT=""
+ACK_ERR=""
+HELPER_PID=""
+
+echo "Test 8: Acquire API token for Socket.IO helper"
+API_TOKEN=$(curl -s -X POST "$BASE_URL/api/token/generate" \
+    -b "$COOKIE_FILE" -H "x-csrf-token: $CSRF_TOKEN" | jq -r '.token // empty')
+[ -n "$API_TOKEN" ] || { echo -e "${RED}✗ FAIL${NC}: no API token"; exit 1; }
+echo -e "${GREEN}✓${NC} API token acquired"
+echo ""
+
+echo "Test 9: DM A -> B (verify B receives)"
+DM_MARKER="mm-systest-dm-$$-$(date +%s)"
+SINCE=$(( $(date +%s%3N) - 2000 ))
+B_PK="${SRC_PUBKEY[$SRC_B_ID]}"   # full 64-hex from Phase 1 handshake
+DM_ATTEMPTS=${MESHCORE_DM_ATTEMPTS:-3}
+DM_POLL_SECONDS=${MESHCORE_DM_POLL_SECONDS:-30}
+recv_ok=false
+all_sends_400=true      # flips false the moment any send is not a 400
+for attempt in $(seq 1 "$DM_ATTEMPTS"); do
+  # Capture the send HTTP status so a rejected send (400 = bad/unroutable
+  # pubkey, target-not-a-contact) is visible instead of silently burning the
+  # poll budget and mis-reporting "never received".
+  SEND_CODE=$(curl -s -o "/tmp/mc_send.$$" -w "%{http_code}" -X POST \
+    "$BASE_URL/api/sources/$SRC_A_ID/meshcore/messages/send" \
+    -b "$COOKIE_FILE" -H "Content-Type: application/json" -H "X-CSRF-Token: $CSRF_TOKEN" \
+    -d "{\"text\":\"$DM_MARKER\",\"toPublicKey\":\"$B_PK\"}")
+  [ "$SEND_CODE" = "400" ] || all_sends_400=false
+  [ "$SEND_CODE" = "200" ] || echo "  (DM send attempt $attempt returned HTTP $SEND_CODE: $(cat "/tmp/mc_send.$$"))"
+  waited=0
+  while [ $waited -lt "$DM_POLL_SECONDS" ]; do
+    HIT=$(curl -s "$BASE_URL/api/sources/$SRC_B_ID/meshcore/messages?since=$SINCE" -b "$COOKIE_FILE" \
+      | jq -r --arg m "$DM_MARKER" '(.data // [])[] | select(.text==$m) | .text' | head -n1)
+    [ "$HIT" = "$DM_MARKER" ] && { recv_ok=true; break; }
+    sleep "$POLL_INTERVAL"; waited=$((waited+POLL_INTERVAL))
+  done
+  $recv_ok && break
+  echo "  (DM attempt $attempt: not yet received, retrying)"
+done
+if $recv_ok; then
+  echo -e "${GREEN}✓ PASS${NC}: B received DM from A"
+elif $all_sends_400; then
+  # A consistent 400 is not RF loss -- retrying won't fix it.
+  echo -e "${RED}✗ FAIL${NC}: all DM sends rejected HTTP 400 -- target pubkey not a contact / invalid (B_PK=$B_PK)"; exit 1
+else
+  echo -e "${RED}✗ FAIL${NC}: B never received DM after $DM_ATTEMPTS attempts"; exit 1
+fi
+echo ""
+
+echo "Test 10: Create '#mm-systest' channel on both companions"
+# Derive the 16-byte PSK the same way the app does
+# (deriveHashtagSecretHex('#mm-systest') = SHA-256("#mm-systest")[0:16]),
+# base64-encoded for the channel PUT.
+PSK_B64=$(printf '%s' '#mm-systest' | openssl dgst -sha256 -binary | head -c 16 | base64)
+[ -n "$PSK_B64" ] || { echo -e "${RED}✗ FAIL${NC}: failed to derive channel PSK"; exit 1; }
+
+# Pick a free slot on BOTH sources (avoid clobbering an existing channel).
+USED=$( { curl -s "$BASE_URL/api/channels?sourceId=$SRC_A_ID" -b "$COOKIE_FILE";
+          curl -s "$BASE_URL/api/channels?sourceId=$SRC_B_ID" -b "$COOKIE_FILE"; } \
+        | jq -r '(.data // .)[]?.id' | sort -un )
+SLOT=${MESHCORE_TEST_CHANNEL_SLOT:-}
+if [ -z "$SLOT" ]; then
+  for c in 1 2 3 4 5 6 7; do echo "$USED" | grep -qx "$c" || { SLOT=$c; break; }; done
+fi
+[ -n "$SLOT" ] || { echo -e "${RED}✗ FAIL${NC}: no free channel slot"; exit 1; }
+echo "  Using channel slot $SLOT"
+
+for SID in "$SRC_A_ID" "$SRC_B_ID"; do
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "$BASE_URL/api/channels/$SLOT" \
+    -b "$COOKIE_FILE" -H "Content-Type: application/json" -H "X-CSRF-Token: $CSRF_TOKEN" \
+    -d "{\"sourceId\":\"$SID\",\"name\":\"#mm-systest\",\"psk\":\"$PSK_B64\"}")
+  [ "$CODE" = "200" ] || { echo -e "${RED}✗ FAIL${NC}: channel PUT on $SID => HTTP $CODE"; exit 1; }
+done
+
+# Give the device a moment to apply, then confirm the channel persisted on
+# both sources at the expected slot.
+sleep 3
+for SID in "$SRC_A_ID" "$SRC_B_ID"; do
+  CH=$(curl -s "$BASE_URL/api/channels?sourceId=$SID" -b "$COOKIE_FILE" \
+    | jq -r --arg slot "$SLOT" '(.data // .)[] | select((.id|tostring)==$slot) | .name // empty')
+  if [ "$CH" != "#mm-systest" ]; then
+    echo -e "${RED}✗ FAIL${NC}: channel slot $SLOT on source $SID did not persist as '#mm-systest' (got '$CH')"; exit 1
+  fi
+done
+echo -e "${GREEN}✓ PASS${NC}: '#mm-systest' channel created on both companions (slot $SLOT)"
+echo ""
+
+echo "Test 11: Channel message A -> B on '#mm-systest' (verify B receives)"
+CHAN_MARKER="mm-systest-chan-$$-$(date +%s)"
+CHAN_SINCE=$(( $(date +%s%3N) - 2000 ))
+CHAN_ATTEMPTS=${MESHCORE_CHAN_ATTEMPTS:-4}
+CHAN_POLL_SECONDS=${MESHCORE_CHAN_POLL_SECONDS:-25}
+chan_recv_ok=false
+chan_all_400=true
+for attempt in $(seq 1 "$CHAN_ATTEMPTS"); do
+  SEND_CODE=$(curl -s -o "/tmp/mc_send.$$" -w "%{http_code}" -X POST \
+    "$BASE_URL/api/sources/$SRC_A_ID/meshcore/messages/send" \
+    -b "$COOKIE_FILE" -H "Content-Type: application/json" -H "X-CSRF-Token: $CSRF_TOKEN" \
+    -d "{\"text\":\"$CHAN_MARKER\",\"channelIdx\":$SLOT}")
+  [ "$SEND_CODE" = "400" ] || chan_all_400=false
+  [ "$SEND_CODE" = "200" ] || echo "  (channel send attempt $attempt returned HTTP $SEND_CODE: $(cat "/tmp/mc_send.$$"))"
+  waited=0
+  while [ $waited -lt "$CHAN_POLL_SECONDS" ]; do
+    HIT=$(curl -s "$BASE_URL/api/sources/$SRC_B_ID/meshcore/messages/channel/$SLOT?since=$CHAN_SINCE" -b "$COOKIE_FILE" \
+      | jq -r --arg m "$CHAN_MARKER" '(.data // [])[] | select(.text==$m) | .text' | head -n1)
+    if [ -z "$HIT" ]; then
+      # Fall back to the combined inbox filtered by the channel's synthetic
+      # fromPublicKey, in case the per-channel route shape differs.
+      HIT=$(curl -s "$BASE_URL/api/sources/$SRC_B_ID/meshcore/messages?since=$CHAN_SINCE" -b "$COOKIE_FILE" \
+        | jq -r --arg m "$CHAN_MARKER" --arg fpk "channel-$SLOT" \
+          '(.data // [])[] | select(.text==$m and .fromPublicKey==$fpk) | .text' | head -n1)
+    fi
+    [ "$HIT" = "$CHAN_MARKER" ] && { chan_recv_ok=true; break; }
+    sleep "$POLL_INTERVAL"; waited=$((waited+POLL_INTERVAL))
+  done
+  $chan_recv_ok && break
+  echo "  (channel attempt $attempt: not yet received, retrying)"
+done
+if $chan_recv_ok; then
+  echo -e "${GREEN}✓ PASS${NC}: B received channel message from A on '#mm-systest'"
+elif $chan_all_400; then
+  echo -e "${RED}✗ FAIL${NC}: all channel sends rejected HTTP 400 -- bad channelIdx ($SLOT)?"; exit 1
+else
+  echo -e "${RED}✗ FAIL${NC}: B never received channel message after $CHAN_ATTEMPTS attempts"; exit 1
+fi
+echo ""
+
+echo "Test 12: Yeraze Repeater DM firmware auto-ack"
+REPEATER_PK=$(curl -s "$BASE_URL/api/sources/$SRC_A_ID/meshcore/contacts" -b "$COOKIE_FILE" \
+  | jq -r '(.data // [])
+      | ( map(select((.advName // "")|ascii_downcase == "yeraze repeater")) )
+      + ( map(select((.advType==2) and (((.advName // .name // "")|ascii_downcase)|test("yeraze|repeater")))) )
+      | .[0].publicKey // empty')
+REPEATER_PK=${MESHCORE_REPEATER_PUBKEY:-$REPEATER_PK}
+if [ -z "$REPEATER_PK" ]; then
+  echo -e "${RED}✗ FAIL${NC}: no 'Yeraze Repeater' contact on source $SRC_A_ID"; exit 1
+fi
+
+ACK_OUT=$(mktemp); ACK_ERR=$(mktemp)   # registered in cleanup()
+TIMEOUT_MS=$(( ${MESHCORE_REPEATER_ATTEMPTS:-4} * ${MESHCORE_REPEATER_INTERVAL:-20} * 1000 + 10000 ))
+BASE_URL="$BASE_URL" TOKEN="$API_TOKEN" SOURCE_ID="$SRC_A_ID" TIMEOUT_MS="$TIMEOUT_MS" \
+  node "$(dirname "$0")/helpers/meshcore-await-ack.mjs" >"$ACK_OUT" 2>"$ACK_ERR" &
+HELPER_PID=$!
+
+# Wait for READY (helper connected + listening) before sending.
+for _ in $(seq 1 15); do grep -q READY "$ACK_OUT" && break; sleep 1; done
+grep -q READY "$ACK_OUT" || { echo -e "${RED}✗ FAIL${NC}: helper never became READY"; cat "$ACK_ERR"; kill $HELPER_PID 2>/dev/null; exit 1; }
+
+RPT_MARKER="mm-systest-rpt-$$-$(date +%s)"
+rpt_all_400=true
+for attempt in $(seq 1 "${MESHCORE_REPEATER_ATTEMPTS:-4}"); do
+  grep -q '^ACK ' "$ACK_OUT" && break
+  SEND_CODE=$(curl -s -o "/tmp/mc_send.$$" -w "%{http_code}" -X POST \
+    "$BASE_URL/api/sources/$SRC_A_ID/meshcore/messages/send" \
+    -b "$COOKIE_FILE" -H "Content-Type: application/json" -H "X-CSRF-Token: $CSRF_TOKEN" \
+    -d "{\"text\":\"$RPT_MARKER-$attempt\",\"toPublicKey\":\"$REPEATER_PK\"}")
+  [ "$SEND_CODE" = "400" ] || rpt_all_400=false
+  [ "$SEND_CODE" = "200" ] || echo "  (repeater send attempt $attempt returned HTTP $SEND_CODE: $(cat "/tmp/mc_send.$$"))"
+  sleep "${MESHCORE_REPEATER_INTERVAL:-20}"
+done
+wait $HELPER_PID; HELPER_RC=$?
+if [ "$HELPER_RC" = "0" ]; then
+  echo -e "${GREEN}✓ PASS${NC}: repeater auto-ack ($(grep '^ACK ' "$ACK_OUT"))"
+elif $rpt_all_400; then
+  echo -e "${RED}✗ FAIL${NC}: all repeater sends rejected HTTP 400 -- repeater pubkey not a contact / invalid (REPEATER_PK=$REPEATER_PK)"; cat "$ACK_ERR"; exit 1
+else
+  echo -e "${RED}✗ FAIL${NC}: no repeater auto-ack (helper rc=$HELPER_RC)"; cat "$ACK_ERR"; exit 1
+fi
+echo ""
+
 echo "=========================================="
 echo -e "${GREEN}✓ Both MeshCore companions connected + handshake verified${NC}"
+echo -e "${GREEN}✓ DM, channel ('#mm-systest'), and repeater auto-ack messaging verified${NC}"
 echo "=========================================="
 echo "  Companion A: $PORT_A -- source $SRC_A_ID -- '${SRC_NAME[$SRC_A_ID]}' -- ${SRC_PUBKEY[$SRC_A_ID]}"
 echo "  Companion B: $PORT_B -- source $SRC_B_ID -- '${SRC_NAME[$SRC_B_ID]}' -- ${SRC_PUBKEY[$SRC_B_ID]}"
+echo "  DM A->B: verified (B inbox)"
+echo "  Channel A->B on #mm-systest (slot $SLOT): verified (B inbox)"
+echo "  Repeater DM auto-ack: verified (Socket.IO meshcore:send-confirmed)"
 echo ""
 exit 0
