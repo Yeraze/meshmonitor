@@ -310,6 +310,14 @@ If you're seeing your private broker flood the mesh after attaching a bridge to 
 - Confirm the device's MQTT credentials match the broker source's `auth.username` / `auth.password`.
 - The broker enforces default-deny auth: connections without configured credentials are rejected. Check the device's MQTT log for "Connection refused: Bad username or password" — if firmware logs aren't visible, watch the broker's `lastError` field on `/api/sources/:id/status`.
 
+### A known node is missing from the map / messages, but its packets show up as "geo-ignored"
+
+MeshMonitor supports a per-source **geo-ignore** membership model for MQTT: nodes reporting a position outside your configured coverage area can be automatically ignored so noisy public/community brokers don't flood your map with distant traffic. If a node you expect to see is missing:
+
+- Check the [MQTT Packet Monitor](/features/packet-monitor#mqtt-sources) — copies dropped by this filter are still captured and flagged with a `geo-ignored` outcome badge, so you can confirm this is what happened to a specific packet.
+- Review and manage the resulting entries in this source's **Edit Source → Automation → Ignored Nodes** list — geo-ignored nodes show a **Geo filter** badge (as opposed to a manually-ignored node), and can be un-ignored from there like any other ignored node.
+- A node that moves back inside the coverage area is automatically un-ignored on a later packet — you don't need to intervene unless you want to.
+
 ### `packetsIn` climbing, `packetsIngested` stays low
 
 Most upstream traffic and most device-publish traffic is encrypted at the channel-payload level (e.g. `LongFast` PSK). MeshMonitor doesn't have those PSKs at the broker level, so the packets get **republished** (they reach other devices and bridges) but **not ingested into the DB**. `packetsDropped` counts these. This is normal — only decodable packets (NodeInfo, unencrypted Position/Telemetry, etc.) end up in `nodes` / `messages` tables under the broker's sourceId.

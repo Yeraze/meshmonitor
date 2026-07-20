@@ -222,6 +222,10 @@ The Node Details block provides comprehensive information about the currently se
   - Shows absolute signal strength
   - Lower (more negative) values indicate weaker signal
 
+- **Signal Trend** ▲/→/▼ *(New in 4.13)*: A derived "is this link getting worse?" indicator, distinct from the [Link Quality](/features/link-quality) score. It compares the last 24 hours of RSSI (or SNR, when RSSI history is too sparse) against the preceding 7-day baseline: **Improving** (▲), **Stable** (→), or **Degrading** (▼). Hover the badge for the underlying dB deltas. When the drop is attributable to a rising noise floor rather than the link itself, the tooltip calls that out explicitly. Only shown once enough history exists to say something meaningful.
+
+- **Noise Floor** *(New in 4.13)*: The node's self-reported RF noise floor in dBm, shown alongside RSSI/SNR when the device provides it.
+
 #### Network Performance
 - **Channel Utilization**: Percentage of airtime used by all nodes
   - Helps identify network congestion
@@ -258,6 +262,10 @@ The Node Details block provides comprehensive information about the currently se
 
 - **Via MQTT**: Indicates if node connected via MQTT bridge
   - Shows when node is reachable through MQTT instead of radio
+
+#### Location *(New in 4.13)*
+- **Position**: The node's latitude/longitude as plain text (5 decimal places) — shown so a bad fix (e.g. `0.00000, 0.00000`) is visible at a glance without opening the map
+- **Elevation**: The node's reported GPS altitude in meters
 
 #### Activity
 - **Last Heard**: When the node was last active
@@ -342,9 +350,26 @@ When information is unavailable, the block displays "N/A" for that metric. This 
 
 ## Map Settings
 
+### Discard Invalid Positions
+
+::: tip New in 4.13
+:::
+
+**Description**: Controls whether GPS fixes reported at **Null Island** (0, 0) — including precision-obscured positions that snap to that grid cell — are discarded or kept.
+
+**Default**: Enabled (discard)
+
+**Effect**: When enabled (default), a (0,0) position is dropped **on ingest**, across every source, and never stored. Disable it to store and display these positions as received — useful if you want to identify which nodes are transmitting bad/unset GPS fixes. Out-of-range or otherwise garbage coordinates (NaN, outside ±90/±180°) are always discarded regardless of this setting.
+
+**Location**: Settings → Map Settings
+
 ### Map Tileset Selection
 
 **Description**: Choose which map tile server to use for displaying your mesh network on the interactive map.
+
+::: tip Per-theme selection (New in 4.13)
+The tileset is now chosen **separately for light and dark appearance** — a **Light Mode Tileset** and a **Dark Mode Tileset**, each applied automatically when the matching color theme is active. Existing single-tileset selections were preserved for both slots on upgrade.
+:::
 
 **Default Tilesets**:
 - **OpenStreetMap** (default) - Standard OSM map style
@@ -355,8 +380,8 @@ When information is unavailable, the block displays "N/A" for that metric. This 
 - **ESRI Satellite** - Satellite imagery
 
 **Location**:
-- **Settings Tab**: Map Settings section
-- **Nodes Tab**: Bottom-center tileset selector (visual picker)
+- **Settings Tab**: Map Settings section (Light Mode Tileset / Dark Mode Tileset)
+- **Nodes Tab**: Bottom-center tileset selector (visual picker) — updates whichever slot matches your current appearance
 
 **Effect**: Changes the base map layer displayed on the interactive map. Different tilesets offer different visual styles, levels of detail, and use cases.
 
