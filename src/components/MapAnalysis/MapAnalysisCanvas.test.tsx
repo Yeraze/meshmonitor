@@ -3,7 +3,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import MapAnalysisCanvas from './MapAnalysisCanvas';
@@ -99,17 +99,66 @@ vi.mock('../../hooks/useDashboardData', () => ({
   UNIFIED_SOURCE_ID: '__unified__',
 }));
 
+// Mutable so the vector-fallback test (#3826 Phase 2 WP-D) can swap in a
+// vector-only custom tileset without a second describe-level mock factory.
+let mapTilesetMock = 'osm';
+let customTilesetsMock: Array<{
+  id: string;
+  name: string;
+  url: string;
+  attribution: string;
+  maxZoom: number;
+  description: string;
+  createdAt: number;
+  updatedAt: number;
+  isVector?: boolean;
+}> = [];
+
 vi.mock('../../contexts/SettingsContext', () => ({
   useSettings: () => ({
     defaultMapCenterLat: 30,
     defaultMapCenterLon: -90,
     defaultMapCenterZoom: 10,
-    mapTileset: 'osm',
-    customTilesets: [],
+    mapTileset: mapTilesetMock,
+    customTilesets: customTilesetsMock,
     setMapTileset: vi.fn(),
   }),
   // Used by DashboardNodePopup, which now renders inside the node marker popups.
   useDisplaySettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
+}));
+
+// #3826 Phase 2 WP-D: capabilities gate for the force-2D guard. Mutable per
+// test (mirrors the toolbar suite's `terrainCapabilities` mock).
+let terrainCapabilitiesMock = { enabled: true, terrainTiles: true, isLoading: false };
+vi.mock('../../hooks/useTerrainCapabilities', () => ({
+  useTerrainCapabilities: () => terrainCapabilitiesMock,
+}));
+
+// Base3DMap wraps maplibre-gl directly (WebGL) — unusable under jsdom (see
+// spec §4 test plan / Base3DMap.test.tsx, which mocks `maplibre-gl` itself).
+// Here it's mocked at the component level: a stub that renders the mapped
+// props so this suite can assert the 3D branch feeds it the right data,
+// without needing a WebGL context.
+vi.mock('../map/Base3DMap', () => ({
+  Base3DMap: (props: {
+    nodes: Array<{ key: string; lat: number; lng: number; label?: string }>;
+    basemap: { tiles: string[]; usedFallback: boolean };
+    terrainTileUrl: string;
+    onNodeClick?: (key: string) => void;
+  }) => (
+    <div data-testid="base-3d-map" data-terrain-url={props.terrainTileUrl}>
+      {props.nodes.map((n) => (
+        <button
+          key={n.key}
+          type="button"
+          data-testid={`base-3d-node-${n.key}`}
+          onClick={() => props.onNodeClick?.(n.key)}
+        >
+          {n.label}
+        </button>
+      ))}
+    </div>
+  ),
 }));
 
 // The global setup.ts mock for react-i18next ignores `options.defaultValue`
@@ -158,12 +207,18 @@ const wrapper = ({ children }: { children: React.ReactNode }) => {
 };
 
 describe('MapAnalysisCanvas', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    mapTilesetMock = 'osm';
+    customTilesetsMock = [];
+    terrainCapabilitiesMock = { enabled: true, terrainTiles: true, isLoading: false };
+  });
 
-  it('renders the map container and tile layer', () => {
+  it('renders the map container and tile layer, and NOT Base3DMap, in 2d (default)', () => {
     render(<MapAnalysisCanvas />, { wrapper });
     expect(screen.getByTestId('map-container')).toBeInTheDocument();
     expect(screen.getByTestId('tile-layer')).toBeInTheDocument();
+    expect(screen.queryByTestId('base-3d-map')).toBeNull();
   });
 
   it('renders a marker per node when markers layer is enabled (default)', () => {
@@ -178,5 +233,83 @@ describe('MapAnalysisCanvas', () => {
     expect(screen.getByText(/Seen by 2 sources/i)).toBeInTheDocument();
     expect(screen.getByText('Alpha Src')).toBeInTheDocument();
     expect(screen.getByText('Beta Src')).toBeInTheDocument();
+  });
+
+  // #3826 Phase 2 WP-D: 3D branch.
+  describe('3D view (viewMode=3d)', () => {
+    const persist3d = () =>
+      localStorage.setItem('mapAnalysis.config.v1', JSON.stringify({ version: 1, viewMode: '3d' }));
+
+    it('renders Base3DMap (not BaseMap) fed the same node data, mapped to Node3DFeature', () => {
+      persist3d();
+      render(<MapAnalysisCanvas />, { wrapper });
+      expect(screen.getByTestId('base-3d-map')).toBeInTheDocument();
+      expect(screen.queryByTestId('map-container')).toBeNull();
+      // node nodeNum:1 (Meshtastic, no isMeshCore) -> unifiedNodeKey 'mt:1';
+      // label mapped from node.shortName ('A').
+      const nodeBtn = screen.getByTestId('base-3d-node-mt:1');
+      expect(nodeBtn).toHaveTextContent('A');
+    });
+
+    it('clicking a 3D node marker resolves the node and does not throw for an unknown key', () => {
+      persist3d();
+      render(<MapAnalysisCanvas />, { wrapper });
+      // onNodeClick is wired through to setSelected internally; the mock just
+      // proves the callback fires without needing to inspect context state.
+      expect(() => fireEvent.click(screen.getByTestId('base-3d-node-mt:1'))).not.toThrow();
+    });
+
+    it('builds the terrain tile URL from the same-origin elevation tile proxy path', () => {
+      persist3d();
+      render(<MapAnalysisCanvas />, { wrapper });
+      expect(screen.getByTestId('base-3d-map')).toHaveAttribute(
+        'data-terrain-url',
+        expect.stringContaining('/api/elevation/tiles/{z}/{x}/{y}'),
+      );
+    });
+
+    it('shows the non-blocking vector-fallback note when the current tileset is vector-only', () => {
+      mapTilesetMock = 'custom-vector';
+      customTilesetsMock = [
+        {
+          id: 'custom-vector',
+          name: 'Custom Vector',
+          url: 'https://example.com/{z}/{x}/{y}.pbf',
+          attribution: '',
+          maxZoom: 14,
+          description: '',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      ];
+      persist3d();
+      render(<MapAnalysisCanvas />, { wrapper });
+      expect(screen.getByText(/Showing default basemap in 3D/i)).toBeInTheDocument();
+    });
+
+    it('does NOT show the vector-fallback note for a raster tileset', () => {
+      persist3d();
+      render(<MapAnalysisCanvas />, { wrapper });
+      expect(screen.queryByText(/Showing default basemap in 3D/i)).toBeNull();
+    });
+
+    it('force-2D guard: a persisted 3d viewMode falls back to BaseMap once capabilities resolve unavailable', () => {
+      terrainCapabilitiesMock = { enabled: false, terrainTiles: false, isLoading: false };
+      persist3d();
+      render(<MapAnalysisCanvas />, { wrapper });
+      expect(screen.queryByTestId('base-3d-map')).toBeNull();
+      expect(screen.getByTestId('map-container')).toBeInTheDocument();
+      // The guard also corrects the persisted config so a later render (e.g.
+      // navigating away and back) doesn't re-attempt 3D.
+      const stored = JSON.parse(localStorage.getItem('mapAnalysis.config.v1')!);
+      expect(stored.viewMode).toBe('2d');
+    });
+
+    it('does NOT force back to 2D while capabilities are still loading (avoids a flash to 2D)', () => {
+      terrainCapabilitiesMock = { enabled: false, terrainTiles: false, isLoading: true };
+      persist3d();
+      render(<MapAnalysisCanvas />, { wrapper });
+      expect(screen.getByTestId('base-3d-map')).toBeInTheDocument();
+    });
   });
 });

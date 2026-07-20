@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Pane } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useSettings } from '../../contexts/SettingsContext';
@@ -11,6 +11,10 @@ import LinkProfileDrawer from './LinkProfileDrawer';
 import LinkProfileHoverLayer from './LinkProfileHoverLayer';
 import type { LinkEndpoint } from '../../utils/linkProfile';
 import { BaseMap } from '../map/BaseMap';
+import { Base3DMap, type Node3DFeature } from '../map/Base3DMap';
+import { resolve3DBasemap, buildTerrainTileUrl } from '../../config/basemap3d';
+import { useTerrainCapabilities } from '../../hooks/useTerrainCapabilities';
+import { appBasename } from '../../init';
 import NodeMarkersLayer from './layers/NodeMarkersLayer';
 import TraceroutePathsLayer from './layers/TraceroutePathsLayer';
 import NeighborLinksLayer from './layers/NeighborLinksLayer';
@@ -40,6 +44,8 @@ export default function MapAnalysisCanvas() {
   } = useSettings();
   const {
     config,
+    setViewMode,
+    setSelected,
     measureMode,
     setMeasureMode,
     linkProfileMode,
@@ -92,6 +98,69 @@ export default function MapAnalysisCanvas() {
     defaultMapCenterLon ?? FALLBACK_CENTER[1],
   ];
   const zoom = defaultMapCenterZoom ?? FALLBACK_ZOOM;
+
+  // #3826 Phase 2 WP-D: 3D branch (spec §3.10) + force-2D guard (spec §3.11).
+  // A persisted `viewMode:'3d'` must never strand the user once capabilities
+  // resolve unavailable (elevation disabled, or a JSON elevation source with
+  // no DEM tiles): once the capabilities fetch settles unavailable, correct
+  // the *persisted* config back to `'2d'` (effect) and use a
+  // still-loading-safe `effectiveViewMode` for *this* render so a
+  // legitimately-available 3D view doesn't flash to 2D while the
+  // capabilities fetch is still in flight.
+  const terrainCaps = useTerrainCapabilities();
+  const capsUnavailable = !terrainCaps.isLoading && !(terrainCaps.enabled && terrainCaps.terrainTiles);
+  const forced2d = config.viewMode === '3d' && capsUnavailable;
+  useEffect(() => {
+    if (forced2d) setViewMode('2d');
+  }, [forced2d, setViewMode]);
+  const effectiveViewMode = forced2d ? '2d' : config.viewMode;
+
+  // Same shared `useAnalysisNodes()` data the 2D markers layer/picker use
+  // (see `analysisNodes` above), mapped to the shape `Base3DMap` expects.
+  const node3DFeatures: Node3DFeature[] = useMemo(
+    () => analysisNodes.map((a) => ({
+      key: a.key,
+      lat: a.latLng[0],
+      lng: a.latLng[1],
+      label: a.node.shortName ?? undefined,
+    })),
+    [analysisNodes],
+  );
+  const basemap3D = useMemo(
+    () => resolve3DBasemap(mapTileset, customTilesets),
+    [mapTileset, customTilesets],
+  );
+  // `appBasename` is the same base-path prefix `ApiService` was seeded with
+  // at startup (`src/init.ts`) — module-scope constant, never changes.
+  const terrainTileUrl = useMemo(() => buildTerrainTileUrl(appBasename), []);
+  const handleNode3DClick = useCallback(
+    (key: string) => {
+      const match = analysisNodes.find((a) => a.key === key);
+      if (!match) return;
+      setSelected({ type: 'node', nodeNum: Number(match.node.nodeNum), sourceId: match.node.sourceId });
+    },
+    [analysisNodes, setSelected],
+  );
+
+  if (effectiveViewMode === '3d') {
+    return (
+      <div className="map-analysis-canvas" style={{ position: 'relative' }}>
+        <Base3DMap
+          center={center}
+          zoom={zoom}
+          basemap={basemap3D}
+          terrainTileUrl={terrainTileUrl}
+          nodes={node3DFeatures}
+          onNodeClick={handleNode3DClick}
+        />
+        {basemap3D.usedFallback && (
+          <div className="map-analysis-3d-fallback-note">
+            Showing default basemap in 3D — the selected map style is vector-only
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="map-analysis-canvas" style={{ position: 'relative' }}>
