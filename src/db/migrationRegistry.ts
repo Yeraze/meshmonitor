@@ -17,12 +17,21 @@ export interface MigrationEntry {
   postgres?: (client: any) => Promise<void>;
   /** MySQL migration function */
   mysql?: (pool: any) => Promise<void>;
-  /** Settings key for SQLite idempotency tracking */
+  /**
+   * Settings key for idempotency tracking, used by all three backends.
+   *
+   * SQLite checks and sets it inline in its migration loop; PostgreSQL and
+   * MySQL read the whole applied-set up front and record each migration after
+   * it runs (see `migrationLedger.ts`, #4233). Only migration 001 — the
+   * baseline that creates the `settings` table the ledger lives in — omits it.
+   */
   settingsKey?: string;
   /**
    * If true, the SQLite migration handles its own idempotency internally
    * (old-style migrations that check sqlite_master or use CREATE TABLE IF NOT EXISTS).
    * The registry loop calls the function without checking/setting the settingsKey.
+   *
+   * SQLite-only — the PG/MySQL ledger guards on `settingsKey` regardless.
    */
   selfIdempotent?: boolean;
 }

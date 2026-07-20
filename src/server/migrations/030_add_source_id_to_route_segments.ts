@@ -254,7 +254,51 @@ export const migration = {
 
 // ============ PostgreSQL ============
 
+/**
+ * Rows per multi-row INSERT when rebuilding route_segments.
+ *
+ * The original implementation issued one round-trip per segment, which on a
+ * mature install meant ~865k sequential round-trips inside a single
+ * transaction (#4233). 500 rows × 13 columns = 6,500 bind parameters, well
+ * under PostgreSQL's 65,535 limit and MySQL's default max_allowed_packet.
+ */
+const REBUILD_BATCH_SIZE = 500;
+
+/**
+ * Bind parameters per row on the PostgreSQL path. The MySQL path uses 12 —
+ * it hardcodes `isRecordHolder` as `0` in the tuple instead of binding it.
+ */
+const PG_SEGMENT_COLUMNS = 13;
+
+/** Split an array into fixed-size chunks. */
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(items.slice(i, i + size));
+  }
+  return out;
+}
+
 export async function runMigration030Postgres(client: any): Promise<void> {
+  // Idempotency guard (#4233). Before the PG/MySQL migration ledger existed,
+  // this migration re-ran on every boot and unconditionally cleared and
+  // rebuilt the whole table. The ledger is now the primary guard; this check
+  // is what makes the one-time post-ledger replay cheap on installs where 030
+  // already ran. The ALTER + DELETE + rebuild below are all inside one
+  // transaction, so on PostgreSQL "column exists" implies "rebuild committed".
+  const columnExists = await client.query(`
+    SELECT EXISTS (
+      SELECT FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'route_segments'
+        AND column_name = 'sourceId'
+    ) as exists
+  `);
+  if (columnExists.rows[0]?.exists) {
+    logger.info('Migration 030 (PostgreSQL): sourceId already present, skipping rebuild');
+    return;
+  }
+
   logger.info('Running migration 030 (PostgreSQL): Adding sourceId to route_segments and rebuilding from traceroutes...');
 
   await client.query('BEGIN');
@@ -272,9 +316,9 @@ export async function runMigration030Postgres(client: any): Promise<void> {
     `);
 
     const now = Date.now();
-    let inserted = 0;
+    const segments: RebuildSegment[] = [];
     for (const tr of traceroutes as any[]) {
-      const segs = segmentsFromTraceroute(
+      segments.push(...segmentsFromTraceroute(
         Number(tr.fromNodeNum),
         Number(tr.toNodeNum),
         tr.route ?? null,
@@ -282,24 +326,71 @@ export async function runMigration030Postgres(client: any): Promise<void> {
         Number(tr.timestamp),
         tr.sourceId ?? null,
         now,
+      ));
+    }
+
+    const insertOne = async (s: RebuildSegment) => {
+      await client.query(
+        `INSERT INTO route_segments (
+           "fromNodeNum", "toNodeNum", "fromNodeId", "toNodeId", "distanceKm",
+           "isRecordHolder", "fromLatitude", "fromLongitude", "toLatitude", "toLongitude",
+           "timestamp", "createdAt", "sourceId"
+         ) VALUES ($1, $2, $3, $4, $5, false, $6, $7, $8, $9, $10, $11, $12)`,
+        [
+          s.fromNodeNum, s.toNodeNum, s.fromNodeId, s.toNodeId, s.distanceKm,
+          s.fromLatitude, s.fromLongitude, s.toLatitude, s.toLongitude,
+          s.timestamp, s.createdAt, s.sourceId,
+        ],
       );
-      for (const s of segs) {
-        try {
-          await client.query(
-            `INSERT INTO route_segments (
-               "fromNodeNum", "toNodeNum", "fromNodeId", "toNodeId", "distanceKm",
-               "isRecordHolder", "fromLatitude", "fromLongitude", "toLatitude", "toLongitude",
-               "timestamp", "createdAt", "sourceId"
-             ) VALUES ($1, $2, $3, $4, $5, false, $6, $7, $8, $9, $10, $11, $12)`,
-            [
-              s.fromNodeNum, s.toNodeNum, s.fromNodeId, s.toNodeId, s.distanceKm,
-              s.fromLatitude, s.fromLongitude, s.toLatitude, s.toLongitude,
-              s.timestamp, s.createdAt, s.sourceId,
-            ],
-          );
-          inserted++;
-        } catch (err: any) {
-          logger.debug(`Skipped rebuilt segment (FK?): ${err?.message ?? err}`);
+    };
+
+    let inserted = 0;
+    for (const batch of chunk(segments, REBUILD_BATCH_SIZE)) {
+      const values: unknown[] = [];
+      const tuples = batch.map((s, i) => {
+        const b = i * PG_SEGMENT_COLUMNS;
+        values.push(
+          s.fromNodeNum, s.toNodeNum, s.fromNodeId, s.toNodeId, s.distanceKm,
+          false, s.fromLatitude, s.fromLongitude, s.toLatitude, s.toLongitude,
+          s.timestamp, s.createdAt, s.sourceId,
+        );
+        return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9}, $${b + 10}, $${b + 11}, $${b + 12}, $${b + 13})`;
+      });
+
+      // PostgreSQL aborts the whole transaction on any statement error, so
+      // each batch runs under a savepoint we can roll back to without losing
+      // the work already committed to the transaction. Savepoint names are
+      // connection-local and this loop is sequential on one connection, so the
+      // fixed names cannot collide.
+      await client.query('SAVEPOINT batch_sp');
+      try {
+        await client.query(
+          `INSERT INTO route_segments (
+             "fromNodeNum", "toNodeNum", "fromNodeId", "toNodeId", "distanceKm",
+             "isRecordHolder", "fromLatitude", "fromLongitude", "toLatitude", "toLongitude",
+             "timestamp", "createdAt", "sourceId"
+           ) VALUES ${tuples.join(', ')}`,
+          values,
+        );
+        await client.query('RELEASE SAVEPOINT batch_sp');
+        inserted += batch.length;
+      } catch {
+        // A multi-row INSERT fails as a unit, so fall back to per-row inserts
+        // to preserve the original behaviour of skipping individual bad rows
+        // (e.g. FK misses) rather than losing the whole batch.
+        await client.query('ROLLBACK TO SAVEPOINT batch_sp');
+        await client.query('RELEASE SAVEPOINT batch_sp');
+        for (const s of batch) {
+          await client.query('SAVEPOINT row_sp');
+          try {
+            await insertOne(s);
+            await client.query('RELEASE SAVEPOINT row_sp');
+            inserted++;
+          } catch (err: any) {
+            await client.query('ROLLBACK TO SAVEPOINT row_sp');
+            await client.query('RELEASE SAVEPOINT row_sp');
+            logger.debug(`Skipped rebuilt segment (FK?): ${err?.message ?? err}`);
+          }
         }
       }
     }
@@ -317,8 +408,6 @@ export async function runMigration030Postgres(client: any): Promise<void> {
 // ============ MySQL ============
 
 export async function runMigration030Mysql(pool: any): Promise<void> {
-  logger.info('Running migration 030 (MySQL): Adding sourceId to route_segments and rebuilding from traceroutes...');
-
   const conn = await pool.getConnection();
   try {
     // Idempotently add sourceId column.
@@ -326,12 +415,14 @@ export async function runMigration030Mysql(pool: any): Promise<void> {
       `SELECT COLUMN_NAME FROM information_schema.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'route_segments' AND COLUMN_NAME = 'sourceId'`
     );
-    if (!Array.isArray(colRows) || colRows.length === 0) {
+    const hadColumn = Array.isArray(colRows) && colRows.length > 0;
+    if (!hadColumn) {
       await conn.query(`ALTER TABLE route_segments ADD COLUMN sourceId VARCHAR(36)`);
       logger.debug('Added sourceId column to route_segments');
     }
 
-    // Index on sourceId.
+    // Index on sourceId. Ensured on both paths — the rebuild may be skipped
+    // below, but the index must exist either way.
     const [idxRows] = await conn.query(
       `SELECT COUNT(*) AS cnt FROM information_schema.STATISTICS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'route_segments' AND INDEX_NAME = 'idx_route_segments_source_id'`
@@ -339,6 +430,19 @@ export async function runMigration030Mysql(pool: any): Promise<void> {
     if (!(idxRows as any)[0]?.cnt) {
       await conn.query(`CREATE INDEX idx_route_segments_source_id ON route_segments(sourceId)`);
     }
+
+    // Idempotency guard (#4233) — see the PostgreSQL path. Unlike PostgreSQL,
+    // MySQL implicitly commits DDL, so the ALTER above is not covered by the
+    // rebuild transaction: a crash between the two would leave the column
+    // present with the rebuild not done. The migration ledger is the primary
+    // guard against re-running at all; this check keeps the one-time
+    // post-ledger replay from re-clearing an already-rebuilt table.
+    if (hadColumn) {
+      logger.info('Migration 030 (MySQL): sourceId already present, skipping rebuild');
+      return;
+    }
+
+    logger.info('Running migration 030 (MySQL): Adding sourceId to route_segments and rebuilding from traceroutes...');
 
     await conn.beginTransaction();
     try {
@@ -352,9 +456,9 @@ export async function runMigration030Mysql(pool: any): Promise<void> {
       );
 
       const now = Date.now();
-      let inserted = 0;
+      const segments: RebuildSegment[] = [];
       for (const tr of traceroutes as any[]) {
-        const segs = segmentsFromTraceroute(
+        segments.push(...segmentsFromTraceroute(
           Number(tr.fromNodeNum),
           Number(tr.toNodeNum),
           tr.route ?? null,
@@ -362,24 +466,40 @@ export async function runMigration030Mysql(pool: any): Promise<void> {
           Number(tr.timestamp),
           tr.sourceId ?? null,
           now,
-        );
-        for (const s of segs) {
-          try {
-            await conn.query(
-              `INSERT INTO route_segments (
-                 fromNodeNum, toNodeNum, fromNodeId, toNodeId, distanceKm,
-                 isRecordHolder, fromLatitude, fromLongitude, toLatitude, toLongitude,
-                 timestamp, createdAt, sourceId
-               ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`,
-              [
-                s.fromNodeNum, s.toNodeNum, s.fromNodeId, s.toNodeId, s.distanceKm,
-                s.fromLatitude, s.fromLongitude, s.toLatitude, s.toLongitude,
-                s.timestamp, s.createdAt, s.sourceId,
-              ],
-            );
-            inserted++;
-          } catch (err: any) {
-            logger.debug(`Skipped rebuilt segment (FK?): ${err?.message ?? err}`);
+        ));
+      }
+
+      const INSERT_PREFIX = `INSERT INTO route_segments (
+        fromNodeNum, toNodeNum, fromNodeId, toNodeId, distanceKm,
+        isRecordHolder, fromLatitude, fromLongitude, toLatitude, toLongitude,
+        timestamp, createdAt, sourceId
+      ) VALUES `;
+      const ROW_TUPLE = '(?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)';
+      const rowValues = (s: RebuildSegment) => [
+        s.fromNodeNum, s.toNodeNum, s.fromNodeId, s.toNodeId, s.distanceKm,
+        s.fromLatitude, s.fromLongitude, s.toLatitude, s.toLongitude,
+        s.timestamp, s.createdAt, s.sourceId,
+      ];
+
+      let inserted = 0;
+      for (const batch of chunk(segments, REBUILD_BATCH_SIZE)) {
+        try {
+          await conn.query(
+            INSERT_PREFIX + batch.map(() => ROW_TUPLE).join(', '),
+            batch.flatMap(rowValues),
+          );
+          inserted += batch.length;
+        } catch {
+          // A multi-row INSERT fails as a unit, so fall back to per-row
+          // inserts to preserve the original behaviour of skipping individual
+          // bad rows (e.g. FK misses) rather than losing the whole batch.
+          for (const s of batch) {
+            try {
+              await conn.query(INSERT_PREFIX + ROW_TUPLE, rowValues(s));
+              inserted++;
+            } catch (err: any) {
+              logger.debug(`Skipped rebuilt segment (FK?): ${err?.message ?? err}`);
+            }
           }
         }
       }
