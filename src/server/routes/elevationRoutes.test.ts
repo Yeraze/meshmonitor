@@ -12,6 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PNG } from 'pngjs';
 import elevationRoutes from './elevationRoutes.js';
+import { clearRawTileCacheForTesting } from '../services/elevationProvider.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 
 const mockSafeFetch = vi.hoisted(() => vi.fn());
@@ -73,6 +74,10 @@ describe('elevationRoutes', () => {
     });
     mockSafeFetch.mockReset();
     mockSafeFetch.mockResolvedValue(fakeTileResponse());
+    // The raw-PNG LRU in elevationProvider is module-scoped (shared across
+    // this whole file) — clear it so tile-route tests are isolated regardless
+    // of which z/x/y coordinates they use.
+    clearRawTileCacheForTesting();
   });
 
   afterEach(async () => {
@@ -292,9 +297,6 @@ describe('elevationRoutes', () => {
     });
 
     it('SSRF-blocked upstream -> 502 TILE_FETCH_FAILED, no key leak, no-store', async () => {
-      // Distinct tile coord — the raw-PNG LRU is module-scoped/shared across
-      // tests in this file, so reusing 8/40/96 would hit the cache warmed by
-      // an earlier test and never reach safeFetch.
       mockSafeFetch.mockRejectedValueOnce(new MockSsrfBlockedError('blocked: private IP target'));
 
       const agent = await harness.loginAs(null);

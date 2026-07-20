@@ -157,6 +157,16 @@ const tileCache = new LruCache<string, Float32Array>(TILE_CACHE_MAX);
 const rawTileCache = new LruCache<string, Buffer>(RAW_TILE_CACHE_MAX);
 
 /**
+ * Test-only: empties the module-scope raw-PNG tile cache so tests exercising
+ * the tile-proxy fetch path are isolated from each other (the cache is shared
+ * for the lifetime of the module, i.e. an entire test file). Not for
+ * production use.
+ */
+export function clearRawTileCacheForTesting(): void {
+  rawTileCache.clear();
+}
+
+/**
  * Integer + range validation for slippy-tile coordinates. `z` must be within
  * `[0, MAX_TERRARIUM_TILE_ZOOM]`; `x`/`y` must fall within the `2^z` tile
  * grid for that zoom.

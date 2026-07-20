@@ -123,10 +123,29 @@ router.post('/test', requirePermission('settings', 'write'), elevationLimiter, a
  * Public (optionalAuth), no network I/O — reads two settings and derives a
  * non-secret capability summary (#3826 Phase 2 WP-A).
  */
+/**
+ * Reads just the two elevation settings keys — deliberately NOT
+ * `getAllSettings()` (full settings-map load), since the tile route can be
+ * hit up to 600/min (PR #4239 review).
+ */
+async function readElevationSettings(): Promise<{
+  elevationEnabled: string | undefined;
+  elevationSourceUrl: string | undefined;
+}> {
+  const [elevationEnabled, elevationSourceUrl] = await Promise.all([
+    databaseService.settings.getSetting('elevationEnabled'),
+    databaseService.settings.getSetting('elevationSourceUrl'),
+  ]);
+  return {
+    elevationEnabled: elevationEnabled ?? undefined,
+    elevationSourceUrl: elevationSourceUrl ?? undefined,
+  };
+}
+
 router.get('/capabilities', optionalAuth(), async (_req: Request, res: Response) => {
   try {
-    const settings = await databaseService.settings.getAllSettings();
-    const capabilities = getElevationCapabilities(settings.elevationEnabled, settings.elevationSourceUrl);
+    const { elevationEnabled, elevationSourceUrl } = await readElevationSettings();
+    const capabilities = getElevationCapabilities(elevationEnabled, elevationSourceUrl);
     ok(res, capabilities);
   } catch (error) {
     logger.error('Error in GET /api/elevation/capabilities:', error);
@@ -158,8 +177,8 @@ router.get(
       const x = parseTileParam(req.params.x);
       const y = parseTileParam(req.params.y);
 
-      const settings = await databaseService.settings.getAllSettings();
-      const result = await fetchTerrainTile(z, x, y, settings.elevationEnabled, settings.elevationSourceUrl);
+      const { elevationEnabled, elevationSourceUrl } = await readElevationSettings();
+      const result = await fetchTerrainTile(z, x, y, elevationEnabled, elevationSourceUrl);
 
       if ('code' in result) {
         res.set('Cache-Control', 'no-store');

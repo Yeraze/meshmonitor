@@ -30,6 +30,7 @@ import {
   TILE_SIZE,
   isValidTileCoord,
   fetchTerrariumTilePng,
+  clearRawTileCacheForTesting,
   MAX_TERRARIUM_TILE_ZOOM,
 } from './elevationProvider.js';
 import { lngLatToTilePixel } from '../../utils/greatCircle.js';
@@ -76,6 +77,9 @@ function fakeJsonResponse(opts: { ok: boolean; status?: number; body?: unknown }
 
 beforeEach(() => {
   mockSafeFetch.mockReset();
+  // The raw-PNG LRU is module-scoped (shared across the whole file) — clear
+  // it so tile-proxy tests never depend on coordinate uniqueness for isolation.
+  clearRawTileCacheForTesting();
 });
 
 describe('detectProviderType', () => {
