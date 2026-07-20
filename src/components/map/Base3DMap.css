@@ -1,0 +1,42 @@
+/* #3826 Phase 2 WP-C: Base3DMap overlay controls (exaggeration slider). The
+   MapLibre canvas itself is unstyled here — MapLibre ships its own CSS via
+   'maplibre-gl/dist/maplibre-gl.css' (imported in Base3DMap.tsx). */
+.base-3d-map {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.base-3d-map-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.base-3d-map-exaggeration {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.75);
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.base-3d-map-exaggeration label {
+  white-space: nowrap;
+}
+
+.base-3d-map-exaggeration input[type='range'] {
+  width: 100px;
+}
+
+.base-3d-map-exaggeration span {
+  min-width: 2.5em;
+  text-align: right;
+}
