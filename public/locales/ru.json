@@ -4225,7 +4225,7 @@
     "dashboard.telemetry_help.step1": "Нажмите на узел на карте",
     "dashboard.telemetry_help.step2": "Нажмите «Подробнее» внизу",
     "dashboard.telemetry_help.step3": "Прокрутите вниз до раздела «Данные телеметрии»",
-    "dashboard.telemetry_help.step4": "Нажмите на значок звезды  рядом с метрикой, которую вы хотите закрепить на дашборде",
+    "dashboard.telemetry_help.step4": "Нажмите на значок звезды рядом с метрикой, которую вы хотите закрепить на дашборде",
     "users.connection_view_status": "Посмотреть статус",
     "users.connection_control_device": "Управлять устройством",
     "admin_commands.router_mode_warning_title": "Режим роутера",
