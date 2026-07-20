@@ -264,7 +264,11 @@ export const migration = {
  */
 const REBUILD_BATCH_SIZE = 500;
 
-const SEGMENT_COLUMNS = 13;
+/**
+ * Bind parameters per row on the PostgreSQL path. The MySQL path uses 12 —
+ * it hardcodes `isRecordHolder` as `0` in the tuple instead of binding it.
+ */
+const PG_SEGMENT_COLUMNS = 13;
 
 /** Split an array into fixed-size chunks. */
 function chunk<T>(items: T[], size: number): T[][] {
@@ -344,7 +348,7 @@ export async function runMigration030Postgres(client: any): Promise<void> {
     for (const batch of chunk(segments, REBUILD_BATCH_SIZE)) {
       const values: unknown[] = [];
       const tuples = batch.map((s, i) => {
-        const b = i * SEGMENT_COLUMNS;
+        const b = i * PG_SEGMENT_COLUMNS;
         values.push(
           s.fromNodeNum, s.toNodeNum, s.fromNodeId, s.toNodeId, s.distanceKm,
           false, s.fromLatitude, s.fromLongitude, s.toLatitude, s.toLongitude,
@@ -355,7 +359,9 @@ export async function runMigration030Postgres(client: any): Promise<void> {
 
       // PostgreSQL aborts the whole transaction on any statement error, so
       // each batch runs under a savepoint we can roll back to without losing
-      // the work already committed to the transaction.
+      // the work already committed to the transaction. Savepoint names are
+      // connection-local and this loop is sequential on one connection, so the
+      // fixed names cannot collide.
       await client.query('SAVEPOINT batch_sp');
       try {
         await client.query(

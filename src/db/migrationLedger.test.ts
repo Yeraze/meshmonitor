@@ -19,6 +19,8 @@ import {
   MIGRATION_COMPLETED,
 } from './migrationLedger.js';
 import type { MigrationEntry } from './migrationRegistry.js';
+import type { PoolClient } from 'pg';
+import type { Pool as MySQLPool } from 'mysql2/promise';
 
 /** Minimal fake `pg` client: canned responses matched on SQL substrings. */
 function fakePgClient(opts: { settingsTableExists: boolean; appliedKeys?: string[] }) {
@@ -36,7 +38,7 @@ function fakePgClient(opts: { settingsTableExists: boolean; appliedKeys?: string
       return { rows: [], rowCount: 0 };
     }),
   };
-  return client;
+  return client as typeof client & PoolClient;
 }
 
 /** Minimal fake mysql2 pool. */
@@ -55,7 +57,7 @@ function fakeMysqlPool(opts: { settingsTableExists: boolean; appliedKeys?: strin
       return [{}];
     }),
   };
-  return pool;
+  return pool as typeof pool & MySQLPool;
 }
 
 function entry(number: number, overrides: Partial<MigrationEntry> = {}): MigrationEntry {

@@ -36,6 +36,14 @@ export const MIGRATION_COMPLETED = 'completed';
  *
  * Returns an empty set when the `settings` table does not exist yet — that is
  * the fresh-install case, where migration 001 is about to create it.
+ *
+ * Scoped to the `public` schema, matching every other `information_schema`
+ * lookup in the PostgreSQL path (the pre-v3.7 detection in
+ * `createPostgresSchema`, migration 030's column check, and others). A
+ * deployment using a non-`public` search_path would not be found here — but it
+ * would equally not be found by any of those, so the assumption is consistent
+ * repo-wide rather than introduced by the ledger. Changing it means changing
+ * all of them together.
  */
 export async function readAppliedMigrationsPostgres(client: PoolClient): Promise<Set<string>> {
   const exists = await client.query(`
@@ -74,7 +82,7 @@ export async function readAppliedMigrationsMysql(pool: MySQLPool): Promise<Set<s
     `SELECT COUNT(*) as count FROM information_schema.TABLES
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'settings'`,
   );
-  if (!Number((tableRows as Array<{ count: number }>)[0]?.count)) return new Set();
+  if (Number((tableRows as Array<{ count: number }>)[0]?.count) === 0) return new Set();
 
   const [rows] = await pool.query(
     'SELECT `key` FROM settings WHERE `key` LIKE \'migration_%\' AND value = ?',
@@ -147,7 +155,10 @@ export async function runLedgeredMigrations<H>(opts: {
   if (skipped > 0) {
     logger.info(`[${backend}] Skipped ${skipped} already-applied migration(s), ran ${ran}`);
   } else if (ran > 0) {
-    logger.info(`[${backend}] Ran ${ran} migration(s) (no ledger entries found — recording them now)`);
+    // No ledger entries: either a fresh install, or an existing database on
+    // its first boot since the ledger was introduced. Both run everything
+    // once and record it; neither repeats.
+    logger.info(`[${backend}] Ran ${ran} migration(s), now recorded in the ledger`);
   }
 
   return { ran, skipped };
