@@ -281,6 +281,22 @@ MeshMonitor **keeps all previously collected history** — nothing you already g
 
 ---
 
+### What is MeshMonitor's "firmware 2.8 early preview" decode support? {#firmware-2-8-early-preview}
+
+::: info Not released yet
+As above, firmware 2.8 is **not officially released** (latest stable is v2.7.26). MeshMonitor has started decoding a few 2.8-only wire formats ahead of release so nothing breaks the day it ships, but these are necessarily built against pre-release protobuf definitions and may still change.
+:::
+
+A few things you may notice if you're running a 2.8 development build:
+
+- **Signed-packet shield in the Packet Monitor.** Firmware 2.8 introduces an **XEdDSA** packet-signing scheme. When the connected node reports a packet as signature-verified, MeshMonitor shows a small shield icon next to it in the [Packet Monitor](/features/packet-monitor). MeshMonitor doesn't verify the signature itself — it only surfaces what the node already checked.
+- **MeshBeacon decoding.** 2.8 adds a periodic `MESH_BEACON_APP` broadcast that a node can use to advertise a joinable channel (name and modem preset). The Packet Monitor decodes and previews these as `[MeshBeacon: "..."]`.
+- **MEDIUM_TURBO modem preset.** A new 500 kHz "medium range, turbo" preset appears alongside the existing presets in configuration screens that list modem presets. See [Modem Preset](/features/device#modem-preset).
+
+None of this requires any action on your part — it's read-only decode support so MeshMonitor stays useful against nodes running early 2.8 builds. Expect this section to be replaced with normal release documentation once 2.8 ships.
+
+---
+
 ## 🔐 User Management
 
 ### How do I reset a user's password as an admin?

@@ -26,6 +26,10 @@ Configuration is per-browser (stored in `localStorage`) and survives reloads.
 
 The page is publicly accessible — but data is silently filtered by your existing per-source permissions. Sources you can't read contribute zero points; nothing renders for them and no error is shown.
 
+::: tip Icon toolbar (New in 4.13)
+The toolbar is now icon-based rather than text-labeled — every button carries a hover tooltip (and `aria-label`) instead of a visible caption, so the same set of controls fits in a much narrower space. Behavior is unchanged; if you're looking for a control by its old label, hover the icons to find it.
+:::
+
 ## Toolbar
 
 The toolbar runs across the top of the canvas. From left to right:
@@ -33,10 +37,14 @@ The toolbar runs across the top of the canvas. From left to right:
 | Control | Purpose |
 | --- | --- |
 | **Source multi-select** | Pick which sources contribute to every layer. "All sources" is the default. |
+| **Node type filter** | Show/hide markers by role category (client, router, sensor, etc. — adapts to whichever source types are connected). |
+| **Transport filter (Show RF / UDP / MQTT)** | Show/hide markers by how the node's most recent packet reached MeshMonitor — over the air (**RF**), the Meshtastic multicast-UDP local transport (**UDP**), or an **MQTT** broker/bridge. Mirrors the same toggle on the Dashboard/Nodes map. A node heard through more than one transport (across sources) stays visible as long as any of its transports is enabled. |
 | **Search box** | Filter visible markers (and traceroute link endpoints) by name or node number. See [Node search](#node-search). |
 | **Node multi-select** | Pick specific nodes to emphasize. Selected nodes render at full opacity; everything else dims. "All nodes" (empty selection) is the default. See [Node selection & emphasis](#node-selection-emphasis). |
 | **Follow / Auto-zoom** | Keep the selected nodes framed as they move — recenter (Follow) and/or fit-to-bounds (Auto-zoom) on each update. See [Follow & Auto-zoom](#follow-auto-zoom). |
 | **Time slider toggle** | Show/hide the floating time-window slider. |
+| **Measure** | Straight-line distance between two positioned nodes. Disabled until at least two positioned nodes exist; mutually exclusive with Link Profile. |
+| **Link Profile** | Terrain, Fresnel clearance, and link-budget verdict between two points. See [Terrain Link Profile](#terrain-link-profile). Only shown when the server has elevation enabled. |
 | **Layer buttons (×8)** | Toggle each visualization layer on/off. The right-edge chevron opens a popover for layer-specific options (lookback window, sub-options). |
 | **Progress bar** | Shows aggregate loading state while any layer is fetching. |
 | **Inspector toggle** | Show/hide the right-side detail panel. |
@@ -114,8 +122,16 @@ Renders every known node from the selected sources using the same icon set as th
 For a node reported by more than one source, the popup includes a **"Seen by N sources"** list with a row per source that links to that source's view — matching the Unified/Dashboard map. The page is also fully multi-source-aware: a node stays visible when **any** of its reporting sources is enabled in the source filter, not only its primary source.
 :::
 
+::: tip Discard invalid positions
+Whether a "Null Island" (0,0) GPS fix renders here follows the global **Discard invalid positions** setting (**Settings → Map**) — the same setting that controls whether it's stored on ingest in the first place. Out-of-range/garbage coordinates are always dropped regardless of this setting. See [Settings → Map Settings](/features/settings#map-settings).
+:::
+
 ::: tip Overlapping markers fan out (New in 4.10)
 When several nodes report the **same coordinates** — a shared site with multiple radios, or a cluster of nodes that inherited one position — they no longer stack into a single un-clickable marker. They **spiderfy** (fan out around the shared point) so each node is individually selectable.
+:::
+
+::: tip Obscured-position offset (New in 4.13)
+A node broadcasting a reduced-precision GPS fix (Meshtastic's `precision_bits`) reports a position snapped to the center of a grid cell that can be well over 100 m across — the true position could be anywhere inside it. When **two or more** such nodes snap to the *same* cell, their markers no longer stack exactly on that center point: each is nudged to a deterministic, stable spot inside its own cell so they're individually clickable without implying a precision the node never reported. A node alone in its cell is left at the true center — nothing to declutter. The nudge distance scales with how many nodes share the cell (more crowding, more spread) and is capped so a very coarse (low-precision) fix never scatters its marker kilometers away. This is separate from the exact-coordinate spiderfy above, and from the dashed **accuracy-region** rectangle (`Show Accuracy`), which always still shows the node's true full cell.
 :::
 
 ### Traceroute paths
@@ -191,6 +207,8 @@ The **verdict** is computed from Fresnel-zone clearance along the path:
 | **Obstructed** | Terrain (plus Earth-curvature bulge) crosses the direct line-of-sight line somewhere along the path. |
 
 Once a verdict is available, the connecting line on the map itself recolors to match (green/amber/red) — so you can see the result without having the drawer's chart in view. It reverts to a neutral amber while no verdict is available yet (still loading, or the pair was just cleared).
+
+Hovering over the chart drops a matching marker on the map at the terrain point under your cursor, so you can correlate a dip or spike in the profile with the actual location along the path. Move off the chart (or clear the pick) to remove it.
 
 ### Link budget inputs
 

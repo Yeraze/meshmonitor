@@ -40,6 +40,11 @@ The Packet Monitor displays **only incoming packets** received from the mesh net
 | TELEMETRY (67) | Device/environment telemetry |
 | TRACEROUTE (70) | Traceroute responses |
 | NEIGHBORINFO (71) | Neighbor information |
+| MESH_BEACON (37) | Firmware 2.8+ periodic beacon advertising a joinable channel (name/preset) — [early preview](/faq#firmware-2-8-early-preview), decoded as `[MeshBeacon: "..."]` |
+
+::: tip Signed-packet shield (firmware 2.8 early preview)
+Packets carrying a firmware-verified **XEdDSA signature** (Meshtastic's new packet-signing scheme, not yet in an official release) show a small shield icon next to the entry. This only reflects what the connected node itself reported as verified — MeshMonitor doesn't re-verify the signature.
+:::
 
 ### Packets That Do NOT Appear
 
