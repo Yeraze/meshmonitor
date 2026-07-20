@@ -19,8 +19,8 @@ import { logger } from '../../utils/logger.js';
 /**
  * Parse boolean environment variable
  * - undefined → defaultValue
- * - 'true' → true
- * - 'false' → false
+ * - 'true' (case-insensitive) → true
+ * - 'false' (case-insensitive) → false
  * - anything else → defaultValue with warning
  */
 function parseBoolean(
@@ -32,11 +32,13 @@ function parseBoolean(
     return { value: defaultValue, wasProvided: false };
   }
 
-  if (envValue === 'true') {
+  const normalized = envValue.trim().toLowerCase();
+
+  if (normalized === 'true') {
     return { value: true, wasProvided: true };
   }
 
-  if (envValue === 'false') {
+  if (normalized === 'false') {
     return { value: false, wasProvided: true };
   }
 
