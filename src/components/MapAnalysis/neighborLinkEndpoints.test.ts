@@ -35,7 +35,7 @@ describe('resolveNeighborEndpoints (#3826 Phase 1 WP-1)', () => {
 
     expect(result).not.toBeNull();
     expect(result?.a).toEqual({
-      id: 'src-a:1',
+      id: 'mt:1',
       lat: 10,
       lng: 20,
       isNode: true,
@@ -46,7 +46,7 @@ describe('resolveNeighborEndpoints (#3826 Phase 1 WP-1)', () => {
       label: 'A1',
     });
     expect(result?.b).toEqual({
-      id: 'src-a:2',
+      id: 'mt:2',
       lat: 11,
       lng: 21,
       isNode: true,
@@ -135,7 +135,7 @@ describe('resolveNeighborEndpoints (#3826 Phase 1 WP-1)', () => {
 
     expect(result).not.toBeNull();
     expect(result?.a).toEqual({
-      id: 'mc-src:pubA',
+      id: 'mc:pubA',
       lat: 30,
       lng: 40,
       isNode: true,
@@ -146,7 +146,7 @@ describe('resolveNeighborEndpoints (#3826 Phase 1 WP-1)', () => {
       label: 'MCA',
     });
     expect(result?.b).toEqual({
-      id: 'mc-src:pubB',
+      id: 'mc:pubB',
       lat: 31,
       lng: 41,
       isNode: true,

@@ -17,6 +17,7 @@
 import type { LinkEndpoint } from '../../utils/linkProfile';
 import type { SelectedTarget } from './MapAnalysisContext';
 import { resolveNodeLatLng, type MaybePositionedNode } from './nodePositionUtil';
+import { unifiedNodeKey } from '../../utils/nodeIdentity';
 
 /** Minimal node shape the resolver needs (subset of useAnalysisNodes' NodeRecord). */
 export interface EndpointNodeRecord extends MaybePositionedNode {
@@ -69,9 +70,12 @@ function findPositionedNode(
 function buildEndpoint(resolved: ResolvedNode, isMeshCore: boolean): LinkEndpoint {
   const { node, latLng } = resolved;
   return {
-    id: isMeshCore
-      ? `${node.sourceId ?? ''}:${node.publicKey ?? ''}`
-      : `${node.sourceId ?? ''}:${node.nodeNum}`,
+    // Byte-for-byte parity with MapAnalysisCanvas.linkEndpointCandidates,
+    // whose `id` is `AnalysisNode.key` = `unifiedNodeKey(node)` (`mt:${nodeNum}`
+    // / `mc:${publicKey}`). The matched node always carries the identifier the
+    // matcher keyed on, so the null branch is unreachable in practice; '' is a
+    // defensive fallback only.
+    id: unifiedNodeKey(node) ?? '',
     lat: latLng[0],
     lng: latLng[1],
     isNode: true,
