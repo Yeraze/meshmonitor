@@ -44,6 +44,22 @@ export const TILE_SIZE = 256;
 /** Max decoded tiles held in the module-scope LRU cache (see cache below for the memory budget). */
 export const TILE_CACHE_MAX = 64;
 
+/**
+ * Max cached raw (undecoded) terrarium PNG tiles held in the DEM tile-proxy's
+ * module-scope LRU cache (#3826 Phase 2 WP-A). Separate from `TILE_CACHE_MAX`
+ * (decoded `Float32Array`s at the fixed `TERRARIUM_ZOOM`) — the proxy serves
+ * raw bytes at arbitrary client-requested zoom.
+ */
+export const RAW_TILE_CACHE_MAX = 256;
+
+/**
+ * AWS/Mapzen terrarium's max native zoom level. The `raster-dem` source's
+ * `maxzoom` is set to this value; MapLibre overzooms terrain past it
+ * client-side. Also caps the DEM tile-proxy's SSRF attack surface — only
+ * well-formed z/x/y triples are ever substituted into an outbound fetch.
+ */
+export const MAX_TERRARIUM_TILE_ZOOM = 15;
+
 /** Max cached JSON point samples (keyed by rounded lat,lng). */
 const JSON_CACHE_MAX = 10_000;
 
@@ -128,6 +144,31 @@ export function decodeTerrariumTile(
 const tileCache = new LruCache<string, Float32Array>(TILE_CACHE_MAX);
 
 /**
+ * Module-scope raw (undecoded) terrarium PNG tile cache for the DEM tile
+ * proxy (#3826 Phase 2 WP-A). Keyed `"z/x/y"` at whatever zoom the client
+ * requested (unlike `tileCache`, which is fixed at `TERRARIUM_ZOOM`).
+ *
+ * Memory bound: terrarium PNGs are ~10-120 KB (typ. ~50 KB); 256 entries *
+ * ~120 KB worst case ~= 30 MB ceiling, typically ~13 MB. Kept separate from
+ * `tileCache` — different key space (variable z) and value type (raw bytes
+ * vs. decoded Float32Array) — so 3D tile-browsing pressure never evicts warm
+ * link-profile tiles (or vice versa).
+ */
+const rawTileCache = new LruCache<string, Buffer>(RAW_TILE_CACHE_MAX);
+
+/**
+ * Integer + range validation for slippy-tile coordinates. `z` must be within
+ * `[0, MAX_TERRARIUM_TILE_ZOOM]`; `x`/`y` must fall within the `2^z` tile
+ * grid for that zoom.
+ */
+export function isValidTileCoord(z: number, x: number, y: number): boolean {
+  if (!Number.isInteger(z) || !Number.isInteger(x) || !Number.isInteger(y)) return false;
+  if (z < 0 || z > MAX_TERRARIUM_TILE_ZOOM) return false;
+  const maxIndex = 2 ** z - 1;
+  return x >= 0 && x <= maxIndex && y >= 0 && y <= maxIndex;
+}
+
+/**
  * Samples a terrarium-encoded slippy-tile DEM source (e.g. the default
  * Mapzen/AWS `elevation-tiles-prod` dataset). Points are grouped by the tile
  * they fall in so each unique tile is fetched/decoded at most once per
@@ -210,6 +251,56 @@ export class TerrariumTileProvider implements ElevationProvider {
       }
       return null;
     }
+  }
+}
+
+/**
+ * Fetches a raw terrarium PNG tile (bytes, undecoded) for the given `z/x/y`
+ * from a terrarium URL template, via `safeFetch`, backed by the shared
+ * `rawTileCache` LRU (#3826 Phase 2 WP-A, DEM tile proxy).
+ *
+ * Returns `null` — never throws — on: invalid coords, a non-terrarium
+ * template, a non-OK upstream response, an SSRF block, or a network/decode
+ * error. Failures are not cached, so a later request can retry.
+ *
+ * Unlike `TerrariumTileProvider.getTile` (fixed `TERRARIUM_ZOOM`), this
+ * substitutes a client-supplied `z`, which is why coordinate validation
+ * happens here rather than being assumed.
+ */
+export async function fetchTerrariumTilePng(
+  urlTemplate: string,
+  z: number,
+  x: number,
+  y: number,
+): Promise<Buffer | null> {
+  if (!isValidTileCoord(z, x, y)) return null;
+  if (detectProviderType(urlTemplate) !== 'terrarium') return null;
+
+  const key = `${z}/${x}/${y}`;
+  const cached = rawTileCache.get(key);
+  if (cached) return cached;
+
+  const url = urlTemplate
+    .replace('{z}', String(z))
+    .replace('{x}', String(x))
+    .replace('{y}', String(y));
+
+  try {
+    const response = await safeFetch(url);
+    if (!response.ok) {
+      logger.debug(`Elevation: raw terrarium tile fetch returned ${response.status} for ${key}`);
+      return null;
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    rawTileCache.set(key, buffer);
+    return buffer;
+  } catch (err) {
+    if (err instanceof SsrfBlockedError) {
+      logger.warn(`Elevation: raw terrarium tile fetch blocked by SSRF guard for ${key}: ${err.message}`);
+    } else {
+      logger.debug(`Elevation: raw terrarium tile fetch failed for ${key}:`, err);
+    }
+    return null;
   }
 }
 

@@ -28,6 +28,9 @@ import {
   DEFAULT_TERRARIUM_URL,
   TERRARIUM_ZOOM,
   TILE_SIZE,
+  isValidTileCoord,
+  fetchTerrariumTilePng,
+  MAX_TERRARIUM_TILE_ZOOM,
 } from './elevationProvider.js';
 import { lngLatToTilePixel } from '../../utils/greatCircle.js';
 
@@ -352,6 +355,111 @@ describe('JsonPointProvider.sample', () => {
     const calledUrl = mockSafeFetch.mock.calls[0][0] as string;
     expect(calledUrl).not.toContain('{locations}');
     expect(calledUrl).toContain('1.1111');
+  });
+});
+
+describe('isValidTileCoord (#3826 Phase 2 WP-A)', () => {
+  it('accepts valid coordinates at z=0 (the single 1x1 tile)', () => {
+    expect(isValidTileCoord(0, 0, 0)).toBe(true);
+  });
+
+  it('accepts valid coordinates at a mid zoom', () => {
+    expect(isValidTileCoord(10, 500, 300)).toBe(true);
+  });
+
+  it('accepts the boundary coordinate at MAX_TERRARIUM_TILE_ZOOM', () => {
+    const maxIndex = 2 ** MAX_TERRARIUM_TILE_ZOOM - 1;
+    expect(isValidTileCoord(MAX_TERRARIUM_TILE_ZOOM, maxIndex, maxIndex)).toBe(true);
+    expect(isValidTileCoord(MAX_TERRARIUM_TILE_ZOOM, 0, 0)).toBe(true);
+  });
+
+  it('rejects z beyond MAX_TERRARIUM_TILE_ZOOM', () => {
+    expect(isValidTileCoord(MAX_TERRARIUM_TILE_ZOOM + 1, 0, 0)).toBe(false);
+    expect(isValidTileCoord(99, 0, 0)).toBe(false);
+  });
+
+  it('rejects negative z/x/y', () => {
+    expect(isValidTileCoord(-1, 0, 0)).toBe(false);
+    expect(isValidTileCoord(5, -1, 0)).toBe(false);
+    expect(isValidTileCoord(5, 0, -1)).toBe(false);
+  });
+
+  it('rejects non-integer coordinates', () => {
+    expect(isValidTileCoord(1.5, 0, 0)).toBe(false);
+    expect(isValidTileCoord(1, 0.5, 0)).toBe(false);
+    expect(isValidTileCoord(1, 0, 0.5)).toBe(false);
+    expect(isValidTileCoord(Number.NaN, 0, 0)).toBe(false);
+  });
+
+  it('rejects x/y outside the 2^z tile grid for a given zoom', () => {
+    // At z=2 the grid is 4x4 (indices 0..3).
+    expect(isValidTileCoord(2, 4, 0)).toBe(false);
+    expect(isValidTileCoord(2, 0, 4)).toBe(false);
+    expect(isValidTileCoord(2, 3, 3)).toBe(true);
+  });
+});
+
+describe('fetchTerrariumTilePng (#3826 Phase 2 WP-A, DEM tile proxy raw-fetch)', () => {
+  it('fetches and returns the raw PNG buffer for valid coords', async () => {
+    const tile = makeUniformTerrariumTile(1000, TILE_SIZE);
+    mockSafeFetch.mockResolvedValue(fakeResponse({ ok: true, buffer: tile }));
+
+    const result = await fetchTerrariumTilePng(DEFAULT_TERRARIUM_URL, 8, 40, 96);
+
+    expect(result).toBeInstanceOf(Buffer);
+    expect(result?.equals(tile)).toBe(true);
+    expect(mockSafeFetch).toHaveBeenCalledTimes(1);
+    const calledUrl = mockSafeFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toContain('/8/40/96');
+  });
+
+  it('caches raw bytes — a second fetch for the same z/x/y does not refetch', async () => {
+    const tile = makeUniformTerrariumTile(1500, TILE_SIZE);
+    mockSafeFetch.mockResolvedValue(fakeResponse({ ok: true, buffer: tile }));
+
+    const first = await fetchTerrariumTilePng(DEFAULT_TERRARIUM_URL, 9, 1, 1);
+    const second = await fetchTerrariumTilePng(DEFAULT_TERRARIUM_URL, 9, 1, 1);
+
+    expect(first?.equals(tile)).toBe(true);
+    expect(second?.equals(tile)).toBe(true);
+    expect(mockSafeFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns null (never throws) on invalid coords, without calling safeFetch', async () => {
+    const result = await fetchTerrariumTilePng(DEFAULT_TERRARIUM_URL, 99, 0, 0);
+    expect(result).toBeNull();
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+  });
+
+  it('returns null for a non-terrarium (JSON) template, without calling safeFetch', async () => {
+    const result = await fetchTerrariumTilePng('https://api.opentopodata.org/v1/mapzen', 5, 1, 1);
+    expect(result).toBeNull();
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+  });
+
+  it('returns null (never throws) on a non-OK upstream response', async () => {
+    mockSafeFetch.mockResolvedValue(fakeResponse({ ok: false, status: 404 }));
+    const result = await fetchTerrariumTilePng(DEFAULT_TERRARIUM_URL, 5, 2, 2);
+    expect(result).toBeNull();
+  });
+
+  it('returns null (never throws) when safeFetch rejects with SsrfBlockedError', async () => {
+    mockSafeFetch.mockRejectedValue(new MockSsrfBlockedError('blocked target'));
+    const result = await fetchTerrariumTilePng(DEFAULT_TERRARIUM_URL, 5, 3, 3);
+    expect(result).toBeNull();
+  });
+
+  it('does not cache a fetch failure — a later call can retry', async () => {
+    mockSafeFetch.mockResolvedValueOnce(fakeResponse({ ok: false, status: 500 }));
+    const tile = makeUniformTerrariumTile(2000, TILE_SIZE);
+    mockSafeFetch.mockResolvedValueOnce(fakeResponse({ ok: true, buffer: tile }));
+
+    const first = await fetchTerrariumTilePng(DEFAULT_TERRARIUM_URL, 6, 4, 4);
+    const second = await fetchTerrariumTilePng(DEFAULT_TERRARIUM_URL, 6, 4, 4);
+
+    expect(first).toBeNull();
+    expect(second?.equals(tile)).toBe(true);
+    expect(mockSafeFetch).toHaveBeenCalledTimes(2);
   });
 });
 
