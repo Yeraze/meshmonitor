@@ -885,7 +885,7 @@ router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) =>
     if (manager) {
       if (isMeshCoreManager(manager)) {
         // Pass the live source name so the status reflects any renames without
-        // requiring a manager restart (mirrors the old meshcoreRegistry path).
+        // requiring a manager restart.
         status = manager.getStatus(source.name);
       } else {
         status = manager.getStatus();

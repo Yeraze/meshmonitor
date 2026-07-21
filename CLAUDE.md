@@ -15,7 +15,7 @@
 
 | Subsystem | Primary files |
 |-----------|---------------|
-| Multi-source registry | `src/server/sourceManagerRegistry.ts` (single unified registry — both Meshtastic TCP and MeshCore managers live here as `ISourceManager`), `src/server/meshtasticManager.ts`, `src/server/meshcoreManager.ts`, `src/server/sourceManagerTypes.ts` (type-guard predicates `isMeshCoreManager`/`isMeshtasticManager`), `src/server/bootstrapSources.ts` (startup source-loading seam — extracts the boot loop for testability; designates the primary TCP source), `src/contexts/SourceContext.tsx`. `src/server/meshcoreRegistry.ts` is a `@deprecated` shim kept for one release — delete after #3962 Task 2.1. |
+| Multi-source registry | `src/server/sourceManagerRegistry.ts` (single unified registry — both Meshtastic TCP and MeshCore managers live here as `ISourceManager`), `src/server/meshtasticManager.ts`, `src/server/meshcoreManager.ts`, `src/server/sourceManagerTypes.ts` (type-guard predicates `isMeshCoreManager`/`isMeshtasticManager`, plus `getPrimaryMeshtasticManager`), `src/server/bootstrapSources.ts` (startup source-loading seam — extracts the boot loop for testability; designates the primary TCP source), `src/contexts/SourceContext.tsx`. |
 | Auth + permissions | `src/server/auth/`, `src/db/repositories/auth.ts`, `src/db/repositories/permissions.ts` |
 | Database backends | `src/db/drivers/{sqlite,postgres,mysql}.ts`, `src/db/schema/`, `src/db/repositories/` |
 | Migrations | `src/server/migrations/NNN_*.ts` (75+ total), registry in `src/db/migrations.ts` |
@@ -56,9 +56,7 @@ Existing bare-`{error}` handlers convert opportunistically as they're touched
 
 MeshMonitor 4.x supports **N concurrent node connections** ("sources"), covering Meshtastic TCP, MQTT broker/bridge, and MeshCore. All manager types implement `ISourceManager` (`src/server/sourceManagerRegistry.ts`) and live in the **single unified `sourceManagerRegistry`**.
 
-Pre-4.0 code that referenced a singleton `meshtasticManager` is served by a **live Proxy alias** (`meshtasticManagerAlias`, `export default`) at the bottom of `src/server/meshtasticManager.ts`. The alias resolves the registry's current primary meshtastic_tcp manager on every property access — methods are bound to the concrete primary at call time so `this` is always the real instance, not the Proxy. A named `fallbackManager` export is the concrete unconfigured instance used when no primary is registered (S4 env-IP fallback). WP4 (#3962) will migrate the remaining importers to call `getPrimaryMeshtasticManager()` directly, then delete the alias. Until then, consumers that need atomicity across multiple calls should capture `getPrimaryMeshtasticManager()` once per operation.
-
-Similarly, `src/server/meshcoreRegistry.ts` is a `@deprecated` shim (landed in #3962 Task 2.1) — delete it after one release.
+There is no global `meshtasticManager` singleton and no default export from `src/server/meshtasticManager.ts` (the live Proxy alias was retired in #3962 Phase 4.2a WP4). Consumers that need the "current primary Meshtastic TCP source, or the unconfigured fallback if none is registered" resolve it explicitly: `getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager` (both from `src/server/sourceManagerTypes.ts` / `src/server/meshtasticManager.ts`). A named `fallbackManager` export remains the concrete unconfigured instance used when no primary is registered (S4 env-IP fallback, #4020) — it is load-bearing for `bootstrapSources.ts` and must not be deleted. Consumers that need atomicity across multiple calls (e.g. a disconnect→reconnect sequence) MUST capture the resolved manager once at the top of the operation, not re-resolve per call site, since the registry's primary can change between calls.
 
 ### Critical Rules
 - **No global `meshtasticManager` singleton.** Look up per-source instances via `sourceManagerRegistry.getManager(sourceId)`.

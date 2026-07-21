@@ -225,8 +225,8 @@ describe('GET /:id/status — meshcore registry fallback', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.connected).toBe(true);
-    // sourceManagerRegistry is the single source of truth after #3962 Task 2.1 —
-    // there is no separate meshcoreRegistry to consult.
+    // sourceManagerRegistry is the single source of truth — there is no
+    // separate MeshCore-only registry to consult.
   });
 });
 
