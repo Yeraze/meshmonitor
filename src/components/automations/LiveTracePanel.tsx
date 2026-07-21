@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useWebSocketContext } from '../../contexts/WebSocketContext';
 import { StepList, type TraceStep } from './outcomeMeta';
+import { UiIcon } from '../icons';
 
 const TRACE_DURATION_MS = 5 * 60_000;
 const MAX_ENTRIES = 200;
@@ -132,7 +133,7 @@ export default function LiveTracePanel({ automationId, automationName, enabled, 
       <div className="ae-trace-panel-head">
         <div>
           <strong>Live trace</strong> · {automationName}
-          {status === 'live' && <span className="ae-chip" style={{ marginLeft: '0.5rem' }}>● live · {mmss(remaining)} left</span>}
+          {status === 'live' && <span className="ae-chip" style={{ marginLeft: '0.5rem' }}><UiIcon name="statusOn" size={11} /> live · {mmss(remaining)} left</span>}
           {status === 'connecting' && <span className="ae-chip" style={{ marginLeft: '0.5rem' }}>connecting…</span>}
           {status === 'stopped' && <span className="ae-chip" style={{ marginLeft: '0.5rem' }}>stopped (auto)</span>}
           {status === 'error' && <span className="ae-test-badge ae-test-badge--err" style={{ marginLeft: '0.5rem' }}>error: {errorMsg}</span>}

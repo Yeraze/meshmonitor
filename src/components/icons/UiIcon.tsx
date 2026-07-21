@@ -25,6 +25,9 @@ import {
   CheckCheck,
   ChevronDown,
   ChevronUp,
+  Circle,
+  CircleDashed,
+  CircleDot,
   CircleHelp,
   CircleX,
   ClipboardList,
@@ -193,6 +196,11 @@ export const UI_ICON_DEFINITIONS = {
   plus: { lucide: Plus, emoji: '➕', usage: 'add and create controls' },
   power: { lucide: Power, emoji: '⚡', usage: 'power controls' },
   radio: { lucide: Radio, emoji: '📻', usage: 'MeshCore and radio state' },
+  // Three-state status dots (#4217 follow-up). Emoji counterparts are the
+  // glyphs these replaced, so emoji-mode users see exactly what they saw before.
+  statusOn: { lucide: CircleDot, emoji: '●', usage: 'active / connected / live status' },
+  statusPartial: { lucide: CircleDashed, emoji: '◐', usage: 'partial or pending status' },
+  statusOff: { lucide: Circle, emoji: '○', usage: 'inactive / disconnected status' },
   radioSignal: { lucide: RadioTower, emoji: '📡', usage: 'RSSI, reception, and traceroutes' },
   reaction: { lucide: Smile, emoji: '😄', usage: 'reactions and tapbacks' },
   refresh: { lucide: RefreshCw, emoji: '🔄', usage: 'refresh, reload, and reboot' },

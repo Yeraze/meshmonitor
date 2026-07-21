@@ -1,5 +1,8 @@
 const EMOJI_PATTERN = /\p{Extended_Pictographic}/u;
-const LEADING_UI_SYMBOL_PATTERN = /^\s*[★☆✓✔✕✖✗⚠ℹ▶◀▲▼→←↑↓]/u;
+// Circle/slash status glyphs (●○◐◯⊘) were missing from this list, so the #4217
+// icon migration silently skipped four functional status indicators and future
+// PRs could reintroduce that class with green CI.
+const LEADING_UI_SYMBOL_PATTERN = /^\s*[★☆✓✔✕✖✗⚠ℹ▶◀▲▼→←↑↓●○◐◯⊘]/u;
 
 export function containsHardcodedUiGlyph(value) {
   if (typeof value !== 'string') return false;
@@ -41,8 +44,15 @@ export const noHardcodedUiGlyph = {
       JSXText(node) {
         report(node, node.value);
       },
-      TemplateElement(node) {
-        report(node, node.value.raw);
+      // Evaluate the template as ONE string rather than per-quasi. Visiting
+      // TemplateElement individually made the leading-symbol test fire on every
+      // chunk boundary: in `Open ${name} → Node Details` the second quasi is
+      // " → Node Details", so a genuinely mid-sentence arrow read as leading and
+      // was reported — contradicting the mid-sentence-arrow exemption above.
+      // Quasis are joined with a space to stand in for the interpolation, which
+      // is enough for both the leading test and the emoji scan.
+      TemplateLiteral(node) {
+        report(node, node.quasis.map((q) => q.value.raw).join(' '));
       },
     };
   },
