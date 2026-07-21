@@ -1000,9 +1000,6 @@
   "src/server/routes/cleanupRoutes.test.ts": {
     "@typescript-eslint/no-unused-vars": 1
   },
-  "src/server/routes/configRoutes.test.ts": {
-    "@typescript-eslint/no-unused-vars": 1
-  },
   "src/server/routes/embedPublicRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 6
   },
@@ -1034,6 +1031,10 @@
   },
   "src/server/routes/packetRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 25
+  },
+  "src/server/routes/pollRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 11,
+    "@typescript-eslint/no-unused-vars": 3
   },
   "src/server/routes/scriptContentRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 1,
@@ -1121,8 +1122,8 @@
     "@typescript-eslint/no-unused-vars": 28
   },
   "src/server/server.ts": {
-    "@typescript-eslint/no-explicit-any": 62,
-    "@typescript-eslint/no-unused-vars": 5,
+    "@typescript-eslint/no-explicit-any": 36,
+    "@typescript-eslint/no-unused-vars": 2,
     "no-case-declarations": 3,
     "preserve-caught-error": 1
   },
@@ -1253,6 +1254,9 @@
   },
   "src/server/utils/ssrfGuard.ts": {
     "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/utils/transformDbMessage.ts": {
+    "@typescript-eslint/no-explicit-any": 15
   },
   "src/server/virtualNodeServer.test.ts": {
     "@typescript-eslint/no-unused-vars": 1
