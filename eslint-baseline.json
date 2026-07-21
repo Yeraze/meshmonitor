@@ -978,6 +978,12 @@
   "src/server/routes/_channelDatabaseHandlers.ts": {
     "@typescript-eslint/no-explicit-any": 10
   },
+  "src/server/routes/adminRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 20,
+    "@typescript-eslint/no-unused-vars": 2,
+    "no-case-declarations": 3,
+    "preserve-caught-error": 1
+  },
   "src/server/routes/analysisRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 13
   },
@@ -1122,10 +1128,7 @@
     "@typescript-eslint/no-unused-vars": 28
   },
   "src/server/server.ts": {
-    "@typescript-eslint/no-explicit-any": 36,
-    "@typescript-eslint/no-unused-vars": 2,
-    "no-case-declarations": 3,
-    "preserve-caught-error": 1
+    "@typescript-eslint/no-explicit-any": 16
   },
   "src/server/services/appriseNotificationService.ts": {
     "@typescript-eslint/no-explicit-any": 5,
