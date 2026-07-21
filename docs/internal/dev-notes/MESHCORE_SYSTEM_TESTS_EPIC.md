@@ -1,6 +1,6 @@
 # Epic — MeshCore System Tests
 
-**Status:** Phase 1 COMPLETE (validated against live hardware) — Phase 2 next
+**Status:** Phases 1 & 2 COMPLETE + MERGED; Phase 3 validated on hardware, shipping (ALL PHASES DONE)
 **Branch prefix:** `feature/meshcore-system-tests` (Phase 1), `feature/meshcore-system-tests-phase2`, `-phase3`
 **Orchestrator:** `/epic` run started 2026-07-20
 
@@ -168,15 +168,45 @@ No `system-tests.sh` change (the Phase-1 phase already runs this script).
 DM gated/skipped by default; typecheck + full vitest suite green.
 See [[reference_meshcore_hw_rig_ports]] and the near-field-DM finding in memory.
 
-### Phase 3 — Remote-admin login + remote telemetry  ⬜
-Extend the script: remote-admin login into the Yeraze Repeater via
-`MESHCORE_REPEATER_ADMIN_PASSWORD` (SKIP the assertion if unset, assert success
-otherwise) and wire the secret into `system-tests.yml` env. Remote telemetry poll
-companion→other companion (`POST /nodes/:pk/telemetry/poll`, assert records
-within timeout). Optionally upgrade the tolerate-404 MeshCore block in
-`tests/api-exercise-test.sh:597-605` to real assertions. Update docs + this plan.
-**Exit:** login (when secret present) + telemetry assertions pass; CI secret
-plumbed; final phase reports PASS; docs updated; suite green.
+### Phase 3 — Remote-admin login + remote telemetry  ✅ COMPLETE (2026-07-20)
+Two assertions appended to `tests/test-meshcore.sh` (Tests 13-14) + a CI secret edit.
+
+**Outcome / deviations (Phase 3):**
+- **Test 13 — Repeater remote-admin login:** `POST /api/sources/$SRC_A_ID/meshcore/admin/login`
+  body `{publicKey: REPEATER_PK, password}` (cookie + CSRF; password `jq -R`-escaped;
+  no `rememberPassword` — that needs SESSION_SECRET). Success = HTTP 200 +
+  `.success==true`. **SKIPs (exit 0) when `MESHCORE_REPEATER_ADMIN_PASSWORD` is
+  unset**; hard-fails on 401 when set. Reuses Test 12's resolved `REPEATER_PK`.
+- **Test 14 — Remote telemetry poll:** `POST /nodes/$REPEATER_PK/telemetry/poll`
+  body `{"type":"status"}` on `SRC_A_ID`; success = `data.written >= 1`. 429-aware
+  retry honoring `retryAfterSecs` (the per-source 60s mesh-TX gate can fire after
+  Tests 12/13). Env: `MESHCORE_TELEMETRY_ATTEMPTS`(5)/`MESHCORE_TELEMETRY_INTERVAL`(20s).
+- **DEVIATION — telemetry target is the REPEATER, not "the other companion":** the
+  interview answer ("companion→other companion") predates the Phase 2 near-field
+  finding. Companion→companion telemetry is a DM-style round-trip and fails the same
+  way (near-field). Remote telemetry is a `type:"status"`/`"lpp"` round-trip to the
+  target; a repeater answers `type:"status"` (16-field stats blob, no login needed)
+  and is reachable. User chose **"Repeater only"** — so Test 14 polls the repeater
+  status only (no companion-telemetry gate). Validated live: **16 records
+  (`["status:16"]`)**.
+- **CI:** step-level `env: MESHCORE_REPEATER_ADMIN_PASSWORD: ${{ secrets.* }}` on the
+  "Run system tests" step of `system-tests.yml`. Absent secret → login SKIPs → green.
+  The repo secret must be added by a human for CI to actually exercise login.
+- `tests/api-exercise-test.sh:597-605` left as smoke checks (different container, 404
+  is legitimately correct there — upgrading would false-fail).
+- **No TS change.** Validated live 2026-07-20: connect + channel + repeater DM +
+  telemetry (16 records) pass; login SKIPs locally (no password), exercised in CI.
+**Exit:** telemetry assertion passes on hardware; login SKIPs by default (CI-validated
+with secret); CI secret plumbed; suite green. ✅
+
+## Epic complete
+All three phases merged. `tests/test-meshcore.sh` is a hard-required phase in
+`tests/system-tests.sh`, run on the self-hosted hw runner under the `system-test`
+label. Env opt-ins: `MESHCORE_COMPANION_DM` (companion↔companion DM, near-field),
+`MESHCORE_REPEATER_ADMIN_PASSWORD` (login), plus `MESHCORE_*_ATTEMPTS/INTERVAL`
+tuning and `MESHCORE_CANDIDATE_PORTS`/`MESHCORE_REPEATER_PUBKEY`/
+`MESHCORE_TEST_CHANNEL_SLOT` overrides. See memory: near-field DM limitation, rig
+ttyUSB ports, Bash-framework decision.
 
 ## Risks / open items for architects to resolve at runtime
 
