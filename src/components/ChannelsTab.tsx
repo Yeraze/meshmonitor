@@ -1133,16 +1133,26 @@ export default function ChannelsTab({
                                     <LinkPreview text={msg.text} />
                                     {reactions.length > 0 && (
                                       <div className="message-reactions">
-                                        {reactions.map(reaction => (
-                                          <span
-                                            key={reaction.id}
-                                            className={`reaction ${isMyMessage(reaction) ? 'mine' : 'theirs'}`}
-                                            title={t('channels.reaction_tooltip', { name: getNodeShortName(reaction.from) })}
-                                            onClick={() => handleSendTapback(reaction.text, msg)}
-                                          >
-                                            {reaction.text}
-                                          </span>
-                                        ))}
+                                        {reactions.map(reaction => {
+                                          // #4243: show WHO reacted inline. The short
+                                          // name was already resolved here for the
+                                          // tooltip, but a hover-only affordance is
+                                          // unusable on touch and invisible at a glance.
+                                          const reactorName = getNodeShortName(reaction.from);
+                                          return (
+                                            <span
+                                              key={reaction.id}
+                                              className={`reaction ${isMyMessage(reaction) ? 'mine' : 'theirs'}`}
+                                              title={t('channels.reaction_tooltip', { name: reactorName })}
+                                              onClick={() => handleSendTapback(reaction.text, msg)}
+                                            >
+                                              {reaction.text}
+                                              {reactorName && (
+                                                <span className="reaction__author">{reactorName}</span>
+                                              )}
+                                            </span>
+                                          );
+                                        })}
                                       </div>
                                     )}
                                   </div>
