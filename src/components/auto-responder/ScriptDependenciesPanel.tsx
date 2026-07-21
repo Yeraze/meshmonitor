@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useAuth } from '../../contexts/AuthContext';
 import apiService from '../../services/api';
+import { UiIcon } from '../icons';
 
 interface KindStatus {
   manifestPresent: boolean;
@@ -88,7 +89,7 @@ const ScriptDependenciesPanel: React.FC = () => {
 
   return (
     <div className="setting-item" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--ctp-surface1)', paddingTop: '1rem' }}>
-      <h4 style={{ margin: '0 0 0.25rem 0' }}>{t('scripts.deps.title', '📦 Script Dependencies')}</h4>
+      <h4 style={{ margin: '0 0 0.25rem 0' }}><UiIcon name="package" size={15} /> {t('scripts.deps.title', 'Script Dependencies')}</h4>
       <p className="setting-description" style={{ marginTop: 0 }}>
         {t('scripts.deps.description', 'Install Python/Node packages your scripts need. Add a requirements.txt (Python) or package.json (Node) to the scripts directory, then install. Packages are installed next to your scripts and persist across restarts.')}
       </p>
@@ -113,12 +114,12 @@ const ScriptDependenciesPanel: React.FC = () => {
             color: installing || nothingDeclared ? 'var(--ctp-subtext0)' : 'var(--ctp-base)',
           }}
         >
-          {installing ? t('scripts.deps.installing', 'Installing…') : t('scripts.deps.install', '⬇️ Install / Update dependencies')}
+          {installing ? t('scripts.deps.installing', 'Installing…') : <><UiIcon name="download" size={14} /> {t('scripts.deps.install', 'Install / Update dependencies')}</>}
         </button>
       )}
 
       <p className="setting-description" style={{ marginTop: '0.5rem', color: 'var(--ctp-yellow)' }}>
-        {t('scripts.deps.warning', '⚠️ Installing downloads and runs third-party code, and requires internet access. On the slim Docker image, packages without a prebuilt musl wheel will fail unless SCRIPT_DEPS_ALLOW_SOURCE_BUILD=true.')}
+        <UiIcon name="alert" size={14} /> {t('scripts.deps.warning', 'Installing downloads and runs third-party code, and requires internet access. On the slim Docker image, packages without a prebuilt musl wheel will fail unless SCRIPT_DEPS_ALLOW_SOURCE_BUILD=true.')}
       </p>
 
       {error && <div className="settings-error" role="alert" style={{ marginTop: '0.5rem' }}>{error}</div>}

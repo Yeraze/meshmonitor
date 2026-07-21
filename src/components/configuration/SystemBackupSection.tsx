@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import apiService from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
@@ -416,7 +417,7 @@ const SystemBackupSection: React.FC = () => {
                 onClick={() => setIsBackupModalOpen(false)}
                 aria-label={t('common.close')}
               >
-                ✕
+                <UiIcon name="close" size={16} />
               </button>
             </div>
 
@@ -460,14 +461,14 @@ const SystemBackupSection: React.FC = () => {
                               onClick={() => handleDownloadBackup(backup.dirname)}
                               title={t('backup_management.download')}
                             >
-                              📥
+                              <UiIcon name="download" />
                             </button>
                             <button
                               className="backup-action-button delete"
                               onClick={() => handleDeleteBackup(backup.dirname)}
                               title={t('backup_management.delete')}
                             >
-                              🗑️
+                              <UiIcon name="delete" />
                             </button>
                           </div>
                         </td>

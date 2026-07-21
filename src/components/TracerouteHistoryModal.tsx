@@ -7,6 +7,7 @@ import { DeviceInfo } from '../types/device';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatTracerouteRoute } from '../utils/traceroute';
 import Modal from './common/Modal';
+import { UiIcon } from './icons';
 
 interface TracerouteHistoryModalProps {
   fromNodeNum: number;
@@ -108,7 +109,7 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
     >
       <div style={{ overflowY: 'auto', maxHeight: 'calc(80vh - 100px)' }}>
         <div style={{ marginBottom: '1.5rem' }}>
-          <strong>{t('traceroute_history.from')}:</strong> {fromNodeName} → <strong>{t('traceroute_history.to')}:</strong> {toNodeName}
+          <strong>{t('traceroute_history.from')}:</strong> {fromNodeName} <UiIcon name="forward" size={14} /> <strong>{t('traceroute_history.to')}:</strong> {toNodeName}
         </div>
 
         <div style={{ marginBottom: '1rem' }}>
@@ -183,14 +184,14 @@ const TracerouteHistoryModal: React.FC<TracerouteHistoryModalProps> = ({
                   </div>
 
                   <div style={{ marginBottom: '0.5rem' }}>
-                    <strong style={{ color: 'var(--ctp-green)' }}>→ {t('traceroute_history.forward')}:</strong>{' '}
+                    <strong style={{ color: 'var(--ctp-green)' }}><UiIcon name="forward" size={14} /> {t('traceroute_history.forward')}:</strong>{' '}
                     <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
                       {formatTracerouteRoute(tr.route, tr.snrTowards, tr.fromNodeNum, tr.toNodeNum, nodes, distanceUnit)}
                     </span>
                   </div>
 
                   <div>
-                    <strong style={{ color: 'var(--ctp-yellow)' }}>← {t('traceroute_history.return')}:</strong>{' '}
+                    <strong style={{ color: 'var(--ctp-yellow)' }}><UiIcon name="back" size={14} /> {t('traceroute_history.return')}:</strong>{' '}
                     <span style={{ fontFamily: 'monospace', fontSize: '0.95em' }}>
                       {formatTracerouteRoute(tr.routeBack, tr.snrBack, tr.toNodeNum, tr.fromNodeNum, nodes, distanceUnit)}
                     </span>

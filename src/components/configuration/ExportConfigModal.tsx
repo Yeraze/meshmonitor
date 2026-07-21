@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import QRCode from 'qrcode';
 import apiService from '../../services/api';
 import type { Channel } from '../../types/device';
@@ -389,7 +390,7 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                   e.currentTarget.style.opacity = '1';
                 }}
               >
-                {copied ? `✓ ${t('export_config.copied')}` : t('export_config.copy')}
+                {copied ? <><UiIcon name="check" /> {t('export_config.copied')}</> : t('export_config.copy')}
               </button>
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.5rem' }}>

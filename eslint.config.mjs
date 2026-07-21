@@ -5,6 +5,7 @@ import typescriptParser from '@typescript-eslint/parser';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
+import { noHardcodedUiGlyph } from './scripts/eslint-rules/no-hardcoded-ui-glyph.mjs';
 
 export default [
   {
@@ -44,6 +45,11 @@ export default [
       '@typescript-eslint': typescript,
       'react-hooks': fixupPluginRules(reactHooks),
       'react-refresh': reactRefresh,
+      'meshmonitor-ui': {
+        rules: {
+          'no-hardcoded-ui-glyph': noHardcodedUiGlyph,
+        },
+      },
     },
     rules: {
       ...js.configs.recommended.rules,
@@ -140,7 +146,13 @@ export default [
     // semantics). The SQL-ban selectors are not needed here — components/pages never
     // touch the DB directly.
     files: ['src/components/**', 'src/pages/**'],
-    ignores: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx'],
+    ignores: [
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      '**/*.spec.ts',
+      '**/*.spec.tsx',
+      'src/components/icons/**',
+    ],
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -157,6 +169,30 @@ export default [
           message: "Raw globalThis.fetch() is banned in components/pages. Use ApiService or a query hook.",
         },
       ],
+    },
+  },
+  {
+    // #4215: app-owned interface icons must come from the typed UiIcon registry.
+    // These narrow exceptions contain user-selected or on-mesh protocol content.
+    files: ['src/components/**', 'src/pages/**'],
+    ignores: [
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      '**/*.spec.ts',
+      '**/*.spec.tsx',
+      'src/components/icons/**',
+      'src/components/EmojiPickerModal/**',
+      'src/components/WaypointEditorModal.tsx',
+      'src/components/map/layers/WaypointsLayer.tsx',
+      'src/components/AutoAcknowledgeSection.tsx',
+      'src/components/AutoWelcomeSection.tsx',
+      'src/components/MeshCore/MeshCoreAutoAckSection.tsx',
+      'src/components/meshtasticAutomationTokens.ts',
+      'src/components/automations/catalog.ts',
+      'src/components/automations/AutomationsPage.tsx',
+    ],
+    rules: {
+      'meshmonitor-ui/no-hardcoded-ui-glyph': 'error',
     },
   },
   {

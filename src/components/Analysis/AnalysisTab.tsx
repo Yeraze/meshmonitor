@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import SolarMonitoringReport from './SolarMonitoringReport';
+import { UiIcon, type UiIconName } from '../icons';
 
 type AnalysisType = 'solar-monitoring' | null;
 
@@ -14,7 +15,7 @@ interface AnalysisCard {
   id: Exclude<AnalysisType, null>;
   title: string;
   description: string;
-  icon: string;
+  icon: UiIconName;
 }
 
 interface AnalysisTabProps {
@@ -33,7 +34,7 @@ const AnalysisTab: React.FC<AnalysisTabProps> = ({ baseUrl }) => {
         'analysis.solar_monitoring.description',
         'Identify solar-powered nodes by analyzing battery and voltage patterns that show daytime charging and nighttime discharge.',
       ),
-      icon: '☀️',
+      icon: 'sun',
     },
   ];
 
@@ -45,7 +46,7 @@ const AnalysisTab: React.FC<AnalysisTabProps> = ({ baseUrl }) => {
           className="reports-section__back"
           onClick={() => setSelected(null)}
         >
-          {t('analysis.back_to_reports', '← Back to reports')}
+          <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
         </button>
         <SolarMonitoringReport baseUrl={baseUrl} />
       </div>
@@ -68,7 +69,7 @@ const AnalysisTab: React.FC<AnalysisTabProps> = ({ baseUrl }) => {
             className="reports-card"
             onClick={() => setSelected(r.id)}
           >
-            <div className="reports-card__icon">{r.icon}</div>
+            <div className="reports-card__icon"><UiIcon name={r.icon} size={28} /></div>
             <h3 className="reports-card__title">{r.title}</h3>
             <p className="reports-card__desc">{r.description}</p>
           </button>

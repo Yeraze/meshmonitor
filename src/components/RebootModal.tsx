@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from './icons';
 import apiService from '../services/api';
 import { useSource } from '../contexts/SourceContext';
 
@@ -225,7 +226,7 @@ export const RebootModal: React.FC<RebootModalProps> = ({ isOpen, onClose }) => 
       >
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--ctp-blue)', marginBottom: '1rem' }}>
-            {isVerifying ? '✓' : '⟳'} {t('reboot.title')}
+            <UiIcon name={isVerifying ? 'check' : 'refresh'} /> {t('reboot.title')}
           </div>
 
           <div style={{ fontSize: '1rem', color: 'var(--ctp-text)', marginBottom: '1.5rem' }}>

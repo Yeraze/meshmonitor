@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { UiIcon } from './icons';
 import { useTranslation } from 'react-i18next';
 import {
   ComposedChart,
@@ -187,7 +188,7 @@ const SmartHopsGraphs: React.FC<SmartHopsGraphsProps> = React.memo(
                   onClick={createToggleFavorite(SMART_HOPS_TYPE)}
                   aria-label={isFavorited ? t('telemetry.remove_favorite') : t('telemetry.add_favorite')}
                 >
-                  {isFavorited ? '\u2605' : '\u2606'}
+                  <UiIcon name={isFavorited ? 'favorite' : 'favoriteOff'} size={15} />
                 </button>
               </div>
             </div>

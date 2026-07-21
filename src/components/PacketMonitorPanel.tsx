@@ -22,6 +22,7 @@ import {
 } from '../utils/packetFormat';
 import RelayNodeModal from './RelayNodeModal';
 import './PacketMonitorPanel.css';
+import { UiIcon } from './icons';
 
 interface PacketMonitorPanelProps {
   onClose: () => void;
@@ -550,7 +551,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                 border: '1px solid var(--warning-border, #ffeaa7)',
               }}
             >
-              ⚠️ {t('packet_monitor.rate_limit_warning')}
+              <UiIcon name="alert" size={16} /> {t('packet_monitor.rate_limit_warning')}
             </div>
           )}
           {loading ? (
@@ -681,7 +682,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                               ? t('packet_monitor.spoof_suspected', 'Possible impersonation: claims your node id but arrived over RF')
                               : (packet.direction === 'tx' ? t('packet_monitor.direction_tx') : t('packet_monitor.direction_rx'))}
                           >
-                            {packet.spoof_suspected ? '⚠️' : (packet.direction === 'tx' ? 'TX' : 'RX')}
+                            {packet.spoof_suspected ? <UiIcon name="alert" size={15} /> : (packet.direction === 'tx' ? 'TX' : 'RX')}
                           </td>
                           <td
                             className={`transport-mechanism transport-${packet.transport_mechanism ?? 'unknown'}`}
@@ -743,7 +744,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                                 className="xeddsa-shield"
                                 title={t('packet_monitor.xeddsa_signed', 'Signed packet: XEdDSA signature verified by the device (firmware 2.8+)')}
                               >
-                                {' '}🛡️
+                                {' '}<UiIcon name="securityCheck" size={14} />
                               </span>
                             )}
                           </td>
@@ -801,7 +802,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                           </td>
                           <td className="content" style={{ minWidth: '200px' }}>
                             {packet.encrypted ? (
-                              <span className="encrypted-indicator">🔒 {t('packet_monitor.encrypted')}</span>
+                              <span className="encrypted-indicator"><UiIcon name="encrypted" size={14} /> {t('packet_monitor.encrypted')}</span>
                             ) : (
                               <span className="content-preview">
                                 {packet.decrypted_by === 'server' && (
@@ -814,7 +815,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                                       cursor: 'help'
                                     }}
                                   >
-                                    🔑
+                                    <UiIcon name="key" size={14} />
                                   </span>
                                 )}
                                 {packet.decrypted_by === 'node' && (
@@ -827,7 +828,7 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
                                       cursor: 'help'
                                     }}
                                   >
-                                    🔓
+                                    <UiIcon name="unlock" size={14} />
                                   </span>
                                 )}
                                 {packet.payload_preview || t('packet_monitor.no_preview')}

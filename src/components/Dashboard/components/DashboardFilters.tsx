@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getTelemetryLabel } from '../../TelemetryChart';
 import { type SortOption } from '../types';
+import { UiIcon } from '../../icons';
 
 interface DashboardFiltersProps {
   // Days to view
@@ -143,7 +144,7 @@ const DashboardFilters: React.FC<DashboardFiltersProps> = ({
                 ? t('dashboard.device_roles_all')
                 : t('dashboard.device_roles_selected', { count: selectedRoles.size })}
             </span>
-            <span className="dashboard-dropdown-arrow">{roleDropdownOpen ? '▲' : '▼'}</span>
+            <span className="dashboard-dropdown-arrow"><UiIcon name={roleDropdownOpen ? 'chevronUp' : 'chevronDown'} size={14} /></span>
           </div>
           {roleDropdownOpen && (
             <div className="dashboard-role-dropdown-content">

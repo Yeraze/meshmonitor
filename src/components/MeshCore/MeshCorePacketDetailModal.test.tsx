@@ -67,7 +67,7 @@ describe('MeshCorePacketDetailModal', () => {
     );
     expect(screen.getByText('12')).toBeTruthy(); // dest hash
     expect(screen.getByText('34')).toBeTruthy(); // src hash
-    expect(screen.getByText(/🔒/)).toBeTruthy(); // encrypted marker
+    expect(document.querySelector('[data-ui-icon="encrypted"]')).toBeTruthy();
   });
 
   it('renders a no-raw notice when rawHex is empty', () => {

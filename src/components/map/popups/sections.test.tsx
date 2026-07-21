@@ -17,6 +17,9 @@ import {
 import { toNodeCardModel, type NodeCardModel } from './nodeCardModel';
 import type { DbTraceroute } from '../../../services/database';
 
+vi.mock('../../../contexts/SettingsContext', () => ({
+}));
+
 // Resolve to the (string or `options.defaultValue`) default — mirroring real
 // i18next's behavior when a key's resources aren't loaded — and interpolate
 // any `{{token}}` placeholders still present from the options object. This
@@ -57,17 +60,15 @@ describe('IdentityItems', () => {
   it('renders ID/role/hardware with the correct icons', () => {
     render(<><IdentityItems model={model} /></>);
     expect(screen.getByText('!00000001')).toBeInTheDocument();
-    expect(screen.getByText('🆔')).toBeInTheDocument();
-    expect(screen.getByText('👤')).toBeInTheDocument();
-    expect(screen.getByText('🖥️')).toBeInTheDocument();
+    expect(document.querySelector('.lucide-id-card')).not.toBeNull();
+    expect(document.querySelector('.lucide-user')).not.toBeNull();
+    expect(document.querySelector('.lucide-monitor')).not.toBeNull();
   });
 
   it('omits items whose backing field is absent', () => {
     const bare = toNodeCardModel({ nodeNum: 1, longName: 'Bare' }, 'meshtastic');
     render(<><IdentityItems model={bare} /></>);
-    expect(screen.queryByText('🆔')).not.toBeInTheDocument();
-    expect(screen.queryByText('👤')).not.toBeInTheDocument();
-    expect(screen.queryByText('🖥️')).not.toBeInTheDocument();
+    expect(document.querySelector('.node-popup-icon')).toBeNull();
   });
 
   it('renders the ID item full-width only when idFullWidth is set', () => {
@@ -201,7 +202,7 @@ describe('LastHeardFooter', () => {
     const { unmount } = render(
       <LastHeardFooter lastHeard={lastHeard} mode="absolute" timeFormat="24" dateFormat="MM/DD/YYYY" />,
     );
-    expect(screen.getByText('🕐')).toBeInTheDocument();
+    expect(document.querySelector('.lucide-clock')).not.toBeNull();
     unmount();
 
     render(<LastHeardFooter lastHeard={lastHeard} mode="relative" timeFormat="24" dateFormat="MM/DD/YYYY" />);

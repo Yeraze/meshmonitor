@@ -11,6 +11,17 @@ import {
   selectAllMonitoredNodes,
   deselectAllMonitoredNodes,
 } from './monitoredNodes';
+import { UiIcon } from './icons';
+
+type StatusTone = 'info' | 'success' | 'warning' | 'error';
+interface StatusFeedback {
+  message: string;
+  tone: StatusTone;
+}
+
+const StatusIcon: React.FC<{ tone: StatusTone }> = ({ tone }) => (
+  <UiIcon name={tone === 'success' ? 'check' : tone === 'warning' ? 'alert' : tone === 'error' ? 'error' : 'info'} size={15} />
+);
 
 interface VapidStatus {
   configured: boolean;
@@ -60,8 +71,8 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [vapidSubject, setVapidSubject] = useState('');
   const [isUpdatingSubject, setIsUpdatingSubject] = useState(false);
-  const [testStatus, setTestStatus] = useState<string>('');
-  const [debugInfo, setDebugInfo] = useState<string>('');
+  const [testStatus, setTestStatus] = useState<StatusFeedback | null>(null);
+  const [debugInfo, setDebugInfo] = useState<StatusFeedback | null>(null);
 
   // Notification preferences
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -97,7 +108,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   // Apprise configuration
   const [appriseUrls, setAppriseUrls] = useState('');
   const [isSavingApprise, setIsSavingApprise] = useState(false);
-  const [appriseTestStatus, setAppriseTestStatus] = useState('');
+  const [appriseTestStatus, setAppriseTestStatus] = useState<StatusFeedback | null>(null);
 
   // Track timeouts for cleanup on unmount
   const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -331,15 +342,15 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
     }
 
     setIsSubscribing(true);
-    setDebugInfo('Starting subscription...');
+    setDebugInfo({ message: 'Starting subscription...', tone: 'info' });
 
     try {
-      setDebugInfo('Fetching VAPID public key...');
+      setDebugInfo({ message: 'Fetching VAPID public key...', tone: 'info' });
       logger.info('Fetching VAPID public key...');
 
       const response = await api.get<{ publicKey: string }>('/api/push/vapid-key');
       logger.info('VAPID key response:', response);
-      setDebugInfo(`Got VAPID key: ${response.publicKey ? 'Yes' : 'No'}`);
+      setDebugInfo({ message: `Got VAPID key: ${response.publicKey ? 'Yes' : 'No'}`, tone: 'info' });
 
       const publicKey = response.publicKey;
 
@@ -347,7 +358,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         throw new Error('VAPID public key not available');
       }
 
-      setDebugInfo('Creating push subscription...');
+      setDebugInfo({ message: 'Creating push subscription...', tone: 'info' });
       logger.info('Subscribing to push notifications...');
       logger.info('VAPID public key (first 20 chars):', publicKey.substring(0, 20));
       logger.info('Converted key length:', urlBase64ToUint8Array(publicKey).length);
@@ -361,7 +372,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       });
 
       logger.info('Push subscription created:', subscription);
-      setDebugInfo('Saving subscription to server...');
+      setDebugInfo({ message: 'Saving subscription to server...', tone: 'info' });
 
       const subscriptionData = {
         subscription: {
@@ -377,14 +388,14 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       await api.post('/api/push/subscribe', subscriptionData);
 
       setIsSubscribed(true);
-      setDebugInfo('✅ Successfully subscribed!');
+      setDebugInfo({ message: 'Successfully subscribed!', tone: 'success' });
       logger.info('Successfully subscribed to push notifications');
 
-      const timeout = setTimeout(() => setDebugInfo(''), 5000);
+      const timeout = setTimeout(() => setDebugInfo(null), 5000);
       timeoutsRef.current.push(timeout);
     } catch (error: any) {
       logger.error('Failed to subscribe to push notifications:', error);
-      setDebugInfo(`❌ Error: ${error.message}`);
+      setDebugInfo({ message: `Error: ${error.message}`, tone: 'error' });
       alert(t('notifications.alert_subscribe_failed', { error: error.message }));
     } finally {
       setIsSubscribing(false);
@@ -430,17 +441,17 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   };
 
   const sendTestNotification = async () => {
-    setTestStatus('Sending...');
+    setTestStatus({ message: 'Sending...', tone: 'info' });
 
     try {
       const response = await api.post<{ sent: number; failed: number }>('/api/push/test', {});
-      setTestStatus(`✅ Sent: ${response.sent}, Failed: ${response.failed}`);
-      const timeout = setTimeout(() => setTestStatus(''), 5000);
+      setTestStatus({ message: `Sent: ${response.sent}, Failed: ${response.failed}`, tone: 'success' });
+      const timeout = setTimeout(() => setTestStatus(null), 5000);
       timeoutsRef.current.push(timeout);
     } catch (error) {
       logger.error('Failed to send test notification:', error);
-      setTestStatus('❌ Failed to send test notification');
-      const timeout = setTimeout(() => setTestStatus(''), 5000);
+      setTestStatus({ message: 'Failed to send test notification', tone: 'error' });
+      const timeout = setTimeout(() => setTestStatus(null), 5000);
       timeoutsRef.current.push(timeout);
     }
   };
@@ -461,13 +472,13 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
       await api.post('/api/push/preferences', { ...updatedPrefs, sourceId: currentSourceId ?? undefined });
       setPreferences(updatedPrefs);
       logger.info('Apprise URLs configured successfully');
-      setAppriseTestStatus('✅ Configuration saved');
-      const timeout = setTimeout(() => setAppriseTestStatus(''), 3000);
+      setAppriseTestStatus({ message: 'Configuration saved', tone: 'success' });
+      const timeout = setTimeout(() => setAppriseTestStatus(null), 3000);
       timeoutsRef.current.push(timeout);
     } catch (error) {
       logger.error('Failed to configure Apprise URLs:', error);
-      setAppriseTestStatus('❌ Failed to save configuration');
-      const timeout = setTimeout(() => setAppriseTestStatus(''), 5000);
+      setAppriseTestStatus({ message: 'Failed to save configuration', tone: 'error' });
+      const timeout = setTimeout(() => setAppriseTestStatus(null), 5000);
       timeoutsRef.current.push(timeout);
     } finally {
       setIsSavingApprise(false);
@@ -475,20 +486,20 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
   };
 
   const testAppriseConnection = async () => {
-    setAppriseTestStatus('Sending test notification...');
+    setAppriseTestStatus({ message: 'Sending test notification...', tone: 'info' });
     try {
       const response = await api.post<{ success: boolean; message: string }>('/api/apprise/test', { sourceId: currentSourceId ?? undefined });
       if (response.success) {
-        setAppriseTestStatus(`✅ ${response.message}`);
+        setAppriseTestStatus({ message: response.message, tone: 'success' });
       } else {
-        setAppriseTestStatus(`⚠️ ${response.message}`);
+        setAppriseTestStatus({ message: response.message, tone: 'warning' });
       }
-      const timeout = setTimeout(() => setAppriseTestStatus(''), 5000);
+      const timeout = setTimeout(() => setAppriseTestStatus(null), 5000);
       timeoutsRef.current.push(timeout);
     } catch (error) {
       logger.error('Failed to test Apprise connection:', error);
-      setAppriseTestStatus('❌ Connection test failed');
-      const timeout = setTimeout(() => setAppriseTestStatus(''), 5000);
+      setAppriseTestStatus({ message: 'Connection test failed', tone: 'error' });
+      const timeout = setTimeout(() => setAppriseTestStatus(null), 5000);
       timeoutsRef.current.push(timeout);
     }
   };
@@ -536,7 +547,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           SECTION 1: Notification Services & Filtering (Top)
           ======================================== */}
       <div id="notif-services" className="settings-section">
-        <h3>🔔 {t('notifications.services_title')}</h3>
+        <h3><UiIcon name="notifications" /> {t('notifications.services_title')}</h3>
         <p style={{ marginBottom: '24px', color: '#666' }}>
           {t('notifications.services_description')}
         </p>
@@ -563,7 +574,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               />
               <div>
                 <div style={{ fontWeight: '600', fontSize: '15px' }}>
-                  {'__TAURI__' in window ? '🖥️' : '📱'} {'__TAURI__' in window ? t('notifications.system_notifications_title', 'System Notifications') : t('notifications.webpush_title')}
+                  <UiIcon name={'__TAURI__' in window ? 'monitor' : 'companion'} /> {'__TAURI__' in window ? t('notifications.system_notifications_title', 'System Notifications') : t('notifications.webpush_title')}
                 </div>
                 <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
                   {'__TAURI__' in window ? t('notifications.system_notifications_description', 'Native desktop notifications for mesh activity') : t('notifications.webpush_description')}
@@ -593,7 +604,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               />
               <div>
                 <div style={{ fontWeight: '600', fontSize: '15px' }}>
-                  🔔 {t('notifications.apprise_title')}
+                  <UiIcon name="notifications" /> {t('notifications.apprise_title')}
                 </div>
                 <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
                   {t('notifications.apprise_description')}
@@ -604,7 +615,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         </div>
 
         {/* Filtering Section */}
-        <h4 style={{ marginTop: '32px', marginBottom: '16px' }}>⚙️ {t('notifications.filtering_title')}</h4>
+        <h4 style={{ marginTop: '32px', marginBottom: '16px' }}><UiIcon name="settings" /> {t('notifications.filtering_title')}</h4>
         <p style={{ marginBottom: '24px', color: '#666', fontSize: '14px' }}><Trans i18nKey="notifications.filtering_description" components={{ strong: <strong /> }} /></p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '24px' }}>
@@ -617,7 +628,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               border: '1px solid #3a3a3a'
             }}>
               <h4 style={{ marginTop: '0', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>📢</span> {t('notifications.sources_title')}
+                <UiIcon name="announcement" /> {t('notifications.sources_title')}
               </h4>
 
               {/* Direct Messages Toggle — Meshtastic only (MeshCore message
@@ -642,7 +653,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     }}
                     style={{ width: '18px', height: '18px' }}
                   />
-                  <span style={{ fontWeight: '500' }}>💬 {t('notifications.direct_messages')}</span>
+                  <span style={{ fontWeight: '500' }}><UiIcon name="messages" /> {t('notifications.direct_messages')}</span>
                 </label>
               </div>
               )}
@@ -668,7 +679,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     }}
                     style={{ width: '18px', height: '18px' }}
                   />
-                  <span style={{ fontWeight: '500' }}>😀 {t('notifications.emoji_reactions')}</span>
+                  <span style={{ fontWeight: '500' }}><UiIcon name="reaction" /> {t('notifications.emoji_reactions')}</span>
                 </label>
               </div>
               )}
@@ -694,7 +705,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     }}
                     style={{ width: '18px', height: '18px' }}
                   />
-                  <span style={{ fontWeight: '500' }}>📡 {t('notifications.mqtt_messages')}</span>
+                  <span style={{ fontWeight: '500' }}><UiIcon name="radioSignal" /> {t('notifications.mqtt_messages')}</span>
                 </label>
               </div>
               )}
@@ -720,7 +731,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     }}
                     style={{ width: '18px', height: '18px' }}
                   />
-                  <span style={{ fontWeight: '500' }}>🆕 {t('notifications.new_nodes')}</span>
+                  <span style={{ fontWeight: '500' }}><UiIcon name="sparkles" /> {t('notifications.new_nodes')}</span>
                 </label>
               </div>
 
@@ -745,7 +756,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     }}
                     style={{ width: '18px', height: '18px' }}
                   />
-                  <span style={{ fontWeight: '500' }}>🗺️ {t('notifications.traceroutes')}</span>
+                  <span style={{ fontWeight: '500' }}><UiIcon name="route" /> {t('notifications.traceroutes')}</span>
                 </label>
               </div>
               )}
@@ -770,7 +781,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     }}
                     style={{ width: '18px', height: '18px' }}
                   />
-                  <span style={{ fontWeight: '500' }}>⚠️ {t('notifications.notify_on_inactive_node')}</span>
+                  <span style={{ fontWeight: '500' }}><UiIcon name="alert" /> {t('notifications.notify_on_inactive_node')}</span>
                 </label>
 
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: '12px 0 0 0' }}>
@@ -785,7 +796,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     }}
                     style={{ width: '18px', height: '18px' }}
                   />
-                  <span style={{ fontWeight: '500' }}>🔋 {t('notifications.notify_on_low_battery')}</span>
+                  <span style={{ fontWeight: '500' }}><UiIcon name="battery" /> {t('notifications.notify_on_low_battery')}</span>
                 </label>
 
                 {preferences.notifyOnLowBattery && !isMeshCore && (
@@ -1147,7 +1158,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               border: '1px solid #3a3a3a'
             }}>
               <h4 style={{ marginTop: '0', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>🔤</span> {t('notifications.keyword_filtering')}
+                <UiIcon name="text" /> {t('notifications.keyword_filtering')}
               </h4>
 
               {/* Whitelist */}
@@ -1160,7 +1171,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   alignItems: 'center',
                   gap: '6px'
                 }}>
-                  <span>✅</span> {t('notifications.whitelist_title')}
+                  <UiIcon name="check" /> {t('notifications.whitelist_title')}
                 </label>
                 <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px', marginTop: 0 }}><Trans i18nKey="notifications.whitelist_description" components={{ strong: <strong /> }} /></p>
                 <textarea
@@ -1192,7 +1203,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                   alignItems: 'center',
                   gap: '6px'
                 }}>
-                  <span>🚫</span> {t('notifications.blacklist_title')}
+                  <UiIcon name="blocked" /> {t('notifications.blacklist_title')}
                 </label>
                 <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px', marginTop: 0 }}><Trans i18nKey="notifications.blacklist_description" components={{ strong: <strong /> }} /></p>
                 <textarea
@@ -1229,7 +1240,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           fontSize: '14px',
           color: '#93c5fd'
         }}>
-          <strong>ℹ️ {t('notifications.filter_priority')}:</strong> {t('notifications.filter_priority_order')}
+          <strong><UiIcon name="info" /> {t('notifications.filter_priority')}:</strong> {t('notifications.filter_priority_order')}
         </div>
         )}
 
@@ -1241,7 +1252,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
             disabled={isSavingPreferences}
             style={{ minWidth: '150px' }}
           >
-            {isSavingPreferences ? t('common.saving') : `💾 ${t('notifications.save_preferences')}`}
+            {isSavingPreferences ? t('common.saving') : <><UiIcon name="save" /> {t('notifications.save_preferences')}</>}
           </button>
         </div>
       </div>
@@ -1251,12 +1262,12 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           ======================================== */}
       {preferences.enableWebPush && !('__TAURI__' in window) && (
       <div id="notif-webpush" className="settings-section">
-        <h3>📱 {t('notifications.webpush_config_title')}</h3>
+        <h3><UiIcon name="companion" /> {t('notifications.webpush_config_title')}</h3>
 
         {/* HTTPS Warning */}
         {!isSecureContext && !isLocalhost && (
           <div style={{ backgroundColor: '#f8d7da', color: '#721c24', padding: '15px', borderRadius: '8px', border: '1px solid #f5c6cb', marginBottom: '20px' }}>
-            <h4 style={{ color: '#721c24', marginTop: 0 }}>⚠️ {t('notifications.https_required')}</h4>
+            <h4 style={{ color: '#721c24', marginTop: 0 }}><UiIcon name="alert" /> {t('notifications.https_required')}</h4>
             <p>
               <strong>{t('notifications.https_required_text')}</strong>
             </p>
@@ -1287,26 +1298,26 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           <h4>{t('notifications.browser_support')}</h4>
           <div className="info-grid">
             <div className="info-item">
-              <strong>{t('notifications.notifications_api')}:</strong> {('Notification' in window) ? `✅ ${t('notifications.supported')}` : `❌ ${t('notifications.not_supported')}`}
+              <strong>{t('notifications.notifications_api')}:</strong> <UiIcon name={'Notification' in window ? 'check' : 'error'} /> {('Notification' in window) ? t('notifications.supported') : t('notifications.not_supported')}
             </div>
             <div className="info-item">
-              <strong>{t('notifications.service_workers')}:</strong> {('serviceWorker' in navigator) ? `✅ ${t('notifications.supported')}` : `❌ ${t('notifications.not_supported')}`}
+              <strong>{t('notifications.service_workers')}:</strong> <UiIcon name={'serviceWorker' in navigator ? 'check' : 'error'} /> {('serviceWorker' in navigator) ? t('notifications.supported') : t('notifications.not_supported')}
             </div>
             <div className="info-item">
-              <strong>{t('notifications.push_api')}:</strong> {('PushManager' in window) ? `✅ ${t('notifications.supported')}` : `❌ ${t('notifications.not_supported')}`}
+              <strong>{t('notifications.push_api')}:</strong> <UiIcon name={'PushManager' in window ? 'check' : 'error'} /> {('PushManager' in window) ? t('notifications.supported') : t('notifications.not_supported')}
             </div>
             <div className="info-item">
-              <strong>{t('notifications.pwa_installed')}:</strong> {isPWAInstalled ? `✅ ${t('common.yes')}` : `⚠️ ${t('notifications.pwa_not_installed')}`}
+              <strong>{t('notifications.pwa_installed')}:</strong> <UiIcon name={isPWAInstalled ? 'check' : 'alert'} /> {isPWAInstalled ? t('common.yes') : t('notifications.pwa_not_installed')}
             </div>
             <div className="info-item">
-              <strong>{t('notifications.permission')}:</strong> {
-                notificationPermission === 'granted' ? `✅ ${t('notifications.permission_granted')}` :
-                notificationPermission === 'denied' ? `❌ ${t('notifications.permission_denied')}` :
-                `⚠️ ${t('notifications.permission_not_requested')}`
-              }
+              <strong>{t('notifications.permission')}:</strong>{' '}
+              <UiIcon name={notificationPermission === 'granted' ? 'check' : notificationPermission === 'denied' ? 'error' : 'alert'} />{' '}
+              {notificationPermission === 'granted' ? t('notifications.permission_granted') :
+                notificationPermission === 'denied' ? t('notifications.permission_denied') :
+                t('notifications.permission_not_requested')}
             </div>
             <div className="info-item">
-              <strong>{t('notifications.subscription')}:</strong> {isSubscribed ? `✅ ${t('notifications.subscribed')}` : `⚠️ ${t('notifications.not_subscribed')}`}
+              <strong>{t('notifications.subscription')}:</strong> <UiIcon name={isSubscribed ? 'check' : 'alert'} /> {isSubscribed ? t('notifications.subscribed') : t('notifications.not_subscribed')}
             </div>
           </div>
         </div>
@@ -1314,7 +1325,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
         {/* iOS Instructions */}
         {!isPWAInstalled && (
           <div style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '15px', borderRadius: '8px', border: '1px solid #ffc107', marginBottom: '20px' }}>
-            <h4 style={{ color: '#856404', marginTop: 0 }}>📱 {t('notifications.ios_title')}</h4>
+            <h4 style={{ color: '#856404', marginTop: 0 }}><UiIcon name="companion" /> {t('notifications.ios_title')}</h4>
             <p>{t('notifications.ios_description')}</p>
             <ol style={{ paddingLeft: '20px', marginLeft: '0' }}>
               <li><strong>{t('notifications.https_required')}:</strong> {t('notifications.ios_step_https')}</li>
@@ -1343,16 +1354,16 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                     className="button button-primary"
                     onClick={requestNotificationPermission}
                   >
-                    🔔 {t('notifications.enable_notifications')}
+                    <UiIcon name="notifications" /> {t('notifications.enable_notifications')}
                   </button>
                 </div>
               )}
               {notificationPermission === 'granted' && (
-                <p>✅ {t('notifications.permission_granted')}</p>
+                <p><UiIcon name="check" /> {t('notifications.permission_granted')}</p>
               )}
               {notificationPermission === 'denied' && (
                 <div className="error-message">
-                  <p>❌ {t('notifications.permission_denied_message')}</p>
+                  <p><UiIcon name="error" /> {t('notifications.permission_denied_message')}</p>
                   <p><strong>Chrome/Edge:</strong> {t('notifications.permission_fix_chrome')}</p>
                   <p><strong>Safari:</strong> {t('notifications.permission_fix_safari')}</p>
                 </div>
@@ -1371,24 +1382,24 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
                       onClick={subscribeToNotifications}
                       disabled={isSubscribing}
                     >
-                      {isSubscribing ? t('notifications.subscribing') : `📥 ${t('notifications.subscribe_button')}`}
+                      {isSubscribing ? t('notifications.subscribing') : <><UiIcon name="download" /> {t('notifications.subscribe_button')}</>}
                     </button>
                     {debugInfo && (
                       <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '4px' }}>
-                        <strong>{t('notifications.debug')}:</strong> {debugInfo}
+                        <strong>{t('notifications.debug')}:</strong> <StatusIcon tone={debugInfo.tone} /> {debugInfo.message}
                       </div>
                     )}
                   </div>
                 )}
                 {isSubscribed && (
                   <div>
-                    <p>✅ {t('notifications.subscribed_message')}</p>
+                    <p><UiIcon name="check" /> {t('notifications.subscribed_message')}</p>
                     <button
                       className="button button-secondary"
                       onClick={unsubscribeFromNotifications}
                       disabled={isSubscribing}
                     >
-                      {isSubscribing ? t('notifications.unsubscribing') : `📤 ${t('notifications.unsubscribe_button')}`}
+                      {isSubscribing ? t('notifications.unsubscribing') : <><UiIcon name="upload" /> {t('notifications.unsubscribe_button')}</>}
                     </button>
                   </div>
                 )}
@@ -1407,9 +1418,9 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
               onClick={sendTestNotification}
               disabled={!!testStatus}
             >
-              🧪 {t('notifications.send_test')}
+              <UiIcon name="test" /> {t('notifications.send_test')}
             </button>
-            {testStatus && <div style={{ marginTop: '10px', fontWeight: 'bold' }}>{testStatus}</div>}
+            {testStatus && <div style={{ marginTop: '10px', fontWeight: 'bold' }}><StatusIcon tone={testStatus.tone} /> {testStatus.message}</div>}
           </div>
         )}
 
@@ -1419,7 +1430,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
             <h4>{t('notifications.vapid_title')}</h4>
             <div className="info-grid">
               <div className="info-item">
-                <strong>{t('common.status')}:</strong> {vapidStatus.configured ? `✅ ${t('notifications.configured')}` : `❌ ${t('notifications.not_configured')}`}
+                <strong>{t('common.status')}:</strong> <UiIcon name={vapidStatus.configured ? 'check' : 'error'} /> {vapidStatus.configured ? t('notifications.configured') : t('notifications.not_configured')}
               </div>
               <div className="info-item">
                 <strong>{t('notifications.active_subscriptions')}:</strong> {vapidStatus.subscriptionCount}
@@ -1462,7 +1473,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           ======================================== */}
       {preferences.enableApprise && (
       <div id="notif-apprise" className="settings-section">
-        <h3>🔔 {t('notifications.apprise_config_title')}</h3>
+        <h3><UiIcon name="notifications" /> {t('notifications.apprise_config_title')}</h3>
         <p style={{ marginBottom: '20px', color: '#666' }}><Trans i18nKey="notifications.apprise_config_description" components={{ strong: <strong /> }} /></p>
 
         <div style={{
@@ -1474,7 +1485,7 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
           fontSize: '14px',
           color: '#93c5fd'
         }}>
-          <strong>ℹ️ {t('notifications.about_apprise')}:</strong> {t('notifications.apprise_info')}
+          <strong><UiIcon name="info" /> {t('notifications.about_apprise')}:</strong> {t('notifications.apprise_info')}
         </div>
 
         <div>
@@ -1526,17 +1537,17 @@ const NotificationsTab: React.FC<NotificationsTabProps> = ({ isAdmin }) => {
             disabled={isSavingApprise}
             style={{ minWidth: '150px' }}
           >
-            {isSavingApprise ? t('common.saving') : `💾 ${t('notifications.save_config')}`}
+            {isSavingApprise ? t('common.saving') : <><UiIcon name="save" /> {t('notifications.save_config')}</>}
           </button>
           <button
             className="button button-secondary"
             onClick={testAppriseConnection}
             disabled={!!appriseTestStatus}
           >
-            🧪 {t('notifications.send_test')}
+            <UiIcon name="test" /> {t('notifications.send_test')}
           </button>
           {appriseTestStatus && (
-            <div style={{ fontWeight: 'bold', marginLeft: '12px' }}>{appriseTestStatus}</div>
+            <div style={{ fontWeight: 'bold', marginLeft: '12px' }}><StatusIcon tone={appriseTestStatus.tone} /> {appriseTestStatus.message}</div>
           )}
         </div>
 

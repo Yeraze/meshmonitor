@@ -24,6 +24,7 @@ import { useLinkQuality, type LinkQualityData } from '../hooks/useLinkQuality';
 import { formatChartAxisTimestamp } from '../utils/datetime';
 import { LINK_QUALITY_TYPE } from './LinkQualityGraph';
 import type { TelemetryNodeInfo } from '../types/device';
+import { UiIcon } from './icons';
 
 interface FavoriteChart {
   nodeId: string;
@@ -155,8 +156,7 @@ const LinkQualityChart: React.FC<LinkQualityChartProps> = ({
             onClick={handleRemoveClick}
             aria-label={t('dashboard.remove_from_dashboard')}
           >
-            ✕
-          </button>
+            <UiIcon name="close" size={15} />          </button>
         </div>
         <div className="dashboard-loading-chart">{t('dashboard.loading_chart')}</div>
       </div>
@@ -178,8 +178,7 @@ const LinkQualityChart: React.FC<LinkQualityChartProps> = ({
             onClick={handleRemoveClick}
             aria-label={t('dashboard.remove_from_dashboard')}
           >
-            ✕
-          </button>
+            <UiIcon name="close" size={15} />          </button>
         </div>
         <div className="dashboard-error-chart">{t('dashboard.error_chart')}</div>
       </div>
@@ -201,8 +200,7 @@ const LinkQualityChart: React.FC<LinkQualityChartProps> = ({
             onClick={handleRemoveClick}
             aria-label={t('dashboard.remove_from_dashboard')}
           >
-            ✕
-          </button>
+            <UiIcon name="close" size={15} />          </button>
         </div>
         <div className="dashboard-no-data">{t('info.link_quality_no_data')}</div>
       </div>
@@ -223,8 +221,7 @@ const LinkQualityChart: React.FC<LinkQualityChartProps> = ({
           onClick={handleRemoveClick}
           aria-label={t('dashboard.remove_from_dashboard')}
         >
-          ✕
-        </button>
+          <UiIcon name="close" size={15} />        </button>
       </div>
       <ResponsiveContainer width="100%" height={200}>
         <ComposedChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>

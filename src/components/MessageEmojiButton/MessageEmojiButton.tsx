@@ -2,6 +2,7 @@ import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react
 import { useTranslation } from 'react-i18next';
 import { useIsDesktop } from '../../hooks/useIsDesktop';
 import './MessageEmojiButton.css';
+import { UiIcon } from '../icons';
 
 const EmojiPicker = React.lazy(() => import('emoji-picker-react'));
 
@@ -99,7 +100,7 @@ export const MessageEmojiButton: React.FC<MessageEmojiButtonProps> = ({
         aria-expanded={open}
         onClick={() => setOpen(o => !o)}
       >
-        😀
+        <UiIcon name="reaction" size={17} />
       </button>
       {open && (
         <div className="emoji-insert-popover" role="dialog" aria-label={t('messages.insert_emoji_button_title', 'Insert emoji')}>

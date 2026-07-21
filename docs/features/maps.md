@@ -51,6 +51,8 @@ Click any node marker to view detailed information:
 - Device role
 - Firmware version
 - Network position (hops away)
+- **Position accuracy** (🎯) — a human-readable estimate derived from the node's reported GPS precision (e.g. "~91 m"), shown whenever the node broadcasts a non-full precision fix
+- **Location source** (🛰️) — how the position was obtained: Manual, Internal GPS, or External GPS. Hidden when the node hasn't reported a source.
 
 ### Map Controls
 
@@ -65,6 +67,10 @@ Click any node marker to view detailed information:
 - **Tileset Selector**: Bottom-center visual picker to switch between map styles
 - **Default Tilesets**: OpenStreetMap, Satellite, Topographic, Dark/Light modes
 - **Custom Tilesets**: Any configured custom tile servers appear in the selector
+
+::: tip Per-theme tileset preferences (New in 4.13)
+MeshMonitor remembers a **separate tileset preference for light and dark appearance**, so switching your color theme (e.g. Catppuccin Latte → Mocha) can also switch your map style automatically — a light OSM style while your UI is light, a dark CartoDB style once you flip to a dark theme, without picking the tileset again each time. Configure both in **Settings → Map Settings** (see below); the visual picker on the map always changes the tileset for whichever appearance is currently active.
+:::
 
 #### Map Navigation
 
@@ -251,7 +257,7 @@ See the [Custom Tile Servers](/configuration/custom-tile-servers) guide for comp
 **Method 1: Settings Tab**
 
 1. Navigate to **Settings** → **Map Settings**
-2. In the **Map Tileset Selection** dropdown, choose your desired tileset
+2. Choose your desired tileset from the **Light Mode Tileset** and/or **Dark Mode Tileset** dropdowns — each applies only while the matching UI appearance is active
 3. Click **Save Settings**
 4. The map will reload with the new tileset
 

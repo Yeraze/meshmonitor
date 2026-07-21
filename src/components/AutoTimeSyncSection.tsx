@@ -5,6 +5,7 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { useData } from '../contexts/DataContext';
 import { useSourceQuery } from '../hooks/useSourceQuery';
+import { UiIcon } from './icons';
 
 interface AutoTimeSyncSectionProps {
   baseUrl: string;
@@ -350,7 +351,7 @@ const AutoTimeSyncSection: React.FC<AutoTimeSyncSectionProps> = ({
                   onClick={() => setNodeListExpanded(!nodeListExpanded)}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span>{nodeListExpanded ? '\u25BC' : '\u25B6'}</span>
+                    <UiIcon name={nodeListExpanded ? 'chevronDown' : 'forward'} size={14} />
                     {t('automation.time_sync.select_nodes')}
                     {selectedNodeNums.length > 0 && (
                       <span style={badgeStyle}>{selectedNodeNums.length}</span>

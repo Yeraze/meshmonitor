@@ -40,6 +40,13 @@ Individual Apprise URLs (per user, per source) are not here — users configure 
 - MFA enforcement defaults
 - Rate-limiter thresholds
 
+### Privacy
+
+::: tip New in 4.13
+:::
+
+- **Discourage search engine & LLM indexing** — opt-in, off by default. When enabled, MeshMonitor adds an `X-Robots-Tag: noindex, nofollow` header to every response and serves a disallow-all `/robots.txt`, asking crawlers not to index the dashboard. Both are advisory (a crawler must choose to honor them); the `/robots.txt` body is offered alongside the header because some reverse proxies (e.g. Cloudflare tunnels) strip custom response headers at the edge.
+
 ### System Backup / Restore
 
 - Create / download / restore system backups (includes the new `sources` table)

@@ -1662,6 +1662,25 @@
   transform: scale(1.1);
 }
 
+/* #4243: the reactor's short name, rendered inline beside the emoji so it is
+   visible without hovering (it was previously only in the title tooltip).
+   Smaller and lighter than the emoji so the emoji stays the primary mark. */
+.reaction__author {
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.reaction.mine .reaction__author {
+  color: var(--ctp-base);
+}
+
+.reaction.theirs .reaction__author {
+  color: var(--ctp-subtext0);
+}
+
 /* Unread Message Indicators */
 .unread-badge {
   display: inline-flex;

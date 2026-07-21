@@ -9,6 +9,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import {
   Area,
   CartesianGrid,
@@ -144,7 +145,7 @@ const SolarMonitoringReport: React.FC<{ baseUrl: string }> = ({ baseUrl }) => {
     <>
       <div>
         <h2 className="reports-section__title">
-          <span aria-hidden>☀️</span>
+          <UiIcon name="sun" size={22} />
           {t('analysis.solar_monitoring.title', 'Solar Monitoring Analysis')}
         </h2>
         <p className="reports-section__subtitle">
@@ -301,7 +302,7 @@ const ForecastResults: React.FC<{ forecast: SolarForecastAnalysis }> = ({ foreca
     <div className="reports-panel reports-forecast">
       <div className="reports-forecast__header">
         <h3 className="reports-forecast__title">
-          🔮 Solar Forecast
+          <UiIcon name="weather" size={18} /> Solar Forecast
         </h3>
         <div className="reports-forecast__sub">
           Based on {forecast.historical_days_analyzed} historical day(s) avg{' '}
@@ -313,7 +314,7 @@ const ForecastResults: React.FC<{ forecast: SolarForecastAnalysis }> = ({ foreca
 
       {forecast.low_output_warning && (
         <div className="reports-banner reports-banner--warning">
-          ⚠ Forecast output is significantly below historical average — battery levels may
+          <UiIcon name="alert" size={15} /> Forecast output is significantly below historical average — battery levels may
           drop on at-risk nodes.
         </div>
       )}
@@ -486,7 +487,7 @@ const SolarNodeCard: React.FC<{
           <div className="reports-node__name">
             {node.node_name}
             {node.insufficient_solar && (
-              <span className="reports-node__warning">⚠ Insufficient solar</span>
+              <span className="reports-node__warning"><UiIcon name="alert" size={13} /> Insufficient solar</span>
             )}
           </div>
           <div className="reports-node__meta">
@@ -494,7 +495,7 @@ const SolarNodeCard: React.FC<{
             {node.days_analyzed} days • Metric: {metricLabel}
           </div>
         </div>
-        <div className="reports-node__chevron">{expanded ? '▼' : '▶'}</div>
+        <div className="reports-node__chevron"><UiIcon name={expanded ? 'chevronDown' : 'forward'} size={15} /></div>
       </button>
 
       {expanded && (

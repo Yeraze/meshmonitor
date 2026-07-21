@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import {
   DndContext,
   closestCenter,
@@ -797,7 +798,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
               gap: '0.75rem'
             }}
           >
-            <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>⚠️</span>
+            <span style={{ fontSize: '1.5rem', lineHeight: 1 }}><UiIcon name="alert" /></span>
             <div>
               <strong style={{ display: 'block', marginBottom: '0.25rem' }}>
                 {t('channel_database.rebroadcast_warning_title', 'Rebroadcast Mode Warning')}
@@ -925,7 +926,7 @@ const ChannelDatabaseSection: React.FC<ChannelDatabaseSectionProps> = ({ isAdmin
               gap: '0.5rem'
             }}
           >
-            <span style={{ fontSize: '1rem' }}>ℹ️</span>
+            <span style={{ fontSize: '1rem' }}><UiIcon name="info" /></span>
             <span>{t('channel_database.sort_order_note')}</span>
           </div>
         )}

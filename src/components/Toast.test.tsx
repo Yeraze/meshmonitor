@@ -34,27 +34,27 @@ describe('Toast Component', () => {
 
     it('should render success toast with correct icon', () => {
       render(<Toast {...defaultProps} type="success" />);
-      expect(screen.getByText('✓')).toBeInTheDocument();
+      expect(document.querySelector('[data-ui-icon="check"]')).toBeInTheDocument();
     });
 
     it('should render error toast with correct icon', () => {
       render(<Toast {...defaultProps} type="error" />);
-      expect(screen.getByText('✕')).toBeInTheDocument();
+      expect(document.querySelector('[data-ui-icon="error"]')).toBeInTheDocument();
     });
 
     it('should render warning toast with correct icon', () => {
       render(<Toast {...defaultProps} type="warning" />);
-      expect(screen.getByText('⚠')).toBeInTheDocument();
+      expect(document.querySelector('[data-ui-icon="alert"]')).toBeInTheDocument();
     });
 
     it('should render info toast with correct icon', () => {
       render(<Toast {...defaultProps} type="info" />);
-      expect(screen.getByText('ℹ')).toBeInTheDocument();
+      expect(document.querySelector('[data-ui-icon="info"]')).toBeInTheDocument();
     });
 
     it('should render close button', () => {
       render(<Toast {...defaultProps} />);
-      expect(screen.getByText('×')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Close notification' })).toBeInTheDocument();
     });
   });
 
@@ -107,7 +107,7 @@ describe('Toast Component', () => {
     it('should call onClose when close button is clicked', () => {
       render(<Toast {...defaultProps} />);
 
-      const closeButton = screen.getByText('×');
+      const closeButton = screen.getByRole('button', { name: 'Close notification' });
       // fireEvent is synchronous and plays nicely with fake timers
       fireEvent.click(closeButton);
 
@@ -121,7 +121,7 @@ describe('Toast Component', () => {
       // the auto-dismiss timer so it doesn't fire a second onClose.
       const { unmount } = render(<Toast {...defaultProps} duration={5000} />);
 
-      const closeButton = screen.getByText('×');
+      const closeButton = screen.getByRole('button', { name: 'Close notification' });
       fireEvent.click(closeButton);
 
       expect(mockOnClose).toHaveBeenCalledTimes(1);
@@ -213,7 +213,7 @@ describe('Toast Component', () => {
       const user = userEvent.setup();
       render(<Toast {...defaultProps} />);
 
-      const closeButton = screen.getByText('×');
+      const closeButton = screen.getByRole('button', { name: 'Close notification' });
 
       // Tab to button and press Enter
       closeButton.focus();

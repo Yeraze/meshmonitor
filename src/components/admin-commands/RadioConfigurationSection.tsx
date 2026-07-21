@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, isAmateurRadioRegion, getLegalPresetOptions } from '../configuration/constants';
 import type { Channel } from '../../types/device';
 
@@ -239,7 +240,7 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
                 lineHeight: '1.4'
               }}
             >
-              ⚠️ {t('lora_config.amateur_band_warning')}
+              <UiIcon name="alert" /> {t('lora_config.amateur_band_warning')}
             </div>
           )}
         </div>
@@ -498,7 +499,7 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
                       {t('admin_commands.channel_slot', { index })}: {channel ? (
                         <>
                           {channel.name && channel.name.trim().length > 0 ? channel.name : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('admin_commands.unnamed')}</span>}
-                          {channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}>★ {t('admin_commands.primary')}</span>}
+                          {channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('admin_commands.primary')}</span>}
                           {channel.role === 2 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-green)', fontSize: '0.8rem' }}>● {t('admin_commands.secondary')}</span>}
                           {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}>⊘ {t('admin_commands.disabled')}</span>}
                         </>
@@ -506,10 +507,10 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
                     </h4>
                     {channel && (
                       <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--ctp-subtext1)' }}>
-                        <div>{channel.psk && channel.psk !== 'AQ==' ? `🔒 ${t('admin_commands.encrypted')}` : `🔓 ${t('admin_commands.unencrypted')}`}</div>
+                        <div><UiIcon name={channel.psk && channel.psk !== 'AQ==' ? 'encrypted' : 'unencrypted'} /> {channel.psk && channel.psk !== 'AQ==' ? t('admin_commands.encrypted') : t('admin_commands.unencrypted')}</div>
                         <div>
-                          {channel.uplinkEnabled ? `↑ ${t('admin_commands.uplink')} ` : ''}
-                          {channel.downlinkEnabled ? `↓ ${t('admin_commands.downlink')}` : ''}
+                          {channel.uplinkEnabled && <><UiIcon name="sortAscending" /> {t('admin_commands.uplink')} </>}
+                          {channel.downlinkEnabled && <><UiIcon name="sortDescending" /> {t('admin_commands.downlink')}</>}
                           {!channel.uplinkEnabled && !channel.downlinkEnabled && t('admin_commands.no_bridge')}
                         </div>
                       </div>
@@ -530,7 +531,7 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
                         opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1
                       }}
                     >
-                      ✏️ {t('common.edit')}
+                      <UiIcon name="edit" /> {t('common.edit')}
                     </button>
                     {channel && (
                       <button
@@ -547,7 +548,7 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
                           opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1
                         }}
                       >
-                        📥 {t('common.export')}
+                        <UiIcon name="download" /> {t('common.export')}
                       </button>
                     )}
                     <button
@@ -564,7 +565,7 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
                         opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1
                       }}
                     >
-                      📤 {t('common.import')}
+                      <UiIcon name="upload" /> {t('common.import')}
                     </button>
                   </div>
                 </div>
@@ -576,4 +577,3 @@ export const RadioConfigurationSection: React.FC<RadioConfigurationSectionProps>
     </CollapsibleSection>
   );
 };
-

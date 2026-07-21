@@ -11,6 +11,7 @@ import { useMapContext } from '../contexts/MapContext';
 import { useChannels, useDeviceConfig } from '../hooks/useServerData';
 import apiService, { SignalTrendResult } from '../services/api';
 import './NodeDetailsBlock.css';
+import { UiIcon, type UiIconName } from './icons';
 
 interface NodeDetailsBlockProps {
   node: DeviceInfo | null;
@@ -33,12 +34,12 @@ interface NodeDetailsBlockProps {
 
 const MAX_NODE_NOTES_LENGTH = 2000;
 
-/** Arrow glyph for a signal trend direction (#4110). */
-function signalTrendArrow(trend: SignalTrendResult['trend']): string {
+/** Semantic icon for a signal trend direction (#4110). */
+function signalTrendIcon(trend: SignalTrendResult['trend']): UiIconName {
   switch (trend) {
-    case 'improving': return '▲';
-    case 'degrading': return '▼';
-    default: return '→';
+    case 'improving': return 'chevronUp';
+    case 'degrading': return 'chevronDown';
+    default: return 'forward';
   }
 }
 
@@ -281,7 +282,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
           onClick={() => setIsCollapsed(!isCollapsed)}
           aria-label={isCollapsed ? t('node_details.expand') : t('node_details.collapse')}
         >
-          {isCollapsed ? '▼' : '▲'}
+          <UiIcon name={isCollapsed ? 'chevronDown' : 'chevronUp'} size={15} />
         </button>
       </div>
       {!isCollapsed && (
@@ -345,7 +346,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
                 className={`node-detail-value signal-trend signal-trend-${signalTrend.trend}`}
                 title={buildSignalTrendTooltip(signalTrend, t)}
               >
-                <span className="signal-trend-arrow" aria-hidden="true">{signalTrendArrow(signalTrend.trend)}</span>
+                <span className="signal-trend-arrow" aria-hidden="true"><UiIcon name={signalTrendIcon(signalTrend.trend)} size={14} /></span>
                 {' '}
                 {t(`node_details.signal_trend_${signalTrend.trend}`,
                   signalTrend.trend === 'improving' ? 'Improving'

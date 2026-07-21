@@ -2,18 +2,32 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockResolveProvider = vi.hoisted(() => vi.fn());
 const mockDetectProviderType = vi.hoisted(() => vi.fn());
+const mockFetchTerrariumTilePng = vi.hoisted(() => vi.fn());
 
-vi.mock('./elevationProvider.js', () => ({
-  resolveProvider: mockResolveProvider,
-  detectProviderType: mockDetectProviderType,
-}));
+// Keep the real (pure) exports — DEFAULT_TERRARIUM_URL, isValidTileCoord —
+// intact via importOriginal; only override the network/detection-touching
+// exports the tests need to control. This lets getElevationCapabilities/
+// fetchTerrainTile tests exercise real coordinate validation while still
+// mocking the outbound fetch path.
+vi.mock('./elevationProvider.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./elevationProvider.js')>();
+  return {
+    ...actual,
+    resolveProvider: mockResolveProvider,
+    detectProviderType: mockDetectProviderType,
+    fetchTerrariumTilePng: mockFetchTerrariumTilePng,
+  };
+});
 
 import { calculateDistance } from '../../utils/distance.js';
 import { SsrfBlockedError } from '../utils/ssrfGuard.js';
 import { stripSecretSettings } from '../constants/settings.js';
+import { DEFAULT_TERRARIUM_URL } from './elevationProvider.js';
 import {
   computeProfile,
   testSource,
+  getElevationCapabilities,
+  fetchTerrainTile,
   MIN_SAMPLES,
   MAX_SAMPLES,
   DEFAULT_SAMPLES,
@@ -35,6 +49,7 @@ beforeEach(() => {
   mockResolveProvider.mockReset();
   mockDetectProviderType.mockReset();
   mockDetectProviderType.mockReturnValue('terrarium');
+  mockFetchTerrariumTilePng.mockReset();
 });
 
 describe('computeProfile', () => {
@@ -201,6 +216,108 @@ describe('testSource', () => {
     await testSource('https://example.com/{z}/{x}/{y}.png', probe);
 
     expect(provider.sample).toHaveBeenCalledWith([probe]);
+  });
+});
+
+describe('getElevationCapabilities (#3826 Phase 2 WP-A)', () => {
+  it('enabled + terrarium (default/unset source) -> terrainTiles:true', () => {
+    mockDetectProviderType.mockReturnValue('terrarium');
+    const caps = getElevationCapabilities(undefined, undefined);
+    expect(caps).toEqual({ enabled: true, terrainTiles: true, provider: 'terrarium' });
+  });
+
+  it('enabled + explicit terrarium source -> terrainTiles:true', () => {
+    mockDetectProviderType.mockReturnValue('terrarium');
+    const caps = getElevationCapabilities('true', 'https://example.com/{z}/{x}/{y}.png');
+    expect(caps).toEqual({ enabled: true, terrainTiles: true, provider: 'terrarium' });
+  });
+
+  it('enabled + JSON source -> terrainTiles:false (no silent terrarium fallback)', () => {
+    mockDetectProviderType.mockReturnValue('json');
+    const caps = getElevationCapabilities('true', 'https://api.opentopodata.org/v1/mapzen');
+    expect(caps).toEqual({ enabled: true, terrainTiles: false, provider: 'json' });
+  });
+
+  it('disabled (elevationEnabled=false) -> enabled:false, terrainTiles:false regardless of provider', () => {
+    mockDetectProviderType.mockReturnValue('terrarium');
+    const caps = getElevationCapabilities('false', undefined);
+    expect(caps).toEqual({ enabled: false, terrainTiles: false, provider: 'terrarium' });
+  });
+
+  it('disabled + JSON source -> enabled:false, terrainTiles:false, provider:json', () => {
+    mockDetectProviderType.mockReturnValue('json');
+    const caps = getElevationCapabilities('false', 'https://api.opentopodata.org/v1/mapzen');
+    expect(caps).toEqual({ enabled: false, terrainTiles: false, provider: 'json' });
+  });
+
+  it('falls back to the default terrarium URL when sourceUrl is empty/whitespace', () => {
+    mockDetectProviderType.mockReturnValue('terrarium');
+    getElevationCapabilities('true', '   ');
+    expect(mockDetectProviderType).toHaveBeenCalledWith(DEFAULT_TERRARIUM_URL);
+  });
+});
+
+describe('fetchTerrainTile (#3826 Phase 2 WP-A)', () => {
+  it('returns ELEVATION_DISABLED (403) when elevationEnabled=false', async () => {
+    mockDetectProviderType.mockReturnValue('terrarium');
+    const result = await fetchTerrainTile(5, 1, 1, 'false', undefined);
+    expect(result).toMatchObject({ code: 'ELEVATION_DISABLED', status: 403 });
+    expect(mockFetchTerrariumTilePng).not.toHaveBeenCalled();
+  });
+
+  it('returns TERRAIN_TILES_UNAVAILABLE (409) for a configured JSON source, without leaking the URL', async () => {
+    mockDetectProviderType.mockReturnValue('json');
+    const secretUrl = 'https://api.example.com/v1/dem?key=supersecret';
+    const result = await fetchTerrainTile(5, 1, 1, 'true', secretUrl);
+    expect(result).toMatchObject({ code: 'TERRAIN_TILES_UNAVAILABLE', status: 409 });
+    expect(mockFetchTerrariumTilePng).not.toHaveBeenCalled();
+    if ('message' in result) {
+      expect(result.message).not.toContain(secretUrl);
+      expect(result.message).not.toContain('supersecret');
+    }
+  });
+
+  it('returns INVALID_TILE_COORDS (400) for an out-of-range zoom', async () => {
+    mockDetectProviderType.mockReturnValue('terrarium');
+    const result = await fetchTerrainTile(99, 1, 1, 'true', undefined);
+    expect(result).toMatchObject({ code: 'INVALID_TILE_COORDS', status: 400 });
+    expect(mockFetchTerrariumTilePng).not.toHaveBeenCalled();
+  });
+
+  it('returns INVALID_TILE_COORDS (400) for non-integer/NaN coords', async () => {
+    mockDetectProviderType.mockReturnValue('terrarium');
+    const result = await fetchTerrainTile(Number.NaN, 1, 1, 'true', undefined);
+    expect(result).toMatchObject({ code: 'INVALID_TILE_COORDS', status: 400 });
+  });
+
+  it('returns TILE_FETCH_FAILED (502) when the upstream fetch fails', async () => {
+    mockDetectProviderType.mockReturnValue('terrarium');
+    mockFetchTerrariumTilePng.mockResolvedValue(null);
+    const result = await fetchTerrainTile(5, 1, 1, 'true', undefined);
+    expect(result).toMatchObject({ code: 'TILE_FETCH_FAILED', status: 502 });
+  });
+
+  it('returns { png } on success, resolving the default terrarium URL when unset', async () => {
+    mockDetectProviderType.mockReturnValue('terrarium');
+    const png = Buffer.from([1, 2, 3]);
+    mockFetchTerrariumTilePng.mockResolvedValue(png);
+
+    const result = await fetchTerrainTile(5, 1, 1, undefined, undefined);
+
+    expect('png' in result).toBe(true);
+    if ('png' in result) expect(result.png).toBe(png);
+    expect(mockFetchTerrariumTilePng).toHaveBeenCalledWith(DEFAULT_TERRARIUM_URL, 5, 1, 1);
+  });
+
+  it('passes the configured terrarium sourceUrl through to fetchTerrariumTilePng', async () => {
+    mockDetectProviderType.mockReturnValue('terrarium');
+    const png = Buffer.from([9, 9, 9]);
+    mockFetchTerrariumTilePng.mockResolvedValue(png);
+    const customUrl = 'https://example.com/{z}/{x}/{y}.png';
+
+    await fetchTerrainTile(6, 2, 2, 'true', customUrl);
+
+    expect(mockFetchTerrariumTilePng).toHaveBeenCalledWith(customUrl, 6, 2, 2);
   });
 });
 

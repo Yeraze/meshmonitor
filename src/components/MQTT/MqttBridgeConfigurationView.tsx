@@ -23,6 +23,7 @@ import BBoxMapEditor, { type BBoxValue } from '../BBoxMapEditor';
 import { bboxToFormStrings } from '../../pages/DashboardPage.bboxSeed';
 import { useSourceStatuses } from '../../hooks/useDashboardData';
 import { formatRelativeTime } from '../../utils/datetime';
+import { UiIcon } from '../icons';
 import {
   buildBridgeConfig,
   formFromBridgeConfig,
@@ -380,7 +381,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
             <span style={{ fontSize: 11, color: 'var(--ctp-yellow)' }}>
               {t(
                 'source.form.mqtt_bridge_ignore_ok_to_mqtt_help',
-                '⚠ Overrides the originating node\'s "ok_to_mqtt" preference. Only enable for private bridges where every gateway has consented.',
+                'Overrides the originating node\'s "ok_to_mqtt" preference. Only enable for private bridges where every gateway has consented.',
               )}
             </span>
           </span>
@@ -715,7 +716,7 @@ export const MqttBridgeConfigurationView: React.FC<MqttBridgeConfigurationViewPr
         >
           {saving ? t('common.saving', 'Saving…') : t('common.save', 'Save')}
         </button>
-        {saved && <span style={{ color: 'var(--ctp-green)' }}>✓ {t('common.saved', 'Saved')}</span>}
+        {saved && <span style={{ color: 'var(--ctp-green)' }}><UiIcon name="check" size={14} /> {t('common.saved', 'Saved')}</span>}
         {saveError && <span style={{ color: 'var(--ctp-red)' }}>{saveError}</span>}
       </div>
     </div>

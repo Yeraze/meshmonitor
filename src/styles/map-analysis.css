@@ -382,6 +382,30 @@
   word-break: break-word;
 }
 
+/* Inspector: "View terrain profile" neighbor-link action (epic #3826, Phase
+   1, WP-2). Opens the existing Link Profile drawer pre-populated with the
+   link's two endpoints. */
+.map-analysis-link-profile-action {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  background: #1e3a8a;
+  color: #fff;
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.map-analysis-link-profile-action:hover,
+.map-analysis-link-profile-action:focus-visible {
+  background: #2563eb;
+  border-color: #3b82f6;
+  outline: none;
+}
+
 /* ===== Follow resume overlay (issue #3788 P2 WP-D) ===== */
 .map-analysis-follow-resume {
   position: absolute;
@@ -742,4 +766,22 @@
   color: #64748b;
   text-align: right;
   margin-top: -4px;
+}
+
+/* ===== 3D vector-basemap fallback note (#3826 Phase 2 WP-D) ===== */
+/* Non-blocking: sits above the 3D canvas but never intercepts pointer
+   events, so pan/rotate/zoom under it are unaffected. */
+.map-analysis-3d-fallback-note {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  pointer-events: none;
+  background: rgba(15, 23, 42, 0.75);
+  color: #e2e8f0;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }

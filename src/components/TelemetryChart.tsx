@@ -31,6 +31,7 @@ import { getLatestValue } from '../utils/telemetry';
 import { unitScale } from '../utils/telemetryFormat';
 import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
+import { UiIcon } from './icons';
 
 interface FavoriteChart {
   nodeId: string;
@@ -503,8 +504,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
               onClick={handleRemoveClick}
               aria-label={t('dashboard.remove_from_dashboard')}
             >
-              ✕
-            </button>
+              <UiIcon name="close" size={15} />            </button>
           </div>
           <div className="dashboard-loading-chart">{t('dashboard.loading_chart')}</div>
         </div>
@@ -527,8 +527,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
               onClick={handleRemoveClick}
               aria-label={t('dashboard.remove_from_dashboard')}
             >
-              ✕
-            </button>
+              <UiIcon name="close" size={15} />            </button>
           </div>
           <div className="dashboard-error-chart">{t('dashboard.error_chart')}</div>
         </div>
@@ -551,8 +550,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
               onClick={handleRemoveClick}
               aria-label={t('dashboard.remove_from_dashboard')}
             >
-              ✕
-            </button>
+              <UiIcon name="close" size={15} />            </button>
           </div>
           <div className="dashboard-no-data">{t('dashboard.no_chart_data')}</div>
         </div>
@@ -664,7 +662,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
                 aria-label={showSolar ? t('dashboard.hide_solar') : t('dashboard.show_solar')}
                 title={showSolar ? t('dashboard.hide_solar') : t('dashboard.show_solar')}
               >
-                {showSolar ? '\u2600' : '\u263C'}
+                <UiIcon name={showSolar ? 'sun' : 'visibilityOff'} size={15} />
               </button>
             )}
             <button
@@ -672,8 +670,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
               onClick={handleRemoveClick}
               aria-label={t('dashboard.remove_from_dashboard')}
             >
-              ✕
-            </button>
+              <UiIcon name="close" size={15} />            </button>
           </div>
         </div>
 

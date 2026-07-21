@@ -8,6 +8,7 @@ import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSource } from '../contexts/SourceContext';
 import { useSaveBar } from '../hooks/useSaveBar';
+import { UiIcon } from './icons';
 
 interface AutoAnnounceSectionProps {
   enabled: boolean;
@@ -360,7 +361,7 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
             }}
             title={t('automation.view_docs')}
           >
-            ❓
+            <UiIcon name="help" size={18} />
           </a>
         </h2>
         <div className="automation-button-container" style={{ display: 'flex', gap: '0.75rem' }}>

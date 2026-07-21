@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { GPS_MODE_OPTIONS, POSITION_FLAGS } from './constants';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
@@ -205,7 +206,7 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
           }}
           title={t('position_config.view_docs')}
         >
-          ❓
+          <UiIcon name="help" />
         </a>
       </h3>
       <div className="setting-item">
@@ -431,7 +432,7 @@ const PositionConfigSection: React.FC<PositionConfigSectionProps> = ({
             gap: '0.5rem'
           }}
         >
-          <span>{showAdvanced ? '▼' : '▶'}</span>
+          <span><UiIcon name={showAdvanced ? 'chevronDown' : 'forward'} /></span>
           {t('position_config.advanced_settings')}
         </button>
       </div>

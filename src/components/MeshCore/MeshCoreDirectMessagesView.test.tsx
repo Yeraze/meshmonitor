@@ -311,9 +311,9 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
 
     const names = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'))
       .map((el) => el.querySelector('.mc-node-row-display-name')?.textContent || '');
-    // Bravo (favorite) pinned first despite oldest lastSeen; ★ indicator shown.
+    // Bravo (favorite) is pinned first despite having the oldest lastSeen.
     expect(names[0]).toBe('Bravo');
-    expect(document.querySelector('.mc-node-row .mc-dm-row-favorite')?.textContent).toBe('★');
+    expect(document.querySelector('.mc-node-row .mc-dm-row-favorite .lucide-star')).not.toBeNull();
   });
 
   // The `aFav !== bFav` pin runs ahead of BOTH sort branches, so favorites must
@@ -366,13 +366,13 @@ describe('MeshCoreDirectMessagesView — per-node telemetry-config panel', () =>
     // Starts expanded — peer is visible and the toggle reads "Collapse node list".
     expect(screen.getByText('Remote Bob')).toBeTruthy();
     const toggle = screen.getByTitle('Collapse node list');
-    expect(toggle.textContent).toBe('◀');
+    expect(toggle.querySelector('.lucide-arrow-left')).not.toBeNull();
 
     // Click collapses — peer row is unmounted, toggle now reads "Expand…".
     fireEvent.click(toggle);
     expect(screen.queryByText('Remote Bob')).toBeNull();
     const expandToggle = screen.getByTitle('Expand node list');
-    expect(expandToggle.textContent).toBe('▶');
+    expect(expandToggle.querySelector('.lucide-arrow-right')).not.toBeNull();
 
     // Click again restores the list.
     fireEvent.click(expandToggle);

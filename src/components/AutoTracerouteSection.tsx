@@ -6,6 +6,7 @@ import { useSourceQuery } from '../hooks/useSourceQuery';
 import { DEVICE_ROLES } from '../utils/deviceRole';
 import { getHardwareModelName } from '../utils/hardwareModel';
 import { useSaveBar } from '../hooks/useSaveBar';
+import { UiIcon } from './icons';
 
 interface AutoTracerouteSectionProps {
   intervalMinutes: number;
@@ -885,7 +886,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                       onClick={(e) => e.stopPropagation()}
                       style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
                     />
-                    <span>{expandedSections.nodes ? '▼' : '▶'}</span>
+                    <span><UiIcon name={expandedSections.nodes ? 'chevronDown' : 'forward'} /></span>
                     {t('automation.auto_traceroute.specific_nodes')}
                     {filterNodesEnabled && selectedNodeNums.length > 0 && (
                       <span style={badgeStyle}>{selectedNodeNums.length}</span>
@@ -971,7 +972,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                       onClick={(e) => e.stopPropagation()}
                       style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
                     />
-                    <span>{expandedSections.channels ? '▼' : '▶'}</span>
+                    <span><UiIcon name={expandedSections.channels ? 'chevronDown' : 'forward'} /></span>
                     {t('automation.auto_traceroute.filter_by_channel')}
                     {filterChannelsEnabled && filterChannels.length > 0 && (
                       <span style={badgeStyle}>{filterChannels.length}</span>
@@ -1016,7 +1017,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                       onClick={(e) => e.stopPropagation()}
                       style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
                     />
-                    <span>{expandedSections.roles ? '▼' : '▶'}</span>
+                    <span><UiIcon name={expandedSections.roles ? 'chevronDown' : 'forward'} /></span>
                     {t('automation.auto_traceroute.filter_by_role')}
                     {filterRolesEnabled && filterRoles.length > 0 && (
                       <span style={badgeStyle}>{filterRoles.length}</span>
@@ -1065,7 +1066,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                       onClick={(e) => e.stopPropagation()}
                       style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
                     />
-                    <span>{expandedSections.hwModels ? '▼' : '▶'}</span>
+                    <span><UiIcon name={expandedSections.hwModels ? 'chevronDown' : 'forward'} /></span>
                     {t('automation.auto_traceroute.filter_by_hardware')}
                     {filterHwModelsEnabled && filterHwModels.length > 0 && (
                       <span style={badgeStyle}>{filterHwModels.length}</span>
@@ -1115,7 +1116,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                       onClick={(e) => e.stopPropagation()}
                       style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
                     />
-                    <span>{expandedSections.regex ? '▼' : '▶'}</span>
+                    <span><UiIcon name={expandedSections.regex ? 'chevronDown' : 'forward'} /></span>
                     {t('automation.auto_traceroute.filter_by_name')}
                     {filterRegexEnabled && filterNameRegex !== '.*' && (
                       <span style={badgeStyle}>1</span>
@@ -1165,7 +1166,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                       onClick={(e) => e.stopPropagation()}
                       style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
                     />
-                    <span>{expandedSections.lastHeard ? '▼' : '▶'}</span>
+                    <span><UiIcon name={expandedSections.lastHeard ? 'chevronDown' : 'forward'} /></span>
                     {t('automation.auto_traceroute.filter_by_last_heard')}
                     {filterLastHeardEnabled && (
                       <span style={badgeStyle}>{filterLastHeardHours}h</span>
@@ -1206,7 +1207,7 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                       onClick={(e) => e.stopPropagation()}
                       style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
                     />
-                    <span>{expandedSections.hops ? '▼' : '▶'}</span>
+                    <span><UiIcon name={expandedSections.hops ? 'chevronDown' : 'forward'} /></span>
                     {t('automation.auto_traceroute.filter_by_hops')}
                     {filterHopsEnabled && (
                       <span style={badgeStyle}>{filterHopsMin}-{filterHopsMax}</span>
@@ -1357,21 +1358,21 @@ const AutoTracerouteSection: React.FC<AutoTracerouteSectionProps> = ({
                               color: 'var(--ctp-yellow)',
                               fontSize: '14px'
                             }} title={t('automation.auto_traceroute.status_pending')}>
-                              ⏳
+                              <UiIcon name="time" />
                             </span>
                           ) : entry.success ? (
                             <span style={{
                               color: 'var(--ctp-green)',
                               fontSize: '14px'
                             }} title={t('automation.auto_traceroute.status_success')}>
-                              ✓
+                              <UiIcon name="check" />
                             </span>
                           ) : (
                             <span style={{
                               color: 'var(--ctp-red)',
                               fontSize: '14px'
                             }} title={t('automation.auto_traceroute.status_failed')}>
-                              ✗
+                              <UiIcon name="error" />
                             </span>
                           )}
                         </td>

@@ -12,6 +12,9 @@ import i18n from '../config/i18n';
 import { type TapbackEmoji, DEFAULT_TAPBACK_EMOJIS } from '../components/EmojiPickerModal/EmojiPickerModal';
 import { DEFAULT_TARGET_ZOOM } from '../utils/mapZoomAnimation';
 import { setDiscardInvalidPositionsDisplay } from '../utils/positionDisplayConfig';
+import { IconStyleProvider, type IconStyle } from './IconStyleContext';
+
+export type { IconStyle } from './IconStyleContext';
 
 /** A per-channel mute rule. muteUntil = null means indefinite. */
 export interface MutedChannel {
@@ -30,7 +33,6 @@ export type PositionHistoryLineStyle = 'linear' | 'spline';
 export type TimeFormat = '12' | '24';
 export type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 export type MapPinStyle = 'meshmonitor' | 'official';
-export type IconStyle = 'lucide' | 'emoji';
 export type NodeHopsCalculation = 'nodeinfo' | 'traceroute' | 'messages';
 export type AppearanceMode = 'system' | 'dark' | 'light';
 export type ActiveAppearanceMode = 'dark' | 'light';
@@ -1783,9 +1785,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   };
 
   return (
-    <SettingsContext.Provider value={value}>
-      {children}
-    </SettingsContext.Provider>
+    <IconStyleProvider value={iconStyle}>
+      <SettingsContext.Provider value={value}>
+        {children}
+      </SettingsContext.Provider>
+    </IconStyleProvider>
   );
 };
 

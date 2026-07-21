@@ -5,6 +5,7 @@ import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { getMessageDateSeparator, shouldShowDateSeparator } from '../../utils/datetime';
 import { getUtf8ByteLength, formatByteCount } from '../../utils/text';
 import LinkPreview from '../LinkPreview';
+import { UiIcon } from '../icons';
 
 interface MeshCoreMessageStreamProps {
   messages: MeshCoreMessage[];
@@ -18,7 +19,7 @@ interface MeshCoreMessageStreamProps {
    *  stream prefills the composer with the `@[Sender]:` mention + focuses it;
    *  the parent uses this callback to send the reply on the message's scope. */
   onReply?: (message: MeshCoreMessage) => void;
-  /** When provided, each message row shows a delete (🗑️) action (#3981). The
+  /** When provided, each message row shows a delete action (#3981). The
    *  parent is responsible for confirmation and the actual delete call. */
   onDeleteMessage?: (message: MeshCoreMessage) => void | Promise<void>;
   /** Stable key identifying the current conversation. When it changes, the
@@ -277,7 +278,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                 gap: '0.5rem',
               }}
             >
-              <span>↓</span> {t('channels.jump_to_bottom', 'Jump to Bottom')}
+              <UiIcon name="sortDescending" size={16} /> {t('channels.jump_to_bottom', 'Jump to Bottom')}
             </button>
           </div>
         )}
@@ -339,10 +340,16 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                               : 'Sending…'
                       }
                     >
-                      {m.deliveryStatus === 'delivered' ? ' ✓✓'
-                        : m.deliveryStatus === 'failed' ? ' ✗'
-                        : m.deliveryStatus === 'sent' ? ' ✓'
-                        : ' …'}
+                      <UiIcon
+                        name={m.deliveryStatus === 'delivered'
+                          ? 'checkAll'
+                          : m.deliveryStatus === 'failed'
+                            ? 'error'
+                            : m.deliveryStatus === 'sent'
+                              ? 'check'
+                              : 'time'}
+                        size={13}
+                      />
                     </span>
                   )}
                   {outgoing && m.heardBy && m.heardBy.length > 0 && (
@@ -353,7 +360,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                       aria-expanded={expandedHeardBy.has(m.id)}
                       onClick={() => toggleHeardBy(m.id)}
                     >
-                      {' 📡 '}{m.heardBy.length}
+                      <UiIcon name="radioSignal" size={13} /> {m.heardBy.length}
                     </button>
                   )}
                   </span>
@@ -365,7 +372,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                       aria-label={t('meshcore.reply', 'Reply')}
                       onClick={() => handleReply(m)}
                     >
-                      ↩
+                      <UiIcon name="reply" size={15} />
                     </button>
                   )}
                   {onDeleteMessage && (
@@ -376,7 +383,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                       aria-label={t('meshcore.delete_message', 'Delete this message')}
                       onClick={() => { void onDeleteMessage(m); }}
                     >
-                      🗑️
+                      <UiIcon name="delete" size={15} />
                     </button>
                   )}
                 </span>
@@ -384,10 +391,18 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
               <div className="mc-message-text">{renderMessageText(m.text)}</div>
               {!outgoing && typeof m.hopCount === 'number' && (
                 <div className="mc-message-route" title={t('meshcore.route_tooltip', 'How this message reached you')}>
-                  {m.hopCount === 0
-                    ? t('meshcore.route_direct', '📍 direct')
-                    : `🛰 ${m.hopCount} ${m.hopCount === 1 ? t('meshcore.hop', 'hop') : t('meshcore.hops', 'hops')}`}
-                  {m.hopCount !== 0 && m.routePath ? ` · ${m.routePath.split(',').filter(Boolean).join(' → ')}` : ''}
+                  {m.hopCount === 0 ? (
+                    <><UiIcon name="location" size={13} /> {t('meshcore.route_direct', 'direct')}</>
+                  ) : (
+                    <><UiIcon name="route" size={13} /> {m.hopCount} {m.hopCount === 1 ? t('meshcore.hop', 'hop') : t('meshcore.hops', 'hops')}</>
+                  )}
+                  {m.hopCount !== 0 && m.routePath && (
+                    <> · {m.routePath.split(',').filter(Boolean).map((hop, hopIndex, hops) => (
+                      <React.Fragment key={`${hop}-${hopIndex}`}>
+                        {hop}{hopIndex < hops.length - 1 && <> <UiIcon name="forward" size={12} /> </>}
+                      </React.Fragment>
+                    ))}</>
+                  )}
                 </div>
               )}
               {/* Only render the scope row when the message actually carried a
@@ -398,9 +413,9 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                   className="mc-message-scope"
                   title={t('meshcore.scope_tooltip', 'The region/scope this message was sent with')}
                 >
-                  {m.scopeName
-                    ? `🔒 ${m.scopeName}`
-                    : `🔒 #${(m.scopeCode ?? 0).toString(16).padStart(4, '0')}`}
+                  <UiIcon name="encrypted" size={13} /> {m.scopeName
+                    ? m.scopeName
+                    : `#${(m.scopeCode ?? 0).toString(16).padStart(4, '0')}`}
                 </div>
               )}
               {outgoing && m.heardBy && m.heardBy.length > 0 && expandedHeardBy.has(m.id) && (

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, FEM_LNA_MODE_OPTIONS, isAmateurRadioRegion, getLegalPresetOptions } from './constants';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
@@ -193,7 +194,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
           }}
           title={t('lora_config.view_docs')}
         >
-          ❓
+          <UiIcon name="help" />
         </a>
       </h3>
       <div className="setting-item">
@@ -242,7 +243,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
                   {MODEM_PRESET_OPTIONS.find(opt => opt.value === modemPreset)?.params || ''}
                 </div>
               </div>
-              <span style={{ fontSize: '1.2em', marginLeft: '1rem', flexShrink: 0 }}>{isPresetDropdownOpen ? '▲' : '▼'}</span>
+              <span style={{ fontSize: '1.2em', marginLeft: '1rem', flexShrink: 0 }}><UiIcon name={isPresetDropdownOpen ? 'chevronUp' : 'chevronDown'} /></span>
             </div>
             {isPresetDropdownOpen && (
               <div
@@ -415,7 +416,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
               lineHeight: '1.4'
             }}
           >
-            ⚠️ {t('lora_config.amateur_band_warning')}
+            <UiIcon name="alert" /> {t('lora_config.amateur_band_warning')}
           </div>
         )}
       </div>

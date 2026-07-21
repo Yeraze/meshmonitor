@@ -4,17 +4,16 @@ import { TriggerItemProps, ResponseType, ScriptMetadata } from './types';
 import { splitTriggerPatterns, formatTriggerPatterns } from './utils';
 import { normalizeTriggerChannels } from '../../utils/autoResponderUtils';
 import ScriptTestModal from '../ScriptTestModal';
+import { UiIcon } from '../icons';
 
 /**
  * Format script for dropdown display
  */
 const formatScriptDisplay = (script: ScriptMetadata): string => {
-  const langEmoji = script.language === 'Python' ? '🐍' : script.language === 'JavaScript' ? '📘' : script.language === 'Shell' ? '💻' : '📄';
   if (script.name) {
-    const emoji = script.emoji || langEmoji;
-    return `${emoji} ${script.name} | ${script.filename} | ${script.language}`;
+    return `${script.emoji ? `${script.emoji} ` : ''}${script.name} | ${script.filename} | ${script.language}`;
   }
-  return `${langEmoji} ${script.filename}`;
+  return script.filename;
 };
 
 const TriggerItem: React.FC<TriggerItemProps> = ({
@@ -181,7 +180,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   alignItems: 'center',
                   gap: '0.25rem'
                 }}>
-                  <span>⚠️</span>
+                  <UiIcon name="alert" size={14} />
                   <span>{triggerValidation.error}</span>
                 </div>
               )}
@@ -194,7 +193,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                   alignItems: 'center',
                   gap: '0.25rem'
                 }}>
-                  <span>✓</span>
+                  <UiIcon name="check" size={14} />
                   <span>Valid trigger pattern{splitTriggerPatterns(editTrigger).length > 1 ? 's' : ''}</span>
                 </div>
               )}
@@ -690,7 +689,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
             </div>
             {(trigger.responseType === 'script' || trigger.responseType === 'traceroute') && (
               <div style={{ color: 'var(--ctp-subtext0)', fontSize: '0.75rem', fontFamily: 'monospace', marginTop: '0.25rem' }}>
-                {trigger.responseType === 'traceroute' ? `→ ${trigger.response}` : trigger.response}
+                {trigger.responseType === 'traceroute' && <UiIcon name="forward" size={13} />} {trigger.response}
               </div>
             )}
             <div style={{ color: 'var(--ctp-subtext0)', fontSize: '0.85rem', marginTop: '0.25rem', whiteSpace: 'pre-wrap' }}>
@@ -755,7 +754,7 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
                 })()}
                 {trigger.cooldownSeconds != null && trigger.cooldownSeconds > 0 && (
                   <span style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)' }}>
-                    ⏱ {trigger.cooldownSeconds}s {t('auto_responder.cooldown_badge', 'cooldown')}
+                    <UiIcon name="timer" size={13} /> {trigger.cooldownSeconds}s {t('auto_responder.cooldown_badge', 'cooldown')}
                   </span>
                 )}
               </div>
@@ -922,4 +921,3 @@ const TriggerItem: React.FC<TriggerItemProps> = ({
 };
 
 export default TriggerItem;
-

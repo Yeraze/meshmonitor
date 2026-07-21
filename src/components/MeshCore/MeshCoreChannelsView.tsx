@@ -22,6 +22,7 @@ import { MeshCoreContact, formatMeshCoreChannelName } from '../../utils/meshcore
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
 import { loadChannelLastRead, markChannelRead as persistChannelRead } from './meshcoreUnreadStore';
+import { UiIcon } from '../icons';
 
 const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = (): boolean =>
@@ -505,7 +506,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
               aria-pressed={sortUnreadFirst}
               title={t('meshcore.channels.sort_unread_first', 'Show channels with unread messages first')}
             >
-              {sortUnreadFirst ? '★' : '☆'}
+              <UiIcon name={sortUnreadFirst ? 'favorite' : 'favoriteOff'} size={16} />
             </button>
             <span className="pane-count">{displayChannels.length}</span>
           </span>
@@ -560,7 +561,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
               className="meshcore-mobile-back-btn"
               onClick={() => setMobileShowContent(false)}
             >
-              ◀ {t('common.back', 'Back')}
+              <UiIcon name="back" size={16} /> {t('common.back', 'Back')}
             </button>
             <span className="meshcore-mobile-back-title">
               {formatMeshCoreChannelName(
@@ -609,7 +610,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
                   onClick={() => { setOverrideScope(null); setShowScopeOverride(false); }}
                   title={t('meshcore.scope.override_clear', 'Use channel scope')}
                 >
-                  ✕
+                  <UiIcon name="close" size={14} />
                 </button>
               </div>
             ) : (
@@ -637,7 +638,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
               onClick={() => void handleClearChannel()}
               title={t('meshcore.clear_channel', 'Clear channel messages')}
             >
-              🗑️ {t('meshcore.clear_channel', 'Clear channel messages')}
+              <UiIcon name="delete" size={15} /> {t('meshcore.clear_channel', 'Clear channel messages')}
             </button>
           </div>
         )}

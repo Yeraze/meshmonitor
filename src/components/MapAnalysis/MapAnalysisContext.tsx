@@ -27,6 +27,13 @@ export interface SelectedTarget {
   avgSnr?: number | null;
 }
 
+/**
+ * `CtxShape` inherits `config.viewMode` / `setViewMode` (2D vs 3D map
+ * rendering on Map Analysis, #3826 Phase 2) automatically via
+ * `ReturnType<typeof useMapAnalysisConfig>` below, the same way
+ * `config.followMode` / `setFollowMode` already do — no extra field needed
+ * here; the `...config` spread in `MapAnalysisProvider` carries it through.
+ */
 type CtxShape = ReturnType<typeof useMapAnalysisConfig> & {
   selected: SelectedTarget | null;
   setSelected: (s: SelectedTarget | null) => void;

@@ -55,6 +55,7 @@ import { TraceroutePathsLayer } from '../map/layers/TraceroutePathsLayer';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from '../map/layers/NeighborLinksLayer';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from '../map/layers/AccuracyRegionsLayer';
 import { snrToNeighborOpacity, dedupByUnorderedPair } from '../../utils/neighborLinks';
+import { UiIcon } from '../icons';
 import {
   parseSnapshotRoutePositions,
   resolveSegmentPosition,
@@ -484,10 +485,18 @@ export default function DashboardMap({
     // (and REPEATER), not just ROUTER. Included in iconSig below so the icon
     // cache distinguishes it from a plain client with the same hops/name.
     const roleCategory = getNodeTypeCategory(node);
+    // MeshCore nodes carry nodeNum 0 (they have no meshtastic nodeNum), so the
+    // `${sourceId}:${nodeNum}` scheme would collapse EVERY MeshCore node on a
+    // source onto the same key — React's duplicate-key reconciliation then
+    // duplicates markers and leaks them across source switches (#4234: MeshCore
+    // ghost markers visible on every source's map). Key them by their public-key
+    // identity instead.
     const markerKey = String(
-      node.sourceId != null && node.nodeNum != null
-        ? `${node.sourceId}:${node.nodeNum}`
-        : nodeId ?? node.nodeNum,
+      node.isMeshCore
+        ? unifiedNodeKey(node) ?? nodeId ?? node.publicKey
+        : node.sourceId != null && node.nodeNum != null
+          ? `${node.sourceId}:${node.nodeNum}`
+          : nodeId ?? node.nodeNum,
     );
     // #3886: fade markers by recency instead of a flat opacity — full when
     // freshly heard, fading toward a floor as lastHeard nears the age cutoff
@@ -719,7 +728,7 @@ export default function DashboardMap({
               onClick={() => setIsMapControlsCollapsed(!isMapControlsCollapsed)}
               title={isMapControlsCollapsed ? 'Expand controls' : 'Collapse controls'}
             >
-              {isMapControlsCollapsed ? '▼' : '▲'}
+              <UiIcon name={isMapControlsCollapsed ? 'chevronDown' : 'chevronUp'} size={16} />
             </button>
           </div>
           {!isMapControlsCollapsed && (

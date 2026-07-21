@@ -9,7 +9,14 @@
 
 import { calculateDistance } from '../../utils/distance.js';
 import { interpolateGreatCircle, type LatLng } from '../../utils/greatCircle.js';
-import { detectProviderType, resolveProvider, type ProviderType } from './elevationProvider.js';
+import {
+  detectProviderType,
+  resolveProvider,
+  fetchTerrariumTilePng,
+  isValidTileCoord,
+  DEFAULT_TERRARIUM_URL,
+  type ProviderType,
+} from './elevationProvider.js';
 import { SsrfBlockedError } from '../utils/ssrfGuard.js';
 
 export interface ProfileSample {
@@ -184,4 +191,107 @@ export async function testSource(url: string, probe?: LatLng): Promise<TestResul
           : String(err);
     return { success: false, detectedType, sampleElevation: null, latencyMs, error: message };
   }
+}
+
+/**
+ * Non-secret capability summary derived from settings (#3826 Phase 2 WP-A).
+ * The frontend needs to know whether to offer the 3D toggle before rendering
+ * it, but `elevationSourceUrl` is a secret setting stripped for non-admins —
+ * so provider type must be resolved server-side and exposed as a boolean.
+ */
+export interface ElevationCapabilities {
+  enabled: boolean;
+  terrainTiles: boolean;
+  provider: ProviderType;
+}
+
+/**
+ * Derives elevation/terrain-tile capabilities from raw settings values. Pure
+ * (no network I/O) — provider type detection is a string-shape check, not a
+ * probe.
+ *
+ * - `enabled` mirrors the same `elevationEnabled !== 'false'` gate used by
+ *   `POST /profile`.
+ * - `provider` is `detectProviderType` on the configured `sourceUrl`, or the
+ *   default terrarium URL when unset/empty.
+ * - `terrainTiles` is true only when both enabled AND the provider is
+ *   terrarium — a configured JSON point source never serves DEM tiles (no
+ *   silent fallback to the public AWS terrarium source; see spec §2.1).
+ */
+export function getElevationCapabilities(
+  elevationEnabled: string | undefined,
+  sourceUrl: string | undefined,
+): ElevationCapabilities {
+  const enabled = elevationEnabled !== 'false';
+  const url = sourceUrl && sourceUrl.trim().length > 0 ? sourceUrl.trim() : DEFAULT_TERRARIUM_URL;
+  const provider = detectProviderType(url);
+  const terrainTiles = enabled && provider === 'terrarium';
+  return { enabled, terrainTiles, provider };
+}
+
+/** Shape returned by `fetchTerrainTile` on any failure branch. */
+export interface TileError {
+  code: string;
+  status: number;
+  message: string;
+}
+
+/**
+ * Resolves the terrain tile bytes for `z/x/y`, honoring `elevationSourceUrl`
+ * (#3826 Phase 2 WP-A, DEM tile proxy). Validation order (first failure
+ * wins), matching spec §3.2:
+ *  1. `elevationEnabled === 'false'`         -> `ELEVATION_DISABLED` (403).
+ *  2. Configured provider is JSON (no tiles) -> `TERRAIN_TILES_UNAVAILABLE` (409).
+ *     (JSON never falls back to the public terrarium source — see §2.1.)
+ *  3. Invalid `z/x/y`                        -> `INVALID_TILE_COORDS` (400).
+ *  4. Upstream miss/failure                  -> `TILE_FETCH_FAILED` (502).
+ *  5. Success                                -> `{ png }`.
+ *
+ * Never throws — `fetchTerrariumTilePng` degrades all fetch/SSRF/decode
+ * failures to `null`, which this maps onto `TILE_FETCH_FAILED`.
+ */
+export async function fetchTerrainTile(
+  z: number,
+  x: number,
+  y: number,
+  elevationEnabled: string | undefined,
+  sourceUrl: string | undefined,
+): Promise<{ png: Buffer } | TileError> {
+  const caps = getElevationCapabilities(elevationEnabled, sourceUrl);
+
+  if (!caps.enabled) {
+    return {
+      code: 'ELEVATION_DISABLED',
+      status: 403,
+      message: 'Elevation is disabled on this server.',
+    };
+  }
+
+  if (caps.provider !== 'terrarium') {
+    return {
+      code: 'TERRAIN_TILES_UNAVAILABLE',
+      status: 409,
+      message: 'Terrain tiles are not available with the configured elevation source.',
+    };
+  }
+
+  if (!isValidTileCoord(z, x, y)) {
+    return {
+      code: 'INVALID_TILE_COORDS',
+      status: 400,
+      message: 'Invalid tile coordinates.',
+    };
+  }
+
+  const url = sourceUrl && sourceUrl.trim().length > 0 ? sourceUrl.trim() : DEFAULT_TERRARIUM_URL;
+  const png = await fetchTerrariumTilePng(url, z, x, y);
+  if (!png) {
+    return {
+      code: 'TILE_FETCH_FAILED',
+      status: 502,
+      message: 'Failed to fetch terrain tile from the upstream source.',
+    };
+  }
+
+  return { png };
 }

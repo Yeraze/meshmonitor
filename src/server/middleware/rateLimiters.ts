@@ -182,3 +182,25 @@ export const elevationLimiter = rateLimit({
   },
   ...rateLimitConfig,
 });
+
+// DEM terrain tile proxy (#3826 Phase 2 WP-A) — one call per tile, and a
+// fresh 3D view legitimately fetches dozens on load/pan/zoom, so this is far
+// more generous than `elevationLimiter` (one heavy fan-out per call). Abuse
+// is bounded by the raw-tile LRU + SSRF guard + immutable browser caching +
+// the z/x/y validation cap, not this limiter alone.
+// Default: 600/min (10/s) production, 3000/min development.
+export const elevationTileLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: env.isProduction ? 600 : 3000,
+  message: 'Too many elevation tile requests, please slow down',
+  skip: (req) => isPrivateNetworkIp(req.ip ?? ''),
+  handler: (req, res) => {
+    const ip = req.ip || 'unknown';
+    logger.warn(`🚫 Rate limit exceeded for ELEVATION_TILES - IP: ${ip}, Path: ${req.path}`);
+    res.status(429).json({
+      error: 'Too many elevation tile requests, please slow down',
+      retryAfter: '1 minute'
+    });
+  },
+  ...rateLimitConfig,
+});

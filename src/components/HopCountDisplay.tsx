@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from './icons';
 
 interface HopCountDisplayProps {
   hopStart?: number;
@@ -39,7 +40,7 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
       aria-label={t('messages.via_store_forward', 'Received via Store & Forward')}
       role="img"
     >
-      📦
+      <UiIcon name="package" size={14} />
     </span>
   ) : null;
 
@@ -51,7 +52,7 @@ const HopCountDisplay: React.FC<HopCountDisplayProps> = ({
       aria-label={t('messages.via_mqtt')}
       role="img"
     >
-      🌐
+      <UiIcon name="network" size={14} />
     </span>
   ) : null;
 

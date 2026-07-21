@@ -10,7 +10,10 @@ import databaseService, { DbNode } from '../../../services/database.js';
 import { ALL_SOURCES } from '../../../db/repositories/index.js';
 import { logger } from '../../../utils/logger.js';
 import { filterNodesByChannelPermission, maskNodeLocationByChannel } from '../../utils/nodeEnhancer.js';
-import { findCopyCandidates, copyNodeInfo } from '../../services/nodeInfoCopyService.js';
+import {
+  findCopyCandidates, copyNodeInfo, isNodeInfoField, NODE_INFO_FIELDS,
+  type NodeInfoField,
+} from '../../services/nodeInfoCopyService.js';
 import { resolvedSourceIdFromPath } from './sourceParam.js';
 
 // mergeParams so this router picks up :sourceId when mounted under
@@ -260,13 +263,26 @@ router.post('/:nodeNum/copy-nodeinfo', async (req: Request, res: Response) => {
       });
     }
 
-    const { fromSourceId, toSourceId, pushToNodeDb } = req.body ?? {};
+    const { fromSourceId, toSourceId, pushToNodeDb, fields } = req.body ?? {};
     if (!fromSourceId || !toSourceId) {
       return res.status(400).json({
         success: false,
         error: 'Bad Request',
         message: 'fromSourceId and toSourceId are required',
       });
+    }
+
+    // #4244: optional per-field selection; reject unknown names loudly.
+    let selectedFields: NodeInfoField[] | undefined;
+    if (fields !== undefined) {
+      if (!Array.isArray(fields) || !fields.every(isNodeInfoField)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Bad Request',
+          message: `fields must be an array of: ${NODE_INFO_FIELDS.join(', ')}`,
+        });
+      }
+      selectedFields = fields;
     }
 
     if (!await hasNodesReadPermission(userId, isAdmin, fromSourceId)) {
@@ -287,7 +303,9 @@ router.post('/:nodeNum/copy-nodeinfo', async (req: Request, res: Response) => {
       });
     }
 
-    const result = await copyNodeInfo(nodeNum, fromSourceId, toSourceId, !!pushToNodeDb);
+    const result = await copyNodeInfo(
+      nodeNum, fromSourceId, toSourceId, !!pushToNodeDb, selectedFields,
+    );
     res.json({ success: true, data: result });
   } catch (error: any) {
     logger.error('Error copying node info:', error);

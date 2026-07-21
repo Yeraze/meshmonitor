@@ -586,4 +586,53 @@ describe('DashboardMap', () => {
     );
     expect(screen.getAllByTestId('map-polyline')).toHaveLength(1);
   });
+
+  // --- MeshCore marker keying (#4234) ----------------------------------------
+
+  // Real API rows (buildSourceNodes / /api/nodes) always carry sourceId AND
+  // nodeNum: 0 for MeshCore nodes — unlike mcNodeA/mcNodeB above, which have no
+  // sourceId. Under the old `${sourceId}:${nodeNum}` key scheme every MeshCore
+  // node on a source collapsed onto the same React key (`<sourceId>:0`), and
+  // React's duplicate-key reconciliation duplicated markers / failed to unmount
+  // them when the selected source changed — MeshCore ghost markers showed up on
+  // every source's map.
+  const mcApiNodeA = {
+    nodeId: 'mc:src-mc:AAAA', nodeNum: 0, sourceId: 'src-mc', isMeshCore: true, publicKey: 'AAAA',
+    user: { id: 'mc:src-mc:AAAA', shortName: 'A', longName: 'MC A' },
+    position: { latitude: 35.0, longitude: -80.0 },
+    hopsAway: 0, role: 0, lastHeard: recent,
+  };
+  const mcApiNodeB = {
+    nodeId: 'mc:src-mc:BBBB', nodeNum: 0, sourceId: 'src-mc', isMeshCore: true, publicKey: 'BBBB',
+    user: { id: 'mc:src-mc:BBBB', shortName: 'B', longName: 'MC B' },
+    position: { latitude: 36.0, longitude: -81.0 },
+    hopsAway: 0, role: 0, lastHeard: recent,
+  };
+
+  it('keys MeshCore markers uniquely despite shared sourceId + nodeNum 0 (#4234)', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      render(<DashboardMap {...defaultProps} nodes={[mcApiNodeA, mcApiNodeB]} />);
+      expect(screen.getAllByTestId('map-marker')).toHaveLength(2);
+      const duplicateKeyErrors = consoleErrorSpy.mock.calls.filter((call) =>
+        call.some((arg) => typeof arg === 'string' && arg.includes('same key')),
+      );
+      expect(duplicateKeyErrors).toHaveLength(0);
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it('removes MeshCore markers when the node list switches to another source (#4234)', () => {
+    const { rerender } = render(
+      <DashboardMap {...defaultProps} nodes={[mcApiNodeA, mcApiNodeB]} />,
+    );
+    expect(screen.getAllByTestId('map-marker')).toHaveLength(2);
+    // Simulate picking a Meshtastic source in the sidebar: same map component,
+    // new nodes prop. Every MeshCore marker must unmount.
+    rerender(<DashboardMap {...defaultProps} nodes={[nodeWithPosition]} />);
+    const markers = screen.getAllByTestId('map-marker');
+    expect(markers).toHaveLength(1);
+    expect(markers[0].textContent).not.toContain('MC');
+  });
 });

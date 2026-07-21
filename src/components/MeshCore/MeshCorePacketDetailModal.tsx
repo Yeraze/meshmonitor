@@ -9,6 +9,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MeshCoreOtaPacketEvent } from '../../hooks/useWebSocket';
 import { decodeMeshCorePacket } from '../../utils/meshcorePacketDecode';
+import { UiIcon } from '../icons';
 
 interface Props {
   packet: MeshCoreOtaPacketEvent;
@@ -80,7 +81,7 @@ const MeshCorePacketDetailModal: React.FC<Props> = ({ packet, onClose }) => {
                     <Row label={t('meshcore.packets.hops', 'Hops')} mono>{decoded.path.hopCount}</Row>
                     <Row label={t('meshcore.packets.hashWidth', 'Hash width')} mono>{decoded.path.hashSize} B</Row>
                     <Row label={t('meshcore.packets.relayChain', 'Relay chain')} mono wrap>
-                      {decoded.path.hops.length ? decoded.path.hops.join(' → ') : '—'}
+                      {decoded.path.hops.length ? decoded.path.hops.join(' to ') : '—'}
                     </Row>
                   </>
                 )}
@@ -122,7 +123,7 @@ const MeshCorePacketDetailModal: React.FC<Props> = ({ packet, onClose }) => {
                     <Row label={t('meshcore.packets.destHash', 'Dest hash')} mono>{decoded.payload.message.destHash}</Row>
                     <Row label={t('meshcore.packets.srcHash', 'Src hash')} mono>{decoded.payload.message.srcHash}</Row>
                     <Row label={t('meshcore.packets.encrypted', 'Encrypted body')} mono wrap>
-                      🔒 {decoded.payload.message.encryptedHex || '(none)'}
+                      <UiIcon name="encrypted" size={14} /> {decoded.payload.message.encryptedHex || '(none)'}
                     </Row>
                   </>
                 )}

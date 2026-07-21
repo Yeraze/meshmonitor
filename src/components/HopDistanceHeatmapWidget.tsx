@@ -12,6 +12,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { type NodeInfo } from './TelemetryChart';
 import { calculateDistance, kmToMiles } from '../utils/distance';
 import { useHomeNode, BUCKET_SIZE_OPTIONS } from './Dashboard/hooks/useHomeNode';
+import { UiIcon } from './icons';
 
 interface HopDistanceHeatmapWidgetProps {
   id: string;
@@ -177,12 +178,12 @@ const HopDistanceHeatmapWidget: React.FC<HopDistanceHeatmapWidgetProps> = ({
               title={t('dashboard.widget.distance_distribution.settings')}
               aria-label={t('dashboard.widget.distance_distribution.settings')}
             >
-              ⚙
+              <UiIcon name="settings" size={15} />
             </button>
           )}
           {canEdit && (
             <button className="dashboard-remove-btn" onClick={onRemove} title={t('dashboard.remove_widget')} aria-label={t('dashboard.remove_widget')}>
-              ×
+              <UiIcon name="close" size={15} />
             </button>
           )}
         </div>

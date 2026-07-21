@@ -447,6 +447,19 @@ Predefined radio settings that balance range, speed, and reliability. All nodes 
 - **Coding Rate**: 4/7
 - **Best For**: Urban deployments with moderate coverage needs
 
+#### MEDIUM_TURBO
+
+::: tip Firmware 2.8 early preview
+See [What is MeshMonitor's "firmware 2.8 early preview" decode support?](/faq#firmware-2-8-early-preview) — 2.8 is not yet officially released.
+:::
+
+- **Range**: Medium
+- **Speed**: Faster than MEDIUM_FAST
+- **Bandwidth**: 500kHz (widest)
+- **Spreading Factor**: 9
+- **Coding Rate**: 4/5
+- **Best For**: Medium-range deployments that want more throughput than the 250kHz medium presets
+
 #### SHORT_SLOW
 
 - **Range**: Short

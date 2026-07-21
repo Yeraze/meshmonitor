@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from './icons';
 import { useSettings } from '../contexts/SettingsContext';
 import { validateTileUrl, isVectorTileUrl, type CustomTileset } from '../config/tilesets';
 import { testTileServer, formatTileSize, autodetectTileServer, type TileTestResult, type AutodetectResult, type AutodetectProgress } from '../utils/tileServerTest';
@@ -210,7 +211,7 @@ export function CustomTilesetManager() {
               fontWeight: '500'
             }}
           >
-            {t('tileset_manager.setup_guide')} →
+            {t('tileset_manager.setup_guide')} <UiIcon name="forward" size={14} />
           </a>
         </span>
       </div>
@@ -218,7 +219,7 @@ export function CustomTilesetManager() {
       {showReloadNotice && (
         <div className="reload-notice">
           <div className="reload-notice-content">
-            <span className="reload-notice-icon">⚠️</span>
+            <span className="reload-notice-icon"><UiIcon name="alert" /></span>
             <span className="reload-notice-text">{t('tileset_manager.reload_required')}</span>
             <button
               className="btn-reload"
@@ -231,7 +232,7 @@ export function CustomTilesetManager() {
               onClick={() => setShowReloadNotice(false)}
               title={t('common.dismiss')}
             >
-              ✕
+              <UiIcon name="close" size={16} />
             </button>
           </div>
         </div>
@@ -351,7 +352,7 @@ export function CustomTilesetManager() {
             {/* Autodetect Section */}
             <div className="autodetect-section">
               <div className="autodetect-header">
-                <span className="autodetect-icon">🔍</span>
+                <span className="autodetect-icon"><UiIcon name="search" /></span>
                 <span>{t('tileset_manager.autodetect_title')}</span>
               </div>
               <div className="autodetect-input-row">
@@ -397,7 +398,7 @@ export function CustomTilesetManager() {
                   {autodetectResult.success ? (
                     <>
                       <div className="autodetect-result-header">
-                        ✅ {t('tileset_manager.autodetect_found', { count: autodetectResult.detectedUrls.length })}
+                        <UiIcon name="check" /> {t('tileset_manager.autodetect_found', { count: autodetectResult.detectedUrls.length })}
                       </div>
                       <div className="autodetect-url-list">
                         {autodetectResult.detectedUrls.map((detected, index) => (
@@ -422,7 +423,7 @@ export function CustomTilesetManager() {
                   ) : (
                     <>
                       <div className="autodetect-result-header">
-                        ❌ {t('tileset_manager.autodetect_none_found')}
+                        <UiIcon name="error" /> {t('tileset_manager.autodetect_none_found')}
                       </div>
                       {autodetectResult.errors.map((error, i) => (
                         <div key={i} className="autodetect-error">{error}</div>
@@ -437,7 +438,7 @@ export function CustomTilesetManager() {
               <div className={`test-result test-result-${testResult.status}`}>
                 <div className="test-result-header">
                   <span className="test-result-icon">
-                    {testResult.status === 'success' ? '✅' : testResult.status === 'warning' ? '⚠️' : '❌'}
+                    <UiIcon name={testResult.status === 'success' ? 'check' : testResult.status === 'warning' ? 'alert' : 'error'} />
                   </span>
                   <span className="test-result-message">{testResult.message}</span>
                   {testResult.details.responseTime && (
@@ -454,14 +455,14 @@ export function CustomTilesetManager() {
                 {testResult.details.matchedLayers && testResult.details.matchedLayers.length > 0 && (
                   <div className="test-result-layers">
                     <div className="layers-matched">
-                      ✓ {t('tileset_manager.test_matched_layers')}: {testResult.details.matchedLayers.join(', ')}
+                      <UiIcon name="check" /> {t('tileset_manager.test_matched_layers')}: {testResult.details.matchedLayers.join(', ')}
                     </div>
                   </div>
                 )}
                 {testResult.details.missingLayers && testResult.details.missingLayers.length > 0 && (
                   <div className="test-result-layers">
                     <div className="layers-missing">
-                      ✗ {t('tileset_manager.test_missing_layers')}: {testResult.details.missingLayers.join(', ')}
+                      <UiIcon name="error" /> {t('tileset_manager.test_missing_layers')}: {testResult.details.missingLayers.join(', ')}
                     </div>
                   </div>
                 )}
@@ -491,7 +492,7 @@ export function CustomTilesetManager() {
               fontSize: '0.85rem'
             }}>
               <strong style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--ctp-blue)' }}>
-                💡 {t('tileset_manager.tileserver_tip_title')}
+                <UiIcon name="info" /> {t('tileset_manager.tileserver_tip_title')}
               </strong>
               <div style={{ color: 'var(--ctp-subtext0)', lineHeight: '1.5' }}>
                 {t('tileset_manager.tileserver_tip_desc')}
@@ -519,7 +520,7 @@ export function CustomTilesetManager() {
                       textDecoration: 'underline'
                     }}
                   >
-                    {t('tileset_manager.tileserver_tip_link')} →
+                    {t('tileset_manager.tileserver_tip_link')} <UiIcon name="forward" size={14} />
                   </a>
                 </div>
               </div>

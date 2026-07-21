@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
 interface PowerConfigSectionProps {
@@ -132,7 +133,7 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
           }}
           title={t('power_config.view_docs')}
         >
-          ❓
+          <UiIcon name="help" />
         </a>
       </h3>
 
@@ -306,7 +307,7 @@ const PowerConfigSection: React.FC<PowerConfigSectionProps> = ({
             gap: '0.5rem'
           }}
         >
-          <span>{showAdvanced ? '▼' : '▶'}</span>
+          <span><UiIcon name={showAdvanced ? 'chevronDown' : 'forward'} /></span>
           {t('power_config.advanced_settings')}
         </button>
       </div>

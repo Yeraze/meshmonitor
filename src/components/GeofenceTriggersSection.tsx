@@ -10,6 +10,7 @@ import {
 } from './auto-responder/types';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { UiIcon } from './icons';
 import { useSourceQuery } from '../hooks/useSourceQuery';
 import { Channel, DeviceInfo } from '../types/device';
 import { useSaveBar } from '../hooks/useSaveBar';
@@ -33,22 +34,11 @@ const AVAILABLE_TOKENS = [
   { token: '{TOTALNODES}', description: 'Total nodes ever seen' },
 ];
 
-const getLanguageEmoji = (language: string): string => {
-  switch (language.toLowerCase()) {
-    case 'python': return '\uD83D\uDC0D';
-    case 'javascript': return '\uD83D\uDCD8';
-    case 'shell': return '\uD83D\uDCBB';
-    default: return '\uD83D\uDCC4';
-  }
-};
-
 const formatScriptDisplay = (script: ScriptMetadata): string => {
-  const langEmoji = getLanguageEmoji(script.language);
   if (script.name) {
-    const emoji = script.emoji || langEmoji;
-    return `${emoji} ${script.name} | ${script.filename} | ${script.language}`;
+    return `${script.emoji ? `${script.emoji} ` : ''}${script.name} | ${script.filename} | ${script.language}`;
   }
-  return `${langEmoji} ${script.filename}`;
+  return script.filename;
 };
 
 interface GeofenceTriggersSectionProps {
@@ -775,7 +765,7 @@ const GeofenceTriggerItem: React.FC<GeofenceTriggerItemProps> = ({
             <>Text: {trigger.response && trigger.response.length > 40 ? trigger.response.substring(0, 40) + '...' : trigger.response}</>
           )}
           {trigger.channel !== 'none' && (
-            <>{' \u2192 '}{trigger.channel === 'dm' ? 'DM' : `Ch ${trigger.channel}: ${channels.find(c => c.id === trigger.channel)?.name || `Channel ${trigger.channel}`}`}</>
+            <> <UiIcon name="forward" size={14} /> {trigger.channel === 'dm' ? 'DM' : `Ch ${trigger.channel}: ${channels.find(c => c.id === trigger.channel)?.name || `Channel ${trigger.channel}`}`}</>
           )}
         </div>
         <div style={{ fontSize: '0.8rem', color: 'var(--ctp-subtext0)', marginTop: '0.15rem' }}>

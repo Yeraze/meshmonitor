@@ -73,11 +73,35 @@ export async function findCopyCandidates(
   return candidates;
 }
 
+/** Runtime guard for field names arriving from the request body. */
+export function isNodeInfoField(value: unknown): value is NodeInfoField {
+  return typeof value === 'string' && (NODE_INFO_FIELDS as readonly string[]).includes(value);
+}
+
+export { NODE_INFO_FIELDS };
+export type { NodeInfoField };
+
+/**
+ * Copy NodeInfo fields from one source's row to another's.
+ *
+ * `fields` (#4244) selects exactly which fields to copy, and those fields
+ * OVERWRITE the target even when it already holds a value. This exists because
+ * the previous all-or-nothing rule — copy only when the target is null/empty —
+ * made the feature useless in its most common case: MeshMonitor auto-populates
+ * longName/shortName with a derived placeholder ("Node !383c3519"), which is a
+ * non-empty string, so real incoming NodeInfo was blocked forever. The same
+ * applied to any field a prior copy had already filled (e.g. a role that has
+ * since changed upstream).
+ *
+ * Omitting `fields` preserves the legacy fill-empty-only behavior, so existing
+ * callers are unaffected.
+ */
 export async function copyNodeInfo(
   nodeNum: number,
   fromSourceId: string,
   toSourceId: string,
   pushToNodeDb: boolean = false,
+  fields?: readonly NodeInfoField[],
 ): Promise<CopyNodeInfoResult> {
   const donorNode = await databaseService.nodes.getNode(nodeNum, fromSourceId);
   if (!donorNode) {
@@ -92,13 +116,24 @@ export async function copyNodeInfo(
   const updates: Partial<DbNode> = {};
   const copiedFields: string[] = [];
 
+  // An explicit selection means the user has seen both values and chosen to
+  // take the donor's, so a populated target is no longer a reason to skip.
+  const selected = fields && fields.length > 0 ? new Set<string>(fields) : null;
+
   for (const field of NODE_INFO_FIELDS) {
+    if (selected && !selected.has(field)) continue;
+
     const donorVal = (donorNode as any)[field];
-    const targetVal = (targetNode as any)[field];
-    if (donorVal != null && donorVal !== '' && (targetVal == null || targetVal === '')) {
-      (updates as any)[field] = donorVal;
-      copiedFields.push(field);
+    if (donorVal == null || donorVal === '') continue;
+
+    if (!selected) {
+      // Legacy path: fill only what the target is missing.
+      const targetVal = (targetNode as any)[field];
+      if (targetVal != null && targetVal !== '') continue;
     }
+
+    (updates as any)[field] = donorVal;
+    copiedFields.push(field);
   }
 
   if (copiedFields.length === 0) {

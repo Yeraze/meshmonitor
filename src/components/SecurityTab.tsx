@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from './icons';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { TabType } from '../types/ui';
@@ -447,7 +448,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                 className="export-button"
                 title={t('security.export_results')}
               >
-                {t('security.export')} ▼
+                {t('security.export')} <UiIcon name="chevronDown" size={14} />
               </button>
               {showExportMenu && (
                 <div className="export-menu">
@@ -684,10 +685,10 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                     }}
                     title={t('security.send_notification_title')}
                   >
-                    →
+                    <UiIcon name="forward" size={14} />
                   </button>
                   <div className="expand-icon">
-                    {expandedNode === node.nodeNum ? '▼' : '▶'}
+                    <UiIcon name={expandedNode === node.nodeNum ? 'chevronDown' : 'forward'} />
                   </div>
                 </div>
 
@@ -774,7 +775,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                               }}
                               title={t('security.send_notification_title')}
                             >
-                              →
+                              <UiIcon name="forward" size={14} />
                             </button>
                           </div>
                         </div>
@@ -866,7 +867,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                           )}
                         </div>
                         <div className="expand-icon">
-                          {expandedNode === node.nodeNum ? '▼' : '▶'}
+                          <UiIcon name={expandedNode === node.nodeNum ? 'chevronDown' : 'forward'} />
                         </div>
                       </div>
 
@@ -938,7 +939,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                           <span className="time-offset-value">{formatTimeOffset(node.timeOffsetSeconds)}</span>
                         </div>
                         <div className="expand-icon">
-                          {expandedNode === node.nodeNum ? '▼' : '▶'}
+                          <UiIcon name={expandedNode === node.nodeNum ? 'chevronDown' : 'forward'} />
                         </div>
                       </div>
 
@@ -1054,11 +1055,11 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
                           <td>
                             {node.inDeviceDb ? (
                               <span title={t('security.dead_nodes_in_both', 'In both local and device database')} style={{ color: 'var(--ctp-yellow)' }}>
-                                📡 {t('security.dead_nodes_local_and_device', 'Local + Device')}
+                                <UiIcon name="radioSignal" /> {t('security.dead_nodes_local_and_device', 'Local + Device')}
                               </span>
                             ) : (
                               <span title={t('security.dead_nodes_local_only', 'Only in local database')} style={{ color: 'var(--ctp-subtext0)' }}>
-                                💾 {t('security.dead_nodes_local_only_short', 'Local Only')}
+                                <UiIcon name="database" /> {t('security.dead_nodes_local_only_short', 'Local Only')}
                               </span>
                             )}
                           </td>

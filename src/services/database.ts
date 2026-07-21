@@ -8,6 +8,13 @@ import { logger } from '../utils/logger.js';
 import { getEnvironmentConfig } from '../server/config/environment.js';
 
 import { registry } from '../db/migrations.js';
+import {
+  readAppliedMigrationsPostgres,
+  markMigrationAppliedPostgres,
+  readAppliedMigrationsMysql,
+  markMigrationAppliedMysql,
+  runLedgeredMigrations,
+} from '../db/migrationLedger.js';
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 import { isSourceyResource } from '../types/permission.js';
 import { computeAveragingIntervalMinutes } from '../utils/telemetryAveraging.js';
@@ -4121,12 +4128,18 @@ class DatabaseService {
         throw new Error('Database is pre-v3.7. Please upgrade to v3.7 first.');
       }
 
-      // Run ALL migrations from the registry — 001 baseline creates all tables
-      for (const migration of registry.getAll()) {
-        if (migration.postgres) {
-          await migration.postgres(client);
-        }
-      }
+      // Run migrations from the registry — 001 baseline creates all tables.
+      // Migrations 002+ are guarded by the ledger so they run exactly once
+      // (#4233); 001 has no settingsKey and always runs (it is the
+      // CREATE TABLE IF NOT EXISTS baseline that creates `settings` itself).
+      await runLedgeredMigrations({
+        backend: 'PostgreSQL',
+        handle: client,
+        migrations: registry.getAll(),
+        pick: m => m.postgres,
+        readApplied: readAppliedMigrationsPostgres,
+        markApplied: markMigrationAppliedPostgres,
+      });
 
       logger.info('[PostgreSQL] Schema initialization complete');
     } finally {
@@ -4161,12 +4174,17 @@ class DatabaseService {
       connection.release();
     }
 
-    // Run ALL migrations from the registry — 001 baseline creates all tables
-    for (const migration of registry.getAll()) {
-      if (migration.mysql) {
-        await migration.mysql(pool);
-      }
-    }
+    // Run migrations from the registry — 001 baseline creates all tables.
+    // Migrations 002+ are guarded by the ledger so they run exactly once
+    // (#4233); 001 has no settingsKey and always runs.
+    await runLedgeredMigrations({
+      backend: 'MySQL',
+      handle: pool,
+      migrations: registry.getAll(),
+      pick: m => m.mysql,
+      readApplied: readAppliedMigrationsMysql,
+      markApplied: markMigrationAppliedMysql,
+    });
 
     logger.info('[MySQL] Schema initialization complete');
   }

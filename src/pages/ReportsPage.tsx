@@ -12,6 +12,7 @@ import { ToastProvider } from '../components/ToastContainer';
 import AnalysisTab from '../components/Analysis/AnalysisTab';
 import { appBasename } from '../init';
 import '../styles/analysis-reports.css';
+import { UiIcon } from '../components/icons';
 
 export default function ReportsPage() {
   const navigate = useNavigate();
@@ -27,7 +28,7 @@ export default function ReportsPage() {
               className="reports-header__back"
               onClick={() => navigate('/')}
             >
-              {t('common.back', '← Dashboard')}
+              <UiIcon name="back" size={16} /> {t('common.back', 'Dashboard')}
             </button>
             <h1>{t('analysis.title', 'Analysis & Reports')}</h1>
           </header>

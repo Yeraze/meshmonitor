@@ -25,6 +25,7 @@ import { MeshCoreRemoteStatsPanel } from './MeshCoreRemoteStatsPanel';
 import { MeshCoreAclManager } from './MeshCoreAclManager';
 import { CliConsoleBody, type ActionCommand, type CliConsoleBodyHandle } from './CliConsoleBody';
 import './MeshCoreRemoteConsole.css';
+import { UiIcon } from '../icons';
 
 /**
  * Quick-action catalog for remote Repeater / Room Server contacts.
@@ -198,7 +199,7 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
             </span>
           ) : hasSavedCredential ? (
             <span className="mrc-status-chip mrc-status-saved">
-              ✓ {t('meshcore.remoteConsole.saved_password', 'Saved password')}
+              <UiIcon name="check" size={14} /> {t('meshcore.remoteConsole.saved_password', 'Saved password')}
             </span>
           ) : (
             <span className="mrc-status-chip mrc-status-idle">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from './icons';
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ConnectionStatus } from '../types/ui';
@@ -460,7 +461,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
                             lineHeight: 1
                           }}
                         >
-                          {showPrivateKey ? '\u{1F648}' : '\u{1F441}\uFE0F'}
+                          <UiIcon name={showPrivateKey ? 'visibilityOff' : 'visibility'} size={16} />
                         </button>
                       </div>
                     </div>
@@ -923,7 +924,7 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
           {loadingSegments && <p>{t('common.loading_indicator')}</p>}
           {!loadingSegments && recordHolderSegment && (
             <>
-              <p><strong>{t('info.distance')}</strong> {formatDistance(recordHolderSegment.distanceKm, distanceUnit)} 🏆</p>
+              <p><strong>{t('info.distance')}</strong> {formatDistance(recordHolderSegment.distanceKm, distanceUnit)} <UiIcon name="trophy" /></p>
               <p><strong>{t('info.from')}</strong> {recordHolderSegment.fromNodeName} ({recordHolderSegment.fromNodeId})</p>
               <p><strong>{t('info.to')}</strong> {recordHolderSegment.toNodeName} ({recordHolderSegment.toNodeId})</p>
               <p style={{ fontSize: '0.85em', color: '#888' }}>

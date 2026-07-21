@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from './icons';
 import { getAllTilesets, type TilesetId } from '../config/tilesets';
 import { useSettings } from '../contexts/SettingsContext';
 import { DraggableOverlay } from './DraggableOverlay';
@@ -46,7 +47,7 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
             onMouseDown={(e) => e.stopPropagation()}
             title={isCollapsed ? t('tileset.expand') : t('tileset.collapse')}
           >
-            {isCollapsed ? '▼' : '▲'}
+            <UiIcon name={isCollapsed ? 'chevronDown' : 'chevronUp'} />
           </button>
         </div>
         {!isCollapsed && (

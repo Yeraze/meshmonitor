@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ConfigIssue } from '../../hooks/useSecurityCheck';
 import './AppBanners.css';
+import { UiIcon } from '../icons';
 
 /** Matches the server's `detectDeploymentMethod()` (src/server/utils/deployment.ts). */
 export type DeploymentMethod = 'docker' | 'lxc' | 'kubernetes' | 'manual';
@@ -98,7 +99,7 @@ export const AppBanners: React.FC<AppBannersProps> = ({
           className="warning-banner"
           style={{ top: 'var(--header-height)' }}
         >
-          ⚠️ {t('banners.tx_disabled')}
+          <UiIcon name="alert" /> {t('banners.tx_disabled')}
         </div>
       )}
 
@@ -113,14 +114,14 @@ export const AppBanners: React.FC<AppBannersProps> = ({
 
         return (
           <div key={issue.type} className="warning-banner" style={{ top: topOffset }}>
-            ⚠️ {t('banners.config_error')}: {issue.message}{' '}
+            <UiIcon name="alert" /> {t('banners.config_error')}: {issue.message}{' '}
             <a
               href={issue.docsUrl}
               target="_blank"
               rel="noopener noreferrer"
               style={{ color: 'inherit', textDecoration: 'underline' }}
             >
-              {t('banners.learn_more')} →
+              {t('banners.learn_more')} <UiIcon name="forward" size={14} />
             </a>
           </div>
         );
@@ -139,14 +140,14 @@ export const AppBanners: React.FC<AppBannersProps> = ({
           return (
             <div className="update-banner" style={{ top: topOffset }}>
               <div className="update-banner-row">
-                <span>🔔 {t('banners.update_available', { version: latestVersion })}</span>
+                <span><UiIcon name="notifications" /> {t('banners.update_available', { version: latestVersion })}</span>
                 <a
                   href={releaseUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="update-banner-link"
                 >
-                  {t('banners.view_release_notes')} →
+                  {t('banners.view_release_notes')} <UiIcon name="forward" size={14} />
                 </a>
                 <button
                   className="update-banner-toggle"

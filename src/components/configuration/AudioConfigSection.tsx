@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
 // Audio bitrate options matching protobuf enum
@@ -180,7 +181,7 @@ const AudioConfigSection: React.FC<AudioConfigSectionProps> = ({
                 gap: '0.5rem'
               }}
             >
-              <span>{showAdvanced ? '▼' : '▶'}</span>
+              <span><UiIcon name={showAdvanced ? 'chevronDown' : 'forward'} /></span>
               {t('audio_config.advanced_settings')}
             </button>
           </div>

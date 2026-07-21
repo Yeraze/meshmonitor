@@ -11,6 +11,7 @@ import { MeshCoreTimerTriggersSection } from './MeshCoreTimerTriggersSection';
 import { MeshCorePathfindingFilterSection } from './MeshCorePathfindingFilterSection';
 import { AutomationTokenReference } from '../AutomationTokenReference';
 import { buildMeshCoreTokenGroups } from './meshcoreAutomationTokens';
+import { UiIcon } from '../icons';
 
 interface MeshCoreAutomationsViewProps {
   baseUrl: string;
@@ -162,7 +163,7 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
         })}
         footer={
           <>
-            💡 {t('meshcore.automation.tokens.engine_tip', 'Want maximum flexibility? Try the')}{' '}
+            <UiIcon name="sparkles" size={15} /> {t('meshcore.automation.tokens.engine_tip', 'Want maximum flexibility? Try the')}{' '}
             <Link to="/automations" style={{ color: 'var(--ctp-mauve)', fontWeight: 'bold' }}>
               {t('automation.engine_link', 'Automation Engine')}
             </Link>{' '}

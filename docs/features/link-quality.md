@@ -112,3 +112,10 @@ Smart Hops always uses actual message hop counts regardless of this setting. The
 Both features use the `messageHops` telemetry type, which is calculated from each incoming mesh message as `hopStart - hopLimit`. This represents the actual number of relay hops the message traversed to reach your node.
 
 Link Quality additionally factors in traceroute results and encryption error events to provide a more complete reliability picture.
+
+## Signal Trend badge
+
+::: tip New in 4.13
+:::
+
+Don't confuse the Link Quality score above with the **Signal Trend** badge (▲ Improving / → Stable / ▼ Degrading) shown in the [Node Details block](/features/settings#node-details-block) on the Messages page. Signal Trend answers a narrower, RF-focused question: *is this specific node's received signal getting weaker or stronger, day-over-week?* It compares the last 24 hours of RSSI (falling back to SNR when RSSI history is sparse) against the preceding 7-day baseline, and calls out separately when a drop is attributable to a rising local noise floor rather than the link itself. Link Quality, by contrast, is a broader 0-10 reliability score driven by routing (hop-count changes, traceroute failures, encryption errors) rather than raw signal strength. Use Link Quality to judge overall reliability; use Signal Trend to judge whether the RF path itself is changing.

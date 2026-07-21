@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { MeshCoreChannelsConfigSection } from './MeshCoreChannelsConfigSection';
 import { MeshCoreLocalConsole } from './MeshCoreLocalConsole';
 import { CollapsibleSection } from './CollapsibleSection';
+import { UiIcon } from '../icons';
 
 const TELEMETRY_MODE_OPTIONS: TelemetryMode[] = ['always', 'device', 'never'];
 // MeshCore device types: COMPANION=1, REPEATER=2, ROOM_SERVER=3.
@@ -227,7 +228,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           </button>
           {nameSaved && (
             <span style={{ marginLeft: '0.75rem', color: 'var(--ctp-green)' }}>
-              ✓ {t('meshcore.config.saved', 'Saved')}
+              <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
             </span>
           )}
         </div>
@@ -279,7 +280,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           </button>
           {locationSaved && (
             <span style={{ marginLeft: '0.75rem', color: 'var(--ctp-green)' }}>
-              ✓ {t('meshcore.config.saved', 'Saved')}
+              <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
             </span>
           )}
         </div>
@@ -377,7 +378,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           </button>
           {radioSaved && (
             <span style={{ marginLeft: '0.75rem', color: 'var(--ctp-green)' }}>
-              ✓ {t('meshcore.config.saved', 'Saved')}
+              <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
             </span>
           )}
         </div>
@@ -417,7 +418,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           </button>
           {txPowerSaved && (
             <span style={{ marginLeft: '0.75rem', color: 'var(--ctp-green)' }}>
-              ✓ {t('meshcore.config.saved', 'Saved')}
+              <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
             </span>
           )}
         </div>
@@ -501,7 +502,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           </button>
           {telemetrySaved && (
             <span style={{ marginLeft: '0.75rem', color: 'var(--ctp-green)' }}>
-              ✓ {t('meshcore.config.saved', 'Saved')}
+              <UiIcon name="check" size={14} /> {t('meshcore.config.saved', 'Saved')}
             </span>
           )}
         </div>

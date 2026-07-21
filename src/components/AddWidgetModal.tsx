@@ -4,6 +4,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon, type UiIconName } from './icons';
 
 export type WidgetType = 'nodeStatus' | 'traceroute' | 'hopDistribution' | 'distanceDistribution' | 'hopDistanceHeatmap';
 
@@ -11,7 +12,7 @@ interface WidgetOption {
   type: WidgetType;
   titleKey: string;
   descriptionKey: string;
-  icon: string;
+  icon: UiIconName;
 }
 
 const WIDGET_OPTIONS: WidgetOption[] = [
@@ -19,31 +20,31 @@ const WIDGET_OPTIONS: WidgetOption[] = [
     type: 'nodeStatus',
     titleKey: 'dashboard.widget.node_status.title',
     descriptionKey: 'dashboard.widget.node_status.description',
-    icon: '📊',
+    icon: 'telemetry',
   },
   {
     type: 'traceroute',
     titleKey: 'dashboard.widget.traceroute.title',
     descriptionKey: 'dashboard.widget.traceroute.description',
-    icon: '🔀',
+    icon: 'route',
   },
   {
     type: 'hopDistribution',
     titleKey: 'dashboard.widget.hop_distribution.title',
     descriptionKey: 'dashboard.widget.hop_distribution.description',
-    icon: '📶',
+    icon: 'wifi',
   },
   {
     type: 'distanceDistribution',
     titleKey: 'dashboard.widget.distance_distribution.title',
     descriptionKey: 'dashboard.widget.distance_distribution.description',
-    icon: '📏',
+    icon: 'ruler',
   },
   {
     type: 'hopDistanceHeatmap',
     titleKey: 'dashboard.widget.hop_distance_heatmap.title',
     descriptionKey: 'dashboard.widget.hop_distance_heatmap.description',
-    icon: '🗺',
+    icon: 'map',
   },
 ];
 
@@ -84,7 +85,7 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ isOpen, onClose, onAddW
               : t('dashboard.add_widget')}
           </h2>
           <button className="add-widget-modal-close" onClick={onClose}>
-            ×
+            <UiIcon name="close" />
           </button>
         </div>
         {showTelemetryHelp ? (
@@ -107,7 +108,7 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ isOpen, onClose, onAddW
           <div className="add-widget-modal-content">
             {WIDGET_OPTIONS.map(option => (
               <div key={option.type} className="add-widget-option" onClick={() => handleAddWidget(option.type)}>
-                <div className="add-widget-option-icon">{option.icon}</div>
+                <div className="add-widget-option-icon"><UiIcon name={option.icon} /></div>
                 <div className="add-widget-option-info">
                   <h3>{t(option.titleKey)}</h3>
                   <p>{t(option.descriptionKey)}</p>
@@ -118,7 +119,7 @@ const AddWidgetModal: React.FC<AddWidgetModalProps> = ({ isOpen, onClose, onAddW
               className="add-widget-option add-widget-option-more"
               onClick={() => setShowTelemetryHelp(true)}
             >
-              <div className="add-widget-option-icon">⭐</div>
+              <div className="add-widget-option-icon"><UiIcon name="favorite" /></div>
               <div className="add-widget-option-info">
                 <h3>{t('dashboard.widget.more.title')}</h3>
                 <p>{t('dashboard.widget.more.description')}</p>

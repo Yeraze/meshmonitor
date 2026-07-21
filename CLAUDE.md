@@ -33,6 +33,7 @@
 - **No raw SQL outside `src/db/repositories/` and `src/server/migrations/`.** ESLint-enforced via `no-restricted-syntax` in `eslint.config.mjs`.
 - **All DatabaseService methods are async** (`Async` suffix). Tests mock with `mockResolvedValue`.
 - **Never push directly to main. Always use a branch.**
+- **App-owned interface icons use `UiIcon`.** Do not hardcode emoji or Unicode icon stand-ins in JSX or locale UI copy. Use `BrandIcon` for supported Simple Icons brand marks. User/content/protocol emoji require an issue-referenced exception when the distinction is not obvious.
 - After bulk find-and-replace or sed, verify modified functions have correct `async`/`await` signatures. Route handlers and callbacks need `async` if `await` was added inside.
 
 ### Response envelope
@@ -200,7 +201,9 @@ The remainder of this file is reference detail used less often than the rules ab
    - `export async function runMigrationNNNMysql(pool)` for MySQL
 2. Register it in `src/db/migrations.ts` with `registry.register({ number, name, settingsKey, sqlite, postgres, mysql })`.
    `src/db/migrations.test.ts` does **not** need editing — its assertions are registry-derived and automatically cover the new entry.
-3. Make migrations **idempotent** using the shared helpers in `src/server/migrations/helpers.ts`:
+   **`settingsKey` is required** (every migration but the 001 baseline has one) — all three backends use it for idempotency tracking. SQLite checks it inline in its loop; PostgreSQL/MySQL go through the ledger in `src/db/migrationLedger.ts` (#4233).
+3. Make migrations **idempotent** using the shared helpers in `src/server/migrations/helpers.ts`.
+   The ledger means a migration normally runs once per database, but a crash between the migration and its ledger write re-runs it, so **idempotency is still mandatory on every backend**. In particular, never write a migration that unconditionally deletes and rebuilds a table — that is what made 030 wipe and rebuild 865k `route_segments` rows on every single boot (#4233). Guard destructive work behind a "has this already been applied?" check, and batch bulk inserts rather than issuing one round-trip per row.
    - SQLite: `addColumnIfMissing(db, table, column, ddl)` — catches "duplicate column"; re-throws others.
    - PostgreSQL: `addColumnIfMissingPostgres(client, table, column, ddl)` — uses native `ADD COLUMN IF NOT EXISTS`.
    - MySQL columns: `addColumnIfMissingMysql(pool, table, column, ddl)` — `information_schema.COLUMNS` pre-check.

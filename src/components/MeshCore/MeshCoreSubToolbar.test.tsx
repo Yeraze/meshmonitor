@@ -9,9 +9,9 @@ vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({ hasPermission: (r: string, a: string) => authPermission(r, a) }),
 }));
 
-let iconStyle: 'icon' | 'emoji' = 'icon';
-vi.mock('../../contexts/SettingsContext', () => ({
-  useSettings: () => ({ iconStyle }),
+let iconStyle: 'lucide' | 'emoji' = 'lucide';
+vi.mock('../../contexts/IconStyleContext', () => ({
+  useIconStyleOptional: () => iconStyle,
 }));
 
 vi.mock('react-i18next', () => ({
@@ -25,7 +25,7 @@ import { MeshCoreSubToolbar } from './MeshCoreSubToolbar';
 describe('MeshCoreSubToolbar', () => {
   it('renders lucide SVG icons (not emoji) in the default icon style', () => {
     authPermission = () => true;
-    iconStyle = 'icon';
+    iconStyle = 'lucide';
     const { container } = render(
       <MeshCoreSubToolbar view="nodes" onSelect={() => {}} expanded onToggleExpanded={() => {}} />,
     );
@@ -44,12 +44,12 @@ describe('MeshCoreSubToolbar', () => {
     const firstIcon = container.querySelector('.meshcore-sub-toolbar-item .icon');
     expect(firstIcon?.querySelector('svg')).toBeNull();
     expect(firstIcon?.textContent).toBe('🗺️');
-    iconStyle = 'icon'; // reset for other tests
+    iconStyle = 'lucide'; // reset for other tests
   });
 
   it('renders an unread red-dot only on the flagged nav items (#3891)', () => {
     authPermission = () => true;
-    iconStyle = 'icon';
+    iconStyle = 'lucide';
     const { container } = render(
       <MeshCoreSubToolbar
         view="nodes"

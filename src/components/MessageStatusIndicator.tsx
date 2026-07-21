@@ -8,6 +8,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { MeshMessage, MessageDeliveryState } from '../types/message';
+import { UiIcon } from './icons';
 
 /** Timeout for pending messages before showing timeout indicator */
 const TIMEOUT_MS = 30000;
@@ -27,7 +28,7 @@ export function MessageStatusIndicator({ message }: MessageStatusIndicatorProps)
   if (message.ackFailed || message.routingErrorReceived || message.deliveryState === MessageDeliveryState.FAILED) {
     return (
       <span className="status-failed" title={t('message_status.failed')}>
-        ❌
+        <UiIcon name="error" />
       </span>
     );
   }
@@ -36,7 +37,7 @@ export function MessageStatusIndicator({ message }: MessageStatusIndicatorProps)
   if (message.deliveryState === MessageDeliveryState.CONFIRMED) {
     return (
       <span className="status-confirmed" title={t('message_status.confirmed')}>
-        🔒
+        <UiIcon name="encrypted" />
       </span>
     );
   }
@@ -45,7 +46,7 @@ export function MessageStatusIndicator({ message }: MessageStatusIndicatorProps)
   if (message.deliveryState === MessageDeliveryState.DELIVERED) {
     return (
       <span className="status-delivered" title={t('message_status.delivered')}>
-        ✅
+        <UiIcon name="check" />
       </span>
     );
   }
@@ -54,7 +55,7 @@ export function MessageStatusIndicator({ message }: MessageStatusIndicatorProps)
   if (messageAge < TIMEOUT_MS) {
     return (
       <span className="status-pending" title={t('message_status.pending')}>
-        ⏳
+        <UiIcon name="time" />
       </span>
     );
   }
@@ -62,7 +63,7 @@ export function MessageStatusIndicator({ message }: MessageStatusIndicatorProps)
   // Timeout - no acknowledgment received
   return (
     <span className="status-timeout" title={t('message_status.timeout')}>
-      ⏱️
+      <UiIcon name="timer" />
     </span>
   );
 }

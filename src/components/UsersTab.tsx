@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
+import { UiIcon } from './icons';
 import '../styles/users.css';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
@@ -697,7 +698,7 @@ const UsersTab: React.FC = () => {
               <div className="user-item-info">
                 <div className="user-item-name">
                   {user.displayName || user.username}
-                  {user.isAdmin && <span className="admin-badge">⭐</span>}
+                  {user.isAdmin && <span className="admin-badge"><UiIcon name="favorite" size={15} /></span>}
                 </div>
                 <div className="user-item-meta">
                   @{user.username} • {user.authProvider.toUpperCase()}
@@ -730,7 +731,7 @@ const UsersTab: React.FC = () => {
                   {selectedUser.displayName || '-'}
                   {selectedUser.username === 'anonymous' && (
                     <div style={{ marginTop: '4px', fontSize: '0.9em', color: 'var(--ctp-subtext0)' }}>
-                      💡 {t('users.anonymous_hint')}
+                      <UiIcon name="info" /> {t('users.anonymous_hint')}
                     </div>
                   )}
                 </div>

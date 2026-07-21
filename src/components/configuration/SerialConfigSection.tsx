@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UiIcon } from '../icons';
 import { useSaveBar } from '../../hooks/useSaveBar';
 
 // Serial baud rate options matching protobuf enum
@@ -243,7 +244,7 @@ const SerialConfigSection: React.FC<SerialConfigSectionProps> = ({
                 gap: '0.5rem'
               }}
             >
-              <span>{showAdvanced ? '▼' : '▶'}</span>
+              <span><UiIcon name={showAdvanced ? 'chevronDown' : 'forward'} /></span>
               {t('serial_config.advanced_settings')}
             </button>
           </div>

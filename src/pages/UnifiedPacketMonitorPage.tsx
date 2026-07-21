@@ -33,6 +33,7 @@ import {
 import { getSourceColor } from '../utils/sourceColors';
 import '../components/PacketMonitorPanel.css';
 import './UnifiedPacketMonitorPage.css';
+import { UiIcon } from '../components/icons';
 
 const ROW_HEIGHT = 36;
 
@@ -293,7 +294,7 @@ export default function UnifiedPacketMonitorPage() {
       <div className="packet-table-container unified-packets-table" ref={parentRef}>
         {rateLimitError && (
           <div className="rate-limit-warning" style={{ padding: '1rem', margin: '1rem' }}>
-            ⚠️ {t('packet_monitor.rate_limit_warning')}
+            <UiIcon name="alert" size={16} /> {t('packet_monitor.rate_limit_warning')}
           </div>
         )}
         {loading ? (
@@ -424,7 +425,7 @@ export default function UnifiedPacketMonitorPage() {
                         <td className="size" style={{ width: '60px' }}>{packet.payload_size ?? t('common.na')}</td>
                         <td className="content" style={{ minWidth: '200px' }}>
                           {packet.encrypted ? (
-                            <span className="encrypted-indicator">🔒 {t('packet_monitor.encrypted')}</span>
+                            <span className="encrypted-indicator"><UiIcon name="encrypted" size={14} /> {t('packet_monitor.encrypted')}</span>
                           ) : (
                             <span className="content-preview">{packet.payload_preview || t('packet_monitor.no_preview')}</span>
                           )}

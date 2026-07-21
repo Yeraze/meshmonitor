@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MeshMessage } from '../../types/message';
 import './EmojiPickerModal.css';
+import { UiIcon } from '../icons';
 
 /**
  * Tapback emoji type
@@ -132,7 +133,7 @@ export const EmojiPickerModal: React.FC<EmojiPickerModalProps> = ({
             onClick={() => setShowCustomInput(!showCustomInput)}
             title={t('emoji_picker.custom', 'Custom emoji')}
           >
-            ✏️
+            <UiIcon name="edit" size={16} />
           </button>
         </div>
         {/* Custom emoji input section */}

@@ -55,6 +55,7 @@ import api from '../services/api';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 import type { MapStyle } from '../server/services/mapStyleService.js';
 import { CopyNodeInfoModal } from './CopyNodeInfoModal';
+import { UiIcon } from './icons';
 
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
@@ -138,7 +139,7 @@ const DistanceDisplay = React.memo<{
 
   return (
     <span className="stat" title={t('nodes.distance')}>
-      📏 {distance}
+      <UiIcon name="ruler" size={14} /> {distance}
     </span>
   );
 });
@@ -1566,7 +1567,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         )}
                         {showSnr && (
                           <span>
-                            {metaHops !== null ? ' · ' : ''}📶 {snr!.toFixed(1)}dB
+                            {metaHops !== null ? ' · ' : ''}<UiIcon name="wifi" size={13} /> {snr!.toFixed(1)}dB
                           </span>
                         )}
                       </div>
@@ -1613,7 +1614,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   if (node.user?.id && hasPermission('messages', 'read')) {
                     actions.push({ kind: 'more-details', onClick: handlePopupDMClick(node) });
                   }
-                  if (!isNodeComplete(node) && hasPermission('nodes', 'write')) {
+                  // #4244: no longer gated on isNodeComplete -- another source
+                  // may have heard fresher NodeInfo than this one, and
+                  // "complete" can mean nothing more than derived placeholders.
+                  if (hasPermission('nodes', 'write')) {
                     actions.push({ kind: 'copy-nodeinfo', onClick: () => setCopyNodeInfoTarget(node) });
                   }
                   if (hasPermission('messages', 'write') && node.nodeNum !== currentNodeNum) {
@@ -1772,11 +1776,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 <div className="route-popup">
                   <h4>{t('direct_links.neighbor_connection', 'Neighbor Connection')}</h4>
                   <div className="route-endpoints">
-                    <strong>{ni.neighborName}</strong> {isBidirectional ? '↔' : '→'} <strong>{ni.nodeName}</strong>
+                    <strong>{ni.neighborName}</strong> <UiIcon name={isBidirectional ? 'bidirectional' : 'forward'} size={14} /> <strong>{ni.nodeName}</strong>
                   </div>
                   {isBidirectional && (
                     <div className="route-usage" style={{ color: 'var(--ctp-green)' }}>
-                      ↔ {t('direct_links.bidirectional', 'Bidirectional')}
+                      <UiIcon name="bidirectional" size={14} /> {t('direct_links.bidirectional', 'Bidirectional')}
                     </div>
                   )}
                   {ni.snr !== null && ni.snr !== undefined && (
@@ -1866,7 +1870,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             onClick={handleCollapseNodeList}
             title={isNodeListCollapsed ? 'Expand node list' : 'Collapse node list'}
           >
-            {isNodeListCollapsed ? '▶' : '◀'}
+            <UiIcon name={isNodeListCollapsed ? 'forward' : 'back'} size={18} />
           </button>
           {!isNodeListCollapsed && (
           <div className="sidebar-header-content">
@@ -1911,7 +1915,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   title={t('common.clear_filter')}
                   type="button"
                 >
-                  ✕
+                  <UiIcon name="close" size={16} />
                 </button>
               )}
             </div>
@@ -1959,7 +1963,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 }}
                 title={sortDirection === 'asc' ? t('nodes.ascending') : t('nodes.descending')}
               >
-                {sortDirection === 'asc' ? '↑' : '↓'}
+                <UiIcon name={sortDirection === 'asc' ? 'sortAscending' : 'sortDescending'} />
               </button>
               <div className="export-dropdown" ref={exportMenuRef}>
                 <button
@@ -1978,7 +1982,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   aria-haspopup="menu"
                   aria-expanded={showExportMenu}
                 >
-                  ⬇
+                  <UiIcon name="download" />
                 </button>
                 {showExportMenu && (
                   <div className="export-menu" role="menu">
@@ -2044,7 +2048,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                             : t('nodes.add_favorite')}
                           onClick={handleFavoriteClick(node)}
                         >
-                          {node.isFavorite ? '⭐' : '☆'}
+                          <UiIcon name={node.isFavorite ? 'favorite' : 'favoriteOff'} size={17} />
                         </button>
                         {node.isFavorite && node.favoriteLocked && toggleFavoriteLock && (
                           <button
@@ -2052,7 +2056,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                             title={t('nodes.unlock_favorite', 'Unlock — let automation manage this favorite')}
                             onClick={handleLockClick(node)}
                           >
-                            🔒
+                            <UiIcon name="encrypted" size={15} />
                           </button>
                         )}
                       </span>
@@ -2067,25 +2071,25 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     </div>
                     <div className="node-actions">
                       {node.position && node.position.latitude != null && node.position.longitude != null && (
-                        <span className="node-indicator-icon" title={t('nodes.location')}>📍</span>
+                        <span className="node-indicator-icon" title={t('nodes.location')}><UiIcon name="location" size={15} /></span>
                       )}
                       {node.viaMqtt && (
-                        <span className="node-indicator-icon" title={t('nodes.via_mqtt')}>🌐</span>
+                        <span className="node-indicator-icon" title={t('nodes.via_mqtt')}><UiIcon name="network" size={15} /></span>
                       )}
                       {node.isStoreForwardServer && (
-                        <span className="node-indicator-icon" title={t('nodes.store_forward_server', 'Store & Forward Server')}>📦</span>
+                        <span className="node-indicator-icon" title={t('nodes.store_forward_server', 'Store & Forward Server')}><UiIcon name="package" size={15} /></span>
                       )}
                       {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
-                        <span className="node-indicator-icon" title={t('nodes.has_telemetry')}>📊</span>
+                        <span className="node-indicator-icon" title={t('nodes.has_telemetry')}><UiIcon name="telemetry" size={15} /></span>
                       )}
                       {node.user?.id && nodesWithWeatherTelemetry.has(node.user.id) && (
-                        <span className="node-indicator-icon" title={t('nodes.has_weather')}>☀️</span>
+                        <span className="node-indicator-icon" title={t('nodes.has_weather')}><UiIcon name="weather" size={15} /></span>
                       )}
                       {node.user?.id && nodesWithPKC.has(node.user.id) && (
-                        <span className="node-indicator-icon" title={t('nodes.has_pkc')}>🔐</span>
+                        <span className="node-indicator-icon" title={t('nodes.has_pkc')}><UiIcon name="encryptedKey" size={15} /></span>
                       )}
                       {node.hasRemoteAdmin && (
-                        <span className="node-indicator-icon" title={t('nodes.has_remote_admin')}>🛠️</span>
+                        <span className="node-indicator-icon" title={t('nodes.has_remote_admin')}><UiIcon name="wrench" size={15} /></span>
                       )}
                       {hasPermission('messages', 'read') && !node.isUnmessagable && (
                         <button
@@ -2093,7 +2097,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           title={t('nodes.send_dm')}
                           onClick={handleDMClick(node)}
                         >
-                          💬
+                          <UiIcon name="messages" size={16} />
                         </button>
                       )}
                       {hasPermission('messages', 'read') && node.isUnmessagable && (
@@ -2101,7 +2105,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           className="node-indicator-icon"
                           title={t('nodes.unmessageable', 'This node reports itself as unmessageable (router/repeater/sensor) — it cannot receive direct messages')}
                         >
-                          🚫
+                          <UiIcon name="blocked" size={16} />
                         </span>
                       )}
                       {!isNodeComplete(node) && hasPermission('nodes', 'write') && (
@@ -2110,7 +2114,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           title={t('nodes.copy_nodeinfo')}
                           onClick={handleCopyNodeInfoClick(node)}
                         >
-                          📋
+                          <UiIcon name="copy" size={16} />
                         </button>
                       )}
                       {(node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) && (
@@ -2124,7 +2128,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                             cursor: 'help'
                           }}
                         >
-                          {node.keyMismatchDetected ? '🔓' : '⚠️'}
+                          <UiIcon name={node.keyMismatchDetected ? 'unlock' : 'alert'} size={16} />
                         </span>
                       )}
                       <div className="node-short">
@@ -2137,29 +2141,29 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                     <div className="node-stats">
                       {node.hopsAway === 0 && node.snr != null && (
                         <span className="stat" title={t('nodes.snr')}>
-                          📶 {node.snr.toFixed(1)}dB
+                          <UiIcon name="wifi" size={14} /> {node.snr.toFixed(1)}dB
                         </span>
                       )}
                       {node.hopsAway === 0 && node.rssi != null && (
                         <span className="stat" title={t('nodes.rssi')}>
-                          📡 {node.rssi}dBm
+                          <UiIcon name="radioSignal" size={14} /> {node.rssi}dBm
                         </span>
                       )}
                       {node.deviceMetrics?.batteryLevel !== undefined && node.deviceMetrics.batteryLevel !== null && (
                         <span className="stat" title={node.deviceMetrics.batteryLevel === 101 ? t('nodes.plugged_in') : t('nodes.battery_level')}>
-                          {node.deviceMetrics.batteryLevel === 101 ? '🔌' : `🔋 ${node.deviceMetrics.batteryLevel}%`}
+                          <UiIcon name={node.deviceMetrics.batteryLevel === 101 ? 'batteryCharging' : 'battery'} size={14} /> {node.deviceMetrics.batteryLevel === 101 ? t('nodes.plugged_in') : `${node.deviceMetrics.batteryLevel}%`}
                         </span>
                       )}
                       {node.deviceMetrics?.voltage !== undefined && node.deviceMetrics.voltage !== null && (
                         <span className="stat" title={t('nodes.voltage')}>
-                          ⚡ {node.deviceMetrics.voltage.toFixed(2)}V
+                          <UiIcon name="zap" size={14} /> {node.deviceMetrics.voltage.toFixed(2)}V
                         </span>
                       )}
                       {(node.hopsAway != null || node.lastMessageHops != null) && (() => {
                         const effectiveHops = getEffectiveHops(node, nodeHopsCalculation, traceroutes, currentNodeNum);
                         return effectiveHops < 999 ? (
                           <span className="stat" title={t('nodes.hops_away')}>
-                            🔗 {effectiveHops} {t('nodes.hop', { count: effectiveHops })}
+                            <UiIcon name="link" size={14} /> {effectiveHops} {t('nodes.hop', { count: effectiveHops })}
                             {node.channel != null && node.channel !== 0 && ` (ch:${node.channel})`}
                           </span>
                         ) : null;
@@ -2254,7 +2258,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   title={isMapControlsCollapsed ? 'Expand controls' : 'Collapse controls'}
                   onMouseDown={(e) => e.stopPropagation()}
                 >
-                  {isMapControlsCollapsed ? '▼' : '▲'}
+                  <UiIcon name={isMapControlsCollapsed ? 'chevronDown' : 'chevronUp'} />
                 </button>
               </div>
               {!isMapControlsCollapsed && (
@@ -2572,7 +2576,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       disabled={placingWaypoint}
                       title="Place a new waypoint by clicking on the map"
                     >
-                      ➕ Waypoint
+                      <UiIcon name="plus" /> Waypoint
                     </button>
                   )}
                 </>
@@ -2703,7 +2707,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           {shouldShowData() && !nodesIsLoading && nodesWithPosition.length === 0 && (
             <div className="map-overlay">
               <div className="overlay-content">
-                <h3>📍 No Node Locations</h3>
+                <h3><UiIcon name="location" /> No Node Locations</h3>
                 <p>No nodes in your network are currently sharing location data.</p>
                 <p>Nodes with GPS enabled will appear as markers on this map.</p>
               </div>
@@ -2766,6 +2770,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           hwModel: copyNodeInfoTarget.user?.hwModel,
           role: copyNodeInfoTarget.user?.role != null ? Number(copyNodeInfoTarget.user.role) : null,
           publicKey: copyNodeInfoTarget.user?.publicKey,
+          // #4244: without these three the modal's "Current" column showed "—"
+          // regardless of what was stored.
+          macaddr: copyNodeInfoTarget.user?.macaddr,
+          hasPKC: copyNodeInfoTarget.user?.hasPKC,
+          firmwareVersion: copyNodeInfoTarget.user?.firmwareVersion,
         } : null}
         onClose={() => setCopyNodeInfoTarget(null)}
         onCopied={() => setCopyNodeInfoTarget(null)}

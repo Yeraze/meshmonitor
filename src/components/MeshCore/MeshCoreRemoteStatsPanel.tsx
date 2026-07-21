@@ -17,6 +17,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MeshCoreActions, MeshCoreRemoteStatus } from './hooks/useMeshCore';
 import './MeshCoreRemoteStatsPanel.css';
+import { UiIcon } from '../icons';
 
 interface Props {
   publicKey: string;
@@ -72,7 +73,7 @@ export const MeshCoreRemoteStatsPanel: React.FC<Props> = ({
         aria-expanded={!collapsed}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCollapsed((v) => !v); } }}
       >
-        <span className="mrs-chevron" aria-hidden="true">{collapsed ? '▶' : '▼'}</span>
+        <span className="mrs-chevron" aria-hidden="true"><UiIcon name={collapsed ? 'forward' : 'chevronDown'} size={14} /></span>
         <h4 className="mrs-title">{t('meshcore.remoteStats.title', 'Remote node status')}</h4>
         {lastUpdated !== null && !collapsed && (
           <span className="mrs-updated">

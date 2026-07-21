@@ -14,6 +14,7 @@ import { useSmartHops, type SmartHopsData } from '../hooks/useSmartHops';
 import { formatChartAxisTimestamp } from '../utils/datetime';
 import { SMART_HOPS_TYPE } from './SmartHopsGraphs';
 import type { TelemetryNodeInfo } from '../types/device';
+import { UiIcon } from './icons';
 
 interface FavoriteChart {
   nodeId: string;
@@ -154,8 +155,7 @@ const SmartHopsChart: React.FC<SmartHopsChartProps> = ({
             onClick={handleRemoveClick}
             aria-label={t('dashboard.remove_from_dashboard')}
           >
-            ✕
-          </button>
+            <UiIcon name="close" size={15} />          </button>
         </div>
         <div className="dashboard-loading-chart">{t('dashboard.loading_chart')}</div>
       </div>
@@ -177,8 +177,7 @@ const SmartHopsChart: React.FC<SmartHopsChartProps> = ({
             onClick={handleRemoveClick}
             aria-label={t('dashboard.remove_from_dashboard')}
           >
-            ✕
-          </button>
+            <UiIcon name="close" size={15} />          </button>
         </div>
         <div className="dashboard-error-chart">{t('dashboard.error_chart')}</div>
       </div>
@@ -200,8 +199,7 @@ const SmartHopsChart: React.FC<SmartHopsChartProps> = ({
             onClick={handleRemoveClick}
             aria-label={t('dashboard.remove_from_dashboard')}
           >
-            ✕
-          </button>
+            <UiIcon name="close" size={15} />          </button>
         </div>
         <div className="dashboard-no-data">{t('info.smart_hops_no_data')}</div>
       </div>
@@ -222,8 +220,7 @@ const SmartHopsChart: React.FC<SmartHopsChartProps> = ({
           onClick={handleRemoveClick}
           aria-label={t('dashboard.remove_from_dashboard')}
         >
-          ✕
-        </button>
+          <UiIcon name="close" size={15} />        </button>
       </div>
       <ResponsiveContainer width="100%" height={200}>
         <ComposedChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
