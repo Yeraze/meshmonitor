@@ -12,6 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PNG } from 'pngjs';
 import elevationRoutes from './elevationRoutes.js';
+import { clearRawTileCacheForTesting } from '../services/elevationProvider.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 
 const mockSafeFetch = vi.hoisted(() => vi.fn());
@@ -73,6 +74,10 @@ describe('elevationRoutes', () => {
     });
     mockSafeFetch.mockReset();
     mockSafeFetch.mockResolvedValue(fakeTileResponse());
+    // The raw-PNG LRU in elevationProvider is module-scoped (shared across
+    // this whole file) — clear it so tile-route tests are isolated regardless
+    // of which z/x/y coordinates they use.
+    clearRawTileCacheForTesting();
   });
 
   afterEach(async () => {
@@ -193,6 +198,124 @@ describe('elevationRoutes', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe('MISSING_URL');
+    });
+  });
+
+  describe('GET /elevation/capabilities (#3826 Phase 2 WP-A)', () => {
+    it('default settings -> enabled:true, terrainTiles:true, provider:terrarium, enveloped', async () => {
+      const agent = await harness.loginAs(null);
+      const res = await agent.get('/elevation/capabilities');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toEqual({ enabled: true, terrainTiles: true, provider: 'terrarium' });
+    });
+
+    it('elevationEnabled=false -> enabled:false, terrainTiles:false', async () => {
+      await harness.db.settings.setSetting('elevationEnabled', 'false');
+
+      const agent = await harness.loginAs(null);
+      const res = await agent.get('/elevation/capabilities');
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({ enabled: false, terrainTiles: false, provider: 'terrarium' });
+    });
+
+    it('JSON elevationSourceUrl -> terrainTiles:false, provider:json (no URL leak)', async () => {
+      await harness.db.settings.setSetting(
+        'elevationSourceUrl',
+        'https://api.example.com/v1/dem?key=supersecret'
+      );
+
+      const agent = await harness.loginAs(null);
+      const res = await agent.get('/elevation/capabilities');
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({ enabled: true, terrainTiles: false, provider: 'json' });
+      expect(JSON.stringify(res.body)).not.toContain('supersecret');
+    });
+
+    it('anonymous request succeeds (public/optionalAuth)', async () => {
+      const agent = await harness.loginAs(null);
+      const res = await agent.get('/elevation/capabilities');
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe('GET /elevation/tiles/:z/:x/:y (#3826 Phase 2 WP-A, DEM tile proxy)', () => {
+    it('default provider -> 200, image/png, immutable Cache-Control, anonymous succeeds', async () => {
+      const agent = await harness.loginAs(null);
+      const res = await agent.get('/elevation/tiles/8/40/96');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toMatch(/^image\/png/);
+      expect(res.headers['cache-control']).toContain('immutable');
+      expect(res.headers['cache-control']).toContain('public');
+      expect(res.headers['cache-control']).toContain('max-age=604800');
+      expect(res.body.length).toBeGreaterThan(0);
+      expect(mockSafeFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('elevationEnabled=false -> 403 ELEVATION_DISABLED, no-store', async () => {
+      await harness.db.settings.setSetting('elevationEnabled', 'false');
+
+      const agent = await harness.loginAs(null);
+      const res = await agent.get('/elevation/tiles/8/40/96');
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe('ELEVATION_DISABLED');
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(mockSafeFetch).not.toHaveBeenCalled();
+    });
+
+    it('JSON elevationSourceUrl -> 409 TERRAIN_TILES_UNAVAILABLE, body has no URL/key leak', async () => {
+      const secretUrl = 'https://api.example.com/v1/dem?key=supersecret';
+      await harness.db.settings.setSetting('elevationSourceUrl', secretUrl);
+
+      const agent = await harness.loginAs(null);
+      const res = await agent.get('/elevation/tiles/8/40/96');
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('TERRAIN_TILES_UNAVAILABLE');
+      expect(JSON.stringify(res.body)).not.toContain('supersecret');
+      expect(JSON.stringify(res.body)).not.toContain(secretUrl);
+      expect(mockSafeFetch).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['/elevation/tiles/99/1/1', 'zoom beyond MAX_TERRARIUM_TILE_ZOOM'],
+      ['/elevation/tiles/8/-1/1', 'negative x'],
+      ['/elevation/tiles/8/1/abc', 'non-numeric y'],
+    ])('invalid coords (%s: %s) -> 400 INVALID_TILE_COORDS', async (path) => {
+      const agent = await harness.loginAs(null);
+      const res = await agent.get(path);
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('INVALID_TILE_COORDS');
+      expect(mockSafeFetch).not.toHaveBeenCalled();
+    });
+
+    it('SSRF-blocked upstream -> 502 TILE_FETCH_FAILED, no key leak, no-store', async () => {
+      mockSafeFetch.mockRejectedValueOnce(new MockSsrfBlockedError('blocked: private IP target'));
+
+      const agent = await harness.loginAs(null);
+      const res = await agent.get('/elevation/tiles/8/41/97');
+
+      expect(res.status).toBe(502);
+      expect(res.body.code).toBe('TILE_FETCH_FAILED');
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(JSON.stringify(res.body)).not.toContain('private IP target');
+    });
+
+    it('upstream non-OK response -> 502 TILE_FETCH_FAILED', async () => {
+      mockSafeFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+
+      const agent = await harness.loginAs(null);
+      const res = await agent.get('/elevation/tiles/8/42/98');
+
+      expect(res.status).toBe(502);
+      expect(res.body.code).toBe('TILE_FETCH_FAILED');
     });
   });
 });

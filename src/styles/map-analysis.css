@@ -767,3 +767,21 @@
   text-align: right;
   margin-top: -4px;
 }
+
+/* ===== 3D vector-basemap fallback note (#3826 Phase 2 WP-D) ===== */
+/* Non-blocking: sits above the 3D canvas but never intercepts pointer
+   events, so pan/rotate/zoom under it are unaffected. */
+.map-analysis-3d-fallback-note {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  pointer-events: none;
+  background: rgba(15, 23, 42, 0.75);
+  color: #e2e8f0;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}

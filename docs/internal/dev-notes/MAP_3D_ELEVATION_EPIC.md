@@ -45,7 +45,7 @@ Exit criteria:
 - Vitest coverage for the inspector changes + any new pure helpers; full suite green.
 - Browser-validated on the dev container.
 
-### Phase 2 — DEM tile proxy + 3D map foundation ⬜
+### Phase 2 — DEM tile proxy + 3D map foundation ✅
 
 Branch: `feature/3826-3d-map-foundation`
 
@@ -78,4 +78,5 @@ Exit criteria:
 ## Status log
 
 - 2026-07-20: Epic started. Interview complete, phases agreed (3 phases; user merged tile-proxy + 3D-foundation into Phase 2).
+- 2026-07-20: Phase 2 implemented (spec: `3D_MAP_FOUNDATION_SPEC.md`; 4 work packages A–D). Backend: `GET /api/elevation/tiles/:z/:x/:y` PNG proxy (raw-PNG LRU separate from the decoded cache, `elevationTileLimiter` 600/min, immutable 7-day Cache-Control) + `GET /api/elevation/capabilities` (server-derived because `elevationSourceUrl` is secret); JSON point sources return 409 TERRAIN_TILES_UNAVAILABLE by design — no silent AWS fallback. Frontend: `Base3DMap` (standalone MapLibre GL: terrarium raster-dem terrain, hillshade, pitch 60°, exaggeration slider, GeoJSON node markers), `basemap3d.ts` ({s}-expansion + vector→osm fallback), `useTerrainCapabilities`, `viewMode` persisted in `mapAnalysis.config.v1`. Browser validation found + fixed a real defect: no-WebGL browsers crashed to a blank page when '3d' was persisted (probe + try/catch + `onUnsupported`→ auto-revert to 2D, commit 5340484d). 3D rendering validated via puppeteer + SwiftShader (MCP browser has no WebGL); gating/tooltip/persistence/force-2D all validated live. Phase 3 note: 3D node click selects via `{nodeNum, sourceId}` — verify MeshCore selection parity when wiring the inspector.
 - 2026-07-20: Phase 1 implemented (spec: `NEIGHBOR_LINK_TERRAIN_SPEC.md`). Frontend-only; new `neighborLinkEndpoints.ts` resolver + inspector wiring. Key decisions during the phase: endpoint elevations reuse `useElevationProfile` with the drawer's exact query key (one fetch per link, drawer open is a cache hit — verified live, request count stayed at 1); `LinkEndpoint.id` uses `unifiedNodeKey` for byte-for-byte parity with `linkEndpointCandidates`. Browser-validated on the dev container: MeshCore link (distance/elevations/profile action + drawer w/ auto-seeded frequency), Meshtastic link (distance via nodeNum resolution), and elevation-disabled gating (distance only, zero elevation requests). Full suite 10,427/0. Note: dev DB had no `/api/analysis/neighbors` rows initially — Meshtastic live check came from an MQTT-broker-source neighbor link.

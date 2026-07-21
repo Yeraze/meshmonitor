@@ -123,4 +123,38 @@ describe('useMapAnalysisConfig', () => {
     expect(result.current.config.followMode).toBe(false);
     expect(result.current.config.autoZoom).toBe(false);
   });
+
+  it('defaults viewMode to "2d"', () => {
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    expect(result.current.config.viewMode).toBe('2d');
+    expect(DEFAULT_CONFIG.viewMode).toBe('2d');
+  });
+
+  it('updates viewMode and persists to localStorage', () => {
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    act(() => result.current.setViewMode('3d'));
+    expect(result.current.config.viewMode).toBe('3d');
+    expect(JSON.parse(localStorage.getItem(KEY)!).viewMode).toBe('3d');
+  });
+
+  it('loads an old config missing viewMode as "2d" without throwing (#3826)', () => {
+    const { viewMode: _vm, ...oldConfig } = DEFAULT_CONFIG;
+    localStorage.setItem(KEY, JSON.stringify(oldConfig));
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    expect(result.current.config.viewMode).toBe('2d');
+  });
+
+  it('coerces a garbage viewMode value to "2d"', () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...DEFAULT_CONFIG, viewMode: 'not-a-mode' }));
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    expect(result.current.config.viewMode).toBe('2d');
+  });
+
+  it('reset() clears viewMode back to "2d"', () => {
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    act(() => result.current.setViewMode('3d'));
+    expect(result.current.config.viewMode).toBe('3d');
+    act(() => result.current.reset());
+    expect(result.current.config.viewMode).toBe('2d');
+  });
 });

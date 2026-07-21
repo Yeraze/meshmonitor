@@ -22,6 +22,14 @@ vi.mock('../../hooks/useElevationEnabled', () => ({
   useElevationEnabled: () => elevationEnabled,
 }));
 
+// #3826 Phase 2 WP-D: 2D/3D toggle gate. Mutable per-test (mirrors the
+// `elevationEnabled` mock above) so the same factory serves every
+// enabled/disabled/loading combination.
+let terrainCapabilities = { enabled: true, terrainTiles: true, isLoading: false };
+vi.mock('../../hooks/useTerrainCapabilities', () => ({
+  useTerrainCapabilities: () => terrainCapabilities,
+}));
+
 // Two positioned nodes so `analysisNodes.length >= 2` (both Measure and Link
 // Profile buttons require this to enable). Empty by default so the existing
 // "0 nodes" tests above keep exercising the disabled state.
@@ -43,6 +51,7 @@ describe('MapAnalysisToolbar', () => {
     localStorage.clear();
     elevationEnabled = true;
     unifiedNodes = [];
+    terrainCapabilities = { enabled: true, terrainTiles: true, isLoading: false };
   });
 
   it('renders all 7 layer toggles', () => {
@@ -136,6 +145,66 @@ describe('MapAnalysisToolbar', () => {
       fireEvent.click(measureBtn);
       expect(measureBtn).toHaveClass('active');
       expect(linkBtn).not.toHaveClass('active');
+    });
+  });
+
+  // #3826 Phase 2 WP-D: 2D/3D toggle button.
+  describe('3D View toggle', () => {
+    it('is disabled with an "Elevation is disabled" tooltip when elevation is off', () => {
+      terrainCapabilities = { enabled: false, terrainTiles: false, isLoading: false };
+      render(<MapAnalysisToolbar />, { wrapper });
+      const btn = screen.getByRole('button', { name: '3D View' });
+      expect(btn).toBeDisabled();
+      expect(btn).toHaveAttribute('title', 'Elevation is disabled');
+    });
+
+    it('is disabled with a configured-elevation-source tooltip when enabled but tiles are unavailable', () => {
+      terrainCapabilities = { enabled: true, terrainTiles: false, isLoading: false };
+      render(<MapAnalysisToolbar />, { wrapper });
+      const btn = screen.getByRole('button', { name: '3D View' });
+      expect(btn).toBeDisabled();
+      expect(btn).toHaveAttribute(
+        'title',
+        '3D terrain is unavailable with the configured elevation source',
+      );
+    });
+
+    it('is neutrally disabled (no unavailability tooltip) while capabilities are loading', () => {
+      terrainCapabilities = { enabled: false, terrainTiles: false, isLoading: true };
+      render(<MapAnalysisToolbar />, { wrapper });
+      const btn = screen.getByRole('button', { name: '3D View' });
+      expect(btn).toBeDisabled();
+      expect(btn).not.toHaveAttribute('title', 'Elevation is disabled');
+      expect(btn).not.toHaveAttribute(
+        'title',
+        '3D terrain is unavailable with the configured elevation source',
+      );
+    });
+
+    it('is enabled and toggles viewMode, persisting to localStorage, when capabilities allow it', () => {
+      render(<MapAnalysisToolbar />, { wrapper });
+      const btn = screen.getByRole('button', { name: '3D View' });
+      expect(btn).not.toBeDisabled();
+      expect(btn).not.toHaveClass('active');
+
+      fireEvent.click(btn);
+      expect(btn).toHaveClass('active');
+      const stored = JSON.parse(localStorage.getItem('mapAnalysis.config.v1')!);
+      expect(stored.viewMode).toBe('3d');
+
+      fireEvent.click(btn);
+      expect(btn).not.toHaveClass('active');
+      const storedAfter = JSON.parse(localStorage.getItem('mapAnalysis.config.v1')!);
+      expect(storedAfter.viewMode).toBe('2d');
+    });
+
+    it('reflects a persisted viewMode of 3d as active on mount', () => {
+      localStorage.setItem(
+        'mapAnalysis.config.v1',
+        JSON.stringify({ version: 1, viewMode: '3d' }),
+      );
+      render(<MapAnalysisToolbar />, { wrapper });
+      expect(screen.getByRole('button', { name: '3D View' })).toHaveClass('active');
     });
   });
 });

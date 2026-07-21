@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, LocateFixed, Maximize, Clock, Ruler, Mountain, RotateCcw,
-  MapPin, Palette, Flag, CircleDashed, Radar, Route, Share2, Flame, Spline, Signal,
+  MapPin, Palette, Flag, CircleDashed, Radar, Route, Share2, Flame, Spline, Signal, Box,
 } from 'lucide-react';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import LayerToggleButton from './LayerToggleButton';
@@ -16,6 +16,7 @@ import { useAnalysisNodes } from './useAnalysisNodes';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { useOwnNodePositions } from '../../hooks/useOwnNodePositions';
 import { useElevationEnabled } from '../../hooks/useElevationEnabled';
+import { useTerrainCapabilities } from '../../hooks/useTerrainCapabilities';
 import { LayerKey } from '../../hooks/useMapAnalysisConfig';
 import {
   usePositions,
@@ -53,6 +54,7 @@ export default function MapAnalysisToolbar() {
     setTimeSlider,
     setFollowMode,
     setAutoZoom,
+    setViewMode,
     measureMode,
     setMeasureMode,
     linkProfileMode,
@@ -61,6 +63,23 @@ export default function MapAnalysisToolbar() {
   } = useMapAnalysisCtx();
   const { data: sources = [] } = useDashboardSources();
   const elevationEnabled = useElevationEnabled();
+  // #3826 Phase 2 WP-D: 2D/3D toggle gating. `useTerrainCapabilities` (not
+  // `useElevationEnabled`) because the toggle must also distinguish a
+  // configured JSON elevation source (no DEM tiles available) from the
+  // simple enabled/disabled flag the Link Profile button above uses.
+  const terrainCaps = useTerrainCapabilities();
+  const threeDUnavailableReason = terrainCaps.isLoading
+    ? null
+    : !terrainCaps.enabled
+      ? 'Elevation is disabled'
+      : !terrainCaps.terrainTiles
+        ? '3D terrain is unavailable with the configured elevation source'
+        : null;
+  const threeDDisabled = terrainCaps.isLoading || threeDUnavailableReason !== null;
+  const threeDTitle = threeDUnavailableReason
+    ?? (terrainCaps.isLoading
+      ? 'Checking 3D availability…'
+      : config.viewMode === '3d' ? 'Switch to 2D map' : 'Switch to 3D map (pitched terrain)');
 
   // Node picker (issue #3788): deduped/sorted options built from the same
   // shared node hook the markers layer uses, so the picker never lists a node
@@ -180,6 +199,20 @@ export default function MapAnalysisToolbar() {
         aria-label="Time Slider"
       >
         <Clock size={ICON} />
+      </button>
+      {/* #3826 Phase 2 WP-D: 2D/3D toggle. Disabled with a tooltip when the
+          server can't serve DEM terrain tiles (elevation disabled, or a
+          configured JSON elevation source — spec §3.11); neutral-disabled
+          while the capabilities check is in flight. */}
+      <button
+        type="button"
+        className={`map-analysis-layer-btn icon-only ${config.viewMode === '3d' ? 'active' : ''}`}
+        onClick={() => setViewMode(config.viewMode === '3d' ? '2d' : '3d')}
+        disabled={threeDDisabled}
+        title={threeDTitle}
+        aria-label="3D View"
+      >
+        <Box size={ICON} />
       </button>
       {/* #3636: node-to-node LOS distance measurement tool. Disabled until at
           least two positioned nodes exist, matching the "Features"-panel maps. */}

@@ -250,6 +250,7 @@ MeshMonitor supports multiple deployment methods:
 - **Modern UI** - Catppuccin theme with message reactions and threading
 - **Interactive Maps** - Unified node positions and network topology visualization across all sources
 - **Terrain Link Profile** - Two-point terrain elevation, line-of-sight, and Fresnel-zone link-budget planning tool in Map Analysis, with per-source frequency/RX-sensitivity auto-detection and a configurable DEM source
+- **3D Terrain View** - Pitched-terrain MapLibre GL view in Map Analysis with DEM/hillshade rendering, adjustable exaggeration, and clickable node markers, available when a tile-based elevation source is configured
 - **Multi-Database Support** - SQLite (default), PostgreSQL, and MySQL via Drizzle ORM
 - **Notifications** - Web Push and Apprise integration for 100+ services, with inactive-node and low-battery alerts
 - **Automation** - Autoresponders, scheduled announcements, timers, and geofence triggers with rich message templates, plus an airtime-utilization cutoff that automatically pauses bot traffic when the mesh is busy
