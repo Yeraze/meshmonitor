@@ -359,6 +359,14 @@ button.unified-source-pill.is-active {
   min-width: 0;
 }
 
+/* #4245: the replied-to packet was never received or has been purged. Italic +
+   dimmer than a resolved quote, so it reads as "absent" rather than as a real
+   message whose body happens to be the words "Unknown message". */
+.unified-reply-preview__text--unknown {
+  font-style: italic;
+  opacity: 0.6;
+}
+
 /* Emoji reaction bubbles attached to parent message */
 .unified-reactions {
   display: flex;

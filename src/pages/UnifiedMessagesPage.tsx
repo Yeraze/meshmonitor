@@ -32,6 +32,7 @@ import { foldUnifiedMessagePages } from '../utils/unifiedMessageAccumulator';
 import LinkPreview from '../components/LinkPreview';
 import '../styles/unified.css';
 import { UiIcon } from '../components/icons';
+import { resolveReplyPreview } from '../utils/replyPreview';
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
 
@@ -551,7 +552,7 @@ export default function UnifiedMessagesPage() {
 
           // Reply preview: look up parent by packet id (firmware's reply_id
           // points at the parent's meshpacket id, not its requestId).
-          const parent = msg.replyId != null ? byPacketId.get(msg.replyId) : undefined;
+          const replyPreview = resolveReplyPreview(msg.replyId, byPacketId);
 
           return (
             <div key={msg.dedupKey}>
@@ -602,11 +603,27 @@ export default function UnifiedMessagesPage() {
                   <span className="unified-msg-card__time">{formatTime(msg.timestamp)}</span>
                 </div>
 
-                {parent && (
+                {replyPreview.kind !== 'none' && (
                   <div className="unified-reply-preview">
                     <span className="unified-reply-preview__arrow">↳</span>
-                    <span className="unified-reply-preview__from">{shortSenderLabel(parent)}</span>
-                    <span className="unified-reply-preview__text">{parent.text || t('unified.no_text')}</span>
+                    {replyPreview.kind === 'resolved' ? (
+                      <>
+                        <span className="unified-reply-preview__from">
+                          {shortSenderLabel(replyPreview.parent)}
+                        </span>
+                        <span className="unified-reply-preview__text">
+                          {replyPreview.parent.text || t('unified.no_text')}
+                        </span>
+                      </>
+                    ) : (
+                      // #4245: the parent packet was never received or has since
+                      // been purged. Still show the reply box so the message is
+                      // recognizable as a reply, rather than silently dropping
+                      // replyId and rendering it as an ordinary message.
+                      <span className="unified-reply-preview__text unified-reply-preview__text--unknown">
+                        {t('unified.messages.unknown_parent', 'Unknown message')}
+                      </span>
+                    )}
                   </div>
                 )}
 

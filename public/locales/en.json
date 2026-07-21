@@ -4712,6 +4712,7 @@
   "unified.messages.history_start": "Beginning of history.",
   "unified.messages.heard_by_source": "Heard by {{name}}",
   "unified.messages.heard_by_count": "heard by {{count}}",
+  "unified.messages.unknown_parent": "Unknown message",
   "unified.messages.date_today": "Today",
   "unified.messages.date_yesterday": "Yesterday",
   "unified.messages.hop_direct": "direct",
