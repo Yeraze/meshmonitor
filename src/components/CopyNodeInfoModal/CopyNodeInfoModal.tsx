@@ -154,10 +154,13 @@ export const CopyNodeInfoModal: React.FC<CopyNodeInfoModalProps> = ({
   // Default the selection to every row that would actually change something,
   // which reproduces the old fill-empty behavior plus the stale-value refreshes
   // the old code silently refused to do. Re-runs when the donor changes.
+  //
+  // Deliberately keyed on the donor rather than on diffRows: diffRows is a new
+  // array every render, so depending on it would re-run this effect forever and
+  // stomp the user's checkbox edits on each pass.
   useEffect(() => {
     setSelectedFields(new Set(diffRows.filter(r => r.differs).map(r => r.key as string)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- #4244 keyed on the
-    // donor, not on diffRows (recomputed every render, would loop).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- #4244 see comment above
   }, [selectedSourceId, currentNode]);
 
   const toggleField = useCallback((key: string) => {
