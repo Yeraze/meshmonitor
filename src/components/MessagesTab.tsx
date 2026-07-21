@@ -1240,7 +1240,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
                         {/* Copy NodeInfo from Another Source — local DB
                             operation, no packet transmitted. */}
-                        {selectedNode && !isNodeComplete(selectedNode) && hasPermission('nodes', 'write') && (
+                        {/* #4244: not gated on isNodeComplete — another source may
+                            have heard fresher NodeInfo, and "complete" can mean
+                            nothing more than derived placeholder names. */}
+                        {selectedNode && hasPermission('nodes', 'write') && (
                           <button
                             className="actions-menu-item"
                             onClick={() => {
@@ -2426,6 +2429,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
           hwModel: selectedNode.user?.hwModel,
           role: selectedNode.user?.role != null ? Number(selectedNode.user.role) : null,
           publicKey: selectedNode.user?.publicKey,
+          // #4244: see NodesTab — all eight diffed fields must be passed.
+          macaddr: selectedNode.user?.macaddr,
+          hasPKC: selectedNode.user?.hasPKC,
+          firmwareVersion: selectedNode.user?.firmwareVersion,
         } : null}
         onClose={() => setShowCopyNodeInfoModal(false)}
         onCopied={() => setShowCopyNodeInfoModal(false)}

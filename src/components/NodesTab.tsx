@@ -1614,7 +1614,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   if (node.user?.id && hasPermission('messages', 'read')) {
                     actions.push({ kind: 'more-details', onClick: handlePopupDMClick(node) });
                   }
-                  if (!isNodeComplete(node) && hasPermission('nodes', 'write')) {
+                  // #4244: no longer gated on isNodeComplete -- another source
+                  // may have heard fresher NodeInfo than this one, and
+                  // "complete" can mean nothing more than derived placeholders.
+                  if (hasPermission('nodes', 'write')) {
                     actions.push({ kind: 'copy-nodeinfo', onClick: () => setCopyNodeInfoTarget(node) });
                   }
                   if (hasPermission('messages', 'write') && node.nodeNum !== currentNodeNum) {
@@ -2767,6 +2770,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
           hwModel: copyNodeInfoTarget.user?.hwModel,
           role: copyNodeInfoTarget.user?.role != null ? Number(copyNodeInfoTarget.user.role) : null,
           publicKey: copyNodeInfoTarget.user?.publicKey,
+          // #4244: without these three the modal's "Current" column showed "—"
+          // regardless of what was stored.
+          macaddr: copyNodeInfoTarget.user?.macaddr,
+          hasPKC: copyNodeInfoTarget.user?.hasPKC,
+          firmwareVersion: copyNodeInfoTarget.user?.firmwareVersion,
         } : null}
         onClose={() => setCopyNodeInfoTarget(null)}
         onCopied={() => setCopyNodeInfoTarget(null)}

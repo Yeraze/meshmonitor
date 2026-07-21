@@ -80,6 +80,42 @@
   background: rgba(76, 175, 80, 0.08);
 }
 
+/* #4244: per-field selection column. */
+.copy-nodeinfo-diff .field-select {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+  padding-right: 4px;
+}
+
+.copy-nodeinfo-diff .field-select input {
+  cursor: pointer;
+  margin: 0;
+}
+
+.copy-nodeinfo-diff .field-select input:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* A row that REPLACES existing data reads differently from one that fills a
+   blank — amber rather than green, so an overwrite is never mistaken for a
+   purely additive change. */
+.copy-nodeinfo-diff tr.diff-overwrite {
+  background: rgba(255, 167, 38, 0.08);
+}
+
+.copy-nodeinfo-diff tr.diff-overwrite .field-incoming {
+  color: var(--warning-color, #ffa726);
+  font-weight: 600;
+}
+
+/* Unchecked rows recede so the pending selection is obvious at a glance. */
+.copy-nodeinfo-diff tbody tr:not(.is-selected) .field-incoming,
+.copy-nodeinfo-diff tbody tr:not(.is-selected) .field-current {
+  opacity: 0.5;
+}
+
 .copy-nodeinfo-no-changes {
   text-align: center;
   color: var(--text-secondary, #aaa);
