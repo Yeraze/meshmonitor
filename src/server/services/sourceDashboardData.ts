@@ -70,8 +70,16 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
           sourceId: mcManager.sourceId,
           isMeshCore: true,
           publicKey: pubKey,
+          // MeshCore has no ignore concept (no isIgnored anywhere in
+          // meshcoreManager), so false is accurate rather than a placeholder.
           isIgnored: false,
-          isFavorite: false,
+          // #4240 follow-up: this was hardcoded false, which silently dropped
+          // the favorite flag `getAllNodes()` already returns from
+          // meshcore_nodes.isFavorite (migration 094). Map filters gate on
+          // `isFavorite || lastHeard >= cutoff`, so a favorited MeshCore node
+          // lost its staleness-cutoff bypass and vanished from the map once it
+          // aged past the window — the same symptom as #4240, different cause.
+          isFavorite: n.isFavorite ?? false,
           user: { id: nodeId, longName: n.name, shortName: (n.name || '').substring(0, 4) },
           longName: n.name,
           shortName: (n.name || '').substring(0, 4),
