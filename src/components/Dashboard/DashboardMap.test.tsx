@@ -419,8 +419,11 @@ describe('DashboardMap', () => {
       />,
     );
     const polylines = screen.getAllByTestId('map-polyline');
-    // Only the link with valid positions should be rendered
-    expect(polylines.length).toBe(1);
+    // Only the link with valid positions should be rendered. Interactive
+    // links render two polylines since the thin-line click-target fix
+    // (visible line + invisible wide hit companion sharing its positions).
+    expect(polylines.length).toBe(2);
+    expect(new Set(polylines.map((p) => p.getAttribute('data-positions'))).size).toBe(1);
   });
 
   it('resolves a neighbor-link endpoint to the rendered marker position when present, falling back to the embedded coordinate otherwise (#4042)', () => {
@@ -431,7 +434,9 @@ describe('DashboardMap', () => {
         neighborInfo={[neighborLinkStaleEmbeddedCoords]}
       />,
     );
-    const polyline = screen.getByTestId('map-polyline');
+    // Interactive links render visible + hit-companion polylines with the
+    // same positions since the thin-line click-target fix — check the first.
+    const polyline = screen.getAllByTestId('map-polyline')[0];
     const positions = JSON.parse(polyline.getAttribute('data-positions') ?? 'null');
     // nodeNum 100 has a rendered marker at [40.0, -90.0] — the resolved
     // endpoint uses that marker position, NOT the link's stale embedded
