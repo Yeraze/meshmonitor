@@ -7,7 +7,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import MapAnalysisCanvas from './MapAnalysisCanvas';
-import { MapAnalysisProvider } from './MapAnalysisContext';
+import { MapAnalysisProvider, useMapAnalysisCtx } from './MapAnalysisContext';
 
 // Stub react-leaflet — Vitest's jsdom doesn't provide all the DOM bits Leaflet needs.
 vi.mock('react-leaflet', () => ({
@@ -134,6 +134,25 @@ vi.mock('../../hooks/useTerrainCapabilities', () => ({
   useTerrainCapabilities: () => terrainCapabilitiesMock,
 }));
 
+// #3826 Phase 3 WP-3: the two WP-2 3D line-data hooks are mocked directly so
+// this suite can assert the canvas's merge/click/exaggeration wiring without
+// exercising their internal data-fetch stack (that's use3DNeighborLines.test.ts
+// / use3DTracerouteLines.test.ts's job). Mutable per test.
+let neighborLines3DMock: {
+  lines: Array<{ key: string; from: [number, number]; to: [number, number]; color: string; opacity: number; width: number; dash?: number[] }>;
+  selectionByKey: Map<string, Record<string, unknown>>;
+} = { lines: [], selectionByKey: new Map() };
+let tracerouteLines3DMock: {
+  lines: Array<{ key: string; from: [number, number]; to: [number, number]; color: string; opacity: number; width: number; dash?: number[] }>;
+  selectionByKey: Map<string, Record<string, unknown>>;
+} = { lines: [], selectionByKey: new Map() };
+vi.mock('./use3DNeighborLines', () => ({
+  use3DNeighborLines: () => neighborLines3DMock,
+}));
+vi.mock('./use3DTracerouteLines', () => ({
+  use3DTracerouteLines: () => tracerouteLines3DMock,
+}));
+
 // Base3DMap wraps maplibre-gl directly (WebGL) — unusable under jsdom (see
 // spec §4 test plan / Base3DMap.test.tsx, which mocks `maplibre-gl` itself).
 // Here it's mocked at the component level: a stub that renders the mapped
@@ -146,8 +165,17 @@ vi.mock('../map/Base3DMap', () => ({
     terrainTileUrl: string;
     onNodeClick?: (key: string) => void;
     onUnsupported?: () => void;
+    lines?: Array<{ key: string }>;
+    onLineClick?: (key: string) => void;
+    initialExaggeration?: number;
+    onExaggerationChange?: (v: number) => void;
   }) => (
-    <div data-testid="base-3d-map" data-terrain-url={props.terrainTileUrl}>
+    <div
+      data-testid="base-3d-map"
+      data-terrain-url={props.terrainTileUrl}
+      data-line-keys={(props.lines ?? []).map((l) => l.key).join(',')}
+      data-initial-exaggeration={props.initialExaggeration}
+    >
       {props.nodes.map((n) => (
         <button
           key={n.key}
@@ -158,6 +186,16 @@ vi.mock('../map/Base3DMap', () => ({
           {n.label}
         </button>
       ))}
+      {(props.lines ?? []).map((l) => (
+        <button
+          key={l.key}
+          type="button"
+          data-testid={`base-3d-line-${l.key}`}
+          onClick={() => props.onLineClick?.(l.key)}
+        >
+          {l.key}
+        </button>
+      ))}
       {/* Lets tests simulate the real component's WebGL-unavailable signal. */}
       <button
         type="button"
@@ -165,6 +203,14 @@ vi.mock('../map/Base3DMap', () => ({
         onClick={() => props.onUnsupported?.()}
       >
         trigger-unsupported
+      </button>
+      {/* Lets tests simulate the exaggeration slider changing. */}
+      <button
+        type="button"
+        data-testid="base-3d-change-exaggeration"
+        onClick={() => props.onExaggerationChange?.(1.9)}
+      >
+        change-exaggeration
       </button>
     </div>
   ),
@@ -215,12 +261,20 @@ const wrapper = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
+/** Reads live context state (selected target) so tests can assert onLineClick's dispatch. */
+function SelectedProbe() {
+  const ctx = useMapAnalysisCtx();
+  return <div data-testid="selected-probe">{JSON.stringify(ctx.selected)}</div>;
+}
+
 describe('MapAnalysisCanvas', () => {
   beforeEach(() => {
     localStorage.clear();
     mapTilesetMock = 'osm';
     customTilesetsMock = [];
     terrainCapabilitiesMock = { enabled: true, terrainTiles: true, isLoading: false };
+    neighborLines3DMock = { lines: [], selectionByKey: new Map() };
+    tracerouteLines3DMock = { lines: [], selectionByKey: new Map() };
   });
 
   it('renders the map container and tile layer, and NOT Base3DMap, in 2d (default)', () => {
@@ -333,6 +387,133 @@ describe('MapAnalysisCanvas', () => {
       // The corrected viewMode also persists so the next visit doesn't retry 3D.
       const stored = JSON.parse(localStorage.getItem('mapAnalysis.config.v1')!);
       expect(stored.viewMode).toBe('2d');
+    });
+
+    // #3826 Phase 3 WP-3: neighbor/traceroute line wiring + exaggeration.
+    describe('3D line + exaggeration wiring (#3826 Phase 3 WP-3)', () => {
+      it('feeds Base3DMap the merged neighbor + traceroute lines from the WP-2 hooks', () => {
+        neighborLines3DMock = {
+          lines: [
+            { key: 'mt:1', from: [30, -90], to: [31, -91], color: '#06b6d4', opacity: 0.75, width: 2, dash: [2, 2] },
+            { key: 'mc:7', from: [30, -90], to: [31, -91], color: '#06b6d4', opacity: 0.75, width: 3, dash: [3, 2] },
+          ],
+          selectionByKey: new Map(),
+        };
+        tracerouteLines3DMock = {
+          lines: [{ key: 'tr:1-2', from: [30, -90], to: [31, -91], color: '#22c55e', opacity: 1, width: 2 }],
+          selectionByKey: new Map(),
+        };
+        persist3d();
+        render(<MapAnalysisCanvas />, { wrapper });
+        expect(screen.getByTestId('base-3d-map')).toHaveAttribute('data-line-keys', 'mt:1,mc:7,tr:1-2');
+      });
+
+      it('passes through empty lines when both WP-2 hooks report their layers off', () => {
+        // beforeEach seeds both mocks empty — asserts empty state flows through untouched.
+        persist3d();
+        render(<MapAnalysisCanvas />, { wrapper });
+        expect(screen.getByTestId('base-3d-map')).toHaveAttribute('data-line-keys', '');
+      });
+
+      it('honors the neighbor-only toggle: neighbor lines present, no traceroute lines when that hook is empty', () => {
+        neighborLines3DMock = {
+          lines: [{ key: 'mt:1', from: [30, -90], to: [31, -91], color: '#06b6d4', opacity: 0.75, width: 2, dash: [2, 2] }],
+          selectionByKey: new Map(),
+        };
+        persist3d();
+        render(<MapAnalysisCanvas />, { wrapper });
+        const keys = screen.getByTestId('base-3d-map').getAttribute('data-line-keys');
+        expect(keys).toContain('mt:1');
+        expect(keys).not.toContain('tr:');
+      });
+
+      it('honors the traceroute-only toggle: traceroute lines present, no neighbor lines when that hook is empty', () => {
+        tracerouteLines3DMock = {
+          lines: [{ key: 'tr:1-2', from: [30, -90], to: [31, -91], color: '#22c55e', opacity: 1, width: 2 }],
+          selectionByKey: new Map(),
+        };
+        persist3d();
+        render(<MapAnalysisCanvas />, { wrapper });
+        const keys = screen.getByTestId('base-3d-map').getAttribute('data-line-keys');
+        expect(keys).toContain('tr:1-2');
+        expect(keys).not.toContain('mt:');
+        expect(keys).not.toContain('mc:');
+      });
+
+      it('onLineClick dispatches setSelected with the meshcore neighbor payload for an "mc:" key', () => {
+        const mcTarget = {
+          type: 'neighbor',
+          sourceId: 'a',
+          publicKey: 'aa',
+          neighborPublicKey: 'bb',
+          nodeName: 'Alpha',
+          neighborName: 'Beta',
+          snr: 5,
+          timestamp: 0,
+          nodeNum: 0,
+          neighborNum: 0,
+        };
+        neighborLines3DMock = {
+          lines: [{ key: 'mc:7', from: [30, -90], to: [31, -91], color: '#06b6d4', opacity: 0.75, width: 3, dash: [3, 2] }],
+          selectionByKey: new Map([['mc:7', mcTarget]]),
+        };
+        persist3d();
+        render(
+          <>
+            <SelectedProbe />
+            <MapAnalysisCanvas />
+          </>,
+          { wrapper },
+        );
+        fireEvent.click(screen.getByTestId('base-3d-line-mc:7'));
+        expect(JSON.parse(screen.getByTestId('selected-probe').textContent ?? 'null')).toEqual(mcTarget);
+      });
+
+      it('onLineClick dispatches setSelected with the meshtastic neighbor payload for an "mt:" key', () => {
+        const mtTarget = { type: 'neighbor', sourceId: 'a', nodeNum: 1, neighborNum: 2, snr: 5, timestamp: 0 };
+        neighborLines3DMock = {
+          lines: [{ key: 'mt:1', from: [30, -90], to: [31, -91], color: '#06b6d4', opacity: 0.75, width: 2, dash: [2, 2] }],
+          selectionByKey: new Map([['mt:1', mtTarget]]),
+        };
+        persist3d();
+        render(
+          <>
+            <SelectedProbe />
+            <MapAnalysisCanvas />
+          </>,
+          { wrapper },
+        );
+        fireEvent.click(screen.getByTestId('base-3d-line-mt:1'));
+        expect(JSON.parse(screen.getByTestId('selected-probe').textContent ?? 'null')).toEqual(mtTarget);
+      });
+
+      it('clicking a line with no matching selectionByKey entry does not throw or change the selection', () => {
+        neighborLines3DMock = {
+          lines: [{ key: 'mt:1', from: [30, -90], to: [31, -91], color: '#06b6d4', opacity: 0.75, width: 2, dash: [2, 2] }],
+          selectionByKey: new Map(),
+        };
+        persist3d();
+        render(
+          <>
+            <SelectedProbe />
+            <MapAnalysisCanvas />
+          </>,
+          { wrapper },
+        );
+        expect(() => fireEvent.click(screen.getByTestId('base-3d-line-mt:1'))).not.toThrow();
+        expect(screen.getByTestId('selected-probe').textContent).toBe('null');
+      });
+
+      it('passes config.exaggeration as initialExaggeration and persists onExaggerationChange via setExaggeration', () => {
+        persist3d();
+        render(<MapAnalysisCanvas />, { wrapper });
+        expect(screen.getByTestId('base-3d-map')).toHaveAttribute('data-initial-exaggeration', '1.3');
+
+        fireEvent.click(screen.getByTestId('base-3d-change-exaggeration'));
+
+        const stored = JSON.parse(localStorage.getItem('mapAnalysis.config.v1')!);
+        expect(stored.exaggeration).toBe(1.9);
+      });
     });
   });
 });

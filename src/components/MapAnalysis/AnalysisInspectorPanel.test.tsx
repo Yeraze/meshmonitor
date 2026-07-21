@@ -226,6 +226,7 @@ function CtxProbe() {
       {JSON.stringify({
         linkProfileMode: ctx.linkProfileMode,
         measureMode: ctx.measureMode,
+        viewMode: ctx.config.viewMode,
         linkEndpoints: ctx.linkEndpoints.map((e) => ({
           nodeNum: e.nodeNum,
           isMeshCore: e.isMeshCore,
@@ -238,6 +239,11 @@ function CtxProbe() {
 function SetMeasureModeOn() {
   const ctx = useMapAnalysisCtx();
   return <button onClick={() => ctx.setMeasureMode(true)}>set-measure-mode</button>;
+}
+
+function SetViewMode3D() {
+  const ctx = useMapAnalysisCtx();
+  return <button onClick={() => ctx.setViewMode('3d')}>set-view-mode-3d</button>;
 }
 
 describe('AnalysisInspectorPanel', () => {
@@ -476,6 +482,49 @@ describe('AnalysisInspectorPanel', () => {
         { nodeNum: 1, isMeshCore: false },
         { nodeNum: 2, isMeshCore: false },
       ]);
+    });
+
+    // #3826 Phase 3 §2.5: profile-from-3D auto-switch.
+    it('switches viewMode to 2d AND dispatches the profile state when triggered while in 3D', () => {
+      render(
+        <Wrapper>
+          <SetViewMode3D />
+          <CtxProbe />
+          <SelectNeighbor />
+          <AnalysisInspectorPanel />
+        </Wrapper>,
+      );
+      fireEvent.click(screen.getByText('set-view-mode-3d'));
+      expect(screen.getByTestId('ctx-probe').textContent).toContain('"viewMode":"3d"');
+
+      fireEvent.click(screen.getByText('select-neighbor'));
+      fireEvent.click(screen.getByText('View terrain profile'));
+
+      const probe = JSON.parse(screen.getByTestId('ctx-probe').textContent ?? '{}');
+      expect(probe.viewMode).toBe('2d');
+      expect(probe.linkProfileMode).toBe(true);
+      expect(probe.linkEndpoints).toEqual([
+        { nodeNum: 1, isMeshCore: false },
+        { nodeNum: 2, isMeshCore: false },
+      ]);
+    });
+
+    it('does NOT call setViewMode when triggered while already in 2d', () => {
+      render(
+        <Wrapper>
+          <CtxProbe />
+          <SelectNeighbor />
+          <AnalysisInspectorPanel />
+        </Wrapper>,
+      );
+      expect(screen.getByTestId('ctx-probe').textContent).toContain('"viewMode":"2d"');
+
+      fireEvent.click(screen.getByText('select-neighbor'));
+      fireEvent.click(screen.getByText('View terrain profile'));
+
+      const probe = JSON.parse(screen.getByTestId('ctx-probe').textContent ?? '{}');
+      expect(probe.viewMode).toBe('2d');
+      expect(probe.linkProfileMode).toBe(true);
     });
   });
 });
