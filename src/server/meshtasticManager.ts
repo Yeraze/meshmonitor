@@ -59,7 +59,7 @@ import { detectChannelMoves } from './utils/channelMoveDetection.js';
 import { mergeNodesAcrossSources } from './utils/mergeNodesAcrossSources.js';
 import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } from './utils/spoofDetection.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName } from './constants/meshtastic.js';
 import { normalizeChannelRole } from './constants/channelRole.js';
 import { isAutoFavoriteEligible } from './constants/autoFavorite.js';
 import { createRequire } from 'module';
@@ -5451,9 +5451,10 @@ class MeshtasticManager implements ISourceManager {
       // src/server/constants/meshtastic.ts. The field is proto3
       // (default 0 = INTERNAL when unset), so only record values that
       // came across the wire as actual numbers.
-      const txMech = typeof meshPacket.transportMechanism === 'number'
-        ? meshPacket.transportMechanism
-        : (meshPacket.viaMqtt === true ? 5 /* MQTT */ : undefined);
+      // #4240: always resolves to a value — an undefined result omitted the key
+      // from the upsert, which let upsertNode carry the stale value forward and
+      // made classification permanently sticky. See resolveRadioPacketTransport.
+      const txMech = resolveRadioPacketTransport(meshPacket);
 
       const nodeData: any = {
         nodeNum: fromNum,
@@ -5471,7 +5472,9 @@ class MeshtasticManager implements ISourceManager {
         // traceroutes, position requests) use the channel the node is actually communicating
         // on. Previously only set from NodeInfo, which could get stuck on a secondary channel.
         ...(channelFromPacket !== undefined && { channel: channelFromPacket }),
-        ...(txMech !== undefined && { transportMechanism: txMech }),
+        // Always set now (see txMech above) — an omitted key would let
+        // upsertNode carry the stale value forward, which is the #4240 bug.
+        transportMechanism: txMech,
       };
 
       // Only set default name if this is a brand new node

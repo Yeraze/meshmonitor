@@ -106,9 +106,19 @@ import ErrorBoundary from './components/common/ErrorBoundary';
 // 2's poll response because both sources share nodeNums on overlapping meshes).
 const favoritePendingKey = (sourceId: string | null | undefined, nodeNum: number) =>
   `${sourceId ?? ''}:${nodeNum}`;
-const pendingFavoriteRequests = new Map<string, boolean>();
-const pendingIgnoredRequests = new Map<string, boolean>();
-const pendingHideFromMapRequests = new Map<string, boolean>();
+
+// Entries expire (#4240) — see src/utils/pendingToggles.ts for why a plain Map
+// deadlocked the toggles permanently.
+const pendingFavoriteRequests = new PendingToggleMap();
+const pendingIgnoredRequests = new PendingToggleMap();
+const pendingHideFromMapRequests = new PendingToggleMap();
+
+const ALL_PENDING_TOGGLE_MAPS = [
+  pendingFavoriteRequests,
+  pendingIgnoredRequests,
+  pendingHideFromMapRequests,
+];
+import { PendingToggleMap, sweepAll } from './utils/pendingToggles';
 import TracerouteHistoryModal from './components/TracerouteHistoryModal';
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal';
 
@@ -2282,6 +2292,12 @@ const location = useLocation();
         const pendingIgnored = pendingIgnoredRequests;
         const pendingHideFromMap = pendingHideFromMapRequests;
 
+        // #4240: drop expired entries BEFORE the size check, and independently
+        // of which nodes came back. The per-node reconciliation below can only
+        // clear an entry whose node is present in this response under the
+        // current sourceId; this sweep is what unsticks everything else.
+        sweepAll(ALL_PENDING_TOGGLE_MAPS);
+
         if (pendingFavorite.size === 0 && pendingIgnored.size === 0 && pendingHideFromMap.size === 0) {
           setNodes(data.nodes as DeviceInfo[]);
         } else {
@@ -4030,7 +4046,7 @@ const location = useLocation();
 
     // Prevent multiple rapid clicks on the same node (scoped to current source)
     const favKey = favoritePendingKey(sourceId, node.nodeNum);
-    if (pendingFavoriteRequests.has(favKey)) {
+    if (pendingFavoriteRequests.get(favKey) !== undefined) {
       return;
     }
 
@@ -4161,7 +4177,7 @@ const location = useLocation();
 
     // Prevent multiple rapid clicks on the same node (scoped to current source)
     const ignKey = favoritePendingKey(sourceId, node.nodeNum);
-    if (pendingIgnoredRequests.has(ignKey)) {
+    if (pendingIgnoredRequests.get(ignKey) !== undefined) {
       return;
     }
 
@@ -4260,7 +4276,7 @@ const location = useLocation();
     }
 
     const hfmKey = favoritePendingKey(sourceId, node.nodeNum);
-    if (pendingHideFromMapRequests.has(hfmKey)) {
+    if (pendingHideFromMapRequests.get(hfmKey) !== undefined) {
       return;
     }
 
