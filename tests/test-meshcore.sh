@@ -1,5 +1,6 @@
 #!/bin/bash
-# Automated test for MeshCore companion connect + handshake (Phase 1)
+# Automated test for MeshCore companion connect/handshake, messaging, remote-admin
+# login, and telemetry (Phases 1-3).
 # Boots a fresh container with zero pre-configured sources, probes every
 # candidate USB serial port for a live MeshCore companion, auto-selects the
 # two that connect (enumeration order/physical port assignment is not
@@ -54,7 +55,7 @@ cleanup() {
     # Phase 2: kill the Socket.IO ack-listener helper if it's still running,
     # and remove its temp output files plus the send-status scratch file.
     [ -n "$HELPER_PID" ] && kill "$HELPER_PID" 2>/dev/null
-    rm -f "$ACK_OUT" "$ACK_ERR" "/tmp/mc_send.$$" 2>/dev/null
+    rm -f "$ACK_OUT" "$ACK_ERR" "/tmp/mc_send.$$" "$LOGIN_BODY" "$TELE_BODY" 2>/dev/null
     docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
     rm -f "$COMPOSE_FILE"
     rm -f "$COOKIE_FILE"
@@ -460,11 +461,13 @@ echo ""
 # ==========================================
 # Phase 2: Messaging assertions (DM, channel, repeater auto-ack)
 # ==========================================
-# Phase 2 temp-file/PID vars, declared up front so cleanup() can reference
-# them even if a test fails before they are ever assigned.
+# Phase 2/3 temp-file/PID vars, declared up front so cleanup() can reference
+# them even if a test fails (or is signalled) before they are ever assigned.
 ACK_OUT=""
 ACK_ERR=""
 HELPER_PID=""
+LOGIN_BODY=""
+TELE_BODY=""
 
 echo "Test 8: Acquire API token for Socket.IO helper"
 TOKEN_RESP=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/api/token/generate" \
@@ -777,10 +780,13 @@ for attempt in $(seq 1 "$TELE_ATTEMPTS"); do
     WRITTEN=$(jq -r '.data.written // 0' "$TELE_BODY" 2>/dev/null)
     if [ "${WRITTEN:-0}" -ge 1 ] 2>/dev/null; then
       tele_ok=true
-      echo -e "${GREEN}✓ PASS${NC}: telemetry poll wrote $WRITTEN record(s) ($(jq -c '.data.sources' "$TELE_BODY"))"
-      TELE_STATUS_LINE="PASS ($WRITTEN record(s), $(jq -c '.data.sources' "$TELE_BODY"))"
+      echo -e "${GREEN}✓ PASS${NC}: telemetry poll wrote $WRITTEN record(s) ($(jq -c '.data.sources // "[]"' "$TELE_BODY"))"
+      TELE_STATUS_LINE="PASS ($WRITTEN record(s), $(jq -c '.data.sources // "[]"' "$TELE_BODY"))"
       break
     fi
+    # HTTP 200 + written=0 means the request went out (not TX-gated — that's 429)
+    # but the target returned no data this round (RF miss / nothing to report).
+    # Retry at the normal interval, not the TX-gate delay.
     echo "  (attempt $attempt: HTTP 200 but written=0 / empty; retrying)"
   else
     echo "  (attempt $attempt: HTTP $CODE: $(cat "$TELE_BODY"))"
