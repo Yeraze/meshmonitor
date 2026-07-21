@@ -70,6 +70,29 @@ interface UnifiedMessage {
   receptions: Reception[];
 }
 
+/**
+ * Reply-preview state for one message (#4245).
+ *
+ * `unknown` is the case the original code silently collapsed into `none`: the
+ * message *is* a reply, but the parent packet was never received by any source
+ * (or has since been purged), so there is nothing to quote. It still has to
+ * render a reply box — otherwise the message is indistinguishable from one
+ * that was never a reply at all.
+ */
+export type ReplyPreviewState =
+  | { kind: 'none' }
+  | { kind: 'unknown' }
+  | { kind: 'resolved'; parent: UnifiedMessage };
+
+export function resolveReplyPreview(
+  replyId: number | null | undefined,
+  byPacketId: Pick<Map<number, UnifiedMessage>, 'get'>,
+): ReplyPreviewState {
+  if (replyId == null) return { kind: 'none' };
+  const parent = byPacketId.get(replyId);
+  return parent ? { kind: 'resolved', parent } : { kind: 'unknown' };
+}
+
 interface UnifiedChannel {
   name: string;
   sources: Array<{ sourceId: string; sourceName: string; channelNumber: number }>;
@@ -551,7 +574,7 @@ export default function UnifiedMessagesPage() {
 
           // Reply preview: look up parent by packet id (firmware's reply_id
           // points at the parent's meshpacket id, not its requestId).
-          const parent = msg.replyId != null ? byPacketId.get(msg.replyId) : undefined;
+          const replyPreview = resolveReplyPreview(msg.replyId, byPacketId);
 
           return (
             <div key={msg.dedupKey}>
@@ -602,11 +625,27 @@ export default function UnifiedMessagesPage() {
                   <span className="unified-msg-card__time">{formatTime(msg.timestamp)}</span>
                 </div>
 
-                {parent && (
+                {replyPreview.kind !== 'none' && (
                   <div className="unified-reply-preview">
                     <span className="unified-reply-preview__arrow">↳</span>
-                    <span className="unified-reply-preview__from">{shortSenderLabel(parent)}</span>
-                    <span className="unified-reply-preview__text">{parent.text || t('unified.no_text')}</span>
+                    {replyPreview.kind === 'resolved' ? (
+                      <>
+                        <span className="unified-reply-preview__from">
+                          {shortSenderLabel(replyPreview.parent)}
+                        </span>
+                        <span className="unified-reply-preview__text">
+                          {replyPreview.parent.text || t('unified.no_text')}
+                        </span>
+                      </>
+                    ) : (
+                      // #4245: the parent packet was never received or has since
+                      // been purged. Still show the reply box so the message is
+                      // recognizable as a reply, rather than silently dropping
+                      // replyId and rendering it as an ordinary message.
+                      <span className="unified-reply-preview__text unified-reply-preview__text--unknown">
+                        {t('unified.messages.unknown_parent', 'Unknown message')}
+                      </span>
+                    )}
                   </div>
                 )}
 
