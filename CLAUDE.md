@@ -87,6 +87,15 @@ Three backends. Default is SQLite. PG triggered by `DATABASE_URL` (postgres://),
 - **Boolean columns differ:** SQLite uses 0/1, PostgreSQL uses true/false. Drizzle handles this.
 - **Schema definitions live in `src/db/schema/`** — one file per domain, three table definitions per backend.
 - **Column naming:** SQLite uses `snake_case`, PostgreSQL/MySQL use `camelCase` (quoted in PG raw SQL).
+- **A local "full suite" run does NOT cover PostgreSQL/MySQL unless those containers are running.** The multi-backend suites are `describe.skipIf(!postgresAvailable)` / `!mysqlAvailable`, and the probes in `src/db/repositories/test-utils.ts` check `localhost:5433` and `localhost:3307`. With nothing listening they **skip silently** — the run still reports success, just ~1,500 fewer tests. CI runs both as service containers, so schema bugs surface there instead. Before claiming a schema/migration change is verified:
+  ```bash
+  docker run -d --rm --name mm-test-pg -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test \
+    -e POSTGRES_DB=meshmonitor_test -p 5433:5432 postgres:16
+  docker run -d --rm --name mm-test-mysql -e MYSQL_ROOT_PASSWORD=root -e MYSQL_USER=test \
+    -e MYSQL_PASSWORD=test -e MYSQL_DATABASE=meshmonitor_test -p 3307:3306 mysql:8.4
+  ```
+  Confirm coverage via `numPendingTests` (skipped) in the JSON reporter, not just `success`.
+- **Adding a column to `nodes` also means updating the hand-written PG/MySQL DDL in `src/db/repositories/nodes.test.ts`** (`POSTGRES_CREATE` / `MYSQL_CREATE`). Only the SQLite suite builds its schema from the migration registry; the other two use literal `CREATE TABLE` blocks. Drizzle's `select()` enumerates every schema column, so one missing column fails *every* query in those suites (this cost ~92 CI failures in #4250). Repositories that select explicit column lists are unaffected.
 
 ### Architecture
 ```
@@ -142,6 +151,14 @@ Three lint commands:
 - `npm run lint:ci` — the **CI gate**. Runs `scripts/lint-ratchet.mjs`: fails only when a file's per-rule violation count exceeds the checked-in baseline (`eslint-baseline.json`). **This is what CI checks — it must exit 0.**
 - `npm run lint:baseline` — regenerate `eslint-baseline.json` from the current tree. Run **after intentionally fixing violations** (baseline shrinks). Never run it to paper over new ones — reviewers will flag a baseline that grows rule counts.
 
+**Local `lint:ci` is not CI-faithful when agent worktrees exist.** ESLint walks the filesystem, so any worktree under `.claude/worktrees/` gets linted too — those paths are git-excluded, so CI never sees them. A single leftover worktree can produce ~950 `FAIL` lines and a non-zero exit while your actual changes are clean. Judge the result by in-repo failures only:
+```bash
+npm run lint:ci 2>&1 | grep '^FAIL' | grep -v '.claude/worktrees'
+```
+Empty output = the CI gate passes. The same applies to Vitest, which scans those worktrees and inflates the suite count.
+
+**`npx eslint <file>` exiting 0 does not mean the ratchet passes.** The ratchet compares *per-file, per-rule counts* against the baseline, so adding one `react-hooks/exhaustive-deps` violation to an already-baselined file fails CI while plain ESLint reports nothing new. Always confirm with `lint:ci` before pushing.
+
 **Rules now errors (existing violations frozen by baseline; burn them down, never up):**
 - `@typescript-eslint/no-explicit-any` — 2,026 sites baselined. Burn down in Phase 6.
 - `react-hooks/exhaustive-deps` — 110 sites. Do NOT auto-fix; missing deps can cause render loops. Fix per-site with behavior verification or a targeted `eslint-disable-next-line` with an issue-ref reason.
@@ -179,7 +196,7 @@ For the full "adding a migration" recipe see [Migration recipe](#migration-recip
 
 - System tests (`tests/system-tests.sh`) are run by CI on every PR. Do not run them locally as part of normal feature or bugfix work — only run them locally when you are specifically debugging a system-test failure.
 - After creating or updating a PR, use the `/ci-monitor` skill to monitor CI status and auto-fix any failures (system-test regressions show up there).
-- All tests must pass (0 failures) before creating a PR. Run the full Vitest suite, not just targeted tests, before committing migration or refactor work.
+- All tests must pass (0 failures) before creating a PR. Run the full Vitest suite, not just targeted tests, before committing migration or refactor work. For schema/migration work that full run is only meaningful with the PostgreSQL and MySQL containers up — see the Multi-Database section, since they skip silently otherwise.
 - When migrating test mocks from sync to async, use `mockResolvedValue` (not `mockReturnValue`) for any function that returns a Promise.
 - When testing locally, use `docker-compose.dev.yml` to build the local code, and verify the proper code was deployed once the container launches.
 
