@@ -577,9 +577,12 @@ PSK_B64=$(printf '%s' '#mm-systest' | openssl dgst -sha256 -binary | head -c 16 
 [ -n "$PSK_B64" ] || { echo -e "${RED}✗ FAIL${NC}: failed to derive channel PSK"; exit 1; }
 
 # Pick a free slot on BOTH sources (avoid clobbering an existing channel).
+# GET /api/channels returns a BARE ARRAY (channelRoutes.ts res.json(projected));
+# `.data` on an array throws in jq (and `//` does not catch a thrown error), so
+# select the array defensively by type rather than with `(.data // .)`.
 USED=$( { curl -s "$BASE_URL/api/channels?sourceId=$SRC_A_ID" -b "$COOKIE_FILE";
           curl -s "$BASE_URL/api/channels?sourceId=$SRC_B_ID" -b "$COOKIE_FILE"; } \
-        | jq -r '(.data // .)[]?.id' | sort -un )
+        | jq -r '(if type=="array" then . else .data end)[]?.id' | sort -un )
 SLOT=${MESHCORE_TEST_CHANNEL_SLOT:-}
 if [ -z "$SLOT" ]; then
   for c in 1 2 3 4 5 6 7; do echo "$USED" | grep -qx "$c" || { SLOT=$c; break; }; done
@@ -599,7 +602,7 @@ done
 sleep 3
 for SID in "$SRC_A_ID" "$SRC_B_ID"; do
   CH=$(curl -s "$BASE_URL/api/channels?sourceId=$SID" -b "$COOKIE_FILE" \
-    | jq -r --arg slot "$SLOT" '(.data // .)[] | select((.id|tostring)==$slot) | .name // empty')
+    | jq -r --arg slot "$SLOT" '(if type=="array" then . else .data end)[] | select((.id|tostring)==$slot) | .name // empty')
   if [ "$CH" != "#mm-systest" ]; then
     echo -e "${RED}✗ FAIL${NC}: channel slot $SLOT on source $SID did not persist as '#mm-systest' (got '$CH')"; exit 1
   fi
