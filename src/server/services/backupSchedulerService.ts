@@ -14,13 +14,18 @@ class BackupSchedulerService {
   private isRunning = false;
   private isDeviceBackupInProgress = false;
   private isSystemBackupInProgress = false;
-  private meshtasticManager: any = null;
+  // Resolver rather than a captured instance: #3962 Phase 4.2a WP4 removed the
+  // live Proxy alias that used to make a stored manager reference always
+  // track the registry's current primary meshtastic_tcp source. A resolver
+  // function preserves that "always current" behavior without the Proxy —
+  // call it fresh on every use instead of caching the manager at initialize() time.
+  private resolveManager: (() => any) | null = null;
 
   /**
    * Initialize the backup scheduler
    */
-  initialize(meshtasticManager: any): void {
-    this.meshtasticManager = meshtasticManager;
+  initialize(resolveManager: () => any): void {
+    this.resolveManager = resolveManager;
 
     // Initialize backup directories
     backupFileService.initializeBackupDirectory();
@@ -195,17 +200,18 @@ class BackupSchedulerService {
    */
   private async runAutomatedDeviceBackup(): Promise<void> {
     try {
-      if (!this.meshtasticManager) {
+      if (!this.resolveManager) {
         throw new Error('Meshtastic manager not initialized');
       }
+      const meshtasticManager = this.resolveManager();
 
       logger.debug('🤖 Running automated device backup...');
 
       // Generate the backup YAML
-      const yamlBackup = await deviceBackupService.generateBackup(this.meshtasticManager);
+      const yamlBackup = await deviceBackupService.generateBackup(meshtasticManager);
 
       // Get node ID for filename
-      const localNodeInfo = this.meshtasticManager.getLocalNodeInfo();
+      const localNodeInfo = meshtasticManager.getLocalNodeInfo();
       const nodeId = localNodeInfo?.nodeId || '!unknown';
 
       // Save to disk
@@ -237,17 +243,18 @@ class BackupSchedulerService {
    * Manually trigger a backup (for testing or manual execution)
    */
   async triggerManualBackup(): Promise<string> {
-    if (!this.meshtasticManager) {
+    if (!this.resolveManager) {
       throw new Error('Meshtastic manager not initialized');
     }
+    const meshtasticManager = this.resolveManager();
 
     logger.debug('👤 Running manual backup...');
 
     // Generate the backup YAML
-    const yamlBackup = await deviceBackupService.generateBackup(this.meshtasticManager);
+    const yamlBackup = await deviceBackupService.generateBackup(meshtasticManager);
 
     // Get node ID for filename
-    const localNodeInfo = this.meshtasticManager.getLocalNodeInfo();
+    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
     const nodeId = localNodeInfo?.nodeId || '!unknown';
 
     // Save to disk

@@ -116,12 +116,24 @@ vi.mock('../services/firmwareUpdateService.js', () => ({
   FirmwareChannel: {},
 }));
 
-// Mock meshtasticManager (routes use it for post-flash actual-version read)
+// Mock meshtasticManager (routes use fallbackManager for post-flash
+// actual-version read + the bridged-node OTA guard, #3962 Phase 4.2a WP4).
 vi.mock('../meshtasticManager.js', () => ({
-  default: {
+  fallbackManager: {
     getLocalNodeInfo: vi.fn().mockReturnValue(null),
     isLocalNodeBridged: mockIsLocalNodeBridged,
   },
+}));
+
+// No primary meshtastic_tcp source registered in these route-only unit
+// tests — resolveManager falls through to fallbackManager above, same as
+// the retired Proxy alias always did in this unmocked-registry environment.
+vi.mock('../sourceManagerRegistry.js', () => ({
+  sourceManagerRegistry: {},
+}));
+
+vi.mock('../sourceManagerTypes.js', () => ({
+  getPrimaryMeshtasticManager: () => undefined,
 }));
 
 // Mock environment config — issue #2981 guard reads meshtasticNodeIpProvided

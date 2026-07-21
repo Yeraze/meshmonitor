@@ -22,7 +22,9 @@ import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { versionCheckService } from '../services/versionCheckService.js';
 import { detectDeploymentMethod } from '../utils/deployment.js';
-import meshtasticManager from '../meshtasticManager.js';
+import { fallbackManager } from '../meshtasticManager.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import {
   serverStartTime,
   isRunningInDocker,
@@ -90,8 +92,9 @@ router.get('/system/status', requirePermission('dashboard', 'read'), async (_req
 
 // Detailed status endpoint - provides system statistics and connection status
 router.get('/status', optionalAuth(), async (_req: Request, res: Response) => {
-  const connectionStatus = await meshtasticManager.getConnectionStatus();
-  const localNode = meshtasticManager.getLocalNodeInfo();
+  const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+  const connectionStatus = await mgr.getConnectionStatus();
+  const localNode = mgr.getLocalNodeInfo();
 
   res.json({
     status: 'ok',

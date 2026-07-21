@@ -4,7 +4,9 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { pushNotificationService } from '../services/pushNotificationService.js';
 import { appriseNotificationService } from '../services/appriseNotificationService.js';
-import meshtasticManager from '../meshtasticManager.js';
+import { fallbackManager } from '../meshtasticManager.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import {
   getUserNotificationPreferencesAsync,
   saveUserNotificationPreferencesAsync,
@@ -118,7 +120,8 @@ pushRouter.post('/test', requireAdmin(), async (req: Request, res: Response) => 
     const userId = req.session?.userId;
 
     // Get local node name for prefix
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    const localNodeInfo = mgr.getLocalNodeInfo();
     const localNodeName = localNodeInfo?.longName || null;
 
     // Apply prefix if user has it enabled
@@ -417,7 +420,8 @@ appriseRouter.post(
     }
 
     // Get local node name for prefix
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    const localNodeInfo = mgr.getLocalNodeInfo();
     const localNodeName = localNodeInfo?.longName || null;
 
     // Apply prefix if user has it enabled

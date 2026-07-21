@@ -1,13 +1,13 @@
 import express, { Request, Response } from 'express';
 import databaseService, { DbMessage } from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
-import { isMeshCoreManager, isMeshtasticManager } from '../sourceManagerTypes.js';
+import { isMeshCoreManager, isMeshtasticManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import type { MeshCoreManager } from '../meshcoreManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { logger } from '../../utils/logger.js';
 import { RequestHandler } from 'express';
 import { ResourceType } from '../../types/permission.js';
-import meshtasticManager from '../meshtasticManager.js';
+import { fallbackManager } from '../meshtasticManager.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import {
@@ -769,7 +769,7 @@ router.post('/nodes/:nodeNum/purge-from-device', requireMessagesWrite, async (re
     const _purgeBase = purgeSourceId ? sourceManagerRegistry.getManager(purgeSourceId) : null;
     const meshtasticManager = (_purgeBase && isMeshtasticManager(_purgeBase))
       ? _purgeBase
-      : (global as any).meshtasticManager;
+      : getPrimaryMeshtasticManager(sourceManagerRegistry);
     if (!meshtasticManager) {
       return res.status(500).json({
         error: 'Internal server error',
@@ -882,7 +882,8 @@ router.get('/', optionalAuth(), async (req, res) => {
 
     const limit = parseInt(req.query.limit as string) || 100;
     const messagesSourceId = req.query.sourceId as string | undefined;
-    let messages = await meshtasticManager.getRecentMessages(limit, messagesSourceId);
+    const defaultMgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    let messages = await defaultMgr.getRecentMessages(limit, messagesSourceId);
 
     // MM-SEC-3: pre-compute the channels this caller may read so we can
     // strip messages from hidden channels even when the caller has the

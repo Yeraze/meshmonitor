@@ -1,7 +1,9 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import { getUserNotificationPreferencesAsync, getUsersWithServiceEnabledAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync, resolveAppriseTargetAsync } from '../utils/notificationFiltering.js';
-import meshtasticManager from '../meshtasticManager.js';
+import { fallbackManager } from '../meshtasticManager.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 
 export interface AppriseNotificationPayload {
   title: string;
@@ -345,7 +347,8 @@ class AppriseNotificationService {
     }
 
     // Get local node name for prefix
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    const localNodeInfo = mgr.getLocalNodeInfo();
     const localNodeName = localNodeInfo?.longName || null;
 
     // Per-user filtering and sending to user-specific URLs
@@ -470,7 +473,8 @@ class AppriseNotificationService {
     // Get local node name for prefix
     // First try the live connection, then fall back to database (for startup before connection)
     let localNodeName: string | null = null;
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    const localNodeInfo = mgr.getLocalNodeInfo();
     if (localNodeInfo?.longName) {
       localNodeName = localNodeInfo.longName;
     } else {

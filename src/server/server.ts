@@ -7,13 +7,11 @@ import fs from 'fs';
 // anything else in the app can serialize a value that might contain one.
 import './utils/jsonBigIntReplacer.js';
 import databaseService from '../services/database.js';
-import meshtasticManager, { fallbackManager } from './meshtasticManager.js';
+import { fallbackManager } from './meshtasticManager.js';
 import { MeshtasticManager } from './meshtasticManager.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
+import { getPrimaryMeshtasticManager } from './sourceManagerTypes.js';
 import { resolveSourceManager } from './utils/resolveSourceManager.js';
-
-// Make meshtasticManager available globally for routes that need it
-(global as any).meshtasticManager = meshtasticManager;
 import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
 import { setDiscardInvalidPositions, parseDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
@@ -324,17 +322,18 @@ setTimeout(async () => {
       env: { meshtasticNodeIp: env.meshtasticNodeIp, meshtasticTcpPort: env.meshtasticTcpPort },
       registry: sourceManagerRegistry,
       makeMeshtastic: (id, cfg) => new MeshtasticManager(id, cfg),
-      // WP3: pass the concrete fallback instance (not the Proxy alias).
       // fallbackManager.connect() is called only when no tcp source auto-connects
       // (S4: all-MeshCore / all-disabled-tcp / autoConnect:false installs).
-      // The Proxy alias (meshtasticManager default export) is kept for
-      // (global as any) and backupSchedulerService so those consumers track
-      // the live primary without per-file edits (WP4 will migrate them).
       fallbackManager: fallbackManager,
     });
 
-    // Initialize backup scheduler
-    backupSchedulerService.initialize(meshtasticManager);
+    // Initialize backup scheduler. Pass a resolver (not a captured instance)
+    // so the scheduler always targets the registry's current primary
+    // meshtastic_tcp source, mirroring what the retired Proxy alias used to
+    // provide transparently (#3962 Phase 4.2a WP4).
+    backupSchedulerService.initialize(
+      () => getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager
+    );
     logger.debug('Backup scheduler initialized');
 
     // Initialize duplicate key scanner
@@ -836,13 +835,16 @@ apiRouter.use('/', nodesRoutes);
 // Wire up side-effect callbacks for settingsRoutes
 setSettingsCallbacks({
   refreshTileHostnameCache,
-  setTracerouteInterval: (interval) => meshtasticManager.setTracerouteInterval(interval),
+  setTracerouteInterval: (interval) =>
+    (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).setTracerouteInterval(interval),
   setRemoteAdminScannerInterval: (interval, sourceId) => {
     const mgr = resolveSourceManager(sourceId);
     mgr.setRemoteAdminScannerInterval(interval);
   },
-  setLocalStatsInterval: (interval) => meshtasticManager.setLocalStatsInterval(interval),
-  setKeyRepairSettings: (settings) => meshtasticManager.setKeyRepairSettings(settings),
+  setLocalStatsInterval: (interval) =>
+    (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).setLocalStatsInterval(interval),
+  setKeyRepairSettings: (settings) =>
+    (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).setKeyRepairSettings(settings),
   restartInactiveNodeService: (threshold, check, cooldown) =>
     inactiveNodeNotificationService.start(threshold, check, cooldown),
   stopInactiveNodeService: () => inactiveNodeNotificationService.stop(),
@@ -995,7 +997,7 @@ function gracefulShutdown(reason: string, exitCode = 0): void {
   const shutdownDependencies = (): void => {
     // Disconnect from Meshtastic
     try {
-      meshtasticManager.disconnect();
+      (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).disconnect();
       logger.debug('✅ Meshtastic connection closed');
     } catch (error) {
       logger.error('Error disconnecting from Meshtastic:', error);

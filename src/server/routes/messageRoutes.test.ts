@@ -9,6 +9,28 @@ import express from 'express';
 import session from 'express-session';
 import request from 'supertest';
 import databaseService from '../../services/database.js';
+
+// ---------------------------------------------------------------------------
+// sourceManagerRegistry stub — messageRoutes resolves its default-source
+// Meshtastic manager via sourceManagerRegistry.getManager()/getAllManagers()
+// + getPrimaryMeshtasticManager() (#3962 Phase 4.2a WP4, replacing the
+// retired (global as any).meshtasticManager S8 fallback). Default to
+// "nothing registered" so tests that don't care about the manager (search,
+// MeshCore-message search, etc.) behave exactly as before: empty MeshCore
+// results, and the default-source GET / handler falls through to the real
+// (unconfigured) fallbackManager, same as it always resolved through the
+// old Proxy alias in this unmocked test environment.
+// ---------------------------------------------------------------------------
+const registryStub = vi.hoisted(() => ({
+  getManager: vi.fn(),
+  getAllManagers: vi.fn(() => [] as unknown[]),
+  getPrimaryMeshtasticSourceId: vi.fn(() => null as string | null),
+}));
+
+vi.mock('../sourceManagerRegistry.js', () => ({
+  sourceManagerRegistry: registryStub,
+}));
+
 import messageRoutes from './messageRoutes.js';
 
 // Helper to create app with specific user
@@ -835,30 +857,35 @@ describe('Message Deletion Routes', () => {
   });
 
   describe('POST /api/messages/nodes/:nodeNum/purge-from-device', () => {
+    beforeEach(() => {
+      // Reset the registry stub to "nothing registered" before each test —
+      // individual tests below register a source-scoped manager as needed.
+      registryStub.getManager.mockReset().mockReturnValue(undefined);
+      registryStub.getAllManagers.mockReset().mockReturnValue([]);
+      registryStub.getPrimaryMeshtasticSourceId.mockReset().mockReturnValue(null);
+    });
+
     it('should return 500 when meshtasticManager not available', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
 
-      // Ensure global meshtasticManager is not set
-      const originalManager = (global as any).meshtasticManager;
-      delete (global as any).meshtasticManager;
-
+      // Nothing registered for 'source-a' and no primary/fallback available —
+      // both the sourceId-scoped lookup and getPrimaryMeshtasticManager() miss.
       const response = await request(app)
         .post('/api/messages/nodes/123456/purge-from-device')
         .send({ sourceId: 'source-a' });
 
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Internal server error');
-
-      // Restore
-      if (originalManager) (global as any).meshtasticManager = originalManager;
     });
 
     it('should return 400 for invalid nodeNum', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      (global as any).meshtasticManager = {
+      registryStub.getManager.mockReturnValue({
+        sourceId: 'source-a',
+        sourceType: 'meshtastic_tcp',
         getLocalNodeInfo: () => ({ nodeNum: 1 }),
         sendRemoveNode: vi.fn().mockResolvedValue(undefined),
-      };
+      });
 
       const response = await request(app)
         .post('/api/messages/nodes/invalid/purge-from-device')
@@ -866,16 +893,16 @@ describe('Message Deletion Routes', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('Invalid node number');
-
-      delete (global as any).meshtasticManager;
     });
 
     it('should return 400 when trying to purge local node', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      (global as any).meshtasticManager = {
+      registryStub.getManager.mockReturnValue({
+        sourceId: 'source-a',
+        sourceType: 'meshtastic_tcp',
         getLocalNodeInfo: () => ({ nodeNum: 123456 }),
         sendRemoveNode: vi.fn(),
-      };
+      });
 
       const response = await request(app)
         .post('/api/messages/nodes/123456/purge-from-device')
@@ -883,8 +910,6 @@ describe('Message Deletion Routes', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('Cannot purge the local node');
-
-      delete (global as any).meshtasticManager;
     });
 
     it('should return 403 when user lacks messages:write permission on this source', async () => {
@@ -900,10 +925,12 @@ describe('Message Deletion Routes', () => {
 
     it('should return 500 when sendRemoveNode fails', async () => {
       const app = createApp({ id: 1, username: 'admin', isAdmin: true });
-      (global as any).meshtasticManager = {
+      registryStub.getManager.mockReturnValue({
+        sourceId: 'source-a',
+        sourceType: 'meshtastic_tcp',
         getLocalNodeInfo: () => ({ nodeNum: 999 }),
         sendRemoveNode: vi.fn().mockRejectedValue(new Error('Device error')),
-      };
+      });
       Object.defineProperty(databaseService, 'nodes', {
         get: () => ({ getAllNodes: vi.fn().mockResolvedValue([]) }),
         configurable: true,
