@@ -28,7 +28,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { appBasename } from '../init';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
-import { formatSenderLabel } from '../utils/nodeHelpers';
+import { senderLabel, shortSenderLabel } from './unifiedSenderLabels';
 import { foldUnifiedMessagePages } from '../utils/unifiedMessageAccumulator';
 import LinkPreview from '../components/LinkPreview';
 import '../styles/unified.css';
@@ -147,21 +147,6 @@ function hopDisplay(start: number | null, limit: number | null, t: TFn): string 
   return '—';
 }
 
-// Per-message sender label: "Long Name (SHRT)" (issue #4193) — same
-// formatSenderLabel rules as the per-source Messages tab (#4196): no
-// duplicate or empty parenthetical. Compact contexts (reply previews,
-// reaction chips) keep shortSenderLabel below.
-export function senderLabel(msg: Pick<UnifiedMessage, 'fromNodeLongName' | 'fromNodeShortName' | 'fromNodeId' | 'fromNodeNum'>): string {
-  return formatSenderLabel(
-    msg.fromNodeLongName,
-    msg.fromNodeShortName,
-    msg.fromNodeId || `!${msg.fromNodeNum.toString(16)}`,
-  );
-}
-
-export function shortSenderLabel(msg: Pick<UnifiedMessage, 'fromNodeLongName' | 'fromNodeShortName' | 'fromNodeId' | 'fromNodeNum'>): string {
-  return msg.fromNodeShortName || msg.fromNodeLongName || msg.fromNodeId || `!${msg.fromNodeNum.toString(16)}`;
-}
 
 // ── Component ────────────────────────────────────────────────────────────
 

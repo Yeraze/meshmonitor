@@ -7,7 +7,7 @@
  * keeps its short-name-first single-value behavior.
  */
 import { describe, it, expect } from 'vitest';
-import { senderLabel, shortSenderLabel } from './UnifiedMessagesPage';
+import { senderLabel, shortSenderLabel } from './unifiedSenderLabels';
 
 const base = { fromNodeNum: 0xa1b2c3d4, fromNodeId: '!a1b2c3d4' };
 
