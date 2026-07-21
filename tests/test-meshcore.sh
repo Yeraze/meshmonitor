@@ -727,6 +727,72 @@ else
 fi
 echo ""
 
+# ==========================================
+# Phase 3: Remote-admin login + telemetry poll (Yeraze Repeater)
+# ==========================================
+LOGIN_STATUS_LINE="SKIPPED (MESHCORE_REPEATER_ADMIN_PASSWORD not set)"
+
+echo "Test 13: Yeraze Repeater remote-admin login"
+if [ -z "${MESHCORE_REPEATER_ADMIN_PASSWORD:-}" ]; then
+  echo -e "${YELLOW}⊘ SKIP${NC}: MESHCORE_REPEATER_ADMIN_PASSWORD not set (login assertion skipped)"
+else
+  # /admin/login requires a full 64-hex public key; guard before we send.
+  if ! printf '%s' "$REPEATER_PK" | grep -Eiq '^[0-9a-f]{64}$'; then
+    echo -e "${RED}✗ FAIL${NC}: REPEATER_PK is not a 64-hex key (got '${REPEATER_PK}'); cannot log in"; exit 1
+  fi
+  LOGIN_BODY=$(mktemp)   # rm -f'd below on every exit path (pass/fail)
+  LOGIN_CODE=$(curl -s -o "$LOGIN_BODY" -w "%{http_code}" -X POST \
+    "$BASE_URL/api/sources/$SRC_A_ID/meshcore/admin/login" \
+    -b "$COOKIE_FILE" -H "Content-Type: application/json" -H "X-CSRF-Token: $CSRF_TOKEN" \
+    -d "{\"publicKey\":\"$REPEATER_PK\",\"password\":$(printf '%s' "$MESHCORE_REPEATER_ADMIN_PASSWORD" | jq -R .)}")
+  LOGIN_OK=$(jq -r '.success // false' "$LOGIN_BODY" 2>/dev/null)
+  if [ "$LOGIN_CODE" = "200" ] && [ "$LOGIN_OK" = "true" ]; then
+    echo -e "${GREEN}✓ PASS${NC}: remote-admin login succeeded (repeater ${REPEATER_PK:0:8}…)"
+    LOGIN_STATUS_LINE="PASS (repeater ${REPEATER_PK:0:8}…)"
+  else
+    echo -e "${RED}✗ FAIL${NC}: login HTTP $LOGIN_CODE body=$(cat "$LOGIN_BODY")"
+    rm -f "$LOGIN_BODY"
+    exit 1
+  fi
+  rm -f "$LOGIN_BODY"
+fi
+echo ""
+
+echo "Test 14: Remote telemetry poll (Yeraze Repeater, status)"
+TELE_ATTEMPTS=${MESHCORE_TELEMETRY_ATTEMPTS:-5}
+TELE_INTERVAL=${MESHCORE_TELEMETRY_INTERVAL:-20}
+TELE_BODY=$(mktemp)
+tele_ok=false
+TELE_STATUS_LINE="FAILED"
+for attempt in $(seq 1 "$TELE_ATTEMPTS"); do
+  CODE=$(curl -s -o "$TELE_BODY" -w "%{http_code}" -X POST \
+    "$BASE_URL/api/sources/$SRC_A_ID/meshcore/nodes/$REPEATER_PK/telemetry/poll" \
+    -b "$COOKIE_FILE" -H "Content-Type: application/json" -H "X-CSRF-Token: $CSRF_TOKEN" \
+    -d '{"type":"status"}')
+  if [ "$CODE" = "429" ]; then
+    RA=$(jq -r '.retryAfterSecs // empty' "$TELE_BODY" 2>/dev/null); RA=${RA:-$TELE_INTERVAL}
+    echo "  (attempt $attempt: 60s TX-gate, retry in ${RA}s)"; sleep $((RA + 1)); continue
+  fi
+  if [ "$CODE" = "200" ]; then
+    WRITTEN=$(jq -r '.data.written // 0' "$TELE_BODY" 2>/dev/null)
+    if [ "${WRITTEN:-0}" -ge 1 ] 2>/dev/null; then
+      tele_ok=true
+      echo -e "${GREEN}✓ PASS${NC}: telemetry poll wrote $WRITTEN record(s) ($(jq -c '.data.sources' "$TELE_BODY"))"
+      TELE_STATUS_LINE="PASS ($WRITTEN record(s), $(jq -c '.data.sources' "$TELE_BODY"))"
+      break
+    fi
+    echo "  (attempt $attempt: HTTP 200 but written=0 / empty; retrying)"
+  else
+    echo "  (attempt $attempt: HTTP $CODE: $(cat "$TELE_BODY"))"
+  fi
+  sleep "$TELE_INTERVAL"
+done
+rm -f "$TELE_BODY"
+if ! $tele_ok; then
+  echo -e "${RED}✗ FAIL${NC}: no telemetry records from repeater within budget"; exit 1
+fi
+echo ""
+
 echo "=========================================="
 echo -e "${GREEN}✓ Both MeshCore companions connected + handshake verified${NC}"
 echo -e "${GREEN}✓ Channel ('#mm-systest') and repeater auto-ack messaging verified${NC}"
@@ -740,5 +806,7 @@ else
 fi
 echo "  Channel A->B on #mm-systest (slot $SLOT): verified (B inbox)"
 echo "  Repeater DM auto-ack: verified (Socket.IO meshcore:send-confirmed)"
+echo "  Repeater remote-admin login: $LOGIN_STATUS_LINE"
+echo "  Repeater telemetry poll (status): $TELE_STATUS_LINE"
 echo ""
 exit 0
