@@ -23,9 +23,12 @@ export const nodesSqlite = sqliteTable('nodes', {
   // Updated on every heard packet (most-recent wins). Map filters
   // (Show RF / Show UDP / Show MQTT) group on it; #3112.
   transportMechanism: integer('transportMechanism'),
-  /** #4240: accumulating bitmask (1=RF, 2=MQTT, 4=UDP) of every transport this
-   *  node has been heard over. ORed against the map's visibility toggles. */
-  transportFlags: integer('transportFlags'),
+  /** #4240: unix seconds last heard over each transport (NULL = never).
+   *  ORed against the map's visibility toggles, with the user's active window
+   *  applied so stale transports decay out. */
+  transportLastRf: integer('transportLastRf'),
+  transportLastMqtt: integer('transportLastMqtt'),
+  transportLastUdp: integer('transportLastUdp'),
   isStoreForwardServer: integer('isStoreForwardServer', { mode: 'boolean' }),
   macaddr: text('macaddr'),
   latitude: real('latitude'),
@@ -115,8 +118,10 @@ export const nodesPostgres = pgTable('nodes', {
   viaMqtt: pgBoolean('viaMqtt'),
   // Most-recent transport mechanism — see SQLite schema for the value map.
   transportMechanism: pgInteger('transportMechanism'),
-  /** #4240: accumulating transport bitmask — see the SQLite definition. */
-  transportFlags: pgInteger('transportFlags'),
+  /** #4240: per-transport last-seen stamps — see the SQLite definition. */
+  transportLastRf: pgBigint('transportLastRf', { mode: 'number' }),
+  transportLastMqtt: pgBigint('transportLastMqtt', { mode: 'number' }),
+  transportLastUdp: pgBigint('transportLastUdp', { mode: 'number' }),
   isStoreForwardServer: pgBoolean('isStoreForwardServer'),
   macaddr: pgText('macaddr'),
   // Using doublePrecision for coordinates (REAL only has ~7 significant digits, causes position jumps)
@@ -207,8 +212,10 @@ export const nodesMysql = mysqlTable('nodes', {
   viaMqtt: myBoolean('viaMqtt'),
   // Most-recent transport mechanism — see SQLite schema for the value map.
   transportMechanism: myInt('transportMechanism'),
-  /** #4240: accumulating transport bitmask — see the SQLite definition. */
-  transportFlags: myInt('transportFlags'),
+  /** #4240: per-transport last-seen stamps — see the SQLite definition. */
+  transportLastRf: myBigint('transportLastRf', { mode: 'number' }),
+  transportLastMqtt: myBigint('transportLastMqtt', { mode: 'number' }),
+  transportLastUdp: myBigint('transportLastUdp', { mode: 'number' }),
   isStoreForwardServer: myBoolean('isStoreForwardServer'),
   macaddr: myVarchar('macaddr', { length: 32 }),
   latitude: myDouble('latitude'),

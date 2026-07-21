@@ -15,7 +15,7 @@ import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
-import { transportBitFor } from '../utils/nodeTransport.js';
+import { transportColumnForPacket } from '../utils/nodeTransport.js';
 import { calculateLoRaFrequency } from '../utils/loraFrequency.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
@@ -5457,7 +5457,9 @@ class MeshtasticManager implements ISourceManager {
       // `transportFlags`, which ORs bits so an MQTT echo of RF traffic cannot
       // erase the node's RF reachability. See resolveRadioPacketTransport.
       const txMech = resolveRadioPacketTransport(meshPacket);
-      const txFlag = transportBitFor(txMech, meshPacket.viaMqtt);
+      // Stamp only the column for THIS packet's transport; the repository
+      // carries the other two forward untouched.
+      const txColumn = transportColumnForPacket(txMech, meshPacket.viaMqtt);
 
       const nodeData: any = {
         nodeNum: fromNum,
@@ -5478,8 +5480,13 @@ class MeshtasticManager implements ISourceManager {
         // Always set now (see txMech above) — an omitted key would let
         // upsertNode carry the stale value forward, which is the #4240 bug.
         transportMechanism: txMech,
-        // upsertNode ORs this into the stored mask rather than replacing it.
-        transportFlags: txFlag,
+        // Reuse the same resolved lastHeard so "last seen over RF" and
+        // "last heard" cannot disagree (incl. the replay-guard omission case,
+        // where an undefined lastHeard leaves the stamp untouched too).
+        [txColumn]: resolveLastHeardSec(
+          meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
+          Date.now(),
+        ),
       };
 
       // Only set default name if this is a brand new node

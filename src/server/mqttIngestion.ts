@@ -96,7 +96,9 @@ import { plausibleRxTime } from './utils/messageTime.js';
 import { shouldDiscardPosition } from '../utils/nullIsland.js';
 import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { logger } from '../utils/logger.js';
-import { TF_MQTT } from '../utils/nodeTransport.js';
+/** #4240: unix-seconds stamp for `transportLastMqtt`. Every row written by
+ *  this module was, by definition, just heard over MQTT. */
+const mqttSeenAt = (): number => Math.floor(Date.now() / 1000);
 import {
   nodeNumToId,
   type ServiceEnvelopeShape,
@@ -273,7 +275,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         hwModel: typeof user.hwModel === 'number' ? user.hwModel : (user.hw_model ?? 0),
         role: typeof user.role === 'number' ? user.role : undefined,
         viaMqtt: true,
-        transportMechanism: TransportMechanism.MQTT, transportFlags: TF_MQTT,
+        transportMechanism: TransportMechanism.MQTT, transportLastMqtt: mqttSeenAt(),
         // Stamp the channel-database-encoded channel so
         // `filterNodesByChannelPermission` can gate map visibility on
         // the Virtual Channel Permissions the #3108 UI directs admins
@@ -386,7 +388,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         // horizontal position is not worth persisting.
         altitude: positionIsBogus ? undefined : (typeof alt === 'number' ? alt : undefined),
         viaMqtt: true,
-        transportMechanism: TransportMechanism.MQTT, transportFlags: TF_MQTT,
+        transportMechanism: TransportMechanism.MQTT, transportLastMqtt: mqttSeenAt(),
         lastHeard: lastHeardSec,
         sourceId,
         createdAt: nowMs,
@@ -475,7 +477,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         // root cause of MQTT nodes appearing nameless after their NodeInfo.
         lastHeard: lastHeardSec,
         viaMqtt: true,
-        transportMechanism: TransportMechanism.MQTT, transportFlags: TF_MQTT,
+        transportMechanism: TransportMechanism.MQTT, transportLastMqtt: mqttSeenAt(),
         createdAt: nowMs,
         updatedAt: nowMs,
       }, sourceId).catch(err => logger.error('MQTT upsertNode failed:', err));
@@ -527,7 +529,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
         // root cause of MQTT nodes appearing nameless after their NodeInfo.
         lastHeard: lastHeardSec,
         viaMqtt: true,
-        transportMechanism: TransportMechanism.MQTT, transportFlags: TF_MQTT,
+        transportMechanism: TransportMechanism.MQTT, transportLastMqtt: mqttSeenAt(),
         createdAt: nowMs,
         updatedAt: nowMs,
       }, sourceId).catch(err => logger.error('MQTT upsertNode failed:', err));
@@ -614,7 +616,7 @@ async function ingestTraceroute(
   const existingFrom = await databaseService.nodes.getNode(fromNum, sourceId);
   await databaseService.nodes.upsertNode(
     existingFrom
-      ? { nodeNum: fromNum, nodeId: fromNodeId, lastHeard, viaMqtt: true, transportMechanism: TransportMechanism.MQTT, transportFlags: TF_MQTT }
+      ? { nodeNum: fromNum, nodeId: fromNodeId, lastHeard, viaMqtt: true, transportMechanism: TransportMechanism.MQTT, transportLastMqtt: mqttSeenAt() }
       : {
           nodeNum: fromNum,
           nodeId: fromNodeId,
@@ -622,7 +624,7 @@ async function ingestTraceroute(
           shortName: fromNodeId.slice(-4),
           hwModel: 0,
           viaMqtt: true,
-          transportMechanism: TransportMechanism.MQTT, transportFlags: TF_MQTT,
+          transportMechanism: TransportMechanism.MQTT, transportLastMqtt: mqttSeenAt(),
           lastHeard,
           createdAt: nowMs,
           updatedAt: nowMs,
@@ -634,7 +636,7 @@ async function ingestTraceroute(
     const existingTo = await databaseService.nodes.getNode(toNum, sourceId);
     await databaseService.nodes.upsertNode(
       existingTo
-        ? { nodeNum: toNum, nodeId: toNodeId, lastHeard, viaMqtt: true, transportMechanism: TransportMechanism.MQTT, transportFlags: TF_MQTT }
+        ? { nodeNum: toNum, nodeId: toNodeId, lastHeard, viaMqtt: true, transportMechanism: TransportMechanism.MQTT, transportLastMqtt: mqttSeenAt() }
         : {
             nodeNum: toNum,
             nodeId: toNodeId,
@@ -642,7 +644,7 @@ async function ingestTraceroute(
             shortName: toNodeId.slice(-4),
             hwModel: 0,
             viaMqtt: true,
-            transportMechanism: TransportMechanism.MQTT, transportFlags: TF_MQTT,
+            transportMechanism: TransportMechanism.MQTT, transportLastMqtt: mqttSeenAt(),
             lastHeard,
             createdAt: nowMs,
             updatedAt: nowMs,
@@ -694,7 +696,7 @@ async function ingestTraceroute(
         shortName: hopId.slice(-4),
         hwModel: 0,
         viaMqtt: true,
-        transportMechanism: TransportMechanism.MQTT, transportFlags: TF_MQTT,
+        transportMechanism: TransportMechanism.MQTT, transportLastMqtt: mqttSeenAt(),
         createdAt: nowMs,
         updatedAt: nowMs,
       },
@@ -831,7 +833,7 @@ async function ingestNeighborInfo(
         shortName: fromNodeId.slice(-4),
         hwModel: 0,
         viaMqtt: true,
-        transportMechanism: TransportMechanism.MQTT, transportFlags: TF_MQTT,
+        transportMechanism: TransportMechanism.MQTT, transportLastMqtt: mqttSeenAt(),
         lastHeard: lastHeardSec,
         createdAt: nowMs,
         updatedAt: nowMs,
@@ -868,7 +870,7 @@ async function ingestNeighborInfo(
         hwModel: 0,
         hopsAway: senderHopsAway + 1,
         viaMqtt: true,
-        transportMechanism: TransportMechanism.MQTT, transportFlags: TF_MQTT,
+        transportMechanism: TransportMechanism.MQTT, transportLastMqtt: mqttSeenAt(),
         createdAt: nowMs,
         updatedAt: nowMs,
       },
@@ -932,7 +934,7 @@ async function ingestPaxcounter(
     // empty string / 0 as a provided value and overwrites).
     lastHeard: lastHeardSec,
     viaMqtt: true,
-    transportMechanism: TransportMechanism.MQTT, transportFlags: TF_MQTT,
+    transportMechanism: TransportMechanism.MQTT, transportLastMqtt: mqttSeenAt(),
     createdAt: nowMs,
     updatedAt: nowMs,
   }, sourceId);
@@ -1025,7 +1027,7 @@ async function ingestStoreForward(
       // empty string / 0 as a provided value and overwrites).
       lastHeard: lastHeardSec,
       viaMqtt: true,
-      transportMechanism: TransportMechanism.MQTT, transportFlags: TF_MQTT,
+      transportMechanism: TransportMechanism.MQTT, transportLastMqtt: mqttSeenAt(),
       sourceId,
       createdAt: nowMs,
       updatedAt: nowMs,

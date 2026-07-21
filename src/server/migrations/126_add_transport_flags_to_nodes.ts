@@ -1,28 +1,28 @@
 /**
- * Migration 126: Add `transportFlags` bitmask to `nodes` and backfill from
- * `transportMechanism` / `viaMqtt`.
+ * Migration 126: Add per-transport "last seen" timestamps to `nodes`.
  *
  * Migration 066 lifted the MOST-RECENT `MeshPacket.transport_mechanism` onto
  * the node row. A single last-wins column cannot express "this node is
  * reachable over RF *and* MQTT", which is the common case: when the local node
  * has an MQTT uplink it receives echoes of the same RF traffic flagged
  * `viaMqtt`, so a last-wins column thrashes and MQTT wins whenever an echo
- * happens to land last. The node then disappears from the map, because the
- * "Show MQTT" toggle defaults to off (#3112). That is #4240.
+ * lands last. The node then disappears from the map, because the "Show MQTT"
+ * toggle defaults to off (#3112). That is #4240.
  *
- * `transportFlags` accumulates instead of replacing: each bit records that the
- * node has EVER been heard over that transport, and the map ORs the bits
- * against the three visibility toggles. A node heard over RF stays visible
- * under "Show RF" no matter how many MQTT echoes arrive afterwards.
+ * Rather than a set of sticky booleans, each transport records WHEN the node
+ * was last heard over it (unix seconds, NULL = never). That gives the map an
+ * OR across transports *and* natural decay: a transport counts as current only
+ * if its timestamp is inside the user's configured active window
+ * (`maxNodeAgeHours`). A node that stops being heard over RF stops being an RF
+ * node on its own, with no sweep job and no extra bookkeeping.
  *
- * Bits:
- *   1  RF   (LORA / LORA_ALT* / INTERNAL / API / unknown)
- *   2  MQTT
- *   4  UDP  (MULTICAST_UDP)
+ * Backfill uses the node's existing `lastHeard` as the best available evidence
+ * of when it was last seen on its currently-classified transport, mirroring
+ * `classifyNodeTransport` so nothing changes visibility at migration time.
+ * Rows with a NULL `lastHeard` get NULL timestamps and fall back to the legacy
+ * single-value classification at read time.
  *
- * Backfill mirrors `classifyNodeTransport` exactly, so no node changes
- * visibility at migration time — behavior only diverges as new packets add
- * bits. Rows keep `transportMechanism` for "most recently heard via" display.
+ * `transportMechanism` is retained for "most recently heard via" display.
  *
  * Idempotent across SQLite / PostgreSQL / MySQL.
  */
@@ -46,53 +46,64 @@ const errMessage = (e: unknown): string => (e instanceof Error ? e.message : Str
 
 const LABEL = 'Migration 126';
 const TABLE = 'nodes';
-const COLUMN = 'transportFlags';
 
-const RF = 1;
-const MQTT = 2;
-const UDP = 4;
+const COL_RF = 'transportLastRf';
+const COL_MQTT = 'transportLastMqtt';
+const COL_UDP = 'transportLastUdp';
+const COLUMNS = [COL_RF, COL_MQTT, COL_UDP] as const;
 
 const TX_MQTT = 5;
 const TX_UDP = 6;
 
 /**
- * CASE expression mapping the legacy single-value columns onto bits.
- * `viaMqttTrue` is the backend-specific truthy comparison for `viaMqtt`.
+ * Backfill each column with `lastHeard` when the node's legacy classification
+ * matches that transport, else NULL. `q` quotes identifiers per backend and
+ * `viaMqttTrue` is the backend-specific truthy comparison.
+ *
+ * The CASE arms mirror `classifyNodeTransport` exactly, including its
+ * "INTERNAL / API / unknown falls back to viaMqtt, else RF" tail.
  */
-const backfillCase = (viaMqttTrue: string, q: (c: string) => string) => `
-  CASE
-    WHEN ${q('transportMechanism')} = ${TX_MQTT} THEN ${MQTT}
-    WHEN ${q('transportMechanism')} = ${TX_UDP}  THEN ${UDP}
-    WHEN ${q('transportMechanism')} IN (1, 2, 3, 4) THEN ${RF}
-    WHEN ${viaMqttTrue} THEN ${MQTT}
-    ELSE ${RF}
-  END`;
+function backfillExpr(column: string, viaMqttTrue: string, q: (c: string) => string): string {
+  const tx = q('transportMechanism');
+  const lastHeard = q('lastHeard');
+  const isMqtt = `(${tx} = ${TX_MQTT} OR (${tx} IS NULL AND ${viaMqttTrue}) OR (${tx} IN (0, 7) AND ${viaMqttTrue}))`;
+  const isUdp = `${tx} = ${TX_UDP}`;
+  // RF is the residual: everything that is neither MQTT nor UDP.
+  const isRf = `NOT (${isMqtt}) AND NOT (${isUdp})`;
+
+  const predicate = column === COL_MQTT ? isMqtt : column === COL_UDP ? isUdp : isRf;
+  return `CASE WHEN ${predicate} THEN ${lastHeard} ELSE NULL END`;
+}
 
 // ============ SQLite ============
 
 export const migration = {
   up: (db: Database): void => {
-    logger.info(`${LABEL} (SQLite): adding ${TABLE}.${COLUMN}...`);
-    try {
-      db.exec(`ALTER TABLE ${TABLE} ADD COLUMN ${COLUMN} INTEGER`);
-      logger.debug(`${LABEL} (SQLite): added ${TABLE}.${COLUMN}`);
-    } catch (e: unknown) {
-      if (errMessage(e).includes('duplicate column')) {
-        logger.debug(`${LABEL} (SQLite): ${TABLE}.${COLUMN} already present, skipping ADD`);
-      } else {
-        logger.error(`${LABEL} (SQLite): could not add ${TABLE}.${COLUMN}:`, errMessage(e));
-        throw e;
+    logger.info(`${LABEL} (SQLite): adding per-transport last-seen columns...`);
+    for (const column of COLUMNS) {
+      try {
+        db.exec(`ALTER TABLE ${TABLE} ADD COLUMN ${column} INTEGER`);
+        logger.debug(`${LABEL} (SQLite): added ${TABLE}.${column}`);
+      } catch (e: unknown) {
+        if (errMessage(e).includes('duplicate column')) {
+          logger.debug(`${LABEL} (SQLite): ${TABLE}.${column} already present, skipping ADD`);
+        } else {
+          logger.error(`${LABEL} (SQLite): could not add ${TABLE}.${column}:`, errMessage(e));
+          throw e;
+        }
       }
     }
 
     try {
-      // Guarded by `IS NULL` so a re-run after a crash cannot clobber bits that
-      // live traffic has already accumulated.
+      // Guarded so a crash-rerun cannot clobber timestamps live traffic has
+      // already written. Only rows where ALL THREE are still NULL are touched.
+      const sets = COLUMNS
+        .map(c => `${c} = ${backfillExpr(c, 'viaMqtt = 1', x => x)}`)
+        .join(', ');
       const result = db
         .prepare(
-          `UPDATE ${TABLE}
-             SET ${COLUMN} = ${backfillCase('viaMqtt = 1', c => c)}
-           WHERE ${COLUMN} IS NULL`,
+          `UPDATE ${TABLE} SET ${sets}
+            WHERE ${COL_RF} IS NULL AND ${COL_MQTT} IS NULL AND ${COL_UDP} IS NULL`,
         )
         .run();
       logger.info(`${LABEL} (SQLite): backfilled ${result.changes} rows`);
@@ -110,13 +121,15 @@ export const migration = {
 // ============ PostgreSQL ============
 
 export async function runMigration126Postgres(client: PgClientLike): Promise<void> {
-  logger.info(`${LABEL} (PostgreSQL): adding ${TABLE}.${COLUMN}...`);
-  await client.query(`ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS "${COLUMN}" INTEGER`);
+  logger.info(`${LABEL} (PostgreSQL): adding per-transport last-seen columns...`);
+  for (const column of COLUMNS) {
+    await client.query(`ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS "${column}" BIGINT`);
+  }
   const q = (c: string) => `"${c}"`;
+  const sets = COLUMNS.map(c => `"${c}" = ${backfillExpr(c, '"viaMqtt" = TRUE', q)}`).join(', ');
   const result = await client.query(
-    `UPDATE ${TABLE}
-       SET "${COLUMN}" = ${backfillCase('"viaMqtt" = TRUE', q)}
-     WHERE "${COLUMN}" IS NULL`,
+    `UPDATE ${TABLE} SET ${sets}
+      WHERE "${COL_RF}" IS NULL AND "${COL_MQTT}" IS NULL AND "${COL_UDP}" IS NULL`,
   );
   logger.info(`${LABEL} (PostgreSQL): backfilled ${result.rowCount ?? 0} rows`);
 }
@@ -124,25 +137,27 @@ export async function runMigration126Postgres(client: PgClientLike): Promise<voi
 // ============ MySQL ============
 
 export async function runMigration126Mysql(pool: MysqlPoolLike): Promise<void> {
-  logger.info(`${LABEL} (MySQL): adding ${TABLE}.${COLUMN}...`);
+  logger.info(`${LABEL} (MySQL): adding per-transport last-seen columns...`);
   const conn = await pool.getConnection();
   try {
-    const [rows] = await conn.query(
-      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
-      [TABLE, COLUMN],
-    );
-    if (Array.isArray(rows) && rows.length === 0) {
-      await conn.query(`ALTER TABLE ${TABLE} ADD COLUMN ${COLUMN} INT`);
-      logger.debug(`${LABEL} (MySQL): added ${TABLE}.${COLUMN}`);
-    } else {
-      logger.debug(`${LABEL} (MySQL): ${TABLE}.${COLUMN} already present, skipping ADD`);
+    for (const column of COLUMNS) {
+      const [rows] = await conn.query(
+        `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+        [TABLE, column],
+      );
+      if (Array.isArray(rows) && rows.length === 0) {
+        await conn.query(`ALTER TABLE ${TABLE} ADD COLUMN ${column} BIGINT`);
+        logger.debug(`${LABEL} (MySQL): added ${TABLE}.${column}`);
+      } else {
+        logger.debug(`${LABEL} (MySQL): ${TABLE}.${column} already present, skipping ADD`);
+      }
     }
 
+    const sets = COLUMNS.map(c => `${c} = ${backfillExpr(c, 'viaMqtt = TRUE', x => x)}`).join(', ');
     const [updateResult] = await conn.query(
-      `UPDATE ${TABLE}
-         SET ${COLUMN} = ${backfillCase('viaMqtt = TRUE', c => c)}
-       WHERE ${COLUMN} IS NULL`,
+      `UPDATE ${TABLE} SET ${sets}
+        WHERE ${COL_RF} IS NULL AND ${COL_MQTT} IS NULL AND ${COL_UDP} IS NULL`,
     );
     const affected = (updateResult as { affectedRows?: number } | null)?.affectedRows ?? 0;
     logger.info(`${LABEL} (MySQL): backfilled ${affected} rows`);

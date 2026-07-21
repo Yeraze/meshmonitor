@@ -455,10 +455,25 @@ export function mergeUnifiedSourceData(
     // MQTT on another stays visible under "Show RF" even with "Show MQTT" off.
     // The whole-record merge keeps only the newest transportMechanism, which
     // would otherwise drop the other transports.
-    // #4240: use each record's own class SET (its persisted transportFlags),
-    // not a single classification — a source whose row records both RF and
-    // MQTT must contribute both, or the cross-source union silently narrows
-    // back to last-wins.
+    // #4240: merge the per-transport last-seen stamps by taking the MAX across
+    // sources, rather than precomputing a class list here. Keeping timestamps
+    // (not classes) is what lets the consumer apply the user's active window —
+    // a precomputed list would freeze in whatever staleness state it was built
+    // with, and Unified nodes would never decay.
+    const maxStamp = (key: 'transportLastRf' | 'transportLastMqtt' | 'transportLastUdp') => {
+      let best: number | null = null;
+      for (const e of entries) {
+        const v = (e.node as Record<string, unknown>)[key];
+        if (typeof v === 'number' && (best === null || v > best)) best = v;
+      }
+      return best;
+    };
+    merged.transportLastRf = maxStamp('transportLastRf');
+    merged.transportLastMqtt = maxStamp('transportLastMqtt');
+    merged.transportLastUdp = maxStamp('transportLastUdp');
+
+    // Legacy union, still consulted for records that carry no stamps at all
+    // (pre-migration-126 rows).
     const classes = new Set<NodeTransportClass>();
     for (const e of entries) {
       for (const c of getNodeTransportClasses(e.node)) classes.add(c);

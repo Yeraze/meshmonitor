@@ -34,13 +34,16 @@ export interface DeviceInfo {
    */
   transportMechanism?: number | null;
   /**
-   * #4240: accumulating bitmask of every transport this node has been heard
-   * over (1=RF, 2=MQTT, 4=UDP). Map visibility ORs these against the Show
-   * RF/UDP/MQTT toggles, so a node reachable both ways stays visible when
-   * either toggle is on. Prefer this over `transportMechanism`, which is
-   * last-wins and gets overwritten by MQTT echoes.
+   * #4240: unix seconds this node was last heard over each transport (NULL =
+   * never). Map visibility ORs these against the Show RF/UDP/MQTT toggles and
+   * applies the user's active window, so a node reachable both ways stays
+   * visible under either toggle and a transport that goes quiet decays out.
+   * Prefer these over `transportMechanism`, which is last-wins and gets
+   * overwritten by MQTT echoes.
    */
-  transportFlags?: number | null;
+  transportLastRf?: number | null;
+  transportLastMqtt?: number | null;
+  transportLastUdp?: number | null;
   isStoreForwardServer?: boolean;
   lastHeard?: number;
   snr?: number;

@@ -86,10 +86,12 @@ export interface DbNode {
   viaMqtt?: boolean;
   /** meshtastic.MeshPacket.TransportMechanism — see migration 066. */
   transportMechanism?: number | null;
-  /** #4240: accumulating transport bitmask (1=RF, 2=MQTT, 4=UDP), ORed on
-   *  write. Migration 126. Map visibility keys off this, not the last-wins
+  /** #4240: unix seconds last heard over each transport (NULL = never).
+   *  Migration 126. Map visibility keys off these, not the last-wins
    *  transportMechanism. */
-  transportFlags?: number | null;
+  transportLastRf?: number | null;
+  transportLastMqtt?: number | null;
+  transportLastUdp?: number | null;
   macaddr?: string;
   latitude?: number;
   longitude?: number;
