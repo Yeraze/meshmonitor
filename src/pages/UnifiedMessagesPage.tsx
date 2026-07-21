@@ -32,6 +32,7 @@ import { foldUnifiedMessagePages } from '../utils/unifiedMessageAccumulator';
 import LinkPreview from '../components/LinkPreview';
 import '../styles/unified.css';
 import { UiIcon } from '../components/icons';
+import { resolveReplyPreview } from '../utils/replyPreview';
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
 
@@ -68,29 +69,6 @@ interface UnifiedMessage {
   timestamp: number; // canonical device time (earliest heard) — for display
   createdAt: number; // earliest server DB arrival time — for ordering / pagination cursor (#3122)
   receptions: Reception[];
-}
-
-/**
- * Reply-preview state for one message (#4245).
- *
- * `unknown` is the case the original code silently collapsed into `none`: the
- * message *is* a reply, but the parent packet was never received by any source
- * (or has since been purged), so there is nothing to quote. It still has to
- * render a reply box — otherwise the message is indistinguishable from one
- * that was never a reply at all.
- */
-export type ReplyPreviewState =
-  | { kind: 'none' }
-  | { kind: 'unknown' }
-  | { kind: 'resolved'; parent: UnifiedMessage };
-
-export function resolveReplyPreview(
-  replyId: number | null | undefined,
-  byPacketId: Pick<Map<number, UnifiedMessage>, 'get'>,
-): ReplyPreviewState {
-  if (replyId == null) return { kind: 'none' };
-  const parent = byPacketId.get(replyId);
-  return parent ? { kind: 'resolved', parent } : { kind: 'unknown' };
 }
 
 interface UnifiedChannel {

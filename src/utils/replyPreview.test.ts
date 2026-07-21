@@ -1,9 +1,4 @@
 /**
- * @vitest-environment jsdom
- *
- * jsdom is required only because importing the page module pulls in its CSS and
- * React dependencies; `resolveReplyPreview` itself is pure.
- *
  * #4245 — Unified Messages reply preview resolution.
  *
  * Before this fix the page did `parent && (...)`, so a message whose parent
@@ -12,11 +7,11 @@
  * distinction that the UI now depends on.
  */
 import { describe, it, expect } from 'vitest';
-import { resolveReplyPreview } from './UnifiedMessagesPage';
+import { resolveReplyPreview } from './replyPreview';
 
-// Minimal structural stand-in; resolveReplyPreview only ever reads the object
-// back out of the map, so the extra UnifiedMessage fields are irrelevant here.
-const parentMsg = { dedupKey: 'p1', packetId: 111, text: 'the original' } as never;
+// resolveReplyPreview is generic and only ever reads the object back out of
+// the map, so any shape works as a stand-in.
+const parentMsg = { dedupKey: 'p1', packetId: 111, text: 'the original' };
 
 describe('resolveReplyPreview (#4245)', () => {
   it('returns "none" when the message is not a reply', () => {
