@@ -22,6 +22,7 @@ interface MockPolylineProps {
   positions: [number, number][];
   pathOptions?: { color?: string; weight?: number; opacity?: number; dashArray?: string };
   className?: string;
+  interactive?: boolean;
   eventHandlers?: { click?: () => void };
   children?: ReactNode;
 }
@@ -42,6 +43,7 @@ vi.mock('react-leaflet', () => ({
       data-opacity={props.pathOptions?.opacity}
       data-dash={props.pathOptions?.dashArray ?? ''}
       data-classname={props.className ?? ''}
+      data-interactive={String(props.interactive ?? true)}
       data-positions={JSON.stringify(props.positions)}
       onClick={props.eventHandlers?.click}
     >
@@ -127,11 +129,39 @@ describe('NeighborLinksLayer', () => {
   });
 
   describe('eventHandlers passthrough', () => {
-    it('fires the descriptor click handler on Polyline click', () => {
+    it('fires the descriptor click handler on the hit-line click', () => {
       const onClick = vi.fn();
       renderLayer([link({ key: 'a', eventHandlers: { click: onClick } })]);
-      fireEvent.click(screen.getByTestId('polyline'));
+      const [visible, hit] = screen.getAllByTestId('polyline');
+      fireEvent.click(hit);
       expect(onClick).toHaveBeenCalledTimes(1);
+      fireEvent.click(visible); // visible line carries no handler
+      expect(onClick).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('invisible hit-line for interactive links (thin-line click target fix)', () => {
+    it('renders a wide transparent companion polyline when eventHandlers is set', () => {
+      renderLayer([link({ key: 'a', eventHandlers: { click: vi.fn() } })]);
+      const polys = screen.getAllByTestId('polyline');
+      expect(polys).toHaveLength(2);
+      const [visible, hit] = polys;
+      expect(visible).toHaveAttribute('data-interactive', 'false');
+      expect(hit).toHaveAttribute('data-weight', '12');
+      expect(hit).toHaveAttribute('data-opacity', '0');
+      expect(hit).toHaveAttribute('data-positions', visible.getAttribute('data-positions'));
+    });
+
+    it('renders a hit-line when only children (popup) is set', () => {
+      renderLayer([link({ key: 'a', children: <div data-testid="popup-content">x</div> })]);
+      expect(screen.getAllByTestId('polyline')).toHaveLength(2);
+    });
+
+    it('renders a single interactive-by-default polyline for select-only-less links', () => {
+      renderLayer([link({ key: 'a' })]);
+      const polys = screen.getAllByTestId('polyline');
+      expect(polys).toHaveLength(1);
+      expect(polys[0]).toHaveAttribute('data-interactive', 'true');
     });
   });
 
@@ -179,11 +209,13 @@ describe('NeighborLinksLayer', () => {
   });
 
   describe('popup / tooltip render-prop', () => {
-    it('mounts descriptor children inside the Polyline', () => {
+    it('mounts descriptor children inside the hit-line Polyline', () => {
       renderLayer([
         link({ key: 'a', children: <div data-testid="popup-content">Neighbor info</div> }),
       ]);
       expect(screen.getByTestId('popup-content')).toHaveTextContent('Neighbor info');
+      const [, hit] = screen.getAllByTestId('polyline');
+      expect(hit.querySelector('[data-testid="popup-content"]')).not.toBeNull();
     });
 
     it('renders no popup content when children is omitted', () => {

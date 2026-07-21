@@ -45,6 +45,16 @@ export interface NeighborLinksLayerProps {
 }
 
 /**
+ * Interactive links render an invisible companion polyline this wide so a
+ * real pointer can actually hit them. Neighbor links are drawn at weight
+ * 1–1.5 with a dash pattern, and SVG hit-testing covers only the painted
+ * stroke — a 1px dashed line is an effectively unclickable target (and
+ * Leaflet's `clickTolerance` applies only to the Canvas renderer, which the
+ * maps don't use because it drops `className` support).
+ */
+export const NEIGHBOR_LINK_HIT_WEIGHT = 12;
+
+/**
  * Shared neighbor-link render layer (Map Consolidation epic #4047, Phase 7,
  * WP2). Promoted from the 7 near-identical inline/layer renderings across
  * NodesTab, DashboardMap (meshtastic + MeshCore), MapAnalysis
@@ -72,16 +82,29 @@ export function NeighborLinksLayer({ links }: NeighborLinksLayerProps) {
         const fractions = arrows?.fractions ?? neighborArrowFractions;
         const bearing = arrows ? bearingBetween(neighborPos, nodePos) : 0;
 
+        // Interactive links get an invisible wide "hit" companion carrying
+        // the handlers/popup, and the thin visible line opts out of pointer
+        // events so the pair never double-fires. Non-interactive links render
+        // exactly as before.
+        const hasHitLine = Boolean(link.eventHandlers || link.children);
+
         return (
           <Fragment key={link.key}>
             <Polyline
               positions={link.positions}
               pathOptions={link.pathOptions}
               className={link.className}
-              eventHandlers={link.eventHandlers}
-            >
-              {link.children}
-            </Polyline>
+              interactive={!hasHitLine}
+            />
+            {hasHitLine && (
+              <Polyline
+                positions={link.positions}
+                pathOptions={{ weight: NEIGHBOR_LINK_HIT_WEIGHT, opacity: 0 }}
+                eventHandlers={link.eventHandlers}
+              >
+                {link.children}
+              </Polyline>
+            )}
             {arrows &&
               fractions.map((fraction) => (
                 <Marker
