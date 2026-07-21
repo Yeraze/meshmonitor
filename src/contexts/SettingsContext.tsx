@@ -12,6 +12,7 @@ import i18n from '../config/i18n';
 import { type TapbackEmoji, DEFAULT_TAPBACK_EMOJIS } from '../components/EmojiPickerModal/EmojiPickerModal';
 import { DEFAULT_TARGET_ZOOM } from '../utils/mapZoomAnimation';
 import { setDiscardInvalidPositionsDisplay } from '../utils/positionDisplayConfig';
+import { setActiveWindowHours } from '../utils/activeWindowConfig';
 import { IconStyleProvider, type IconStyle } from './IconStyleContext';
 
 export type { IconStyle } from './IconStyleContext';
@@ -327,7 +328,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const [maxNodeAgeHours, setMaxNodeAgeHoursState] = useState<number>(() => {
     const saved = localStorage.getItem('maxNodeAgeHours');
-    return saved ? parseInt(saved) : 24;
+    const initial = saved ? parseInt(saved) : 24;
+    // #4240: seed the non-context mirror at boot so transport decay uses the
+    // user's window from the first render, not the module default.
+    setActiveWindowHours(initial);
+    return initial;
   });
 
   const [inactiveNodeThresholdHours, setInactiveNodeThresholdHoursState] = useState<number>(() => {
@@ -557,6 +562,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const setMaxNodeAgeHours = (value: number) => {
     setMaxNodeAgeHoursState(value);
     localStorage.setItem('maxNodeAgeHours', value.toString());
+    setActiveWindowHours(value); // #4240: keep the transport-decay mirror in sync
   };
 
   const setInactiveNodeThresholdHours = (value: number) => {
@@ -1242,6 +1248,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             if (!isNaN(value)) {
               setMaxNodeAgeHoursState(value);
               localStorage.setItem('maxNodeAgeHours', value.toString());
+              setActiveWindowHours(value); // #4240: server value wins for decay too
             }
           }
 

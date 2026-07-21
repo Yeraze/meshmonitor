@@ -15,6 +15,7 @@ import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
+import { transportColumnForPacket } from '../utils/nodeTransport.js';
 import { calculateLoRaFrequency } from '../utils/loraFrequency.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
@@ -59,7 +60,7 @@ import { detectChannelMoves } from './utils/channelMoveDetection.js';
 import { mergeNodesAcrossSources } from './utils/mergeNodesAcrossSources.js';
 import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } from './utils/spoofDetection.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName } from './constants/meshtastic.js';
 import { normalizeChannelRole } from './constants/channelRole.js';
 import { isAutoFavoriteEligible } from './constants/autoFavorite.js';
 import { createRequire } from 'module';
@@ -5451,9 +5452,14 @@ class MeshtasticManager implements ISourceManager {
       // src/server/constants/meshtastic.ts. The field is proto3
       // (default 0 = INTERNAL when unset), so only record values that
       // came across the wire as actual numbers.
-      const txMech = typeof meshPacket.transportMechanism === 'number'
-        ? meshPacket.transportMechanism
-        : (meshPacket.viaMqtt === true ? 5 /* MQTT */ : undefined);
+      // #4240: always resolves to a value. `transportMechanism` remains
+      // last-wins ("most recently heard via"), but map visibility now keys off
+      // `transportFlags`, which ORs bits so an MQTT echo of RF traffic cannot
+      // erase the node's RF reachability. See resolveRadioPacketTransport.
+      const txMech = resolveRadioPacketTransport(meshPacket);
+      // Stamp only the column for THIS packet's transport; the repository
+      // carries the other two forward untouched.
+      const txColumn = transportColumnForPacket(txMech, meshPacket.viaMqtt);
 
       const nodeData: any = {
         nodeNum: fromNum,
@@ -5471,7 +5477,16 @@ class MeshtasticManager implements ISourceManager {
         // traceroutes, position requests) use the channel the node is actually communicating
         // on. Previously only set from NodeInfo, which could get stuck on a secondary channel.
         ...(channelFromPacket !== undefined && { channel: channelFromPacket }),
-        ...(txMech !== undefined && { transportMechanism: txMech }),
+        // Always set now (see txMech above) — an omitted key would let
+        // upsertNode carry the stale value forward, which is the #4240 bug.
+        transportMechanism: txMech,
+        // Reuse the same resolved lastHeard so "last seen over RF" and
+        // "last heard" cannot disagree (incl. the replay-guard omission case,
+        // where an undefined lastHeard leaves the stamp untouched too).
+        [txColumn]: resolveLastHeardSec(
+          meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
+          Date.now(),
+        ),
       };
 
       // Only set default name if this is a brand new node

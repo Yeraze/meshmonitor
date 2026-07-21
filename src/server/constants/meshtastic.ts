@@ -128,6 +128,36 @@ export function isViaMqtt(mechanism: number | undefined): boolean {
 }
 
 /**
+ * Decide what transport to stamp on a node row from a packet that arrived over
+ * the locally-connected radio's TCP/serial link (#4240).
+ *
+ * MUST always return a value. Returning undefined for "firmware didn't say"
+ * caused the caller to omit the key from the upsert, which made `upsertNode`
+ * carry the node's PREVIOUS value forward — so classification was sticky, not
+ * "most-recent wins" as intended. One packet ever heard via an MQTT bridge
+ * stamped a node MQTT permanently, and since the map's Show MQTT toggle
+ * defaults to off, that node disappeared for good: immune to favoriting,
+ * un-hiding, and fresh position exchanges.
+ *
+ * Note protobuf.js yields `null` (not 0) for an unset scalar, so "absent" and
+ * "explicitly INTERNAL (0)" are genuinely indistinguishable on the wire — which
+ * is why an explicit numeric value is always preferred when present.
+ *
+ * The LoRa fallback is sound only for this link: packets reaching it came off
+ * our own radio. A node our radio hears solely over its MQTT uplink still
+ * carries the legacy `viaMqtt` flag and stays classified MQTT, so MQTT-only
+ * nodes remain hidden by default as intended (#3112). MQTT-bridge *sources*
+ * stamp `TransportMechanism.MQTT` explicitly elsewhere and are unaffected.
+ */
+export function resolveRadioPacketTransport(packet: {
+  transportMechanism?: number | null;
+  viaMqtt?: boolean | null;
+}): number {
+  if (typeof packet.transportMechanism === 'number') return packet.transportMechanism;
+  return packet.viaMqtt === true ? TransportMechanism.MQTT : TransportMechanism.LORA;
+}
+
+/**
  * Config.LoRaConfig.FEM_LNA_Mode — FEM (Front-End Module) LNA (Low Noise Amplifier) mode.
  * Added in Meshtastic firmware v2.7.20 (meshtastic/firmware#9809). Surfaced from
  * meshtastic/protobufs config.proto `enum FEM_LNA_Mode` (field `fem_lna_mode = 106`).

@@ -374,6 +374,13 @@ export class NodesRepository extends BaseRepository {
           hopsAway: nodeData.hopsAway ?? existingNode.hopsAway,
           viaMqtt: nodeData.viaMqtt ?? existingNode.viaMqtt,
           transportMechanism: nodeData.transportMechanism ?? existingNode.transportMechanism,
+          // #4240: per-transport last-seen stamps. Each carries forward
+          // independently, so an MQTT echo advances only transportLastMqtt and
+          // cannot erase the node's RF history. Staleness is applied at read
+          // time against the user's active window, so these never need sweeping.
+          transportLastRf: nodeData.transportLastRf ?? existingNode.transportLastRf,
+          transportLastMqtt: nodeData.transportLastMqtt ?? existingNode.transportLastMqtt,
+          transportLastUdp: nodeData.transportLastUdp ?? existingNode.transportLastUdp,
           isStoreForwardServer: nodeData.isStoreForwardServer ?? existingNode.isStoreForwardServer,
           macaddr: nameOrExisting(nodeData.macaddr, existingNode.macaddr),
           latitude: nodeData.latitude ?? existingNode.latitude,

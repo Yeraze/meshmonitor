@@ -292,7 +292,7 @@ export default function DashboardMap({
     .filter((n) => !n.isIgnored)
     .filter((n) => !n.hideFromMap) // #3549: per-node "Hide from Map" suppresses the marker only
     .filter((n) => n.isFavorite || (n.lastHeard != null && n.lastHeard >= cutoffTime))
-    .filter((n) => nodePassesTransportFilter(n, { showRfNodes, showUdpNodes, showMqttNodes }))
+    .filter((n) => nodePassesTransportFilter(n, { showRfNodes, showUdpNodes, showMqttNodes }, cutoffTime))
     .map((n) => ({ node: n, truePos: getNodeLatLng(n) }))
     .filter((e): e is { node: any; truePos: { lat: number; lng: number } } => e.truePos !== null);
 

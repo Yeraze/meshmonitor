@@ -6,7 +6,7 @@ import L from 'leaflet';
 import type { Marker as LeafletMarker } from 'leaflet';
 import { DeviceInfo } from '../types/device';
 import { TabType } from '../types/ui';
-import { nodePassesTransportFilter } from '../utils/nodeTransport';
+import { nodePassesTransportFilter, transportCutoffSec } from '../utils/nodeTransport';
 import { getNodeTypeCategory } from '../utils/nodeTypeCategory';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { createNodeIcon, getHopColor } from '../utils/mapIcons';
@@ -459,6 +459,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // [1, maxNodeAgeHours]. null = follow the setting, so default behavior is
   // unchanged. Used to hide stale node markers on the map (favorites bypass).
   const effectiveMapMaxAge = effectiveMapMaxAgeHours(mapMaxAgeHours, maxNodeAgeHours);
+  // #4240: single clock read per render for transport decay (see
+  // transportCutoffSec) — a per-node call would drift across the filter pass.
+  const transportCutoff = transportCutoffSec(effectiveMapMaxAge);
   const mapAgeCutoffSeconds = Date.now() / 1000 - effectiveMapMaxAge * 60 * 60;
 
   const { hasPermission } = useAuth();
@@ -1440,7 +1443,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const nodeMarkers: NodeMarkerDescriptor[] = nodesWithPosition
     .filter(node => {
       // Apply standard filters
-      if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes })) return false;
+      if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }, transportCutoff)) return false;
       if (!showIncompleteNodes && !isNodeComplete(node)) return false;
       if (!showEstimatedPositions && node.user?.id && nodesWithEstimatedPosition.has(node.user.id)) return false;
       // When traceroute is active, only show nodes involved in the traceroute
@@ -1679,7 +1682,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     ? nodesWithPosition
         .filter(node => {
           if (!hasAccuracyCell(node.positionPrecisionBits, node.positionIsOverride)) return false;
-          if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes })) return false;
+          if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }, transportCutoff)) return false;
           if (!showIncompleteNodes && !isNodeComplete(node)) return false;
           // When traceroute is active, only show regions for nodes in the traceroute
           if (tracerouteNodeNums && !tracerouteNodeNums.has(node.nodeNum)) return false;
@@ -2637,7 +2640,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   estimated-position uncertainty radii, so this stays inline
                   rather than becoming a speculative one-consumer abstraction. */}
               {showEstimatedPositions && showAccuracyRegions && nodesWithPosition
-                .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id) && nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }) && (showIncompleteNodes || isNodeComplete(node)) && (!tracerouteNodeNums || tracerouteNodeNums.has(node.nodeNum)))
+                .filter(node => node.user?.id && nodesWithEstimatedPosition.has(node.user.id) && nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }, transportCutoff) && (showIncompleteNodes || isNodeComplete(node)) && (!tracerouteNodeNums || tracerouteNodeNums.has(node.nodeNum)))
                 .map(node => {
                   // Use the real multilateration uncertainty radius (issue #3271) when
                   // available; fall back to a 500m base for legacy/missing data.

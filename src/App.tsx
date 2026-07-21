@@ -69,7 +69,7 @@ import { logger } from './utils/logger';
 // generateArrowMarkers moved to useTraceroutePaths hook
 import { isNodeComplete, getEffectivePosition } from './utils/nodeHelpers';
 import { effectiveMapMaxAgeHours } from './utils/mapAge';
-import { nodePassesTransportFilter } from './utils/nodeTransport';
+import { nodePassesTransportFilter, transportCutoffSec } from './utils/nodeTransport';
 import { settingsToMatrix } from './utils/autoAckMatrix';
 import { applyHomoglyphOptimization } from './utils/homoglyph';
 import { playSound, playChannelSound, DEFAULT_SOUND_ID } from './utils/notificationSounds';
@@ -106,9 +106,19 @@ import ErrorBoundary from './components/common/ErrorBoundary';
 // 2's poll response because both sources share nodeNums on overlapping meshes).
 const favoritePendingKey = (sourceId: string | null | undefined, nodeNum: number) =>
   `${sourceId ?? ''}:${nodeNum}`;
-const pendingFavoriteRequests = new Map<string, boolean>();
-const pendingIgnoredRequests = new Map<string, boolean>();
-const pendingHideFromMapRequests = new Map<string, boolean>();
+
+// Entries expire (#4240) — see src/utils/pendingToggles.ts for why a plain Map
+// deadlocked the toggles permanently.
+const pendingFavoriteRequests = new PendingToggleMap();
+const pendingIgnoredRequests = new PendingToggleMap();
+const pendingHideFromMapRequests = new PendingToggleMap();
+
+const ALL_PENDING_TOGGLE_MAPS = [
+  pendingFavoriteRequests,
+  pendingIgnoredRequests,
+  pendingHideFromMapRequests,
+];
+import { PendingToggleMap, sweepAll } from './utils/pendingToggles';
 import TracerouteHistoryModal from './components/TracerouteHistoryModal';
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal';
 
@@ -2282,6 +2292,12 @@ const location = useLocation();
         const pendingIgnored = pendingIgnoredRequests;
         const pendingHideFromMap = pendingHideFromMapRequests;
 
+        // #4240: drop expired entries BEFORE the size check, and independently
+        // of which nodes came back. The per-node reconciliation below can only
+        // clear an entry whose node is present in this response under the
+        // current sourceId; this sweep is what unsticks everything else.
+        sweepAll(ALL_PENDING_TOGGLE_MAPS);
+
         if (pendingFavorite.size === 0 && pendingIgnored.size === 0 && pendingHideFromMap.size === 0) {
           setNodes(data.nodes as DeviceInfo[]);
         } else {
@@ -4030,7 +4046,7 @@ const location = useLocation();
 
     // Prevent multiple rapid clicks on the same node (scoped to current source)
     const favKey = favoritePendingKey(sourceId, node.nodeNum);
-    if (pendingFavoriteRequests.has(favKey)) {
+    if (pendingFavoriteRequests.get(favKey) !== undefined) {
       return;
     }
 
@@ -4161,7 +4177,7 @@ const location = useLocation();
 
     // Prevent multiple rapid clicks on the same node (scoped to current source)
     const ignKey = favoritePendingKey(sourceId, node.nodeNum);
-    if (pendingIgnoredRequests.has(ignKey)) {
+    if (pendingIgnoredRequests.get(ignKey) !== undefined) {
       return;
     }
 
@@ -4260,7 +4276,7 @@ const location = useLocation();
     }
 
     const hfmKey = favoritePendingKey(sourceId, node.nodeNum);
-    if (pendingHideFromMapRequests.has(hfmKey)) {
+    if (pendingHideFromMapRequests.get(hfmKey) !== undefined) {
       return;
     }
 
@@ -4441,19 +4457,23 @@ const location = useLocation();
   // Must mirror the per-marker filter in NodesTab so that lines are hidden whenever
   // their endpoint nodes are hidden (Issues #1102, #3147).
   const visibleNodeNums = useMemo(() => {
+    // #4240: one clock read per recompute. Deliberately computed INSIDE the memo
+    // rather than listed as a dependency — a fresh timestamp every render would
+    // invalidate this memo on every render.
+    const transportCutoff = transportCutoffSec(effectiveMapMaxAge);
     const visibleNodes = processedNodes.filter(node => {
       if (!node.position?.latitude || !node.position?.longitude) return false;
       // #4162/#3549: "Hide from Map" suppresses the marker (NodesTab drops it
       // at nodesWithPosition), so it must also drop from this visible set —
       // otherwise route-segment / neighbor lines dangle to a marker-less node.
       if (node.hideFromMap) return false;
-      if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes })) return false;
+      if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }, transportCutoff)) return false;
       if (!showIncompleteNodes && !isNodeComplete(node)) return false;
       if (!showEstimatedPositions && node.user?.id && nodesWithEstimatedPosition.has(node.user.id)) return false;
       return true;
     });
     return new Set(visibleNodes.map(n => n.nodeNum));
-  }, [processedNodes, showRfNodes, showUdpNodes, showMqttNodes, showIncompleteNodes, showEstimatedPositions, nodesWithEstimatedPosition]);
+  }, [processedNodes, showRfNodes, showUdpNodes, showMqttNodes, showIncompleteNodes, showEstimatedPositions, nodesWithEstimatedPosition, effectiveMapMaxAge]);
 
   const { traceroutePathsElements, selectedNodeTraceroute, tracerouteNodeNums, tracerouteBounds } = useTraceroutePaths({
     showPaths,
