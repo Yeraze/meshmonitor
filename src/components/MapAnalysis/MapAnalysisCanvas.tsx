@@ -15,6 +15,7 @@ import { Base3DMap, type Node3DFeature, type Line3DFeature } from '../map/Base3D
 import { resolve3DBasemap, buildTerrainTileUrl } from '../../config/basemap3d';
 import { useTerrainCapabilities } from '../../hooks/useTerrainCapabilities';
 import { appBasename } from '../../init';
+import { resolveNodeAltitude } from './nodePositionUtil';
 import { use3DNeighborLines } from './use3DNeighborLines';
 import { use3DTracerouteLines } from './use3DTracerouteLines';
 import type { SelectedTarget } from './MapAnalysisContext';
@@ -93,6 +94,7 @@ export default function MapAnalysisCanvas() {
         sourceIds: a.node.sources?.map((s) => s.sourceId) ?? (a.node.sourceId ? [a.node.sourceId] : []),
         nodeNum: a.node.nodeNum,
         isMeshCore: a.node.isMeshCore ?? false,
+        altitudeM: resolveNodeAltitude(a.node) ?? undefined,
       })),
     [analysisNodes],
   );

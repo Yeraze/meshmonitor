@@ -36,6 +36,33 @@ export interface LinkEndpoint extends MeasurePoint {
   nodeNum?: number;
   /** True when the node endpoint is a MeshCore node (#4111 P3). */
   isMeshCore?: boolean;
+  /**
+   * The node's reported altitude in metres (effective value — position
+   * overrides are folded in by the API). Used only to SEED the editable
+   * antenna-AGL inputs via `aglFromNodeAltitude`; the profile math itself
+   * stays DEM + AGL (see LINK_PROFILE_TOOL_SPEC.md §0/§2.2 — node altitude
+   * never feeds the model directly because of the GPS-vs-DEM datum mismatch).
+   */
+  altitudeM?: number;
+}
+
+/**
+ * Suggested antenna height AGL from a node's reported altitude and the DEM
+ * ground elevation at its endpoint: `altitude - ground`, rounded. Returns
+ * null (caller keeps the default) when either value is missing/non-finite or
+ * the difference is below 0.5 m — a negative or near-zero difference is
+ * indistinguishable from GPS/datum error and must not shrink the antenna
+ * below the documented 2 m default.
+ */
+export function aglFromNodeAltitude(
+  altitudeM: number | null | undefined,
+  groundM: number | null | undefined,
+): number | null {
+  if (typeof altitudeM !== 'number' || !Number.isFinite(altitudeM)) return null;
+  if (typeof groundM !== 'number' || !Number.isFinite(groundM)) return null;
+  const agl = altitudeM - groundM;
+  if (agl < 0.5) return null;
+  return Math.round(agl);
 }
 
 // Client mirror of the backend `ProfileSample` (kept in `types/elevation.ts`

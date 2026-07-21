@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { resolveNodeLatLng } from './nodePositionUtil';
+import { resolveNodeAltitude, resolveNodeLatLng } from './nodePositionUtil';
 import { setDiscardInvalidPositionsDisplay } from '../../utils/positionDisplayConfig';
 
 describe('resolveNodeLatLng — Null Island display toggle (#4157)', () => {
@@ -33,4 +33,19 @@ describe('resolveNodeLatLng — Null Island display toggle (#4157)', () => {
     expect(resolveNodeLatLng({ latitude: null, longitude: 0 })).toBeNull();
     expect(resolveNodeLatLng({ position: { latitude: 0 } })).toBeNull();
   });
+  describe('resolveNodeAltitude', () => {
+    it('reads the flat shape, then the nested position shape', () => {
+      expect(resolveNodeAltitude({ altitude: 42 })).toBe(42);
+      expect(resolveNodeAltitude({ position: { altitude: 7 } })).toBe(7);
+      expect(resolveNodeAltitude({ altitude: 42, position: { altitude: 7 } })).toBe(42);
+    });
+
+    it('returns null for missing or non-finite values', () => {
+      expect(resolveNodeAltitude(null)).toBeNull();
+      expect(resolveNodeAltitude({})).toBeNull();
+      expect(resolveNodeAltitude({ altitude: null })).toBeNull();
+      expect(resolveNodeAltitude({ altitude: NaN })).toBeNull();
+    });
+  });
 });
+
