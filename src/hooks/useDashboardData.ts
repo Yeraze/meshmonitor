@@ -10,7 +10,7 @@ import { appBasename } from '../init';
 import { useAuth } from '../contexts/AuthContext';
 import { isBogusPosition, shouldDiscardPosition } from '../utils/nullIsland';
 import { getDiscardInvalidPositions } from '../utils/positionDisplayConfig';
-import { classifyNodeTransport, type NodeTransportClass } from '../utils/nodeTransport';
+import { getNodeTransportClasses, type NodeTransportClass } from '../utils/nodeTransport';
 import { unifiedNodeKey } from '../utils/nodeIdentity';
 import type { SourceRadioSummary } from '../types/elevation';
 
@@ -455,8 +455,14 @@ export function mergeUnifiedSourceData(
     // MQTT on another stays visible under "Show RF" even with "Show MQTT" off.
     // The whole-record merge keeps only the newest transportMechanism, which
     // would otherwise drop the other transports.
+    // #4240: use each record's own class SET (its persisted transportFlags),
+    // not a single classification — a source whose row records both RF and
+    // MQTT must contribute both, or the cross-source union silently narrows
+    // back to last-wins.
     const classes = new Set<NodeTransportClass>();
-    for (const e of entries) classes.add(classifyNodeTransport(e.node));
+    for (const e of entries) {
+      for (const c of getNodeTransportClasses(e.node)) classes.add(c);
+    }
     merged.transportClasses = Array.from(classes);
     return merged;
   });

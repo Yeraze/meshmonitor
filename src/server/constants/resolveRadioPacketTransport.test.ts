@@ -8,9 +8,13 @@
  *
  * Cause: this resolver returned `undefined` whenever firmware omitted
  * `transport_mechanism`, which made the caller omit the key from the node
- * upsert, which made `upsertNode` carry the PREVIOUS value forward. A single
- * packet ever heard via an MQTT bridge stamped the node MQTT permanently — and
- * `showMqttNodes` defaults to false, so it vanished from the map for good.
+ * upsert, which made `upsertNode` carry the PREVIOUS value forward.
+ *
+ * Always returning a value is necessary but NOT sufficient: last-wins on its
+ * own still thrashes, because a local node with an MQTT uplink receives echoes
+ * of its own RF traffic flagged viaMqtt. The visibility fix is the accumulating
+ * `transportFlags` bitmask (migration 126, see transportFlags.test.ts); this
+ * resolver now feeds `transportBitFor`, deciding which bit gets ORed in.
  */
 import { describe, it, expect } from 'vitest';
 import { TransportMechanism, resolveRadioPacketTransport } from './meshtastic';
@@ -61,9 +65,11 @@ describe('resolveRadioPacketTransport (#4240)', () => {
       .toBe(TransportMechanism.LORA);
   });
 
-  it('lets a later RF packet overwrite an earlier MQTT stamp', () => {
-    // The end-to-end point of the fix: the second packet must resolve to
-    // something non-MQTT so the upsert actually replaces the stored value.
+  it('resolves RF and MQTT packets to distinct values', () => {
+    // transportMechanism stays last-wins ("most recently heard via") and is no
+    // longer what the map filters on -- transportFlags accumulates instead
+    // (migration 126). This still has to distinguish the two, because it feeds
+    // transportBitFor, which decides WHICH bit gets ORed in.
     const first = resolveRadioPacketTransport({ viaMqtt: true });
     const second = resolveRadioPacketTransport({ viaMqtt: false });
     expect(first).toBe(TransportMechanism.MQTT);

@@ -33,6 +33,14 @@ export interface DeviceInfo {
    * MQTT(5) for `viaMqtt=true` rows and LORA(1) for the rest.
    */
   transportMechanism?: number | null;
+  /**
+   * #4240: accumulating bitmask of every transport this node has been heard
+   * over (1=RF, 2=MQTT, 4=UDP). Map visibility ORs these against the Show
+   * RF/UDP/MQTT toggles, so a node reachable both ways stays visible when
+   * either toggle is on. Prefer this over `transportMechanism`, which is
+   * last-wins and gets overwritten by MQTT echoes.
+   */
+  transportFlags?: number | null;
   isStoreForwardServer?: boolean;
   lastHeard?: number;
   snr?: number;

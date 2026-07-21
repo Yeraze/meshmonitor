@@ -15,6 +15,7 @@ import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
+import { transportBitFor } from '../utils/nodeTransport.js';
 import { calculateLoRaFrequency } from '../utils/loraFrequency.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
@@ -5451,10 +5452,12 @@ class MeshtasticManager implements ISourceManager {
       // src/server/constants/meshtastic.ts. The field is proto3
       // (default 0 = INTERNAL when unset), so only record values that
       // came across the wire as actual numbers.
-      // #4240: always resolves to a value — an undefined result omitted the key
-      // from the upsert, which let upsertNode carry the stale value forward and
-      // made classification permanently sticky. See resolveRadioPacketTransport.
+      // #4240: always resolves to a value. `transportMechanism` remains
+      // last-wins ("most recently heard via"), but map visibility now keys off
+      // `transportFlags`, which ORs bits so an MQTT echo of RF traffic cannot
+      // erase the node's RF reachability. See resolveRadioPacketTransport.
       const txMech = resolveRadioPacketTransport(meshPacket);
+      const txFlag = transportBitFor(txMech, meshPacket.viaMqtt);
 
       const nodeData: any = {
         nodeNum: fromNum,
@@ -5475,6 +5478,8 @@ class MeshtasticManager implements ISourceManager {
         // Always set now (see txMech above) — an omitted key would let
         // upsertNode carry the stale value forward, which is the #4240 bug.
         transportMechanism: txMech,
+        // upsertNode ORs this into the stored mask rather than replacing it.
+        transportFlags: txFlag,
       };
 
       // Only set default name if this is a brand new node

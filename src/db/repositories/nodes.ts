@@ -374,6 +374,12 @@ export class NodesRepository extends BaseRepository {
           hopsAway: nodeData.hopsAway ?? existingNode.hopsAway,
           viaMqtt: nodeData.viaMqtt ?? existingNode.viaMqtt,
           transportMechanism: nodeData.transportMechanism ?? existingNode.transportMechanism,
+          // #4240: transport flags ACCUMULATE — a node heard over RF must not
+          // lose that bit when an MQTT echo of the same traffic arrives later.
+          // This is the one field here that deliberately ORs instead of
+          // replacing or carrying forward.
+          transportFlags:
+            (existingNode.transportFlags ?? 0) | (nodeData.transportFlags ?? 0),
           isStoreForwardServer: nodeData.isStoreForwardServer ?? existingNode.isStoreForwardServer,
           macaddr: nameOrExisting(nodeData.macaddr, existingNode.macaddr),
           latitude: nodeData.latitude ?? existingNode.latitude,

@@ -28,13 +28,57 @@ export interface NodeTransportFields {
   transportMechanism?: number | null;
   viaMqtt?: boolean | null;
   /**
+   * Accumulating bitmask of every transport this node has been heard over
+   * (migration 126, #4240). Persisted per node row and ORed on write, so it
+   * expresses "reachable over RF *and* MQTT" — which the last-wins
+   * `transportMechanism` cannot.
+   *
+   * This matters because a local node with an MQTT uplink receives echoes of
+   * the same RF traffic flagged `viaMqtt`. Under last-wins those echoes
+   * overwrite the RF classification, and the node vanishes behind the
+   * default-off "Show MQTT" toggle.
+   */
+  transportFlags?: number | null;
+  /**
    * Union of transport classes this node has been observed on, across every
    * source that reported it. Present on Unified-merged nodes so the map's
    * RF/UDP/MQTT toggles are *additive* — a node heard via RF on one source and
    * MQTT on another stays visible while "Show RF" is on even if "Show MQTT" is
-   * off. Absent on single-source rows (which have exactly one class).
+   * off. Absent on single-source rows.
    */
   transportClasses?: NodeTransportClass[] | null;
+}
+
+/** Transport bits persisted in `nodes.transportFlags` (migration 126). */
+export const TF_RF = 1;
+export const TF_MQTT = 2;
+export const TF_UDP = 4;
+
+/** Map a wire transport mechanism (+ legacy viaMqtt) onto its single bit. */
+export function transportBitFor(
+  mechanism: number | null | undefined,
+  viaMqtt?: boolean | null,
+): number {
+  if (mechanism === TX_MQTT) return TF_MQTT;
+  if (mechanism === TX_MULTICAST_UDP) return TF_UDP;
+  if (
+    mechanism === TX_LORA || mechanism === TX_LORA_ALT1 ||
+    mechanism === TX_LORA_ALT2 || mechanism === TX_LORA_ALT3
+  ) {
+    return TF_RF;
+  }
+  // INTERNAL / API / unknown: honor the legacy boolean, else treat as RF —
+  // identical to classifyNodeTransport's fallback.
+  return viaMqtt ? TF_MQTT : TF_RF;
+}
+
+/** Expand a persisted bitmask into map filter classes. */
+export function transportClassesFromFlags(flags: number): NodeTransportClass[] {
+  const classes: NodeTransportClass[] = [];
+  if (flags & TF_RF) classes.push('rf');
+  if (flags & TF_UDP) classes.push('udp');
+  if (flags & TF_MQTT) classes.push('mqtt');
+  return classes;
 }
 
 /** Classify a single node record's most-recent transport for the map filter. */
@@ -61,9 +105,17 @@ export function classifyNodeTransport(node: {
  * single classification of this record (single-source view / unmerged rows).
  */
 export function getNodeTransportClasses(node: NodeTransportFields): NodeTransportClass[] {
+  // Cross-source union (Unified merge) is the broadest signal, so it wins.
   if (Array.isArray(node.transportClasses) && node.transportClasses.length > 0) {
     return node.transportClasses;
   }
+  // #4240: the per-node accumulating bitmask. Preferred over the last-wins
+  // single value, which an MQTT echo can overwrite.
+  const flags = node.transportFlags;
+  if (typeof flags === 'number' && flags > 0) {
+    return transportClassesFromFlags(flags);
+  }
+  // Pre-migration-126 rows, or a row whose flags haven't been written yet.
   return [classifyNodeTransport(node)];
 }
 
