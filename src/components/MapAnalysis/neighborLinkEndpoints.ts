@@ -124,3 +124,29 @@ export function resolveNeighborEndpoints(
     b: buildEndpoint(resolvedB, isMeshCore),
   };
 }
+
+/**
+ * Build a LinkEndpoint pair for a selected traceroute route segment, or null
+ * when either endpoint cannot be resolved to a rendered position. Segments
+ * carry only `fromNodeNum`/`toNodeNum` (no reporting `sourceId` — the segment
+ * is aggregated across traceroutes), so resolution keys on nodeNum alone with
+ * the same positioned-node fallback the neighbor resolver uses. Segments are
+ * Meshtastic-only (traceroutes are a Meshtastic protocol feature).
+ */
+export function resolveSegmentEndpoints(
+  selected: SelectedTarget,
+  nodes: EndpointNodeRecord[],
+): NeighborEndpoints | null {
+  if (selected.type !== 'segment') return null;
+  if (selected.fromNodeNum === undefined || selected.toNodeNum === undefined) return null;
+
+  const resolvedA = findPositionedNode(nodes, (n) => n.nodeNum === selected.fromNodeNum, undefined);
+  const resolvedB = findPositionedNode(nodes, (n) => n.nodeNum === selected.toNodeNum, undefined);
+
+  if (!resolvedA || !resolvedB) return null;
+
+  return {
+    a: buildEndpoint(resolvedA, false),
+    b: buildEndpoint(resolvedB, false),
+  };
+}
