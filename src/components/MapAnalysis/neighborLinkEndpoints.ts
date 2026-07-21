@@ -16,7 +16,7 @@
  */
 import type { LinkEndpoint } from '../../utils/linkProfile';
 import type { SelectedTarget } from './MapAnalysisContext';
-import { resolveNodeLatLng, type MaybePositionedNode } from './nodePositionUtil';
+import { resolveNodeAltitude, resolveNodeLatLng, type MaybePositionedNode } from './nodePositionUtil';
 import { unifiedNodeKey } from '../../utils/nodeIdentity';
 
 /** Minimal node shape the resolver needs (subset of useAnalysisNodes' NodeRecord). */
@@ -84,6 +84,7 @@ function buildEndpoint(resolved: ResolvedNode, isMeshCore: boolean): LinkEndpoin
     nodeNum: node.nodeNum,
     isMeshCore,
     label: node.shortName ?? undefined,
+    altitudeM: resolveNodeAltitude(node) ?? undefined,
   };
 }
 

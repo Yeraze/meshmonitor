@@ -420,4 +420,55 @@ describe('LinkProfileDrawer', () => {
       ).toBeInTheDocument();
     });
   });
+  describe('antenna-AGL seeding from node altitude', () => {
+    it('seeds both AGL inputs from endpoint altitudeM minus DEM ground, with provenance hints', async () => {
+      // OBSTRUCTED_PROFILE ground is 100 m at both ends.
+      mockLinkEndpoints = [
+        { ...endpointA, altitudeM: 130 },
+        { ...endpointB, altitudeM: 112 },
+      ];
+      getElevationProfileMock.mockResolvedValue(OBSTRUCTED_PROFILE);
+      renderDrawer();
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Antenna A height AGL (m)')).toHaveValue(30);
+        expect(screen.getByLabelText('Antenna B height AGL (m)')).toHaveValue(12);
+      });
+      expect(screen.getAllByText('from node altitude')).toHaveLength(2);
+    });
+
+    it('keeps the 2 m default when altitudeM is absent or below the DEM ground', async () => {
+      mockLinkEndpoints = [
+        { ...endpointA }, // no altitude
+        { ...endpointB, altitudeM: 95 }, // below the 100 m ground -> datum error
+      ];
+      getElevationProfileMock.mockResolvedValue(OBSTRUCTED_PROFILE);
+      renderDrawer();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('composed-chart')).toBeInTheDocument();
+      });
+      expect(screen.getByLabelText('Antenna A height AGL (m)')).toHaveValue(2);
+      expect(screen.getByLabelText('Antenna B height AGL (m)')).toHaveValue(2);
+      expect(screen.queryByText('from node altitude')).not.toBeInTheDocument();
+    });
+
+    it('manual edits win: typing a value clears the hint and is not overwritten', async () => {
+      mockLinkEndpoints = [
+        { ...endpointA, altitudeM: 130 },
+        { ...endpointB, altitudeM: 112 },
+      ];
+      getElevationProfileMock.mockResolvedValue(OBSTRUCTED_PROFILE);
+      renderDrawer();
+
+      const inputA = screen.getByLabelText('Antenna A height AGL (m)');
+      await waitFor(() => expect(inputA).toHaveValue(30));
+
+      fireEvent.change(inputA, { target: { value: '45' } });
+      expect(inputA).toHaveValue(45);
+      // Only endpoint B's hint remains.
+      expect(screen.getAllByText('from node altitude')).toHaveLength(1);
+    });
+  });
 });
+

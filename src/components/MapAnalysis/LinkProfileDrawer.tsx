@@ -32,7 +32,7 @@ import { ApiError } from '../../services/api';
 import { useElevationProfile } from '../../hooks/useElevationProfile';
 import { useAutoRadioDefaults } from '../../hooks/useAutoRadioDefaults';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
-import { analyzeLinkProfile, VERDICT_LABEL, VERDICT_COLOR } from '../../utils/linkProfile';
+import { aglFromNodeAltitude, analyzeLinkProfile, VERDICT_LABEL, VERDICT_COLOR } from '../../utils/linkProfile';
 import { computeLinkBudget, DEFAULT_K_FACTOR } from '../../utils/linkBudget';
 import { formatDistance } from '../../utils/distance';
 import { UiIcon } from '../icons';
@@ -150,6 +150,43 @@ const LinkProfileDrawer: React.FC = () => {
   }, [pairKey, auto.rxSensitivityDbm, rxEdited]);
 
   const { data: profile, isLoading, error } = useElevationProfile(endpointA, endpointB);
+
+  // Antenna-AGL seeding from node-reported altitude (same manual-edits-win
+  // contract as auto-frequency above): when an endpoint is a node with a
+  // known altitude, suggest `altitude - DEM ground` as the starting height
+  // once the profile arrives. The datum decision stands — node altitude only
+  // seeds the editable input, the model still runs on DEM + AGL.
+  const [aglAEdited, setAglAEdited] = useState(false);
+  const [aglBEdited, setAglBEdited] = useState(false);
+  const [aglASeeded, setAglASeeded] = useState(false);
+  const [aglBSeeded, setAglBSeeded] = useState(false);
+  useEffect(() => {
+    setAglAEdited(false);
+    setAglBEdited(false);
+    setAglASeeded(false);
+    setAglBSeeded(false);
+    setAglA(DEFAULT_AGL_M);
+    setAglB(DEFAULT_AGL_M);
+  }, [pairKey]);
+  useEffect(() => {
+    if (aglAEdited || !profile?.samples.length) return;
+    const seeded = aglFromNodeAltitude(endpointA?.altitudeM, profile.samples[0]?.elevation);
+    if (seeded != null) {
+      setAglA(seeded);
+      setAglASeeded(true);
+    }
+  }, [pairKey, profile, endpointA?.altitudeM, aglAEdited]);
+  useEffect(() => {
+    if (aglBEdited || !profile?.samples.length) return;
+    const seeded = aglFromNodeAltitude(
+      endpointB?.altitudeM,
+      profile.samples[profile.samples.length - 1]?.elevation,
+    );
+    if (seeded != null) {
+      setAglB(seeded);
+      setAglBSeeded(true);
+    }
+  }, [pairKey, profile, endpointB?.altitudeM, aglBEdited]);
 
   // Sync the elevation-graph cursor to a marker on the map: each chart row is
   // index-parallel with the fetched sample, which carries the exact lat/lng of
@@ -398,10 +435,16 @@ const LinkProfileDrawer: React.FC = () => {
               value={aglA}
               onChange={e => {
                 const v = Number(e.target.value);
-                if (!Number.isNaN(v)) setAglA(v);
+                if (!Number.isNaN(v)) {
+                  setAglA(v);
+                  setAglAEdited(true);
+                }
               }}
             />
           </label>
+          {aglASeeded && !aglAEdited && (
+            <span className="link-profile-provenance">from node altitude</span>
+          )}
           <label>
             Antenna B height AGL (m)
             <input
@@ -410,10 +453,16 @@ const LinkProfileDrawer: React.FC = () => {
               value={aglB}
               onChange={e => {
                 const v = Number(e.target.value);
-                if (!Number.isNaN(v)) setAglB(v);
+                if (!Number.isNaN(v)) {
+                  setAglB(v);
+                  setAglBEdited(true);
+                }
               }}
             />
           </label>
+          {aglBSeeded && !aglBEdited && (
+            <span className="link-profile-provenance">from node altitude</span>
+          )}
           <label>
             TX power (dBm)
             <input
