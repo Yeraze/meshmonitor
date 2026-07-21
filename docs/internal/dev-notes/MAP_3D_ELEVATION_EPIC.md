@@ -60,7 +60,7 @@ Exit criteria:
 - 3D toggle renders pitched terrain with hillshade + node markers on the dev container; 2D mode unchanged/regression-free.
 - Full suite green; browser-validated with screenshots.
 
-### Phase 3 — 3D layers + polish ⬜
+### Phase 3 — 3D layers + polish ✅
 
 Branch: `feature/3826-3d-layers-polish`
 
@@ -80,3 +80,25 @@ Exit criteria:
 - 2026-07-20: Epic started. Interview complete, phases agreed (3 phases; user merged tile-proxy + 3D-foundation into Phase 2).
 - 2026-07-20: Phase 2 implemented (spec: `3D_MAP_FOUNDATION_SPEC.md`; 4 work packages A–D). Backend: `GET /api/elevation/tiles/:z/:x/:y` PNG proxy (raw-PNG LRU separate from the decoded cache, `elevationTileLimiter` 600/min, immutable 7-day Cache-Control) + `GET /api/elevation/capabilities` (server-derived because `elevationSourceUrl` is secret); JSON point sources return 409 TERRAIN_TILES_UNAVAILABLE by design — no silent AWS fallback. Frontend: `Base3DMap` (standalone MapLibre GL: terrarium raster-dem terrain, hillshade, pitch 60°, exaggeration slider, GeoJSON node markers), `basemap3d.ts` ({s}-expansion + vector→osm fallback), `useTerrainCapabilities`, `viewMode` persisted in `mapAnalysis.config.v1`. Browser validation found + fixed a real defect: no-WebGL browsers crashed to a blank page when '3d' was persisted (probe + try/catch + `onUnsupported`→ auto-revert to 2D, commit 5340484d). 3D rendering validated via puppeteer + SwiftShader (MCP browser has no WebGL); gating/tooltip/persistence/force-2D all validated live. Phase 3 note: 3D node click selects via `{nodeNum, sourceId}` — verify MeshCore selection parity when wiring the inspector.
 - 2026-07-20: Phase 1 implemented (spec: `NEIGHBOR_LINK_TERRAIN_SPEC.md`). Frontend-only; new `neighborLinkEndpoints.ts` resolver + inspector wiring. Key decisions during the phase: endpoint elevations reuse `useElevationProfile` with the drawer's exact query key (one fetch per link, drawer open is a cache hit — verified live, request count stayed at 1); `LinkEndpoint.id` uses `unifiedNodeKey` for byte-for-byte parity with `linkEndpointCandidates`. Browser-validated on the dev container: MeshCore link (distance/elevations/profile action + drawer w/ auto-seeded frequency), Meshtastic link (distance via nodeNum resolution), and elevation-disabled gating (distance only, zero elevation requests). Full suite 10,427/0. Note: dev DB had no `/api/analysis/neighbors` rows initially — Meshtastic live check came from an MQTT-broker-source neighbor link.
+- 2026-07-20: Phase 3 implemented (spec: `3D_LAYERS_POLISH_SPEC.md`; 4 work packages). WP-1 (`cf6ca6f8`): generic `Line3DFeature` + `lines`/`onLineClick`/`initialExaggeration`/`onExaggerationChange` props added to `Base3DMap`, keeping it Map-Analysis-agnostic — per-distinct-dash-pattern line layers on one shared GeoJSON source (MapLibre can't data-drive `line-dasharray` from feature properties), inserted below the node marker layers so markers stay clickable on top. WP-2 (`7c445eb3`): new `use3DNeighborLines`/`use3DTracerouteLines` hooks reuse the same fetch hooks and shared color/opacity/weight primitives as the 2D adapters (`snrToNeighborOpacity`, `snrToColor`, `getSegmentSnrOpacity`, `weightByOccurrence`, `transportColor`), each locked to the 2D `SelectedTarget` shape by a parity test (byte-identical payload for Meshtastic neighbor, MeshCore neighbor, and traceroute segment). WP-3 (`c6662f19`): wired both hooks into the 3D canvas branch (merged lines + click→`setSelected`), added `exaggeration`/`setExaggeration` to `useMapAnalysisConfig` (client-local, `mapAnalysis.config.v1`, clamped 0–2, default 1.3 — no migration, no server settings key), and made the inspector's "View terrain profile" action call `setViewMode('2d')` before opening the drawer when triggered from 3D (the verdict polyline + endpoint rings are Leaflet-only, so profile-from-3D always lands in 2D). Traceroute curvature/arrows and on-map link labels/popups are intentionally not ported to 3D (§2.6/§2.9 of the spec); 3D lines are not terrain-draped (§2.7, documented follow-up). Full suite 10,578/0. **Epic status: all three phases complete, pending PR merge and #3826 issue closeout** (draft closing comment in `3D_LAYERS_POLISH_SPEC.md` §5, reproduced below).
+
+> **3D Map & Elevation — shipped (3 phases).**
+> **Phase 1 (#4235):** Map Analysis inspector shows per-neighbor-link distance +
+> endpoint ground elevations and a one-click "View terrain profile" reusing the
+> #4111 Link Profile drawer, for both Meshtastic and MeshCore links.
+> **Phase 2 (#4239):** DEM tile proxy (`GET /api/elevation/tiles/:z/:x/:y` +
+> `/api/elevation/capabilities`, server-derived because the source URL is secret;
+> JSON point-sources return `TERRAIN_TILES_UNAVAILABLE` — no silent AWS fallback)
+> and a standalone MapLibre GL 3D terrain view behind a persisted 2D/3D toggle,
+> with terrarium raster-dem terrain, hillshade, node markers, an exaggeration
+> slider, and graceful no-WebGL fallback.
+> **Phase 3 (`<PR#>`):** neighbor links + traceroute paths in 3D honoring the same
+> toggles/filters/lookback/time-window as 2D; full selection parity (node,
+> neighbor — Meshtastic & MeshCore, and traceroute-segment) into the shared
+> inspector; "View terrain profile" from 3D auto-switches to 2D with the drawer;
+> exaggeration now persists per-browser.
+> **Out of scope (follow-ups):** indoor/venue and custom 3D tilesets — the cheap
+> first step is `fill-extrusion` building footprints from vector tiles. 3D link
+> lines are not yet terrain-draped (MapLibre renders `line` layers in-plane;
+> revisit with `line-z-offset` elevation sampling when it stabilizes). Time-slider
+> UI and coverage-heatmap/trails/range-rings/hop-shading/SNR overlays remain 2D-only.
