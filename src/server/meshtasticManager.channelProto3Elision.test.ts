@@ -113,7 +113,7 @@ describe('MeshtasticManager - processChannelProtobuf proto3 boolean elision (#35
   beforeEach(async () => {
     vi.clearAllMocks();
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
     manager.sourceId = SOURCE;
   });
 

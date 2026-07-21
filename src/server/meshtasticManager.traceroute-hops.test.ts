@@ -236,7 +236,7 @@ describe('MeshtasticManager — traceroute intermediate hop handling (issues 261
     mockInsertTelemetry.mockResolvedValue(undefined);
 
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
     // Ensure there's no "local node" so the "skip response from local" guard doesn't bail
     (manager as any).localNodeInfo = null;
   });

@@ -214,7 +214,7 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
 
     // Dynamic import to get fresh module instance with mocks applied
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
 
     // Set up the manager to think it's connected with local node info
     manager.isConnected = true;

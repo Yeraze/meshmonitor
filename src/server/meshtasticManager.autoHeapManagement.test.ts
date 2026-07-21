@@ -219,7 +219,7 @@ describe('MeshtasticManager - Auto Heap Management', () => {
     vi.clearAllMocks();
 
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
 
     manager.isConnected = true;
     manager.localNodeInfo = {

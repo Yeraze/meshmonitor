@@ -942,8 +942,6 @@ describe('Message Deletion Routes', () => {
 
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Device communication error');
-
-      delete (global as any).meshtasticManager;
     });
   });
 });

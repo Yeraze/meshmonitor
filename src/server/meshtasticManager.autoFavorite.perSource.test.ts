@@ -200,7 +200,7 @@ describe('MeshtasticManager - Auto Favorite per-source scoping', () => {
     vi.clearAllMocks();
 
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
 
     // Pin the singleton to a known sourceId for assertions
     manager.sourceId = SOURCE_A;

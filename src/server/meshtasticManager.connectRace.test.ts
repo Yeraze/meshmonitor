@@ -145,7 +145,7 @@ describe('MeshtasticManager - issue #3247 connect-handshake race', () => {
     mockNotifyNodeConnected.mockResolvedValue(undefined);
 
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
     logger = (await import('../utils/logger.js')).logger;
 
     // Reset per-test state on the singleton.
