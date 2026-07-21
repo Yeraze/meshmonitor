@@ -576,6 +576,24 @@ echo "Test 10: Create '#mm-systest' channel on both companions"
 PSK_B64=$(printf '%s' '#mm-systest' | openssl dgst -sha256 -binary | head -c 16 | base64)
 [ -n "$PSK_B64" ] || { echo -e "${RED}✗ FAIL${NC}: failed to derive channel PSK"; exit 1; }
 
+# Pre-clean: remove any pre-existing '#mm-systest' channel(s) on both companions
+# before creating exactly one. The channel PUT writes THROUGH to the physical
+# companion (CMD_SET_CHANNEL) and persists across test runs, so a leftover from a
+# prior/aborted run would leave TWO channels sharing the same derived secret — and
+# MeshCore does not deliver a channel message sent on the second duplicate (the
+# firmware resolves the shared secret to the first matching slot). Deleting every
+# '#mm-systest' first guarantees a single, deliverable channel. This is also why
+# Test 11 post-cleans the channel off both devices.
+for SID in "$SRC_A_ID" "$SRC_B_ID"; do
+  for cid in $(curl -s "$BASE_URL/api/channels?sourceId=$SID" -b "$COOKIE_FILE" \
+      | jq -r '(if type=="array" then . else .data end)[] | select(.name=="#mm-systest") | .id'); do
+    curl -s -o /dev/null -X DELETE "$BASE_URL/api/channels/$cid?sourceId=$SID" \
+      -b "$COOKIE_FILE" -H "X-CSRF-Token: $CSRF_TOKEN"
+    echo "  (pre-clean: removed stale #mm-systest slot $cid on ${SID:0:8})"
+  done
+done
+sleep 2
+
 # Pick a free slot on BOTH sources (avoid clobbering an existing channel).
 # GET /api/channels returns a BARE ARRAY (channelRoutes.ts res.json(projected));
 # `.data` on an array throws in jq (and `//` does not catch a thrown error), so
@@ -648,6 +666,15 @@ elif $chan_all_400; then
 else
   echo -e "${RED}✗ FAIL${NC}: B never received channel message after $CHAN_ATTEMPTS attempts"; exit 1
 fi
+
+# Post-clean: remove the '#mm-systest' channel from both physical companions so
+# the device channel table is left as we found it (the PUT persisted it to the
+# hardware). Correctness does not depend on this — the Test-10 pre-clean removes
+# any leftover on the next run — but it keeps the rig tidy. Best-effort.
+for SID in "$SRC_A_ID" "$SRC_B_ID"; do
+  curl -s -o /dev/null -X DELETE "$BASE_URL/api/channels/$SLOT?sourceId=$SID" \
+    -b "$COOKIE_FILE" -H "X-CSRF-Token: $CSRF_TOKEN"
+done
 echo ""
 
 echo "Test 12: Yeraze Repeater DM firmware auto-ack"
