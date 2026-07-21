@@ -467,9 +467,13 @@ ACK_ERR=""
 HELPER_PID=""
 
 echo "Test 8: Acquire API token for Socket.IO helper"
-API_TOKEN=$(curl -s -X POST "$BASE_URL/api/token/generate" \
-    -b "$COOKIE_FILE" -H "x-csrf-token: $CSRF_TOKEN" | jq -r '.token // empty')
-[ -n "$API_TOKEN" ] || { echo -e "${RED}✗ FAIL${NC}: no API token"; exit 1; }
+TOKEN_RESP=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/api/token/generate" \
+    -b "$COOKIE_FILE" -H "x-csrf-token: $CSRF_TOKEN")
+TOKEN_CODE=$(echo "$TOKEN_RESP" | tail -n1)
+API_TOKEN=$(echo "$TOKEN_RESP" | head -n-1 | jq -r '.token // empty')
+if [ "$TOKEN_CODE" != "200" ] || [ -z "$API_TOKEN" ]; then
+  echo -e "${RED}✗ FAIL${NC}: no API token (HTTP $TOKEN_CODE)"; exit 1
+fi
 echo -e "${GREEN}✓${NC} API token acquired"
 echo ""
 
@@ -603,6 +607,9 @@ USED=$( { curl -s "$BASE_URL/api/channels?sourceId=$SRC_A_ID" -b "$COOKIE_FILE";
         | jq -r '(if type=="array" then . else .data end)[]?.id' | sort -un )
 SLOT=${MESHCORE_TEST_CHANNEL_SLOT:-}
 if [ -z "$SLOT" ]; then
+  # Scan slots 1-7 (slot 0 is Public/reserved; MeshCore companions expose 8
+  # channel slots 0-7) for the first free one on both sources. Override with
+  # MESHCORE_TEST_CHANNEL_SLOT if a future firmware changes the channel count.
   for c in 1 2 3 4 5 6 7; do echo "$USED" | grep -qx "$c" || { SLOT=$c; break; }; done
 fi
 [ -n "$SLOT" ] || { echo -e "${RED}✗ FAIL${NC}: no free channel slot"; exit 1; }
