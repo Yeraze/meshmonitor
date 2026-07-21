@@ -263,22 +263,31 @@ The button is disabled with an explanatory tooltip unless all of the following h
 ### Using the 3D view
 
 - **Navigate** with the built-in MapLibre control: drag to pan, scroll/pinch to zoom, right-drag (or two-finger drag) to pitch and rotate. A compass resets bearing to north.
-- **Terrain exaggeration** — a slider (0–2×, default **1.3×**) vertically stretches the DEM so subtle elevation changes read more clearly. It's a per-session view setting, not persisted between visits.
+- **Terrain exaggeration** — a slider (0–2×, default **1.3×**) vertically stretches the DEM so subtle elevation changes read more clearly. Your chosen value **persists per-browser** (New in 4.14, alongside the rest of the Map Analysis toolbar config), so it survives reloads instead of resetting each session.
 - **Node markers** render with short-name labels at their real position, draped onto the terrain surface. Click a marker to select it — the same inspector panel used in 2D opens with that node's details.
+- **Neighbor links and traceroute paths** (New in 4.14) render in 3D too, honoring the same layer toggles, filters, lookback window, and time-slider window as 2D — turning a layer off or narrowing its lookback in the toolbar affects both views identically. They use the same SNR-based color, opacity, and line-weight encoding as 2D, and MQTT/MeshCore links keep their dashed pattern. Unlike 2D, 3D draws links as straight segments rather than curved with direction arrows — the 3D camera's pitch and rotation already separate overlapping links, so curvature isn't needed; direction is instead shown by line color when a node is selected, matching 2D's color semantics.
+- **Selecting a link or traceroute segment** (New in 4.14) works the same as clicking a node: click a neighbor link or traceroute segment in 3D and the inspector opens with that link's details, exactly as in 2D — including Meshtastic and MeshCore neighbor links.
+- **"View terrain profile" from 3D** (New in 4.14) — selecting a neighbor link in 3D and clicking **View terrain profile** in the inspector automatically switches the canvas back to 2D with the [Link Profile](#terrain-link-profile) drawer open and the link drawn on the map. The verdict polyline and endpoint rings are Leaflet-only, so this action always lands you in 2D to see them; the elevation data is already cached from the 3D selection, so the drawer opens instantly.
 - **Basemap** — the 3D view reuses whichever raster tileset you have selected for the 2D map. If your selected tileset is **vector-only**, 3D can't drape a vector style over terrain yet, so it substitutes the default OpenStreetMap raster basemap and shows a small note; your 2D tileset selection is unaffected.
 
 The **2D/3D toggle state persists per-browser** alongside the rest of your Map Analysis toolbar configuration.
 
+::: tip Terrain draping caveat
+Neighbor links and traceroute paths are **not** elevation-sampled onto the terrain surface — MapLibre's line layers render near the base plane and can be partially hidden behind a ridge at high pitch, even though their endpoints (the node markers) sit correctly on the terrain. Treat an occluded link as a rough line-of-sight cue, not a precise indicator; this may be revisited once MapLibre's elevation-sampled line rendering (`line-z-offset`) stabilizes.
+:::
+
 ### What's not in 3D yet
 
-The 3D view is a foundation, not full layer parity. Not yet available while in 3D mode (all still work normally after switching back to 2D):
+The 3D view still doesn't have full layer parity with 2D. Not yet available while in 3D mode (all still work normally after switching back to 2D):
 
-- Neighbor links and traceroute paths
 - Coverage heatmap, position trails, range rings, hop shading, and the SNR overlay
-- The time slider
-- Launching the Terrain Link Profile tool directly from the 3D canvas
+- The time slider **UI** (the persisted time-slider window is still honored by 3D's neighbor/traceroute data — switching between 2D and 3D never changes which links are shown, only whether you can drag the slider handles from the 3D canvas)
+- Follow / Auto-zoom
+- Marker popups and spiderfying of overlapping markers
+- Launching the Terrain Link Profile tool by picking two points directly on the 3D canvas (use the inspector's **View terrain profile** action on a selected neighbor link instead, which auto-switches to 2D)
+- Waypoints
 
-These are planned for a follow-up phase of the 3D map work.
+These are candidates for a follow-up phase of the 3D map work.
 
 ## Time slider
 

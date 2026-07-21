@@ -11,10 +11,13 @@ import LinkProfileDrawer from './LinkProfileDrawer';
 import LinkProfileHoverLayer from './LinkProfileHoverLayer';
 import type { LinkEndpoint } from '../../utils/linkProfile';
 import { BaseMap } from '../map/BaseMap';
-import { Base3DMap, type Node3DFeature } from '../map/Base3DMap';
+import { Base3DMap, type Node3DFeature, type Line3DFeature } from '../map/Base3DMap';
 import { resolve3DBasemap, buildTerrainTileUrl } from '../../config/basemap3d';
 import { useTerrainCapabilities } from '../../hooks/useTerrainCapabilities';
 import { appBasename } from '../../init';
+import { use3DNeighborLines } from './use3DNeighborLines';
+import { use3DTracerouteLines } from './use3DTracerouteLines';
+import type { SelectedTarget } from './MapAnalysisContext';
 import NodeMarkersLayer from './layers/NodeMarkersLayer';
 import TraceroutePathsLayer from './layers/TraceroutePathsLayer';
 import NeighborLinksLayer from './layers/NeighborLinksLayer';
@@ -53,6 +56,7 @@ export default function MapAnalysisCanvas() {
     linkEndpoints,
     setLinkEndpoints,
     linkVerdict,
+    setExaggeration,
   } = useMapAnalysisCtx();
 
   // #3636: measurement endpoints, from the same visible+positioned node list
@@ -141,6 +145,32 @@ export default function MapAnalysisCanvas() {
     },
     [analysisNodes, setSelected],
   );
+
+  // #3826 Phase 3 WP-3 (spec §3.4): neighbor + traceroute lines in 3D. Called
+  // unconditionally (Rules of Hooks) — both hooks self-gate on their layer
+  // toggle/time-window and return empties when off, matching the 2D panes'
+  // `config.layers.*.enabled` guards above.
+  const neighborLines3D = use3DNeighborLines();
+  const tracerouteLines3D = use3DTracerouteLines();
+  const lines3D: Line3DFeature[] = useMemo(
+    () => [...neighborLines3D.lines, ...tracerouteLines3D.lines],
+    [neighborLines3D.lines, tracerouteLines3D.lines],
+  );
+  const line3DSelectionByKey = useMemo(
+    () => new Map<string, SelectedTarget>([
+      ...neighborLines3D.selectionByKey,
+      ...tracerouteLines3D.selectionByKey,
+    ]),
+    [neighborLines3D.selectionByKey, tracerouteLines3D.selectionByKey],
+  );
+  const handleLine3DClick = useCallback(
+    (key: string) => {
+      const target = line3DSelectionByKey.get(key);
+      if (target) setSelected(target);
+    },
+    [line3DSelectionByKey, setSelected],
+  );
+
   // WebGL unavailable on this machine (probe failed or map construction
   // threw): Base3DMap renders its own fallback message, but we also route
   // the user back to the working 2D map so they aren't stranded in 3D mode.
@@ -156,7 +186,11 @@ export default function MapAnalysisCanvas() {
           terrainTileUrl={terrainTileUrl}
           nodes={node3DFeatures}
           onNodeClick={handleNode3DClick}
+          lines={lines3D}
+          onLineClick={handleLine3DClick}
           onUnsupported={handle3DUnsupported}
+          initialExaggeration={config.exaggeration}
+          onExaggerationChange={setExaggeration}
         />
         {basemap3D.usedFallback && (
           <div className="map-analysis-3d-fallback-note">

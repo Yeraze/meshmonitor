@@ -64,6 +64,7 @@ export default function AnalysisInspectorPanel() {
     setLinkEndpoints,
     setLinkProfileMode,
     setMeasureMode,
+    setViewMode,
   } = useMapAnalysisCtx();
   const { distanceUnit } = useSettings();
   const elevationEnabled = useElevationEnabled();
@@ -376,6 +377,10 @@ export default function AnalysisInspectorPanel() {
             type="button"
             className="map-analysis-link-profile-action"
             onClick={() => {
+              // #3826 Phase 3 §2.5: triggering the profile action while in 3D
+              // auto-switches to 2D, where the drawer + on-map verdict
+              // polyline/endpoint rings actually render.
+              if (config.viewMode === '3d') setViewMode('2d');
               setMeasureMode(false);
               setLinkEndpoints([neighborEndpoints.a, neighborEndpoints.b]);
               setLinkProfileMode(true);

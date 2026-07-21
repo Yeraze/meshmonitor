@@ -66,6 +66,8 @@ export interface MapAnalysisConfig {
   autoZoom: boolean;
   /** 2D (Leaflet) vs 3D (MapLibre GL) map rendering on Map Analysis (#3826 Phase 2). */
   viewMode: '2d' | '3d';
+  /** 3D terrain exaggeration (0–2), client-local (#3826 P3). */
+  exaggeration: number;
 }
 
 const ALL_NODE_TYPES_VISIBLE = Object.fromEntries(
@@ -95,6 +97,7 @@ export const DEFAULT_CONFIG: MapAnalysisConfig = {
   followMode: false,
   autoZoom: false,
   viewMode: '2d',
+  exaggeration: 1.3,
 };
 
 /** Read the traceroute options off a config, layering stored values over defaults. */
@@ -124,6 +127,10 @@ function load(): MapAnalysisConfig {
       followMode: typeof parsed.followMode === 'boolean' ? parsed.followMode : false,
       autoZoom: typeof parsed.autoZoom === 'boolean' ? parsed.autoZoom : false,
       viewMode: parsed.viewMode === '3d' ? '3d' : DEFAULT_CONFIG.viewMode,
+      exaggeration:
+        typeof parsed.exaggeration === 'number' && Number.isFinite(parsed.exaggeration)
+          ? Math.max(0, Math.min(2, parsed.exaggeration))
+          : DEFAULT_CONFIG.exaggeration,
     };
   } catch {
     return DEFAULT_CONFIG;
@@ -206,6 +213,10 @@ export function useMapAnalysisConfig() {
     setConfig((prev) => ({ ...prev, viewMode: v }));
   }, []);
 
+  const setExaggeration = useCallback((v: number) => {
+    setConfig((prev) => ({ ...prev, exaggeration: v }));
+  }, []);
+
   const setTimeSlider = useCallback((ts: Partial<MapAnalysisConfig['timeSlider']>) => {
     setConfig((prev) => ({ ...prev, timeSlider: { ...prev.timeSlider, ...ts } }));
   }, []);
@@ -228,6 +239,7 @@ export function useMapAnalysisConfig() {
     setFollowMode,
     setAutoZoom,
     setViewMode,
+    setExaggeration,
     setTimeSlider,
     setInspectorOpen,
     reset,

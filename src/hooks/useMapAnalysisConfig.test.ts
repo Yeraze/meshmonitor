@@ -157,4 +157,52 @@ describe('useMapAnalysisConfig', () => {
     act(() => result.current.reset());
     expect(result.current.config.viewMode).toBe('2d');
   });
+
+  it('defaults exaggeration to 1.3', () => {
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    expect(result.current.config.exaggeration).toBe(1.3);
+    expect(DEFAULT_CONFIG.exaggeration).toBe(1.3);
+  });
+
+  it('updates exaggeration and persists to localStorage', () => {
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    act(() => result.current.setExaggeration(1.8));
+    expect(result.current.config.exaggeration).toBe(1.8);
+    expect(JSON.parse(localStorage.getItem(KEY)!).exaggeration).toBe(1.8);
+  });
+
+  it('loads an old config missing exaggeration as 1.3 without throwing (#3826 P3)', () => {
+    const { exaggeration: _ex, ...oldConfig } = DEFAULT_CONFIG;
+    localStorage.setItem(KEY, JSON.stringify(oldConfig));
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    expect(result.current.config.exaggeration).toBe(1.3);
+  });
+
+  it('clamps an out-of-range stored exaggeration into [0,2]', () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...DEFAULT_CONFIG, exaggeration: 5 }));
+    const { result: resultHigh } = renderHook(() => useMapAnalysisConfig());
+    expect(resultHigh.current.config.exaggeration).toBe(2);
+
+    localStorage.setItem(KEY, JSON.stringify({ ...DEFAULT_CONFIG, exaggeration: -3 }));
+    const { result: resultLow } = renderHook(() => useMapAnalysisConfig());
+    expect(resultLow.current.config.exaggeration).toBe(0);
+  });
+
+  it('coerces a garbage exaggeration value (non-finite or non-number) to the default', () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...DEFAULT_CONFIG, exaggeration: 'lots' }));
+    const { result: resultStr } = renderHook(() => useMapAnalysisConfig());
+    expect(resultStr.current.config.exaggeration).toBe(1.3);
+
+    localStorage.setItem(KEY, JSON.stringify({ ...DEFAULT_CONFIG, exaggeration: NaN }));
+    const { result: resultNaN } = renderHook(() => useMapAnalysisConfig());
+    expect(resultNaN.current.config.exaggeration).toBe(1.3);
+  });
+
+  it('reset() clears exaggeration back to 1.3', () => {
+    const { result } = renderHook(() => useMapAnalysisConfig());
+    act(() => result.current.setExaggeration(0.5));
+    expect(result.current.config.exaggeration).toBe(0.5);
+    act(() => result.current.reset());
+    expect(result.current.config.exaggeration).toBe(1.3);
+  });
 });
