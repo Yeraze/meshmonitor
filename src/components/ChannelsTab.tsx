@@ -586,8 +586,16 @@ export default function ChannelsTab({
                   const displayName = channelConfig?.name || getChannelName(channelId);
                   const unread = unreadCounts[channelId] || 0;
                   const encryptionStatus = channelEncryptionStatus(channelConfig);
-                  const uplink = channelConfig?.uplinkEnabled ? t('channels.mqtt_uplink', 'Uplink') : '';
-                  const downlink = channelConfig?.downlinkEnabled ? t('channels.mqtt_downlink', 'Downlink') : '';
+                  // Compact glyphs, NOT UiIcon: a native <option> cannot render
+                  // SVG children, and the #4217 migration's verbose-text
+                  // substitute made every entry a full sentence. The translated
+                  // labels stay as the option's `title` for hover/AT context.
+                  // eslint-disable-next-line meshmonitor-ui/no-hardcoded-ui-glyph -- #4217: native <option> cannot host UiIcon
+                  const uplink = channelConfig?.uplinkEnabled ? '↑' : '';
+                  // eslint-disable-next-line meshmonitor-ui/no-hardcoded-ui-glyph -- #4217: native <option> cannot host UiIcon
+                  const downlink = channelConfig?.downlinkEnabled ? '↓' : '';
+                  // eslint-disable-next-line meshmonitor-ui/no-hardcoded-ui-glyph -- #4217: native <option> cannot host UiIcon
+                  const encryptionIcon = encryptionStatus === 'secure' ? '🔒' : encryptionStatus === 'default' ? '🔐' : '🔓';
                   const encryptionLabel = encryptionStatus === 'secure'
                     ? t('channels.encrypted_secure')
                     : encryptionStatus === 'default'
@@ -595,15 +603,20 @@ export default function ChannelsTab({
                       : t('channels.unencrypted');
                   const channelConfig2 = channels.find(c => c.id === channelId);
                   const hasLocation = (channelConfig2?.positionPrecision ?? 0) > 0;
+                  // eslint-disable-next-line meshmonitor-ui/no-hardcoded-ui-glyph -- #4217: native <option> cannot host UiIcon
+                  const locationIcon = channelId === autoPositionChannelId ? '📍' : hasLocation ? '📌' : '';
                   const locationLabel = channelId === autoPositionChannelId
                     ? t('channels.location_auto_position')
                     : hasLocation
                       ? t('channels.location_enabled')
                       : '';
+                  const optionTitle = `${encryptionLabel}${locationLabel ? ` · ${locationLabel}` : ''}${
+                    channelConfig?.uplinkEnabled ? ` · ${t('channels.mqtt_uplink', 'Uplink')}` : ''
+                  }${channelConfig?.downlinkEnabled ? ` · ${t('channels.mqtt_downlink', 'Downlink')}` : ''}`;
 
                   return (
-                    <option key={channelId} value={channelId}>
-                      [{encryptionLabel}]{locationLabel ? ` [${locationLabel}]` : ''} {displayName} #{channelId} {uplink}
+                    <option key={channelId} value={channelId} title={optionTitle}>
+                      {encryptionIcon}{locationIcon ? ` ${locationIcon}` : ''} {displayName} #{channelId} {uplink}
                       {downlink} {unread > 0 ? `(${unread})` : ''}
                     </option>
                   );
