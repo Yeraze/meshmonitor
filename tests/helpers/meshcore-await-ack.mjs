@@ -31,7 +31,7 @@ const socket = io(BASE_URL, {
 });
 
 let done = false;
-const finish = (code) => { if (done) return; done = true; try { socket.close(); } catch {} process.exit(code); };
+const finish = (code) => { if (done) return; done = true; try { socket.close(); } catch { /* socket already closed */ } process.exit(code); };
 
 socket.on('meshcore:send-confirmed', (data) => {
   // No join-source => all events arrive globally. Correlate by sourceId.
