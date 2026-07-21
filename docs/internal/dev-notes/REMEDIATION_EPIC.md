@@ -1,4 +1,4 @@
-# Remediation Epic — Phase 0 + Phase 1 (issue #3962)
+# Remediation Epic — issue #3962 (Phases 0–5)
 
 **Status doc for the epic orchestration run started 2026-07-06.** Canonical plan: [REMEDIATION_PLAN.md](./REMEDIATION_PLAN.md) / issue [#3962](https://github.com/Yeraze/meshmonitor/issues/3962). This file is the durable state for the `/epic` harness — update it at every phase boundary so a restarted session can resume from the first unchecked phase.
 
@@ -36,7 +36,7 @@ Phase 2 started 2026-07-07. Decisions carried forward from the Phase 0+1 intervi
 - [x] **2.2b** — Auto-announce: MeshCore + Meshtastic cycles → one `autoAnnounceService` with per-protocol adapters (plan §2.2 ¶2).
 - [x] **2.2c** — Auto-responder: `checkAutoResponder` in both managers → shared service (plan §2.2 ¶3).
 - [x] **2.2d** — Distance-delete scheduling: MeshCore's `DistanceDeleteScheduler` construction → unified ownership in `services/` (plan §2.2 ¶4).
-- [ ] **2.3** — Singleton retirement: enumerate legacy-singleton branches in `meshtasticManager.ts`; create a registry-managed default source from env config; reduce `export default` to a pure alias; delete last special-casing (plan §2.3).
+- [x] **2.3** — Singleton retirement: enumerate legacy-singleton branches in `meshtasticManager.ts`; create a registry-managed default source from env config; reduce `export default` to a pure alias; delete last special-casing (plan §2.3). PR #4017 merged 2026-07-08 (WP4 importer migration deferred → picked up in Phase 4.2a).
 
 ## Ordering notes
 
@@ -56,6 +56,32 @@ Execution order: 3.1 → 3.5 → 3.2 → 3.3 → 3.4 (3.5 before 3.3 so new migr
 - [x] **3.4** — Sync/async burn-down in database.ts: delete sync twins in batches; move compute-heavy stragglers to repos/services; target < ~4k lines. PR1 #4043 (caller migration + straggler/node-cache extraction) + PR2 (TBD — deletion sweep). Landed at 5,418 lines (from 8,412 at task start); <4k gap analysis in phase log. `getSetting`/`getAllSettings`/`setSetting` sync trio retained by design.
 
 **Phase 3 COMPLETE** (2026-07-10): misc.ts deleted (3.1), key-repair 3-backend parity (3.2), bootstrap via migration replay + tripwire retired (3.3), migration ergonomics (3.5), sync-legacy surface deleted (3.4).
+
+## Phase 4 + Phase 5 run (started 2026-07-21)
+
+**Scope decisions (user interview, 2026-07-21):**
+- **Run scope:** full Phase 4 + Phase 5. Completing them closes **#3962** (Phase 6 declared ongoing hygiene, tracked by the lint ratchet + conventions, not by this epic) and **#3502** (which = Task 4.1).
+- **Reconnect state machine (4.2 final step):** IN scope, done last after leaf extractions; its PR gets the **`system-test` label** (real-hardware validation) plus a dev-container soak.
+- **Deprecated shims:** delete BOTH the `meshcoreRegistry.ts` shim and the `meshtasticManager` live Proxy alias (WP4: migrate ~8 importers to `getPrimaryMeshtasticManager()`, delete `export default`) — early in Phase 4.2, before decomposition. The one-release window passed with v4.13.0 (2026-07-15).
+- Carried forward from prior runs: each numbered task = one epic phase (may be a small PR stack, per 3.1/3.4 precedent); behavior-preserving; full suite green + typecheck + lint:ci before every PR; auto-merge on green CI + orchestrator review via /merge.
+
+**State at run start:** `server.ts` 6,275 lines / 81 inline handlers (groups: nodes 19, settings 17, admin 17, config 15, messages 6, stragglers 7 — the issue's Phase-1/2 groups already extracted); `meshtasticManager.ts` 14,977; `meshcoreRoutes.ts` 3,933; `App.tsx` 5,373; `SettingsTab.tsx` 2,507; `ConfigurationTab.tsx` 2,689; `DataContext.tsx` already 123 lines (5.1 largely pre-done — census needed); 64 raw `fetch()` sites in components/pages.
+
+### Phase 4 checklist
+
+- [ ] **4.1** — `server.ts` → route modules (closes #3502): move the 81 remaining inline handlers into `routes/` by group (nodes, settings→extend settingsRoutes, admin, config, messages→extend messageRoutes, user→extend userRoutes, + stragglers), moving/exporting the ~24 server.ts-local helpers with them; adopt envelope + `requirePermission` unchanged. Target: `server.ts` < ~800 lines (bootstrap, middleware, mounting, error handler, shutdown).
+- [ ] **4.2a** — Shim deletions + `meshtasticManager.ts` leaf extractions: delete `meshcoreRegistry.ts` shim; WP4 (migrate alias importers → `getPrimaryMeshtasticManager()`, delete Proxy alias `export default`); then leaves in order: MQTT proxy bridging, cron/announce delegate cleanup (incl. the announce-scheduler-in-disconnect gap), favorites, admin-ack correlation → `adminTransactionService`, config/channel/LoRa admin → `deviceAdminService`, NodeDB maintenance.
+- [ ] **4.2b** — Reconnect state machine: boolean flags/latches → explicit state enum with single transition function; every issue-referenced behavior (#3270/#3276 teardown-before-reconnect, #3122 startup grace, want_config rate-limiting) preserved as named transitions with tests. PR carries the `system-test` label. Target: manager < ~4k lines.
+- [ ] **4.3** — `meshcoreRoutes.ts` (3,933 lines) split by concern: device/status, contacts, channels, messaging, admin/CLI, packets. Mechanical; keep existing permission/envelope discipline.
+
+### Phase 5 checklist
+
+- [ ] **5.1+5.2** — Census + finish DataContext→TanStack remnants (fold `useTelemetry`/`useVersionCheck` hand-rolled intervals into `refetchInterval`); memoize all context provider values (`useMemo` + stable setters).
+- [ ] **5.3** — SettingsTab draft-object rewrite (kills the 81-dep `handleSave`); update CLAUDE.md "Adding New Settings" recipe; ConfigurationTab same pattern section-by-section as follow-up PRs in this phase.
+- [ ] **5.4** — Converge on react-router; dissolve `App.tsx` (one tab per PR; `setActiveTab` → `navigate()`; delete duplicated URL parsing with the last tab). Target: `App.tsx` < ~500 lines.
+- [ ] **5.5** — One fetch paradigm: migrate the 64 raw `fetch()` sites to `ApiService`/query hooks; flip the lint baseline for the raw-fetch ban to zero.
+- [ ] **5.6** — CSS containment: nodes.css reorder/annotate (the twice-bitten #3532 cascade trap) + freeze-globals convention note.
+- [ ] **Close-out** — docs sweep, CLAUDE.md updates, close #3962 + #3502 with summary comments.
 
 ## Phase log
 
