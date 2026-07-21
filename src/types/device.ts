@@ -7,6 +7,13 @@ export interface DeviceInfo {
     hwModel?: number;
     role?: string;
     publicKey?: string;
+    // #4244: the Copy NodeInfo modal diffs all eight NODE_INFO_FIELDS. These
+    // three were absent from this type, so its "Current" column rendered them
+    // as "—" no matter what was stored — making macaddr look copyable when the
+    // server would then refuse to overwrite the real value.
+    macaddr?: string | null;
+    hasPKC?: boolean | null;
+    firmwareVersion?: string | null;
   };
   position?: {
     latitude: number;

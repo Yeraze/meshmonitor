@@ -349,6 +349,7 @@
   "nodes.copy_nodeinfo_source": "Copy from source",
   "nodes.copy_nodeinfo_current": "Current",
   "nodes.copy_nodeinfo_incoming": "Incoming",
+  "nodes.copy_nodeinfo_select_all": "Select all fields",
   "nodes.copy_nodeinfo_field": "Field",
   "nodes.copy_nodeinfo_no_changes": "No new fields to copy — the target already has all available data.",
   "nodes.copy_nodeinfo_push_to_device": "Push to NodeDB",

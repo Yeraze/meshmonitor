@@ -1075,7 +1075,10 @@ apiRouter.get('/nodes/active', optionalAuth(), async (req, res) => {
 });
 
 // Copy NodeInfo from another source
-import { findCopyCandidates, copyNodeInfo } from './services/nodeInfoCopyService.js';
+import {
+  findCopyCandidates, copyNodeInfo, isNodeInfoField, NODE_INFO_FIELDS,
+  type NodeInfoField,
+} from './services/nodeInfoCopyService.js';
 
 apiRouter.get('/nodes/:nodeNum/copy-candidates', requirePermission('nodes', 'read'), async (req, res) => {
   try {
@@ -1101,11 +1104,25 @@ apiRouter.post('/nodes/:nodeNum/copy-nodeinfo', requirePermission('nodes', 'writ
     if (isNaN(nodeNum)) {
       return res.status(400).json({ error: 'nodeNum must be a number' });
     }
-    const { fromSourceId, toSourceId, pushToNodeDb } = req.body ?? {};
+    const { fromSourceId, toSourceId, pushToNodeDb, fields } = req.body ?? {};
     if (!fromSourceId || !toSourceId) {
       return res.status(400).json({ error: 'fromSourceId and toSourceId are required' });
     }
-    const result = await copyNodeInfo(nodeNum, fromSourceId, toSourceId, !!pushToNodeDb);
+    // #4244: optional per-field selection. Reject unknown names rather than
+    // silently ignoring them, so a client typo surfaces instead of quietly
+    // copying nothing.
+    let selectedFields: NodeInfoField[] | undefined;
+    if (fields !== undefined) {
+      if (!Array.isArray(fields) || !fields.every(isNodeInfoField)) {
+        return res.status(400).json({
+          error: `fields must be an array of: ${NODE_INFO_FIELDS.join(', ')}`,
+        });
+      }
+      selectedFields = fields;
+    }
+    const result = await copyNodeInfo(
+      nodeNum, fromSourceId, toSourceId, !!pushToNodeDb, selectedFields,
+    );
     res.json({ success: true, data: result });
   } catch (error: any) {
     logger.error('Error copying node info:', error);

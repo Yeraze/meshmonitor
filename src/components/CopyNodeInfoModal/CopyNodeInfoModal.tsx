@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import Modal from '../common/Modal';
 import { useSource } from '../../contexts/SourceContext';
@@ -134,10 +134,53 @@ export const CopyNodeInfoModal: React.FC<CopyNodeInfoModalProps> = ({
     const incomingVal = selectedCandidate ? (selectedCandidate.node as any)[key] : null;
     const isNew = (currentVal == null || currentVal === '') &&
                   incomingVal != null && incomingVal !== '';
-    return { key, label, currentVal, incomingVal, isNew };
+    // #4244: a field can now be copied even when the target already holds a
+    // value, so "would this change anything?" is the real gate, not "is the
+    // target empty?".
+    const hasIncoming = incomingVal != null && incomingVal !== '';
+    const differs = hasIncoming && String(currentVal ?? '') !== String(incomingVal);
+    return { key, label, currentVal, incomingVal, isNew, hasIncoming, differs };
   });
 
-  const hasChanges = diffRows.some(r => r.isNew);
+  // Only rows with an incoming value are selectable — there is nothing to copy
+  // from an empty donor field.
+  const selectableKeys = useMemo(
+    () => diffRows.filter(r => r.hasIncoming).map(r => r.key as string),
+    [diffRows],
+  );
+
+  const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
+
+  // Default the selection to every row that would actually change something,
+  // which reproduces the old fill-empty behavior plus the stale-value refreshes
+  // the old code silently refused to do. Re-runs when the donor changes.
+  useEffect(() => {
+    setSelectedFields(new Set(diffRows.filter(r => r.differs).map(r => r.key as string)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- #4244 keyed on the
+    // donor, not on diffRows (recomputed every render, would loop).
+  }, [selectedSourceId, currentNode]);
+
+  const toggleField = useCallback((key: string) => {
+    setSelectedFields(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const allSelected = selectableKeys.length > 0 &&
+    selectableKeys.every(k => selectedFields.has(k));
+
+  const toggleAll = useCallback(() => {
+    setSelectedFields(prev => {
+      const everySelected = selectableKeys.length > 0 &&
+        selectableKeys.every(k => prev.has(k));
+      return everySelected ? new Set<string>() : new Set(selectableKeys);
+    });
+  }, [selectableKeys]);
+
+  const hasChanges = selectedFields.size > 0;
 
   const handleConfirm = useCallback(async () => {
     if (!nodeNum || !selectedSourceId || !sourceId) return;
@@ -157,6 +200,9 @@ export const CopyNodeInfoModal: React.FC<CopyNodeInfoModalProps> = ({
             fromSourceId: selectedSourceId,
             toSourceId: sourceId,
             pushToNodeDb,
+            // #4244: explicit selection — these overwrite the target even when
+            // it already holds a (possibly derived/stale) value.
+            fields: Array.from(selectedFields),
           }),
         },
       );
@@ -179,7 +225,7 @@ export const CopyNodeInfoModal: React.FC<CopyNodeInfoModalProps> = ({
     } finally {
       setSaving(false);
     }
-  }, [nodeNum, selectedSourceId, sourceId, pushToNodeDb, csrfFetch, t, onCopied]);
+  }, [nodeNum, selectedSourceId, sourceId, pushToNodeDb, selectedFields, csrfFetch, t, onCopied]);
 
   return (
     <Modal
@@ -235,23 +281,54 @@ export const CopyNodeInfoModal: React.FC<CopyNodeInfoModalProps> = ({
             <table>
               <thead>
                 <tr>
+                  <th className="field-select">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      disabled={selectableKeys.length === 0}
+                      aria-label={t('nodes.copy_nodeinfo_select_all', 'Select all fields')}
+                      title={t('nodes.copy_nodeinfo_select_all', 'Select all fields')}
+                    />
+                  </th>
                   <th>{t('nodes.copy_nodeinfo_field')}</th>
                   <th>{t('nodes.copy_nodeinfo_current')}</th>
                   <th>{t('nodes.copy_nodeinfo_incoming')}</th>
                 </tr>
               </thead>
               <tbody>
-                {diffRows.map(row => (
-                  <tr key={row.key} className={row.isNew ? 'diff-new' : ''}>
-                    <td className="field-name">{row.label}</td>
-                    <td className="field-current">
-                      {formatFieldValue(row.key, row.currentVal)}
-                    </td>
-                    <td className={`field-incoming${row.isNew ? ' new-value' : ''}`}>
-                      {formatFieldValue(row.key, row.incomingVal)}
-                    </td>
-                  </tr>
-                ))}
+                {diffRows.map(row => {
+                  const checked = selectedFields.has(row.key as string);
+                  return (
+                    <tr
+                      key={row.key}
+                      className={[
+                        row.isNew ? 'diff-new' : '',
+                        // A row that overwrites existing data is visually
+                        // distinct from one that merely fills a blank (#4244).
+                        row.differs && !row.isNew ? 'diff-overwrite' : '',
+                        checked ? 'is-selected' : '',
+                      ].filter(Boolean).join(' ')}
+                    >
+                      <td className="field-select">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={!row.hasIncoming}
+                          onChange={() => toggleField(row.key as string)}
+                          aria-label={row.label}
+                        />
+                      </td>
+                      <td className="field-name">{row.label}</td>
+                      <td className="field-current">
+                        {formatFieldValue(row.key, row.currentVal)}
+                      </td>
+                      <td className={`field-incoming${row.isNew ? ' new-value' : ''}`}>
+                        {formatFieldValue(row.key, row.incomingVal)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
