@@ -18,10 +18,13 @@ vi.mock('../../services/database.js', () => ({
 
 // Mock meshtasticManager for tests that need it
 vi.mock('../meshtasticManager.js', () => ({
-  default: {
+  fallbackManager: {
     getLocalNodeInfo: vi.fn(() => ({ longName: 'TestNode' }))
   }
 }));
+
+vi.mock('../sourceManagerRegistry.js', () => ({ sourceManagerRegistry: {} }));
+vi.mock('../sourceManagerTypes.js', () => ({ getPrimaryMeshtasticManager: () => undefined }));
 
 // Mock global fetch
 const mockFetch = vi.fn() as MockInstance;

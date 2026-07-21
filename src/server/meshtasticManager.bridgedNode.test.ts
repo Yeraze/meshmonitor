@@ -43,7 +43,7 @@ describe('MeshtasticManager - bridged node detection', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
     manager.localNodeInfo = {
       nodeNum: 0x11111111,
       nodeId: '!11111111',

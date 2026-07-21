@@ -224,7 +224,7 @@ describe('MeshtasticManager - Duplicate message suppression', () => {
 
     // Dynamic import to get fresh module with mocks
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
   });
 
   afterEach(() => {

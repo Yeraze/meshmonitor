@@ -14,7 +14,9 @@ vi.mock('../../services/database.js', () => ({
     },
   },
 }));
-vi.mock('../meshtasticManager.js', () => ({ default: { getLocalNodeInfo: vi.fn(() => null) } }));
+vi.mock('../meshtasticManager.js', () => ({ fallbackManager: { getLocalNodeInfo: vi.fn(() => null) } }));
+vi.mock('../sourceManagerRegistry.js', () => ({ sourceManagerRegistry: {} }));
+vi.mock('../sourceManagerTypes.js', () => ({ getPrimaryMeshtasticManager: () => undefined }));
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);

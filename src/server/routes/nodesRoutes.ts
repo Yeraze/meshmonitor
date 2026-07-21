@@ -21,10 +21,10 @@
 import express from 'express';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
-import meshtasticManager from '../meshtasticManager.js';
+import { fallbackManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
-import { isMeshCoreManager } from '../sourceManagerTypes.js';
+import { isMeshCoreManager, getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import { filterNodesByChannelPermission, enhanceNodeForClient, checkNodeChannelAccess } from '../utils/nodeEnhancer.js';
 import { pivotPositionHistory } from '../utils/positionHistoryPivot.js';
 import { resolveRequestSourceId } from '../utils/sourceResolver.js';
@@ -44,7 +44,8 @@ router.get('/nodes', optionalAuth(), async (req, res) => {
     const nodesSourceId = typeof req.query.sourceId === 'string' && req.query.sourceId.length > 0
       ? (req.query.sourceId as string)
       : undefined;
-    const allNodes = await meshtasticManager.getAllNodesAsync(nodesSourceId);
+    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    const allNodes = await mgr.getAllNodesAsync(nodesSourceId);
     const estimatedPositions = await databaseService.getAllNodesEstimatedPositionsAsync();
 
     // Filter nodes based on channel read permissions — scope the permission

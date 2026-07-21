@@ -76,12 +76,34 @@ vi.mock('./firmwareHardwareMap.js', () => ({
   getHardwareDisplayName: vi.fn(),
 }));
 
+// #3962 Phase 4.2a WP4: firmwareUpdateService resolves its manager via
+// getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager
+// instead of importing the retired Proxy alias default export. No primary
+// meshtastic_tcp source is registered in these unit tests, so resolution
+// always falls through to fallbackManager below.
+const mockManager = vi.hoisted(() => ({
+  userReconnect: vi.fn().mockResolvedValue(undefined),
+  userDisconnect: vi.fn().mockResolvedValue(undefined),
+  resetModuleConfigCache: vi.fn(),
+  getLocalNodeInfo: vi.fn().mockReturnValue(null),
+}));
+
 vi.mock('../meshtasticManager.js', () => ({
-  default: {
-    userReconnect: vi.fn().mockResolvedValue(undefined),
-    userDisconnect: vi.fn().mockResolvedValue(undefined),
-    resetModuleConfigCache: vi.fn(),
-  },
+  fallbackManager: mockManager,
+}));
+
+vi.mock('../sourceManagerRegistry.js', () => ({
+  sourceManagerRegistry: {},
+}));
+
+// Controllable per-test (defaults to "no primary registered", matching the
+// production default in these unit tests) — the atomicity pin test below
+// overrides this to prove a single per-operation capture, not a fresh
+// resolution on every call.
+const mockGetPrimaryMeshtasticManager = vi.hoisted(() => vi.fn(() => undefined as unknown));
+
+vi.mock('../sourceManagerTypes.js', () => ({
+  getPrimaryMeshtasticManager: mockGetPrimaryMeshtasticManager,
 }));
 
 // Mock global fetch
@@ -703,11 +725,9 @@ describe('FirmwareUpdateService', () => {
 
     describe('disconnectFromNode', () => {
       it('should disconnect from node and update status', async () => {
-        const meshtasticManager = (await import('../meshtasticManager.js')).default;
-
         await service.disconnectFromNode();
 
-        expect(meshtasticManager.userDisconnect).toHaveBeenCalled();
+        expect(mockManager.userDisconnect).toHaveBeenCalled();
         const status = service.getStatus();
         expect(status.step).toBe('backup');
       });
@@ -715,7 +735,6 @@ describe('FirmwareUpdateService', () => {
 
     describe('completeUpdate', () => {
       it('should reset state, disconnect, reset module cache, and reconnect', async () => {
-        const meshtasticManager = (await import('../meshtasticManager.js')).default;
         const svc = service as any;
 
         // Put service in success state
@@ -729,9 +748,45 @@ describe('FirmwareUpdateService', () => {
         await service.completeUpdate();
 
         expect(service.getStatus().state).toBe('idle');
-        expect(meshtasticManager.userDisconnect).toHaveBeenCalled();
-        expect(meshtasticManager.resetModuleConfigCache).toHaveBeenCalled();
-        expect(meshtasticManager.userReconnect).toHaveBeenCalled();
+        expect(mockManager.userDisconnect).toHaveBeenCalled();
+        expect(mockManager.resetModuleConfigCache).toHaveBeenCalled();
+        expect(mockManager.userReconnect).toHaveBeenCalled();
+      });
+
+      it('captures the manager once per operation — a mid-operation primary swap does not split the disconnect/reset/reconnect sequence across two instances (#3962 Phase 4.2a atomicity)', async () => {
+        const managerA = {
+          userDisconnect: vi.fn().mockResolvedValue(undefined),
+          resetModuleConfigCache: vi.fn(),
+          userReconnect: vi.fn().mockResolvedValue(undefined),
+        };
+        const managerB = {
+          userDisconnect: vi.fn().mockResolvedValue(undefined),
+          resetModuleConfigCache: vi.fn(),
+          userReconnect: vi.fn().mockResolvedValue(undefined),
+        };
+        // If the registry's primary were re-resolved per call site instead of
+        // captured once, userDisconnect would land on managerA while
+        // resetModuleConfigCache/userReconnect land on managerB (or later).
+        mockGetPrimaryMeshtasticManager
+          .mockReturnValueOnce(managerA)
+          .mockReturnValueOnce(managerB)
+          .mockReturnValueOnce(managerB);
+
+        const svc = service as any;
+        svc.status = { state: 'success', step: 'verify', message: 'ok', logs: [] };
+
+        await service.completeUpdate();
+
+        // getPrimaryMeshtasticManager must have been called exactly once for
+        // this whole operation — proof of a single capture, not per-call-site
+        // re-resolution.
+        expect(mockGetPrimaryMeshtasticManager).toHaveBeenCalledTimes(1);
+        expect(managerA.userDisconnect).toHaveBeenCalledTimes(1);
+        expect(managerA.resetModuleConfigCache).toHaveBeenCalledTimes(1);
+        expect(managerA.userReconnect).toHaveBeenCalledTimes(1);
+        expect(managerB.userDisconnect).not.toHaveBeenCalled();
+        expect(managerB.resetModuleConfigCache).not.toHaveBeenCalled();
+        expect(managerB.userReconnect).not.toHaveBeenCalled();
       });
     });
 

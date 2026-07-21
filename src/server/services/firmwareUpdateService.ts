@@ -18,7 +18,9 @@ import * as path from 'path';
 import { assertSafeUrl, SsrfBlockedError } from '../utils/ssrfGuard.js';
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import meshtasticManager from '../meshtasticManager.js';
+import { fallbackManager } from '../meshtasticManager.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import { dataEventEmitter } from './dataEventEmitter.js';
 import {
   getBoardName,
@@ -353,6 +355,11 @@ export class FirmwareUpdateService {
    * Kills any active child process, cleans temp directory, resets to idle.
    */
   async cancelUpdate(): Promise<void> {
+    // Capture the manager once for this operation (atomicity: #3962 Phase
+    // 4.2a — do not re-resolve per call site, the registry's primary could
+    // swap mid-operation).
+    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+
     // Capture step BEFORE resetting status so we know whether MM was
     // already disconnected from the node. Steps 'backup' onwards run after
     // disconnectFromNode(); cancelling there must reconnect.
@@ -377,7 +384,7 @@ export class FirmwareUpdateService {
       if (wasDisconnected) {
         logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after cancel');
         try {
-          await meshtasticManager.userReconnect();
+          await mgr.userReconnect();
         } catch (reconnectError) {
           logger.error('[FirmwareUpdateService] Reconnect after cancel errored:', reconnectError);
         }
@@ -401,19 +408,25 @@ export class FirmwareUpdateService {
    * The UI will show the disconnected/reconnecting state.
    */
   async completeUpdate(): Promise<void> {
+    // Capture the manager once for this disconnect→reconnect operation
+    // (atomicity: #3962 Phase 4.2a — a single capture ensures all three
+    // calls below target the same instance even if the registry's primary
+    // changes mid-operation).
+    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+
     this.cleanupTempDir();
     this.status = createIdleStatus();
     this.updateStatus({});
     logger.info('[FirmwareUpdateService] Update completed — initiating full reconnect cycle');
 
     // Force disconnect (clears intervals, transport, etc.)
-    await meshtasticManager.userDisconnect();
+    await mgr.userDisconnect();
 
     // Reset module-config cache so all configs are re-fetched on reconnect
-    meshtasticManager.resetModuleConfigCache();
+    mgr.resetModuleConfigCache();
 
     // Reconnect from scratch — handleConnected() will request full node DB
-    await meshtasticManager.userReconnect();
+    await mgr.userReconnect();
   }
 
   /**
@@ -745,7 +758,7 @@ export class FirmwareUpdateService {
       message: 'Disconnecting from node for firmware update...',
     });
     logger.debug('[FirmwareUpdateService] Disconnecting MeshMonitor from node for CLI access');
-    await meshtasticManager.userDisconnect();
+    await (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).userDisconnect();
     this.appendLog('Disconnected from node.');
     logger.debug('[FirmwareUpdateService] MeshMonitor disconnected from node');
   }
@@ -814,7 +827,7 @@ export class FirmwareUpdateService {
       });
       // Reconnect on failure so MeshMonitor isn't left disconnected
       logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after backup failure');
-      await meshtasticManager.userReconnect();
+      await (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).userReconnect();
       throw error;
     }
   }
@@ -895,7 +908,7 @@ export class FirmwareUpdateService {
       // for the 60s auto-reconnect timer or manually reconnect.
       logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after download failure');
       try {
-        await meshtasticManager.userReconnect();
+        await (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).userReconnect();
       } catch (reconnectError) {
         logger.error('[FirmwareUpdateService] Reconnect after download failure errored:', reconnectError);
       }
@@ -961,7 +974,7 @@ export class FirmwareUpdateService {
       // Reconnect on failure — node is still disconnected from the backup step.
       logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after extract failure');
       try {
-        await meshtasticManager.userReconnect();
+        await (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).userReconnect();
       } catch (reconnectError) {
         logger.error('[FirmwareUpdateService] Reconnect after extract failure errored:', reconnectError);
       }
@@ -973,6 +986,11 @@ export class FirmwareUpdateService {
    * Step 5: Flash firmware to the gateway via OTA.
    */
   async executeFlash(gatewayIp: string, firmwarePath: string): Promise<void> {
+    // Capture once for this operation (atomicity: #3962 Phase 4.2a — the
+    // success path and the failure path below are mutually exclusive but
+    // both must target the same manager instance resolved at entry).
+    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+
     this.updateStatus({
       state: 'in-progress',
       step: 'flash',
@@ -995,7 +1013,7 @@ export class FirmwareUpdateService {
       });
       logger.error(`[FirmwareUpdateService] Readiness check failed before OTA: ${message}`);
       logger.debug('[FirmwareUpdateService] Reconnecting MeshMonitor after readiness failure');
-      await meshtasticManager.userReconnect();
+      await mgr.userReconnect();
       throw new Error(`Node readiness check failed: ${message}`);
     }
 
@@ -1197,7 +1215,7 @@ export class FirmwareUpdateService {
         logger.warn(`[FirmwareUpdateService] Post-flash reboot wait timed out: ${m}`);
       }
 
-      await meshtasticManager.userReconnect();
+      await mgr.userReconnect();
       this.appendLog('Reconnected to node.');
 
       this.updateStatus({
@@ -1226,7 +1244,7 @@ export class FirmwareUpdateService {
       } catch {
         // Best-effort — reconnect anyway and let the transport's retry handle it.
       }
-      await meshtasticManager.userReconnect();
+      await mgr.userReconnect();
       throw error;
     } finally {
       // Only clean up temp dir on success — keep it for retry on failure
@@ -1253,12 +1271,16 @@ export class FirmwareUpdateService {
       gatewayIp?: string;
     }
   ): Promise<string> {
+    // Capture once for this operation (atomicity: #3962 Phase 4.2a — the
+    // polling loop, the CLI-fallback disconnect, and the finally-block
+    // reconnect must all target the same manager instance resolved at entry).
+    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
     const timeoutMs = opts?.timeoutMs ?? 30_000;
     const intervalMs = opts?.intervalMs ?? 500;
     const stale = opts?.staleVersion ?? '';
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const v = meshtasticManager.getLocalNodeInfo()?.firmwareVersion;
+      const v = mgr.getLocalNodeInfo()?.firmwareVersion;
       if (v && v !== stale) return v;
       await new Promise((r) => setTimeout(r, intervalMs));
     }
@@ -1266,13 +1288,13 @@ export class FirmwareUpdateService {
     // of the post-OTA `@meshtastic/js` reconnect flap). Fall back to the
     // meshtastic CLI to read the version straight from the node — this is the
     // same path we use elsewhere and is independent of MM's transport state.
-    const fallback = meshtasticManager.getLocalNodeInfo()?.firmwareVersion ?? '';
+    const fallback = mgr.getLocalNodeInfo()?.firmwareVersion ?? '';
     if (fallback && fallback !== stale) return fallback;
     if (!opts?.gatewayIp) return fallback;
     try {
       logger.debug('[FirmwareUpdateService] Verify wait expired — falling back to CLI to read firmware version directly');
       // Temporarily release MM's TCP slot so the CLI can connect cleanly.
-      await meshtasticManager.userDisconnect().catch(() => { /* best-effort */ });
+      await mgr.userDisconnect().catch(() => { /* best-effort */ });
       await this.waitForNodeTcpReady(opts.gatewayIp).catch(() => { /* best-effort */ });
       // Post-OTA, the node passes the TCP probe but its meshtastic protocol
       // layer may still be initializing — the first --info attempt often times
@@ -1308,7 +1330,7 @@ export class FirmwareUpdateService {
       return fallback;
     } finally {
       // Hand the TCP slot back to MM so the rest of the app stays connected.
-      meshtasticManager.userReconnect().catch((e) =>
+      mgr.userReconnect().catch((e) =>
         logger.warn(`[FirmwareUpdateService] userReconnect after CLI fallback failed: ${e instanceof Error ? e.message : String(e)}`)
       );
     }

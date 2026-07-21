@@ -44,7 +44,7 @@ describe('MeshtasticManager - air-quality particle telemetry (protobuf.js snake_
   beforeEach(async () => {
     vi.clearAllMocks();
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
     // trackPKIEncryption hits other state/DB; not under test here.
     vi.spyOn(manager, 'trackPKIEncryption').mockResolvedValue(undefined);
   });

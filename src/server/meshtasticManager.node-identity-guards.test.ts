@@ -222,7 +222,7 @@ describe('MeshtasticManager - Node Identity Guards', () => {
     vi.clearAllMocks();
 
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
     loggerModule = await import('../utils/logger.js');
 
     // Set up the manager with local node info

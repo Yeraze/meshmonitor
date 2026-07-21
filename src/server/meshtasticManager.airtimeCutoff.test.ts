@@ -40,7 +40,7 @@ describe('MeshtasticManager - airtime cutoff gate', () => {
     vi.clearAllMocks();
     mockGetActiveNodes.mockResolvedValue([]);
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
     // Reset gate-related state between tests
     manager.setAutomationAirtimeCutoffThreshold(30);
     manager.setAutomationAirtimeCutoffSource('local');

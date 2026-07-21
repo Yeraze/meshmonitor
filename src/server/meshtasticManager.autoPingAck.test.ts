@@ -40,7 +40,7 @@ describe('MeshtasticManager - auto-ping ACK matching (request_id + from)', () =>
   beforeEach(async () => {
     vi.clearAllMocks();
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
     manager.localNodeInfo = { nodeNum: LOCAL };
     (manager as any).autoPingSessions.clear();
     vi.spyOn(manager as any, 'emitAutoPingUpdate').mockResolvedValue(undefined);
@@ -142,7 +142,7 @@ describe('MeshtasticManager - auto-ping send race', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
     manager.localNodeInfo = { nodeNum: LOCAL };
     (manager as any).autoPingSessions.clear();
     (manager as any).messageQueue = { recordExternalSend: vi.fn(), handleAck: vi.fn() };

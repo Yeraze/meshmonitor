@@ -1024,7 +1024,7 @@
     "@typescript-eslint/no-explicit-any": 3
   },
   "src/server/routes/messageRoutes.ts": {
-    "@typescript-eslint/no-explicit-any": 29
+    "@typescript-eslint/no-explicit-any": 28
   },
   "src/server/routes/neighborInfoRoutes.ts": {
     "@typescript-eslint/no-unused-vars": 2
@@ -1129,9 +1129,6 @@
   },
   "src/server/server.test.ts": {
     "@typescript-eslint/no-unused-vars": 28
-  },
-  "src/server/server.ts": {
-    "@typescript-eslint/no-explicit-any": 1
   },
   "src/server/services/appriseNotificationService.ts": {
     "@typescript-eslint/no-explicit-any": 5,

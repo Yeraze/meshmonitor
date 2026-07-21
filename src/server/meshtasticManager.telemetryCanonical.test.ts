@@ -45,7 +45,7 @@ describe('MeshtasticManager - canonical telemetry normalization (#3506)', () => 
   beforeEach(async () => {
     vi.clearAllMocks();
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
     vi.spyOn(manager, 'trackPKIEncryption').mockResolvedValue(undefined);
   });
 

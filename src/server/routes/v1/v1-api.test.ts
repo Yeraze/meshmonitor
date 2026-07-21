@@ -252,7 +252,12 @@ const { mockMessageQueue } = vi.hoisted(() => {
 
 vi.mock('../../meshtasticManager.js', () => {
   return {
-    default: {
+    // #3962 Phase 4.2a WP4: routes resolve fallbackManager via
+    // getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager
+    // instead of the retired Proxy alias default export. No primary
+    // meshtastic_tcp source is registered in this route-only unit test, so
+    // resolution always falls through to fallbackManager below.
+    fallbackManager: {
       sendTextMessage: vi.fn(async (text: string, channel: number, destination?: number, replyId?: number, emoji?: number, userId?: number) => {
         // Simulate returning a message ID
         return 123456789;
@@ -932,7 +937,7 @@ describe('POST /api/v1/messages - Error Handling', () => {
   it('should return 503 when not connected to node', async () => {
     // Mock sendTextMessage to throw a "Not connected" error
     const meshtasticManager = await import('../../meshtasticManager.js');
-    vi.mocked(meshtasticManager.default.sendTextMessage).mockRejectedValueOnce(
+    vi.mocked(meshtasticManager.fallbackManager.sendTextMessage).mockRejectedValueOnce(
       new Error('Not connected to Meshtastic device')
     );
 
@@ -953,7 +958,7 @@ describe('POST /api/v1/messages - Error Handling', () => {
   it('should return 500 for generic errors', async () => {
     // Mock sendTextMessage to throw a generic error
     const meshtasticManager = await import('../../meshtasticManager.js');
-    vi.mocked(meshtasticManager.default.sendTextMessage).mockRejectedValueOnce(
+    vi.mocked(meshtasticManager.fallbackManager.sendTextMessage).mockRejectedValueOnce(
       new Error('Something went wrong')
     );
 
@@ -977,7 +982,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     // mockMessageQueue is the per-manager queue stub used by the meshtasticManager mock above.
 
     // Reset mocks
-    vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
+    vi.mocked(meshtasticManager.fallbackManager.sendTextMessage).mockClear();
     vi.mocked(mockMessageQueue.enqueue).mockClear();
 
     const response = await request(app)
@@ -994,7 +999,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     expect(response.body.data).toHaveProperty('messageCount', 1);
     expect(response.body.data).toHaveProperty('requestId', 123456789);
     // Should call sendTextMessage directly, not queue
-    expect(meshtasticManager.default.sendTextMessage).toHaveBeenCalledTimes(1);
+    expect(meshtasticManager.fallbackManager.sendTextMessage).toHaveBeenCalledTimes(1);
     expect(mockMessageQueue.enqueue).not.toHaveBeenCalled();
   });
 
@@ -1003,7 +1008,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     // mockMessageQueue is the per-manager queue stub used by the meshtasticManager mock above.
 
     // Reset mocks
-    vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
+    vi.mocked(meshtasticManager.fallbackManager.sendTextMessage).mockClear();
     vi.mocked(mockMessageQueue.enqueue).mockClear();
 
     // Create a message longer than 200 bytes
@@ -1029,9 +1034,9 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     expect(response.body.data.note).toContain('split');
 
     // Should NOT call sendTextMessage directly
-    expect(meshtasticManager.default.sendTextMessage).not.toHaveBeenCalled();
+    expect(meshtasticManager.fallbackManager.sendTextMessage).not.toHaveBeenCalled();
     // Should call splitMessageForMeshtastic and enqueue
-    expect(meshtasticManager.default.splitMessageForMeshtastic).toHaveBeenCalledWith(longMessage, 200);
+    expect(meshtasticManager.fallbackManager.splitMessageForMeshtastic).toHaveBeenCalledWith(longMessage, 200);
     expect(mockMessageQueue.enqueue).toHaveBeenCalled();
   });
 
@@ -1041,7 +1046,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     const databaseService = await import('../../../services/database.js');
 
     // Reset mocks and restore default permission behavior
-    vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
+    vi.mocked(meshtasticManager.fallbackManager.sendTextMessage).mockClear();
     vi.mocked(mockMessageQueue.enqueue).mockClear();
     vi.mocked(databaseService.default.checkPermissionAsync).mockResolvedValue(true);
 
@@ -1075,7 +1080,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     // mockMessageQueue is the per-manager queue stub used by the meshtasticManager mock above.
 
     // Reset mocks
-    vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
+    vi.mocked(meshtasticManager.fallbackManager.sendTextMessage).mockClear();
     vi.mocked(mockMessageQueue.enqueue).mockClear();
 
     // Create a message longer than 200 bytes with a replyId
@@ -1105,7 +1110,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     // mockMessageQueue is the per-manager queue stub used by the meshtasticManager mock above.
 
     // Reset mocks
-    vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
+    vi.mocked(meshtasticManager.fallbackManager.sendTextMessage).mockClear();
     vi.mocked(mockMessageQueue.enqueue).mockClear();
 
     // Message exactly at 200 bytes (ASCII characters = 1 byte each)
@@ -1123,7 +1128,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     // Should send directly, not queue
     expect(response.body.data).toHaveProperty('deliveryState', 'pending');
     expect(response.body.data).toHaveProperty('messageCount', 1);
-    expect(meshtasticManager.default.sendTextMessage).toHaveBeenCalledTimes(1);
+    expect(meshtasticManager.fallbackManager.sendTextMessage).toHaveBeenCalledTimes(1);
     expect(mockMessageQueue.enqueue).not.toHaveBeenCalled();
   });
 
@@ -1132,7 +1137,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     // mockMessageQueue is the per-manager queue stub used by the meshtasticManager mock above.
 
     // Reset mocks
-    vi.mocked(meshtasticManager.default.sendTextMessage).mockClear();
+    vi.mocked(meshtasticManager.fallbackManager.sendTextMessage).mockClear();
     vi.mocked(mockMessageQueue.enqueue).mockClear();
 
     // Emoji characters are 4 bytes each in UTF-8
@@ -1152,7 +1157,7 @@ describe('POST /api/v1/messages - Multi-Message Breakup', () => {
     // Should trigger split logic due to byte length exceeding 200
     // The splitMessageForMeshtastic should be called because UTF-8 byte length > 200
     expect(response.body.data).toHaveProperty('deliveryState', 'queued');
-    expect(meshtasticManager.default.splitMessageForMeshtastic).toHaveBeenCalledWith(emojiMessage, 200);
+    expect(meshtasticManager.fallbackManager.splitMessageForMeshtastic).toHaveBeenCalledWith(emojiMessage, 200);
     // Note: The mock doesn't properly handle UTF-8 byte splitting, but we verify the route
     // correctly identifies the message as too long based on byte count
   });

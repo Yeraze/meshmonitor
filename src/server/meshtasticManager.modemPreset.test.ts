@@ -57,7 +57,7 @@ describe('MeshtasticManager - persistModemPreset (#3644)', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
     manager.sourceId = SOURCE;
   });
 

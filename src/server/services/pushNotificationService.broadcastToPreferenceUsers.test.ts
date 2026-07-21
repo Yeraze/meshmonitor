@@ -48,10 +48,13 @@ vi.mock('../../utils/logger.js', () => ({
 }));
 
 vi.mock('../meshtasticManager.js', () => ({
-  default: {
+  fallbackManager: {
     getLocalNodeInfo: vi.fn(() => ({ longName: 'LocalNode' })),
   },
 }));
+
+vi.mock('../sourceManagerRegistry.js', () => ({ sourceManagerRegistry: {} }));
+vi.mock('../sourceManagerTypes.js', () => ({ getPrimaryMeshtasticManager: () => undefined }));
 
 vi.mock('../utils/notificationFiltering.js', () => ({
   getUserNotificationPreferencesAsync: h.getUserNotificationPreferencesAsyncMock,
