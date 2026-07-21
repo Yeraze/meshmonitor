@@ -545,7 +545,7 @@ const ChannelsConfigSection: React.FC<ChannelsConfigSectionProps> = ({
                               {channel.name || <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('channels_config.unnamed')}</span>}
                               {!hasReorderChanges && channel.role === 1 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
                               {hasReorderChanges && displaySlot === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-blue)', fontSize: '0.8rem' }}><UiIcon name="favorite" size={13} /> {t('channels_config.primary')}</span>}
-                              {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}>⊘ {t('channels_config.disabled')}</span>}
+                              {channel.role === 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--ctp-overlay0)', fontSize: '0.8rem' }}><UiIcon name="blocked" size={13} /> {t('channels_config.disabled')}</span>}
                             </>
                           ) : <span style={{ color: 'var(--ctp-subtext0)', fontStyle: 'italic' }}>{t('channels_config.empty')}</span>}
                         </h4>
