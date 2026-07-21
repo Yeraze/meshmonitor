@@ -15,6 +15,8 @@ Most endpoints require authentication. MeshMonitor supports:
 - **Session cookies** — from a browser login (`POST /api/auth/login`)
 - **Bearer tokens** — long-lived API tokens issued from the Settings UI; send as `Authorization: Bearer <token>`
 
+Both mechanisms work on the legacy `/api/*` endpoints **and** the versioned `/api/v1/*` endpoints (as of 4.13.2). A Bearer token acts as its owning user: it carries exactly that user's per-source permissions, so a request only succeeds where the user would be allowed. On endpoints that permit anonymous access, an **absent or invalid** Bearer token falls through to the anonymous user rather than being rejected; a **valid** token always takes precedence over the anonymous fallback. (The `/api/v1/*` routes are Bearer-only — they never fall through to a session cookie or anonymous.)
+
 Public endpoints are limited to health checks and the optional anonymous read-only mode (`DISABLE_ANONYMOUS=false`).
 
 ## API Versioning & Per-Source Scoping

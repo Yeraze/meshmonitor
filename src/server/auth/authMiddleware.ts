@@ -224,10 +224,71 @@ export function optionalAuth() {
 /**
  * Require authentication
  */
+/**
+ * Resolve a user from an `Authorization: Bearer <token>` API token, if one is
+ * present and valid (#4259). Returns the token's owning user (a full
+ * impersonation carrying that user's per-source permission grants — API tokens
+ * are not independently scoped), or null when no Bearer header is present or
+ * the token is missing/expired/invalid.
+ *
+ * This is the shared seam that lets the legacy `/api/*` middlewares
+ * (`requireAuth`, `requirePermission`) honor Bearer tokens the same way the v1
+ * `requireAPIToken()` gate does — previously only session cookies worked
+ * outside `/api/v1/*`, so a fully-permissioned token silently fell through to
+ * the `anonymous` user and got a confusing 403. A valid token upgrades the
+ * request; an absent or bad token leaves resolution to the caller's existing
+ * session/anonymous logic (so anonymous-readable endpoints are unaffected).
+ */
+async function resolveBearerUser(req: Request): Promise<User | null> {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+
+  const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+  let user: User | null;
+  try {
+    user = await databaseService.validateApiTokenAsync(token);
+  } catch (error) {
+    logger.error('Error validating API token in legacy auth middleware:', error);
+    return null;
+  }
+
+  if (!user || !user.isActive) {
+    // Fire-and-forget audit trail for a failed token attempt, matching
+    // requireAPIToken()'s logging.
+    databaseService.auditLogAsync(
+      null,
+      'api_token_invalid',
+      null,
+      JSON.stringify({ path: req.path }),
+      req.ip || req.socket.remoteAddress || 'unknown'
+    ).catch(err => logger.error('Failed to write audit log:', err));
+    return null;
+  }
+
+  databaseService.auditLogAsync(
+    user.id,
+    'api_token_used',
+    req.path,
+    JSON.stringify({ method: req.method }),
+    req.ip || req.socket.remoteAddress || 'unknown'
+  ).catch(err => logger.error('Failed to write audit log:', err));
+
+  return user;
+}
+
 export function requireAuth() {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.session.userId) {
+        // No session — accept a Bearer API token before rejecting (#4259).
+        const tokenUser = await resolveBearerUser(req);
+        if (tokenUser) {
+          req.user = tokenUser;
+          return next();
+        }
+
         // Check if the session cookie exists at all
         const hasCookie = req.headers.cookie?.includes('meshmonitor.sid');
         if (!hasCookie) {
@@ -339,7 +400,15 @@ export function requirePermission(
         }
       }
 
-      // If no authenticated user, try anonymous
+      // No session user — accept a Bearer API token before the anonymous
+      // fallback (#4259). A token resolves to its owning user and is then
+      // subject to the same per-source checkPermissionAsync below, so it can
+      // only do what that user is permitted to do.
+      if (!user) {
+        user = await resolveBearerUser(req);
+      }
+
+      // If still no authenticated user, try anonymous
       if (!user) {
         const anonymousUser = await databaseService.findUserByUsernameAsync('anonymous');
         if (anonymousUser && anonymousUser.isActive) {
