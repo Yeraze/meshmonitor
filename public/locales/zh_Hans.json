@@ -4232,7 +4232,7 @@
     "dashboard.telemetry_help.step1": "点击地图上的一个节点",
     "dashboard.telemetry_help.step2": "点击底部的“更多信息”",
     "dashboard.telemetry_help.step3": "向下滚动到“遥测数据”部分",
-    "dashboard.telemetry_help.step4": "点击您想要固定到仪表盘的指标旁边的  星标图标",
+    "dashboard.telemetry_help.step4": "点击您想要固定到仪表盘的指标旁边的星标图标",
     "dashboard.telemetry_help.back": "返回",
     "info.hw_model_distribution": "硬件型号分布",
     "info.hw_model_breakdown": "各硬件型号的节点数",

@@ -265,7 +265,7 @@ export const SourcesList: React.FC<SourcesListProps> = ({ sources, nodeId, onSou
             className="node-popup-source-row node-popup-source-row-button"
             disabled={!clickable}
             onClick={clickable ? () => onSourceSelect!(s, nodeId) : undefined}
-            title={clickable ? `Open ${s.sourceName} Node Details` : undefined}
+            title={clickable ? `Open Node Details for ${s.sourceName}` : undefined}
           >
             <span className={`node-popup-protocol-badge protocol-${s.protocol.toLowerCase()}`}>
               {s.protocol}

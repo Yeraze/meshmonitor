@@ -1800,7 +1800,7 @@
   "dashboard.telemetry_help.step1": "Click a node on the map",
   "dashboard.telemetry_help.step2": "Click More Info at the bottom",
   "dashboard.telemetry_help.step3": "Scroll down to Telemetry Data",
-  "dashboard.telemetry_help.step4": "Click the  star icon next to the metric you want to pin to the dashboard",
+  "dashboard.telemetry_help.step4": "Click the star icon next to the metric you want to pin to the dashboard",
   "dashboard.telemetry_help.back": "Back",
   "dashboard.show_solar": "Show solar overlay",
   "dashboard.hide_solar": "Hide solar overlay",
