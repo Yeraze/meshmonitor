@@ -1032,6 +1032,9 @@
   "src/server/routes/newsRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 4
   },
+  "src/server/routes/nodesRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 11
+  },
   "src/server/routes/notificationRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 16
   },
@@ -1128,13 +1131,16 @@
     "@typescript-eslint/no-unused-vars": 28
   },
   "src/server/server.ts": {
-    "@typescript-eslint/no-explicit-any": 16
+    "@typescript-eslint/no-explicit-any": 1
   },
   "src/server/services/appriseNotificationService.ts": {
     "@typescript-eslint/no-explicit-any": 5,
     "@typescript-eslint/no-unused-vars": 1
   },
   "src/server/services/autoDeleteByDistanceService.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/services/autoResponderTriggerMigration.ts": {
     "@typescript-eslint/no-explicit-any": 1
   },
   "src/server/services/automation/automationEngineService.ts": {
@@ -1244,6 +1250,9 @@
   },
   "src/server/utils/dbNodeMapper.ts": {
     "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/utils/jsonBigIntReplacer.ts": {
+    "@typescript-eslint/no-explicit-any": 3
   },
   "src/server/utils/mergeNodesAcrossSources.ts": {
     "@typescript-eslint/no-explicit-any": 2
