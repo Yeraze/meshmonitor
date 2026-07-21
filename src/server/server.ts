@@ -3,7 +3,9 @@ import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
+// Side-effect only: patches JSON.stringify to handle BigInt. Must run before
+// anything else in the app can serialize a value that might contain one.
+import './utils/jsonBigIntReplacer.js';
 import databaseService from '../services/database.js';
 import meshtasticManager, { fallbackManager } from './meshtasticManager.js';
 import { MeshtasticManager } from './meshtasticManager.js';
@@ -16,7 +18,7 @@ import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
 import { setDiscardInvalidPositions, parseDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { setNoIndexEnabled, parseNoIndexEnabled } from '../utils/robotsConfig.js';
-import { robotsTagMiddleware, robotsTxtHandler } from './middleware/robotsTag.js';
+import { robotsTagMiddleware } from './middleware/robotsTag.js';
 import { getSessionMiddleware } from './auth/sessionConfig.js';
 import { initializeWebSocket } from './services/webSocketService.js';
 import { initializeOIDC } from './auth/oidcAuth.js';
@@ -41,17 +43,19 @@ import { lowBatteryNotificationService } from './services/lowBatteryNotification
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { versionCheckService } from './services/versionCheckService.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
-import { generateAnalyticsScript, AnalyticsProvider } from './utils/analyticsScriptGenerator.js';
-import { rewriteHtml } from './utils/htmlRewriter.js';
 import settingsRoutes, { setSettingsCallbacks } from './routes/settingsRoutes.js';
 import { bootstrapSources } from './bootstrapSources.js';
+import { migrateAutoResponderTriggers } from './services/autoResponderTriggerMigration.js';
+import { configureStaticServing, invalidateHtmlCache } from './staticServing.js';
+// Re-exported for backward compatibility — server.ts used to define
+// invalidateHtmlCache locally and `export function` it. No current importer
+// reaches through server.ts for it (verified via grep as part of #3502 PR3),
+// but the re-export is a free safety net against a hidden/dynamic import.
+export { invalidateHtmlCache };
 import { installProcessSafetyNet } from './processSafetyNet.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Load .env file in development mode
 // dotenv/config automatically loads .env from project root
@@ -70,23 +74,6 @@ const env = getEnvironmentConfig();
 const app = express();
 const PORT = env.port;
 const BASE_URL = env.baseUrl;
-
-// Custom JSON replacer to handle BigInt values
-const jsonReplacer = (_key: string, value: any) => {
-  if (typeof value === 'bigint') {
-    return value.toString();
-  }
-  return value;
-};
-
-// Override JSON.stringify to handle BigInt
-const originalStringify = JSON.stringify;
-JSON.stringify = function (value, replacer?: any, space?: any) {
-  if (replacer) {
-    return originalStringify(value, replacer, space);
-  }
-  return originalStringify(value, jsonReplacer, space);
-};
 
 // Trust proxy configuration for reverse proxy deployments
 // When behind a reverse proxy (nginx, Traefik, etc.), this allows Express to:
@@ -636,7 +623,6 @@ import {
 } from './services/meshcoreRoomSyncScheduler.js';
 import { getMeshCoreCredentialStore } from './services/meshcoreCredentialStore.js';
 import embedProfileRoutes from './routes/embedProfileRoutes.js';
-import { createEmbedCspMiddleware } from './middleware/embedMiddleware.js';
 import embedPublicRoutes from './routes/embedPublicRoutes.js';
 import firmwareUpdateRoutes from './routes/firmwareUpdateRoutes.js';
 import sourceRoutes from './routes/sourceRoutes.js';
@@ -944,9 +930,6 @@ setSystemCallbacks({
 
 // Note: GET/POST/DELETE /settings routes are in routes/settingsRoutes.ts
 
-// Serve static files from the React app build
-const buildPath = path.join(__dirname, '../../dist');
-
 // Public endpoint to list available scripts (no CSRF or auth required).
 // Implementation lives in ./routes/scriptRoutes.ts (imported as scriptsEndpoint)
 // and is mounted directly on the app below to bypass the apiRouter's CSRF guard.
@@ -971,168 +954,10 @@ if (BASE_URL) {
   app.use('/api', apiLimiter, csrfProtection, apiRouter);
 }
 
-// Function to rewrite HTML with BASE_URL at runtime
-// Cache for rewritten HTML to avoid repeated file reads
-let cachedHtml: string | null = null;
-let cachedRewrittenHtml: string | null = null;
-let cachedEmbedHtml: string | null = null;
-let cachedRewrittenEmbedHtml: string | null = null;
-
-export function invalidateHtmlCache(): void {
-  cachedRewrittenHtml = null;
-  cachedRewrittenEmbedHtml = null;
-}
-
-async function getAnalyticsScript(): Promise<string> {
-  try {
-    const provider = (await databaseService.settings.getSetting('analyticsProvider') || 'none') as AnalyticsProvider;
-    if (provider === 'none') return '';
-    const configStr = await databaseService.settings.getSetting('analyticsConfig') || '{}';
-    const config = JSON.parse(configStr);
-    return generateAnalyticsScript(provider, config);
-  } catch {
-    return '';
-  }
-}
-
-// Serve static assets (JS, CSS, images)
-if (BASE_URL) {
-  // Serve PWA files with BASE_URL rewriting (MUST be before static middleware)
-  app.get(`${BASE_URL}/registerSW.js`, (_req: express.Request, res: express.Response) => {
-    const swRegisterPath = path.join(buildPath, 'registerSW.js');
-    let content = fs.readFileSync(swRegisterPath, 'utf-8');
-    // Rewrite service worker registration to use BASE_URL
-    // The generated file has: navigator.serviceWorker.register('/sw.js', { scope: '/' })
-    content = content
-      .replace("'/sw.js'", `'${BASE_URL}/sw.js'`)
-      .replace('"/sw.js"', `"${BASE_URL}/sw.js"`)
-      .replace("scope: '/'", `scope: '${BASE_URL}/'`)
-      .replace('scope: "/"', `scope: "${BASE_URL}/"`);
-    res.type('application/javascript').send(content);
-  });
-
-  app.get(`${BASE_URL}/manifest.webmanifest`, (_req: express.Request, res: express.Response) => {
-    const manifestPath = path.join(buildPath, 'manifest.webmanifest');
-    const content = fs.readFileSync(manifestPath, 'utf-8');
-    const manifest = JSON.parse(content);
-    // Update manifest paths
-    manifest.scope = `${BASE_URL}/`;
-    manifest.start_url = `${BASE_URL}/`;
-    res.type('application/manifest+json').json(manifest);
-  });
-
-  // Serve assets folder specifically
-  app.use(`${BASE_URL}/assets`, express.static(path.join(buildPath, 'assets')));
-
-  // Create static middleware once and reuse it
-  const staticMiddleware = express.static(buildPath, { index: false });
-
-  // Serve other static files (like favicon, logo, etc.) - but exclude /api
-  app.use(BASE_URL, (req, res, next) => {
-    // Skip if this is an API route
-    if (req.path.startsWith('/api')) {
-      return next();
-    }
-    staticMiddleware(req, res, next);
-  });
-
-  // Serve robots.txt (before SPA fallback) — dynamic body gated on noIndexEnabled (#4202)
-  app.get(`${BASE_URL}/robots.txt`, robotsTxtHandler);
-
-  // Serve embed page (before SPA fallback)
-  app.get(`${BASE_URL}/embed/:profileId`, createEmbedCspMiddleware(), async (_req: express.Request, res: express.Response) => {
-    if (!cachedRewrittenEmbedHtml) {
-      const embedHtmlPath = path.join(buildPath, 'embed.html');
-      if (!fs.existsSync(embedHtmlPath)) {
-        return res.status(404).send('Embed page not found');
-      }
-      cachedEmbedHtml = fs.readFileSync(embedHtmlPath, 'utf-8');
-      const embedAnalyticsScript = await getAnalyticsScript();
-      cachedRewrittenEmbedHtml = rewriteHtml(cachedEmbedHtml, BASE_URL, embedAnalyticsScript);
-    }
-    res.setHeader('Content-Type', 'text/html');
-    res.send(cachedRewrittenEmbedHtml);
-  });
-
-  // Catch all handler for SPA routing - but exclude /api
-  app.get(`${BASE_URL}`, async (_req: express.Request, res: express.Response) => {
-    // Use cached HTML if available, otherwise read and cache
-    if (!cachedRewrittenHtml) {
-      const htmlPath = path.join(buildPath, 'index.html');
-      cachedHtml = fs.readFileSync(htmlPath, 'utf-8');
-      const analyticsScript = await getAnalyticsScript();
-      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
-    }
-    res.type('html').send(cachedRewrittenHtml);
-  });
-  // Use a route pattern that Express 5 can handle
-  app.use(async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    // Skip if this is not under our BASE_URL
-    if (!req.path.startsWith(BASE_URL)) {
-      return next();
-    }
-    // Skip if this is an API route
-    if (req.path.startsWith(`${BASE_URL}/api`)) {
-      return next();
-    }
-    // Skip if this is a static file (has an extension like .ico, .png, .svg, etc.)
-    if (/\.[a-zA-Z0-9]+$/.test(req.path)) {
-      return next();
-    }
-    // Serve cached rewritten HTML for all other routes under BASE_URL
-    if (!cachedRewrittenHtml) {
-      const htmlPath = path.join(buildPath, 'index.html');
-      cachedHtml = fs.readFileSync(htmlPath, 'utf-8');
-      const analyticsScript = await getAnalyticsScript();
-      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
-    }
-    res.type('html').send(cachedRewrittenHtml);
-  });
-} else {
-  // Normal static file serving for root deployment.
-  //
-  // IMPORTANT: `index: false` disables express.static's automatic index.html
-  // serving. We handle index.html ourselves (below) so we can inject the
-  // configured analytics script into <head>. Without this flag, a request
-  // for `/` would be served by static middleware with the raw index.html,
-  // bypassing analytics injection entirely — which is the bug that caused
-  // GA4 tags to silently not appear on root deployments.
-  app.use(express.static(buildPath, { index: false }));
-
-  // Serve robots.txt (before SPA fallback) — dynamic body gated on noIndexEnabled (#4202)
-  app.get('/robots.txt', robotsTxtHandler);
-
-  // Serve embed page (before SPA fallback)
-  app.get('/embed/:profileId', createEmbedCspMiddleware(), async (_req: express.Request, res: express.Response) => {
-    if (!cachedRewrittenEmbedHtml) {
-      const embedHtmlPath = path.join(buildPath, 'embed.html');
-      if (!fs.existsSync(embedHtmlPath)) {
-        return res.status(404).send('Embed page not found');
-      }
-      cachedEmbedHtml = fs.readFileSync(embedHtmlPath, 'utf-8');
-      const embedAnalyticsScript = await getAnalyticsScript();
-      cachedRewrittenEmbedHtml = rewriteHtml(cachedEmbedHtml, BASE_URL, embedAnalyticsScript);
-    }
-    res.setHeader('Content-Type', 'text/html');
-    res.send(cachedRewrittenEmbedHtml);
-  });
-
-  // Catch all handler for SPA routing - skip API routes
-  app.use(async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    // Skip if this is an API route
-    if (req.path.startsWith('/api')) {
-      return next();
-    }
-    // Serve cached rewritten HTML (with analytics injected)
-    if (!cachedRewrittenHtml) {
-      const htmlPath = path.join(buildPath, 'index.html');
-      cachedHtml = fs.readFileSync(htmlPath, 'utf-8');
-      const analyticsScript = await getAnalyticsScript();
-      cachedRewrittenHtml = rewriteHtml(cachedHtml, BASE_URL, analyticsScript);
-    }
-    res.type('html').send(cachedRewrittenHtml);
-  });
-}
+// Static asset + SPA-catch-all serving (implementation moved to
+// staticServing.ts as part of #3502 PR3 composition-root teardown).
+// Must come after the API router mount above.
+configureStaticServing(app);
 
 // Error handling middleware
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -1215,39 +1040,8 @@ process.on('SIGTERM', () => {
 // Last-resort handlers: log full context and route through gracefulShutdown (exit 1).
 installProcessSafetyNet({ shutdown: gracefulShutdown });
 
-// Data migration: Set channel field to 'dm' for existing auto-responder triggers without channel
-async function migrateAutoResponderTriggers() {
-  try {
-    await databaseService.waitForReady();
-    const triggersStr = await databaseService.settings.getSetting('autoResponderTriggers');
-    if (!triggersStr) {
-      return; // No triggers to migrate
-    }
-
-    const triggers = JSON.parse(triggersStr);
-    if (!Array.isArray(triggers)) {
-      return;
-    }
-
-    let migrationCount = 0;
-    const migratedTriggers = triggers.map((trigger: any) => {
-      if (trigger.channel === undefined || trigger.channel === null) {
-        migrationCount++;
-        return { ...trigger, channel: 'dm' };
-      }
-      return trigger;
-    });
-
-    if (migrationCount > 0) {
-      await databaseService.settings.setSetting('autoResponderTriggers', JSON.stringify(migratedTriggers));
-      logger.info(`✅ Migrated ${migrationCount} auto-responder trigger(s) to default channel 'dm'`);
-    }
-  } catch (error) {
-    logger.error('❌ Failed to migrate auto-responder triggers:', error);
-  }
-}
-
-// Run migration on startup
+// Run the auto-responder-trigger channel-backfill migration on startup
+// (implementation moved to services/autoResponderTriggerMigration.ts).
 void migrateAutoResponderTriggers();
 
 // Module-level server variable for graceful shutdown
