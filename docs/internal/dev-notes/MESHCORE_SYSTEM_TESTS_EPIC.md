@@ -131,16 +131,42 @@ into `system-tests.sh` and reports PASS; typecheck + full vitest suite green.
   typecheck clean.
 - See [[reference_meshcore_hw_rig_ports]] (auto-memory) for the rig port facts.
 
-### Phase 2 — Messaging (companion↔companion + repeater DM auto-ack)  ⬜
-Extend the script: resolve node A's source id and node B's public key (from B's
-source local node / A's contacts; discover if B isn't a contact of A). DM A→B
-(`POST /messages/send` toPublicKey=B → verify B's `/messages` shows inbound + A
-observes `meshcore:send-confirmed`). Create a **dedicated test channel**
-(`#mm-systest`, hashtag-derived) on both companions, then channel message A→B on
-it (resolve its channelIdx → verify B receives). Resolve the Yeraze
-Repeater public key by name/prefix from contacts → DM it → verify firmware
-auto-ack (`meshcore:send-confirmed`).
-**Exit:** all three messaging assertions pass; integrated + reported; suite green.
+### Phase 2 — Messaging (companion↔companion + repeater DM auto-ack)  🔻 IN PROGRESS
+Extend the script with three messaging assertions. **Live-hardware validation
+(2026-07-20) forced a design change** — see the finding below.
+
+**Live-hardware finding: companion↔companion DM does NOT work on this rig — RF
+near-field, not a software/test bug.** Extensively diagnosed on the two live
+companions (Sandbox on ttyUSB2, BLE Sandbox on ttyUSB3):
+- **Works:** companion↔companion **channel** messaging on `#mm-systest` (both
+  directions, ~3s); **Yeraze Repeater DM auto-ack** (`meshcore:send-confirmed`,
+  ~492ms). Both kept as hard assertions.
+- **Fails:** direct **DM between the two companions**, every configuration —
+  A→B was HTTP 400 (A had no contact for B); B→A was 200 but never
+  delivered/ACKed. `reset-path`+`discover-path` left the path null. After **both
+  nodes flood-advert (`POST /advert`) + `contacts/refresh`**, contacts+paths WERE
+  established (A→B `pathLen=1` via the repeater `66…`; B→A `pathLen=0` direct) —
+  but the DM **still failed both directions**, even over the direct path.
+- **Root cause:** broadcasts get through both ways (so both radios TX+RX to each
+  other), yet the DM+ACK round-trip fails — the signature of **near-field
+  receiver overload** (nodes ~3 inches apart). `autoRetryOnMiss` (#3979) only
+  arms a *channel* echo-retry, not a DM flood-retry. Not fixable from the harness.
+- **Decision (user, 2026-07-20):** ship channel + repeater DM as hard assertions;
+  gate companion↔companion **DM behind `MESHCORE_COMPANION_DM`** (default SKIP —
+  documents the limitation). The opt-in path first does advert-exchange +
+  contact-refresh (proven to establish contacts/paths) then tries both directions
+  via inbox OR `meshcore:send-confirmed`, for when the nodes are separated.
+
+Assertions: (1) **companion↔companion channel** — create `#mm-systest` (hashtag
+PSK = `SHA-256("#mm-systest")[:16]`, base64) on both companions, channel-message
+A→B, verify B receives (hard). (2) **Yeraze Repeater DM auto-ack** — resolve the
+repeater by name/`advType==2`, DM it, catch `meshcore:send-confirmed` via a Node
+Socket.IO listener helper (hard). (3) **companion↔companion DM** — env-gated
+opt-in, default SKIP (per finding above). Uses `tests/helpers/meshcore-await-ack.mjs`.
+No `system-tests.sh` change (the Phase-1 phase already runs this script).
+**Exit:** channel + repeater-DM assertions pass on hardware; companion↔companion
+DM gated/skipped by default; typecheck + full vitest suite green.
+See [[reference_meshcore_hw_rig_ports]] and the near-field-DM finding in memory.
 
 ### Phase 3 — Remote-admin login + remote telemetry  ⬜
 Extend the script: remote-admin login into the Yeraze Repeater via
