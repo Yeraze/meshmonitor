@@ -3,11 +3,13 @@
  *
  * Manages outgoing automated messages (Auto-Responder and Auto-Acknowledge) with:
  * - Rate limiting (max 1 message per 30 seconds)
- * - Retry logic (up to 3 attempts until ACK received)
+ * - Retry logic (up to 3 attempts until ACK received; DM default is
+ *   user-configurable via `autoAckMaxAttempts`, clamped to [1,3] — #4266)
  * - Queue processing with proper timing
  */
 
 import { logger } from '../utils/logger.js';
+import databaseService from '../services/database.js';
 
 export interface QueuedMessage {
   id: string;
@@ -55,11 +57,33 @@ export class MessageQueueService {
   private sendCallback?: (text: string, destination: number, replyId?: number, channel?: number, emoji?: number) => Promise<number>;
 
   /**
+   * @param sourceId - Owning source, for per-source `autoAckMaxAttempts` reads
+   *                   (#4266). `null` reads the un-namespaced global setting
+   *                   (used by the legacy singleton export below).
+   */
+  constructor(private readonly sourceId: string | null = null) {}
+
+  /**
    * Set the callback function for sending messages
    * This should be MeshtasticManager.sendTextMessage
    */
   setSendCallback(callback: (text: string, destination: number, replyId?: number, channel?: number, emoji?: number) => Promise<number>) {
     this.sendCallback = callback;
+  }
+
+  /**
+   * Resolve the app-level DM resend attempt cap from the `autoAckMaxAttempts`
+   * setting (#4266), clamped to [1,3]. Falls back to MAX_ATTEMPTS when unset
+   * or invalid. Read synchronously at enqueue time (via DatabaseService's sync
+   * getSetting path) so a settings change takes effect without a restart —
+   * channel sends never call this (they stay hardcoded to maxAttempts=1).
+   */
+  private resolveDmMaxAttempts(): number {
+    const raw = databaseService.getSettingForSourceSync(this.sourceId, 'autoAckMaxAttempts');
+    if (raw === null || raw === '') return this.MAX_ATTEMPTS;
+    const parsed = parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) return this.MAX_ATTEMPTS;
+    return Math.min(3, Math.max(1, parsed));
   }
 
   /**
@@ -83,10 +107,11 @@ export class MessageQueueService {
     const messageId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Channel messages don't support ACKs, so only attempt once
-    // For DMs, use override if provided, otherwise default to MAX_ATTEMPTS
+    // For DMs, use override if provided, otherwise the configurable `autoAckMaxAttempts`
+    // default (clamped to [1,3], falls back to MAX_ATTEMPTS when unset — #4266)
     const maxAttempts = maxAttemptsOverride !== undefined
       ? maxAttemptsOverride
-      : (channel !== undefined ? 1 : this.MAX_ATTEMPTS);
+      : (channel !== undefined ? 1 : this.resolveDmMaxAttempts());
 
     const queuedMessage: QueuedMessage = {
       id: messageId,

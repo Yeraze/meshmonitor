@@ -614,6 +614,7 @@ const location = useLocation();
     autoAckMatrix, setAutoAckMatrix,
     autoAckCooldownSeconds, setAutoAckCooldownSeconds,
     autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds,
+    autoAckMaxAttempts, setAutoAckMaxAttempts,
     autoAckTestMessages, setAutoAckTestMessages,
     autoAnnounceEnabled, setAutoAnnounceEnabled,
     autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,
@@ -1063,6 +1064,9 @@ const location = useLocation();
           }
           if (settings.autoAckPreSendDelaySeconds !== undefined) {
             setAutoAckPreSendDelaySeconds(parseInt(settings.autoAckPreSendDelaySeconds) || 0);
+          }
+          if (settings.autoAckMaxAttempts !== undefined) {
+            setAutoAckMaxAttempts(Math.min(3, Math.max(1, parseInt(settings.autoAckMaxAttempts) || 3)));
           }
 
           if (settings.autoAckTestMessages) {
@@ -5088,6 +5092,8 @@ const location = useLocation();
                   onCooldownSecondsChange={setAutoAckCooldownSeconds}
                   preSendDelaySeconds={autoAckPreSendDelaySeconds}
                   onPreSendDelaySecondsChange={setAutoAckPreSendDelaySeconds}
+                  maxAttempts={autoAckMaxAttempts}
+                  onMaxAttemptsChange={setAutoAckMaxAttempts}
                   baseUrl={baseUrl}
                   onEnabledChange={setAutoAckEnabled}
                   onRegexChange={setAutoAckRegex}

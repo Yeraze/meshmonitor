@@ -1,4 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Mock the database service's per-source sync setting read (#4266) — the
+// singleton `messageQueueService` is constructed with sourceId=null, so
+// resolveDmMaxAttempts() calls getSettingForSourceSync(null, 'autoAckMaxAttempts').
+// Declared via vi.hoisted() so the binding exists by the time the hoisted
+// vi.mock() factory below runs (a plain top-level const hits vitest's
+// "top level variables" TDZ error here, since messageQueueService.ts is a
+// real downstream import of '../services/database.js').
+const { mockGetSettingForSourceSync } = vi.hoisted(() => ({
+  mockGetSettingForSourceSync: vi.fn(),
+}));
+
+vi.mock('../services/database.js', () => ({
+  default: {
+    getSettingForSourceSync: mockGetSettingForSourceSync,
+  }
+}));
+
 import { messageQueueService } from './messageQueueService.js';
 
 describe('MessageQueueService', () => {
@@ -8,6 +26,10 @@ describe('MessageQueueService', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     sentMessages = [];
+
+    // Default: no autoAckMaxAttempts override configured (unset)
+    mockGetSettingForSourceSync.mockReset();
+    mockGetSettingForSourceSync.mockReturnValue(null);
 
     // Clear any existing state
     messageQueueService.clear();
@@ -494,6 +516,85 @@ describe('MessageQueueService', () => {
 
       expect(failureCallback).toHaveBeenCalledWith('No send callback configured');
       expect(mockSendCallback).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Configurable DM resend attempts (autoAckMaxAttempts, #4266)', () => {
+    it('defaults DM maxAttempts to 3 when the setting is unset', () => {
+      mockGetSettingForSourceSync.mockReturnValue(null);
+
+      messageQueueService.enqueue('Test message', 12345678);
+
+      const status = messageQueueService.getStatus();
+      expect(status.queue[0].maxAttempts).toBe(3);
+      expect(mockGetSettingForSourceSync).toHaveBeenCalledWith(null, 'autoAckMaxAttempts');
+    });
+
+    it('honors autoAckMaxAttempts=1 for DM sends', () => {
+      mockGetSettingForSourceSync.mockReturnValue('1');
+
+      messageQueueService.enqueue('Test message', 12345678);
+
+      expect(messageQueueService.getStatus().queue[0].maxAttempts).toBe(1);
+    });
+
+    it('honors autoAckMaxAttempts=3 for DM sends', () => {
+      mockGetSettingForSourceSync.mockReturnValue('3');
+
+      messageQueueService.enqueue('Test message', 12345678);
+
+      expect(messageQueueService.getStatus().queue[0].maxAttempts).toBe(3);
+    });
+
+    it('clamps an out-of-range high value (5) down to 3', () => {
+      mockGetSettingForSourceSync.mockReturnValue('5');
+
+      messageQueueService.enqueue('Test message', 12345678);
+
+      expect(messageQueueService.getStatus().queue[0].maxAttempts).toBe(3);
+    });
+
+    it('clamps zero up to 1', () => {
+      mockGetSettingForSourceSync.mockReturnValue('0');
+
+      messageQueueService.enqueue('Test message', 12345678);
+
+      expect(messageQueueService.getStatus().queue[0].maxAttempts).toBe(1);
+    });
+
+    it('clamps a negative value up to 1', () => {
+      mockGetSettingForSourceSync.mockReturnValue('-5');
+
+      messageQueueService.enqueue('Test message', 12345678);
+
+      expect(messageQueueService.getStatus().queue[0].maxAttempts).toBe(1);
+    });
+
+    it('falls back to 3 for a non-numeric value', () => {
+      mockGetSettingForSourceSync.mockReturnValue('not-a-number');
+
+      messageQueueService.enqueue('Test message', 12345678);
+
+      expect(messageQueueService.getStatus().queue[0].maxAttempts).toBe(3);
+    });
+
+    it('never consults the setting for channel sends — maxAttempts stays 1 regardless', () => {
+      mockGetSettingForSourceSync.mockReturnValue('3');
+
+      messageQueueService.enqueue('Channel message', 0, undefined, undefined, undefined, 0);
+
+      expect(messageQueueService.getStatus().queue[0].maxAttempts).toBe(1);
+      expect(mockGetSettingForSourceSync).not.toHaveBeenCalled();
+    });
+
+    it('an explicit maxAttemptsOverride still wins over the setting', () => {
+      mockGetSettingForSourceSync.mockReturnValue('3');
+
+      // e.g. auto-welcome DMs pass maxAttemptsOverride=1 unconditionally
+      messageQueueService.enqueue('DM once', 12345678, undefined, undefined, undefined, undefined, 1);
+
+      expect(messageQueueService.getStatus().queue[0].maxAttempts).toBe(1);
+      expect(mockGetSettingForSourceSync).not.toHaveBeenCalled();
     });
   });
 });
