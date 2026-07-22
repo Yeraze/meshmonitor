@@ -115,24 +115,34 @@ function optionPosition(o: RepeaterOption): { lat: number; lon: number } | null 
   return { lat, lon };
 }
 
+/** A fully-resolved route hop: the chosen candidate (if any) plus its position. */
+export interface ResolvedRouteHop {
+  byte: PathHop;
+  /** Chosen candidate's name, or null when no repeater matched the hash. */
+  name: string | null;
+  /** How many repeater/room-server contacts matched this hash (0 = unknown, >1 = collision). */
+  matchCount: number;
+  /** Chosen candidate's position, when it has usable coordinates. */
+  position: { lat: number; lon: number } | null;
+}
+
 /**
- * Resolve a received route's hop hashes to relay names for the {ROUTE_NAMES}
- * automation token.
+ * Resolve a received route's hop hashes to relay contacts — the shared engine
+ * behind the {ROUTE_NAMES} automation token and the route-detail popup.
  *
  * Only relay infrastructure (repeaters, room servers) ever appears in a
  * MeshCore path — each forwarder appends the leading bytes of its public key
  * at the width the ORIGINAL SENDER stamped into `path_len`'s top two bits —
  * so matching is limited to those contacts. Per-hop rules:
- *   - exactly one match  → its name
+ *   - exactly one match  → that contact
  *   - multiple matches   → best guess: the positioned candidate with the
  *     smallest summed haversine distance to the two neighbouring hops'
  *     resolved positions (previous hop as already resolved, next hop when it
  *     matches uniquely); falls back to the alphabetically-first match when no
  *     candidate/neighbour has coordinates
- *   - no match           → the raw hex hash (compact — these strings ride in
- *     airtime-limited MeshCore replies)
+ *   - no match           → `name: null` (callers render the raw hex hash)
  */
-export function resolveRouteNames(hops: PathHop[], contacts: MeshCoreContact[]): string[] {
+export function resolveRoute(hops: PathHop[], contacts: MeshCoreContact[]): ResolvedRouteHop[] {
   const width = pathHashBytesOf(hops);
   const options = repeaterHopOptions(contacts, width);
   const matchesPerHop = hops.map((h) => options.filter((o) => o.hopByte === h));
@@ -141,18 +151,16 @@ export function resolveRouteNames(hops: PathHop[], contacts: MeshCoreContact[]):
   // anchor before that hop has been walked.
   const uniquePos = matchesPerHop.map((ms) => (ms.length === 1 ? optionPosition(ms[0]) : null));
 
-  const names: string[] = [];
-  const resolvedPos: ({ lat: number; lon: number } | null)[] = [];
+  const resolved: ResolvedRouteHop[] = [];
   for (let i = 0; i < hops.length; i++) {
     const ms = matchesPerHop[i];
     if (ms.length === 0) {
-      names.push(hops[i]);
-      resolvedPos.push(null);
+      resolved.push({ byte: hops[i], name: null, matchCount: 0, position: null });
       continue;
     }
     let best = ms[0];
     if (ms.length > 1) {
-      const neighbors = [i > 0 ? resolvedPos[i - 1] : null, uniquePos[i + 1] ?? null]
+      const neighbors = [i > 0 ? resolved[i - 1].position : null, uniquePos[i + 1] ?? null]
         .filter((p): p is { lat: number; lon: number } => p !== null);
       let bestScore = Infinity;
       for (const cand of ms) {
@@ -165,8 +173,17 @@ export function resolveRouteNames(hops: PathHop[], contacts: MeshCoreContact[]):
         }
       }
     }
-    names.push(best.name);
-    resolvedPos.push(optionPosition(best));
+    resolved.push({ byte: hops[i], name: best.name, matchCount: ms.length, position: optionPosition(best) });
   }
-  return names;
+  return resolved;
+}
+
+/**
+ * Resolve a received route's hop hashes to relay names for the {ROUTE_NAMES}
+ * automation token. Thin wrapper over `resolveRoute` — unknown hashes fall
+ * back to the raw hex (compact — these strings ride in airtime-limited
+ * MeshCore replies).
+ */
+export function resolveRouteNames(hops: PathHop[], contacts: MeshCoreContact[]): string[] {
+  return resolveRoute(hops, contacts).map((r) => r.name ?? r.byte);
 }

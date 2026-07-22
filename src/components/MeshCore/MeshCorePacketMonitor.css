@@ -344,3 +344,16 @@
   border-radius: 4px;
   padding: 0.4rem 0.6rem;
 }
+
+/* Route-detail modal: geospatial packet-flow mini map (sender → hops → you). */
+.mc-route-flow-map {
+  height: 240px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--ctp-surface1);
+}
+.mc-route-flow-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 1px 5px;
+}
