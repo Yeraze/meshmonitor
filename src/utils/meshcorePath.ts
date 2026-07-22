@@ -1,4 +1,5 @@
 import type { MeshCoreContact } from './meshcoreHelpers';
+import { calculateDistance } from './distance.js';
 
 /**
  * Helpers for composing a MeshCore contact forwarding path ("out_path") from
@@ -61,6 +62,9 @@ export interface RepeaterOption {
   name: string;
   /** The hop hash for this repeater at the active path hash width. */
   hopByte: PathHop;
+  /** Last advertised position, when known — used for collision tie-breaking. */
+  latitude?: number;
+  longitude?: number;
 }
 
 /**
@@ -78,6 +82,8 @@ export function repeaterHopOptions(
       publicKey: c.publicKey,
       name: c.advName || c.name || `${c.publicKey.slice(0, 8)}…`,
       hopByte: hopByteForKey(c.publicKey, hashBytes),
+      latitude: c.latitude,
+      longitude: c.longitude,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -98,4 +104,69 @@ export function resolveHop(byte: PathHop, options: RepeaterOption[]): ResolvedHo
   else if (matches.length > 1) label = `${matches[0].name} (+${matches.length - 1})`;
   else label = `Unknown (0x${byte})`;
   return { byte, matches, label };
+}
+
+/** A usable position for tie-breaking: finite coords, excluding null island. */
+function optionPosition(o: RepeaterOption): { lat: number; lon: number } | null {
+  const { latitude: lat, longitude: lon } = o;
+  if (typeof lat !== 'number' || !isFinite(lat)) return null;
+  if (typeof lon !== 'number' || !isFinite(lon)) return null;
+  if (lat === 0 && lon === 0) return null;
+  return { lat, lon };
+}
+
+/**
+ * Resolve a received route's hop hashes to relay names for the {ROUTE_NAMES}
+ * automation token.
+ *
+ * Only relay infrastructure (repeaters, room servers) ever appears in a
+ * MeshCore path — each forwarder appends the leading bytes of its public key
+ * at the width the ORIGINAL SENDER stamped into `path_len`'s top two bits —
+ * so matching is limited to those contacts. Per-hop rules:
+ *   - exactly one match  → its name
+ *   - multiple matches   → best guess: the positioned candidate with the
+ *     smallest summed haversine distance to the two neighbouring hops'
+ *     resolved positions (previous hop as already resolved, next hop when it
+ *     matches uniquely); falls back to the alphabetically-first match when no
+ *     candidate/neighbour has coordinates
+ *   - no match           → the raw hex hash (compact — these strings ride in
+ *     airtime-limited MeshCore replies)
+ */
+export function resolveRouteNames(hops: PathHop[], contacts: MeshCoreContact[]): string[] {
+  const width = pathHashBytesOf(hops);
+  const options = repeaterHopOptions(contacts, width);
+  const matchesPerHop = hops.map((h) => options.filter((o) => o.hopByte === h));
+
+  // Positions of hops that resolve unambiguously — usable as a "next hop"
+  // anchor before that hop has been walked.
+  const uniquePos = matchesPerHop.map((ms) => (ms.length === 1 ? optionPosition(ms[0]) : null));
+
+  const names: string[] = [];
+  const resolvedPos: ({ lat: number; lon: number } | null)[] = [];
+  for (let i = 0; i < hops.length; i++) {
+    const ms = matchesPerHop[i];
+    if (ms.length === 0) {
+      names.push(hops[i]);
+      resolvedPos.push(null);
+      continue;
+    }
+    let best = ms[0];
+    if (ms.length > 1) {
+      const neighbors = [i > 0 ? resolvedPos[i - 1] : null, uniquePos[i + 1] ?? null]
+        .filter((p): p is { lat: number; lon: number } => p !== null);
+      let bestScore = Infinity;
+      for (const cand of ms) {
+        const p = optionPosition(cand);
+        if (!p) continue;
+        const score = neighbors.reduce((acc, n) => acc + calculateDistance(p.lat, p.lon, n.lat, n.lon), 0);
+        if (neighbors.length > 0 && score < bestScore) {
+          bestScore = score;
+          best = cand;
+        }
+      }
+    }
+    names.push(best.name);
+    resolvedPos.push(optionPosition(best));
+  }
+  return names;
 }

@@ -16,9 +16,19 @@ import { MeshCoreManager } from './meshcoreManager.js';
 
 function render(
   template: string,
-  opts: { snr?: number; hops?: number | null; route?: string | null; senderName?: string; scopeName?: string | null } = {},
+  opts: {
+    snr?: number;
+    hops?: number | null;
+    route?: string | null;
+    senderName?: string;
+    scopeName?: string | null;
+    contacts?: Array<{ publicKey: string; advType: number; advName: string }>;
+  } = {},
 ): Promise<string> {
   const m = new MeshCoreManager('test-source');
+  for (const c of opts.contacts ?? []) {
+    (m as any).contacts.set(c.publicKey, c);
+  }
   return (m as any).renderReplyTemplate(
     template,
     'deadbeefcafebabe0011223344556677',
@@ -39,6 +49,27 @@ describe('renderResponderText — reply tokens (#3892)', () => {
 
   it('expands {ROUTE} with the compact arrow chain', async () => {
     expect(await render('via {ROUTE}', { route: 'a3,7f,02', hops: 3 })).toBe('via a3→7f→02');
+  });
+
+  it('expands {ROUTE_NAMES} resolving relay hashes to repeater names, raw hex when unknown', async () => {
+    const contacts = [
+      { publicKey: 'a3' + 'b'.repeat(62), advType: 2, advName: 'Hilltop' },
+      { publicKey: '7f' + 'c'.repeat(62), advType: 3, advName: 'Downtown Room' },
+      { publicKey: '02' + 'd'.repeat(62), advType: 1, advName: 'Chat Node' }, // companion — excluded
+    ];
+    expect(await render('via {ROUTE_NAMES}', { route: 'a3,7f,02', hops: 3, contacts }))
+      .toBe('via Hilltop→Downtown Room→02');
+  });
+
+  it('{ROUTE_NAMES} falls back like {ROUTE} for direct / unknown routes', async () => {
+    expect(await render('via {ROUTE_NAMES}', { hops: 0 })).toBe('via direct');
+    expect(await render('via {ROUTE_NAMES}', { hops: 2 })).toBe('via —');
+  });
+
+  it('expands {HASH_SIZE} from the hop hex width the sender stamped', async () => {
+    expect(await render('{HASH_SIZE}B hashes', { route: 'a3,7f', hops: 2 })).toBe('1B hashes');
+    expect(await render('{HASH_SIZE}B hashes', { route: 'a3f2,7f01', hops: 2 })).toBe('2B hashes');
+    expect(await render('{HASH_SIZE}', { hops: 0 })).toBe('—');
   });
 
   it('expands {SNR} and {LONG_NAME}', async () => {
