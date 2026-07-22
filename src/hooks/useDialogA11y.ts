@@ -26,10 +26,14 @@ export function useDialogA11y(onClose: () => void): {
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
   // Focus the dialog on mount; restore the trigger element's focus on unmount.
+  // Also lock body scroll while open (same contract as common/Modal).
   useEffect(() => {
     previousFocusRef.current = document.activeElement as HTMLElement | null;
     contentRef.current?.focus();
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
+      document.body.style.overflow = originalOverflow;
       previousFocusRef.current?.focus?.();
     };
   }, []);

@@ -40,13 +40,13 @@ const MeshCorePacketDetailModal: React.FC<Props> = ({ packet, onClose }) => {
         ref={contentRef}
         role="dialog"
         aria-modal="true"
-        aria-label={t('meshcore.packets.detailTitle', 'Packet Decode')}
+        aria-labelledby="mcpm-detail-title"
         tabIndex={-1}
         onKeyDown={onKeyDown}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mcpm-modal-header">
-          <h4>{t('meshcore.packets.detailTitle', 'Packet Decode')}</h4>
+          <h4 id="mcpm-detail-title">{t('meshcore.packets.detailTitle', 'Packet Decode')}</h4>
           <button className="mcpm-modal-close" onClick={onClose} aria-label={t('common.close', 'Close')}>×</button>
         </div>
 

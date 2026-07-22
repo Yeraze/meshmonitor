@@ -97,7 +97,11 @@ const MeshCoreMessageRouteModal: React.FC<Props> = ({ message, fromLabel, contac
       hopPoints.push({ label: `#${i + 1} ${r.name}`, lat: r.position.lat, lon: r.position.lon, kind: 'hop' });
     }
     const points: FlowPoint[] = [];
-    const senderContact = contacts.find((c) => c.publicKey && c.publicKey.startsWith(message.fromPublicKey));
+    // Guard the prefix match: startsWith('') is true for EVERY key, so an
+    // empty fromPublicKey must not adopt an arbitrary contact as the sender.
+    const senderContact = message.fromPublicKey
+      ? contacts.find((c) => c.publicKey && c.publicKey.startsWith(message.fromPublicKey))
+      : undefined;
     const senderPos = contactPosition(senderContact);
     if (senderPos) points.push({ label: fromLabel, lat: senderPos.lat, lon: senderPos.lon, kind: 'endpoint' });
     points.push(...hopPoints);
@@ -127,13 +131,13 @@ const MeshCoreMessageRouteModal: React.FC<Props> = ({ message, fromLabel, contac
         ref={contentRef}
         role="dialog"
         aria-modal="true"
-        aria-label={t('meshcore.route_detail_title', 'Message Route')}
+        aria-labelledby="mc-route-detail-title"
         tabIndex={-1}
         onKeyDown={onKeyDown}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mcpm-modal-header">
-          <h4>{t('meshcore.route_detail_title', 'Message Route')}</h4>
+          <h4 id="mc-route-detail-title">{t('meshcore.route_detail_title', 'Message Route')}</h4>
           <button className="mcpm-modal-close" onClick={onClose} aria-label={t('common.close', 'Close')}>×</button>
         </div>
 

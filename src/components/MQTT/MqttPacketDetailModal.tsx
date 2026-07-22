@@ -113,13 +113,13 @@ const MqttPacketDetailModal: React.FC<Props> = ({ packet, prefix, csrfFetch, nod
         ref={contentRef}
         role="dialog"
         aria-modal="true"
-        aria-label={t('mqtt.packets.detailTitle', 'Packet Detail')}
+        aria-labelledby="mqpm-detail-title"
         tabIndex={-1}
         onKeyDown={onKeyDown}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mqpm-modal-header">
-          <h4>{t('mqtt.packets.detailTitle', 'Packet Detail')}</h4>
+          <h4 id="mqpm-detail-title">{t('mqtt.packets.detailTitle', 'Packet Detail')}</h4>
           <button className="mqpm-modal-close" onClick={onClose} aria-label={t('common.close', 'Close')}>×</button>
         </div>
 
