@@ -4187,6 +4187,25 @@ function App() {
             }
           />
           <Route
+            path="dashboard"
+            element={
+              <ErrorBoundary fallbackTitle="Dashboard failed to load">
+                <Dashboard
+                  temperatureUnit={temperatureUnit}
+                  telemetryHours={telemetryVisualizationHours}
+                  favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}
+                  baseUrl={baseUrl}
+                  currentNodeId={currentNodeId}
+                  canEdit={hasPermission('dashboard', 'write')}
+                  onOpenNodeDetails={(nodeId: string) => {
+                    setSelectedDMNode(nodeId);
+                    setActiveTab('messages');
+                  }}
+                />
+              </ErrorBoundary>
+            }
+          />
+          <Route
             path="nodes"
             element={
               <ErrorBoundary fallbackTitle="Nodes failed to load">
@@ -4337,22 +4356,6 @@ function App() {
                 setMapCenterTarget([node.position.latitude, node.position.longitude]);
                 setActiveTab('nodes');
               }
-            }}
-          />
-          </ErrorBoundary>
-        )}
-        {activeTab === 'dashboard' && (
-          <ErrorBoundary fallbackTitle="Dashboard failed to load">
-          <Dashboard
-            temperatureUnit={temperatureUnit}
-            telemetryHours={telemetryVisualizationHours}
-            favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}
-            baseUrl={baseUrl}
-            currentNodeId={currentNodeId}
-            canEdit={hasPermission('dashboard', 'write')}
-            onOpenNodeDetails={(nodeId: string) => {
-              setSelectedDMNode(nodeId);
-              setActiveTab('messages');
             }}
           />
           </ErrorBoundary>
