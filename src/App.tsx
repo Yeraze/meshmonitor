@@ -4161,6 +4161,32 @@ function App() {
             }
           />
           <Route
+            path="info"
+            element={
+              <ErrorBoundary fallbackTitle="Info failed to load">
+                <InfoTab
+                  connectionStatus={connectionStatus}
+                  nodeAddress={nodeAddress}
+                  deviceInfo={deviceInfo}
+                  deviceConfig={deviceConfig}
+                  nodes={nodes}
+                  channels={channels}
+                  messages={messages}
+                  channelMessages={channelMessages}
+                  currentNodeId={currentNodeId}
+                  temperatureUnit={temperatureUnit}
+                  telemetryHours={telemetryVisualizationHours}
+                  baseUrl={baseUrl}
+                  getAvailableChannels={getAvailableChannels}
+                  distanceUnit={distanceUnit}
+                  timeFormat={timeFormat}
+                  dateFormat={dateFormat}
+                  isAuthenticated={authStatus?.authenticated || false}
+                />
+              </ErrorBoundary>
+            }
+          />
+          <Route
             path="nodes"
             element={
               <ErrorBoundary fallbackTitle="Nodes failed to load">
@@ -4312,29 +4338,6 @@ function App() {
                 setActiveTab('nodes');
               }
             }}
-          />
-          </ErrorBoundary>
-        )}
-        {activeTab === 'info' && (
-          <ErrorBoundary fallbackTitle="Info failed to load">
-          <InfoTab
-            connectionStatus={connectionStatus}
-            nodeAddress={nodeAddress}
-            deviceInfo={deviceInfo}
-            deviceConfig={deviceConfig}
-            nodes={nodes}
-            channels={channels}
-            messages={messages}
-            channelMessages={channelMessages}
-            currentNodeId={currentNodeId}
-            temperatureUnit={temperatureUnit}
-            telemetryHours={telemetryVisualizationHours}
-            baseUrl={baseUrl}
-            getAvailableChannels={getAvailableChannels}
-            distanceUnit={distanceUnit}
-            timeFormat={timeFormat}
-            dateFormat={dateFormat}
-            isAuthenticated={authStatus?.authenticated || false}
           />
           </ErrorBoundary>
         )}
