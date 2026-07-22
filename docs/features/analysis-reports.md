@@ -2,7 +2,7 @@
 
 The **Analysis & Reports** workspace is a global, cross-source analytics page that runs analytical reports against the telemetry, position, and routing data MeshMonitor has collected from every source you can read. It lives at `/reports` and is linked from the bottom of the dashboard sidebar (right under *Map Analysis*).
 
-The first report bundled with the workspace is **Solar Monitoring Analysis** — see below. The card-grid landing page is designed to host additional reports over time without changing the routing or navigation surface.
+Two reports are currently bundled with the workspace: **Solar Monitoring Analysis** and **NodeInfo Enrichment** — see below. The card-grid landing page is designed to host additional reports over time without changing the routing or navigation surface.
 
 ## Solar Monitoring Analysis
 
@@ -60,24 +60,71 @@ Nodes whose simulated minimum drops below `50%` (battery) or `3.5 V` (voltage) a
 
 Solar production must already be configured under **Settings → Solar Monitoring** for the forecast to produce useful output. See the [Solar Monitoring guide](./solar-monitoring) for set-up details.
 
+## NodeInfo Enrichment
+
+Scans every node visible on more than one source for blank NodeInfo fields — Long Name, Short Name, Hardware Model, Role, MAC Address, Public Key, Firmware — that another source's record for the same physical node can fill, and lets you copy the missing data across sources. It generalizes the per-node "Copy NodeInfo" dialog (available from the node detail panel) into a batch view spanning every source you can read.
+
+### What gets analyzed
+
+For every node seen on two or more of your permitted sources, the report checks the fields above for blanks. Each row in the report table is one **(node, target source)** pair — a specific source's record for a specific node that is missing at least one field — and lists:
+
+- The **fillable fields** for that row (only the ones actually blank on the target and present on the donor)
+- The **donor source**: whichever other source holds the most complete record for that node. Completeness is ranked by number of non-blank fields, with the most recently updated record winning ties.
+
+### Running the report
+
+1. Open the dashboard, click **Analysis & Reports** in the sidebar.
+2. Click the **NodeInfo Enrichment** card.
+3. Review the summary tiles — **Nodes**, **Targets**, **Fillable fields** — above the table.
+4. Click **Fix** on a row to apply just that (node, target source) pair, or **Fix All** to apply every row currently listed.
+5. Click **Refresh** to re-run the analysis, e.g. after applying fixes or after new NodeInfo has arrived over the mesh.
+
+### Applying fixes
+
+Applying a row is **fill-blanks-only**: it writes only the fields that are currently empty on the target source's record and never overwrites a field that already has a value — even if the analysis backing the row has gone stale since the page loaded. This makes Fix and Fix All safe to click at any time.
+
+An **Also push to device NodeDB** toggle (default off) sits above the table. When enabled, each node that gets enriched also receives the same NodeInfo-exchange nudge as the manual Copy NodeInfo dialog's push option (`sendNodeInfoRequest` on the node's channel). This generates mesh traffic, so leave it off if you only want to update MeshMonitor's own database.
+
+Because a row reflects only its single best donor, fixing it can uncover further blanks: if that donor didn't have every missing field, the row disappears but the node may resurface with a different (partial) donor on the next analysis. Click **Refresh** (or re-run the report) until the table drains to fully converge a node across all sources.
+
+> **On-demand only.** This report has no background scheduler — it runs interactively whenever you open the card or click Refresh/Fix.
+
 ## Permissions
 
-Both endpoints behind the workspace are scoped to the requesting user's permitted source IDs:
+### Solar Monitoring
+
+Both solar endpoints are scoped to the requesting user's permitted source IDs:
 
 - Admins see all enabled sources
 - Non-admin users see sources where they hold `nodes:read`
 - An optional `?sources=id1,id2` query param restricts the analysis further (intersected with permitted IDs)
 
-The page itself is publicly routable; only the data is gated.
+### NodeInfo Enrichment
+
+- **Analysis** (`GET /api/nodes/enrichment/analysis`) only ever computes over sources the caller holds `nodes:read` on — admins see every source, anonymous/unauthenticated callers see none (an empty, but never a `403`, response).
+- **Applying** (`POST /api/nodes/enrichment/apply`) requires `nodes:read` on the donor source and `nodes:write` on every target source referenced by the request. A single missing grant rejects the whole batch with `403 FORBIDDEN` — partial application of an under-permissioned batch never happens.
+
+The page itself is publicly routable for both reports; only the underlying data is gated.
 
 ## API
 
-The Reports workspace surfaces two endpoints under the existing `/api/analysis/*` namespace:
+### Solar Monitoring
+
+Two endpoints under the existing `/api/analysis/*` namespace:
 
 - `GET /api/analysis/solar-nodes?lookback_days=N&sources=…`
 - `GET /api/analysis/solar-forecast?lookback_days=N&sources=…`
 
 See the [REST API reference](https://github.com/Yeraze/meshmonitor/blob/main/docs/api/REST_API.md) for the full request/response shapes.
+
+### NodeInfo Enrichment
+
+Two endpoints under `/api/nodes/enrichment/*` (also mirrored at `/api/v1/nodes/enrichment/*`), using the standard `{ success, data }` response envelope:
+
+- `GET /api/nodes/enrichment/analysis` — returns `{ nodes: [...], summary: { nodeCount, targetCount, fieldCount } }`.
+- `POST /api/nodes/enrichment/apply` — body `{ items: [{ nodeNum, targetSourceId, donorSourceId }], pushToNodeDb? }`, returns `{ applied: [...], totalFieldsCopied }`.
+
+Error codes: `INVALID_REQUEST` / `INVALID_ITEM` (400, malformed request body), `FORBIDDEN` (403, missing `nodes:read`/`nodes:write` — includes a `missing` list), `ENRICHMENT_ANALYSIS_FAILED` / `ENRICHMENT_APPLY_FAILED` (500).
 
 ## Related
 

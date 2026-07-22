@@ -7,9 +7,10 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import SolarMonitoringReport from './SolarMonitoringReport';
+import NodeInfoEnrichmentReport from './NodeInfoEnrichmentReport';
 import { UiIcon, type UiIconName } from '../icons';
 
-type AnalysisType = 'solar-monitoring' | null;
+type AnalysisType = 'solar-monitoring' | 'nodeinfo-enrichment' | null;
 
 interface AnalysisCard {
   id: Exclude<AnalysisType, null>;
@@ -36,6 +37,15 @@ const AnalysisTab: React.FC<AnalysisTabProps> = ({ baseUrl }) => {
       ),
       icon: 'sun',
     },
+    {
+      id: 'nodeinfo-enrichment',
+      title: t('analysis.enrichment.title', 'NodeInfo Enrichment'),
+      description: t(
+        'analysis.enrichment.description',
+        'Fill blank NodeInfo fields (name, hardware, role, …) for nodes seen on multiple sources by copying from a source that already has the data.',
+      ),
+      icon: 'identity',
+    },
   ];
 
   if (selected === 'solar-monitoring') {
@@ -49,6 +59,21 @@ const AnalysisTab: React.FC<AnalysisTabProps> = ({ baseUrl }) => {
           <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
         </button>
         <SolarMonitoringReport baseUrl={baseUrl} />
+      </div>
+    );
+  }
+
+  if (selected === 'nodeinfo-enrichment') {
+    return (
+      <div className="reports-section">
+        <button
+          type="button"
+          className="reports-section__back"
+          onClick={() => setSelected(null)}
+        >
+          <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
+        </button>
+        <NodeInfoEnrichmentReport />
       </div>
     );
   }

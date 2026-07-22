@@ -260,6 +260,13 @@
   padding: 36px 16px;
 }
 
+.reports-banner__hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--ctp-subtext0);
+  opacity: 0.85;
+}
+
 /* ── Stat tiles (summary row) ───────────────────────────────────────────── */
 
 .reports-stats {
@@ -522,4 +529,38 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+/* ── NodeInfo Enrichment report (#3837 Phase 2) ─────────────────────────── */
+
+.reports-enrichment__push {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reports-enrichment__push label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ctp-text);
+  cursor: pointer;
+}
+
+.reports-enrichment__push .reports-enrichment__push-help {
+  font-size: 11px;
+  color: var(--ctp-subtext0);
+  margin-left: 24px;
+}
+
+.reports-field-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  margin: 2px 4px 2px 0;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--ctp-surface0);
+  color: var(--ctp-subtext1);
 }
