@@ -14,7 +14,6 @@ import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.j
 import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
 import { transportColumnForPacket } from '../utils/nodeTransport.js';
-import { calculateLoRaFrequency } from '../utils/loraFrequency.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
 import { deadDropService, nodeIdHex } from './services/deadDropService.js';
@@ -72,6 +71,8 @@ import { NodeDbMaintenanceService } from './services/nodeDbMaintenanceService.js
 import { AutoAnnounceService } from './services/autoAnnounceService.js';
 import { AdminTransactionService } from './services/adminTransactionService.js';
 import { FavoritesService } from './services/favoritesService.js';
+import { DeviceAdminService } from './services/deviceAdminService.js';
+import { RemoteAdminService } from './services/remoteAdminService.js';
 import fs from 'fs';
 import path from 'path';
 import * as net from 'net';
@@ -99,18 +100,6 @@ const IGNORE_REAPPLY_COOLDOWN_MS = 60_000;
 // sent message disagreed with what the UI showed for the same gateway.
 const ACTIVE_NODE_TOKEN_WINDOW_SECONDS = 7200;
 const ACTIVE_NODE_TOKEN_WINDOW_DAYS = ACTIVE_NODE_TOKEN_WINDOW_SECONDS / 86_400;
-
-// Maps AdminMessage.ModuleConfigType enum values to the ModuleConfig oneof key
-// used in decoded responses. Covers the module types MeshMonitor surfaces a
-// config UI for; used to map empty (all-default, Proto3-omitted) responses back
-// to the correct key via pendingModuleConfigRequests.
-const LOCAL_MODULE_CONFIG_TYPE_KEYS: { [key: number]: string } = {
-  0: 'mqtt',
-  5: 'telemetry',
-  9: 'neighborInfo',
-  13: 'statusmessage',
-  14: 'trafficManagement'
-};
 
 /** Parsed auto-responder payload: list of messages to send, plus the
  * raw decoded JSON object (or `{}` if the payload was plain text) so
@@ -937,12 +926,25 @@ class MeshtasticManager implements ISourceManager {
   // Depends on adminTransactionService (constructed first, passed in below).
   private readonly favoritesService: FavoritesService;
 
+  // Local device-config setters + edit-session flow, and the pure
+  // buildDeviceConfigFromActual marshalling — extracted to a service
+  // (#3962 Phase 4.2a PR5 §4e). Same injection pattern as the services above.
+  private readonly deviceAdminService: DeviceAdminService;
+
+  // Remote-admin fetch flows (config/channel/owner/device-metadata over the
+  // mesh) + module-config request/refresh/reset — extracted to a sibling
+  // service (#3962 Phase 4.2a PR5 §4e, optional split). Independent of
+  // deviceAdminService; neither depends on the other.
+  private readonly remoteAdminService: RemoteAdminService;
+
   constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean; passiveResyncStaleMs?: number | null }) {
     this.sourceId = sourceId;
     this.nodeDbMaintenanceService = new NodeDbMaintenanceService(this);
     this.autoAnnounceService = new AutoAnnounceService(this);
     this.adminTransactionService = new AdminTransactionService(this);
     this.favoritesService = new FavoritesService(this, this.adminTransactionService);
+    this.deviceAdminService = new DeviceAdminService(this);
+    this.remoteAdminService = new RemoteAdminService(this);
     if (sourceConfig) {
       this.sourceConfigOverride = {
         host: sourceConfig.host,
@@ -8317,155 +8319,12 @@ class MeshtasticManager implements ISourceManager {
     if (this.actualDeviceConfig?.lora || this.actualModuleConfig) {
       logger.debug('Using actualDeviceConfig:', JSON.stringify(this.actualDeviceConfig, null, 2));
       logger.debug('✅ Returning device config from actualDeviceConfig');
-      return await this.buildDeviceConfigFromActual();
+      return await this.deviceAdminService.buildDeviceConfigFromActual();
     }
 
     logger.debug('⚠️ No device config available yet - returning null');
     logger.debug('No device config available yet');
     return null;
-  }
-
-  /**
-   * Calculate LoRa frequency from region and channel number (frequency slot)
-   * Delegates to the utility function for better testability
-   */
-  private calculateLoRaFrequency(region: number, channelNum: number, overrideFrequency: number, frequencyOffset: number, bandwidth: number = 250, channelName?: string, modemPreset?: number): string {
-    return calculateLoRaFrequency(region, channelNum, overrideFrequency, frequencyOffset, bandwidth, channelName, modemPreset);
-  }
-
-  private async buildDeviceConfigFromActual(): Promise<any> {
-    const dbChannels = await databaseService.channels.getAllChannels(this.sourceId);
-    const channels = dbChannels.map(ch => ({
-      index: ch.id,
-      name: ch.name,
-      psk: ch.psk ? 'Set' : 'None',
-      role: ch.role,
-      uplinkEnabled: ch.uplinkEnabled,
-      downlinkEnabled: ch.downlinkEnabled,
-      positionPrecision: ch.positionPrecision
-    }));
-
-    const localNode = this.localNodeInfo as any;
-
-    // Extract actual values from stored config or use sensible defaults
-    const loraConfig = this.actualDeviceConfig?.lora || {};
-    const mqttConfig = this.actualModuleConfig?.mqtt || {};
-
-    // IMPORTANT: Proto3 may omit boolean false and numeric 0 values from JSON serialization
-    // but they're still accessible as properties. We need to explicitly include them.
-    const loraConfigWithDefaults = {
-      ...loraConfig,
-      // Ensure usePreset is explicitly set (Proto3 default is false)
-      usePreset: loraConfig.usePreset !== undefined ? loraConfig.usePreset : false,
-      // Ensure frequencyOffset is explicitly set (Proto3 default is 0)
-      frequencyOffset: loraConfig.frequencyOffset !== undefined ? loraConfig.frequencyOffset : 0,
-      // Ensure overrideFrequency is explicitly set (Proto3 default is 0)
-      overrideFrequency: loraConfig.overrideFrequency !== undefined ? loraConfig.overrideFrequency : 0,
-      // Ensure modemPreset is explicitly set (Proto3 default is 0 = LONG_FAST)
-      modemPreset: loraConfig.modemPreset !== undefined ? loraConfig.modemPreset : 0,
-      // Ensure channelNum is explicitly set (Proto3 default is 0)
-      channelNum: loraConfig.channelNum !== undefined ? loraConfig.channelNum : 0
-    };
-
-    // Apply same Proto3 handling to MQTT config
-    const mqttConfigWithDefaults = {
-      ...mqttConfig,
-      // Ensure boolean fields are explicitly set (Proto3 default is false)
-      enabled: mqttConfig.enabled !== undefined ? mqttConfig.enabled : false,
-      encryptionEnabled: mqttConfig.encryptionEnabled !== undefined ? mqttConfig.encryptionEnabled : false,
-      jsonEnabled: mqttConfig.jsonEnabled !== undefined ? mqttConfig.jsonEnabled : false,
-      tlsEnabled: mqttConfig.tlsEnabled !== undefined ? mqttConfig.tlsEnabled : false,
-      proxyToClientEnabled: mqttConfig.proxyToClientEnabled !== undefined ? mqttConfig.proxyToClientEnabled : false,
-      mapReportingEnabled: mqttConfig.mapReportingEnabled !== undefined ? mqttConfig.mapReportingEnabled : false
-    };
-
-    logger.debug('🔍 loraConfig being used:', JSON.stringify(loraConfigWithDefaults, null, 2));
-    logger.debug('🔍 mqttConfig being used:', JSON.stringify(mqttConfigWithDefaults, null, 2));
-
-    // Map region enum values to strings
-    const regionMap: { [key: number]: string } = {
-      0: 'UNSET',
-      1: 'US',
-      2: 'EU_433',
-      3: 'EU_868',
-      4: 'CN',
-      5: 'JP',
-      6: 'ANZ',
-      7: 'KR',
-      8: 'TW',
-      9: 'RU',
-      10: 'IN',
-      11: 'NZ_865',
-      12: 'TH',
-      13: 'LORA_24',
-      14: 'UA_433',
-      15: 'UA_868'
-    };
-
-    // Map modem preset enum values to strings
-    const modemPresetMap: { [key: number]: string } = {
-      0: 'Long Fast',
-      1: 'Long Slow',
-      2: 'Very Long Slow',
-      3: 'Medium Slow',
-      4: 'Medium Fast',
-      5: 'Short Slow',
-      6: 'Short Fast',
-      7: 'Long Moderate',
-      8: 'Short Turbo'
-    };
-
-    // Convert enum values to human-readable strings
-    const regionValue = typeof loraConfigWithDefaults.region === 'number' ? regionMap[loraConfigWithDefaults.region] || `Unknown (${loraConfigWithDefaults.region})` : loraConfigWithDefaults.region || 'Unknown';
-    const modemPresetValue = typeof loraConfigWithDefaults.modemPreset === 'number' ? modemPresetMap[loraConfigWithDefaults.modemPreset] || `Unknown (${loraConfigWithDefaults.modemPreset})` : loraConfigWithDefaults.modemPreset || 'Unknown';
-
-    return {
-      basic: {
-        nodeAddress: (await this.getConfig()).nodeIp,
-        tcpPort: (await this.getConfig()).tcpPort,
-        connected: this.isConnected,
-        nodeId: localNode?.nodeId || null,
-        nodeName: localNode?.longName || null,
-        firmwareVersion: localNode?.firmwareVersion || null
-      },
-      radio: {
-        region: regionValue,
-        modemPreset: modemPresetValue,
-        hopLimit: loraConfigWithDefaults.hopLimit !== undefined ? loraConfigWithDefaults.hopLimit : 'Unknown',
-        txPower: loraConfigWithDefaults.txPower !== undefined ? loraConfigWithDefaults.txPower : 'Unknown',
-        bandwidth: loraConfigWithDefaults.bandwidth || 'Unknown',
-        spreadFactor: loraConfigWithDefaults.spreadFactor || 'Unknown',
-        codingRate: loraConfigWithDefaults.codingRate || 'Unknown',
-        channelNum: loraConfigWithDefaults.channelNum !== undefined ? loraConfigWithDefaults.channelNum : 'Unknown',
-        frequency: this.calculateLoRaFrequency(
-          typeof loraConfigWithDefaults.region === 'number' ? loraConfigWithDefaults.region : 0,
-          loraConfigWithDefaults.channelNum !== undefined ? loraConfigWithDefaults.channelNum : 0,
-          loraConfigWithDefaults.overrideFrequency !== undefined ? loraConfigWithDefaults.overrideFrequency : 0,
-          loraConfigWithDefaults.frequencyOffset !== undefined ? loraConfigWithDefaults.frequencyOffset : 0,
-          typeof loraConfigWithDefaults.bandwidth === 'number' && loraConfigWithDefaults.bandwidth > 0 ? loraConfigWithDefaults.bandwidth : 250,
-          dbChannels.find(ch => ch.id === 0)?.name || undefined,
-          typeof loraConfigWithDefaults.modemPreset === 'number' ? loraConfigWithDefaults.modemPreset : undefined
-        ),
-        txEnabled: loraConfigWithDefaults.txEnabled !== undefined ? loraConfigWithDefaults.txEnabled : 'Unknown',
-        sx126xRxBoostedGain: loraConfigWithDefaults.sx126xRxBoostedGain !== undefined ? loraConfigWithDefaults.sx126xRxBoostedGain : 'Unknown',
-        configOkToMqtt: loraConfigWithDefaults.configOkToMqtt !== undefined ? loraConfigWithDefaults.configOkToMqtt : 'Unknown',
-        femLnaMode: loraConfigWithDefaults.femLnaMode !== undefined ? loraConfigWithDefaults.femLnaMode : 'Unknown'
-      },
-      mqtt: {
-        enabled: mqttConfigWithDefaults.enabled,
-        server: mqttConfigWithDefaults.address || 'Not configured',
-        username: mqttConfigWithDefaults.username || 'Not set',
-        encryption: mqttConfigWithDefaults.encryptionEnabled,
-        json: mqttConfigWithDefaults.jsonEnabled,
-        tls: mqttConfigWithDefaults.tlsEnabled,
-        rootTopic: mqttConfigWithDefaults.root || 'msh'
-      },
-      channels: channels.length > 0 ? channels : [
-        { index: 0, name: 'Primary', psk: 'None', uplinkEnabled: true, downlinkEnabled: true }
-      ],
-      // Raw LoRa config for export/import functionality - now includes Proto3 defaults
-      lora: Object.keys(loraConfigWithDefaults).length > 0 ? loraConfigWithDefaults : undefined
-    };
   }
 
   async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number, userId?: number, attribution?: { sourceIp?: string | null; sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null }): Promise<number> {
@@ -12117,59 +11976,7 @@ class MeshtasticManager implements ISourceManager {
    * @returns Session passkey if received, null otherwise
    */
   async requestRemoteSessionPasskey(destinationNodeNum: number): Promise<Uint8Array | null> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node number not available');
-    }
-
-    try {
-      // Use getDeviceMetadataRequest (per research - Android pattern uses this for SESSIONKEY_CONFIG)
-      // We'll need to create this message directly using protobufService
-      const root = getProtobufRoot();
-      if (!root) {
-        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
-      }
-      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
-      if (!AdminMessage) {
-        throw new Error('AdminMessage type not found');
-      }
-
-      const adminMsg = AdminMessage.create({
-        getDeviceMetadataRequest: true
-      });
-      const encoded = AdminMessage.encode(adminMsg).finish();
-
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug(`🔑 Requested session passkey from remote node ${destinationNodeNum} (via getDeviceMetadataRequest)`);
-
-      // Poll for the response instead of fixed wait
-      // This allows early exit if response arrives quickly, and longer total wait time
-      const maxWaitTime = 45000; // 45 seconds total
-      const pollInterval = 500; // Check every 500ms
-      const maxPolls = maxWaitTime / pollInterval;
-
-      for (let i = 0; i < maxPolls; i++) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-        // Check if we received the passkey
-        const passkey = this.getSessionPasskey(destinationNodeNum);
-        if (passkey) {
-          logger.debug(`✅ Session passkey received from remote node ${destinationNodeNum} after ${((i + 1) * pollInterval / 1000).toFixed(1)}s`);
-          return passkey;
-        }
-      }
-
-      logger.warn(`⚠️ No session passkey response received from remote node ${destinationNodeNum} after ${maxWaitTime / 1000}s`);
-      return null;
-    } catch (error) {
-      logger.error(`❌ Error requesting session passkey from remote node ${destinationNodeNum}:`, error);
-      throw error;
-    }
+    return this.remoteAdminService.requestRemoteSessionPasskey(destinationNodeNum);
   }
 
   /**
@@ -12407,29 +12214,7 @@ class MeshtasticManager implements ISourceManager {
    * @param configType Module config type to request (0=MQTT_CONFIG, 9=NEIGHBORINFO_CONFIG, etc.)
    */
   async requestModuleConfig(configType: number): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug(`⚙️ Requesting module config type ${configType} from device`);
-      const getModuleConfigMsg = protobufService.createGetModuleConfigRequest(configType);
-      const adminPacket = protobufService.createAdminPacket(getModuleConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      // Track the pending request so an empty (all-default) Proto3 response can be
-      // mapped back to the right key in processAdminMessage. Keyed by the local
-      // node number, matching how the response's `from` field is interpreted.
-      const pendingKey = LOCAL_MODULE_CONFIG_TYPE_KEYS[configType];
-      if (pendingKey && this.localNodeInfo?.nodeNum) {
-        this.pendingModuleConfigRequests.set(this.localNodeInfo.nodeNum, pendingKey);
-      }
-
-      await this.transport.send(adminPacket);
-      logger.debug(`⚙️ Sent get_module_config_request for config type ${configType}`);
-    } catch (error) {
-      logger.error('❌ Error requesting module config:', error);
-      throw error;
-    }
+    return this.remoteAdminService.requestModuleConfig(configType);
   }
 
   /**
@@ -12440,157 +12225,7 @@ class MeshtasticManager implements ISourceManager {
    * @returns The config data if received, null otherwise
    */
   async requestRemoteConfig(destinationNodeNum: number, configType: number, isModuleConfig: boolean = false): Promise<any> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node number not available');
-    }
-
-    try {
-      // Get or request session passkey
-      let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
-      if (sessionPasskey) {
-        logger.debug(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
-      } else {
-        logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
-        sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
-        if (!sessionPasskey) {
-          throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
-        }
-      }
-
-      // Create the config request message with session passkey
-      const root = getProtobufRoot();
-      if (!root) {
-        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
-      }
-      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
-      if (!AdminMessage) {
-        throw new Error('AdminMessage type not found');
-      }
-
-      const adminMsgData: any = {
-        sessionPasskey: sessionPasskey
-      };
-
-      if (isModuleConfig) {
-        adminMsgData.getModuleConfigRequest = configType;
-      } else {
-        adminMsgData.getConfigRequest = configType;
-      }
-
-      const adminMsg = AdminMessage.create(adminMsgData);
-      const encoded = AdminMessage.encode(adminMsg).finish();
-
-      // Clear any existing config for this type before requesting (to ensure fresh data)
-      // This must happen BEFORE sending to prevent race conditions where responses arrive
-      // and get immediately deleted, causing polling loops to timeout
-      // Map config types to their keys
-      if (isModuleConfig) {
-        const moduleConfigMap: { [key: number]: string } = {
-          0: 'mqtt',
-          5: 'telemetry',
-          9: 'neighborInfo',
-          13: 'statusmessage',
-          14: 'trafficManagement'
-        };
-        const configKey = moduleConfigMap[configType];
-        if (configKey) {
-          const nodeConfig = this.remoteNodeConfigs.get(destinationNodeNum);
-          if (nodeConfig?.moduleConfig) {
-            delete nodeConfig.moduleConfig[configKey];
-          }
-        }
-      } else {
-        const deviceConfigMap: { [key: number]: string } = {
-          0: 'device',
-          1: 'position',  // POSITION_CONFIG (was incorrectly 6)
-          5: 'lora',
-          6: 'bluetooth',  // BLUETOOTH_CONFIG (for completeness)
-          7: 'security'  // SECURITY_CONFIG
-        };
-        const configKey = deviceConfigMap[configType];
-        if (configKey) {
-          const nodeConfig = this.remoteNodeConfigs.get(destinationNodeNum);
-          if (nodeConfig?.deviceConfig) {
-            delete nodeConfig.deviceConfig[configKey];
-          }
-        }
-      }
-
-      // Track pending module config request so empty Proto3 responses can be mapped
-      if (isModuleConfig) {
-        const moduleConfigMap: { [key: number]: string } = {
-          0: 'mqtt', 5: 'telemetry', 9: 'neighborInfo',
-          13: 'statusmessage', 14: 'trafficManagement'
-        };
-        const pendingKey = moduleConfigMap[configType];
-        if (pendingKey) {
-          this.pendingModuleConfigRequests.set(destinationNodeNum, pendingKey);
-        }
-      }
-
-      // Send the request
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
-      await this.transport.send(adminPacket);
-      logger.debug(`📡 Requested ${isModuleConfig ? 'module' : 'device'} config type ${configType} from remote node ${destinationNodeNum}`);
-
-      // Wait for the response (config responses can take time, especially over mesh)
-      // Remote nodes may take longer due to mesh routing
-      // Poll for the response up to 20 seconds (increased from 10s for multi-hop mesh)
-      const maxWaitTime = 20000; // 20 seconds
-      const pollInterval = 250; // Check every 250ms
-      const maxPolls = maxWaitTime / pollInterval;
-      
-      for (let i = 0; i < maxPolls; i++) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-        
-        // Check if we have the config for this remote node
-        const nodeConfig = this.remoteNodeConfigs.get(destinationNodeNum);
-        if (nodeConfig) {
-          if (isModuleConfig) {
-            // Map module config types to their keys
-            const moduleConfigMap: { [key: number]: string } = {
-              0: 'mqtt',
-              5: 'telemetry',
-              9: 'neighborInfo',
-              13: 'statusmessage',
-              14: 'trafficManagement'
-            };
-            const configKey = moduleConfigMap[configType];
-            if (configKey && nodeConfig.moduleConfig?.[configKey]) {
-              logger.debug(`✅ Received ${configKey} config from remote node ${destinationNodeNum}`);
-              return nodeConfig.moduleConfig[configKey];
-            }
-          } else {
-            // Map device config types to their keys
-            const deviceConfigMap: { [key: number]: string } = {
-              0: 'device',
-              1: 'position',  // POSITION_CONFIG
-              2: 'power',     // POWER_CONFIG
-              3: 'network',   // NETWORK_CONFIG
-              4: 'display',   // DISPLAY_CONFIG
-              5: 'lora',      // LORA_CONFIG
-              6: 'bluetooth', // BLUETOOTH_CONFIG
-              7: 'security'   // SECURITY_CONFIG
-            };
-            const configKey = deviceConfigMap[configType];
-            if (configKey && nodeConfig.deviceConfig?.[configKey]) {
-              logger.debug(`✅ Received ${configKey} config from remote node ${destinationNodeNum}`);
-              return nodeConfig.deviceConfig[configKey];
-            }
-          }
-        }
-      }
-
-      logger.warn(`⚠️ Config type ${configType} not found in response from remote node ${destinationNodeNum} after waiting ${maxWaitTime}ms`);
-      return null;
-    } catch (error) {
-      logger.error(`❌ Error requesting config from remote node ${destinationNodeNum}:`, error);
-      throw error;
-    }
+    return this.remoteAdminService.requestRemoteConfig(destinationNodeNum, configType, isModuleConfig);
   }
 
   /**
@@ -12600,91 +12235,7 @@ class MeshtasticManager implements ISourceManager {
    * @returns The channel data if received, null otherwise
    */
   async requestRemoteChannel(destinationNodeNum: number, channelIndex: number): Promise<any> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node number not available');
-    }
-
-    try {
-      // Get or request session passkey
-      let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
-      if (sessionPasskey) {
-        logger.debug(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
-      } else {
-        logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
-        sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
-        if (!sessionPasskey) {
-          throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
-        }
-      }
-
-      // Create the channel request message with session passkey
-      // Note: getChannelRequest uses channelIndex + 1 (per protobuf spec)
-      const root = getProtobufRoot();
-      if (!root) {
-        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
-      }
-      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
-      if (!AdminMessage) {
-        throw new Error('AdminMessage type not found');
-      }
-
-      const adminMsg = AdminMessage.create({
-        sessionPasskey: sessionPasskey,
-        getChannelRequest: channelIndex + 1  // Protobuf uses index + 1
-      });
-      const encoded = AdminMessage.encode(adminMsg).finish();
-
-      // Clear any existing channel for this index before requesting (to ensure fresh data)
-      // This must happen BEFORE sending to prevent race conditions where responses arrive
-      // and get immediately deleted, causing polling loops to timeout
-      const nodeChannels = this.remoteNodeChannels.get(destinationNodeNum);
-      if (nodeChannels) {
-        nodeChannels.delete(channelIndex);
-      }
-
-      // Send the request
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
-      await this.transport.send(adminPacket);
-      logger.debug(`📡 Requested channel ${channelIndex} from remote node ${destinationNodeNum}`);
-      
-      // Wait for the response
-      // Use longer timeout for mesh routing - responses can take longer over mesh
-      // Increased from 8s to 16s for multi-hop mesh routing
-      const maxWaitTime = 16000; // 16 seconds
-      const pollInterval = 300; // Check every 300ms
-      const maxPolls = maxWaitTime / pollInterval;
-      
-      for (let i = 0; i < maxPolls; i++) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-        
-        // Check if we have the channel for this remote node
-        const nodeChannelsCheck = this.remoteNodeChannels.get(destinationNodeNum);
-        if (nodeChannelsCheck && nodeChannelsCheck.has(channelIndex)) {
-          const channel = nodeChannelsCheck.get(channelIndex);
-          logger.debug(`✅ Received channel ${channelIndex} from remote node ${destinationNodeNum}`, {
-            hasSettings: !!channel.settings,
-            name: channel.settings?.name,
-            role: channel.role
-          });
-          return channel;
-        }
-      }
-
-      logger.warn(`⚠️ Channel ${channelIndex} not found in response from remote node ${destinationNodeNum} after waiting ${maxWaitTime}ms`);
-      // Log what channels we did receive for debugging
-      const receivedChannels = this.remoteNodeChannels.get(destinationNodeNum);
-      if (receivedChannels) {
-        logger.debug(`📊 Received channels for node ${destinationNodeNum}:`, Array.from(receivedChannels.keys()));
-      }
-      return null;
-    } catch (error) {
-      logger.error(`❌ Error requesting channel from remote node ${destinationNodeNum}:`, error);
-      throw error;
-    }
+    return this.remoteAdminService.requestRemoteChannel(destinationNodeNum, channelIndex);
   }
 
   /**
@@ -12693,76 +12244,7 @@ class MeshtasticManager implements ISourceManager {
    * @returns The owner data if received, null otherwise
    */
   async requestRemoteOwner(destinationNodeNum: number): Promise<any> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node number not available');
-    }
-
-    try {
-      // Get or request session passkey
-      let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
-      if (sessionPasskey) {
-        logger.debug(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
-      } else {
-        logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
-        sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
-        if (!sessionPasskey) {
-          throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
-        }
-      }
-
-      // Create the owner request message with session passkey
-      const root = getProtobufRoot();
-      if (!root) {
-        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
-      }
-      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
-      if (!AdminMessage) {
-        throw new Error('AdminMessage type not found');
-      }
-
-      const adminMsg = AdminMessage.create({
-        sessionPasskey: sessionPasskey,
-        getOwnerRequest: true  // getOwnerRequest is a bool
-      });
-      const encoded = AdminMessage.encode(adminMsg).finish();
-
-      // Clear any existing owner for this node before requesting (to ensure fresh data)
-      // This must happen BEFORE sending to prevent race conditions where responses arrive
-      // and get immediately deleted, causing polling loops to timeout
-      this.remoteNodeOwners.delete(destinationNodeNum);
-
-      // Send the request
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
-      await this.transport.send(adminPacket);
-      logger.debug(`📡 Requested owner info from remote node ${destinationNodeNum}`);
-      
-      // Wait for the response
-      // Increased from 3s to 10s for multi-hop mesh routing
-      const maxWaitTime = 10000; // 10 seconds
-      const pollInterval = 250; // Check every 250ms
-      const maxPolls = maxWaitTime / pollInterval;
-
-      for (let i = 0; i < maxPolls; i++) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-        // Check if we have the owner for this remote node
-        if (this.remoteNodeOwners.has(destinationNodeNum)) {
-          const owner = this.remoteNodeOwners.get(destinationNodeNum);
-          logger.debug(`✅ Received owner info from remote node ${destinationNodeNum}`);
-          return owner;
-        }
-      }
-
-      logger.warn(`⚠️ Owner info not found in response from remote node ${destinationNodeNum} after waiting ${maxWaitTime / 1000}s`);
-      return null;
-    } catch (error) {
-      logger.error(`❌ Error requesting owner info from remote node ${destinationNodeNum}:`, error);
-      throw error;
-    }
+    return this.remoteAdminService.requestRemoteOwner(destinationNodeNum);
   }
 
   /**
@@ -12770,73 +12252,7 @@ class MeshtasticManager implements ISourceManager {
    * Returns firmware version, hardware model, capabilities, role, etc.
    */
   async requestRemoteDeviceMetadata(destinationNodeNum: number): Promise<any> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node number not available');
-    }
-
-    try {
-      // Get or request session passkey
-      let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
-      if (sessionPasskey) {
-        logger.debug(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
-      } else {
-        logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
-        sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
-        if (!sessionPasskey) {
-          throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
-        }
-      }
-
-      // Create the device metadata request message with session passkey
-      const root = getProtobufRoot();
-      if (!root) {
-        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
-      }
-      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
-      if (!AdminMessage) {
-        throw new Error('AdminMessage type not found');
-      }
-
-      const adminMsg = AdminMessage.create({
-        sessionPasskey: sessionPasskey,
-        getDeviceMetadataRequest: true
-      });
-      const encoded = AdminMessage.encode(adminMsg).finish();
-
-      // Clear any existing metadata for this node before requesting (to ensure fresh data)
-      this.remoteNodeDeviceMetadata.delete(destinationNodeNum);
-
-      // Send the request
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
-      await this.transport.send(adminPacket);
-      logger.debug(`📡 Requested device metadata from remote node ${destinationNodeNum}`);
-
-      // Wait for the response
-      const maxWaitTime = 10000; // 10 seconds
-      const pollInterval = 250; // Check every 250ms
-      const maxPolls = maxWaitTime / pollInterval;
-
-      for (let i = 0; i < maxPolls; i++) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-        // Check if we have the device metadata for this remote node
-        if (this.remoteNodeDeviceMetadata.has(destinationNodeNum)) {
-          const metadata = this.remoteNodeDeviceMetadata.get(destinationNodeNum);
-          logger.debug(`✅ Received device metadata from remote node ${destinationNodeNum}`);
-          return metadata;
-        }
-      }
-
-      logger.warn(`⚠️ Device metadata not received from remote node ${destinationNodeNum} after waiting ${maxWaitTime / 1000}s`);
-      return null;
-    } catch (error) {
-      logger.error(`❌ Error requesting device metadata from remote node ${destinationNodeNum}:`, error);
-      throw error;
-    }
+    return this.remoteAdminService.requestRemoteDeviceMetadata(destinationNodeNum);
   }
 
   /**
@@ -12845,56 +12261,7 @@ class MeshtasticManager implements ISourceManager {
    * @param seconds Number of seconds before reboot (default: 5, use negative to cancel)
    */
   async sendRebootCommand(destinationNodeNum: number, seconds: number = 10): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node number not available');
-    }
-
-    const localNodeNum = this.localNodeInfo.nodeNum;
-    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
-
-    try {
-      const root = getProtobufRoot();
-      if (!root) {
-        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
-      }
-      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
-      if (!AdminMessage) {
-        throw new Error('AdminMessage type not found');
-      }
-
-      let sessionPasskey: Uint8Array | null = null;
-
-      // For remote nodes, get the session passkey
-      if (!isLocalNode) {
-        sessionPasskey = this.getSessionPasskey(destinationNodeNum);
-        if (!sessionPasskey) {
-          logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
-          sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
-          if (!sessionPasskey) {
-            throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
-          }
-        }
-      }
-
-      const adminMsg = AdminMessage.create({
-        ...(sessionPasskey && { sessionPasskey }),
-        rebootSeconds: seconds
-      });
-      const encoded = AdminMessage.encode(adminMsg).finish();
-
-      const targetNodeNum = isLocalNode ? localNodeNum : destinationNodeNum;
-      const adminPacket = protobufService.createAdminPacket(encoded, targetNodeNum, localNodeNum);
-      await this.transport.send(adminPacket);
-
-      logger.info(`🔄 Sent reboot command to node ${targetNodeNum} (reboot in ${seconds} seconds)`);
-    } catch (error) {
-      logger.error(`❌ Error sending reboot command to node ${destinationNodeNum}:`, error);
-      throw error;
-    }
+    return this.remoteAdminService.sendRebootCommand(destinationNodeNum, seconds);
   }
 
   /**
@@ -12903,59 +12270,7 @@ class MeshtasticManager implements ISourceManager {
    * @param destinationNodeNum The target node number (0 or local node num for local)
    */
   async sendSetTimeCommand(destinationNodeNum: number): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node number not available');
-    }
-
-    const localNodeNum = this.localNodeInfo.nodeNum;
-    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
-
-    try {
-      const root = getProtobufRoot();
-      if (!root) {
-        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
-      }
-      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
-      if (!AdminMessage) {
-        throw new Error('AdminMessage type not found');
-      }
-
-      let sessionPasskey: Uint8Array | null = null;
-
-      // For remote nodes, get the session passkey
-      if (!isLocalNode) {
-        sessionPasskey = this.getSessionPasskey(destinationNodeNum);
-        if (!sessionPasskey) {
-          logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
-          sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
-          if (!sessionPasskey) {
-            throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
-          }
-        }
-      }
-
-      // Get current Unix timestamp
-      const currentTime = Math.floor(Date.now() / 1000);
-
-      const adminMsg = AdminMessage.create({
-        ...(sessionPasskey && { sessionPasskey }),
-        setTimeOnly: currentTime
-      });
-      const encoded = AdminMessage.encode(adminMsg).finish();
-
-      const targetNodeNum = isLocalNode ? localNodeNum : destinationNodeNum;
-      const adminPacket = protobufService.createAdminPacket(encoded, targetNodeNum, localNodeNum);
-      await this.transport.send(adminPacket);
-
-      logger.debug(`🕐 Sent set time command to node ${targetNodeNum} (time: ${currentTime} / ${new Date(currentTime * 1000).toISOString()})`);
-    } catch (error) {
-      logger.error(`❌ Error sending set time command to node ${destinationNodeNum}:`, error);
-      throw error;
-    }
+    return this.remoteAdminService.sendSetTimeCommand(destinationNodeNum);
   }
 
   /**
@@ -12963,57 +12278,7 @@ class MeshtasticManager implements ISourceManager {
    * This requests all 13 module config types defined in the protobufs
    */
   async requestAllModuleConfigs(): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    // All module config types from admin.proto ModuleConfigType enum
-    const moduleConfigTypes = [
-      0,  // MQTT_CONFIG
-      1,  // SERIAL_CONFIG
-      2,  // EXTNOTIF_CONFIG
-      3,  // STOREFORWARD_CONFIG
-      4,  // RANGETEST_CONFIG
-      5,  // TELEMETRY_CONFIG
-      6,  // CANNEDMSG_CONFIG
-      7,  // AUDIO_CONFIG
-      8,  // REMOTEHARDWARE_CONFIG
-      9,  // NEIGHBORINFO_CONFIG
-      10, // AMBIENTLIGHTING_CONFIG
-      11, // DETECTIONSENSOR_CONFIG
-      12, // PAXCOUNTER_CONFIG
-      13, // STATUSMESSAGE_CONFIG
-      14  // TRAFFICMANAGEMENT_CONFIG
-    ];
-
-    logger.debug('📦 Requesting all module configs for complete backup...');
-
-    for (const configType of moduleConfigTypes) {
-      // Abort early if we lost the connection mid-fetch (#3637). Propagating
-      // the error prevents the caller from setting moduleConfigsEverFetched=true,
-      // so the fetch is retried on the next reconnection rather than silently
-      // skipped forever.
-      if (!this.isConnected || !this.transport) {
-        logger.warn(`⚠️ Connection lost during module config fetch — aborting at type ${configType}, will retry on reconnect`);
-        throw new Error('Not connected to Meshtastic node');
-      }
-      try {
-        await this.requestModuleConfig(configType);
-        // Configurable delay between requests to avoid overwhelming the device
-        await new Promise(resolve => setTimeout(resolve, getEnvironmentConfig().meshtasticModuleConfigDelayMs));
-      } catch (error) {
-        const errMsg = error instanceof Error ? error.message : String(error);
-        if (errMsg === 'Not connected to Meshtastic node') {
-          // Connectivity loss mid-send: propagate so caller doesn't mark fetch complete (#3637)
-          logger.warn(`⚠️ Lost connection during module config fetch at type ${configType} — aborting, will retry on reconnect`);
-          throw error;
-        }
-        logger.error(`❌ Failed to request module config type ${configType}:`, error);
-        // Continue with other configs even if one type fails for non-connectivity reasons
-      }
-    }
-
-    logger.debug('✅ All module config requests sent');
+    return this.remoteAdminService.requestAllModuleConfigs();
   }
 
   /**
@@ -13021,9 +12286,7 @@ class MeshtasticManager implements ISourceManager {
    * Called after OTA firmware updates to ensure fresh config data.
    */
   resetModuleConfigCache(): void {
-    this.moduleConfigsEverFetched = false;
-    this.actualModuleConfig = null;
-    logger.debug('📦 Module config cache reset — will re-fetch on next connect');
+    return this.remoteAdminService.resetModuleConfigCache();
   }
 
   /**
@@ -13031,11 +12294,7 @@ class MeshtasticManager implements ISourceManager {
    * Useful for Configuration tab refresh button or API use.
    */
   async refreshModuleConfigs(): Promise<void> {
-    this.moduleConfigsEverFetched = false;
-    this.actualModuleConfig = null;
-    logger.debug('📦 Force-refreshing module configs...');
-    await this.requestAllModuleConfigs();
-    this.moduleConfigsEverFetched = true;
+    return this.remoteAdminService.refreshModuleConfigs();
   }
 
   /**
@@ -13111,65 +12370,21 @@ class MeshtasticManager implements ISourceManager {
    * Set device configuration (role, broadcast intervals, etc.)
    */
   async setDeviceConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending device config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetDeviceConfigMessage(config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent set_device_config admin message');
-    } catch (error) {
-      logger.error('❌ Error sending device config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setDeviceConfig(config);
   }
 
   /**
    * Set LoRa configuration (preset, region, etc.)
    */
   async setLoRaConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending LoRa config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetLoRaConfigMessage(config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      this.updateCachedDeviceConfig('lora', config);
-      logger.debug('⚙️ Sent set_lora_config admin message');
-    } catch (error) {
-      logger.error('❌ Error sending LoRa config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setLoRaConfig(config);
   }
 
   /**
    * Set network configuration (NTP server, etc.)
    */
   async setNetworkConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending network config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetNetworkConfigMessage(config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      this.updateCachedDeviceConfig('network', config);
-      logger.debug('⚙️ Sent set_network_config admin message');
-    } catch (error) {
-      logger.error('❌ Error sending network config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setNetworkConfig(config);
   }
 
   /**
@@ -13185,198 +12400,49 @@ class MeshtasticManager implements ISourceManager {
     downlinkEnabled?: boolean;
     positionPrecision?: number;
   }): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (channelIndex < 0 || channelIndex > 7) {
-      throw new Error('Channel index must be between 0 and 7');
-    }
-
-    try {
-      logger.debug(`⚙️ Sending channel ${channelIndex} config:`, JSON.stringify(config));
-      const setChannelMsg = protobufService.createSetChannelMessage(channelIndex, config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setChannelMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug(`⚙️ Sent set_channel admin message for channel ${channelIndex}`);
-    } catch (error) {
-      logger.error(`❌ Error sending channel ${channelIndex} config:`, error);
-      throw error;
-    }
+    return this.deviceAdminService.setChannelConfig(channelIndex, config);
   }
 
   /**
    * Set position configuration (broadcast intervals, etc.)
    */
   async setPositionConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      // Extract position data if provided
-      const { latitude, longitude, altitude, ...positionConfig } = config;
-
-      // Per Meshtastic docs: Set fixed position coordinates FIRST, THEN set fixedPosition flag.
-      // set_fixed_position automatically sets fixedPosition=true on the device.
-      // No delay needed: firmware processes incoming messages sequentially from its receive buffer.
-      if (latitude !== undefined && longitude !== undefined) {
-        logger.debug(`⚙️ Setting fixed position coordinates: lat=${latitude}, lon=${longitude}, alt=${altitude || 0}`);
-        const setPositionMsg = protobufService.createSetFixedPositionMessage(
-          latitude,
-          longitude,
-          altitude || 0,
-          new Uint8Array()
-        );
-        const positionPacket = protobufService.createAdminPacket(setPositionMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-        await this.transport.send(positionPacket);
-        logger.debug('⚙️ Sent set_fixed_position admin message');
-
-        // Immediately update the local node's position in the database so it's correct
-        // before any stale position broadcast arrives from the device firmware.
-        if (this.localNodeInfo) {
-          const localNodeNum = this.localNodeInfo.nodeNum;
-          const localNodeId = `!${localNodeNum.toString(16).padStart(8, '0')}`;
-          await databaseService.upsertNodeAsync({
-            nodeNum: localNodeNum,
-            nodeId: localNodeId,
-            latitude,
-            longitude,
-            altitude: altitude || 0,
-            positionTimestamp: Date.now(),
-          }, this.sourceId);
-          logger.info(`⚙️ Updated local node ${localNodeId} position in database: lat=${latitude}, lon=${longitude}`);
-        }
-      }
-
-      // Then send position configuration (fixedPosition flag, broadcast intervals, etc.)
-      logger.debug('⚙️ Sending position config:', JSON.stringify(positionConfig));
-      const setConfigMsg = protobufService.createSetPositionConfigMessage(positionConfig, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      this.updateCachedDeviceConfig('position', positionConfig);
-      logger.debug('⚙️ Sent set_position_config admin message');
-    } catch (error) {
-      logger.error('❌ Error sending position config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setPositionConfig(config);
   }
 
   /**
    * Set MQTT module configuration
    */
   async setMQTTConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending MQTT config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetMQTTConfigMessage(config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      this.updateCachedDeviceConfig('mqtt', config);
-      logger.debug('⚙️ Sent set_mqtt_config admin message (direct, no transaction)');
-    } catch (error) {
-      logger.error('❌ Error sending MQTT config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setMQTTConfig(config);
   }
 
   /**
    * Set NeighborInfo module configuration
    */
   async setNeighborInfoConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending NeighborInfo config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetNeighborInfoConfigMessage(config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      this.updateCachedDeviceConfig('neighborinfo', config);
-      logger.debug('⚙️ Sent set_neighborinfo_config admin message (direct, no transaction)');
-    } catch (error) {
-      logger.error('❌ Error sending NeighborInfo config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setNeighborInfoConfig(config);
   }
 
   /**
    * Set power configuration
    */
   async setPowerConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending power config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetDeviceConfigMessageGeneric('power', config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent set_power_config admin message');
-    } catch (error) {
-      logger.error('❌ Error sending power config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setPowerConfig(config);
   }
 
   /**
    * Set display configuration
    */
   async setDisplayConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending display config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetDeviceConfigMessageGeneric('display', config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent set_display_config admin message');
-    } catch (error) {
-      logger.error('❌ Error sending display config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setDisplayConfig(config);
   }
 
   /**
    * Set telemetry module configuration
    */
   async setTelemetryConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending telemetry config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetModuleConfigMessageGeneric('telemetry', config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent set_telemetry_config admin message');
-
-      // Update local cache with the config that was sent
-      if (!this.actualModuleConfig) {
-        this.actualModuleConfig = {};
-      }
-      this.actualModuleConfig.telemetry = { ...this.actualModuleConfig.telemetry, ...config };
-      logger.debug('⚙️ Updated actualModuleConfig.telemetry cache');
-    } catch (error) {
-      logger.error('❌ Error sending telemetry config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setTelemetryConfig(config);
   }
 
   /**
@@ -13385,87 +12451,28 @@ class MeshtasticManager implements ISourceManager {
    * remotehardware, detectionsensor, paxcounter, serial, ambientlighting
    */
   async setGenericModuleConfig(moduleType: string, config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug(`⚙️ Sending ${moduleType} config:`, JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetModuleConfigMessageGeneric(moduleType, config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug(`⚙️ Sent set_${moduleType}_config admin message`);
-    } catch (error) {
-      logger.error(`❌ Error sending ${moduleType} config:`, error);
-      throw error;
-    }
+    return this.deviceAdminService.setGenericModuleConfig(moduleType, config);
   }
 
   /**
    * Set node owner (long name and short name)
    */
   async setNodeOwner(longName: string, shortName: string, isUnmessagable?: boolean, isLicensed?: boolean): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug(`⚙️ Setting node owner: "${longName}" (${shortName}), isUnmessagable: ${isUnmessagable}, isLicensed: ${isLicensed}`);
-      const setOwnerMsg = protobufService.createSetOwnerMessage(longName, shortName, isUnmessagable, new Uint8Array(), isLicensed);
-      const adminPacket = protobufService.createAdminPacket(setOwnerMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent set_owner admin message (direct, no transaction)');
-    } catch (error) {
-      logger.error('❌ Error setting node owner:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setNodeOwner(longName, shortName, isUnmessagable, isLicensed);
   }
 
   /**
    * Begin edit settings transaction to batch configuration changes
    */
   async beginEditSettings(): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Beginning edit settings transaction');
-      const beginMsg = protobufService.createBeginEditSettingsMessage(new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(beginMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent begin_edit_settings admin message');
-    } catch (error) {
-      logger.error('❌ Error beginning edit settings:', error);
-      throw error;
-    }
+    return this.deviceAdminService.beginEditSettings();
   }
 
   /**
    * Commit edit settings to persist configuration changes
    */
   async commitEditSettings(): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Committing edit settings to persist configuration');
-      const commitMsg = protobufService.createCommitEditSettingsMessage(new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(commitMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent commit_edit_settings admin message');
-
-      // Wait a moment for device to save to flash
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    } catch (error) {
-      logger.error('❌ Error committing edit settings:', error);
-      throw error;
-    }
+    return this.deviceAdminService.commitEditSettings();
   }
 
   async getConnectionStatus(): Promise<{ connected: boolean; nodeResponsive: boolean; configuring: boolean; nodeIp: string; userDisconnected?: boolean }> {
@@ -13666,6 +12673,72 @@ class MeshtasticManager implements ISourceManager {
   /** Clear the in-flight marker for a node's auto-favorite operation. */
   removeAutoFavoritingNode(nodeNum: number): void {
     this.autoFavoritingNodes.delete(nodeNum);
+  }
+
+  // ── Narrow accessors for DeviceAdminService (#3962 Phase 4.2a PR5 §4e) ──
+  // Bridge previously-private state without widening the fields themselves.
+
+  /** `{nodeIp, tcpPort}` off the private `getConfig()` — all `buildDeviceConfigFromActual` needs from it. */
+  async getConnectionAddress(): Promise<{ nodeIp: string; tcpPort: number }> {
+    const config = await this.getConfig();
+    return { nodeIp: config.nodeIp, tcpPort: config.tcpPort };
+  }
+
+  /**
+   * Update cached module config section after a successful admin command.
+   * Mirrors `updateCachedDeviceConfig` above but for `actualModuleConfig`.
+   */
+  updateCachedModuleConfig(section: string, values: Record<string, any>): void {
+    if (!this.actualModuleConfig) {
+      this.actualModuleConfig = {};
+    }
+    this.actualModuleConfig[section] = {
+      ...this.actualModuleConfig[section],
+      ...values
+    };
+  }
+
+  // ── Narrow accessors for RemoteAdminService (#3962 Phase 4.2a PR5 §4e) ──
+  // remoteNodeConfigs/remoteNodeChannels/remoteNodeOwners/remoteNodeDeviceMetadata/
+  // pendingModuleConfigRequests/moduleConfigsEverFetched/actualModuleConfig stay
+  // on the manager because protobuf dispatch (`processAdminMessage`, out of
+  // scope per spec §10) writes them directly on packet receipt — the same
+  // "written on one side, read on the other" split `adminTransactionService.ts`
+  // documents for `pendingAdminAcks`. These bridge bidirectionally without
+  // widening the fields themselves; several return the SAME live Map/entry
+  // reference the manager holds (same trick the pre-existing
+  // `getRemoteNodeConfig` accessor above already uses) so in-place mutation
+  // (`.delete()`, nested-key `delete`) keeps working exactly as before.
+
+  /** Record which module-config key a pending request (local or remote) should resolve to. */
+  setPendingModuleConfigRequest(nodeNum: number, key: string): void {
+    this.pendingModuleConfigRequests.set(nodeNum, key);
+  }
+
+  /** Live per-node remote-channel map (channelIndex → channel), or undefined if none cached yet. */
+  getRemoteNodeChannelsMap(nodeNum: number): Map<number, any> | undefined {
+    return this.remoteNodeChannels.get(nodeNum);
+  }
+
+  /** Live remote-node-owner cache (nodeNum → owner response). */
+  getRemoteNodeOwnersMap(): Map<number, any> {
+    return this.remoteNodeOwners;
+  }
+
+  /** Live remote-node-device-metadata cache (nodeNum → metadata response). */
+  getRemoteNodeDeviceMetadataMap(): Map<number, any> {
+    return this.remoteNodeDeviceMetadata;
+  }
+
+  /** Reset both module-config cache fields — matches the pre-extraction `resetModuleConfigCache` body. */
+  resetModuleConfigState(): void {
+    this.moduleConfigsEverFetched = false;
+    this.actualModuleConfig = null;
+  }
+
+  /** Write the module-configs-ever-fetched flag. */
+  setModuleConfigsEverFetched(value: boolean): void {
+    this.moduleConfigsEverFetched = value;
   }
 
   // Async version that fetches uptimes in a single bulk query - works with all DB backends
