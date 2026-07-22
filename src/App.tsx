@@ -4706,6 +4706,42 @@ function App() {
             path="security"
             element={<ErrorBoundary fallbackTitle="Security failed to load"><SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} openDmWithDraft={openDmWithDraft} /></ErrorBoundary>}
           />
+          <Route
+            path="admin"
+            element={authStatus?.user?.isAdmin ? (
+              <ErrorBoundary fallbackTitle="Admin Commands failed to load">
+                <AdminCommandsTab
+                  key={sourceId || 'default'}
+                  nodes={nodes}
+                  currentNodeId={currentNodeId}
+                  channels={channels}
+                  onChannelsUpdated={fetchChannels}
+                />
+              </ErrorBoundary>
+            ) : null}
+          />
+          <Route
+            path="mqtt-config"
+            element={isMqttBridge && sourceId ? (
+              <ErrorBoundary fallbackTitle="Configuration failed to load">
+                <MqttBridgeConfigurationView key={sourceId} sourceId={sourceId} />
+              </ErrorBoundary>
+            ) : null}
+          />
+          <Route
+            path="packetmonitor"
+            element={
+              <ErrorBoundary fallbackTitle="Packet Monitor failed to load">
+                <div style={{ height: 'calc(100dvh - var(--header-height, 60px) - 4rem)', overflow: 'hidden' }}>
+                  {isMqtt && sourceId ? (
+                    <MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />
+                  ) : (
+                    <PacketMonitorPanel onClose={() => setActiveTab('nodes')} />
+                  )}
+                </div>
+              </ErrorBoundary>
+            }
+          />
           <Route path="*" element={<>
         {activeTab === 'nodes' && (
           <ErrorBoundary fallbackTitle="Nodes failed to load">
@@ -5202,35 +5238,9 @@ function App() {
           />
           </ErrorBoundary>
         )}
-        {activeTab === 'mqtt-config' && isMqttBridge && sourceId && (
-          <ErrorBoundary fallbackTitle="Configuration failed to load">
-            <MqttBridgeConfigurationView key={sourceId} sourceId={sourceId} />
-          </ErrorBoundary>
-        )}
         {/* 'audit' migrated to <Route path="audit"> above (#3962 5.4 PR1 proof leaf) */}
-        {/* 'notifications', 'users', 'security' migrated to <Route> elements above (#3962 5.4 PR3 leaf tab group) */}
-        {activeTab === 'admin' && authStatus?.user?.isAdmin && (
-          <ErrorBoundary fallbackTitle="Admin Commands failed to load">
-          <AdminCommandsTab
-            key={sourceId || 'default'}
-            nodes={nodes}
-            currentNodeId={currentNodeId}
-            channels={channels}
-            onChannelsUpdated={fetchChannels}
-          />
-          </ErrorBoundary>
-        )}
-        {activeTab === 'packetmonitor' && (
-          <ErrorBoundary fallbackTitle="Packet Monitor failed to load">
-            <div style={{ height: 'calc(100dvh - var(--header-height, 60px) - 4rem)', overflow: 'hidden' }}>
-              {isMqtt && sourceId ? (
-                <MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />
-              ) : (
-                <PacketMonitorPanel onClose={() => setActiveTab('nodes')} />
-              )}
-            </div>
-          </ErrorBoundary>
-        )}
+        {/* 'notifications', 'users', 'admin', 'security', 'mqtt-config', 'packetmonitor'
+            migrated to <Route> elements above (#3962 5.4 PR3 leaf tab group) */}
           </>} />
         </Routes>
       </main>
