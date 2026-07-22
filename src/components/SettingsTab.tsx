@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useReducer, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from './icons';
 import '../styles/settings.css';
@@ -41,6 +41,120 @@ type TimeFormat = '12' | '24';
 type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 type MapPinStyle = 'meshmonitor' | 'official';
 type IconStyle = 'lucide' | 'emoji';
+
+// --- Task 5.3 (#3962 Phase 5) draft-object rewrite ---------------------------------------------
+// SettingsTab used to mirror every editable field into its own `local*` useState (49 of them),
+// re-seeded/diffed/reset/saved via four hand-maintained dependency arrays enumerating every field
+// (~35/~57/~35/~95 deps respectively). This collapses all 49 mirrors into one SettingsDraft
+// reducer: `updateField` replaces every `setLocalXxx`, `baseline` (a memoized snapshot of the
+// current context/props/initial* values) replaces the props-effect body, `hasChanges` is now
+// `!settingsDraftEqual(draft, baseline)` instead of 57 hand-written `!==` comparisons, and
+// `resetChanges`/`handleSave` operate on the whole draft generically instead of listing every
+// field. See docs/internal/dev-notes/REMEDIATION_PLAN.md §5.3 and CLAUDE.md "Adding New Settings".
+//
+// Three save channels are preserved (see CLAUDE.md): (A) prop-callback-backed fields fan out via
+// the `onXxxChange` props passed down from App.tsx; (B) context-setter-backed fields fan out via
+// the (5.1/5.2-stabilized, useCallback-wrapped) SettingsContext/UIContext setters; (C) server-only
+// fields have no prop/context home and are dirty-tracked against an `initial*` snapshot captured
+// from the settings-fetch effect. `buildBaseline`/`applyDraft` below read/write all three uniformly.
+interface SettingsDraft {
+  // Category A + B fields, named as their POST-body key (see handleSave's explicit `settings = {}`
+  // literal — server.settings-persistence.test.ts regex-parses that literal, so its keys must stay
+  // literal source text, not a spread/computed payload).
+  maxNodeAgeHours: number;
+  inactiveNodeThresholdHours: number;
+  inactiveNodeCheckIntervalMinutes: number;
+  inactiveNodeCooldownHours: number;
+  temperatureUnit: TemperatureUnit;
+  distanceUnit: DistanceUnit;
+  positionHistoryLineStyle: PositionHistoryLineStyle;
+  telemetryVisualizationHours: number;
+  favoriteTelemetryStorageDays: number;
+  preferredSortField: SortField;
+  preferredSortDirection: SortDirection;
+  timeFormat: TimeFormat;
+  dateFormat: DateFormat;
+  mapTilesetLight: TilesetId;
+  mapTilesetDark: TilesetId;
+  mapPinStyle: MapPinStyle;
+  iconStyle: IconStyle;
+  neighborInfoMinZoom: number;
+  defaultMapCenterLat: number | null;
+  defaultMapCenterLon: number | null;
+  defaultMapCenterZoom: number | null;
+  mapCenterTargetZoom: number;
+  defaultLandingPage: string;
+  appearanceMode: AppearanceMode;
+  darkTheme: Theme;
+  lightTheme: Theme;
+  nodeHopsCalculation: NodeHopsCalculation;
+  preferredDashboardSortOption: DashboardSortOption;
+  linkPreviewsEnabled: boolean;
+  discardInvalidPositions: boolean;
+  noIndexEnabled: boolean;
+  meshcoreChannelRetryEnabled: boolean;
+  hideIncompleteNodes: boolean;
+  solarMonitoringEnabled: boolean;
+  solarMonitoringLatitude: number;
+  solarMonitoringLongitude: number;
+  solarMonitoringAzimuth: number;
+  solarMonitoringDeclination: number;
+  // Category C: server-only settings, no prop/context home — dirty-tracked against an `initial*`
+  // snapshot (see buildBaseline) rather than a prop/context value.
+  packetLogEnabled: boolean;
+  packetLogMaxCount: number;
+  packetLogMaxAgeHours: number;
+  homoglyphEnabled: boolean;
+  localStatsIntervalMinutes: number;
+  meshcoreCliTimeoutSeconds: number;
+  analyticsProvider: string;
+  analyticsConfig: Record<string, string>;
+  appriseApiServerUrl: string;
+  elevationEnabled: boolean;
+  elevationSourceUrl: string;
+}
+
+type SettingsDraftAction =
+  | { type: 'field'; patch: Partial<SettingsDraft> }
+  | { type: 'reseed'; next: SettingsDraft };
+
+function settingsDraftReducer(state: SettingsDraft, action: SettingsDraftAction): SettingsDraft {
+  switch (action.type) {
+    case 'field':
+      return { ...state, ...action.patch };
+    case 'reseed':
+      return action.next;
+    default:
+      return state;
+  }
+}
+
+// Shallow-equal over the flat draft. Every field but `analyticsConfig` is a primitive (or null),
+// compared by `===`; the one nested-object field is compared by JSON content so re-typing a value
+// back to its original text doesn't spuriously report a change (matches the old
+// `JSON.stringify(localAnalyticsConfig) !== initialAnalyticsConfig` comparison it replaces).
+function settingsDraftEqual(a: SettingsDraft, b: SettingsDraft): boolean {
+  const keys = Object.keys(a) as (keyof SettingsDraft)[];
+  return keys.every((key) => {
+    const av = a[key];
+    const bv = b[key];
+    if (av !== null && bv !== null && typeof av === 'object' && typeof bv === 'object') {
+      return JSON.stringify(av) === JSON.stringify(bv);
+    }
+    return av === bv;
+  });
+}
+
+// Pure function of (mode, dark, light) — replaces the old `getLocalEffectiveTheme` useCallback,
+// which had no callers besides handleSave and doesn't need its own memoized identity.
+function computeEffectiveTheme(mode: AppearanceMode, dark: Theme, light: Theme): Theme {
+  if (mode === 'dark') return dark;
+  if (mode === 'light') return light;
+  const systemIsDark = typeof window !== 'undefined' && window.matchMedia
+    ? window.matchMedia('(prefers-color-scheme: dark)').matches
+    : true;
+  return systemIsDark ? dark : light;
+}
 
 interface SettingsTabProps {
   maxNodeAgeHours: number;
@@ -220,80 +334,103 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const { data: availableSources = [] } = useDashboardSources();
   const { showIncompleteNodes, setShowIncompleteNodes } = useUI();
 
-  // Local state for editing
-  const [localMaxNodeAge, setLocalMaxNodeAge] = useState(maxNodeAgeHours);
-  const [localInactiveNodeThresholdHours, setLocalInactiveNodeThresholdHours] = useState(inactiveNodeThresholdHours);
-  const [localInactiveNodeCheckIntervalMinutes, setLocalInactiveNodeCheckIntervalMinutes] = useState(inactiveNodeCheckIntervalMinutes);
-  const [localInactiveNodeCooldownHours, setLocalInactiveNodeCooldownHours] = useState(inactiveNodeCooldownHours);
-  const [localTemperatureUnit, setLocalTemperatureUnit] = useState(temperatureUnit);
-  const [localDistanceUnit, setLocalDistanceUnit] = useState(distanceUnit);
-  const [localPositionHistoryLineStyle, setLocalPositionHistoryLineStyle] = useState(positionHistoryLineStyle);
-  const [localTelemetryHours, setLocalTelemetryHours] = useState(telemetryVisualizationHours);
-  const [localFavoriteTelemetryStorageDays, setLocalFavoriteTelemetryStorageDays] = useState(favoriteTelemetryStorageDays);
-  const [localPreferredSortField, setLocalPreferredSortField] = useState(preferredSortField);
-  const [localPreferredSortDirection, setLocalPreferredSortDirection] = useState(preferredSortDirection);
-  const [localTimeFormat, setLocalTimeFormat] = useState(timeFormat);
-  const [localDateFormat, setLocalDateFormat] = useState(dateFormat);
-  const [localMapTilesetLight, setLocalMapTilesetLight] = useState(mapTilesetLight);
-  const [localMapTilesetDark, setLocalMapTilesetDark] = useState(mapTilesetDark);
-  const [localMapPinStyle, setLocalMapPinStyle] = useState(mapPinStyle);
-  const [localIconStyle, setLocalIconStyle] = useState(iconStyle);
-  const [localNeighborInfoMinZoom, setLocalNeighborInfoMinZoom] = useState(neighborInfoMinZoom);
-  const [localDefaultMapCenterLat, setLocalDefaultMapCenterLat] = useState<number | null>(defaultMapCenterLat);
-  const [localDefaultMapCenterLon, setLocalDefaultMapCenterLon] = useState<number | null>(defaultMapCenterLon);
-  const [localDefaultMapCenterZoom, setLocalDefaultMapCenterZoom] = useState<number | null>(defaultMapCenterZoom);
-  const [localMapCenterTargetZoom, setLocalMapCenterTargetZoom] = useState(mapCenterTargetZoom);
-  const [localDefaultLandingPage, setLocalDefaultLandingPage] = useState<string>(defaultLandingPage);
-  const [localAppearanceMode, setLocalAppearanceMode] = useState<AppearanceMode>(appearanceMode);
-  const [localDarkTheme, setLocalDarkTheme] = useState<Theme>(darkTheme);
-  const [localLightTheme, setLocalLightTheme] = useState<Theme>(lightTheme);
-  const [localNodeHopsCalculation, setLocalNodeHopsCalculation] = useState(nodeHopsCalculation);
-  const [localDashboardSortOption, setLocalDashboardSortOption] = useState<DashboardSortOption>(preferredDashboardSortOption);
-  const [localPacketLogEnabled, setLocalPacketLogEnabled] = useState(false);
-  const [localPacketLogMaxCount, setLocalPacketLogMaxCount] = useState(1000);
-  const [localPacketLogMaxAgeHours, setLocalPacketLogMaxAgeHours] = useState(24);
-  const [localLinkPreviewsEnabled, setLocalLinkPreviewsEnabled] = useState(linkPreviewsEnabled);
-  const [localDiscardInvalidPositions, setLocalDiscardInvalidPositions] = useState(discardInvalidPositions);
-  const [localNoIndexEnabled, setLocalNoIndexEnabled] = useState(noIndexEnabled);
-  const [localMeshcoreChannelRetryEnabled, setLocalMeshcoreChannelRetryEnabled] = useState(meshcoreChannelRetryEnabled);
-  const [localSolarMonitoringEnabled, setLocalSolarMonitoringEnabled] = useState(solarMonitoringEnabled);
-  const [localSolarMonitoringLatitude, setLocalSolarMonitoringLatitude] = useState(solarMonitoringLatitude);
-  const [localSolarMonitoringLongitude, setLocalSolarMonitoringLongitude] = useState(solarMonitoringLongitude);
-  const [localSolarMonitoringAzimuth, setLocalSolarMonitoringAzimuth] = useState(solarMonitoringAzimuth);
-  const [localSolarMonitoringDeclination, setLocalSolarMonitoringDeclination] = useState(solarMonitoringDeclination);
-  // Note: localHideIncompleteNodes is inverted from showIncompleteNodes because
-  // the UI checkbox says "Hide" while the context uses "show" semantics
-  const [localHideIncompleteNodes, setLocalHideIncompleteNodes] = useState(!showIncompleteNodes);
-  const [localHomoglyphEnabled, setLocalHomoglyphEnabled] = useState(false);
-  const [localLocalStatsIntervalMinutes, setLocalLocalStatsIntervalMinutes] = useState(15);
+  // Single draft reducer replacing the 49 `local*` mirrors (Task 5.3). Lazy-initialized once from
+  // the current context/props values; category-C fields (no context/prop home) start at their
+  // pre-fetch defaults and are corrected by the reseed effect once fetchServerSettings resolves.
+  const [draft, dispatch] = useReducer(settingsDraftReducer, undefined, (): SettingsDraft => ({
+    maxNodeAgeHours,
+    inactiveNodeThresholdHours,
+    inactiveNodeCheckIntervalMinutes,
+    inactiveNodeCooldownHours,
+    temperatureUnit,
+    distanceUnit,
+    positionHistoryLineStyle,
+    telemetryVisualizationHours,
+    favoriteTelemetryStorageDays,
+    preferredSortField,
+    preferredSortDirection,
+    timeFormat,
+    dateFormat,
+    mapTilesetLight,
+    mapTilesetDark,
+    mapPinStyle,
+    iconStyle,
+    neighborInfoMinZoom,
+    defaultMapCenterLat,
+    defaultMapCenterLon,
+    defaultMapCenterZoom,
+    mapCenterTargetZoom,
+    defaultLandingPage,
+    appearanceMode,
+    darkTheme,
+    lightTheme,
+    nodeHopsCalculation,
+    preferredDashboardSortOption,
+    linkPreviewsEnabled,
+    discardInvalidPositions,
+    noIndexEnabled,
+    meshcoreChannelRetryEnabled,
+    hideIncompleteNodes: !showIncompleteNodes,
+    solarMonitoringEnabled,
+    solarMonitoringLatitude,
+    solarMonitoringLongitude,
+    solarMonitoringAzimuth,
+    solarMonitoringDeclination,
+    packetLogEnabled: false,
+    packetLogMaxCount: 1000,
+    packetLogMaxAgeHours: 24,
+    homoglyphEnabled: false,
+    localStatsIntervalMinutes: 15,
+    meshcoreCliTimeoutSeconds: 15,
+    analyticsProvider: 'none',
+    analyticsConfig: {},
+    appriseApiServerUrl: '',
+    elevationEnabled: false,
+    elevationSourceUrl: '',
+  }));
+
+  // Single stable field updater — every JSX onChange calls this instead of a per-field
+  // `setLocalXxx`. Referentially stable ([] deps), so it never appears in a dependency array.
+  const updateField = useCallback(<K extends keyof SettingsDraft>(key: K, value: SettingsDraft[K]) => {
+    dispatch({ type: 'field', patch: { [key]: value } as Partial<SettingsDraft> });
+  }, []);
+
+  // initial* snapshots: category-C "pristine baseline" for server-only settings with no
+  // prop/context home (dirty-tracked against these instead of a prop/context value — see
+  // buildBaseline/baseline below). Populated by the server-fetch effect.
+  const [initialPacketMonitorSettings, setInitialPacketMonitorSettings] = useState({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
+  const [initialHomoglyphEnabled, setInitialHomoglyphEnabled] = useState(false);
   const [initialLocalStatsIntervalMinutes, setInitialLocalStatsIntervalMinutes] = useState(15);
-  // MeshCore CLI console reply-timeout (seconds), issue #4027. Local-only
-  // server-backed setting (no SettingsContext prop), mirroring localStats above.
-  const [localMeshcoreCliTimeoutSeconds, setLocalMeshcoreCliTimeoutSeconds] = useState(15);
+  // MeshCore CLI console reply-timeout (seconds), issue #4027. Local-only server-backed setting
+  // (no SettingsContext prop), mirroring localStats above.
   const [initialMeshcoreCliTimeoutSeconds, setInitialMeshcoreCliTimeoutSeconds] = useState(15);
+  const [initialAnalyticsProvider, setInitialAnalyticsProvider] = useState<string>('none');
+  const [initialAnalyticsConfig, setInitialAnalyticsConfig] = useState<string>('{}');
+  const [initialAppriseApiServerUrl, setInitialAppriseApiServerUrl] = useState<string>('');
+  // Elevation / Terrain source settings (#4111 Phase 3 WP-3). Mirrors the Apprise API Server
+  // pattern above: initial snapshot for dirty-tracking, admins receive the unmasked
+  // `elevationSourceUrl` (stripSecretSettings returns the full map to admins).
+  const [initialElevationEnabled, setInitialElevationEnabled] = useState(false);
+  const [initialElevationSourceUrl, setInitialElevationSourceUrl] = useState('');
+  // nodeDimming* lives in SettingsContext directly (not a draft mirror — its JSX binds straight to
+  // context state), but is still dirty-tracked/saved/reset alongside the draft (see
+  // nodeDimmingChanged / handleSave / resetChanges below).
+  const [initialNodeDimmingSettings, setInitialNodeDimmingSettings] = useState({
+    enabled: nodeDimmingEnabled,
+    startHours: nodeDimmingStartHours,
+    minOpacity: nodeDimmingMinOpacity,
+  });
+
+  // Transient/derived UI state — stays as plain useState (not draft fields, see §1.3 of the Task
+  // 5.3 spec).
   const [isFetchingSolarEstimates, setIsFetchingSolarEstimates] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDocker, setIsDocker] = useState<boolean | null>(null);
   const [isRestarting, setIsRestarting] = useState(false);
   const [databaseType, setDatabaseType] = useState<'sqlite' | 'postgres' | 'mysql' | null>(null);
   const [firmwareOtaEnabled, setFirmwareOtaEnabled] = useState(false);
-  const [localAnalyticsProvider, setLocalAnalyticsProvider] = useState<string>('none');
-  const [localAnalyticsConfig, setLocalAnalyticsConfig] = useState<Record<string, string>>({});
-  const [initialAnalyticsProvider, setInitialAnalyticsProvider] = useState<string>('none');
-  const [initialAnalyticsConfig, setInitialAnalyticsConfig] = useState<string>('{}');
-  const [localAppriseApiServerUrl, setLocalAppriseApiServerUrl] = useState<string>('');
-  const [initialAppriseApiServerUrl, setInitialAppriseApiServerUrl] = useState<string>('');
   const [isTestingApprise, setIsTestingApprise] = useState<boolean>(false);
   const [appriseTestResult, setAppriseTestResult] = useState<{ ok: boolean; message: string } | null>(null);
-  // Elevation / Terrain source settings (#4111 Phase 3 WP-3). Mirrors the
-  // Apprise API Server pattern above: local+initial pair for dirty-tracking,
-  // admins receive the unmasked `elevationSourceUrl` (stripSecretSettings
-  // returns the full map to admins).
-  const [localElevationEnabled, setLocalElevationEnabled] = useState(false);
-  const [initialElevationEnabled, setInitialElevationEnabled] = useState(false);
-  const [localElevationSourceUrl, setLocalElevationSourceUrl] = useState('');
-  const [initialElevationSourceUrl, setInitialElevationSourceUrl] = useState('');
   const [elevationTestResult, setElevationTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [elevationTesting, setElevationTesting] = useState(false);
   const { showToast } = useToast();
@@ -349,45 +486,45 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const maxAgeHours = parseInt(settings.packet_log_max_age_hours || '24', 10);
           const hideIncomplete = settings.hideIncompleteNodes === '1';
 
-          setLocalPacketLogEnabled(enabled);
-          setLocalPacketLogMaxCount(maxCount);
-          setLocalPacketLogMaxAgeHours(maxAgeHours);
+          updateField('packetLogEnabled', enabled);
+          updateField('packetLogMaxCount', maxCount);
+          updateField('packetLogMaxAgeHours', maxAgeHours);
           setInitialPacketMonitorSettings({ enabled, maxCount, maxAgeHours });
 
           // Load hide incomplete nodes setting
-          setLocalHideIncompleteNodes(hideIncomplete);
+          updateField('hideIncompleteNodes', hideIncomplete);
           setShowIncompleteNodes(!hideIncomplete);
 
           // Load homoglyph optimization setting
           const homoglyphOn = settings.homoglyphEnabled === 'true';
-          setLocalHomoglyphEnabled(homoglyphOn);
+          updateField('homoglyphEnabled', homoglyphOn);
           setInitialHomoglyphEnabled(homoglyphOn);
 
           // Load link preview setting (issue #3416). Absent key => enabled.
           const linkPreviewsOn = !(settings.linkPreviewsEnabled === '0' || settings.linkPreviewsEnabled === 'false');
-          setLocalLinkPreviewsEnabled(linkPreviewsOn);
+          updateField('linkPreviewsEnabled', linkPreviewsOn);
 
           // Load discard-invalid-positions (default enabled). Absent key => enabled.
           const discardInvalidOn = !(settings.discardInvalidPositions === '0' || settings.discardInvalidPositions === 'false');
-          setLocalDiscardInvalidPositions(discardInvalidOn);
+          updateField('discardInvalidPositions', discardInvalidOn);
 
           // Load no-index (#4202). Absent key => disabled.
           const noIndexOn = settings.noIndexEnabled === '1' || settings.noIndexEnabled === 'true';
-          setLocalNoIndexEnabled(noIndexOn);
+          updateField('noIndexEnabled', noIndexOn);
 
           // Load MeshCore channel-send auto-retry (#3979). Absent key => disabled.
           const meshcoreChannelRetryOn = settings.meshcoreChannelRetryEnabled === '1' || settings.meshcoreChannelRetryEnabled === 'true';
-          setLocalMeshcoreChannelRetryEnabled(meshcoreChannelRetryOn);
+          updateField('meshcoreChannelRetryEnabled', meshcoreChannelRetryOn);
 
           // Load LocalStats interval setting
           const statsInterval = parseInt(settings.localStatsIntervalMinutes || '15', 10);
-          setLocalLocalStatsIntervalMinutes(statsInterval);
+          updateField('localStatsIntervalMinutes', statsInterval);
           setInitialLocalStatsIntervalMinutes(statsInterval);
 
           // Load MeshCore CLI console timeout (#4027). Absent/invalid => 15s default.
           const cliTimeoutParsed = parseInt(settings.meshcoreCliTimeoutSeconds || '15', 10);
           const cliTimeout = Number.isFinite(cliTimeoutParsed) ? Math.min(60, Math.max(1, cliTimeoutParsed)) : 15;
-          setLocalMeshcoreCliTimeoutSeconds(cliTimeout);
+          updateField('meshcoreCliTimeoutSeconds', cliTimeout);
           setInitialMeshcoreCliTimeoutSeconds(cliTimeout);
 
           // Load node dimming initial values from server
@@ -402,12 +539,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
           // Load analytics settings
           if (settings.analyticsProvider) {
-            setLocalAnalyticsProvider(settings.analyticsProvider);
+            updateField('analyticsProvider', settings.analyticsProvider);
             setInitialAnalyticsProvider(settings.analyticsProvider);
           }
           if (settings.analyticsConfig) {
             try {
-              setLocalAnalyticsConfig(JSON.parse(settings.analyticsConfig));
+              updateField('analyticsConfig', JSON.parse(settings.analyticsConfig));
               setInitialAnalyticsConfig(settings.analyticsConfig);
             } catch { /* ignore parse errors */ }
           }
@@ -416,7 +553,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const appriseApiServerUrl = typeof settings.appriseApiServerUrl === 'string'
             ? settings.appriseApiServerUrl
             : '';
-          setLocalAppriseApiServerUrl(appriseApiServerUrl);
+          updateField('appriseApiServerUrl', appriseApiServerUrl);
           setInitialAppriseApiServerUrl(appriseApiServerUrl);
 
           // Load Elevation/Terrain source settings (#4111 P3). Defaults to
@@ -424,12 +561,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           // useElevationEnabled()'s semantics. Admins receive the unmasked
           // elevationSourceUrl value.
           const elevationEnabledOn = settings.elevationEnabled !== 'false';
-          setLocalElevationEnabled(elevationEnabledOn);
+          updateField('elevationEnabled', elevationEnabledOn);
           setInitialElevationEnabled(elevationEnabledOn);
           const elevationSourceUrl = typeof settings.elevationSourceUrl === 'string'
             ? settings.elevationSourceUrl
             : '';
-          setLocalElevationSourceUrl(elevationSourceUrl);
+          updateField('elevationSourceUrl', elevationSourceUrl);
           setInitialElevationSourceUrl(elevationSourceUrl);
         }
       } catch (error) {
@@ -437,49 +574,152 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       }
     };
     void fetchServerSettings();
-  }, [baseUrl, setShowIncompleteNodes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- nodeDimmingStartHours/MinOpacity are
+    // only read as a one-time fallback default inside the async callback (parseFloat(...) || nodeDimmingStartHours),
+    // matching pre-5.3 behavior; listing them would re-run this fetch on every dimming edit.
+  }, [baseUrl, setShowIncompleteNodes, updateField]);
 
-  // Update local state when props change
+  // Baseline: a memoized snapshot of the current context/props/initial* values, in SettingsDraft
+  // shape. Replaces the old ~35-dep "update local state when props change" effect body — this
+  // still genuinely reads every upstream value (the dep array stays long), but it's now a plain
+  // memo with no per-field enumeration anywhere else. Category-C fields read their `initial*`
+  // snapshot (set by the fetch effect above) rather than a prop/context value.
+  const baseline = useMemo<SettingsDraft>(() => {
+    let parsedAnalyticsConfig: Record<string, string> = {};
+    try {
+      parsedAnalyticsConfig = JSON.parse(initialAnalyticsConfig);
+    } catch {
+      /* ignore parse errors */
+    }
+    return {
+      maxNodeAgeHours,
+      inactiveNodeThresholdHours,
+      inactiveNodeCheckIntervalMinutes,
+      inactiveNodeCooldownHours,
+      temperatureUnit,
+      distanceUnit,
+      positionHistoryLineStyle,
+      telemetryVisualizationHours,
+      favoriteTelemetryStorageDays,
+      preferredSortField,
+      preferredSortDirection,
+      timeFormat,
+      dateFormat,
+      mapTilesetLight,
+      mapTilesetDark,
+      mapPinStyle,
+      iconStyle,
+      neighborInfoMinZoom,
+      defaultMapCenterLat,
+      defaultMapCenterLon,
+      defaultMapCenterZoom,
+      mapCenterTargetZoom,
+      defaultLandingPage,
+      appearanceMode,
+      darkTheme,
+      lightTheme,
+      nodeHopsCalculation,
+      preferredDashboardSortOption,
+      linkPreviewsEnabled,
+      discardInvalidPositions,
+      noIndexEnabled,
+      meshcoreChannelRetryEnabled,
+      // Note: hideIncompleteNodes in the draft is inverted from showIncompleteNodes because the UI
+      // checkbox says "Hide" while the context uses "show" semantics. Do the inversion here so the
+      // draft-vs-baseline diff stays a plain shallow-equal.
+      hideIncompleteNodes: !showIncompleteNodes,
+      solarMonitoringEnabled,
+      solarMonitoringLatitude,
+      solarMonitoringLongitude,
+      solarMonitoringAzimuth,
+      solarMonitoringDeclination,
+      packetLogEnabled: initialPacketMonitorSettings.enabled,
+      packetLogMaxCount: initialPacketMonitorSettings.maxCount,
+      packetLogMaxAgeHours: initialPacketMonitorSettings.maxAgeHours,
+      homoglyphEnabled: initialHomoglyphEnabled,
+      localStatsIntervalMinutes: initialLocalStatsIntervalMinutes,
+      meshcoreCliTimeoutSeconds: initialMeshcoreCliTimeoutSeconds,
+      analyticsProvider: initialAnalyticsProvider,
+      analyticsConfig: parsedAnalyticsConfig,
+      appriseApiServerUrl: initialAppriseApiServerUrl,
+      elevationEnabled: initialElevationEnabled,
+      elevationSourceUrl: initialElevationSourceUrl,
+    };
+  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours,
+      temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays,
+      preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle,
+      iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom,
+      defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
+      linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
+      solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
+      initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialMeshcoreCliTimeoutSeconds,
+      initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialElevationEnabled, initialElevationSourceUrl]);
+
+  // Re-seed the draft's category-A/B fields whenever the upstream props/context values change.
+  // PINNED BEHAVIOR (do not add a dirty-guard here — that would be a behavior change, out of
+  // scope for this refactor, see Task 5.3 spec §2.3): this unconditionally clobbers any
+  // in-progress edit to these fields whenever upstream context/props change, exactly like the
+  // props-effect it replaces (old L442–482).
+  //
+  // Deliberately scoped to category-A/B fields only (NOT the full `baseline`, which also folds
+  // in category-C `initial*` snapshots): the original props-effect never depended on `initial*`
+  // values — those are seeded independently, in isolation per-field, by the server-settings fetch
+  // effect above via direct `updateField` calls. Tying this effect to the full baseline instead
+  // would mean an unrelated category-C fetch resolving (e.g. the elevation settings load) blows
+  // away every OTHER field's in-progress edit too, which is a strictly worse, newly-introduced
+  // behavior the original two-separate-effects design never had (caught by
+  // SettingsTab.elevation.test.tsx's Test-button suite).
   useEffect(() => {
-    setLocalMaxNodeAge(maxNodeAgeHours);
-    setLocalInactiveNodeThresholdHours(inactiveNodeThresholdHours);
-    setLocalInactiveNodeCheckIntervalMinutes(inactiveNodeCheckIntervalMinutes);
-    setLocalInactiveNodeCooldownHours(inactiveNodeCooldownHours);
-    setLocalTemperatureUnit(temperatureUnit);
-    setLocalDistanceUnit(distanceUnit);
-    setLocalPositionHistoryLineStyle(positionHistoryLineStyle);
-    setLocalTelemetryHours(telemetryVisualizationHours);
-    setLocalFavoriteTelemetryStorageDays(favoriteTelemetryStorageDays);
-    setLocalPreferredSortField(preferredSortField);
-    setLocalPreferredSortDirection(preferredSortDirection);
-    setLocalTimeFormat(timeFormat);
-    setLocalDateFormat(dateFormat);
-    setLocalMapTilesetLight(mapTilesetLight);
-    setLocalMapTilesetDark(mapTilesetDark);
-    setLocalMapPinStyle(mapPinStyle);
-    setLocalIconStyle(iconStyle);
-    setLocalNeighborInfoMinZoom(neighborInfoMinZoom);
-    setLocalDefaultMapCenterLat(defaultMapCenterLat);
-    setLocalDefaultMapCenterLon(defaultMapCenterLon);
-    setLocalDefaultMapCenterZoom(defaultMapCenterZoom);
-    setLocalMapCenterTargetZoom(mapCenterTargetZoom);
-    setLocalDefaultLandingPage(defaultLandingPage);
-    setLocalAppearanceMode(appearanceMode);
-    setLocalDarkTheme(darkTheme);
-    setLocalLightTheme(lightTheme);
-    setLocalNodeHopsCalculation(nodeHopsCalculation);
-    setLocalDashboardSortOption(preferredDashboardSortOption);
-    setLocalLinkPreviewsEnabled(linkPreviewsEnabled);
-    setLocalDiscardInvalidPositions(discardInvalidPositions);
-    setLocalNoIndexEnabled(noIndexEnabled);
-    setLocalMeshcoreChannelRetryEnabled(meshcoreChannelRetryEnabled);
-    setLocalSolarMonitoringEnabled(solarMonitoringEnabled);
-    setLocalSolarMonitoringLatitude(solarMonitoringLatitude);
-    setLocalSolarMonitoringLongitude(solarMonitoringLongitude);
-    setLocalSolarMonitoringAzimuth(solarMonitoringAzimuth);
-    setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
-    setLocalHideIncompleteNodes(!showIncompleteNodes);
-  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle, nodeHopsCalculation, preferredDashboardSortOption, linkPreviewsEnabled, discardInvalidPositions, meshcoreChannelRetryEnabled, solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme]);
+    dispatch({
+      type: 'field',
+      patch: {
+        maxNodeAgeHours,
+        inactiveNodeThresholdHours,
+        inactiveNodeCheckIntervalMinutes,
+        inactiveNodeCooldownHours,
+        temperatureUnit,
+        distanceUnit,
+        positionHistoryLineStyle,
+        telemetryVisualizationHours,
+        favoriteTelemetryStorageDays,
+        preferredSortField,
+        preferredSortDirection,
+        timeFormat,
+        dateFormat,
+        mapTilesetLight,
+        mapTilesetDark,
+        mapPinStyle,
+        iconStyle,
+        neighborInfoMinZoom,
+        defaultMapCenterLat,
+        defaultMapCenterLon,
+        defaultMapCenterZoom,
+        mapCenterTargetZoom,
+        defaultLandingPage,
+        appearanceMode,
+        darkTheme,
+        lightTheme,
+        nodeHopsCalculation,
+        preferredDashboardSortOption,
+        linkPreviewsEnabled,
+        discardInvalidPositions,
+        noIndexEnabled,
+        meshcoreChannelRetryEnabled,
+        hideIncompleteNodes: !showIncompleteNodes,
+        solarMonitoringEnabled,
+        solarMonitoringLatitude,
+        solarMonitoringLongitude,
+        solarMonitoringAzimuth,
+        solarMonitoringDeclination,
+      },
+    });
+  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours,
+      temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays,
+      preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle,
+      iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom,
+      defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
+      linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
+      solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination]);
 
   // Default solar monitoring lat/long to device position if still at 0
   useEffect(() => {
@@ -487,234 +727,176 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     if (solarMonitoringLatitude === 0 && solarMonitoringLongitude === 0 && currentNodeId && nodes.length > 0) {
       const currentNode = nodes.find(n => n.user?.id === currentNodeId);
       if (currentNode?.position?.latitude != null && currentNode?.position?.longitude != null) {
-        setLocalSolarMonitoringLatitude(currentNode.position.latitude);
-        setLocalSolarMonitoringLongitude(currentNode.position.longitude);
+        updateField('solarMonitoringLatitude', currentNode.position.latitude);
+        updateField('solarMonitoringLongitude', currentNode.position.longitude);
       }
     }
-  }, [currentNodeId, nodes, solarMonitoringLatitude, solarMonitoringLongitude]);
+  }, [currentNodeId, nodes, solarMonitoringLatitude, solarMonitoringLongitude, updateField]);
 
-  // Check if any settings have changed
-  // Note: We can't compare packet monitor settings to props since they're not in props
-  // Instead, we'll track initial packet monitor values separately
-  const [initialPacketMonitorSettings, setInitialPacketMonitorSettings] = useState({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
-  const [initialHomoglyphEnabled, setInitialHomoglyphEnabled] = useState(false);
-  const [initialNodeDimmingSettings, setInitialNodeDimmingSettings] = useState({
-    enabled: nodeDimmingEnabled,
-    startHours: nodeDimmingStartHours,
-    minOpacity: nodeDimmingMinOpacity,
-  });
+  // nodeDimming* isn't a draft field (its JSX binds straight to SettingsContext state — see
+  // §1.2 of the Task 5.3 spec), so it needs its own small dirty-check folded into hasChanges.
+  const nodeDimmingChanged = useMemo(() =>
+    nodeDimmingEnabled !== initialNodeDimmingSettings.enabled ||
+    nodeDimmingStartHours !== initialNodeDimmingSettings.startHours ||
+    nodeDimmingMinOpacity !== initialNodeDimmingSettings.minOpacity,
+  [nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, initialNodeDimmingSettings]);
 
-  useEffect(() => {
-    const changed =
-      localMaxNodeAge !== maxNodeAgeHours ||
-      localInactiveNodeThresholdHours !== inactiveNodeThresholdHours ||
-      localInactiveNodeCheckIntervalMinutes !== inactiveNodeCheckIntervalMinutes ||
-      localInactiveNodeCooldownHours !== inactiveNodeCooldownHours ||
-      localTemperatureUnit !== temperatureUnit ||
-      localDistanceUnit !== distanceUnit ||
-      localPositionHistoryLineStyle !== positionHistoryLineStyle ||
-      localTelemetryHours !== telemetryVisualizationHours ||
-      localFavoriteTelemetryStorageDays !== favoriteTelemetryStorageDays ||
-      localPreferredSortField !== preferredSortField ||
-      localPreferredSortDirection !== preferredSortDirection ||
-      localTimeFormat !== timeFormat ||
-      localDateFormat !== dateFormat ||
-      localMapTilesetLight !== mapTilesetLight ||
-      localMapTilesetDark !== mapTilesetDark ||
-      localMapPinStyle !== mapPinStyle ||
-      localIconStyle !== iconStyle ||
-      localNeighborInfoMinZoom !== neighborInfoMinZoom ||
-      localDefaultMapCenterLat !== defaultMapCenterLat ||
-      localDefaultMapCenterLon !== defaultMapCenterLon ||
-      localDefaultMapCenterZoom !== defaultMapCenterZoom ||
-      localMapCenterTargetZoom !== mapCenterTargetZoom ||
-      localDefaultLandingPage !== defaultLandingPage ||
-      localAppearanceMode !== appearanceMode ||
-      localDarkTheme !== darkTheme ||
-      localLightTheme !== lightTheme ||
-      localNodeHopsCalculation !== nodeHopsCalculation ||
-      localDashboardSortOption !== preferredDashboardSortOption ||
-      localPacketLogEnabled !== initialPacketMonitorSettings.enabled ||
-      localPacketLogMaxCount !== initialPacketMonitorSettings.maxCount ||
-      localPacketLogMaxAgeHours !== initialPacketMonitorSettings.maxAgeHours ||
-      localSolarMonitoringEnabled !== solarMonitoringEnabled ||
-      localSolarMonitoringLatitude !== solarMonitoringLatitude ||
-      localSolarMonitoringLongitude !== solarMonitoringLongitude ||
-      localSolarMonitoringAzimuth !== solarMonitoringAzimuth ||
-      localSolarMonitoringDeclination !== solarMonitoringDeclination ||
-      localLinkPreviewsEnabled !== linkPreviewsEnabled ||
-      localDiscardInvalidPositions !== discardInvalidPositions ||
-      localNoIndexEnabled !== noIndexEnabled ||
-      localMeshcoreChannelRetryEnabled !== meshcoreChannelRetryEnabled ||
-      localHideIncompleteNodes !== !showIncompleteNodes ||
-      localHomoglyphEnabled !== initialHomoglyphEnabled ||
-      localLocalStatsIntervalMinutes !== initialLocalStatsIntervalMinutes ||
-      localMeshcoreCliTimeoutSeconds !== initialMeshcoreCliTimeoutSeconds ||
-      nodeDimmingEnabled !== initialNodeDimmingSettings.enabled ||
-      nodeDimmingStartHours !== initialNodeDimmingSettings.startHours ||
-      nodeDimmingMinOpacity !== initialNodeDimmingSettings.minOpacity ||
-      localAnalyticsProvider !== initialAnalyticsProvider ||
-      JSON.stringify(localAnalyticsConfig) !== initialAnalyticsConfig ||
-      localAppriseApiServerUrl !== initialAppriseApiServerUrl ||
-      localElevationEnabled !== initialElevationEnabled ||
-      localElevationSourceUrl !== initialElevationSourceUrl;
-    setHasChanges(changed);
-  }, [localMaxNodeAge, localInactiveNodeThresholdHours, localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours, localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours, localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection, localTimeFormat, localDateFormat, localMapTilesetLight, localMapTilesetDark, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localMapCenterTargetZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, localNodeHopsCalculation, localDashboardSortOption,
-      maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours, temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
-      localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours, initialPacketMonitorSettings,
-      localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude, localSolarMonitoringAzimuth, localSolarMonitoringDeclination,
-      solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
-      localLinkPreviewsEnabled, linkPreviewsEnabled,
-      localDiscardInvalidPositions, discardInvalidPositions,
-      localNoIndexEnabled, noIndexEnabled,
-      localMeshcoreChannelRetryEnabled, meshcoreChannelRetryEnabled,
-      localHideIncompleteNodes, showIncompleteNodes, localHomoglyphEnabled, initialHomoglyphEnabled,
-      localLocalStatsIntervalMinutes, initialLocalStatsIntervalMinutes,
-      localMeshcoreCliTimeoutSeconds, initialMeshcoreCliTimeoutSeconds,
-      nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, initialNodeDimmingSettings,
-      localAnalyticsProvider, localAnalyticsConfig, initialAnalyticsProvider, initialAnalyticsConfig,
-      localAppriseApiServerUrl, initialAppriseApiServerUrl,
-      localElevationEnabled, initialElevationEnabled, localElevationSourceUrl, initialElevationSourceUrl]);
+  // Derived dirty flag — replaces the old ~57-dep change-detection effect + its own `hasChanges`
+  // useState. hasChanges is now purely a function of (draft, baseline, nodeDimmingChanged).
+  const hasChanges = useMemo(() => !settingsDraftEqual(draft, baseline) || nodeDimmingChanged, [draft, baseline, nodeDimmingChanged]);
 
-  // Reset local state to current saved values (for SaveBar dismiss)
+  // Reset local state to current saved values (for SaveBar dismiss). Replaces the old ~35-dep
+  // resetChanges useCallback — re-seeding the draft from `baseline` covers every draft field in
+  // one dispatch; nodeDimming* (not a draft field) still needs its own three setter calls.
   const resetChanges = useCallback(() => {
-    setLocalMaxNodeAge(maxNodeAgeHours);
-    setLocalInactiveNodeThresholdHours(inactiveNodeThresholdHours);
-    setLocalInactiveNodeCheckIntervalMinutes(inactiveNodeCheckIntervalMinutes);
-    setLocalInactiveNodeCooldownHours(inactiveNodeCooldownHours);
-    setLocalTemperatureUnit(temperatureUnit);
-    setLocalDistanceUnit(distanceUnit);
-    setLocalPositionHistoryLineStyle(positionHistoryLineStyle);
-    setLocalTelemetryHours(telemetryVisualizationHours);
-    setLocalFavoriteTelemetryStorageDays(favoriteTelemetryStorageDays);
-    setLocalPreferredSortField(preferredSortField);
-    setLocalPreferredSortDirection(preferredSortDirection);
-    setLocalTimeFormat(timeFormat);
-    setLocalDateFormat(dateFormat);
-    setLocalMapTilesetLight(mapTilesetLight);
-    setLocalMapTilesetDark(mapTilesetDark);
-    setLocalMapPinStyle(mapPinStyle);
-    setLocalIconStyle(iconStyle);
-    setLocalDefaultMapCenterLat(defaultMapCenterLat);
-    setLocalDefaultMapCenterLon(defaultMapCenterLon);
-    setLocalDefaultMapCenterZoom(defaultMapCenterZoom);
-    setLocalMapCenterTargetZoom(mapCenterTargetZoom);
-    setLocalDefaultLandingPage(defaultLandingPage);
-    setLocalAppearanceMode(appearanceMode);
-    setLocalDarkTheme(darkTheme);
-    setLocalLightTheme(lightTheme);
-    setLocalNodeHopsCalculation(nodeHopsCalculation);
-    setLocalDashboardSortOption(preferredDashboardSortOption);
-    setLocalPacketLogEnabled(initialPacketMonitorSettings.enabled);
-    setLocalPacketLogMaxCount(initialPacketMonitorSettings.maxCount);
-    setLocalPacketLogMaxAgeHours(initialPacketMonitorSettings.maxAgeHours);
-    setLocalSolarMonitoringEnabled(solarMonitoringEnabled);
-    setLocalSolarMonitoringLatitude(solarMonitoringLatitude);
-    setLocalSolarMonitoringLongitude(solarMonitoringLongitude);
-    setLocalSolarMonitoringAzimuth(solarMonitoringAzimuth);
-    setLocalSolarMonitoringDeclination(solarMonitoringDeclination);
-    setLocalLinkPreviewsEnabled(linkPreviewsEnabled);
-    setLocalDiscardInvalidPositions(discardInvalidPositions);
-    setLocalNoIndexEnabled(noIndexEnabled);
-    setLocalMeshcoreChannelRetryEnabled(meshcoreChannelRetryEnabled);
-    setLocalHideIncompleteNodes(!showIncompleteNodes);
-    setLocalHomoglyphEnabled(initialHomoglyphEnabled);
-    setLocalLocalStatsIntervalMinutes(initialLocalStatsIntervalMinutes);
-    setLocalMeshcoreCliTimeoutSeconds(initialMeshcoreCliTimeoutSeconds);
+    dispatch({ type: 'reseed', next: baseline });
     setNodeDimmingEnabled(initialNodeDimmingSettings.enabled);
     setNodeDimmingStartHours(initialNodeDimmingSettings.startHours);
     setNodeDimmingMinOpacity(initialNodeDimmingSettings.minOpacity);
-    setLocalAnalyticsProvider(initialAnalyticsProvider);
-    try { setLocalAnalyticsConfig(JSON.parse(initialAnalyticsConfig)); } catch { setLocalAnalyticsConfig({}); }
-    setLocalAppriseApiServerUrl(initialAppriseApiServerUrl);
-    setLocalElevationEnabled(initialElevationEnabled);
-    setLocalElevationSourceUrl(initialElevationSourceUrl);
-  }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes,
-      inactiveNodeCooldownHours, temperatureUnit, distanceUnit, telemetryVisualizationHours,
-      favoriteTelemetryStorageDays, preferredSortField, preferredSortDirection, timeFormat,
-      dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle, iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
-      initialPacketMonitorSettings, solarMonitoringEnabled, solarMonitoringLatitude,
-      solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination, showIncompleteNodes,
-      linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled,
-      initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialMeshcoreCliTimeoutSeconds, initialNodeDimmingSettings,
-      setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity,
-      initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl,
-      initialElevationEnabled, initialElevationSourceUrl]);
+  }, [baseline, initialNodeDimmingSettings, setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity]);
 
-  const getLocalEffectiveTheme = useCallback((): Theme => {
-    if (localAppearanceMode === 'dark') return localDarkTheme;
-    if (localAppearanceMode === 'light') return localLightTheme;
-    const systemIsDark = typeof window !== 'undefined' && window.matchMedia
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
-      : true;
-    return systemIsDark ? localDarkTheme : localLightTheme;
-  }, [localAppearanceMode, localDarkTheme, localLightTheme]);
+  // Category-A prop callbacks (from App.tsx) are latched through a ref kept fresh every render, so
+  // `applyDraft` below stays referentially stable even if App.tsx doesn't memoize them. Category-B
+  // setters (SettingsContext/UIContext) are already useCallback-stable since 5.1/5.2 and are listed
+  // directly in applyDraft's own deps instead.
+  const propCallbacksRef = useRef({
+    onMaxNodeAgeChange, onInactiveNodeThresholdHoursChange, onInactiveNodeCheckIntervalMinutesChange,
+    onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange, onPositionHistoryLineStyleChange,
+    onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
+    onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetsChange, onMapPinStyleChange,
+    onIconStyleChange, onSolarMonitoringEnabledChange, onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange,
+    onSolarMonitoringAzimuthChange, onSolarMonitoringDeclinationChange,
+  });
+  propCallbacksRef.current = {
+    onMaxNodeAgeChange, onInactiveNodeThresholdHoursChange, onInactiveNodeCheckIntervalMinutesChange,
+    onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange, onPositionHistoryLineStyleChange,
+    onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
+    onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetsChange, onMapPinStyleChange,
+    onIconStyleChange, onSolarMonitoringEnabledChange, onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange,
+    onSolarMonitoringAzimuthChange, onSolarMonitoringDeclinationChange,
+  };
 
-  const getLocalEffectiveTileset = useCallback((): TilesetId => {
-    const systemIsDark = typeof window !== 'undefined' && window.matchMedia
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
-      : true;
-    return getEffectiveTileset(localAppearanceMode, localMapTilesetDark, localMapTilesetLight, systemIsDark);
-  }, [localAppearanceMode, localMapTilesetDark, localMapTilesetLight]);
+  // Collects every propagation call (onXxxChange prop callbacks + context setters + initial*
+  // snapshot updates) into one stable callback — this is what lets handleSave reach
+  // `[draft, applyDraft]` instead of ~90 changing values.
+  const applyDraft = useCallback((d: SettingsDraft) => {
+    const cb = propCallbacksRef.current;
+    cb.onMaxNodeAgeChange(d.maxNodeAgeHours);
+    cb.onInactiveNodeThresholdHoursChange(d.inactiveNodeThresholdHours);
+    cb.onInactiveNodeCheckIntervalMinutesChange(d.inactiveNodeCheckIntervalMinutes);
+    cb.onInactiveNodeCooldownHoursChange(d.inactiveNodeCooldownHours);
+    cb.onTemperatureUnitChange(d.temperatureUnit);
+    cb.onDistanceUnitChange(d.distanceUnit);
+    cb.onPositionHistoryLineStyleChange(d.positionHistoryLineStyle);
+    cb.onTelemetryVisualizationChange(d.telemetryVisualizationHours);
+    cb.onFavoriteTelemetryStorageDaysChange(d.favoriteTelemetryStorageDays);
+    cb.onPreferredSortFieldChange(d.preferredSortField);
+    cb.onPreferredSortDirectionChange(d.preferredSortDirection);
+    cb.onTimeFormatChange(d.timeFormat);
+    cb.onDateFormatChange(d.dateFormat);
+    cb.onMapTilesetsChange(d.mapTilesetLight, d.mapTilesetDark);
+    cb.onMapPinStyleChange(d.mapPinStyle);
+    cb.onIconStyleChange(d.iconStyle);
+    cb.onSolarMonitoringEnabledChange(d.solarMonitoringEnabled);
+    cb.onSolarMonitoringLatitudeChange(d.solarMonitoringLatitude);
+    cb.onSolarMonitoringLongitudeChange(d.solarMonitoringLongitude);
+    cb.onSolarMonitoringAzimuthChange(d.solarMonitoringAzimuth);
+    cb.onSolarMonitoringDeclinationChange(d.solarMonitoringDeclination);
+
+    setNeighborInfoMinZoom(d.neighborInfoMinZoom);
+    setDefaultMapCenterLat(d.defaultMapCenterLat);
+    setDefaultMapCenterLon(d.defaultMapCenterLon);
+    setDefaultMapCenterZoom(d.defaultMapCenterZoom);
+    setMapCenterTargetZoom(d.mapCenterTargetZoom);
+    setDefaultLandingPage(d.defaultLandingPage);
+    setAppearanceMode(d.appearanceMode);
+    setDarkTheme(d.darkTheme);
+    setLightTheme(d.lightTheme);
+    setNodeHopsCalculation(d.nodeHopsCalculation);
+    setPreferredDashboardSortOption(d.preferredDashboardSortOption);
+    setLinkPreviewsEnabled(d.linkPreviewsEnabled);
+    setDiscardInvalidPositions(d.discardInvalidPositions);
+    setNoIndexEnabled(d.noIndexEnabled);
+    setMeshcoreChannelRetryEnabled(d.meshcoreChannelRetryEnabled);
+    setShowIncompleteNodes(!d.hideIncompleteNodes);
+
+    // Update initial* snapshots for category-C fields after successful save
+    setInitialPacketMonitorSettings({ enabled: d.packetLogEnabled, maxCount: d.packetLogMaxCount, maxAgeHours: d.packetLogMaxAgeHours });
+    setInitialHomoglyphEnabled(d.homoglyphEnabled);
+    setInitialLocalStatsIntervalMinutes(d.localStatsIntervalMinutes);
+    setInitialMeshcoreCliTimeoutSeconds(d.meshcoreCliTimeoutSeconds);
+    setInitialAnalyticsProvider(d.analyticsProvider);
+    setInitialAnalyticsConfig(JSON.stringify(d.analyticsConfig));
+    setInitialAppriseApiServerUrl(d.appriseApiServerUrl.trim());
+    setInitialElevationEnabled(d.elevationEnabled);
+    setInitialElevationSourceUrl(d.elevationSourceUrl.trim());
+  }, [setNeighborInfoMinZoom, setDefaultMapCenterLat, setDefaultMapCenterLon, setDefaultMapCenterZoom,
+      setMapCenterTargetZoom, setDefaultLandingPage, setAppearanceMode, setDarkTheme, setLightTheme,
+      setNodeHopsCalculation, setPreferredDashboardSortOption, setLinkPreviewsEnabled, setDiscardInvalidPositions,
+      setNoIndexEnabled, setMeshcoreChannelRetryEnabled, setShowIncompleteNodes]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
-      const localEffectiveTheme = getLocalEffectiveTheme();
+      const systemIsDark = typeof window !== 'undefined' && window.matchMedia
+        ? window.matchMedia('(prefers-color-scheme: dark)').matches
+        : true;
+      const effectiveTheme = computeEffectiveTheme(draft.appearanceMode, draft.darkTheme, draft.lightTheme);
+      const effectiveTileset = getEffectiveTileset(draft.appearanceMode, draft.mapTilesetDark, draft.mapTilesetLight, systemIsDark);
       const settings = {
-        maxNodeAgeHours: localMaxNodeAge,
-        inactiveNodeThresholdHours: localInactiveNodeThresholdHours,
-        inactiveNodeCheckIntervalMinutes: localInactiveNodeCheckIntervalMinutes,
-        inactiveNodeCooldownHours: localInactiveNodeCooldownHours,
-        temperatureUnit: localTemperatureUnit,
-        distanceUnit: localDistanceUnit,
-        positionHistoryLineStyle: localPositionHistoryLineStyle,
-        telemetryVisualizationHours: localTelemetryHours,
-        favoriteTelemetryStorageDays: localFavoriteTelemetryStorageDays,
-        preferredSortField: localPreferredSortField,
-        preferredSortDirection: localPreferredSortDirection,
-        timeFormat: localTimeFormat,
-        dateFormat: localDateFormat,
-        mapTileset: getLocalEffectiveTileset(),
-        mapTilesetLight: localMapTilesetLight,
-        mapTilesetDark: localMapTilesetDark,
-        mapPinStyle: localMapPinStyle,
-        iconStyle: localIconStyle,
-        neighborInfoMinZoom: localNeighborInfoMinZoom.toString(),
-        defaultMapCenterLat: localDefaultMapCenterLat !== null ? localDefaultMapCenterLat.toString() : '',
-        defaultMapCenterLon: localDefaultMapCenterLon !== null ? localDefaultMapCenterLon.toString() : '',
-        defaultMapCenterZoom: localDefaultMapCenterZoom !== null ? localDefaultMapCenterZoom.toString() : '',
-        mapCenterTargetZoom: localMapCenterTargetZoom.toString(),
-        defaultLandingPage: localDefaultLandingPage,
-        theme: localEffectiveTheme,
-        appearanceMode: localAppearanceMode,
-        darkTheme: localDarkTheme,
-        lightTheme: localLightTheme,
-        packet_log_enabled: localPacketLogEnabled ? '1' : '0',
-        packet_log_max_count: localPacketLogMaxCount.toString(),
-        packet_log_max_age_hours: localPacketLogMaxAgeHours.toString(),
-        solarMonitoringEnabled: localSolarMonitoringEnabled ? '1' : '0',
-        solarMonitoringLatitude: localSolarMonitoringLatitude.toString(),
-        solarMonitoringLongitude: localSolarMonitoringLongitude.toString(),
-        solarMonitoringAzimuth: localSolarMonitoringAzimuth.toString(),
-        solarMonitoringDeclination: localSolarMonitoringDeclination.toString(),
-        linkPreviewsEnabled: localLinkPreviewsEnabled ? '1' : '0',
-        discardInvalidPositions: localDiscardInvalidPositions ? '1' : '0',
-        noIndexEnabled: localNoIndexEnabled ? '1' : '0',
-        meshcoreChannelRetryEnabled: localMeshcoreChannelRetryEnabled ? '1' : '0',
-        hideIncompleteNodes: localHideIncompleteNodes ? '1' : '0',
-        homoglyphEnabled: String(localHomoglyphEnabled),
-        localStatsIntervalMinutes: localLocalStatsIntervalMinutes.toString(),
-        meshcoreCliTimeoutSeconds: localMeshcoreCliTimeoutSeconds.toString(),
-        nodeHopsCalculation: localNodeHopsCalculation,
+        maxNodeAgeHours: draft.maxNodeAgeHours,
+        inactiveNodeThresholdHours: draft.inactiveNodeThresholdHours,
+        inactiveNodeCheckIntervalMinutes: draft.inactiveNodeCheckIntervalMinutes,
+        inactiveNodeCooldownHours: draft.inactiveNodeCooldownHours,
+        temperatureUnit: draft.temperatureUnit,
+        distanceUnit: draft.distanceUnit,
+        positionHistoryLineStyle: draft.positionHistoryLineStyle,
+        telemetryVisualizationHours: draft.telemetryVisualizationHours,
+        favoriteTelemetryStorageDays: draft.favoriteTelemetryStorageDays,
+        preferredSortField: draft.preferredSortField,
+        preferredSortDirection: draft.preferredSortDirection,
+        timeFormat: draft.timeFormat,
+        dateFormat: draft.dateFormat,
+        mapTileset: effectiveTileset,
+        mapTilesetLight: draft.mapTilesetLight,
+        mapTilesetDark: draft.mapTilesetDark,
+        mapPinStyle: draft.mapPinStyle,
+        iconStyle: draft.iconStyle,
+        neighborInfoMinZoom: draft.neighborInfoMinZoom.toString(),
+        defaultMapCenterLat: draft.defaultMapCenterLat !== null ? draft.defaultMapCenterLat.toString() : '',
+        defaultMapCenterLon: draft.defaultMapCenterLon !== null ? draft.defaultMapCenterLon.toString() : '',
+        defaultMapCenterZoom: draft.defaultMapCenterZoom !== null ? draft.defaultMapCenterZoom.toString() : '',
+        mapCenterTargetZoom: draft.mapCenterTargetZoom.toString(),
+        defaultLandingPage: draft.defaultLandingPage,
+        theme: effectiveTheme,
+        appearanceMode: draft.appearanceMode,
+        darkTheme: draft.darkTheme,
+        lightTheme: draft.lightTheme,
+        packet_log_enabled: draft.packetLogEnabled ? '1' : '0',
+        packet_log_max_count: draft.packetLogMaxCount.toString(),
+        packet_log_max_age_hours: draft.packetLogMaxAgeHours.toString(),
+        solarMonitoringEnabled: draft.solarMonitoringEnabled ? '1' : '0',
+        solarMonitoringLatitude: draft.solarMonitoringLatitude.toString(),
+        solarMonitoringLongitude: draft.solarMonitoringLongitude.toString(),
+        solarMonitoringAzimuth: draft.solarMonitoringAzimuth.toString(),
+        solarMonitoringDeclination: draft.solarMonitoringDeclination.toString(),
+        linkPreviewsEnabled: draft.linkPreviewsEnabled ? '1' : '0',
+        discardInvalidPositions: draft.discardInvalidPositions ? '1' : '0',
+        noIndexEnabled: draft.noIndexEnabled ? '1' : '0',
+        meshcoreChannelRetryEnabled: draft.meshcoreChannelRetryEnabled ? '1' : '0',
+        hideIncompleteNodes: draft.hideIncompleteNodes ? '1' : '0',
+        homoglyphEnabled: String(draft.homoglyphEnabled),
+        localStatsIntervalMinutes: draft.localStatsIntervalMinutes.toString(),
+        meshcoreCliTimeoutSeconds: draft.meshcoreCliTimeoutSeconds.toString(),
+        nodeHopsCalculation: draft.nodeHopsCalculation,
         nodeDimmingEnabled: nodeDimmingEnabled ? '1' : '0',
         nodeDimmingStartHours: nodeDimmingStartHours.toString(),
         nodeDimmingMinOpacity: nodeDimmingMinOpacity.toString(),
-        analyticsProvider: localAnalyticsProvider,
-        analyticsConfig: JSON.stringify(localAnalyticsConfig),
-        appriseApiServerUrl: localAppriseApiServerUrl.trim(),
-        elevationEnabled: localElevationEnabled ? 'true' : 'false',
-        elevationSourceUrl: localElevationSourceUrl.trim(),
+        analyticsProvider: draft.analyticsProvider,
+        analyticsConfig: JSON.stringify(draft.analyticsConfig),
+        appriseApiServerUrl: draft.appriseApiServerUrl.trim(),
+        elevationEnabled: draft.elevationEnabled ? 'true' : 'false',
+        elevationSourceUrl: draft.elevationSourceUrl.trim(),
       };
 
       // Save to server
@@ -724,87 +906,22 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         body: JSON.stringify(settings)
       });
 
-      // Update parent component state
-      onMaxNodeAgeChange(localMaxNodeAge);
-      onInactiveNodeThresholdHoursChange(localInactiveNodeThresholdHours);
-      onInactiveNodeCheckIntervalMinutesChange(localInactiveNodeCheckIntervalMinutes);
-      onInactiveNodeCooldownHoursChange(localInactiveNodeCooldownHours);
-      onTemperatureUnitChange(localTemperatureUnit);
-      onDistanceUnitChange(localDistanceUnit);
-      onPositionHistoryLineStyleChange(localPositionHistoryLineStyle);
-      onTelemetryVisualizationChange(localTelemetryHours);
-      onFavoriteTelemetryStorageDaysChange(localFavoriteTelemetryStorageDays);
-      onPreferredSortFieldChange(localPreferredSortField);
-      onPreferredSortDirectionChange(localPreferredSortDirection);
-      onTimeFormatChange(localTimeFormat);
-      onDateFormatChange(localDateFormat);
-      onMapTilesetsChange(localMapTilesetLight, localMapTilesetDark);
-      onMapPinStyleChange(localMapPinStyle);
-      onIconStyleChange(localIconStyle);
-      setNeighborInfoMinZoom(localNeighborInfoMinZoom);
-      setDefaultMapCenterLat(localDefaultMapCenterLat);
-      setDefaultMapCenterLon(localDefaultMapCenterLon);
-      setDefaultMapCenterZoom(localDefaultMapCenterZoom);
-      setMapCenterTargetZoom(localMapCenterTargetZoom);
-      setDefaultLandingPage(localDefaultLandingPage);
-      setAppearanceMode(localAppearanceMode);
-      setDarkTheme(localDarkTheme);
-      setLightTheme(localLightTheme);
-      setNodeHopsCalculation(localNodeHopsCalculation);
-      setPreferredDashboardSortOption(localDashboardSortOption);
-      onSolarMonitoringEnabledChange(localSolarMonitoringEnabled);
-      onSolarMonitoringLatitudeChange(localSolarMonitoringLatitude);
-      onSolarMonitoringLongitudeChange(localSolarMonitoringLongitude);
-      onSolarMonitoringAzimuthChange(localSolarMonitoringAzimuth);
-      onSolarMonitoringDeclinationChange(localSolarMonitoringDeclination);
-      setLinkPreviewsEnabled(localLinkPreviewsEnabled);
-      setDiscardInvalidPositions(localDiscardInvalidPositions);
-      setNoIndexEnabled(localNoIndexEnabled);
-      setMeshcoreChannelRetryEnabled(localMeshcoreChannelRetryEnabled);
-      setShowIncompleteNodes(!localHideIncompleteNodes);
-
-      // Update initial packet monitor settings after successful save
-      setInitialPacketMonitorSettings({ enabled: localPacketLogEnabled, maxCount: localPacketLogMaxCount, maxAgeHours: localPacketLogMaxAgeHours });
-      setInitialHomoglyphEnabled(localHomoglyphEnabled);
-      setInitialLocalStatsIntervalMinutes(localLocalStatsIntervalMinutes);
-      setInitialMeshcoreCliTimeoutSeconds(localMeshcoreCliTimeoutSeconds);
+      // Fan out to parent/context state and update category-C snapshots
+      applyDraft(draft);
       setInitialNodeDimmingSettings({
         enabled: nodeDimmingEnabled,
         startHours: nodeDimmingStartHours,
         minOpacity: nodeDimmingMinOpacity,
       });
-      setInitialAnalyticsProvider(localAnalyticsProvider);
-      setInitialAnalyticsConfig(JSON.stringify(localAnalyticsConfig));
-      setInitialAppriseApiServerUrl(localAppriseApiServerUrl.trim());
-      setInitialElevationEnabled(localElevationEnabled);
-      setInitialElevationSourceUrl(localElevationSourceUrl.trim());
 
       showToast(t('settings.saved_success'), 'success');
-      setHasChanges(false);
     } catch (error) {
       logger.error('Error saving settings:', error);
       showToast(t('settings.save_failed'), 'error');
     } finally {
       setIsSaving(false);
     }
-  }, [csrfFetch, baseUrl, localMaxNodeAge, localInactiveNodeThresholdHours,
-      localInactiveNodeCheckIntervalMinutes, localInactiveNodeCooldownHours,
-      localTemperatureUnit, localDistanceUnit, localPositionHistoryLineStyle, localTelemetryHours,
-      localFavoriteTelemetryStorageDays, localPreferredSortField, localPreferredSortDirection,
-      localTimeFormat, localDateFormat, localMapTilesetLight, localMapTilesetDark, localMapPinStyle, localIconStyle, localNeighborInfoMinZoom, localDefaultMapCenterLat, localDefaultMapCenterLon, localDefaultMapCenterZoom, localMapCenterTargetZoom, localDefaultLandingPage, localAppearanceMode, localDarkTheme, localLightTheme, getLocalEffectiveTheme, getLocalEffectiveTileset,
-      localNodeHopsCalculation, localDashboardSortOption, localPacketLogEnabled, localPacketLogMaxCount, localPacketLogMaxAgeHours,
-      localSolarMonitoringEnabled, localSolarMonitoringLatitude, localSolarMonitoringLongitude,
-      localSolarMonitoringAzimuth, localSolarMonitoringDeclination, localLinkPreviewsEnabled, setLinkPreviewsEnabled, localDiscardInvalidPositions, setDiscardInvalidPositions, localNoIndexEnabled, setNoIndexEnabled, localMeshcoreChannelRetryEnabled, setMeshcoreChannelRetryEnabled, localHideIncompleteNodes, localHomoglyphEnabled, localLocalStatsIntervalMinutes, localMeshcoreCliTimeoutSeconds,
-      onMaxNodeAgeChange, onInactiveNodeThresholdHoursChange, onInactiveNodeCheckIntervalMinutesChange,
-      onInactiveNodeCooldownHoursChange, onTemperatureUnitChange, onDistanceUnitChange, onPositionHistoryLineStyleChange,
-      onTelemetryVisualizationChange, onFavoriteTelemetryStorageDaysChange, onPreferredSortFieldChange,
-      onPreferredSortDirectionChange, onTimeFormatChange, onDateFormatChange, onMapTilesetsChange,
-      onMapPinStyleChange, setNeighborInfoMinZoom, setDefaultMapCenterLat, setDefaultMapCenterLon, setDefaultMapCenterZoom, setMapCenterTargetZoom, setDefaultLandingPage, setAppearanceMode, setDarkTheme, setLightTheme, setNodeHopsCalculation, setPreferredDashboardSortOption, onSolarMonitoringEnabledChange,
-      onSolarMonitoringLatitudeChange, onSolarMonitoringLongitudeChange, onSolarMonitoringAzimuthChange,
-      onSolarMonitoringDeclinationChange, setShowIncompleteNodes, showToast, t,
-      nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
-      localAnalyticsProvider, localAnalyticsConfig, localAppriseApiServerUrl,
-      localElevationEnabled, localElevationSourceUrl]);
+  }, [draft, applyDraft, nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, csrfFetch, baseUrl, showToast, t]);
 
   // Register with SaveBar
   useSaveBar({
@@ -824,7 +941,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ url: localAppriseApiServerUrl.trim() || undefined }),
+        body: JSON.stringify({ url: draft.appriseApiServerUrl.trim() || undefined }),
       });
 
       if (!response.ok) {
@@ -857,7 +974,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     } finally {
       setIsTestingApprise(false);
     }
-  }, [csrfFetch, baseUrl, localAppriseApiServerUrl, t]);
+  }, [csrfFetch, baseUrl, draft.appriseApiServerUrl, t]);
 
   // Probes the (unsaved) elevation source URL via ApiService.testElevationSource
   // (#4111 P3 WP-3) — a raw fetch is banned in components per CLAUDE.md, and
@@ -871,7 +988,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const handleTestElevation = useCallback(async () => {
     setElevationTesting(true);
     setElevationTestResult(null);
-    const trimmedUrl = localElevationSourceUrl.trim();
+    const trimmedUrl = draft.elevationSourceUrl.trim();
     const usedDefault = trimmedUrl.length === 0;
     const effectiveUrl = usedDefault ? DEFAULT_TERRARIUM_URL : trimmedUrl;
     try {
@@ -899,7 +1016,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     } finally {
       setElevationTesting(false);
     }
-  }, [localElevationSourceUrl, t]);
+  }, [draft.elevationSourceUrl, t]);
 
   const handleFetchSolarEstimates = async () => {
     setIsFetchingSolarEstimates(true);
@@ -951,36 +1068,36 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         method: 'DELETE'
       });
 
-      // Set local state to defaults
-      setLocalMaxNodeAge(24);
-      setLocalTemperatureUnit('C');
-      setLocalDistanceUnit('km');
-      setLocalPositionHistoryLineStyle('spline');
-      setLocalTelemetryHours(24);
-      setLocalFavoriteTelemetryStorageDays(7);
-      setLocalPreferredSortField('longName');
-      setLocalPreferredSortDirection('asc');
-      setLocalTimeFormat('24');
-      setLocalDateFormat('MM/DD/YYYY');
-      setLocalMapTilesetLight('osm');
-      setLocalMapTilesetDark('cartoDark');
-      setLocalMapPinStyle('meshmonitor');
-      setLocalAppearanceMode('system');
-      setLocalDarkTheme('mocha');
-      setLocalLightTheme('latte');
-      setLocalNodeHopsCalculation('nodeinfo');
-      setLocalDashboardSortOption('custom');
-      setLocalPacketLogEnabled(false);
-      setLocalPacketLogMaxCount(1000);
-      setLocalPacketLogMaxAgeHours(24);
-      setLocalSolarMonitoringEnabled(false);
-      setLocalSolarMonitoringLatitude(0);
-      setLocalSolarMonitoringLongitude(0);
-      setLocalSolarMonitoringAzimuth(0);
-      setLocalSolarMonitoringDeclination(30);
-      setLocalLinkPreviewsEnabled(true);
-      setLocalDiscardInvalidPositions(true);
-      setLocalMeshcoreChannelRetryEnabled(false);
+      // Set draft state to defaults
+      updateField('maxNodeAgeHours', 24);
+      updateField('temperatureUnit', 'C');
+      updateField('distanceUnit', 'km');
+      updateField('positionHistoryLineStyle', 'spline');
+      updateField('telemetryVisualizationHours', 24);
+      updateField('favoriteTelemetryStorageDays', 7);
+      updateField('preferredSortField', 'longName');
+      updateField('preferredSortDirection', 'asc');
+      updateField('timeFormat', '24');
+      updateField('dateFormat', 'MM/DD/YYYY');
+      updateField('mapTilesetLight', 'osm');
+      updateField('mapTilesetDark', 'cartoDark');
+      updateField('mapPinStyle', 'meshmonitor');
+      updateField('appearanceMode', 'system');
+      updateField('darkTheme', 'mocha');
+      updateField('lightTheme', 'latte');
+      updateField('nodeHopsCalculation', 'nodeinfo');
+      updateField('preferredDashboardSortOption', 'custom');
+      updateField('packetLogEnabled', false);
+      updateField('packetLogMaxCount', 1000);
+      updateField('packetLogMaxAgeHours', 24);
+      updateField('solarMonitoringEnabled', false);
+      updateField('solarMonitoringLatitude', 0);
+      updateField('solarMonitoringLongitude', 0);
+      updateField('solarMonitoringAzimuth', 0);
+      updateField('solarMonitoringDeclination', 30);
+      updateField('linkPreviewsEnabled', true);
+      updateField('discardInvalidPositions', true);
+      updateField('meshcoreChannelRetryEnabled', false);
 
       // Update parent component with defaults
       onMaxNodeAgeChange(24);
@@ -1013,7 +1130,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setInitialPacketMonitorSettings({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
 
       showToast(t('settings.reset_success'), 'success');
-      setHasChanges(false);
     } catch (error) {
       logger.error('Error resetting settings:', error);
       showToast(t('settings.reset_failed'), 'error');
@@ -1291,8 +1407,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="timeFormat"
-              value={localTimeFormat}
-              onChange={(e) => setLocalTimeFormat(e.target.value as TimeFormat)}
+              value={draft.timeFormat}
+              onChange={(e) => updateField('timeFormat', e.target.value as TimeFormat)}
               className="setting-input"
             >
               <option value="12">{t('settings.time_12_hour')}</option>
@@ -1306,8 +1422,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="dateFormat"
-              value={localDateFormat}
-              onChange={(e) => setLocalDateFormat(e.target.value as DateFormat)}
+              value={draft.dateFormat}
+              onChange={(e) => updateField('dateFormat', e.target.value as DateFormat)}
               className="setting-input"
             >
               <option value="MM/DD/YYYY">{t('settings.date_mdy')}</option>
@@ -1322,8 +1438,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="temperatureUnit"
-              value={localTemperatureUnit}
-              onChange={(e) => setLocalTemperatureUnit(e.target.value as TemperatureUnit)}
+              value={draft.temperatureUnit}
+              onChange={(e) => updateField('temperatureUnit', e.target.value as TemperatureUnit)}
               className="setting-input"
             >
               <option value="C">{t('settings.temp_celsius')}</option>
@@ -1337,8 +1453,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="distanceUnit"
-              value={localDistanceUnit}
-              onChange={(e) => setLocalDistanceUnit(e.target.value as DistanceUnit)}
+              value={draft.distanceUnit}
+              onChange={(e) => updateField('distanceUnit', e.target.value as DistanceUnit)}
               className="setting-input"
             >
               <option value="km">{t('settings.dist_km')}</option>
@@ -1356,8 +1472,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="preferredSortField"
-              value={localPreferredSortField}
-              onChange={(e) => setLocalPreferredSortField(e.target.value as SortField)}
+              value={draft.preferredSortField}
+              onChange={(e) => updateField('preferredSortField', e.target.value as SortField)}
               className="setting-input"
             >
               <option value="longName">{t('settings.sort_long_name')}</option>
@@ -1377,8 +1493,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="preferredSortDirection"
-              value={localPreferredSortDirection}
-              onChange={(e) => setLocalPreferredSortDirection(e.target.value as SortDirection)}
+              value={draft.preferredSortDirection}
+              onChange={(e) => updateField('preferredSortDirection', e.target.value as SortDirection)}
               className="setting-input"
             >
               <option value="asc">{t('settings.sort_ascending')}</option>
@@ -1392,8 +1508,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="dashboardSortOption"
-              value={localDashboardSortOption}
-              onChange={(e) => setLocalDashboardSortOption(e.target.value as DashboardSortOption)}
+              value={draft.preferredDashboardSortOption}
+              onChange={(e) => updateField('preferredDashboardSortOption', e.target.value as DashboardSortOption)}
               className="setting-input"
             >
               <option value="custom">{t('settings.dashboard_sort_custom')}</option>
@@ -1414,8 +1530,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="appearanceMode"
-              value={localAppearanceMode}
-              onChange={(e) => setLocalAppearanceMode(e.target.value as AppearanceMode)}
+              value={draft.appearanceMode}
+              onChange={(e) => updateField('appearanceMode', e.target.value as AppearanceMode)}
               className="setting-input"
             >
               <option value="system">{t('settings.appearance_mode_system')}</option>
@@ -1430,8 +1546,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="darkTheme"
-              value={localDarkTheme}
-              onChange={(e) => setLocalDarkTheme(e.target.value as Theme)}
+              value={draft.darkTheme}
+              onChange={(e) => updateField('darkTheme', e.target.value as Theme)}
               className="setting-input"
             >
               {renderThemeOptions()}
@@ -1444,8 +1560,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="lightTheme"
-              value={localLightTheme}
-              onChange={(e) => setLocalLightTheme(e.target.value as Theme)}
+              value={draft.lightTheme}
+              onChange={(e) => updateField('lightTheme', e.target.value as Theme)}
               className="setting-input"
             >
               {renderThemeOptions()}
@@ -1459,8 +1575,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="mapPinStyle"
-              value={localMapPinStyle}
-              onChange={(e) => setLocalMapPinStyle(e.target.value as MapPinStyle)}
+              value={draft.mapPinStyle}
+              onChange={(e) => updateField('mapPinStyle', e.target.value as MapPinStyle)}
               className="setting-input"
             >
               <option value="meshmonitor">{t('settings.map_pin_meshmonitor')}</option>
@@ -1474,8 +1590,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="iconStyle"
-              value={localIconStyle}
-              onChange={(e) => setLocalIconStyle(e.target.value as IconStyle)}
+              value={draft.iconStyle}
+              onChange={(e) => updateField('iconStyle', e.target.value as IconStyle)}
               className="setting-input"
             >
               <option value="lucide">{t('settings.icon_style_lucide', 'Lucide (Modern)')}</option>
@@ -1493,8 +1609,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               </label>
               <select
                 id="defaultLandingPage"
-                value={localDefaultLandingPage}
-                onChange={(e) => setLocalDefaultLandingPage(e.target.value)}
+                value={draft.defaultLandingPage}
+                onChange={(e) => updateField('defaultLandingPage', e.target.value)}
                 className="setting-input"
               >
                 <option value="unified">
@@ -1527,8 +1643,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={localLinkPreviewsEnabled}
-                onChange={(e) => setLocalLinkPreviewsEnabled(e.target.checked)}
+                checked={draft.linkPreviewsEnabled}
+                onChange={(e) => updateField('linkPreviewsEnabled', e.target.checked)}
                 style={{ cursor: 'pointer' }}
               />
               <span>{t('settings.link_previews_enabled', 'Show link previews')}</span>
@@ -1544,8 +1660,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={localNoIndexEnabled}
-                onChange={(e) => setLocalNoIndexEnabled(e.target.checked)}
+                checked={draft.noIndexEnabled}
+                onChange={(e) => updateField('noIndexEnabled', e.target.checked)}
                 style={{ cursor: 'pointer' }}
               />
               <span>{t('settings.no_index_enabled', 'Discourage search engine & LLM indexing')}</span>
@@ -1561,8 +1677,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={localMeshcoreChannelRetryEnabled}
-                onChange={(e) => setLocalMeshcoreChannelRetryEnabled(e.target.checked)}
+                checked={draft.meshcoreChannelRetryEnabled}
+                onChange={(e) => updateField('meshcoreChannelRetryEnabled', e.target.checked)}
                 style={{ cursor: 'pointer' }}
               />
               <span>{t('settings.meshcore_channel_retry_enabled', 'Auto-retry automated MeshCore channel sends')}</span>
@@ -1583,10 +1699,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               type="number"
               min="1"
               max="60"
-              value={localMeshcoreCliTimeoutSeconds}
+              value={draft.meshcoreCliTimeoutSeconds}
               onChange={(e) => {
                 const n = parseInt(e.target.value, 10);
-                setLocalMeshcoreCliTimeoutSeconds(Number.isNaN(n) ? 15 : Math.min(60, Math.max(1, n)));
+                updateField('meshcoreCliTimeoutSeconds', Number.isNaN(n) ? 15 : Math.min(60, Math.max(1, n)));
               }}
               className="setting-input"
             />
@@ -1599,8 +1715,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={localDiscardInvalidPositions}
-                onChange={(e) => setLocalDiscardInvalidPositions(e.target.checked)}
+                checked={draft.discardInvalidPositions}
+                onChange={(e) => updateField('discardInvalidPositions', e.target.checked)}
                 style={{ cursor: 'pointer' }}
               />
               <span>{t('settings.discard_invalid_positions', 'Discard invalid positions')}</span>
@@ -1616,8 +1732,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="mapTilesetLight"
-              value={localMapTilesetLight}
-              onChange={(e) => setLocalMapTilesetLight(e.target.value as TilesetId)}
+              value={draft.mapTilesetLight}
+              onChange={(e) => updateField('mapTilesetLight', e.target.value as TilesetId)}
               className="setting-input"
             >
               {getAllTilesets(customTilesets).map((tileset) => (
@@ -1635,8 +1751,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="mapTilesetDark"
-              value={localMapTilesetDark}
-              onChange={(e) => setLocalMapTilesetDark(e.target.value as TilesetId)}
+              value={draft.mapTilesetDark}
+              onChange={(e) => updateField('mapTilesetDark', e.target.value as TilesetId)}
               className="setting-input"
             >
               {getAllTilesets(customTilesets).map((tileset) => (
@@ -1655,8 +1771,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="positionHistoryLineStyle"
-              value={localPositionHistoryLineStyle}
-              onChange={(e) => setLocalPositionHistoryLineStyle(e.target.value as PositionHistoryLineStyle)}
+              value={draft.positionHistoryLineStyle}
+              onChange={(e) => updateField('positionHistoryLineStyle', e.target.value as PositionHistoryLineStyle)}
               className="setting-input"
             >
               <option value="linear">{t('settings.position_history_line_style_linear')}</option>
@@ -1673,11 +1789,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               type="number"
               min="1"
               max="18"
-              value={localNeighborInfoMinZoom}
+              value={draft.neighborInfoMinZoom}
               onChange={(e) => {
                 const value = parseInt(e.target.value);
                 if (value >= 1 && value <= 18) {
-                  setLocalNeighborInfoMinZoom(value);
+                  updateField('neighborInfoMinZoom', value);
                 }
               }}
               className="setting-input"
@@ -1694,11 +1810,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               type="number"
               min="1"
               max="18"
-              value={localMapCenterTargetZoom}
+              value={draft.mapCenterTargetZoom}
               onChange={(e) => {
                 const value = parseInt(e.target.value);
                 if (value >= 1 && value <= 18) {
-                  setLocalMapCenterTargetZoom(value);
+                  updateField('mapCenterTargetZoom', value);
                 }
               }}
               className="setting-input"
@@ -1714,18 +1830,18 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 <span className="setting-description">Set the default map position for new visitors and shared links.</span>
               </label>
               <DefaultMapCenterPicker
-                lat={localDefaultMapCenterLat}
-                lon={localDefaultMapCenterLon}
-                zoom={localDefaultMapCenterZoom}
+                lat={draft.defaultMapCenterLat}
+                lon={draft.defaultMapCenterLon}
+                zoom={draft.defaultMapCenterZoom}
                 onSave={(lat, lon, zoom) => {
-                  setLocalDefaultMapCenterLat(lat);
-                  setLocalDefaultMapCenterLon(lon);
-                  setLocalDefaultMapCenterZoom(zoom);
+                  updateField('defaultMapCenterLat', lat);
+                  updateField('defaultMapCenterLon', lon);
+                  updateField('defaultMapCenterZoom', zoom);
                 }}
                 onClear={() => {
-                  setLocalDefaultMapCenterLat(null);
-                  setLocalDefaultMapCenterLon(null);
-                  setLocalDefaultMapCenterZoom(null);
+                  updateField('defaultMapCenterLat', null);
+                  updateField('defaultMapCenterLon', null);
+                  updateField('defaultMapCenterZoom', null);
                 }}
               />
             </div>
@@ -1750,8 +1866,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               type="number"
               min="1"
               max="168"
-              value={localMaxNodeAge}
-              onChange={(e) => setLocalMaxNodeAge(parseInt(e.target.value))}
+              value={draft.maxNodeAgeHours}
+              onChange={(e) => updateField('maxNodeAgeHours', parseInt(e.target.value))}
               className="setting-input"
             />
           </div>
@@ -1765,8 +1881,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               type="number"
               min="1"
               max="720"
-              value={localInactiveNodeThresholdHours}
-              onChange={(e) => setLocalInactiveNodeThresholdHours(parseInt(e.target.value))}
+              value={draft.inactiveNodeThresholdHours}
+              onChange={(e) => updateField('inactiveNodeThresholdHours', parseInt(e.target.value))}
               className="setting-input"
             />
           </div>
@@ -1780,8 +1896,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               type="number"
               min="1"
               max="1440"
-              value={localInactiveNodeCheckIntervalMinutes}
-              onChange={(e) => setLocalInactiveNodeCheckIntervalMinutes(parseInt(e.target.value))}
+              value={draft.inactiveNodeCheckIntervalMinutes}
+              onChange={(e) => updateField('inactiveNodeCheckIntervalMinutes', parseInt(e.target.value))}
               className="setting-input"
             />
           </div>
@@ -1795,8 +1911,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               type="number"
               min="1"
               max="720"
-              value={localInactiveNodeCooldownHours}
-              onChange={(e) => setLocalInactiveNodeCooldownHours(parseInt(e.target.value))}
+              value={draft.inactiveNodeCooldownHours}
+              onChange={(e) => updateField('inactiveNodeCooldownHours', parseInt(e.target.value))}
               className="setting-input"
             />
           </div>
@@ -1810,8 +1926,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               type="number"
               min="0"
               max="60"
-              value={localLocalStatsIntervalMinutes}
-              onChange={(e) => setLocalLocalStatsIntervalMinutes(parseInt(e.target.value))}
+              value={draft.localStatsIntervalMinutes}
+              onChange={(e) => updateField('localStatsIntervalMinutes', parseInt(e.target.value))}
               className="setting-input"
             />
           </div>
@@ -1822,8 +1938,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="nodeHopsCalculation"
-              value={localNodeHopsCalculation}
-              onChange={(e) => setLocalNodeHopsCalculation(e.target.value as NodeHopsCalculation)}
+              value={draft.nodeHopsCalculation}
+              onChange={(e) => updateField('nodeHopsCalculation', e.target.value as NodeHopsCalculation)}
               className="setting-input"
             >
               <option value="nodeinfo">{t('settings.node_hops_nodeinfo')}</option>
@@ -1836,8 +1952,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
-                  checked={localHideIncompleteNodes}
-                  onChange={(e) => setLocalHideIncompleteNodes(e.target.checked)}
+                  checked={draft.hideIncompleteNodes}
+                  onChange={(e) => updateField('hideIncompleteNodes', e.target.checked)}
                   style={{ cursor: 'pointer' }}
                 />
                 {t('settings.hide_incomplete_nodes')}
@@ -1909,8 +2025,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               id="telemetryVisualizationHours"
               min="1"
               max="168"
-              value={localTelemetryHours}
-              onChange={(e) => setLocalTelemetryHours(Math.min(168, Math.max(1, parseInt(e.target.value) || 24)))}
+              value={draft.telemetryVisualizationHours}
+              onChange={(e) => updateField('telemetryVisualizationHours', Math.min(168, Math.max(1, parseInt(e.target.value) || 24)))}
               className="setting-input"
             />
           </div>
@@ -1924,8 +2040,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               id="favoriteTelemetryStorageDays"
               min="7"
               max="90"
-              value={localFavoriteTelemetryStorageDays}
-              onChange={(e) => setLocalFavoriteTelemetryStorageDays(Math.min(90, Math.max(7, parseInt(e.target.value) || 7)))}
+              value={draft.favoriteTelemetryStorageDays}
+              onChange={(e) => updateField('favoriteTelemetryStorageDays', Math.min(90, Math.max(7, parseInt(e.target.value) || 7)))}
               className="setting-input"
             />
           </div>
@@ -1970,8 +2086,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
-                  checked={localHomoglyphEnabled}
-                  onChange={(e) => setLocalHomoglyphEnabled(e.target.checked)}
+                  checked={draft.homoglyphEnabled}
+                  onChange={(e) => updateField('homoglyphEnabled', e.target.checked)}
                   style={{ cursor: 'pointer' }}
                 />
                 {t('settings.homoglyph_enabled')}
@@ -1986,8 +2102,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={localPacketLogEnabled}
-                onChange={(e) => setLocalPacketLogEnabled(e.target.checked)}
+                checked={draft.packetLogEnabled}
+                onChange={(e) => updateField('packetLogEnabled', e.target.checked)}
                 style={{ cursor: 'pointer' }}
               />
               <span>{t('settings.packet_monitor')}</span>
@@ -1997,11 +2113,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <p className="setting-description">{t('settings.packet_monitor_description')}</p>
           <div className="packet-monitor-settings">
             <PacketMonitorSettings
-              enabled={localPacketLogEnabled}
-              maxCount={localPacketLogMaxCount}
-              maxAgeHours={localPacketLogMaxAgeHours}
-              onMaxCountChange={setLocalPacketLogMaxCount}
-              onMaxAgeHoursChange={setLocalPacketLogMaxAgeHours}
+              enabled={draft.packetLogEnabled}
+              maxCount={draft.packetLogMaxCount}
+              maxAgeHours={draft.packetLogMaxAgeHours}
+              onMaxCountChange={(count) => updateField('packetLogMaxCount', count)}
+              onMaxAgeHoursChange={(hours) => updateField('packetLogMaxAgeHours', hours)}
             />
           </div>
         </div>}
@@ -2011,8 +2127,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={localSolarMonitoringEnabled}
-                onChange={(e) => setLocalSolarMonitoringEnabled(e.target.checked)}
+                checked={draft.solarMonitoringEnabled}
+                onChange={(e) => updateField('solarMonitoringEnabled', e.target.checked)}
                 style={{ cursor: 'pointer' }}
               />
               <span>{t('settings.solar_monitoring')}</span>
@@ -2024,7 +2140,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               Forecast.Solar
             </a>
           </p>
-          {localSolarMonitoringEnabled && (
+          {draft.solarMonitoringEnabled && (
             <>
               <div className="setting-item">
                 <label htmlFor="solarLatitude">
@@ -2039,8 +2155,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   min="-90"
                   max="90"
                   step="0.0001"
-                  value={localSolarMonitoringLatitude}
-                  onChange={(e) => setLocalSolarMonitoringLatitude(parseFloat(e.target.value) || 0)}
+                  value={draft.solarMonitoringLatitude}
+                  onChange={(e) => updateField('solarMonitoringLatitude', parseFloat(e.target.value) || 0)}
                   className="setting-input"
                 />
               </div>
@@ -2055,8 +2171,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   min="-180"
                   max="180"
                   step="0.0001"
-                  value={localSolarMonitoringLongitude}
-                  onChange={(e) => setLocalSolarMonitoringLongitude(parseFloat(e.target.value) || 0)}
+                  value={draft.solarMonitoringLongitude}
+                  onChange={(e) => updateField('solarMonitoringLongitude', parseFloat(e.target.value) || 0)}
                   className="setting-input"
                 />
               </div>
@@ -2071,8 +2187,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   min="-180"
                   max="180"
                   step="1"
-                  value={localSolarMonitoringAzimuth}
-                  onChange={(e) => setLocalSolarMonitoringAzimuth(parseInt(e.target.value) || 0)}
+                  value={draft.solarMonitoringAzimuth}
+                  onChange={(e) => updateField('solarMonitoringAzimuth', parseInt(e.target.value) || 0)}
                   className="setting-input"
                 />
               </div>
@@ -2087,8 +2203,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   min="0"
                   max="90"
                   step="1"
-                  value={localSolarMonitoringDeclination}
-                  onChange={(e) => setLocalSolarMonitoringDeclination(parseInt(e.target.value) || 30)}
+                  value={draft.solarMonitoringDeclination}
+                  onChange={(e) => updateField('solarMonitoringDeclination', parseInt(e.target.value) || 30)}
                   className="setting-input"
                 />
               </div>
@@ -2124,8 +2240,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <input
               id="appriseApiServerUrl"
               type="url"
-              value={localAppriseApiServerUrl}
-              onChange={(e) => setLocalAppriseApiServerUrl(e.target.value)}
+              value={draft.appriseApiServerUrl}
+              onChange={(e) => updateField('appriseApiServerUrl', e.target.value)}
               placeholder="http://localhost:8000"
               className="setting-input"
               autoComplete="off"
@@ -2171,8 +2287,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <input
                 id="elevationEnabled"
                 type="checkbox"
-                checked={localElevationEnabled}
-                onChange={(e) => setLocalElevationEnabled(e.target.checked)}
+                checked={draft.elevationEnabled}
+                onChange={(e) => updateField('elevationEnabled', e.target.checked)}
                 style={{ cursor: 'pointer' }}
               />
               <span>{t('settings.elevation_enabled_label', 'Enable terrain elevation')}</span>
@@ -2191,8 +2307,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             <input
               id="elevationSourceUrl"
               type="text"
-              value={localElevationSourceUrl}
-              onChange={(e) => setLocalElevationSourceUrl(e.target.value)}
+              value={draft.elevationSourceUrl}
+              onChange={(e) => updateField('elevationSourceUrl', e.target.value)}
               placeholder={DEFAULT_TERRARIUM_URL}
               className="setting-input"
               autoComplete="off"
@@ -2280,10 +2396,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </label>
             <select
               id="analyticsProvider"
-              value={localAnalyticsProvider}
+              value={draft.analyticsProvider}
               onChange={(e) => {
-                setLocalAnalyticsProvider(e.target.value);
-                setLocalAnalyticsConfig({});
+                updateField('analyticsProvider', e.target.value);
+                updateField('analyticsConfig', {});
               }}
               className="setting-input"
             >
@@ -2298,110 +2414,110 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             </select>
           </div>
 
-          {localAnalyticsProvider === 'ga4' && (
+          {draft.analyticsProvider === 'ga4' && (
             <div className="setting-item">
               <label htmlFor="analyticsMeasurementId">
                 {t('settings.analytics_measurement_id_label')}
                 <span className="setting-description">{t('settings.analytics_measurement_id_description')}</span>
               </label>
-              <input id="analyticsMeasurementId" type="text" value={localAnalyticsConfig.measurementId || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, measurementId: e.target.value })} className="setting-input" placeholder="G-XXXXXXXXXX" />
+              <input id="analyticsMeasurementId" type="text" value={draft.analyticsConfig.measurementId || ''} onChange={(e) => updateField('analyticsConfig', { ...draft.analyticsConfig, measurementId: e.target.value })} className="setting-input" placeholder="G-XXXXXXXXXX" />
             </div>
           )}
 
-          {localAnalyticsProvider === 'cloudflare' && (
+          {draft.analyticsProvider === 'cloudflare' && (
             <div className="setting-item">
               <label htmlFor="analyticsBeaconToken">
                 {t('settings.analytics_beacon_token_label')}
                 <span className="setting-description">{t('settings.analytics_beacon_token_description')}</span>
               </label>
-              <input id="analyticsBeaconToken" type="text" value={localAnalyticsConfig.beaconToken || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, beaconToken: e.target.value })} className="setting-input" />
+              <input id="analyticsBeaconToken" type="text" value={draft.analyticsConfig.beaconToken || ''} onChange={(e) => updateField('analyticsConfig', { ...draft.analyticsConfig, beaconToken: e.target.value })} className="setting-input" />
             </div>
           )}
 
-          {localAnalyticsProvider === 'posthog' && (
+          {draft.analyticsProvider === 'posthog' && (
             <>
               <div className="setting-item">
                 <label htmlFor="analyticsApiKey">
                   {t('settings.analytics_api_key_label')}
                   <span className="setting-description">{t('settings.analytics_api_key_description')}</span>
                 </label>
-                <input id="analyticsApiKey" type="text" value={localAnalyticsConfig.apiKey || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, apiKey: e.target.value })} className="setting-input" placeholder="phc_..." />
+                <input id="analyticsApiKey" type="text" value={draft.analyticsConfig.apiKey || ''} onChange={(e) => updateField('analyticsConfig', { ...draft.analyticsConfig, apiKey: e.target.value })} className="setting-input" placeholder="phc_..." />
               </div>
               <div className="setting-item">
                 <label htmlFor="analyticsApiHost">
                   {t('settings.analytics_api_host_label')}
                   <span className="setting-description">{t('settings.analytics_api_host_description')}</span>
                 </label>
-                <input id="analyticsApiHost" type="text" value={localAnalyticsConfig.apiHost || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, apiHost: e.target.value })} className="setting-input" placeholder="https://app.posthog.com" />
+                <input id="analyticsApiHost" type="text" value={draft.analyticsConfig.apiHost || ''} onChange={(e) => updateField('analyticsConfig', { ...draft.analyticsConfig, apiHost: e.target.value })} className="setting-input" placeholder="https://app.posthog.com" />
               </div>
             </>
           )}
 
-          {localAnalyticsProvider === 'plausible' && (
+          {draft.analyticsProvider === 'plausible' && (
             <div className="setting-item">
               <label htmlFor="analyticsDomain">
                 {t('settings.analytics_domain_label')}
                 <span className="setting-description">{t('settings.analytics_domain_description')}</span>
               </label>
-              <input id="analyticsDomain" type="text" value={localAnalyticsConfig.domain || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, domain: e.target.value })} className="setting-input" placeholder="example.com" />
+              <input id="analyticsDomain" type="text" value={draft.analyticsConfig.domain || ''} onChange={(e) => updateField('analyticsConfig', { ...draft.analyticsConfig, domain: e.target.value })} className="setting-input" placeholder="example.com" />
             </div>
           )}
 
-          {localAnalyticsProvider === 'umami' && (
+          {draft.analyticsProvider === 'umami' && (
             <>
               <div className="setting-item">
                 <label htmlFor="analyticsWebsiteId">
                   {t('settings.analytics_website_id_label')}
                   <span className="setting-description">{t('settings.analytics_website_id_description')}</span>
                 </label>
-                <input id="analyticsWebsiteId" type="text" value={localAnalyticsConfig.websiteId || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, websiteId: e.target.value })} className="setting-input" />
+                <input id="analyticsWebsiteId" type="text" value={draft.analyticsConfig.websiteId || ''} onChange={(e) => updateField('analyticsConfig', { ...draft.analyticsConfig, websiteId: e.target.value })} className="setting-input" />
               </div>
               <div className="setting-item">
                 <label htmlFor="analyticsScriptUrl">
                   {t('settings.analytics_script_url_label')}
                   <span className="setting-description">{t('settings.analytics_script_url_description')}</span>
                 </label>
-                <input id="analyticsScriptUrl" type="text" value={localAnalyticsConfig.scriptUrl || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, scriptUrl: e.target.value })} className="setting-input" placeholder="https://analytics.example.com/script.js" />
+                <input id="analyticsScriptUrl" type="text" value={draft.analyticsConfig.scriptUrl || ''} onChange={(e) => updateField('analyticsConfig', { ...draft.analyticsConfig, scriptUrl: e.target.value })} className="setting-input" placeholder="https://analytics.example.com/script.js" />
               </div>
             </>
           )}
 
-          {localAnalyticsProvider === 'matomo' && (
+          {draft.analyticsProvider === 'matomo' && (
             <>
               <div className="setting-item">
                 <label htmlFor="analyticsSiteUrl">
                   {t('settings.analytics_site_url_label')}
                   <span className="setting-description">{t('settings.analytics_site_url_description')}</span>
                 </label>
-                <input id="analyticsSiteUrl" type="text" value={localAnalyticsConfig.siteUrl || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, siteUrl: e.target.value })} className="setting-input" placeholder="https://matomo.example.com" />
+                <input id="analyticsSiteUrl" type="text" value={draft.analyticsConfig.siteUrl || ''} onChange={(e) => updateField('analyticsConfig', { ...draft.analyticsConfig, siteUrl: e.target.value })} className="setting-input" placeholder="https://matomo.example.com" />
               </div>
               <div className="setting-item">
                 <label htmlFor="analyticsSiteId">
                   {t('settings.analytics_site_id_label')}
                   <span className="setting-description">{t('settings.analytics_site_id_description')}</span>
                 </label>
-                <input id="analyticsSiteId" type="text" value={localAnalyticsConfig.siteId || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, siteId: e.target.value })} className="setting-input" placeholder="1" />
+                <input id="analyticsSiteId" type="text" value={draft.analyticsConfig.siteId || ''} onChange={(e) => updateField('analyticsConfig', { ...draft.analyticsConfig, siteId: e.target.value })} className="setting-input" placeholder="1" />
               </div>
             </>
           )}
 
-          {localAnalyticsProvider === 'custom' && (
+          {draft.analyticsProvider === 'custom' && (
             <div className="setting-item">
               <label htmlFor="analyticsCustomScript">
                 {t('settings.analytics_custom_script_label')}
                 <span className="setting-description">{t('settings.analytics_custom_script_description')}</span>
               </label>
-              <textarea id="analyticsCustomScript" value={localAnalyticsConfig.script || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, script: e.target.value })} className="setting-input" rows={6} style={{ fontFamily: 'monospace', fontSize: '0.85rem' }} placeholder='<script src="https://..."></script>' />
+              <textarea id="analyticsCustomScript" value={draft.analyticsConfig.script || ''} onChange={(e) => updateField('analyticsConfig', { ...draft.analyticsConfig, script: e.target.value })} className="setting-input" rows={6} style={{ fontFamily: 'monospace', fontSize: '0.85rem' }} placeholder='<script src="https://..."></script>' />
             </div>
           )}
 
-          {localAnalyticsProvider === 'custom' && (
+          {draft.analyticsProvider === 'custom' && (
             <div className="setting-item">
               <label htmlFor="analyticsCustomCspDomains">
                 {t('settings.analytics_custom_csp_label')}
                 <span className="setting-description">{t('settings.analytics_custom_csp_description')}</span>
               </label>
-              <input type="text" id="analyticsCustomCspDomains" value={localAnalyticsConfig.cspDomains || ''} onChange={(e) => setLocalAnalyticsConfig({ ...localAnalyticsConfig, cspDomains: e.target.value })} className="setting-input" placeholder="https://analytics.example.com https://cdn.example.com" />
+              <input type="text" id="analyticsCustomCspDomains" value={draft.analyticsConfig.cspDomains || ''} onChange={(e) => updateField('analyticsConfig', { ...draft.analyticsConfig, cspDomains: e.target.value })} className="setting-input" placeholder="https://analytics.example.com https://cdn.example.com" />
             </div>
           )}
         </div>
