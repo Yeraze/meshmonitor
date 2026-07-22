@@ -1,6 +1,6 @@
 import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
-import { detectDuplicateKeys, checkLowEntropyKey } from '../../services/lowEntropyKeyService.js';
+import { detectDuplicateKeys, checkLowEntropyKey, isBenign28UpgradeRenumber } from '../../services/lowEntropyKeyService.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import type { DbNode } from '../../db/types.js';
 
@@ -165,7 +165,35 @@ class DuplicateKeySchedulerService {
 
       // Duplicate detection — scoped to THIS source. A node sharing a key with
       // a node on a different source is NOT a duplicate.
-      const duplicates = detectDuplicateKeys(nodesWithKeys);
+      const allDuplicates = detectDuplicateKeys(nodesWithKeys);
+
+      // Filter out benign Meshtastic 2.8 upgrade renumbers (issue #4251): a node
+      // upgrading to 2.8 keeps its key but gets a new crc32(key)-derived NodeNum,
+      // orphaning the old one — a same-key/two-NodeNum pattern that is NOT an
+      // impersonation. Suppress those groups from the security-risk flagging;
+      // anything that doesn't match the clean handoff fingerprint stays a
+      // duplicate and is flagged as before.
+      const keyByNodeNum = new Map<number, string | null | undefined>(
+        nodesWithKeys.map((n) => [Number(n.nodeNum), n.publicKey])
+      );
+      const nowSec = Math.floor(Date.now() / 1000);
+      const duplicates = new Map<string, number[]>();
+      for (const [keyHash, nodeNums] of allDuplicates) {
+        const groupNodes = nodeNums.map((num) => ({
+          nodeNum: Number(num),
+          publicKey: keyByNodeNum.get(Number(num)),
+          lastHeard: nodeMap.get(Number(num))?.lastHeard ?? null,
+        }));
+        if (isBenign28UpgradeRenumber(groupNodes, nowSec)) {
+          logger.info(
+            `🔐 [${sourceId}] Ignoring benign Meshtastic 2.8 upgrade renumber (same key, crc32-derived NodeNum handoff): ${nodeNums
+              .map((n) => `!${Number(n).toString(16).padStart(8, '0')}`)
+              .join(' ↔ ')}`
+          );
+          continue;
+        }
+        duplicates.set(keyHash, nodeNums);
+      }
 
       if (duplicates.size === 0) {
         logger.debug(`✅ [${sourceId}] Duplicate key scan complete: No duplicates found among ${nodesWithKeys.length} nodes`);
