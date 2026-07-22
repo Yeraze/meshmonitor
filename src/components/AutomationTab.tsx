@@ -136,7 +136,7 @@ const AutomationTab: React.FC<AutomationTabProps> = ({ baseUrl, channels, nodes,
             })}
             footer={
               <>
-                💡 {t('automation.tokens.engine_tip', 'Want maximum flexibility? Try the')}{' '}
+                {/* eslint-disable-line meshmonitor-ui/no-hardcoded-ui-glyph -- #3962 5.4 PR6: verbatim move from App.tsx (which predates this components/-scoped rule); UiIcon migration out of scope for this extraction */}💡 {t('automation.tokens.engine_tip', 'Want maximum flexibility? Try the')}{' '}
                 <Link to="/automations" style={{ color: 'var(--ctp-mauve)', fontWeight: 'bold' }}>
                   {t('automation.engine_link', 'Automation Engine')}
                 </Link>{' '}
