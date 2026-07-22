@@ -40,7 +40,7 @@ interface RawApplyItem {
  */
 export async function handleEnrichmentAnalysis(req: Request, res: Response): Promise<Response> {
   try {
-    const user = (req as any).user;
+    const user = req.user;
     const userId: number | null = user?.id ?? null;
     const isAdmin: boolean = user?.isAdmin ?? false;
 
@@ -84,7 +84,7 @@ export async function handleEnrichmentAnalysis(req: Request, res: Response): Pro
  */
 export async function handleEnrichmentApply(req: Request, res: Response): Promise<Response> {
   try {
-    const user = (req as any).user;
+    const user = req.user;
     const userId: number | null = user?.id ?? null;
     const isAdmin: boolean = user?.isAdmin ?? false;
 
