@@ -37,6 +37,20 @@
  * still write the manager's own field directly, so no accessor was needed
  * for them.
  *
+ * `checkAutoFavorite`/`autoFavoriteSweep` call `this.mgr.supportsFavorites()`
+ * / `this.mgr.sendFavoriteNode()` / `this.mgr.sendRemoveFavoriteNode()`
+ * (the manager's public delegates) rather than their own sibling methods
+ * (`this.supportsFavorites()` etc.) on this service. Before extraction all
+ * of these lived on one class, so `meshtasticManager.autoFavorite.perSource
+ * .test.ts` monkey-patches `manager.sendFavoriteNode`/
+ * `manager.sendRemoveFavoriteNode`/`manager.supportsFavorites` directly and
+ * relies on `checkAutoFavorite`/`autoFavoriteSweep` (also on the manager back
+ * then) picking up the override via `this.`. Routing through `this.mgr.*`
+ * preserves that seam post-extraction; `sendFavoriteNode`/
+ * `sendRemoveFavoriteNode`/`sendFavoriteNodeAwaitAck` themselves still call
+ * their own `this.supportsFavorites()` since nothing monkey-patches through
+ * them.
+ *
  * Import-cycle discipline (task42a_spec.md §3): constructor-injected
  * `import type` references, never a static value import. `parseFirmwareVersion`
  * and `localNodeSettingKey` are `private` on MeshtasticManager and shared with
@@ -224,7 +238,11 @@ export class FavoritesService {
         return;
       }
 
-      if (!this.supportsFavorites()) {
+      // Routed through the manager's public delegate (not `this.supportsFavorites()`)
+      // so that a test double which overrides `manager.supportsFavorites` directly
+      // (meshtasticManager.autoFavorite.perSource.test.ts) is honored — see
+      // favoritesService.ts's header comment.
+      if (!this.mgr.supportsFavorites()) {
         return;
       }
 
@@ -269,9 +287,10 @@ export class FavoritesService {
         // Mark in DB — favoriteLocked=false since this is auto-managed
         await databaseService.nodes.setNodeFavorite(nodeNum, true, this.mgr.sourceId, false);
 
-        // Sync to device
+        // Sync to device — routed through the manager delegate, same rationale
+        // as the `this.mgr.supportsFavorites()` call above.
         try {
-          await this.sendFavoriteNode(nodeNum);
+          await this.mgr.sendFavoriteNode(nodeNum);
           logger.debug(`⭐ Auto-favorited node ${nodeId} (${targetNode.longName || 'Unknown'}) - 0-hop, role=${targetNode.role}`);
         } catch (error) {
           logger.warn(`⚠️ Auto-favorited node ${nodeId} in DB but device sync failed:`, error);
@@ -311,8 +330,10 @@ export class FavoritesService {
               continue;
             }
             await databaseService.nodes.setNodeFavorite(nodeNum, false, this.mgr.sourceId, false);
-            if (this.supportsFavorites() && this.mgr.isDeviceConnected()) {
-              await this.sendRemoveFavoriteNode(nodeNum);
+            // Routed through the manager's public delegates — same rationale as
+            // the `this.mgr.supportsFavorites()` call in checkAutoFavorite above.
+            if (this.mgr.supportsFavorites() && this.mgr.isDeviceConnected()) {
+              await this.mgr.sendRemoveFavoriteNode(nodeNum);
             }
           } catch (error) {
             logger.warn(`⚠️ Failed to unfavorite node ${nodeNum} during cleanup:`, error);
@@ -322,7 +343,7 @@ export class FavoritesService {
         return;
       }
 
-      if (!this.supportsFavorites()) return;
+      if (!this.mgr.supportsFavorites()) return;
 
       const staleHours = parseInt(await databaseService.settings.getSettingForSource(this.mgr.sourceId, 'autoFavoriteStaleHours') || '72');
       const staleThreshold = Date.now() / 1000 - (staleHours * 3600);
@@ -381,7 +402,7 @@ export class FavoritesService {
           try {
             await databaseService.nodes.setNodeFavorite(nodeNum, false, this.mgr.sourceId, false);
             if (this.mgr.isDeviceConnected()) {
-              await this.sendRemoveFavoriteNode(nodeNum);
+              await this.mgr.sendRemoveFavoriteNode(nodeNum);
             }
             const nodeId = node.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`;
             logger.debug(`☆ Auto-unfavorited node ${nodeId} (${node.longName || 'Unknown'}) - ${reason}`);
