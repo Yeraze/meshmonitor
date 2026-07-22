@@ -21,12 +21,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
           submodules: recursive
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7
         with:
           node-version: '24'
           cache: 'npm'
@@ -106,7 +106,7 @@ jobs:
         run: npm install
 
       - name: Setup Python for Apprise sidecar
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
           python-version: '3.12'
 
@@ -158,7 +158,7 @@ jobs:
 
       - name: Upload EXE to release
         if: steps.rename_artifacts.outputs.EXE_PATH
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3
         with:
           tag_name: ${{ steps.get_version.outputs.TAG }}
           files: ${{ steps.rename_artifacts.outputs.EXE_PATH }}
@@ -166,7 +166,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload checksums to release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3
         with:
           tag_name: ${{ steps.get_version.outputs.TAG }}
           files: ${{ steps.checksums.outputs.CHECKSUM_FILE }}
@@ -174,7 +174,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts for debugging
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: meshmonitor-desktop-windows-release
           path: desktop/src-tauri/target/release/bundle/nsis/*.exe
@@ -187,12 +187,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
           submodules: recursive
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7
         with:
           node-version: '24'
           cache: 'npm'
@@ -391,7 +391,7 @@ jobs:
         run: npm install
 
       - name: Setup Python for Apprise sidecar
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
           python-version: '3.12'
 
@@ -532,7 +532,7 @@ jobs:
 
       - name: Upload DMG to release
         if: steps.rename_artifacts.outputs.DMG_PATH
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3
         with:
           tag_name: ${{ steps.get_version.outputs.TAG }}
           files: ${{ steps.rename_artifacts.outputs.DMG_PATH }}
@@ -540,7 +540,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload checksums to release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3
         with:
           tag_name: ${{ steps.get_version.outputs.TAG }}
           files: ${{ steps.checksums.outputs.CHECKSUM_FILE }}
@@ -548,7 +548,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts for debugging
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: meshmonitor-desktop-macos-arm64-release
           path: desktop/src-tauri/target/release/bundle/dmg/*.dmg
@@ -561,12 +561,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
           submodules: recursive
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7
         with:
           node-version: '24'
           cache: 'npm'
@@ -926,7 +926,7 @@ jobs:
 
       - name: Upload DMG to release
         if: steps.rename_artifacts.outputs.DMG_PATH
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3
         with:
           tag_name: ${{ steps.get_version.outputs.TAG }}
           files: ${{ steps.rename_artifacts.outputs.DMG_PATH }}
@@ -934,7 +934,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload checksums to release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3
         with:
           tag_name: ${{ steps.get_version.outputs.TAG }}
           files: ${{ steps.checksums.outputs.CHECKSUM_FILE }}
@@ -942,7 +942,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts for debugging
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: meshmonitor-desktop-macos-x64-release
           path: desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
