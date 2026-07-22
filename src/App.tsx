@@ -4238,6 +4238,67 @@ function App() {
               </ErrorBoundary>
             }
           />
+          <Route
+            path="settings"
+            element={
+              <ErrorBoundary fallbackTitle="Settings failed to load">
+                <SaveBarGroup id="settings">
+                  <SettingsTab
+                    mode="source"
+                    maxNodeAgeHours={maxNodeAgeHours}
+                    inactiveNodeThresholdHours={inactiveNodeThresholdHours}
+                    inactiveNodeCheckIntervalMinutes={inactiveNodeCheckIntervalMinutes}
+                    inactiveNodeCooldownHours={inactiveNodeCooldownHours}
+                    temperatureUnit={temperatureUnit}
+                    distanceUnit={distanceUnit}
+                    positionHistoryLineStyle={positionHistoryLineStyle}
+                    telemetryVisualizationHours={telemetryVisualizationHours}
+                    favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}
+                    preferredSortField={preferredSortField}
+                    preferredSortDirection={preferredSortDirection}
+                    timeFormat={timeFormat}
+                    dateFormat={dateFormat}
+                    mapTilesetLight={mapTilesetLight}
+                    mapTilesetDark={mapTilesetDark}
+                    mapPinStyle={mapPinStyle}
+                    iconStyle={iconStyle}
+                    theme={theme}
+                    language={language}
+                    solarMonitoringEnabled={solarMonitoringEnabled}
+                    solarMonitoringLatitude={solarMonitoringLatitude}
+                    solarMonitoringLongitude={solarMonitoringLongitude}
+                    solarMonitoringAzimuth={solarMonitoringAzimuth}
+                    solarMonitoringDeclination={solarMonitoringDeclination}
+                    currentNodeId={currentNodeId}
+                    nodes={nodes}
+                    baseUrl={baseUrl}
+                    onMaxNodeAgeChange={setMaxNodeAgeHours}
+                    onInactiveNodeThresholdHoursChange={setInactiveNodeThresholdHours}
+                    onInactiveNodeCheckIntervalMinutesChange={setInactiveNodeCheckIntervalMinutes}
+                    onInactiveNodeCooldownHoursChange={setInactiveNodeCooldownHours}
+                    onTemperatureUnitChange={setTemperatureUnit}
+                    onDistanceUnitChange={setDistanceUnit}
+                    onPositionHistoryLineStyleChange={setPositionHistoryLineStyle}
+                    onTelemetryVisualizationChange={setTelemetryVisualizationHours}
+                    onFavoriteTelemetryStorageDaysChange={setFavoriteTelemetryStorageDays}
+                    onPreferredSortFieldChange={setPreferredSortField}
+                    onPreferredSortDirectionChange={setPreferredSortDirection}
+                    onTimeFormatChange={setTimeFormat}
+                    onDateFormatChange={setDateFormat}
+                    onMapTilesetsChange={setMapTilesets}
+                    onMapPinStyleChange={setMapPinStyle}
+                    onIconStyleChange={setIconStyle}
+                    onLanguageChange={setLanguage}
+                    onSolarMonitoringEnabledChange={setSolarMonitoringEnabled}
+                    onSolarMonitoringLatitudeChange={setSolarMonitoringLatitude}
+                    onSolarMonitoringLongitudeChange={setSolarMonitoringLongitude}
+                    onSolarMonitoringAzimuthChange={setSolarMonitoringAzimuth}
+                    onSolarMonitoringDeclinationChange={setSolarMonitoringDeclination}
+                  />
+                </SaveBarGroup>
+              </ErrorBoundary>
+            }
+          />
           <Route path="*" element={<>
         {activeTab === 'channels' && (
           <ErrorBoundary fallbackTitle="Channels failed to load">
@@ -4366,68 +4427,10 @@ function App() {
           />
           </ErrorBoundary>
         )}
-        {activeTab === 'settings' && (
-          <ErrorBoundary fallbackTitle="Settings failed to load">
-          <SaveBarGroup id="settings">
-          <SettingsTab
-            mode="source"
-            maxNodeAgeHours={maxNodeAgeHours}
-            inactiveNodeThresholdHours={inactiveNodeThresholdHours}
-            inactiveNodeCheckIntervalMinutes={inactiveNodeCheckIntervalMinutes}
-            inactiveNodeCooldownHours={inactiveNodeCooldownHours}
-            temperatureUnit={temperatureUnit}
-            distanceUnit={distanceUnit}
-            positionHistoryLineStyle={positionHistoryLineStyle}
-            telemetryVisualizationHours={telemetryVisualizationHours}
-            favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}
-            preferredSortField={preferredSortField}
-            preferredSortDirection={preferredSortDirection}
-            timeFormat={timeFormat}
-            dateFormat={dateFormat}
-            mapTilesetLight={mapTilesetLight}
-            mapTilesetDark={mapTilesetDark}
-            mapPinStyle={mapPinStyle}
-            iconStyle={iconStyle}
-            theme={theme}
-            language={language}
-            solarMonitoringEnabled={solarMonitoringEnabled}
-            solarMonitoringLatitude={solarMonitoringLatitude}
-            solarMonitoringLongitude={solarMonitoringLongitude}
-            solarMonitoringAzimuth={solarMonitoringAzimuth}
-            solarMonitoringDeclination={solarMonitoringDeclination}
-            currentNodeId={currentNodeId}
-            nodes={nodes}
-            baseUrl={baseUrl}
-            onMaxNodeAgeChange={setMaxNodeAgeHours}
-            onInactiveNodeThresholdHoursChange={setInactiveNodeThresholdHours}
-            onInactiveNodeCheckIntervalMinutesChange={setInactiveNodeCheckIntervalMinutes}
-            onInactiveNodeCooldownHoursChange={setInactiveNodeCooldownHours}
-            onTemperatureUnitChange={setTemperatureUnit}
-            onDistanceUnitChange={setDistanceUnit}
-            onPositionHistoryLineStyleChange={setPositionHistoryLineStyle}
-            onTelemetryVisualizationChange={setTelemetryVisualizationHours}
-            onFavoriteTelemetryStorageDaysChange={setFavoriteTelemetryStorageDays}
-            onPreferredSortFieldChange={setPreferredSortField}
-            onPreferredSortDirectionChange={setPreferredSortDirection}
-            onTimeFormatChange={setTimeFormat}
-            onDateFormatChange={setDateFormat}
-            onMapTilesetsChange={setMapTilesets}
-            onMapPinStyleChange={setMapPinStyle}
-            onIconStyleChange={setIconStyle}
-            onLanguageChange={setLanguage}
-            onSolarMonitoringEnabledChange={setSolarMonitoringEnabled}
-            onSolarMonitoringLatitudeChange={setSolarMonitoringLatitude}
-            onSolarMonitoringLongitudeChange={setSolarMonitoringLongitude}
-            onSolarMonitoringAzimuthChange={setSolarMonitoringAzimuth}
-            onSolarMonitoringDeclinationChange={setSolarMonitoringDeclination}
-          />
-          </SaveBarGroup>
-          </ErrorBoundary>
-        )}
         {/* 'audit' migrated to <Route path="audit"> above (#3962 5.4 PR1 proof leaf) */}
         {/* 'notifications', 'users', 'admin', 'security', 'mqtt-config', 'packetmonitor'
             migrated to <Route> elements above (#3962 5.4 PR3 leaf tab group) */}
-        {/* 'automation' migrated to <Route path="automation"> above (#3962 5.4 PR6) */}
+        {/* 'automation', 'settings' migrated to <Route> elements above (#3962 5.4 PR6) */}
         {/* 'info', 'dashboard', 'configuration' migrated to <Route> elements above
             (#3962 5.4 PR5) */}
           </>} />
