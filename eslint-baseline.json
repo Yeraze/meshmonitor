@@ -18,9 +18,9 @@
     "no-restricted-syntax": 2
   },
   "src/App.tsx": {
-    "@typescript-eslint/no-explicit-any": 5,
+    "@typescript-eslint/no-explicit-any": 3,
     "preserve-caught-error": 1,
-    "react-hooks/exhaustive-deps": 20
+    "react-hooks/exhaustive-deps": 16
   },
   "src/cli/migrate-db.ts": {
     "@typescript-eslint/no-explicit-any": 3,
@@ -550,6 +550,9 @@
   },
   "src/hooks/useServerData.ts": {
     "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/hooks/useSourceView.ts": {
+    "react-hooks/exhaustive-deps": 4
   },
   "src/hooks/useTracerouteAnalysis.emptyBack.test.ts": {
     "@typescript-eslint/no-unused-vars": 1

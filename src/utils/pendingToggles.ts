@@ -79,3 +79,26 @@ export class PendingToggleMap {
 export function sweepAll(maps: PendingToggleMap[], now: number = Date.now()): void {
   for (const map of maps) map.sweep(now);
 }
+
+// Track pending favorite/ignored/hide-from-map requests as module-level
+// singletons so they persist across remounts (App is re-keyed on source
+// switch) and are shared between App.tsx's poll reconciliation
+// (processPollData) and the toggle handlers now living in
+// `src/hooks/useSourceView.ts` (#3962 5.4 PR4). Keys are composite strings
+// `${sourceId}:${nodeNum}` so that an optimistic toggle on Source A does not
+// bleed into Source B's view of the same node (bug: single nodeNum key meant
+// clicking favorite on Source 1 forced the same optimistic state onto Source
+// 2's poll response because both sources share nodeNums on overlapping
+// meshes).
+export const favoritePendingKey = (sourceId: string | null | undefined, nodeNum: number) =>
+  `${sourceId ?? ''}:${nodeNum}`;
+
+export const pendingFavoriteRequests = new PendingToggleMap();
+export const pendingIgnoredRequests = new PendingToggleMap();
+export const pendingHideFromMapRequests = new PendingToggleMap();
+
+export const ALL_PENDING_TOGGLE_MAPS = [
+  pendingFavoriteRequests,
+  pendingIgnoredRequests,
+  pendingHideFromMapRequests,
+];
