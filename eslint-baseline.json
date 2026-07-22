@@ -611,7 +611,7 @@
     "@typescript-eslint/no-unused-vars": 1
   },
   "src/server/meshtasticManager.ts": {
-    "@typescript-eslint/no-explicit-any": 168,
+    "@typescript-eslint/no-explicit-any": 166,
     "@typescript-eslint/no-unused-vars": 2,
     "no-useless-assignment": 1
   },
