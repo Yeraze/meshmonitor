@@ -574,9 +574,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       }
     };
     void fetchServerSettings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- nodeDimmingStartHours/MinOpacity are
-    // only read as a one-time fallback default inside the async callback (parseFloat(...) || nodeDimmingStartHours),
-    // matching pre-5.3 behavior; listing them would re-run this fetch on every dimming edit.
+    // nodeDimmingStartHours/MinOpacity are only read as a one-time fallback default inside the
+    // async callback (parseFloat(...) || nodeDimmingStartHours), matching pre-5.3 behavior; listing
+    // them would re-run this mount-time fetch on every dimming edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseUrl, setShowIncompleteNodes, updateField]);
 
   // Baseline: a memoized snapshot of the current context/props/initial* values, in SettingsDraft
