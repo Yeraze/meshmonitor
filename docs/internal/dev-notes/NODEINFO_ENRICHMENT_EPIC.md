@@ -43,15 +43,15 @@ apply the enrichment ("Fix") per node or in bulk.
 ### Phase 1 — Backend: enrichment analysis + apply API
 **Branch:** `feature/nodeinfo-enrichment-backend`
 
-- [ ] `src/server/services/nodeInfoEnrichmentService.ts` reusing `nodeInfoCopyService`
+- [x] `src/server/services/nodeInfoEnrichmentService.ts` reusing `nodeInfoCopyService`
       primitives: `analyzeEnrichment()` (per distinct nodeNum: target rows with blank
       fields, best donor row, fillable fields per target) and
       `applyEnrichment(items, pushToNodeDb)` (fill-blanks-only writes via nodes
       repository; optional device push per enriched node).
-- [ ] Routes (unversioned + v1): `GET .../enrichment/analysis` (nodes:read,
+- [x] Routes (unversioned + v1): `GET .../enrichment/analysis` (nodes:read,
       permission-filtered per source) and `POST .../enrichment/apply` (nodes:write on
       every target source; donor source needs nodes:read). Envelope helpers.
-- [ ] Tests: service unit tests, route-harness permission tests, `*.perSource.test.ts`
+- [x] Tests: service unit tests, route-harness permission tests, `*.perSource.test.ts`
       isolation coverage.
 - **Exit criteria:** typecheck + full Vitest suite green; PR merged to main.
 
@@ -71,4 +71,18 @@ apply the enrichment ("Fix") per node or in bulk.
 
 ## Deviations / notes
 
-(Recorded per phase as they occur.)
+- Phase 1: apply endpoint takes an explicit `items` list
+  (`{nodeNum, targetSourceId, donorSourceId}[]`) so Phase 2's per-row Fix and
+  Fix All share one endpoint; fill-blanks-only is enforced by delegating to
+  `copyNodeInfo` WITHOUT the `fields` arg (its legacy path never overwrites
+  non-blank fields and is TOCTOU-safe against stale analyses).
+- Phase 1: `hasPKC` is excluded from analysis/reporting (derived from
+  `publicKey`), but the unchanged write primitive still fills it when blank —
+  documented asymmetry in code comments.
+- Phase 1: handlers live in a new `src/server/routes/shared/` module mounted by
+  BOTH `nodesRoutes.ts` and `v1/nodes.ts` (deliberately better than the
+  duplicated copy-nodeinfo handler pattern).
+- Phase 1: v1 registrations intentionally omit `optionalAuth()` — the v1 router
+  is globally behind `requireAPIToken()`; layering optionalAuth could clobber
+  `req.user` for token clients. Anonymous callers on the unversioned route get
+  200 with an empty analysis (permission-narrowed), never 403.
