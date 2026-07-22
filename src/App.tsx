@@ -62,6 +62,7 @@ import { type TemperatureUnit } from './utils/temperature';
 import { DeviceInfo, Channel } from './types/device';
 import { MeshMessage } from './types/message';
 import { SortField, SortDirection, NodeFilters } from './types/ui';
+import { getHashTabRedirectTarget } from './utils/tabHashRedirect';
 import { ResourceType } from './types/permission';
 import api, { type ChannelDatabaseEntry } from './services/api';
 import { getPacketStats } from './services/packetApi';
@@ -85,7 +86,7 @@ import { AutomationProvider, useAutomation } from './contexts/AutomationContext'
 import { useAuth } from './contexts/AuthContext';
 import { useCsrf } from './contexts/CsrfContext';
 import { useSource } from './contexts/SourceContext';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link, Routes, Route, Navigate } from 'react-router-dom';
 import { useWebSocketConnected } from './contexts/WebSocketContext';
 import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
@@ -136,7 +137,19 @@ function App() {
   const isMqttBroker = sourceType === 'mqtt_broker';
   const isMqtt = isMqttBridge || isMqttBroker;
   const navigate = useNavigate();
-const location = useLocation();
+  const location = useLocation();
+
+  // Hash->path redirect shim (#3962 5.4 PR1, kept >= 1 release). See
+  // getHashTabRedirectTarget for the full rationale + enumerated
+  // bookmark/embed refs it covers. Forward `state` (e.g. focusDmNodeId) so
+  // downstream effects that read location.state still see it after redirect.
+  useEffect(() => {
+    const target = getHashTabRedirectTarget(location.pathname, location.hash);
+    if (target) {
+      void navigate(target, { replace: true, state: location.state });
+    }
+  }, [location.hash, location.pathname, location.state, navigate]);
+
   const webSocketConnected = useWebSocketConnected();
   const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -4669,6 +4682,20 @@ const location = useLocation();
           </div>
         )}
 
+        {/*
+          Tab region nested Routes (#3962 5.4 PR1). Each tab is migrating from
+          an `activeTab === 'x' && …` render gate to its own <Route> one PR at
+          a time (task54_spec.md §3). Un-migrated tabs keep rendering via the
+          `path="*"` fallback below, unchanged, driven by the activeTab<->route
+          adapter in UIContext. `audit` is the PR1 proof leaf.
+        */}
+        <Routes>
+          <Route index element={<Navigate to="nodes" replace />} />
+          <Route
+            path="audit"
+            element={<ErrorBoundary fallbackTitle="Audit Log failed to load"><AuditLogTab /></ErrorBoundary>}
+          />
+          <Route path="*" element={<>
         {activeTab === 'nodes' && (
           <ErrorBoundary fallbackTitle="Nodes failed to load">
           <NodesTab
@@ -5174,7 +5201,7 @@ const location = useLocation();
         )}
         {activeTab === 'notifications' && <ErrorBoundary fallbackTitle="Notifications failed to load"><NotificationsTab isAdmin={authStatus?.user?.isAdmin || false} /></ErrorBoundary>}
         {activeTab === 'users' && <ErrorBoundary fallbackTitle="Users failed to load"><UsersTab /></ErrorBoundary>}
-        {activeTab === 'audit' && <ErrorBoundary fallbackTitle="Audit Log failed to load"><AuditLogTab /></ErrorBoundary>}
+        {/* 'audit' migrated to <Route path="audit"> above (#3962 5.4 PR1 proof leaf) */}
         {activeTab === 'admin' && authStatus?.user?.isAdmin && (
           <ErrorBoundary fallbackTitle="Admin Commands failed to load">
           <AdminCommandsTab
@@ -5202,6 +5229,8 @@ const location = useLocation();
             </div>
           </ErrorBoundary>
         )}
+          </>} />
+        </Routes>
       </main>
 
       {/* Node Popup */}

@@ -63,7 +63,7 @@ interface NodesTabProps {
   centerMapOnNode: (node: DeviceInfo) => void;
   toggleFavorite: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
   toggleFavoriteLock?: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
-  setActiveTab: React.Dispatch<React.SetStateAction<TabType>>;
+  setActiveTab: (tab: TabType) => void;
   setSelectedDMNode: (nodeId: string) => void;
   markerRefs: React.MutableRefObject<Map<string, LeafletMarker>>;
   traceroutePathsElements: React.ReactNode;
