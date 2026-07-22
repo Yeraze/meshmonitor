@@ -165,6 +165,8 @@ Received channel and DM messages show a route line beneath the body, derived fro
 
 **Clicking the hash chain** opens a route-detail popup with the message's reception details (sender, time, hops, scope, text) and the route expanded per hop into **repeater / room-server names** from the contact list. Only relay infrastructure ever appears in a MeshCore path — each forwarder appends the leading bytes of its public key at the hash width the original sender chose (1–3 bytes) — so matching is limited to those contacts. Unknown hashes stay as raw hex; when several repeaters share a hash prefix, the popup best-guesses the one closest to the neighbouring hops' positions and labels it as such.
 
+When **every** relay hop resolves to a contact with a known position, the popup also shows a **Packet flow** mini map: a dashed line tracing the packet geospatially across the relays, each hop marked and labeled (`#1 Hilltop`, `#2 Downtown`, …). The sender and your local node are added as endpoints when their positions are known. If any hop is unknown or unpositioned the map is omitted entirely — a partial line would misrepresent the path.
+
 Room-server posts and messages with no recoverable path show no route line.
 
 ### Send bar

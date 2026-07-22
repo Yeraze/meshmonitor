@@ -6,6 +6,7 @@ import {
   pathHashBytesOf,
   repeaterHopOptions,
   resolveHop,
+  resolveRoute,
   resolveRouteNames,
 } from './meshcorePath.js';
 import type { MeshCoreContact } from './meshcoreHelpers';
@@ -178,6 +179,32 @@ describe('meshcorePath', () => {
 
     it('returns an empty list for an empty route', () => {
       expect(resolveRouteNames([], [mk('a3'.padEnd(64, '0'), 2, 'X')])).toEqual([]);
+    });
+  });
+
+  describe('resolveRoute', () => {
+    it('surfaces the chosen candidate position, match count, and null name for unknowns', () => {
+      const contacts = [
+        mkPos('a3' + 'b'.repeat(62), 2, 'Hilltop', 30.0, -90.0),
+        mk('7f' + 'c'.repeat(62), 3, 'Downtown Room'), // known but unpositioned
+      ];
+      const route = resolveRoute(['a3', '7f', 'ff'], contacts);
+      expect(route).toHaveLength(3);
+      expect(route[0]).toEqual({ byte: 'a3', name: 'Hilltop', matchCount: 1, position: { lat: 30.0, lon: -90.0 } });
+      expect(route[1]).toEqual({ byte: '7f', name: 'Downtown Room', matchCount: 1, position: null });
+      expect(route[2]).toEqual({ byte: 'ff', name: null, matchCount: 0, position: null });
+    });
+
+    it('reports the collision winner with its position and match count', () => {
+      const contacts = [
+        mkPos('11' + 'a'.repeat(62), 2, 'Anchor', 30.0, -90.0),
+        mkPos('a3' + 'c'.repeat(62), 2, 'Near Twin', 30.0, -89.95),
+        mkPos('a3' + 'd'.repeat(62), 2, 'Far Twin', 35.0, -80.0),
+      ];
+      const route = resolveRoute(['11', 'a3'], contacts);
+      expect(route[1].name).toBe('Near Twin');
+      expect(route[1].matchCount).toBe(2);
+      expect(route[1].position).toEqual({ lat: 30.0, lon: -89.95 });
     });
   });
 });

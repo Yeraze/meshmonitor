@@ -9,6 +9,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MeshCoreOtaPacketEvent } from '../../hooks/useWebSocket';
 import { decodeMeshCorePacket } from '../../utils/meshcorePacketDecode';
+import { useDialogA11y } from '../../hooks/useDialogA11y';
 import { UiIcon } from '../icons';
 
 interface Props {
@@ -27,13 +28,23 @@ const fmtHex = (n: number) => `0x${n.toString(16).padStart(2, '0')}`;
 
 const MeshCorePacketDetailModal: React.FC<Props> = ({ packet, onClose }) => {
   const { t } = useTranslation();
+  const { contentRef, onKeyDown } = useDialogA11y(onClose);
   const decoded = decodeMeshCorePacket(packet.rawHex);
 
   const time = new Date(packet.timestamp);
 
   return (
-    <div className="mcpm-modal" onClick={onClose}>
-      <div className="mcpm-modal-content" onClick={(e) => e.stopPropagation()}>
+    <div className="mcpm-modal" onClick={onClose} role="presentation">
+      <div
+        className="mcpm-modal-content"
+        ref={contentRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('meshcore.packets.detailTitle', 'Packet Decode')}
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mcpm-modal-header">
           <h4>{t('meshcore.packets.detailTitle', 'Packet Decode')}</h4>
           <button className="mcpm-modal-close" onClick={onClose} aria-label={t('common.close', 'Close')}>×</button>

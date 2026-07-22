@@ -10,6 +10,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
+import { useDialogA11y } from '../../hooks/useDialogA11y';
 import type { MqttGroupedPacket, MqttReception } from './mqttPacketTypes';
 
 interface Props {
@@ -55,6 +56,8 @@ function formatHeard(ts: number): string {
 
 const MqttPacketDetailModal: React.FC<Props> = ({ packet, prefix, csrfFetch, nodeName, onClose }) => {
   const { t } = useTranslation();
+  // Escape / focus-trap / focus-restore + dialog semantics (shared a11y hook).
+  const { contentRef, onKeyDown } = useDialogA11y(onClose);
 
   const [receptions, setReceptions] = useState<MqttReception[]>([]);
   const [loadingReceptions, setLoadingReceptions] = useState(false);
@@ -94,16 +97,6 @@ const MqttPacketDetailModal: React.FC<Props> = ({ packet, prefix, csrfFetch, nod
     return () => { cancelled = true; };
   }, [canFetch, packet.packetId, packet.fromNode, csrfFetch, prefix]);
 
-  // Close on Escape, matching the MeshCore modal's overlay-click-to-close
-  // behavior plus keyboard dismissal.
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
-
   const renderNodeRef = useCallback((n: number | null, id: string | null): string => {
     if (n === BROADCAST_NODE_NUM || id === '!ffffffff') return t('common.broadcast', 'Broadcast');
     const name = nodeName(n);
@@ -114,8 +107,17 @@ const MqttPacketDetailModal: React.FC<Props> = ({ packet, prefix, csrfFetch, nod
   const showOutcomeBadge = packet.encrypted && !packet.portnumName && ENCRYPTED_OUTCOME_BADGES.has(packet.ingestOutcome);
 
   return (
-    <div className="mqpm-modal" onClick={onClose}>
-      <div className="mqpm-modal-content" onClick={(e) => e.stopPropagation()}>
+    <div className="mqpm-modal" onClick={onClose} role="presentation">
+      <div
+        className="mqpm-modal-content"
+        ref={contentRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('mqtt.packets.detailTitle', 'Packet Detail')}
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mqpm-modal-header">
           <h4>{t('mqtt.packets.detailTitle', 'Packet Detail')}</h4>
           <button className="mqpm-modal-close" onClick={onClose} aria-label={t('common.close', 'Close')}>×</button>
