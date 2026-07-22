@@ -8,10 +8,13 @@
  * exhaustively unit-tested in lowEntropyKeyService.test.ts.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import zlib from 'zlib';
+import { nodeNumFromPublicKey } from '../../services/lowEntropyKeyService.js';
 
 const KEY_BENIGN = Buffer.alloc(32, 0x02).toString('base64');
-const NEW_NUM = zlib.crc32(Buffer.from(KEY_BENIGN, 'base64')) >>> 0; // crc32(key) = the 2.8 identity
+// Derive via the production helper (portable CRC-32) rather than zlib.crc32,
+// which isn't available on Node 20 (our support floor). crc32 correctness
+// itself is pinned against the canonical vector in lowEntropyKeyService.test.ts.
+const NEW_NUM = nodeNumFromPublicKey(KEY_BENIGN)!; // crc32(key) = the 2.8 identity
 const OLD_NUM = 0x2b873e80; // arbitrary pre-upgrade MAC-derived NodeNum (not crc32)
 
 const KEY_COLLISION = Buffer.alloc(32, 0x03).toString('base64');
