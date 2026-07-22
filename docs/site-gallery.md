@@ -98,6 +98,14 @@ Running a public MeshMonitor instance? We'd love to feature it! **[File an issue
 
 ---
 
+### MeshEC
+- **URL**: [meshmonitor.mesh.ec](https://meshmonitor.mesh.ec/)
+- **Network**: [mesh.ec](https://mesh.ec/)
+- **Location**: Ecuador, South America
+- **Description**: Monitoring and supporting the Meshtastic and MeshCore networks throughout Ecuador, South America.
+
+---
+
 ## About the Site Gallery
 
 The Site Gallery showcases MeshMonitor instances that are publicly accessible. These sites demonstrate:
