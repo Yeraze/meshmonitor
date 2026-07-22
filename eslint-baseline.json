@@ -561,9 +561,6 @@
   "src/hooks/useTraceroutePaths.tsx": {
     "react-refresh/only-export-components": 1
   },
-  "src/hooks/useVersionCheck.test.ts": {
-    "@typescript-eslint/no-unused-vars": 1
-  },
   "src/main.tsx": {
     "react-refresh/only-export-components": 1
   },
