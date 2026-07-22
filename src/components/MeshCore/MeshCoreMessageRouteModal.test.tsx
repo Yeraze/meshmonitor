@@ -54,8 +54,10 @@ describe('MeshCoreMessageRouteModal', () => {
     expect(screen.getByText('Message Route')).toBeTruthy();
     expect(screen.getByText('Sender')).toBeTruthy();
     expect(screen.getByText('test ping')).toBeTruthy();
-    // Per-hop rows resolve to names; the summary row joins them.
-    expect(screen.getByText('Hilltop → Downtown Room')).toBeTruthy();
+    // Per-hop rows resolve to names; the summary row joins them (icon arrows).
+    const resolved = document.querySelector('.mc-route-resolved');
+    expect(resolved?.textContent).toContain('Hilltop');
+    expect(resolved?.textContent).toContain('Downtown Room');
     // Hash width inferred from the hop hex length (2 chars = 1 byte).
     expect(screen.getByText('1 B')).toBeTruthy();
   });
@@ -76,7 +78,9 @@ describe('MeshCoreMessageRouteModal', () => {
     // Collision → alphabetical first (no positions) + best-guess note.
     expect(screen.getAllByText(/best guess of/).length).toBeGreaterThan(0);
     // Unknown hash "ff" falls back to raw hex in the summary.
-    expect(screen.getByText('Twin One → ff')).toBeTruthy();
+    const resolved = document.querySelector('.mc-route-resolved');
+    expect(resolved?.textContent).toContain('Twin One');
+    expect(resolved?.textContent).toContain('ff');
     // Per-hop row text is split around the arrow icon — match on substring.
     expect(screen.getAllByText(/unknown repeater/).length).toBeGreaterThan(0);
   });

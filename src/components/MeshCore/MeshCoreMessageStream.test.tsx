@@ -278,7 +278,9 @@ describe('MeshCoreMessageStream route-detail popup', () => {
     expect(container.querySelector('.mcpm-modal')).toBeNull();
     fireEvent.click(container.querySelector('.mc-route-chain-link')!);
     expect(container.querySelector('.mcpm-modal')).not.toBeNull();
-    expect(screen.getByText('Hilltop → Downtown Room')).toBeTruthy();
+    const resolved = container.querySelector('.mc-route-resolved');
+    expect(resolved?.textContent).toContain('Hilltop');
+    expect(resolved?.textContent).toContain('Downtown Room');
     // Close via the backdrop.
     fireEvent.click(container.querySelector('.mcpm-modal')!);
     expect(container.querySelector('.mcpm-modal')).toBeNull();

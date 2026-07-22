@@ -92,13 +92,20 @@ const MeshCoreMessageRouteModal: React.FC<Props> = ({ message, fromLabel, contac
                       : r.name}
                     {r.matchCount > 1 && (
                       <span className="mc-route-best-guess">
-                        {' '}· {t('meshcore.route_detail_best_guess', 'best guess of')} {r.matchCount} {t('meshcore.route_detail_matches', 'matches')}
+                        {' '}({t('meshcore.route_detail_best_guess', 'best guess of')} {r.matchCount} {t('meshcore.route_detail_matches', 'matches')})
                       </span>
                     )}
                   </Row>
                 ))}
                 <Row label={t('meshcore.route_detail_resolved', 'Resolved')} wrap>
-                  {rows.map((r) => (r.matchCount === 0 ? r.hash : r.name)).join(' → ')}
+                  <span className="mc-route-resolved">
+                    {rows.map((r, i) => (
+                      <React.Fragment key={`${r.hash}-${i}`}>
+                        {r.matchCount === 0 ? r.hash : r.name}
+                        {i < rows.length - 1 && <> <UiIcon name="forward" size={12} /> </>}
+                      </React.Fragment>
+                    ))}
+                  </span>
                 </Row>
               </>
             )}
