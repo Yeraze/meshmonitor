@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
-import { TabType, SortField, SortDirection } from '../types/ui';
+import React, { createContext, useContext, useState, useMemo, useCallback, ReactNode } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { TabType, SortField, SortDirection, VALID_TABS } from '../types/ui';
 
 interface UIContextType {
   activeTab: TabType;
-  setActiveTab: React.Dispatch<React.SetStateAction<TabType>>;
+  setActiveTab: (tab: TabType) => void;
   showMqttMessages: boolean;
   setShowMqttMessages: React.Dispatch<React.SetStateAction<boolean>>;
   error: string | null;
@@ -50,25 +51,30 @@ interface UIProviderProps {
   children: ReactNode;
 }
 
-// Valid tab types for hash validation
-const VALID_TABS: TabType[] = ['nodes', 'channels', 'messages', 'info', 'settings', 'automation', 'dashboard', 'configuration', 'notifications', 'users', 'audit', 'security', 'themes', 'admin', 'packetmonitor', 'mqtt-config'];
-
-// Helper to get tab from URL hash
-const getTabFromHash = (): TabType => {
-  const hash = window.location.hash.slice(1); // Remove the '#'
-  return VALID_TABS.includes(hash as TabType) ? (hash as TabType) : 'nodes';
-};
-
-// Helper to update URL hash
-const updateHash = (tab: TabType) => {
-  if (window.location.hash.slice(1) !== tab) {
-    window.location.hash = tab;
-  }
-};
-
 export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
-  // Initialize activeTab from URL hash, or default to 'nodes'
-  const [activeTab, setActiveTab] = useState<TabType>(() => getTabFromHash());
+  // activeTab<->route adapter (#3962 5.4 PR1). `activeTab` used to be its own
+  // piece of state synced to `window.location.hash`; it is now *derived* from
+  // the router location (last path segment), and `setActiveTab` navigates
+  // instead of setting state directly. This keeps every un-migrated
+  // `activeTab === 'x'` render block and `Sidebar`'s `setActiveTab(id)` calls
+  // working unchanged while tabs move to routes one PR at a time (see
+  // task54_spec.md §2.3). Remove this adapter once no consumer reads
+  // activeTab/setActiveTab (final PR of the stack).
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { sourceId } = useParams<{ sourceId: string }>();
+
+  const activeTab = useMemo<TabType>(() => {
+    const segments = location.pathname.split('/').filter(Boolean);
+    const last = segments[segments.length - 1];
+    return VALID_TABS.includes(last as TabType) ? (last as TabType) : 'nodes';
+  }, [location.pathname]);
+
+  const setActiveTab = useCallback((tab: TabType) => {
+    if (!sourceId || tab === activeTab) return;
+    void navigate(`/source/${sourceId}/${tab}`);
+  }, [navigate, sourceId, activeTab]);
+
   const [showMqttMessagesState, setShowMqttMessagesState] = useState<boolean>(() => {
     const saved = localStorage.getItem('showMqttMessages');
     return saved !== null ? saved === 'true' : false; // Default to false
@@ -111,22 +117,6 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
       localStorage.setItem('showMqttMessages', newValue.toString());
       return newValue;
     });
-  }, []);
-
-  // Sync activeTab to URL hash when activeTab changes
-  useEffect(() => {
-    updateHash(activeTab);
-  }, [activeTab]);
-
-  // Listen for hash changes (back/forward button navigation)
-  useEffect(() => {
-    const handleHashChange = () => {
-      const tabFromHash = getTabFromHash();
-      setActiveTab(tabFromHash);
-    };
-
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
   const value = useMemo<UIContextType>(() => ({
