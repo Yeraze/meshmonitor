@@ -24,11 +24,22 @@ export interface CopyNodeInfoResult {
   pushedToDevice: boolean;
 }
 
+/** Canonical "this NodeInfo field is empty" predicate. */
+export function isNodeInfoFieldBlank(value: unknown): boolean {
+  return value == null || value === '';
+}
+
+/** Count of NODE_INFO_FIELDS that are non-blank on a node. Used for donor ranking. */
+export function countFilledNodeInfoFields(node: Partial<DbNode>): number {
+  return NODE_INFO_FIELDS.filter(f => !isNodeInfoFieldBlank(node[f as keyof DbNode])).length;
+}
+
+/** Analysis field set — NODE_INFO_FIELDS minus the derived hasPKC flag. */
+export const ANALYZE_NODE_INFO_FIELDS =
+  NODE_INFO_FIELDS.filter(f => f !== 'hasPKC') as readonly NodeInfoField[];
+
 function countFilledFields(node: DbNode): number {
-  return NODE_INFO_FIELDS.filter(f => {
-    const val = node[f as keyof DbNode];
-    return val !== null && val !== undefined && val !== '';
-  }).length;
+  return countFilledNodeInfoFields(node);
 }
 
 function pickNodeInfoFields(node: DbNode): Pick<DbNode, NodeInfoField> {
