@@ -191,4 +191,71 @@ describe('connectionStateMachine dispatch() — pure reducer (task42b_spec.md §
       expect(kinds(actions)).toEqual(['connectTransport']);
     });
   });
+
+  // ── Edge-case / combination coverage (#3962 Phase 4.2b C3) ──
+  // The suite above covers every row of task42b_spec.md §3.2 individually.
+  // These tests cover combinations and starting-state independence the
+  // per-row tests don't exercise directly, and explicitly document the
+  // reducer's "ignores incoming `state`" design for events whose table row
+  // lists specific "From" states — the manager enforces those preconditions
+  // itself (guards, or the alreadyUserDisconnected non-regression check),
+  // not the pure reducer.
+  describe('cross-cutting combinations', () => {
+    it('TRANSPORT_CONNECTED: passive+fresh AND suppressNext both true still consumes the suppress latch', () => {
+      const { next, actions } = dispatch(
+        ConnState.Connecting,
+        'TRANSPORT_CONNECTED',
+        ctx({ passive: true, cachesFresh: true, suppressNext: true })
+      );
+      expect(next).toBe(ConnState.Connected);
+      expect(kinds(actions)).toEqual([
+        'consumeSuppressNext',
+        'clearManualResync',
+        'completeConfigCapture',
+        'emitStatus',
+        'runOnConfigCaptureComplete',
+      ]);
+    });
+
+    it.each([ConnState.Disconnected, ConnState.ConfigSync, ConnState.Connected, ConnState.UserDisconnected])(
+      'TRANSPORT_CONNECTED is independent of the incoming state (%s) — the skip/full decision is ctx-only',
+      (from) => {
+        const cold = dispatch(from, 'TRANSPORT_CONNECTED', ctx());
+        expect(cold.next).toBe(ConnState.ConfigSync);
+        const skip = dispatch(from, 'TRANSPORT_CONNECTED', ctx({ suppressNext: true }));
+        expect(skip.next).toBe(ConnState.Connected);
+      }
+    );
+
+    it.each([ConnState.Connecting, ConnState.Connected, ConnState.Disconnected])(
+      'HANDSHAKE_SEND_FAILED (genuine) is independent of the incoming state (%s)',
+      (from) => {
+        const { next, actions } = dispatch(from, 'HANDSHAKE_SEND_FAILED', ctx({ transportIdentityMatches: true }));
+        expect(next).toBe(ConnState.Disconnected);
+        expect(kinds(actions)).toEqual(['setPostResetCooldown', 'disconnectTransport', 'emitStatus']);
+      }
+    );
+
+    it.each([ConnState.Disconnected, ConnState.UserDisconnected, ConnState.Connecting, ConnState.Probing])(
+      'TRANSPORT_DISCONNECTED always returns Disconnected regardless of incoming state (%s) — the manager guards UserDisconnected non-regression itself',
+      (from) => {
+        const { next, actions } = dispatch(from, 'TRANSPORT_DISCONNECTED', ctx({ passive: false }));
+        expect(next).toBe(ConnState.Disconnected);
+        expect(kinds(actions)).toEqual(['recordLastDisconnect', 'clearDeviceCaches', 'clearConfigCapture', 'notifyDisconnected', 'emitStatus']);
+      }
+    );
+
+    it('MANUAL_RESYNC_REQUESTED is independent of the incoming state — guards live in the manager, not the reducer', () => {
+      const { next, actions } = dispatch(ConnState.Disconnected, 'MANUAL_RESYNC_REQUESTED', ctx());
+      expect(next).toBe(ConnState.ConfigSync);
+      expect(kinds(actions)).toEqual(['latchSuppressNext', 'startConfigCapture', 'armResyncWatchdog', 'sendWantConfig']);
+    });
+
+    it('CONNECT_REQUESTED from Probing/Connecting still resolves purely from ctx.postResetActive', () => {
+      const fromConnecting = dispatch(ConnState.Connecting, 'CONNECT_REQUESTED', ctx({ postResetActive: false }));
+      expect(fromConnecting.next).toBe(ConnState.Connecting);
+      const fromProbing = dispatch(ConnState.Probing, 'CONNECT_REQUESTED', ctx({ postResetActive: true }));
+      expect(fromProbing.next).toBe(ConnState.Probing);
+    });
+  });
 });
