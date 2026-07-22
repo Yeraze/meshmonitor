@@ -140,6 +140,7 @@ import { migration as cleanupOrphanedSourceNodesMigration, runMigration122Postgr
 import { migration as fixMqttDirectedMessageChannelMigration, runMigration123Postgres, runMigration123Mysql } from '../server/migrations/123_fix_mqtt_directed_message_channel.js';
 import { migration as addPositionLocationSourceMigration, runMigration124Postgres, runMigration124Mysql } from '../server/migrations/124_add_position_location_source.js';
 import { migration as addXeddsaSignedMigration, runMigration125Postgres, runMigration125Mysql } from '../server/migrations/125_add_xeddsa_signed_to_packet_log.js';
+import { migration as addTransportFlagsMigration, runMigration126Postgres, runMigration126Mysql } from '../server/migrations/126_add_transport_flags_to_nodes.js';
 
 // ============================================================================
 // Registry
@@ -1989,4 +1990,17 @@ registry.register({
   sqlite: (db) => addXeddsaSignedMigration.up(db),
   postgres: (client) => runMigration125Postgres(client),
   mysql: (pool) => runMigration125Mysql(pool),
+});
+
+// Migration 126: Add `transportFlags` bitmask to `nodes` (1=RF, 2=MQTT,
+// 4=UDP). Accumulating bits replace the last-wins `transportMechanism` for map
+// visibility, so an MQTT echo can no longer erase a node's RF reachability and
+// hide it behind the default-off "Show MQTT" toggle (#4240).
+registry.register({
+  number: 126,
+  name: 'add_transport_flags_to_nodes',
+  settingsKey: 'migration_126_add_transport_flags_to_nodes',
+  sqlite: (db) => addTransportFlagsMigration.up(db),
+  postgres: (client) => runMigration126Postgres(client),
+  mysql: (pool) => runMigration126Mysql(pool),
 });

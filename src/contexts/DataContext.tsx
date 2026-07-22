@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useMemo, ReactNode } from 'react';
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ConnectionStatus } from '../types/ui';
@@ -70,45 +70,63 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   const [dmHasMore, setDmHasMore] = useState<{[key: string]: boolean}>({});
   const [dmLoadingMore, setDmLoadingMore] = useState<{[key: string]: boolean}>({});
 
+  const value = useMemo<DataContextType>(() => ({
+    nodes,
+    setNodes,
+    channels,
+    setChannels,
+    connectionStatus,
+    setConnectionStatus,
+    messages,
+    setMessages,
+    channelMessages,
+    setChannelMessages,
+    deviceInfo,
+    setDeviceInfo,
+    deviceConfig,
+    setDeviceConfig,
+    currentNodeId,
+    setCurrentNodeId,
+    nodeAddress,
+    setNodeAddress,
+    nodesWithTelemetry,
+    setNodesWithTelemetry,
+    nodesWithWeatherTelemetry,
+    setNodesWithWeatherTelemetry,
+    nodesWithEstimatedPosition,
+    setNodesWithEstimatedPosition,
+    nodesWithPKC,
+    setNodesWithPKC,
+    channelHasMore,
+    setChannelHasMore,
+    channelLoadingMore,
+    setChannelLoadingMore,
+    dmHasMore,
+    setDmHasMore,
+    dmLoadingMore,
+    setDmLoadingMore,
+  }), [
+    nodes, setNodes,
+    channels, setChannels,
+    connectionStatus, setConnectionStatus,
+    messages, setMessages,
+    channelMessages, setChannelMessages,
+    deviceInfo, setDeviceInfo,
+    deviceConfig, setDeviceConfig,
+    currentNodeId, setCurrentNodeId,
+    nodeAddress, setNodeAddress,
+    nodesWithTelemetry, setNodesWithTelemetry,
+    nodesWithWeatherTelemetry, setNodesWithWeatherTelemetry,
+    nodesWithEstimatedPosition, setNodesWithEstimatedPosition,
+    nodesWithPKC, setNodesWithPKC,
+    channelHasMore, setChannelHasMore,
+    channelLoadingMore, setChannelLoadingMore,
+    dmHasMore, setDmHasMore,
+    dmLoadingMore, setDmLoadingMore,
+  ]);
+
   return (
-    <DataContext.Provider
-      value={{
-        nodes,
-        setNodes,
-        channels,
-        setChannels,
-        connectionStatus,
-        setConnectionStatus,
-        messages,
-        setMessages,
-        channelMessages,
-        setChannelMessages,
-        deviceInfo,
-        setDeviceInfo,
-        deviceConfig,
-        setDeviceConfig,
-        currentNodeId,
-        setCurrentNodeId,
-        nodeAddress,
-        setNodeAddress,
-        nodesWithTelemetry,
-        setNodesWithTelemetry,
-        nodesWithWeatherTelemetry,
-        setNodesWithWeatherTelemetry,
-        nodesWithEstimatedPosition,
-        setNodesWithEstimatedPosition,
-        nodesWithPKC,
-        setNodesWithPKC,
-        channelHasMore,
-        setChannelHasMore,
-        channelLoadingMore,
-        setChannelLoadingMore,
-        dmHasMore,
-        setDmHasMore,
-        dmLoadingMore,
-        setDmLoadingMore,
-      }}
-    >
+    <DataContext.Provider value={value}>
       {children}
     </DataContext.Provider>
   );

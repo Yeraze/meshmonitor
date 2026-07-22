@@ -143,7 +143,7 @@ describe('MeshtasticManager - issue #3270 orphaned-transport flap', () => {
     createdTransports.length = 0;
 
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
 
     // Use a per-source config override so getConfig() short-circuits without
     // touching settings.

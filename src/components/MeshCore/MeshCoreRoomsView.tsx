@@ -236,7 +236,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               >
                 <div className="mc-channel-row-name">
                   <span className={`mc-room-row-status ${loggedIn ? 'logged-in' : hasSaved ? 'has-saved' : 'not-logged-in'}`}>
-                    {loggedIn ? '●' : hasSaved ? '◐' : '○'}
+                    <UiIcon name={loggedIn ? 'statusOn' : hasSaved ? 'statusPartial' : 'statusOff'} size={12} />
                   </span>
                   {' '}
                   {room.advName || room.name || room.publicKey.substring(0, 12) + '…'}

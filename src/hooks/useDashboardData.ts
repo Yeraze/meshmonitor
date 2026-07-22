@@ -10,7 +10,7 @@ import { appBasename } from '../init';
 import { useAuth } from '../contexts/AuthContext';
 import { isBogusPosition, shouldDiscardPosition } from '../utils/nullIsland';
 import { getDiscardInvalidPositions } from '../utils/positionDisplayConfig';
-import { classifyNodeTransport, type NodeTransportClass } from '../utils/nodeTransport';
+import { getNodeTransportClasses, type NodeTransportClass } from '../utils/nodeTransport';
 import { unifiedNodeKey } from '../utils/nodeIdentity';
 import type { SourceRadioSummary } from '../types/elevation';
 
@@ -455,8 +455,29 @@ export function mergeUnifiedSourceData(
     // MQTT on another stays visible under "Show RF" even with "Show MQTT" off.
     // The whole-record merge keeps only the newest transportMechanism, which
     // would otherwise drop the other transports.
+    // #4240: merge the per-transport last-seen stamps by taking the MAX across
+    // sources, rather than precomputing a class list here. Keeping timestamps
+    // (not classes) is what lets the consumer apply the user's active window —
+    // a precomputed list would freeze in whatever staleness state it was built
+    // with, and Unified nodes would never decay.
+    const maxStamp = (key: 'transportLastRf' | 'transportLastMqtt' | 'transportLastUdp') => {
+      let best: number | null = null;
+      for (const e of entries) {
+        const v = (e.node as Record<string, unknown>)[key];
+        if (typeof v === 'number' && (best === null || v > best)) best = v;
+      }
+      return best;
+    };
+    merged.transportLastRf = maxStamp('transportLastRf');
+    merged.transportLastMqtt = maxStamp('transportLastMqtt');
+    merged.transportLastUdp = maxStamp('transportLastUdp');
+
+    // Legacy union, still consulted for records that carry no stamps at all
+    // (pre-migration-126 rows).
     const classes = new Set<NodeTransportClass>();
-    for (const e of entries) classes.add(classifyNodeTransport(e.node));
+    for (const e of entries) {
+      for (const c of getNodeTransportClasses(e.node)) classes.add(c);
+    }
     merged.transportClasses = Array.from(classes);
     return merged;
   });

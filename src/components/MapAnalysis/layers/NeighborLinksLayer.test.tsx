@@ -34,6 +34,16 @@ vi.mock('../../../hooks/useDashboardData', () => ({
   UNIFIED_SOURCE_ID: '__unified__',
 }));
 
+
+/** Visible line divs only — interactive links also render an invisible
+ *  12px hit companion (opacity 0) since the thin-line click-target fix. */
+function visiblePolys() {
+  return screen.getAllByTestId('poly').filter((el) => {
+    const po = JSON.parse(el.getAttribute('data-path-options') ?? '{}');
+    return po.opacity !== 0;
+  });
+}
+
 describe('NeighborLinksLayer', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -54,7 +64,7 @@ describe('NeighborLinksLayer', () => {
         </MapAnalysisProvider>
       </QueryClientProvider>,
     );
-    const polys = screen.getAllByTestId('poly');
+    const polys = visiblePolys();
     expect(polys).toHaveLength(1);
     // Pins the pre-promotion look (RF transport color, weight 1, dash '4 4')
     // so the shared-layer adapter is byte-for-byte identical. opacity =
@@ -115,7 +125,7 @@ describe('NeighborLinksLayer', () => {
         </MapAnalysisProvider>
       </QueryClientProvider>,
     );
-    expect(screen.getAllByTestId('poly')).toHaveLength(1);
+    expect(visiblePolys()).toHaveLength(1);
   });
 
   it('still drops an edge when an endpoint has no position on any source', () => {

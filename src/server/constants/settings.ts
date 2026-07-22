@@ -38,6 +38,10 @@ export const VALID_SETTINGS_KEYS = [
   'autoAckCooldownSeconds',
   // Pre-send delay (seconds) before a Meshtastic auto-ack reply is sent (#3876).
   'autoAckPreSendDelaySeconds',
+  // App-level DM resend attempt cap for MessageQueueService (#4266). Bounded
+  // to [1,3] server-side — an unbounded value would let Auto-Ack be abused as
+  // a repeat-broadcast/spam mechanism. Channel sends stay hardcoded to 1.
+  'autoAckMaxAttempts',
   // Auto-ack 2x2 matrix (discussion #3564): {Channel,Direct} × {ZeroHop,MultiHop},
   // each cell with Reply / Tapback / Respond-via-DM. These supersede the legacy
   // hop-only keys above (autoAckDirect*/autoAckMultihop*/autoAckUseDM/
@@ -323,6 +327,7 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'autoAckChannels',
   'autoAckCooldownSeconds',
   'autoAckPreSendDelaySeconds',
+  'autoAckMaxAttempts',
   'autoAckDirectEnabled',
   'autoAckDirectMessages',
   'autoAckDirectReplyEnabled',

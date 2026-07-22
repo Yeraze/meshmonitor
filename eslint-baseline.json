@@ -561,9 +561,6 @@
   "src/hooks/useTraceroutePaths.tsx": {
     "react-refresh/only-export-components": 1
   },
-  "src/hooks/useVersionCheck.test.ts": {
-    "@typescript-eslint/no-unused-vars": 1
-  },
   "src/main.tsx": {
     "react-refresh/only-export-components": 1
   },
@@ -611,7 +608,7 @@
     "@typescript-eslint/no-unused-vars": 1
   },
   "src/server/meshtasticManager.ts": {
-    "@typescript-eslint/no-explicit-any": 168,
+    "@typescript-eslint/no-explicit-any": 167,
     "@typescript-eslint/no-unused-vars": 2,
     "no-useless-assignment": 1
   },
@@ -978,6 +975,12 @@
   "src/server/routes/_channelDatabaseHandlers.ts": {
     "@typescript-eslint/no-explicit-any": 10
   },
+  "src/server/routes/adminRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 20,
+    "@typescript-eslint/no-unused-vars": 2,
+    "no-case-declarations": 3,
+    "preserve-caught-error": 1
+  },
   "src/server/routes/analysisRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 13
   },
@@ -1000,9 +1003,6 @@
   "src/server/routes/cleanupRoutes.test.ts": {
     "@typescript-eslint/no-unused-vars": 1
   },
-  "src/server/routes/configRoutes.test.ts": {
-    "@typescript-eslint/no-unused-vars": 1
-  },
   "src/server/routes/embedPublicRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 6
   },
@@ -1017,11 +1017,17 @@
   "src/server/routes/meshRequestRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 5
   },
-  "src/server/routes/meshcoreRoutes.ts": {
-    "@typescript-eslint/no-explicit-any": 3
+  "src/server/routes/meshcoreConfigRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/routes/meshcoreContactsRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/routes/meshcoreDeviceRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 1
   },
   "src/server/routes/messageRoutes.ts": {
-    "@typescript-eslint/no-explicit-any": 29
+    "@typescript-eslint/no-explicit-any": 28
   },
   "src/server/routes/neighborInfoRoutes.ts": {
     "@typescript-eslint/no-unused-vars": 2
@@ -1029,11 +1035,18 @@
   "src/server/routes/newsRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 4
   },
+  "src/server/routes/nodesRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 11
+  },
   "src/server/routes/notificationRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 16
   },
   "src/server/routes/packetRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 25
+  },
+  "src/server/routes/pollRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 11,
+    "@typescript-eslint/no-unused-vars": 3
   },
   "src/server/routes/scriptContentRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 1,
@@ -1120,17 +1133,14 @@
   "src/server/server.test.ts": {
     "@typescript-eslint/no-unused-vars": 28
   },
-  "src/server/server.ts": {
-    "@typescript-eslint/no-explicit-any": 62,
-    "@typescript-eslint/no-unused-vars": 5,
-    "no-case-declarations": 3,
-    "preserve-caught-error": 1
-  },
   "src/server/services/appriseNotificationService.ts": {
     "@typescript-eslint/no-explicit-any": 5,
     "@typescript-eslint/no-unused-vars": 1
   },
   "src/server/services/autoDeleteByDistanceService.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/services/autoResponderTriggerMigration.ts": {
     "@typescript-eslint/no-explicit-any": 1
   },
   "src/server/services/automation/automationEngineService.ts": {
@@ -1157,6 +1167,9 @@
   },
   "src/server/services/desktopNotificationService.ts": {
     "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/services/deviceAdminService.ts": {
+    "@typescript-eslint/no-explicit-any": 12
   },
   "src/server/services/deviceBackupService.ts": {
     "@typescript-eslint/no-explicit-any": 10,
@@ -1187,6 +1200,9 @@
   },
   "src/server/services/pushNotificationService.ts": {
     "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/services/remoteAdminService.ts": {
+    "@typescript-eslint/no-explicit-any": 5
   },
   "src/server/services/retroactiveDecryptionService.ts": {
     "@typescript-eslint/no-explicit-any": 1
@@ -1241,6 +1257,9 @@
   "src/server/utils/dbNodeMapper.ts": {
     "@typescript-eslint/no-explicit-any": 2
   },
+  "src/server/utils/jsonBigIntReplacer.ts": {
+    "@typescript-eslint/no-explicit-any": 3
+  },
   "src/server/utils/mergeNodesAcrossSources.ts": {
     "@typescript-eslint/no-explicit-any": 2
   },
@@ -1253,6 +1272,9 @@
   },
   "src/server/utils/ssrfGuard.ts": {
     "@typescript-eslint/no-unused-vars": 1
+  },
+  "src/server/utils/transformDbMessage.ts": {
+    "@typescript-eslint/no-explicit-any": 15
   },
   "src/server/virtualNodeServer.test.ts": {
     "@typescript-eslint/no-unused-vars": 1

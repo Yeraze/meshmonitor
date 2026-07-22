@@ -1,7 +1,44 @@
+/**
+ * @vitest-environment jsdom
+ */
 import { describe, it, expect } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
 import type { DeviceInfo, Channel } from '../types/device';
 import type { MeshMessage } from '../types/message';
 import type { ConnectionStatus } from '../types/ui';
+import { DataProvider, useData } from './DataContext';
+
+describe('DataContext value memoization (#3962 Phase 5.2)', () => {
+  it('returns a referentially stable value across an unrelated parent re-render', () => {
+    const { result, rerender } = renderHook(() => useData(), {
+      wrapper: ({ children }) => <DataProvider>{children}</DataProvider>,
+    });
+
+    const firstValue = result.current;
+
+    // Re-render the tree without changing any DataContext state.
+    rerender();
+
+    expect(result.current).toBe(firstValue);
+  });
+
+  it('produces a new value when a piece of state actually changes', () => {
+    const { result } = renderHook(() => useData(), {
+      wrapper: ({ children }) => <DataProvider>{children}</DataProvider>,
+    });
+
+    const firstValue = result.current;
+
+    act(() => {
+      result.current.setNodes([
+        { nodeNum: 1, hopsAway: 0 } as DeviceInfo,
+      ]);
+    });
+
+    expect(result.current).not.toBe(firstValue);
+    expect(result.current.nodes).toHaveLength(1);
+  });
+});
 
 describe('DataContext Types', () => {
   it('should have correct DeviceInfo array type structure', () => {

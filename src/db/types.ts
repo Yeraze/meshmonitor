@@ -42,6 +42,12 @@ export interface DbNode {
    *  5=MQTT, 6=MULTICAST_UDP, 7=API). Drives the map's per-class
    *  visibility toggles (#3112). Migration 066. */
   transportMechanism?: number | null;
+  /** #4240: unix seconds this node was last heard over each transport.
+   *  NULL = never. Migration 126. Map visibility ORs these and applies the
+   *  user's active window, so classification decays on its own. */
+  transportLastRf?: number | null;
+  transportLastMqtt?: number | null;
+  transportLastUdp?: number | null;
   isStoreForwardServer?: boolean | null;
   macaddr?: string | null;
   latitude?: number | null;

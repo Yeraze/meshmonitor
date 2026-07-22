@@ -4,7 +4,9 @@ import { logger } from '../../utils/logger.js';
 import databaseService from '../../services/database.js';
 import type { DbPushSubscription } from '../../db/types.js';
 import { getUserNotificationPreferencesAsync, shouldFilterNotificationAsync, applyNodeNamePrefixAsync } from '../utils/notificationFiltering.js';
-import meshtasticManager from '../meshtasticManager.js';
+import { fallbackManager } from '../meshtasticManager.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 
 // Re-export DbPushSubscription for backward compatibility
 export type { DbPushSubscription } from '../../db/types.js';
@@ -398,7 +400,8 @@ class PushNotificationService {
     logger.debug(`📢 Broadcasting push notification for source ${filterContext.sourceId} to ${subscriptions.length} subscriptions with filtering`);
 
     // Get local node name for prefix
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    const localNodeInfo = mgr.getLocalNodeInfo();
     const localNodeName = localNodeInfo?.longName || null;
 
     // Prefix title with source name (body kept clean — title already disambiguates source)
@@ -508,7 +511,8 @@ class PushNotificationService {
     // Get local node name for prefix
     // First try the live connection, then fall back to database (for startup before connection)
     let localNodeName: string | null = null;
-    const localNodeInfo = meshtasticManager.getLocalNodeInfo();
+    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    const localNodeInfo = mgr.getLocalNodeInfo();
     if (localNodeInfo?.longName) {
       localNodeName = localNodeInfo.longName;
     } else {

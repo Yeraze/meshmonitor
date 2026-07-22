@@ -1,5 +1,4 @@
 import databaseService, { type DbMessage } from '../services/database.js';
-import { ALL_SOURCES } from '../db/repositories/index.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService, { convertIpv4ConfigToStrings } from './protobufService.js';
 import { getProtobufRoot, type MeshBeaconPayload } from './protobufLoader.js';
@@ -8,14 +7,13 @@ import { VirtualNodeServer, type VirtualNodeConfig } from './virtualNodeServer.j
 import type { ITransport } from './transports/transport.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { sourceManagerRegistry } from './sourceManagerRegistry.js';
-import { getPrimaryMeshtasticManager } from './sourceManagerTypes.js';
 import { calculateDistance } from '../utils/distance.js';
 import { shouldDiscardPosition } from '../utils/nullIsland.js';
 import { getDiscardInvalidPositions } from '../utils/positionIngestConfig.js';
 import { isPointInGeofence, distanceToGeofenceCenter } from '../utils/geometry.js';
 import { formatTime, formatDate } from '../utils/datetime.js';
 import { logger } from '../utils/logger.js';
-import { calculateLoRaFrequency } from '../utils/loraFrequency.js';
+import { transportColumnForPacket } from '../utils/nodeTransport.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
 import { deadDropService, nodeIdHex } from './services/deadDropService.js';
@@ -56,15 +54,26 @@ import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { detectChannelMoves } from './utils/channelMoveDetection.js';
-import { mergeNodesAcrossSources } from './utils/mergeNodesAcrossSources.js';
 import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } from './utils/spoofDetection.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName } from './constants/meshtastic.js';
 import { normalizeChannelRole } from './constants/channelRole.js';
-import { isAutoFavoriteEligible } from './constants/autoFavorite.js';
 import { createRequire } from 'module';
 import { validateCron, scheduleCron, type CronJob } from './utils/cronScheduler.js';
-import { CronOrIntervalScheduler, type ScheduleMode } from './services/cronOrIntervalScheduler.js';
+import {
+  shouldExcludeFromPacketLog,
+  isPhantomInternalPacket,
+  peekServiceEnvelopePacketId,
+  recordMqttEcho,
+  matchesMqttEcho,
+} from './services/mqttProxyBridge.js';
+import { NodeDbMaintenanceService } from './services/nodeDbMaintenanceService.js';
+import { AutoAnnounceService } from './services/autoAnnounceService.js';
+import { AdminTransactionService } from './services/adminTransactionService.js';
+import { FavoritesService } from './services/favoritesService.js';
+import { DeviceAdminService } from './services/deviceAdminService.js';
+import { RemoteAdminService } from './services/remoteAdminService.js';
+import { ConnState, dispatch, type SmContext } from './meshtastic/connectionStateMachine.js';
 import fs from 'fs';
 import path from 'path';
 import * as net from 'net';
@@ -92,18 +101,6 @@ const IGNORE_REAPPLY_COOLDOWN_MS = 60_000;
 // sent message disagreed with what the UI showed for the same gateway.
 const ACTIVE_NODE_TOKEN_WINDOW_SECONDS = 7200;
 const ACTIVE_NODE_TOKEN_WINDOW_DAYS = ACTIVE_NODE_TOKEN_WINDOW_SECONDS / 86_400;
-
-// Maps AdminMessage.ModuleConfigType enum values to the ModuleConfig oneof key
-// used in decoded responses. Covers the module types MeshMonitor surfaces a
-// config UI for; used to map empty (all-default, Proto3-omitted) responses back
-// to the correct key via pendingModuleConfigRequests.
-const LOCAL_MODULE_CONFIG_TYPE_KEYS: { [key: number]: string } = {
-  0: 'mqtt',
-  5: 'telemetry',
-  9: 'neighborInfo',
-  13: 'statusmessage',
-  14: 'trafficManagement'
-};
 
 /** Parsed auto-responder payload: list of messages to send, plus the
  * raw decoded JSON object (or `{}` if the payload was plain text) so
@@ -282,76 +279,6 @@ export interface MeshMessage {
   timestamp: Date;
   rxSnr?: number;
   rxRssi?: number;
-}
-
-/**
- * Determines if a packet should be excluded from the packet log.
- * Internal packets (ADMIN_APP and ROUTING_APP) to/from the local node are excluded
- * since they are management traffic, not actual mesh traffic.
- *
- * @param fromNum - Source node number
- * @param toNum - Destination node number (null for broadcast)
- * @param portnum - Port number indicating packet type
- * @param localNodeNum - The local node's number (null if not connected)
- * @returns true if the packet should be excluded from logging
- */
-export function shouldExcludeFromPacketLog(
-  fromNum: number,
-  toNum: number | null,
-  portnum: number,
-  localNodeNum: number | null
-): boolean {
-  // If we don't know the local node, can't determine if it's local traffic
-  if (!localNodeNum) return false;
-
-  // Check if packet is to/from the local node
-  const isLocalPacket = fromNum === localNodeNum || toNum === localNodeNum;
-
-  // Check if it's an internal portnum (ROUTING_APP or ADMIN_APP)
-  const isInternalPortnum = portnum === PortNum.ROUTING_APP || portnum === PortNum.ADMIN_APP;
-
-  return isLocalPacket && isInternalPortnum;
-}
-
-/**
- * Determines if a packet is a "phantom" internal state update from the local device.
- * These are packets the Meshtastic device sends to TCP clients to report its internal
- * state, but they are NOT actual RF transmissions. They should not be logged as "TX"
- * packets because they clutter the packet log and don't represent actual mesh traffic.
- *
- * Phantom packets are identified by:
- * - from_node === localNodeNum (originated from local device)
- * - transport_mechanism === INTERNAL (0) or undefined
- * - hop_start === 0 or undefined (hasn't traveled any hops)
- *
- * @param fromNum - Source node number
- * @param localNodeNum - The local node's number (null if not connected)
- * @param transportMechanism - Transport mechanism from the packet (0 = INTERNAL)
- * @param hopStart - Hop start value from the packet
- * @returns true if the packet is a phantom internal state update
- */
-export function isPhantomInternalPacket(
-  fromNum: number,
-  localNodeNum: number | null,
-  transportMechanism: number | undefined,
-  hopStart: number | undefined
-): boolean {
-  // If we don't know the local node, can't determine if it's local traffic
-  if (!localNodeNum) return false;
-
-  // Must be from the local node
-  if (fromNum !== localNodeNum) return false;
-
-  // Transport mechanism must be INTERNAL (0) or undefined
-  // Note: TransportMechanism.INTERNAL === 0
-  const isInternalTransport = transportMechanism === undefined || transportMechanism === 0;
-  if (!isInternalTransport) return false;
-
-  // Hop start must be 0 or undefined (hasn't traveled any hops)
-  const hasNotTraveled = hopStart === undefined || hopStart === 0;
-  if (!hasNotTraveled) return false;
-
-  return true;
 }
 
 type TextMessage = {
@@ -551,8 +478,182 @@ class MeshtasticManager implements ISourceManager {
   // concurrent connect() joins it instead of building a second (orphan)
   // transport (#3270). Cleared in a finally when the attempt settles.
   private connectInFlight: Promise<boolean> | null = null;
-  private isConnected = false;
-  private userDisconnectedState = false;  // Track user-initiated disconnect
+  // Connection-lifecycle state machine (#3962 Phase 4.2b, task42b_spec.md).
+  // `#state` is the single source of truth for link-state; `isConnected` and
+  // `userDisconnectedState` below are DERIVED getters over it (§2.1/§3.3 —
+  // amended §0.3: only these two booleans derive from ConnState; the two
+  // config-capture flags stay independent auxiliary fields, see their
+  // declarations near `initConfigCache`).
+  //
+  // C1 (this checkpoint) wires `#state` writes at the *existing* mutation
+  // points mechanically via these accessors — every call site that used to
+  // write `this.isConnected = <bool>` / `this.userDisconnectedState = <bool>`
+  // (internal manager code AND test fixtures that seed state directly) keeps
+  // compiling and behaving byte-identically, because the setters below
+  // translate a legacy boolean write into the equivalent `#state` update.
+  // C2 replaces the internal writes with real `dispatch(...)` calls; these
+  // accessors remain afterward as the compatibility surface for the ~30
+  // existing test call sites that seed state via direct field assignment.
+  #state: ConnState = ConnState.Disconnected;
+
+  private get isConnected(): boolean {
+    return this.#state === ConnState.ConfigSync || this.#state === ConnState.Connected;
+  }
+
+  private set isConnected(value: boolean) {
+    if (value) {
+      // A direct "true" write always means "connected" for the purposes of
+      // the 41 `isConnected` readers (none of them distinguish ConfigSync
+      // vs Connected — that distinction only matters to the independent
+      // config-capture flags). Preserve ConfigSync if we're already mid
+      // handshake so a later `isCapturingInitConfig`-driven write isn't
+      // clobbered by an unrelated `isConnected = true` seed.
+      if (this.#state !== ConnState.ConfigSync) {
+        this.#state = ConnState.Connected;
+      }
+    } else if (this.#state !== ConnState.UserDisconnected) {
+      // Never regress out of UserDisconnected via a plain "isConnected =
+      // false" write — that write is independent of userDisconnectedState
+      // in the legacy boolean model (e.g. handleDisconnected() always sets
+      // isConnected=false, including when a user-initiated disconnect's
+      // transport.disconnect() call loops back through it).
+      this.#state = ConnState.Disconnected;
+    }
+  }
+
+  private get userDisconnectedState(): boolean {
+    return this.#state === ConnState.UserDisconnected;
+  }
+
+  private set userDisconnectedState(value: boolean) {
+    if (value) {
+      this.#state = ConnState.UserDisconnected;
+    } else if (this.#state === ConnState.UserDisconnected) {
+      this.#state = ConnState.Disconnected;
+    }
+  }
+
+  // ── Connection-lifecycle state-machine helpers (#3962 Phase 4.2b C2) ──
+  // `connect`/`doConnectInternal`/`handleConnected`/`handleDisconnected`/
+  // `requestManualResync`/`userDisconnect`/`userReconnect` (and the
+  // `configComplete` protobuf-dispatch case) build an `SmContext` from live
+  // fields, call `dispatch(#state, event, ctx)`, set `#state`, then execute
+  // the returned actions in place at their original call-site position —
+  // NOT via one generic action interpreter shared byte-for-byte across every
+  // call site. The reducer's action vocabulary is intentionally reused
+  // across transitions that mean genuinely different things in the manager
+  // (e.g. `clearDeviceCaches` clears different fields on a fresh connect vs.
+  // a disconnect), so a single generic switch can't express all of them
+  // without guessing context; executing them inline, at the same code
+  // position the equivalent write used to occupy, preserves exact
+  // side-effect ordering for the pinned tests while still making `dispatch`
+  // the single source of truth for `#state`.
+
+  /** Build an `SmContext` snapshot from live fields; callers override only
+   *  the handful of fields they alone can compute synchronously. */
+  private buildSmContext(overrides: Partial<SmContext> = {}): SmContext {
+    return {
+      passive: this.passiveMode,
+      vnEnabled: this.virtualNodeServer !== undefined,
+      cachesFresh: false,
+      suppressNext: this.suppressNextAutoSync,
+      postResetActive: this.postResetCooldownUntil > 0,
+      transportPresent: this.transport !== null,
+      transportIdentityMatches: true,
+      ...overrides,
+    };
+  }
+
+  // The four capture-flag actions (task42b_spec.md §0.3/§3.2 legend) — the
+  // ONLY writers of `configCaptureComplete` / `isCapturingInitConfig`.
+  // Buffer resets (`initConfigCache`, `preConfigChannelSnapshot`) stay as
+  // separate, explicit statements at each call site — pre-refactor code
+  // never bundled them into these two booleans either.
+  private startConfigCapture(): void {
+    this.isCapturingInitConfig = true;
+    this.configCaptureComplete = false;
+  }
+  private completeConfigCapture(): void {
+    this.isCapturingInitConfig = false;
+    this.configCaptureComplete = true;
+  }
+  private clearConfigCapture(): void {
+    this.isCapturingInitConfig = false;
+    this.configCaptureComplete = false;
+  }
+  private preserveConfigCapture(): void {
+    // no-op on both flags — #3122 passive/no-VN disconnect keeps the cached
+    // snapshot valid even though the link just went down.
+  }
+
+  /** Extracted verbatim from the old inline `doConnectInternal` teardown
+   *  block — the `teardownPrevTransport` action's implementation. */
+  private teardownExistingTransport(injectedTransport?: ITransport): void {
+    if (this.transport && this.transport !== injectedTransport) {
+      logger.debug('🔌 Tearing down existing transport before reconnect (prevents orphaned-transport flap #3270)');
+      try {
+        this.transport.removeAllListeners();
+        this.transport.disconnect();
+      } catch (teardownErr) {
+        const msg = teardownErr instanceof Error ? teardownErr.message : String(teardownErr);
+        logger.debug(`Ignoring error tearing down previous transport: ${msg}`);
+      }
+      this.transport = null;
+    }
+  }
+
+  private cancelConfigCompleteFallbackTimer(): void {
+    if (this.configCompleteFallbackTimer) {
+      clearTimeout(this.configCompleteFallbackTimer);
+      this.configCompleteFallbackTimer = null;
+    }
+  }
+
+  /** The `armFallbackTimer` action's implementation. Promoted from an inline
+   *  `setTimeout` closure (#3962 Phase 4.2b C2) so every exit from
+   *  `ConfigSync` can cancel it — the inline version never cancelled itself
+   *  and leaked one timer per (re)connect attempt for the life of the
+   *  process. Fires the `CONFIG_FALLBACK` transition if `configComplete`
+   *  never arrives. */
+  private armConfigCompleteFallbackTimer(): void {
+    this.cancelConfigCompleteFallbackTimer();
+    this.configCompleteFallbackTimer = setTimeout(() => {
+      this.configCompleteFallbackTimer = null;
+      if (!this.configCaptureComplete && this.isConnected) {
+        logger.warn(`⚠️ configComplete not received after ${MeshtasticManager.CONFIG_COMPLETE_FALLBACK_MS / 1000}s — starting schedulers via fallback`);
+        const { next, actions } = dispatch(this.#state, 'CONFIG_FALLBACK', this.buildSmContext());
+        this.#state = next;
+        for (const action of actions) {
+          if (action.kind === 'completeConfigCapture') {
+            this.completeConfigCapture();
+          } else if (action.kind === 'runOnConfigCaptureComplete') {
+            if (this.onConfigCaptureComplete) {
+              try { this.onConfigCaptureComplete(); } catch (e) { logger.error('❌ Error in fallback config complete:', e); }
+            }
+          }
+        }
+        this.assertStateConsistent();
+      }
+    }, MeshtasticManager.CONFIG_COMPLETE_FALLBACK_MS);
+  }
+
+  /**
+   * Dev/test-only invariant guard (task42b_spec.md §4 C2): the two
+   * *derived* booleans must always agree with `#state`. Intentionally does
+   * NOT check `configCaptureComplete`/`isCapturingInitConfig` — the
+   * passive-no-VN disconnect case legally decouples them (#3122).
+   */
+  private assertStateConsistent(): void {
+    if (process.env.NODE_ENV === 'production') return;
+    const expectedConnected = this.#state === ConnState.ConfigSync || this.#state === ConnState.Connected;
+    const expectedUserDisconnected = this.#state === ConnState.UserDisconnected;
+    if (this.isConnected !== expectedConnected || this.userDisconnectedState !== expectedUserDisconnected) {
+      throw new Error(
+        `[assertStateConsistent] derived-boolean/state mismatch: state=${this.#state} isConnected=${this.isConnected} (expected ${expectedConnected}) userDisconnectedState=${this.userDisconnectedState} (expected ${expectedUserDisconnected})`
+      );
+    }
+  }
+
   private tracerouteInterval: NodeJS.Timeout | null = null;
   private tracerouteJitterTimeout: NodeJS.Timeout | null = null;
   // null until startDistanceDeleteScheduler() is first called (lazy-loaded to
@@ -561,6 +662,9 @@ class MeshtasticManager implements ISourceManager {
   // Reconnect flood prevention timing (#2474)
   private static readonly SCHEDULER_STAGGER_MS = 5000;  // Delay between each scheduler start
   private static readonly CONFIG_COMPLETE_FALLBACK_MS = 120000;  // Fallback if configComplete never arrives
+  // Handle for the fallback timer above, promoted from an inline `setTimeout`
+  // closure (#3962 Phase 4.2b C2) — see `armConfigCompleteFallbackTimer`.
+  private configCompleteFallbackTimer: NodeJS.Timeout | null = null;
 
   private tracerouteIntervalMinutes: number = 0;
   private lastTracerouteSentTime: number = 0;
@@ -607,7 +711,6 @@ class MeshtasticManager implements ISourceManager {
   private timeOffsetSamples: number[] = [];
   private timeOffsetInterval: NodeJS.Timeout | null = null;
   private localStatsIntervalMinutes: number = 15;  // Default 5 minutes
-  private announceScheduler: CronOrIntervalScheduler | null = null;
   private timerCronJobs: Map<string, CronJob> = new Map();
   private geofenceNodeState: Map<string, Set<number>> = new Map(); // geofenceId -> set of nodeNums currently inside
   private geofenceWhileInsideTimers: Map<string, NodeJS.Timeout> = new Map(); // geofenceId -> interval timer
@@ -702,11 +805,11 @@ class MeshtasticManager implements ISourceManager {
   private remoteNodeOwners: Map<number, any> = new Map();
   // Per-node device metadata storage for remote nodes
   private remoteNodeDeviceMetadata: Map<number, any> = new Map();
-  // Pending admin-command ACK waiters, keyed by the sent packet id. Resolved by
-  // processRoutingErrorMessage when the destination node returns its
-  // want_response Routing ACK (error_reason) — or on a routing error / timeout.
-  // (issue #2608 follow-up: confirm remote favorite assignment.)
-  private pendingAdminAcks: Map<number, { dest: number; resolve: (errorReason: number | null) => void; timer: ReturnType<typeof setTimeout> }> = new Map();
+  // Pending admin-command ACK waiters moved to AdminTransactionService
+  // (#3962 Phase 4.2a PR4 §4d) — see that file for the map + correlation
+  // logic. The manager's `processRoutingErrorMessage` dispatch code calls
+  // back into it via `this.adminTransactionService.hasPending`/
+  // `.resolveByRequestId` rather than touching a map here.
   // Cache the favorites-support check, keyed by the firmware version it was
   // computed from. Keying by version means the cache self-invalidates when the
   // firmware version changes or is populated late (e.g. via a NodeInfo rebuild
@@ -734,9 +837,13 @@ class MeshtasticManager implements ISourceManager {
 
   // Auto-welcome tracking to prevent race conditions
   private welcomingNodes: Set<number> = new Set();  // Track nodes currently being welcomed
+  // Kept on the manager (not moved to FavoritesService) — pinned test
+  // `meshtasticManager.autoFavorite.perSource.test.ts` resets this field
+  // directly (`manager.autoFavoritingNodes = new Set()`) between cases; see
+  // favoritesService.ts's header comment for the full rationale.
   private autoFavoritingNodes = new Set<number>();  // Track nodes currently being auto-favorited
   private deviceNodeNums: Set<number> = new Set();  // Nodes in the connected radio's local database
-  private autoFavoriteSweepRunning = false;  // Prevent concurrent sweep operations
+  // autoFavoriteSweepRunning moved to FavoritesService (#3962 Phase 4.2a PR4 §4c) — no pinned test reaches into it.
   private rebootMergeInProgress = false;  // Guard against broadcasts during node identity merge
   private lastHeapPurgeAt: number | null = null;  // Timestamp of last auto heap purge
 
@@ -978,10 +1085,48 @@ class MeshtasticManager implements ISourceManager {
   // overwrite its callback on every new manager constructor, causing all auto-acks
   // to route through whichever source was constructed last (the source of the
   // 4.0-alpha NO_CHANNEL auto-ack regression).
-  public readonly messageQueue: MessageQueueService = new MessageQueueService();
+  // Constructed in the constructor body (not here) — field initializers run
+  // before `this.sourceId` is assigned, and MessageQueueService needs it for
+  // per-source `autoAckMaxAttempts` reads (#4266).
+  public readonly messageQueue: MessageQueueService;
+
+  // NodeDB maintenance (purge/refresh/remove-node + DB-row→DeviceInfo mapping) —
+  // extracted to a service (#3962 Phase 4.2a PR2 §4f). Injected with `this` via
+  // constructor (import-cycle-safe: the service only `import type`s MeshtasticManager).
+  private readonly nodeDbMaintenanceService: NodeDbMaintenanceService;
+
+  // Auto-announce scheduler + send — extracted to a service (#3962 Phase 4.2a
+  // PR3 §4b). Same injection pattern as nodeDbMaintenanceService above.
+  private readonly autoAnnounceService: AutoAnnounceService;
+
+  // Admin-command ACK correlation — extracted to a service (#3962 Phase 4.2a
+  // PR4 §4d). Same injection pattern as the services above.
+  private readonly adminTransactionService: AdminTransactionService;
+
+  // Favorites management — extracted to a service (#3962 Phase 4.2a PR4 §4c).
+  // Depends on adminTransactionService (constructed first, passed in below).
+  private readonly favoritesService: FavoritesService;
+
+  // Local device-config setters + edit-session flow, and the pure
+  // buildDeviceConfigFromActual marshalling — extracted to a service
+  // (#3962 Phase 4.2a PR5 §4e). Same injection pattern as the services above.
+  private readonly deviceAdminService: DeviceAdminService;
+
+  // Remote-admin fetch flows (config/channel/owner/device-metadata over the
+  // mesh) + module-config request/refresh/reset — extracted to a sibling
+  // service (#3962 Phase 4.2a PR5 §4e, optional split). Independent of
+  // deviceAdminService; neither depends on the other.
+  private readonly remoteAdminService: RemoteAdminService;
 
   constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean; passiveResyncStaleMs?: number | null }) {
     this.sourceId = sourceId;
+    this.messageQueue = new MessageQueueService(this.sourceId);
+    this.nodeDbMaintenanceService = new NodeDbMaintenanceService(this);
+    this.autoAnnounceService = new AutoAnnounceService(this);
+    this.adminTransactionService = new AdminTransactionService(this);
+    this.favoritesService = new FavoritesService(this, this.adminTransactionService);
+    this.deviceAdminService = new DeviceAdminService(this);
+    this.remoteAdminService = new RemoteAdminService(this);
     if (sourceConfig) {
       this.sourceConfigOverride = {
         host: sourceConfig.host,
@@ -1233,31 +1378,19 @@ class MeshtasticManager implements ISourceManager {
       const config = await this.getConfig();
       logger.debug(`Connecting to Meshtastic node at ${config.nodeIp}:${config.tcpPort}...`);
 
-      // Tear down any existing transport before creating a new one. Without
-      // this, a second connect() call — refreshNodeDatabase() landing in a
-      // transient disconnect window, a user reconnect, or a startup race —
-      // orphans the previous TcpTransport: its socket stays open, its
-      // 'connect'/'disconnect' listeners stay bound to this manager, and its
-      // internal shouldReconnect flag keeps it auto-reconnecting forever.
-      // Two live transports against the same meshtasticd — whose single
-      // API-client policy force-closes the older socket whenever a new one
-      // arrives — then ping-pong indefinitely, producing the 25–60s
-      // disconnect/reconnect flap with a ~2:1 daemon-force-close ratio and
-      // no want_config_id errors (#3270). Disconnecting the old transport
-      // first (clears shouldReconnect, removes listeners, destroys the socket)
-      // guarantees exactly one live transport per manager. Skip when the
-      // caller re-injects the same transport (test/VN injection path).
-      if (this.transport && this.transport !== injectedTransport) {
-        logger.debug('🔌 Tearing down existing transport before reconnect (prevents orphaned-transport flap #3270)');
-        try {
-          this.transport.removeAllListeners();
-          this.transport.disconnect();
-        } catch (teardownErr) {
-          const msg = teardownErr instanceof Error ? teardownErr.message : String(teardownErr);
-          logger.debug(`Ignoring error tearing down previous transport: ${msg}`);
-        }
-        this.transport = null;
+      // #3962 Phase 4.2b C2: CONNECT_REQUESTED — teardown-prev-transport
+      // (#3270, `teardownExistingTransport` below is the `teardownPrevTransport`
+      // action's implementation, extracted verbatim from the old inline
+      // block) if different from an injected transport; routes to Probing
+      // first when a post-reset cooldown is pending, else straight to
+      // Connecting.
+      const requestCtx = this.buildSmContext({ postResetActive: this.postResetCooldownUntil > 0 });
+      const { next: afterRequest, actions: requestActions } = dispatch(this.#state, 'CONNECT_REQUESTED', requestCtx);
+      this.#state = afterRequest;
+      for (const action of requestActions) {
+        if (action.kind === 'teardownPrevTransport') this.teardownExistingTransport(injectedTransport);
       }
+      this.assertStateConsistent();
 
       // Initialize protobuf service first
       await meshtasticProtobufService.initialize();
@@ -1321,10 +1454,11 @@ class MeshtasticManager implements ISourceManager {
       });
 
       // Only honor cooldown + probe when handleConnected has flagged a
-      // post-OTA half-open recovery. On cold/normal connects we skip both
-      // so the 15s TCP probe doesn't eat the caller's connection budget.
-      const cooldownActive = this.postResetCooldownUntil > 0;
-      if (cooldownActive) {
+      // post-OTA half-open recovery (Probing, entered above by
+      // CONNECT_REQUESTED when postResetCooldownUntil > 0). On cold/normal
+      // connects we skip both so the 15s TCP probe doesn't eat the caller's
+      // connection budget.
+      if (this.#state === ConnState.Probing) {
         // Honor post-reset cooldown — after a transient post-OTA half-open
         // connect we deliberately wait before re-attempting so the node's
         // WiFi stack can finish settling and we don't loop on the same race.
@@ -1343,8 +1477,17 @@ class MeshtasticManager implements ISourceManager {
           logger.warn(`⚠️ TCP readiness probe to ${config.nodeIp}:${config.tcpPort} failed (${msg}) — proceeding anyway`);
         }
 
-        // Clear the flag so subsequent normal connects skip this path.
-        this.postResetCooldownUntil = 0;
+        // #3962 Phase 4.2b C2: PROBE_DONE — Probing -> Connecting, clears
+        // postResetCooldownUntil. 'connectTransport' is a no-op marker here —
+        // the actual `transport.connect()` call is the unconditional
+        // statement immediately below, for both the Probing and
+        // non-Probing paths.
+        const { next: afterProbe, actions: probeActions } = dispatch(this.#state, 'PROBE_DONE', requestCtx);
+        this.#state = afterProbe;
+        for (const action of probeActions) {
+          if (action.kind === 'clearPostResetCooldown') this.postResetCooldownUntil = 0;
+        }
+        this.assertStateConsistent();
       }
 
       // Connect to node
@@ -1354,6 +1497,12 @@ class MeshtasticManager implements ISourceManager {
 
       return true;
     } catch (error) {
+      // No SmEvent models a synchronous connect-attempt failure (getConfig/
+      // protobuf-init/transport.connect throwing) — task42b_spec.md §3.2 has
+      // no such row. The `isConnected` write-shim's false-branch already
+      // implements exactly the right semantics here ("go to Disconnected
+      // unless already UserDisconnected"), so it's kept as-is rather than
+      // inventing a new transition for an untabulated edge case.
       this.isConnected = false;
       logger.error('Failed to connect to Meshtastic node:', error);
       throw error;
@@ -1414,13 +1563,6 @@ class MeshtasticManager implements ISourceManager {
       logger.debug('🟡 [connect-race] handleConnected fired with no transport — skipping handshake (#3247)');
       return;
     }
-    this.isConnected = true;
-
-    // Emit WebSocket event for connection status change
-    dataEventEmitter.emitConnectionStatus({
-      connected: true,
-      reason: 'TCP connection established'
-    }, this.sourceId);
 
     // Passive Mode (issue #3122): if we already have a cached snapshot of the
     // node and config, skip the destabilizing post-reconnect full sync.
@@ -1428,6 +1570,12 @@ class MeshtasticManager implements ISourceManager {
     // does the full handshake so we don't drift permanently out of date.
     // The window is per-source-configurable via passiveResyncStaleMs and
     // falls back to PASSIVE_RESYNC_STALE_MS (4h) when unset.
+    //
+    // #3962 Phase 4.2b C2 (task42b_spec.md §0.3 case 2): this skip/full
+    // decision only reads synchronously-available fields, so it's computed
+    // here, BEFORE the state write, and folded into ONE atomic
+    // TRANSPORT_CONNECTED dispatch below — no intermediate "connected but
+    // undecided" window between setting isConnected and picking a target.
     const passiveResyncFresh =
       this.passiveMode &&
       this.localNodeInfo !== null &&
@@ -1440,17 +1588,32 @@ class MeshtasticManager implements ISourceManager {
     // the node to close the socket, we don't want the reconnect to immediately
     // retry the same sync and reproduce the failure loop (#3122 follow-up).
     const consumeSuppressFlag = this.suppressNextAutoSync;
+    const skipFullSync = passiveResyncFresh || consumeSuppressFlag;
+
+    const { next } = dispatch(
+      this.#state,
+      'TRANSPORT_CONNECTED',
+      this.buildSmContext({ cachesFresh: passiveResyncFresh, suppressNext: consumeSuppressFlag })
+    );
+    this.#state = next;
+
+    // Emit WebSocket event for connection status change
+    dataEventEmitter.emitConnectionStatus({
+      connected: true,
+      reason: 'TCP connection established'
+    }, this.sourceId);
+
     if (consumeSuppressFlag) {
+      // 'consumeSuppressNext' action
       this.suppressNextAutoSync = false;
       logger.warn('🟡 [manual-resync recovery] Skipping want_config_id on this reconnect — the previous manual resync did not complete cleanly; cached config will be reused');
     }
-
-    const skipFullSync = passiveResyncFresh || consumeSuppressFlag;
 
     // Keep cached localNodeInfo when we're skipping the sync — dependent code
     // would otherwise briefly mark the node un-responsive between connect events.
     if (!skipFullSync) {
       // Clear localNodeInfo so node will be marked as not responsive until it sends MyNodeInfo
+      // ('clearDeviceCaches' action, localNodeInfo portion)
       this.localNodeInfo = null;
     }
 
@@ -1469,28 +1632,32 @@ class MeshtasticManager implements ISourceManager {
           ? '🟡 [manual-resync recovery] Skipping want_config_id — using cached config'
           : '🟢 [passive] Skipping want_config_id on reconnect — using cached config from last session';
         logger.debug(reason);
-        this.configCaptureComplete = true;
-        this.isCapturingInitConfig = false;
+        // 'completeConfigCapture' action — skip path marks the cached
+        // snapshot current without a fresh sync.
+        this.completeConfigCapture();
         // A manual-resync recovery should also clear the in-flight latch so the
         // operator's button re-enables (the original sync never reached
         // configComplete, so the normal onConfigCaptureComplete handler
         // wouldn't have fired). Use 'recovery' so the watchdog cancels cleanly.
+        // ('clearManualResync' action, reason: 'recovery')
         if (consumeSuppressFlag) {
           this.clearManualResyncInFlight('recovery');
         }
         // Run the scheduler callback as if config had just completed. The
         // callback itself honors passiveMode and will skip the outbound burst.
+        // ('runOnConfigCaptureComplete' action)
         if (this.onConfigCaptureComplete) {
           try { this.onConfigCaptureComplete(); } catch (e) { logger.error('❌ Error in passive-mode config-capture callback:', e); }
         }
+        this.assertStateConsistent();
         return;
       }
 
       // Enable message capture for virtual node server
       // Clear any previous cache and start capturing
+      // ('clearDeviceCaches' + 'startConfigCapture' actions)
       this.initConfigCache = [];
-      this.configCaptureComplete = false;
-      this.isCapturingInitConfig = true;
+      this.startConfigCapture();
       this.deviceNodeNums.clear();
       this.channel0Exists = false;  // Reset channel 0 cache on reconnect
 
@@ -1513,6 +1680,7 @@ class MeshtasticManager implements ISourceManager {
       // — otherwise isConnected stays true while the transport is gone and
       // every later operation fails with the same error.
       try {
+        // 'sendWantConfig' action
         await this.sendWantConfigId();
       } catch (sendErr) {
         const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
@@ -1522,8 +1690,21 @@ class MeshtasticManager implements ISourceManager {
         // connect cycle is already in flight (or the source is being shut
         // down). Tearing down here would create the 3×/min reconnect loop
         // documented in #3247, so bail out quietly instead.
-        if (this.transport !== transportAtConnect) {
+        //
+        // #3962 Phase 4.2b C2: HANDSHAKE_SEND_FAILED. The identity mismatch
+        // branch is the reducer's silent bail (#3247) — no state mutation, no
+        // flag write, no emit; the genuine-failure branch transitions
+        // ConfigSync -> Disconnected via the returned actions.
+        const transportIdentityMatches = this.transport === transportAtConnect;
+        const { next: failNext, actions: failActions } = dispatch(
+          this.#state,
+          'HANDSHAKE_SEND_FAILED',
+          this.buildSmContext({ transportIdentityMatches })
+        );
+        this.#state = failNext;
+        if (!transportIdentityMatches) {
           logger.debug(`🟡 [connect-race] sendWantConfigId aborted — transport replaced during handshake (${msg}) (#3247)`);
+          this.assertStateConsistent();
           return;
         }
         // Genuine transport-layer failure (e.g. tcpTransport.send throwing
@@ -1531,13 +1712,29 @@ class MeshtasticManager implements ISourceManager {
         // mid-OTA-reboot). The existing post-reset cooldown path is correct
         // for this case.
         logger.warn(`⚠️ Initial sendWantConfigId failed (${msg}) — treating as transient post-connect reset, clearing state for clean reconnect`);
-        this.postResetCooldownUntil = Date.now() + POST_RESET_COOLDOWN_MS;
-        this.isConnected = false;
-        try { await this.transport?.disconnect(); } catch { /* ignore */ }
-        dataEventEmitter.emitConnectionStatus({
-          connected: false,
-          reason: `Transport reset immediately after connect: ${msg}`,
-        }, this.sourceId);
+        for (const action of failActions) {
+          switch (action.kind) {
+            case 'setPostResetCooldown':
+              this.postResetCooldownUntil = Date.now() + POST_RESET_COOLDOWN_MS;
+              break;
+            case 'disconnectTransport':
+              try { await this.transport?.disconnect(); } catch { /* ignore */ }
+              break;
+            case 'emitStatus':
+              dataEventEmitter.emitConnectionStatus({
+                connected: false,
+                reason: `Transport reset immediately after connect: ${msg}`,
+              }, this.sourceId);
+              break;
+            default:
+              break;
+          }
+        }
+        // A genuine post-connect reset never got far enough to arm the
+        // fallback timer for THIS attempt, but a still-pending timer from an
+        // earlier attempt would otherwise survive into the next connect cycle.
+        this.cancelConfigCompleteFallbackTimer();
+        this.assertStateConsistent();
         this.handleDisconnected().catch((e) => logger.error('Error in handleDisconnected (post-connect-reset cleanup):', e));
         return;
       }
@@ -1680,18 +1877,11 @@ class MeshtasticManager implements ISourceManager {
       };
 
       // Fallback: if configComplete never arrives (device disconnects mid-config),
-      // start schedulers after the fallback timeout anyway
-      setTimeout(() => {
-        if (!this.configCaptureComplete && this.isConnected) {
-          logger.warn(`⚠️ configComplete not received after ${MeshtasticManager.CONFIG_COMPLETE_FALLBACK_MS / 1000}s — starting schedulers via fallback`);
-          this.configCaptureComplete = true;
-          this.isCapturingInitConfig = false;
-          if (this.onConfigCaptureComplete) {
-            try { this.onConfigCaptureComplete(); } catch (e) { logger.error('❌ Error in fallback config complete:', e); }
-          }
-        }
-      }, MeshtasticManager.CONFIG_COMPLETE_FALLBACK_MS);
+      // start schedulers after the fallback timeout anyway.
+      // 'armFallbackTimer' action.
+      this.armConfigCompleteFallbackTimer();
 
+      this.assertStateConsistent();
     } catch (error) {
       logger.error('❌ Failed to request configuration:', error);
       await this.ensureBasicSetup();
@@ -1700,10 +1890,29 @@ class MeshtasticManager implements ISourceManager {
 
   private async handleDisconnected(): Promise<void> {
     logger.debug('TCP connection lost');
-    this.isConnected = false;
+
+    // #3962 Phase 4.2b C2: TRANSPORT_DISCONNECTED. A transport-level
+    // disconnect that fires after an operator-initiated userDisconnect()
+    // must not regress UserDisconnected back to the auto-reconnecting
+    // Disconnected state — the pure reducer's TRANSPORT_DISCONNECTED case
+    // doesn't branch on the incoming state at all (task42b_spec.md §3.2 has
+    // no such row), so — same pattern as the manual-resync guards living in
+    // the manager rather than the reducer (§5) — that invariant is enforced
+    // here. The cache-clearing/notify actions still run either way, matching
+    // pre-refactor behavior (only the resulting state and the notify call
+    // were ever gated on it).
+    const alreadyUserDisconnected = this.#state === ConnState.UserDisconnected;
+    const ctx = this.buildSmContext({ vnEnabled: this.virtualNodeServer !== undefined });
+    const { next, actions } = dispatch(this.#state, 'TRANSPORT_DISCONNECTED', ctx);
+    this.#state = alreadyUserDisconnected ? ConnState.UserDisconnected : next;
+
+    // 'recordLastDisconnect' action
     this.lastDisconnectAt = Date.now();
 
-    // Emit WebSocket event for connection status change
+    // Emit WebSocket event for connection status change. Captured from
+    // localNodeInfo now, before any cache-clearing action below may null it
+    // (matches pre-refactor ordering — the emit used to fire before the
+    // passive/non-passive branch).
     dataEventEmitter.emitConnectionStatus({
       connected: false,
       nodeNum: this.localNodeInfo?.nodeNum,
@@ -1715,46 +1924,60 @@ class MeshtasticManager implements ISourceManager {
     // remote-initiated close on a large TCP node doesn't kick off another full
     // NodeDB resync. Virtual Node needs fresh replay data, so still clear the
     // init capture buffer when VN is enabled.
-    if (this.passiveMode) {
-      this.favoritesSupportCache = null;
-      const vnEnabled = this.virtualNodeServer !== undefined;
-      if (vnEnabled) {
-        this.initConfigCache = [];
-        this.configCaptureComplete = false;
-        logger.debug('📸 [passive] VN enabled — cleared init config cache, kept device/module config');
-      } else {
-        logger.debug('📸 [passive] Preserved localNodeInfo + device/module/init config cache across disconnect');
+    for (const action of actions) {
+      switch (action.kind) {
+        case 'clearDeviceCaches':
+          // Clear localNodeInfo so node will be marked as not responsive.
+          // Clear device/module config cache on disconnect — ensures fresh
+          // config is fetched on reconnect (prevents stale data after reboot).
+          this.localNodeInfo = null;
+          this.actualDeviceConfig = null;
+          this.actualModuleConfig = null;
+          logger.debug('📸 Cleared device and module config cache on disconnect');
+          break;
+        case 'clearConfigCapture':
+          // Clear init config cache — will be repopulated on reconnect. This
+          // ensures virtual node clients get fresh data if a different node
+          // reconnects.
+          this.initConfigCache = [];
+          this.clearConfigCapture();
+          logger.debug(this.passiveMode
+            ? '📸 [passive] VN enabled — cleared init config cache, kept device/module config'
+            : '📸 Cleared init config cache on disconnect');
+          break;
+        case 'preserveConfigCapture':
+          this.preserveConfigCapture();
+          logger.debug('📸 [passive] Preserved localNodeInfo + device/module/init config cache across disconnect');
+          break;
+        default:
+          break;
       }
-    } else {
-      // Clear localNodeInfo so node will be marked as not responsive
-      this.localNodeInfo = null;
-      // Clear favorites support cache on disconnect
-      this.favoritesSupportCache = null;
-      // Clear device/module config cache on disconnect
-      // This ensures fresh config is fetched on reconnect (prevents stale data after reboot)
-      this.actualDeviceConfig = null;
-      this.actualModuleConfig = null;
-      logger.debug('📸 Cleared device and module config cache on disconnect');
-      // Clear init config cache - will be repopulated on reconnect
-      // This ensures virtual node clients get fresh data if a different node reconnects
-      this.initConfigCache = [];
-      this.configCaptureComplete = false;
-      logger.debug('📸 Cleared init config cache on disconnect');
     }
+
+    // Always invalidated on disconnect (all three branches) — keyed on the
+    // live connection, not one of the two capture flags, so it isn't a named
+    // SmAction (task42b_spec.md §2.2/§2.5).
+    this.favoritesSupportCache = null;
 
     // Notify server event service of disconnection
     // Skip notification if this is a user-initiated disconnect (already notified in userDisconnect())
-    if (!this.userDisconnectedState) {
+    if (!alreadyUserDisconnected) {
       await serverEventNotificationService.notifyNodeDisconnected(this.sourceId, await this.getSourceName());
     }
 
     // Only auto-reconnect if not in user-disconnected state
-    if (this.userDisconnectedState) {
+    if (alreadyUserDisconnected) {
       logger.debug('User-initiated disconnect active, skipping auto-reconnect');
     } else {
       // Transport will handle automatic reconnection
       logger.debug('Auto-reconnection will be attempted by transport');
     }
+
+    // Cancel any pending config-complete fallback timer — a disconnect mid
+    // ConfigSync must not let a stale timer fire schedulers later (#3962
+    // Phase 4.2b C2 leak fix).
+    this.cancelConfigCompleteFallbackTimer();
+    this.assertStateConsistent();
   }
 
   private async createDefaultChannels(): Promise<void> {
@@ -1829,7 +2052,11 @@ class MeshtasticManager implements ISourceManager {
    * @param payloadPreview Human-readable preview of what was sent
    * @param metadata Additional metadata object
    */
-  private async logOutgoingPacket(
+  // public: called by AdminTransactionService (#3962 Phase 4.2a PR4 §4d) in
+  // addition to many unmoved call sites within this class — widened rather
+  // than narrowly wrapped since it's general manager infrastructure, not
+  // admin-ack-specific state.
+  async logOutgoingPacket(
     portnum: number,
     destination: number,
     channel: number,
@@ -1864,7 +2091,8 @@ class MeshtasticManager implements ISourceManager {
     });
   }
 
-  private async sendWantConfigId(): Promise<void> {
+  // public: called by NodeDbMaintenanceService.refreshNodeDatabase (#3962 Phase 4.2a PR2 §4f)
+  async sendWantConfigId(): Promise<void> {
     if (!this.transport) {
       throw new Error('Transport not initialized');
     }
@@ -1885,6 +2113,11 @@ class MeshtasticManager implements ISourceManager {
 
   disconnect(): void {
     this.isConnected = false;
+    // Cancel any pending config-complete fallback timer (#3962 Phase 4.2b C2
+    // leak fix) — this method isn't routed through dispatch(), but it's
+    // still an exit from ConfigSync/Connected and must not leave a stale
+    // timer armed.
+    this.cancelConfigCompleteFallbackTimer();
 
     if (this.transport) {
       this.transport.disconnect();
@@ -1923,6 +2156,13 @@ class MeshtasticManager implements ISourceManager {
 
     // Stop auto-delete-by-distance scheduler
     this.stopDistanceDeleteScheduler();
+
+    // Stop announce scheduler (#3962 Phase 4.2a PR3 §5b — disconnect() used to
+    // omit this; only userDisconnect() stopped it, so an unexpected disconnect
+    // left the scheduler ticking, self-guarded but latent. handleConnected()
+    // re-arms it via startAnnounceScheduler() on (re)connect, so stopping here
+    // is safe.)
+    this.autoAnnounceService.stop();
 
     // Stop LocalStats collection
     this.stopLocalStatsScheduler();
@@ -2952,120 +3192,22 @@ class MeshtasticManager implements ISourceManager {
     }
   }
 
+  /**
+   * Thin delegate — arming logic lives in `AutoAnnounceService`
+   * (#3962 Phase 4.2a PR3 §4b).
+   */
   private async startAnnounceScheduler(): Promise<void> {
-    // Clear any existing scheduler
-    this.announceScheduler?.stop();
-    this.announceScheduler = null;
-
-    // Check if auto-announce is enabled
-    const autoAnnounceEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'autoAnnounceEnabled');
-    if (autoAnnounceEnabled !== 'true') {
-      logger.debug('📢 Auto-announce is disabled');
-      return;
-    }
-
-    // Determine schedule mode (cron vs interval — per-source, written by
-    // AutoAnnounceSection via /api/settings?sourceId=)
-    const useSchedule = (await databaseService.settings.getSettingForSource(this.sourceId, 'autoAnnounceUseSchedule')) === 'true';
-
-    let mode: ScheduleMode;
-    if (useSchedule) {
-      const scheduleExpression = (await databaseService.settings.getSettingForSource(this.sourceId, 'autoAnnounceSchedule')) || '0 */6 * * *';
-      logger.debug(`📢 Starting announce scheduler with cron expression: ${scheduleExpression}`);
-      mode = { kind: 'cron', expression: scheduleExpression };
-    } else {
-      const intervalHours = parseInt((await databaseService.settings.getSettingForSource(this.sourceId, 'autoAnnounceIntervalHours')) || '6');
-      const intervalMs = intervalHours * 60 * 60 * 1000;
-      logger.debug(`📢 Starting announce scheduler with ${intervalHours} hour interval`);
-      mode = { kind: 'interval', intervalMs };
-    }
-
-    this.announceScheduler = new CronOrIntervalScheduler({
-      label: `Meshtastic:${this.sourceId}`,
-      mode,
-      onTick: () => {
-        logger.debug(`📢 Announce tick triggered (connected: ${this.isConnected})`);
-        if (this.isConnected) {
-          return this.sendAutoAnnouncement(true).catch((error: Error) => {
-            logger.error('❌ Error in auto-announce:', error);
-          });
-        }
-        logger.debug('📢 Skipping announcement - not connected to node');
-      },
-    });
-
-    if (!this.announceScheduler.start()) {
-      // cron expression was invalid; warning already logged by the scheduler
-      if (mode.kind === 'cron') {
-        logger.error(`❌ Invalid cron expression: ${mode.expression}`);
-      }
-      this.announceScheduler = null;
-      return;
-    }
-
-    logger.debug('📢 Announce scheduler started');
-
-    // Check if announce-on-start is enabled (per-source; applies to both cron and interval modes)
-    const announceOnStart = await databaseService.settings.getSettingForSource(this.sourceId, 'autoAnnounceOnStart');
-    if (announceOnStart === 'true') {
-      // Check spam protection: don't send if announced within last hour
-      const lastAnnouncementTime = await databaseService.settings.getSettingForSource(this.sourceId, 'lastAnnouncementTime');
-      const now = Date.now();
-      const oneHour = 60 * 60 * 1000;
-
-      if (lastAnnouncementTime) {
-        const timeSinceLastAnnouncement = now - parseInt(lastAnnouncementTime);
-        if (timeSinceLastAnnouncement < oneHour) {
-          const minutesRemaining = Math.ceil((oneHour - timeSinceLastAnnouncement) / 60000);
-          logger.debug(`📢 Skipping startup announcement - last announcement was ${Math.floor(timeSinceLastAnnouncement / 60000)} minutes ago (spam protection: ${minutesRemaining} minutes remaining)`);
-        } else {
-          logger.debug('📢 Sending startup announcement');
-          // Delay startup announcement to allow reboot detection and ghost cleanup to complete
-          setTimeout(async () => {
-            if (this.isConnected) {
-              try {
-                await this.sendAutoAnnouncement(true);
-              } catch (error) {
-                logger.error('❌ Error in startup announcement:', error);
-              }
-            }
-          }, 30000);
-        }
-      } else {
-        // No previous announcement, send one
-        logger.debug('📢 Sending first startup announcement');
-        // Delay startup announcement to allow reboot detection and ghost cleanup to complete
-        setTimeout(async () => {
-          if (this.isConnected) {
-            try {
-              await this.sendAutoAnnouncement(true);
-            } catch (error) {
-              logger.error('❌ Error in startup announcement:', error);
-            }
-          }
-        }, 30000);
-      }
-    }
+    return this.autoAnnounceService.startAnnounceScheduler();
   }
 
+  /** Thin delegate — see `AutoAnnounceService.setAnnounceInterval`. */
   setAnnounceInterval(hours: number): void {
-    if (hours < 3 || hours > 24) {
-      throw new Error('Announce interval must be between 3 and 24 hours');
-    }
-
-    logger.debug(`📢 Announce interval updated to ${hours} hours`);
-
-    if (this.isConnected) {
-      this.startAnnounceScheduler().catch(err => logger.error('Error starting announce scheduler:', err));
-    }
+    this.autoAnnounceService.setAnnounceInterval(hours);
   }
 
+  /** Thin delegate — see `AutoAnnounceService.restartAnnounceScheduler`. */
   restartAnnounceScheduler(): void {
-    logger.debug('📢 Restarting announce scheduler due to settings change');
-
-    if (this.isConnected) {
-      this.startAnnounceScheduler().catch(err => logger.error('Error restarting announce scheduler:', err));
-    }
+    this.autoAnnounceService.restartAnnounceScheduler();
   }
 
   /**
@@ -4251,23 +4393,46 @@ class MeshtasticManager implements ISourceManager {
             }
           }
 
-          // Stop capturing init messages
+          // Stop capturing init messages.
+          // #3962 Phase 4.2b C2: CONFIG_COMPLETE — ConfigSync -> Connected.
+          // Out-of-scope guard (task42b_spec.md §9): this dispatch case fires
+          // the CONFIG_COMPLETE event into the SM, but its body (lastHeard
+          // refresh above, #2425 migration, callback) is unchanged.
           if (this.isCapturingInitConfig && !this.configCaptureComplete) {
-            this.configCaptureComplete = true;
-            this.isCapturingInitConfig = false;
+            const { next, actions } = dispatch(this.#state, 'CONFIG_COMPLETE', this.buildSmContext());
+            this.#state = next;
             logger.debug(`📸 Init config capture complete! Captured ${this.initConfigCache.length} messages for virtual node replay`);
 
-            // Detect channel moves/swaps from external sources (#2425)
-            await this.detectAndMigrateChannelChanges();
-
-            // Call registered callback if present
-            if (this.onConfigCaptureComplete) {
-              try {
-                this.onConfigCaptureComplete();
-              } catch (error) {
-                logger.error('❌ Error in config capture complete callback:', error);
+            for (const action of actions) {
+              switch (action.kind) {
+                case 'completeConfigCapture':
+                  this.completeConfigCapture();
+                  break;
+                case 'detectChannelMigration':
+                  // Detect channel moves/swaps from external sources (#2425)
+                  await this.detectAndMigrateChannelChanges();
+                  break;
+                case 'clearManualResync':
+                  this.clearManualResyncInFlight(action.reason);
+                  break;
+                case 'runOnConfigCaptureComplete':
+                  // Call registered callback if present
+                  if (this.onConfigCaptureComplete) {
+                    try {
+                      this.onConfigCaptureComplete();
+                    } catch (error) {
+                      logger.error('❌ Error in config capture complete callback:', error);
+                    }
+                  }
+                  break;
+                case 'cancelFallbackTimer':
+                  this.cancelConfigCompleteFallbackTimer();
+                  break;
+                default:
+                  break;
               }
             }
+            this.assertStateConsistent();
           }
           break;
         default:
@@ -4599,8 +4764,9 @@ class MeshtasticManager implements ISourceManager {
 
   /** Returns source-scoped settings keys for local node identity persistence.
    *  Each source manager stores its own localNodeNum/localNodeId so managers
-   *  don't clobber each other's values when running side-by-side. */
-  private localNodeSettingKey(base: string): string {
+   *  don't clobber each other's values when running side-by-side.
+   *  public: also called by FavoritesService (#3962 Phase 4.2a PR4 §4c). */
+  localNodeSettingKey(base: string): string {
     return this.sourceId && this.sourceId !== 'default' ? `${base}_${this.sourceId}` : base;
   }
 
@@ -5451,9 +5617,14 @@ class MeshtasticManager implements ISourceManager {
       // src/server/constants/meshtastic.ts. The field is proto3
       // (default 0 = INTERNAL when unset), so only record values that
       // came across the wire as actual numbers.
-      const txMech = typeof meshPacket.transportMechanism === 'number'
-        ? meshPacket.transportMechanism
-        : (meshPacket.viaMqtt === true ? 5 /* MQTT */ : undefined);
+      // #4240: always resolves to a value. `transportMechanism` remains
+      // last-wins ("most recently heard via"), but map visibility now keys off
+      // `transportFlags`, which ORs bits so an MQTT echo of RF traffic cannot
+      // erase the node's RF reachability. See resolveRadioPacketTransport.
+      const txMech = resolveRadioPacketTransport(meshPacket);
+      // Stamp only the column for THIS packet's transport; the repository
+      // carries the other two forward untouched.
+      const txColumn = transportColumnForPacket(txMech, meshPacket.viaMqtt);
 
       const nodeData: any = {
         nodeNum: fromNum,
@@ -5471,7 +5642,16 @@ class MeshtasticManager implements ISourceManager {
         // traceroutes, position requests) use the channel the node is actually communicating
         // on. Previously only set from NodeInfo, which could get stuck on a secondary channel.
         ...(channelFromPacket !== undefined && { channel: channelFromPacket }),
-        ...(txMech !== undefined && { transportMechanism: txMech }),
+        // Always set now (see txMech above) — an omitted key would let
+        // upsertNode carry the stale value forward, which is the #4240 bug.
+        transportMechanism: txMech,
+        // Reuse the same resolved lastHeard so "last seen over RF" and
+        // "last heard" cannot disagree (incl. the replay-guard omission case,
+        // where an undefined lastHeard leaves the stamp untouched too).
+        [txColumn]: resolveLastHeardSec(
+          meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
+          Date.now(),
+        ),
       };
 
       // Only set default name if this is a brand new node
@@ -7524,8 +7704,8 @@ class MeshtasticManager implements ISourceManager {
       // Routing ACK with request_id === our sent packet id. Consume it here so
       // it doesn't fall through to message-delivery handling (admin commands
       // aren't stored in the messages table).
-      if (requestId && this.pendingAdminAcks.has(requestId)) {
-        if (this.tryResolveAdminAck(requestId, fromNum, errorReason)) {
+      if (requestId && this.adminTransactionService.hasPending(requestId)) {
+        if (this.adminTransactionService.resolveByRequestId(requestId, fromNum, errorReason)) {
           return;
         }
       }
@@ -8427,155 +8607,12 @@ class MeshtasticManager implements ISourceManager {
     if (this.actualDeviceConfig?.lora || this.actualModuleConfig) {
       logger.debug('Using actualDeviceConfig:', JSON.stringify(this.actualDeviceConfig, null, 2));
       logger.debug('✅ Returning device config from actualDeviceConfig');
-      return await this.buildDeviceConfigFromActual();
+      return await this.deviceAdminService.buildDeviceConfigFromActual();
     }
 
     logger.debug('⚠️ No device config available yet - returning null');
     logger.debug('No device config available yet');
     return null;
-  }
-
-  /**
-   * Calculate LoRa frequency from region and channel number (frequency slot)
-   * Delegates to the utility function for better testability
-   */
-  private calculateLoRaFrequency(region: number, channelNum: number, overrideFrequency: number, frequencyOffset: number, bandwidth: number = 250, channelName?: string, modemPreset?: number): string {
-    return calculateLoRaFrequency(region, channelNum, overrideFrequency, frequencyOffset, bandwidth, channelName, modemPreset);
-  }
-
-  private async buildDeviceConfigFromActual(): Promise<any> {
-    const dbChannels = await databaseService.channels.getAllChannels(this.sourceId);
-    const channels = dbChannels.map(ch => ({
-      index: ch.id,
-      name: ch.name,
-      psk: ch.psk ? 'Set' : 'None',
-      role: ch.role,
-      uplinkEnabled: ch.uplinkEnabled,
-      downlinkEnabled: ch.downlinkEnabled,
-      positionPrecision: ch.positionPrecision
-    }));
-
-    const localNode = this.localNodeInfo as any;
-
-    // Extract actual values from stored config or use sensible defaults
-    const loraConfig = this.actualDeviceConfig?.lora || {};
-    const mqttConfig = this.actualModuleConfig?.mqtt || {};
-
-    // IMPORTANT: Proto3 may omit boolean false and numeric 0 values from JSON serialization
-    // but they're still accessible as properties. We need to explicitly include them.
-    const loraConfigWithDefaults = {
-      ...loraConfig,
-      // Ensure usePreset is explicitly set (Proto3 default is false)
-      usePreset: loraConfig.usePreset !== undefined ? loraConfig.usePreset : false,
-      // Ensure frequencyOffset is explicitly set (Proto3 default is 0)
-      frequencyOffset: loraConfig.frequencyOffset !== undefined ? loraConfig.frequencyOffset : 0,
-      // Ensure overrideFrequency is explicitly set (Proto3 default is 0)
-      overrideFrequency: loraConfig.overrideFrequency !== undefined ? loraConfig.overrideFrequency : 0,
-      // Ensure modemPreset is explicitly set (Proto3 default is 0 = LONG_FAST)
-      modemPreset: loraConfig.modemPreset !== undefined ? loraConfig.modemPreset : 0,
-      // Ensure channelNum is explicitly set (Proto3 default is 0)
-      channelNum: loraConfig.channelNum !== undefined ? loraConfig.channelNum : 0
-    };
-
-    // Apply same Proto3 handling to MQTT config
-    const mqttConfigWithDefaults = {
-      ...mqttConfig,
-      // Ensure boolean fields are explicitly set (Proto3 default is false)
-      enabled: mqttConfig.enabled !== undefined ? mqttConfig.enabled : false,
-      encryptionEnabled: mqttConfig.encryptionEnabled !== undefined ? mqttConfig.encryptionEnabled : false,
-      jsonEnabled: mqttConfig.jsonEnabled !== undefined ? mqttConfig.jsonEnabled : false,
-      tlsEnabled: mqttConfig.tlsEnabled !== undefined ? mqttConfig.tlsEnabled : false,
-      proxyToClientEnabled: mqttConfig.proxyToClientEnabled !== undefined ? mqttConfig.proxyToClientEnabled : false,
-      mapReportingEnabled: mqttConfig.mapReportingEnabled !== undefined ? mqttConfig.mapReportingEnabled : false
-    };
-
-    logger.debug('🔍 loraConfig being used:', JSON.stringify(loraConfigWithDefaults, null, 2));
-    logger.debug('🔍 mqttConfig being used:', JSON.stringify(mqttConfigWithDefaults, null, 2));
-
-    // Map region enum values to strings
-    const regionMap: { [key: number]: string } = {
-      0: 'UNSET',
-      1: 'US',
-      2: 'EU_433',
-      3: 'EU_868',
-      4: 'CN',
-      5: 'JP',
-      6: 'ANZ',
-      7: 'KR',
-      8: 'TW',
-      9: 'RU',
-      10: 'IN',
-      11: 'NZ_865',
-      12: 'TH',
-      13: 'LORA_24',
-      14: 'UA_433',
-      15: 'UA_868'
-    };
-
-    // Map modem preset enum values to strings
-    const modemPresetMap: { [key: number]: string } = {
-      0: 'Long Fast',
-      1: 'Long Slow',
-      2: 'Very Long Slow',
-      3: 'Medium Slow',
-      4: 'Medium Fast',
-      5: 'Short Slow',
-      6: 'Short Fast',
-      7: 'Long Moderate',
-      8: 'Short Turbo'
-    };
-
-    // Convert enum values to human-readable strings
-    const regionValue = typeof loraConfigWithDefaults.region === 'number' ? regionMap[loraConfigWithDefaults.region] || `Unknown (${loraConfigWithDefaults.region})` : loraConfigWithDefaults.region || 'Unknown';
-    const modemPresetValue = typeof loraConfigWithDefaults.modemPreset === 'number' ? modemPresetMap[loraConfigWithDefaults.modemPreset] || `Unknown (${loraConfigWithDefaults.modemPreset})` : loraConfigWithDefaults.modemPreset || 'Unknown';
-
-    return {
-      basic: {
-        nodeAddress: (await this.getConfig()).nodeIp,
-        tcpPort: (await this.getConfig()).tcpPort,
-        connected: this.isConnected,
-        nodeId: localNode?.nodeId || null,
-        nodeName: localNode?.longName || null,
-        firmwareVersion: localNode?.firmwareVersion || null
-      },
-      radio: {
-        region: regionValue,
-        modemPreset: modemPresetValue,
-        hopLimit: loraConfigWithDefaults.hopLimit !== undefined ? loraConfigWithDefaults.hopLimit : 'Unknown',
-        txPower: loraConfigWithDefaults.txPower !== undefined ? loraConfigWithDefaults.txPower : 'Unknown',
-        bandwidth: loraConfigWithDefaults.bandwidth || 'Unknown',
-        spreadFactor: loraConfigWithDefaults.spreadFactor || 'Unknown',
-        codingRate: loraConfigWithDefaults.codingRate || 'Unknown',
-        channelNum: loraConfigWithDefaults.channelNum !== undefined ? loraConfigWithDefaults.channelNum : 'Unknown',
-        frequency: this.calculateLoRaFrequency(
-          typeof loraConfigWithDefaults.region === 'number' ? loraConfigWithDefaults.region : 0,
-          loraConfigWithDefaults.channelNum !== undefined ? loraConfigWithDefaults.channelNum : 0,
-          loraConfigWithDefaults.overrideFrequency !== undefined ? loraConfigWithDefaults.overrideFrequency : 0,
-          loraConfigWithDefaults.frequencyOffset !== undefined ? loraConfigWithDefaults.frequencyOffset : 0,
-          typeof loraConfigWithDefaults.bandwidth === 'number' && loraConfigWithDefaults.bandwidth > 0 ? loraConfigWithDefaults.bandwidth : 250,
-          dbChannels.find(ch => ch.id === 0)?.name || undefined,
-          typeof loraConfigWithDefaults.modemPreset === 'number' ? loraConfigWithDefaults.modemPreset : undefined
-        ),
-        txEnabled: loraConfigWithDefaults.txEnabled !== undefined ? loraConfigWithDefaults.txEnabled : 'Unknown',
-        sx126xRxBoostedGain: loraConfigWithDefaults.sx126xRxBoostedGain !== undefined ? loraConfigWithDefaults.sx126xRxBoostedGain : 'Unknown',
-        configOkToMqtt: loraConfigWithDefaults.configOkToMqtt !== undefined ? loraConfigWithDefaults.configOkToMqtt : 'Unknown',
-        femLnaMode: loraConfigWithDefaults.femLnaMode !== undefined ? loraConfigWithDefaults.femLnaMode : 'Unknown'
-      },
-      mqtt: {
-        enabled: mqttConfigWithDefaults.enabled,
-        server: mqttConfigWithDefaults.address || 'Not configured',
-        username: mqttConfigWithDefaults.username || 'Not set',
-        encryption: mqttConfigWithDefaults.encryptionEnabled,
-        json: mqttConfigWithDefaults.jsonEnabled,
-        tls: mqttConfigWithDefaults.tlsEnabled,
-        rootTopic: mqttConfigWithDefaults.root || 'msh'
-      },
-      channels: channels.length > 0 ? channels : [
-        { index: 0, name: 'Primary', psk: 'None', uplinkEnabled: true, downlinkEnabled: true }
-      ],
-      // Raw LoRa config for export/import functionality - now includes Proto3 defaults
-      lora: Object.keys(loraConfigWithDefaults).length > 0 ? loraConfigWithDefaults : undefined
-    };
   }
 
   async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number, userId?: number, attribution?: { sourceIp?: string | null; sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null }): Promise<number> {
@@ -11304,191 +11341,11 @@ class MeshtasticManager implements ISourceManager {
   }
 
   private async checkAutoFavorite(nodeNum: number, nodeId: string): Promise<void> {
-    try {
-      const autoFavoriteEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteEnabled');
-      if (autoFavoriteEnabled !== 'true') {
-        return;
-      }
-
-      if (!this.supportsFavorites()) {
-        return;
-      }
-
-      // Skip local node (read the per-source identity key so named sources don't
-      // read another source's local node and short-circuit incorrectly).
-      const localNodeNum = await databaseService.settings.getSetting(this.localNodeSettingKey('localNodeNum'));
-      if (localNodeNum && parseInt(localNodeNum) === nodeNum) {
-        return;
-      }
-
-      // Prevent duplicate concurrent operations
-      if (this.autoFavoritingNodes.has(nodeNum)) {
-        return;
-      }
-
-      // Get local node role (scoped to this source — nodes table has composite PK (nodeNum, sourceId))
-      const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : this.localNodeInfo?.nodeNum;
-      if (!localNodeNumInt) return;
-      const localNode = await databaseService.nodes.getNode(localNodeNumInt, this.sourceId);
-      if (!localNode) return;
-
-      const targetNode = await databaseService.nodes.getNode(nodeNum, this.sourceId);
-      if (!targetNode) return;
-
-      // Skip nodes where favoriteLocked is true — user has manually managed this node
-      if (targetNode.favoriteLocked) return;
-
-      // Check if already in auto-favorite list (backward compat belt-and-suspenders)
-      const autoFavoriteNodesJson = await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteNodes') || '[]';
-      const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
-      if (autoFavoriteNodes.includes(nodeNum)) {
-        return; // Already auto-managed
-      }
-
-      // Check eligibility
-      if (!isAutoFavoriteEligible(localNode.role, targetNode)) {
-        return;
-      }
-
-      this.autoFavoritingNodes.add(nodeNum);
-      try {
-        // Mark in DB — favoriteLocked=false since this is auto-managed
-        await databaseService.nodes.setNodeFavorite(nodeNum, true, this.sourceId, false);
-
-        // Sync to device
-        try {
-          await this.sendFavoriteNode(nodeNum);
-          logger.debug(`⭐ Auto-favorited node ${nodeId} (${targetNode.longName || 'Unknown'}) - 0-hop, role=${targetNode.role}`);
-        } catch (error) {
-          logger.warn(`⚠️ Auto-favorited node ${nodeId} in DB but device sync failed:`, error);
-        }
-
-        // Add to auto-favorite tracking list (per-source)
-        autoFavoriteNodes.push(nodeNum);
-        await databaseService.settings.setSourceSetting(this.sourceId, 'autoFavoriteNodes', JSON.stringify(autoFavoriteNodes));
-      } finally {
-        this.autoFavoritingNodes.delete(nodeNum);
-      }
-    } catch (error) {
-      logger.error('❌ Error in auto-favorite check:', error);
-    }
+    return this.favoritesService.checkAutoFavorite(nodeNum, nodeId);
   }
 
   private async autoFavoriteSweep(): Promise<void> {
-    if (this.autoFavoriteSweepRunning) return;
-    this.autoFavoriteSweepRunning = true;
-    try {
-      const autoFavoriteEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteEnabled');
-      const autoFavoriteNodesJson = await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteNodes') || '[]';
-      const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
-
-      if (autoFavoriteNodes.length === 0) {
-        return;
-      }
-
-      // If feature was disabled, clean up all auto-favorited nodes (skip locked ones)
-      if (autoFavoriteEnabled !== 'true') {
-        logger.debug(`🧹 Auto-favorite disabled, cleaning up ${autoFavoriteNodes.length} auto-favorited nodes`);
-        for (const nodeNum of autoFavoriteNodes) {
-          try {
-            const node = await databaseService.nodes.getNode(nodeNum, this.sourceId);
-            if (node?.favoriteLocked) {
-              logger.debug(`Skipping locked node ${nodeNum} during auto-favorite cleanup`);
-              continue;
-            }
-            await databaseService.nodes.setNodeFavorite(nodeNum, false, this.sourceId, false);
-            if (this.supportsFavorites() && this.isConnected) {
-              await this.sendRemoveFavoriteNode(nodeNum);
-            }
-          } catch (error) {
-            logger.warn(`⚠️ Failed to unfavorite node ${nodeNum} during cleanup:`, error);
-          }
-        }
-        await databaseService.settings.setSourceSetting(this.sourceId, 'autoFavoriteNodes', '[]');
-        return;
-      }
-
-      if (!this.supportsFavorites()) return;
-
-      const staleHours = parseInt(await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteStaleHours') || '72');
-      const staleThreshold = Date.now() / 1000 - (staleHours * 3600);
-
-      // Get local node role for re-evaluation (scoped to this source — both the
-      // identity key and the node lookup are per-source).
-      const localNodeNum = await databaseService.settings.getSetting(this.localNodeSettingKey('localNodeNum'));
-      const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : this.localNodeInfo?.nodeNum;
-      const localNode = localNodeNumInt ? await databaseService.nodes.getNode(localNodeNumInt, this.sourceId) : null;
-
-      const nodesToRemove: number[] = [];
-
-      for (const nodeNum of autoFavoriteNodes) {
-        const node = await databaseService.nodes.getNode(nodeNum, this.sourceId);
-        if (!node) {
-          nodesToRemove.push(nodeNum);
-          continue;
-        }
-
-        // Skip nodes where favoriteLocked is true — user has manually managed this node
-        if (node.favoriteLocked) {
-          continue;
-        }
-
-        let shouldRemove = false;
-        let reason = '';
-
-        // Check staleness
-        if (node.lastHeard && node.lastHeard < staleThreshold) {
-          shouldRemove = true;
-          reason = `stale (not heard in ${staleHours}+ hours)`;
-        }
-
-        // Check hops changed
-        if (!shouldRemove && (node.hopsAway == null || node.hopsAway > 0)) {
-          shouldRemove = true;
-          reason = `no longer 0-hop (hopsAway=${node.hopsAway})`;
-        }
-
-        // Check if received via MQTT (not a true RF neighbor)
-        if (!shouldRemove && node.viaMqtt === true) {
-          shouldRemove = true;
-          reason = 'received via MQTT';
-        }
-
-        // Check role eligibility changed (for ROUTER/ROUTER_LATE local)
-        if (!shouldRemove && localNode) {
-          if (!isAutoFavoriteEligible(localNode.role, { ...node, isFavorite: false })) {
-            shouldRemove = true;
-            reason = 'no longer eligible (role changed)';
-          }
-        }
-
-        if (shouldRemove) {
-          nodesToRemove.push(nodeNum);
-          try {
-            await databaseService.nodes.setNodeFavorite(nodeNum, false, this.sourceId, false);
-            if (this.isConnected) {
-              await this.sendRemoveFavoriteNode(nodeNum);
-            }
-            const nodeId = node.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`;
-            logger.debug(`☆ Auto-unfavorited node ${nodeId} (${node.longName || 'Unknown'}) - ${reason}`);
-          } catch (error) {
-            logger.warn(`⚠️ Failed to auto-unfavorite node ${nodeNum}:`, error);
-          }
-        }
-      }
-
-      // Update the tracking list (per-source)
-      if (nodesToRemove.length > 0) {
-        const removeSet = new Set(nodesToRemove);
-        const remaining = autoFavoriteNodes.filter(n => !removeSet.has(n));
-        await databaseService.settings.setSourceSetting(this.sourceId, 'autoFavoriteNodes', JSON.stringify(remaining));
-        logger.debug(`🧹 Auto-favorite sweep: removed ${nodesToRemove.length}, remaining ${remaining.length}`);
-      }
-    } catch (error) {
-      logger.error('❌ Error in auto-favorite sweep:', error);
-    } finally {
-      this.autoFavoriteSweepRunning = false;
-    }
+    return this.favoritesService.autoFavoriteSweep();
   }
 
   /**
@@ -11711,98 +11568,9 @@ class MeshtasticManager implements ISourceManager {
     return result;
   }
 
+  /** Thin delegate — see `AutoAnnounceService.sendAutoAnnouncement`. */
   async sendAutoAnnouncement(triggeredByAutomation = false): Promise<void> {
-    if (this.rebootMergeInProgress) {
-      logger.debug('📢 Skipping auto-announcement - reboot merge in progress');
-      return;
-    }
-
-    // Airtime cutoff: skip scheduled announcements while the mesh is congested.
-    // Manual "Send Announcement" requests (triggeredByAutomation = false) are
-    // always allowed through.
-    if (triggeredByAutomation && await this.isAutomationAirtimeGated()) {
-      return;
-    }
-
-    try {
-      // All auto-announce settings are per-source (written by AutoAnnounceSection
-      // via /api/settings?sourceId=).
-      const settings = databaseService.settings;
-      const sourceId = this.sourceId;
-
-      const message = await settings.getSettingForSource(sourceId, 'autoAnnounceMessage') || 'MeshMonitor {VERSION} online for {DURATION} {FEATURES}';
-
-      // Multi-channel support: read JSON array, fall back to legacy single index
-      let channelIndexes: number[];
-      const channelIndexesStr = await settings.getSettingForSource(sourceId, 'autoAnnounceChannelIndexes');
-      if (channelIndexesStr) {
-        try {
-          const parsed = JSON.parse(channelIndexesStr);
-          channelIndexes = Array.isArray(parsed) ? parsed.filter(n => typeof n === 'number') : [0];
-        } catch {
-          channelIndexes = [0];
-        }
-      } else {
-        // Legacy migration: read old single channel setting (pre-4.0, global-only)
-        const legacyIndex = parseInt(await settings.getSetting('autoAnnounceChannelIndex') || '0');
-        channelIndexes = [legacyIndex];
-      }
-
-      if (channelIndexes.length === 0) {
-        channelIndexes = [0];
-      }
-
-      // Replace tokens
-      const replacedMessage = await this.replaceAnnouncementTokens(message);
-
-      logger.debug(`📢 Sending auto-announcement to ${channelIndexes.length} channel(s) [${channelIndexes.join(',')}]: "${replacedMessage}"`);
-
-      channelIndexes.forEach((channelIdx, i) => {
-        this.messageQueue.enqueue(
-          replacedMessage,
-          0, // destination: 0 for channel broadcast
-          undefined, // no reply-to for announcements
-          () => {
-            logger.debug(`\u2705 Auto-announcement ${i + 1}/${channelIndexes.length} delivered to channel ${channelIdx}`);
-          },
-          (reason: string) => {
-            logger.warn(`\u274c Auto-announcement ${i + 1}/${channelIndexes.length} failed on channel ${channelIdx}: ${reason}`);
-          },
-          channelIdx, // channel number
-          1 // single attempt, no retry for broadcasts
-        );
-      });
-
-      // Update last announcement time (per-source)
-      if (this.sourceId) {
-        await databaseService.settings.setSourceSetting(this.sourceId, 'lastAnnouncementTime', Date.now().toString());
-      } else {
-        await databaseService.settings.setSetting('lastAnnouncementTime', Date.now().toString());
-      }
-      logger.debug('📢 Last announcement time updated');
-
-      // Check if NodeInfo broadcasting is enabled (per-source)
-      const nodeInfoEnabled = await settings.getSettingForSource(sourceId, 'autoAnnounceNodeInfoEnabled') === 'true';
-      if (nodeInfoEnabled) {
-        try {
-          const nodeInfoChannelsStr = await settings.getSettingForSource(sourceId, 'autoAnnounceNodeInfoChannels') || '[]';
-          const nodeInfoChannels = JSON.parse(nodeInfoChannelsStr) as number[];
-          const nodeInfoDelaySeconds = parseInt(await settings.getSettingForSource(sourceId, 'autoAnnounceNodeInfoDelaySeconds') || '30');
-
-          if (nodeInfoChannels.length > 0) {
-            logger.debug(`📢 NodeInfo broadcasting enabled - will broadcast to ${nodeInfoChannels.length} channel(s)`);
-            // Run NodeInfo broadcasting asynchronously (don't block the announcement)
-            this.broadcastNodeInfoToChannels(nodeInfoChannels, nodeInfoDelaySeconds).catch(error => {
-              logger.error('❌ Error in NodeInfo broadcasting:', error);
-            });
-          }
-        } catch (parseError) {
-          logger.error('❌ Error parsing NodeInfo channels setting:', parseError);
-        }
-      }
-    } catch (error) {
-      logger.error('❌ Error sending auto-announcement:', error);
-    }
+    return this.autoAnnounceService.sendAutoAnnouncement(triggeredByAutomation);
   }
 
   /**
@@ -11838,7 +11606,14 @@ class MeshtasticManager implements ISourceManager {
     return args;
   }
 
-  private async replaceAnnouncementTokens(message: string, urlEncode: boolean = false): Promise<string> {
+  /**
+   * Visibility widened from `private` to (default) `public` so `AutoAnnounceService`
+   * (#3962 Phase 4.2a PR3 §4b) can call back into it via the injected `mgr`
+   * reference. Body/location unmoved — still shared by
+   * `replaceAcknowledgementTokens`/`replaceWelcomeTokens`/`replaceGeofenceTokens`
+   * and the auto-responder's timer text path, all of which call it internally.
+   */
+  async replaceAnnouncementTokens(message: string, urlEncode: boolean = false): Promise<string> {
     // Defensive coercion: callers come from settings/DB and protobuf paths where the static type
     // is `string` but the runtime value isn't always proven to be one. CodeQL flagged every
     // `result.includes('{TOKEN}')` below as type-confusion-through-parameter-tampering without this.
@@ -12009,10 +11784,11 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
-   * Public wrapper for replaceAnnouncementTokens, used by the preview API endpoint.
+   * Thin delegate — see `AutoAnnounceService.previewAnnouncementMessage`.
+   * Used by the preview API endpoint.
    */
   public async previewAnnouncementMessage(message: string): Promise<string> {
-    return this.replaceAnnouncementTokens(message);
+    return this.autoAnnounceService.previewAnnouncementMessage(message);
   }
 
   /**
@@ -12488,65 +12264,15 @@ class MeshtasticManager implements ISourceManager {
    * @returns Session passkey if received, null otherwise
    */
   async requestRemoteSessionPasskey(destinationNodeNum: number): Promise<Uint8Array | null> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node number not available');
-    }
-
-    try {
-      // Use getDeviceMetadataRequest (per research - Android pattern uses this for SESSIONKEY_CONFIG)
-      // We'll need to create this message directly using protobufService
-      const root = getProtobufRoot();
-      if (!root) {
-        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
-      }
-      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
-      if (!AdminMessage) {
-        throw new Error('AdminMessage type not found');
-      }
-
-      const adminMsg = AdminMessage.create({
-        getDeviceMetadataRequest: true
-      });
-      const encoded = AdminMessage.encode(adminMsg).finish();
-
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug(`🔑 Requested session passkey from remote node ${destinationNodeNum} (via getDeviceMetadataRequest)`);
-
-      // Poll for the response instead of fixed wait
-      // This allows early exit if response arrives quickly, and longer total wait time
-      const maxWaitTime = 45000; // 45 seconds total
-      const pollInterval = 500; // Check every 500ms
-      const maxPolls = maxWaitTime / pollInterval;
-
-      for (let i = 0; i < maxPolls; i++) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-        // Check if we received the passkey
-        const passkey = this.getSessionPasskey(destinationNodeNum);
-        if (passkey) {
-          logger.debug(`✅ Session passkey received from remote node ${destinationNodeNum} after ${((i + 1) * pollInterval / 1000).toFixed(1)}s`);
-          return passkey;
-        }
-      }
-
-      logger.warn(`⚠️ No session passkey response received from remote node ${destinationNodeNum} after ${maxWaitTime / 1000}s`);
-      return null;
-    } catch (error) {
-      logger.error(`❌ Error requesting session passkey from remote node ${destinationNodeNum}:`, error);
-      throw error;
-    }
+    return this.remoteAdminService.requestRemoteSessionPasskey(destinationNodeNum);
   }
 
   /**
    * Parse firmware version string into major.minor.patch
    */
-  private parseFirmwareVersion(versionString: string): { major: number; minor: number; patch: number } | null {
+  // public: shared with FavoritesService.supportsFavorites() (#3962 Phase
+  // 4.2a PR4 §4c) as well as the unmoved firmwareVersionAtLeast() below.
+  parseFirmwareVersion(versionString: string): { major: number; minor: number; patch: number } | null {
     // Firmware version format: "2.7.11.ee68575" or "2.7.11"
     const match = versionString.match(/^(\d+)\.(\d+)\.(\d+)/);
     if (!match) {
@@ -12620,117 +12346,21 @@ class MeshtasticManager implements ISourceManager {
    * Result is cached to avoid redundant parsing and version comparisons
    */
   supportsFavorites(): boolean {
-    const firmwareVersion = this.localNodeInfo?.firmwareVersion;
-
-    // Firmware version not known yet (e.g. DeviceMetadata not received). Return
-    // false but DO NOT cache it — otherwise the `false` sticks even after the
-    // version is populated through a path that doesn't clear the cache.
-    if (!firmwareVersion) {
-      logger.debug('⚠️ Firmware version unknown, cannot determine favorites support');
-      return false;
-    }
-
-    // Cache hit only when it was computed from the current firmware version.
-    if (this.favoritesSupportCache?.version === firmwareVersion) {
-      return this.favoritesSupportCache.result;
-    }
-
-    const version = this.parseFirmwareVersion(firmwareVersion);
-    if (!version) {
-      logger.debug(`⚠️ Could not parse firmware version: ${firmwareVersion}`);
-      this.favoritesSupportCache = { version: firmwareVersion, result: false };
-      return false;
-    }
-
-    // Favorites feature added in 2.7.0
-    const supportsFavorites = version.major > 2 || (version.major === 2 && version.minor >= 7);
-
-    if (!supportsFavorites) {
-      logger.debug(`ℹ️ Firmware ${firmwareVersion} does not support favorites (requires >= 2.7.0)`);
-    } else {
-      logger.debug(`✅ Firmware ${firmwareVersion} supports favorites`);
-    }
-
-    this.favoritesSupportCache = { version: firmwareVersion, result: supportsFavorites };
-    return supportsFavorites;
+    return this.favoritesService.supportsFavorites();
   }
 
   /**
    * Send admin message to set a node as favorite on the device
    */
   async sendFavoriteNode(nodeNum: number, destinationNodeNum?: number): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    // Check firmware version support
-    if (!this.supportsFavorites()) {
-      throw new Error('FIRMWARE_NOT_SUPPORTED');
-    }
-
-    const localNodeNum = this.localNodeInfo?.nodeNum || 0;
-    const destNode = destinationNodeNum || localNodeNum;
-    const isRemote = destNode !== localNodeNum && destNode !== 0;
-
-    try {
-      let sessionPasskey: Uint8Array = new Uint8Array();
-      if (isRemote) {
-        const cached = this.getSessionPasskey(destNode);
-        if (cached) {
-          sessionPasskey = cached;
-        } else {
-          const requested = await this.requestRemoteSessionPasskey(destNode);
-          if (!requested) throw new Error(`Failed to obtain session passkey for remote node ${destNode}`);
-          sessionPasskey = requested;
-        }
-      }
-
-      const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, sessionPasskey);
-      await this.sendAdminCommand(setFavoriteMsg, destNode);
-      logger.debug(`⭐ Sent set_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) to ${isRemote ? 'remote' : 'local'} node ${destNode}`);
-    } catch (error) {
-      logger.error('❌ Error sending favorite node admin message:', error);
-      throw error;
-    }
+    return this.favoritesService.sendFavoriteNode(nodeNum, destinationNodeNum);
   }
 
   /**
    * Send admin message to remove a node from favorites on the device
    */
   async sendRemoveFavoriteNode(nodeNum: number, destinationNodeNum?: number): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    // Check firmware version support
-    if (!this.supportsFavorites()) {
-      throw new Error('FIRMWARE_NOT_SUPPORTED');
-    }
-
-    const localNodeNum = this.localNodeInfo?.nodeNum || 0;
-    const destNode = destinationNodeNum || localNodeNum;
-    const isRemote = destNode !== localNodeNum && destNode !== 0;
-
-    try {
-      let sessionPasskey: Uint8Array = new Uint8Array();
-      if (isRemote) {
-        const cached = this.getSessionPasskey(destNode);
-        if (cached) {
-          sessionPasskey = cached;
-        } else {
-          const requested = await this.requestRemoteSessionPasskey(destNode);
-          if (!requested) throw new Error(`Failed to obtain session passkey for remote node ${destNode}`);
-          sessionPasskey = requested;
-        }
-      }
-
-      const removeFavoriteMsg = protobufService.createRemoveFavoriteNodeMessage(nodeNum, sessionPasskey);
-      await this.sendAdminCommand(removeFavoriteMsg, destNode);
-      logger.debug(`☆ Sent remove_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) to ${isRemote ? 'remote' : 'local'} node ${destNode}`);
-    } catch (error) {
-      logger.error('❌ Error sending remove favorite node admin message:', error);
-      throw error;
-    }
+    return this.favoritesService.sendRemoveFavoriteNode(nodeNum, destinationNodeNum);
   }
 
   /**
@@ -12816,30 +12446,7 @@ class MeshtasticManager implements ISourceManager {
    * This sends the remove_by_nodenum admin command to completely delete a node from the device
    */
   async sendRemoveNode(nodeNum: number): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo) {
-      throw new Error('Local node information not available');
-    }
-
-    try {
-      // For local TCP connections, try sending without session passkey first
-      // (there's a known bug where session keys don't work properly over TCP)
-      logger.debug(`🗑️ Attempting to remove node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) from device NodeDB`);
-      const removeNodeMsg = protobufService.createRemoveNodeMessage(nodeNum, new Uint8Array()); // empty passkey
-      const adminPacket = protobufService.createAdminPacket(removeNodeMsg, this.localNodeInfo.nodeNum, this.localNodeInfo.nodeNum); // send to local node
-
-      await this.transport.send(adminPacket);
-      logger.debug(`✅ Sent remove_by_nodenum admin command for node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
-
-      // Remove from device node tracking so the UI shows the "not in device DB" warning
-      this.deviceNodeNums.delete(nodeNum);
-    } catch (error) {
-      logger.error('❌ Error sending remove node admin message:', error);
-      throw error;
-    }
+    return this.nodeDbMaintenanceService.sendRemoveNode(nodeNum);
   }
 
   private async pushContactToRadio(targetNode: { nodeNum: number; nodeId: string; longName?: string | null; shortName?: string | null; publicKey?: string | null; hwModel?: number | null }): Promise<void> {
@@ -12895,29 +12502,7 @@ class MeshtasticManager implements ISourceManager {
    * @param configType Module config type to request (0=MQTT_CONFIG, 9=NEIGHBORINFO_CONFIG, etc.)
    */
   async requestModuleConfig(configType: number): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug(`⚙️ Requesting module config type ${configType} from device`);
-      const getModuleConfigMsg = protobufService.createGetModuleConfigRequest(configType);
-      const adminPacket = protobufService.createAdminPacket(getModuleConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      // Track the pending request so an empty (all-default) Proto3 response can be
-      // mapped back to the right key in processAdminMessage. Keyed by the local
-      // node number, matching how the response's `from` field is interpreted.
-      const pendingKey = LOCAL_MODULE_CONFIG_TYPE_KEYS[configType];
-      if (pendingKey && this.localNodeInfo?.nodeNum) {
-        this.pendingModuleConfigRequests.set(this.localNodeInfo.nodeNum, pendingKey);
-      }
-
-      await this.transport.send(adminPacket);
-      logger.debug(`⚙️ Sent get_module_config_request for config type ${configType}`);
-    } catch (error) {
-      logger.error('❌ Error requesting module config:', error);
-      throw error;
-    }
+    return this.remoteAdminService.requestModuleConfig(configType);
   }
 
   /**
@@ -12928,157 +12513,7 @@ class MeshtasticManager implements ISourceManager {
    * @returns The config data if received, null otherwise
    */
   async requestRemoteConfig(destinationNodeNum: number, configType: number, isModuleConfig: boolean = false): Promise<any> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node number not available');
-    }
-
-    try {
-      // Get or request session passkey
-      let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
-      if (sessionPasskey) {
-        logger.debug(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
-      } else {
-        logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
-        sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
-        if (!sessionPasskey) {
-          throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
-        }
-      }
-
-      // Create the config request message with session passkey
-      const root = getProtobufRoot();
-      if (!root) {
-        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
-      }
-      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
-      if (!AdminMessage) {
-        throw new Error('AdminMessage type not found');
-      }
-
-      const adminMsgData: any = {
-        sessionPasskey: sessionPasskey
-      };
-
-      if (isModuleConfig) {
-        adminMsgData.getModuleConfigRequest = configType;
-      } else {
-        adminMsgData.getConfigRequest = configType;
-      }
-
-      const adminMsg = AdminMessage.create(adminMsgData);
-      const encoded = AdminMessage.encode(adminMsg).finish();
-
-      // Clear any existing config for this type before requesting (to ensure fresh data)
-      // This must happen BEFORE sending to prevent race conditions where responses arrive
-      // and get immediately deleted, causing polling loops to timeout
-      // Map config types to their keys
-      if (isModuleConfig) {
-        const moduleConfigMap: { [key: number]: string } = {
-          0: 'mqtt',
-          5: 'telemetry',
-          9: 'neighborInfo',
-          13: 'statusmessage',
-          14: 'trafficManagement'
-        };
-        const configKey = moduleConfigMap[configType];
-        if (configKey) {
-          const nodeConfig = this.remoteNodeConfigs.get(destinationNodeNum);
-          if (nodeConfig?.moduleConfig) {
-            delete nodeConfig.moduleConfig[configKey];
-          }
-        }
-      } else {
-        const deviceConfigMap: { [key: number]: string } = {
-          0: 'device',
-          1: 'position',  // POSITION_CONFIG (was incorrectly 6)
-          5: 'lora',
-          6: 'bluetooth',  // BLUETOOTH_CONFIG (for completeness)
-          7: 'security'  // SECURITY_CONFIG
-        };
-        const configKey = deviceConfigMap[configType];
-        if (configKey) {
-          const nodeConfig = this.remoteNodeConfigs.get(destinationNodeNum);
-          if (nodeConfig?.deviceConfig) {
-            delete nodeConfig.deviceConfig[configKey];
-          }
-        }
-      }
-
-      // Track pending module config request so empty Proto3 responses can be mapped
-      if (isModuleConfig) {
-        const moduleConfigMap: { [key: number]: string } = {
-          0: 'mqtt', 5: 'telemetry', 9: 'neighborInfo',
-          13: 'statusmessage', 14: 'trafficManagement'
-        };
-        const pendingKey = moduleConfigMap[configType];
-        if (pendingKey) {
-          this.pendingModuleConfigRequests.set(destinationNodeNum, pendingKey);
-        }
-      }
-
-      // Send the request
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
-      await this.transport.send(adminPacket);
-      logger.debug(`📡 Requested ${isModuleConfig ? 'module' : 'device'} config type ${configType} from remote node ${destinationNodeNum}`);
-
-      // Wait for the response (config responses can take time, especially over mesh)
-      // Remote nodes may take longer due to mesh routing
-      // Poll for the response up to 20 seconds (increased from 10s for multi-hop mesh)
-      const maxWaitTime = 20000; // 20 seconds
-      const pollInterval = 250; // Check every 250ms
-      const maxPolls = maxWaitTime / pollInterval;
-      
-      for (let i = 0; i < maxPolls; i++) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-        
-        // Check if we have the config for this remote node
-        const nodeConfig = this.remoteNodeConfigs.get(destinationNodeNum);
-        if (nodeConfig) {
-          if (isModuleConfig) {
-            // Map module config types to their keys
-            const moduleConfigMap: { [key: number]: string } = {
-              0: 'mqtt',
-              5: 'telemetry',
-              9: 'neighborInfo',
-              13: 'statusmessage',
-              14: 'trafficManagement'
-            };
-            const configKey = moduleConfigMap[configType];
-            if (configKey && nodeConfig.moduleConfig?.[configKey]) {
-              logger.debug(`✅ Received ${configKey} config from remote node ${destinationNodeNum}`);
-              return nodeConfig.moduleConfig[configKey];
-            }
-          } else {
-            // Map device config types to their keys
-            const deviceConfigMap: { [key: number]: string } = {
-              0: 'device',
-              1: 'position',  // POSITION_CONFIG
-              2: 'power',     // POWER_CONFIG
-              3: 'network',   // NETWORK_CONFIG
-              4: 'display',   // DISPLAY_CONFIG
-              5: 'lora',      // LORA_CONFIG
-              6: 'bluetooth', // BLUETOOTH_CONFIG
-              7: 'security'   // SECURITY_CONFIG
-            };
-            const configKey = deviceConfigMap[configType];
-            if (configKey && nodeConfig.deviceConfig?.[configKey]) {
-              logger.debug(`✅ Received ${configKey} config from remote node ${destinationNodeNum}`);
-              return nodeConfig.deviceConfig[configKey];
-            }
-          }
-        }
-      }
-
-      logger.warn(`⚠️ Config type ${configType} not found in response from remote node ${destinationNodeNum} after waiting ${maxWaitTime}ms`);
-      return null;
-    } catch (error) {
-      logger.error(`❌ Error requesting config from remote node ${destinationNodeNum}:`, error);
-      throw error;
-    }
+    return this.remoteAdminService.requestRemoteConfig(destinationNodeNum, configType, isModuleConfig);
   }
 
   /**
@@ -13088,91 +12523,7 @@ class MeshtasticManager implements ISourceManager {
    * @returns The channel data if received, null otherwise
    */
   async requestRemoteChannel(destinationNodeNum: number, channelIndex: number): Promise<any> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node number not available');
-    }
-
-    try {
-      // Get or request session passkey
-      let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
-      if (sessionPasskey) {
-        logger.debug(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
-      } else {
-        logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
-        sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
-        if (!sessionPasskey) {
-          throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
-        }
-      }
-
-      // Create the channel request message with session passkey
-      // Note: getChannelRequest uses channelIndex + 1 (per protobuf spec)
-      const root = getProtobufRoot();
-      if (!root) {
-        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
-      }
-      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
-      if (!AdminMessage) {
-        throw new Error('AdminMessage type not found');
-      }
-
-      const adminMsg = AdminMessage.create({
-        sessionPasskey: sessionPasskey,
-        getChannelRequest: channelIndex + 1  // Protobuf uses index + 1
-      });
-      const encoded = AdminMessage.encode(adminMsg).finish();
-
-      // Clear any existing channel for this index before requesting (to ensure fresh data)
-      // This must happen BEFORE sending to prevent race conditions where responses arrive
-      // and get immediately deleted, causing polling loops to timeout
-      const nodeChannels = this.remoteNodeChannels.get(destinationNodeNum);
-      if (nodeChannels) {
-        nodeChannels.delete(channelIndex);
-      }
-
-      // Send the request
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
-      await this.transport.send(adminPacket);
-      logger.debug(`📡 Requested channel ${channelIndex} from remote node ${destinationNodeNum}`);
-      
-      // Wait for the response
-      // Use longer timeout for mesh routing - responses can take longer over mesh
-      // Increased from 8s to 16s for multi-hop mesh routing
-      const maxWaitTime = 16000; // 16 seconds
-      const pollInterval = 300; // Check every 300ms
-      const maxPolls = maxWaitTime / pollInterval;
-      
-      for (let i = 0; i < maxPolls; i++) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-        
-        // Check if we have the channel for this remote node
-        const nodeChannelsCheck = this.remoteNodeChannels.get(destinationNodeNum);
-        if (nodeChannelsCheck && nodeChannelsCheck.has(channelIndex)) {
-          const channel = nodeChannelsCheck.get(channelIndex);
-          logger.debug(`✅ Received channel ${channelIndex} from remote node ${destinationNodeNum}`, {
-            hasSettings: !!channel.settings,
-            name: channel.settings?.name,
-            role: channel.role
-          });
-          return channel;
-        }
-      }
-
-      logger.warn(`⚠️ Channel ${channelIndex} not found in response from remote node ${destinationNodeNum} after waiting ${maxWaitTime}ms`);
-      // Log what channels we did receive for debugging
-      const receivedChannels = this.remoteNodeChannels.get(destinationNodeNum);
-      if (receivedChannels) {
-        logger.debug(`📊 Received channels for node ${destinationNodeNum}:`, Array.from(receivedChannels.keys()));
-      }
-      return null;
-    } catch (error) {
-      logger.error(`❌ Error requesting channel from remote node ${destinationNodeNum}:`, error);
-      throw error;
-    }
+    return this.remoteAdminService.requestRemoteChannel(destinationNodeNum, channelIndex);
   }
 
   /**
@@ -13181,76 +12532,7 @@ class MeshtasticManager implements ISourceManager {
    * @returns The owner data if received, null otherwise
    */
   async requestRemoteOwner(destinationNodeNum: number): Promise<any> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node number not available');
-    }
-
-    try {
-      // Get or request session passkey
-      let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
-      if (sessionPasskey) {
-        logger.debug(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
-      } else {
-        logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
-        sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
-        if (!sessionPasskey) {
-          throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
-        }
-      }
-
-      // Create the owner request message with session passkey
-      const root = getProtobufRoot();
-      if (!root) {
-        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
-      }
-      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
-      if (!AdminMessage) {
-        throw new Error('AdminMessage type not found');
-      }
-
-      const adminMsg = AdminMessage.create({
-        sessionPasskey: sessionPasskey,
-        getOwnerRequest: true  // getOwnerRequest is a bool
-      });
-      const encoded = AdminMessage.encode(adminMsg).finish();
-
-      // Clear any existing owner for this node before requesting (to ensure fresh data)
-      // This must happen BEFORE sending to prevent race conditions where responses arrive
-      // and get immediately deleted, causing polling loops to timeout
-      this.remoteNodeOwners.delete(destinationNodeNum);
-
-      // Send the request
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
-      await this.transport.send(adminPacket);
-      logger.debug(`📡 Requested owner info from remote node ${destinationNodeNum}`);
-      
-      // Wait for the response
-      // Increased from 3s to 10s for multi-hop mesh routing
-      const maxWaitTime = 10000; // 10 seconds
-      const pollInterval = 250; // Check every 250ms
-      const maxPolls = maxWaitTime / pollInterval;
-
-      for (let i = 0; i < maxPolls; i++) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-        // Check if we have the owner for this remote node
-        if (this.remoteNodeOwners.has(destinationNodeNum)) {
-          const owner = this.remoteNodeOwners.get(destinationNodeNum);
-          logger.debug(`✅ Received owner info from remote node ${destinationNodeNum}`);
-          return owner;
-        }
-      }
-
-      logger.warn(`⚠️ Owner info not found in response from remote node ${destinationNodeNum} after waiting ${maxWaitTime / 1000}s`);
-      return null;
-    } catch (error) {
-      logger.error(`❌ Error requesting owner info from remote node ${destinationNodeNum}:`, error);
-      throw error;
-    }
+    return this.remoteAdminService.requestRemoteOwner(destinationNodeNum);
   }
 
   /**
@@ -13258,73 +12540,7 @@ class MeshtasticManager implements ISourceManager {
    * Returns firmware version, hardware model, capabilities, role, etc.
    */
   async requestRemoteDeviceMetadata(destinationNodeNum: number): Promise<any> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node number not available');
-    }
-
-    try {
-      // Get or request session passkey
-      let sessionPasskey = this.getSessionPasskey(destinationNodeNum);
-      if (sessionPasskey) {
-        logger.debug(`🔑 Using cached session passkey for remote node ${destinationNodeNum}`);
-      } else {
-        logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
-        sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
-        if (!sessionPasskey) {
-          throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
-        }
-      }
-
-      // Create the device metadata request message with session passkey
-      const root = getProtobufRoot();
-      if (!root) {
-        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
-      }
-      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
-      if (!AdminMessage) {
-        throw new Error('AdminMessage type not found');
-      }
-
-      const adminMsg = AdminMessage.create({
-        sessionPasskey: sessionPasskey,
-        getDeviceMetadataRequest: true
-      });
-      const encoded = AdminMessage.encode(adminMsg).finish();
-
-      // Clear any existing metadata for this node before requesting (to ensure fresh data)
-      this.remoteNodeDeviceMetadata.delete(destinationNodeNum);
-
-      // Send the request
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.localNodeInfo.nodeNum);
-      await this.transport.send(adminPacket);
-      logger.debug(`📡 Requested device metadata from remote node ${destinationNodeNum}`);
-
-      // Wait for the response
-      const maxWaitTime = 10000; // 10 seconds
-      const pollInterval = 250; // Check every 250ms
-      const maxPolls = maxWaitTime / pollInterval;
-
-      for (let i = 0; i < maxPolls; i++) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-        // Check if we have the device metadata for this remote node
-        if (this.remoteNodeDeviceMetadata.has(destinationNodeNum)) {
-          const metadata = this.remoteNodeDeviceMetadata.get(destinationNodeNum);
-          logger.debug(`✅ Received device metadata from remote node ${destinationNodeNum}`);
-          return metadata;
-        }
-      }
-
-      logger.warn(`⚠️ Device metadata not received from remote node ${destinationNodeNum} after waiting ${maxWaitTime / 1000}s`);
-      return null;
-    } catch (error) {
-      logger.error(`❌ Error requesting device metadata from remote node ${destinationNodeNum}:`, error);
-      throw error;
-    }
+    return this.remoteAdminService.requestRemoteDeviceMetadata(destinationNodeNum);
   }
 
   /**
@@ -13333,56 +12549,7 @@ class MeshtasticManager implements ISourceManager {
    * @param seconds Number of seconds before reboot (default: 5, use negative to cancel)
    */
   async sendRebootCommand(destinationNodeNum: number, seconds: number = 10): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node number not available');
-    }
-
-    const localNodeNum = this.localNodeInfo.nodeNum;
-    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
-
-    try {
-      const root = getProtobufRoot();
-      if (!root) {
-        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
-      }
-      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
-      if (!AdminMessage) {
-        throw new Error('AdminMessage type not found');
-      }
-
-      let sessionPasskey: Uint8Array | null = null;
-
-      // For remote nodes, get the session passkey
-      if (!isLocalNode) {
-        sessionPasskey = this.getSessionPasskey(destinationNodeNum);
-        if (!sessionPasskey) {
-          logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
-          sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
-          if (!sessionPasskey) {
-            throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
-          }
-        }
-      }
-
-      const adminMsg = AdminMessage.create({
-        ...(sessionPasskey && { sessionPasskey }),
-        rebootSeconds: seconds
-      });
-      const encoded = AdminMessage.encode(adminMsg).finish();
-
-      const targetNodeNum = isLocalNode ? localNodeNum : destinationNodeNum;
-      const adminPacket = protobufService.createAdminPacket(encoded, targetNodeNum, localNodeNum);
-      await this.transport.send(adminPacket);
-
-      logger.info(`🔄 Sent reboot command to node ${targetNodeNum} (reboot in ${seconds} seconds)`);
-    } catch (error) {
-      logger.error(`❌ Error sending reboot command to node ${destinationNodeNum}:`, error);
-      throw error;
-    }
+    return this.remoteAdminService.sendRebootCommand(destinationNodeNum, seconds);
   }
 
   /**
@@ -13391,59 +12558,7 @@ class MeshtasticManager implements ISourceManager {
    * @param destinationNodeNum The target node number (0 or local node num for local)
    */
   async sendSetTimeCommand(destinationNodeNum: number): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node number not available');
-    }
-
-    const localNodeNum = this.localNodeInfo.nodeNum;
-    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
-
-    try {
-      const root = getProtobufRoot();
-      if (!root) {
-        throw new Error('Protobuf definitions not loaded. Please ensure protobuf definitions are initialized.');
-      }
-      const AdminMessage = root.lookupType('meshtastic.AdminMessage');
-      if (!AdminMessage) {
-        throw new Error('AdminMessage type not found');
-      }
-
-      let sessionPasskey: Uint8Array | null = null;
-
-      // For remote nodes, get the session passkey
-      if (!isLocalNode) {
-        sessionPasskey = this.getSessionPasskey(destinationNodeNum);
-        if (!sessionPasskey) {
-          logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one...`);
-          sessionPasskey = await this.requestRemoteSessionPasskey(destinationNodeNum);
-          if (!sessionPasskey) {
-            throw new Error(`Failed to obtain session passkey for remote node ${destinationNodeNum}`);
-          }
-        }
-      }
-
-      // Get current Unix timestamp
-      const currentTime = Math.floor(Date.now() / 1000);
-
-      const adminMsg = AdminMessage.create({
-        ...(sessionPasskey && { sessionPasskey }),
-        setTimeOnly: currentTime
-      });
-      const encoded = AdminMessage.encode(adminMsg).finish();
-
-      const targetNodeNum = isLocalNode ? localNodeNum : destinationNodeNum;
-      const adminPacket = protobufService.createAdminPacket(encoded, targetNodeNum, localNodeNum);
-      await this.transport.send(adminPacket);
-
-      logger.debug(`🕐 Sent set time command to node ${targetNodeNum} (time: ${currentTime} / ${new Date(currentTime * 1000).toISOString()})`);
-    } catch (error) {
-      logger.error(`❌ Error sending set time command to node ${destinationNodeNum}:`, error);
-      throw error;
-    }
+    return this.remoteAdminService.sendSetTimeCommand(destinationNodeNum);
   }
 
   /**
@@ -13451,57 +12566,7 @@ class MeshtasticManager implements ISourceManager {
    * This requests all 13 module config types defined in the protobufs
    */
   async requestAllModuleConfigs(): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    // All module config types from admin.proto ModuleConfigType enum
-    const moduleConfigTypes = [
-      0,  // MQTT_CONFIG
-      1,  // SERIAL_CONFIG
-      2,  // EXTNOTIF_CONFIG
-      3,  // STOREFORWARD_CONFIG
-      4,  // RANGETEST_CONFIG
-      5,  // TELEMETRY_CONFIG
-      6,  // CANNEDMSG_CONFIG
-      7,  // AUDIO_CONFIG
-      8,  // REMOTEHARDWARE_CONFIG
-      9,  // NEIGHBORINFO_CONFIG
-      10, // AMBIENTLIGHTING_CONFIG
-      11, // DETECTIONSENSOR_CONFIG
-      12, // PAXCOUNTER_CONFIG
-      13, // STATUSMESSAGE_CONFIG
-      14  // TRAFFICMANAGEMENT_CONFIG
-    ];
-
-    logger.debug('📦 Requesting all module configs for complete backup...');
-
-    for (const configType of moduleConfigTypes) {
-      // Abort early if we lost the connection mid-fetch (#3637). Propagating
-      // the error prevents the caller from setting moduleConfigsEverFetched=true,
-      // so the fetch is retried on the next reconnection rather than silently
-      // skipped forever.
-      if (!this.isConnected || !this.transport) {
-        logger.warn(`⚠️ Connection lost during module config fetch — aborting at type ${configType}, will retry on reconnect`);
-        throw new Error('Not connected to Meshtastic node');
-      }
-      try {
-        await this.requestModuleConfig(configType);
-        // Configurable delay between requests to avoid overwhelming the device
-        await new Promise(resolve => setTimeout(resolve, getEnvironmentConfig().meshtasticModuleConfigDelayMs));
-      } catch (error) {
-        const errMsg = error instanceof Error ? error.message : String(error);
-        if (errMsg === 'Not connected to Meshtastic node') {
-          // Connectivity loss mid-send: propagate so caller doesn't mark fetch complete (#3637)
-          logger.warn(`⚠️ Lost connection during module config fetch at type ${configType} — aborting, will retry on reconnect`);
-          throw error;
-        }
-        logger.error(`❌ Failed to request module config type ${configType}:`, error);
-        // Continue with other configs even if one type fails for non-connectivity reasons
-      }
-    }
-
-    logger.debug('✅ All module config requests sent');
+    return this.remoteAdminService.requestAllModuleConfigs();
   }
 
   /**
@@ -13509,9 +12574,7 @@ class MeshtasticManager implements ISourceManager {
    * Called after OTA firmware updates to ensure fresh config data.
    */
   resetModuleConfigCache(): void {
-    this.moduleConfigsEverFetched = false;
-    this.actualModuleConfig = null;
-    logger.debug('📦 Module config cache reset — will re-fetch on next connect');
+    return this.remoteAdminService.resetModuleConfigCache();
   }
 
   /**
@@ -13519,11 +12582,7 @@ class MeshtasticManager implements ISourceManager {
    * Useful for Configuration tab refresh button or API use.
    */
   async refreshModuleConfigs(): Promise<void> {
-    this.moduleConfigsEverFetched = false;
-    this.actualModuleConfig = null;
-    logger.debug('📦 Force-refreshing module configs...');
-    await this.requestAllModuleConfigs();
-    this.moduleConfigsEverFetched = true;
+    return this.remoteAdminService.refreshModuleConfigs();
   }
 
   /**
@@ -13534,79 +12593,7 @@ class MeshtasticManager implements ISourceManager {
    * @returns Promise that resolves when command is sent
    */
   async sendAdminCommand(adminMessagePayload: Uint8Array, destinationNodeNum: number): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node information not available');
-    }
-
-    const localNodeNum = this.localNodeInfo.nodeNum;
-
-    try {
-      const adminPacket = protobufService.createAdminPacket(
-        adminMessagePayload,
-        destinationNodeNum,
-        localNodeNum
-      );
-
-      await this.transport.send(adminPacket);
-      logger.debug(`✅ Sent admin command to node ${destinationNodeNum}`);
-
-      // Log outgoing admin command to packet monitor (ONLY for remote admin)
-      // Skip logging for local admin (destination == localNodeNum)
-      if (destinationNodeNum !== localNodeNum) {
-        await this.logOutgoingPacket(
-          6, // ADMIN_APP
-          destinationNodeNum,
-          0, // Admin uses channel 0
-          `Remote Admin to !${destinationNodeNum.toString(16).padStart(8, '0')}`,
-          { destinationNodeNum, isRemoteAdmin: true }
-        );
-      }
-    } catch (error) {
-      logger.error(`❌ Error sending admin command to node ${destinationNodeNum}:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Resolve a pending admin-ACK waiter from an inbound Routing packet.
-   * Returns true if the packet was consumed (so normal routing handling is
-   * skipped), false to let it continue.
-   *
-   * Semantics mirror message delivery: a routing error (errorReason !== 0)
-   * settles as failure; an error_reason=NONE ACK from the destination node
-   * settles as success; an error_reason=NONE ACK from our own radio means
-   * "transmitted to mesh" — consumed, but we keep waiting for the remote's ACK.
-   */
-  private tryResolveAdminAck(requestId: number, fromNum: number, errorReason: number): boolean {
-    const waiter = this.pendingAdminAcks.get(requestId);
-    if (!waiter) return false;
-
-    if (errorReason !== 0) {
-      this.settleAdminAck(requestId, errorReason);
-      return true;
-    }
-    if (fromNum === waiter.dest) {
-      // The destination node processed the admin command and ACKed it.
-      this.settleAdminAck(requestId, 0);
-      return true;
-    }
-    // error_reason=NONE from our own radio / an intermediate hop: the
-    // "delivered to mesh" ack, not proof the remote processed it. Consume it
-    // (admin packets aren't messages) but keep the waiter alive.
-    return true;
-  }
-
-  /** Settle and clean up a pending admin-ACK waiter. */
-  private settleAdminAck(requestId: number, errorReason: number | null): void {
-    const waiter = this.pendingAdminAcks.get(requestId);
-    if (!waiter) return;
-    clearTimeout(waiter.timer);
-    this.pendingAdminAcks.delete(requestId);
-    waiter.resolve(errorReason);
+    return this.adminTransactionService.sendAdminCommand(adminMessagePayload, destinationNodeNum);
   }
 
   /**
@@ -13620,52 +12607,7 @@ class MeshtasticManager implements ISourceManager {
     destinationNodeNum: number,
     timeoutMs: number = 30000
   ): Promise<{ packetId: number; acked: boolean; errorReason: number | null; timedOut: boolean }> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node information not available');
-    }
-    const localNodeNum = this.localNodeInfo.nodeNum;
-
-    const { data: adminPacket, packetId } = protobufService.createAdminPacketWithId(
-      adminMessagePayload,
-      destinationNodeNum,
-      localNodeNum
-    );
-
-    // Register the waiter BEFORE sending so a fast ACK can't be missed.
-    const ackPromise = new Promise<number | null>((resolve) => {
-      const timer = setTimeout(() => {
-        this.pendingAdminAcks.delete(packetId);
-        resolve(null);
-      }, timeoutMs);
-      this.pendingAdminAcks.set(packetId, { dest: destinationNodeNum, resolve, timer });
-    });
-
-    try {
-      await this.transport.send(adminPacket);
-      logger.debug(`✅ Sent admin command (await ack) to node ${destinationNodeNum}, packetId ${packetId}`);
-      if (destinationNodeNum !== localNodeNum) {
-        await this.logOutgoingPacket(
-          6, // ADMIN_APP
-          destinationNodeNum,
-          0,
-          `Remote Admin to !${destinationNodeNum.toString(16).padStart(8, '0')}`,
-          { destinationNodeNum, isRemoteAdmin: true, packetId }
-        );
-      }
-    } catch (error) {
-      this.settleAdminAck(packetId, null);
-      logger.error(`❌ Error sending admin command to node ${destinationNodeNum}:`, error);
-      throw error;
-    }
-
-    const errorReason = await ackPromise;
-    if (errorReason === null) {
-      return { packetId, acked: false, errorReason: null, timedOut: true };
-    }
-    return { packetId, acked: errorReason === 0, errorReason, timedOut: false };
+    return this.adminTransactionService.sendAdminCommandAwaitAck(adminMessagePayload, destinationNodeNum, timeoutMs);
   }
 
   /**
@@ -13677,32 +12619,7 @@ class MeshtasticManager implements ISourceManager {
     destinationNodeNum?: number,
     timeoutMs: number = 30000
   ): Promise<{ acked: boolean; errorReason: number | null; timedOut: boolean }> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-    if (!this.supportsFavorites()) {
-      throw new Error('FIRMWARE_NOT_SUPPORTED');
-    }
-    const localNodeNum = this.localNodeInfo?.nodeNum || 0;
-    const destNode = destinationNodeNum || localNodeNum;
-    const isRemote = destNode !== localNodeNum && destNode !== 0;
-
-    let sessionPasskey: Uint8Array = new Uint8Array();
-    if (isRemote) {
-      const cached = this.getSessionPasskey(destNode);
-      if (cached) {
-        sessionPasskey = cached;
-      } else {
-        const requested = await this.requestRemoteSessionPasskey(destNode);
-        if (!requested) throw new Error(`Failed to obtain session passkey for remote node ${destNode}`);
-        sessionPasskey = requested;
-      }
-    }
-
-    const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, sessionPasskey);
-    const result = await this.sendAdminCommandAwaitAck(setFavoriteMsg, destNode, timeoutMs);
-    logger.debug(`⭐ set_favorite_node ${nodeNum} → node ${destNode}: acked=${result.acked} timedOut=${result.timedOut} err=${result.errorReason}`);
-    return { acked: result.acked, errorReason: result.errorReason, timedOut: result.timedOut };
+    return this.favoritesService.sendFavoriteNodeAwaitAck(nodeNum, destinationNodeNum, timeoutMs);
   }
 
   /**
@@ -13734,88 +12651,28 @@ class MeshtasticManager implements ISourceManager {
    * @param seconds Number of seconds to wait before purging (typically 0 for immediate)
    */
   async purgeNodeDb(seconds: number = 0): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug(`⚙️ Sending purge node database command: will purge in ${seconds} seconds`);
-      // NOTE: Session passkeys are only required for REMOTE admin operations (admin messages sent to other nodes via mesh).
-      // For local TCP connections to the device itself, no session passkey is needed.
-      const purgeMsg = protobufService.createPurgeNodeDbMessage(seconds);
-      const adminPacket = protobufService.createAdminPacket(purgeMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent purge node database admin message (local operation, no session passkey required)');
-    } catch (error) {
-      logger.error('❌ Error sending purge node database command:', error);
-      throw error;
-    }
+    return this.nodeDbMaintenanceService.purgeNodeDb(seconds);
   }
 
   /**
    * Set device configuration (role, broadcast intervals, etc.)
    */
   async setDeviceConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending device config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetDeviceConfigMessage(config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent set_device_config admin message');
-    } catch (error) {
-      logger.error('❌ Error sending device config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setDeviceConfig(config);
   }
 
   /**
    * Set LoRa configuration (preset, region, etc.)
    */
   async setLoRaConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending LoRa config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetLoRaConfigMessage(config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      this.updateCachedDeviceConfig('lora', config);
-      logger.debug('⚙️ Sent set_lora_config admin message');
-    } catch (error) {
-      logger.error('❌ Error sending LoRa config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setLoRaConfig(config);
   }
 
   /**
    * Set network configuration (NTP server, etc.)
    */
   async setNetworkConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending network config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetNetworkConfigMessage(config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      this.updateCachedDeviceConfig('network', config);
-      logger.debug('⚙️ Sent set_network_config admin message');
-    } catch (error) {
-      logger.error('❌ Error sending network config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setNetworkConfig(config);
   }
 
   /**
@@ -13831,198 +12688,49 @@ class MeshtasticManager implements ISourceManager {
     downlinkEnabled?: boolean;
     positionPrecision?: number;
   }): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (channelIndex < 0 || channelIndex > 7) {
-      throw new Error('Channel index must be between 0 and 7');
-    }
-
-    try {
-      logger.debug(`⚙️ Sending channel ${channelIndex} config:`, JSON.stringify(config));
-      const setChannelMsg = protobufService.createSetChannelMessage(channelIndex, config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setChannelMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug(`⚙️ Sent set_channel admin message for channel ${channelIndex}`);
-    } catch (error) {
-      logger.error(`❌ Error sending channel ${channelIndex} config:`, error);
-      throw error;
-    }
+    return this.deviceAdminService.setChannelConfig(channelIndex, config);
   }
 
   /**
    * Set position configuration (broadcast intervals, etc.)
    */
   async setPositionConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      // Extract position data if provided
-      const { latitude, longitude, altitude, ...positionConfig } = config;
-
-      // Per Meshtastic docs: Set fixed position coordinates FIRST, THEN set fixedPosition flag.
-      // set_fixed_position automatically sets fixedPosition=true on the device.
-      // No delay needed: firmware processes incoming messages sequentially from its receive buffer.
-      if (latitude !== undefined && longitude !== undefined) {
-        logger.debug(`⚙️ Setting fixed position coordinates: lat=${latitude}, lon=${longitude}, alt=${altitude || 0}`);
-        const setPositionMsg = protobufService.createSetFixedPositionMessage(
-          latitude,
-          longitude,
-          altitude || 0,
-          new Uint8Array()
-        );
-        const positionPacket = protobufService.createAdminPacket(setPositionMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-        await this.transport.send(positionPacket);
-        logger.debug('⚙️ Sent set_fixed_position admin message');
-
-        // Immediately update the local node's position in the database so it's correct
-        // before any stale position broadcast arrives from the device firmware.
-        if (this.localNodeInfo) {
-          const localNodeNum = this.localNodeInfo.nodeNum;
-          const localNodeId = `!${localNodeNum.toString(16).padStart(8, '0')}`;
-          await databaseService.upsertNodeAsync({
-            nodeNum: localNodeNum,
-            nodeId: localNodeId,
-            latitude,
-            longitude,
-            altitude: altitude || 0,
-            positionTimestamp: Date.now(),
-          }, this.sourceId);
-          logger.info(`⚙️ Updated local node ${localNodeId} position in database: lat=${latitude}, lon=${longitude}`);
-        }
-      }
-
-      // Then send position configuration (fixedPosition flag, broadcast intervals, etc.)
-      logger.debug('⚙️ Sending position config:', JSON.stringify(positionConfig));
-      const setConfigMsg = protobufService.createSetPositionConfigMessage(positionConfig, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      this.updateCachedDeviceConfig('position', positionConfig);
-      logger.debug('⚙️ Sent set_position_config admin message');
-    } catch (error) {
-      logger.error('❌ Error sending position config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setPositionConfig(config);
   }
 
   /**
    * Set MQTT module configuration
    */
   async setMQTTConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending MQTT config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetMQTTConfigMessage(config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      this.updateCachedDeviceConfig('mqtt', config);
-      logger.debug('⚙️ Sent set_mqtt_config admin message (direct, no transaction)');
-    } catch (error) {
-      logger.error('❌ Error sending MQTT config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setMQTTConfig(config);
   }
 
   /**
    * Set NeighborInfo module configuration
    */
   async setNeighborInfoConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending NeighborInfo config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetNeighborInfoConfigMessage(config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      this.updateCachedDeviceConfig('neighborinfo', config);
-      logger.debug('⚙️ Sent set_neighborinfo_config admin message (direct, no transaction)');
-    } catch (error) {
-      logger.error('❌ Error sending NeighborInfo config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setNeighborInfoConfig(config);
   }
 
   /**
    * Set power configuration
    */
   async setPowerConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending power config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetDeviceConfigMessageGeneric('power', config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent set_power_config admin message');
-    } catch (error) {
-      logger.error('❌ Error sending power config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setPowerConfig(config);
   }
 
   /**
    * Set display configuration
    */
   async setDisplayConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending display config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetDeviceConfigMessageGeneric('display', config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent set_display_config admin message');
-    } catch (error) {
-      logger.error('❌ Error sending display config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setDisplayConfig(config);
   }
 
   /**
    * Set telemetry module configuration
    */
   async setTelemetryConfig(config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Sending telemetry config:', JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetModuleConfigMessageGeneric('telemetry', config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent set_telemetry_config admin message');
-
-      // Update local cache with the config that was sent
-      if (!this.actualModuleConfig) {
-        this.actualModuleConfig = {};
-      }
-      this.actualModuleConfig.telemetry = { ...this.actualModuleConfig.telemetry, ...config };
-      logger.debug('⚙️ Updated actualModuleConfig.telemetry cache');
-    } catch (error) {
-      logger.error('❌ Error sending telemetry config:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setTelemetryConfig(config);
   }
 
   /**
@@ -14031,87 +12739,28 @@ class MeshtasticManager implements ISourceManager {
    * remotehardware, detectionsensor, paxcounter, serial, ambientlighting
    */
   async setGenericModuleConfig(moduleType: string, config: any): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug(`⚙️ Sending ${moduleType} config:`, JSON.stringify(config));
-      const setConfigMsg = protobufService.createSetModuleConfigMessageGeneric(moduleType, config, new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(setConfigMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug(`⚙️ Sent set_${moduleType}_config admin message`);
-    } catch (error) {
-      logger.error(`❌ Error sending ${moduleType} config:`, error);
-      throw error;
-    }
+    return this.deviceAdminService.setGenericModuleConfig(moduleType, config);
   }
 
   /**
    * Set node owner (long name and short name)
    */
   async setNodeOwner(longName: string, shortName: string, isUnmessagable?: boolean, isLicensed?: boolean): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug(`⚙️ Setting node owner: "${longName}" (${shortName}), isUnmessagable: ${isUnmessagable}, isLicensed: ${isLicensed}`);
-      const setOwnerMsg = protobufService.createSetOwnerMessage(longName, shortName, isUnmessagable, new Uint8Array(), isLicensed);
-      const adminPacket = protobufService.createAdminPacket(setOwnerMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent set_owner admin message (direct, no transaction)');
-    } catch (error) {
-      logger.error('❌ Error setting node owner:', error);
-      throw error;
-    }
+    return this.deviceAdminService.setNodeOwner(longName, shortName, isUnmessagable, isLicensed);
   }
 
   /**
    * Begin edit settings transaction to batch configuration changes
    */
   async beginEditSettings(): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Beginning edit settings transaction');
-      const beginMsg = protobufService.createBeginEditSettingsMessage(new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(beginMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent begin_edit_settings admin message');
-    } catch (error) {
-      logger.error('❌ Error beginning edit settings:', error);
-      throw error;
-    }
+    return this.deviceAdminService.beginEditSettings();
   }
 
   /**
    * Commit edit settings to persist configuration changes
    */
   async commitEditSettings(): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug('⚙️ Committing edit settings to persist configuration');
-      const commitMsg = protobufService.createCommitEditSettingsMessage(new Uint8Array());
-      const adminPacket = protobufService.createAdminPacket(commitMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent commit_edit_settings admin message');
-
-      // Wait a moment for device to save to flash
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    } catch (error) {
-      logger.error('❌ Error committing edit settings:', error);
-      throw error;
-    }
+    return this.deviceAdminService.commitEditSettings();
   }
 
   async getConnectionStatus(): Promise<{ connected: boolean; nodeResponsive: boolean; configuring: boolean; nodeIp: string; userDisconnected?: boolean }> {
@@ -14246,169 +12895,143 @@ class MeshtasticManager implements ISourceManager {
     return this.deviceNodeNums.has(nodeNum);
   }
 
-  // Async version that fetches uptimes in a single bulk query - works with all DB backends
-  async getAllNodesAsync(sourceId?: string): Promise<DeviceInfo[]> {
-    const [uptimeMap, noiseFloorMap] = await Promise.all([
-      databaseService.telemetry.getLatestTelemetryValueForAllNodes('uptimeSeconds', sourceId),
-      databaseService.telemetry.getLatestTelemetryValueForAllNodes('noiseFloor', sourceId),
-    ]);
-    // intentional cross-source when sourceId omitted: caller wants unified view across all sources
-    const dbNodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
-    // Without a sourceId the caller wants the unified view, so collapse the
-    // per-source rows into one entry per nodeNum. Issue #3135.
-    const effective = sourceId ? dbNodes : mergeNodesAcrossSources(dbNodes);
-    return effective.map(node =>
-      this.mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId), noiseFloorMap.get(node.nodeId)),
-    );
+  // ── Narrow accessors for NodeDbMaintenanceService (#3962 Phase 4.2a PR2 §4f) ──
+  // These exist only to bridge previously-private state to the extracted
+  // service without widening the fields themselves or touching the
+  // protobuf-dispatch code that also reads/writes them.
+
+  /** Bare `isConnected` flag — matches the pre-extraction `refreshNodeDatabase` guard. */
+  isDeviceConnected(): boolean {
+    return this.isConnected;
   }
 
+  /** `isConnected && transport !== null` — matches the pre-extraction combined
+   *  guard used by `purgeNodeDb`/`sendRemoveNode` before building an admin packet. */
+  isTransportReady(): boolean {
+    return this.isConnected && this.transport !== null;
+  }
 
-  // Shared mapping logic for converting a DB node to DeviceInfo
-  private mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number, noiseFloor?: number): DeviceInfo {
-      const deviceInfo: any = {
-        nodeNum: node.nodeNum,
-        user: {
-          id: node.nodeId,
-          longName: node.longName || '',
-          shortName: node.shortName || '',
-          hwModel: node.hwModel,
-          publicKey: node.publicKey
-        },
-        deviceMetrics: {
-          batteryLevel: node.batteryLevel,
-          voltage: node.voltage,
-          channelUtilization: node.channelUtilization,
-          airUtilTx: node.airUtilTx,
-          uptimeSeconds,
-          noiseFloor
-        },
-        lastHeard: node.lastHeard,
-        snr: node.snr,
-        rssi: node.rssi
-      };
+  /** Send a pre-built admin packet over the current transport (local, not remote-mesh). */
+  async sendLocalAdminPacket(adminPacket: Uint8Array): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+    await this.transport.send(adminPacket);
+  }
 
-      // Add role if it exists
-      if (node.role !== null && node.role !== undefined) {
-        deviceInfo.user.role = node.role.toString();
-      }
+  /** Drop a node from the connected radio's local-database tracking set. */
+  removeDeviceNodeNum(nodeNum: number): void {
+    this.deviceNodeNums.delete(nodeNum);
+  }
 
-      // Add hopsAway if it exists
-      if (node.hopsAway !== null && node.hopsAway !== undefined) {
-        deviceInfo.hopsAway = node.hopsAway;
-      }
+  // ── Narrow accessor for AutoAnnounceService (#3962 Phase 4.2a PR3 §4b) ──
+  // Bridges the private `rebootMergeInProgress` guard without widening the
+  // field itself — same rationale as the NodeDbMaintenanceService block above.
+  /** `true` while a post-reboot NodeDB merge is suppressing broadcasts. */
+  isRebootMergeInProgress(): boolean {
+    return this.rebootMergeInProgress;
+  }
 
-      // Add lastMessageHops if it exists (for "All messages" hop calculation mode)
-      if (node.lastMessageHops !== null && node.lastMessageHops !== undefined) {
-        deviceInfo.lastMessageHops = node.lastMessageHops;
-      }
+  // ── Narrow accessors for FavoritesService (#3962 Phase 4.2a PR4 §4c) ──
+  // favoritesSupportCache/autoFavoritingNodes stay on the manager (pinned
+  // tests reach into them directly — see favoritesService.ts's header
+  // comment for the full rationale); these bridge them to the service
+  // without widening the fields themselves.
 
-      // Add viaMqtt if it exists
-      if (node.viaMqtt !== null && node.viaMqtt !== undefined) {
-        deviceInfo.viaMqtt = Boolean(node.viaMqtt);
-      }
+  /** Read the version-keyed favorites-support cache. */
+  getFavoritesSupportCache(): { version: string; result: boolean } | null {
+    return this.favoritesSupportCache;
+  }
 
-      // Add isStoreForwardServer if it exists
-      if (node.isStoreForwardServer !== null && node.isStoreForwardServer !== undefined) {
-        deviceInfo.isStoreForwardServer = Boolean(node.isStoreForwardServer);
-      }
+  /** Write (or clear, with `null`) the favorites-support cache. */
+  setFavoritesSupportCache(value: { version: string; result: boolean } | null): void {
+    this.favoritesSupportCache = value;
+  }
 
-      // Add isFavorite if it exists
-      if (node.isFavorite !== null && node.isFavorite !== undefined) {
-        deviceInfo.isFavorite = Boolean(node.isFavorite);
-      }
+  /** Whether an auto-favorite operation is already in flight for this node. */
+  isAutoFavoritingNode(nodeNum: number): boolean {
+    return this.autoFavoritingNodes.has(nodeNum);
+  }
 
-      // Add favoriteLocked if it exists
-      if (node.favoriteLocked !== null && node.favoriteLocked !== undefined) {
-        deviceInfo.favoriteLocked = Boolean(node.favoriteLocked);
-      }
+  /** Mark a node as having an auto-favorite operation in flight. */
+  addAutoFavoritingNode(nodeNum: number): void {
+    this.autoFavoritingNodes.add(nodeNum);
+  }
 
-      // Add isIgnored if it exists
-      if (node.isIgnored !== null && node.isIgnored !== undefined) {
-        deviceInfo.isIgnored = Boolean(node.isIgnored);
-      }
+  /** Clear the in-flight marker for a node's auto-favorite operation. */
+  removeAutoFavoritingNode(nodeNum: number): void {
+    this.autoFavoritingNodes.delete(nodeNum);
+  }
 
-      // Add isUnmessagable / isLicensed if they exist (#3684). Without these
-      // the client never learns a remote node is unmessagable, so the DM UI
-      // (NodesTab DM button, MessagesTab compose) fails open for them (#3755).
-      if (node.isUnmessagable !== null && node.isUnmessagable !== undefined) {
-        deviceInfo.isUnmessagable = Boolean(node.isUnmessagable);
-      }
-      if (node.isLicensed !== null && node.isLicensed !== undefined) {
-        deviceInfo.isLicensed = Boolean(node.isLicensed);
-      }
+  // ── Narrow accessors for DeviceAdminService (#3962 Phase 4.2a PR5 §4e) ──
+  // Bridge previously-private state without widening the fields themselves.
 
-      // Add channel if it exists
-      if (node.channel !== null && node.channel !== undefined) {
-        deviceInfo.channel = node.channel;
-      }
+  /** `{nodeIp, tcpPort}` off the private `getConfig()` — all `buildDeviceConfigFromActual` needs from it. */
+  async getConnectionAddress(): Promise<{ nodeIp: string; tcpPort: number }> {
+    const config = await this.getConfig();
+    return { nodeIp: config.nodeIp, tcpPort: config.tcpPort };
+  }
 
-      // Add mobile flag if it exists (pre-computed during packet processing)
-      if (node.mobile !== null && node.mobile !== undefined) {
-        deviceInfo.mobile = node.mobile;
-      }
+  /**
+   * Update cached module config section after a successful admin command.
+   * Mirrors `updateCachedDeviceConfig` above but for `actualModuleConfig`.
+   */
+  updateCachedModuleConfig(section: string, values: Record<string, any>): void {
+    if (!this.actualModuleConfig) {
+      this.actualModuleConfig = {};
+    }
+    this.actualModuleConfig[section] = {
+      ...this.actualModuleConfig[section],
+      ...values
+    };
+  }
 
-      // Add security fields for low-entropy and duplicate key detection
-      if (node.keyIsLowEntropy !== null && node.keyIsLowEntropy !== undefined) {
-        deviceInfo.keyIsLowEntropy = Boolean(node.keyIsLowEntropy);
-      }
-      if (node.duplicateKeyDetected !== null && node.duplicateKeyDetected !== undefined) {
-        deviceInfo.duplicateKeyDetected = Boolean(node.duplicateKeyDetected);
-      }
-      if (node.keySecurityIssueDetails) {
-        deviceInfo.keySecurityIssueDetails = node.keySecurityIssueDetails;
-      }
+  // ── Narrow accessors for RemoteAdminService (#3962 Phase 4.2a PR5 §4e) ──
+  // remoteNodeConfigs/remoteNodeChannels/remoteNodeOwners/remoteNodeDeviceMetadata/
+  // pendingModuleConfigRequests/moduleConfigsEverFetched/actualModuleConfig stay
+  // on the manager because protobuf dispatch (`processAdminMessage`, out of
+  // scope per spec §10) writes them directly on packet receipt — the same
+  // "written on one side, read on the other" split `adminTransactionService.ts`
+  // documents for `pendingAdminAcks`. These bridge bidirectionally without
+  // widening the fields themselves; several return the SAME live Map/entry
+  // reference the manager holds (same trick the pre-existing
+  // `getRemoteNodeConfig` accessor above already uses) so in-place mutation
+  // (`.delete()`, nested-key `delete`) keeps working exactly as before.
 
-      // Add position if coordinates exist
-      if (node.latitude && node.longitude) {
-        deviceInfo.position = {
-          latitude: node.latitude,
-          longitude: node.longitude,
-          altitude: node.altitude
-        };
-      }
+  /** Record which module-config key a pending request (local or remote) should resolve to. */
+  setPendingModuleConfigRequest(nodeNum: number, key: string): void {
+    this.pendingModuleConfigRequests.set(nodeNum, key);
+  }
 
-      // Add position precision fields for accuracy circles
-      if (node.positionPrecisionBits !== null && node.positionPrecisionBits !== undefined) {
-        deviceInfo.positionPrecisionBits = node.positionPrecisionBits;
-      }
-      if (node.positionGpsAccuracy !== null && node.positionGpsAccuracy !== undefined) {
-        deviceInfo.positionGpsAccuracy = node.positionGpsAccuracy;
-      }
-      if (node.positionLocationSource !== null && node.positionLocationSource !== undefined) {
-        deviceInfo.positionLocationSource = node.positionLocationSource;
-      }
+  /** Live per-node remote-channel map (channelIndex → channel), or undefined if none cached yet. */
+  getRemoteNodeChannelsMap(nodeNum: number): Map<number, any> | undefined {
+    return this.remoteNodeChannels.get(nodeNum);
+  }
 
-      // Add position override fields
-      if (node.positionOverrideEnabled !== null && node.positionOverrideEnabled !== undefined) {
-        deviceInfo.positionOverrideEnabled = Boolean(node.positionOverrideEnabled);
-      }
-      if (node.latitudeOverride !== null && node.latitudeOverride !== undefined) {
-        deviceInfo.latitudeOverride = node.latitudeOverride;
-      }
-      if (node.longitudeOverride !== null && node.longitudeOverride !== undefined) {
-        deviceInfo.longitudeOverride = node.longitudeOverride;
-      }
-      if (node.altitudeOverride !== null && node.altitudeOverride !== undefined) {
-        deviceInfo.altitudeOverride = node.altitudeOverride;
-      }
-      if (node.positionOverrideIsPrivate !== null && node.positionOverrideIsPrivate !== undefined) {
-        deviceInfo.positionOverrideIsPrivate = Boolean(node.positionOverrideIsPrivate);
-      }
+  /** Live remote-node-owner cache (nodeNum → owner response). */
+  getRemoteNodeOwnersMap(): Map<number, any> {
+    return this.remoteNodeOwners;
+  }
 
-      // Add remote admin fields
-      if (node.hasRemoteAdmin !== null && node.hasRemoteAdmin !== undefined) {
-        deviceInfo.hasRemoteAdmin = Boolean(node.hasRemoteAdmin);
-        logger.debug(`🔍 Node ${node.nodeNum} hasRemoteAdmin: ${node.hasRemoteAdmin}`);
-      }
-      if (node.lastRemoteAdminCheck !== null && node.lastRemoteAdminCheck !== undefined) {
-        deviceInfo.lastRemoteAdminCheck = node.lastRemoteAdminCheck;
-      }
-      if (node.remoteAdminMetadata) {
-        deviceInfo.remoteAdminMetadata = node.remoteAdminMetadata;
-        logger.debug(`🔍 Node ${node.nodeNum} has remoteAdminMetadata`);
-      }
+  /** Live remote-node-device-metadata cache (nodeNum → metadata response). */
+  getRemoteNodeDeviceMetadataMap(): Map<number, any> {
+    return this.remoteNodeDeviceMetadata;
+  }
 
-      return deviceInfo;
+  /** Reset both module-config cache fields — matches the pre-extraction `resetModuleConfigCache` body. */
+  resetModuleConfigState(): void {
+    this.moduleConfigsEverFetched = false;
+    this.actualModuleConfig = null;
+  }
+
+  /** Write the module-configs-ever-fetched flag. */
+  setModuleConfigsEverFetched(value: boolean): void {
+    this.moduleConfigsEverFetched = value;
+  }
+
+  // Async version that fetches uptimes in a single bulk query - works with all DB backends
+  async getAllNodesAsync(sourceId?: string): Promise<DeviceInfo[]> {
+    return this.nodeDbMaintenanceService.getAllNodesAsync(sourceId);
   }
 
   async getRecentMessages(limit: number = 50, sourceId?: string): Promise<MeshMessage[]> {
@@ -14498,18 +13121,26 @@ class MeshtasticManager implements ISourceManager {
     }
 
     logger.info('🟡 [manual-resync] Operator-initiated resync — sending want_config_id');
+
+    // #3962 Phase 4.2b C2: MANUAL_RESYNC_REQUESTED — Connected -> ConfigSync
+    // (origin=manual). Guards above are kept in the manager (task42b_spec.md
+    // §5); the reducer covers only the state flip + capture-flag/watchdog
+    // actions.
+    const { next } = dispatch(this.#state, 'MANUAL_RESYNC_REQUESTED', this.buildSmContext());
+    this.#state = next;
+
     this.manualResyncInFlight = true;
     this.manualResyncLastAt = now;
     // Latch the suppress flag BEFORE sending so a same-tick disconnect (which
     // can happen on a fragile node) is observed by handleDisconnected → reconnect
-    // before this method returns.
+    // before this method returns. ('latchSuppressNext' action)
     this.suppressNextAutoSync = true;
     // Mark config capture as resuming so streamed FromRadio entries refresh
     // the cached snapshot rather than being dropped as "already complete".
-    this.configCaptureComplete = false;
-    this.isCapturingInitConfig = true;
+    // ('startConfigCapture' action)
+    this.startConfigCapture();
 
-    // Watchdog: clear in-flight if the stream never lands.
+    // 'armResyncWatchdog' action: clear in-flight if the stream never lands.
     if (this.manualResyncWatchdog) clearTimeout(this.manualResyncWatchdog);
     this.manualResyncWatchdog = setTimeout(() => {
       if (this.manualResyncInFlight) {
@@ -14519,18 +13150,23 @@ class MeshtasticManager implements ISourceManager {
     }, MeshtasticManager.MANUAL_RESYNC_WATCHDOG_MS);
 
     try {
+      // 'sendWantConfig' action
       await this.sendWantConfigId();
     } catch (sendErr) {
       const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
       logger.warn(`⚠️ [manual-resync] sendWantConfigId failed: ${msg}`);
-      // Send-time failure means the request never reached the node, so the
-      // suppress latch and in-flight aren't useful — clear them so the
-      // operator can retry (subject to cooldown).
+      // Send-time failure means the request never reached the node. No
+      // SmEvent models this path (task42b_spec.md §5: manual-resync guards
+      // stay in the manager, not the reducer) — clean up the in-flight/
+      // suppress latches directly so the operator can retry (subject to
+      // cooldown). State and the capture flags are left exactly as
+      // MANUAL_RESYNC_REQUESTED set them, matching pre-refactor behavior.
       this.clearManualResyncInFlight('send-failed');
       this.suppressNextAutoSync = false;
       return { started: false, inFlight: false, cooldownExpiresAt: now + MeshtasticManager.MANUAL_RESYNC_COOLDOWN_MS, reason: 'send-failed' };
     }
 
+    this.assertStateConsistent();
     return {
       started: true,
       inFlight: true,
@@ -14588,33 +13224,7 @@ class MeshtasticManager implements ISourceManager {
 
   // Public method to trigger manual refresh of node database
   async refreshNodeDatabase(): Promise<void> {
-    logger.debug('🔄 Manually refreshing node database...');
-
-    if (!this.isConnected) {
-      logger.debug('⚠️ Not connected, attempting to reconnect...');
-      await this.connect();
-    }
-
-    // Clear isLocked so processMyNodeInfo can run (updates hwModel, rebootCount, etc.)
-    // and processNodeInfoProtobuf can update localNodeInfo with fresh names.
-    // The whole point of a manual refresh is to get fresh data from the device.
-    if (this.localNodeInfo) {
-      this.localNodeInfo.isLocked = false;
-      logger.debug('🔓 Cleared localNodeInfo lock for config refresh');
-    }
-
-    // Send want_config_id to trigger node to send updated info
-    await this.sendWantConfigId();
-
-    // Also request all module configs to get fresh telemetry, mqtt, etc.
-    setTimeout(async () => {
-      try {
-        logger.debug('📦 Requesting fresh module configs...');
-        await this.requestAllModuleConfigs();
-      } catch (error) {
-        logger.error('❌ Failed to request module configs during refresh:', error);
-      }
-    }, 1000);
+    return this.nodeDbMaintenanceService.refreshNodeDatabase();
   }
 
   /**
@@ -14623,12 +13233,19 @@ class MeshtasticManager implements ISourceManager {
    */
   async userDisconnect(): Promise<void> {
     logger.debug('🔌 User-initiated disconnect requested');
-    this.userDisconnectedState = true;
+
+    // #3962 Phase 4.2b C2: USER_DISCONNECT — any -> UserDisconnected.
+    // Capture flags are left untouched (terminal transition, matches the
+    // pre-refactor L1854/L12949 behavior — task42b_spec.md §3.2).
+    const { next } = dispatch(this.#state, 'USER_DISCONNECT', this.buildSmContext());
+    this.#state = next;
 
     // Notify about disconnect before actually disconnecting
     // This ensures users get notified even for user-initiated disconnects
+    // ('notifyDisconnected' action)
     await serverEventNotificationService.notifyNodeDisconnected(this.sourceId, await this.getSourceName());
 
+    // 'disconnectTransport' action
     if (this.transport) {
       try {
         await this.transport.disconnect();
@@ -14637,8 +13254,7 @@ class MeshtasticManager implements ISourceManager {
       }
     }
 
-    this.isConnected = false;
-
+    // 'stopSchedulers' action (below, through the cron-job clear)
     // Clear any active intervals and pending jitter timeouts
     if (this.tracerouteJitterTimeout) {
       clearTimeout(this.tracerouteJitterTimeout);
@@ -14672,12 +13288,8 @@ class MeshtasticManager implements ISourceManager {
       this.timeSyncInterval = null;
     }
 
-    // Stop announce scheduler if active
-    if (this.announceScheduler) {
-      this.announceScheduler.stop();
-      this.announceScheduler = null;
-      logger.debug('📢 Stopped announce scheduler');
-    }
+    // Stop announce scheduler if active (idempotent — no-op if not armed)
+    this.autoAnnounceService.stop();
 
     // Stop all timer cron jobs
     this.timerCronJobs.forEach((job, id) => {
@@ -14686,6 +13298,11 @@ class MeshtasticManager implements ISourceManager {
     });
     this.timerCronJobs.clear();
 
+    // Cancel any pending config-complete fallback timer (#3962 Phase 4.2b C2
+    // leak fix) — an operator disconnect mid-ConfigSync must not leave one
+    // armed.
+    this.cancelConfigCompleteFallbackTimer();
+    this.assertStateConsistent();
     logger.debug('✅ User disconnect completed');
   }
 
@@ -14695,7 +13312,14 @@ class MeshtasticManager implements ISourceManager {
    */
   async userReconnect(): Promise<boolean> {
     logger.debug('🔌 User-initiated reconnect requested');
-    this.userDisconnectedState = false;
+
+    // #3962 Phase 4.2b C2: USER_RECONNECT — UserDisconnected -> Connecting.
+    // The 'connectTransport' action is the `this.connect()` call immediately
+    // below — not executed via a generic loop since it's the method's own
+    // control flow/return value, not a fire-and-forget side effect.
+    const { next } = dispatch(this.#state, 'USER_RECONNECT', this.buildSmContext());
+    this.#state = next;
+    this.assertStateConsistent();
 
     try {
       const success = await this.connect();
@@ -14859,35 +13483,6 @@ class MeshtasticManager implements ISourceManager {
 // Export the class for testing purposes (allows creating isolated test instances)
 export { MeshtasticManager };
 
-// ──────────────────────────────────────────────────────────────────────────
-// MQTT proxy bridge helpers (issue #3003 follow-up)
-// ──────────────────────────────────────────────────────────────────────────
-
-const MQTT_LINK_ECHO_TTL_MS = 60_000;
-const MQTT_LINK_ECHO_MAX = 256;
-
-function peekServiceEnvelopePacketId(payload: Uint8Array): number | null {
-  // Quiet decode — proxy payloads on broad topics often aren't ServiceEnvelopes
-  // (firmware can publish to any topic), so we don't want WARN log spam.
-  const decoded = meshtasticProtobufService.decodeServiceEnvelope(payload, { quiet: true });
-  if (!decoded || typeof decoded.packet?.id !== 'number') return null;
-  return decoded.packet.id >>> 0;
-}
-
-function recordMqttEcho(store: Array<{ topic: string; packetId: number; expiresAt: number }>, topic: string, packetId: number | null): void {
-  if (packetId === null) return;
-  const now = Date.now();
-  while (store.length > 0 && store[0].expiresAt < now) store.shift();
-  if (store.length >= MQTT_LINK_ECHO_MAX) store.shift();
-  store.push({ topic, packetId, expiresAt: now + MQTT_LINK_ECHO_TTL_MS });
-}
-
-function matchesMqttEcho(store: Array<{ topic: string; packetId: number; expiresAt: number }>, topic: string, packetId: number): boolean {
-  const now = Date.now();
-  while (store.length > 0 && store[0].expiresAt < now) store.shift();
-  return store.some((e) => e.topic === topic && e.packetId === packetId);
-}
-
 /**
  * Eager fallback instance. Used ONLY when no meshtastic_tcp source is registered
  * in the sourceManagerRegistry (S4: env-IP-only fallback connect, or early module
@@ -14898,66 +13493,3 @@ function matchesMqttEcho(store: Array<{ topic: string; packetId: number; expires
  * WP3: no longer registered as the primary; all tcp sources use makeMeshtastic().
  */
 export const fallbackManager = new MeshtasticManager();
-
-/**
- * @deprecated Use sourceManagerRegistry / getPrimaryMeshtasticManager().
- *
- * Live Proxy alias for the registry's current primary meshtastic_tcp manager.
- * Falls back to `fallbackManager` when no primary is registered (S4 env-IP path).
- *
- * Per-CALL resolution: each property access resolves the registry's current
- * primary at that instant, fixing the §2.5 staleness bug (removeManager +
- * re-addManager in sourceRoutes no longer strands legacy consumers on a dead
- * manager). PROTOTYPE methods are bound to the concrete primary at access time
- * so `this` inside the method is always the real instance — not the Proxy.
- * This eliminates the risk of EventEmitter internals or class fields being
- * re-resolved through the Proxy on subsequent `this.x` reads within the same
- * call, and prevents async methods from straddling two primaries across an await.
- *
- * Own-property functions (arrow class fields, test spies assigned directly to
- * the instance) are returned as-is: arrow functions already have lexical `this`
- * (bind would be a no-op), and returning spy own-properties unbound preserves
- * Vitest spy identity for `toHaveBeenCalled` assertions in tests.
- *
- * Multi-call sequences (e.g. firmwareUpdateService disconnect→…→reconnect)
- * can still straddle a primary swap if the primary source is edited between
- * those calls. Callers with multi-step operations that must be atomic should
- * capture `getPrimaryMeshtasticManager()` once per operation rather than
- * accessing the alias multiple times (WP4 migration guidance).
- *
- * WP4 will migrate the remaining 8 value-importers to call
- * getPrimaryMeshtasticManager() directly, then delete this alias.
- */
-const meshtasticManagerAlias = new Proxy(fallbackManager, {
-  get(target, prop, _receiver) {
-    // Resolve the live primary once for this access.
-    const p = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? target;
-    const v = Reflect.get(p, prop, p);
-    // Bind PROTOTYPE methods to the concrete primary so `this` inside the
-    // method is the real instance, not the Proxy. Without binding, class-field
-    // accesses and EventEmitter internals would re-enter the trap on every
-    // `this.x` read, and an async method could address two different primaries
-    // across an await.
-    //
-    // Own-property functions (arrow class fields, test spies assigned directly
-    // to the instance) are intentionally NOT bound:
-    //  - Arrow functions already have lexical `this`; .bind() is a no-op.
-    //  - Test spies assigned via `alias.method = vi.fn()` must be returned as
-    //    the original spy so Vitest's `toHaveBeenCalled` assertions still work.
-    if (typeof v === 'function' && !Object.prototype.hasOwnProperty.call(p, prop)) {
-      return v.bind(p);
-    }
-    return v;
-  },
-  set(target, prop, value, _receiver) {
-    // Retarget writes to the same resolved primary so consumers don't silently
-    // write to a dead object after a primary swap.
-    // Grep of all 8 default-export importers found ZERO property writes through
-    // this alias (all callers invoke methods only), so this trap is a safety net
-    // rather than a fix for a known bug.
-    const primary = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? target;
-    return Reflect.set(primary, prop, value, primary);
-  },
-});
-
-export default meshtasticManagerAlias;

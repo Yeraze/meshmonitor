@@ -86,6 +86,12 @@ export interface DbNode {
   viaMqtt?: boolean;
   /** meshtastic.MeshPacket.TransportMechanism — see migration 066. */
   transportMechanism?: number | null;
+  /** #4240: unix seconds last heard over each transport (NULL = never).
+   *  Migration 126. Map visibility keys off these, not the last-wins
+   *  transportMechanism. */
+  transportLastRf?: number | null;
+  transportLastMqtt?: number | null;
+  transportLastUdp?: number | null;
   macaddr?: string;
   latitude?: number;
   longitude?: number;
@@ -3118,6 +3124,22 @@ class DatabaseService {
       return this.settingsRepo.getSettingSync(key);
     }
     return null;
+  }
+
+  /**
+   * Synchronous per-source setting read — mirrors
+   * `settingsRepo.getSettingForSource()`'s prefix scheme but via the sync
+   * `getSetting()` path above, for server singletons (e.g. MessageQueueService)
+   * that read settings at call time and cannot await. Returns ONLY the
+   * per-source value (null if no override exists) — no fallback to the
+   * un-namespaced global key, matching `getSettingForSource`'s semantics
+   * (issue #2839: silent cross-source fallback caused automation spam).
+   */
+  getSettingForSourceSync(sourceId: string | null | undefined, key: string): string | null {
+    if (sourceId) {
+      return this.getSetting(`source:${sourceId}:${key}`);
+    }
+    return this.getSetting(key);
   }
 
   getAllSettings(): Record<string, string> {

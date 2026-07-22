@@ -16,7 +16,10 @@
  *  #8 mixed: 1 broker + 2 tcp → start order broker<tcp, first tcp = primary
  *
  * Identity/staleness pins (§5, WP1 contract documentation):
- *  - resolveSourceManager(null) returns the default-export singleton (FLIP-IN-WP2)
+ *  - resolveSourceManager(null) resolves getPrimaryMeshtasticManager(registry)
+ *    ?? fallbackManager, and NEVER returns undefined (invariant I2, #3962
+ *    Phase 4.2a WP4 — the live Proxy alias was retired; see
+ *    "resolveSourceManager(null) live-fallback contract" below).
  *  - getPrimaryMeshtasticManager returns first meshtastic_tcp manager in registry
  *
  * These tests MUST remain byte-identical through WP2/WP3 for scenarios 1-4,8.
@@ -800,84 +803,62 @@ describe('identity/staleness pins (§2.5 documentation)', () => {
     });
   });
 
-  describe('resolveSourceManager(null) live-alias contract (§2.5 staleness fix)', () => {
+  describe('resolveSourceManager(null) live-fallback contract (#3962 Phase 4.2a WP4)', () => {
     /**
-     * WP2 behavior: the default export is now a Proxy alias that resolves to
-     * getPrimaryMeshtasticManager(sourceManagerRegistry) on EVERY property
-     * access. resolveSourceManager(null) returns that Proxy, so legacy
-     * consumers automatically address the live primary — no staleness after a
-     * primary-source edit (sourceRoutes removeManager + re-addManager).
+     * WP4 behavior: the live Proxy alias was retired. resolveSourceManager's
+     * internals now call getPrimaryMeshtasticManager(sourceManagerRegistry)
+     * ?? fallbackManager directly on every invocation — no Proxy indirection,
+     * no property-access-time resolution. The "no staleness after a
+     * primary-source edit" property from §2.5 is preserved because callers
+     * that need it re-invoke resolveSourceManager()/getPrimaryMeshtasticManager()
+     * rather than caching a Proxy that resolves lazily.
      *
-     * This replaces the WP1 staleness-documentation test which asserted the
-     * old static-singleton behavior. The behavioral contract now:
-     *  - resolveSourceManager(null) === the default export (the Proxy alias).
-     *  - Accessing properties on the returned value delegates to the current
-     *    primary (or fallbackManager when no primary is registered).
-     *  - The Proxy is transparent: getLocalNodeInfo(), getStatus(), etc. all
-     *    forward to the primary's implementation with the correct `this`.
+     * The behavioral contract now:
+     *  - resolveSourceManager(null) === getPrimaryMeshtasticManager(registry)
+     *    ?? fallbackManager, evaluated at call time.
+     *  - It is a concrete MeshtasticManager instance — never undefined
+     *    (invariant I2) and never a wrapper/Proxy, so method calls on it
+     *    address the real instance directly with the correct `this` by
+     *    construction (invariant I8 — there is no binding indirection left
+     *    to get wrong).
      */
-    it('resolveSourceManager(null) returns the live Proxy alias (staleness §2.5 fixed)', async () => {
+    it('resolveSourceManager(null) resolves to fallbackManager when no primary is registered (I2)', async () => {
       // Import is dynamic to avoid hoisting issues with the vi.mock'd modules above.
       const { resolveSourceManager } = await import('./utils/resolveSourceManager.js');
-      const { default: meshtasticManagerExport, fallbackManager } = await import('./meshtasticManager.js');
+      const { fallbackManager } = await import('./meshtasticManager.js');
 
-      // The resolved value IS the Proxy alias (same object as the default export).
+      // No primary meshtastic_tcp source is registered in the module-level
+      // sourceManagerRegistry singleton in this test environment (this file's
+      // own bootstrapSources() calls inject a locally-scoped registry, not
+      // the singleton), so resolveSourceManager falls through to the
+      // concrete fallbackManager instance — never undefined.
       const resolved = resolveSourceManager(null);
-      expect(resolved).toBe(meshtasticManagerExport);
-
-      // Post-WP2: the Proxy is live. Accessing a property delegates to
-      // fallbackManager when no primary is in sourceManagerRegistry (the
-      // module-level registry is empty in this test environment).
-      // Verify the Proxy forwards correctly: getStatus() returns a function
-      // whose result matches what fallbackManager.getStatus() would return.
-      expect(typeof (resolved as any).getStatus).toBe('function');
-      expect((resolved as any).sourceId).toBe((fallbackManager as any).sourceId);
+      expect(resolved).toBe(fallbackManager);
+      expect(typeof resolved.getStatus).toBe('function');
     });
 
-    /**
-     * FIX 1 — Proxy method binding.
-     *
-     * Before the fix, calling a prototype method through the alias returned an
-     * UNBOUND function. When called as `alias.method()`, JavaScript set `this`
-     * to `alias` (the Proxy), so class-field accesses and EventEmitter internals
-     * inside the method re-entered the Proxy's get trap on every `this.x` read,
-     * and an async method could address two different primary instances across
-     * an await.
-     *
-     * After the fix, the get trap detects prototype methods via
-     * `!hasOwnProperty.call(p, prop)` and returns `method.bind(p)`. `this`
-     * inside the method is the concrete instance — not the Proxy.
-     *
-     * Own-property functions (test spies assigned via `alias.method = vi.fn()`,
-     * arrow class fields) are intentionally returned unbound: arrow functions
-     * have lexical `this` (bind is a no-op), and returning spies unbound
-     * preserves their Vitest spy identity for `toHaveBeenCalled` assertions.
-     *
-     * The test spies on the PROTOTYPE (not the instance) so the GET trap sees
-     * the method as a prototype method and applies the binding.
-     */
-    it('prototype method called through alias is bound to the concrete primary (not the Proxy) — FIX 1', async () => {
-      const { default: aliasProxy, fallbackManager: concrete } = await import('./meshtasticManager.js');
+    it('resolveSourceManager(null) is a concrete instance, not a wrapper — methods run with the real `this` by construction', async () => {
+      const { resolveSourceManager } = await import('./utils/resolveSourceManager.js');
+      const { fallbackManager } = await import('./meshtasticManager.js');
 
-      // In the test environment the module-level sourceManagerRegistry has no
-      // primary registered, so the alias resolves to fallbackManager (concrete).
-      // Spy on the PROTOTYPE so hasOwnProperty.call(p, 'getStatus') === false,
-      // causing the GET trap to return the bound version.
-      const proto = Object.getPrototypeOf(concrete) as Record<string, unknown>;
+      const resolved = resolveSourceManager(null);
+
+      // Spy on the PROTOTYPE. If `resolved` were still a Proxy/wrapper around
+      // fallbackManager, calling resolved.getStatus() could address the
+      // wrong `this`. Post-WP4 there is no wrapper: resolved IS
+      // fallbackManager, so `this` inside the spied method is trivially the
+      // concrete instance.
+      const proto = Object.getPrototypeOf(fallbackManager) as Record<string, unknown>;
       let capturedThis: unknown;
       const protoSpy = vi.spyOn(proto as any, 'getStatus').mockImplementation(function (this: unknown) {
-        // eslint-disable-next-line @typescript-eslint/no-this-alias -- capturing `this` in prototype spy to verify Proxy binding fix
+        // eslint-disable-next-line @typescript-eslint/no-this-alias -- capturing `this` to verify no wrapper indirection remains
         capturedThis = this;
         return { sourceId: 'spy', sourceName: 'spy', sourceType: 'meshtastic_tcp', connected: false };
       });
 
       try {
-        (aliasProxy as any).getStatus();
-
-        // Post-fix: `this` inside the prototype method === the concrete fallback
-        // instance, NOT the Proxy.
-        expect(capturedThis).toBe(concrete);
-        expect(capturedThis).not.toBe(aliasProxy);
+        (resolved as any).getStatus();
+        expect(capturedThis).toBe(fallbackManager);
       } finally {
         protoSpy.mockRestore();
       }

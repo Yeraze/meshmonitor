@@ -39,6 +39,8 @@ export const MESHCORE_REPLY_TOKENS: AutomationTokenInfo[] = [
   { token: '{HOPS}', description: 'Hop count the message travelled' },
   { token: '{NUMBER_HOPS}', description: 'Same as {HOPS}' },
   { token: '{ROUTE}', description: 'Relay-hash chain the message took (e.g. a3→7f)' },
+  { token: '{ROUTE_NAMES}', description: 'Relay chain resolved to repeater names where known (e.g. Hilltop→7f)' },
+  { token: '{HASH_SIZE}', description: 'Per-hop path-hash width in bytes (1–3), as set by the sender' },
   { token: '{SCOPE}', description: 'Region/scope the message was sent with' },
 ];
 

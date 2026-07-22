@@ -13,3 +13,17 @@ test('allows ordinary UI copy and protocol identifiers', () => {
     assert.equal(containsHardcodedUiGlyph(value), false, value);
   }
 });
+
+test('detects circle/slash status glyphs (#4240 follow-up)', () => {
+  // These were missing from the leading-symbol list, so the #4217 migration
+  // skipped four functional status indicators without CI noticing.
+  for (const value of ['● live', '○ offline', '◐ partial', '⊘ Disabled', '●', '◯']) {
+    assert.equal(containsHardcodedUiGlyph(value), true, value);
+  }
+});
+
+test('still allows those characters mid-sentence', () => {
+  for (const value of ['Signal ● strength', 'radius ⊘ limit']) {
+    assert.equal(containsHardcodedUiGlyph(value), false, value);
+  }
+});

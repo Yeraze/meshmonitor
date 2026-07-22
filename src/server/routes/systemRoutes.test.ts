@@ -14,7 +14,17 @@ const mockManager = vi.hoisted(() => ({
   getLocalNodeInfo: vi.fn(),
 }));
 vi.mock('../meshtasticManager.js', () => ({
-  default: mockManager,
+  fallbackManager: mockManager,
+}));
+
+// No primary meshtastic_tcp source registered — falls through to
+// fallbackManager above (#3962 Phase 4.2a WP4).
+vi.mock('../sourceManagerRegistry.js', () => ({
+  sourceManagerRegistry: {},
+}));
+
+vi.mock('../sourceManagerTypes.js', () => ({
+  getPrimaryMeshtasticManager: () => undefined,
 }));
 
 const mockDb = vi.hoisted(() => ({

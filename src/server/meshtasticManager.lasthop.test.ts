@@ -36,7 +36,7 @@ describe('MeshtasticManager - {LAST_HOP} resolution', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
   });
 
   it("returns 'unknown' without touching the DB when there is no relay info", async () => {

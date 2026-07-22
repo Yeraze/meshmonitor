@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { analyzeLinkProfile } from './linkProfile';
+import { aglFromNodeAltitude, analyzeLinkProfile } from './linkProfile';
 import { earthBulgeMeters } from './linkBudget';
 import type { ElevationSample } from '../types/elevation';
 
@@ -209,4 +209,25 @@ describe('analyzeLinkProfile', () => {
     expect(analysis.antennaTopAM).toBeCloseTo(105, 6);
     expect(analysis.antennaTopBM).toBeCloseTo(215, 6);
   });
+  describe('aglFromNodeAltitude', () => {
+    it('returns rounded altitude-minus-ground when both are finite and the difference is sane', () => {
+      expect(aglFromNodeAltitude(130, 100)).toBe(30);
+      expect(aglFromNodeAltitude(102.6, 100)).toBe(3);
+    });
+
+    it('returns null below the 0.5 m floor (datum error must not shrink the default)', () => {
+      expect(aglFromNodeAltitude(100.2, 100)).toBeNull();
+      expect(aglFromNodeAltitude(95, 100)).toBeNull();
+    });
+
+    it('returns null when either value is missing or non-finite', () => {
+      expect(aglFromNodeAltitude(undefined, 100)).toBeNull();
+      expect(aglFromNodeAltitude(null, 100)).toBeNull();
+      expect(aglFromNodeAltitude(130, null)).toBeNull();
+      expect(aglFromNodeAltitude(130, undefined)).toBeNull();
+      expect(aglFromNodeAltitude(NaN, 100)).toBeNull();
+      expect(aglFromNodeAltitude(130, NaN)).toBeNull();
+    });
+  });
 });
+

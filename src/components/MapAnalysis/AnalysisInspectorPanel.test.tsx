@@ -527,4 +527,84 @@ describe('AnalysisInspectorPanel', () => {
       expect(probe.linkProfileMode).toBe(true);
     });
   });
+  describe('route segment terrain integration', () => {
+    const expectedDistance = formatDistance(
+      calculateDistance(30, -90, 31, -90),
+      'km',
+    );
+
+    it('shows distance, endpoint elevations, and the profile action for a positioned segment when elevation is enabled', () => {
+      mockElevationEnabled = true;
+      mockElevationProfileResult = {
+        data: {
+          distanceMeters: 111195,
+          provider: 'test',
+          samples: [
+            { distance: 0, lat: 30, lng: -90, elevation: 55.2 },
+            { distance: 111195, lat: 31, lng: -90, elevation: 140.9 },
+          ],
+        },
+        isLoading: false,
+      };
+      render(
+        <Wrapper>
+          <SelectSegment />
+          <AnalysisInspectorPanel />
+        </Wrapper>,
+      );
+      fireEvent.click(screen.getByText('select-seg'));
+
+      expect(screen.getByText('Route Segment')).toBeInTheDocument();
+      expect(screen.getByText('Distance')).toBeInTheDocument();
+      expect(screen.getByText(expectedDistance)).toBeInTheDocument();
+      expect(screen.getByText('From Elevation')).toBeInTheDocument();
+      expect(screen.getByText('To Elevation')).toBeInTheDocument();
+      expect(screen.getByText('55 m')).toBeInTheDocument();
+      expect(screen.getByText('141 m')).toBeInTheDocument();
+      expect(screen.getByText('View terrain profile')).toBeInTheDocument();
+
+      const lastCall = useElevationProfileMock.mock.calls.at(-1);
+      expect(lastCall?.[0]).toMatchObject({ nodeNum: 1, isMeshCore: false });
+      expect(lastCall?.[1]).toMatchObject({ nodeNum: 2, isMeshCore: false });
+    });
+
+    it('shows distance only (no elevations, no action) when elevation is disabled', () => {
+      mockElevationEnabled = false;
+      render(
+        <Wrapper>
+          <SelectSegment />
+          <AnalysisInspectorPanel />
+        </Wrapper>,
+      );
+      fireEvent.click(screen.getByText('select-seg'));
+
+      expect(screen.getByText('Distance')).toBeInTheDocument();
+      expect(screen.queryByText('From Elevation')).not.toBeInTheDocument();
+      expect(screen.queryByText('View terrain profile')).not.toBeInTheDocument();
+      const lastCall = useElevationProfileMock.mock.calls.at(-1);
+      expect(lastCall?.[0]).toBeUndefined();
+      expect(lastCall?.[1]).toBeUndefined();
+    });
+
+    it('dispatches the link-profile state machine from a segment selection', () => {
+      render(
+        <Wrapper>
+          <CtxProbe />
+          <SelectSegment />
+          <AnalysisInspectorPanel />
+        </Wrapper>,
+      );
+      fireEvent.click(screen.getByText('select-seg'));
+      fireEvent.click(screen.getByText('View terrain profile'));
+
+      const probe = JSON.parse(screen.getByTestId('ctx-probe').textContent ?? '{}');
+      expect(probe.linkProfileMode).toBe(true);
+      expect(probe.measureMode).toBe(false);
+      expect(probe.linkEndpoints).toEqual([
+        { nodeNum: 1, isMeshCore: false },
+        { nodeNum: 2, isMeshCore: false },
+      ]);
+    });
+  });
 });
+

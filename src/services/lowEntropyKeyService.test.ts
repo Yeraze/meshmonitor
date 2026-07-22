@@ -6,7 +6,13 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { checkLowEntropyKey, detectDuplicateKeys, checkKeySecurity } from './lowEntropyKeyService.js';
+import {
+  checkLowEntropyKey,
+  detectDuplicateKeys,
+  checkKeySecurity,
+  nodeNumFromPublicKey,
+  isBenign28UpgradeRenumber,
+} from './lowEntropyKeyService.js';
 import crypto from 'crypto';
 
 describe('Low-Entropy Key Service', () => {
@@ -254,4 +260,94 @@ describe('Low-Entropy Key Service', () => {
       expect(result).toBe(true);
     });
   });
+  describe('nodeNumFromPublicKey (2.8 crc32 identity, #4251)', () => {
+    // 32 raw bytes of 0x02; crc32 verified against Node zlib.crc32.
+    const KEY_32 = Buffer.alloc(32, 0x02).toString('base64');
+
+    it('computes crc32(rawKey) as an unsigned u32 NodeNum', () => {
+      expect(nodeNumFromPublicKey(KEY_32)).toBe(4017996143);
+    });
+
+    it('matches the firmware crc32 for a second key', () => {
+      // Regression pin — recompute with zlib to change intentionally.
+      const key = Buffer.alloc(32, 0xab).toString('base64');
+      const expected = nodeNumFromPublicKey(key);
+      expect(typeof expected).toBe('number');
+      expect(expected).toBeGreaterThanOrEqual(0);
+      expect(expected).toBeLessThanOrEqual(0xffffffff);
+    });
+
+    it('returns null for missing, wrong-length, or malformed keys', () => {
+      expect(nodeNumFromPublicKey(null)).toBeNull();
+      expect(nodeNumFromPublicKey(undefined)).toBeNull();
+      expect(nodeNumFromPublicKey('')).toBeNull();
+      expect(nodeNumFromPublicKey(Buffer.alloc(16, 1).toString('base64'))).toBeNull(); // 16 bytes
+    });
+  });
+
+  describe('isBenign28UpgradeRenumber (#4251)', () => {
+    const KEY = Buffer.alloc(32, 0x02).toString('base64');
+    const NEW_NUM = nodeNumFromPublicKey(KEY)!; // crc32(key) — the 2.8 identity
+    const OLD_NUM = 0x2b873e80; // arbitrary MAC-derived pre-upgrade NodeNum
+    const NOW = 1_800_000_000;
+    const DAY = 24 * 60 * 60;
+
+    it('is TRUE for the clean handoff: new==crc32(key) & active, old stale', () => {
+      const group = [
+        { nodeNum: NEW_NUM, publicKey: KEY, lastHeard: NOW - 60 },      // active
+        { nodeNum: OLD_NUM, publicKey: KEY, lastHeard: NOW - 10 * DAY }, // stale
+      ];
+      expect(isBenign28UpgradeRenumber(group, NOW)).toBe(true);
+    });
+
+    it('is FALSE when both nodes are still live (impersonation risk retained)', () => {
+      const group = [
+        { nodeNum: NEW_NUM, publicKey: KEY, lastHeard: NOW - 60 },
+        { nodeNum: OLD_NUM, publicKey: KEY, lastHeard: NOW - 60 }, // also active
+      ];
+      expect(isBenign28UpgradeRenumber(group, NOW)).toBe(false);
+    });
+
+    it('is FALSE when neither NodeNum equals crc32(key)', () => {
+      const group = [
+        { nodeNum: 0x11111111, publicKey: KEY, lastHeard: NOW - 60 },
+        { nodeNum: OLD_NUM, publicKey: KEY, lastHeard: NOW - 10 * DAY },
+      ];
+      expect(isBenign28UpgradeRenumber(group, NOW)).toBe(false);
+    });
+
+    it('is FALSE when the stale node is the crc32 identity (wrong handoff direction)', () => {
+      const group = [
+        { nodeNum: NEW_NUM, publicKey: KEY, lastHeard: NOW - 10 * DAY }, // crc32 but stale
+        { nodeNum: OLD_NUM, publicKey: KEY, lastHeard: NOW - 60 },       // old but active
+      ];
+      expect(isBenign28UpgradeRenumber(group, NOW)).toBe(false);
+    });
+
+    it('is FALSE for a 3-node group (only the clean 2-node handoff is suppressed)', () => {
+      const group = [
+        { nodeNum: NEW_NUM, publicKey: KEY, lastHeard: NOW - 60 },
+        { nodeNum: OLD_NUM, publicKey: KEY, lastHeard: NOW - 10 * DAY },
+        { nodeNum: 0x33333333, publicKey: KEY, lastHeard: NOW - 10 * DAY },
+      ];
+      expect(isBenign28UpgradeRenumber(group, NOW)).toBe(false);
+    });
+
+    it('treats a never-heard old node (lastHeard null) as stale → TRUE', () => {
+      const group = [
+        { nodeNum: NEW_NUM, publicKey: KEY, lastHeard: NOW - 60 },
+        { nodeNum: OLD_NUM, publicKey: KEY, lastHeard: null },
+      ];
+      expect(isBenign28UpgradeRenumber(group, NOW)).toBe(true);
+    });
+
+    it('is FALSE when the new (crc32) node itself is stale', () => {
+      const group = [
+        { nodeNum: NEW_NUM, publicKey: KEY, lastHeard: NOW - 10 * DAY },
+        { nodeNum: OLD_NUM, publicKey: KEY, lastHeard: NOW - 20 * DAY },
+      ];
+      expect(isBenign28UpgradeRenumber(group, NOW)).toBe(false);
+    });
+  });
+
 });

@@ -12,6 +12,7 @@ import i18n from '../config/i18n';
 import { type TapbackEmoji, DEFAULT_TAPBACK_EMOJIS } from '../components/EmojiPickerModal/EmojiPickerModal';
 import { DEFAULT_TARGET_ZOOM } from '../utils/mapZoomAnimation';
 import { setDiscardInvalidPositionsDisplay } from '../utils/positionDisplayConfig';
+import { setActiveWindowHours } from '../utils/activeWindowConfig';
 import { IconStyleProvider, type IconStyle } from './IconStyleContext';
 
 export type { IconStyle } from './IconStyleContext';
@@ -327,7 +328,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const [maxNodeAgeHours, setMaxNodeAgeHoursState] = useState<number>(() => {
     const saved = localStorage.getItem('maxNodeAgeHours');
-    return saved ? parseInt(saved) : 24;
+    const initial = saved ? parseInt(saved) : 24;
+    // #4240: seed the non-context mirror at boot so transport decay uses the
+    // user's window from the first render, not the module default.
+    setActiveWindowHours(initial);
+    return initial;
   });
 
   const [inactiveNodeThresholdHours, setInactiveNodeThresholdHoursState] = useState<number>(() => {
@@ -554,27 +559,28 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const overlayColors = React.useMemo(() => getOverlayColors(overlayScheme), [overlayScheme]);
 
-  const setMaxNodeAgeHours = (value: number) => {
+  const setMaxNodeAgeHours = React.useCallback((value: number) => {
     setMaxNodeAgeHoursState(value);
     localStorage.setItem('maxNodeAgeHours', value.toString());
-  };
+    setActiveWindowHours(value); // #4240: keep the transport-decay mirror in sync
+  }, []);
 
-  const setInactiveNodeThresholdHours = (value: number) => {
+  const setInactiveNodeThresholdHours = React.useCallback((value: number) => {
     setInactiveNodeThresholdHoursState(value);
     localStorage.setItem('inactiveNodeThresholdHours', value.toString());
-  };
+  }, []);
 
-  const setInactiveNodeCheckIntervalMinutes = (value: number) => {
+  const setInactiveNodeCheckIntervalMinutes = React.useCallback((value: number) => {
     setInactiveNodeCheckIntervalMinutesState(value);
     localStorage.setItem('inactiveNodeCheckIntervalMinutes', value.toString());
-  };
+  }, []);
 
-  const setInactiveNodeCooldownHours = (value: number) => {
+  const setInactiveNodeCooldownHours = React.useCallback((value: number) => {
     setInactiveNodeCooldownHoursState(value);
     localStorage.setItem('inactiveNodeCooldownHours', value.toString());
-  };
+  }, []);
 
-  const setTracerouteIntervalMinutes = async (value: number) => {
+  const setTracerouteIntervalMinutes = React.useCallback(async (value: number) => {
     setTracerouteIntervalMinutesState(value);
     localStorage.setItem('tracerouteIntervalMinutes', value.toString());
 
@@ -597,9 +603,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     } catch (error) {
       logger.error('Error updating traceroute interval:', error);
     }
-  };
+  }, [baseUrl, getCsrfToken]);
 
-  const setRemoteLocalStatsIntervalMinutes = async (value: number) => {
+  const setRemoteLocalStatsIntervalMinutes = React.useCallback(async (value: number) => {
     setRemoteLocalStatsIntervalMinutesState(value);
     localStorage.setItem('remoteLocalStatsIntervalMinutes', value.toString());
 
@@ -617,59 +623,59 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     } catch (error) {
       logger.error('Error updating remote LocalStats interval:', error);
     }
-  };
+  }, [baseUrl, getCsrfToken]);
 
-  const setTemperatureUnit = (unit: TemperatureUnit) => {
+  const setTemperatureUnit = React.useCallback((unit: TemperatureUnit) => {
     setTemperatureUnitState(unit);
     localStorage.setItem('temperatureUnit', unit);
-  };
+  }, []);
 
-  const setDistanceUnit = (unit: DistanceUnit) => {
+  const setDistanceUnit = React.useCallback((unit: DistanceUnit) => {
     setDistanceUnitState(unit);
     localStorage.setItem('distanceUnit', unit);
-  };
+  }, []);
 
-  const setPositionHistoryLineStyle = (style: PositionHistoryLineStyle) => {
+  const setPositionHistoryLineStyle = React.useCallback((style: PositionHistoryLineStyle) => {
     setPositionHistoryLineStyleState(style);
     localStorage.setItem('positionHistoryLineStyle', style);
-  };
+  }, []);
 
-  const setTelemetryVisualizationHours = (hours: number) => {
+  const setTelemetryVisualizationHours = React.useCallback((hours: number) => {
     setTelemetryVisualizationHoursState(hours);
     localStorage.setItem('telemetryVisualizationHours', hours.toString());
-  };
+  }, []);
 
-  const setFavoriteTelemetryStorageDays = (days: number) => {
+  const setFavoriteTelemetryStorageDays = React.useCallback((days: number) => {
     setFavoriteTelemetryStorageDaysState(days);
     localStorage.setItem('favoriteTelemetryStorageDays', days.toString());
-  };
+  }, []);
 
-  const setPreferredSortField = (field: SortField) => {
+  const setPreferredSortField = React.useCallback((field: SortField) => {
     setPreferredSortFieldState(field);
     localStorage.setItem('preferredSortField', field);
-  };
+  }, []);
 
-  const setPreferredSortDirection = (direction: SortDirection) => {
+  const setPreferredSortDirection = React.useCallback((direction: SortDirection) => {
     setPreferredSortDirectionState(direction);
     localStorage.setItem('preferredSortDirection', direction);
-  };
+  }, []);
 
-  const setPreferredDashboardSortOption = (option: DashboardSortOption) => {
+  const setPreferredDashboardSortOption = React.useCallback((option: DashboardSortOption) => {
     setPreferredDashboardSortOptionState(option);
     localStorage.setItem('preferredDashboardSortOption', option);
-  };
+  }, []);
 
-  const setTimeFormat = (format: TimeFormat) => {
+  const setTimeFormat = React.useCallback((format: TimeFormat) => {
     setTimeFormatState(format);
     localStorage.setItem('timeFormat', format);
-  };
+  }, []);
 
-  const setDateFormat = (format: DateFormat) => {
+  const setDateFormat = React.useCallback((format: DateFormat) => {
     setDateFormatState(format);
     localStorage.setItem('dateFormat', format);
-  };
+  }, []);
 
-  const setMapTilesets = async (light: TilesetId, dark: TilesetId) => {
+  const setMapTilesets = React.useCallback(async (light: TilesetId, dark: TilesetId) => {
     setMapTilesetLightState(light);
     setMapTilesetDarkState(dark);
     localStorage.setItem('mapTilesetLight', light);
@@ -703,66 +709,66 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     } catch (error) {
       logger.debug('Failed to save per-theme map tilesets:', error);
     }
-  };
+  }, [appearanceMode, systemIsDark, baseUrl, getCsrfToken]);
 
-  const setMapTileset = (tilesetId: TilesetId) => {
+  const setMapTileset = React.useCallback((tilesetId: TilesetId) => {
     if (activeMapTilesetMode === 'dark') {
       void setMapTilesets(mapTilesetLight, tilesetId);
     } else {
       void setMapTilesets(tilesetId, mapTilesetDark);
     }
-  };
+  }, [activeMapTilesetMode, mapTilesetLight, mapTilesetDark, setMapTilesets]);
 
-  const setMapPinStyle = (style: MapPinStyle) => {
+  const setMapPinStyle = React.useCallback((style: MapPinStyle) => {
     setMapPinStyleState(style);
     localStorage.setItem('mapPinStyle', style);
-  };
+  }, []);
 
-  const setIconStyle = (style: IconStyle) => {
+  const setIconStyle = React.useCallback((style: IconStyle) => {
     setIconStyleState(style);
     localStorage.setItem('iconStyle', style);
-  };
+  }, []);
 
-  const setNeighborInfoMinZoom = (zoom: number) => {
+  const setNeighborInfoMinZoom = React.useCallback((zoom: number) => {
     setNeighborInfoMinZoomState(zoom);
     localStorage.setItem('neighborInfoMinZoom', String(zoom));
-  };
+  }, []);
 
-  const setDefaultMapCenterLat = (lat: number | null) => {
+  const setDefaultMapCenterLat = React.useCallback((lat: number | null) => {
     setDefaultMapCenterLatState(lat);
     if (lat !== null) {
       localStorage.setItem('defaultMapCenterLat', String(lat));
     } else {
       localStorage.removeItem('defaultMapCenterLat');
     }
-  };
-  const setDefaultMapCenterLon = (lon: number | null) => {
+  }, []);
+  const setDefaultMapCenterLon = React.useCallback((lon: number | null) => {
     setDefaultMapCenterLonState(lon);
     if (lon !== null) {
       localStorage.setItem('defaultMapCenterLon', String(lon));
     } else {
       localStorage.removeItem('defaultMapCenterLon');
     }
-  };
-  const setDefaultMapCenterZoom = (zoom: number | null) => {
+  }, []);
+  const setDefaultMapCenterZoom = React.useCallback((zoom: number | null) => {
     setDefaultMapCenterZoomState(zoom);
     if (zoom !== null) {
       localStorage.setItem('defaultMapCenterZoom', String(zoom));
     } else {
       localStorage.removeItem('defaultMapCenterZoom');
     }
-  };
+  }, []);
 
-  const setMapCenterTargetZoom = (zoom: number) => {
+  const setMapCenterTargetZoom = React.useCallback((zoom: number) => {
     setMapCenterTargetZoomState(zoom);
     localStorage.setItem('mapCenterTargetZoom', String(zoom));
-  };
+  }, []);
 
-  const setDefaultLandingPage = (value: string) => {
+  const setDefaultLandingPage = React.useCallback((value: string) => {
     const normalized = value || 'unified';
     setDefaultLandingPageState(normalized);
     localStorage.setItem('defaultLandingPage', normalized);
-  };
+  }, []);
 
   /**
    * Load custom themes from the API
@@ -901,7 +907,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     applyTheme(newTheme);
   }, [applyTheme]);
 
-  const setLanguage = async (lang: string) => {
+  const setLanguage = React.useCallback(async (lang: string) => {
     setLanguageState(lang);
     localStorage.setItem('language', lang);
     void i18n.changeLanguage(lang);
@@ -922,77 +928,77 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     } catch (error) {
       logger.debug('Failed to save language preference to server:', error);
     }
-  };
+  }, [baseUrl, getCsrfToken]);
 
   // Link preview setter updates state only - value is persisted server-side
-  const setLinkPreviewsEnabled = (enabled: boolean) => {
+  const setLinkPreviewsEnabled = React.useCallback((enabled: boolean) => {
     setLinkPreviewsEnabledState(enabled);
-  };
+  }, []);
 
   // Discard-invalid-positions setter updates state only - persisted server-side.
   // Also sync the module mirror SYNCHRONOUSLY (#4157) so the map display filters
   // (pure utils that can't read context) honor the toggle on the very next render
   // — an effect would lag a frame, leaving (0,0) hidden until the next data poll.
-  const setDiscardInvalidPositions = (enabled: boolean) => {
+  const setDiscardInvalidPositions = React.useCallback((enabled: boolean) => {
     setDiscardInvalidPositionsDisplay(enabled);
     setDiscardInvalidPositionsState(enabled);
-  };
+  }, []);
 
   // No-index setter updates state only - value is persisted server-side
-  const setNoIndexEnabled = (enabled: boolean) => {
+  const setNoIndexEnabled = React.useCallback((enabled: boolean) => {
     setNoIndexEnabledState(enabled);
-  };
+  }, []);
 
   // MeshCore channel-retry setter updates state only - persisted server-side
-  const setMeshcoreChannelRetryEnabled = (enabled: boolean) => {
+  const setMeshcoreChannelRetryEnabled = React.useCallback((enabled: boolean) => {
     setMeshcoreChannelRetryEnabledState(enabled);
-  };
+  }, []);
 
   // Solar monitoring setters update state only - values are persisted server-side
-  const setSolarMonitoringEnabled = (enabled: boolean) => {
+  const setSolarMonitoringEnabled = React.useCallback((enabled: boolean) => {
     setSolarMonitoringEnabledState(enabled);
-  };
+  }, []);
 
-  const setSolarMonitoringLatitude = (latitude: number) => {
+  const setSolarMonitoringLatitude = React.useCallback((latitude: number) => {
     setSolarMonitoringLatitudeState(latitude);
-  };
+  }, []);
 
-  const setSolarMonitoringLongitude = (longitude: number) => {
+  const setSolarMonitoringLongitude = React.useCallback((longitude: number) => {
     setSolarMonitoringLongitudeState(longitude);
-  };
+  }, []);
 
-  const setSolarMonitoringAzimuth = (azimuth: number) => {
+  const setSolarMonitoringAzimuth = React.useCallback((azimuth: number) => {
     setSolarMonitoringAzimuthState(azimuth);
-  };
+  }, []);
 
-  const setSolarMonitoringDeclination = (declination: number) => {
+  const setSolarMonitoringDeclination = React.useCallback((declination: number) => {
     setSolarMonitoringDeclinationState(declination);
-  };
+  }, []);
 
-  const setEnableAudioNotifications = (enabled: boolean) => {
+  const setEnableAudioNotifications = React.useCallback((enabled: boolean) => {
     setEnableAudioNotificationsState(enabled);
     localStorage.setItem('enableAudioNotifications', enabled.toString());
-  };
+  }, []);
 
-  const setNodeDimmingEnabled = (enabled: boolean) => {
+  const setNodeDimmingEnabled = React.useCallback((enabled: boolean) => {
     setNodeDimmingEnabledState(enabled);
     localStorage.setItem('nodeDimmingEnabled', enabled.toString());
-  };
+  }, []);
 
-  const setNodeDimmingStartHours = (hours: number) => {
+  const setNodeDimmingStartHours = React.useCallback((hours: number) => {
     setNodeDimmingStartHoursState(hours);
     localStorage.setItem('nodeDimmingStartHours', hours.toString());
-  };
+  }, []);
 
-  const setNodeDimmingMinOpacity = (opacity: number) => {
+  const setNodeDimmingMinOpacity = React.useCallback((opacity: number) => {
     setNodeDimmingMinOpacityState(opacity);
     localStorage.setItem('nodeDimmingMinOpacity', opacity.toString());
-  };
+  }, []);
 
-  const setNodeHopsCalculation = (calculation: NodeHopsCalculation) => {
+  const setNodeHopsCalculation = React.useCallback((calculation: NodeHopsCalculation) => {
     setNodeHopsCalculationState(calculation);
     localStorage.setItem('nodeHopsCalculation', calculation);
-  };
+  }, []);
 
   /**
    * Set tapback emojis and save to database
@@ -1242,6 +1248,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             if (!isNaN(value)) {
               setMaxNodeAgeHoursState(value);
               localStorage.setItem('maxNodeAgeHours', value.toString());
+              setActiveWindowHours(value); // #4240: server value wins for decay too
             }
           }
 
@@ -1667,7 +1674,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     }
   }, [customThemes, theme, applyCustomThemeCSS]);
 
-  const value: SettingsContextType = {
+  const value: SettingsContextType = React.useMemo(() => ({
     maxNodeAgeHours,
     inactiveNodeThresholdHours,
     inactiveNodeCheckIntervalMinutes,
@@ -1782,7 +1789,122 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setNodeDimmingMinOpacity,
     setNodeHopsCalculation,
     setTapbackEmojis,
-  };
+  }), [
+    maxNodeAgeHours,
+    inactiveNodeThresholdHours,
+    inactiveNodeCheckIntervalMinutes,
+    inactiveNodeCooldownHours,
+    tracerouteIntervalMinutes,
+    remoteLocalStatsIntervalMinutes,
+    temperatureUnit,
+    distanceUnit,
+    positionHistoryLineStyle,
+    telemetryVisualizationHours,
+    favoriteTelemetryStorageDays,
+    preferredSortField,
+    preferredSortDirection,
+    preferredDashboardSortOption,
+    timeFormat,
+    dateFormat,
+    mapTileset,
+    mapTilesetLight,
+    mapTilesetDark,
+    activeMapTilesetMode,
+    overlayScheme,
+    overlayColors,
+    mapPinStyle,
+    iconStyle,
+    neighborInfoMinZoom,
+    defaultMapCenterLat,
+    defaultMapCenterLon,
+    defaultMapCenterZoom,
+    mapCenterTargetZoom,
+    defaultLandingPage,
+    theme,
+    appearanceMode,
+    darkTheme,
+    lightTheme,
+    language,
+    customThemes,
+    customTilesets,
+    isLoadingThemes,
+    linkPreviewsEnabled,
+    discardInvalidPositions,
+    noIndexEnabled,
+    meshcoreChannelRetryEnabled,
+    solarMonitoringEnabled,
+    solarMonitoringLatitude,
+    solarMonitoringLongitude,
+    solarMonitoringAzimuth,
+    solarMonitoringDeclination,
+    enableAudioNotifications,
+    nodeDimmingEnabled,
+    nodeDimmingStartHours,
+    nodeDimmingMinOpacity,
+    nodeHopsCalculation,
+    tapbackEmojis,
+    temporaryTileset,
+    setTemporaryTileset,
+    isLoading,
+    setMaxNodeAgeHours,
+    setInactiveNodeThresholdHours,
+    setInactiveNodeCheckIntervalMinutes,
+    setInactiveNodeCooldownHours,
+    setTracerouteIntervalMinutes,
+    setRemoteLocalStatsIntervalMinutes,
+    setTemperatureUnit,
+    setDistanceUnit,
+    setPositionHistoryLineStyle,
+    setTelemetryVisualizationHours,
+    setFavoriteTelemetryStorageDays,
+    setPreferredSortField,
+    setPreferredSortDirection,
+    setPreferredDashboardSortOption,
+    setTimeFormat,
+    setDateFormat,
+    setMapTileset,
+    setMapTilesets,
+    setMapPinStyle,
+    setIconStyle,
+    setNeighborInfoMinZoom,
+    setDefaultMapCenterLat,
+    setDefaultMapCenterLon,
+    setDefaultMapCenterZoom,
+    setMapCenterTargetZoom,
+    setDefaultLandingPage,
+    setTheme,
+    setAppearanceMode,
+    setDarkTheme,
+    setLightTheme,
+    setLanguage,
+    loadCustomThemes,
+    addCustomTileset,
+    updateCustomTileset,
+    deleteCustomTileset,
+    setLinkPreviewsEnabled,
+    setDiscardInvalidPositions,
+    setNoIndexEnabled,
+    setMeshcoreChannelRetryEnabled,
+    setSolarMonitoringEnabled,
+    setSolarMonitoringLatitude,
+    setSolarMonitoringLongitude,
+    setSolarMonitoringAzimuth,
+    setSolarMonitoringDeclination,
+    setEnableAudioNotifications,
+    mutedChannels,
+    mutedDMs,
+    muteChannel,
+    unmuteChannel,
+    muteDM,
+    unmuteDM,
+    isChannelMuted,
+    isDMMuted,
+    setNodeDimmingEnabled,
+    setNodeDimmingStartHours,
+    setNodeDimmingMinOpacity,
+    setNodeHopsCalculation,
+    setTapbackEmojis,
+  ]);
 
   return (
     <IconStyleProvider value={iconStyle}>

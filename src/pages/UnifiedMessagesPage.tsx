@@ -28,6 +28,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { appBasename } from '../init';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
+import { senderLabel, shortSenderLabel } from './unifiedSenderLabels';
 import { foldUnifiedMessagePages } from '../utils/unifiedMessageAccumulator';
 import LinkPreview from '../components/LinkPreview';
 import '../styles/unified.css';
@@ -146,13 +147,6 @@ function hopDisplay(start: number | null, limit: number | null, t: TFn): string 
   return '—';
 }
 
-function senderLabel(msg: UnifiedMessage): string {
-  return msg.fromNodeLongName || msg.fromNodeShortName || msg.fromNodeId || `!${msg.fromNodeNum.toString(16)}`;
-}
-
-function shortSenderLabel(msg: UnifiedMessage): string {
-  return msg.fromNodeShortName || msg.fromNodeLongName || msg.fromNodeId || `!${msg.fromNodeNum.toString(16)}`;
-}
 
 // ── Component ────────────────────────────────────────────────────────────
 

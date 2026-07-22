@@ -102,6 +102,15 @@ export interface RouteTestHarness {
   /** Delete all permission rows for a user (useful between sub-scenarios in one test). */
   revokeAll(userId: number): Promise<void>;
   /**
+   * Mint a real API token for `user` and return the plaintext `mm_v1_…` string,
+   * for exercising `Authorization: Bearer` on legacy routes end-to-end (#4259).
+   * Backed by `auth.generateAndCreateApiToken` (real bcrypt hash → real
+   * `validateApiTokenAsync`), so the middleware validates it exactly as in
+   * production. Note: generating a token revokes the user's prior active token
+   * (one active token per user), matching the app.
+   */
+  tokenFor(user: SeededUser | number): Promise<string>;
+  /**
    * Delete seeded permissions + sources. Call in `afterEach`.
    * Users are left in place (inactive-safe, unique names).
    */
@@ -274,6 +283,12 @@ export async function createRouteTestApp(
     return agent;
   };
 
+  const tokenFor = async (user: SeededUser | number): Promise<string> => {
+    const userId = typeof user === 'number' ? user : user.id;
+    const { token } = await databaseService.auth.generateAndCreateApiToken(userId, userId);
+    return token;
+  };
+
   return {
     app,
     db: databaseService,
@@ -285,6 +300,7 @@ export async function createRouteTestApp(
     loginAs,
     grant,
     revokeAll,
+    tokenFor,
     cleanup,
   };
 }

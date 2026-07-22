@@ -46,6 +46,8 @@ When security issues are detected, nodes are flagged with warning indicators thr
 - When duplicates are found, all affected nodes are flagged with `duplicateKeyDetected = true`
 - Detailed information about which nodes share each key is stored
 
+**Meshtastic 2.8 upgrade exception** (issue #4251): a firmware regression in 2.8 renumbers a node to `crc32(publicKey)` on its first 2.8 boot while keeping the same key, orphaning the node's old (pre-2.8, MAC-derived) NodeNum. That leaves one physical node visible under two NodeNums sharing one key — which looks exactly like a duplicate-key collision but is benign. The scanner detects and suppresses this specific pattern: when a two-NodeNum group has exactly one NodeNum equal to `crc32(publicKey)` (the live new 2.8 identity) and the other has gone stale (a one-way handoff), it is treated as an upgrade renumber and **not** flagged as a security risk. A genuine collision where both nodes are still actively transmitting, or where neither NodeNum matches `crc32(publicKey)`, is still flagged — the suppression only covers the clear handoff case and errs toward keeping the warning when ambiguous.
+
 **Detection frequency**:
 - Initial scan: 5 minutes after server start
 - Recurring scans: Every 24 hours (configurable via `DUPLICATE_KEY_SCAN_INTERVAL_HOURS` environment variable)

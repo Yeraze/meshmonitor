@@ -100,6 +100,112 @@ export function checkLowEntropyKey(publicKey: string, format: 'hex' | 'base64' =
 }
 
 /**
+ * Standard CRC-32 (CRC-32/ISO-HDLC, a.k.a. zlib crc32): reflected, polynomial
+ * 0xEDB88320, init 0xFFFFFFFF, final XOR 0xFFFFFFFF. Hand-rolled rather than
+ * using Node's `zlib.crc32` because that was only added in Node 22.2 and the
+ * CI/support matrix still includes Node 20. Verified against the canonical
+ * `crc32("123456789") === 0xCBF43926` vector in the tests.
+ */
+function crc32(buf: Buffer): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) {
+    crc ^= buf[i];
+    for (let bit = 0; bit < 8; bit++) {
+      crc = crc & 1 ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1;
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/**
+ * The NodeNum a Meshtastic 2.8+ node derives from its public key, or null when
+ * the key is missing/malformed. Firmware `NodeDB::createNewIdentity()` sets
+ * `my_node_num = crc32Buffer(public_key.bytes, 32)` with no byte-swap, so the
+ * on-wire NodeNum equals `crc32(rawKey) >>> 0` (verified against firmware
+ * `develop`; the router's XEdDSA check compares the same value to `packet.from`).
+ * Pre-2.8 NodeNums were MAC-derived and key-independent, so a stored NodeNum
+ * equal to this value is a ~1-in-2^32-reliable "this is the node's canonical
+ * 2.8 identity" signal.
+ */
+export function nodeNumFromPublicKey(publicKey: string | null | undefined): number | null {
+  if (!publicKey) return null;
+  try {
+    const keyBuffer = Buffer.from(publicKey, 'base64');
+    if (keyBuffer.length !== 32) return null;
+    return crc32(keyBuffer);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * How long (seconds) a node may go unheard before it counts as "stale" for the
+ * 2.8-renumber handoff check below. A physical node that upgraded to 2.8 stops
+ * transmitting under its old MAC-derived NodeNum forever, so its stale window
+ * grows unbounded; 3 days is comfortably past normal quiet periods while still
+ * clearing the false-positive within a scan cycle or two.
+ */
+const RENUMBER_STALE_WINDOW_SEC = 3 * 24 * 60 * 60;
+
+/** One member of a duplicate-key group, for the 2.8-renumber classifier. */
+export interface DuplicateGroupNode {
+  nodeNum: number;
+  publicKey?: string | null;
+  /** Unix seconds of last reception, or null/undefined if never heard. */
+  lastHeard?: number | null;
+}
+
+/**
+ * Distinguish a benign Meshtastic 2.8 upgrade renumber from a genuine
+ * duplicate-key / impersonation collision within one shared-key group
+ * (issue #4251).
+ *
+ * The 2.8 firmware bug (unmerged fix meshtastic/firmware#10820) renumbers a
+ * node to `crc32(publicKey)` on first 2.8 boot while keeping its key, orphaning
+ * the old MAC-derived NodeNum — so MeshMonitor sees ONE physical node under two
+ * NodeNums sharing a key. The **benign** fingerprint is:
+ *   1. exactly two NodeNums in the group,
+ *   2. exactly one of them equals `crc32(publicKey)` (the live new identity),
+ *   3. the other (old) NodeNum has gone stale AND was last heard no more
+ *      recently than the new one — i.e. a one-way handoff, not two live nodes.
+ *
+ * A real impersonation of a 2.8 victim ALSO has one NodeNum == crc32(key), so
+ * the crc32 signal alone is insufficient; the load-bearing discriminator is
+ * that in an attack **both** nodes are still transmitting, whereas in an
+ * upgrade the old identity never speaks again. When in doubt we return false
+ * (keep the security warning) — this only suppresses the clear handoff case.
+ *
+ * @param nowSec Current time in unix seconds (injected for testability).
+ */
+export function isBenign28UpgradeRenumber(
+  group: DuplicateGroupNode[],
+  nowSec: number
+): boolean {
+  if (group.length !== 2) return false;
+
+  const publicKey = group[0].publicKey;
+  const expected = nodeNumFromPublicKey(publicKey);
+  if (expected === null) return false;
+
+  const newNode = group.find((n) => n.nodeNum === expected);
+  const oldNode = group.find((n) => n.nodeNum !== expected);
+  // Exactly one member must be the crc32 identity (guards the degenerate case
+  // where neither — or, impossibly, both — match).
+  if (!newNode || !oldNode || group.filter((n) => n.nodeNum === expected).length !== 1) {
+    return false;
+  }
+
+  const newHeard = newNode.lastHeard ?? 0;
+  const oldHeard = oldNode.lastHeard ?? 0;
+
+  const newIsActive = newHeard > 0 && nowSec - newHeard <= RENUMBER_STALE_WINDOW_SEC;
+  const oldIsStale = oldHeard === 0 || nowSec - oldHeard > RENUMBER_STALE_WINDOW_SEC;
+  const handoffOrder = newHeard >= oldHeard;
+
+  return newIsActive && oldIsStale && handoffOrder;
+}
+
+/**
  * Checks if multiple nodes share the same public key (duplicate detection)
  * @param nodes Array of nodes with public keys (stored as base64)
  * @returns Map of public key hashes to arrays of node numbers that share that key

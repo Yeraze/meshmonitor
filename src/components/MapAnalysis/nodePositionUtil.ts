@@ -13,7 +13,12 @@ import { getDiscardInvalidPositions } from '../../utils/positionDisplayConfig';
 export interface MaybePositionedNode {
   latitude?: number | null;
   longitude?: number | null;
-  position?: { latitude?: number | null; longitude?: number | null } | null;
+  altitude?: number | null;
+  position?: {
+    latitude?: number | null;
+    longitude?: number | null;
+    altitude?: number | null;
+  } | null;
 }
 
 export function resolveNodeLatLng(
@@ -29,4 +34,16 @@ export function resolveNodeLatLng(
   // dropped regardless.
   if (shouldDiscardPosition(lat, lng, undefined, getDiscardInvalidPositions())) return null;
   return [lat, lng];
+}
+
+/**
+ * Resolve a node's reported altitude (metres) from either the flat or nested
+ * shape, mirroring `resolveNodeLatLng`. When a position override is enabled
+ * the API folds the override into `position`, so this is the effective value.
+ * Returns null when absent or non-finite.
+ */
+export function resolveNodeAltitude(node: MaybePositionedNode | null | undefined): number | null {
+  if (!node) return null;
+  const alt = node.altitude ?? node.position?.altitude;
+  return typeof alt === 'number' && Number.isFinite(alt) ? alt : null;
 }

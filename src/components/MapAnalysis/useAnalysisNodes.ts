@@ -7,7 +7,8 @@ import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { resolveNodeLatLng, type MaybePositionedNode } from './nodePositionUtil';
 import { nodeMatchesSearch } from './nodeSearch';
 import { getNodeTypeCategory } from '../../utils/nodeTypeCategory';
-import { nodePassesTransportFilter } from '../../utils/nodeTransport';
+import { nodePassesTransportFilter, transportCutoffSec } from '../../utils/nodeTransport';
+import { getActiveWindowHours } from '../../utils/activeWindowConfig';
 import { unifiedNodeKey } from '../../utils/nodeIdentity';
 import { applyPrecisionCellOffsets } from '../../utils/precisionOffset';
 import type { NodeSourceRef } from '../Dashboard/DashboardNodePopup';
@@ -72,6 +73,12 @@ export function useAnalysisNodes(): AnalysisNode[] {
   // per-node `sources` array used by the multi-source filter below and by the
   // popup's "Seen by N sources" list.
   const { nodes } = useDashboardUnifiedData(sources, sourceIds.length > 0);
+  // #4240: transport classification decays against the user's active window,
+  // same as every other map surface. Read from the non-context mirror rather
+  // than SettingsContext — this is a data hook feeding several Map Analysis
+  // components, and depending on a UI provider here would force every consumer
+  // (and every consumer's tests) to wrap SettingsProvider.
+  const transportCutoff = transportCutoffSec(getActiveWindowHours());
 
   return useMemo(() => {
     const visible = ((nodes ?? []) as NodeRecord[])
@@ -96,7 +103,7 @@ export function useAnalysisNodes(): AnalysisNode[] {
               showRfNodes: config.transports.rf,
               showUdpNodes: config.transports.udp,
               showMqttNodes: config.transports.mqtt,
-            })
+            }, transportCutoff)
           ) {
             return false;
           }
@@ -128,5 +135,6 @@ export function useAnalysisNodes(): AnalysisNode[] {
     )
       .map(({ item: node, latLng }) => ({ node, latLng, key: unifiedNodeKey(node) }))
       .filter((entry): entry is AnalysisNode => entry.key !== null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- #4240 transportCutoff is a fresh clock read each render; listing it would recompute this memo every render. `nodes` changes on the 15s poll, which re-runs this with a current cutoff.
   }, [nodes, nodeFilter, config.nodeTypes, config.transports, config.sources]);
 }

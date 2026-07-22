@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { AutoResponderTrigger, TimerTrigger, GeofenceTrigger } from '../components/auto-responder/types';
 import { useSource } from './SourceContext';
 import { logger } from '../utils/logger';
@@ -25,6 +25,8 @@ interface AutomationContextType {
   setAutoAckCooldownSeconds: React.Dispatch<React.SetStateAction<number>>;
   autoAckPreSendDelaySeconds: number;
   setAutoAckPreSendDelaySeconds: React.Dispatch<React.SetStateAction<number>>;
+  autoAckMaxAttempts: number;
+  setAutoAckMaxAttempts: React.Dispatch<React.SetStateAction<number>>;
   autoAckTestMessages: string;
   setAutoAckTestMessages: React.Dispatch<React.SetStateAction<string>>;
   autoAnnounceEnabled: boolean;
@@ -114,6 +116,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoAckMatrix, setAutoAckMatrix] = useState<AutoAckMatrix>(DEFAULT_AUTOACK_MATRIX);
   const [autoAckCooldownSeconds, setAutoAckCooldownSeconds] = useState<number>(60);
   const [autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds] = useState<number>(0);
+  const [autoAckMaxAttempts, setAutoAckMaxAttempts] = useState<number>(3);
   const [autoAckTestMessages, setAutoAckTestMessages] = useState<string>('');
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
   const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(6);
@@ -198,6 +201,9 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         setAutoAckMatrix(settingsToMatrix(s));
         if (s.autoAckCooldownSeconds !== undefined) setAutoAckCooldownSeconds(num('autoAckCooldownSeconds', 60));
         if (s.autoAckPreSendDelaySeconds !== undefined) setAutoAckPreSendDelaySeconds(num('autoAckPreSendDelaySeconds', 0));
+        // Clamp to [1,3] client-side too (defense in depth — the server is the
+        // authoritative clamp in MessageQueueService, #4266).
+        if (s.autoAckMaxAttempts !== undefined) setAutoAckMaxAttempts(Math.min(3, Math.max(1, num('autoAckMaxAttempts', 3))));
         if (s.autoAckTestMessages !== undefined) setAutoAckTestMessages(s.autoAckTestMessages);
 
         if (s.autoAnnounceEnabled !== undefined) setAutoAnnounceEnabled(bool('autoAnnounceEnabled'));
@@ -245,54 +251,100 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
     return () => { cancelled = true; };
   }, [sourceId, baseUrl]);
 
+  const value = useMemo<AutomationContextType>(() => ({
+    autoAckEnabled, setAutoAckEnabled,
+    autoAckRegex, setAutoAckRegex,
+    autoAckMessage, setAutoAckMessage,
+    autoAckMessageDirect, setAutoAckMessageDirect,
+    autoAckChannels, setAutoAckChannels,
+    autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes,
+    autoAckIgnoredNodes, setAutoAckIgnoredNodes,
+    autoAckMatrix, setAutoAckMatrix,
+    autoAckCooldownSeconds, setAutoAckCooldownSeconds,
+    autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds,
+    autoAckMaxAttempts, setAutoAckMaxAttempts,
+    autoAckTestMessages, setAutoAckTestMessages,
+    autoAnnounceEnabled, setAutoAnnounceEnabled,
+    autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,
+    autoAnnounceMessage, setAutoAnnounceMessage,
+    autoAnnounceChannelIndexes, setAutoAnnounceChannelIndexes,
+    autoAnnounceOnStart, setAutoAnnounceOnStart,
+    autoAnnounceUseSchedule, setAutoAnnounceUseSchedule,
+    autoAnnounceSchedule, setAutoAnnounceSchedule,
+    autoAnnounceNodeInfoEnabled, setAutoAnnounceNodeInfoEnabled,
+    autoAnnounceNodeInfoChannels, setAutoAnnounceNodeInfoChannels,
+    autoAnnounceNodeInfoDelaySeconds, setAutoAnnounceNodeInfoDelaySeconds,
+    autoWelcomeEnabled, setAutoWelcomeEnabled,
+    autoWelcomeMessage, setAutoWelcomeMessage,
+    autoWelcomeTarget, setAutoWelcomeTarget,
+    autoWelcomeWaitForName, setAutoWelcomeWaitForName,
+    autoWelcomeMaxHops, setAutoWelcomeMaxHops,
+    autoWelcomeDelay, setAutoWelcomeDelay,
+    autoResponderEnabled, setAutoResponderEnabled,
+    autoResponderTriggers, setAutoResponderTriggers,
+    autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes,
+    autoKeyManagementEnabled, setAutoKeyManagementEnabled,
+    autoKeyManagementIntervalMinutes, setAutoKeyManagementIntervalMinutes,
+    autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges,
+    autoKeyManagementAutoPurge, setAutoKeyManagementAutoPurge,
+    autoKeyManagementImmediatePurge, setAutoKeyManagementImmediatePurge,
+    autoDeleteByDistanceEnabled, setAutoDeleteByDistanceEnabled,
+    autoDeleteByDistanceIntervalHours, setAutoDeleteByDistanceIntervalHours,
+    autoDeleteByDistanceThresholdKm, setAutoDeleteByDistanceThresholdKm,
+    autoDeleteByDistanceLat, setAutoDeleteByDistanceLat,
+    autoDeleteByDistanceLon, setAutoDeleteByDistanceLon,
+    autoDeleteByDistanceAction, setAutoDeleteByDistanceAction,
+    timerTriggers, setTimerTriggers,
+    geofenceTriggers, setGeofenceTriggers,
+  }), [
+    autoAckEnabled, setAutoAckEnabled,
+    autoAckRegex, setAutoAckRegex,
+    autoAckMessage, setAutoAckMessage,
+    autoAckMessageDirect, setAutoAckMessageDirect,
+    autoAckChannels, setAutoAckChannels,
+    autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes,
+    autoAckIgnoredNodes, setAutoAckIgnoredNodes,
+    autoAckMatrix, setAutoAckMatrix,
+    autoAckCooldownSeconds, setAutoAckCooldownSeconds,
+    autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds,
+    autoAckMaxAttempts, setAutoAckMaxAttempts,
+    autoAckTestMessages, setAutoAckTestMessages,
+    autoAnnounceEnabled, setAutoAnnounceEnabled,
+    autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,
+    autoAnnounceMessage, setAutoAnnounceMessage,
+    autoAnnounceChannelIndexes, setAutoAnnounceChannelIndexes,
+    autoAnnounceOnStart, setAutoAnnounceOnStart,
+    autoAnnounceUseSchedule, setAutoAnnounceUseSchedule,
+    autoAnnounceSchedule, setAutoAnnounceSchedule,
+    autoAnnounceNodeInfoEnabled, setAutoAnnounceNodeInfoEnabled,
+    autoAnnounceNodeInfoChannels, setAutoAnnounceNodeInfoChannels,
+    autoAnnounceNodeInfoDelaySeconds, setAutoAnnounceNodeInfoDelaySeconds,
+    autoWelcomeEnabled, setAutoWelcomeEnabled,
+    autoWelcomeMessage, setAutoWelcomeMessage,
+    autoWelcomeTarget, setAutoWelcomeTarget,
+    autoWelcomeWaitForName, setAutoWelcomeWaitForName,
+    autoWelcomeMaxHops, setAutoWelcomeMaxHops,
+    autoWelcomeDelay, setAutoWelcomeDelay,
+    autoResponderEnabled, setAutoResponderEnabled,
+    autoResponderTriggers, setAutoResponderTriggers,
+    autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes,
+    autoKeyManagementEnabled, setAutoKeyManagementEnabled,
+    autoKeyManagementIntervalMinutes, setAutoKeyManagementIntervalMinutes,
+    autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges,
+    autoKeyManagementAutoPurge, setAutoKeyManagementAutoPurge,
+    autoKeyManagementImmediatePurge, setAutoKeyManagementImmediatePurge,
+    autoDeleteByDistanceEnabled, setAutoDeleteByDistanceEnabled,
+    autoDeleteByDistanceIntervalHours, setAutoDeleteByDistanceIntervalHours,
+    autoDeleteByDistanceThresholdKm, setAutoDeleteByDistanceThresholdKm,
+    autoDeleteByDistanceLat, setAutoDeleteByDistanceLat,
+    autoDeleteByDistanceLon, setAutoDeleteByDistanceLon,
+    autoDeleteByDistanceAction, setAutoDeleteByDistanceAction,
+    timerTriggers, setTimerTriggers,
+    geofenceTriggers, setGeofenceTriggers,
+  ]);
+
   return (
-    <AutomationContext.Provider
-      value={{
-        autoAckEnabled, setAutoAckEnabled,
-        autoAckRegex, setAutoAckRegex,
-        autoAckMessage, setAutoAckMessage,
-        autoAckMessageDirect, setAutoAckMessageDirect,
-        autoAckChannels, setAutoAckChannels,
-        autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes,
-        autoAckIgnoredNodes, setAutoAckIgnoredNodes,
-        autoAckMatrix, setAutoAckMatrix,
-        autoAckCooldownSeconds, setAutoAckCooldownSeconds,
-        autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds,
-        autoAckTestMessages, setAutoAckTestMessages,
-        autoAnnounceEnabled, setAutoAnnounceEnabled,
-        autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,
-        autoAnnounceMessage, setAutoAnnounceMessage,
-        autoAnnounceChannelIndexes, setAutoAnnounceChannelIndexes,
-        autoAnnounceOnStart, setAutoAnnounceOnStart,
-        autoAnnounceUseSchedule, setAutoAnnounceUseSchedule,
-        autoAnnounceSchedule, setAutoAnnounceSchedule,
-        autoAnnounceNodeInfoEnabled, setAutoAnnounceNodeInfoEnabled,
-        autoAnnounceNodeInfoChannels, setAutoAnnounceNodeInfoChannels,
-        autoAnnounceNodeInfoDelaySeconds, setAutoAnnounceNodeInfoDelaySeconds,
-        autoWelcomeEnabled, setAutoWelcomeEnabled,
-        autoWelcomeMessage, setAutoWelcomeMessage,
-        autoWelcomeTarget, setAutoWelcomeTarget,
-        autoWelcomeWaitForName, setAutoWelcomeWaitForName,
-        autoWelcomeMaxHops, setAutoWelcomeMaxHops,
-        autoWelcomeDelay, setAutoWelcomeDelay,
-        autoResponderEnabled, setAutoResponderEnabled,
-        autoResponderTriggers, setAutoResponderTriggers,
-        autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes,
-        autoKeyManagementEnabled, setAutoKeyManagementEnabled,
-        autoKeyManagementIntervalMinutes, setAutoKeyManagementIntervalMinutes,
-        autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges,
-        autoKeyManagementAutoPurge, setAutoKeyManagementAutoPurge,
-        autoKeyManagementImmediatePurge, setAutoKeyManagementImmediatePurge,
-        autoDeleteByDistanceEnabled, setAutoDeleteByDistanceEnabled,
-        autoDeleteByDistanceIntervalHours, setAutoDeleteByDistanceIntervalHours,
-        autoDeleteByDistanceThresholdKm, setAutoDeleteByDistanceThresholdKm,
-        autoDeleteByDistanceLat, setAutoDeleteByDistanceLat,
-        autoDeleteByDistanceLon, setAutoDeleteByDistanceLon,
-        autoDeleteByDistanceAction, setAutoDeleteByDistanceAction,
-        timerTriggers, setTimerTriggers,
-        geofenceTriggers, setGeofenceTriggers,
-      }}
-    >
+    <AutomationContext.Provider value={value}>
       {children}
     </AutomationContext.Provider>
   );

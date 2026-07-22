@@ -69,7 +69,7 @@ describe('MeshtasticManager - telemetry NeighborInfo hijack auto-retry (#4210)',
     mockInsertNeighborBatch.mockResolvedValue(undefined);
 
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
     manager.pendingTelemetryRequests.clear();
     for (const t of manager.telemetryRetryTimers) clearTimeout(t);
     manager.telemetryRetryTimers.clear();

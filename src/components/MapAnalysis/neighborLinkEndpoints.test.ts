@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { resolveNeighborEndpoints, type EndpointNodeRecord } from './neighborLinkEndpoints';
+import {
+  resolveNeighborEndpoints,
+  resolveSegmentEndpoints,
+  type EndpointNodeRecord,
+} from './neighborLinkEndpoints';
 import type { SelectedTarget } from './MapAnalysisContext';
 
 describe('resolveNeighborEndpoints (#3826 Phase 1 WP-1)', () => {
@@ -201,4 +205,45 @@ describe('resolveNeighborEndpoints (#3826 Phase 1 WP-1)', () => {
 
     expect(resolveNeighborEndpoints(selected, nodes)).toBeNull();
   });
+  describe('resolveSegmentEndpoints', () => {
+    const nodes: EndpointNodeRecord[] = [
+      { nodeNum: 1, sourceId: 'src-a', latitude: 10, longitude: 20, altitude: 35, shortName: 'A1', sources: [{ sourceId: 'src-a' }] },
+      { nodeNum: 2, sourceId: 'src-b', latitude: 11, longitude: 21, position: { altitude: 12 }, shortName: 'B1', sources: [{ sourceId: 'src-b' }] },
+      { nodeNum: 3, sourceId: 'src-a', shortName: 'NOPOS', sources: [{ sourceId: 'src-a' }] },
+    ];
+
+    it('resolves both endpoints by nodeNum for a positioned segment', () => {
+      const result = resolveSegmentEndpoints(
+        { type: 'segment', fromNodeNum: 1, toNodeNum: 2 },
+        nodes,
+      );
+      expect(result).not.toBeNull();
+      expect(result?.a).toMatchObject({ nodeNum: 1, isMeshCore: false, isNode: true });
+      expect(result?.b).toMatchObject({ nodeNum: 2, isMeshCore: false, isNode: true });
+      expect(result?.a.id).toBe('mt:1');
+      expect(result?.b.id).toBe('mt:2');
+      // altitudeM carried from flat + nested shapes to seed the AGL inputs
+      expect(result?.a.altitudeM).toBe(35);
+      expect(result?.b.altitudeM).toBe(12);
+    });
+
+    it('returns null when an endpoint is unpositioned', () => {
+      const result = resolveSegmentEndpoints(
+        { type: 'segment', fromNodeNum: 1, toNodeNum: 3 },
+        nodes,
+      );
+      expect(result).toBeNull();
+    });
+
+    it('returns null when nodeNums are missing', () => {
+      expect(resolveSegmentEndpoints({ type: 'segment' }, nodes)).toBeNull();
+    });
+
+    it('returns null for a non-segment selection', () => {
+      expect(
+        resolveSegmentEndpoints({ type: 'node', nodeNum: 1, sourceId: 'a' }, nodes),
+      ).toBeNull();
+    });
+  });
 });
+

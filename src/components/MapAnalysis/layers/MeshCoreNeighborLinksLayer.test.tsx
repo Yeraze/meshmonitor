@@ -45,6 +45,16 @@ vi.mock('../../../hooks/useDashboardData', () => ({
   UNIFIED_SOURCE_ID: '__unified__',
 }));
 
+
+/** Visible line divs only — interactive links also render an invisible
+ *  12px hit companion (opacity 0) since the thin-line click-target fix. */
+function visiblePolys() {
+  return screen.getAllByTestId('poly').filter((el) => {
+    const po = JSON.parse(el.getAttribute('data-path-options') ?? '{}');
+    return po.opacity !== 0;
+  });
+}
+
 describe('MeshCoreNeighborLinksLayer', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -75,7 +85,7 @@ describe('MeshCoreNeighborLinksLayer', () => {
         </MapAnalysisProvider>
       </QueryClientProvider>,
     );
-    const polys = screen.getAllByTestId('poly');
+    const polys = visiblePolys();
     expect(polys).toHaveLength(1);
     // Pins the pre-promotion look (fixed cyan, weight 1.5, dash '6 4') so the
     // shared-layer adapter is byte-for-byte identical. opacity = snrToNeighborOpacity(5)

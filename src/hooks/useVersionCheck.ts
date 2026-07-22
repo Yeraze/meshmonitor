@@ -1,21 +1,37 @@
 /**
  * Hook for checking application version updates
  *
- * Polls the server every 4 hours to check for new versions
- * and provides state for showing update notifications.
+ * Uses TanStack Query's `refetchInterval` to poll the server every 4 hours
+ * for new versions and provides state for showing the update banner.
+ * Replaces the previous hand-rolled `setInterval` + raw `fetch` implementation
+ * (#3962 Phase 5.1) — the server's `versionCheckService` does the actual
+ * GitHub polling/caching and gates `updateAvailable` on the Docker image
+ * being ready; this hook just reads the cached result on an interval.
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { logger } from '../utils/logger';
+import { useCallback, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import api, { ApiError } from '../services/api';
+import type { DeploymentMethod } from '../components/AppBanners';
+
+export interface VersionCheckResponse {
+  updateAvailable: boolean;
+  currentVersion?: string;
+  latestVersion?: string;
+  releaseUrl?: string;
+  deploymentMethod?: DeploymentMethod;
+}
 
 interface VersionCheckResult {
-  /** Whether a new version is available */
+  /** Whether a new version is available (and not locally dismissed) */
   updateAvailable: boolean;
   /** The latest available version string */
   latestVersion: string;
   /** URL to the release page */
   releaseUrl: string;
-  /** Dismiss the update notification (sets updateAvailable to false) */
+  /** Detected deployment method, used to tailor the update instructions */
+  deploymentMethod: DeploymentMethod;
+  /** Dismiss the update notification for this session (sets updateAvailable to false) */
   dismissUpdate: () => void;
 }
 
@@ -23,70 +39,48 @@ interface VersionCheckResult {
 export const VERSION_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 /**
- * Hook to check for application updates
+ * Hook to check for application updates.
  *
- * @param baseUrl - The base URL of the API
+ * @param baseUrl - Reserved for API parity with the previous hook signature.
+ *   `ApiService` resolves its own base URL internally, so this is accepted
+ *   but not required to build the request.
  * @returns Version check state and controls
  */
-export function useVersionCheck(baseUrl: string): VersionCheckResult {
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [latestVersion, setLatestVersion] = useState('');
-  const [releaseUrl, setReleaseUrl] = useState('');
+export function useVersionCheck(_baseUrl?: string): VersionCheckResult {
+  const [dismissed, setDismissed] = useState(false);
+
+  const { data } = useQuery({
+    queryKey: ['version-check'],
+    queryFn: () => api.get<VersionCheckResponse>('/api/version/check'),
+    // A 404 means version checking is disabled server-side
+    // (env.versionCheckDisabled) — stop polling instead of retrying forever.
+    refetchInterval: (query) => {
+      const error = query.state.error;
+      if (error instanceof ApiError && error.status === 404) {
+        return false;
+      }
+      return VERSION_CHECK_INTERVAL_MS;
+    },
+    refetchIntervalInBackground: false,
+    staleTime: VERSION_CHECK_INTERVAL_MS - 1000,
+    gcTime: 5 * 60 * 1000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
 
   const dismissUpdate = useCallback(() => {
-    setUpdateAvailable(false);
+    setDismissed(true);
   }, []);
 
-  useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-
-    const checkForUpdates = async () => {
-      try {
-        const response = await fetch(`${baseUrl}/api/version/check`);
-        if (response.ok) {
-          const data = await response.json();
-
-          // Always update version info if a newer version exists
-          if (data.latestVersion && data.latestVersion !== data.currentVersion) {
-            setLatestVersion(data.latestVersion);
-            setReleaseUrl(data.releaseUrl);
-          }
-
-          // Only show update available if images are ready
-          if (data.updateAvailable) {
-            setUpdateAvailable(true);
-          } else {
-            setUpdateAvailable(false);
-          }
-        } else if (response.status === 404) {
-          // Version check endpoint not available, stop polling
-          if (intervalId) {
-            clearInterval(intervalId);
-            intervalId = null;
-          }
-        }
-      } catch (error) {
-        logger.error('Error checking for updates:', error);
-      }
-    };
-
-    // Initial check
-    void checkForUpdates();
-
-    // Check for updates at configured interval
-    intervalId = setInterval(checkForUpdates, VERSION_CHECK_INTERVAL_MS);
-
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [baseUrl]);
+  // Only surface latestVersion/releaseUrl when it's actually newer than the
+  // running version, mirroring the previous inline effect's behavior.
+  const hasNewerVersion = !!data?.latestVersion && data.latestVersion !== data.currentVersion;
 
   return {
-    updateAvailable,
-    latestVersion,
-    releaseUrl,
+    updateAvailable: !dismissed && Boolean(data?.updateAvailable),
+    latestVersion: hasNewerVersion && data?.latestVersion ? data.latestVersion : '',
+    releaseUrl: hasNewerVersion ? (data?.releaseUrl || '') : '',
+    deploymentMethod: data?.deploymentMethod ?? 'manual',
     dismissUpdate,
   };
 }

@@ -220,7 +220,7 @@ Nine inputs drive the analysis; editing any of them recomputes instantly with no
 | Input | Default | Notes |
 | --- | --- | --- |
 | Frequency | 915 MHz | Auto-fills from the picked node's radio config when available (see below) |
-| Antenna height AGL (A and B) | 2 m | Above-ground-level height at each endpoint; node GPS altitude is intentionally **not** used (see [Limitations](#limitations)) |
+| Antenna height AGL (A and B) | 2 m | Above-ground-level height at each endpoint. When a picked node reports an altitude, the field is seeded with `altitude − DEM ground` (shown as \"from node altitude\", editable — your edits always win); otherwise 2 m. The profile math itself always runs on DEM terrain + this AGL value, never raw GPS altitude (see [Limitations](#limitations)) |
 | TX power | 20 dBm | |
 | TX / RX antenna gain | 2.15 dBi each | Standard dipole reference gain |
 | Cable loss | 0 dB | |

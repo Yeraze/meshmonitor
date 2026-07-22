@@ -8,7 +8,9 @@
 import { Router, Request, Response } from 'express';
 import { requireAdmin } from '../auth/authMiddleware.js';
 import { firmwareUpdateService } from '../services/firmwareUpdateService.js';
-import meshtasticManager from '../meshtasticManager.js';
+import { fallbackManager } from '../meshtasticManager.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
 import path from 'path';
@@ -129,8 +131,9 @@ router.post('/update', async (req: Request, res: Response) => {
     // proxy (meshtasticd, mesh-bridge, …) reports no native WiFi/Ethernet and
     // cannot serve an OTA HTTP endpoint, so the flash would target the proxy,
     // not the radio. The frontend hides the button, but enforce server-side too.
-    // firmwareUpdateService operates on the default-source manager singleton.
-    if (meshtasticManager.isLocalNodeBridged()) {
+    // firmwareUpdateService operates on the primary/fallback manager (never undefined).
+    const mgr = getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager;
+    if (mgr.isLocalNodeBridged()) {
       return res.status(400).json({
         success: false,
         error:

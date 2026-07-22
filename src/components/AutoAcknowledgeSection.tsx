@@ -39,6 +39,8 @@ interface AutoAcknowledgeSectionProps {
   onCooldownSecondsChange: (value: number) => void;
   preSendDelaySeconds: number;
   onPreSendDelaySecondsChange: (value: number) => void;
+  maxAttempts: number;
+  onMaxAttemptsChange: (value: number) => void;
   testMessages: string;
   onTestMessagesChange: (messages: string) => void;
 }
@@ -69,6 +71,8 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   onCooldownSecondsChange,
   preSendDelaySeconds,
   onPreSendDelaySecondsChange,
+  maxAttempts,
+  onMaxAttemptsChange,
   testMessages: testMessagesProp,
   onTestMessagesChange,
 }) => {
@@ -87,6 +91,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [localMatrix, setLocalMatrix] = useState<AutoAckMatrix>(matrix);
   const [localCooldownSeconds, setLocalCooldownSeconds] = useState(cooldownSeconds);
   const [localPreSendDelaySeconds, setLocalPreSendDelaySeconds] = useState(preSendDelaySeconds);
+  const [localMaxAttempts, setLocalMaxAttempts] = useState(maxAttempts);
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [testMessages, setTestMessages] = useState(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
@@ -105,20 +110,22 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalMatrix(matrix);
     setLocalCooldownSeconds(cooldownSeconds);
     setLocalPreSendDelaySeconds(preSendDelaySeconds);
+    setLocalMaxAttempts(maxAttempts);
     if (testMessagesProp) {
       setTestMessages(testMessagesProp);
     }
-  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, testMessagesProp]);
 
   // Check if any settings have changed
   useEffect(() => {
     const channelsChanged = JSON.stringify(localEnabledChannels.sort()) !== JSON.stringify(enabledChannels.sort());
     const cooldownChanged = localCooldownSeconds !== cooldownSeconds;
     const preSendDelayChanged = localPreSendDelaySeconds !== preSendDelaySeconds;
+    const maxAttemptsChanged = localMaxAttempts !== maxAttempts;
     const matrixChanged = JSON.stringify(localMatrix) !== JSON.stringify(matrix);
-    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || matrixChanged || cooldownChanged || preSendDelayChanged || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
+    const changed = localEnabled !== enabled || localRegex !== regex || localMessage !== message || localMessageDirect !== messageDirect || channelsChanged || localSkipIncompleteNodes !== skipIncompleteNodes || localIgnoredNodes !== (ignoredNodes || '') || matrixChanged || cooldownChanged || preSendDelayChanged || maxAttemptsChanged || testMessages !== (testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
     setHasChanges(changed);
-  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, testMessages, enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, testMessagesProp]);
+  }, [localEnabled, localRegex, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, testMessages, enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, testMessagesProp]);
 
   // Reset local state to props (used by SaveBar dismiss)
   const resetChanges = useCallback(() => {
@@ -132,8 +139,9 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     setLocalMatrix(matrix);
     setLocalCooldownSeconds(cooldownSeconds);
     setLocalPreSendDelaySeconds(preSendDelaySeconds);
+    setLocalMaxAttempts(maxAttempts);
     setTestMessages(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
-  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, testMessagesProp]);
+  }, [enabled, regex, message, messageDirect, enabledChannels, skipIncompleteNodes, ignoredNodes, matrix, cooldownSeconds, preSendDelaySeconds, maxAttempts, testMessagesProp]);
 
   // Validate regex pattern for safety
   const validateRegex = (pattern: string): { valid: boolean; error?: string } => {
@@ -258,6 +266,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
           ...matrixToSettings(localMatrix),
           autoAckCooldownSeconds: String(localCooldownSeconds),
           autoAckPreSendDelaySeconds: String(localPreSendDelaySeconds),
+          autoAckMaxAttempts: String(localMaxAttempts),
           autoAckTestMessages: testMessages
         })
       });
@@ -292,6 +301,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       onMatrixChange(localMatrix);
       onCooldownSecondsChange(localCooldownSeconds);
       onPreSendDelaySecondsChange(localPreSendDelaySeconds);
+      onMaxAttemptsChange(localMaxAttempts);
       onTestMessagesChange(testMessages);
 
       setHasChanges(false);
@@ -302,7 +312,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, testMessages, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onMatrixChange, onCooldownSecondsChange, onPreSendDelaySecondsChange, onTestMessagesChange]);
+  }, [localRegex, localEnabled, localMessage, localMessageDirect, localEnabledChannels, localSkipIncompleteNodes, localIgnoredNodes, localMatrix, localCooldownSeconds, localPreSendDelaySeconds, localMaxAttempts, testMessages, baseUrl, csrfFetch, sourceQuery, showToast, t, onEnabledChange, onRegexChange, onMessageChange, onMessageDirectChange, onChannelsChange, onSkipIncompleteNodesChange, onIgnoredNodesChange, onMatrixChange, onCooldownSecondsChange, onPreSendDelaySecondsChange, onMaxAttemptsChange, onTestMessagesChange]);
 
   // Register with SaveBar
   useSaveBar({
@@ -496,6 +506,32 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
               />
               <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
                 {t('automation.auto_ack.presend_delay_help', 'seconds (0 = send immediately, max 120)')}
+              </span>
+            </div>
+          </div>
+
+          {/* DM resend attempts (#4266) — app-level retry cap, bounded to [1,3] server-side. */}
+          <div style={{ marginTop: '1rem' }}>
+            <label htmlFor="autoAckMaxAttempts" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+              {t('automation.auto_ack.max_attempts_label', 'Auto-Ack Resend Attempts')}
+            </label>
+            <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+              {t('automation.auto_ack.max_attempts_description', 'How many times to resend an unacknowledged DM auto-ack reply. Lower values save airtime on busy channels; higher values improve delivery reliability. Channel replies always send once.')}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <select
+                id="autoAckMaxAttempts"
+                value={localMaxAttempts}
+                onChange={(e) => setLocalMaxAttempts(Math.max(1, Math.min(3, parseInt(e.target.value) || 3)))}
+                disabled={!localEnabled}
+                style={{ width: '80px', padding: '2px 4px' }}
+              >
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+                <option value={3}>3</option>
+              </select>
+              <span style={{ fontSize: '0.85rem', color: 'var(--ctp-subtext0)' }}>
+                {t('automation.auto_ack.max_attempts_help', 'attempts (1 = least airtime, 3 = default)')}
               </span>
             </div>
           </div>

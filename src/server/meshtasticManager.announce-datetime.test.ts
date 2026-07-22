@@ -46,7 +46,7 @@ describe('MeshtasticManager - {DATE} / {TIME} announcement tokens', () => {
     vi.useFakeTimers();
     vi.setSystemTime(FIXED_NOW);
     const module = await import('./meshtasticManager.js');
-    manager = module.default;
+    manager = module.fallbackManager;
   });
 
   afterEach(() => {

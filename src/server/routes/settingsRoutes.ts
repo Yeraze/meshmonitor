@@ -19,6 +19,10 @@ import { parseNoIndexEnabled } from '../../utils/robotsConfig.js';
 import { securityDigestService } from '../services/securityDigestService.js';
 import { invalidatePkiDmGlobalCache } from '../services/sourcePkiKeyStore.js';
 import { VALID_SETTINGS_KEYS, stripSecretSettings } from '../constants/settings.js';
+import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
+import { positionEstimationScheduler } from '../services/positionEstimationScheduler.js';
+import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
 
@@ -1090,6 +1094,660 @@ router.delete('/', requirePermission('settings', 'write'), async (req: Request, 
   } catch (error) {
     logger.error('Error resetting settings:', error);
     res.status(500).json({ error: 'Failed to reset settings' });
+  }
+});
+
+// ─── Extracted from server.ts (#3502 PR2) ─────────────────────────────────
+// The following 17 handlers were `apiRouter.*('/settings/...')` inline in
+// server.ts; moved verbatim (only the leading route registration rewritten
+// from `apiRouter.<m>('/settings/...')` to `router.<m>('/...')`).
+
+router.post('/traceroute-interval', requirePermission('settings', 'write'), (req, res) => {
+  try {
+    const { intervalMinutes, sourceId: traceIntervalSourceId } = req.body;
+    if (typeof intervalMinutes !== 'number' || intervalMinutes < 0 || intervalMinutes > 60) {
+      return res.status(400).json({ error: 'Invalid interval. Must be between 0 and 60 minutes (0 = disabled).' });
+    }
+
+    const traceIntervalManager = (resolveSourceManager(traceIntervalSourceId));
+    traceIntervalManager.setTracerouteInterval(intervalMinutes);
+    res.json({ success: true, intervalMinutes });
+  } catch (error) {
+    logger.error('Error setting traceroute interval:', error);
+    res.status(500).json({ error: 'Failed to set traceroute interval' });
+  }
+});
+
+router.post('/remote-localstats-interval', requirePermission('settings', 'write'), (req, res) => {
+  try {
+    const { intervalMinutes, sourceId: rlsIntervalSourceId } = req.body;
+    if (typeof intervalMinutes !== 'number' || intervalMinutes < 0 || intervalMinutes > 1440) {
+      return res.status(400).json({ error: 'Invalid interval. Must be between 0 and 1440 minutes (0 = disabled).' });
+    }
+    const rlsIntervalManager = (resolveSourceManager(rlsIntervalSourceId));
+    rlsIntervalManager.setRemoteLocalStatsInterval(intervalMinutes);
+    res.json({ success: true, intervalMinutes });
+  } catch (error) {
+    logger.error('Error setting remote LocalStats interval:', error);
+    res.status(500).json({ error: 'Failed to set remote LocalStats interval' });
+  }
+});
+
+router.get('/traceroute-nodes', requirePermission('settings', 'read'), async (req, res) => {
+  try {
+    const traceNodesSourceId = req.query.sourceId as string | undefined;
+    const settings = await databaseService.getTracerouteFilterSettingsAsync(traceNodesSourceId);
+    res.json(settings);
+  } catch (error) {
+    logger.error('Error fetching auto-traceroute node filter:', error);
+    res.status(500).json({ error: 'Failed to fetch auto-traceroute node filter' });
+  }
+});
+
+router.post('/traceroute-nodes', requirePermission('settings', 'write'), async (req, res) => {
+  try {
+    const {
+      enabled, nodeNums, filterChannels, filterRoles, filterHwModels, filterNameRegex,
+      filterNodesEnabled, filterChannelsEnabled, filterRolesEnabled, filterHwModelsEnabled, filterRegexEnabled,
+      expirationHours, sortByHops,
+      filterLastHeardEnabled, filterLastHeardHours,
+      filterHopsEnabled, filterHopsMin, filterHopsMax,
+    } = req.body;
+
+    // Validate input
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid enabled value. Must be a boolean.' });
+    }
+
+    if (!Array.isArray(nodeNums)) {
+      return res.status(400).json({ error: 'Invalid nodeNums value. Must be an array.' });
+    }
+
+    // Validate all node numbers are valid integers
+    for (const nodeNum of nodeNums) {
+      if (!Number.isInteger(nodeNum) || nodeNum < 0) {
+        return res.status(400).json({ error: 'All node numbers must be positive integers.' });
+      }
+    }
+
+    // Validate optional filter arrays
+    const validateIntArray = (arr: unknown, name: string): number[] => {
+      if (arr === undefined || arr === null) return [];
+      if (!Array.isArray(arr)) {
+        throw new Error(`Invalid ${name} value. Must be an array.`);
+      }
+      for (const item of arr) {
+        if (!Number.isInteger(item) || item < 0) {
+          throw new Error(`All ${name} values must be non-negative integers.`);
+        }
+      }
+      return arr as number[];
+    };
+
+    let validatedChannels: number[];
+    let validatedRoles: number[];
+    let validatedHwModels: number[];
+    try {
+      validatedChannels = validateIntArray(filterChannels, 'filterChannels');
+      validatedRoles = validateIntArray(filterRoles, 'filterRoles');
+      validatedHwModels = validateIntArray(filterHwModels, 'filterHwModels');
+    } catch (error) {
+      return res.status(400).json({ error: (error as Error).message });
+    }
+
+    // Current stored settings — needed to decide whether the regex must be
+    // hard-validated (see validateFilterNameRegexOnSave / #3934).
+    const traceNodesPostSourceId = (req.query.sourceId as string | undefined) || (req.body?.sourceId as string | undefined);
+    const currentTraceSettings = await databaseService.getTracerouteFilterSettingsAsync(traceNodesPostSourceId);
+
+    // Validate regex if provided — only hard-validate (RE2) when it will actually
+    // be applied or the pattern changed, so a stored RE2-incompatible pattern
+    // can't permanently brick the automation (#3934, mirrors #3806).
+    let validatedRegex = '.*';
+    if (filterNameRegex !== undefined && filterNameRegex !== null) {
+      if (typeof filterNameRegex !== 'string') {
+        return res.status(400).json({ error: 'Invalid filterNameRegex value. Must be a string.' });
+      }
+      const regexWillBeApplied =
+        enabled &&
+        (filterRegexEnabled !== undefined ? filterRegexEnabled === true : currentTraceSettings.filterRegexEnabled);
+      const regexResult = validateFilterNameRegexOnSave(filterNameRegex, {
+        willBeApplied: regexWillBeApplied,
+        storedRegex: currentTraceSettings.filterNameRegex,
+      });
+      if ('error' in regexResult) {
+        return res.status(400).json({ error: regexResult.error });
+      }
+      validatedRegex = regexResult.regex;
+    }
+
+    // Validate individual filter enabled flags (optional booleans, default to true)
+    const validateOptionalBoolean = (value: unknown, name: string): boolean | undefined => {
+      if (value === undefined) return undefined;
+      if (typeof value !== 'boolean') {
+        throw new Error(`Invalid ${name} value. Must be a boolean.`);
+      }
+      return value;
+    };
+
+    let validatedFilterNodesEnabled: boolean | undefined;
+    let validatedFilterChannelsEnabled: boolean | undefined;
+    let validatedFilterRolesEnabled: boolean | undefined;
+    let validatedFilterHwModelsEnabled: boolean | undefined;
+    let validatedFilterRegexEnabled: boolean | undefined;
+    let validatedSortByHops: boolean | undefined;
+    try {
+      validatedFilterNodesEnabled = validateOptionalBoolean(filterNodesEnabled, 'filterNodesEnabled');
+      validatedFilterChannelsEnabled = validateOptionalBoolean(filterChannelsEnabled, 'filterChannelsEnabled');
+      validatedFilterRolesEnabled = validateOptionalBoolean(filterRolesEnabled, 'filterRolesEnabled');
+      validatedFilterHwModelsEnabled = validateOptionalBoolean(filterHwModelsEnabled, 'filterHwModelsEnabled');
+      validatedFilterRegexEnabled = validateOptionalBoolean(filterRegexEnabled, 'filterRegexEnabled');
+      validatedSortByHops = validateOptionalBoolean(sortByHops, 'sortByHops');
+    } catch (error) {
+      return res.status(400).json({ error: (error as Error).message });
+    }
+
+    // Validate expirationHours (optional, must be an integer between 0 and 168; 0 = always retraceroute)
+    let validatedExpirationHours: number | undefined;
+    if (expirationHours !== undefined) {
+      if (!Number.isInteger(expirationHours) || expirationHours < 0 || expirationHours > 168) {
+        return res.status(400).json({ error: 'Invalid expirationHours value. Must be an integer between 0 and 168.' });
+      }
+      validatedExpirationHours = expirationHours;
+    }
+
+    // Validate filterLastHeardEnabled (optional boolean)
+    let validatedFilterLastHeardEnabled: boolean | undefined;
+    try {
+      validatedFilterLastHeardEnabled = validateOptionalBoolean(filterLastHeardEnabled, 'filterLastHeardEnabled');
+    } catch (error) {
+      return res.status(400).json({ error: (error as Error).message });
+    }
+
+    // Validate filterLastHeardHours (optional, must be integer >= 1)
+    let validatedFilterLastHeardHours: number | undefined;
+    if (filterLastHeardHours !== undefined) {
+      if (!Number.isInteger(filterLastHeardHours) || filterLastHeardHours < 1) {
+        return res.status(400).json({ error: 'Invalid filterLastHeardHours value. Must be an integer >= 1.' });
+      }
+      validatedFilterLastHeardHours = filterLastHeardHours;
+    }
+
+    // Validate filterHopsEnabled (optional boolean)
+    let validatedFilterHopsEnabled: boolean | undefined;
+    try {
+      validatedFilterHopsEnabled = validateOptionalBoolean(filterHopsEnabled, 'filterHopsEnabled');
+    } catch (error) {
+      return res.status(400).json({ error: (error as Error).message });
+    }
+
+    // Validate filterHopsMin/Max (optional, must be integers >= 0, min <= max)
+    let validatedFilterHopsMin: number | undefined;
+    let validatedFilterHopsMax: number | undefined;
+    if (filterHopsMin !== undefined) {
+      if (!Number.isInteger(filterHopsMin) || filterHopsMin < 0) {
+        return res.status(400).json({ error: 'Invalid filterHopsMin value. Must be a non-negative integer.' });
+      }
+      validatedFilterHopsMin = filterHopsMin;
+    }
+    if (filterHopsMax !== undefined) {
+      if (!Number.isInteger(filterHopsMax) || filterHopsMax < 0) {
+        return res.status(400).json({ error: 'Invalid filterHopsMax value. Must be a non-negative integer.' });
+      }
+      validatedFilterHopsMax = filterHopsMax;
+    }
+    if (validatedFilterHopsMin !== undefined && validatedFilterHopsMax !== undefined && validatedFilterHopsMin > validatedFilterHopsMax) {
+      return res.status(400).json({ error: 'filterHopsMin cannot be greater than filterHopsMax.' });
+    }
+
+    // Update all settings (scoped to source when provided; sourceId resolved above)
+    await databaseService.setTracerouteFilterSettingsAsync({
+      enabled,
+      nodeNums,
+      filterChannels: validatedChannels,
+      filterRoles: validatedRoles,
+      filterHwModels: validatedHwModels,
+      filterNameRegex: validatedRegex,
+      filterNodesEnabled: validatedFilterNodesEnabled,
+      filterChannelsEnabled: validatedFilterChannelsEnabled,
+      filterRolesEnabled: validatedFilterRolesEnabled,
+      filterHwModelsEnabled: validatedFilterHwModelsEnabled,
+      filterRegexEnabled: validatedFilterRegexEnabled,
+      expirationHours: validatedExpirationHours,
+      sortByHops: validatedSortByHops,
+      filterLastHeardEnabled: validatedFilterLastHeardEnabled,
+      filterLastHeardHours: validatedFilterLastHeardHours,
+      filterHopsEnabled: validatedFilterHopsEnabled,
+      filterHopsMin: validatedFilterHopsMin,
+      filterHopsMax: validatedFilterHopsMax,
+    }, traceNodesPostSourceId);
+
+    // Get the updated settings to return (includes resolved default values)
+    const updatedSettings = await databaseService.getTracerouteFilterSettingsAsync(traceNodesPostSourceId);
+
+    res.json({
+      success: true,
+      ...updatedSettings,
+    });
+  } catch (error) {
+    logger.error('Error updating auto-traceroute node filter:', error);
+    res.status(500).json({ error: 'Failed to update auto-traceroute node filter' });
+  }
+});
+
+router.get('/remote-localstats-nodes', requirePermission('settings', 'read'), async (req, res) => {
+  try {
+    const sourceId = req.query.sourceId as string | undefined;
+    const settings = await databaseService.getRemoteLocalStatsFilterSettingsAsync(sourceId);
+    res.json(settings);
+  } catch (error) {
+    logger.error('Error fetching remote LocalStats node filter:', error);
+    res.status(500).json({ error: 'Failed to fetch remote LocalStats node filter' });
+  }
+});
+
+router.post('/remote-localstats-nodes', requirePermission('settings', 'write'), async (req, res) => {
+  try {
+    const {
+      enabled, nodeNums, filterRoles, filterNameRegex,
+      filterNodesEnabled, filterRolesEnabled, filterFavoriteEnabled, filterRegexEnabled,
+      filterLastHeardEnabled, filterLastHeardHours,
+    } = req.body;
+
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid enabled value. Must be a boolean.' });
+    }
+    if (!Array.isArray(nodeNums)) {
+      return res.status(400).json({ error: 'Invalid nodeNums value. Must be an array.' });
+    }
+    for (const nodeNum of nodeNums) {
+      if (!Number.isInteger(nodeNum) || nodeNum < 0) {
+        return res.status(400).json({ error: 'All node numbers must be positive integers.' });
+      }
+    }
+
+    const validateIntArray = (arr: unknown, name: string): number[] => {
+      if (arr === undefined || arr === null) return [];
+      if (!Array.isArray(arr)) {
+        throw new Error(`Invalid ${name} value. Must be an array.`);
+      }
+      for (const item of arr) {
+        if (!Number.isInteger(item) || item < 0) {
+          throw new Error(`All ${name} values must be non-negative integers.`);
+        }
+      }
+      return arr as number[];
+    };
+
+    let validatedRoles: number[];
+    try {
+      validatedRoles = validateIntArray(filterRoles, 'filterRoles');
+    } catch (error) {
+      return res.status(400).json({ error: (error as Error).message });
+    }
+
+    // sourceId is required here; resolve it up-front so we can read the current
+    // stored settings for the regex guard below.
+    const sourceId = (req.query.sourceId as string | undefined) || (req.body?.sourceId as string | undefined);
+    if (!sourceId) {
+      return res.status(400).json({ error: 'sourceId is required for remote LocalStats filter settings.' });
+    }
+    const currentRemoteSettings = await databaseService.getRemoteLocalStatsFilterSettingsAsync(sourceId);
+
+    // Validate regex — only hard-validate (RE2) when it will actually be applied
+    // or the pattern changed, so a stored RE2-incompatible pattern can't
+    // permanently brick the automation (#3934, mirrors #3806).
+    let validatedRegex = '.*';
+    if (filterNameRegex !== undefined && filterNameRegex !== null) {
+      if (typeof filterNameRegex !== 'string') {
+        return res.status(400).json({ error: 'Invalid filterNameRegex value. Must be a string.' });
+      }
+      const regexWillBeApplied =
+        enabled &&
+        (filterRegexEnabled !== undefined ? filterRegexEnabled === true : currentRemoteSettings.filterRegexEnabled);
+      const regexResult = validateFilterNameRegexOnSave(filterNameRegex, {
+        willBeApplied: regexWillBeApplied,
+        storedRegex: currentRemoteSettings.filterNameRegex,
+      });
+      if ('error' in regexResult) {
+        return res.status(400).json({ error: regexResult.error });
+      }
+      validatedRegex = regexResult.regex;
+    }
+
+    const validateOptionalBoolean = (value: unknown, name: string): boolean | undefined => {
+      if (value === undefined) return undefined;
+      if (typeof value !== 'boolean') {
+        throw new Error(`Invalid ${name} value. Must be a boolean.`);
+      }
+      return value;
+    };
+
+    let validatedFilterNodesEnabled: boolean | undefined;
+    let validatedFilterRolesEnabled: boolean | undefined;
+    let validatedFilterFavoriteEnabled: boolean | undefined;
+    let validatedFilterRegexEnabled: boolean | undefined;
+    let validatedFilterLastHeardEnabled: boolean | undefined;
+    try {
+      validatedFilterNodesEnabled = validateOptionalBoolean(filterNodesEnabled, 'filterNodesEnabled');
+      validatedFilterRolesEnabled = validateOptionalBoolean(filterRolesEnabled, 'filterRolesEnabled');
+      validatedFilterFavoriteEnabled = validateOptionalBoolean(filterFavoriteEnabled, 'filterFavoriteEnabled');
+      validatedFilterRegexEnabled = validateOptionalBoolean(filterRegexEnabled, 'filterRegexEnabled');
+      validatedFilterLastHeardEnabled = validateOptionalBoolean(filterLastHeardEnabled, 'filterLastHeardEnabled');
+    } catch (error) {
+      return res.status(400).json({ error: (error as Error).message });
+    }
+
+    let validatedFilterLastHeardHours: number | undefined;
+    if (filterLastHeardHours !== undefined) {
+      if (!Number.isInteger(filterLastHeardHours) || filterLastHeardHours < 1) {
+        return res.status(400).json({ error: 'Invalid filterLastHeardHours value. Must be an integer >= 1.' });
+      }
+      validatedFilterLastHeardHours = filterLastHeardHours;
+    }
+
+    await databaseService.setRemoteLocalStatsFilterSettingsAsync({
+      enabled,
+      nodeNums,
+      filterRoles: validatedRoles,
+      filterNameRegex: validatedRegex,
+      filterNodesEnabled: validatedFilterNodesEnabled,
+      filterRolesEnabled: validatedFilterRolesEnabled,
+      filterFavoriteEnabled: validatedFilterFavoriteEnabled,
+      filterRegexEnabled: validatedFilterRegexEnabled,
+      filterLastHeardEnabled: validatedFilterLastHeardEnabled,
+      filterLastHeardHours: validatedFilterLastHeardHours,
+    }, sourceId);
+
+    const updatedSettings = await databaseService.getRemoteLocalStatsFilterSettingsAsync(sourceId);
+    res.json({ success: true, ...updatedSettings });
+  } catch (error) {
+    logger.error('Error updating remote LocalStats node filter:', error);
+    res.status(500).json({ error: 'Failed to update remote LocalStats node filter' });
+  }
+});
+
+router.get('/traceroute-log', requirePermission('settings', 'read'), async (req, res) => {
+  try {
+    const traceLogSourceId = req.query.sourceId as string | undefined;
+    const log = await databaseService.getAutoTracerouteLogAsync(10, traceLogSourceId);
+    res.json({
+      success: true,
+      log,
+    });
+  } catch (error) {
+    logger.error('Error fetching auto-traceroute log:', error);
+    res.status(500).json({ error: 'Failed to fetch auto-traceroute log' });
+  }
+});
+
+router.get('/time-sync-nodes', requirePermission('settings', 'read'), async (req, res) => {
+  try {
+    const sourceId = (req.query.sourceId as string | undefined) || undefined;
+    const settings = await databaseService.getTimeSyncFilterSettingsAsync(sourceId);
+    res.json(settings);
+  } catch (error) {
+    logger.error('Error fetching auto time sync settings:', error);
+    res.status(500).json({ error: 'Failed to fetch auto time sync settings' });
+  }
+});
+
+router.post('/time-sync-nodes', requirePermission('settings', 'write'), async (req, res) => {
+  try {
+    const { enabled, nodeNums, filterEnabled, expirationHours, intervalMinutes } = req.body;
+    const sourceId = (req.query.sourceId as string | undefined) || (req.body.sourceId as string | undefined) || undefined;
+
+    // Validate input
+    if (enabled !== undefined && typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid enabled value. Must be a boolean.' });
+    }
+
+    if (nodeNums !== undefined && !Array.isArray(nodeNums)) {
+      return res.status(400).json({ error: 'Invalid nodeNums value. Must be an array.' });
+    }
+
+    // Validate all node numbers are valid integers
+    if (nodeNums) {
+      for (const nodeNum of nodeNums) {
+        if (!Number.isInteger(nodeNum) || nodeNum < 0) {
+          return res.status(400).json({ error: 'All node numbers must be positive integers.' });
+        }
+      }
+    }
+
+    if (filterEnabled !== undefined && typeof filterEnabled !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid filterEnabled value. Must be a boolean.' });
+    }
+
+    if (expirationHours !== undefined) {
+      const hours = Number(expirationHours);
+      if (!Number.isInteger(hours) || hours < 1 || hours > 24) {
+        return res.status(400).json({ error: 'Expiration hours must be an integer between 1 and 24.' });
+      }
+    }
+
+    if (intervalMinutes !== undefined) {
+      const minutes = Number(intervalMinutes);
+      if (!Number.isInteger(minutes) || (minutes !== 0 && (minutes < 15 || minutes > 1440))) {
+        return res.status(400).json({ error: 'Interval must be 0 (disabled) or between 15 and 1440 minutes.' });
+      }
+    }
+
+    // Update settings
+    await databaseService.setTimeSyncFilterSettingsAsync({
+      enabled,
+      nodeNums,
+      filterEnabled,
+      expirationHours: expirationHours !== undefined ? Number(expirationHours) : undefined,
+      intervalMinutes: intervalMinutes !== undefined ? Number(intervalMinutes) : undefined,
+    }, sourceId);
+
+    // Update the meshtastic manager interval if connected
+    const timeSyncSourceId = sourceId;
+    const timeSyncManager = resolveSourceManager(timeSyncSourceId);
+    if (intervalMinutes !== undefined) {
+      timeSyncManager.setTimeSyncInterval(enabled ? Number(intervalMinutes) : 0);
+    } else if (enabled !== undefined) {
+      // If only enabled/disabled changed, use existing interval (per-source with global fallback)
+      const intervalStr = await databaseService.settings.getSettingForSource(timeSyncSourceId ?? null, 'autoTimeSyncIntervalMinutes');
+      const parsed = intervalStr ? parseInt(intervalStr, 10) : NaN;
+      const currentInterval = isNaN(parsed) ? 15 : parsed;
+      timeSyncManager.setTimeSyncInterval(enabled ? currentInterval : 0);
+    }
+
+    // Get the updated settings to return
+    const updatedSettings = await databaseService.getTimeSyncFilterSettingsAsync(sourceId);
+
+    res.json({
+      success: true,
+      ...updatedSettings,
+    });
+  } catch (error) {
+    logger.error('Error updating auto time sync settings:', error);
+    res.status(500).json({ error: 'Failed to update auto time sync settings' });
+  }
+});
+
+router.get('/auto-ping', requirePermission('settings', 'read'), async (req, res) => {
+  try {
+    const autoPingSourceId = req.query.sourceId as string | undefined;
+    const autoPingManager = resolveSourceManager(autoPingSourceId);
+    // Per-source settings layered on top of globals (source override wins)
+    const sourceOverrides = autoPingSourceId
+      ? await databaseService.settings.getSourceSettings(autoPingSourceId)
+      : {};
+    const readSetting = async (key: string): Promise<string | null> => {
+      if (key in sourceOverrides) return sourceOverrides[key];
+      return await databaseService.settings.getSetting(key);
+    };
+    const settings = {
+      autoPingEnabled: (await readSetting('autoPingEnabled')) === 'true',
+      autoPingIntervalSeconds: parseInt((await readSetting('autoPingIntervalSeconds')) || '30', 10),
+      autoPingMaxPings: parseInt((await readSetting('autoPingMaxPings')) || '20', 10),
+      autoPingTimeoutSeconds: parseInt((await readSetting('autoPingTimeoutSeconds')) || '60', 10),
+    };
+    const sessions = await autoPingManager.getAutoPingSessions();
+    res.json({ settings, sessions });
+  } catch (error) {
+    logger.error('Error fetching auto-ping settings:', error);
+    res.status(500).json({ error: 'Failed to fetch auto-ping settings' });
+  }
+});
+
+router.post('/auto-ping', requirePermission('settings', 'write'), async (req, res) => {
+  try {
+    const { autoPingEnabled, autoPingIntervalSeconds, autoPingMaxPings, autoPingTimeoutSeconds } = req.body;
+    const autoPingSourceId = req.query.sourceId as string | undefined;
+    const writeSetting = async (key: string, value: string) => {
+      if (autoPingSourceId) {
+        await databaseService.settings.setSourceSetting(autoPingSourceId, key, value);
+      } else {
+        await databaseService.settings.setSetting(key, value);
+      }
+    };
+    const sourceOverrides = autoPingSourceId
+      ? await databaseService.settings.getSourceSettings(autoPingSourceId)
+      : {};
+    const readSetting = async (key: string): Promise<string | null> => {
+      if (key in sourceOverrides) return sourceOverrides[key];
+      return await databaseService.settings.getSetting(key);
+    };
+
+    if (autoPingEnabled !== undefined) {
+      await writeSetting('autoPingEnabled', String(autoPingEnabled));
+      sourceOverrides['autoPingEnabled'] = String(autoPingEnabled);
+    }
+    if (autoPingIntervalSeconds !== undefined) {
+      const val = parseInt(String(autoPingIntervalSeconds), 10);
+      if (isNaN(val) || val < 10) {
+        return res.status(400).json({ error: 'Interval must be at least 10 seconds.' });
+      }
+      await writeSetting('autoPingIntervalSeconds', String(val));
+      sourceOverrides['autoPingIntervalSeconds'] = String(val);
+    }
+    if (autoPingMaxPings !== undefined) {
+      const val = parseInt(String(autoPingMaxPings), 10);
+      if (isNaN(val) || val < 1 || val > 100) {
+        return res.status(400).json({ error: 'Max pings must be between 1 and 100.' });
+      }
+      await writeSetting('autoPingMaxPings', String(val));
+      sourceOverrides['autoPingMaxPings'] = String(val);
+    }
+    if (autoPingTimeoutSeconds !== undefined) {
+      const val = parseInt(String(autoPingTimeoutSeconds), 10);
+      if (isNaN(val) || val < 10) {
+        return res.status(400).json({ error: 'Timeout must be at least 10 seconds.' });
+      }
+      await writeSetting('autoPingTimeoutSeconds', String(val));
+      sourceOverrides['autoPingTimeoutSeconds'] = String(val);
+    }
+
+    const settings = {
+      autoPingEnabled: (await readSetting('autoPingEnabled')) === 'true',
+      autoPingIntervalSeconds: parseInt((await readSetting('autoPingIntervalSeconds')) || '30', 10),
+      autoPingMaxPings: parseInt((await readSetting('autoPingMaxPings')) || '20', 10),
+      autoPingTimeoutSeconds: parseInt((await readSetting('autoPingTimeoutSeconds')) || '60', 10),
+    };
+
+    res.json({ success: true, settings });
+  } catch (error) {
+    logger.error('Error updating auto-ping settings:', error);
+    res.status(500).json({ error: 'Failed to update auto-ping settings' });
+  }
+});
+
+router.get('/key-repair-log', requirePermission('settings', 'read'), async (req, res) => {
+  try {
+    const krSourceId = req.query.sourceId as string | undefined;
+    const log = await databaseService.getKeyRepairLogAsync(50, krSourceId);
+    res.json({
+      success: true,
+      log,
+    });
+  } catch (error) {
+    logger.error('Error fetching auto key repair log:', error);
+    res.status(500).json({ error: 'Failed to fetch auto key repair log' });
+  }
+});
+
+router.get('/distance-delete/log', requirePermission('settings', 'read'), async (req, res) => {
+  try {
+    const distLogSourceId = req.query.sourceId as string | undefined;
+    const entries = await databaseService.distanceDeleteLog.getDistanceDeleteLog(10, distLogSourceId);
+    res.json(entries);
+  } catch (error) {
+    logger.error('Error fetching distance-delete log:', error);
+    res.status(500).json({ error: 'Failed to fetch log' });
+  }
+});
+
+router.post('/distance-delete/run-now', requirePermission('settings', 'write'), async (req, res) => {
+  try {
+    const distDelSourceId =
+      (req.body && req.body.sourceId) ||
+      (req.query.sourceId as string | undefined) ||
+      undefined;
+    const result = await autoDeleteByDistanceService.runNow(distDelSourceId);
+    res.json(result);
+  } catch (error) {
+    logger.error('Error running distance-delete:', error);
+    res.status(500).json({ error: 'Failed to run distance delete' });
+  }
+});
+
+router.get('/position-estimation/status', requirePermission('settings', 'read'), async (_req, res) => {
+  try {
+    const status = await positionEstimationScheduler.getStatus();
+    res.json(status);
+  } catch (error) {
+    logger.error('Error fetching position estimation status:', error);
+    res.status(500).json({ error: 'Failed to fetch position estimation status' });
+  }
+});
+
+router.post('/position-estimation/run-now', requirePermission('settings', 'write'), async (req, res) => {
+  try {
+    const result = await positionEstimationScheduler.runNow();
+    void databaseService.auditLogAsync(
+      req.user!.id,
+      'position_estimation_run',
+      'settings',
+      `Ran position estimation: ${result.estimatedNodeCount} node(s) estimated`,
+      req.ip || null,
+      null,
+      JSON.stringify(result)
+    );
+    res.json(result);
+  } catch (error) {
+    logger.error('Error running position estimation:', error);
+    const message = error instanceof Error && /in progress/.test(error.message)
+      ? 'Position estimation already in progress'
+      : 'Failed to run position estimation';
+    res.status(message.includes('in progress') ? 409 : 500).json({ error: message });
+  }
+});
+
+router.post('/mark-all-welcomed', requirePermission('settings', 'write'), async (req, res) => {
+  try {
+    const sourceId = (req.query.sourceId as string | undefined) ?? (req.body?.sourceId as string | undefined) ?? null;
+    const count = await databaseService.markAllNodesAsWelcomedAsync(sourceId);
+    logger.debug(`👋 Manually marked ${count} nodes as welcomed via API${sourceId ? ` (source=${sourceId})` : ''}`);
+
+    // Audit log
+    void databaseService.auditLogAsync(
+      req.user!.id,
+      'mark_all_welcomed',
+      'nodes',
+      `Marked ${count} nodes as welcomed${sourceId ? ` for source ${sourceId}` : ''}`,
+      req.ip || null,
+      null,
+      JSON.stringify({ count, sourceId })
+    );
+
+    res.json({ success: true, count, message: `Marked ${count} nodes as welcomed` });
+  } catch (error) {
+    logger.error('Error marking all nodes as welcomed:', error);
+    res.status(500).json({ error: 'Failed to mark nodes as welcomed' });
   }
 });
 
