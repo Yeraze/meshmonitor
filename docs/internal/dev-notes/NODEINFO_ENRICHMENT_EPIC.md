@@ -58,18 +58,30 @@ apply the enrichment ("Fix") per node or in bulk.
 ### Phase 2 — Frontend: Analysis & Reports card
 **Branch:** `feature/nodeinfo-enrichment-report`
 
-- [ ] Extend `AnalysisType` + `reports[]` with a "NodeInfo Enrichment" card; new
+- [x] Extend `AnalysisType` + `reports[]` with a "NodeInfo Enrichment" card; new
       `src/components/Analysis/NodeInfoEnrichmentReport.tsx` (TanStack useQuery +
       `ApiService` — raw fetch is banned in new components; `UiIcon` for icons).
-- [ ] Table of enrichable nodes (node, target source(s), missing fields, donor source),
+- [x] Table of enrichable nodes (node, target source(s), missing fields, donor source),
       per-row **Fix** + **Fix All**, push-to-NodeDB toggle default off, empty/loading/
       unauthorized states.
-- [ ] Component tests; browser validation in the dev container (screenshots, console
+- [x] Component tests; browser validation in the dev container (screenshots, console
       clean, gauntlet-channel only for any test traffic).
 - **Exit criteria:** report usable end-to-end against the dev container; suite green;
   PR merged to main; issue #3837 closed.
 
 ## Deviations / notes
+
+- Phase 2: a row's `fillableFields` reflect its single best donor, so fixing a row can
+  surface remaining blanks under a different donor on the next analysis (observed live:
+  fill Firmware from Sandbox → MAC Address appears with donor Florida MQTT). By design;
+  documented in the feature doc ("run again until the list drains").
+- Phase 2: shared field-label map extracted to `src/utils/nodeInfoFields.ts`;
+  `CopyNodeInfoModal` refactored to consume it (zero behavior change).
+- Phase 2: anonymous users see a non-empty analysis when the anonymous account holds
+  `nodes:read` grants (validated live: read-narrowed analysis + apply 403 fail-closed
+  with `missing` list). The empty-state hint covers the no-grants case.
+- Phase 2: component test uses a file-local `react-i18next` mock (the global test setup
+  mocks the 2-arg `t()` form; the component uses the 3-arg default-value form).
 
 - Phase 1: apply endpoint takes an explicit `items` list
   (`{nodeNum, targetSourceId, donorSourceId}[]`) so Phase 2's per-row Fix and
