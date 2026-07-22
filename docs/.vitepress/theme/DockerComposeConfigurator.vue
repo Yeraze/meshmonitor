@@ -3,7 +3,8 @@
     <h2>MeshMonitor Docker Compose Configurator</h2>
     <p class="description">
       Configure your MeshMonitor deployment by selecting your options below. This tool will generate
-      a ready-to-use <code>docker-compose.yml</code> and <code>.env</code> file for your setup.
+      a ready-to-use <code>docker-compose.yml</code> and <code>.env</code> file for your setup — or a
+      single <strong>Portainer Stack</strong> to paste straight into Portainer's web editor.
     </p>
 
     <!-- Connection Type -->
@@ -569,36 +570,93 @@
     <section class="config-section results">
       <h3>{{ config.deploymentMode === 'production-proxy' ? '9' : '8' }}. Generated Configuration</h3>
 
-      <div class="file-output">
-        <div class="file-header">
-          <h4>docker-compose.yml</h4>
-          <button @click="copyToClipboard(dockerComposeYaml)" class="copy-btn">
-            {{ copiedDockerCompose ? 'Copied!' : 'Copy' }}
-          </button>
-        </div>
-        <pre class="code-block"><code>{{ dockerComposeYaml }}</code></pre>
+      <!-- Export format toggle (#3724) -->
+      <div class="export-format">
+        <span class="export-format-label">Export format:</span>
+        <label class="radio-option inline" :class="{ selected: exportFormat === 'compose' }">
+          <input type="radio" v-model="exportFormat" value="compose" />
+          docker-compose
+        </label>
+        <label class="radio-option inline" :class="{ selected: exportFormat === 'portainer' }">
+          <input type="radio" v-model="exportFormat" value="portainer" />
+          Portainer Stack
+        </label>
       </div>
 
-      <div class="file-output">
-        <div class="file-header">
-          <h4>.env</h4>
-          <button @click="copyToClipboard(envFile)" class="copy-btn">
-            {{ copiedEnv ? 'Copied!' : 'Copy' }}
-          </button>
+      <!-- docker-compose format: compose YAML + .env -->
+      <template v-if="exportFormat === 'compose'">
+        <div class="file-output">
+          <div class="file-header">
+            <h4>docker-compose.yml</h4>
+            <button @click="copyToClipboard(dockerComposeYaml)" class="copy-btn">
+              {{ copiedDockerCompose ? 'Copied!' : 'Copy' }}
+            </button>
+          </div>
+          <pre class="code-block"><code>{{ dockerComposeYaml }}</code></pre>
         </div>
-        <pre class="code-block"><code>{{ envFile }}</code></pre>
-      </div>
+
+        <div class="file-output">
+          <div class="file-header">
+            <h4>.env</h4>
+            <button @click="copyToClipboard(envFile)" class="copy-btn">
+              {{ copiedEnv ? 'Copied!' : 'Copy' }}
+            </button>
+          </div>
+          <pre class="code-block"><code>{{ envFile }}</code></pre>
+        </div>
+      </template>
+
+      <!-- Portainer format: single stack YAML + env-var callout -->
+      <template v-else>
+        <div class="file-output">
+          <div class="file-header">
+            <h4>Portainer Stack</h4>
+            <button @click="copyToClipboard(portainerStackYaml)" class="copy-btn">
+              {{ copiedPortainer ? 'Copied!' : 'Copy' }}
+            </button>
+          </div>
+          <p class="portainer-hint">Paste this into <strong>Portainer → Stacks → Add stack → Web editor</strong>.</p>
+          <pre class="code-block"><code>{{ portainerStackYaml }}</code></pre>
+        </div>
+
+        <div v-if="portainerEnvVars.length" class="portainer-env-callout">
+          <h4>⚙️ Set these in Portainer's "Environment variables" section</h4>
+          <p>
+            Instead of a <code>.env</code> file, add each of these under the stack's
+            <strong>Environment variables</strong> form before deploying:
+          </p>
+          <ul>
+            <li v-for="v in portainerEnvVars" :key="v.name">
+              <code>{{ v.name }}</code> — <span class="env-hint">{{ v.hint }}</span>
+            </li>
+          </ul>
+        </div>
+      </template>
 
       <div class="instructions">
         <h4>Deployment Instructions</h4>
         <ol>
-          <li>Copy the <code>docker-compose.yml</code> content above and save it to a file named <code>docker-compose.yml</code></li>
-          <li>Copy the <code>.env</code> content above and save it to a file named <code>.env</code> in the same directory</li>
-          <li v-if="config.deploymentMode !== 'development'">
-            Generate a secure session secret: <code>openssl rand -base64 32</code> and update it in the .env file
-          </li>
-          <li>Run <code>docker compose up -d</code> to start MeshMonitor<span v-if="config.enableWatchtower"> (Watchtower will start alongside it and begin watching for new images)</span></li>
-          <li>Access MeshMonitor at {{ accessUrl }}</li>
+          <!-- Portainer deploy steps -->
+          <template v-if="exportFormat === 'portainer'">
+            <li>In Portainer, go to <strong>Stacks → Add stack</strong> and give it a name (e.g. <code>meshmonitor</code>).</li>
+            <li>Select the <strong>Web editor</strong> and paste the Portainer Stack YAML above.</li>
+            <li v-if="portainerEnvVars.length">
+              Add each variable from the callout above under <strong>Environment variables</strong> (use "Add environment variable"), setting a secure value for every secret.
+            </li>
+            <li>Click <strong>Deploy the stack</strong>.</li>
+            <li>Access MeshMonitor at {{ accessUrl }}</li>
+          </template>
+          <!-- docker-compose deploy steps -->
+          <template v-else>
+            <li>Copy the <code>docker-compose.yml</code> content above and save it to a file named <code>docker-compose.yml</code></li>
+            <li>Copy the <code>.env</code> content above and save it to a file named <code>.env</code> in the same directory</li>
+            <li v-if="config.deploymentMode !== 'development'">
+              Generate a secure session secret: <code>openssl rand -base64 32</code> and update it in the .env file
+            </li>
+            <li>Run <code>docker compose up -d</code> to start MeshMonitor<span v-if="config.enableWatchtower"> (Watchtower will start alongside it and begin watching for new images)</span></li>
+            <li>Access MeshMonitor at {{ accessUrl }}</li>
+          </template>
+          <!-- Shared post-deploy notes (both formats) -->
           <li>
             <strong>🆕 4.0 — Finish setup in the UI.</strong>
             The <code>MESHTASTIC_NODE_IP</code> / <code>MESHTASTIC_TCP_PORT</code> values
@@ -662,6 +720,11 @@ const config = ref({
 
 const copiedDockerCompose = ref(false)
 const copiedEnv = ref(false)
+const copiedPortainer = ref(false)
+
+// Output format: 'compose' (docker-compose.yml + .env) or 'portainer' (single
+// stack YAML for Portainer's web editor, secrets via its env-var form). #3724
+const exportFormat = ref('compose')
 
 // Auto-publish the Virtual Node host port when MQTT Proxy is enabled
 // (MQTT Proxy connects through the Virtual Node, which must be enabled per-source in the UI)
@@ -679,7 +742,12 @@ const accessUrl = computed(() => {
   return `http://localhost:${config.value.webPort}`
 })
 
-const dockerComposeYaml = computed(() => {
+// Build the compose YAML. `portainer` mode targets Portainer's stack web
+// editor: it drops `env_file: .env` (Portainer injects stack env vars from its
+// own "Environment variables" form) and passes SESSION_SECRET through as a
+// `${SESSION_SECRET}` reference instead. Every other line is identical to the
+// docker-compose output, so the two formats never drift (#3724).
+function buildComposeLines(portainer) {
   const lines = ['services:']
 
   // Add PostgreSQL service if needed
@@ -791,7 +859,10 @@ const dockerComposeYaml = computed(() => {
     lines.push('      # Mount local scripts directory for Auto Responder scripts')
     lines.push('      - ./scripts:/data/scripts')
   }
-  lines.push('    env_file: .env')
+  // Portainer supplies secrets via its own env-var form, not an .env file.
+  if (!portainer) {
+    lines.push('    env_file: .env')
+  }
   lines.push('    environment:')
 
   // Node environment
@@ -799,6 +870,11 @@ const dockerComposeYaml = computed(() => {
     lines.push('      - NODE_ENV=development')
   } else {
     lines.push('      - NODE_ENV=production')
+    // In Portainer mode SESSION_SECRET can't come from .env, so reference it
+    // as a stack env var (set it in Portainer's Environment variables form).
+    if (portainer) {
+      lines.push('      - SESSION_SECRET=${SESSION_SECRET}')
+    }
   }
 
   lines.push(`      - TZ=${config.value.timezone}`)
@@ -955,7 +1031,35 @@ const dockerComposeYaml = computed(() => {
     lines.push('    driver: local')
   }
 
-  return lines.join('\n')
+  return lines
+}
+
+const dockerComposeYaml = computed(() => buildComposeLines(false).join('\n'))
+const portainerStackYaml = computed(() => buildComposeLines(true).join('\n'))
+
+// The env vars a Portainer user must set in the stack's "Environment
+// variables" form — the `${…}` references the stack YAML leaves unresolved.
+// Mirrors the secrets the .env file carries in docker-compose mode.
+const portainerEnvVars = computed(() => {
+  const vars = []
+  if (config.value.deploymentMode !== 'development') {
+    vars.push({ name: 'SESSION_SECRET', hint: 'openssl rand -base64 32' })
+  }
+  if (config.value.databaseType === 'postgres') {
+    vars.push({ name: 'POSTGRES_USER', hint: `e.g. ${config.value.postgresUser}` })
+    vars.push({ name: 'POSTGRES_PASSWORD', hint: 'openssl rand -base64 24' })
+  }
+  if (config.value.databaseType === 'mysql') {
+    vars.push({ name: 'MYSQL_USER', hint: `e.g. ${config.value.mysqlUser}` })
+    vars.push({ name: 'MYSQL_PASSWORD', hint: 'openssl rand -base64 24' })
+    if (config.value.includeMySQLContainer) {
+      vars.push({ name: 'MYSQL_ROOT_PASSWORD', hint: 'openssl rand -base64 24' })
+    }
+  }
+  if (config.value.connectionType === 'ble') {
+    vars.push({ name: 'BLE_ADDRESS', hint: config.value.bleMac || 'AA:BB:CC:DD:EE:FF' })
+  }
+  return vars
 })
 
 const envFile = computed(() => {
@@ -1007,7 +1111,10 @@ const envFile = computed(() => {
 async function copyToClipboard(text) {
   try {
     await navigator.clipboard.writeText(text)
-    if (text === dockerComposeYaml.value) {
+    if (text === portainerStackYaml.value) {
+      copiedPortainer.value = true
+      setTimeout(() => { copiedPortainer.value = false }, 2000)
+    } else if (text === dockerComposeYaml.value) {
       copiedDockerCompose.value = true
       setTimeout(() => { copiedDockerCompose.value = false }, 2000)
     } else {
@@ -1276,5 +1383,53 @@ async function copyToClipboard(text) {
 .info-box a {
   color: var(--vp-c-brand);
   text-decoration: underline;
+}
+
+/* Export format toggle (#3724) */
+.export-format {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.export-format-label {
+  font-weight: 600;
+}
+
+.radio-option.inline {
+  display: inline-flex;
+  width: auto;
+  margin: 0;
+  padding: 0.4rem 0.9rem;
+}
+
+.portainer-hint {
+  font-size: 0.9rem;
+  color: var(--vp-c-text-2);
+  margin: 0.25rem 0 0.5rem;
+}
+
+.portainer-env-callout {
+  border: 1px solid var(--vp-c-brand);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  background: var(--vp-c-bg-soft);
+}
+
+.portainer-env-callout h4 {
+  margin-top: 0;
+}
+
+.portainer-env-callout ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.portainer-env-callout .env-hint {
+  color: var(--vp-c-text-2);
+  font-size: 0.9rem;
 }
 </style>
