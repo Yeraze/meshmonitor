@@ -438,6 +438,7 @@ The **Automation** view also hosts a per-source Auto-Announce that periodically 
 Auto-Responder matches incoming messages against operator-defined patterns and replies automatically:
 
 - **Per-trigger pattern** — match incoming text via a regular expression, with per-channel filtering, DM listening, and a per-sender cooldown to avoid loops.
+- **Per-trigger pre-send delay** — wait a configurable number of seconds (0–120, `0` = immediate) after a match before replying, so a relaying repeater can finish its own transmission before your reply floods. Mirrors the Auto-Acknowledge pre-send delay; the wait applies once per fire, ahead of both text and script responses.
 - **Two actions** — reply with a **text response** (same token expansion as Auto-Announce) or **run a script** (with token-expanded script args). Script execution reuses the shared script runner, with `MESHCORE_*` environment variables injected so a script can branch on which stack invoked it.
 - **Reply scope/region** — choose which region the reply floods to: **Inherit** the channel/source default, **Match the triggering message's scope** (answer back on the same region it arrived on), send **Unscoped**, or pick **a specific region**. This mirrors the MeshCore scope control in the [Automation Engine](/features/automation-engine#actions).
 
