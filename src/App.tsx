@@ -4230,6 +4230,14 @@ function App() {
               </ErrorBoundary>
             }
           />
+          <Route
+            path="automation"
+            element={
+              <ErrorBoundary fallbackTitle="Automation failed to load">
+                <AutomationTab baseUrl={baseUrl} channels={channels} nodes={nodes} currentNodeId={currentNodeId} />
+              </ErrorBoundary>
+            }
+          />
           <Route path="*" element={<>
         {activeTab === 'channels' && (
           <ErrorBoundary fallbackTitle="Channels failed to load">
@@ -4416,14 +4424,10 @@ function App() {
           </SaveBarGroup>
           </ErrorBoundary>
         )}
-        {activeTab === 'automation' && (
-          <ErrorBoundary fallbackTitle="Automation failed to load">
-            <AutomationTab baseUrl={baseUrl} channels={channels} nodes={nodes} currentNodeId={currentNodeId} />
-          </ErrorBoundary>
-        )}
         {/* 'audit' migrated to <Route path="audit"> above (#3962 5.4 PR1 proof leaf) */}
         {/* 'notifications', 'users', 'admin', 'security', 'mqtt-config', 'packetmonitor'
             migrated to <Route> elements above (#3962 5.4 PR3 leaf tab group) */}
+        {/* 'automation' migrated to <Route path="automation"> above (#3962 5.4 PR6) */}
         {/* 'info', 'dashboard', 'configuration' migrated to <Route> elements above
             (#3962 5.4 PR5) */}
           </>} />
