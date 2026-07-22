@@ -136,20 +136,10 @@ describe('DataContext Types', () => {
     expect(mockChannelMessages[1]).toHaveLength(0);
   });
 
-  it('should support nodesWithTelemetry Set type', () => {
-    const mockNodesWithTelemetry: Set<string> = new Set(['!12345678', '!87654321']);
-
-    expect(mockNodesWithTelemetry.size).toBe(2);
-    expect(mockNodesWithTelemetry.has('!12345678')).toBe(true);
-    expect(mockNodesWithTelemetry.has('!99999999')).toBe(false);
-  });
-
-  it('should support nodesWithWeatherTelemetry Set type', () => {
-    const mockNodesWithWeather: Set<string> = new Set(['!12345678']);
-
-    expect(mockNodesWithWeather.size).toBe(1);
-    expect(mockNodesWithWeather.has('!12345678')).toBe(true);
-  });
+  // nodesWithTelemetry/nodesWithWeatherTelemetry/nodesWithEstimatedPosition/
+  // nodesWithPKC were removed from DataContext (#3962 5.4 PR2) — they are
+  // now sourced directly from the poll cache via useTelemetryNodes()
+  // (see src/hooks/useServerData.test.ts).
 
   it('should support deviceInfo any type', () => {
     const mockDeviceInfo: any = {

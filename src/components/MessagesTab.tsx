@@ -34,7 +34,7 @@ import { getEffectiveHops } from '../utils/nodeHops';
 import { scrollInputIntoView } from '../utils/scrollInputIntoView';
 import { useMapContext } from '../contexts/MapContext';
 import { useSettings } from '../contexts/SettingsContext';
-import { useDeviceNodes } from '../hooks/useServerData';
+import { useDeviceNodes, useTelemetryNodes } from '../hooks/useServerData';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
 import NodeDetailsBlock from './NodeDetailsBlock';
@@ -112,11 +112,6 @@ export interface MessagesTabProps {
   nodes: DeviceInfo[];
   messages: MeshMessage[];
   currentNodeId: string;
-
-  // Telemetry Sets
-  nodesWithTelemetry: Set<string>;
-  nodesWithWeatherTelemetry: Set<string>;
-  nodesWithPKC: Set<string>;
 
   // Connection state
   connectionStatus: string;
@@ -225,9 +220,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   nodes,
   messages,
   currentNodeId,
-  nodesWithTelemetry,
-  nodesWithWeatherTelemetry,
-  nodesWithPKC,
   connectionStatus,
   selectedDMNode,
   setSelectedDMNode,
@@ -298,6 +290,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const { traceroutes, neighborInfo, setNeighborInfo } = useMapContext();
   const deviceNodeNums = useDeviceNodes();
   const currentNodeNum = currentNodeId ? parseNodeId(currentNodeId) : null;
+
+  // Telemetry availability Sets — sourced directly from the poll cache
+  // (#3962 5.4 PR2), replacing the props previously threaded from App's
+  // DataContext-backed state.
+  const {
+    nodesWithTelemetry,
+    nodesWithWeather: nodesWithWeatherTelemetry,
+    nodesWithPKC,
+  } = useTelemetryNodes();
 
   // Local state for actions menu
   const [showActionsMenu, setShowActionsMenu] = useState(false);
