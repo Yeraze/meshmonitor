@@ -260,6 +260,13 @@
   padding: 36px 16px;
 }
 
+.reports-banner__hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--ctp-subtext0);
+  opacity: 0.85;
+}
+
 /* ── Stat tiles (summary row) ───────────────────────────────────────────── */
 
 .reports-stats {
