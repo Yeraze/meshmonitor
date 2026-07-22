@@ -46,7 +46,7 @@ import SectionNav from './components/SectionNav';
 import { ToastProvider, useToast } from './components/ToastContainer';
 import DeviceNotificationToaster from './components/DeviceNotificationToaster';
 import { RebootModal } from './components/RebootModal';
-import { AppBanners, type DeploymentMethod } from './components/AppBanners';
+import { AppBanners } from './components/AppBanners';
 import { AppHeader } from './components/AppHeader';
 import { PurgeDataModal } from './components/PurgeDataModal';
 import { PositionOverrideModal } from './components/PositionOverrideModal';
@@ -63,7 +63,7 @@ import { DeviceInfo, Channel } from './types/device';
 import { MeshMessage } from './types/message';
 import { SortField, SortDirection, NodeFilters } from './types/ui';
 import { ResourceType } from './types/permission';
-import api, { ApiError, type ChannelDatabaseEntry } from './services/api';
+import api, { type ChannelDatabaseEntry } from './services/api';
 import { getPacketStats } from './services/packetApi';
 import { logger } from './utils/logger';
 // generateArrowMarkers moved to useTraceroutePaths hook
@@ -89,6 +89,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useWebSocketConnected } from './contexts/WebSocketContext';
 import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
+import { useVersionCheck } from './hooks/useVersionCheck';
 import { usePoll, type PollData } from './hooks/usePoll';
 import { useTraceroutePaths } from './hooks/useTraceroutePaths';
 import { useNotificationNavigationHandler } from './hooks/useNotificationNavigationHandler';
@@ -147,10 +148,6 @@ const location = useLocation();
       docsUrl: string;
     }>
   >([]);
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [latestVersion, setLatestVersion] = useState('');
-  const [releaseUrl, setReleaseUrl] = useState('');
-  const [deploymentMethod, setDeploymentMethod] = useState<DeploymentMethod>('manual');
   const [channelInfoModal, setChannelInfoModal] = useState<number | null>(null);
   const [showPsk, setShowPsk] = useState(false);
   const [showRebootModal, setShowRebootModal] = useState(false);
@@ -287,6 +284,11 @@ const location = useLocation();
 
   // Monitor device TX status to show warning banner when TX is disabled
   const { isTxDisabled } = useTxStatus({ baseUrl, sourceId });
+
+  // Check for version updates. TanStack Query's refetchInterval replaces the
+  // hand-rolled setInterval (#3962 Phase 5.1); the hook stops polling on a 404
+  // (version checking disabled server-side, env.versionCheckDisabled).
+  const { updateAvailable, latestVersion, releaseUrl, deploymentMethod } = useVersionCheck(baseUrl);
 
   // Settings from context
   const {
@@ -1269,61 +1271,7 @@ const location = useLocation();
   }, [baseUrl]);
 
   // TX status is now handled by useTxStatus hook
-
-  // Check for version updates. The server's versionCheckService does the
-  // actual GitHub polling/caching and gates `updateAvailable` on the Docker
-  // image being ready; this effect just reads the cached result on an
-  // interval and feeds the update banner. A 404 means version checking is
-  // disabled server-side (env.versionCheckDisabled) — stop polling.
-  useEffect(() => {
-    let cancelled = false;
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-
-    const checkForUpdates = async () => {
-      try {
-        const data = await api.get<{
-          updateAvailable: boolean;
-          currentVersion?: string;
-          latestVersion?: string;
-          releaseUrl?: string;
-          deploymentMethod?: DeploymentMethod;
-        }>('/api/version/check');
-
-        if (cancelled) return;
-
-        // Always update version info if a newer version exists
-        if (data.latestVersion && data.latestVersion !== data.currentVersion) {
-          setLatestVersion(data.latestVersion);
-          setReleaseUrl(data.releaseUrl || '');
-        }
-
-        setUpdateAvailable(Boolean(data.updateAvailable));
-        if (data.deploymentMethod) {
-          setDeploymentMethod(data.deploymentMethod);
-        }
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 404) {
-          // Version checking disabled server-side; stop polling.
-          if (intervalId) {
-            clearInterval(intervalId);
-            intervalId = null;
-          }
-          return;
-        }
-        logger.error('Error checking for updates:', error);
-      }
-    };
-
-    void checkForUpdates();
-
-    // Check for updates every 4 hours
-    intervalId = setInterval(checkForUpdates, 4 * 60 * 60 * 1000);
-
-    return () => {
-      cancelled = true;
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, []);
+  // Version update checking is now handled by useVersionCheck hook (above)
 
   // Debug effect to track selectedChannel changes and keep ref in sync
   useEffect(() => {

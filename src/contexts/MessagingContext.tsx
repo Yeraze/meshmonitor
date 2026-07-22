@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, ReactNode } from 'react';
 import { MeshMessage } from '../types/message';
 import { useUnreadCounts, useMarkAsRead } from '../hooks/useUnreadCounts';
 import { useAuth } from './AuthContext';
@@ -125,31 +125,44 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
     [markAsReadMutation]
   );
 
+  const value = useMemo<MessagingContextType>(() => ({
+    selectedDMNode,
+    setSelectedDMNode,
+    selectedChannel,
+    setSelectedChannel,
+    newMessage,
+    setNewMessage,
+    openDmWithDraft,
+    replyingTo,
+    setReplyingTo,
+    pendingMessages,
+    setPendingMessages,
+    unreadCounts,
+    setUnreadCounts,
+    isChannelScrolledToBottom,
+    setIsChannelScrolledToBottom,
+    isDMScrolledToBottom,
+    setIsDMScrolledToBottom,
+    markMessagesAsRead,
+    fetchUnreadCounts,
+    unreadCountsData: unreadCountsData || null,
+  }), [
+    selectedDMNode, setSelectedDMNode,
+    selectedChannel, setSelectedChannel,
+    newMessage, setNewMessage,
+    openDmWithDraft,
+    replyingTo, setReplyingTo,
+    pendingMessages, setPendingMessages,
+    unreadCounts, setUnreadCounts,
+    isChannelScrolledToBottom, setIsChannelScrolledToBottom,
+    isDMScrolledToBottom, setIsDMScrolledToBottom,
+    markMessagesAsRead,
+    fetchUnreadCounts,
+    unreadCountsData,
+  ]);
+
   return (
-    <MessagingContext.Provider
-      value={{
-        selectedDMNode,
-        setSelectedDMNode,
-        selectedChannel,
-        setSelectedChannel,
-        newMessage,
-        setNewMessage,
-        openDmWithDraft,
-        replyingTo,
-        setReplyingTo,
-        pendingMessages,
-        setPendingMessages,
-        unreadCounts,
-        setUnreadCounts,
-        isChannelScrolledToBottom,
-        setIsChannelScrolledToBottom,
-        isDMScrolledToBottom,
-        setIsDMScrolledToBottom,
-        markMessagesAsRead,
-        fetchUnreadCounts,
-        unreadCountsData: unreadCountsData || null,
-      }}
-    >
+    <MessagingContext.Provider value={value}>
       {children}
     </MessagingContext.Provider>
   );
