@@ -92,6 +92,7 @@ import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
 import { useVersionCheck } from './hooks/useVersionCheck';
 import { usePoll, type PollData } from './hooks/usePoll';
+import { useTelemetryNodes } from './hooks/useServerData';
 import { useTraceroutePaths } from './hooks/useTraceroutePaths';
 import { useNotificationNavigationHandler } from './hooks/useNotificationNavigationHandler';
 import LoginModal from './components/LoginModal';
@@ -406,14 +407,6 @@ function App() {
     setCurrentNodeId,
     nodeAddress,
     setNodeAddress,
-    nodesWithTelemetry,
-    setNodesWithTelemetry,
-    nodesWithWeatherTelemetry,
-    setNodesWithWeatherTelemetry,
-    nodesWithEstimatedPosition,
-    setNodesWithEstimatedPosition,
-    nodesWithPKC,
-    setNodesWithPKC,
     channelHasMore,
     setChannelHasMore,
     channelLoadingMore,
@@ -423,6 +416,16 @@ function App() {
     dmLoadingMore,
     setDmLoadingMore,
   } = useData();
+
+  // Telemetry availability Sets (nodes with telemetry/weather/estimated
+  // position/PKC) — sourced directly from the poll cache (#3962 5.4 PR2),
+  // replacing the DataContext Sets that were populated by processPollData.
+  const {
+    nodesWithTelemetry,
+    nodesWithWeather: nodesWithWeatherTelemetry,
+    nodesWithEstimatedPosition,
+    nodesWithPKC,
+  } = useTelemetryNodes();
 
   // Consolidated polling for nodes, messages, channels, config
   // Enabled only when connected and not in reboot/user-disconnected state
@@ -2527,13 +2530,9 @@ function App() {
         setCurrentNodeId(data.config.localNodeInfo.nodeId);
       }
 
-      // Process telemetry availability data
-      if (data.telemetryNodes) {
-        setNodesWithTelemetry(new Set(data.telemetryNodes.nodes || []));
-        setNodesWithWeatherTelemetry(new Set(data.telemetryNodes.weather || []));
-        setNodesWithEstimatedPosition(new Set(data.telemetryNodes.estimatedPosition || []));
-        setNodesWithPKC(new Set(data.telemetryNodes.pkc || []));
-      }
+      // Telemetry availability data is now sourced directly from the poll
+      // cache via useTelemetryNodes() (#3962 5.4 PR2) — no longer written
+      // into DataContext here.
 
       // Process channels data
       if (data.channels) {
@@ -4776,9 +4775,6 @@ function App() {
             nodes={nodes}
             messages={messages}
             currentNodeId={currentNodeId}
-            nodesWithTelemetry={nodesWithTelemetry}
-            nodesWithWeatherTelemetry={nodesWithWeatherTelemetry}
-            nodesWithPKC={nodesWithPKC}
             connectionStatus={connectionStatus}
             selectedDMNode={selectedDMNode}
             setSelectedDMNode={setSelectedDMNode}

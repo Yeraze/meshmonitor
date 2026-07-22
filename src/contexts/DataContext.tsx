@@ -22,14 +22,6 @@ interface DataContextType {
   setCurrentNodeId: React.Dispatch<React.SetStateAction<string>>;
   nodeAddress: string;
   setNodeAddress: React.Dispatch<React.SetStateAction<string>>;
-  nodesWithTelemetry: Set<string>;
-  setNodesWithTelemetry: React.Dispatch<React.SetStateAction<Set<string>>>;
-  nodesWithWeatherTelemetry: Set<string>;
-  setNodesWithWeatherTelemetry: React.Dispatch<React.SetStateAction<Set<string>>>;
-  nodesWithEstimatedPosition: Set<string>;
-  setNodesWithEstimatedPosition: React.Dispatch<React.SetStateAction<Set<string>>>;
-  nodesWithPKC: Set<string>;
-  setNodesWithPKC: React.Dispatch<React.SetStateAction<Set<string>>>;
   // Pagination state for infinite scroll
   channelHasMore: {[key: number]: boolean};
   setChannelHasMore: React.Dispatch<React.SetStateAction<{[key: number]: boolean}>>;
@@ -60,10 +52,6 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   // interpolates nodeAddress, and the literal 'Loading...' must never leak into
   // "Connecting to …" before the real per-source address is resolved (#3611).
   const [nodeAddress, setNodeAddress] = useState<string>('');
-  const [nodesWithTelemetry, setNodesWithTelemetry] = useState<Set<string>>(new Set());
-  const [nodesWithWeatherTelemetry, setNodesWithWeatherTelemetry] = useState<Set<string>>(new Set());
-  const [nodesWithEstimatedPosition, setNodesWithEstimatedPosition] = useState<Set<string>>(new Set());
-  const [nodesWithPKC, setNodesWithPKC] = useState<Set<string>>(new Set());
   // Pagination state for infinite scroll
   const [channelHasMore, setChannelHasMore] = useState<{[key: number]: boolean}>({});
   const [channelLoadingMore, setChannelLoadingMore] = useState<{[key: number]: boolean}>({});
@@ -89,14 +77,6 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     setCurrentNodeId,
     nodeAddress,
     setNodeAddress,
-    nodesWithTelemetry,
-    setNodesWithTelemetry,
-    nodesWithWeatherTelemetry,
-    setNodesWithWeatherTelemetry,
-    nodesWithEstimatedPosition,
-    setNodesWithEstimatedPosition,
-    nodesWithPKC,
-    setNodesWithPKC,
     channelHasMore,
     setChannelHasMore,
     channelLoadingMore,
@@ -115,10 +95,6 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     deviceConfig, setDeviceConfig,
     currentNodeId, setCurrentNodeId,
     nodeAddress, setNodeAddress,
-    nodesWithTelemetry, setNodesWithTelemetry,
-    nodesWithWeatherTelemetry, setNodesWithWeatherTelemetry,
-    nodesWithEstimatedPosition, setNodesWithEstimatedPosition,
-    nodesWithPKC, setNodesWithPKC,
     channelHasMore, setChannelHasMore,
     channelLoadingMore, setChannelLoadingMore,
     dmHasMore, setDmHasMore,
