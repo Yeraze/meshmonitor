@@ -73,6 +73,7 @@ import { AdminTransactionService } from './services/adminTransactionService.js';
 import { FavoritesService } from './services/favoritesService.js';
 import { DeviceAdminService } from './services/deviceAdminService.js';
 import { RemoteAdminService } from './services/remoteAdminService.js';
+import { ConnState } from './meshtastic/connectionStateMachine.js';
 import fs from 'fs';
 import path from 'path';
 import * as net from 'net';
@@ -477,8 +478,60 @@ class MeshtasticManager implements ISourceManager {
   // concurrent connect() joins it instead of building a second (orphan)
   // transport (#3270). Cleared in a finally when the attempt settles.
   private connectInFlight: Promise<boolean> | null = null;
-  private isConnected = false;
-  private userDisconnectedState = false;  // Track user-initiated disconnect
+  // Connection-lifecycle state machine (#3962 Phase 4.2b, task42b_spec.md).
+  // `#state` is the single source of truth for link-state; `isConnected` and
+  // `userDisconnectedState` below are DERIVED getters over it (§2.1/§3.3 —
+  // amended §0.3: only these two booleans derive from ConnState; the two
+  // config-capture flags stay independent auxiliary fields, see their
+  // declarations near `initConfigCache`).
+  //
+  // C1 (this checkpoint) wires `#state` writes at the *existing* mutation
+  // points mechanically via these accessors — every call site that used to
+  // write `this.isConnected = <bool>` / `this.userDisconnectedState = <bool>`
+  // (internal manager code AND test fixtures that seed state directly) keeps
+  // compiling and behaving byte-identically, because the setters below
+  // translate a legacy boolean write into the equivalent `#state` update.
+  // C2 replaces the internal writes with real `dispatch(...)` calls; these
+  // accessors remain afterward as the compatibility surface for the ~30
+  // existing test call sites that seed state via direct field assignment.
+  #state: ConnState = ConnState.Disconnected;
+
+  private get isConnected(): boolean {
+    return this.#state === ConnState.ConfigSync || this.#state === ConnState.Connected;
+  }
+
+  private set isConnected(value: boolean) {
+    if (value) {
+      // A direct "true" write always means "connected" for the purposes of
+      // the 41 `isConnected` readers (none of them distinguish ConfigSync
+      // vs Connected — that distinction only matters to the independent
+      // config-capture flags). Preserve ConfigSync if we're already mid
+      // handshake so a later `isCapturingInitConfig`-driven write isn't
+      // clobbered by an unrelated `isConnected = true` seed.
+      if (this.#state !== ConnState.ConfigSync) {
+        this.#state = ConnState.Connected;
+      }
+    } else if (this.#state !== ConnState.UserDisconnected) {
+      // Never regress out of UserDisconnected via a plain "isConnected =
+      // false" write — that write is independent of userDisconnectedState
+      // in the legacy boolean model (e.g. handleDisconnected() always sets
+      // isConnected=false, including when a user-initiated disconnect's
+      // transport.disconnect() call loops back through it).
+      this.#state = ConnState.Disconnected;
+    }
+  }
+
+  private get userDisconnectedState(): boolean {
+    return this.#state === ConnState.UserDisconnected;
+  }
+
+  private set userDisconnectedState(value: boolean) {
+    if (value) {
+      this.#state = ConnState.UserDisconnected;
+    } else if (this.#state === ConnState.UserDisconnected) {
+      this.#state = ConnState.Disconnected;
+    }
+  }
   private tracerouteInterval: NodeJS.Timeout | null = null;
   private tracerouteJitterTimeout: NodeJS.Timeout | null = null;
   // null until startDistanceDeleteScheduler() is first called (lazy-loaded to
