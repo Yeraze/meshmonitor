@@ -4,6 +4,7 @@ import Modal from '../common/Modal';
 import { useSource } from '../../contexts/SourceContext';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import api from '../../services/api';
+import { NODE_INFO_DISPLAY_FIELDS as DISPLAY_FIELDS } from '../../utils/nodeInfoFields';
 import './CopyNodeInfoModal.css';
 
 interface CopyCandidate {
@@ -44,17 +45,6 @@ interface CopyNodeInfoModalProps {
   onClose: () => void;
   onCopied: () => void;
 }
-
-const DISPLAY_FIELDS = [
-  { key: 'longName', label: 'Long Name' },
-  { key: 'shortName', label: 'Short Name' },
-  { key: 'hwModel', label: 'Hardware Model' },
-  { key: 'role', label: 'Role' },
-  { key: 'macaddr', label: 'MAC Address' },
-  { key: 'publicKey', label: 'Public Key' },
-  { key: 'hasPKC', label: 'Has PKC' },
-  { key: 'firmwareVersion', label: 'Firmware' },
-] as const;
 
 function formatFieldValue(key: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
