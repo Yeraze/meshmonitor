@@ -1,5 +1,4 @@
 import databaseService, { type DbMessage } from '../services/database.js';
-import { ALL_SOURCES } from '../db/repositories/index.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import protobufService, { convertIpv4ConfigToStrings } from './protobufService.js';
 import { getProtobufRoot, type MeshBeaconPayload } from './protobufLoader.js';
@@ -56,7 +55,6 @@ import { isNodeComplete } from '../utils/nodeHelpers.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { migrateAutomationChannels } from './utils/automationChannelMigration.js';
 import { detectChannelMoves } from './utils/channelMoveDetection.js';
-import { mergeNodesAcrossSources } from './utils/mergeNodesAcrossSources.js';
 import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } from './utils/spoofDetection.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
 import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName } from './constants/meshtastic.js';
@@ -65,6 +63,14 @@ import { isAutoFavoriteEligible } from './constants/autoFavorite.js';
 import { createRequire } from 'module';
 import { validateCron, scheduleCron, type CronJob } from './utils/cronScheduler.js';
 import { CronOrIntervalScheduler, type ScheduleMode } from './services/cronOrIntervalScheduler.js';
+import {
+  shouldExcludeFromPacketLog,
+  isPhantomInternalPacket,
+  peekServiceEnvelopePacketId,
+  recordMqttEcho,
+  matchesMqttEcho,
+} from './services/mqttProxyBridge.js';
+import { NodeDbMaintenanceService } from './services/nodeDbMaintenanceService.js';
 import fs from 'fs';
 import path from 'path';
 import * as net from 'net';
@@ -282,76 +288,6 @@ export interface MeshMessage {
   timestamp: Date;
   rxSnr?: number;
   rxRssi?: number;
-}
-
-/**
- * Determines if a packet should be excluded from the packet log.
- * Internal packets (ADMIN_APP and ROUTING_APP) to/from the local node are excluded
- * since they are management traffic, not actual mesh traffic.
- *
- * @param fromNum - Source node number
- * @param toNum - Destination node number (null for broadcast)
- * @param portnum - Port number indicating packet type
- * @param localNodeNum - The local node's number (null if not connected)
- * @returns true if the packet should be excluded from logging
- */
-export function shouldExcludeFromPacketLog(
-  fromNum: number,
-  toNum: number | null,
-  portnum: number,
-  localNodeNum: number | null
-): boolean {
-  // If we don't know the local node, can't determine if it's local traffic
-  if (!localNodeNum) return false;
-
-  // Check if packet is to/from the local node
-  const isLocalPacket = fromNum === localNodeNum || toNum === localNodeNum;
-
-  // Check if it's an internal portnum (ROUTING_APP or ADMIN_APP)
-  const isInternalPortnum = portnum === PortNum.ROUTING_APP || portnum === PortNum.ADMIN_APP;
-
-  return isLocalPacket && isInternalPortnum;
-}
-
-/**
- * Determines if a packet is a "phantom" internal state update from the local device.
- * These are packets the Meshtastic device sends to TCP clients to report its internal
- * state, but they are NOT actual RF transmissions. They should not be logged as "TX"
- * packets because they clutter the packet log and don't represent actual mesh traffic.
- *
- * Phantom packets are identified by:
- * - from_node === localNodeNum (originated from local device)
- * - transport_mechanism === INTERNAL (0) or undefined
- * - hop_start === 0 or undefined (hasn't traveled any hops)
- *
- * @param fromNum - Source node number
- * @param localNodeNum - The local node's number (null if not connected)
- * @param transportMechanism - Transport mechanism from the packet (0 = INTERNAL)
- * @param hopStart - Hop start value from the packet
- * @returns true if the packet is a phantom internal state update
- */
-export function isPhantomInternalPacket(
-  fromNum: number,
-  localNodeNum: number | null,
-  transportMechanism: number | undefined,
-  hopStart: number | undefined
-): boolean {
-  // If we don't know the local node, can't determine if it's local traffic
-  if (!localNodeNum) return false;
-
-  // Must be from the local node
-  if (fromNum !== localNodeNum) return false;
-
-  // Transport mechanism must be INTERNAL (0) or undefined
-  // Note: TransportMechanism.INTERNAL === 0
-  const isInternalTransport = transportMechanism === undefined || transportMechanism === 0;
-  if (!isInternalTransport) return false;
-
-  // Hop start must be 0 or undefined (hasn't traveled any hops)
-  const hasNotTraveled = hopStart === undefined || hopStart === 0;
-  if (!hasNotTraveled) return false;
-
-  return true;
 }
 
 type TextMessage = {
@@ -980,8 +916,14 @@ class MeshtasticManager implements ISourceManager {
   // 4.0-alpha NO_CHANNEL auto-ack regression).
   public readonly messageQueue: MessageQueueService = new MessageQueueService();
 
+  // NodeDB maintenance (purge/refresh/remove-node + DB-row→DeviceInfo mapping) —
+  // extracted to a service (#3962 Phase 4.2a PR2 §4f). Injected with `this` via
+  // constructor (import-cycle-safe: the service only `import type`s MeshtasticManager).
+  private readonly nodeDbMaintenanceService: NodeDbMaintenanceService;
+
   constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean; passiveResyncStaleMs?: number | null }) {
     this.sourceId = sourceId;
+    this.nodeDbMaintenanceService = new NodeDbMaintenanceService(this);
     if (sourceConfig) {
       this.sourceConfigOverride = {
         host: sourceConfig.host,
@@ -1864,7 +1806,8 @@ class MeshtasticManager implements ISourceManager {
     });
   }
 
-  private async sendWantConfigId(): Promise<void> {
+  // public: called by NodeDbMaintenanceService.refreshNodeDatabase (#3962 Phase 4.2a PR2 §4f)
+  async sendWantConfigId(): Promise<void> {
     if (!this.transport) {
       throw new Error('Transport not initialized');
     }
@@ -12830,30 +12773,7 @@ class MeshtasticManager implements ISourceManager {
    * This sends the remove_by_nodenum admin command to completely delete a node from the device
    */
   async sendRemoveNode(nodeNum: number): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo) {
-      throw new Error('Local node information not available');
-    }
-
-    try {
-      // For local TCP connections, try sending without session passkey first
-      // (there's a known bug where session keys don't work properly over TCP)
-      logger.debug(`🗑️ Attempting to remove node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) from device NodeDB`);
-      const removeNodeMsg = protobufService.createRemoveNodeMessage(nodeNum, new Uint8Array()); // empty passkey
-      const adminPacket = protobufService.createAdminPacket(removeNodeMsg, this.localNodeInfo.nodeNum, this.localNodeInfo.nodeNum); // send to local node
-
-      await this.transport.send(adminPacket);
-      logger.debug(`✅ Sent remove_by_nodenum admin command for node ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')})`);
-
-      // Remove from device node tracking so the UI shows the "not in device DB" warning
-      this.deviceNodeNums.delete(nodeNum);
-    } catch (error) {
-      logger.error('❌ Error sending remove node admin message:', error);
-      throw error;
-    }
+    return this.nodeDbMaintenanceService.sendRemoveNode(nodeNum);
   }
 
   private async pushContactToRadio(targetNode: { nodeNum: number; nodeId: string; longName?: string | null; shortName?: string | null; publicKey?: string | null; hwModel?: number | null }): Promise<void> {
@@ -13748,23 +13668,7 @@ class MeshtasticManager implements ISourceManager {
    * @param seconds Number of seconds to wait before purging (typically 0 for immediate)
    */
   async purgeNodeDb(seconds: number = 0): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    try {
-      logger.debug(`⚙️ Sending purge node database command: will purge in ${seconds} seconds`);
-      // NOTE: Session passkeys are only required for REMOTE admin operations (admin messages sent to other nodes via mesh).
-      // For local TCP connections to the device itself, no session passkey is needed.
-      const purgeMsg = protobufService.createPurgeNodeDbMessage(seconds);
-      const adminPacket = protobufService.createAdminPacket(purgeMsg, this.localNodeInfo?.nodeNum || 0, this.localNodeInfo?.nodeNum);
-
-      await this.transport.send(adminPacket);
-      logger.debug('⚙️ Sent purge node database admin message (local operation, no session passkey required)');
-    } catch (error) {
-      logger.error('❌ Error sending purge node database command:', error);
-      throw error;
-    }
+    return this.nodeDbMaintenanceService.purgeNodeDb(seconds);
   }
 
   /**
@@ -14260,169 +14164,38 @@ class MeshtasticManager implements ISourceManager {
     return this.deviceNodeNums.has(nodeNum);
   }
 
-  // Async version that fetches uptimes in a single bulk query - works with all DB backends
-  async getAllNodesAsync(sourceId?: string): Promise<DeviceInfo[]> {
-    const [uptimeMap, noiseFloorMap] = await Promise.all([
-      databaseService.telemetry.getLatestTelemetryValueForAllNodes('uptimeSeconds', sourceId),
-      databaseService.telemetry.getLatestTelemetryValueForAllNodes('noiseFloor', sourceId),
-    ]);
-    // intentional cross-source when sourceId omitted: caller wants unified view across all sources
-    const dbNodes = await databaseService.nodes.getAllNodes(sourceId ?? ALL_SOURCES);
-    // Without a sourceId the caller wants the unified view, so collapse the
-    // per-source rows into one entry per nodeNum. Issue #3135.
-    const effective = sourceId ? dbNodes : mergeNodesAcrossSources(dbNodes);
-    return effective.map(node =>
-      this.mapDbNodeToDeviceInfo(node, uptimeMap.get(node.nodeId), noiseFloorMap.get(node.nodeId)),
-    );
+  // ── Narrow accessors for NodeDbMaintenanceService (#3962 Phase 4.2a PR2 §4f) ──
+  // These exist only to bridge previously-private state to the extracted
+  // service without widening the fields themselves or touching the
+  // protobuf-dispatch code that also reads/writes them.
+
+  /** Bare `isConnected` flag — matches the pre-extraction `refreshNodeDatabase` guard. */
+  isDeviceConnected(): boolean {
+    return this.isConnected;
   }
 
+  /** `isConnected && transport !== null` — matches the pre-extraction combined
+   *  guard used by `purgeNodeDb`/`sendRemoveNode` before building an admin packet. */
+  isTransportReady(): boolean {
+    return this.isConnected && this.transport !== null;
+  }
 
-  // Shared mapping logic for converting a DB node to DeviceInfo
-  private mapDbNodeToDeviceInfo(node: any, uptimeSeconds?: number, noiseFloor?: number): DeviceInfo {
-      const deviceInfo: any = {
-        nodeNum: node.nodeNum,
-        user: {
-          id: node.nodeId,
-          longName: node.longName || '',
-          shortName: node.shortName || '',
-          hwModel: node.hwModel,
-          publicKey: node.publicKey
-        },
-        deviceMetrics: {
-          batteryLevel: node.batteryLevel,
-          voltage: node.voltage,
-          channelUtilization: node.channelUtilization,
-          airUtilTx: node.airUtilTx,
-          uptimeSeconds,
-          noiseFloor
-        },
-        lastHeard: node.lastHeard,
-        snr: node.snr,
-        rssi: node.rssi
-      };
+  /** Send a pre-built admin packet over the current transport (local, not remote-mesh). */
+  async sendLocalAdminPacket(adminPacket: Uint8Array): Promise<void> {
+    if (!this.isConnected || !this.transport) {
+      throw new Error('Not connected to Meshtastic node');
+    }
+    await this.transport.send(adminPacket);
+  }
 
-      // Add role if it exists
-      if (node.role !== null && node.role !== undefined) {
-        deviceInfo.user.role = node.role.toString();
-      }
+  /** Drop a node from the connected radio's local-database tracking set. */
+  removeDeviceNodeNum(nodeNum: number): void {
+    this.deviceNodeNums.delete(nodeNum);
+  }
 
-      // Add hopsAway if it exists
-      if (node.hopsAway !== null && node.hopsAway !== undefined) {
-        deviceInfo.hopsAway = node.hopsAway;
-      }
-
-      // Add lastMessageHops if it exists (for "All messages" hop calculation mode)
-      if (node.lastMessageHops !== null && node.lastMessageHops !== undefined) {
-        deviceInfo.lastMessageHops = node.lastMessageHops;
-      }
-
-      // Add viaMqtt if it exists
-      if (node.viaMqtt !== null && node.viaMqtt !== undefined) {
-        deviceInfo.viaMqtt = Boolean(node.viaMqtt);
-      }
-
-      // Add isStoreForwardServer if it exists
-      if (node.isStoreForwardServer !== null && node.isStoreForwardServer !== undefined) {
-        deviceInfo.isStoreForwardServer = Boolean(node.isStoreForwardServer);
-      }
-
-      // Add isFavorite if it exists
-      if (node.isFavorite !== null && node.isFavorite !== undefined) {
-        deviceInfo.isFavorite = Boolean(node.isFavorite);
-      }
-
-      // Add favoriteLocked if it exists
-      if (node.favoriteLocked !== null && node.favoriteLocked !== undefined) {
-        deviceInfo.favoriteLocked = Boolean(node.favoriteLocked);
-      }
-
-      // Add isIgnored if it exists
-      if (node.isIgnored !== null && node.isIgnored !== undefined) {
-        deviceInfo.isIgnored = Boolean(node.isIgnored);
-      }
-
-      // Add isUnmessagable / isLicensed if they exist (#3684). Without these
-      // the client never learns a remote node is unmessagable, so the DM UI
-      // (NodesTab DM button, MessagesTab compose) fails open for them (#3755).
-      if (node.isUnmessagable !== null && node.isUnmessagable !== undefined) {
-        deviceInfo.isUnmessagable = Boolean(node.isUnmessagable);
-      }
-      if (node.isLicensed !== null && node.isLicensed !== undefined) {
-        deviceInfo.isLicensed = Boolean(node.isLicensed);
-      }
-
-      // Add channel if it exists
-      if (node.channel !== null && node.channel !== undefined) {
-        deviceInfo.channel = node.channel;
-      }
-
-      // Add mobile flag if it exists (pre-computed during packet processing)
-      if (node.mobile !== null && node.mobile !== undefined) {
-        deviceInfo.mobile = node.mobile;
-      }
-
-      // Add security fields for low-entropy and duplicate key detection
-      if (node.keyIsLowEntropy !== null && node.keyIsLowEntropy !== undefined) {
-        deviceInfo.keyIsLowEntropy = Boolean(node.keyIsLowEntropy);
-      }
-      if (node.duplicateKeyDetected !== null && node.duplicateKeyDetected !== undefined) {
-        deviceInfo.duplicateKeyDetected = Boolean(node.duplicateKeyDetected);
-      }
-      if (node.keySecurityIssueDetails) {
-        deviceInfo.keySecurityIssueDetails = node.keySecurityIssueDetails;
-      }
-
-      // Add position if coordinates exist
-      if (node.latitude && node.longitude) {
-        deviceInfo.position = {
-          latitude: node.latitude,
-          longitude: node.longitude,
-          altitude: node.altitude
-        };
-      }
-
-      // Add position precision fields for accuracy circles
-      if (node.positionPrecisionBits !== null && node.positionPrecisionBits !== undefined) {
-        deviceInfo.positionPrecisionBits = node.positionPrecisionBits;
-      }
-      if (node.positionGpsAccuracy !== null && node.positionGpsAccuracy !== undefined) {
-        deviceInfo.positionGpsAccuracy = node.positionGpsAccuracy;
-      }
-      if (node.positionLocationSource !== null && node.positionLocationSource !== undefined) {
-        deviceInfo.positionLocationSource = node.positionLocationSource;
-      }
-
-      // Add position override fields
-      if (node.positionOverrideEnabled !== null && node.positionOverrideEnabled !== undefined) {
-        deviceInfo.positionOverrideEnabled = Boolean(node.positionOverrideEnabled);
-      }
-      if (node.latitudeOverride !== null && node.latitudeOverride !== undefined) {
-        deviceInfo.latitudeOverride = node.latitudeOverride;
-      }
-      if (node.longitudeOverride !== null && node.longitudeOverride !== undefined) {
-        deviceInfo.longitudeOverride = node.longitudeOverride;
-      }
-      if (node.altitudeOverride !== null && node.altitudeOverride !== undefined) {
-        deviceInfo.altitudeOverride = node.altitudeOverride;
-      }
-      if (node.positionOverrideIsPrivate !== null && node.positionOverrideIsPrivate !== undefined) {
-        deviceInfo.positionOverrideIsPrivate = Boolean(node.positionOverrideIsPrivate);
-      }
-
-      // Add remote admin fields
-      if (node.hasRemoteAdmin !== null && node.hasRemoteAdmin !== undefined) {
-        deviceInfo.hasRemoteAdmin = Boolean(node.hasRemoteAdmin);
-        logger.debug(`🔍 Node ${node.nodeNum} hasRemoteAdmin: ${node.hasRemoteAdmin}`);
-      }
-      if (node.lastRemoteAdminCheck !== null && node.lastRemoteAdminCheck !== undefined) {
-        deviceInfo.lastRemoteAdminCheck = node.lastRemoteAdminCheck;
-      }
-      if (node.remoteAdminMetadata) {
-        deviceInfo.remoteAdminMetadata = node.remoteAdminMetadata;
-        logger.debug(`🔍 Node ${node.nodeNum} has remoteAdminMetadata`);
-      }
-
-      return deviceInfo;
+  // Async version that fetches uptimes in a single bulk query - works with all DB backends
+  async getAllNodesAsync(sourceId?: string): Promise<DeviceInfo[]> {
+    return this.nodeDbMaintenanceService.getAllNodesAsync(sourceId);
   }
 
   async getRecentMessages(limit: number = 50, sourceId?: string): Promise<MeshMessage[]> {
@@ -14602,33 +14375,7 @@ class MeshtasticManager implements ISourceManager {
 
   // Public method to trigger manual refresh of node database
   async refreshNodeDatabase(): Promise<void> {
-    logger.debug('🔄 Manually refreshing node database...');
-
-    if (!this.isConnected) {
-      logger.debug('⚠️ Not connected, attempting to reconnect...');
-      await this.connect();
-    }
-
-    // Clear isLocked so processMyNodeInfo can run (updates hwModel, rebootCount, etc.)
-    // and processNodeInfoProtobuf can update localNodeInfo with fresh names.
-    // The whole point of a manual refresh is to get fresh data from the device.
-    if (this.localNodeInfo) {
-      this.localNodeInfo.isLocked = false;
-      logger.debug('🔓 Cleared localNodeInfo lock for config refresh');
-    }
-
-    // Send want_config_id to trigger node to send updated info
-    await this.sendWantConfigId();
-
-    // Also request all module configs to get fresh telemetry, mqtt, etc.
-    setTimeout(async () => {
-      try {
-        logger.debug('📦 Requesting fresh module configs...');
-        await this.requestAllModuleConfigs();
-      } catch (error) {
-        logger.error('❌ Failed to request module configs during refresh:', error);
-      }
-    }, 1000);
+    return this.nodeDbMaintenanceService.refreshNodeDatabase();
   }
 
   /**
@@ -14872,35 +14619,6 @@ class MeshtasticManager implements ISourceManager {
 
 // Export the class for testing purposes (allows creating isolated test instances)
 export { MeshtasticManager };
-
-// ──────────────────────────────────────────────────────────────────────────
-// MQTT proxy bridge helpers (issue #3003 follow-up)
-// ──────────────────────────────────────────────────────────────────────────
-
-const MQTT_LINK_ECHO_TTL_MS = 60_000;
-const MQTT_LINK_ECHO_MAX = 256;
-
-function peekServiceEnvelopePacketId(payload: Uint8Array): number | null {
-  // Quiet decode — proxy payloads on broad topics often aren't ServiceEnvelopes
-  // (firmware can publish to any topic), so we don't want WARN log spam.
-  const decoded = meshtasticProtobufService.decodeServiceEnvelope(payload, { quiet: true });
-  if (!decoded || typeof decoded.packet?.id !== 'number') return null;
-  return decoded.packet.id >>> 0;
-}
-
-function recordMqttEcho(store: Array<{ topic: string; packetId: number; expiresAt: number }>, topic: string, packetId: number | null): void {
-  if (packetId === null) return;
-  const now = Date.now();
-  while (store.length > 0 && store[0].expiresAt < now) store.shift();
-  if (store.length >= MQTT_LINK_ECHO_MAX) store.shift();
-  store.push({ topic, packetId, expiresAt: now + MQTT_LINK_ECHO_TTL_MS });
-}
-
-function matchesMqttEcho(store: Array<{ topic: string; packetId: number; expiresAt: number }>, topic: string, packetId: number): boolean {
-  const now = Date.now();
-  while (store.length > 0 && store[0].expiresAt < now) store.shift();
-  return store.some((e) => e.topic === topic && e.packetId === packetId);
-}
 
 /**
  * Eager fallback instance. Used ONLY when no meshtastic_tcp source is registered
