@@ -147,6 +147,15 @@ router.get('/nodes/active', optionalAuth(), async (req, res) => {
   }
 });
 
+// NodeInfo enrichment (cross-source fill-blanks-only). Registered before the
+// parametric /nodes/:nodeNum/... and /nodes/:nodeId/... routes as
+// defense-in-depth — these are literal 2-segment paths that don't collide
+// with any of them, but registering first removes all doubt.
+import { handleEnrichmentAnalysis, handleEnrichmentApply } from './shared/enrichmentHandlers.js';
+
+router.get('/nodes/enrichment/analysis', optionalAuth(), handleEnrichmentAnalysis);
+router.post('/nodes/enrichment/apply', optionalAuth(), handleEnrichmentApply);
+
 // Copy NodeInfo from another source
 import {
   findCopyCandidates, copyNodeInfo, isNodeInfoField, NODE_INFO_FIELDS,

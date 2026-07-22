@@ -15,6 +15,7 @@ import {
   type NodeInfoField,
 } from '../../services/nodeInfoCopyService.js';
 import { resolvedSourceIdFromPath } from './sourceParam.js';
+import { handleEnrichmentAnalysis, handleEnrichmentApply } from '../shared/enrichmentHandlers.js';
 
 // mergeParams so this router picks up :sourceId when mounted under
 // /sources/:sourceId (new shape). At the root /nodes mount it's undefined
@@ -118,6 +119,33 @@ router.get('/', async (req: Request, res: Response) => {
     });
   }
 });
+
+/**
+ * GET /api/v1/nodes/enrichment/analysis
+ * POST /api/v1/nodes/enrichment/apply
+ *
+ * NodeInfo enrichment (cross-source fill-blanks-only). Registered above the
+ * bare `/:nodeId` route below — `/:nodeId` is single-segment and would
+ * otherwise capture `/enrichment` as a node id. The `/enrichment/analysis`
+ * and `/enrichment/apply` paths are 2-segment, so they would not actually be
+ * shadowed either way, but registering first removes all doubt.
+ *
+ * No `optionalAuth()` wrapper: this router sits behind the v1 router's
+ * global `requireAPIToken()` (routes/v1/index.ts), which hard-401s without a
+ * valid bearer token and always populates `req.user` with a real, active
+ * user — there is no anonymous fallthrough under v1 the way there is under
+ * `nodesRoutes.ts`'s `optionalAuth()`. Layering `optionalAuth()` on top would
+ * re-run the session/cookie lookup and could clobber `req.user` with the
+ * anonymous user for token-only clients, so it is intentionally omitted here
+ * (same reasoning as every other handler in this file).
+ *
+ * The `:sourceId` path param present when mounted under
+ * `/sources/:sourceId/nodes` is ignored — these are cross-source handlers
+ * that compute their own source universe from permissions, not from the
+ * mount's sourceId.
+ */
+router.get('/enrichment/analysis', handleEnrichmentAnalysis);
+router.post('/enrichment/apply', handleEnrichmentApply);
 
 /**
  * GET /api/v1/nodes/:nodeId
