@@ -19,7 +19,7 @@
  * the handleDisconnected-after-userDisconnect() non-regression guard added
  * in C2, and the promoted fallback-timer leak fix.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockGetSetting = vi.fn();
 const mockNotifyNodeConnected = vi.fn().mockResolvedValue(undefined);
