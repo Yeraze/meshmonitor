@@ -5,6 +5,7 @@ import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { getMessageDateSeparator, shouldShowDateSeparator } from '../../utils/datetime';
 import { getUtf8ByteLength, formatByteCount } from '../../utils/text';
 import LinkPreview from '../LinkPreview';
+import MeshCoreMessageRouteModal from './MeshCoreMessageRouteModal';
 import { UiIcon } from '../icons';
 
 interface MeshCoreMessageStreamProps {
@@ -81,6 +82,9 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   // Message ids whose "heard repeaters" list (#3700) is expanded.
   const [expandedHeardBy, setExpandedHeardBy] = useState<Set<string>>(new Set());
+  // Message whose relay-hash chain was clicked — opens the route-detail modal
+  // that expands each hash to the matching repeater name.
+  const [routeDetail, setRouteDetail] = useState<MeshCoreMessage | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const toggleHeardBy = useCallback((id: string) => {
@@ -397,11 +401,18 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
                     <><UiIcon name="route" size={13} /> {m.hopCount} {m.hopCount === 1 ? t('meshcore.hop', 'hop') : t('meshcore.hops', 'hops')}</>
                   )}
                   {m.hopCount !== 0 && m.routePath && (
-                    <> · {m.routePath.split(',').filter(Boolean).map((hop, hopIndex, hops) => (
-                      <React.Fragment key={`${hop}-${hopIndex}`}>
-                        {hop}{hopIndex < hops.length - 1 && <> <UiIcon name="forward" size={12} /> </>}
-                      </React.Fragment>
-                    ))}</>
+                    <> · <button
+                      type="button"
+                      className="mc-route-chain-link"
+                      title={t('meshcore.route_detail_tooltip', 'Show route details with repeater names')}
+                      onClick={() => setRouteDetail(m)}
+                    >
+                      {m.routePath.split(',').filter(Boolean).map((hop, hopIndex, hops) => (
+                        <React.Fragment key={`${hop}-${hopIndex}`}>
+                          {hop}{hopIndex < hops.length - 1 && <> <UiIcon name="forward" size={12} /> </>}
+                        </React.Fragment>
+                      ))}
+                    </button></>
                   )}
                 </div>
               )}
@@ -457,6 +468,14 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
         <div className={`meshcore-byte-counter ${byteCounter.className}`}>
           {byteCounter.text}
         </div>
+      )}
+      {routeDetail && (
+        <MeshCoreMessageRouteModal
+          message={routeDetail}
+          fromLabel={routeDetail.fromName ?? nameForKey(routeDetail.fromPublicKey) ?? `${routeDetail.fromPublicKey.substring(0, 8)}…`}
+          contacts={contacts ?? []}
+          onClose={() => setRouteDetail(null)}
+        />
       )}
     </div>
   );

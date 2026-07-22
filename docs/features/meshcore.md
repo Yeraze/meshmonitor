@@ -163,6 +163,8 @@ Received channel and DM messages show a route line beneath the body, derived fro
 - **📍 direct** — heard with zero hops (direct RF).
 - **🛰 N hops · a3 → 7f → 02** — relayed; the chain lists each relay's hash in order.
 
+**Clicking the hash chain** opens a route-detail popup with the message's reception details (sender, time, hops, scope, text) and the route expanded per hop into **repeater / room-server names** from the contact list. Only relay infrastructure ever appears in a MeshCore path — each forwarder appends the leading bytes of its public key at the hash width the original sender chose (1–3 bytes) — so matching is limited to those contacts. Unknown hashes stay as raw hex; when several repeaters share a hash prefix, the popup best-guesses the one closest to the neighbouring hops' positions and labels it as such.
+
 Room-server posts and messages with no recoverable path show no route line.
 
 ### Send bar

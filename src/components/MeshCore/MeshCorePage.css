@@ -818,6 +818,20 @@
 /* Hop count + relay route for received messages (#3742). */
 .mc-message-route { color: var(--ctp-subtext0); font-size: 0.75rem; margin-top: 0.15rem; font-family: var(--font-mono, monospace); }
 .mc-message-scope { color: var(--ctp-subtext0); font-size: 0.75rem; margin-top: 0.1rem; font-family: var(--font-mono, monospace); }
+/* Clickable relay-hash chain — opens the route-detail modal (repeater names). */
+.mc-route-chain-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.mc-route-chain-link:hover { color: var(--ctp-blue); }
+.mc-route-best-guess { color: var(--ctp-subtext0); font-style: italic; }
 
 .mc-mention {
   color: var(--ctp-blue);

@@ -35,6 +35,7 @@ import type { DbMeshCorePacket } from '../db/repositories/meshcore.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
 import { MESHCORE_SECRET_BYTES } from '../utils/meshcoreHelpers.js';
+import { parsePathHops, pathHashBytesOf, resolveRouteNames } from '../utils/meshcorePath.js';
 import { tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
 
 // Dynamic imports for optional serialport dependency
@@ -6761,6 +6762,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     } else {
       routeStr = '—';
     }
+    // {ROUTE_NAMES} is {ROUTE} with each relay hash resolved to a repeater /
+    // room-server name from the contact list (raw hex when unknown; nearest-
+    // to-neighbours best guess on hash collisions). {HASH_SIZE} is the per-hop
+    // path-hash width in bytes (1–3) the original sender stamped into
+    // path_len's top two bits — inferred from the hop hex width.
+    const routeHops = parsePathHops(route);
+    const hashSizeStr = routeHops.length > 0 ? String(pathHashBytesOf(routeHops)) : '—';
+    const routeNamesStr = routeHops.length > 0
+      ? resolveRouteNames(routeHops, this.getContacts()).join('→')
+      : routeStr;
     // {SCOPE} resolves to the region name when known, "(unscoped)" when the
     // message was explicitly unscoped (scopeCode === 0), or "—" otherwise (#3865).
     let scopeStr: string;
@@ -6782,7 +6793,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       .replace(/\{SNR\}/g, snrStr)
       .replace(/\{HOPS\}/g, hopsStr)
       .replace(/\{NUMBER_HOPS\}/g, hopsStr)
+      .replace(/\{ROUTE_NAMES\}/g, routeNamesStr)
       .replace(/\{ROUTE\}/g, routeStr)
+      .replace(/\{HASH_SIZE\}/g, hashSizeStr)
       .replace(/\{SCOPE\}/g, scopeStr);
   }
 
