@@ -6,7 +6,7 @@
  * When sourceId is null, components use the default / legacy behavior.
  */
 
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
 
 interface SourceContextType {
   /** The active source UUID, or null when not in a source-specific view */
@@ -31,8 +31,13 @@ interface SourceProviderProps {
 }
 
 export function SourceProvider({ sourceId, sourceName = null, sourceType = null, children }: SourceProviderProps) {
+  const value = useMemo<SourceContextType>(
+    () => ({ sourceId, sourceName, sourceType }),
+    [sourceId, sourceName, sourceType]
+  );
+
   return (
-    <SourceContext.Provider value={{ sourceId, sourceName, sourceType }}>
+    <SourceContext.Provider value={value}>
       {children}
     </SourceContext.Provider>
   );

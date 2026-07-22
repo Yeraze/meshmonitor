@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 
 export interface SaveBarSection {
   id: string;
@@ -59,15 +59,17 @@ export const SaveBarProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
   }, []);
 
+  const value = useMemo<SaveBarContextType>(() => ({
+    sections,
+    registerSection,
+    unregisterSection,
+    updateSection,
+    activeSection,
+    setActiveSection
+  }), [sections, registerSection, unregisterSection, updateSection, activeSection, setActiveSection]);
+
   return (
-    <SaveBarContext.Provider value={{
-      sections,
-      registerSection,
-      unregisterSection,
-      updateSection,
-      activeSection,
-      setActiveSection
-    }}>
+    <SaveBarContext.Provider value={value}>
       {children}
     </SaveBarContext.Provider>
   );

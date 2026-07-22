@@ -311,7 +311,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return channelPermissions[action] === true;
   }, [authStatus]);
 
-  const value: AuthContextType = {
+  const value: AuthContextType = useMemo(() => ({
     authStatus,
     loading,
     login,
@@ -321,7 +321,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshAuth,
     hasPermission,
     hasChannelDbPermission
-  };
+  }), [authStatus, loading, login, verifyMfa, loginWithOIDC, logout, refreshAuth, hasPermission, hasChannelDbPermission]);
 
   return (
     <AuthContext.Provider value={value}>

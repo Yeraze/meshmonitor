@@ -5,7 +5,7 @@
  * Automatically fetches and refreshes tokens as needed.
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { logger } from '../utils/logger';
 import api from '../services/api';
 
@@ -81,12 +81,12 @@ export const CsrfProvider: React.FC<{ children: React.ReactNode }> = ({ children
     void fetchToken();
   }, [fetchToken]);
 
-  const value: CsrfContextType = {
+  const value: CsrfContextType = useMemo(() => ({
     csrfToken,
     isLoading,
     refreshToken,
     getToken,
-  };
+  }), [csrfToken, isLoading, refreshToken, getToken]);
 
   return <CsrfContext.Provider value={value}>{children}</CsrfContext.Provider>;
 };
