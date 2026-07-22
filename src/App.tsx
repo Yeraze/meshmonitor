@@ -4161,6 +4161,68 @@ function App() {
             }
           />
           <Route
+            path="info"
+            element={
+              <ErrorBoundary fallbackTitle="Info failed to load">
+                <InfoTab
+                  connectionStatus={connectionStatus}
+                  nodeAddress={nodeAddress}
+                  deviceInfo={deviceInfo}
+                  deviceConfig={deviceConfig}
+                  nodes={nodes}
+                  channels={channels}
+                  messages={messages}
+                  channelMessages={channelMessages}
+                  currentNodeId={currentNodeId}
+                  temperatureUnit={temperatureUnit}
+                  telemetryHours={telemetryVisualizationHours}
+                  baseUrl={baseUrl}
+                  getAvailableChannels={getAvailableChannels}
+                  distanceUnit={distanceUnit}
+                  timeFormat={timeFormat}
+                  dateFormat={dateFormat}
+                  isAuthenticated={authStatus?.authenticated || false}
+                />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="dashboard"
+            element={
+              <ErrorBoundary fallbackTitle="Dashboard failed to load">
+                <Dashboard
+                  temperatureUnit={temperatureUnit}
+                  telemetryHours={telemetryVisualizationHours}
+                  favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}
+                  baseUrl={baseUrl}
+                  currentNodeId={currentNodeId}
+                  canEdit={hasPermission('dashboard', 'write')}
+                  onOpenNodeDetails={(nodeId: string) => {
+                    setSelectedDMNode(nodeId);
+                    setActiveTab('messages');
+                  }}
+                />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="configuration"
+            element={
+              <ErrorBoundary fallbackTitle="Configuration failed to load">
+                <ConfigurationTab
+                  key={sourceId || 'default'}
+                  baseUrl={baseUrl}
+                  nodes={nodes}
+                  channels={channels}
+                  onRebootDevice={handleRebootDevice}
+                  onConfigChangeTriggeringReboot={handleConfigChangeTriggeringReboot}
+                  onChannelsUpdated={() => fetchChannels()}
+                  refreshTrigger={configRefreshTrigger}
+                />
+              </ErrorBoundary>
+            }
+          />
+          <Route
             path="nodes"
             element={
               <ErrorBoundary fallbackTitle="Nodes failed to load">
@@ -4311,45 +4373,6 @@ function App() {
                 setMapCenterTarget([node.position.latitude, node.position.longitude]);
                 setActiveTab('nodes');
               }
-            }}
-          />
-          </ErrorBoundary>
-        )}
-        {activeTab === 'info' && (
-          <ErrorBoundary fallbackTitle="Info failed to load">
-          <InfoTab
-            connectionStatus={connectionStatus}
-            nodeAddress={nodeAddress}
-            deviceInfo={deviceInfo}
-            deviceConfig={deviceConfig}
-            nodes={nodes}
-            channels={channels}
-            messages={messages}
-            channelMessages={channelMessages}
-            currentNodeId={currentNodeId}
-            temperatureUnit={temperatureUnit}
-            telemetryHours={telemetryVisualizationHours}
-            baseUrl={baseUrl}
-            getAvailableChannels={getAvailableChannels}
-            distanceUnit={distanceUnit}
-            timeFormat={timeFormat}
-            dateFormat={dateFormat}
-            isAuthenticated={authStatus?.authenticated || false}
-          />
-          </ErrorBoundary>
-        )}
-        {activeTab === 'dashboard' && (
-          <ErrorBoundary fallbackTitle="Dashboard failed to load">
-          <Dashboard
-            temperatureUnit={temperatureUnit}
-            telemetryHours={telemetryVisualizationHours}
-            favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}
-            baseUrl={baseUrl}
-            currentNodeId={currentNodeId}
-            canEdit={hasPermission('dashboard', 'write')}
-            onOpenNodeDetails={(nodeId: string) => {
-              setSelectedDMNode(nodeId);
-              setActiveTab('messages');
             }}
           />
           </ErrorBoundary>
@@ -4645,23 +4668,11 @@ function App() {
           </SaveBarGroup>
           </ErrorBoundary>
         )}
-        {activeTab === 'configuration' && (
-          <ErrorBoundary fallbackTitle="Configuration failed to load">
-          <ConfigurationTab
-            key={sourceId || 'default'}
-            baseUrl={baseUrl}
-            nodes={nodes}
-            channels={channels}
-            onRebootDevice={handleRebootDevice}
-            onConfigChangeTriggeringReboot={handleConfigChangeTriggeringReboot}
-            onChannelsUpdated={() => fetchChannels()}
-            refreshTrigger={configRefreshTrigger}
-          />
-          </ErrorBoundary>
-        )}
         {/* 'audit' migrated to <Route path="audit"> above (#3962 5.4 PR1 proof leaf) */}
         {/* 'notifications', 'users', 'admin', 'security', 'mqtt-config', 'packetmonitor'
             migrated to <Route> elements above (#3962 5.4 PR3 leaf tab group) */}
+        {/* 'info', 'dashboard', 'configuration' migrated to <Route> elements above
+            (#3962 5.4 PR5) */}
           </>} />
         </Routes>
       </main>
