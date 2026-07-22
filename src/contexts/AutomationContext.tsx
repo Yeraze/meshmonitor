@@ -25,6 +25,8 @@ interface AutomationContextType {
   setAutoAckCooldownSeconds: React.Dispatch<React.SetStateAction<number>>;
   autoAckPreSendDelaySeconds: number;
   setAutoAckPreSendDelaySeconds: React.Dispatch<React.SetStateAction<number>>;
+  autoAckMaxAttempts: number;
+  setAutoAckMaxAttempts: React.Dispatch<React.SetStateAction<number>>;
   autoAckTestMessages: string;
   setAutoAckTestMessages: React.Dispatch<React.SetStateAction<string>>;
   autoAnnounceEnabled: boolean;
@@ -114,6 +116,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
   const [autoAckMatrix, setAutoAckMatrix] = useState<AutoAckMatrix>(DEFAULT_AUTOACK_MATRIX);
   const [autoAckCooldownSeconds, setAutoAckCooldownSeconds] = useState<number>(60);
   const [autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds] = useState<number>(0);
+  const [autoAckMaxAttempts, setAutoAckMaxAttempts] = useState<number>(3);
   const [autoAckTestMessages, setAutoAckTestMessages] = useState<string>('');
   const [autoAnnounceEnabled, setAutoAnnounceEnabled] = useState<boolean>(false);
   const [autoAnnounceIntervalHours, setAutoAnnounceIntervalHours] = useState<number>(6);
@@ -198,6 +201,9 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         setAutoAckMatrix(settingsToMatrix(s));
         if (s.autoAckCooldownSeconds !== undefined) setAutoAckCooldownSeconds(num('autoAckCooldownSeconds', 60));
         if (s.autoAckPreSendDelaySeconds !== undefined) setAutoAckPreSendDelaySeconds(num('autoAckPreSendDelaySeconds', 0));
+        // Clamp to [1,3] client-side too (defense in depth — the server is the
+        // authoritative clamp in MessageQueueService, #4266).
+        if (s.autoAckMaxAttempts !== undefined) setAutoAckMaxAttempts(Math.min(3, Math.max(1, num('autoAckMaxAttempts', 3))));
         if (s.autoAckTestMessages !== undefined) setAutoAckTestMessages(s.autoAckTestMessages);
 
         if (s.autoAnnounceEnabled !== undefined) setAutoAnnounceEnabled(bool('autoAnnounceEnabled'));
@@ -258,6 +264,7 @@ export const AutomationProvider: React.FC<AutomationProviderProps> = ({ children
         autoAckMatrix, setAutoAckMatrix,
         autoAckCooldownSeconds, setAutoAckCooldownSeconds,
         autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds,
+        autoAckMaxAttempts, setAutoAckMaxAttempts,
         autoAckTestMessages, setAutoAckTestMessages,
         autoAnnounceEnabled, setAutoAnnounceEnabled,
         autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,

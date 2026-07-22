@@ -907,7 +907,10 @@ class MeshtasticManager implements ISourceManager {
   // overwrite its callback on every new manager constructor, causing all auto-acks
   // to route through whichever source was constructed last (the source of the
   // 4.0-alpha NO_CHANNEL auto-ack regression).
-  public readonly messageQueue: MessageQueueService = new MessageQueueService();
+  // Constructed in the constructor body (not here) — field initializers run
+  // before `this.sourceId` is assigned, and MessageQueueService needs it for
+  // per-source `autoAckMaxAttempts` reads (#4266).
+  public readonly messageQueue: MessageQueueService;
 
   // NodeDB maintenance (purge/refresh/remove-node + DB-row→DeviceInfo mapping) —
   // extracted to a service (#3962 Phase 4.2a PR2 §4f). Injected with `this` via
@@ -939,6 +942,7 @@ class MeshtasticManager implements ISourceManager {
 
   constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean; passiveResyncStaleMs?: number | null }) {
     this.sourceId = sourceId;
+    this.messageQueue = new MessageQueueService(this.sourceId);
     this.nodeDbMaintenanceService = new NodeDbMaintenanceService(this);
     this.autoAnnounceService = new AutoAnnounceService(this);
     this.adminTransactionService = new AdminTransactionService(this);

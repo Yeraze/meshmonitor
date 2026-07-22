@@ -3126,6 +3126,22 @@ class DatabaseService {
     return null;
   }
 
+  /**
+   * Synchronous per-source setting read — mirrors
+   * `settingsRepo.getSettingForSource()`'s prefix scheme but via the sync
+   * `getSetting()` path above, for server singletons (e.g. MessageQueueService)
+   * that read settings at call time and cannot await. Returns ONLY the
+   * per-source value (null if no override exists) — no fallback to the
+   * un-namespaced global key, matching `getSettingForSource`'s semantics
+   * (issue #2839: silent cross-source fallback caused automation spam).
+   */
+  getSettingForSourceSync(sourceId: string | null | undefined, key: string): string | null {
+    if (sourceId) {
+      return this.getSetting(`source:${sourceId}:${key}`);
+    }
+    return this.getSetting(key);
+  }
+
   getAllSettings(): Record<string, string> {
     // For PostgreSQL/MySQL, use cache
     if (this.drizzleDbType === 'postgres' || this.drizzleDbType === 'mysql') {
