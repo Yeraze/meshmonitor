@@ -4206,6 +4206,23 @@ function App() {
             }
           />
           <Route
+            path="configuration"
+            element={
+              <ErrorBoundary fallbackTitle="Configuration failed to load">
+                <ConfigurationTab
+                  key={sourceId || 'default'}
+                  baseUrl={baseUrl}
+                  nodes={nodes}
+                  channels={channels}
+                  onRebootDevice={handleRebootDevice}
+                  onConfigChangeTriggeringReboot={handleConfigChangeTriggeringReboot}
+                  onChannelsUpdated={() => fetchChannels()}
+                  refreshTrigger={configRefreshTrigger}
+                />
+              </ErrorBoundary>
+            }
+          />
+          <Route
             path="nodes"
             element={
               <ErrorBoundary fallbackTitle="Nodes failed to load">
@@ -4651,23 +4668,11 @@ function App() {
           </SaveBarGroup>
           </ErrorBoundary>
         )}
-        {activeTab === 'configuration' && (
-          <ErrorBoundary fallbackTitle="Configuration failed to load">
-          <ConfigurationTab
-            key={sourceId || 'default'}
-            baseUrl={baseUrl}
-            nodes={nodes}
-            channels={channels}
-            onRebootDevice={handleRebootDevice}
-            onConfigChangeTriggeringReboot={handleConfigChangeTriggeringReboot}
-            onChannelsUpdated={() => fetchChannels()}
-            refreshTrigger={configRefreshTrigger}
-          />
-          </ErrorBoundary>
-        )}
         {/* 'audit' migrated to <Route path="audit"> above (#3962 5.4 PR1 proof leaf) */}
         {/* 'notifications', 'users', 'admin', 'security', 'mqtt-config', 'packetmonitor'
             migrated to <Route> elements above (#3962 5.4 PR3 leaf tab group) */}
+        {/* 'info', 'dashboard', 'configuration' migrated to <Route> elements above
+            (#3962 5.4 PR5) */}
           </>} />
         </Routes>
       </main>
