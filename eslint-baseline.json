@@ -240,8 +240,7 @@
   },
   "src/components/SettingsTab.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
-    "no-restricted-syntax": 3,
-    "react-hooks/exhaustive-deps": 4
+    "no-restricted-syntax": 3
   },
   "src/components/SmartHopsChart.tsx": {
     "react-refresh/only-export-components": 1
