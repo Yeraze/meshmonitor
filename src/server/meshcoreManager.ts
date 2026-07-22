@@ -16,7 +16,7 @@ import type { MeshcorePathfindingFilterSettings } from '../services/database.js'
 import { compileUserRegex } from '../utils/safeRegex.js';
 import { dataEventEmitter } from './services/dataEventEmitter.js';
 import { compileAutoAckRegex } from './utils/autoAckRegex.js';
-import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
+import { resolveAutoAckPreSendDelaySeconds, clampPreSendDelaySeconds } from './autoAckDelay.js';
 import { scheduleCron, validateCron, type CronJob } from './utils/cronScheduler.js';
 import { CronOrIntervalScheduler, type ScheduleMode } from './services/cronOrIntervalScheduler.js';
 import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js';
@@ -241,6 +241,13 @@ export interface MeshCoreAutoResponderTrigger extends MeshCoreAutomationScopeCon
   replyAsDM: boolean;
   /** Per-sender cooldown in seconds. 0 disables. */
   cooldownSeconds: number;
+  /**
+   * Delay (seconds) to wait after a match before sending the reply, so a
+   * relaying repeater can finish its own TX first (#3953, mirrors
+   * Auto-Acknowledge's pre-send delay). 0/absent = send immediately; clamped
+   * to 0–120. Applies once per fire, to both text and script responses.
+   */
+  preSendDelaySeconds?: number;
 }
 
 /**
@@ -6660,6 +6667,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           }
           return false;
         };
+
+        // Pre-send delay (#3953): give a relaying repeater time to finish its
+        // own TX before we reply. Applied once per fire (not per dispatch), so
+        // a multi-message script response waits once up front rather than
+        // before every send. Mirrors the Auto-Acknowledge pre-send delay.
+        const preSendDelaySeconds = clampPreSendDelaySeconds(trigger.preSendDelaySeconds);
+        if (preSendDelaySeconds > 0) {
+          logger.debug(`[MeshCore:${this.sourceId}] Auto-responder ${trigger.id}: waiting ${preSendDelaySeconds}s before reply`);
+          await new Promise((resolve) => setTimeout(resolve, preSendDelaySeconds * 1000));
+        }
 
         if (trigger.responseType === 'script') {
           if (!trigger.scriptPath) {
