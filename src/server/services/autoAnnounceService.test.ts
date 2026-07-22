@@ -30,8 +30,8 @@ vi.mock('../../services/database.js', () => ({
   },
 }));
 
-const mockValidateCron = vi.fn(() => true);
-const mockScheduleCron = vi.fn(() => ({ stop: vi.fn() }));
+const mockValidateCron = vi.fn((_expr: string) => true);
+const mockScheduleCron = vi.fn((_expr: string, _cb: () => void) => ({ stop: vi.fn() }));
 vi.mock('../utils/cronScheduler.js', () => ({
   validateCron: (...args: unknown[]) => mockValidateCron(...(args as [string])),
   scheduleCron: (...args: unknown[]) => mockScheduleCron(...(args as [string, () => void])),
