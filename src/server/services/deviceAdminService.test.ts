@@ -33,20 +33,20 @@ vi.mock('../../services/database.js', () => ({
   },
 }));
 
-const createSetDeviceConfigMessage = vi.fn(() => new Uint8Array([1]));
-const createSetLoRaConfigMessage = vi.fn(() => new Uint8Array([2]));
-const createSetNetworkConfigMessage = vi.fn(() => new Uint8Array([3]));
-const createSetChannelMessage = vi.fn(() => new Uint8Array([4]));
-const createSetFixedPositionMessage = vi.fn(() => new Uint8Array([5]));
-const createSetPositionConfigMessage = vi.fn(() => new Uint8Array([6]));
-const createSetMQTTConfigMessage = vi.fn(() => new Uint8Array([7]));
-const createSetNeighborInfoConfigMessage = vi.fn(() => new Uint8Array([8]));
-const createSetDeviceConfigMessageGeneric = vi.fn(() => new Uint8Array([9]));
-const createSetModuleConfigMessageGeneric = vi.fn(() => new Uint8Array([10]));
-const createSetOwnerMessage = vi.fn(() => new Uint8Array([11]));
-const createBeginEditSettingsMessage = vi.fn(() => new Uint8Array([12]));
-const createCommitEditSettingsMessage = vi.fn(() => new Uint8Array([13]));
-const createAdminPacket = vi.fn((payload: Uint8Array) => payload);
+const createSetDeviceConfigMessage = vi.fn((..._args: unknown[]) => new Uint8Array([1]));
+const createSetLoRaConfigMessage = vi.fn((..._args: unknown[]) => new Uint8Array([2]));
+const createSetNetworkConfigMessage = vi.fn((..._args: unknown[]) => new Uint8Array([3]));
+const createSetChannelMessage = vi.fn((..._args: unknown[]) => new Uint8Array([4]));
+const createSetFixedPositionMessage = vi.fn((..._args: unknown[]) => new Uint8Array([5]));
+const createSetPositionConfigMessage = vi.fn((..._args: unknown[]) => new Uint8Array([6]));
+const createSetMQTTConfigMessage = vi.fn((..._args: unknown[]) => new Uint8Array([7]));
+const createSetNeighborInfoConfigMessage = vi.fn((..._args: unknown[]) => new Uint8Array([8]));
+const createSetDeviceConfigMessageGeneric = vi.fn((..._args: unknown[]) => new Uint8Array([9]));
+const createSetModuleConfigMessageGeneric = vi.fn((..._args: unknown[]) => new Uint8Array([10]));
+const createSetOwnerMessage = vi.fn((..._args: unknown[]) => new Uint8Array([11]));
+const createBeginEditSettingsMessage = vi.fn((..._args: unknown[]) => new Uint8Array([12]));
+const createCommitEditSettingsMessage = vi.fn((..._args: unknown[]) => new Uint8Array([13]));
+const createAdminPacket = vi.fn((...args: unknown[]) => args[0] as Uint8Array);
 
 vi.mock('../protobufService.js', () => ({
   default: {

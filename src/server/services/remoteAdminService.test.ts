@@ -15,8 +15,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const createAdminPacket = vi.fn((payload: Uint8Array) => payload);
-const createGetModuleConfigRequest = vi.fn(() => new Uint8Array([1]));
+const createAdminPacket = vi.fn((...args: unknown[]) => args[0] as Uint8Array);
+const createGetModuleConfigRequest = vi.fn((..._args: unknown[]) => new Uint8Array([1]));
 
 vi.mock('../protobufService.js', () => ({
   default: {
@@ -30,13 +30,13 @@ const AdminMessageMock = {
   encode: vi.fn((msg: any) => ({ finish: () => new Uint8Array([9, msg ? 1 : 0]) })),
 };
 const rootMock = { lookupType: vi.fn(() => AdminMessageMock) };
-const getProtobufRootMock = vi.fn(() => rootMock);
+const getProtobufRootMock = vi.fn((..._args: unknown[]) => rootMock);
 
 vi.mock('../protobufLoader.js', () => ({
   getProtobufRoot: (...args: unknown[]) => getProtobufRootMock(...args),
 }));
 
-const getEnvironmentConfigMock = vi.fn(() => ({ meshtasticModuleConfigDelayMs: 0 }));
+const getEnvironmentConfigMock = vi.fn((..._args: unknown[]) => ({ meshtasticModuleConfigDelayMs: 0 }));
 vi.mock('../config/environment.js', () => ({
   getEnvironmentConfig: (...args: unknown[]) => getEnvironmentConfigMock(...args),
 }));
