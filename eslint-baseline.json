@@ -1020,8 +1020,14 @@
   "src/server/routes/meshRequestRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 5
   },
-  "src/server/routes/meshcoreRoutes.ts": {
-    "@typescript-eslint/no-explicit-any": 3
+  "src/server/routes/meshcoreConfigRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/routes/meshcoreContactsRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 1
+  },
+  "src/server/routes/meshcoreDeviceRoutes.ts": {
+    "@typescript-eslint/no-explicit-any": 1
   },
   "src/server/routes/messageRoutes.ts": {
     "@typescript-eslint/no-explicit-any": 28
