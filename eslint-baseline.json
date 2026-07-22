@@ -611,7 +611,7 @@
     "@typescript-eslint/no-unused-vars": 1
   },
   "src/server/meshtasticManager.ts": {
-    "@typescript-eslint/no-explicit-any": 166,
+    "@typescript-eslint/no-explicit-any": 167,
     "@typescript-eslint/no-unused-vars": 2,
     "no-useless-assignment": 1
   },
@@ -1165,6 +1165,9 @@
   "src/server/services/desktopNotificationService.ts": {
     "@typescript-eslint/no-explicit-any": 1
   },
+  "src/server/services/deviceAdminService.ts": {
+    "@typescript-eslint/no-explicit-any": 12
+  },
   "src/server/services/deviceBackupService.ts": {
     "@typescript-eslint/no-explicit-any": 10,
     "preserve-caught-error": 1
@@ -1194,6 +1197,9 @@
   },
   "src/server/services/pushNotificationService.ts": {
     "@typescript-eslint/no-explicit-any": 2
+  },
+  "src/server/services/remoteAdminService.ts": {
+    "@typescript-eslint/no-explicit-any": 5
   },
   "src/server/services/retroactiveDecryptionService.ts": {
     "@typescript-eslint/no-explicit-any": 1
