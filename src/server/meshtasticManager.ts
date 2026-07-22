@@ -59,7 +59,6 @@ import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } fr
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
 import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName } from './constants/meshtastic.js';
 import { normalizeChannelRole } from './constants/channelRole.js';
-import { isAutoFavoriteEligible } from './constants/autoFavorite.js';
 import { createRequire } from 'module';
 import { validateCron, scheduleCron, type CronJob } from './utils/cronScheduler.js';
 import {
@@ -71,6 +70,8 @@ import {
 } from './services/mqttProxyBridge.js';
 import { NodeDbMaintenanceService } from './services/nodeDbMaintenanceService.js';
 import { AutoAnnounceService } from './services/autoAnnounceService.js';
+import { AdminTransactionService } from './services/adminTransactionService.js';
+import { FavoritesService } from './services/favoritesService.js';
 import fs from 'fs';
 import path from 'path';
 import * as net from 'net';
@@ -637,11 +638,11 @@ class MeshtasticManager implements ISourceManager {
   private remoteNodeOwners: Map<number, any> = new Map();
   // Per-node device metadata storage for remote nodes
   private remoteNodeDeviceMetadata: Map<number, any> = new Map();
-  // Pending admin-command ACK waiters, keyed by the sent packet id. Resolved by
-  // processRoutingErrorMessage when the destination node returns its
-  // want_response Routing ACK (error_reason) — or on a routing error / timeout.
-  // (issue #2608 follow-up: confirm remote favorite assignment.)
-  private pendingAdminAcks: Map<number, { dest: number; resolve: (errorReason: number | null) => void; timer: ReturnType<typeof setTimeout> }> = new Map();
+  // Pending admin-command ACK waiters moved to AdminTransactionService
+  // (#3962 Phase 4.2a PR4 §4d) — see that file for the map + correlation
+  // logic. The manager's `processRoutingErrorMessage` dispatch code calls
+  // back into it via `this.adminTransactionService.hasPending`/
+  // `.resolveByRequestId` rather than touching a map here.
   // Cache the favorites-support check, keyed by the firmware version it was
   // computed from. Keying by version means the cache self-invalidates when the
   // firmware version changes or is populated late (e.g. via a NodeInfo rebuild
@@ -669,9 +670,13 @@ class MeshtasticManager implements ISourceManager {
 
   // Auto-welcome tracking to prevent race conditions
   private welcomingNodes: Set<number> = new Set();  // Track nodes currently being welcomed
+  // Kept on the manager (not moved to FavoritesService) — pinned test
+  // `meshtasticManager.autoFavorite.perSource.test.ts` resets this field
+  // directly (`manager.autoFavoritingNodes = new Set()`) between cases; see
+  // favoritesService.ts's header comment for the full rationale.
   private autoFavoritingNodes = new Set<number>();  // Track nodes currently being auto-favorited
   private deviceNodeNums: Set<number> = new Set();  // Nodes in the connected radio's local database
-  private autoFavoriteSweepRunning = false;  // Prevent concurrent sweep operations
+  // autoFavoriteSweepRunning moved to FavoritesService (#3962 Phase 4.2a PR4 §4c) — no pinned test reaches into it.
   private rebootMergeInProgress = false;  // Guard against broadcasts during node identity merge
   private lastHeapPurgeAt: number | null = null;  // Timestamp of last auto heap purge
 
@@ -924,10 +929,20 @@ class MeshtasticManager implements ISourceManager {
   // PR3 §4b). Same injection pattern as nodeDbMaintenanceService above.
   private readonly autoAnnounceService: AutoAnnounceService;
 
+  // Admin-command ACK correlation — extracted to a service (#3962 Phase 4.2a
+  // PR4 §4d). Same injection pattern as the services above.
+  private readonly adminTransactionService: AdminTransactionService;
+
+  // Favorites management — extracted to a service (#3962 Phase 4.2a PR4 §4c).
+  // Depends on adminTransactionService (constructed first, passed in below).
+  private readonly favoritesService: FavoritesService;
+
   constructor(sourceId: string = 'default', sourceConfig?: { host?: string; port?: number; heartbeatIntervalSeconds?: number; virtualNode?: VirtualNodeConfig; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean; passiveResyncStaleMs?: number | null }) {
     this.sourceId = sourceId;
     this.nodeDbMaintenanceService = new NodeDbMaintenanceService(this);
     this.autoAnnounceService = new AutoAnnounceService(this);
+    this.adminTransactionService = new AdminTransactionService(this);
+    this.favoritesService = new FavoritesService(this, this.adminTransactionService);
     if (sourceConfig) {
       this.sourceConfigOverride = {
         host: sourceConfig.host,
@@ -1775,7 +1790,11 @@ class MeshtasticManager implements ISourceManager {
    * @param payloadPreview Human-readable preview of what was sent
    * @param metadata Additional metadata object
    */
-  private async logOutgoingPacket(
+  // public: called by AdminTransactionService (#3962 Phase 4.2a PR4 §4d) in
+  // addition to many unmoved call sites within this class — widened rather
+  // than narrowly wrapped since it's general manager infrastructure, not
+  // admin-ack-specific state.
+  async logOutgoingPacket(
     portnum: number,
     destination: number,
     channel: number,
@@ -4455,8 +4474,9 @@ class MeshtasticManager implements ISourceManager {
 
   /** Returns source-scoped settings keys for local node identity persistence.
    *  Each source manager stores its own localNodeNum/localNodeId so managers
-   *  don't clobber each other's values when running side-by-side. */
-  private localNodeSettingKey(base: string): string {
+   *  don't clobber each other's values when running side-by-side.
+   *  public: also called by FavoritesService (#3962 Phase 4.2a PR4 §4c). */
+  localNodeSettingKey(base: string): string {
     return this.sourceId && this.sourceId !== 'default' ? `${base}_${this.sourceId}` : base;
   }
 
@@ -7394,8 +7414,8 @@ class MeshtasticManager implements ISourceManager {
       // Routing ACK with request_id === our sent packet id. Consume it here so
       // it doesn't fall through to message-delivery handling (admin commands
       // aren't stored in the messages table).
-      if (requestId && this.pendingAdminAcks.has(requestId)) {
-        if (this.tryResolveAdminAck(requestId, fromNum, errorReason)) {
+      if (requestId && this.adminTransactionService.hasPending(requestId)) {
+        if (this.adminTransactionService.resolveByRequestId(requestId, fromNum, errorReason)) {
           return;
         }
       }
@@ -11174,191 +11194,11 @@ class MeshtasticManager implements ISourceManager {
   }
 
   private async checkAutoFavorite(nodeNum: number, nodeId: string): Promise<void> {
-    try {
-      const autoFavoriteEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteEnabled');
-      if (autoFavoriteEnabled !== 'true') {
-        return;
-      }
-
-      if (!this.supportsFavorites()) {
-        return;
-      }
-
-      // Skip local node (read the per-source identity key so named sources don't
-      // read another source's local node and short-circuit incorrectly).
-      const localNodeNum = await databaseService.settings.getSetting(this.localNodeSettingKey('localNodeNum'));
-      if (localNodeNum && parseInt(localNodeNum) === nodeNum) {
-        return;
-      }
-
-      // Prevent duplicate concurrent operations
-      if (this.autoFavoritingNodes.has(nodeNum)) {
-        return;
-      }
-
-      // Get local node role (scoped to this source — nodes table has composite PK (nodeNum, sourceId))
-      const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : this.localNodeInfo?.nodeNum;
-      if (!localNodeNumInt) return;
-      const localNode = await databaseService.nodes.getNode(localNodeNumInt, this.sourceId);
-      if (!localNode) return;
-
-      const targetNode = await databaseService.nodes.getNode(nodeNum, this.sourceId);
-      if (!targetNode) return;
-
-      // Skip nodes where favoriteLocked is true — user has manually managed this node
-      if (targetNode.favoriteLocked) return;
-
-      // Check if already in auto-favorite list (backward compat belt-and-suspenders)
-      const autoFavoriteNodesJson = await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteNodes') || '[]';
-      const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
-      if (autoFavoriteNodes.includes(nodeNum)) {
-        return; // Already auto-managed
-      }
-
-      // Check eligibility
-      if (!isAutoFavoriteEligible(localNode.role, targetNode)) {
-        return;
-      }
-
-      this.autoFavoritingNodes.add(nodeNum);
-      try {
-        // Mark in DB — favoriteLocked=false since this is auto-managed
-        await databaseService.nodes.setNodeFavorite(nodeNum, true, this.sourceId, false);
-
-        // Sync to device
-        try {
-          await this.sendFavoriteNode(nodeNum);
-          logger.debug(`⭐ Auto-favorited node ${nodeId} (${targetNode.longName || 'Unknown'}) - 0-hop, role=${targetNode.role}`);
-        } catch (error) {
-          logger.warn(`⚠️ Auto-favorited node ${nodeId} in DB but device sync failed:`, error);
-        }
-
-        // Add to auto-favorite tracking list (per-source)
-        autoFavoriteNodes.push(nodeNum);
-        await databaseService.settings.setSourceSetting(this.sourceId, 'autoFavoriteNodes', JSON.stringify(autoFavoriteNodes));
-      } finally {
-        this.autoFavoritingNodes.delete(nodeNum);
-      }
-    } catch (error) {
-      logger.error('❌ Error in auto-favorite check:', error);
-    }
+    return this.favoritesService.checkAutoFavorite(nodeNum, nodeId);
   }
 
   private async autoFavoriteSweep(): Promise<void> {
-    if (this.autoFavoriteSweepRunning) return;
-    this.autoFavoriteSweepRunning = true;
-    try {
-      const autoFavoriteEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteEnabled');
-      const autoFavoriteNodesJson = await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteNodes') || '[]';
-      const autoFavoriteNodes: number[] = JSON.parse(autoFavoriteNodesJson);
-
-      if (autoFavoriteNodes.length === 0) {
-        return;
-      }
-
-      // If feature was disabled, clean up all auto-favorited nodes (skip locked ones)
-      if (autoFavoriteEnabled !== 'true') {
-        logger.debug(`🧹 Auto-favorite disabled, cleaning up ${autoFavoriteNodes.length} auto-favorited nodes`);
-        for (const nodeNum of autoFavoriteNodes) {
-          try {
-            const node = await databaseService.nodes.getNode(nodeNum, this.sourceId);
-            if (node?.favoriteLocked) {
-              logger.debug(`Skipping locked node ${nodeNum} during auto-favorite cleanup`);
-              continue;
-            }
-            await databaseService.nodes.setNodeFavorite(nodeNum, false, this.sourceId, false);
-            if (this.supportsFavorites() && this.isConnected) {
-              await this.sendRemoveFavoriteNode(nodeNum);
-            }
-          } catch (error) {
-            logger.warn(`⚠️ Failed to unfavorite node ${nodeNum} during cleanup:`, error);
-          }
-        }
-        await databaseService.settings.setSourceSetting(this.sourceId, 'autoFavoriteNodes', '[]');
-        return;
-      }
-
-      if (!this.supportsFavorites()) return;
-
-      const staleHours = parseInt(await databaseService.settings.getSettingForSource(this.sourceId, 'autoFavoriteStaleHours') || '72');
-      const staleThreshold = Date.now() / 1000 - (staleHours * 3600);
-
-      // Get local node role for re-evaluation (scoped to this source — both the
-      // identity key and the node lookup are per-source).
-      const localNodeNum = await databaseService.settings.getSetting(this.localNodeSettingKey('localNodeNum'));
-      const localNodeNumInt = localNodeNum ? parseInt(localNodeNum) : this.localNodeInfo?.nodeNum;
-      const localNode = localNodeNumInt ? await databaseService.nodes.getNode(localNodeNumInt, this.sourceId) : null;
-
-      const nodesToRemove: number[] = [];
-
-      for (const nodeNum of autoFavoriteNodes) {
-        const node = await databaseService.nodes.getNode(nodeNum, this.sourceId);
-        if (!node) {
-          nodesToRemove.push(nodeNum);
-          continue;
-        }
-
-        // Skip nodes where favoriteLocked is true — user has manually managed this node
-        if (node.favoriteLocked) {
-          continue;
-        }
-
-        let shouldRemove = false;
-        let reason = '';
-
-        // Check staleness
-        if (node.lastHeard && node.lastHeard < staleThreshold) {
-          shouldRemove = true;
-          reason = `stale (not heard in ${staleHours}+ hours)`;
-        }
-
-        // Check hops changed
-        if (!shouldRemove && (node.hopsAway == null || node.hopsAway > 0)) {
-          shouldRemove = true;
-          reason = `no longer 0-hop (hopsAway=${node.hopsAway})`;
-        }
-
-        // Check if received via MQTT (not a true RF neighbor)
-        if (!shouldRemove && node.viaMqtt === true) {
-          shouldRemove = true;
-          reason = 'received via MQTT';
-        }
-
-        // Check role eligibility changed (for ROUTER/ROUTER_LATE local)
-        if (!shouldRemove && localNode) {
-          if (!isAutoFavoriteEligible(localNode.role, { ...node, isFavorite: false })) {
-            shouldRemove = true;
-            reason = 'no longer eligible (role changed)';
-          }
-        }
-
-        if (shouldRemove) {
-          nodesToRemove.push(nodeNum);
-          try {
-            await databaseService.nodes.setNodeFavorite(nodeNum, false, this.sourceId, false);
-            if (this.isConnected) {
-              await this.sendRemoveFavoriteNode(nodeNum);
-            }
-            const nodeId = node.nodeId || `!${nodeNum.toString(16).padStart(8, '0')}`;
-            logger.debug(`☆ Auto-unfavorited node ${nodeId} (${node.longName || 'Unknown'}) - ${reason}`);
-          } catch (error) {
-            logger.warn(`⚠️ Failed to auto-unfavorite node ${nodeNum}:`, error);
-          }
-        }
-      }
-
-      // Update the tracking list (per-source)
-      if (nodesToRemove.length > 0) {
-        const removeSet = new Set(nodesToRemove);
-        const remaining = autoFavoriteNodes.filter(n => !removeSet.has(n));
-        await databaseService.settings.setSourceSetting(this.sourceId, 'autoFavoriteNodes', JSON.stringify(remaining));
-        logger.debug(`🧹 Auto-favorite sweep: removed ${nodesToRemove.length}, remaining ${remaining.length}`);
-      }
-    } catch (error) {
-      logger.error('❌ Error in auto-favorite sweep:', error);
-    } finally {
-      this.autoFavoriteSweepRunning = false;
-    }
+    return this.favoritesService.autoFavoriteSweep();
   }
 
   /**
@@ -12335,7 +12175,9 @@ class MeshtasticManager implements ISourceManager {
   /**
    * Parse firmware version string into major.minor.patch
    */
-  private parseFirmwareVersion(versionString: string): { major: number; minor: number; patch: number } | null {
+  // public: shared with FavoritesService.supportsFavorites() (#3962 Phase
+  // 4.2a PR4 §4c) as well as the unmoved firmwareVersionAtLeast() below.
+  parseFirmwareVersion(versionString: string): { major: number; minor: number; patch: number } | null {
     // Firmware version format: "2.7.11.ee68575" or "2.7.11"
     const match = versionString.match(/^(\d+)\.(\d+)\.(\d+)/);
     if (!match) {
@@ -12409,117 +12251,21 @@ class MeshtasticManager implements ISourceManager {
    * Result is cached to avoid redundant parsing and version comparisons
    */
   supportsFavorites(): boolean {
-    const firmwareVersion = this.localNodeInfo?.firmwareVersion;
-
-    // Firmware version not known yet (e.g. DeviceMetadata not received). Return
-    // false but DO NOT cache it — otherwise the `false` sticks even after the
-    // version is populated through a path that doesn't clear the cache.
-    if (!firmwareVersion) {
-      logger.debug('⚠️ Firmware version unknown, cannot determine favorites support');
-      return false;
-    }
-
-    // Cache hit only when it was computed from the current firmware version.
-    if (this.favoritesSupportCache?.version === firmwareVersion) {
-      return this.favoritesSupportCache.result;
-    }
-
-    const version = this.parseFirmwareVersion(firmwareVersion);
-    if (!version) {
-      logger.debug(`⚠️ Could not parse firmware version: ${firmwareVersion}`);
-      this.favoritesSupportCache = { version: firmwareVersion, result: false };
-      return false;
-    }
-
-    // Favorites feature added in 2.7.0
-    const supportsFavorites = version.major > 2 || (version.major === 2 && version.minor >= 7);
-
-    if (!supportsFavorites) {
-      logger.debug(`ℹ️ Firmware ${firmwareVersion} does not support favorites (requires >= 2.7.0)`);
-    } else {
-      logger.debug(`✅ Firmware ${firmwareVersion} supports favorites`);
-    }
-
-    this.favoritesSupportCache = { version: firmwareVersion, result: supportsFavorites };
-    return supportsFavorites;
+    return this.favoritesService.supportsFavorites();
   }
 
   /**
    * Send admin message to set a node as favorite on the device
    */
   async sendFavoriteNode(nodeNum: number, destinationNodeNum?: number): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    // Check firmware version support
-    if (!this.supportsFavorites()) {
-      throw new Error('FIRMWARE_NOT_SUPPORTED');
-    }
-
-    const localNodeNum = this.localNodeInfo?.nodeNum || 0;
-    const destNode = destinationNodeNum || localNodeNum;
-    const isRemote = destNode !== localNodeNum && destNode !== 0;
-
-    try {
-      let sessionPasskey: Uint8Array = new Uint8Array();
-      if (isRemote) {
-        const cached = this.getSessionPasskey(destNode);
-        if (cached) {
-          sessionPasskey = cached;
-        } else {
-          const requested = await this.requestRemoteSessionPasskey(destNode);
-          if (!requested) throw new Error(`Failed to obtain session passkey for remote node ${destNode}`);
-          sessionPasskey = requested;
-        }
-      }
-
-      const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, sessionPasskey);
-      await this.sendAdminCommand(setFavoriteMsg, destNode);
-      logger.debug(`⭐ Sent set_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) to ${isRemote ? 'remote' : 'local'} node ${destNode}`);
-    } catch (error) {
-      logger.error('❌ Error sending favorite node admin message:', error);
-      throw error;
-    }
+    return this.favoritesService.sendFavoriteNode(nodeNum, destinationNodeNum);
   }
 
   /**
    * Send admin message to remove a node from favorites on the device
    */
   async sendRemoveFavoriteNode(nodeNum: number, destinationNodeNum?: number): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    // Check firmware version support
-    if (!this.supportsFavorites()) {
-      throw new Error('FIRMWARE_NOT_SUPPORTED');
-    }
-
-    const localNodeNum = this.localNodeInfo?.nodeNum || 0;
-    const destNode = destinationNodeNum || localNodeNum;
-    const isRemote = destNode !== localNodeNum && destNode !== 0;
-
-    try {
-      let sessionPasskey: Uint8Array = new Uint8Array();
-      if (isRemote) {
-        const cached = this.getSessionPasskey(destNode);
-        if (cached) {
-          sessionPasskey = cached;
-        } else {
-          const requested = await this.requestRemoteSessionPasskey(destNode);
-          if (!requested) throw new Error(`Failed to obtain session passkey for remote node ${destNode}`);
-          sessionPasskey = requested;
-        }
-      }
-
-      const removeFavoriteMsg = protobufService.createRemoveFavoriteNodeMessage(nodeNum, sessionPasskey);
-      await this.sendAdminCommand(removeFavoriteMsg, destNode);
-      logger.debug(`☆ Sent remove_favorite_node for ${nodeNum} (!${nodeNum.toString(16).padStart(8, '0')}) to ${isRemote ? 'remote' : 'local'} node ${destNode}`);
-    } catch (error) {
-      logger.error('❌ Error sending remove favorite node admin message:', error);
-      throw error;
-    }
+    return this.favoritesService.sendRemoveFavoriteNode(nodeNum, destinationNodeNum);
   }
 
   /**
@@ -13300,79 +13046,7 @@ class MeshtasticManager implements ISourceManager {
    * @returns Promise that resolves when command is sent
    */
   async sendAdminCommand(adminMessagePayload: Uint8Array, destinationNodeNum: number): Promise<void> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node information not available');
-    }
-
-    const localNodeNum = this.localNodeInfo.nodeNum;
-
-    try {
-      const adminPacket = protobufService.createAdminPacket(
-        adminMessagePayload,
-        destinationNodeNum,
-        localNodeNum
-      );
-
-      await this.transport.send(adminPacket);
-      logger.debug(`✅ Sent admin command to node ${destinationNodeNum}`);
-
-      // Log outgoing admin command to packet monitor (ONLY for remote admin)
-      // Skip logging for local admin (destination == localNodeNum)
-      if (destinationNodeNum !== localNodeNum) {
-        await this.logOutgoingPacket(
-          6, // ADMIN_APP
-          destinationNodeNum,
-          0, // Admin uses channel 0
-          `Remote Admin to !${destinationNodeNum.toString(16).padStart(8, '0')}`,
-          { destinationNodeNum, isRemoteAdmin: true }
-        );
-      }
-    } catch (error) {
-      logger.error(`❌ Error sending admin command to node ${destinationNodeNum}:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Resolve a pending admin-ACK waiter from an inbound Routing packet.
-   * Returns true if the packet was consumed (so normal routing handling is
-   * skipped), false to let it continue.
-   *
-   * Semantics mirror message delivery: a routing error (errorReason !== 0)
-   * settles as failure; an error_reason=NONE ACK from the destination node
-   * settles as success; an error_reason=NONE ACK from our own radio means
-   * "transmitted to mesh" — consumed, but we keep waiting for the remote's ACK.
-   */
-  private tryResolveAdminAck(requestId: number, fromNum: number, errorReason: number): boolean {
-    const waiter = this.pendingAdminAcks.get(requestId);
-    if (!waiter) return false;
-
-    if (errorReason !== 0) {
-      this.settleAdminAck(requestId, errorReason);
-      return true;
-    }
-    if (fromNum === waiter.dest) {
-      // The destination node processed the admin command and ACKed it.
-      this.settleAdminAck(requestId, 0);
-      return true;
-    }
-    // error_reason=NONE from our own radio / an intermediate hop: the
-    // "delivered to mesh" ack, not proof the remote processed it. Consume it
-    // (admin packets aren't messages) but keep the waiter alive.
-    return true;
-  }
-
-  /** Settle and clean up a pending admin-ACK waiter. */
-  private settleAdminAck(requestId: number, errorReason: number | null): void {
-    const waiter = this.pendingAdminAcks.get(requestId);
-    if (!waiter) return;
-    clearTimeout(waiter.timer);
-    this.pendingAdminAcks.delete(requestId);
-    waiter.resolve(errorReason);
+    return this.adminTransactionService.sendAdminCommand(adminMessagePayload, destinationNodeNum);
   }
 
   /**
@@ -13386,52 +13060,7 @@ class MeshtasticManager implements ISourceManager {
     destinationNodeNum: number,
     timeoutMs: number = 30000
   ): Promise<{ packetId: number; acked: boolean; errorReason: number | null; timedOut: boolean }> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-    if (!this.localNodeInfo?.nodeNum) {
-      throw new Error('Local node information not available');
-    }
-    const localNodeNum = this.localNodeInfo.nodeNum;
-
-    const { data: adminPacket, packetId } = protobufService.createAdminPacketWithId(
-      adminMessagePayload,
-      destinationNodeNum,
-      localNodeNum
-    );
-
-    // Register the waiter BEFORE sending so a fast ACK can't be missed.
-    const ackPromise = new Promise<number | null>((resolve) => {
-      const timer = setTimeout(() => {
-        this.pendingAdminAcks.delete(packetId);
-        resolve(null);
-      }, timeoutMs);
-      this.pendingAdminAcks.set(packetId, { dest: destinationNodeNum, resolve, timer });
-    });
-
-    try {
-      await this.transport.send(adminPacket);
-      logger.debug(`✅ Sent admin command (await ack) to node ${destinationNodeNum}, packetId ${packetId}`);
-      if (destinationNodeNum !== localNodeNum) {
-        await this.logOutgoingPacket(
-          6, // ADMIN_APP
-          destinationNodeNum,
-          0,
-          `Remote Admin to !${destinationNodeNum.toString(16).padStart(8, '0')}`,
-          { destinationNodeNum, isRemoteAdmin: true, packetId }
-        );
-      }
-    } catch (error) {
-      this.settleAdminAck(packetId, null);
-      logger.error(`❌ Error sending admin command to node ${destinationNodeNum}:`, error);
-      throw error;
-    }
-
-    const errorReason = await ackPromise;
-    if (errorReason === null) {
-      return { packetId, acked: false, errorReason: null, timedOut: true };
-    }
-    return { packetId, acked: errorReason === 0, errorReason, timedOut: false };
+    return this.adminTransactionService.sendAdminCommandAwaitAck(adminMessagePayload, destinationNodeNum, timeoutMs);
   }
 
   /**
@@ -13443,32 +13072,7 @@ class MeshtasticManager implements ISourceManager {
     destinationNodeNum?: number,
     timeoutMs: number = 30000
   ): Promise<{ acked: boolean; errorReason: number | null; timedOut: boolean }> {
-    if (!this.isConnected || !this.transport) {
-      throw new Error('Not connected to Meshtastic node');
-    }
-    if (!this.supportsFavorites()) {
-      throw new Error('FIRMWARE_NOT_SUPPORTED');
-    }
-    const localNodeNum = this.localNodeInfo?.nodeNum || 0;
-    const destNode = destinationNodeNum || localNodeNum;
-    const isRemote = destNode !== localNodeNum && destNode !== 0;
-
-    let sessionPasskey: Uint8Array = new Uint8Array();
-    if (isRemote) {
-      const cached = this.getSessionPasskey(destNode);
-      if (cached) {
-        sessionPasskey = cached;
-      } else {
-        const requested = await this.requestRemoteSessionPasskey(destNode);
-        if (!requested) throw new Error(`Failed to obtain session passkey for remote node ${destNode}`);
-        sessionPasskey = requested;
-      }
-    }
-
-    const setFavoriteMsg = protobufService.createSetFavoriteNodeMessage(nodeNum, sessionPasskey);
-    const result = await this.sendAdminCommandAwaitAck(setFavoriteMsg, destNode, timeoutMs);
-    logger.debug(`⭐ set_favorite_node ${nodeNum} → node ${destNode}: acked=${result.acked} timedOut=${result.timedOut} err=${result.errorReason}`);
-    return { acked: result.acked, errorReason: result.errorReason, timedOut: result.timedOut };
+    return this.favoritesService.sendFavoriteNodeAwaitAck(nodeNum, destinationNodeNum, timeoutMs);
   }
 
   /**
@@ -14031,6 +13635,37 @@ class MeshtasticManager implements ISourceManager {
   /** `true` while a post-reboot NodeDB merge is suppressing broadcasts. */
   isRebootMergeInProgress(): boolean {
     return this.rebootMergeInProgress;
+  }
+
+  // ── Narrow accessors for FavoritesService (#3962 Phase 4.2a PR4 §4c) ──
+  // favoritesSupportCache/autoFavoritingNodes stay on the manager (pinned
+  // tests reach into them directly — see favoritesService.ts's header
+  // comment for the full rationale); these bridge them to the service
+  // without widening the fields themselves.
+
+  /** Read the version-keyed favorites-support cache. */
+  getFavoritesSupportCache(): { version: string; result: boolean } | null {
+    return this.favoritesSupportCache;
+  }
+
+  /** Write (or clear, with `null`) the favorites-support cache. */
+  setFavoritesSupportCache(value: { version: string; result: boolean } | null): void {
+    this.favoritesSupportCache = value;
+  }
+
+  /** Whether an auto-favorite operation is already in flight for this node. */
+  isAutoFavoritingNode(nodeNum: number): boolean {
+    return this.autoFavoritingNodes.has(nodeNum);
+  }
+
+  /** Mark a node as having an auto-favorite operation in flight. */
+  addAutoFavoritingNode(nodeNum: number): void {
+    this.autoFavoritingNodes.add(nodeNum);
+  }
+
+  /** Clear the in-flight marker for a node's auto-favorite operation. */
+  removeAutoFavoritingNode(nodeNum: number): void {
+    this.autoFavoritingNodes.delete(nodeNum);
   }
 
   // Async version that fetches uptimes in a single bulk query - works with all DB backends
