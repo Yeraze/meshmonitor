@@ -73,6 +73,7 @@ import { AdminTransactionService } from './services/adminTransactionService.js';
 import { FavoritesService } from './services/favoritesService.js';
 import { DeviceAdminService } from './services/deviceAdminService.js';
 import { RemoteAdminService } from './services/remoteAdminService.js';
+import { ConnState, dispatch, type SmContext } from './meshtastic/connectionStateMachine.js';
 import fs from 'fs';
 import path from 'path';
 import * as net from 'net';
@@ -477,8 +478,182 @@ class MeshtasticManager implements ISourceManager {
   // concurrent connect() joins it instead of building a second (orphan)
   // transport (#3270). Cleared in a finally when the attempt settles.
   private connectInFlight: Promise<boolean> | null = null;
-  private isConnected = false;
-  private userDisconnectedState = false;  // Track user-initiated disconnect
+  // Connection-lifecycle state machine (#3962 Phase 4.2b, task42b_spec.md).
+  // `#state` is the single source of truth for link-state; `isConnected` and
+  // `userDisconnectedState` below are DERIVED getters over it (§2.1/§3.3 —
+  // amended §0.3: only these two booleans derive from ConnState; the two
+  // config-capture flags stay independent auxiliary fields, see their
+  // declarations near `initConfigCache`).
+  //
+  // C1 (this checkpoint) wires `#state` writes at the *existing* mutation
+  // points mechanically via these accessors — every call site that used to
+  // write `this.isConnected = <bool>` / `this.userDisconnectedState = <bool>`
+  // (internal manager code AND test fixtures that seed state directly) keeps
+  // compiling and behaving byte-identically, because the setters below
+  // translate a legacy boolean write into the equivalent `#state` update.
+  // C2 replaces the internal writes with real `dispatch(...)` calls; these
+  // accessors remain afterward as the compatibility surface for the ~30
+  // existing test call sites that seed state via direct field assignment.
+  #state: ConnState = ConnState.Disconnected;
+
+  private get isConnected(): boolean {
+    return this.#state === ConnState.ConfigSync || this.#state === ConnState.Connected;
+  }
+
+  private set isConnected(value: boolean) {
+    if (value) {
+      // A direct "true" write always means "connected" for the purposes of
+      // the 41 `isConnected` readers (none of them distinguish ConfigSync
+      // vs Connected — that distinction only matters to the independent
+      // config-capture flags). Preserve ConfigSync if we're already mid
+      // handshake so a later `isCapturingInitConfig`-driven write isn't
+      // clobbered by an unrelated `isConnected = true` seed.
+      if (this.#state !== ConnState.ConfigSync) {
+        this.#state = ConnState.Connected;
+      }
+    } else if (this.#state !== ConnState.UserDisconnected) {
+      // Never regress out of UserDisconnected via a plain "isConnected =
+      // false" write — that write is independent of userDisconnectedState
+      // in the legacy boolean model (e.g. handleDisconnected() always sets
+      // isConnected=false, including when a user-initiated disconnect's
+      // transport.disconnect() call loops back through it).
+      this.#state = ConnState.Disconnected;
+    }
+  }
+
+  private get userDisconnectedState(): boolean {
+    return this.#state === ConnState.UserDisconnected;
+  }
+
+  private set userDisconnectedState(value: boolean) {
+    if (value) {
+      this.#state = ConnState.UserDisconnected;
+    } else if (this.#state === ConnState.UserDisconnected) {
+      this.#state = ConnState.Disconnected;
+    }
+  }
+
+  // ── Connection-lifecycle state-machine helpers (#3962 Phase 4.2b C2) ──
+  // `connect`/`doConnectInternal`/`handleConnected`/`handleDisconnected`/
+  // `requestManualResync`/`userDisconnect`/`userReconnect` (and the
+  // `configComplete` protobuf-dispatch case) build an `SmContext` from live
+  // fields, call `dispatch(#state, event, ctx)`, set `#state`, then execute
+  // the returned actions in place at their original call-site position —
+  // NOT via one generic action interpreter shared byte-for-byte across every
+  // call site. The reducer's action vocabulary is intentionally reused
+  // across transitions that mean genuinely different things in the manager
+  // (e.g. `clearDeviceCaches` clears different fields on a fresh connect vs.
+  // a disconnect), so a single generic switch can't express all of them
+  // without guessing context; executing them inline, at the same code
+  // position the equivalent write used to occupy, preserves exact
+  // side-effect ordering for the pinned tests while still making `dispatch`
+  // the single source of truth for `#state`.
+
+  /** Build an `SmContext` snapshot from live fields; callers override only
+   *  the handful of fields they alone can compute synchronously. */
+  private buildSmContext(overrides: Partial<SmContext> = {}): SmContext {
+    return {
+      passive: this.passiveMode,
+      vnEnabled: this.virtualNodeServer !== undefined,
+      cachesFresh: false,
+      suppressNext: this.suppressNextAutoSync,
+      postResetActive: this.postResetCooldownUntil > 0,
+      transportPresent: this.transport !== null,
+      transportIdentityMatches: true,
+      ...overrides,
+    };
+  }
+
+  // The four capture-flag actions (task42b_spec.md §0.3/§3.2 legend) — the
+  // ONLY writers of `configCaptureComplete` / `isCapturingInitConfig`.
+  // Buffer resets (`initConfigCache`, `preConfigChannelSnapshot`) stay as
+  // separate, explicit statements at each call site — pre-refactor code
+  // never bundled them into these two booleans either.
+  private startConfigCapture(): void {
+    this.isCapturingInitConfig = true;
+    this.configCaptureComplete = false;
+  }
+  private completeConfigCapture(): void {
+    this.isCapturingInitConfig = false;
+    this.configCaptureComplete = true;
+  }
+  private clearConfigCapture(): void {
+    this.isCapturingInitConfig = false;
+    this.configCaptureComplete = false;
+  }
+  private preserveConfigCapture(): void {
+    // no-op on both flags — #3122 passive/no-VN disconnect keeps the cached
+    // snapshot valid even though the link just went down.
+  }
+
+  /** Extracted verbatim from the old inline `doConnectInternal` teardown
+   *  block — the `teardownPrevTransport` action's implementation. */
+  private teardownExistingTransport(injectedTransport?: ITransport): void {
+    if (this.transport && this.transport !== injectedTransport) {
+      logger.debug('🔌 Tearing down existing transport before reconnect (prevents orphaned-transport flap #3270)');
+      try {
+        this.transport.removeAllListeners();
+        this.transport.disconnect();
+      } catch (teardownErr) {
+        const msg = teardownErr instanceof Error ? teardownErr.message : String(teardownErr);
+        logger.debug(`Ignoring error tearing down previous transport: ${msg}`);
+      }
+      this.transport = null;
+    }
+  }
+
+  private cancelConfigCompleteFallbackTimer(): void {
+    if (this.configCompleteFallbackTimer) {
+      clearTimeout(this.configCompleteFallbackTimer);
+      this.configCompleteFallbackTimer = null;
+    }
+  }
+
+  /** The `armFallbackTimer` action's implementation. Promoted from an inline
+   *  `setTimeout` closure (#3962 Phase 4.2b C2) so every exit from
+   *  `ConfigSync` can cancel it — the inline version never cancelled itself
+   *  and leaked one timer per (re)connect attempt for the life of the
+   *  process. Fires the `CONFIG_FALLBACK` transition if `configComplete`
+   *  never arrives. */
+  private armConfigCompleteFallbackTimer(): void {
+    this.cancelConfigCompleteFallbackTimer();
+    this.configCompleteFallbackTimer = setTimeout(() => {
+      this.configCompleteFallbackTimer = null;
+      if (!this.configCaptureComplete && this.isConnected) {
+        logger.warn(`⚠️ configComplete not received after ${MeshtasticManager.CONFIG_COMPLETE_FALLBACK_MS / 1000}s — starting schedulers via fallback`);
+        const { next, actions } = dispatch(this.#state, 'CONFIG_FALLBACK', this.buildSmContext());
+        this.#state = next;
+        for (const action of actions) {
+          if (action.kind === 'completeConfigCapture') {
+            this.completeConfigCapture();
+          } else if (action.kind === 'runOnConfigCaptureComplete') {
+            if (this.onConfigCaptureComplete) {
+              try { this.onConfigCaptureComplete(); } catch (e) { logger.error('❌ Error in fallback config complete:', e); }
+            }
+          }
+        }
+        this.assertStateConsistent();
+      }
+    }, MeshtasticManager.CONFIG_COMPLETE_FALLBACK_MS);
+  }
+
+  /**
+   * Dev/test-only invariant guard (task42b_spec.md §4 C2): the two
+   * *derived* booleans must always agree with `#state`. Intentionally does
+   * NOT check `configCaptureComplete`/`isCapturingInitConfig` — the
+   * passive-no-VN disconnect case legally decouples them (#3122).
+   */
+  private assertStateConsistent(): void {
+    if (process.env.NODE_ENV === 'production') return;
+    const expectedConnected = this.#state === ConnState.ConfigSync || this.#state === ConnState.Connected;
+    const expectedUserDisconnected = this.#state === ConnState.UserDisconnected;
+    if (this.isConnected !== expectedConnected || this.userDisconnectedState !== expectedUserDisconnected) {
+      throw new Error(
+        `[assertStateConsistent] derived-boolean/state mismatch: state=${this.#state} isConnected=${this.isConnected} (expected ${expectedConnected}) userDisconnectedState=${this.userDisconnectedState} (expected ${expectedUserDisconnected})`
+      );
+    }
+  }
+
   private tracerouteInterval: NodeJS.Timeout | null = null;
   private tracerouteJitterTimeout: NodeJS.Timeout | null = null;
   // null until startDistanceDeleteScheduler() is first called (lazy-loaded to
@@ -487,6 +662,9 @@ class MeshtasticManager implements ISourceManager {
   // Reconnect flood prevention timing (#2474)
   private static readonly SCHEDULER_STAGGER_MS = 5000;  // Delay between each scheduler start
   private static readonly CONFIG_COMPLETE_FALLBACK_MS = 120000;  // Fallback if configComplete never arrives
+  // Handle for the fallback timer above, promoted from an inline `setTimeout`
+  // closure (#3962 Phase 4.2b C2) — see `armConfigCompleteFallbackTimer`.
+  private configCompleteFallbackTimer: NodeJS.Timeout | null = null;
 
   private tracerouteIntervalMinutes: number = 0;
   private lastTracerouteSentTime: number = 0;
@@ -1200,31 +1378,19 @@ class MeshtasticManager implements ISourceManager {
       const config = await this.getConfig();
       logger.debug(`Connecting to Meshtastic node at ${config.nodeIp}:${config.tcpPort}...`);
 
-      // Tear down any existing transport before creating a new one. Without
-      // this, a second connect() call — refreshNodeDatabase() landing in a
-      // transient disconnect window, a user reconnect, or a startup race —
-      // orphans the previous TcpTransport: its socket stays open, its
-      // 'connect'/'disconnect' listeners stay bound to this manager, and its
-      // internal shouldReconnect flag keeps it auto-reconnecting forever.
-      // Two live transports against the same meshtasticd — whose single
-      // API-client policy force-closes the older socket whenever a new one
-      // arrives — then ping-pong indefinitely, producing the 25–60s
-      // disconnect/reconnect flap with a ~2:1 daemon-force-close ratio and
-      // no want_config_id errors (#3270). Disconnecting the old transport
-      // first (clears shouldReconnect, removes listeners, destroys the socket)
-      // guarantees exactly one live transport per manager. Skip when the
-      // caller re-injects the same transport (test/VN injection path).
-      if (this.transport && this.transport !== injectedTransport) {
-        logger.debug('🔌 Tearing down existing transport before reconnect (prevents orphaned-transport flap #3270)');
-        try {
-          this.transport.removeAllListeners();
-          this.transport.disconnect();
-        } catch (teardownErr) {
-          const msg = teardownErr instanceof Error ? teardownErr.message : String(teardownErr);
-          logger.debug(`Ignoring error tearing down previous transport: ${msg}`);
-        }
-        this.transport = null;
+      // #3962 Phase 4.2b C2: CONNECT_REQUESTED — teardown-prev-transport
+      // (#3270, `teardownExistingTransport` below is the `teardownPrevTransport`
+      // action's implementation, extracted verbatim from the old inline
+      // block) if different from an injected transport; routes to Probing
+      // first when a post-reset cooldown is pending, else straight to
+      // Connecting.
+      const requestCtx = this.buildSmContext({ postResetActive: this.postResetCooldownUntil > 0 });
+      const { next: afterRequest, actions: requestActions } = dispatch(this.#state, 'CONNECT_REQUESTED', requestCtx);
+      this.#state = afterRequest;
+      for (const action of requestActions) {
+        if (action.kind === 'teardownPrevTransport') this.teardownExistingTransport(injectedTransport);
       }
+      this.assertStateConsistent();
 
       // Initialize protobuf service first
       await meshtasticProtobufService.initialize();
@@ -1288,10 +1454,11 @@ class MeshtasticManager implements ISourceManager {
       });
 
       // Only honor cooldown + probe when handleConnected has flagged a
-      // post-OTA half-open recovery. On cold/normal connects we skip both
-      // so the 15s TCP probe doesn't eat the caller's connection budget.
-      const cooldownActive = this.postResetCooldownUntil > 0;
-      if (cooldownActive) {
+      // post-OTA half-open recovery (Probing, entered above by
+      // CONNECT_REQUESTED when postResetCooldownUntil > 0). On cold/normal
+      // connects we skip both so the 15s TCP probe doesn't eat the caller's
+      // connection budget.
+      if (this.#state === ConnState.Probing) {
         // Honor post-reset cooldown — after a transient post-OTA half-open
         // connect we deliberately wait before re-attempting so the node's
         // WiFi stack can finish settling and we don't loop on the same race.
@@ -1310,8 +1477,17 @@ class MeshtasticManager implements ISourceManager {
           logger.warn(`⚠️ TCP readiness probe to ${config.nodeIp}:${config.tcpPort} failed (${msg}) — proceeding anyway`);
         }
 
-        // Clear the flag so subsequent normal connects skip this path.
-        this.postResetCooldownUntil = 0;
+        // #3962 Phase 4.2b C2: PROBE_DONE — Probing -> Connecting, clears
+        // postResetCooldownUntil. 'connectTransport' is a no-op marker here —
+        // the actual `transport.connect()` call is the unconditional
+        // statement immediately below, for both the Probing and
+        // non-Probing paths.
+        const { next: afterProbe, actions: probeActions } = dispatch(this.#state, 'PROBE_DONE', requestCtx);
+        this.#state = afterProbe;
+        for (const action of probeActions) {
+          if (action.kind === 'clearPostResetCooldown') this.postResetCooldownUntil = 0;
+        }
+        this.assertStateConsistent();
       }
 
       // Connect to node
@@ -1321,6 +1497,12 @@ class MeshtasticManager implements ISourceManager {
 
       return true;
     } catch (error) {
+      // No SmEvent models a synchronous connect-attempt failure (getConfig/
+      // protobuf-init/transport.connect throwing) — task42b_spec.md §3.2 has
+      // no such row. The `isConnected` write-shim's false-branch already
+      // implements exactly the right semantics here ("go to Disconnected
+      // unless already UserDisconnected"), so it's kept as-is rather than
+      // inventing a new transition for an untabulated edge case.
       this.isConnected = false;
       logger.error('Failed to connect to Meshtastic node:', error);
       throw error;
@@ -1381,13 +1563,6 @@ class MeshtasticManager implements ISourceManager {
       logger.debug('🟡 [connect-race] handleConnected fired with no transport — skipping handshake (#3247)');
       return;
     }
-    this.isConnected = true;
-
-    // Emit WebSocket event for connection status change
-    dataEventEmitter.emitConnectionStatus({
-      connected: true,
-      reason: 'TCP connection established'
-    }, this.sourceId);
 
     // Passive Mode (issue #3122): if we already have a cached snapshot of the
     // node and config, skip the destabilizing post-reconnect full sync.
@@ -1395,6 +1570,12 @@ class MeshtasticManager implements ISourceManager {
     // does the full handshake so we don't drift permanently out of date.
     // The window is per-source-configurable via passiveResyncStaleMs and
     // falls back to PASSIVE_RESYNC_STALE_MS (4h) when unset.
+    //
+    // #3962 Phase 4.2b C2 (task42b_spec.md §0.3 case 2): this skip/full
+    // decision only reads synchronously-available fields, so it's computed
+    // here, BEFORE the state write, and folded into ONE atomic
+    // TRANSPORT_CONNECTED dispatch below — no intermediate "connected but
+    // undecided" window between setting isConnected and picking a target.
     const passiveResyncFresh =
       this.passiveMode &&
       this.localNodeInfo !== null &&
@@ -1407,17 +1588,32 @@ class MeshtasticManager implements ISourceManager {
     // the node to close the socket, we don't want the reconnect to immediately
     // retry the same sync and reproduce the failure loop (#3122 follow-up).
     const consumeSuppressFlag = this.suppressNextAutoSync;
+    const skipFullSync = passiveResyncFresh || consumeSuppressFlag;
+
+    const { next } = dispatch(
+      this.#state,
+      'TRANSPORT_CONNECTED',
+      this.buildSmContext({ cachesFresh: passiveResyncFresh, suppressNext: consumeSuppressFlag })
+    );
+    this.#state = next;
+
+    // Emit WebSocket event for connection status change
+    dataEventEmitter.emitConnectionStatus({
+      connected: true,
+      reason: 'TCP connection established'
+    }, this.sourceId);
+
     if (consumeSuppressFlag) {
+      // 'consumeSuppressNext' action
       this.suppressNextAutoSync = false;
       logger.warn('🟡 [manual-resync recovery] Skipping want_config_id on this reconnect — the previous manual resync did not complete cleanly; cached config will be reused');
     }
-
-    const skipFullSync = passiveResyncFresh || consumeSuppressFlag;
 
     // Keep cached localNodeInfo when we're skipping the sync — dependent code
     // would otherwise briefly mark the node un-responsive between connect events.
     if (!skipFullSync) {
       // Clear localNodeInfo so node will be marked as not responsive until it sends MyNodeInfo
+      // ('clearDeviceCaches' action, localNodeInfo portion)
       this.localNodeInfo = null;
     }
 
@@ -1436,28 +1632,32 @@ class MeshtasticManager implements ISourceManager {
           ? '🟡 [manual-resync recovery] Skipping want_config_id — using cached config'
           : '🟢 [passive] Skipping want_config_id on reconnect — using cached config from last session';
         logger.debug(reason);
-        this.configCaptureComplete = true;
-        this.isCapturingInitConfig = false;
+        // 'completeConfigCapture' action — skip path marks the cached
+        // snapshot current without a fresh sync.
+        this.completeConfigCapture();
         // A manual-resync recovery should also clear the in-flight latch so the
         // operator's button re-enables (the original sync never reached
         // configComplete, so the normal onConfigCaptureComplete handler
         // wouldn't have fired). Use 'recovery' so the watchdog cancels cleanly.
+        // ('clearManualResync' action, reason: 'recovery')
         if (consumeSuppressFlag) {
           this.clearManualResyncInFlight('recovery');
         }
         // Run the scheduler callback as if config had just completed. The
         // callback itself honors passiveMode and will skip the outbound burst.
+        // ('runOnConfigCaptureComplete' action)
         if (this.onConfigCaptureComplete) {
           try { this.onConfigCaptureComplete(); } catch (e) { logger.error('❌ Error in passive-mode config-capture callback:', e); }
         }
+        this.assertStateConsistent();
         return;
       }
 
       // Enable message capture for virtual node server
       // Clear any previous cache and start capturing
+      // ('clearDeviceCaches' + 'startConfigCapture' actions)
       this.initConfigCache = [];
-      this.configCaptureComplete = false;
-      this.isCapturingInitConfig = true;
+      this.startConfigCapture();
       this.deviceNodeNums.clear();
       this.channel0Exists = false;  // Reset channel 0 cache on reconnect
 
@@ -1480,6 +1680,7 @@ class MeshtasticManager implements ISourceManager {
       // — otherwise isConnected stays true while the transport is gone and
       // every later operation fails with the same error.
       try {
+        // 'sendWantConfig' action
         await this.sendWantConfigId();
       } catch (sendErr) {
         const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
@@ -1489,8 +1690,21 @@ class MeshtasticManager implements ISourceManager {
         // connect cycle is already in flight (or the source is being shut
         // down). Tearing down here would create the 3×/min reconnect loop
         // documented in #3247, so bail out quietly instead.
-        if (this.transport !== transportAtConnect) {
+        //
+        // #3962 Phase 4.2b C2: HANDSHAKE_SEND_FAILED. The identity mismatch
+        // branch is the reducer's silent bail (#3247) — no state mutation, no
+        // flag write, no emit; the genuine-failure branch transitions
+        // ConfigSync -> Disconnected via the returned actions.
+        const transportIdentityMatches = this.transport === transportAtConnect;
+        const { next: failNext, actions: failActions } = dispatch(
+          this.#state,
+          'HANDSHAKE_SEND_FAILED',
+          this.buildSmContext({ transportIdentityMatches })
+        );
+        this.#state = failNext;
+        if (!transportIdentityMatches) {
           logger.debug(`🟡 [connect-race] sendWantConfigId aborted — transport replaced during handshake (${msg}) (#3247)`);
+          this.assertStateConsistent();
           return;
         }
         // Genuine transport-layer failure (e.g. tcpTransport.send throwing
@@ -1498,13 +1712,29 @@ class MeshtasticManager implements ISourceManager {
         // mid-OTA-reboot). The existing post-reset cooldown path is correct
         // for this case.
         logger.warn(`⚠️ Initial sendWantConfigId failed (${msg}) — treating as transient post-connect reset, clearing state for clean reconnect`);
-        this.postResetCooldownUntil = Date.now() + POST_RESET_COOLDOWN_MS;
-        this.isConnected = false;
-        try { await this.transport?.disconnect(); } catch { /* ignore */ }
-        dataEventEmitter.emitConnectionStatus({
-          connected: false,
-          reason: `Transport reset immediately after connect: ${msg}`,
-        }, this.sourceId);
+        for (const action of failActions) {
+          switch (action.kind) {
+            case 'setPostResetCooldown':
+              this.postResetCooldownUntil = Date.now() + POST_RESET_COOLDOWN_MS;
+              break;
+            case 'disconnectTransport':
+              try { await this.transport?.disconnect(); } catch { /* ignore */ }
+              break;
+            case 'emitStatus':
+              dataEventEmitter.emitConnectionStatus({
+                connected: false,
+                reason: `Transport reset immediately after connect: ${msg}`,
+              }, this.sourceId);
+              break;
+            default:
+              break;
+          }
+        }
+        // A genuine post-connect reset never got far enough to arm the
+        // fallback timer for THIS attempt, but a still-pending timer from an
+        // earlier attempt would otherwise survive into the next connect cycle.
+        this.cancelConfigCompleteFallbackTimer();
+        this.assertStateConsistent();
         this.handleDisconnected().catch((e) => logger.error('Error in handleDisconnected (post-connect-reset cleanup):', e));
         return;
       }
@@ -1647,18 +1877,11 @@ class MeshtasticManager implements ISourceManager {
       };
 
       // Fallback: if configComplete never arrives (device disconnects mid-config),
-      // start schedulers after the fallback timeout anyway
-      setTimeout(() => {
-        if (!this.configCaptureComplete && this.isConnected) {
-          logger.warn(`⚠️ configComplete not received after ${MeshtasticManager.CONFIG_COMPLETE_FALLBACK_MS / 1000}s — starting schedulers via fallback`);
-          this.configCaptureComplete = true;
-          this.isCapturingInitConfig = false;
-          if (this.onConfigCaptureComplete) {
-            try { this.onConfigCaptureComplete(); } catch (e) { logger.error('❌ Error in fallback config complete:', e); }
-          }
-        }
-      }, MeshtasticManager.CONFIG_COMPLETE_FALLBACK_MS);
+      // start schedulers after the fallback timeout anyway.
+      // 'armFallbackTimer' action.
+      this.armConfigCompleteFallbackTimer();
 
+      this.assertStateConsistent();
     } catch (error) {
       logger.error('❌ Failed to request configuration:', error);
       await this.ensureBasicSetup();
@@ -1667,10 +1890,29 @@ class MeshtasticManager implements ISourceManager {
 
   private async handleDisconnected(): Promise<void> {
     logger.debug('TCP connection lost');
-    this.isConnected = false;
+
+    // #3962 Phase 4.2b C2: TRANSPORT_DISCONNECTED. A transport-level
+    // disconnect that fires after an operator-initiated userDisconnect()
+    // must not regress UserDisconnected back to the auto-reconnecting
+    // Disconnected state — the pure reducer's TRANSPORT_DISCONNECTED case
+    // doesn't branch on the incoming state at all (task42b_spec.md §3.2 has
+    // no such row), so — same pattern as the manual-resync guards living in
+    // the manager rather than the reducer (§5) — that invariant is enforced
+    // here. The cache-clearing/notify actions still run either way, matching
+    // pre-refactor behavior (only the resulting state and the notify call
+    // were ever gated on it).
+    const alreadyUserDisconnected = this.#state === ConnState.UserDisconnected;
+    const ctx = this.buildSmContext({ vnEnabled: this.virtualNodeServer !== undefined });
+    const { next, actions } = dispatch(this.#state, 'TRANSPORT_DISCONNECTED', ctx);
+    this.#state = alreadyUserDisconnected ? ConnState.UserDisconnected : next;
+
+    // 'recordLastDisconnect' action
     this.lastDisconnectAt = Date.now();
 
-    // Emit WebSocket event for connection status change
+    // Emit WebSocket event for connection status change. Captured from
+    // localNodeInfo now, before any cache-clearing action below may null it
+    // (matches pre-refactor ordering — the emit used to fire before the
+    // passive/non-passive branch).
     dataEventEmitter.emitConnectionStatus({
       connected: false,
       nodeNum: this.localNodeInfo?.nodeNum,
@@ -1682,46 +1924,60 @@ class MeshtasticManager implements ISourceManager {
     // remote-initiated close on a large TCP node doesn't kick off another full
     // NodeDB resync. Virtual Node needs fresh replay data, so still clear the
     // init capture buffer when VN is enabled.
-    if (this.passiveMode) {
-      this.favoritesSupportCache = null;
-      const vnEnabled = this.virtualNodeServer !== undefined;
-      if (vnEnabled) {
-        this.initConfigCache = [];
-        this.configCaptureComplete = false;
-        logger.debug('📸 [passive] VN enabled — cleared init config cache, kept device/module config');
-      } else {
-        logger.debug('📸 [passive] Preserved localNodeInfo + device/module/init config cache across disconnect');
+    for (const action of actions) {
+      switch (action.kind) {
+        case 'clearDeviceCaches':
+          // Clear localNodeInfo so node will be marked as not responsive.
+          // Clear device/module config cache on disconnect — ensures fresh
+          // config is fetched on reconnect (prevents stale data after reboot).
+          this.localNodeInfo = null;
+          this.actualDeviceConfig = null;
+          this.actualModuleConfig = null;
+          logger.debug('📸 Cleared device and module config cache on disconnect');
+          break;
+        case 'clearConfigCapture':
+          // Clear init config cache — will be repopulated on reconnect. This
+          // ensures virtual node clients get fresh data if a different node
+          // reconnects.
+          this.initConfigCache = [];
+          this.clearConfigCapture();
+          logger.debug(this.passiveMode
+            ? '📸 [passive] VN enabled — cleared init config cache, kept device/module config'
+            : '📸 Cleared init config cache on disconnect');
+          break;
+        case 'preserveConfigCapture':
+          this.preserveConfigCapture();
+          logger.debug('📸 [passive] Preserved localNodeInfo + device/module/init config cache across disconnect');
+          break;
+        default:
+          break;
       }
-    } else {
-      // Clear localNodeInfo so node will be marked as not responsive
-      this.localNodeInfo = null;
-      // Clear favorites support cache on disconnect
-      this.favoritesSupportCache = null;
-      // Clear device/module config cache on disconnect
-      // This ensures fresh config is fetched on reconnect (prevents stale data after reboot)
-      this.actualDeviceConfig = null;
-      this.actualModuleConfig = null;
-      logger.debug('📸 Cleared device and module config cache on disconnect');
-      // Clear init config cache - will be repopulated on reconnect
-      // This ensures virtual node clients get fresh data if a different node reconnects
-      this.initConfigCache = [];
-      this.configCaptureComplete = false;
-      logger.debug('📸 Cleared init config cache on disconnect');
     }
+
+    // Always invalidated on disconnect (all three branches) — keyed on the
+    // live connection, not one of the two capture flags, so it isn't a named
+    // SmAction (task42b_spec.md §2.2/§2.5).
+    this.favoritesSupportCache = null;
 
     // Notify server event service of disconnection
     // Skip notification if this is a user-initiated disconnect (already notified in userDisconnect())
-    if (!this.userDisconnectedState) {
+    if (!alreadyUserDisconnected) {
       await serverEventNotificationService.notifyNodeDisconnected(this.sourceId, await this.getSourceName());
     }
 
     // Only auto-reconnect if not in user-disconnected state
-    if (this.userDisconnectedState) {
+    if (alreadyUserDisconnected) {
       logger.debug('User-initiated disconnect active, skipping auto-reconnect');
     } else {
       // Transport will handle automatic reconnection
       logger.debug('Auto-reconnection will be attempted by transport');
     }
+
+    // Cancel any pending config-complete fallback timer — a disconnect mid
+    // ConfigSync must not let a stale timer fire schedulers later (#3962
+    // Phase 4.2b C2 leak fix).
+    this.cancelConfigCompleteFallbackTimer();
+    this.assertStateConsistent();
   }
 
   private async createDefaultChannels(): Promise<void> {
@@ -1857,6 +2113,11 @@ class MeshtasticManager implements ISourceManager {
 
   disconnect(): void {
     this.isConnected = false;
+    // Cancel any pending config-complete fallback timer (#3962 Phase 4.2b C2
+    // leak fix) — this method isn't routed through dispatch(), but it's
+    // still an exit from ConfigSync/Connected and must not leave a stale
+    // timer armed.
+    this.cancelConfigCompleteFallbackTimer();
 
     if (this.transport) {
       this.transport.disconnect();
@@ -4132,23 +4393,46 @@ class MeshtasticManager implements ISourceManager {
             }
           }
 
-          // Stop capturing init messages
+          // Stop capturing init messages.
+          // #3962 Phase 4.2b C2: CONFIG_COMPLETE — ConfigSync -> Connected.
+          // Out-of-scope guard (task42b_spec.md §9): this dispatch case fires
+          // the CONFIG_COMPLETE event into the SM, but its body (lastHeard
+          // refresh above, #2425 migration, callback) is unchanged.
           if (this.isCapturingInitConfig && !this.configCaptureComplete) {
-            this.configCaptureComplete = true;
-            this.isCapturingInitConfig = false;
+            const { next, actions } = dispatch(this.#state, 'CONFIG_COMPLETE', this.buildSmContext());
+            this.#state = next;
             logger.debug(`📸 Init config capture complete! Captured ${this.initConfigCache.length} messages for virtual node replay`);
 
-            // Detect channel moves/swaps from external sources (#2425)
-            await this.detectAndMigrateChannelChanges();
-
-            // Call registered callback if present
-            if (this.onConfigCaptureComplete) {
-              try {
-                this.onConfigCaptureComplete();
-              } catch (error) {
-                logger.error('❌ Error in config capture complete callback:', error);
+            for (const action of actions) {
+              switch (action.kind) {
+                case 'completeConfigCapture':
+                  this.completeConfigCapture();
+                  break;
+                case 'detectChannelMigration':
+                  // Detect channel moves/swaps from external sources (#2425)
+                  await this.detectAndMigrateChannelChanges();
+                  break;
+                case 'clearManualResync':
+                  this.clearManualResyncInFlight(action.reason);
+                  break;
+                case 'runOnConfigCaptureComplete':
+                  // Call registered callback if present
+                  if (this.onConfigCaptureComplete) {
+                    try {
+                      this.onConfigCaptureComplete();
+                    } catch (error) {
+                      logger.error('❌ Error in config capture complete callback:', error);
+                    }
+                  }
+                  break;
+                case 'cancelFallbackTimer':
+                  this.cancelConfigCompleteFallbackTimer();
+                  break;
+                default:
+                  break;
               }
             }
+            this.assertStateConsistent();
           }
           break;
         default:
@@ -12837,18 +13121,26 @@ class MeshtasticManager implements ISourceManager {
     }
 
     logger.info('🟡 [manual-resync] Operator-initiated resync — sending want_config_id');
+
+    // #3962 Phase 4.2b C2: MANUAL_RESYNC_REQUESTED — Connected -> ConfigSync
+    // (origin=manual). Guards above are kept in the manager (task42b_spec.md
+    // §5); the reducer covers only the state flip + capture-flag/watchdog
+    // actions.
+    const { next } = dispatch(this.#state, 'MANUAL_RESYNC_REQUESTED', this.buildSmContext());
+    this.#state = next;
+
     this.manualResyncInFlight = true;
     this.manualResyncLastAt = now;
     // Latch the suppress flag BEFORE sending so a same-tick disconnect (which
     // can happen on a fragile node) is observed by handleDisconnected → reconnect
-    // before this method returns.
+    // before this method returns. ('latchSuppressNext' action)
     this.suppressNextAutoSync = true;
     // Mark config capture as resuming so streamed FromRadio entries refresh
     // the cached snapshot rather than being dropped as "already complete".
-    this.configCaptureComplete = false;
-    this.isCapturingInitConfig = true;
+    // ('startConfigCapture' action)
+    this.startConfigCapture();
 
-    // Watchdog: clear in-flight if the stream never lands.
+    // 'armResyncWatchdog' action: clear in-flight if the stream never lands.
     if (this.manualResyncWatchdog) clearTimeout(this.manualResyncWatchdog);
     this.manualResyncWatchdog = setTimeout(() => {
       if (this.manualResyncInFlight) {
@@ -12858,18 +13150,23 @@ class MeshtasticManager implements ISourceManager {
     }, MeshtasticManager.MANUAL_RESYNC_WATCHDOG_MS);
 
     try {
+      // 'sendWantConfig' action
       await this.sendWantConfigId();
     } catch (sendErr) {
       const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
       logger.warn(`⚠️ [manual-resync] sendWantConfigId failed: ${msg}`);
-      // Send-time failure means the request never reached the node, so the
-      // suppress latch and in-flight aren't useful — clear them so the
-      // operator can retry (subject to cooldown).
+      // Send-time failure means the request never reached the node. No
+      // SmEvent models this path (task42b_spec.md §5: manual-resync guards
+      // stay in the manager, not the reducer) — clean up the in-flight/
+      // suppress latches directly so the operator can retry (subject to
+      // cooldown). State and the capture flags are left exactly as
+      // MANUAL_RESYNC_REQUESTED set them, matching pre-refactor behavior.
       this.clearManualResyncInFlight('send-failed');
       this.suppressNextAutoSync = false;
       return { started: false, inFlight: false, cooldownExpiresAt: now + MeshtasticManager.MANUAL_RESYNC_COOLDOWN_MS, reason: 'send-failed' };
     }
 
+    this.assertStateConsistent();
     return {
       started: true,
       inFlight: true,
@@ -12936,12 +13233,19 @@ class MeshtasticManager implements ISourceManager {
    */
   async userDisconnect(): Promise<void> {
     logger.debug('🔌 User-initiated disconnect requested');
-    this.userDisconnectedState = true;
+
+    // #3962 Phase 4.2b C2: USER_DISCONNECT — any -> UserDisconnected.
+    // Capture flags are left untouched (terminal transition, matches the
+    // pre-refactor L1854/L12949 behavior — task42b_spec.md §3.2).
+    const { next } = dispatch(this.#state, 'USER_DISCONNECT', this.buildSmContext());
+    this.#state = next;
 
     // Notify about disconnect before actually disconnecting
     // This ensures users get notified even for user-initiated disconnects
+    // ('notifyDisconnected' action)
     await serverEventNotificationService.notifyNodeDisconnected(this.sourceId, await this.getSourceName());
 
+    // 'disconnectTransport' action
     if (this.transport) {
       try {
         await this.transport.disconnect();
@@ -12950,8 +13254,7 @@ class MeshtasticManager implements ISourceManager {
       }
     }
 
-    this.isConnected = false;
-
+    // 'stopSchedulers' action (below, through the cron-job clear)
     // Clear any active intervals and pending jitter timeouts
     if (this.tracerouteJitterTimeout) {
       clearTimeout(this.tracerouteJitterTimeout);
@@ -12995,6 +13298,11 @@ class MeshtasticManager implements ISourceManager {
     });
     this.timerCronJobs.clear();
 
+    // Cancel any pending config-complete fallback timer (#3962 Phase 4.2b C2
+    // leak fix) — an operator disconnect mid-ConfigSync must not leave one
+    // armed.
+    this.cancelConfigCompleteFallbackTimer();
+    this.assertStateConsistent();
     logger.debug('✅ User disconnect completed');
   }
 
@@ -13004,7 +13312,14 @@ class MeshtasticManager implements ISourceManager {
    */
   async userReconnect(): Promise<boolean> {
     logger.debug('🔌 User-initiated reconnect requested');
-    this.userDisconnectedState = false;
+
+    // #3962 Phase 4.2b C2: USER_RECONNECT — UserDisconnected -> Connecting.
+    // The 'connectTransport' action is the `this.connect()` call immediately
+    // below — not executed via a generic loop since it's the method's own
+    // control flow/return value, not a fire-and-forget side effect.
+    const { next } = dispatch(this.#state, 'USER_RECONNECT', this.buildSmContext());
+    this.#state = next;
+    this.assertStateConsistent();
 
     try {
       const success = await this.connect();
