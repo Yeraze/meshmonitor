@@ -259,3 +259,36 @@ describe('MeshCoreMessageStream focus restore (#3823)', () => {
     expect(document.activeElement).not.toBe(input);
   });
 });
+
+describe('MeshCoreMessageStream route-detail popup', () => {
+  it('opens the route modal with repeater names when the hash chain is clicked', () => {
+    const message: MeshCoreMessage = {
+      ...msg('r1', Date.now(), 'ping'),
+      hopCount: 2,
+      routePath: 'a3,7f',
+    };
+    const contacts = [
+      { publicKey: 'a3' + 'b'.repeat(62), advType: 2, advName: 'Hilltop' },
+      { publicKey: '7f' + 'c'.repeat(62), advType: 3, advName: 'Downtown Room' },
+    ];
+    const { container } = render(
+      <MeshCoreMessageStream messages={[message]} contacts={contacts} onSend={async () => true} />,
+    );
+    // No modal until the chain is clicked.
+    expect(container.querySelector('.mcpm-modal')).toBeNull();
+    fireEvent.click(container.querySelector('.mc-route-chain-link')!);
+    expect(container.querySelector('.mcpm-modal')).not.toBeNull();
+    expect(screen.getByText('Hilltop → Downtown Room')).toBeTruthy();
+    // Close via the backdrop.
+    fireEvent.click(container.querySelector('.mcpm-modal')!);
+    expect(container.querySelector('.mcpm-modal')).toBeNull();
+  });
+
+  it('renders no clickable chain for direct messages', () => {
+    const message: MeshCoreMessage = { ...msg('r2', Date.now(), 'ping'), hopCount: 0 };
+    const { container } = render(
+      <MeshCoreMessageStream messages={[message]} onSend={async () => true} />,
+    );
+    expect(container.querySelector('.mc-route-chain-link')).toBeNull();
+  });
+});
