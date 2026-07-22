@@ -242,9 +242,17 @@ Default credentials: `admin/changeme1`. Override with `API_USER` and `API_PASS` 
 ## Adding New Settings
 
 When adding a new user-configurable setting:
-- **MUST** add the key to `src/server/constants/settings.ts` `VALID_SETTINGS_KEYS` — without this, the setting silently fails to save.
-- In `SettingsTab.tsx`, the `handleSave` `useCallback` has a large dependency array — new `localFoo` state AND the context `setFoo` setter must be added to it, or the save callback uses stale values.
-- See `src/contexts/SettingsContext.tsx` for the full state/setter/localStorage/server-load pattern.
+- **MUST** add the key to `src/server/constants/settings.ts` `VALID_SETTINGS_KEYS` — without this,
+  the setting silently fails to save.
+- **SettingsTab uses a single `SettingsDraft` reducer (Task 5.3).** Add the field to the
+  `SettingsDraft` type and to `buildBaseline()` (its context/prop or `initial*` source), then bind
+  the input with `updateField('<key>', value)`. Add the key to the explicit `const settings = {…}`
+  object literal in `handleSave` (this literal is intentionally hand-maintained — the
+  `server.settings-persistence.test.ts` source-extraction and the server allowlist both key off it).
+  **You do NOT touch any dependency array** — `handleSave`, the dirty-diff, the re-seed effect, and
+  `resetChanges` all read the draft generically.
+- See `src/contexts/SettingsContext.tsx` for the state/setter/localStorage/server-load pattern (only
+  needed for settings that also live in context, i.e. categories A/B).
 
 ## Versioning & Release
 
