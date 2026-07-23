@@ -17,6 +17,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express, { Express } from 'express';
 import request from 'supertest';
 import { neighborInfoRateLimitMap } from './actions.js';
+import { TxDisabledError } from '../../errors/txDisabledError.js';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Shared test constants
@@ -214,6 +215,16 @@ describe('POST /traceroute', () => {
     expect(res.body.required).toEqual({ resource: 'traceroute', action: 'write', sourceId: SOURCE_A });
   });
 
+  it('returns 409 TX_DISABLED when transmit is disabled on this source', async () => {
+    mockManager.sendTraceroute.mockRejectedValue(new TxDisabledError());
+    const app = buildApp(normalUser);
+    const res = await post(app, SOURCE_A, 'traceroute', { destination: '!a1b2c3d4' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.code).toBe('TX_DISABLED');
+  });
+
   it('passes sourceId to checkPermissionAsync (per-source)', async () => {
     const app = buildApp(normalUser);
     await post(app, SOURCE_A, 'traceroute', { destination: '!a1b2c3d4' });
@@ -353,6 +364,16 @@ describe('POST /request-position', () => {
 
     expect(mockDb.checkPermissionAsync.mock.calls[0][3]).toBe(SOURCE_A);
   });
+
+  it('returns 409 TX_DISABLED when transmit is disabled on this source', async () => {
+    mockManager.sendPositionRequest.mockRejectedValue(new TxDisabledError());
+    const app = buildApp(normalUser);
+    const res = await post(app, SOURCE_A, 'request-position', { destination: '!a1b2c3d4' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.code).toBe('TX_DISABLED');
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -408,6 +429,16 @@ describe('POST /request-nodeinfo', () => {
     await post(app, SOURCE_A, 'request-nodeinfo', { destination: '!a1b2c3d4' });
 
     expect(mockDb.checkPermissionAsync.mock.calls[0][3]).toBe(SOURCE_A);
+  });
+
+  it('returns 409 TX_DISABLED when transmit is disabled on this source', async () => {
+    mockManager.sendNodeInfoRequest.mockRejectedValue(new TxDisabledError());
+    const app = buildApp(normalUser);
+    const res = await post(app, SOURCE_A, 'request-nodeinfo', { destination: '!a1b2c3d4' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.code).toBe('TX_DISABLED');
   });
 });
 
@@ -518,6 +549,17 @@ describe('POST /request-neighbors', () => {
 
     expect(neighborInfoRateLimitMap.has(`${SOURCE_A}:${DEST_NUM}`)).toBe(true);
     expect(neighborInfoRateLimitMap.has(`${SOURCE_B}:${DEST_NUM}`)).toBe(false);
+  });
+
+  it('returns 409 TX_DISABLED when transmit is disabled on this source', async () => {
+    mockManager.getLocalNodeInfo.mockReturnValue({ nodeNum: DEST_NUM, nodeId: '!a1b2c3d4' });
+    mockManager.sendNeighborInfoRequest.mockRejectedValue(new TxDisabledError());
+    const app = buildApp(normalUser);
+    const res = await post(app, SOURCE_A, 'request-neighbors', { destination: `!${DEST_NUM.toString(16)}` });
+
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.code).toBe('TX_DISABLED');
   });
 });
 
