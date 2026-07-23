@@ -15,6 +15,23 @@ interface ProcessedNodeInfo {
 }
 
 /**
+ * Resolved per-source config for the inline (per-packet) distance check
+ * (issue #3900). Cached briefly so a busy MQTT broker doesn't issue a handful
+ * of settings queries for every position packet — see {@link AutoDeleteByDistanceService.getInlineConfig}.
+ */
+interface InlineDistanceConfig {
+  enabled: boolean;
+  homeLat: number;
+  homeLon: number;
+  thresholdKm: number;
+  action: DistanceAction;
+  localNodeNum: number | null;
+}
+
+/** Outcome of {@link AutoDeleteByDistanceService.applyInlineDistanceCheck}. */
+export type InlineDistanceOutcome = 'kept' | 'deleted' | 'ignored';
+
+/**
  * Core auto-delete-by-distance logic (issue #3901).
  *
  * This service holds NO scheduling state — the periodic timers live on the
@@ -29,6 +46,119 @@ class AutoDeleteByDistanceService {
   // source already has one in flight, so concurrent per-source schedulers
   // don't spuriously block each other (a global boolean used to).
   private readonly runningSources = new Set<string>();
+
+  // Short-TTL per-source cache of the resolved inline-check config (#3900).
+  // Keyed by sourceId. Invalidated on TTL expiry and eagerly whenever a
+  // source's DistanceDeleteScheduler (re)starts on a settings change.
+  private readonly inlineConfigCache = new Map<string, { cfg: InlineDistanceConfig; expiresAt: number }>();
+  private readonly INLINE_CONFIG_TTL_MS = 60_000;
+
+  /**
+   * Drop the cached inline config for a source (or all sources when omitted),
+   * so the next {@link applyInlineDistanceCheck} re-reads settings. Called by
+   * {@link DistanceDeleteScheduler} on start/stop — i.e. whenever the source's
+   * auto-delete-by-distance settings change.
+   */
+  public clearInlineConfigCache(sourceId?: string): void {
+    if (sourceId) {
+      this.inlineConfigCache.delete(sourceId);
+    } else {
+      this.inlineConfigCache.clear();
+    }
+  }
+
+  /**
+   * Read (and briefly cache) the per-source inline-check config. The feature is
+   * only considered `enabled` when the source has it toggled on AND has valid
+   * home coordinates — mirroring the guard in {@link runDeleteCycle}.
+   */
+  private async getInlineConfig(sourceId: string): Promise<InlineDistanceConfig> {
+    const now = Date.now();
+    const cached = this.inlineConfigCache.get(sourceId);
+    if (cached && cached.expiresAt > now) {
+      return cached.cfg;
+    }
+
+    const s = databaseService.settings;
+    const enabledStr = await s.getSettingForSource(sourceId, 'autoDeleteByDistanceEnabled');
+    const homeLat = parseFloat((await s.getSettingForSource(sourceId, 'autoDeleteByDistanceLat')) || '');
+    const homeLon = parseFloat((await s.getSettingForSource(sourceId, 'autoDeleteByDistanceLon')) || '');
+    const thresholdRaw = parseFloat((await s.getSettingForSource(sourceId, 'autoDeleteByDistanceThresholdKm')) || '100');
+    const actionRaw = (await s.getSettingForSource(sourceId, 'autoDeleteByDistanceAction')) || 'delete';
+    const localNodeNumStr = await s.getSettingForSource(sourceId, 'localNodeNum');
+
+    const cfg: InlineDistanceConfig = {
+      enabled: enabledStr === 'true' && !isNaN(homeLat) && !isNaN(homeLon),
+      homeLat,
+      homeLon,
+      thresholdKm: isNaN(thresholdRaw) ? 100 : thresholdRaw,
+      action: actionRaw === 'ignore' ? 'ignore' : 'delete',
+      localNodeNum: localNodeNumStr ? Number(localNodeNumStr) : null,
+    };
+    this.inlineConfigCache.set(sourceId, { cfg, expiresAt: now + this.INLINE_CONFIG_TTL_MS });
+    return cfg;
+  }
+
+  /**
+   * Inline (per-packet) distance check for a single node position (issue #3900).
+   *
+   * Called synchronously from MQTT ingestion as each POSITION packet arrives so
+   * a node beyond the source's configured radius never touches the nodeDB / map
+   * even momentarily — instead of being cleaned up on the next periodic
+   * {@link runDeleteCycle}. Returns:
+   *   - `'kept'`    → feature off, within range, or protected → caller ingests
+   *   - `'deleted'` → beyond range, action=delete → any existing row is removed;
+   *                   caller must NOT upsert
+   *   - `'ignored'` → beyond range, action=ignore → node marked ignored (so the
+   *                   MQTT ignore gate drops its later traffic); caller skips upsert
+   *
+   * Protections mirror {@link runDeleteCycle}: the local node and favorited nodes
+   * are never touched. `lat`/`lon` must be a trustworthy fix (callers gate on
+   * their bogus-position check first).
+   */
+  public async applyInlineDistanceCheck(
+    sourceId: string,
+    nodeNum: number,
+    lat: number,
+    lon: number,
+  ): Promise<InlineDistanceOutcome> {
+    const cfg = await this.getInlineConfig(sourceId);
+    if (!cfg.enabled) return 'kept';
+
+    // Protect the local node.
+    if (cfg.localNodeNum != null && Number(nodeNum) === cfg.localNodeNum) return 'kept';
+
+    const distance = calculateDistance(cfg.homeLat, cfg.homeLon, lat, lon);
+    if (distance <= cfg.thresholdKm) return 'kept';
+
+    // Beyond threshold — but never touch a favorite (parity with runDeleteCycle).
+    const existing = await databaseService.nodes.getNode(nodeNum, sourceId);
+    if (existing?.isFavorite) return 'kept';
+
+    try {
+      if (cfg.action === 'ignore') {
+        // Skip the write if it's already ignored (either mechanism) — the
+        // ignore gate will keep dropping its traffic regardless.
+        if (!existing?.isIgnored && !databaseService.ignoredNodes.isIgnoredCached(nodeNum, sourceId)) {
+          await databaseService.setNodeIgnoredAsync(nodeNum, true, sourceId);
+        }
+        return 'ignored';
+      }
+      // action === 'delete'
+      if (existing) {
+        await databaseService.deleteNodeAsync(nodeNum, sourceId);
+      }
+      return 'deleted';
+    } catch (error) {
+      logger.error(
+        `❌ Auto-delete-by-distance (inline): failed to ${cfg.action} node ${nodeNum}@${sourceId}:`,
+        error,
+      );
+      // The node is beyond range either way — tell the caller to skip ingest so
+      // a transient DB error can't let an out-of-range node persist.
+      return cfg.action === 'ignore' ? 'ignored' : 'deleted';
+    }
+  }
 
   /**
    * Run now (manual trigger from API)

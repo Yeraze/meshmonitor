@@ -164,6 +164,8 @@ function mapOutcome(result: MqttIngestionResult): MqttIngestOutcome {
       return 'ignored';
     case 'geo-ignored':
       return 'geo-ignored';
+    case 'distance':
+      return 'distance';
     case 'unsupported-portnum':
       return 'unsupported-portnum';
     case 'decode-error':

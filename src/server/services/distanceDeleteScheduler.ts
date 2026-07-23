@@ -27,6 +27,11 @@ export class DistanceDeleteScheduler {
   async start(): Promise<void> {
     this.stop();
 
+    // Settings just changed (this is called on save) — drop the inline check's
+    // cached config for this source so per-packet decisions pick up the new
+    // home/threshold/action immediately rather than after the TTL (#3900).
+    autoDeleteByDistanceService.clearInlineConfigCache(this.sourceId);
+
     const enabled = await databaseService.settings.getSettingForSource(
       this.sourceId,
       'autoDeleteByDistanceEnabled',
