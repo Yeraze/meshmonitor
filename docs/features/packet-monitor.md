@@ -41,6 +41,9 @@ The Packet Monitor displays **only incoming packets** received from the mesh net
 | TRACEROUTE (70) | Traceroute responses |
 | NEIGHBORINFO (71) | Neighbor information |
 | MESH_BEACON (37) | Firmware 2.8+ periodic beacon advertising a joinable channel (name/preset) — [early preview](/faq#firmware-2-8-early-preview), decoded as `[MeshBeacon: "..."]` |
+| ATAK_PLUGIN (72) | ATAK (Team Awareness Kit) plugin packets — decoded as `[ATAK PLI ...]` (position), `[ATAK GeoChat ...]` (chat, also delivered to Messages), `[ATAK detail ...]`, or `[ATAK GeoChat receipt]`; full decoded TAKPacket in the detail view |
+| ATAK_PLUGIN_V2 (78) | ATAK V2 (firmware 2.8+ rich CoT, zstd-compressed) — shown as `[ATAK V2 (not decoded), N bytes]`; decoding is a planned follow-up |
+| ATAK_FORWARDER (257) | Third-party ATAK Forwarder packets — identified by name, not decoded |
 
 ::: tip Signed-packet shield (firmware 2.8 early preview)
 Packets carrying a firmware-verified **XEdDSA signature** (Meshtastic's new packet-signing scheme, not yet in an official release) show a small shield icon next to the entry. This only reflects what the connected node itself reported as verified — MeshMonitor doesn't re-verify the signature.
