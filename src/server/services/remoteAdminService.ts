@@ -37,6 +37,7 @@ import protobufService from '../protobufService.js';
 import { getProtobufRoot } from '../protobufLoader.js';
 import { getEnvironmentConfig } from '../config/environment.js';
 import { logger } from '../../utils/logger.js';
+import { TxDisabledError } from '../errors/txDisabledError.js';
 
 // Maps AdminMessage.ModuleConfigType enum values to the ModuleConfig oneof key
 // used in decoded responses. Covers the module types MeshMonitor surfaces a
@@ -54,6 +55,18 @@ export class RemoteAdminService {
   constructor(private readonly mgr: MeshtasticManager) {}
 
   /**
+   * TX-disabled guard for admin sends that target a remote node. Local-node
+   * admin (isLocalNode=true) must keep working even when TX is off — it's
+   * the mechanism the user re-enables TX with. See
+   * docs/internal/dev-notes/TX_DISABLED_PHASE1_SPEC.md §4.
+   */
+  private assertTxForRemoteTarget(isLocalNode: boolean): void {
+    if (!isLocalNode && !this.mgr.isTxEnabled()) {
+      throw new TxDisabledError('Remote admin requires transmit; TX is disabled on this source');
+    }
+  }
+
+  /**
    * Request session passkey from a remote node
    * Uses getDeviceMetadataRequest (per research findings - Android pattern)
    * @param destinationNodeNum The node number to request session passkey from
@@ -67,6 +80,10 @@ export class RemoteAdminService {
     if (!this.mgr.getLocalNodeInfo()?.nodeNum) {
       throw new Error('Local node number not available');
     }
+
+    const localNodeNum = this.mgr.getLocalNodeInfo()!.nodeNum;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+    this.assertTxForRemoteTarget(isLocalNode);
 
     try {
       // Use getDeviceMetadataRequest (per research - Android pattern uses this for SESSIONKEY_CONFIG)
@@ -161,6 +178,10 @@ export class RemoteAdminService {
     if (!this.mgr.getLocalNodeInfo()?.nodeNum) {
       throw new Error('Local node number not available');
     }
+
+    const localNodeNum = this.mgr.getLocalNodeInfo()!.nodeNum;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+    this.assertTxForRemoteTarget(isLocalNode);
 
     try {
       // Get or request session passkey
@@ -322,6 +343,10 @@ export class RemoteAdminService {
       throw new Error('Local node number not available');
     }
 
+    const localNodeNum = this.mgr.getLocalNodeInfo()!.nodeNum;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+    this.assertTxForRemoteTarget(isLocalNode);
+
     try {
       // Get or request session passkey
       let sessionPasskey = this.mgr.getSessionPasskey(destinationNodeNum);
@@ -415,6 +440,10 @@ export class RemoteAdminService {
       throw new Error('Local node number not available');
     }
 
+    const localNodeNum = this.mgr.getLocalNodeInfo()!.nodeNum;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+    this.assertTxForRemoteTarget(isLocalNode);
+
     try {
       // Get or request session passkey
       let sessionPasskey = this.mgr.getSessionPasskey(destinationNodeNum);
@@ -492,6 +521,10 @@ export class RemoteAdminService {
     if (!this.mgr.getLocalNodeInfo()?.nodeNum) {
       throw new Error('Local node number not available');
     }
+
+    const localNodeNum = this.mgr.getLocalNodeInfo()!.nodeNum;
+    const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+    this.assertTxForRemoteTarget(isLocalNode);
 
     try {
       // Get or request session passkey
@@ -571,6 +604,7 @@ export class RemoteAdminService {
 
     const localNodeNum = this.mgr.getLocalNodeInfo()!.nodeNum;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+    this.assertTxForRemoteTarget(isLocalNode);
 
     try {
       const root = getProtobufRoot();
@@ -629,6 +663,7 @@ export class RemoteAdminService {
 
     const localNodeNum = this.mgr.getLocalNodeInfo()!.nodeNum;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
+    this.assertTxForRemoteTarget(isLocalNode);
 
     try {
       const root = getProtobufRoot();

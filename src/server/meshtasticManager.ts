@@ -38,6 +38,7 @@ import { waypointService } from './services/waypointService.js';
 import type { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { MessageQueueService } from './messageQueueService.js';
 import { resolveAutoWelcomeDelaySeconds } from './autoWelcomeDelay.js';
+import { TxDisabledError } from './errors/txDisabledError.js';
 import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { matchAutoResponderPattern } from './utils/autoResponderMatcher.js';
@@ -4262,8 +4263,19 @@ class MeshtasticManager implements ISourceManager {
             logger.debug(`📊 Position config after Proto3 defaults: positionBroadcastSecs=${parsed.data.position.positionBroadcastSecs}, positionBroadcastSmartEnabled=${parsed.data.position.positionBroadcastSmartEnabled}, fixedPosition=${parsed.data.position.fixedPosition}`);
           }
 
-          // Merge the actual device configuration (don't overwrite)
-          this.actualDeviceConfig = { ...this.actualDeviceConfig, ...parsed.data };
+          // Merge the actual device configuration (don't overwrite).
+          // Block-scoped (no-case-declarations): this `case` clause has no
+          // braces of its own, so `const` here needs an explicit block.
+          {
+            const prevTxEnabled = this.actualDeviceConfig?.lora?.txEnabled !== false;
+            this.actualDeviceConfig = { ...this.actualDeviceConfig, ...parsed.data };
+            const nextTxEnabled = this.actualDeviceConfig?.lora?.txEnabled !== false;
+            if (prevTxEnabled !== nextTxEnabled) {
+              logger.info(nextTxEnabled
+                ? `📡 [${this.sourceId}] TX re-enabled — autonomous senders resume`
+                : `🚫 [${this.sourceId}] TX disabled — pausing autonomous senders (node is now receive-only)`);
+            }
+          }
           logger.debug('📊 Merged actualDeviceConfig now has keys:', Object.keys(this.actualDeviceConfig));
           logger.debug('📊 actualDeviceConfig.lora present:', !!this.actualDeviceConfig?.lora);
           if (parsed.data.lora) {
@@ -8752,6 +8764,15 @@ class MeshtasticManager implements ISourceManager {
   }
 
 
+  /**
+   * Current transmit state for THIS source, read from the in-memory device config.
+   * Defaults to true when config hasn't arrived yet (fail-open: don't block sends
+   * before we know the radio's state). No DB access — safe to call per packet.
+   */
+  isTxEnabled(): boolean {
+    return this.actualDeviceConfig?.lora?.txEnabled !== false;
+  }
+
   // Configuration retrieval methods
   async getDeviceConfig(): Promise<any> {
     // Return config data from what we've received via TCP stream
@@ -8772,6 +8793,10 @@ class MeshtasticManager implements ISourceManager {
   async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number, userId?: number, attribution?: { sourceIp?: string | null; sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null }): Promise<number> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
     }
 
     try {
@@ -8941,6 +8966,10 @@ class MeshtasticManager implements ISourceManager {
       throw new Error('Not connected to Meshtastic node');
     }
 
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
+    }
+
     if (!this.localNodeInfo) {
       throw new Error('Local node information not available');
     }
@@ -8987,6 +9016,10 @@ class MeshtasticManager implements ISourceManager {
   async sendPositionRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
     }
 
     if (!this.localNodeInfo) {
@@ -9064,6 +9097,10 @@ class MeshtasticManager implements ISourceManager {
       throw new Error('Not connected to Meshtastic node');
     }
 
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
+    }
+
     if (!this.localNodeInfo) {
       throw new Error('Local node information not available');
     }
@@ -9131,6 +9168,10 @@ class MeshtasticManager implements ISourceManager {
   async sendNeighborInfoRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
     }
 
     if (!this.localNodeInfo) {
@@ -9358,6 +9399,10 @@ class MeshtasticManager implements ISourceManager {
   ): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
     }
 
     if (!this.localNodeInfo) {
