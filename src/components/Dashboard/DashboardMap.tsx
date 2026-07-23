@@ -256,10 +256,7 @@ export default function DashboardMap({
     let cancelled = false;
     void (async () => {
       try {
-        const baseUrl = await api.getBaseUrl();
-        const response = await fetch(`${baseUrl}/api/geojson/layers`);
-        if (!response.ok) return;
-        const data = await response.json();
+        const data = await api.get<GeoJsonLayer[]>('/api/geojson/layers');
         if (!cancelled) setGeoJsonLayers(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error('Failed to fetch GeoJSON layers:', err);

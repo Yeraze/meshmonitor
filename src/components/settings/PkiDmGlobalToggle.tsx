@@ -23,10 +23,7 @@ const PkiDmGlobalToggle: React.FC = () => {
     let cancelled = false;
     void (async () => {
       try {
-        const baseUrl = await apiService.getBaseUrl();
-        const res = await fetch(`${baseUrl}/api/settings`, { credentials: 'include' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const data = await apiService.get<Record<string, unknown>>('/api/settings');
         if (!cancelled) setEnabled(String(data?.pkiDmDecryptionGloballyEnabled) === 'true');
       } catch {
         if (!cancelled) setEnabled(false);

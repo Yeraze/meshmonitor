@@ -10,6 +10,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
+import apiService from '../../services/api';
 import {
   Area,
   CartesianGrid,
@@ -104,15 +105,7 @@ interface SolarForecastAnalysis {
   solar_simulations: NodeSimulation[];
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, { credentials: 'include' });
-  if (!response.ok) {
-    throw new Error(`Request failed (HTTP ${response.status})`);
-  }
-  return response.json();
-}
-
-const SolarMonitoringReport: React.FC<{ baseUrl: string }> = ({ baseUrl }) => {
+const SolarMonitoringReport: React.FC = () => {
   const { t } = useTranslation();
   const [lookbackDays, setLookbackDays] = useState(7);
   const [run, setRun] = useState(false);
@@ -121,8 +114,8 @@ const SolarMonitoringReport: React.FC<{ baseUrl: string }> = ({ baseUrl }) => {
   const { data, isLoading, error, refetch } = useQuery<SolarNodesAnalysis>({
     queryKey: ['solar-nodes-analysis', lookbackDays],
     queryFn: () =>
-      fetchJson<SolarNodesAnalysis>(
-        `${baseUrl}/api/analysis/solar-nodes?lookback_days=${lookbackDays}`,
+      apiService.get<SolarNodesAnalysis>(
+        `/api/analysis/solar-nodes?lookback_days=${lookbackDays}`,
       ),
     enabled: run,
   });
@@ -135,8 +128,8 @@ const SolarMonitoringReport: React.FC<{ baseUrl: string }> = ({ baseUrl }) => {
   } = useQuery<SolarForecastAnalysis>({
     queryKey: ['solar-forecast-analysis', lookbackDays],
     queryFn: () =>
-      fetchJson<SolarForecastAnalysis>(
-        `${baseUrl}/api/analysis/solar-forecast?lookback_days=${lookbackDays}`,
+      apiService.get<SolarForecastAnalysis>(
+        `/api/analysis/solar-forecast?lookback_days=${lookbackDays}`,
       ),
     enabled: runForecast,
   });

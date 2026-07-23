@@ -329,30 +329,8 @@ export const SecurityTab: React.FC<SecurityTabProps> = ({ onTabChange, onSelectD
     try {
       setShowExportMenu(false);
 
-      // Get runtime base path from window location
-      // If pathname is /meshmonitor, extract that; otherwise use /
-      const pathParts = window.location.pathname.split('/').filter(p => p);
-      const basePath = pathParts.length > 0 ? `/${pathParts[0]}/` : '/';
-      const exportUrl = `${basePath}api/security/export?format=${format}${sourceId ? `&sourceId=${encodeURIComponent(sourceId)}` : ''}`;
-
-      const response = await fetch(exportUrl, {
-        credentials: 'include'
-      });
-
-      if (!response.ok) {
-        throw new Error('Export failed');
-      }
-
-      // Create a blob from the response
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `security-scan-${Date.now()}.${format}`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const exportUrl = `/api/security/export?format=${format}${sourceId ? `&sourceId=${encodeURIComponent(sourceId)}` : ''}`;
+      await api.download(exportUrl, { filename: `security-scan-${Date.now()}.${format}` });
     } catch (err) {
       setError(err instanceof Error ? err.message : t('security.failed_export'));
     }

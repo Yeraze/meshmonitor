@@ -18,10 +18,7 @@ const MapStyleManager: React.FC = () => {
 
   const fetchStyles = useCallback(async () => {
     try {
-      const baseUrl = await api.getBaseUrl();
-      const response = await fetch(`${baseUrl}/api/map-styles/styles`);
-      if (!response.ok) throw new Error('Failed to fetch styles');
-      const data = await response.json();
+      const data = await api.get<MapStyle[]>('/api/map-styles/styles');
       setStyles(data);
     } catch (err) {
       console.error('Failed to fetch map styles:', err);

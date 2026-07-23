@@ -5,8 +5,7 @@ import { useSaveBar } from '../../hooks/useSaveBar';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import { useSource } from '../../contexts/SourceContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { useCsrf } from '../../contexts/CsrfContext';
-import { appBasename } from '../../init';
+import apiService from '../../services/api';
 import { logger } from '../../utils/logger';
 
 interface MQTTConfigSectionProps {
@@ -72,7 +71,6 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const { sourceId: currentSourceId } = useSource();
-  const { getToken } = useCsrf();
   // PR-C: gate the form by `sources:write` on the current source. `useAuth()`
   // binds the check to the active SourceContext, so passing the explicit
   // sourceId here just makes the intent obvious to readers. Admins are
@@ -166,15 +164,8 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
         const source = allSources.find((s) => s.id === currentSourceId);
         if (source && source.type === 'meshtastic_tcp') {
           const nextConfig = { ...(source.config ?? {}), mqttLink: { enabled: true, mqttBrokerSourceId: sourceId } };
-          fetch(`${appBasename}/api/sources/${currentSourceId}`, {
-            method: 'PUT',
-            credentials: 'include',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-csrf-token': getToken() || '',
-            },
-            body: JSON.stringify({ config: nextConfig }),
-          }).catch((err) => logger.warn('Failed to stamp mqttLink on parent source:', err));
+          apiService.put(`/api/sources/${currentSourceId}`, { config: nextConfig })
+            .catch((err) => logger.warn('Failed to stamp mqttLink on parent source:', err));
         }
       }
     },
@@ -182,7 +173,6 @@ const MQTTConfigSection: React.FC<MQTTConfigSectionProps> = ({
       proxyTargets,
       allSources,
       currentSourceId,
-      getToken,
       setMqttEnabled,
       setMqttAddress,
       setMqttUsername,

@@ -26,7 +26,7 @@ import { useNavigate } from 'react-router-dom';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
-import { appBasename } from '../init';
+import apiService from '../services/api';
 import { renderMessageWithLinks } from '../utils/linkRenderer';
 import { senderLabel, shortSenderLabel } from './unifiedSenderLabels';
 import { foldUnifiedMessagePages } from '../utils/unifiedMessageAccumulator';
@@ -177,9 +177,7 @@ export default function UnifiedMessagesPage() {
   } = useQuery<UnifiedChannel[]>({
     queryKey: ['unified', 'channels'],
     queryFn: async () => {
-      const res = await fetch(`${appBasename}/api/unified/channels`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to load channels');
-      return res.json();
+      return apiService.get<UnifiedChannel[]>('/api/unified/channels');
     },
     staleTime: 60_000,
   });
@@ -212,13 +210,14 @@ export default function UnifiedMessagesPage() {
     queryFn: async () => {
       const perSource = await Promise.all(
         collisionSourceIds.map(async (sid) => {
-          const res = await fetch(
-            `${appBasename}/api/channels/collisions?sourceId=${encodeURIComponent(sid)}`,
-            { credentials: 'include' },
-          );
-          if (!res.ok) return [] as ChannelCollisionRow[];
-          const json = await res.json();
-          return (json.collisions ?? []) as ChannelCollisionRow[];
+          try {
+            const json = await apiService.get<{ collisions?: ChannelCollisionRow[] }>(
+              `/api/channels/collisions?sourceId=${encodeURIComponent(sid)}`,
+            );
+            return (json.collisions ?? []) as ChannelCollisionRow[];
+          } catch {
+            return [] as ChannelCollisionRow[];
+          }
         }),
       );
       return perSource.flat();
@@ -258,11 +257,7 @@ export default function UnifiedMessagesPage() {
       if (pageParam !== undefined && pageParam !== null) {
         params.set('before', String(pageParam));
       }
-      const res = await fetch(`${appBasename}/api/unified/messages?${params.toString()}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to load messages');
-      return res.json();
+      return apiService.get<UnifiedMessage[]>(`/api/unified/messages?${params.toString()}`);
     },
     initialPageParam: undefined as number | undefined,
     getNextPageParam: (lastPage) => {

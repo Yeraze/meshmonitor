@@ -166,11 +166,10 @@ export const ImportConfigModal: React.FC<ImportConfigModalProps> = ({ isOpen, on
     while (Date.now() - startTime < maxWaitTime) {
       try {
         // Fetch live device data from /api/poll (includes channels AND LoRa config)
-        const response = await fetch('/api/poll', { credentials: 'include' });
-        if (!response.ok) {
-          throw new Error('Poll failed');
-        }
-        const pollData = await response.json();
+        const pollData = await apiService.get<{
+          channels?: Array<{ psk?: string }>;
+          deviceConfig?: { lora?: { modemPreset?: unknown } };
+        }>('/api/poll');
 
         // Check if we have channel data with PSKs (indicates channel sync)
         const hasChannels = pollData?.channels && pollData.channels.length > 0;

@@ -19,11 +19,7 @@ interface AnalysisCard {
   icon: UiIconName;
 }
 
-interface AnalysisTabProps {
-  baseUrl: string;
-}
-
-const AnalysisTab: React.FC<AnalysisTabProps> = ({ baseUrl }) => {
+const AnalysisTab: React.FC = () => {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<AnalysisType>(null);
 
@@ -58,7 +54,7 @@ const AnalysisTab: React.FC<AnalysisTabProps> = ({ baseUrl }) => {
         >
           <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
         </button>
-        <SolarMonitoringReport baseUrl={baseUrl} />
+        <SolarMonitoringReport />
       </div>
     );
   }

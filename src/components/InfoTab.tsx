@@ -134,9 +134,9 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
 
     try {
       const srcQs = activeSourceId ? `&sourceId=${encodeURIComponent(activeSourceId)}` : '';
-      const response = await fetch(`${baseUrl}/api/telemetry/${currentNodeId}?hours=1${srcQs}`);
-      if (!response.ok) throw new Error('Failed to fetch local stats');
-      const data = await response.json();
+      const data = await apiService.get<Array<{ telemetryType: string; timestamp: number; value: number }>>(
+        `/api/telemetry/${currentNodeId}?hours=1${srcQs}`,
+      );
 
       // Extract the latest value for each LocalStats and HostMetrics metric
       const stats: any = {};
@@ -154,10 +154,10 @@ const InfoTab: React.FC<InfoTabProps> = React.memo(({
       ];
 
       metrics.forEach(metric => {
-        const entries = data.filter((item: any) => item.telemetryType === metric);
+        const entries = data.filter((item) => item.telemetryType === metric);
         if (entries.length > 0) {
           // Get the most recent value
-          const latest = entries.reduce((prev: any, current: any) =>
+          const latest = entries.reduce((prev, current) =>
             current.timestamp > prev.timestamp ? current : prev
           );
           stats[metric] = latest.value;

@@ -8,7 +8,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { appBasename } from '../init';
+import apiService, { ApiError } from '../services/api';
 import { type TemperatureUnit, formatTemperature, getTemperatureUnit, isTemperatureType } from '../utils/temperature';
 import { unitScale, formatDuration, isUptimeType } from '../utils/telemetryFormat';
 import '../styles/unified.css';
@@ -298,14 +298,15 @@ export default function UnifiedTelemetryPage() {
 
   const fetchTelemetry = useCallback(async () => {
     try {
-      const res = await fetch(`${appBasename}/api/unified/telemetry?hours=${hours}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) { setError(t('unified.telemetry.failed')); return; }
-      setEntries(await res.json());
+      const data = await apiService.get<TelemetryEntry[]>(`/api/unified/telemetry?hours=${hours}`);
+      setEntries(data);
       setError('');
-    } catch {
-      setError(t('unified.telemetry.network_error'));
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(t('unified.telemetry.failed'));
+      } else {
+        setError(t('unified.telemetry.network_error'));
+      }
     } finally {
       setLoading(false);
     }

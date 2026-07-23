@@ -188,12 +188,22 @@ vi.mock('./MapStyleManager', () => ({ default: () => null }));
 const { testElevationSourceMock } = vi.hoisted(() => ({ testElevationSourceMock: vi.fn() }));
 vi.mock('../services/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../services/api')>();
+  // Plain object-spread of `actual.default` (the ApiService singleton) only
+  // copies its own instance fields (baseUrl, configFetched, ...) — `get`,
+  // `post`, etc. live on the class prototype and are silently dropped,
+  // which threw "default.get is not a function" once SettingsTab's
+  // mount-time system-status/health/settings fetches moved onto
+  // apiService.get() (#3962 5.5 PR2). Object.create + Object.assign keeps
+  // the prototype chain (so real methods still resolve) while still
+  // letting us override just testElevationSource on top, same as before.
+  const mockedDefault = Object.assign(
+    Object.create(Object.getPrototypeOf(actual.default)),
+    actual.default,
+    { testElevationSource: (...args: unknown[]) => testElevationSourceMock(...args) },
+  );
   return {
     ...actual,
-    default: {
-      ...actual.default,
-      testElevationSource: (...args: unknown[]) => testElevationSourceMock(...args),
-    },
+    default: mockedDefault,
   };
 });
 
@@ -206,16 +216,24 @@ let serverSettings: Record<string, string>;
 function installFetchMock() {
   global.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
+    const jsonHeaders = { get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null) };
+    if (url.includes('/api/config')) {
+      // ApiService.ensureBaseUrl() hits this before its first request; without
+      // a JSON content-type it treats the response as unusable and falls back
+      // to retrying with backoff, delaying every apiService.get() below well
+      // past this suite's waitFor windows.
+      return { ok: true, headers: jsonHeaders, json: async () => ({ baseUrl: '' }) } as unknown as Response;
+    }
     if (url.includes('/api/system/status')) {
-      return { ok: true, json: async () => ({ isDocker: false }) } as Response;
+      return { ok: true, headers: jsonHeaders, json: async () => ({ isDocker: false }) } as unknown as Response;
     }
     if (url.includes('/api/health')) {
-      return { ok: true, json: async () => ({ databaseType: 'sqlite', firmwareOtaEnabled: false }) } as Response;
+      return { ok: true, headers: jsonHeaders, json: async () => ({ databaseType: 'sqlite', firmwareOtaEnabled: false }) } as unknown as Response;
     }
     if (url.includes('/api/settings')) {
-      return { ok: true, json: async () => serverSettings } as Response;
+      return { ok: true, headers: jsonHeaders, json: async () => serverSettings } as unknown as Response;
     }
-    return { ok: true, json: async () => ({}) } as Response;
+    return { ok: true, headers: jsonHeaders, json: async () => ({}) } as unknown as Response;
   }) as typeof fetch;
 }
 
