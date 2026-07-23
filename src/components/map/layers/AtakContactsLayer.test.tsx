@@ -11,8 +11,13 @@ import type { AtakContact } from '../../../types/atakContact';
 // `data-icon-html` surfaces the divIcon's raw html string so tests can assert
 // on team color / stale opacity without depending on markerIcons internals.
 vi.mock('react-leaflet', () => ({
-  Marker: ({ children, position, icon }: any) => (
-    <div data-testid="atak-marker" data-pos={JSON.stringify(position)} data-icon-html={icon?.html}>
+  Marker: ({ children, position, icon, zIndexOffset }: any) => (
+    <div
+      data-testid="atak-marker"
+      data-pos={JSON.stringify(position)}
+      data-icon-html={icon?.html}
+      data-z-index-offset={zIndexOffset}
+    >
       {children}
     </div>
   ),
@@ -112,6 +117,14 @@ describe('AtakContactsLayer', () => {
     const markers = queryAllByTestId('atak-marker');
     expect(markers).toHaveLength(1);
     expect(markers[0].getAttribute('data-pos')).toBe('[31,-91]');
+  });
+
+  it('boosts markers above co-located node icons via zIndexOffset (#3691)', () => {
+    contactsFixture = [makeContact()];
+    const { getAllByTestId } = render(
+      <AtakContactsLayer source={{ id: 'src-1', name: 'Source One' }} />,
+    );
+    expect(getAllByTestId('atak-marker')[0].getAttribute('data-z-index-offset')).toBe('1000');
   });
 
   it('renders nothing when there are no contacts', () => {

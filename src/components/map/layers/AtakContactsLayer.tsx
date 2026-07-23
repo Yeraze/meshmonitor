@@ -65,7 +65,12 @@ export function AtakContactsLayer({ source }: { source: SourceInfo }) {
         const { contact } = d;
         const color = teamColor(contact.team);
         return (
-          <Marker key={d.key} position={d.position} icon={d.buildIcon()}>
+          // zIndexOffset: an ATAK EUD is typically carried alongside a
+          // Meshtastic node, so co-location is the COMMON case — without a
+          // boost the node marker's latitude-derived z-index covers the
+          // contact and makes it unclickable (#3691). Explicitly-toggled
+          // ATAK contacts render above node icons.
+          <Marker key={d.key} position={d.position} icon={d.buildIcon()} zIndexOffset={1000}>
             <Popup>
               <div className="node-popup">
                 <div className="node-popup-header">
