@@ -34,7 +34,8 @@ import { getEffectiveHops } from '../utils/nodeHops';
 import { scrollInputIntoView } from '../utils/scrollInputIntoView';
 import { useMapContext } from '../contexts/MapContext';
 import { useSettings } from '../contexts/SettingsContext';
-import { useDeviceNodes, useTelemetryNodes } from '../hooks/useServerData';
+import { useDeviceNodes, useTelemetryNodes, setNodeFieldInCache } from '../hooks/useServerData';
+import { useQueryClient } from '@tanstack/react-query';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
 import NodeDetailsBlock from './NodeDetailsBlock';
@@ -452,6 +453,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const { showToast } = useToast();
   const csrfFetch = useCsrfFetch();
   const { sourceId } = useSource();
+  const queryClient = useQueryClient();
 
   // Purge neighbors state
   const [purgingNeighbors, setPurgingNeighbors] = useState(false);
@@ -465,13 +467,21 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     setClearingSecurityWarningNode(nodeNum);
     try {
       await apiService.post(`/api/security/nodes/${nodeNum}/clear`, { sourceId });
+      // Optimistically drop the flags in the poll cache so the warning bar
+      // disappears immediately instead of lingering until the next poll (#4302).
+      setNodeFieldInCache(queryClient, sourceId, nodeNum, {
+        keyIsLowEntropy: false,
+        duplicateKeyDetected: false,
+        keyMismatchDetected: false,
+        keySecurityIssueDetails: undefined,
+      });
       showToast(t('messages.security_risk_cleared', 'Security warning cleared'), 'success');
     } catch {
       showToast(t('messages.security_risk_clear_failed', 'Failed to clear security warning'), 'error');
     } finally {
       setClearingSecurityWarningNode(null);
     }
-  }, [sourceId, showToast, t]);
+  }, [sourceId, queryClient, showToast, t]);
 
   // Resizable send section (only on desktop)
   const {

@@ -22,7 +22,8 @@ import { getTilesetById } from '../config/tilesets';
 import { getEffectiveHops, getMapHoverTooltipMeta } from '../utils/nodeHops';
 import { buildNodeExportRows, nodesToCsv, nodesToHtml, downloadTextFile } from '../utils/nodeExport';
 import { useMapContext } from '../contexts/MapContext';
-import { useTelemetryNodes, useDeviceConfig, useNodes } from '../hooks/useServerData';
+import { useTelemetryNodes, useDeviceConfig, useNodes, setNodeFieldInCache } from '../hooks/useServerData';
+import { useQueryClient } from '@tanstack/react-query';
 import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -473,18 +474,27 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const [copyNodeInfoTarget, setCopyNodeInfoTarget] = useState<DeviceInfo | null>(null);
 
   // ----- Security warning clear state (#4302) -----
+  const queryClient = useQueryClient();
   const [clearingSecurityNode, setClearingSecurityNode] = useState<number | null>(null);
   const handleClearSecurityWarning = useCallback(async (nodeNum: number) => {
     setClearingSecurityNode(nodeNum);
     try {
       await api.post(`/api/security/nodes/${nodeNum}/clear`, { sourceId: currentSourceId });
+      // Optimistically drop the flags in the poll cache so the warning icon
+      // disappears immediately instead of lingering until the next poll (#4302).
+      setNodeFieldInCache(queryClient, currentSourceId, nodeNum, {
+        keyIsLowEntropy: false,
+        duplicateKeyDetected: false,
+        keyMismatchDetected: false,
+        keySecurityIssueDetails: undefined,
+      });
       showToast(t('nodes.security_risk_cleared', 'Security warning cleared'), 'success');
     } catch {
       showToast(t('nodes.security_risk_clear_failed', 'Failed to clear security warning'), 'error');
     } finally {
       setClearingSecurityNode(null);
     }
-  }, [currentSourceId, showToast, t]);
+  }, [currentSourceId, queryClient, showToast, t]);
 
   // ----- Waypoint authoring state -----
   const canWriteWaypoints = hasPermission('waypoints', 'write');
