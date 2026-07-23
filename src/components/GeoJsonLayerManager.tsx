@@ -12,10 +12,7 @@ const GeoJsonLayerManager: React.FC = () => {
 
   const fetchLayers = useCallback(async () => {
     try {
-      const baseUrl = await api.getBaseUrl();
-      const response = await fetch(`${baseUrl}/api/geojson/layers`);
-      if (!response.ok) throw new Error('Failed to fetch layers');
-      const data = await response.json();
+      const data = await api.get<GeoJsonLayer[]>('/api/geojson/layers');
       setLayers(data);
     } catch (err) {
       console.error('Failed to fetch GeoJSON layers:', err);

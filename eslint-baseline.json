@@ -35,9 +35,6 @@
     "preserve-caught-error": 2,
     "react-hooks/exhaustive-deps": 1
   },
-  "src/components/Analysis/SolarMonitoringReport.tsx": {
-    "no-restricted-syntax": 1
-  },
   "src/components/AuditLogTab.tsx": {
     "react-hooks/exhaustive-deps": 1
   },
@@ -46,7 +43,6 @@
   },
   "src/components/AutoAnnounceSection.tsx": {
     "@typescript-eslint/no-explicit-any": 1,
-    "no-restricted-syntax": 2,
     "react-hooks/exhaustive-deps": 3
   },
   "src/components/AutoDeleteByDistanceSection.tsx": {
@@ -68,8 +64,7 @@
   },
   "src/components/AutoResponderSection.tsx": {
     "@typescript-eslint/no-explicit-any": 6,
-    "no-restricted-syntax": 1,
-    "react-hooks/exhaustive-deps": 2
+    "react-hooks/exhaustive-deps": 1
   },
   "src/components/AutoTracerouteSection.tsx": {
     "react-hooks/exhaustive-deps": 1
@@ -89,16 +84,13 @@
     "react-hooks/exhaustive-deps": 2
   },
   "src/components/CopyNodeInfoModal/CopyNodeInfoModal.tsx": {
-    "@typescript-eslint/no-explicit-any": 3,
-    "no-restricted-syntax": 1
+    "@typescript-eslint/no-explicit-any": 3
   },
   "src/components/CustomThemeManagement.tsx": {
-    "@typescript-eslint/no-explicit-any": 1,
-    "no-restricted-syntax": 2
+    "@typescript-eslint/no-explicit-any": 1
   },
   "src/components/Dashboard/DashboardMap.tsx": {
-    "@typescript-eslint/no-explicit-any": 9,
-    "no-restricted-syntax": 1
+    "@typescript-eslint/no-explicit-any": 9
   },
   "src/components/Dashboard/DashboardNeighborPopup.tsx": {
     "@typescript-eslint/no-explicit-any": 1
@@ -110,29 +102,20 @@
     "no-useless-assignment": 1
   },
   "src/components/EmbedMap.tsx": {
-    "@typescript-eslint/no-explicit-any": 1,
-    "no-restricted-syntax": 5
+    "@typescript-eslint/no-explicit-any": 1
   },
   "src/components/EmojiPickerModal/EmojiPickerModal.tsx": {
     "react-refresh/only-export-components": 1
-  },
-  "src/components/GeoJsonLayerManager.tsx": {
-    "no-restricted-syntax": 1
-  },
-  "src/components/GeoJsonOverlay.tsx": {
-    "no-restricted-syntax": 1
   },
   "src/components/GeofenceTriggersSection.test.tsx": {
     "@typescript-eslint/no-unused-vars": 1
   },
   "src/components/GeofenceTriggersSection.tsx": {
     "@typescript-eslint/no-unused-vars": 1,
-    "no-restricted-syntax": 1,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/InfoTab.tsx": {
-    "@typescript-eslint/no-explicit-any": 11,
-    "no-restricted-syntax": 1,
+    "@typescript-eslint/no-explicit-any": 8,
     "react-hooks/exhaustive-deps": 7
   },
   "src/components/LinkPreview.tsx": {
@@ -152,9 +135,6 @@
   },
   "src/components/MapAnalysis/layers/NeighborLinksLayer.tsx": {
     "@typescript-eslint/no-explicit-any": 2
-  },
-  "src/components/MapStyleManager.tsx": {
-    "no-restricted-syntax": 1
   },
   "src/components/MeshCore/CliConsoleBody.tsx": {
     "react-hooks/exhaustive-deps": 1
@@ -177,12 +157,6 @@
   "src/components/MeshCore/MeshCoreConfigurationView.tsx": {
     "react-hooks/exhaustive-deps": 3
   },
-  "src/components/MeshCore/MeshCoreInfoView.tsx": {
-    "no-restricted-syntax": 1
-  },
-  "src/components/MeshCore/MeshCoreMap.tsx": {
-    "no-restricted-syntax": 1
-  },
   "src/components/MeshCore/MeshCoreTimerTriggersSection.tsx": {
     "@typescript-eslint/no-explicit-any": 5
   },
@@ -194,7 +168,6 @@
   },
   "src/components/NodesTab.tsx": {
     "@typescript-eslint/no-explicit-any": 8,
-    "no-restricted-syntax": 5,
     "no-useless-assignment": 1,
     "react-hooks/exhaustive-deps": 5
   },
@@ -218,9 +191,6 @@
   "src/components/PolarGridOverlay.tsx": {
     "react-hooks/exhaustive-deps": 3
   },
-  "src/components/PositionOverrideModal/PositionOverrideModal.tsx": {
-    "no-restricted-syntax": 1
-  },
   "src/components/RebootModal.tsx": {
     "prefer-const": 1,
     "react-hooks/exhaustive-deps": 1
@@ -234,12 +204,10 @@
   },
   "src/components/SecurityTab.tsx": {
     "@typescript-eslint/no-explicit-any": 2,
-    "no-restricted-syntax": 1,
     "react-hooks/exhaustive-deps": 2
   },
   "src/components/SettingsTab.tsx": {
-    "@typescript-eslint/no-explicit-any": 1,
-    "no-restricted-syntax": 3
+    "@typescript-eslint/no-explicit-any": 1
   },
   "src/components/SmartHopsChart.tsx": {
     "react-refresh/only-export-components": 1
@@ -252,7 +220,6 @@
   },
   "src/components/TimerTriggersSection.tsx": {
     "@typescript-eslint/no-unused-vars": 1,
-    "no-restricted-syntax": 1,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/ToastContainer.tsx": {
@@ -341,11 +308,7 @@
   },
   "src/components/configuration/ImportConfigModal.tsx": {
     "@typescript-eslint/no-explicit-any": 5,
-    "@typescript-eslint/no-unused-vars": 2,
-    "no-restricted-syntax": 1
-  },
-  "src/components/configuration/MQTTConfigSection.tsx": {
-    "no-restricted-syntax": 1
+    "@typescript-eslint/no-unused-vars": 2
   },
   "src/components/configuration/SystemBackupSection.tsx": {
     "react-hooks/exhaustive-deps": 1
@@ -355,9 +318,6 @@
   },
   "src/components/settings/EmbedSettings.tsx": {
     "@typescript-eslint/no-explicit-any": 3
-  },
-  "src/components/settings/PkiDmGlobalToggle.tsx": {
-    "no-restricted-syntax": 1
   },
   "src/contexts/AuthContext.test.tsx": {
     "@typescript-eslint/no-unused-vars": 1
@@ -564,12 +524,6 @@
   },
   "src/pages/DashboardPage.tsx": {
     "@typescript-eslint/no-explicit-any": 10
-  },
-  "src/pages/UnifiedMessagesPage.tsx": {
-    "no-restricted-syntax": 3
-  },
-  "src/pages/UnifiedTelemetryPage.tsx": {
-    "no-restricted-syntax": 1
   },
   "src/server/auth/authMiddleware.ts": {
     "@typescript-eslint/no-explicit-any": 1

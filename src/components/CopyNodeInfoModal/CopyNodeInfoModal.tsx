@@ -93,17 +93,9 @@ export const CopyNodeInfoModal: React.FC<CopyNodeInfoModalProps> = ({
     setLoading(true);
     setError(null);
 
-    api.getBaseUrl()
-      .then(baseUrl =>
-        fetch(
-          `${baseUrl}/api/nodes/${nodeNum}/copy-candidates?sourceId=${encodeURIComponent(sourceId)}`,
-          { credentials: 'include' },
-        ),
-      )
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to load candidates');
-        return res.json();
-      })
+    api.get<{ data?: CopyCandidate[] }>(
+      `/api/nodes/${nodeNum}/copy-candidates?sourceId=${encodeURIComponent(sourceId)}`,
+    )
       .then(data => {
         const list: CopyCandidate[] = data.data ?? [];
         setCandidates(list);

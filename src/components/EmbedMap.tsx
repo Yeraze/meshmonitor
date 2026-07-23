@@ -134,10 +134,8 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
   // which isn't guaranteed to resolve the same prefix on this route) is
   // safe. The lazy useState initializer runs exactly once, so setBaseUrl
   // fires on mount only, not on every render.
-  const [baseUrl] = useState(() => {
-    const b = window.location.pathname.replace(/\/embed\/.*$/, '');
-    api.setBaseUrl(b);
-    return b;
+  useState(() => {
+    api.setBaseUrl(window.location.pathname.replace(/\/embed\/.*$/, ''));
   });
 
   // Fetch embed config on mount
@@ -159,7 +157,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     }
     void fetchConfig();
     return () => { cancelled = true; };
-  }, [profileId, baseUrl]);
+  }, [profileId]);
 
   // Fetch nodes
   const fetchNodes = useCallback(async () => {
@@ -170,7 +168,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     } catch {
       // Silently ignore poll errors
     }
-  }, [config, baseUrl, profileId]);
+  }, [config, profileId]);
 
   // Fetch neighbor info
   const fetchNeighborInfo = useCallback(async () => {
@@ -181,7 +179,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     } catch {
       // Silently ignore
     }
-  }, [config, baseUrl, profileId]);
+  }, [config, profileId]);
 
   // Fetch traceroute segments
   const fetchTraceroutes = useCallback(async () => {
@@ -192,7 +190,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     } catch {
       // Silently ignore
     }
-  }, [config, baseUrl, profileId]);
+  }, [config, profileId]);
 
   // Fetch public GeoJSON overlay layers once config is available (issue #3407).
   // Only layers flagged publiclyVisible are returned by the embed endpoint.
@@ -208,7 +206,7 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
       }
     })();
     return () => { cancelled = true; };
-  }, [config, baseUrl, profileId]);
+  }, [config, profileId]);
 
   // Start polling when config is loaded
   useEffect(() => {
@@ -422,7 +420,6 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
         {geoJsonLayers.length > 0 && (
           <GeoJsonOverlay
             layers={geoJsonLayers}
-            baseUrl={baseUrl}
             dataPathPrefix={`/api/embed/${profileId}/geojson/layers`}
           />
         )}
