@@ -5786,6 +5786,7 @@ class MeshtasticManager implements ISourceManager {
             // ATAK TAKPacket (RX-only, Phase 1): GeoChat variant persists as
             // a Messages row; PLI/detail/compressed/receipts are
             // preview-only (Packet Monitor) this phase — see processTakPacket.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 decoded protobuf oneof shape (TAKPacket | raw Uint8Array); no generated TS type for protobufjs decode() output here
             await this.processTakPacket(meshPacket, processedPayload as any, {
               ...context,
               decryptedBy,
@@ -6224,6 +6225,7 @@ class MeshtasticManager implements ISourceManager {
    * go out as a normal Meshtastic TEXT_MESSAGE_APP that the ATAK plugin
    * (which only ingests portnum 72) can't consume.
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 meshPacket/tak are untyped protobuf-decoded shapes (no generated TS type for protobufjs decode() output), matching processTextMessageProtobuf's existing convention
   private async processTakPacket(meshPacket: any, tak: any, context?: ProcessingContext): Promise<void> {
     try {
       // Decode failed upstream (processPayload's outer try/catch returns the
@@ -6269,7 +6271,9 @@ class MeshtasticManager implements ISourceManager {
       // Ensure the from node (and, for broadcast, the !ffffffff pseudo-node) exist.
       await this.ensureMessageEndpointNodes(fromNum, toNum);
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 camelCase/snake_case dual-access on an untyped protobuf-decoded meshPacket, matching processTextMessageProtobuf's existing convention
       const hopStart = (meshPacket as any).hopStart ?? (meshPacket as any).hop_start ?? null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 camelCase/snake_case dual-access on an untyped protobuf-decoded meshPacket, matching processTextMessageProtobuf's existing convention
       const hopLimit = (meshPacket as any).hopLimit ?? (meshPacket as any).hop_limit ?? null;
 
       const message: TextMessage = {
@@ -6289,7 +6293,9 @@ class MeshtasticManager implements ISourceManager {
         hopLimit,
         relayNode: meshPacket.relayNode ?? undefined,
         viaMqtt: meshPacket.viaMqtt === true || isViaMqtt(meshPacket.transportMechanism),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 snake_case fallback on an untyped protobuf-decoded meshPacket, matching processTextMessageProtobuf's existing convention
         rxSnr: meshPacket.rxSnr ?? (meshPacket as any).rx_snr,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 snake_case fallback on an untyped protobuf-decoded meshPacket, matching processTextMessageProtobuf's existing convention
         rxRssi: meshPacket.rxRssi ?? (meshPacket as any).rx_rssi,
         createdAt: Date.now(),
         decryptedBy: context?.decryptedBy ?? null,
@@ -6301,6 +6307,7 @@ class MeshtasticManager implements ISourceManager {
       const wasInserted = await databaseService.messages.insertMessage(message, this.sourceId);
 
       if (wasInserted) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 TextMessage/DbMessage shape mismatch on emit, matching processTextMessageProtobuf's existing convention
         dataEventEmitter.emitNewMessage(message as any, this.sourceId);
         if (isDirectMessage) {
           logger.debug(`💾 Saved ATAK GeoChat DM from ${message.fromNodeId} to ${message.toNodeId}: "${messageText.substring(0, 30)}..."`);
@@ -9600,8 +9607,10 @@ class MeshtasticManager implements ISourceManager {
         return;
       }
 
-      // Skip non-text messages (telemetry, traceroutes, etc.)
-      if (message.portnum !== 1) { // 1 = TEXT_MESSAGE_APP
+      // Skip non-chat messages (telemetry, traceroutes, etc.). ATAK GeoChat
+      // (PortNum.ATAK_PLUGIN) is a real chat message too — see processTakPacket —
+      // and gets a push notification the same as a text message (spec §7.3).
+      if (message.portnum !== PortNum.TEXT_MESSAGE_APP && message.portnum !== PortNum.ATAK_PLUGIN) {
         return;
       }
 
