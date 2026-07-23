@@ -24,7 +24,7 @@
  */
 
 import React, { useCallback, useMemo, useRef } from 'react';
-import { flushSync } from 'react-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type L from 'leaflet';
 
@@ -37,7 +37,7 @@ import { useMessaging } from '../contexts/MessagingContext';
 import { useUI } from '../contexts/UIContext';
 import { useSource } from '../contexts/SourceContext';
 import { useToast } from '../components/ToastContainer';
-import { useTelemetryNodes } from './useServerData';
+import { useNodes, useTelemetryNodes, setNodeFieldInCache } from './useServerData';
 import { useTraceroutePaths, type ThemeColors } from './useTraceroutePaths';
 import { isNodeComplete, getEffectivePosition } from '../utils/nodeHelpers';
 import { effectiveMapMaxAgeHours } from '../utils/mapAge';
@@ -46,7 +46,8 @@ import { logger } from '../utils/logger';
 import { favoritePendingKey, pendingFavoriteRequests } from '../utils/pendingToggles';
 
 export interface UseSourceViewParams {
-  /** App-local, computed via detectBaseUrl at mount. */
+  /** The deployment base path — App passes `appBasename` (#3962 5.4 PR8
+   *  deleted the App-local detectBaseUrl duplicate; see src/init.ts). */
   baseUrl: string;
   /** App-local useCallback — CSRF-aware fetch wrapper. */
   authFetch: (url: string, options?: RequestInit, retryCount?: number, timeoutMs?: number) => Promise<Response>;
@@ -138,7 +139,13 @@ export function useSourceView(params: UseSourceViewParams) {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { sourceId } = useSource();
-  const { nodes, setNodes, currentNodeId, connectionStatus } = useData();
+  const { currentNodeId, connectionStatus } = useData();
+  // nodes is sourced from the poll cache (#3962 5.4 PR8 — DataContext no
+  // longer mirrors it); queryClient is for the optimistic toggle writes
+  // below (setNodeFieldInCache), the query-cache-native replacement for the
+  // old setNodes(...) writes.
+  const { nodes } = useNodes();
+  const queryClient = useQueryClient();
   const { selectedDMNode, setSelectedDMNode } = useMessaging();
   const { maxNodeAgeHours, distanceUnit } = useSettings();
   const {
@@ -518,16 +525,11 @@ export function useSourceView(params: UseSourceViewParams) {
         // Mark this request as pending with the expected new state
         pendingFavoriteRequests.set(favKey, newFavoriteStatus);
 
-        // Optimistically update the UI - use flushSync to force immediate render
-        // This prevents the polling from overwriting the optimistic update before it renders
-        flushSync(() => {
-          setNodes(prevNodes => {
-            const updated = prevNodes.map(n =>
-              n.nodeNum === node.nodeNum ? { ...n, isFavorite: newFavoriteStatus } : n
-            );
-            return updated;
-          });
-        });
+        // Optimistically update the UI by writing straight into the poll
+        // query cache. useNodes() re-derives (via applyPendingNodeOverrides)
+        // on every cache change, so this renders immediately and survives
+        // the next poll response until the server catches up.
+        setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { isFavorite: newFavoriteStatus });
 
         // Send update to backend (with device sync enabled by default)
         const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/favorite`, {
@@ -546,9 +548,7 @@ export function useSourceView(params: UseSourceViewParams) {
           if (response.status === 403) {
             showToast(t('toast.insufficient_permissions_favorites'), 'error');
             // Revert to original state using the saved original value
-            setNodes(prevNodes =>
-              prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isFavorite: originalFavoriteStatus } : n))
-            );
+            setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { isFavorite: originalFavoriteStatus });
             return;
           }
           throw new Error('Failed to update favorite status');
@@ -571,9 +571,7 @@ export function useSourceView(params: UseSourceViewParams) {
       } catch (error) {
         logger.error('Error toggling favorite:', error);
         // Revert to original state using the saved original value
-        setNodes(prevNodes =>
-          prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isFavorite: originalFavoriteStatus } : n))
-        );
+        setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { isFavorite: originalFavoriteStatus });
         // Remove from pending on error since we reverted
         pendingFavoriteRequests.delete(favKey);
         showToast(t('toast.failed_update_favorite'), 'error');
@@ -581,7 +579,7 @@ export function useSourceView(params: UseSourceViewParams) {
       // Note: On success, the polling logic will remove from pendingFavoriteRequests
       // when it detects the server has caught up
     },
-    [sourceId, setNodes, authFetch, baseUrl, showToast, t]
+    [sourceId, queryClient, authFetch, baseUrl, showToast, t]
   );
 
   // Function to toggle node favorite lock status
@@ -597,14 +595,9 @@ export function useSourceView(params: UseSourceViewParams) {
       const newLocked = !node.favoriteLocked;
 
       try {
-        // Optimistically update the UI
-        flushSync(() => {
-          setNodes(prevNodes =>
-            prevNodes.map(n =>
-              n.nodeNum === node.nodeNum ? { ...n, favoriteLocked: newLocked } : n
-            )
-          );
-        });
+        // Optimistically update the UI — write straight into the poll query
+        // cache (#3962 5.4 PR8); useNodes() picks it up on next render.
+        setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { favoriteLocked: newLocked });
 
         const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/favorite-lock`, {
           method: 'POST',
@@ -620,15 +613,11 @@ export function useSourceView(params: UseSourceViewParams) {
       } catch (error) {
         logger.error('Error toggling favorite lock:', error);
         // Revert
-        setNodes(prevNodes =>
-          prevNodes.map(n =>
-            n.nodeNum === node.nodeNum ? { ...n, favoriteLocked: !newLocked } : n
-          )
-        );
+        setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { favoriteLocked: !newLocked });
         showToast(t('toast.failed_update_favorite_lock', 'Failed to update favorite lock'), 'error');
       }
     },
-    [setNodes, authFetch, baseUrl, sourceId, showToast, t]
+    [queryClient, authFetch, baseUrl, sourceId, showToast, t]
   );
 
   // Effective map age cap for traceroute/route-segment visibility (#3322):
