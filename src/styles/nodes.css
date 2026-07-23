@@ -1,3 +1,27 @@
+/* ============================================================================
+ * ORDERING CONSTRAINT — read before adding or moving rules in this file
+ * ============================================================================
+ * `@media` blocks add NO specificity. If a mobile `@media (max-width: ...)`
+ * override shares a selector with an unconditional (non-media) base rule at
+ * the same specificity, whichever one is declared LATER in this file wins
+ * the cascade for the overlapping properties — regardless of which block
+ * "looks" more specific to a reader.
+ *
+ * This has silently broken mobile styling twice in production (issue #3532):
+ * a mobile override placed in an earlier `@media` block was shadowed by a
+ * base rule for the same selector declared further down the file, so the
+ * mobile-only values never took effect. See the `.map-controls` (~L2320),
+ * `.map-control-item span` / `.position-history-slider` (~L2540), and
+ * `.node-popup` (~L1856) sections below for the fix pattern: when a mobile
+ * override must beat a base rule, its `@media` block is placed AFTER that
+ * base rule's declaration, with a short redirect comment left at the
+ * override's "natural" location pointing to where it actually lives.
+ *
+ * Before relying on a mobile override in this file, check source order —
+ * not just indentation/comments — against every other declaration of the
+ * same selector.
+ * ============================================================================ */
+
 /* Fullscreen Map Layout for Nodes */
 .nodes-split-view {
   position: fixed;
@@ -1391,30 +1415,19 @@
     max-width: none;
     width: auto;
   }
+  /* NOTE: `left: auto` above duplicates the base `.map-controls.collapsed`
+     rule's `left: auto !important` (search "Collapsed state for map
+     controls"). That base declaration is `!important`, so it always wins
+     regardless of source order and happens to carry the same value — this
+     one property is harmlessly redundant, not a live #3532 bug. Left as-is;
+     do not "fix" by reordering without re-verifying the value still matches. */
 
-  .map-control-item span {
-    font-size: 0.8rem;
-  }
-
-  .position-history-slider {
-    padding-left: 1rem;
-  }
-
-  .position-history-slider .slider-value {
-    font-size: 0.75rem;
-    min-width: 35px;
-  }
-
-  /* Larger touch targets for mobile slider */
-  .position-history-slider input[type='range']::-webkit-slider-thumb {
-    width: 20px;
-    height: 20px;
-  }
-
-  .position-history-slider input[type='range']::-moz-range-thumb {
-    width: 20px;
-    height: 20px;
-  }
+  /* NOTE: the mobile `.map-control-item span` font-size and
+     `.position-history-slider` padding/touch-target overrides live AFTER
+     the base rules they override (search "Map Controls (mobile touch-target
+     overrides)"), not here — same #3532 cascade-order trap as `.map-controls`
+     above: these selectors are also declared, unconditionally, further down
+     this file, and being later in source order would otherwise win. */
 
   /* Ensure zoom controls stay in bottom-right on mobile */
   .nodes-split-view .leaflet-top.leaflet-left {
@@ -1544,22 +1557,15 @@
   white-space: nowrap;
 }
 
-/* Responsive Node Popup */
-@media (max-width: 768px) {
-  .node-popup {
-    max-width: 240px;
-    padding: 10px;
-    font-size: 13px;
-  }
-
-  .node-popup .popup-header strong {
-    font-size: 14px;
-  }
-
-  .node-popup .popup-details > div {
-    font-size: 12px;
-  }
-}
+/* NOTE: the mobile `.node-popup` max-width/padding/font-size override (and
+   its `.popup-header strong` / `.popup-details > div` children) live AFTER
+   the second, unrelated `.node-popup` base rule below (search "Responsive
+   Node Popup (mobile override)") — that duplicate `.node-popup` sizing rule
+   further down this file has the same specificity and, being later in
+   source order, would otherwise silently win the mobile `max-width` (#3532).
+   NB: this file has two separate unconditional `.node-popup` rulesets
+   (here, and again near "Custom scrollbar for node popup") — a pre-existing
+   duplication left as-is; out of scope for this ordering fix. */
 
 /* Message Reply Styles */
 .message-content {
@@ -1853,6 +1859,27 @@
   overflow-y: auto;
   overflow-x: hidden;
   font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Responsive Node Popup (mobile override)
+   Declared AFTER the base `.node-popup` rule above on purpose — see the NOTE
+   near "Responsive design" earlier in this file (#3532 cascade-order trap:
+   media queries add no specificity, so this must come after the last
+   unconditional `.node-popup` declaration to win the cascade on mobile). */
+@media (max-width: 768px) {
+  .node-popup {
+    max-width: 240px;
+    padding: 10px;
+    font-size: 13px;
+  }
+
+  .node-popup .popup-header strong {
+    font-size: 14px;
+  }
+
+  .node-popup .popup-details > div {
+    font-size: 12px;
+  }
 }
 
 /* Custom scrollbar for node popup */
@@ -2537,6 +2564,39 @@
 
 .map-controls.collapsed .map-controls-body {
   padding: 0.5rem 0.75rem;
+}
+
+/* Map Controls (mobile touch-target overrides)
+   Declared AFTER the base `.map-control-item span` / `.position-history-slider`
+   rules above on purpose — media queries add no specificity, so placing these
+   in the earlier `@media (max-width: 768px)` block (near the top of this file,
+   search "Fullscreen Map Layout") loses the cascade to the base declarations
+   above and silently does nothing (#3532 — same trap as the `.map-controls`
+   position/z-index override further up this section). */
+@media (max-width: 768px) {
+  .map-control-item span {
+    font-size: 0.8rem;
+  }
+
+  .position-history-slider {
+    padding-left: 1rem;
+  }
+
+  .position-history-slider .slider-value {
+    font-size: 0.75rem;
+    min-width: 35px;
+  }
+
+  /* Larger touch targets for mobile slider */
+  .position-history-slider input[type='range']::-webkit-slider-thumb {
+    width: 20px;
+    height: 20px;
+  }
+
+  .position-history-slider input[type='range']::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+  }
 }
 
 /* Node Pulse Animation */
