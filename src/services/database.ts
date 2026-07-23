@@ -3311,6 +3311,22 @@ class DatabaseService {
           logger.error('Failed to clear packet logs during purge:', err);
         }
       }
+      // Clear ATAK contacts so a deleted/purged source's contacts don't linger (#3691 Phase 2)
+      if (this.atakContactsRepo) {
+        try {
+          if (sourceId) {
+            await this.atakContactsRepo.deleteContactsForSource(sourceId);
+          } else {
+            // undefined sourceId = admin global purge across every source — intentional cross-source
+            const atakSourceIds = await this.atakContactsRepo.getContactSourceIds();
+            for (const atakSourceId of atakSourceIds) {
+              await this.atakContactsRepo.deleteContactsForSource(atakSourceId);
+            }
+          }
+        } catch (err) {
+          logger.error('Failed to purge ATAK contacts during purge:', err);
+        }
+      }
       // Finally delete the nodes themselves
       if (this.nodesRepo) {
         await this.nodesRepo.deleteAllNodes(sourceId);
