@@ -2,9 +2,28 @@
 
 **Epic issue:** #4294 (original bug report, reopened as tracker; #4308 closed as duplicate)
 **Status:**
-- [ ] Phase 1 — Backend: honor the flag + central guard
+- [x] Phase 1 — Backend: honor the flag + central guard (branch `feature/tx-disabled-backend`)
 - [ ] Phase 2 — Frontend: gating UX
 - [ ] Phase 3 — Polish + docs
+
+**Phase 1 deviations & findings (2026-07-23):**
+- **"Preserve" ≠ strip.** `setLoRaConfig` sends the ENTIRE LoRaConfig struct (whole-message
+  replace) and proto3 decodes an omitted bool as `false` — stripping `txEnabled` on import
+  would have silently disabled TX (the #1328 mechanism). Implemented as an explicit
+  backfill from the device's current value (`manager.isTxEnabled()`) instead. POST /lora
+  likewise backfills when the caller omits the field.
+- **Remote import preserve is best-effort:** cached remote config → decoded URL value →
+  fail-open `true`. A fully-accurate remote preserve needs an extra
+  `requestRemoteConfig(LORA_CONFIG)` round-trip — `TODO(#4294 follow-up)` at the call
+  site in `adminRoutes.ts`; consider in Phase 3.
+- `adminRoutes.ts` has its **own duplicated** import-config logic (spec assumed it shared
+  channelRoutes'); both its force-true sites were fixed independently.
+- Pre-existing bug found & fixed: `POST /config/module/request` was registered after the
+  `/module/:moduleType` wildcard and was unreachable (always 400). Reordered.
+- Waypoint rebroadcast gates in `waypointService.rebroadcastTick` (via `broadcastWaypoint`,
+  not one of the six guarded primitives), with a `typeof manager.isTxEnabled === 'function'`
+  check so MeshCore managers are never touched.
+- Position-estimation needed no change — it consumes observed traceroutes, never sends.
 
 **Interview decisions (2026-07-23):**
 - 3 phases as scoped, one PR each.
