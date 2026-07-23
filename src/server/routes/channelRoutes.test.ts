@@ -33,7 +33,11 @@ vi.mock('../utils/automationChannelMigration.js', () => ({
   migrateAutomationChannels: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('../constants/meshtastic.js', () => ({
+vi.mock('../constants/meshtastic.js', async (importOriginal) => ({
+  // Partial mock: repositories/messages.ts (transitively imported) needs the
+  // real PortNum constants (#3691 DM_CHAT_PORTNUMS); only override the two
+  // symbols this suite controls.
+  ...(await importOriginal<typeof import('../constants/meshtastic.js')>()),
   modemPresetChannelName: vi.fn(() => 'LongFast'),
   CHANNEL_DB_OFFSET: 100,
 }));
