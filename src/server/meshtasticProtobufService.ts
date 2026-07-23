@@ -918,6 +918,12 @@ export class MeshtasticProtobufService {
           return MeshBeacon.decode(payload);
         }
 
+        case PortNum.ATAK_PLUGIN: {
+          // TAKPacket (ATAK plugin, portnum 72): oneof PLI/GeoChat/detail payload_variant.
+          const TAKPacket = root.lookupType('meshtastic.TAKPacket');
+          return TAKPacket.decode(payload); // throws are caught by the outer try/catch → returns raw payload
+        }
+
         default:
           logger.debug(`⚠️ Unhandled port number: ${portnum}`);
           return payload;
@@ -1792,6 +1798,43 @@ export class MeshtasticProtobufService {
     }
   }
 
+}
+
+/** Human-readable one-line preview for a decoded TAKPacket (Packet Monitor). */
+export function formatTakPreview(tak: any, payloadSize: number): string {
+  // Guard: decode failed upstream → processPayload returned the raw Uint8Array.
+  if (!tak || typeof tak !== 'object' || tak instanceof Uint8Array) {
+    return `[ATAK packet, ${payloadSize} bytes (undecodable)]`;
+  }
+  const compressed = tak.isCompressed ?? tak.is_compressed ?? false;
+  const callsign = tak.contact?.callsign ?? tak.contact?.device_callsign ?? tak.contact?.deviceCallsign;
+  const who = callsign ? ` ${callsign}` : '';
+
+  // oneof payload_variant — protobufjs exposes only the set field as an own property.
+  const pli = tak.pli;
+  const chat = tak.chat;
+  const detail = tak.detail;
+
+  if (pli) {
+    // PLI ints are valid even when is_compressed=true (only string fields are unishox2'd).
+    const lat = Number(pli.latitudeI ?? pli.latitude_i ?? 0) / 1e7;
+    const lon = Number(pli.longitudeI ?? pli.longitude_i ?? 0) / 1e7;
+    return `[ATAK PLI${who}: ${lat.toFixed(5)}°, ${lon.toFixed(5)}°]`;
+  }
+  if (chat) {
+    const receiptType = Number(chat.receiptType ?? chat.receipt_type ?? 0);
+    if (receiptType !== 0 || chat.receiptForUid || chat.receipt_for_uid) {
+      return `[ATAK GeoChat receipt${who}]`;
+    }
+    if (compressed) return `[ATAK GeoChat${who} (compressed)]`;
+    const msg = typeof chat.message === 'string' ? chat.message.substring(0, 80) : '';
+    return `[ATAK GeoChat${who}: "${msg}"]`;
+  }
+  if (detail) {
+    const n = detail.length ?? 0;
+    return `[ATAK detail${who}: ${n} bytes]`;
+  }
+  return `[ATAK packet${who}]`;
 }
 
 // Export singleton instance

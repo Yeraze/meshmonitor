@@ -1,5 +1,5 @@
 import databaseService, { type DbMessage } from '../services/database.js';
-import meshtasticProtobufService from './meshtasticProtobufService.js';
+import meshtasticProtobufService, { formatTakPreview } from './meshtasticProtobufService.js';
 import protobufService, { convertIpv4ConfigToStrings } from './protobufService.js';
 import { getProtobufRoot, type MeshBeaconPayload } from './protobufLoader.js';
 import { TcpTransport } from './tcpTransport.js';
@@ -5509,6 +5509,16 @@ class MeshtasticManager implements ISourceManager {
               } else {
                 payloadPreview = `[S&F ${rrName}]`;
               }
+            } else if (portnum === PortNum.ATAK_PLUGIN) {
+              payloadPreview = formatTakPreview(
+                processedPayload, meshPacket.decoded.payload.length);
+              // decodedPayload keeps the decoded TAKPacket object → renders as JSON in the detail view.
+            } else if (portnum === PortNum.ATAK_PLUGIN_V2) {
+              payloadPreview = `[ATAK V2 (not decoded), ${meshPacket.decoded.payload.length} bytes]`;
+              decodedPayload = null; // suppress raw-Uint8Array dump into metadata.decoded_payload
+            } else if (portnum === PortNum.ATAK_FORWARDER) {
+              payloadPreview = `[ATAK Forwarder (not decoded), ${meshPacket.decoded.payload.length} bytes]`;
+              decodedPayload = null;
             } else {
               payloadPreview = `[${portnumName}]`;
             }
