@@ -17,6 +17,7 @@ import { useSaveBar } from '../hooks/useSaveBar';
 import GeofenceMapEditor from './GeofenceMapEditor';
 import GeofenceNodeSelector from './GeofenceNodeSelector';
 import ScriptTestModal from './ScriptTestModal';
+import apiService from '../services/api';
 
 // Available tokens for geofence text message expansion
 const AVAILABLE_TOKENS = [
@@ -97,20 +98,17 @@ const GeofenceTriggersSection: React.FC<GeofenceTriggersSectionProps> = ({
   useEffect(() => {
     const fetchScripts = async () => {
       try {
-        const response = await fetch(`${baseUrl}/api/scripts`);
-        if (response.ok) {
-          const data = await response.json();
-          const scripts: ScriptMetadata[] = (data.scripts || []).map((script: ScriptMetadata | string) => {
-            if (typeof script === 'string') {
-              const filename = script.split('/').pop() || script;
-              const ext = filename.split('.').pop()?.toLowerCase() || '';
-              const language = ext === 'py' ? 'Python' : ext === 'js' || ext === 'mjs' ? 'JavaScript' : ext === 'sh' ? 'Shell' : 'Script';
-              return { path: script, filename, language };
-            }
-            return script;
-          });
-          setAvailableScripts(scripts);
-        }
+        const data = await apiService.get<{ scripts?: (ScriptMetadata | string)[] }>('/api/scripts');
+        const scripts: ScriptMetadata[] = (data.scripts || []).map((script: ScriptMetadata | string) => {
+          if (typeof script === 'string') {
+            const filename = script.split('/').pop() || script;
+            const ext = filename.split('.').pop()?.toLowerCase() || '';
+            const language = ext === 'py' ? 'Python' : ext === 'js' || ext === 'mjs' ? 'JavaScript' : ext === 'sh' ? 'Shell' : 'Script';
+            return { path: script, filename, language };
+          }
+          return script;
+        });
+        setAvailableScripts(scripts);
       } catch (error) {
         console.error('Failed to fetch available scripts:', error);
       }

@@ -24,6 +24,7 @@ import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveCo
 import { ConnectionStatus } from './hooks/useMeshCore';
 import { useTelemetry } from '../../hooks/useTelemetry';
 import { CollapsibleSection } from './CollapsibleSection';
+import apiService from '../../services/api';
 
 const HOURS_OPTIONS = [1, 6, 24, 72, 168] as const;
 type HoursOption = typeof HOURS_OPTIONS[number];
@@ -170,9 +171,7 @@ export const MeshCoreInfoView: React.FC<MeshCoreInfoViewProps> = ({ baseUrl, sou
   const { data: infoResp, isLoading: infoLoading, error: infoError } = useQuery({
     queryKey: ['meshcore-info', sourceId],
     queryFn: async (): Promise<MeshCoreInfoApiResponse> => {
-      const resp = await fetch(`${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/info`);
-      if (!resp.ok) throw new Error(`Failed to fetch info: ${resp.status}`);
-      return resp.json();
+      return apiService.get<MeshCoreInfoApiResponse>(`/api/sources/${encodeURIComponent(sourceId)}/meshcore/info`);
     },
     refetchInterval: 30_000,
     staleTime: 25_000,
