@@ -1,0 +1,129 @@
+# ATAK / CoT Integration Epic (issue #3691)
+
+**Status:** Phase 1 implemented (PR pending); Phases 2–3 pending
+**Orchestrated via:** /epic (2026-07-23)
+
+## Goal
+
+Support ATAK (Team Awareness Kit) Cursor-on-Target data in MeshMonitor:
+decode Meshtastic ATAK-plugin packets (TAKPacket V1), show ATAK contacts in the
+Packet Monitor and on maps, persist GeoChat into Messages, and expose a
+streaming TCP CoT feed that ATAK/WinTAK clients can subscribe to directly.
+
+## Protocol facts (researched 2026-07-23, meshtastic-expert)
+
+- **V1** — `ATAK_PLUGIN = 72`, message `meshtastic.TAKPacket` (protobufs
+  `meshtastic/atak.proto`; our pinned submodule v2.7.26-79-gba16bfc has it).
+  Byte-stable from v2.7.4 → master. Fields: `is_compressed`, `Contact
+  {callsign, device_callsign}`, `Group {role, team}`, `Status {battery}`,
+  oneof `payload_variant { PLI pli=5; GeoChat chat=6; bytes detail=7 }`.
+  `PLI = {latitude_i, longitude_i (sfixed32, 1e-7 deg), altitude, speed (m/s),
+  course (deg)}`. `GeoChat = {message, to?, to_callsign?, receipt_for_uid,
+  receipt_type, lang?, room_id?, voice_profile_id?}`.
+- **Firmware transcodes V1 for TCP clients:** `AtakPluginModule::alterReceivedProtobuf`
+  unishox2-decompresses string fields and sends the decompressed copy to
+  phone/EUD clients — MeshMonitor normally receives `is_compressed=false`
+  plain UTF-8. Handle `is_compressed=true` defensively (label, don't decode
+  strings; unishox2 JS decode is NOT in scope).
+- **V2** — `ATAK_PLUGIN_V2 = 78`, `TAKPacketV2`, payload =
+  `[1 flags byte][zstd-with-shared-dictionary]`. Firmware does NOT transcode;
+  the zstd dictionary blob lives in the plugin/firmware and must be sourced.
+  **Out of scope this epic** — packets are labeled (portnum name, payload size,
+  "V2 — not yet decoded") but not decoded. Follow-up spike issue to be filed.
+- **`ATAK_FORWARDER = 257`** — third-party (paulmandal/atak-forwarder,
+  libcotshrink XML). Named only; no decode. Not the official plugin.
+- **The "2.8 breaking change"** is NOT a V1 wire break — 2.8 adds V2 for rich
+  CoT and the app falls back to V1 for PLI/GeoChat. Building on V1 is safe and
+  forward-compatible; V2 adds rich CoT later.
+- **MeshCore has no native ATAK format** (ripplebiz/MeshCore: zero CoT/TAK
+  sources). MeshCore participates only on the feed-output side (its positioned
+  nodes are synthesized into CoT events).
+- **CoT feed:** ATAK does not poll REST. Native mechanism = streaming TCP
+  socket serving raw CoT `<event>` XML (SA-server style, cf. TCP 8087).
+  Minimal event: `uid`, `type` (e.g. `a-f-G-U-C`), `time/start/stale`,
+  `<point lat lon hae ce le>`, `<detail><contact callsign/>...</detail>`.
+  Sentinels: `hae/le = 9999999.0` for unknown. Speed m/s, course degrees.
+
+## Interview decisions (2026-07-23)
+
+| Question | Decision |
+|---|---|
+| V2 handling | V1 decode now; V2 labeled-not-decoded; file follow-up spike issue for zstd dictionary research |
+| CoT feed (issue Phase 3) | **In scope** |
+| Feed content | ATAK contacts + **all positioned mesh nodes** (Meshtastic + MeshCore synthesized) |
+| Map surfaces | All map surfaces, toggleable layer (per-source Nodes map + unified/dashboard) |
+| GeoChat | **Also persist into messages** (not just packet monitor) |
+| Feed security | Plaintext TCP, settings-gated, **off by default**; TLS deferred |
+
+Out of scope: sending TAKPackets from MeshMonitor (RX-only), V2 decode,
+unishox2 decompression, ATAK_FORWARDER (257) decode, TLS feed.
+
+## Phases
+
+### Phase 1 — TAKPacket V1 decode + Packet Monitor + GeoChat messages
+Spec: `ATAK_COT_PHASE1_SPEC.md`.
+- [x] Decode portnum 72 → `meshtastic.TAKPacket` in
+      `meshtasticProtobufService.processPayload`.
+- [x] Preview branches in `meshtasticManager.processMeshPacket`: PLI /
+      GeoChat / receipt / detail / compressed via exported `formatTakPreview`;
+      decoded object into `metadata.decoded_payload` (zero frontend changes;
+      only `getPortnumColor` gained `case 78`).
+- [x] Port 78: `[ATAK V2 (not decoded), N bytes]` preview, `decodedPayload`
+      nulled. Port 257: same labeled treatment.
+- [x] GeoChat → messages: `processTakPacket` persists non-compressed,
+      non-receipt GeoChat with row-ID `${sourceId}_${fromNum}_${packetId}`,
+      `portnum=72`, text prefixed `[ATAK <callsign>] …`; DM per envelope
+      (`channel=-1`); no auto-responder side effects (RX-only).
+- [x] Tests: 7 decode/preview fixtures; 11 persistence tests; per-source
+      isolation test; 3 DM read-path tests. Full suite green.
+- **Exit criteria:** ATAK V1 packets display decoded in Packet Monitor;
+  GeoChat appears in Messages; full suite green; PR merged. ← PR pending
+
+### Phase 2 — ATAK contact persistence + map layer
+- [ ] New per-source `atak_contacts` table (migration, all three backends,
+      idempotent per recipe): keyed by (sourceId, uid/device_callsign),
+      callsign, team, role, battery, lat/lon/alt, speed, course, last_seen,
+      stale handling/retention.
+- [ ] Populated from PLI branch in the packet side-effect switch.
+- [ ] Repository (`src/db/repositories/`) + API route (envelope helpers,
+      `requirePermission` scoping) + `*.perSource.test.ts`.
+- [ ] `AtakContactsLayer.tsx` in `src/components/map/layers/` modeled on
+      `NodeMarkersLayer` (descriptor+props shape), mounted on all BaseMap
+      surfaces with a layer toggle; distinct marker (team color, callsign),
+      popup (type/callsign/role/battery/stale/last-seen).
+- **Exit criteria:** ATAK contacts persist per-source, render on all maps
+  with toggle, popup correct; browser-validated; PR merged.
+
+### Phase 3 — CoT feed output (TCP streaming server)
+- [ ] Settings-gated TCP server (enabled + port; **default off**), keys added
+      to `VALID_SETTINGS_KEYS`, Settings UI per SettingsDraft recipe.
+- [ ] Emits CoT `<event>` XML on connect (snapshot) + on updates for:
+      (a) ATAK contacts (from Phase 2 table), (b) all positioned nodes from
+      every source incl. MeshCore. Stable uid scheme (e.g.
+      `MESHMON-<sourceId>-<nodeId>`), proper stale times, team/role/battery
+      detail where known.
+- [ ] Docs: README/docs for the feed + Docker/helm port-mapping note.
+- **Exit criteria:** ATAK client connecting to the socket sees mesh nodes +
+  ATAK contacts as map contacts; settings off-by-default; PR merged.
+
+### Post-epic
+- [ ] File follow-up issue: V2 (port 78) zstd-dictionary research spike.
+- [ ] Close #3691 with summary.
+
+## Decisions / deviations log
+
+- (2026-07-23) Epic created; interview decisions above.
+- (2026-07-23, Phase 1 spec gate) `ensureMessageEndpointNodes` extracted from
+  the text path and shared with `processTakPacket` (DRY; text-path tests
+  guard the extraction). Push notifications enabled for GeoChat. `portnum=72`
+  stored on GeoChat message rows (honest metadata; read path is channel-based).
+  `detail` bytes left in `metadata.decoded_payload` (opaque JSON, harmless).
+- (2026-07-23, Phase 1 review) Two read-path portnum gates found and fixed:
+  `sendMessagePushNotification` hard-required portnum 1 (widened to 1|72);
+  `getDirectMessages` hard-filtered portnum 1 (widened to
+  `DM_CHAT_PORTNUMS = [TEXT_MESSAGE_APP, ATAK_PLUGIN]` — telemetry/traceroute
+  DMs stay excluded). Residual (deliberate): `useMessagingView.ts` notification
+  *sound* only plays for portnum 1 — ATAK messages render but don't chime.
+- (2026-07-23, Phase 1) GeoChat `to`/`to_callsign` are ATAK UID strings, not
+  nodeNums — used only for the `[ATAK a→b]` text prefix, never routing.
+  Routing follows the Meshtastic envelope. No UID→node map until Phase 2.
