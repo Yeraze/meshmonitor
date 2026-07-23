@@ -169,6 +169,17 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
       overrideFrequency, region, hopLimit, txPower, channelNum, femLnaMode, sx126xRxBoostedGain,
       ignoreMqtt, configOkToMqtt, txEnabled, overrideDutyCycle, paFanDisabled]);
 
+  // Danger-confirm on the true->false TX transition (#4294). Enabling never prompts,
+  // and cancelling the confirm leaves the checkbox checked.
+  const handleTxEnabledChange = useCallback((checked: boolean) => {
+    if (!checked && txEnabled) {
+      if (!window.confirm(t('lora_config.tx_disable_confirm'))) {
+        return;
+      }
+    }
+    setTxEnabled(checked);
+  }, [txEnabled, setTxEnabled, t]);
+
   // Register with SaveBar
   useSaveBar({
     id: 'lora-config',
@@ -532,7 +543,7 @@ const LoRaConfigSection: React.FC<LoRaConfigSectionProps> = ({
             id="txEnabled"
             type="checkbox"
             checked={txEnabled}
-            onChange={(e) => setTxEnabled(e.target.checked)}
+            onChange={(e) => handleTxEnabledChange(e.target.checked)}
             style={{ marginTop: '0.2rem', flexShrink: 0 }}
           />
           <div style={{ flex: 1 }}>
