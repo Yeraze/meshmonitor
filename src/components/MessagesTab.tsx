@@ -34,7 +34,8 @@ import { getEffectiveHops } from '../utils/nodeHops';
 import { scrollInputIntoView } from '../utils/scrollInputIntoView';
 import { useMapContext } from '../contexts/MapContext';
 import { useSettings } from '../contexts/SettingsContext';
-import { useDeviceNodes, useTelemetryNodes } from '../hooks/useServerData';
+import { useDeviceNodes, useTelemetryNodes, setNodeFieldInCache } from '../hooks/useServerData';
+import { useQueryClient } from '@tanstack/react-query';
 import HopCountDisplay from './HopCountDisplay';
 import LinkPreview from './LinkPreview';
 import NodeDetailsBlock from './NodeDetailsBlock';
@@ -452,9 +453,35 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const { showToast } = useToast();
   const csrfFetch = useCsrfFetch();
   const { sourceId } = useSource();
+  const queryClient = useQueryClient();
 
   // Purge neighbors state
   const [purgingNeighbors, setPurgingNeighbors] = useState(false);
+
+  // Security warning clear state (#4302 — the warning bar had no way to
+  // resolve a stale flag short of finding the Security tab's "Run Scan Now").
+  // Tracked by nodeNum (not a bare boolean) so switching the selected DM node
+  // mid-request can't attribute the wrong node's loading state to this one.
+  const [clearingSecurityWarningNode, setClearingSecurityWarningNode] = useState<number | null>(null);
+  const handleClearSecurityWarning = useCallback(async (nodeNum: number) => {
+    setClearingSecurityWarningNode(nodeNum);
+    try {
+      await apiService.post(`/api/security/nodes/${nodeNum}/clear`, { sourceId });
+      // Optimistically drop the flags in the poll cache so the warning bar
+      // disappears immediately instead of lingering until the next poll (#4302).
+      setNodeFieldInCache(queryClient, sourceId, nodeNum, {
+        keyIsLowEntropy: false,
+        duplicateKeyDetected: false,
+        keyMismatchDetected: false,
+        keySecurityIssueDetails: undefined,
+      });
+      showToast(t('messages.security_risk_cleared', 'Security warning cleared'), 'success');
+    } catch {
+      showToast(t('messages.security_risk_clear_failed', 'Failed to clear security warning'), 'error');
+    } finally {
+      setClearingSecurityWarningNode(null);
+    }
+  }, [sourceId, queryClient, showToast, t]);
 
   // Resizable send section (only on desktop)
   const {
@@ -1381,10 +1408,34 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   marginBottom: '10px',
                   borderRadius: '4px',
                   fontWeight: 'bold',
-                  textAlign: 'center',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexWrap: 'wrap',
+                  gap: '10px',
                 }}
               >
-                <UiIcon name={selectedNode.keyMismatchDetected ? 'unlock' : 'alert'} /> {selectedNode.keyMismatchDetected ? t('messages.key_mismatch') : t('messages.security_risk')}
+                <span>
+                  <UiIcon name={selectedNode.keyMismatchDetected ? 'unlock' : 'alert'} /> {selectedNode.keyMismatchDetected ? t('messages.key_mismatch') : t('messages.security_risk')}
+                </span>
+                {hasPermission('security', 'write') && (
+                  <button
+                    onClick={() => void handleClearSecurityWarning(selectedNode.nodeNum)}
+                    disabled={clearingSecurityWarningNode === selectedNode.nodeNum}
+                    title={t('messages.security_risk_clear_title', 'Clear this security warning')}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.15)',
+                      border: '1px solid rgba(255, 255, 255, 0.8)',
+                      color: 'white',
+                      borderRadius: '4px',
+                      padding: '2px 10px',
+                      fontWeight: 'normal',
+                      cursor: clearingSecurityWarningNode === selectedNode.nodeNum ? 'default' : 'pointer',
+                    }}
+                  >
+                    {clearingSecurityWarningNode === selectedNode.nodeNum ? t('messages.security_risk_clearing', 'Clearing…') : t('messages.security_risk_clear', 'Clear')}
+                  </button>
+                )}
               </div>
             )}
 
