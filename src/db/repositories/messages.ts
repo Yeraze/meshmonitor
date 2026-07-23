@@ -8,6 +8,15 @@ import { eq, gt, lt, gte, and, or, desc, sql, like, ilike, inArray, isNotNull, i
 import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbMessage } from '../types.js';
 import { logger } from '../../utils/logger.js';
+import { PortNum } from '../../server/constants/meshtastic.js';
+
+/**
+ * Chat-like portnums that render in the DM thread view (#3691). Telemetry,
+ * traceroute, and other non-chat DM rows stay excluded. ATAK GeoChat DMs
+ * (PortNum.ATAK_PLUGIN, 72) are persisted by processTakPacket with
+ * channel = -1 and must surface alongside plain text messages.
+ */
+const DM_CHAT_PORTNUMS = [PortNum.TEXT_MESSAGE_APP, PortNum.ATAK_PLUGIN];
 
 /**
  * Repository for message operations
@@ -193,7 +202,7 @@ export class MessagesRepository extends BaseRepository {
       .from(messages)
       .where(
         and(
-          eq(messages.portnum, 1),
+          inArray(messages.portnum, DM_CHAT_PORTNUMS),
           eq(messages.channel, -1),
           or(
             and(eq(messages.fromNodeId, nodeId1), eq(messages.toNodeId, nodeId2)),
