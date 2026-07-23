@@ -1,6 +1,6 @@
 # MeshMonitor — Claude Agent Brief
 
-**Version:** 4.13.0 (multi-source architecture)
+**Version:** 4.13.x (multi-source architecture)
 **Stack:** React 19 + TS + Vite frontend / Node.js 20+ (Docker image ships Node 24; CI matrix covers 20/22/24/25) + Express 5 + TS backend / SQLite (default), PostgreSQL, MySQL via Drizzle ORM / Meshtastic protobuf-over-TCP and MeshCore (native `meshcore.js` for companion, serial CLI for repeater) through a per-source manager registry.
 
 ## Read order for new agents
@@ -8,7 +8,7 @@
 1. **This file** — invariants, rules, and gotchas. Skim end-to-end.
 2. **`docs/internal/dev-notes/ARCHITECTURE_LESSONS.md`** — MUST-READ before touching node communication, state management, backup/restore, async operations, multi-database, or multi-source.
 3. **`docs/internal/dev-notes/MESHCORE_REMOTE_ADMIN.md`** — MUST-READ before touching MeshCore CLI/admin routes, the credential store, the danger guard, or the shared `CliConsoleBody` primitive.
-4. **`src/server/sourceManagerRegistry.ts`** + **`src/server/meshtasticManager.ts`** + **`src/server/bootstrapSources.ts`** — read these before any feature touching nodes/messages/telemetry. There is no global `meshtasticManager` singleton; everything is per-source. The `meshtasticManager` default export is a live Proxy alias (see Multi-Source section below), not a concrete instance.
+4. **`src/server/sourceManagerRegistry.ts`** + **`src/server/meshtasticManager.ts`** + **`src/server/bootstrapSources.ts`** — read these before any feature touching nodes/messages/telemetry. There is no global `meshtasticManager` singleton and no default export; everything is per-source — resolve the primary via `getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager` (see Multi-Source section below). Connection lifecycle runs through the explicit state machine in `src/server/meshtastic/connectionStateMachine.ts` (#3962 4.2b).
 5. **One repository under `src/db/repositories/`** (e.g. `auth.ts`) — read before adding a query. Raw SQL outside this directory is ESLint-banned.
 
 ## Where things live
@@ -21,7 +21,7 @@
 | Migrations | `src/server/migrations/NNN_*.ts` (75+ total), registry in `src/db/migrations.ts` |
 | Backup/restore | `src/server/services/systemBackupService.ts`, `systemRestoreService.ts` |
 | Routes | `src/server/routes/*` |
-| Packet monitors | Meshtastic: `packet_log` table + `packetLogService.ts` + `packetRoutes.ts` + `PacketMonitorPanel.tsx`. MeshCore (OTA via `LogRxData`): `meshcore_packet_log` table + `meshcorePacketLogService.ts` + `/packets` routes in `meshcoreRoutes.ts` + `MeshCorePacketMonitorView.tsx`. MQTT (per-gateway receptions, N rows per packet, deduped at query time): `mqtt_packet_log` table + `mqttPacketLogService.ts` + `mqttPacketRoutes.ts` (`/api/sources/:id/mqtt/packets`), hooked via the `ingestServiceEnvelope` wrapper. All opt-in (`*_packet_log_enabled`). |
+| Packet monitors | Meshtastic: `packet_log` table + `packetLogService.ts` + `packetRoutes.ts` + `PacketMonitorPanel.tsx`. MeshCore (OTA via `LogRxData`): `meshcore_packet_log` table + `meshcorePacketLogService.ts` + `/packets` routes in `meshcorePacketRoutes.ts` (mounted via the `meshcoreRoutes.ts` barrel) + `MeshCorePacketMonitorView.tsx`. MQTT (per-gateway receptions, N rows per packet, deduped at query time): `mqtt_packet_log` table + `mqttPacketLogService.ts` + `mqttPacketRoutes.ts` (`/api/sources/:id/mqtt/packets`), hooked via the `ingestServiceEnvelope` wrapper. All opt-in (`*_packet_log_enabled`). |
 | Frontend pages | `src/pages/*` (`Unified*Page` = multi-source aware) |
 | Shared map shell | `src/components/map/` — `BaseMap` (MapContainer + raster/vector tile branch + optional TilesetSelector/resize). New map surfaces MUST compose `BaseMap` instead of hand-rolling `MapContainer`; shared layers land here during epic #4047. |
 | ESLint config | `eslint.config.mjs` (raw-SQL ban lives here) |
