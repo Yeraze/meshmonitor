@@ -141,6 +141,13 @@ describe('DataContext Types', () => {
   // now sourced directly from the poll cache via useTelemetryNodes()
   // (see src/hooks/useServerData.test.ts).
 
+  // messages/channelMessages (+ their pagination state) were removed from
+  // DataContext (#3962 5.4 PR7) — they were never pure poll-cache mirrors,
+  // so they moved to useMessagingView rather than a selector (see
+  // src/hooks/useMessagingView.test.ts). The MeshMessage/channelMessages
+  // "type structure" tests above build local mock objects and never touch
+  // useData(), so they remain valid unchanged.
+
   it('should support deviceInfo any type', () => {
     const mockDeviceInfo: any = {
       myNodeNum: 305419896,

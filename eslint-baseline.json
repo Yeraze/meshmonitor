@@ -18,9 +18,8 @@
     "no-restricted-syntax": 2
   },
   "src/App.tsx": {
-    "@typescript-eslint/no-explicit-any": 1,
     "preserve-caught-error": 1,
-    "react-hooks/exhaustive-deps": 16
+    "react-hooks/exhaustive-deps": 10
   },
   "src/cli/migrate-db.ts": {
     "@typescript-eslint/no-explicit-any": 3,
