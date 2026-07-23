@@ -10,7 +10,6 @@ import { useTranslation } from 'react-i18next';
 import { SettingsProvider } from '../contexts/SettingsContext';
 import { ToastProvider } from '../components/ToastContainer';
 import AnalysisTab from '../components/Analysis/AnalysisTab';
-import { appBasename } from '../init';
 import '../styles/analysis-reports.css';
 import { UiIcon } from '../components/icons';
 
@@ -33,7 +32,7 @@ export default function ReportsPage() {
             <h1>{t('analysis.title', 'Analysis & Reports')}</h1>
           </header>
           <main className="reports-body">
-            <AnalysisTab baseUrl={appBasename} />
+            <AnalysisTab />
           </main>
         </div>
       </SettingsProvider>

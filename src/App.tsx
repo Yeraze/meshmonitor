@@ -3301,7 +3301,6 @@ function App() {
         onClose={() => setShowPositionOverrideModal(false)}
         onSave={handlePositionOverrideSave}
         getNodeName={getNodeName}
-        baseUrl={baseUrl}
       />
 
       <NodeInfoModal
