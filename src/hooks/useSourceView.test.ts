@@ -13,6 +13,9 @@ import { pendingFavoriteRequests } from '../utils/pendingToggles';
 
 const mockUseSource = vi.fn();
 const mockUseData = vi.fn();
+const mockUseNodes = vi.fn();
+const mockSetNodeFieldInCache = vi.fn();
+const mockUseQueryClient = vi.fn();
 const mockUseMessaging = vi.fn();
 const mockUseSettings = vi.fn();
 const mockUseUI = vi.fn();
@@ -27,7 +30,15 @@ vi.mock('../contexts/MessagingContext', () => ({ useMessaging: () => mockUseMess
 vi.mock('../contexts/SettingsContext', () => ({ useSettings: () => mockUseSettings() }));
 vi.mock('../contexts/UIContext', () => ({ useUI: () => mockUseUI() }));
 vi.mock('../contexts/MapContext', () => ({ useMapContext: () => mockUseMapContext() }));
-vi.mock('./useServerData', () => ({ useTelemetryNodes: () => mockUseTelemetryNodes() }));
+// nodes now come from useNodes() (poll cache) instead of useData() (#3962
+// 5.4 PR8); setNodeFieldInCache is the query-cache write toggleFavorite/
+// toggleFavoriteLock use instead of the old setNodes.
+vi.mock('./useServerData', () => ({
+  useNodes: () => mockUseNodes(),
+  useTelemetryNodes: () => mockUseTelemetryNodes(),
+  setNodeFieldInCache: (...args: unknown[]) => mockSetNodeFieldInCache(...args),
+}));
+vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => mockUseQueryClient() }));
 vi.mock('../components/ToastContainer', () => ({ useToast: () => mockUseToast() }));
 vi.mock('./useTraceroutePaths', () => ({
   useTraceroutePaths: (params: unknown) => mockUseTraceroutePaths(params),
@@ -84,7 +95,6 @@ function baseParams(overrides: Partial<UseSourceViewParams> = {}): UseSourceView
 
 describe('useSourceView', () => {
   let nodes: DeviceInfo[];
-  let setNodes: ReturnType<typeof vi.fn>;
   let setMapCenterTarget: ReturnType<typeof vi.fn>;
   let setSelectedNodeId: ReturnType<typeof vi.fn>;
   let setTracerouteLoading: ReturnType<typeof vi.fn>;
@@ -99,7 +109,6 @@ describe('useSourceView', () => {
     pendingFavoriteRequests.delete('src-1:100');
 
     nodes = [makeNode()];
-    setNodes = vi.fn();
     setMapCenterTarget = vi.fn();
     setSelectedNodeId = vi.fn();
     setTracerouteLoading = vi.fn();
@@ -107,7 +116,10 @@ describe('useSourceView', () => {
     setSelectedDMNode = vi.fn();
 
     mockUseSource.mockReturnValue({ sourceId: 'src-1', sourceName: 'Test', sourceType: 'meshtastic_tcp' });
-    mockUseData.mockReturnValue({ nodes, setNodes, currentNodeId: '!64', connectionStatus: 'connected' });
+    // nodes come from useNodes() (poll cache), not useData() (#3962 5.4 PR8).
+    mockUseData.mockReturnValue({ currentNodeId: '!64', connectionStatus: 'connected' });
+    mockUseNodes.mockReturnValue({ nodes, isLoading: false, error: null });
+    mockUseQueryClient.mockReturnValue({});
     mockUseMessaging.mockReturnValue({ selectedDMNode: null, setSelectedDMNode });
     mockUseSettings.mockReturnValue({ maxNodeAgeHours: 24, distanceUnit: 'metric' });
     mockUseUI.mockReturnValue({
@@ -151,11 +163,10 @@ describe('useSourceView', () => {
     it('filters out stale non-favorite nodes but always keeps favorites', () => {
       const stale = makeNode({ nodeNum: 200, isFavorite: false, lastHeard: 0 });
       const staleFavorite = makeNode({ nodeNum: 300, isFavorite: true, lastHeard: 0 });
-      mockUseData.mockReturnValue({
+      mockUseNodes.mockReturnValue({
         nodes: [makeNode(), stale, staleFavorite],
-        setNodes,
-        currentNodeId: '!64',
-        connectionStatus: 'connected',
+        isLoading: false,
+        error: null,
       });
 
       const { result } = renderHook(() => useSourceView(baseParams()));
@@ -169,7 +180,7 @@ describe('useSourceView', () => {
     it('applies nodesNodeFilter text search only when activeTab is "nodes"', () => {
       const nodeA = makeNode({ nodeNum: 100, user: { id: '!64', longName: 'Alpha', shortName: 'A' } });
       const nodeB = makeNode({ nodeNum: 200, user: { id: '!c8', longName: 'Bravo', shortName: 'B' } });
-      mockUseData.mockReturnValue({ nodes: [nodeA, nodeB], setNodes, currentNodeId: '!64', connectionStatus: 'connected' });
+      mockUseNodes.mockReturnValue({ nodes: [nodeA, nodeB], isLoading: false, error: null });
       mockUseUI.mockReturnValue({
         activeTab: 'nodes',
         nodesNodeFilter: 'Alpha',
@@ -198,7 +209,7 @@ describe('useSourceView', () => {
     it('sorts favorites before non-favorites', () => {
       const favorite = makeNode({ nodeNum: 200, isFavorite: true, user: { id: '!c8', longName: 'Zeta', shortName: 'Z' } });
       const nonFavorite = makeNode({ nodeNum: 100, isFavorite: false, user: { id: '!64', longName: 'Alpha', shortName: 'A' } });
-      mockUseData.mockReturnValue({ nodes: [nonFavorite, favorite], setNodes, currentNodeId: '!64', connectionStatus: 'connected' });
+      mockUseNodes.mockReturnValue({ nodes: [nonFavorite, favorite], isLoading: false, error: null });
 
       const { result } = renderHook(() => useSourceView(baseParams()));
       expect(result.current.processedNodes.map(n => n.nodeNum)).toEqual([200, 100]);
@@ -230,7 +241,7 @@ describe('useSourceView', () => {
     it('passes visibleNodeNums through to useTraceroutePaths, excluding hidden/incomplete/off-transport nodes', () => {
       const visible = makeNode({ nodeNum: 100, position: { latitude: 40, longitude: -75 } as any });
       const hidden = makeNode({ nodeNum: 200, position: { latitude: 41, longitude: -76 } as any, hideFromMap: true } as any);
-      mockUseData.mockReturnValue({ nodes: [visible, hidden], setNodes, currentNodeId: '!64', connectionStatus: 'connected' });
+      mockUseNodes.mockReturnValue({ nodes: [visible, hidden], isLoading: false, error: null });
 
       renderHook(() => useSourceView(baseParams()));
 
@@ -272,7 +283,7 @@ describe('useSourceView', () => {
     });
 
     it('is a no-op when not connected', async () => {
-      mockUseData.mockReturnValue({ nodes, setNodes, currentNodeId: '!64', connectionStatus: 'disconnected' });
+      mockUseData.mockReturnValue({ currentNodeId: '!64', connectionStatus: 'disconnected' });
       const authFetch = vi.fn();
       const { result } = renderHook(() => useSourceView(baseParams({ authFetch })));
 
@@ -316,6 +327,46 @@ describe('useSourceView', () => {
         'http://localhost:3001/api/nodes/!64/favorite',
         expect.objectContaining({ method: 'POST' })
       );
+    });
+
+    // Pin for #3962 5.4 PR8: toggleFavorite used to write the optimistic
+    // update via DataContext's setNodes; it now writes straight into the
+    // poll query cache via setNodeFieldInCache (src/hooks/useServerData.ts).
+    // These two tests pin that the optimistic-write/revert-on-error
+    // behavior survived the migration instead of silently disappearing.
+    it('optimistically writes isFavorite into the query cache before the request resolves', async () => {
+      const authFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ deviceSync: undefined }) });
+      const { result } = renderHook(() => useSourceView(baseParams({ authFetch })));
+      const node = makeNode({ nodeNum: 100, isFavorite: false });
+      const event = { stopPropagation: vi.fn() } as unknown as React.MouseEvent;
+
+      await act(async () => {
+        await result.current.toggleFavorite(node, event);
+      });
+
+      expect(mockSetNodeFieldInCache).toHaveBeenCalledWith(
+        expect.anything(),
+        'src-1',
+        100,
+        { isFavorite: true }
+      );
+    });
+
+    it('reverts the optimistic write when the server rejects the toggle', async () => {
+      const authFetch = vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
+      const { result } = renderHook(() => useSourceView(baseParams({ authFetch })));
+      const node = makeNode({ nodeNum: 100, isFavorite: false });
+      const event = { stopPropagation: vi.fn() } as unknown as React.MouseEvent;
+
+      await act(async () => {
+        await result.current.toggleFavorite(node, event);
+      });
+
+      // First call is the optimistic flip to true; the last call reverts
+      // back to the original (false) once the request fails.
+      const calls = mockSetNodeFieldInCache.mock.calls;
+      expect(calls[0]).toEqual([expect.anything(), 'src-1', 100, { isFavorite: true }]);
+      expect(calls[calls.length - 1]).toEqual([expect.anything(), 'src-1', 100, { isFavorite: false }]);
     });
   });
 });
