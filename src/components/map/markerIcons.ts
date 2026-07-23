@@ -11,12 +11,13 @@ import { categoryGlyphFamily, type NodeTypeCategory } from '../../utils/nodeType
  * Meshtastic role categories (issue #3610) reuse the MeshCore glyph silhouettes
  * via {@link categoryGlyphFamily} (a ROUTER draws as a repeater tower, etc.).
  */
-export function roleGlyphInnerSvg(category: NodeTypeCategory, color: string): string {
-  switch (categoryGlyphFamily(category)) {
-    case 'repeater':
-      // Tower with signal waves — the existing router silhouette, overflows
-      // the circle so backbone nodes read at a glance.
-      return `
+/**
+ * The repeater/router tower silhouette (tower + signal waves), shared by the
+ * `'repeater'` glyph family and the ROUTER_LATE variant (issue #4295). Drawn in
+ * the 48×48 role-glyph viewBox.
+ */
+function repeaterTowerSvg(color: string): string {
+  return `
         <rect x="19" y="32" width="10" height="12" fill="#555" />
         <rect x="21" y="16" width="6" height="16" fill="#555" />
         <rect x="22.5" y="4" width="3" height="12" fill="#555" />
@@ -25,6 +26,39 @@ export function roleGlyphInnerSvg(category: NodeTypeCategory, color: string): st
         <path d="M 18 24 C 15 24 12 25 12 26" stroke="${color}" stroke-width="3" fill="none" />
         <path d="M 32 20 C 36 20 40 23 40 26" stroke="${color}" stroke-width="3" fill="none" />
         <path d="M 30 24 C 33 24 36 25 36 26" stroke="${color}" stroke-width="3" fill="none" />`;
+}
+
+/**
+ * "Unmessageable" corner badge: the lucide `Ban` mark (the same icon the
+ * NodesTab list uses for the `blocked` state) drawn on a white disc so it reads
+ * over any hop color. Signals a node that reports itself as unable to receive
+ * direct messages (issue #4295, deferred from #3684). Muted red keeps the
+ * "no" semantic without matching the 6+-hop marker red exactly.
+ */
+function unmessageableBadgeSvg(size: number): string {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">`
+    + `<circle cx="12" cy="12" r="11" fill="white" fill-opacity="0.95" />`
+    + `<circle cx="12" cy="12" r="9" fill="none" stroke="#d64545" stroke-width="2" />`
+    + `<path d="M 5.6 5.6 L 18.4 18.4" stroke="#d64545" stroke-width="2" stroke-linecap="round" />`
+    + `</svg>`;
+}
+
+export function roleGlyphInnerSvg(category: NodeTypeCategory, color: string): string {
+  // ROUTER_LATE shares the repeater-tower silhouette (it IS infrastructure) but
+  // gets a small clock badge marking its delayed / lower-priority rebroadcast
+  // window, so it reads distinctly from a plain ROUTER (issue #4295). The badge
+  // sits in the lower-left, clear of the tower base and the right-side waves.
+  if (category === 'mtRouterLate') {
+    return repeaterTowerSvg(color)
+      + `\n        <circle cx="13" cy="34" r="6.5" fill="white" stroke="${color}" stroke-width="2" />`
+      + `\n        <path d="M 13 34 L 13 30" stroke="${color}" stroke-width="1.6" stroke-linecap="round" />`
+      + `\n        <path d="M 13 34 L 15.6 35.6" stroke="${color}" stroke-width="1.6" stroke-linecap="round" />`;
+  }
+  switch (categoryGlyphFamily(category)) {
+    case 'repeater':
+      // Tower with signal waves — the existing router silhouette, overflows
+      // the circle so backbone nodes read at a glance.
+      return repeaterTowerSvg(color);
     case 'roomServer':
       // Stacked server rack with status LEDs.
       return `
@@ -125,6 +159,9 @@ export interface CreateNodeIconOptions {
   /** Role category for a per-type glyph (issue #3546). 'standard'/undefined
    *  keeps the default pin (meshmonitor) or short-name circle (official). */
   roleCategory?: NodeTypeCategory;
+  /** When true, overlay a "no direct messages" badge on the marker (issue
+   *  #4295). Meshtastic variant only. */
+  isUnmessagable?: boolean;
   // --- new (source-tech parameters, Phase 4 #4047) ---
   /** Source-tech variant. Defaults to 'meshtastic' — every existing caller's
    *  code path is unchanged. */
@@ -160,6 +197,7 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
     highlightSelected = false,
     pinStyle = 'meshmonitor',
     roleCategory,
+    isUnmessagable = false,
     variant = 'meshtastic',
     fixedColor,
     labelName,
@@ -223,6 +261,22 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
     roleCategory && roleCategory !== 'standard' ? roleGlyphInnerSvg(roleCategory, color) : '';
   const size = isSelected ? 60 : 48;
   const strokeWidth = isSelected ? 3 : 2;
+
+  // Unmessageable overlay (issue #4295): a "no DMs" badge pinned to the
+  // top-right corner, clear of the bottom-right role badge that official style
+  // draws for infra roles. Same markup for both pin styles.
+  const unmessageableBadgeSize = Math.round(size * 0.4);
+  const unmessageableBadge = isUnmessagable ? `
+      <div style="
+        position: absolute;
+        top: -2px;
+        right: -2px;
+        width: ${unmessageableBadgeSize}px;
+        height: ${unmessageableBadgeSize}px;
+        filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+        pointer-events: none;
+      ">${unmessageableBadgeSvg(unmessageableBadgeSize)}</div>
+    ` : '';
 
   // Official Meshtastic style: Circle with always-visible label
   if (pinStyle === 'official') {
@@ -292,6 +346,7 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
         ${markerSvg}
         ${emojiOverlay}
         ${roleBadge}
+        ${unmessageableBadge}
       </div>
     `;
 
@@ -369,6 +424,7 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
     <div class="${classes}" style="position: relative; width: ${size}px; height: ${size}px;">
       ${markerSvg}
       ${label}
+      ${unmessageableBadge}
     </div>
   `;
 

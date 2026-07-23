@@ -195,8 +195,16 @@ describe('roleGlyphMarkerSvg', () => {
   it('renders Meshtastic role categories via their shared glyph family (issue #3610)', () => {
     // A Meshtastic ROUTER draws as the repeater tower; identical markup.
     expect(roleGlyphMarkerSvg('mtRouter', COLOR, 24)).toBe(roleGlyphMarkerSvg('repeater', COLOR, 24));
-    expect(roleGlyphMarkerSvg('mtRouterLate', COLOR, 24)).toBe(roleGlyphMarkerSvg('repeater', COLOR, 24));
     expect(roleGlyphMarkerSvg('mtSensor', COLOR, 24)).toBe(roleGlyphMarkerSvg('sensor', COLOR, 24));
+  });
+
+  it('renders ROUTER_LATE as the tower plus a distinguishing clock badge (issue #4295)', () => {
+    // ROUTER_LATE keeps the repeater tower but adds a clock badge, so it no
+    // longer matches a plain ROUTER/repeater exactly.
+    const late = roleGlyphMarkerSvg('mtRouterLate', COLOR, 24);
+    expect(late).not.toBe(roleGlyphMarkerSvg('repeater', COLOR, 24));
+    expect(late).toContain('x="19" y="32"'); // shared tower base
+    expect(late).toContain('cx="13" cy="34"'); // clock badge
   });
 
   it('returns empty string for Meshtastic client-type roles (default pin)', () => {
