@@ -6,6 +6,8 @@ import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { parseDestinationNum } from '../utils/parseDestination.js';
 import { resolveDestinationChannel, resolveBroadcastChannel, isValidChannelIndex } from '../utils/resolveDestinationChannel.js';
 import { PortNum } from '../constants/meshtastic.js';
+import { fail } from '../utils/apiResponse.js';
+import { isTxDisabledError } from '../errors/txDisabledError.js';
 
 const router = Router();
 
@@ -37,6 +39,9 @@ router.post('/traceroute', requirePermission('traceroute', 'write'), async (req:
       message: `Traceroute request sent to ${destinationNum.toString(16)} on channel ${channel}`,
     });
   } catch (error: any) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error sending traceroute:', error);
     if (error?.message?.includes('Not connected')) {
       return res.status(503).json({
@@ -116,6 +121,9 @@ router.post('/position/request', requirePermission('messages', 'write'), async (
       message: `Position request sent to ${destinationNum.toString(16)} on channel ${channel}`,
     });
   } catch (error: any) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error sending position request:', error);
     if (error?.message?.includes('Not connected')) {
       return res.status(503).json({
@@ -194,6 +202,9 @@ router.post('/nodeinfo/request', requirePermission('messages', 'write'), async (
       message: `NodeInfo request sent to ${destinationNum.toString(16)} on channel ${channel}`,
     });
   } catch (error: any) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error sending nodeinfo request:', error);
     if (error?.message?.includes('Not connected')) {
       return res.status(503).json({
@@ -273,6 +284,9 @@ router.post('/neighborinfo/request', requirePermission('traceroute', 'write'), a
       requestId
     });
   } catch (error: any) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error sending neighborinfo request:', error);
     if (error?.message?.includes('Not connected')) {
       return res.status(503).json({
@@ -327,6 +341,9 @@ router.post('/telemetry/request', requirePermission('messages', 'write'), async 
       requestId
     });
   } catch (error: any) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error sending telemetry request:', error);
     if (error?.message?.includes('Not connected')) {
       return res.status(503).json({

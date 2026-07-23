@@ -8,9 +8,11 @@
  * setters moved out of server.ts into configRoutes.ts.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import configRoutes from './configRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
+import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
+import { TxDisabledError } from '../errors/txDisabledError.js';
 
 describe('configRoutes', () => {
   let harness: RouteTestHarness;
@@ -127,6 +129,116 @@ describe('configRoutes', () => {
       const res = await agent.post('/device').send({ nodeAddress: '1.2.3.4' });
       expect(res.status).not.toBe(403);
       expect(res.status).toBe(500);
+    });
+  });
+
+  describe('POST /lora — txEnabled passthrough (#4294)', () => {
+    // configRoutes resolves the manager via resolveSourceManager(), which reads
+    // the real sourceManagerRegistry. Register a minimal fake manager for
+    // harness.sourceA so we can assert on the exact payload forwarded to
+    // setLoRaConfig, instead of hitting the unconfigured fallbackManager (which
+    // always 500s with "Not connected").
+    let setLoRaConfig: ReturnType<typeof vi.fn>;
+    let requestModuleConfig: ReturnType<typeof vi.fn>;
+    let isTxEnabled: ReturnType<typeof vi.fn>;
+
+    beforeEach(async () => {
+      setLoRaConfig = vi.fn().mockResolvedValue(undefined);
+      requestModuleConfig = vi.fn().mockResolvedValue(undefined);
+      // Fail-open default, matching the real MeshtasticManager.isTxEnabled()
+      // (true until config has arrived / when the caller's payload already
+      // carries an explicit txEnabled). Individual tests override this to
+      // exercise the omitted-field backfill.
+      isTxEnabled = vi.fn().mockReturnValue(true);
+      const fakeManager: ISourceManager & { setLoRaConfig: typeof setLoRaConfig; requestModuleConfig: typeof requestModuleConfig; isTxEnabled: typeof isTxEnabled } = {
+        sourceId: harness.sourceA,
+        sourceType: 'meshtastic_tcp',
+        start: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn().mockResolvedValue(undefined),
+        getStatus: vi.fn().mockReturnValue({ sourceId: harness.sourceA, sourceName: 'Source A', sourceType: 'meshtastic_tcp', connected: true }),
+        getLocalNodeInfo: vi.fn().mockReturnValue(null),
+        startDistanceDeleteScheduler: vi.fn().mockResolvedValue(undefined),
+        stopDistanceDeleteScheduler: vi.fn(),
+        setLoRaConfig,
+        requestModuleConfig,
+        isTxEnabled,
+      } as unknown as ISourceManager & { setLoRaConfig: typeof setLoRaConfig; requestModuleConfig: typeof requestModuleConfig; isTxEnabled: typeof isTxEnabled };
+      await sourceManagerRegistry.addManager(fakeManager);
+      await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
+    });
+
+    afterEach(async () => {
+      await sourceManagerRegistry.removeManager(harness.sourceA);
+    });
+
+    it('passes txEnabled:false through to setLoRaConfig instead of forcing true', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/lora').send({ sourceId: harness.sourceA, txEnabled: false, hopLimit: 3 });
+
+      expect(res.status).toBe(200);
+      expect(setLoRaConfig).toHaveBeenCalledWith(expect.objectContaining({ txEnabled: false, hopLimit: 3 }));
+    });
+
+    it('passes txEnabled:true through unchanged when the caller sets it', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/lora').send({ sourceId: harness.sourceA, txEnabled: true });
+
+      expect(res.status).toBe(200);
+      expect(setLoRaConfig).toHaveBeenCalledWith(expect.objectContaining({ txEnabled: true }));
+    });
+
+    // Regression for the whole-struct-replace / proto3 missing-bool hazard:
+    // setLoRaConfig sends the device the ENTIRE LoRaConfig, and an omitted
+    // bool decodes as false on the radio. When the caller's body doesn't
+    // include txEnabled at all (e.g. saving hopLimit from a form with no TX
+    // toggle), the route MUST backfill from the device's current state
+    // rather than send the field omitted/undefined.
+    it('backfills txEnabled from the device state when the caller omits it (radio-kill regression)', async () => {
+      isTxEnabled.mockReturnValue(false);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/lora').send({ sourceId: harness.sourceA, hopLimit: 3 });
+
+      expect(res.status).toBe(200);
+      expect(setLoRaConfig).toHaveBeenCalledWith(expect.objectContaining({ txEnabled: false, hopLimit: 3 }));
+    });
+
+    it('backfills txEnabled:true from the device state when the caller omits it and TX is currently on', async () => {
+      isTxEnabled.mockReturnValue(true);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/lora').send({ sourceId: harness.sourceA, hopLimit: 5 });
+
+      expect(res.status).toBe(200);
+      expect(setLoRaConfig).toHaveBeenCalledWith(expect.objectContaining({ txEnabled: true, hopLimit: 5 }));
+    });
+  });
+
+  describe('POST /module/request — TX_DISABLED mapping (#4294)', () => {
+    it('returns 409 TX_DISABLED when the remote target has transmit disabled', async () => {
+      const requestModuleConfig = vi.fn().mockRejectedValue(new TxDisabledError());
+      const fakeManager = {
+        sourceId: harness.sourceA,
+        sourceType: 'meshtastic_tcp',
+        start: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn().mockResolvedValue(undefined),
+        getStatus: vi.fn().mockReturnValue({ sourceId: harness.sourceA, sourceName: 'Source A', sourceType: 'meshtastic_tcp', connected: true }),
+        getLocalNodeInfo: vi.fn().mockReturnValue(null),
+        startDistanceDeleteScheduler: vi.fn().mockResolvedValue(undefined),
+        stopDistanceDeleteScheduler: vi.fn(),
+        requestModuleConfig,
+      } as unknown as ISourceManager;
+      await sourceManagerRegistry.addManager(fakeManager);
+      await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
+
+      try {
+        const agent = await harness.loginAs(harness.limited);
+        const res = await agent.post('/module/request').send({ sourceId: harness.sourceA, configType: 5 });
+
+        expect(res.status).toBe(409);
+        expect(res.body.success).toBe(false);
+        expect(res.body.code).toBe('TX_DISABLED');
+      } finally {
+        await sourceManagerRegistry.removeManager(harness.sourceA);
+      }
     });
   });
 });

@@ -57,12 +57,14 @@ function makeFakeManager(overrides: Partial<{
   deviceConnected: boolean;
   rebootMergeInProgress: boolean;
   automationAirtimeGated: boolean;
+  txEnabled: boolean;
 }> = {}) {
   const state = {
     sourceId: overrides.sourceId ?? 'test-source',
     deviceConnected: overrides.deviceConnected ?? true,
     rebootMergeInProgress: overrides.rebootMergeInProgress ?? false,
     automationAirtimeGated: overrides.automationAirtimeGated ?? false,
+    txEnabled: overrides.txEnabled ?? true,
   };
   return {
     state,
@@ -70,6 +72,7 @@ function makeFakeManager(overrides: Partial<{
     isDeviceConnected: vi.fn(() => state.deviceConnected),
     isRebootMergeInProgress: vi.fn(() => state.rebootMergeInProgress),
     isAutomationAirtimeGated: vi.fn(async () => state.automationAirtimeGated),
+    isTxEnabled: vi.fn(() => state.txEnabled),
     replaceAnnouncementTokens: vi.fn(async (message: string) => message.replace('{VERSION}', '9.9.9')),
     messageQueue: { enqueue: vi.fn() },
     broadcastNodeInfoToChannels: vi.fn().mockResolvedValue(undefined),
@@ -191,6 +194,34 @@ describe('AutoAnnounceService', () => {
       await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000);
 
       expect(sendSpy).not.toHaveBeenCalled();
+    });
+
+    it('onTick skips sendAutoAnnouncement when TX is disabled (#4294 WP3)', async () => {
+      const mgr = makeFakeManager({ deviceConnected: true, txEnabled: false });
+      const svc = new AutoAnnounceService(mgr as any);
+      const sendSpy = vi.spyOn(svc, 'sendAutoAnnouncement').mockResolvedValue(undefined);
+
+      await svc.startAnnounceScheduler();
+      await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000);
+
+      expect(sendSpy).not.toHaveBeenCalled();
+      // The scheduler itself stays armed so a later TX re-enable resumes automatically.
+      expect(svc.running).toBe(true);
+    });
+
+    it('onTick resumes sendAutoAnnouncement once TX is re-enabled on a later tick (#4294 WP3)', async () => {
+      const mgr = makeFakeManager({ deviceConnected: true, txEnabled: false });
+      const svc = new AutoAnnounceService(mgr as any);
+      const sendSpy = vi.spyOn(svc, 'sendAutoAnnouncement').mockResolvedValue(undefined);
+
+      await svc.startAnnounceScheduler();
+      await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000);
+      expect(sendSpy).not.toHaveBeenCalled();
+
+      mgr.state.txEnabled = true;
+      await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000);
+
+      expect(sendSpy).toHaveBeenCalledTimes(1);
     });
 
     it('announce-on-start: sends after a 30s delay when enabled and no prior announcement exists', async () => {

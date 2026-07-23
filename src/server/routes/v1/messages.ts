@@ -18,6 +18,7 @@ import { messageLimiter } from '../../middleware/rateLimiters.js';
 import { logger } from '../../../utils/logger.js';
 import { MAX_MESSAGE_BYTES, PortNum } from '../../constants/meshtastic.js';
 import { resolvedSourceIdFromPath } from './sourceParam.js';
+import { isTxDisabledError } from '../../errors/txDisabledError.js';
 
 /** Maximum number of message parts allowed when splitting long messages */
 const MAX_MESSAGE_PARTS = 3;
@@ -562,6 +563,9 @@ router.post('/', messageLimiter, async (req: Request, res: Response) => {
       });
     }
   } catch (error: any) {
+    if (isTxDisabledError(error)) {
+      return res.status(409).json({ success: false, error: 'Transmit is disabled on this source', code: 'TX_DISABLED' });
+    }
     logger.error('Error sending message via v1 API:', error);
 
     // Check for specific error types

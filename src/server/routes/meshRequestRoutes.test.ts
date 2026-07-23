@@ -44,6 +44,7 @@ vi.mock('../auth/authMiddleware.js', () => ({
 import databaseService from '../../services/database.js';
 import { parseDestinationNum } from '../utils/parseDestination.js';
 import meshRequestRoutes from './meshRequestRoutes.js';
+import { TxDisabledError } from '../errors/txDisabledError.js';
 
 const app = express();
 app.use(express.json());
@@ -144,6 +145,14 @@ describe('POST /traceroute', () => {
     expect(res.body.error).toBe('Service Unavailable');
     expect(res.body.message).toContain('Not connected');
   });
+
+  it('returns 409 TX_DISABLED when transmit is disabled on this source', async () => {
+    mockManager.sendTraceroute.mockRejectedValue(new TxDisabledError());
+    const res = await request(app).post('/traceroute').send({ destination: '!12345678' });
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.code).toBe('TX_DISABLED');
+  });
 });
 
 describe('POST /position/request', () => {
@@ -167,6 +176,14 @@ describe('POST /position/request', () => {
     expect(res.body.success).toBe(false);
     expect(res.body.error).toBe('Service Unavailable');
     expect(res.body.message).toContain('Not connected');
+  });
+
+  it('returns 409 TX_DISABLED when transmit is disabled on this source', async () => {
+    mockManager.sendPositionRequest.mockRejectedValue(new TxDisabledError());
+    const res = await request(app).post('/position/request').send({ destination: '!12345678' });
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.code).toBe('TX_DISABLED');
   });
 });
 
@@ -193,6 +210,14 @@ describe('POST /nodeinfo/request', () => {
     expect(res.body.success).toBe(false);
     expect(res.body.error).toBe('Service Unavailable');
     expect(res.body.message).toContain('Not connected');
+  });
+
+  it('returns 409 TX_DISABLED when transmit is disabled on this source', async () => {
+    mockManager.sendNodeInfoRequest.mockRejectedValue(new TxDisabledError());
+    const res = await request(app).post('/nodeinfo/request').send({ destination: '!12345678' });
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.code).toBe('TX_DISABLED');
   });
 });
 
@@ -240,6 +265,17 @@ describe('POST /neighborinfo/request', () => {
     expect(res.body.error).toBe('Service Unavailable');
     expect(res.body.message).toContain('Not connected');
   });
+
+  it('returns 409 TX_DISABLED when transmit is disabled on this source (after eligibility passes)', async () => {
+    (parseDestinationNum as any).mockResolvedValue(0x0000dddd);
+    mockManager.getLocalNodeInfo.mockReturnValue({ nodeNum: 1, nodeId: '!00000001' });
+    (databaseService.nodes.getNode as any).mockResolvedValue({ channel: 1, hopsAway: 0 });
+    mockManager.sendNeighborInfoRequest.mockRejectedValue(new TxDisabledError());
+    const res = await request(app).post('/neighborinfo/request').send({ destination: '!0000dddd' });
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.code).toBe('TX_DISABLED');
+  });
 });
 
 describe('POST /telemetry/request', () => {
@@ -278,5 +314,13 @@ describe('POST /telemetry/request', () => {
     expect(res.body.success).toBe(false);
     expect(res.body.error).toBe('Service Unavailable');
     expect(res.body.message).toContain('Not connected');
+  });
+
+  it('returns 409 TX_DISABLED when transmit is disabled on this source', async () => {
+    mockManager.sendTelemetryRequest.mockRejectedValue(new TxDisabledError());
+    const res = await request(app).post('/telemetry/request').send({ destination: '!12345678', telemetryType: 'environment' });
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.code).toBe('TX_DISABLED');
   });
 });

@@ -1061,9 +1061,9 @@ router.post('/encode-url', requirePermission('configuration', 'read'), requireSo
           frequencyOffset: deviceConfig.lora.frequencyOffset,
           region: deviceConfig.lora.region,
           hopLimit: deviceConfig.lora.hopLimit,
-          // IMPORTANT: Always force txEnabled to true for exported configs
-          // This ensures that when someone imports the config, TX is always enabled
-          txEnabled: true,
+          // Emit the device's actual txEnabled (issue #4294) — exports should
+          // reflect the real radio state, not force TX on.
+          txEnabled: deviceConfig.lora.txEnabled,
           txPower: deviceConfig.lora.txPower,
           channelNum: deviceConfig.lora.channelNum,
           sx126xRxBoostedGain: deviceConfig.lora.sx126xRxBoostedGain,
@@ -1177,15 +1177,21 @@ router.post('/import-config', requirePermission('configuration', 'write'), requi
       try {
         logger.debug(`📥 Importing LoRa config:`, JSON.stringify(decoded.loraConfig, null, 2));
 
-        // IMPORTANT: Always force txEnabled to true
-        // MeshMonitor users need TX enabled to send messages
-        // Ignore any incoming configuration that tries to disable TX
+        // Preserve the device's current txEnabled rather than importing the
+        // URL's value (issue #4294) — this is a local-node import.
+        //
+        // setLoRaConfig sends the ENTIRE LoRaConfig struct to the device (whole
+        // message replace, not a patch), and proto3 decodes an omitted bool as
+        // false. So we can't just strip the key — that would silently reach the
+        // radio as txEnabled=false and kill TX (the exact #1328 mechanism that
+        // motivated the original, overly-broad force-true). Explicitly backfill
+        // with the device's actual current value instead.
         const loraConfigToImport = {
           ...decoded.loraConfig,
-          txEnabled: true,
+          txEnabled: configImportManager.isTxEnabled(),
         };
 
-        logger.debug(`📥 LoRa config with txEnabled defaulted: txEnabled=${loraConfigToImport.txEnabled}`);
+        logger.debug(`📥 LoRa config import: txEnabled preserved from device = ${loraConfigToImport.txEnabled}`);
         await configImportManager.setLoRaConfig(loraConfigToImport);
         // LoRa config triggers heavier processing (frequency calculations, radio reconfiguration)
         // so allow extra time before committing

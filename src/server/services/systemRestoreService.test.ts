@@ -76,6 +76,36 @@ vi.mock('mysql2/promise', () => ({
 
 import { systemRestoreService } from './systemRestoreService.js';
 
+// ─── TX-disabled exit criterion 2 (#4294) ─────────────────────────────────────
+// Restore is a pure DB row restore — it never touches a source manager, so it
+// can never call setLoRaConfig / force lora.txEnabled. This is a structural
+// lock rather than a mocked-manager behavioral test: neither restore nor
+// backup service imports a manager or references setLoRaConfig/txEnabled at
+// all, so there is no runtime call site to intercept. Reads the real
+// filesystem (bypassing this file's `fs` mock) to inspect the actual source.
+
+describe('systemRestoreService / systemBackupService — never touch lora.txEnabled (#4294)', () => {
+  it('restore never calls setLoRaConfig or references txEnabled', async () => {
+    const realFs = await vi.importActual<typeof import('fs')>('fs');
+    const restoreSource = realFs.readFileSync(
+      new URL('./systemRestoreService.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(restoreSource).not.toContain('setLoRaConfig');
+    expect(restoreSource).not.toContain('txEnabled');
+  });
+
+  it('backup never calls setLoRaConfig or references txEnabled', async () => {
+    const realFs = await vi.importActual<typeof import('fs')>('fs');
+    const backupSource = realFs.readFileSync(
+      new URL('./systemBackupService.ts', import.meta.url),
+      'utf-8'
+    );
+    expect(backupSource).not.toContain('setLoRaConfig');
+    expect(backupSource).not.toContain('txEnabled');
+  });
+});
+
 // ─── Valid metadata fixture ───────────────────────────────────────────────────
 
 const validMetadata = {

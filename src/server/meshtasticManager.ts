@@ -38,6 +38,7 @@ import { waypointService } from './services/waypointService.js';
 import type { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { MessageQueueService } from './messageQueueService.js';
 import { resolveAutoWelcomeDelaySeconds } from './autoWelcomeDelay.js';
+import { TxDisabledError } from './errors/txDisabledError.js';
 import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { matchAutoResponderPattern } from './utils/autoResponderMatcher.js';
@@ -2225,6 +2226,13 @@ class MeshtasticManager implements ISourceManager {
 
     // The traceroute execution logic
     const executeTraceroute = async () => {
+      // TX-disabled radios cannot send OTA traceroutes; skip quietly and let the
+      // interval keep running so a later TX re-enable resumes automatically (#4294).
+      if (!this.isTxEnabled()) {
+        logger.debug('🗺️ Auto-traceroute: Skipping - TX disabled on this source');
+        return;
+      }
+
       // Check time window schedule (per-source — written by AutoTracerouteSection
       // via /api/settings?sourceId=, so must be read with getSettingForSource).
       const scheduleEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'tracerouteScheduleEnabled');
@@ -2380,6 +2388,13 @@ class MeshtasticManager implements ISourceManager {
     logger.debug(`📊 Starting remote LocalStats scheduler with ${this.remoteLocalStatsIntervalMinutes} minute interval (initial jitter: ${Math.round(initialJitterMs / 1000)}s)`);
 
     const executeRemoteLocalStats = async () => {
+      // TX-disabled radios cannot send remote telemetry requests; skip quietly and
+      // let the interval keep running so a later TX re-enable resumes automatically (#4294).
+      if (!this.isTxEnabled()) {
+        logger.debug('📊 Remote LocalStats: Skipping - TX disabled on this source');
+        return;
+      }
+
       // Per-source schedule window (written by AutoLocalStatsSection via
       // /api/settings?sourceId=, so read with getSettingForSource).
       const scheduleEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'remoteLocalStatsScheduleEnabled');
@@ -2645,6 +2660,13 @@ class MeshtasticManager implements ISourceManager {
     logger.debug(`🔑 Starting remote admin scanner with ${this.remoteAdminScannerIntervalMinutes} minute interval`);
 
     this.remoteAdminScannerInterval = setInterval(async () => {
+      // TX-disabled radios cannot send remote admin packets; skip quietly and let
+      // the interval keep running so a later TX re-enable resumes automatically (#4294).
+      if (!this.isTxEnabled()) {
+        logger.debug('🔑 Remote admin scanner: Skipping - TX disabled on this source');
+        return;
+      }
+
       // Check time window schedule
       const scheduleEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'remoteAdminScheduleEnabled');
       if (scheduleEnabled === 'true') {
@@ -2879,6 +2901,13 @@ class MeshtasticManager implements ISourceManager {
   private async processKeyRepairs(): Promise<void> {
     if (this.rebootMergeInProgress) {
       logger.debug('🔐 Key repair: skipping - reboot merge in progress');
+      return;
+    }
+
+    // TX-disabled radios cannot send NodeInfo exchanges; skip quietly and let the
+    // interval keep running so a later TX re-enable resumes automatically (#4294).
+    if (!this.isTxEnabled()) {
+      logger.debug('🔐 Key repair: Skipping - TX disabled on this source');
       return;
     }
 
@@ -3273,6 +3302,12 @@ class MeshtasticManager implements ISourceManager {
       // Schedule the cron job
       const job = scheduleCron(trigger.cronExpression, async () => {
         logger.debug(`⏱️ Timer "${trigger.name}" triggered (cron: ${trigger.cronExpression})`);
+        // TX-disabled radios cannot send the timer's mesh output; skip quietly and
+        // let the cron job keep running so a later TX re-enable resumes automatically (#4294).
+        if (!this.isTxEnabled()) {
+          logger.debug(`⏱️ Timer "${trigger.name}": Skipping - TX disabled on this source`);
+          return;
+        }
         // Airtime cutoff: skip timer automations while the mesh is congested
         if (await this.isAutomationAirtimeGated()) {
           return;
@@ -4262,8 +4297,19 @@ class MeshtasticManager implements ISourceManager {
             logger.debug(`📊 Position config after Proto3 defaults: positionBroadcastSecs=${parsed.data.position.positionBroadcastSecs}, positionBroadcastSmartEnabled=${parsed.data.position.positionBroadcastSmartEnabled}, fixedPosition=${parsed.data.position.fixedPosition}`);
           }
 
-          // Merge the actual device configuration (don't overwrite)
-          this.actualDeviceConfig = { ...this.actualDeviceConfig, ...parsed.data };
+          // Merge the actual device configuration (don't overwrite).
+          // Block-scoped (no-case-declarations): this `case` clause has no
+          // braces of its own, so `const` here needs an explicit block.
+          {
+            const prevTxEnabled = this.actualDeviceConfig?.lora?.txEnabled !== false;
+            this.actualDeviceConfig = { ...this.actualDeviceConfig, ...parsed.data };
+            const nextTxEnabled = this.actualDeviceConfig?.lora?.txEnabled !== false;
+            if (prevTxEnabled !== nextTxEnabled) {
+              logger.info(nextTxEnabled
+                ? `📡 [${this.sourceId}] TX re-enabled — autonomous senders resume`
+                : `🚫 [${this.sourceId}] TX disabled — pausing autonomous senders (node is now receive-only)`);
+            }
+          }
           logger.debug('📊 Merged actualDeviceConfig now has keys:', Object.keys(this.actualDeviceConfig));
           logger.debug('📊 actualDeviceConfig.lora present:', !!this.actualDeviceConfig?.lora);
           if (parsed.data.lora) {
@@ -8752,6 +8798,15 @@ class MeshtasticManager implements ISourceManager {
   }
 
 
+  /**
+   * Current transmit state for THIS source, read from the in-memory device config.
+   * Defaults to true when config hasn't arrived yet (fail-open: don't block sends
+   * before we know the radio's state). No DB access — safe to call per packet.
+   */
+  isTxEnabled(): boolean {
+    return this.actualDeviceConfig?.lora?.txEnabled !== false;
+  }
+
   // Configuration retrieval methods
   async getDeviceConfig(): Promise<any> {
     // Return config data from what we've received via TCP stream
@@ -8772,6 +8827,10 @@ class MeshtasticManager implements ISourceManager {
   async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number, userId?: number, attribution?: { sourceIp?: string | null; sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null }): Promise<number> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
     }
 
     try {
@@ -8941,6 +9000,10 @@ class MeshtasticManager implements ISourceManager {
       throw new Error('Not connected to Meshtastic node');
     }
 
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
+    }
+
     if (!this.localNodeInfo) {
       throw new Error('Local node information not available');
     }
@@ -8987,6 +9050,10 @@ class MeshtasticManager implements ISourceManager {
   async sendPositionRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
     }
 
     if (!this.localNodeInfo) {
@@ -9064,6 +9131,10 @@ class MeshtasticManager implements ISourceManager {
       throw new Error('Not connected to Meshtastic node');
     }
 
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
+    }
+
     if (!this.localNodeInfo) {
       throw new Error('Local node information not available');
     }
@@ -9131,6 +9202,10 @@ class MeshtasticManager implements ISourceManager {
   async sendNeighborInfoRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
     }
 
     if (!this.localNodeInfo) {
@@ -9358,6 +9433,10 @@ class MeshtasticManager implements ISourceManager {
   ): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
     }
 
     if (!this.localNodeInfo) {
@@ -9721,6 +9800,12 @@ class MeshtasticManager implements ISourceManager {
         return;
       }
 
+      // TX-disabled radios cannot send the ack reply; skip quietly (#4294).
+      if (!this.isTxEnabled()) {
+        logger.debug('⏭️ Skipping auto-acknowledge - TX disabled on this source');
+        return;
+      }
+
       // Airtime cutoff: skip while the mesh is congested
       if (await this.isAutomationAirtimeGated()) {
         return;
@@ -10040,6 +10125,13 @@ class MeshtasticManager implements ISourceManager {
       return false;
     }
 
+    // TX-disabled radios cannot send ping replies; skip quietly rather than
+    // letting sendTextMessage throw TxDisabledError partway through (#4294).
+    if (!this.isTxEnabled()) {
+      logger.debug('⏭️  Auto-ping command received but TX is disabled on this source');
+      return false;
+    }
+
     // Airtime cutoff: skip auto-ping while the mesh is congested
     if (await this.isAutomationAirtimeGated()) {
       return false;
@@ -10141,6 +10233,12 @@ class MeshtasticManager implements ISourceManager {
    * Send the next ping in the auto-ping session
    */
   private async sendNextAutoPing(session: AutoPingSession): Promise<void> {
+    // TX-disabled radios cannot send pings; skip this tick quietly and leave the
+    // session's interval running so it resumes automatically on TX re-enable (#4294).
+    if (!this.isTxEnabled()) {
+      return;
+    }
+
     // Check if session is complete — send summary as the final message
     if (session.completedPings >= session.totalPings) {
       void this.finalizeAutoPingSession(session.requestedBy);
@@ -10444,6 +10542,12 @@ class MeshtasticManager implements ISourceManager {
 
       // Skip if auto-responder is disabled
       if (autoResponderEnabled !== 'true') {
+        return;
+      }
+
+      // TX-disabled radios cannot send the auto-responder reply; skip quietly (#4294).
+      if (!this.isTxEnabled()) {
+        logger.debug('⏭️ Skipping auto-responder - TX disabled on this source');
         return;
       }
 
