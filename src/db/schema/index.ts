@@ -63,3 +63,7 @@ export * from './sourcePkiKeys.js';
 
 // Dead Drop / Mailbox — async per-source message store
 export * from './deadDrop.js';
+
+// ATAK contacts table (ATAK/CoT Phase 2, issue #3691) — per-source, one row
+// per distinct ATAK EUD, built from the PLI variant of TAKPacket.
+export * from './atakContacts.js';

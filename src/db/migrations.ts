@@ -141,6 +141,7 @@ import { migration as fixMqttDirectedMessageChannelMigration, runMigration123Pos
 import { migration as addPositionLocationSourceMigration, runMigration124Postgres, runMigration124Mysql } from '../server/migrations/124_add_position_location_source.js';
 import { migration as addXeddsaSignedMigration, runMigration125Postgres, runMigration125Mysql } from '../server/migrations/125_add_xeddsa_signed_to_packet_log.js';
 import { migration as addTransportFlagsMigration, runMigration126Postgres, runMigration126Mysql } from '../server/migrations/126_add_transport_flags_to_nodes.js';
+import { migration as addAtakContactsMigration, runMigration127Postgres, runMigration127Mysql } from '../server/migrations/127_add_atak_contacts.js';
 
 // ============================================================================
 // Registry
@@ -2003,4 +2004,20 @@ registry.register({
   sqlite: (db) => addTransportFlagsMigration.up(db),
   postgres: (client) => runMigration126Postgres(client),
   mysql: (pool) => runMigration126Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 127: Create atak_contacts table (ATAK/CoT Phase 2, issue #3691).
+// One row per distinct ATAK EUD seen on a source, built from the PLI variant
+// of a decoded TAKPacket; upserted in place on (uid, sourceId) as new PLI
+// beacons arrive. Meshtastic-only — MeshCore has no ATAK format.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 127,
+  name: 'add_atak_contacts',
+  settingsKey: 'migration_127_add_atak_contacts',
+  sqlite: (db) => addAtakContactsMigration.up(db),
+  postgres: (client) => runMigration127Postgres(client),
+  mysql: (pool) => runMigration127Mysql(pool),
 });
