@@ -609,6 +609,7 @@ import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
 import mqttPacketRoutes from './routes/mqttPacketRoutes.js';
+import atakRoutes from './routes/atakRoutes.js';
 // meshcoreConfigFromSource / ensureMeshCoreManagerStarted moved to bootstrapSources.ts
 import { isMeshtasticManager } from './sourceManagerTypes.js';
 import { MeshCoreTelemetryPoller, setMeshCoreTelemetryPoller } from './services/meshcoreTelemetryPoller.js';
@@ -736,6 +737,13 @@ apiRouter.use('/sources/:id/meshcore', meshcoreRoutes);
 // a source is disconnected or reconfigured. See
 // docs/internal/dev-notes/MQTT_PACKET_MONITOR_PHASE1_SPEC.md §2.11/§2.12.
 apiRouter.use('/sources/:id/mqtt/packets', mqttPacketRoutes);
+
+// ATAK Contacts routes — nested under `/api/sources/:id/atak` so each
+// request resolves the contact table bound to a specific source. No
+// source-type check (mirrors meshcore/mqtt): a non-Meshtastic or
+// disconnected source simply has no rows. See
+// docs/internal/dev-notes/ATAK_COT_PHASE2_SPEC.md §2g.
+apiRouter.use('/sources/:id/atak', atakRoutes);
 
 // Link preview routes
 apiRouter.use('/', linkPreviewRoutes);

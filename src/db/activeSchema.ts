@@ -153,6 +153,11 @@ import {
   deadDropMessagesSqlite, deadDropMessagesPostgres, deadDropMessagesMysql,
 } from './schema/deadDrop.js';
 
+// ATAK contacts table (ATAK/CoT Phase 2, issue #3691)
+import {
+  atakContactsSqlite, atakContactsPostgres, atakContactsMysql,
+} from './schema/atakContacts.js';
+
 /**
  * Runtime table map interface.
  *
@@ -254,6 +259,10 @@ export interface ActiveSchema {
   // Dead Drop / Mailbox — async per-source message store
   deadDropMessages: any;
 
+  // ATAK contacts (ATAK/CoT Phase 2, issue #3691)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  atakContacts: any;
+
   // Allow dynamic access for flexibility
   [key: string]: any;
 }
@@ -318,6 +327,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteAssignments: autoFavoriteAssignmentsSqlite,
     sourcePkiKeys: sourcePkiKeysSqlite,
     deadDropMessages: deadDropMessagesSqlite,
+    atakContacts: atakContactsSqlite,
   },
   postgres: {
     nodes: nodesPostgres,
@@ -375,6 +385,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteAssignments: autoFavoriteAssignmentsPostgres,
     sourcePkiKeys: sourcePkiKeysPostgres,
     deadDropMessages: deadDropMessagesPostgres,
+    atakContacts: atakContactsPostgres,
   },
   mysql: {
     nodes: nodesMysql,
@@ -432,6 +443,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteAssignments: autoFavoriteAssignmentsMysql,
     sourcePkiKeys: sourcePkiKeysMysql,
     deadDropMessages: deadDropMessagesMysql,
+    atakContacts: atakContactsMysql,
   },
 };
 

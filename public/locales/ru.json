@@ -3879,6 +3879,7 @@
         "showUdp": "Показать UDP",
         "showRf": "Показать RF",
         "showWaypoints": "Показать путевые точки",
+        "showAtakContacts": "Показать контакты ATAK",
         "nodeType": {
             "allTypes": "",
             "roomServer": "",

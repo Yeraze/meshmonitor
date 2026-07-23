@@ -4607,6 +4607,7 @@
       "standard": "Standard"
     },
     "showWaypoints": "Show Waypoints",
+    "showAtakContacts": "Show ATAK Contacts",
     "showPositionHistory": "Show Position History",
     "positionHistoryPointsOnly": "Points only (no line)",
     "showAnimations": "Show Animations",

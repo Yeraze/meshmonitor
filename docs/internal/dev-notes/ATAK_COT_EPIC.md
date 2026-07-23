@@ -1,6 +1,6 @@
 # ATAK / CoT Integration Epic (issue #3691)
 
-**Status:** Phase 1 implemented (PR pending); Phases 2–3 pending
+**Status:** Phase 1 merged (PR #4307); Phase 2 implemented (PR pending); Phase 3 pending
 **Orchestrated via:** /epic (2026-07-23)
 
 ## Goal
@@ -77,22 +77,22 @@ Spec: `ATAK_COT_PHASE1_SPEC.md`.
 - [x] Tests: 7 decode/preview fixtures; 11 persistence tests; per-source
       isolation test; 3 DM read-path tests. Full suite green.
 - **Exit criteria:** ATAK V1 packets display decoded in Packet Monitor;
-  GeoChat appears in Messages; full suite green; PR merged. ← PR pending
+  GeoChat appears in Messages; full suite green; PR merged. ✓ PR #4307 (merged 2026-07-23)
 
 ### Phase 2 — ATAK contact persistence + map layer
-- [ ] New per-source `atak_contacts` table (migration, all three backends,
+- [x] New per-source `atak_contacts` table (migration, all three backends,
       idempotent per recipe): keyed by (sourceId, uid/device_callsign),
       callsign, team, role, battery, lat/lon/alt, speed, course, last_seen,
       stale handling/retention.
-- [ ] Populated from PLI branch in the packet side-effect switch.
-- [ ] Repository (`src/db/repositories/`) + API route (envelope helpers,
+- [x] Populated from PLI branch in the packet side-effect switch.
+- [x] Repository (`src/db/repositories/`) + API route (envelope helpers,
       `requirePermission` scoping) + `*.perSource.test.ts`.
-- [ ] `AtakContactsLayer.tsx` in `src/components/map/layers/` modeled on
+- [x] `AtakContactsLayer.tsx` in `src/components/map/layers/` modeled on
       `NodeMarkersLayer` (descriptor+props shape), mounted on all BaseMap
       surfaces with a layer toggle; distinct marker (team color, callsign),
       popup (type/callsign/role/battery/stale/last-seen).
 - **Exit criteria:** ATAK contacts persist per-source, render on all maps
-  with toggle, popup correct; browser-validated; PR merged.
+  with toggle, popup correct; browser-validated; PR merged. ← PR pending
 
 ### Phase 3 — CoT feed output (TCP streaming server)
 - [ ] Settings-gated TCP server (enabled + port; **default off**), keys added
@@ -127,3 +127,21 @@ Spec: `ATAK_COT_PHASE1_SPEC.md`.
 - (2026-07-23, Phase 1) GeoChat `to`/`to_callsign` are ATAK UID strings, not
   nodeNums — used only for the `[ATAK a→b]` text prefix, never routing.
   Routing follows the Meshtastic envelope. No UID→node map until Phase 2.
+- (2026-07-23, Phase 2 spec gate) Contact identity = composite PK `(uid,
+  sourceId)`, uid = device_callsign ?? callsign ?? `!<nodeNum>`; compressed
+  packets always key on the nodeNum fallback (unishox2 strings untrusted for
+  identity). Permission reuses `nodes:read` (no new resource/migration).
+  Capture always-on (no settings knob); staleness 15 min (dim + STALE badge),
+  retention 24 h (hard delete). Frontend polls (30 s TanStack refetch) — no
+  new websocket event. MapAnalysis included (light config-layer entry);
+  EmbedMap and MeshCore maps excluded.
+- (2026-07-23, Phase 2 review/browser validation) Two fixes out of validation:
+  (1) DashboardMap.test.tsx collection failure — new import chain loaded
+  `init.ts` (module-scope `api.setBaseUrl`) past a lean api mock; fixed by
+  mocking `DashboardAtakContacts` like the existing `DashboardWaypoints` mock.
+  (2) ATAK markers were unclickable when co-located with a node marker
+  (latitude-derived z-index put node icons on top; co-location is the common
+  case since EUDs ride with nodes) — fixed with `zIndexOffset={1000}`,
+  verified live (z 2016+, hit-tested popup incl. STALE badge). Deploy gotcha:
+  the `atak-contact-marker` string lives in the markerIcons chunk while the
+  Marker JSX lives in the main chunk — grep the right bundle when verifying.

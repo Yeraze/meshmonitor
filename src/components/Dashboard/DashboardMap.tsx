@@ -22,6 +22,7 @@ import { getNodeTypeCategory } from '../../utils/nodeTypeCategory';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
 import type { CustomTileset } from '../../config/tilesets';
 import DashboardWaypoints from './DashboardWaypoints';
+import DashboardAtakContacts from './DashboardAtakContacts';
 import DashboardNodePopup, { type NodeSourceRef } from './DashboardNodePopup';
 import DashboardNeighborPopup from './DashboardNeighborPopup';
 import GeoJsonOverlay from '../GeoJsonOverlay';
@@ -238,6 +239,8 @@ export default function DashboardMap({
     setShowNeighborInfo,
     showWaypoints,
     setShowWaypoints,
+    showAtakContacts,
+    setShowAtakContacts,
     showPolarGrid,
     setShowPolarGrid,
     mapMaxAgeHours,
@@ -654,6 +657,8 @@ export default function DashboardMap({
 
         {showWaypoints && <DashboardWaypoints sourceId={sourceId} />}
 
+        {showAtakContacts && <DashboardAtakContacts sourceId={sourceId} />}
+
         <NodeMarkersLayer markers={nodeMarkers} />
 
         {/* Position accuracy regions — shared layer, canonical gray. */}
@@ -842,6 +847,14 @@ export default function DashboardMap({
               onChange={(e) => setShowWaypoints(e.target.checked)}
             />
             <span>Show Waypoints</span>
+          </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showAtakContacts}
+              onChange={(e) => setShowAtakContacts(e.target.checked)}
+            />
+            <span>Show ATAK Contacts</span>
           </label>
           <label className="map-control-item">
             <input

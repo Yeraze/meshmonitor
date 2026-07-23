@@ -3638,6 +3638,7 @@
         "maxAgeAll": "",
         "showRf": "",
         "showWaypoints": "",
+        "showAtakContacts": "",
         "maximumAge": ""
     },
     "settings.analytics_measurement_id_description": "",

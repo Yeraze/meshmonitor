@@ -449,6 +449,63 @@ export function createNodeIcon(options: CreateNodeIconOptions): L.DivIcon {
  * is a separate semantic (who is the endpoint) from leg direction (which way
  * did the packet travel). Zero pixel change from the pre-Phase-4 widget.
  */
+export interface CreateAtakContactIconOptions {
+  /** Team marker/swatch color (see `utils/atakTeam.ts` `teamColor`). */
+  color: string;
+  /** Display callsign; falls back to a generic label when absent. */
+  callsign: string | null | undefined;
+  /** Dims the marker when the contact has gone stale (no recent PLI). */
+  stale: boolean;
+}
+
+/**
+ * ATAK contact marker (ATAK/CoT Phase 2, issue #3691): a team-colored dot
+ * with an always-visible callsign label above it, modeled on the MeshCore
+ * badge-plus-name-pill treatment in `createNodeIcon`'s `variant: 'meshcore'`
+ * branch. Stale contacts (no fresh PLI within `ATAK_CONTACT_STALE_MS`) render
+ * at reduced opacity so they read as "last known position" rather than live.
+ */
+export function createAtakContactIcon({
+  color,
+  callsign,
+  stale,
+}: CreateAtakContactIconOptions): L.DivIcon {
+  const label = callsign && callsign.length > 0 ? callsign : 'ATAK';
+  const opacity = stale ? 0.5 : 1;
+  const html = `
+    <div style="opacity: ${opacity};">
+      <div style="
+        width: 20px;
+        height: 20px;
+        background: ${color};
+        border: 2px solid white;
+        border-radius: 50%;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+      "></div>
+      <div style="
+        position: absolute;
+        top: -20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0,0,0,0.75);
+        color: white;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: bold;
+        white-space: nowrap;
+      ">${label}</div>
+    </div>
+  `;
+  return L.divIcon({
+    html,
+    className: 'atak-contact-marker',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+    popupAnchor: [0, -10],
+  });
+}
+
 export function createTracerouteEndpointIcon(role: 'from' | 'to' | 'hop'): L.DivIcon {
   let color = '#888'; // intermediate hop
   if (role === 'from') color = '#4CAF50'; // green for source

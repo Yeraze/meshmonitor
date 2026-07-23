@@ -46,6 +46,7 @@ import {
   WaypointsRepository,
   MeshCoreRepository,
   MqttPacketLogRepository,
+  AtakContactsRepository,
   EstimatedPositionsRepository,
   AutoFavoriteTargetsRepository,
   SourcePkiKeysRepository,
@@ -482,6 +483,7 @@ class DatabaseService {
   public waypointsRepo: WaypointsRepository | null = null;
   public meshcoreRepo: MeshCoreRepository | null = null;
   public mqttPacketLogRepo: MqttPacketLogRepository | null = null;
+  public atakContactsRepo: AtakContactsRepository | null = null;
   public estimatedPositionsRepo: EstimatedPositionsRepository | null = null;
   public autoFavoriteTargetsRepo: AutoFavoriteTargetsRepository | null = null;
   public sourcePkiKeysRepo: SourcePkiKeysRepository | null = null;
@@ -671,6 +673,11 @@ class DatabaseService {
   get mqttPacketLog(): MqttPacketLogRepository {
     if (!this.mqttPacketLogRepo) throw new Error('Database not initialized');
     return this.mqttPacketLogRepo;
+  }
+
+  get atakContacts(): AtakContactsRepository {
+    if (!this.atakContactsRepo) throw new Error('Database not initialized');
+    return this.atakContactsRepo;
   }
 
   get estimatedPositions(): EstimatedPositionsRepository {
@@ -913,6 +920,7 @@ class DatabaseService {
       this.waypointsRepo = new WaypointsRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreRepo = new MeshCoreRepository(drizzleDb, this.drizzleDbType);
       this.mqttPacketLogRepo = new MqttPacketLogRepository(drizzleDb, this.drizzleDbType);
+      this.atakContactsRepo = new AtakContactsRepository(drizzleDb, this.drizzleDbType);
       this.estimatedPositionsRepo = new EstimatedPositionsRepository(drizzleDb, this.drizzleDbType);
       this.autoFavoriteTargetsRepo = new AutoFavoriteTargetsRepository(drizzleDb, this.drizzleDbType);
       this.sourcePkiKeysRepo = new SourcePkiKeysRepository(drizzleDb, this.drizzleDbType);
@@ -3301,6 +3309,22 @@ class DatabaseService {
           await this.packetLogRepo.clearPacketLogs(sourceId);
         } catch (err) {
           logger.error('Failed to clear packet logs during purge:', err);
+        }
+      }
+      // Clear ATAK contacts so a deleted/purged source's contacts don't linger (#3691 Phase 2)
+      if (this.atakContactsRepo) {
+        try {
+          if (sourceId) {
+            await this.atakContactsRepo.deleteContactsForSource(sourceId);
+          } else {
+            // undefined sourceId = admin global purge across every source — intentional cross-source
+            const atakSourceIds = await this.atakContactsRepo.getContactSourceIds();
+            for (const atakSourceId of atakSourceIds) {
+              await this.atakContactsRepo.deleteContactsForSource(atakSourceId);
+            }
+          }
+        } catch (err) {
+          logger.error('Failed to purge ATAK contacts during purge:', err);
         }
       }
       // Finally delete the nodes themselves

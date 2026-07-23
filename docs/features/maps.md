@@ -110,6 +110,21 @@ override the default and send on a specific channel.
 
 Waypoints — Meshtastic's `WAYPOINT_APP` pins — render directly on the per-source dashboard map and the Map Analysis canvas, using each waypoint's emoji as its icon. Users with `waypoints:write` can create, edit, and delete waypoints in place from the **Map Features** panel. The same panel has a **Show Waypoints** checkbox (default on) that toggles waypoint marker visibility per-user — persisted alongside the other map feature toggles. See the dedicated [Waypoints](/features/waypoints) page for the full workflow, permissions, and REST API.
 
+### ATAK Contacts
+
+ATAK contacts — positions reported by ATAK/WinTAK devices over the Meshtastic
+ATAK plugin (TAKPacket PLI, portnum 72) — render as team-colored circular
+markers with a callsign label on the per-source Nodes map, the Dashboard map,
+and the Map Analysis canvas. The **Show ATAK Contacts** checkbox in the
+**Map Features** panel (default off) toggles them. Markers use the ATAK team
+color (Cyan, Red, Green, …); a contact with no fresh position report for
+15 minutes dims and its popup shows a **STALE** badge. The popup lists
+callsign, team, role, battery, course, speed, altitude (HAE), and last-seen
+time. Contacts are per-source, kept for 24 hours after the last report, and
+served at `GET /api/sources/:id/atak/contacts` (requires `nodes:read` on the
+source). Contacts without a valid position (e.g. Null Island fixes) are stored
+but not plotted. Meshtastic sources only — MeshCore has no ATAK wire format.
+
 ### Estimated Positions & Accuracy
 
 For nodes that never report GPS, MeshMonitor can plot an **estimated position**

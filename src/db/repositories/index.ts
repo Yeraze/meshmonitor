@@ -91,3 +91,5 @@ export type {
   MqttGroupedPacket,
   MqttGateway,
 } from './mqttPacketLog.js';
+export { AtakContactsRepository } from './atakContacts.js';
+export type { AtakContactRow } from './atakContacts.js';
