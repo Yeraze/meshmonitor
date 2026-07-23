@@ -226,6 +226,11 @@
   background: color-mix(in srgb, var(--ctp-peach) 15%, transparent);
 }
 
+.mqpm-badge-distance {
+  color: var(--ctp-maroon);
+  background: color-mix(in srgb, var(--ctp-maroon) 15%, transparent);
+}
+
 .mqpm-badge-error {
   color: var(--ctp-red);
   background: color-mix(in srgb, var(--ctp-red) 15%, transparent);

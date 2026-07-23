@@ -14,6 +14,7 @@
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
 import mqttPacketLogService from './services/mqttPacketLogService.js';
+import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
 import databaseService from '../services/database.js';
 
 /**
@@ -146,7 +147,7 @@ export interface MqttIngestionInput {
 
 export interface MqttIngestionResult {
   ingested: boolean;
-  reason?: 'no-packet' | 'no-decoded' | 'encrypted' | 'unsupported-portnum' | 'ignored' | 'geo-ignored' | 'decode-error';
+  reason?: 'no-packet' | 'no-decoded' | 'encrypted' | 'unsupported-portnum' | 'ignored' | 'geo-ignored' | 'distance' | 'decode-error';
   portnum?: number;
 }
 
@@ -370,6 +371,19 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
       if (positionIsBogus) {
         logger.debug(`MQTT: dropping bogus position (${lat}, ${lng}) precisionBits=${precisionBits} from ${fromNodeId}`);
       }
+
+      // Inline auto-delete-by-distance (#3900): when this MQTT source has the
+      // feature enabled, evaluate the fix as it arrives so a node beyond the
+      // configured radius never touches the nodeDB / map — rather than waiting
+      // for the next periodic sweep. Only on a trustworthy (non-bogus) fix; a
+      // bogus position is not a reliable basis for a distance decision.
+      if (!positionIsBogus && lat != null && lng != null) {
+        const outcome = await autoDeleteByDistanceService.applyInlineDistanceCheck(sourceId, fromNum, lat, lng);
+        if (outcome !== 'kept') {
+          return { ingested: false, reason: 'distance', portnum };
+        }
+      }
+
       const node: Partial<DbNode> = {
         nodeNum: fromNum,
         nodeId: fromNodeId,
@@ -574,7 +588,7 @@ export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<
   const result = await ingestServiceEnvelopeInner(input);
   void mqttPacketLogService.logEnvelope(input.sourceId, input.envelope, result);
   if (
-    (result.reason === 'ignored' || result.reason === 'geo-ignored') &&
+    (result.reason === 'ignored' || result.reason === 'geo-ignored' || result.reason === 'distance') &&
     typeof input.envelope.packet?.from === 'number'
   ) {
     const fromNum = input.envelope.packet.from >>> 0;

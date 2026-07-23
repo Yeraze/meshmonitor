@@ -58,6 +58,13 @@ vi.mock('../services/database.js', () => ({
       addGeoIgnoreAsync: vi.fn(async () => true),
       liftGeoIgnoreAsync: vi.fn(async () => true),
     },
+    // Inline auto-delete-by-distance (#3900) reads per-source settings on each
+    // POSITION packet. Return null so the feature reads as disabled and the
+    // inline check is a no-op for this suite's wiring/branching assertions.
+    settings: {
+      getSettingForSource: vi.fn(async () => null),
+    },
+    setNodeIgnoredAsync: vi.fn(async () => undefined),
   },
 }));
 

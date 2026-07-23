@@ -17,6 +17,7 @@ export type MqttIngestOutcome =
   | 'encrypted'
   | 'ignored'
   | 'geo-ignored'
+  | 'distance'
   | 'unsupported-portnum'
   | 'decode-error';
 

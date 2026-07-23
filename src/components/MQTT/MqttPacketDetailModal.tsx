@@ -23,7 +23,7 @@ interface Props {
 
 const BROADCAST_NODE_NUM = 0xffffffff;
 
-const ENCRYPTED_OUTCOME_BADGES = new Set(['encrypted', 'ignored', 'geo-ignored', 'unsupported-portnum', 'decode-error']);
+const ENCRYPTED_OUTCOME_BADGES = new Set(['encrypted', 'ignored', 'geo-ignored', 'distance', 'unsupported-portnum', 'decode-error']);
 
 function outcomeBadgeClass(outcome: string): string {
   switch (outcome) {
@@ -33,6 +33,8 @@ function outcomeBadgeClass(outcome: string): string {
       return 'mqpm-badge mqpm-badge-ignored';
     case 'geo-ignored':
       return 'mqpm-badge mqpm-badge-geo-ignored';
+    case 'distance':
+      return 'mqpm-badge mqpm-badge-distance';
     case 'unsupported-portnum':
     case 'decode-error':
       return 'mqpm-badge mqpm-badge-error';

@@ -32,6 +32,17 @@ vi.mock('../services/database.js', () => ({
       addIgnoredNodeAsync: async (...a: unknown[]) => addIgnoredNodeAsync(...(a as [number, string])),
       isIgnoredCached: (...a: unknown[]) => isIgnoredCached(...(a as [number, string])),
     },
+    // Inline auto-delete-by-distance (#3900) reads per-source settings on each
+    // POSITION packet. Return null so the feature reads as disabled and the
+    // inline check is a no-op for this suite.
+    settings: {
+      getSettingForSource: async () => null,
+    },
+    nodes: {
+      getNode: async () => null,
+    },
+    deleteNodeAsync: vi.fn(async () => undefined),
+    setNodeIgnoredAsync: vi.fn(async () => undefined),
   },
 }));
 
