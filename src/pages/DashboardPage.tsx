@@ -12,7 +12,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { SettingsProvider, useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useCsrf } from '../contexts/CsrfContext';
 import { MapProvider, useMapContext } from '../contexts/MapContext';
 import {
   useDashboardSources,
@@ -32,7 +31,7 @@ import LoginModal from '../components/LoginModal';
 import UserMenu from '../components/UserMenu';
 import { NewsPopup } from '../components/NewsPopup';
 import { ToastProvider } from '../components/ToastContainer';
-import api from '../services/api';
+import api, { ApiError } from '../services/api';
 import { logger } from '../utils/logger';
 import { appBasename } from '../init';
 import { getReservedLandingPath, isReservedLandingValue } from '../utils/defaultLandingPage';
@@ -47,7 +46,6 @@ import { UiIcon } from '../components/icons';
 function DashboardInner() {
   const { t } = useTranslation();
   const { authStatus } = useAuth();
-  const { getToken } = useCsrf();
   const queryClient = useQueryClient();
   const { mapTileset, customTilesets, defaultMapCenterLat, defaultMapCenterLon, maxNodeAgeHours, defaultLandingPage } = useSettings();
   const navigate = useNavigate();
@@ -614,31 +612,25 @@ function DashboardInner() {
     setFormSaving(true);
     setFormError('');
     try {
-      const csrfToken = getToken();
       const body = {
         name: formName.trim(),
         type: formType,
         config: cfg,
         enabled: true,
       };
-      const url = editingSourceId
-        ? `${appBasename}/api/sources/${editingSourceId}`
-        : `${appBasename}/api/sources`;
-      const method = editingSourceId ? 'PUT' : 'POST';
 
-      const res = await fetch(url, {
-        method,
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-csrf-token': csrfToken || '',
-        },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        setFormError((err as any).error ?? t('source.form.error_save_failed'));
-        return;
+      try {
+        if (editingSourceId) {
+          await api.put(`/api/sources/${editingSourceId}`, body);
+        } else {
+          await api.post('/api/sources', body);
+        }
+      } catch (err) {
+        if (err instanceof ApiError) {
+          setFormError((err.body as any)?.error ?? t('source.form.error_save_failed'));
+          return;
+        }
+        throw err;
       }
 
       // Broker save succeeded — now push per-bridge topic-rewrite
@@ -703,26 +695,18 @@ function DashboardInner() {
             delete bridgeConfig.upstream.password;
           }
           try {
-            const bres = await fetch(`${appBasename}/api/sources/${bridgeId}`, {
-              method: 'PUT',
-              credentials: 'include',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-csrf-token': csrfToken || '',
-              },
-              body: JSON.stringify({
-                name: bridge.name,
-                type: 'mqtt_bridge',
-                config: bridgeConfig,
-                enabled: bridge.enabled,
-              }),
+            await api.put(`/api/sources/${bridgeId}`, {
+              name: bridge.name,
+              type: 'mqtt_bridge',
+              config: bridgeConfig,
+              enabled: bridge.enabled,
             });
-            if (!bres.ok) {
-              const err = await bres.json().catch(() => ({}));
-              bridgeErrors.push(`${bridge.name}: ${(err as any).error ?? 'save failed'}`);
-            }
           } catch (e) {
-            bridgeErrors.push(`${bridge.name}: ${(e as Error).message}`);
+            if (e instanceof ApiError) {
+              bridgeErrors.push(`${bridge.name}: ${(e.body as any)?.error ?? 'save failed'}`);
+            } else {
+              bridgeErrors.push(`${bridge.name}: ${(e as Error).message}`);
+            }
           }
         }
         if (bridgeErrors.length > 0) {
@@ -763,16 +747,12 @@ function DashboardInner() {
       return next;
     });
     try {
-      const csrfToken = getToken();
-      const res = await fetch(`${appBasename}/api/sources/${id}/connect`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-csrf-token': csrfToken || '',
-        },
-      });
-      if (!res.ok) return;
+      try {
+        await api.post(`/api/sources/${id}/connect`);
+      } catch (err) {
+        if (err instanceof ApiError) return;
+        throw err;
+      }
 
       refreshSources();
 
@@ -801,35 +781,26 @@ function DashboardInner() {
   // source. Exposed in the kebab menu when the source has autoConnect=false
   // and is currently connected.
   const onDisconnectSource = async (id: string) => {
-    const csrfToken = getToken();
-    const res = await fetch(`${appBasename}/api/sources/${id}/disconnect`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-csrf-token': csrfToken || '',
-      },
-    });
-    if (res.ok) {
-      refreshSources();
-      // Force an immediate status refetch so the "Connected" dot flips to
-      // "Idle" without waiting for the next 15s poll tick.
-      void queryClient.refetchQueries({ queryKey: ['dashboard', 'status', id], type: 'active' });
+    try {
+      await api.post(`/api/sources/${id}/disconnect`);
+    } catch (err) {
+      if (err instanceof ApiError) return;
+      throw err;
     }
+    refreshSources();
+    // Force an immediate status refetch so the "Connected" dot flips to
+    // "Idle" without waiting for the next 15s poll tick.
+    void queryClient.refetchQueries({ queryKey: ['dashboard', 'status', id], type: 'active' });
   };
 
   const onToggleSource = async (id: string, enabled: boolean) => {
-    const csrfToken = getToken();
-    const res = await fetch(`${appBasename}/api/sources/${id}`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-csrf-token': csrfToken || '',
-      },
-      body: JSON.stringify({ enabled }),
-    });
-    if (res.ok) refreshSourcesDebounced();
+    try {
+      await api.put(`/api/sources/${id}`, { enabled });
+    } catch (err) {
+      if (err instanceof ApiError) return;
+      throw err;
+    }
+    refreshSourcesDebounced();
   };
 
   const onDeleteSource = (id: string) => {
@@ -850,38 +821,30 @@ function DashboardInner() {
       return [...reordered, ...trailing];
     });
 
-    const csrfToken = getToken();
-    const res = await fetch(`${appBasename}/api/sources/reorder`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-csrf-token': csrfToken || '',
-      },
-      body: JSON.stringify({ order: orderedIds }),
-    });
-    refreshSources();
-    if (!res.ok) {
-      logger.warn('Failed to reorder sources:', res.status);
+    try {
+      await api.post('/api/sources/reorder', { order: orderedIds });
+      refreshSources();
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      refreshSources();
+      logger.warn('Failed to reorder sources:', err.status);
     }
   };
 
   const confirmDelete = async () => {
     if (!deleteConfirm) return;
-    const csrfToken = getToken();
-    const res = await fetch(`${appBasename}/api/sources/${deleteConfirm}`, {
-      method: 'DELETE',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-csrf-token': csrfToken || '',
-      },
-    });
+    let ok = true;
+    try {
+      await api.delete(`/api/sources/${deleteConfirm}`);
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      ok = false;
+    }
     if (selectedSourceId === deleteConfirm) {
       setSelectedSourceId(null);
     }
     setDeleteConfirm(null);
-    if (res.ok) refreshSources();
+    if (ok) refreshSources();
   };
 
   const onPruneOutsideRoi = (id: string) => {
@@ -896,24 +859,20 @@ function DashboardInner() {
   // Cooldown / single-flight / watchdog all live on the server; the click
   // either succeeds (200) or is rejected (409) with state describing why.
   const onResyncSource = async (id: string) => {
-    const csrfToken = getToken();
     try {
-      const res = await fetch(`${appBasename}/api/sources/${id}/resync`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-csrf-token': csrfToken || '',
-        },
-      });
+      await api.post(`/api/sources/${id}/resync`);
       // Refresh source status either way — a successful resync changes the
       // connection state once configComplete arrives, and a rejected click
       // doesn't hurt to re-poll.
       void queryClient.refetchQueries({ queryKey: ['dashboard', 'status', id], type: 'active' });
-      if (!res.ok && res.status !== 409) {
-        logger.warn('Manual resync request failed', { status: res.status });
-      }
     } catch (err) {
+      if (err instanceof ApiError) {
+        void queryClient.refetchQueries({ queryKey: ['dashboard', 'status', id], type: 'active' });
+        if (err.status !== 409) {
+          logger.warn('Manual resync request failed', { status: err.status });
+        }
+        return;
+      }
       logger.error('Manual resync request errored', err);
     }
   };
@@ -923,23 +882,7 @@ function DashboardInner() {
     setPrunePending(true);
     setPruneError(null);
     try {
-      const csrfToken = getToken();
-      const res = await fetch(
-        `${appBasename}/api/sources/${pruneConfirm}/prune-outside-roi`,
-        {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-csrf-token': csrfToken || '',
-          },
-        },
-      );
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setPruneError(body.error || `HTTP ${res.status}`);
-        return;
-      }
+      const body = await api.post<{ count?: number }>(`/api/sources/${pruneConfirm}/prune-outside-roi`);
       setPruneResult({ sourceId: pruneConfirm, count: body.count ?? 0 });
       setPruneConfirm(null);
       refreshSources();
