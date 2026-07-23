@@ -456,6 +456,21 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   // Purge neighbors state
   const [purgingNeighbors, setPurgingNeighbors] = useState(false);
 
+  // Security warning clear state (#4302 — the warning bar had no way to
+  // resolve a stale flag short of finding the Security tab's "Run Scan Now")
+  const [clearingSecurityWarning, setClearingSecurityWarning] = useState(false);
+  const handleClearSecurityWarning = useCallback(async (nodeNum: number) => {
+    setClearingSecurityWarning(true);
+    try {
+      await apiService.post(`/api/security/nodes/${nodeNum}/clear`, { sourceId });
+      showToast(t('messages.security_risk_cleared', 'Security warning cleared'), 'success');
+    } catch {
+      showToast(t('messages.security_risk_clear_failed', 'Failed to clear security warning'), 'error');
+    } finally {
+      setClearingSecurityWarning(false);
+    }
+  }, [sourceId, showToast, t]);
+
   // Resizable send section (only on desktop)
   const {
     size: sendSectionHeight,
@@ -1381,10 +1396,34 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   marginBottom: '10px',
                   borderRadius: '4px',
                   fontWeight: 'bold',
-                  textAlign: 'center',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexWrap: 'wrap',
+                  gap: '10px',
                 }}
               >
-                <UiIcon name={selectedNode.keyMismatchDetected ? 'unlock' : 'alert'} /> {selectedNode.keyMismatchDetected ? t('messages.key_mismatch') : t('messages.security_risk')}
+                <span>
+                  <UiIcon name={selectedNode.keyMismatchDetected ? 'unlock' : 'alert'} /> {selectedNode.keyMismatchDetected ? t('messages.key_mismatch') : t('messages.security_risk')}
+                </span>
+                {hasPermission('security', 'write') && (
+                  <button
+                    onClick={() => handleClearSecurityWarning(selectedNode.nodeNum)}
+                    disabled={clearingSecurityWarning}
+                    title={t('messages.security_risk_clear_title', 'Re-check this node now and clear the warning if it no longer applies')}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.15)',
+                      border: '1px solid rgba(255, 255, 255, 0.8)',
+                      color: 'white',
+                      borderRadius: '4px',
+                      padding: '2px 10px',
+                      fontWeight: 'normal',
+                      cursor: clearingSecurityWarning ? 'default' : 'pointer',
+                    }}
+                  >
+                    {clearingSecurityWarning ? t('messages.security_risk_clearing', 'Clearing…') : t('messages.security_risk_clear', 'Clear')}
+                  </button>
+                )}
               </div>
             )}
 

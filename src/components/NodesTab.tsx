@@ -56,6 +56,7 @@ import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 import type { MapStyle } from '../server/services/mapStyleService.js';
 import { CopyNodeInfoModal } from './CopyNodeInfoModal';
 import { UiIcon } from './icons';
+import { useToast } from './ToastContainer';
 
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
@@ -466,9 +467,24 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   const { hasPermission } = useAuth();
   const csrfFetch = useCsrfFetch();
+  const { showToast } = useToast();
 
   // ----- Copy NodeInfo modal state -----
   const [copyNodeInfoTarget, setCopyNodeInfoTarget] = useState<DeviceInfo | null>(null);
+
+  // ----- Security warning clear state (#4302) -----
+  const [clearingSecurityNode, setClearingSecurityNode] = useState<number | null>(null);
+  const handleClearSecurityWarning = useCallback(async (nodeNum: number) => {
+    setClearingSecurityNode(nodeNum);
+    try {
+      await api.post(`/api/security/nodes/${nodeNum}/clear`, { sourceId: currentSourceId });
+      showToast(t('nodes.security_risk_cleared', 'Security warning cleared'), 'success');
+    } catch {
+      showToast(t('nodes.security_risk_clear_failed', 'Failed to clear security warning'), 'error');
+    } finally {
+      setClearingSecurityNode(null);
+    }
+  }, [currentSourceId, showToast, t]);
 
   // ----- Waypoint authoring state -----
   const canWriteWaypoints = hasPermission('waypoints', 'write');
@@ -2111,18 +2127,46 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         </button>
                       )}
                       {(node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) && (
-                        <span
-                          className="security-warning-icon"
-                          title={node.keySecurityIssueDetails || 'Key security issue detected'}
-                          style={{
-                            fontSize: '16px',
-                            color: '#f44336',
-                            marginLeft: '4px',
-                            cursor: 'help'
-                          }}
-                        >
-                          <UiIcon name={node.keyMismatchDetected ? 'unlock' : 'alert'} size={16} />
-                        </span>
+                        hasPermission('security', 'write') ? (
+                          <button
+                            className="security-warning-icon"
+                            title={t(
+                              'nodes.security_risk_clear_title',
+                              '{{details}} — click to re-check and clear if it no longer applies',
+                              { details: node.keySecurityIssueDetails || t('nodes.security_risk_generic', 'Key security issue detected') }
+                            )}
+                            disabled={clearingSecurityNode === node.nodeNum}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleClearSecurityWarning(node.nodeNum);
+                            }}
+                            style={{
+                              fontSize: '16px',
+                              color: '#f44336',
+                              marginLeft: '4px',
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              cursor: clearingSecurityNode === node.nodeNum ? 'default' : 'pointer',
+                              opacity: clearingSecurityNode === node.nodeNum ? 0.5 : 1,
+                            }}
+                          >
+                            <UiIcon name={node.keyMismatchDetected ? 'unlock' : 'alert'} size={16} />
+                          </button>
+                        ) : (
+                          <span
+                            className="security-warning-icon"
+                            title={node.keySecurityIssueDetails || t('nodes.security_risk_generic', 'Key security issue detected')}
+                            style={{
+                              fontSize: '16px',
+                              color: '#f44336',
+                              marginLeft: '4px',
+                              cursor: 'help'
+                            }}
+                          >
+                            <UiIcon name={node.keyMismatchDetected ? 'unlock' : 'alert'} size={16} />
+                          </span>
+                        )
                       )}
                       <div className="node-short">
                         {node.user?.shortName || '-'}
