@@ -1,4 +1,5 @@
 import databaseService, { type DbMessage } from '../services/database.js';
+import { buildContactRow } from './services/atakContactService.js';
 import meshtasticProtobufService, { formatTakPreview } from './meshtasticProtobufService.js';
 import protobufService, { convertIpv4ConfigToStrings } from './protobufService.js';
 import { getProtobufRoot, type MeshBeaconPayload } from './protobufLoader.js';
@@ -6210,12 +6211,14 @@ class MeshtasticManager implements ISourceManager {
   /**
    * Process a decoded ATAK TAKPacket (PortNum 72 / ATAK_PLUGIN).
    *
-   * Phase 1 (RX-only): only the GeoChat variant becomes a Messages row — PLI
-   * (position) and `detail` (opaque bytes) are preview-only via the Packet
-   * Monitor (see meshtasticProtobufService.formatTakPreview) until Phase 2
-   * adds an ATAK contact table. GeoChat receipts (delivery/read acks) and
-   * compressed (unishox2, out of scope) chat text are deliberately not
-   * persisted either — see the edge-case table in ATAK_COT_PHASE1_SPEC.md §4.
+   * RX-only. The GeoChat variant becomes a Messages row. The PLI variant
+   * (Phase 2, #3691) upserts an `atak_contacts` row via `atakContactService`
+   * and never becomes a Messages row. `detail` (opaque bytes) stays
+   * preview-only via the Packet Monitor (see
+   * meshtasticProtobufService.formatTakPreview). GeoChat receipts
+   * (delivery/read acks) and compressed (unishox2, out of scope) chat text
+   * are deliberately not persisted either — see the edge-case tables in
+   * ATAK_COT_PHASE1_SPEC.md §4 / ATAK_COT_PHASE2_SPEC.md §3.
    *
    * Reuses the text-message persistence pattern (ensureMessageEndpointNodes,
    * identical row-id format, insertMessage, emitNewMessage, push
@@ -6232,8 +6235,29 @@ class MeshtasticManager implements ISourceManager {
       // raw Uint8Array) or the shape is otherwise unusable — nothing to persist.
       if (!tak || typeof tak !== 'object' || tak instanceof Uint8Array) return;
 
-      // Only the GeoChat oneof variant becomes a message. PLI → Phase 2
-      // (contacts); detail → preview-only (Packet Monitor).
+      // Phase 2 (#3691): PLI variant → ATAK contact upsert (position/status/team).
+      // Compressed string fields are unishox2 (out of scope), but PLI ints and
+      // Group/Status/Contact scalars are still valid when is_compressed=true —
+      // atakContactService keys uid on the carrying node in that case. PLI
+      // never becomes a Messages row; errors are logged, never thrown (RX-only,
+      // best-effort — a contact-persistence failure must not break decoding).
+      const pli = tak.pli;
+      if (pli) {
+        try {
+          const pliFromNum = Number(meshPacket.from);
+          const row = buildContactRow(meshPacket, tak, this.sourceId);
+          if (row) {
+            await this.ensureMessageEndpointNodes(pliFromNum, pliFromNum); // carrying node row
+            await databaseService.atakContacts.upsertContact(row);
+          }
+        } catch (error) {
+          logger.error('❌ Error persisting ATAK PLI contact:', error);
+        }
+        return; // PLI does not become a Messages row
+      }
+
+      // Only the GeoChat oneof variant becomes a message. `detail` is
+      // preview-only (Packet Monitor).
       const chat = tak.chat;
       if (!chat) return;
 
