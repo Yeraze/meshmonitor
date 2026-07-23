@@ -3998,6 +3998,7 @@
         "showUdp": "Show UDP",
         "showRf": "Show RF",
         "showWaypoints": "Show Waypoints",
+        "showAtakContacts": "显示ATAK联系人",
         "nodeType": {
             "allTypes": "",
             "roomServer": "",

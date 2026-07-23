@@ -3589,6 +3589,7 @@
         "showUdp": "Afficher UDP",
         "showRf": "Afficher RF",
         "showWaypoints": "Afficher les points de cheminement",
+        "showAtakContacts": "Afficher les contacts ATAK",
         "nodeType": {
             "allTypes": "",
             "roomServer": "",

@@ -62,6 +62,10 @@ interface MapContextType {
   setShowMeshCoreNodes: (show: boolean) => void;
   showWaypoints: boolean;
   setShowWaypoints: (show: boolean) => void;
+  // ATAK contact markers (ATAK/CoT Phase 2, issue #3691) — default off, opt-in
+  // toggle in the Map Features panel.
+  showAtakContacts: boolean;
+  setShowAtakContacts: (show: boolean) => void;
   // Position history: render points only (no connecting line) — issue #3492
   positionHistoryPointsOnly: boolean;
   setPositionHistoryPointsOnly: (value: boolean) => void;
@@ -123,6 +127,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const [showMeshCoreNodes, setShowMeshCoreNodesState] = useState<boolean>(true);
   // Waypoint markers default on (#3253) — opt-out toggle in the Map Features panel.
   const [showWaypoints, setShowWaypointsState] = useState<boolean>(true);
+  // ATAK contacts default off (#3691), matching showNeighborInfo.
+  const [showAtakContacts, setShowAtakContactsState] = useState<boolean>(false);
   const [positionHistoryPointsOnly, setPositionHistoryPointsOnlyState] = useState<boolean>(false);
   const [showAnimations, setShowAnimationsState] = useState<boolean>(false);
   const [meshCoreNodes, setMeshCoreNodes] = useState<MeshCoreMapNode[]>([]);
@@ -206,6 +212,12 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
   const setShowWaypoints = React.useCallback((value: boolean) => {
     setShowWaypointsState(value);
     void savePreferenceToServer({ showWaypoints: value });
+  }, []);
+
+  const setShowAtakContacts = React.useCallback((value: boolean) => {
+    setShowAtakContactsState(value);
+    void savePreferenceToServer({ showAtakContacts: value });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- #3691 matches every sibling setter in this file (savePreferenceToServer intentionally omitted; baselined pattern, see eslint-baseline.json)
   }, []);
 
   const setPositionHistoryPointsOnly = React.useCallback((value: boolean) => {
@@ -338,6 +350,9 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
             if (preferences.showWaypoints !== undefined) {
               setShowWaypointsState(preferences.showWaypoints);
             }
+            if (preferences.showAtakContacts !== undefined) {
+              setShowAtakContactsState(preferences.showAtakContacts);
+            }
             if (preferences.positionHistoryPointsOnly !== undefined) {
               setPositionHistoryPointsOnlyState(preferences.positionHistoryPointsOnly);
             }
@@ -420,6 +435,8 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     showMeshCoreNodes,
     setShowMeshCoreNodes,
     showWaypoints,
+    showAtakContacts,
+    setShowAtakContacts,
     positionHistoryPointsOnly,
     setPositionHistoryPointsOnly,
     setShowWaypoints,
@@ -463,6 +480,7 @@ export const MapProvider: React.FC<MapProviderProps> = ({ children }) => {
     showRfNodes, setShowRfNodes,
     showMeshCoreNodes, setShowMeshCoreNodes,
     showWaypoints, setShowWaypoints,
+    showAtakContacts, setShowAtakContacts,
     positionHistoryPointsOnly, setPositionHistoryPointsOnly,
     meshCoreNodes, setMeshCoreNodes,
     showAnimations, setShowAnimations,

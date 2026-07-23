@@ -11,7 +11,8 @@ export type LayerKey =
   | 'snrOverlay'
   | 'waypoints'
   | 'polarGrid'
-  | 'accuracyRegions';
+  | 'accuracyRegions'
+  | 'atakContacts';
 
 export interface LayerConfig {
   enabled: boolean;
@@ -87,6 +88,8 @@ export const DEFAULT_CONFIG: MapAnalysisConfig = {
     waypoints:  { enabled: true,  lookbackHours: null },
     polarGrid:  { enabled: false, lookbackHours: null },
     accuracyRegions: { enabled: false, lookbackHours: null },
+    // Default off (#3691), matching the Nodes/Dashboard `showAtakContacts` default.
+    atakContacts: { enabled: false, lookbackHours: null },
   },
   nodeTypes: { ...ALL_NODE_TYPES_VISIBLE },
   transports: { rf: true, udp: true, mqtt: true },

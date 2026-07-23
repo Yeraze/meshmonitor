@@ -4374,6 +4374,7 @@
             "standard": "Standardowy"
         },
         "showWaypoints": "Pokaż punkty trasy",
+        "showAtakContacts": "Pokaż kontakty ATAK",
         "showPositionHistory": "Pokaż historię pozycji",
         "positionHistoryPointsOnly": "Tylko punkty (bez linii)",
         "showAnimations": "Pokaż animacje",

@@ -29,6 +29,7 @@ import { useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useSource } from '../contexts/SourceContext';
 import DashboardWaypoints from './Dashboard/DashboardWaypoints';
+import DashboardAtakContacts from './Dashboard/DashboardAtakContacts';
 import WaypointEditorModal from './WaypointEditorModal';
 import { useWaypoints } from '../hooks/useWaypoints';
 import type { Waypoint, WaypointInput } from '../types/waypoint';
@@ -358,6 +359,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowRfNodes,
     showWaypoints,
     setShowWaypoints,
+    showAtakContacts,
+    setShowAtakContacts,
     showAnimations,
     setShowAnimations,
     showEstimatedPositions,
@@ -2433,6 +2436,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   <label className="map-control-item">
                     <input
                       type="checkbox"
+                      checked={showAtakContacts}
+                      onChange={(e) => setShowAtakContacts(e.target.checked)}
+                    />
+                    <span>{t('map.showAtakContacts', 'Show ATAK Contacts')}</span>
+                  </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
                       checked={showMotion}
                       onChange={(e) => setShowMotion(e.target.checked)}
                     />
@@ -2657,6 +2668,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 onPick={(lat, lon) => startCreateAtCoords(lat, lon)}
               />
               {showWaypoints && <DashboardWaypoints sourceId={currentSourceId ?? null} actions={waypointActions} />}
+              {showAtakContacts && <DashboardAtakContacts sourceId={currentSourceId ?? null} />}
               <DefaultCenterController
                 lat={defaultMapCenterLat}
                 lon={defaultMapCenterLon}

@@ -997,6 +997,7 @@
         "maxAgeAll": "",
         "showRf": "",
         "showWaypoints": "",
+        "showAtakContacts": "",
         "maximumAge": ""
     },
     "channels.connect_to_view": "",
