@@ -146,6 +146,14 @@ vi.mock('./DashboardWaypoints', () => ({
   default: () => <div data-testid="dashboard-waypoints" />,
 }));
 
+// DashboardAtakContacts' import chain (AtakContactsLayer → useAtakContacts)
+// reaches `../init`, which calls `api.setBaseUrl(...)` at module scope — a
+// method the lean api mock above deliberately omits. Mock it out like
+// DashboardWaypoints (#3691).
+vi.mock('./DashboardAtakContacts', () => ({
+  default: () => <div data-testid="dashboard-atak-contacts" />,
+}));
+
 // useMarkerSpiderfier drives the real Leaflet OverlappingMarkerSpiderfier,
 // which needs a live map instance. DashboardMap no longer wires this itself
 // (#4047 Phase 4 WP5) — it renders the shared NodeMarkersLayer, which calls
