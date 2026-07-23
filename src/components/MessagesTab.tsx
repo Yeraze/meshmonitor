@@ -457,17 +457,19 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const [purgingNeighbors, setPurgingNeighbors] = useState(false);
 
   // Security warning clear state (#4302 — the warning bar had no way to
-  // resolve a stale flag short of finding the Security tab's "Run Scan Now")
-  const [clearingSecurityWarning, setClearingSecurityWarning] = useState(false);
+  // resolve a stale flag short of finding the Security tab's "Run Scan Now").
+  // Tracked by nodeNum (not a bare boolean) so switching the selected DM node
+  // mid-request can't attribute the wrong node's loading state to this one.
+  const [clearingSecurityWarningNode, setClearingSecurityWarningNode] = useState<number | null>(null);
   const handleClearSecurityWarning = useCallback(async (nodeNum: number) => {
-    setClearingSecurityWarning(true);
+    setClearingSecurityWarningNode(nodeNum);
     try {
       await apiService.post(`/api/security/nodes/${nodeNum}/clear`, { sourceId });
       showToast(t('messages.security_risk_cleared', 'Security warning cleared'), 'success');
     } catch {
       showToast(t('messages.security_risk_clear_failed', 'Failed to clear security warning'), 'error');
     } finally {
-      setClearingSecurityWarning(false);
+      setClearingSecurityWarningNode(null);
     }
   }, [sourceId, showToast, t]);
 
@@ -1408,8 +1410,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 </span>
                 {hasPermission('security', 'write') && (
                   <button
-                    onClick={() => handleClearSecurityWarning(selectedNode.nodeNum)}
-                    disabled={clearingSecurityWarning}
+                    onClick={() => void handleClearSecurityWarning(selectedNode.nodeNum)}
+                    disabled={clearingSecurityWarningNode === selectedNode.nodeNum}
                     title={t('messages.security_risk_clear_title', 'Re-check this node now and clear the warning if it no longer applies')}
                     style={{
                       background: 'rgba(255, 255, 255, 0.15)',
@@ -1418,10 +1420,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       borderRadius: '4px',
                       padding: '2px 10px',
                       fontWeight: 'normal',
-                      cursor: clearingSecurityWarning ? 'default' : 'pointer',
+                      cursor: clearingSecurityWarningNode === selectedNode.nodeNum ? 'default' : 'pointer',
                     }}
                   >
-                    {clearingSecurityWarning ? t('messages.security_risk_clearing', 'Clearing…') : t('messages.security_risk_clear', 'Clear')}
+                    {clearingSecurityWarningNode === selectedNode.nodeNum ? t('messages.security_risk_clearing', 'Clearing…') : t('messages.security_risk_clear', 'Clear')}
                   </button>
                 )}
               </div>
