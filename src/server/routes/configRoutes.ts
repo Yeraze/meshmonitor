@@ -214,6 +214,31 @@ router.post('/module/telemetry', requirePermission('configuration', 'write'), as
   }
 });
 
+// IMPORTANT: '/module/request' must be registered before the '/module/:moduleType'
+// wildcard below — Express matches routes in registration order, and ':moduleType'
+// would otherwise swallow the literal path "request" (moduleType='request'), making
+// this handler permanently unreachable (found while adding TX-disabled 409 mapping,
+// issue #4294 — the frontend's `/api/config/module/request` call was 400ing with
+// "Invalid module type: request" instead of ever reaching this handler).
+router.post('/module/request', requirePermission('configuration', 'write'), async (req, res) => {
+  try {
+    const { configType, sourceId: cfgModReqSourceId } = req.body;
+    if (configType === undefined) {
+      res.status(400).json({ error: 'configType is required' });
+      return;
+    }
+    const cfgModReqManager = resolveSourceManager(cfgModReqSourceId);
+    await cfgModReqManager.requestModuleConfig(configType);
+    res.json({ success: true, message: 'Module config request sent' });
+  } catch (error) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
+    logger.error('Error requesting module config:', error);
+    res.status(500).json({ error: 'Failed to request module configuration' });
+  }
+});
+
 // Generic module config endpoint - handles extnotif, storeforward, rangetest, cannedmsg, audio,
 // remotehardware, detectionsensor, paxcounter, serial, ambientlighting, statusmessage, trafficmanagement
 router.post('/module/:moduleType', requirePermission('configuration', 'write'), async (req, res) => {
@@ -266,25 +291,6 @@ router.post('/request', requirePermission('configuration', 'write'), async (req,
   } catch (error) {
     logger.error('Error requesting config:', error);
     res.status(500).json({ error: 'Failed to request configuration' });
-  }
-});
-
-router.post('/module/request', requirePermission('configuration', 'write'), async (req, res) => {
-  try {
-    const { configType, sourceId: cfgModReqSourceId } = req.body;
-    if (configType === undefined) {
-      res.status(400).json({ error: 'configType is required' });
-      return;
-    }
-    const cfgModReqManager = resolveSourceManager(cfgModReqSourceId);
-    await cfgModReqManager.requestModuleConfig(configType);
-    res.json({ success: true, message: 'Module config request sent' });
-  } catch (error) {
-    if (isTxDisabledError(error)) {
-      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
-    }
-    logger.error('Error requesting module config:', error);
-    res.status(500).json({ error: 'Failed to request module configuration' });
   }
 });
 
