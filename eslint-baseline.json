@@ -317,7 +317,6 @@
     "react-refresh/only-export-components": 1
   },
   "src/components/configuration/BackupManagementSection.tsx": {
-    "no-restricted-syntax": 6,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/configuration/ChannelDatabaseSection.tsx": {
@@ -328,7 +327,6 @@
     "@typescript-eslint/no-explicit-any": 1
   },
   "src/components/configuration/DatabaseMaintenanceSection.tsx": {
-    "no-restricted-syntax": 5,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/configuration/DeviceConfigSection.tsx": {
@@ -350,7 +348,6 @@
     "no-restricted-syntax": 1
   },
   "src/components/configuration/SystemBackupSection.tsx": {
-    "no-restricted-syntax": 6,
     "react-hooks/exhaustive-deps": 1
   },
   "src/components/configuration/TelemetryConfigSection.tsx": {
@@ -566,8 +563,7 @@
     "react-refresh/only-export-components": 1
   },
   "src/pages/DashboardPage.tsx": {
-    "@typescript-eslint/no-explicit-any": 10,
-    "no-restricted-syntax": 9
+    "@typescript-eslint/no-explicit-any": 10
   },
   "src/pages/UnifiedMessagesPage.tsx": {
     "no-restricted-syntax": 3
