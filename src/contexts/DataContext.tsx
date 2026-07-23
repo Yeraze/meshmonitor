@@ -1,8 +1,13 @@
 import React, { createContext, useContext, useState, useMemo, ReactNode } from 'react';
 import { DeviceInfo, Channel } from '../types/device';
-import { MeshMessage } from '../types/message';
 import { ConnectionStatus } from '../types/ui';
 
+// messages/channelMessages (+ their channelHasMore/channelLoadingMore/
+// dmHasMore/dmLoadingMore pagination state) were removed (#3962 5.4 PR7).
+// They were never pure poll-cache mirrors — the optimistic-send merge and
+// infinite-scroll pagination logic they need moved to `useMessagingView`
+// (src/hooks/useMessagingView.ts), which now owns this state itself instead
+// of prop-drilling it through DataContext.
 interface DataContextType {
   nodes: DeviceInfo[];
   setNodes: React.Dispatch<React.SetStateAction<DeviceInfo[]>>;
@@ -10,10 +15,6 @@ interface DataContextType {
   setChannels: React.Dispatch<React.SetStateAction<Channel[]>>;
   connectionStatus: ConnectionStatus;
   setConnectionStatus: React.Dispatch<React.SetStateAction<ConnectionStatus>>;
-  messages: MeshMessage[];
-  setMessages: React.Dispatch<React.SetStateAction<MeshMessage[]>>;
-  channelMessages: {[key: number]: MeshMessage[]};
-  setChannelMessages: React.Dispatch<React.SetStateAction<{[key: number]: MeshMessage[]}>>;
   deviceInfo: any;
   setDeviceInfo: React.Dispatch<React.SetStateAction<any>>;
   deviceConfig: any;
@@ -22,15 +23,6 @@ interface DataContextType {
   setCurrentNodeId: React.Dispatch<React.SetStateAction<string>>;
   nodeAddress: string;
   setNodeAddress: React.Dispatch<React.SetStateAction<string>>;
-  // Pagination state for infinite scroll
-  channelHasMore: {[key: number]: boolean};
-  setChannelHasMore: React.Dispatch<React.SetStateAction<{[key: number]: boolean}>>;
-  channelLoadingMore: {[key: number]: boolean};
-  setChannelLoadingMore: React.Dispatch<React.SetStateAction<{[key: number]: boolean}>>;
-  dmHasMore: {[key: string]: boolean};
-  setDmHasMore: React.Dispatch<React.SetStateAction<{[key: string]: boolean}>>;
-  dmLoadingMore: {[key: string]: boolean};
-  setDmLoadingMore: React.Dispatch<React.SetStateAction<{[key: string]: boolean}>>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -43,8 +35,6 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   const [nodes, setNodes] = useState<DeviceInfo[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
-  const [messages, setMessages] = useState<MeshMessage[]>([]);
-  const [channelMessages, setChannelMessages] = useState<{[key: number]: MeshMessage[]}>({});
   const [deviceInfo, setDeviceInfo] = useState<any>(null);
   const [deviceConfig, setDeviceConfig] = useState<any>(null);
   const [currentNodeId, setCurrentNodeId] = useState<string>('');
@@ -52,11 +42,6 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   // interpolates nodeAddress, and the literal 'Loading...' must never leak into
   // "Connecting to …" before the real per-source address is resolved (#3611).
   const [nodeAddress, setNodeAddress] = useState<string>('');
-  // Pagination state for infinite scroll
-  const [channelHasMore, setChannelHasMore] = useState<{[key: number]: boolean}>({});
-  const [channelLoadingMore, setChannelLoadingMore] = useState<{[key: number]: boolean}>({});
-  const [dmHasMore, setDmHasMore] = useState<{[key: string]: boolean}>({});
-  const [dmLoadingMore, setDmLoadingMore] = useState<{[key: string]: boolean}>({});
 
   const value = useMemo<DataContextType>(() => ({
     nodes,
@@ -65,10 +50,6 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     setChannels,
     connectionStatus,
     setConnectionStatus,
-    messages,
-    setMessages,
-    channelMessages,
-    setChannelMessages,
     deviceInfo,
     setDeviceInfo,
     deviceConfig,
@@ -77,28 +58,14 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     setCurrentNodeId,
     nodeAddress,
     setNodeAddress,
-    channelHasMore,
-    setChannelHasMore,
-    channelLoadingMore,
-    setChannelLoadingMore,
-    dmHasMore,
-    setDmHasMore,
-    dmLoadingMore,
-    setDmLoadingMore,
   }), [
     nodes, setNodes,
     channels, setChannels,
     connectionStatus, setConnectionStatus,
-    messages, setMessages,
-    channelMessages, setChannelMessages,
     deviceInfo, setDeviceInfo,
     deviceConfig, setDeviceConfig,
     currentNodeId, setCurrentNodeId,
     nodeAddress, setNodeAddress,
-    channelHasMore, setChannelHasMore,
-    channelLoadingMore, setChannelLoadingMore,
-    dmHasMore, setDmHasMore,
-    dmLoadingMore, setDmLoadingMore,
   ]);
 
   return (
