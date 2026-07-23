@@ -44,6 +44,7 @@ import { effectiveMapMaxAgeHours } from '../utils/mapAge';
 import { nodePassesTransportFilter, transportCutoffSec } from '../utils/nodeTransport';
 import { logger } from '../utils/logger';
 import { favoritePendingKey, pendingFavoriteRequests } from '../utils/pendingToggles';
+import { isTxDisabledBody } from '../utils/txDisabled';
 
 export interface UseSourceViewParams {
   /** The deployment base path — App passes `appBasename` (#3962 5.4 PR8
@@ -194,13 +195,22 @@ export function useSourceView(params: UseSourceViewParams) {
         const nodeNumStr = nodeId.replace('!', '');
         const nodeNum = parseInt(nodeNumStr, 16);
 
-        await authFetch(`${baseUrl}/api/traceroute`, {
+        const response = await authFetch(`${baseUrl}/api/traceroute`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ destination: nodeNum, sourceId, ...(channel !== undefined && { channel }) }),
         });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          setTracerouteLoading(null);
+          if (isTxDisabledBody(response.status, errorData)) {
+            showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          }
+          return;
+        }
 
         logger.debug(`🗺️ Traceroute request sent to ${nodeId}`);
 
@@ -222,7 +232,7 @@ export function useSourceView(params: UseSourceViewParams) {
         setTracerouteLoading(null);
       }
     },
-    [connectionStatus, setTracerouteLoading, authFetch, baseUrl, sourceId, refetchPoll]
+    [connectionStatus, setTracerouteLoading, authFetch, baseUrl, sourceId, refetchPoll, showToast, t]
   );
 
   const handleDeleteNode = useCallback(
