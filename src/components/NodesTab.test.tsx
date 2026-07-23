@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeNeighborLinkStyle } from './NodesTab';
+import { computeNeighborLinkStyle, isTracerouteRunDisabled } from './NodesTab';
 import {
   getEffectivePosition,
   resolveMarkerCenterTarget,
@@ -61,6 +61,32 @@ describe('NodesTab', () => {
     });
   });
 
+
+  // Epic #4294 Phase 2 — the map node popup's "Run Traceroute" button
+  // (rendered via TracerouteBody inside a Leaflet Popup/Marker/MapContainer
+  // tree that isn't practical to fully render in jsdom) must be disabled
+  // whenever the source's TX is disabled, in addition to the pre-existing
+  // not-connected/already-running gates. NodesTab wires this boolean via
+  // isTracerouteRunDisabled(...) and sets the button's title from
+  // tx_disabled.control_tooltip whenever txDisabled is true — see the
+  // <TracerouteBody runDisabled=.../runDisabledReason=.../> call site.
+  describe('isTracerouteRunDisabled (map popup traceroute run-button gating)', () => {
+    it('is disabled when txDisabled is true, even while connected and idle', () => {
+      expect(isTracerouteRunDisabled('connected', null, '!aaaaaaaa', true)).toBe(true);
+    });
+
+    it('is enabled when connected, idle, and txDisabled is false', () => {
+      expect(isTracerouteRunDisabled('connected', null, '!aaaaaaaa', false)).toBe(false);
+    });
+
+    it('stays disabled for the pre-existing not-connected gate regardless of txDisabled', () => {
+      expect(isTracerouteRunDisabled('disconnected', null, '!aaaaaaaa', false)).toBe(true);
+    });
+
+    it('stays disabled for the pre-existing already-running gate regardless of txDisabled', () => {
+      expect(isTracerouteRunDisabled('connected', '!aaaaaaaa', '!aaaaaaaa', false)).toBe(true);
+    });
+  });
 
   // Regression for the "clicking a node pans to a random location, not the
   // node" bug: markers for low-precision/obscured nodes are rendered at an

@@ -3608,6 +3608,7 @@ function App() {
                   tracerouteBounds={tracerouteBounds}
                   onTraceroute={handleTraceroute}
                   connectionStatus={connectionStatus}
+                  txDisabled={txGated}
                   tracerouteLoading={tracerouteLoading}
                   onDeleteNode={handleDeleteNode}
                   onPurgeNodeFromDevice={handlePurgeNodeFromDevice}
