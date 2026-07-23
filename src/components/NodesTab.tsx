@@ -1481,7 +1481,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       return {
         key: markerKey,
         position,
-        iconSig: `${node.nodeNum}-${hops}-${isSelected}-${node.user?.role}-${node.user?.shortName}-${showLabel}-${shouldAnimate}-${showRoute && isSelected}-${mapPinStyle}`,
+        iconSig: `${node.nodeNum}-${hops}-${isSelected}-${node.user?.role}-${node.isUnmessagable ? 1 : 0}-${node.user?.shortName}-${showLabel}-${shouldAnimate}-${showRoute && isSelected}-${mapPinStyle}`,
         buildIcon: () =>
           createNodeIcon({
             variant: 'meshtastic',
@@ -1489,6 +1489,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             isSelected,
             isRouter,
             roleCategory,
+            isUnmessagable: !!node.isUnmessagable,
             shortName: node.user?.shortName,
             showLabel: showLabel || shouldAnimate,
             animate: shouldAnimate,

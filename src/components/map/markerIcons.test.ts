@@ -296,7 +296,7 @@ describe('createTracerouteEndpointIcon', () => {
   });
 });
 
-describe('createNodeIcon — Meshtastic ROUTER_LATE renders as repeater tower (#4075)', () => {
+describe('createNodeIcon — Meshtastic ROUTER_LATE is distinguished from ROUTER (#4295)', () => {
   const iconHtml = (roleCategory: NodeTypeCategory | undefined, isRouter: boolean) =>
     (createNodeIcon({
       variant: 'meshtastic',
@@ -306,25 +306,79 @@ describe('createNodeIcon — Meshtastic ROUTER_LATE renders as repeater tower (#
       shortName: 'X',
     }) as unknown as { html: string }).html;
 
-  it('ROUTER_LATE (mtRouterLate) produces the same glyph as ROUTER (mtRouter)', () => {
-    // Both roles map to the "repeater" glyph family via categoryGlyphFamily;
-    // passing roleCategory must make them render identically.
-    expect(iconHtml('mtRouterLate', false)).toBe(iconHtml('mtRouter', false));
+  it('ROUTER_LATE (mtRouterLate) no longer renders identically to ROUTER (mtRouter)', () => {
+    // #4295 reverses #4075's intentional convergence: ROUTER_LATE is a lesser
+    // infra role and must read distinctly. It keeps the tower silhouette but
+    // gains a clock badge, so its markup diverges from a plain ROUTER.
+    expect(iconHtml('mtRouterLate', false)).not.toBe(iconHtml('mtRouter', false));
+  });
+
+  it('ROUTER_LATE keeps the shared repeater-tower silhouette (still reads as infra)', () => {
+    // Both draw the tower base rect; ROUTER_LATE layers a clock badge on top of
+    // it rather than swapping to an unrelated glyph.
+    const routerLate = iconHtml('mtRouterLate', false);
+    const router = iconHtml('mtRouter', false);
+    expect(router).toContain('x="19" y="32"'); // tower base
+    expect(routerLate).toContain('x="19" y="32"'); // tower base retained
+  });
+
+  it('ROUTER_LATE carries a clock badge that ROUTER does not', () => {
+    // The clock disc is drawn at (13,34); ROUTER has no such element.
+    expect(iconHtml('mtRouterLate', false)).toContain('cx="13" cy="34"');
+    expect(iconHtml('mtRouter', false)).not.toContain('cx="13" cy="34"');
   });
 
   it('ROUTER_LATE does NOT render as the generic client pin', () => {
-    // The bug: a ROUTER_LATE node (isRouter=false, role 11) with no roleCategory
-    // fell through to the plain pin. With its category it must diverge from a
-    // standard client icon.
+    // A ROUTER_LATE node (isRouter=false, role 11) with its category must still
+    // diverge from a standard client icon.
     expect(iconHtml('mtRouterLate', false)).not.toBe(iconHtml('mtClient', false));
   });
+});
 
-  it('ROUTER and ROUTER_LATE render identically once both pass roleCategory (roleCategory wins over the legacy isRouter branch)', () => {
-    // #4075 fix: the call sites now pass roleCategory. Because roleCategory
-    // takes precedence over the legacy hand-drawn isRouter tower, a ROUTER node
-    // (isRouter=true + mtRouter) and a ROUTER_LATE node (mtRouterLate) resolve
-    // to the same category glyph — the same one MapAnalysis already used.
-    expect(iconHtml('mtRouter', true)).toBe(iconHtml('mtRouterLate', false));
+describe('createNodeIcon — unmessageable badge (#4295)', () => {
+  const iconHtml = (isUnmessagable: boolean, pinStyle: 'meshmonitor' | 'official') =>
+    (createNodeIcon({
+      variant: 'meshtastic',
+      hops: 1,
+      roleCategory: 'mtClient',
+      shortName: 'X',
+      pinStyle,
+      isUnmessagable,
+    }) as unknown as { html: string }).html;
+
+  it('adds the ban-badge overlay in meshmonitor style when isUnmessagable is true', () => {
+    expect(iconHtml(true, 'meshmonitor')).toContain('#d64545');
+    expect(iconHtml(false, 'meshmonitor')).not.toContain('#d64545');
+  });
+
+  it('adds the ban-badge overlay in official style when isUnmessagable is true', () => {
+    expect(iconHtml(true, 'official')).toContain('#d64545');
+    expect(iconHtml(false, 'official')).not.toContain('#d64545');
+  });
+
+  it('defaults to no badge when isUnmessagable is omitted', () => {
+    const icon = createNodeIcon({
+      variant: 'meshtastic',
+      hops: 1,
+      roleCategory: 'mtClient',
+      shortName: 'X',
+    }) as unknown as { html: string };
+    expect(icon.html).not.toContain('#d64545');
+  });
+
+  it('places the badge in the top-right corner, clear of the bottom-right role badge', () => {
+    const icon = createNodeIcon({
+      variant: 'meshtastic',
+      hops: 1,
+      roleCategory: 'mtRouter',
+      shortName: 'RTR1',
+      pinStyle: 'official',
+      isUnmessagable: true,
+    }) as unknown as { html: string };
+    // Both badges coexist: role badge bottom-right, unmessageable badge top-right.
+    expect(icon.html).toContain('bottom: -2px');
+    expect(icon.html).toContain('top: -2px');
+    expect(icon.html).toContain('#d64545');
   });
 });
 

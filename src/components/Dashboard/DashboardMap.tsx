@@ -514,7 +514,7 @@ export default function DashboardMap({
     return {
       key: markerKey,
       position: [pos.lat, pos.lng],
-      iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${roleCategory}|${mapPinStyle}`,
+      iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${roleCategory}|${node.isUnmessagable ? 1 : 0}|${mapPinStyle}`,
       buildIcon: () =>
         createNodeIcon({
           variant: 'meshtastic',
@@ -522,6 +522,7 @@ export default function DashboardMap({
           isSelected: false,
           isRouter,
           roleCategory,
+          isUnmessagable: !!node.isUnmessagable,
           shortName,
           showLabel: true,
           pinStyle: mapPinStyle,
