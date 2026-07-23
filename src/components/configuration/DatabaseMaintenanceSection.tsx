@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import apiService from '../../services/api';
+import apiService, { ApiError } from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
 import { useSaveBar } from '../../hooks/useSaveBar';
@@ -100,15 +100,15 @@ const DatabaseMaintenanceSection: React.FC = () => {
   useEffect(() => {
     const fetchDatabaseType = async () => {
       try {
-        const baseUrl = await apiService.getBaseUrl();
-        const response = await fetch(`${baseUrl}/api/health`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.databaseType) {
-            setDatabaseType(data.databaseType);
-          }
+        const data = await apiService.get<{ databaseType?: 'sqlite' | 'postgres' | 'mysql' }>('/api/health');
+        if (data.databaseType) {
+          setDatabaseType(data.databaseType);
         }
       } catch (error) {
+        // Preserve the prior silent-ignore on a non-ok HTTP response; only a
+        // genuine network/transport failure gets logged (same split as the
+        // old `if (response.ok) {...}` with no else branch).
+        if (error instanceof ApiError) return;
         logger.error('Error fetching database type:', error);
       }
     };
@@ -125,47 +125,39 @@ const DatabaseMaintenanceSection: React.FC = () => {
 
   const loadStatus = async () => {
     try {
-      const baseUrl = await apiService.getBaseUrl();
-      const response = await fetch(`${baseUrl}/api/maintenance/status`, {
-        credentials: 'same-origin'
-      });
-
-      if (response.ok) {
-        const data: MaintenanceStatus = await response.json();
-        setStatus(data);
-        setEnabled(data.enabled);
-        setMaintenanceTime(data.maintenanceTime);
-        setMessageRetentionDays(data.settings.messageRetentionDays);
-        setTracerouteRetentionDays(data.settings.tracerouteRetentionDays);
-        setRouteSegmentRetentionDays(data.settings.routeSegmentRetentionDays);
-        setNeighborInfoRetentionDays(data.settings.neighborInfoRetentionDays);
-        // Update initial values to match loaded settings
-        initialValuesRef.current = {
-          enabled: data.enabled,
-          maintenanceTime: data.maintenanceTime,
-          messageRetentionDays: data.settings.messageRetentionDays,
-          tracerouteRetentionDays: data.settings.tracerouteRetentionDays,
-          routeSegmentRetentionDays: data.settings.routeSegmentRetentionDays,
-          neighborInfoRetentionDays: data.settings.neighborInfoRetentionDays
-        };
-      }
+      const data = await apiService.get<MaintenanceStatus>('/api/maintenance/status');
+      setStatus(data);
+      setEnabled(data.enabled);
+      setMaintenanceTime(data.maintenanceTime);
+      setMessageRetentionDays(data.settings.messageRetentionDays);
+      setTracerouteRetentionDays(data.settings.tracerouteRetentionDays);
+      setRouteSegmentRetentionDays(data.settings.routeSegmentRetentionDays);
+      setNeighborInfoRetentionDays(data.settings.neighborInfoRetentionDays);
+      // Update initial values to match loaded settings
+      initialValuesRef.current = {
+        enabled: data.enabled,
+        maintenanceTime: data.maintenanceTime,
+        messageRetentionDays: data.settings.messageRetentionDays,
+        tracerouteRetentionDays: data.settings.tracerouteRetentionDays,
+        routeSegmentRetentionDays: data.settings.routeSegmentRetentionDays,
+        neighborInfoRetentionDays: data.settings.neighborInfoRetentionDays
+      };
     } catch (error) {
+      // Preserve the prior silent-ignore on a non-ok HTTP response; only a
+      // genuine network/transport failure gets logged.
+      if (error instanceof ApiError) return;
       logger.error('Error loading maintenance status:', error);
     }
   };
 
   const loadDatabaseSize = async () => {
     try {
-      const baseUrl = await apiService.getBaseUrl();
-      const response = await fetch(`${baseUrl}/api/maintenance/size`, {
-        credentials: 'same-origin'
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setDatabaseSize(data.size);
-      }
+      const data = await apiService.get<{ size: number }>('/api/maintenance/size');
+      setDatabaseSize(data.size);
     } catch (error) {
+      // Preserve the prior silent-ignore on a non-ok HTTP response; only a
+      // genuine network/transport failure gets logged.
+      if (error instanceof ApiError) return;
       logger.error('Error loading database size:', error);
     }
   };
@@ -173,32 +165,14 @@ const DatabaseMaintenanceSection: React.FC = () => {
   const handleSaveSettings = async () => {
     try {
       setIsSaving(true);
-      const baseUrl = await apiService.getBaseUrl();
-
-      // Get CSRF token
-      const csrfToken = sessionStorage.getItem('csrfToken');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (csrfToken) {
-        headers['X-CSRF-Token'] = csrfToken;
-      }
-
-      const response = await fetch(`${baseUrl}/api/settings`, {
-        method: 'POST',
-        headers,
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          maintenanceEnabled: enabled ? 'true' : 'false',
-          maintenanceTime,
-          messageRetentionDays: String(messageRetentionDays),
-          tracerouteRetentionDays: String(tracerouteRetentionDays),
-          routeSegmentRetentionDays: String(routeSegmentRetentionDays),
-          neighborInfoRetentionDays: String(neighborInfoRetentionDays)
-        })
+      await apiService.post('/api/settings', {
+        maintenanceEnabled: enabled ? 'true' : 'false',
+        maintenanceTime,
+        messageRetentionDays: String(messageRetentionDays),
+        tracerouteRetentionDays: String(tracerouteRetentionDays),
+        routeSegmentRetentionDays: String(routeSegmentRetentionDays),
+        neighborInfoRetentionDays: String(neighborInfoRetentionDays)
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to save maintenance settings');
-      }
 
       // Update initial values to match saved settings
       initialValuesRef.current = {
@@ -237,27 +211,7 @@ const DatabaseMaintenanceSection: React.FC = () => {
       setIsRunning(true);
       showToast(t('maintenance.toast_running'), 'info');
 
-      const baseUrl = await apiService.getBaseUrl();
-
-      // Get CSRF token
-      const csrfToken = sessionStorage.getItem('csrfToken');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (csrfToken) {
-        headers['X-CSRF-Token'] = csrfToken;
-      }
-
-      const response = await fetch(`${baseUrl}/api/maintenance/run`, {
-        method: 'POST',
-        headers,
-        credentials: 'same-origin'
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to run maintenance');
-      }
-
-      const result = await response.json();
+      const result = await apiService.post<{ stats: MaintenanceStats }>('/api/maintenance/run');
       const stats = result.stats;
       const totalDeleted = stats.messagesDeleted + stats.traceroutesDeleted +
                           stats.routeSegmentsDeleted + stats.neighborInfoDeleted;

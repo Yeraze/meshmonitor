@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
-import apiService from '../../services/api';
+import apiService, { ApiError } from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
 import { useSaveBar } from '../../hooks/useSaveBar';
@@ -66,27 +66,24 @@ const SystemBackupSection: React.FC = () => {
 
   const loadBackupSettings = async () => {
     try {
-      const baseUrl = await apiService.getBaseUrl();
-      const response = await fetch(`${baseUrl}/api/system/backup/settings`, {
-        credentials: 'same-origin'
-      });
-
-      if (response.ok) {
-        const settings = await response.json();
-        const enabled = settings.enabled || false;
-        const max = settings.maxBackups || 7;
-        const time = settings.backupTime || '03:00';
-        setAutoBackupEnabled(enabled);
-        setMaxBackups(max);
-        setBackupTime(time);
-        // Update initial values to match loaded settings
-        initialValuesRef.current = {
-          autoBackupEnabled: enabled,
-          maxBackups: max,
-          backupTime: time
-        };
-      }
+      const settings = await apiService.get<{ enabled?: boolean; maxBackups?: number; backupTime?: string }>('/api/system/backup/settings');
+      const enabled = settings.enabled || false;
+      const max = settings.maxBackups || 7;
+      const time = settings.backupTime || '03:00';
+      setAutoBackupEnabled(enabled);
+      setMaxBackups(max);
+      setBackupTime(time);
+      // Update initial values to match loaded settings
+      initialValuesRef.current = {
+        autoBackupEnabled: enabled,
+        maxBackups: max,
+        backupTime: time
+      };
     } catch (error) {
+      // Preserve the prior silent-ignore on a non-ok HTTP response; only a
+      // genuine network/transport failure gets logged (same split as the
+      // old `if (response.ok) {...}` with no else branch).
+      if (error instanceof ApiError) return;
       logger.error('Error loading system backup settings:', error);
     }
   };
@@ -94,29 +91,11 @@ const SystemBackupSection: React.FC = () => {
   const handleSaveBackupSettings = async () => {
     try {
       setIsSavingSettings(true);
-      const baseUrl = await apiService.getBaseUrl();
-
-      // Get CSRF token
-      const csrfToken = sessionStorage.getItem('csrfToken');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (csrfToken) {
-        headers['X-CSRF-Token'] = csrfToken;
-      }
-
-      const response = await fetch(`${baseUrl}/api/system/backup/settings`, {
-        method: 'POST',
-        headers,
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          enabled: autoBackupEnabled,
-          maxBackups,
-          backupTime
-        })
+      await apiService.post('/api/system/backup/settings', {
+        enabled: autoBackupEnabled,
+        maxBackups,
+        backupTime
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to save system backup settings');
-      }
 
       // Update initial values to match saved settings
       initialValuesRef.current = {
@@ -151,27 +130,7 @@ const SystemBackupSection: React.FC = () => {
       setIsCreatingBackup(true);
       showToast(t('system_backup.toast_creating'), 'info');
 
-      const baseUrl = await apiService.getBaseUrl();
-
-      // Get CSRF token
-      const csrfToken = sessionStorage.getItem('csrfToken');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (csrfToken) {
-        headers['X-CSRF-Token'] = csrfToken;
-      }
-
-      const response = await fetch(`${baseUrl}/api/system/backup`, {
-        method: 'POST',
-        headers,
-        credentials: 'same-origin'
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details || 'Failed to create system backup');
-      }
-
-      const result = await response.json();
+      const result = await apiService.post<{ dirname: string }>('/api/system/backup');
       showToast(t('system_backup.toast_backup_created', { dirname: result.dirname }), 'success');
 
       // Refresh backup list if modal is open
@@ -180,7 +139,14 @@ const SystemBackupSection: React.FC = () => {
       }
     } catch (error) {
       logger.error('Error creating system backup:', error);
-      showToast(t('system_backup.toast_backup_failed', { error: error instanceof Error ? error.message : 'Unknown error' }), 'error');
+      // The backend surfaces this failure's detail on `.details`, not the
+      // `.error` field ApiError.message already reads — preserve that
+      // preference exactly.
+      const errorBody = error instanceof ApiError ? error.body as { details?: unknown } | undefined : undefined;
+      const message = typeof errorBody?.details === 'string'
+        ? errorBody.details
+        : error instanceof Error ? error.message : 'Unknown error';
+      showToast(t('system_backup.toast_backup_failed', { error: message }), 'error');
     } finally {
       setIsCreatingBackup(false);
     }
@@ -189,17 +155,7 @@ const SystemBackupSection: React.FC = () => {
   const handleShowBackups = async () => {
     try {
       setIsLoadingBackups(true);
-      const baseUrl = await apiService.getBaseUrl();
-
-      const response = await fetch(`${baseUrl}/api/system/backup/list`, {
-        credentials: 'same-origin'
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to load system backup list');
-      }
-
-      const backups = await response.json();
+      const backups = await apiService.get<SystemBackupFile[]>('/api/system/backup/list');
       setBackupList(backups);
       setIsBackupModalOpen(true);
     } catch (error) {
@@ -213,25 +169,9 @@ const SystemBackupSection: React.FC = () => {
   const handleDownloadBackup = async (dirname: string) => {
     try {
       showToast(t('system_backup.toast_downloading'), 'info');
-      const baseUrl = await apiService.getBaseUrl();
-
-      const response = await fetch(`${baseUrl}/api/system/backup/download/${encodeURIComponent(dirname)}`, {
-        credentials: 'same-origin'
+      await apiService.download(`/api/system/backup/download/${encodeURIComponent(dirname)}`, {
+        filename: `${dirname}.tar.gz`,
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to download system backup');
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${dirname}.tar.gz`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
 
       showToast(t('system_backup.toast_downloaded'), 'success');
     } catch (error) {
@@ -246,24 +186,7 @@ const SystemBackupSection: React.FC = () => {
     }
 
     try {
-      const baseUrl = await apiService.getBaseUrl();
-
-      // Get CSRF token
-      const csrfToken = sessionStorage.getItem('csrfToken');
-      const headers: Record<string, string> = {};
-      if (csrfToken) {
-        headers['X-CSRF-Token'] = csrfToken;
-      }
-
-      const response = await fetch(`${baseUrl}/api/system/backup/delete/${encodeURIComponent(dirname)}`, {
-        method: 'DELETE',
-        headers,
-        credentials: 'same-origin'
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete system backup');
-      }
+      await apiService.delete(`/api/system/backup/delete/${encodeURIComponent(dirname)}`);
 
       showToast(t('system_backup.toast_deleted'), 'success');
       // Refresh the backup list

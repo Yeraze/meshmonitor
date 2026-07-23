@@ -971,4 +971,176 @@ describe('ApiService BASE_URL Support', () => {
       expect((err as any).code).toBe('CSRF_TOKEN_INVALID');
     });
   });
+
+  describe('download() (#3962 Task 5.5 PR1)', () => {
+    let clickSpy: ReturnType<typeof vi.fn>;
+    let appendedAnchor: any;
+    let createObjectURLSpy: ReturnType<typeof vi.fn>;
+    let revokeObjectURLSpy: ReturnType<typeof vi.fn>;
+
+    const mockBlobResponse = (
+      ok: boolean,
+      opts: { status?: number; contentDisposition?: string | null; jsonBody?: any } = {}
+    ) => ({
+      ok,
+      status: opts.status ?? (ok ? 200 : 500),
+      headers: {
+        get: (name: string) => (name === 'Content-Disposition' ? opts.contentDisposition ?? null : null),
+      },
+      blob: async () => new Blob(['data']),
+      json: async () => opts.jsonBody ?? { error: 'Request failed' },
+    });
+
+    beforeEach(() => {
+      (apiService as any).baseUrl = '';
+      (apiService as any).configFetched = true;
+      (apiService as any).configPromise = null;
+      mockFetch.mockClear();
+      sessionStorage.clear();
+
+      clickSpy = vi.fn();
+      appendedAnchor = null;
+      createObjectURLSpy = vi.fn(() => 'blob:mock-url');
+      revokeObjectURLSpy = vi.fn();
+
+      (global as any).window.URL = {
+        createObjectURL: createObjectURLSpy,
+        revokeObjectURL: revokeObjectURLSpy,
+      };
+
+      (global as any).document = {
+        createElement: vi.fn(() => {
+          const anchor: any = { click: clickSpy };
+          appendedAnchor = anchor;
+          return anchor;
+        }),
+        body: {
+          appendChild: vi.fn(),
+          removeChild: vi.fn(),
+        },
+      };
+    });
+
+    afterEach(() => {
+      delete (global as any).document;
+      delete (global as any).window.URL;
+    });
+
+    it('downloads a blob and clicks a synthesized anchor using opts.filename', async () => {
+      mockFetch.mockResolvedValue(mockBlobResponse(true));
+
+      await apiService.download('/api/system/backup/download/foo', { filename: 'foo.tar.gz' });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/system/backup/download/foo',
+        expect.objectContaining({ method: 'GET', credentials: 'include' })
+      );
+      expect(appendedAnchor.download).toBe('foo.tar.gz');
+      expect(appendedAnchor.href).toBe('blob:mock-url');
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+      expect(createObjectURLSpy).toHaveBeenCalledTimes(1);
+      expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:mock-url');
+    });
+
+    it('falls back to the Content-Disposition filename when opts.filename is absent', async () => {
+      mockFetch.mockResolvedValue(
+        mockBlobResponse(true, { contentDisposition: 'attachment; filename="server-name.json"' })
+      );
+
+      await apiService.download('/api/channels/1/export');
+
+      expect(appendedAnchor.download).toBe('server-name.json');
+    });
+
+    it('falls back to opts.defaultName when neither filename nor Content-Disposition is present', async () => {
+      mockFetch.mockResolvedValue(mockBlobResponse(true));
+
+      await apiService.download('/api/channels/1/export', { defaultName: 'default.json' });
+
+      expect(appendedAnchor.download).toBe('default.json');
+    });
+
+    it('throws ApiError on non-ok and never touches the DOM', async () => {
+      const { ApiError } = await import('./api');
+      mockFetch.mockResolvedValue(mockBlobResponse(false, { status: 404, jsonBody: { error: 'nope' } }));
+
+      const err = await apiService.download('/api/system/backup/download/foo').catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as Error).message).toBe('nope');
+      expect(clickSpy).not.toHaveBeenCalled();
+      expect(createObjectURLSpy).not.toHaveBeenCalled();
+    });
+
+    it('sends a CSRF header and JSON body for a mutating (POST) download', async () => {
+      sessionStorage.setItem('csrfToken', 'tok123');
+      mockFetch.mockResolvedValue(mockBlobResponse(true));
+
+      await apiService.download('/api/export', { method: 'POST', body: { foo: 'bar' }, filename: 'x.json' });
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/export', expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ foo: 'bar' }),
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'tok123' }),
+      }));
+    });
+
+    it('exportChannel delegates to download() with a channel-derived default filename', async () => {
+      mockFetch.mockResolvedValue(mockBlobResponse(true));
+
+      await apiService.exportChannel(42);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/channels/42/export',
+        expect.objectContaining({ method: 'GET', credentials: 'include' })
+      );
+      expect(appendedAnchor.download).toMatch(/^channel-42-\d+\.json$/);
+    });
+  });
+
+  describe('getText() (#3962 Task 5.5 PR1)', () => {
+    beforeEach(() => {
+      (apiService as any).baseUrl = '';
+      (apiService as any).configFetched = true;
+      (apiService as any).configPromise = null;
+      mockFetch.mockClear();
+    });
+
+    it('returns response text on success without calling json()', async () => {
+      const jsonSpy = vi.fn();
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: { get: () => null },
+        text: async () => 'yaml: content',
+        json: jsonSpy,
+      });
+
+      const result = await apiService.getText('/api/backup/download/foo.yaml');
+
+      expect(result).toBe('yaml: content');
+      expect(jsonSpy).not.toHaveBeenCalled();
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/backup/download/foo.yaml',
+        expect.objectContaining({ credentials: 'include' })
+      );
+    });
+
+    it('throws ApiError on non-ok instead of calling text()', async () => {
+      const { ApiError } = await import('./api');
+      const textSpy = vi.fn();
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 404,
+        headers: { get: () => null },
+        json: async () => ({ error: 'missing' }),
+        text: textSpy,
+      });
+
+      const err = await apiService.getText('/api/backup/download/missing.yaml').catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as Error).message).toBe('missing');
+      expect(textSpy).not.toHaveBeenCalled();
+    });
+  });
 });
