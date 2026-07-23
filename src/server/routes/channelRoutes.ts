@@ -1061,9 +1061,9 @@ router.post('/encode-url', requirePermission('configuration', 'read'), requireSo
           frequencyOffset: deviceConfig.lora.frequencyOffset,
           region: deviceConfig.lora.region,
           hopLimit: deviceConfig.lora.hopLimit,
-          // IMPORTANT: Always force txEnabled to true for exported configs
-          // This ensures that when someone imports the config, TX is always enabled
-          txEnabled: true,
+          // Emit the device's actual txEnabled (issue #4294) — exports should
+          // reflect the real radio state, not force TX on.
+          txEnabled: deviceConfig.lora.txEnabled,
           txPower: deviceConfig.lora.txPower,
           channelNum: deviceConfig.lora.channelNum,
           sx126xRxBoostedGain: deviceConfig.lora.sx126xRxBoostedGain,
@@ -1177,15 +1177,12 @@ router.post('/import-config', requirePermission('configuration', 'write'), requi
       try {
         logger.debug(`📥 Importing LoRa config:`, JSON.stringify(decoded.loraConfig, null, 2));
 
-        // IMPORTANT: Always force txEnabled to true
-        // MeshMonitor users need TX enabled to send messages
-        // Ignore any incoming configuration that tries to disable TX
-        const loraConfigToImport = {
-          ...decoded.loraConfig,
-          txEnabled: true,
-        };
+        // Preserve the device's current txEnabled rather than forcing it on
+        // (issue #4294) — strip the imported value so the existing radio TX
+        // state survives a config import.
+        const { txEnabled: _importedTxEnabled, ...loraConfigToImport } = decoded.loraConfig;
 
-        logger.debug(`📥 LoRa config with txEnabled defaulted: txEnabled=${loraConfigToImport.txEnabled}`);
+        logger.debug(`📥 LoRa config import (txEnabled preserved from device, not imported)`);
         await configImportManager.setLoRaConfig(loraConfigToImport);
         // LoRa config triggers heavier processing (frequency calculations, radio reconfiguration)
         // so allow extra time before committing

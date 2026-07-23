@@ -17,6 +17,8 @@ import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionConfig.js';
 import { isValidModuleConfigType } from '../constants/moduleConfig.js';
 import { getEnvironmentConfig } from '../config/environment.js';
+import { fail } from '../utils/apiResponse.js';
+import { isTxDisabledError } from '../errors/txDisabledError.js';
 
 const env = getEnvironmentConfig();
 const BASE_URL = env.baseUrl;
@@ -126,16 +128,12 @@ router.post('/lora', requirePermission('configuration', 'write'), async (req, re
     const { sourceId: cfgLoraSourceId, ...config } = req.body;
     const cfgLoraManager = resolveSourceManager(cfgLoraSourceId);
 
-    // IMPORTANT: Always force txEnabled to true
-    // MeshMonitor users need TX enabled to send messages
-    // Ignore any incoming configuration that tries to disable TX
-    const loraConfigToSet = {
-      ...config,
-      txEnabled: true,
-    };
-
-    logger.debug(`⚙️ Setting LoRa config with txEnabled defaulted: txEnabled=${loraConfigToSet.txEnabled}`);
-    await cfgLoraManager.setLoRaConfig(loraConfigToSet);
+    // Pass through the submitted txEnabled as-is (issue #4294) — this is the
+    // one legitimate place a user sets TX on/off. Do NOT force it to true here;
+    // that used to silently revert receive-only radios back to TX-enabled on
+    // every unrelated LoRa config save.
+    logger.debug(`⚙️ Setting LoRa config: txEnabled=${config.txEnabled}`);
+    await cfgLoraManager.setLoRaConfig(config);
     res.json({ success: true, message: 'LoRa configuration sent' });
   } catch (error) {
     logger.error('Error setting LoRa config:', error);
@@ -282,6 +280,9 @@ router.post('/module/request', requirePermission('configuration', 'write'), asyn
     await cfgModReqManager.requestModuleConfig(configType);
     res.json({ success: true, message: 'Module config request sent' });
   } catch (error) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error requesting module config:', error);
     res.status(500).json({ error: 'Failed to request module configuration' });
   }
