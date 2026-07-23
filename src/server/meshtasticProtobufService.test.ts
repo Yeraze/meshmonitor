@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { MeshtasticProtobufService } from './meshtasticProtobufService';
+import { MeshtasticProtobufService, formatTakPreview } from './meshtasticProtobufService';
 import { loadProtobufDefinitions, getProtobufRoot } from './protobufLoader';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -690,6 +690,99 @@ describe('MeshtasticProtobufService', () => {
       const result = service.processPayload(37, garbage as any);
       expect(result).toBeInstanceOf(Uint8Array);
       expect(Array.from(result as Uint8Array)).toEqual([0x0a, 0xff, 0xff]);
+    });
+  });
+
+  // TAKPacket (ATAK plugin, portnum 72): PLI/GeoChat/detail oneof decode +
+  // formatTakPreview one-line summaries for the Packet Monitor (ATAK/CoT
+  // Phase 1, WP1). V2 (78) and Forwarder (257) are intentionally NOT decoded
+  // here — that is asserted via passthrough below.
+  describe('TAKPacket / ATAK', () => {
+    function encodeTak(fields: Record<string, unknown>): Uint8Array {
+      const root = getProtobufRoot()!;
+      const TAKPacket = root.lookupType('meshtastic.TAKPacket');
+      return TAKPacket.encode(TAKPacket.create(fields)).finish();
+    }
+
+    it('decodes a PLI variant and formats a coordinate preview', () => {
+      if (!requireProtobufs()) return;
+
+      const payload = encodeTak({
+        contact: { callsign: 'FALKE' },
+        pli: { latitudeI: 371234500, longitudeI: -1225432100, altitude: 10, speed: 3, course: 90 },
+      });
+
+      const result = service.processPayload(72, payload as any);
+      expect(result).toBeDefined();
+      expect(result.pli).toBeDefined();
+      expect(formatTakPreview(result, payload.length)).toBe('[ATAK PLI FALKE: 37.12345°, -122.54321°]');
+    });
+
+    it('decodes a GeoChat variant and formats a message preview', () => {
+      if (!requireProtobufs()) return;
+
+      const payload = encodeTak({
+        contact: { callsign: 'ALPHA' },
+        chat: { message: 'moving out' },
+      });
+
+      const result = service.processPayload(72, payload as any);
+      expect(result).toBeDefined();
+      expect(result.chat).toBeDefined();
+      expect(formatTakPreview(result, payload.length)).toBe('[ATAK GeoChat ALPHA: "moving out"]');
+    });
+
+    it('formats a GeoChat receipt (delivered/read ack) distinctly, not as chat text', () => {
+      if (!requireProtobufs()) return;
+
+      const payload = encodeTak({
+        contact: { callsign: 'ALPHA' },
+        chat: { message: '', receiptType: 1, receiptForUid: 'x' },
+      });
+
+      const result = service.processPayload(72, payload as any);
+      expect(formatTakPreview(result, payload.length)).toBe('[ATAK GeoChat receipt ALPHA]');
+    });
+
+    it('decodes a detail (raw bytes) variant and formats a byte-count preview', () => {
+      if (!requireProtobufs()) return;
+
+      const payload = encodeTak({ detail: new Uint8Array([1, 2, 3]) });
+
+      const result = service.processPayload(72, payload as any);
+      expect(result).toBeDefined();
+      expect(formatTakPreview(result, payload.length)).toBe('[ATAK detail: 3 bytes]');
+    });
+
+    it('formats a compressed GeoChat without leaking unishox2 bytes as text', () => {
+      if (!requireProtobufs()) return;
+
+      const payload = encodeTak({
+        isCompressed: true,
+        chat: { message: '\x01\x02garbage' },
+      });
+
+      const result = service.processPayload(72, payload as any);
+      expect(formatTakPreview(result, payload.length)).toBe('[ATAK GeoChat (compressed)]');
+    });
+
+    it('does NOT decode ATAK_PLUGIN_V2 (port 78) - returns the raw payload', () => {
+      if (!requireProtobufs()) return;
+
+      const someBytes = Uint8Array.from([0x10, 0x20, 0x30, 0x40]);
+      const result = service.processPayload(78, someBytes as any);
+      expect(result).toBeInstanceOf(Uint8Array);
+      expect(Array.from(result as Uint8Array)).toEqual([0x10, 0x20, 0x30, 0x40]);
+    });
+
+    it('does not throw on malformed TAKPacket bytes and previews as undecodable', () => {
+      if (!requireProtobufs()) return;
+
+      const garbage = Uint8Array.from([0xff, 0xff, 0xff, 0xff]);
+      let result: any;
+      expect(() => { result = service.processPayload(72, garbage as any); }).not.toThrow();
+      expect(result).toBeDefined();
+      expect(formatTakPreview(result, garbage.length)).toBe('[ATAK packet, 4 bytes (undecodable)]');
     });
   });
 });

@@ -1801,6 +1801,7 @@ export class MeshtasticProtobufService {
 }
 
 /** Human-readable one-line preview for a decoded TAKPacket (Packet Monitor). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 decoded protobuf oneof shape (TAKPacket | raw Uint8Array); no generated TS type for protobufjs decode() output here
 export function formatTakPreview(tak: any, payloadSize: number): string {
   // Guard: decode failed upstream → processPayload returned the raw Uint8Array.
   if (!tak || typeof tak !== 'object' || tak instanceof Uint8Array) {
