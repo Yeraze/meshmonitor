@@ -61,6 +61,31 @@ const incoming: MeshMessage = {
   timestamp: new Date('2026-07-23T12:00:00Z'),
 };
 
+// Parent + reply pair to exercise the `.replied-message` path. The reply's id
+// trailing segment is its own packet id; `replyId` points at the parent's.
+const PARENT_PACKET_ID = 9001;
+const replyParent: MeshMessage = {
+  id: `src1_111_${PARENT_PACKET_ID}`,
+  from: '!aaaaaaaa',
+  to: '^all',
+  fromNodeId: '!aaaaaaaa',
+  toNodeId: '^all',
+  text: 'original question',
+  channel: 0,
+  timestamp: new Date('2026-07-23T12:00:00Z'),
+};
+const replyChild: MeshMessage = {
+  id: 'src1_222_9002',
+  from: '!bbbbbbbb',
+  to: '^all',
+  fromNodeId: '!bbbbbbbb',
+  toNodeId: '^all',
+  text: 'here is my answer',
+  channel: 0,
+  timestamp: new Date('2026-07-23T12:00:05Z'),
+  replyId: PARENT_PACKET_ID,
+};
+
 type ChannelsTabProps = React.ComponentProps<typeof ChannelsTab>;
 
 function makeProps(overrides: Partial<ChannelsTabProps> = {}): ChannelsTabProps {
@@ -85,7 +110,7 @@ function makeProps(overrides: Partial<ChannelsTabProps> = {}): ChannelsTabProps 
     setReplyingTo: noop,
     unreadCounts: {},
     setUnreadCounts: noop,
-    markMessagesAsRead: noop,
+    markMessagesAsRead: asyncNoop,
     channelInfoModal: null,
     setChannelInfoModal: noop,
     showPsk: false,
@@ -134,5 +159,36 @@ describe('ChannelsTab message-actions ordering (#4311)', () => {
     // The element right after the long name is the bubble itself — not the
     // actions toolbar (the pre-#4311 bug wedged .message-actions in here).
     expect(senderName!.nextElementSibling?.classList.contains('message-bubble')).toBe(true);
+  });
+
+  it('keeps a reply preview between the long name and the bubble (toolbar still after the bubble)', () => {
+    render(
+      <ChannelsTab
+        {...makeProps({
+          channelMessages: { 0: [replyParent, replyChild] },
+          messages: [replyParent, replyChild],
+        })}
+      />,
+    );
+
+    // The reply child is the second rendered message — scope to its container.
+    const replyContent = document.querySelector(
+      `[data-message-id="${replyChild.id}"] .message-content`,
+    );
+    expect(replyContent).not.toBeNull();
+
+    const senderName = replyContent!.querySelector('.sender-name');
+    const replied = replyContent!.querySelector('.replied-message');
+    const bubble = replyContent!.querySelector('.message-bubble');
+    const actions = replyContent!.querySelector('.message-actions');
+    expect(senderName).not.toBeNull();
+    expect(replied).not.toBeNull();
+    expect(bubble).not.toBeNull();
+    expect(actions).not.toBeNull();
+
+    // Order: sender-name → replied-message → message-bubble → message-actions.
+    expect(senderName!.compareDocumentPosition(replied!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(replied!.compareDocumentPosition(bubble!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bubble!.compareDocumentPosition(actions!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
