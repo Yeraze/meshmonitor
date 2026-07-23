@@ -14,23 +14,62 @@
  * ```
  */
 
-import { useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { usePoll, PollData, POLL_QUERY_KEY } from "./usePoll";
+import { useMemo, useRef } from "react";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { usePoll, sourcePollQueryKey, PollData, POLL_QUERY_KEY } from "./usePoll";
+import { useSource } from "../contexts/SourceContext";
+import { applyPendingNodeOverrides } from "../utils/pendingToggles";
 import type { DeviceInfo, Channel } from "../types/device";
 
 /**
  * Hook to access nodes from the poll cache
  *
+ * Applies any in-flight optimistic favorite/ignored/hide-from-map toggle on
+ * top of the raw poll response (#3962 5.4 PR8 — this replaces the
+ * reconciliation that used to run once in App.tsx's `processPollData` and
+ * write into DataContext). See `applyPendingNodeOverrides` for the overlay
+ * logic and `setNodeFieldInCache` below for the write side.
+ *
  * @returns Object with nodes array and loading/error states
  */
 export function useNodes() {
   const { data, isLoading, error } = usePoll();
+  const { sourceId } = useSource();
+  const nodes = useMemo(
+    () => applyPendingNodeOverrides((data?.nodes ?? []) as DeviceInfo[], sourceId),
+    [data, sourceId]
+  );
   return {
-    nodes: (data?.nodes ?? []) as DeviceInfo[],
+    nodes,
     isLoading,
     error,
   };
+}
+
+/**
+ * Optimistically patch one node's fields directly in the poll query cache.
+ *
+ * Query-cache-native replacement for the old `setNodes(prevNodes => ...)`
+ * DataContext writes (#3962 5.4 PR8). Mirrors the pattern already used by
+ * `useWebSocket.ts`'s `updateNodeInCache` for real-time node updates — same
+ * cache key (`sourcePollQueryKey`), same shape. Callers are still
+ * responsible for their own pending-map bookkeeping (see
+ * `src/utils/pendingToggles.ts`) when the toggle needs to survive across
+ * poll ticks until the server catches up.
+ */
+export function setNodeFieldInCache(
+  queryClient: QueryClient,
+  sourceId: string | null,
+  nodeNum: number,
+  patch: Partial<DeviceInfo>
+): void {
+  queryClient.setQueryData<PollData>(sourcePollQueryKey(sourceId), (old) => {
+    if (!old?.nodes) return old;
+    return {
+      ...old,
+      nodes: old.nodes.map((n) => (n.nodeNum === nodeNum ? { ...n, ...patch } : n)),
+    };
+  });
 }
 
 /**

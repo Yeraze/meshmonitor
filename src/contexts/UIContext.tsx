@@ -58,8 +58,18 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   // instead of setting state directly. This keeps every un-migrated
   // `activeTab === 'x'` render block and `Sidebar`'s `setActiveTab(id)` calls
   // working unchanged while tabs move to routes one PR at a time (see
-  // task54_spec.md §2.3). Remove this adapter once no consumer reads
-  // activeTab/setActiveTab (final PR of the stack).
+  // task54_spec.md §2.3).
+  //
+  // PR8 (final PR of the stack) re-checked whether this can go: it can't.
+  // Real consumers remain — useMessagingView.ts's 8 activeTab-gated scroll/
+  // pagination/read-marking effects (the messages/channels tabs it owns),
+  // useSourceView.ts's processedNodes filter (only applies nodesNodeFilter
+  // when the nodes tab is active), MessagingContext.tsx's compose-conversation
+  // key, and App.tsx/NodesTab.tsx's own DM/channel navigation
+  // (setActiveTab('messages') on DM click, etc.). Converting all of those to
+  // useLocation() directly is a real refactor with render-loop risk, not a
+  // mechanical deletion — deliberately left in place rather than rushed.
+  // Re-evaluate if/when those consumers are touched for other reasons.
   const location = useLocation();
   const navigate = useNavigate();
   const { sourceId } = useParams<{ sourceId: string }>();

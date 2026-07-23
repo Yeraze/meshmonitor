@@ -27,6 +27,8 @@
  * contents, which is the point.
  */
 
+import type { DeviceInfo } from '../types/device';
+
 /** Generous relative to the ~10s poll: a healthy round-trip reconciles well
  *  before this, so expiry only ever fires on the stuck paths described above. */
 export const PENDING_TOGGLE_TTL_MS = 30_000;
@@ -102,3 +104,79 @@ export const ALL_PENDING_TOGGLE_MAPS = [
   pendingIgnoredRequests,
   pendingHideFromMapRequests,
 ];
+
+/**
+ * Reapply any still-in-flight favorite/ignored/hide-from-map toggles on top
+ * of a freshly-polled node list, sweeping expired entries first.
+ *
+ * This is the query-cache-native replacement for the reconciliation block
+ * that used to live in App.tsx's `processPollData` and write its result into
+ * DataContext's `nodes` state (#3962 5.4 PR8 — DataContext no longer mirrors
+ * poll-derived nodes at all). `useNodes()` (src/hooks/useServerData.ts) calls
+ * this on every read so every consumer of the poll cache sees the same
+ * overlay, and the optimistic-write side (toggleFavorite/toggleFavoriteLock
+ * in useSourceView.ts, toggleIgnored/toggleHideFromMap in App.tsx) writes the
+ * same pending value directly into the query cache via
+ * `useServerData.ts`'s `setNodeFieldInCache` so the click and the next poll
+ * response converge on the same value instead of flickering back to stale
+ * server state for up to one poll interval.
+ *
+ * Pure aside from the shared pending-map mutation (matching the original
+ * reconciliation's own behavior of resolving/deleting entries once the
+ * server value catches up) — returns `nodes` unchanged (same reference) when
+ * no toggle is in flight, so callers can skip a re-render.
+ */
+export function applyPendingNodeOverrides(
+  nodes: DeviceInfo[],
+  sourceId: string | null | undefined
+): DeviceInfo[] {
+  sweepAll(ALL_PENDING_TOGGLE_MAPS);
+
+  if (
+    pendingFavoriteRequests.size === 0 &&
+    pendingIgnoredRequests.size === 0 &&
+    pendingHideFromMapRequests.size === 0
+  ) {
+    return nodes;
+  }
+
+  return nodes.map(serverNode => {
+    const updatedNode = { ...serverNode };
+
+    // Handle pending favorite requests — key is scoped by sourceId so
+    // Source A's optimistic toggles don't leak into Source B's view.
+    const favKey = favoritePendingKey(sourceId, serverNode.nodeNum);
+    const pendingFavoriteState = pendingFavoriteRequests.get(favKey);
+    if (pendingFavoriteState !== undefined) {
+      if (serverNode.isFavorite === pendingFavoriteState) {
+        pendingFavoriteRequests.delete(favKey);
+      } else {
+        updatedNode.isFavorite = pendingFavoriteState;
+      }
+    }
+
+    // Handle pending ignored requests — same per-source scoping
+    const ignKey = favoritePendingKey(sourceId, serverNode.nodeNum);
+    const pendingIgnoredState = pendingIgnoredRequests.get(ignKey);
+    if (pendingIgnoredState !== undefined) {
+      if (serverNode.isIgnored === pendingIgnoredState) {
+        pendingIgnoredRequests.delete(ignKey);
+      } else {
+        updatedNode.isIgnored = pendingIgnoredState;
+      }
+    }
+
+    // Handle pending hide-from-map requests — same per-source scoping
+    const hfmKey = favoritePendingKey(sourceId, serverNode.nodeNum);
+    const pendingHideFromMapState = pendingHideFromMapRequests.get(hfmKey);
+    if (pendingHideFromMapState !== undefined) {
+      if (Boolean(serverNode.hideFromMap) === pendingHideFromMapState) {
+        pendingHideFromMapRequests.delete(hfmKey);
+      } else {
+        updatedNode.hideFromMap = pendingHideFromMapState;
+      }
+    }
+
+    return updatedNode;
+  });
+}

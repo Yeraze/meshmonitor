@@ -8,6 +8,17 @@ import type { MeshMessage } from '../types/message';
 import type { ConnectionStatus } from '../types/ui';
 import { DataProvider, useData } from './DataContext';
 
+// Pin test for #3962 5.4 PR8: DataContext no longer exposes nodes/channels
+// (or their setters) at all — see the header comment in DataContext.tsx.
+// A type-level assertion is enough since removing them is a compile-time
+// change: if any of these keys reappear on DataContextType, `never` no
+// longer satisfies the constraint and this file fails to build.
+type DataContextValue = ReturnType<typeof useData>;
+type RemovedKeys = 'nodes' | 'setNodes' | 'channels' | 'setChannels';
+type _AssertRemoved = Extract<keyof DataContextValue, RemovedKeys> extends never ? true : never;
+const _assertRemoved: _AssertRemoved = true;
+void _assertRemoved;
+
 describe('DataContext value memoization (#3962 Phase 5.2)', () => {
   it('returns a referentially stable value across an unrelated parent re-render', () => {
     const { result, rerender } = renderHook(() => useData(), {
@@ -29,18 +40,26 @@ describe('DataContext value memoization (#3962 Phase 5.2)', () => {
 
     const firstValue = result.current;
 
+    // nodes/setNodes were removed from DataContext (#3962 5.4 PR8) — this
+    // used to exercise the memoization via setNodes; connectionStatus is
+    // the closest remaining DataContext-owned piece of state (see the
+    // header comment in DataContext.tsx for why it, unlike nodes/channels,
+    // stays here rather than moving to the poll cache).
     act(() => {
-      result.current.setNodes([
-        { nodeNum: 1, hopsAway: 0 } as DeviceInfo,
-      ]);
+      result.current.setConnectionStatus('connected');
     });
 
     expect(result.current).not.toBe(firstValue);
-    expect(result.current.nodes).toHaveLength(1);
+    expect(result.current.connectionStatus).toBe('connected');
   });
 });
 
 describe('DataContext Types', () => {
+  // nodes/channels were removed from DataContext (#3962 5.4 PR8) — they were
+  // pure poll-cache mirrors, so they moved to useNodes()/useChannels()
+  // (see src/hooks/useServerData.test.ts) rather than staying here. The
+  // DeviceInfo/Channel "type structure" tests below build local mock
+  // objects and never touch useData(), so they remain valid unchanged.
   it('should have correct DeviceInfo array type structure', () => {
     const mockNodes: DeviceInfo[] = [
       {
