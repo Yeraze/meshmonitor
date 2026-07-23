@@ -20,7 +20,7 @@
  * advancing `lastSeen` and refreshing position/status fields.
  */
 import { and, desc, eq, lt } from 'drizzle-orm';
-import { BaseRepository, DrizzleDatabase } from './base.js';
+import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType } from '../types.js';
 import { logger } from '../../utils/logger.js';
 
@@ -88,9 +88,12 @@ export class AtakContactsRepository extends BaseRepository {
 
   /**
    * Get all contacts for a source, newest-`lastSeen`-first. Used by the
-   * `/api/sources/:id/atak/contacts` route.
+   * `/api/sources/:id/atak/contacts` route. Pass the `ALL_SOURCES` sentinel
+   * (from `./base.js`) for an intentional cross-source read — e.g. the
+   * ATAK/CoT Phase 3 feed server, which needs every source's contacts in one
+   * query (mirrors `nodes.getAllNodes(ALL_SOURCES)`).
    */
-  async getContacts(sourceId: string): Promise<AtakContactRow[]> {
+  async getContacts(sourceId: SourceScope): Promise<AtakContactRow[]> {
     const { atakContacts } = this.tables;
     const rows = await this.db
       .select()
