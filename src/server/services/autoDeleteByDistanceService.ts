@@ -80,12 +80,21 @@ class AutoDeleteByDistanceService {
     }
 
     const s = databaseService.settings;
-    const enabledStr = await s.getSettingForSource(sourceId, 'autoDeleteByDistanceEnabled');
-    const homeLat = parseFloat((await s.getSettingForSource(sourceId, 'autoDeleteByDistanceLat')) || '');
-    const homeLon = parseFloat((await s.getSettingForSource(sourceId, 'autoDeleteByDistanceLon')) || '');
-    const thresholdRaw = parseFloat((await s.getSettingForSource(sourceId, 'autoDeleteByDistanceThresholdKm')) || '100');
-    const actionRaw = (await s.getSettingForSource(sourceId, 'autoDeleteByDistanceAction')) || 'delete';
-    const localNodeNumStr = await s.getSettingForSource(sourceId, 'localNodeNum');
+    // These six reads are independent — fetch them in parallel so a cache miss
+    // (once per 60s per busy source) doesn't add six serial round-trips to the
+    // ingest hot path (matters most on PostgreSQL/MySQL).
+    const [enabledStr, latStr, lonStr, thresholdStr, actionStr, localNodeNumStr] = await Promise.all([
+      s.getSettingForSource(sourceId, 'autoDeleteByDistanceEnabled'),
+      s.getSettingForSource(sourceId, 'autoDeleteByDistanceLat'),
+      s.getSettingForSource(sourceId, 'autoDeleteByDistanceLon'),
+      s.getSettingForSource(sourceId, 'autoDeleteByDistanceThresholdKm'),
+      s.getSettingForSource(sourceId, 'autoDeleteByDistanceAction'),
+      s.getSettingForSource(sourceId, 'localNodeNum'),
+    ]);
+    const homeLat = parseFloat(latStr || '');
+    const homeLon = parseFloat(lonStr || '');
+    const thresholdRaw = parseFloat(thresholdStr || '100');
+    const actionRaw = actionStr || 'delete';
 
     const cfg: InlineDistanceConfig = {
       enabled: enabledStr === 'true' && !isNaN(homeLat) && !isNaN(homeLon),
@@ -126,7 +135,7 @@ class AutoDeleteByDistanceService {
     if (!cfg.enabled) return 'kept';
 
     // Protect the local node.
-    if (cfg.localNodeNum != null && Number(nodeNum) === cfg.localNodeNum) return 'kept';
+    if (cfg.localNodeNum != null && nodeNum === cfg.localNodeNum) return 'kept';
 
     const distance = calculateDistance(cfg.homeLat, cfg.homeLon, lat, lon);
     if (distance <= cfg.thresholdKm) return 'kept';

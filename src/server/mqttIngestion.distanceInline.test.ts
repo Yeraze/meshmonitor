@@ -130,6 +130,36 @@ describe('ingestServiceEnvelope — inline auto-delete-by-distance (#3900)', () 
     });
   });
 
+  it('ignores an out-of-range node end-to-end (action=ignore): populates ignored_nodes and gates later traffic', async () => {
+    await databaseService.settings.setSourceSetting(SRC, 'autoDeleteByDistanceAction', 'ignore');
+    autoDeleteByDistanceService.clearInlineConfigCache(SRC);
+
+    const NODE = 0x20000005;
+    const { default: protobuf } = await import('./meshtasticProtobufService.js');
+    (protobuf.processPayload as any).mockImplementationOnce(() => FAR_POSITION);
+    const result = await ingestServiceEnvelope({ sourceId: SRC, envelope: posEnv(NODE) });
+
+    expect(result.reason).toBe('distance');
+    // The node is now recorded in ignored_nodes for this source...
+    await vi.waitFor(async () => {
+      expect(await databaseService.ignoredNodes.isNodeIgnoredAsync(NODE, SRC)).toBe(true);
+    });
+    // ...so a subsequent non-POSITION packet (e.g. TEXT) is dropped by the ignore gate.
+    (protobuf.processPayload as any).mockImplementationOnce(() => 'hi there');
+    const textEnv: ServiceEnvelopeShape = {
+      channelId: 'LongFast',
+      gatewayId: '!00000001',
+      packet: { id: 0x22222222, from: NODE, to: 0xffffffff, channel: 0, decoded: { portnum: 1 /* TEXT */, payload: new Uint8Array([0]) } },
+    };
+    const textResult = await ingestServiceEnvelope({ sourceId: SRC, envelope: textEnv });
+    expect(textResult.ingested).toBe(false);
+    expect(textResult.reason).toBe('ignored');
+
+    // Restore for any later cases / re-runs.
+    await databaseService.settings.setSourceSetting(SRC, 'autoDeleteByDistanceAction', 'delete');
+    autoDeleteByDistanceService.clearInlineConfigCache(SRC);
+  });
+
   it('does not drop when the feature is disabled for the source', async () => {
     await databaseService.settings.setSourceSetting(SRC, 'autoDeleteByDistanceEnabled', 'false');
     autoDeleteByDistanceService.clearInlineConfigCache(SRC);

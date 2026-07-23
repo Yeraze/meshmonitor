@@ -66,6 +66,13 @@ export class DistanceDeleteScheduler {
 
   /** Stop the scheduler (does not abort an in-progress delete cycle). */
   stop(): void {
+    // Drop the inline check's cached config too (#3900). start() clears it, and
+    // a settings save always goes through start(), but stop() can be called on
+    // its own (e.g. source shutdown, or disabling the feature). Without this the
+    // 60s-TTL cache could keep dropping out-of-range POSITIONs as "enabled" for
+    // up to a minute after the feature was turned off.
+    autoDeleteByDistanceService.clearInlineConfigCache(this.sourceId);
+
     if (this.initialTimeout) {
       clearTimeout(this.initialTimeout);
       this.initialTimeout = null;
