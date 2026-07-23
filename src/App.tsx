@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { flushSync } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 // Popup and Polyline moved to useTraceroutePaths hook
 // Recharts imports moved to useTraceroutePaths hook
@@ -71,28 +70,31 @@ import { useWebSocketConnected } from './contexts/WebSocketContext';
 import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
 import { useVersionCheck } from './hooks/useVersionCheck';
+import { useQueryClient } from '@tanstack/react-query';
 import { usePoll, type PollData } from './hooks/usePoll';
+import { useNodes, useChannels, setNodeFieldInCache } from './hooks/useServerData';
 import { useSourceView } from './hooks/useSourceView';
 import { useMessagingView } from './hooks/useMessagingView';
 import { useNotificationNavigationHandler } from './hooks/useNotificationNavigationHandler';
+import { appBasename } from './init';
 import LoginModal from './components/LoginModal';
 import LoginPage from './components/LoginPage';
 import { SaveBarProvider, SaveBarGroup } from './contexts/SaveBarContext';
 import { SaveBar } from './components/SaveBar';
 import ErrorBoundary from './components/common/ErrorBoundary';
 
-// Pending favorite/ignored/hide-from-map toggle tracking now lives in
-// src/utils/pendingToggles.ts as module-level singletons — shared between
-// this file's poll reconciliation (processPollData, below) and the
-// toggleFavorite/toggleFavoriteLock handlers extracted into
-// src/hooks/useSourceView.ts (#3962 5.4 PR4).
+// Pending favorite/ignored/hide-from-map toggle tracking lives in
+// src/utils/pendingToggles.ts as module-level singletons. Favorite/
+// favoriteLock (and the sweepAll/reconciliation-on-read step, now
+// applyPendingNodeOverrides) moved fully into useSourceView.ts /
+// useServerData.ts's useNodes() (#3962 5.4 PR4 + PR8); toggleIgnored/
+// toggleHideFromMap below still use pendingIgnoredRequests/
+// pendingHideFromMapRequests/favoritePendingKey directly for their
+// rapid-click guard and pending-state bookkeeping.
 import {
-  sweepAll,
   favoritePendingKey,
-  pendingFavoriteRequests,
   pendingIgnoredRequests,
   pendingHideFromMapRequests,
-  ALL_PENDING_TOGGLE_MAPS,
 } from './utils/pendingToggles';
 import TracerouteHistoryModal from './components/TracerouteHistoryModal';
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal';
@@ -226,37 +228,15 @@ function App() {
   // Constants for emoji tapbacks
   const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
 
-  // Detect base URL from pathname
-  const detectBaseUrl = () => {
-    const pathname = window.location.pathname;
-    const pathParts = pathname.split('/').filter(Boolean);
-
-    if (pathParts.length > 0) {
-      // Remove any trailing segments that look like app routes
-      const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard', 'source', 'unified', 'analysis'];
-      const baseSegments = [];
-
-      for (const segment of pathParts) {
-        if (appRoutes.includes(segment.toLowerCase())) {
-          break;
-        }
-        baseSegments.push(segment);
-      }
-
-      if (baseSegments.length > 0) {
-        return '/' + baseSegments.join('/');
-      }
-    }
-
-    return '';
-  };
-
-  // Initialize baseUrl from pathname immediately to avoid 404s on initial render
-  const initialBaseUrl = detectBaseUrl();
-  const [baseUrl, setBaseUrl] = useState<string>(initialBaseUrl);
-
-  // Also set the baseUrl in the api service to skip its auto-detection
-  api.setBaseUrl(initialBaseUrl);
+  // baseUrl = appBasename (imported from './init'), the deployment base
+  // path. App used to hand-roll its own copy of this by walking the current
+  // pathname (detectBaseUrl); that duplicated logic — and a second copy in
+  // AppWithToast below — are gone as of #3962 5.4 PR8. appBasename is
+  // derived once from the server-injected <base> tag before React mounts,
+  // and is already the value react-router's BrowserRouter trusts for every
+  // route in the app (main.tsx `basename={appBasename}`), so App no longer
+  // needs its own state for it.
+  const baseUrl = appBasename;
 
   // Monitor server health and auto-reload on version change (e.g., after auto-upgrade)
   useHealth({ baseUrl, reloadOnVersionChange: true });
@@ -345,12 +325,17 @@ function App() {
   // its only consumers (visibleNodeNums, useTraceroutePaths) live there now,
   // and the hook recomputes it itself from useMapContext()/useSettings().
 
-  // Data context
+  // Data context. `nodes`/`channels` no longer live here — DataContext
+  // stopped mirroring poll-derived server data for them (#3962 5.4 PR8); they
+  // now come straight from the poll query cache via useNodes()/useChannels()
+  // below. `connectionStatus` stays: it is a client-driven state machine
+  // ('rebooting'/'configuring'/'node-offline'/'connecting'/etc, set from
+  // checkConnectionStatus/handleReboot*/handleDisconnect/handleReconnect/
+  // FirmwareUpdateSection) with no poll-cache equivalent — useConnectionInfo()
+  // only exposes the boolean connected/nodeResponsive/configuring/
+  // userDisconnected flags the server reports, not this richer client state
+  // machine, so it does not map cleanly onto DataContext deletion.
   const {
-    nodes,
-    setNodes,
-    channels,
-    setChannels,
     connectionStatus,
     setConnectionStatus,
     deviceInfo,
@@ -362,6 +347,14 @@ function App() {
     nodeAddress,
     setNodeAddress,
   } = useData();
+
+  // nodes/channels sourced from the poll query cache (#3962 5.4 PR8).
+  // queryClient backs the optimistic toggleIgnored/toggleHideFromMap writes
+  // below (setNodeFieldInCache) — the query-cache-native replacement for the
+  // old DataContext setNodes(...) writes.
+  const { nodes } = useNodes();
+  const { channels } = useChannels();
+  const queryClient = useQueryClient();
 
   // Telemetry availability Sets (nodesWithTelemetry/nodesWithWeatherTelemetry/
   // nodesWithEstimatedPosition/nodesWithPKC) were sourced here directly from
@@ -942,28 +935,27 @@ function App() {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Load configuration from server
-        let configBaseUrl = '';
+        // Load configuration from server. The base path itself no longer
+        // comes from here (#3962 5.4 PR8 deleted App's local
+        // detectBaseUrl/baseUrl-state duplicate) — appBasename (src/init.ts)
+        // is derived from the server-injected <base> tag before React even
+        // mounts, and is what react-router's own BrowserRouter already
+        // trusts for every route in this app.
         try {
           const config = await api.getConfig();
           setNodeAddress(config.meshtasticNodeIp);
-          configBaseUrl = config.baseUrl || '';
-          setBaseUrl(configBaseUrl);
         } catch (error) {
           logger.error('Failed to load config:', error);
           // Don't assert a hardcoded fallback address (#3611) — that would show
           // the wrong IP for a configured source. Leave it empty; the per-source
           // address arrives with the next poll (status.nodeIp).
           setNodeAddress('');
-          // Keep initialBaseUrl detected from pathname — resetting to '' would break
-          // API calls when BASE_URL is configured on the server.
-          configBaseUrl = initialBaseUrl;
         }
 
         // Load settings from server (per-source if a sourceId is active, so
         // per-source automation values win over global defaults)
         const settingsQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
-        const settingsResponse = await authFetch(`${baseUrl}/api/settings${settingsQuery}`);
+        const settingsResponse = await authFetch(`${appBasename}/api/settings${settingsQuery}`);
         if (settingsResponse.ok) {
           const settings = await settingsResponse.json();
 
@@ -1232,8 +1224,8 @@ function App() {
           }
         }
 
-        // Check connection status with the loaded baseUrl
-        await checkConnectionStatus(configBaseUrl);
+        // Check connection status
+        await checkConnectionStatus();
       } catch (_error) {
         // Avoid asserting a hardcoded fallback address (#3611); leave empty so a
         // wrong IP never appears for a configured source.
@@ -1611,10 +1603,7 @@ function App() {
     }
   };
 
-  const checkConnectionStatus = async (providedBaseUrl?: string) => {
-    // Use the provided baseUrl or fall back to the state value
-    const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
-
+  const checkConnectionStatus = async () => {
     try {
       // Use consolidated polling endpoint to check connection status.
       // When inside a SourceProvider (multi-source dashboard), pass sourceId
@@ -1622,7 +1611,7 @@ function App() {
       // would show the legacy singleton's status, which is "disconnected" in
       // 4.0 multi-source mode.
       const pollQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
-      const response = await authFetch(`${urlBase}/api/poll${pollQuery}`);
+      const response = await authFetch(`${appBasename}/api/poll${pollQuery}`);
       if (response.ok) {
         const pollData = await response.json();
         const status = pollData.connection;
@@ -1654,7 +1643,7 @@ function App() {
           // Still fetch cached data from backend on page load
           // This ensures we show cached data even after refresh
           try {
-            await fetchChannels(urlBase);
+            await fetchChannels();
             await refetchPoll();
           } catch (error) {
             logger.error('Failed to fetch cached data while disconnected:', error);
@@ -1693,7 +1682,7 @@ function App() {
 
                 // Improved initialization sequence
                 try {
-                  await fetchChannels(urlBase);
+                  await fetchChannels();
                   await refetchPoll();
                   setConnectionStatus('connected');
                   logger.debug('✅ Initialization complete, status set to connected');
@@ -1766,11 +1755,9 @@ function App() {
   };
 
   const fetchChannels = useCallback(
-    async (providedBaseUrl?: string) => {
-      // Use the provided baseUrl or fall back to the state value
-      const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
+    async () => {
       try {
-        const channelsUrl = sourceId ? `${urlBase}/api/channels?sourceId=${encodeURIComponent(sourceId)}` : `${urlBase}/api/channels`;
+        const channelsUrl = sourceId ? `${appBasename}/api/channels?sourceId=${encodeURIComponent(sourceId)}` : `${appBasename}/api/channels`;
         const channelsResponse = await authFetch(channelsUrl);
         if (channelsResponse.ok) {
           const channelsData = await channelsResponse.json();
@@ -1813,13 +1800,16 @@ function App() {
             }
           }
 
-          setChannels(channelsData);
+          // channelsData itself is no longer stored — useChannels() reads
+          // channels from the poll cache (#3962 5.4 PR8); this fetch exists
+          // to resolve the initial/fallback selectedChannel above ahead of
+          // the next poll response.
         }
       } catch (error) {
         logger.error('Error fetching channels:', error);
       }
     },
-    [baseUrl, authFetch, selectedChannel, setSelectedChannel, setChannels, sourceId]
+    [authFetch, selectedChannel, setSelectedChannel, sourceId]
   );
 
   // Process poll data from usePoll hook - handles all data processing from consolidated /api/poll endpoint
@@ -1835,64 +1825,12 @@ function App() {
         localNodeIdRef.current = localNodeId;
       }
 
-      // Process nodes data
-      if (data.nodes) {
-        const pendingFavorite = pendingFavoriteRequests;
-        const pendingIgnored = pendingIgnoredRequests;
-        const pendingHideFromMap = pendingHideFromMapRequests;
-
-        // #4240: drop expired entries BEFORE the size check, and independently
-        // of which nodes came back. The per-node reconciliation below can only
-        // clear an entry whose node is present in this response under the
-        // current sourceId; this sweep is what unsticks everything else.
-        sweepAll(ALL_PENDING_TOGGLE_MAPS);
-
-        if (pendingFavorite.size === 0 && pendingIgnored.size === 0 && pendingHideFromMap.size === 0) {
-          setNodes(data.nodes as DeviceInfo[]);
-        } else {
-          setNodes(
-            (data.nodes as DeviceInfo[]).map((serverNode: DeviceInfo) => {
-              const updatedNode = { ...serverNode };
-
-              // Handle pending favorite requests — key is scoped by sourceId
-              // so Source A's optimistic toggles don't leak into Source B's view.
-              const favKey = favoritePendingKey(sourceId, serverNode.nodeNum);
-              const pendingFavoriteState = pendingFavorite.get(favKey);
-              if (pendingFavoriteState !== undefined) {
-                if (serverNode.isFavorite === pendingFavoriteState) {
-                  pendingFavorite.delete(favKey);
-                } else {
-                  updatedNode.isFavorite = pendingFavoriteState;
-                }
-              }
-
-              // Handle pending ignored requests — same per-source scoping
-              const ignKey = favoritePendingKey(sourceId, serverNode.nodeNum);
-              const pendingIgnoredState = pendingIgnored.get(ignKey);
-              if (pendingIgnoredState !== undefined) {
-                if (serverNode.isIgnored === pendingIgnoredState) {
-                  pendingIgnored.delete(ignKey);
-                } else {
-                  updatedNode.isIgnored = pendingIgnoredState;
-                }
-              }
-
-              // Handle pending hide-from-map requests — same per-source scoping
-              const hfmKey = favoritePendingKey(sourceId, serverNode.nodeNum);
-              const pendingHideFromMapState = pendingHideFromMap.get(hfmKey);
-              if (pendingHideFromMapState !== undefined) {
-                if (Boolean(serverNode.hideFromMap) === pendingHideFromMapState) {
-                  pendingHideFromMap.delete(hfmKey);
-                } else {
-                  updatedNode.hideFromMap = pendingHideFromMapState;
-                }
-              }
-
-              return updatedNode;
-            })
-          );
-        }
-      }
+      // Nodes are no longer processed here (#3962 5.4 PR8): DataContext
+      // stopped mirroring poll-derived nodes, and the pending
+      // favorite/ignored/hide-from-map reconciliation that used to run here
+      // moved to applyPendingNodeOverrides() (src/utils/pendingToggles.ts),
+      // applied by useNodes() (src/hooks/useServerData.ts) on every read of
+      // the poll cache — the same cache `data` already came from.
 
       // Process messages data — optimistic-merge + pagination-preserving
       // logic lives in useMessagingView (#3962 5.4 PR7); this just feeds it
@@ -1925,10 +1863,8 @@ function App() {
       // cache via useTelemetryNodes() (#3962 5.4 PR2) — no longer written
       // into DataContext here.
 
-      // Process channels data
-      if (data.channels) {
-        setChannels(data.channels as Channel[]);
-      }
+      // Channels are no longer processed here either (#3962 5.4 PR8) — they
+      // come straight from the poll cache via useChannels().
 
       // Process traceroutes data (synced via poll for consistency across all views)
       if (data.traceroutes) {
@@ -3041,14 +2977,10 @@ function App() {
       // Mark this request as pending with the expected new state
       pendingIgnoredRequests.set(ignKey, newIgnoredStatus);
 
-      // Optimistically update the UI - use flushSync to force immediate render
-      // This prevents the polling from overwriting the optimistic update before it renders
-      flushSync(() => {
-        setNodes(prevNodes => {
-          const updated = prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isIgnored: newIgnoredStatus } : n));
-          return updated;
-        });
-      });
+      // Optimistically update the UI by writing straight into the poll
+      // query cache (#3962 5.4 PR8) — useNodes() re-derives via
+      // applyPendingNodeOverrides on every cache change.
+      setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { isIgnored: newIgnoredStatus });
 
       // Send update to backend (with device sync enabled by default)
       const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/ignored`, {
@@ -3067,9 +2999,7 @@ function App() {
         if (response.status === 403) {
           showToast(t('toast.insufficient_permissions_ignored'), 'error');
           // Revert to original state using the saved original value
-          setNodes(prevNodes =>
-            prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isIgnored: originalIgnoredStatus } : n))
-          );
+          setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { isIgnored: originalIgnoredStatus });
           return;
         }
         throw new Error('Failed to update ignored status');
@@ -3092,9 +3022,7 @@ function App() {
     } catch (error) {
       logger.error('Error toggling ignored:', error);
       // Revert to original state using the saved original value
-      setNodes(prevNodes =>
-        prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isIgnored: originalIgnoredStatus } : n))
-      );
+      setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { isIgnored: originalIgnoredStatus });
       // Remove from pending on error since we reverted
       pendingIgnoredRequests.delete(ignKey);
       showToast(t('toast.failed_update_ignored'), 'error');
@@ -3138,11 +3066,10 @@ function App() {
     try {
       pendingHideFromMapRequests.set(hfmKey, newStatus);
 
-      flushSync(() => {
-        setNodes(prevNodes =>
-          prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, hideFromMap: newStatus } : n))
-        );
-      });
+      // Optimistically update the UI by writing straight into the poll
+      // query cache (#3962 5.4 PR8) — useNodes() re-derives via
+      // applyPendingNodeOverrides on every cache change.
+      setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { hideFromMap: newStatus });
 
       const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/hide-from-map`, {
         method: 'POST',
@@ -3159,9 +3086,7 @@ function App() {
       if (!response.ok) {
         if (response.status === 403) {
           showToast(t('toast.insufficient_permissions_hide_from_map', 'You do not have permission to change map visibility'), 'error');
-          setNodes(prevNodes =>
-            prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, hideFromMap: originalStatus } : n))
-          );
+          setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { hideFromMap: originalStatus });
           pendingHideFromMapRequests.delete(hfmKey);
           return;
         }
@@ -3171,9 +3096,7 @@ function App() {
       logger.debug(`🗺️ Node ${node.user.id} hideFromMap → ${newStatus}`);
     } catch (error) {
       logger.error('Error toggling hideFromMap:', error);
-      setNodes(prevNodes =>
-        prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, hideFromMap: originalStatus } : n))
-      );
+      setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { hideFromMap: originalStatus });
       pendingHideFromMapRequests.delete(hfmKey);
       showToast(t('toast.failed_update_hide_from_map', 'Failed to update map visibility'), 'error');
     }
@@ -3917,39 +3840,16 @@ function App() {
 }
 
 const AppWithToast = () => {
-  // Detect base URL for SettingsProvider
-  const detectBaseUrl = () => {
-    const pathname = window.location.pathname;
-    const pathParts = pathname.split('/').filter(Boolean);
-
-    if (pathParts.length > 0) {
-      const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard', 'source', 'unified', 'analysis'];
-      const baseSegments = [];
-
-      for (const segment of pathParts) {
-        if (appRoutes.includes(segment.toLowerCase())) {
-          break;
-        }
-        baseSegments.push(segment);
-      }
-
-      if (baseSegments.length > 0) {
-        return '/' + baseSegments.join('/');
-      }
-    }
-
-    return '';
-  };
-
-  const initialBaseUrl = detectBaseUrl();
-
+  // Second detectBaseUrl copy deleted (#3962 5.4 PR8) — see the comment on
+  // App's own `baseUrl` above. Same appBasename constant for all three
+  // providers.
   return (
-    <SettingsProvider baseUrl={initialBaseUrl}>
+    <SettingsProvider baseUrl={appBasename}>
       <MapProvider>
         <DataProvider>
           <UIProvider>
-            <MessagingProvider baseUrl={initialBaseUrl}>
-              <AutomationProvider baseUrl={initialBaseUrl}>
+            <MessagingProvider baseUrl={appBasename}>
+              <AutomationProvider baseUrl={appBasename}>
               <ToastProvider>
                 <DeviceNotificationToaster />
                 <SaveBarProvider>

@@ -35,10 +35,9 @@ import type { DeviceInfo, Channel } from "../types/device";
 export function useNodes() {
   const { data, isLoading, error } = usePoll();
   const { sourceId } = useSource();
-  const rawNodes = (data?.nodes ?? []) as DeviceInfo[];
   const nodes = useMemo(
-    () => applyPendingNodeOverrides(rawNodes, sourceId),
-    [rawNodes, sourceId]
+    () => applyPendingNodeOverrides((data?.nodes ?? []) as DeviceInfo[], sourceId),
+    [data, sourceId]
   );
   return {
     nodes,
