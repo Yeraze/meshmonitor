@@ -34,6 +34,7 @@
 - **All DatabaseService methods are async** (`Async` suffix). Tests mock with `mockResolvedValue`.
 - **Never push directly to main. Always use a branch.**
 - **App-owned interface icons use `UiIcon`.** Do not hardcode emoji or Unicode icon stand-ins in JSX or locale UI copy. Use `BrandIcon` for supported Simple Icons brand marks. User/content/protocol emoji require an issue-referenced exception when the distinction is not obvious.
+- **CSS containment (#3962 Task 5.6).** New components style with CSS modules (`Component.module.css`) scoped to that component, not the global sheets. The legacy global sheets (`src/styles/nodes.css` and siblings) are frozen — additions are discouraged; extend a CSS module instead where practical. `src/styles/nodes.css` in particular carries a hard ordering constraint: a mobile `@media` override must be declared *after* any unconditional base rule for the same selector, or it is silently shadowed by the cascade (issue #3532, bitten twice). See the banner comment at the top of that file before moving or adding rules there.
 - After bulk find-and-replace or sed, verify modified functions have correct `async`/`await` signatures. Route handlers and callbacks need `async` if `await` was added inside.
 
 ### Response envelope
