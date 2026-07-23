@@ -869,10 +869,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   useEffect(() => {
     const fetchGeoJsonLayers = async () => {
       try {
-        const baseUrl = await api.getBaseUrl();
-        const response = await fetch(`${baseUrl}/api/geojson/layers`);
-        if (!response.ok) return;
-        const data = await response.json();
+        const data = await api.get<GeoJsonLayer[]>('/api/geojson/layers');
         setGeoJsonLayers(data);
       } catch (err) {
         console.error('Failed to fetch GeoJSON layers:', err);
@@ -884,10 +881,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   useEffect(() => {
     const fetchMapStyles = async () => {
       try {
-        const baseUrl = await api.getBaseUrl();
-        const response = await fetch(`${baseUrl}/api/map-styles/styles`);
-        if (!response.ok) return;
-        const data = await response.json();
+        const data = await api.get<MapStyle[]>('/api/map-styles/styles');
         setMapStyles(data);
 
         // Determine which style to use: localStorage > server default > none
@@ -896,23 +890,19 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
         if (!resolvedStyleId) {
           // No localStorage value — check server default
           try {
-            const settingsRes = await fetch(`${baseUrl}/api/settings`, { credentials: 'include' });
-            if (settingsRes.ok) {
-              const settings = await settingsRes.json();
-              if (settings.activeMapStyleId) {
-                resolvedStyleId = settings.activeMapStyleId;
-                setActiveStyleId(resolvedStyleId);
-              }
+            const settings = await api.get<{ activeMapStyleId?: string }>('/api/settings');
+            if (settings.activeMapStyleId) {
+              resolvedStyleId = settings.activeMapStyleId;
+              setActiveStyleId(resolvedStyleId);
             }
           } catch { /* ignore settings fetch failure */ }
         }
 
         // Load style data if we have a resolved ID
         if (resolvedStyleId && data.some((s: MapStyle) => s.id === resolvedStyleId)) {
-          const styleRes = await fetch(`${baseUrl}/api/map-styles/styles/${resolvedStyleId}/data`);
-          if (styleRes.ok) {
-            setActiveStyleJson(await styleRes.json());
-          }
+          try {
+            setActiveStyleJson(await api.get<Record<string, unknown>>(`/api/map-styles/styles/${resolvedStyleId}/data`));
+          } catch { /* ignore style data fetch failure */ }
         } else if (resolvedStyleId) {
           // Saved style no longer exists, clear it
           setActiveStyleId(null);
@@ -2538,12 +2528,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                             });
                             if (styleId) {
                               try {
-                                const baseUrl = await api.getBaseUrl();
-                                const response = await fetch(`${baseUrl}/api/map-styles/styles/${styleId}/data`);
-                                if (response.ok) {
-                                  const data = await response.json();
-                                  setActiveStyleJson(data);
-                                }
+                                const data = await api.get<Record<string, unknown>>(`/api/map-styles/styles/${styleId}/data`);
+                                setActiveStyleJson(data);
                               } catch (err) {
                                 console.error('Failed to fetch map style data:', err);
                               }
