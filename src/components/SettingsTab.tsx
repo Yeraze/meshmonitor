@@ -439,13 +439,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   useEffect(() => {
     const fetchSystemStatus = async () => {
       try {
-        const response = await fetch(`${baseUrl}/api/system/status`, {
-          credentials: 'include'
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setIsDocker(data.isDocker);
-        }
+        const data = await apiService.get<{ isDocker?: boolean }>('/api/system/status');
+        setIsDocker(!!data.isDocker);
       } catch (error) {
         logger.error('Failed to fetch system status:', error);
       }
@@ -457,14 +452,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   useEffect(() => {
     const fetchDatabaseType = async () => {
       try {
-        const response = await fetch(`${baseUrl}/api/health`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.databaseType) {
-            setDatabaseType(data.databaseType);
-          }
-          setFirmwareOtaEnabled(!!data.firmwareOtaEnabled);
+        const data = await apiService.get<{ databaseType?: 'sqlite' | 'postgres' | 'mysql'; firmwareOtaEnabled?: boolean }>('/api/health');
+        if (data.databaseType) {
+          setDatabaseType(data.databaseType);
         }
+        setFirmwareOtaEnabled(!!data.firmwareOtaEnabled);
       } catch (error) {
         logger.error('Failed to fetch database type:', error);
       }
@@ -476,11 +468,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   useEffect(() => {
     const fetchServerSettings = async () => {
       try {
-        const response = await fetch(`${baseUrl}/api/settings`, {
-          credentials: 'include'
-        });
-        if (response.ok) {
-          const settings = await response.json();
+        const settings = await apiService.get<Record<string, string>>('/api/settings');
+        {
           const enabled = settings.packet_log_enabled === '1';
           const maxCount = parseInt(settings.packet_log_max_count || '1000', 10);
           const maxAgeHours = parseInt(settings.packet_log_max_age_hours || '24', 10);
