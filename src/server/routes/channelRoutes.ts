@@ -1177,12 +1177,21 @@ router.post('/import-config', requirePermission('configuration', 'write'), requi
       try {
         logger.debug(`📥 Importing LoRa config:`, JSON.stringify(decoded.loraConfig, null, 2));
 
-        // Preserve the device's current txEnabled rather than forcing it on
-        // (issue #4294) — strip the imported value so the existing radio TX
-        // state survives a config import.
-        const { txEnabled: _importedTxEnabled, ...loraConfigToImport } = decoded.loraConfig;
+        // Preserve the device's current txEnabled rather than importing the
+        // URL's value (issue #4294) — this is a local-node import.
+        //
+        // setLoRaConfig sends the ENTIRE LoRaConfig struct to the device (whole
+        // message replace, not a patch), and proto3 decodes an omitted bool as
+        // false. So we can't just strip the key — that would silently reach the
+        // radio as txEnabled=false and kill TX (the exact #1328 mechanism that
+        // motivated the original, overly-broad force-true). Explicitly backfill
+        // with the device's actual current value instead.
+        const loraConfigToImport = {
+          ...decoded.loraConfig,
+          txEnabled: configImportManager.isTxEnabled(),
+        };
 
-        logger.debug(`📥 LoRa config import (txEnabled preserved from device, not imported)`);
+        logger.debug(`📥 LoRa config import: txEnabled preserved from device = ${loraConfigToImport.txEnabled}`);
         await configImportManager.setLoRaConfig(loraConfigToImport);
         // LoRa config triggers heavier processing (frequency calculations, radio reconfiguration)
         // so allow extra time before committing

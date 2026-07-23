@@ -12,6 +12,7 @@ import adminRoutes from './adminRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 import { TxDisabledError } from '../errors/txDisabledError.js';
+import protobufService from '../protobufService.js';
 
 // channelUrlService is dynamically imported inside export-config/import-config —
 // mock it so those handlers don't need a real base64url-encoded channel blob.
@@ -129,6 +130,11 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
       getLocalNodeInfo: vi.fn().mockReturnValue({ nodeNum: 1, nodeId: '!00000001', longName: 'Local', shortName: 'LOC' }),
       startDistanceDeleteScheduler: vi.fn().mockResolvedValue(undefined),
       stopDistanceDeleteScheduler: vi.fn(),
+      // Fail-open default, matching the real MeshtasticManager.isTxEnabled().
+      isTxEnabled: vi.fn().mockReturnValue(true),
+      // No cached remote-config snapshot by default (matches a manager that
+      // has never run requestRemoteConfig(LORA_CONFIG) for this node).
+      getRemoteNodeConfig: vi.fn().mockReturnValue(null),
       ...overrides,
     } as unknown as ISourceManager;
   }
@@ -196,11 +202,18 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
     );
   });
 
-  it('POST /import-config (local node) strips txEnabled from the decoded LoRa config before setLoRaConfig', async () => {
+  // setLoRaConfig sends the device the ENTIRE LoRaConfig struct (whole-message
+  // replace, not a patch), and proto3 decodes an omitted bool as false — so
+  // the decoded URL's txEnabled must be overridden with the device's actual
+  // current value (backfilled via isTxEnabled()), never stripped/omitted.
+  // Stripping the key here would have silently sent txEnabled=false to a
+  // TX-enabled device (#4294 regression this test locks in).
+  it('POST /import-config (local node) overrides the decoded txEnabled with the device actual value before setLoRaConfig', async () => {
     const setLoRaConfig = vi.fn().mockResolvedValue(undefined);
     const beginEditSettings = vi.fn().mockResolvedValue(undefined);
     const commitEditSettings = vi.fn().mockResolvedValue(undefined);
-    await sourceManagerRegistry.addManager(makeFakeManager({ setLoRaConfig, beginEditSettings, commitEditSettings }));
+    const isTxEnabled = vi.fn().mockReturnValue(false);
+    await sourceManagerRegistry.addManager(makeFakeManager({ setLoRaConfig, beginEditSettings, commitEditSettings, isTxEnabled }));
 
     const channelUrlService = (await import('../services/channelUrlService.js')).default;
     (channelUrlService.decodeUrl as any).mockReturnValue({
@@ -218,7 +231,121 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
     expect(res.status).toBe(200);
     expect(setLoRaConfig).toHaveBeenCalledTimes(1);
     const [calledWith] = setLoRaConfig.mock.calls[0];
-    expect(calledWith).not.toHaveProperty('txEnabled');
-    expect(calledWith).toMatchObject({ hopLimit: 3, txPower: 20 });
+    // Device's actual current txEnabled (false) wins over the decoded URL's
+    // value (true).
+    expect(calledWith).toMatchObject({ hopLimit: 3, txPower: 20, txEnabled: false });
+  });
+
+  it('POST /import-config (local node) backfills txEnabled:true when the device currently has transmit enabled', async () => {
+    const setLoRaConfig = vi.fn().mockResolvedValue(undefined);
+    const beginEditSettings = vi.fn().mockResolvedValue(undefined);
+    const commitEditSettings = vi.fn().mockResolvedValue(undefined);
+    const isTxEnabled = vi.fn().mockReturnValue(true);
+    await sourceManagerRegistry.addManager(makeFakeManager({ setLoRaConfig, beginEditSettings, commitEditSettings, isTxEnabled }));
+
+    const channelUrlService = (await import('../services/channelUrlService.js')).default;
+    (channelUrlService.decodeUrl as any).mockReturnValue({
+      channels: undefined,
+      loraConfig: { hopLimit: 3 },
+    });
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.post('/import-config').send({
+      sourceId: harness.sourceA,
+      nodeNum: 1,
+      url: 'meshtastic://mock',
+    });
+
+    expect(res.status).toBe(200);
+    const [calledWith] = setLoRaConfig.mock.calls[0];
+    expect(calledWith).toMatchObject({ hopLimit: 3, txEnabled: true });
+  });
+
+  describe('POST /import-config (remote node) — best-effort txEnabled preserve', () => {
+    // The remote branch has no local isTxEnabled() to consult; it prefers a
+    // cached remote-config snapshot (getRemoteNodeConfig), falling back to
+    // the decoded URL's own txEnabled, and finally to true (fail-open).
+    // createSetLoRaConfigMessage is real (not mocked) — spy on it to inspect
+    // the exact config object it received before protobuf-encoding, since
+    // sendAdminCommand only sees opaque encoded bytes.
+
+    it('uses the cached remote-config snapshot when available, overriding the decoded value', async () => {
+      const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+      const getSessionPasskey = vi.fn().mockReturnValue(new Uint8Array([1, 2, 3, 4]));
+      const getRemoteNodeConfig = vi.fn().mockReturnValue({
+        deviceConfig: { lora: { txEnabled: false } },
+        moduleConfig: {},
+        lastUpdated: Date.now(),
+      });
+      await sourceManagerRegistry.addManager(makeFakeManager({ sendAdminCommand, getSessionPasskey, getRemoteNodeConfig }));
+
+      const spy = vi.spyOn(protobufService, 'createSetLoRaConfigMessage');
+      const channelUrlService = (await import('../services/channelUrlService.js')).default;
+      (channelUrlService.decodeUrl as any).mockReturnValue({
+        channels: undefined,
+        loraConfig: { hopLimit: 3, txEnabled: true },
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/import-config').send({
+        sourceId: harness.sourceA,
+        nodeNum: 999, // remote — does not match getLocalNodeInfo().nodeNum (1)
+        url: 'meshtastic://mock',
+      });
+
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: false }), expect.anything());
+      spy.mockRestore();
+    });
+
+    it('falls back to the decoded URL txEnabled when no cached remote config exists', async () => {
+      const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+      const getSessionPasskey = vi.fn().mockReturnValue(new Uint8Array([1, 2, 3, 4]));
+      const getRemoteNodeConfig = vi.fn().mockReturnValue(null);
+      await sourceManagerRegistry.addManager(makeFakeManager({ sendAdminCommand, getSessionPasskey, getRemoteNodeConfig }));
+
+      const spy = vi.spyOn(protobufService, 'createSetLoRaConfigMessage');
+      const channelUrlService = (await import('../services/channelUrlService.js')).default;
+      (channelUrlService.decodeUrl as any).mockReturnValue({
+        channels: undefined,
+        loraConfig: { hopLimit: 3, txEnabled: false },
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/import-config').send({
+        sourceId: harness.sourceA,
+        nodeNum: 999,
+        url: 'meshtastic://mock',
+      });
+
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: false }), expect.anything());
+      spy.mockRestore();
+    });
+
+    it('falls back to true (fail-open) when neither a cached remote config nor a decoded txEnabled exists', async () => {
+      const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+      const getSessionPasskey = vi.fn().mockReturnValue(new Uint8Array([1, 2, 3, 4]));
+      const getRemoteNodeConfig = vi.fn().mockReturnValue(null);
+      await sourceManagerRegistry.addManager(makeFakeManager({ sendAdminCommand, getSessionPasskey, getRemoteNodeConfig }));
+
+      const spy = vi.spyOn(protobufService, 'createSetLoRaConfigMessage');
+      const channelUrlService = (await import('../services/channelUrlService.js')).default;
+      (channelUrlService.decodeUrl as any).mockReturnValue({
+        channels: undefined,
+        loraConfig: { hopLimit: 3 },
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/import-config').send({
+        sourceId: harness.sourceA,
+        nodeNum: 999,
+        url: 'meshtastic://mock',
+      });
+
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: true }), expect.anything());
+      spy.mockRestore();
+    });
   });
 });

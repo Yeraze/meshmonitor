@@ -11,6 +11,7 @@ const mockManager = vi.hoisted(() => ({
   commitEditSettings: vi.fn().mockResolvedValue(undefined),
   setLoRaConfig: vi.fn().mockResolvedValue(undefined),
   refreshNodeDatabase: vi.fn().mockResolvedValue(undefined),
+  isTxEnabled: vi.fn().mockReturnValue(true),
 }));
 vi.mock('../utils/resolveSourceManager.js', () => ({
   resolveSourceManager: vi.fn(() => mockManager),
@@ -591,7 +592,12 @@ describe('POST /channels/import-config', () => {
     expect(mockManager.commitEditSettings).toHaveBeenCalled();
   });
 
-  it('strips txEnabled from the decoded LoRa config before calling setLoRaConfig (#4294)', async () => {
+  // setLoRaConfig sends the device the ENTIRE LoRaConfig struct (whole-message
+  // replace, not a patch), and proto3 decodes an omitted bool as false — so the
+  // decoded URL's txEnabled must be overridden with the device's actual current
+  // value (backfilled via isTxEnabled()), never stripped/omitted (#4294).
+  it('overrides the decoded LoRa config txEnabled with the device actual value before calling setLoRaConfig (#4294)', async () => {
+    mockManager.isTxEnabled.mockReturnValue(false);
     mockChannelUrlService.decodeUrl.mockReturnValue({
       channels: undefined,
       loraConfig: { region: 1, hopLimit: 3, txEnabled: true },
@@ -600,8 +606,21 @@ describe('POST /channels/import-config', () => {
     expect(res.status).toBe(200);
     expect(mockManager.setLoRaConfig).toHaveBeenCalledTimes(1);
     const [calledWith] = mockManager.setLoRaConfig.mock.calls[0];
-    expect(calledWith).not.toHaveProperty('txEnabled');
-    expect(calledWith).toMatchObject({ region: 1, hopLimit: 3 });
+    // The device's actual current txEnabled (false) wins over the decoded
+    // URL's value (true) — the whole point of preserving current TX state.
+    expect(calledWith).toMatchObject({ region: 1, hopLimit: 3, txEnabled: false });
+  });
+
+  it('backfills txEnabled:true when the device currently has transmit enabled', async () => {
+    mockManager.isTxEnabled.mockReturnValue(true);
+    mockChannelUrlService.decodeUrl.mockReturnValue({
+      channels: undefined,
+      loraConfig: { region: 1, hopLimit: 3 },
+    });
+    const res = await request(app).post('/channels/import-config').send({ url: 'https://meshtastic.org/e/#ok', sourceId: 'src-1' });
+    expect(res.status).toBe(200);
+    const [calledWith] = mockManager.setLoRaConfig.mock.calls[0];
+    expect(calledWith).toMatchObject({ region: 1, hopLimit: 3, txEnabled: true });
   });
 });
 

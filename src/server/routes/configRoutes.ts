@@ -132,8 +132,23 @@ router.post('/lora', requirePermission('configuration', 'write'), async (req, re
     // one legitimate place a user sets TX on/off. Do NOT force it to true here;
     // that used to silently revert receive-only radios back to TX-enabled on
     // every unrelated LoRa config save.
-    logger.debug(`⚙️ Setting LoRa config: txEnabled=${config.txEnabled}`);
-    await cfgLoraManager.setLoRaConfig(config);
+    //
+    // BUT: setLoRaConfig sends the device the ENTIRE LoRaConfig struct (it's a
+    // whole-message replace, not a patch), and proto3 decodes a missing/omitted
+    // bool field as false (createSetLoRaConfigMessage only includes txEnabled
+    // when it's !== undefined). So when the caller's payload doesn't include
+    // txEnabled at all (e.g. saving hopLimit from a form that doesn't carry a
+    // TX toggle), we MUST backfill it explicitly from the device's current
+    // state — leaving it undefined would silently transmit txEnabled=false and
+    // kill the radio. This is the exact #1328 mechanism that motivated the
+    // original (overly broad) force-true.
+    const loraConfigToSet = {
+      ...config,
+      txEnabled: config.txEnabled !== undefined ? config.txEnabled : cfgLoraManager.isTxEnabled(),
+    };
+
+    logger.debug(`⚙️ Setting LoRa config: txEnabled=${loraConfigToSet.txEnabled}`);
+    await cfgLoraManager.setLoRaConfig(loraConfigToSet);
     res.json({ success: true, message: 'LoRa configuration sent' });
   } catch (error) {
     logger.error('Error setting LoRa config:', error);

@@ -140,11 +140,17 @@ describe('configRoutes', () => {
     // always 500s with "Not connected").
     let setLoRaConfig: ReturnType<typeof vi.fn>;
     let requestModuleConfig: ReturnType<typeof vi.fn>;
+    let isTxEnabled: ReturnType<typeof vi.fn>;
 
     beforeEach(async () => {
       setLoRaConfig = vi.fn().mockResolvedValue(undefined);
       requestModuleConfig = vi.fn().mockResolvedValue(undefined);
-      const fakeManager: ISourceManager & { setLoRaConfig: typeof setLoRaConfig; requestModuleConfig: typeof requestModuleConfig } = {
+      // Fail-open default, matching the real MeshtasticManager.isTxEnabled()
+      // (true until config has arrived / when the caller's payload already
+      // carries an explicit txEnabled). Individual tests override this to
+      // exercise the omitted-field backfill.
+      isTxEnabled = vi.fn().mockReturnValue(true);
+      const fakeManager: ISourceManager & { setLoRaConfig: typeof setLoRaConfig; requestModuleConfig: typeof requestModuleConfig; isTxEnabled: typeof isTxEnabled } = {
         sourceId: harness.sourceA,
         sourceType: 'meshtastic_tcp',
         start: vi.fn().mockResolvedValue(undefined),
@@ -155,7 +161,8 @@ describe('configRoutes', () => {
         stopDistanceDeleteScheduler: vi.fn(),
         setLoRaConfig,
         requestModuleConfig,
-      } as unknown as ISourceManager & { setLoRaConfig: typeof setLoRaConfig; requestModuleConfig: typeof requestModuleConfig };
+        isTxEnabled,
+      } as unknown as ISourceManager & { setLoRaConfig: typeof setLoRaConfig; requestModuleConfig: typeof requestModuleConfig; isTxEnabled: typeof isTxEnabled };
       await sourceManagerRegistry.addManager(fakeManager);
       await harness.grant(harness.limited.id, 'configuration', 'write', harness.sourceA);
     });
@@ -178,6 +185,30 @@ describe('configRoutes', () => {
 
       expect(res.status).toBe(200);
       expect(setLoRaConfig).toHaveBeenCalledWith(expect.objectContaining({ txEnabled: true }));
+    });
+
+    // Regression for the whole-struct-replace / proto3 missing-bool hazard:
+    // setLoRaConfig sends the device the ENTIRE LoRaConfig, and an omitted
+    // bool decodes as false on the radio. When the caller's body doesn't
+    // include txEnabled at all (e.g. saving hopLimit from a form with no TX
+    // toggle), the route MUST backfill from the device's current state
+    // rather than send the field omitted/undefined.
+    it('backfills txEnabled from the device state when the caller omits it (radio-kill regression)', async () => {
+      isTxEnabled.mockReturnValue(false);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/lora').send({ sourceId: harness.sourceA, hopLimit: 3 });
+
+      expect(res.status).toBe(200);
+      expect(setLoRaConfig).toHaveBeenCalledWith(expect.objectContaining({ txEnabled: false, hopLimit: 3 }));
+    });
+
+    it('backfills txEnabled:true from the device state when the caller omits it and TX is currently on', async () => {
+      isTxEnabled.mockReturnValue(true);
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/lora').send({ sourceId: harness.sourceA, hopLimit: 5 });
+
+      expect(res.status).toBe(200);
+      expect(setLoRaConfig).toHaveBeenCalledWith(expect.objectContaining({ txEnabled: true, hopLimit: 5 }));
     });
   });
 

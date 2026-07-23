@@ -1204,10 +1204,18 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
       // Import LoRa config
       if (decoded.loraConfig) {
         try {
-          // Preserve the device's current txEnabled rather than forcing it on
-          // (issue #4294) — strip the imported value so the existing radio
-          // TX state survives a config import.
-          const { txEnabled: _importedTxEnabled, ...loraConfigToImport } = decoded.loraConfig;
+          // Preserve the device's current txEnabled rather than importing the
+          // URL's value (issue #4294) — local-node import via setLoRaConfig,
+          // which sends the device the ENTIRE LoRaConfig struct (whole-message
+          // replace, not a patch). proto3 decodes an omitted bool as false, so
+          // stripping the key would silently reach the radio as
+          // txEnabled=false and kill TX (the #1328 mechanism that motivated
+          // the original, overly-broad force-true). Backfill explicitly with
+          // the device's actual current value instead.
+          const loraConfigToImport = {
+            ...decoded.loraConfig,
+            txEnabled: aicManager.isTxEnabled(),
+          };
           await aicManager.setLoRaConfig(loraConfigToImport);
           // Pacing: LoRa config triggers heavier device processing; allow extra time
           // before commit so the device has finished applying it.
@@ -1263,9 +1271,35 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
       // Import LoRa config using admin command
       if (decoded.loraConfig) {
         try {
-          // Preserve the remote device's current txEnabled rather than forcing
-          // it on (issue #4294) — strip the imported value.
-          const { txEnabled: _importedTxEnabled, ...loraConfigToImport } = decoded.loraConfig;
+          // Preserve the remote device's current txEnabled rather than
+          // importing the URL's value (issue #4294) — same whole-struct-
+          // replace / proto3-missing-bool-defaults-to-false hazard as the
+          // local branch above (setLoRaConfig / createSetLoRaConfigMessage
+          // sends the ENTIRE LoRaConfig; an omitted key reaches the radio as
+          // txEnabled=false), so we must supply an explicit value, never
+          // strip the key.
+          //
+          // Best-effort remote preserve: use the manager's cached remote-config
+          // snapshot (populated only if requestRemoteConfig(LORA_CONFIG) was
+          // called for this node earlier — e.g. via /load-config or
+          // /export-config with includeLoraConfig). This import flow does not
+          // itself fetch the remote node's current LoRa config first — that
+          // would need an extra requestRemoteConfig round-trip (session
+          // passkey + mesh RTT) not currently part of this flow. Falls back to
+          // the decoded URL's own txEnabled (real since #4294's export fix;
+          // older exported URLs may still carry the old forced `true`), and
+          // finally to true (fail-open) if that's absent too.
+          // TODO(#4294 follow-up): a fully-accurate remote preserve would
+          // fetch the remote node's live LoRa config via requestRemoteConfig
+          // before importing.
+          const cachedRemoteLora = aicManager.getRemoteNodeConfig(destinationNodeNum)?.deviceConfig?.lora;
+          const remoteTxEnabled = cachedRemoteLora?.txEnabled !== undefined
+            ? cachedRemoteLora.txEnabled
+            : (decoded.loraConfig.txEnabled ?? true);
+          const loraConfigToImport = {
+            ...decoded.loraConfig,
+            txEnabled: remoteTxEnabled,
+          };
           const adminMessage = protobufService.createSetLoRaConfigMessage(loraConfigToImport, sessionPasskey);
           await aicManager.sendAdminCommand(adminMessage, destinationNodeNum);
           loraImported = true;
