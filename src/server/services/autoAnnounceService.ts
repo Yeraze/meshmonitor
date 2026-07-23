@@ -75,13 +75,15 @@ export class AutoAnnounceService {
       label: `Meshtastic:${sourceId}`,
       mode,
       onTick: () => {
-        logger.debug(`📢 Announce tick triggered (connected: ${this.mgr.isDeviceConnected()})`);
-        if (this.mgr.isDeviceConnected()) {
+        logger.debug(`📢 Announce tick triggered (connected: ${this.mgr.isDeviceConnected()}, txEnabled: ${this.mgr.isTxEnabled()})`);
+        // TX-disabled radios cannot broadcast announcements; skip quietly and let
+        // the scheduler keep running so a later TX re-enable resumes automatically (#4294).
+        if (this.mgr.isDeviceConnected() && this.mgr.isTxEnabled()) {
           return this.sendAutoAnnouncement(true).catch((error: Error) => {
             logger.error('❌ Error in auto-announce:', error);
           });
         }
-        logger.debug('📢 Skipping announcement - not connected to node');
+        logger.debug('📢 Skipping announcement - not connected to node or TX disabled');
       },
     });
 

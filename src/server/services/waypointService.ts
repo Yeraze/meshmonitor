@@ -331,6 +331,16 @@ class WaypointService {
       return null;
     }
 
+    // TX-disabled Meshtastic radios cannot send the waypoint OTA; skip quietly
+    // and leave lastBroadcastAt untouched so it retries once TX re-enables (#4294).
+    // MeshCore/other manager types don't expose isTxEnabled and are never gated.
+    if (typeof manager.isTxEnabled === 'function' && !manager.isTxEnabled()) {
+      logger.debug(
+        `[waypointService] rebroadcastTick: TX disabled on source ${candidate.sourceId}, skipping`,
+      );
+      return null;
+    }
+
     try {
       const packetId = await manager.broadcastWaypoint({
         id: candidate.waypointId,
