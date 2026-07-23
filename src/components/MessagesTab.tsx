@@ -1412,7 +1412,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   <button
                     onClick={() => void handleClearSecurityWarning(selectedNode.nodeNum)}
                     disabled={clearingSecurityWarningNode === selectedNode.nodeNum}
-                    title={t('messages.security_risk_clear_title', 'Re-check this node now and clear the warning if it no longer applies')}
+                    title={t('messages.security_risk_clear_title', 'Clear this security warning')}
                     style={{
                       background: 'rgba(255, 255, 255, 0.15)',
                       border: '1px solid rgba(255, 255, 255, 0.8)',

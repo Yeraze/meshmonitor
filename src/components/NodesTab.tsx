@@ -2132,7 +2132,12 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                             className="security-warning-icon"
                             title={t(
                               'nodes.security_risk_clear_title',
-                              '{{details}} — click to re-check and clear if it no longer applies',
+                              '{{details}} — click to clear this security warning',
+                              { details: node.keySecurityIssueDetails || t('nodes.security_risk_generic', 'Key security issue detected') }
+                            )}
+                            aria-label={t(
+                              'nodes.security_risk_clear_title',
+                              '{{details}} — click to clear this security warning',
                               { details: node.keySecurityIssueDetails || t('nodes.security_risk_generic', 'Key security issue detected') }
                             )}
                             disabled={clearingSecurityNode === node.nodeNum}
