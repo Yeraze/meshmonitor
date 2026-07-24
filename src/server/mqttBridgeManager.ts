@@ -687,6 +687,12 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       sourceId: this.sourceId,
       envelope,
       filter: this.downlinkFilter,
+      topic,
+      // Self-echo guard (#4114, §2(f.1)): `null` before the broker reports
+      // local node info / after a disconnect — the guard then simply does
+      // not apply. Belt-and-braces on top of the (non-airtight) echo
+      // suppression above (`matchesEcho`).
+      localGatewayNodeNum: this.brokerGatewayNum,
     })
       .then((result) => {
         if (result.ingested) this.downlinkIngested++;
