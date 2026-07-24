@@ -20,6 +20,18 @@ interface MessagingContextType {
   setNewMessage: React.Dispatch<React.SetStateAction<string>>;
   /** Select a DM node and pre-fill the compose draft atomically (survives the #4183 draft-scoping clear). */
   openDmWithDraft: (nodeId: string, message: string) => void;
+  /**
+   * Select a DM node for composing and ask the DM view to focus its compose box
+   * once it renders (#4325). Used by the node list's "Send Direct Message"
+   * button: without the focus request the button lands you on the conversation
+   * with an empty, unfocused textarea, so "Send DM" didn't actually let you
+   * start typing.
+   */
+  openDmForCompose: (nodeId: string) => void;
+  /** Node whose compose box is waiting to be focused, or null. */
+  pendingComposeFocus: string | null;
+  /** Consume the focus request — call after focusing (or when it can't be honored). */
+  clearComposeFocus: () => void;
   replyingTo: MeshMessage | null;
   setReplyingTo: React.Dispatch<React.SetStateAction<MeshMessage | null>>;
   pendingMessages: Map<string, MeshMessage>;
@@ -88,6 +100,24 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
     setNewMessage(message);
   }, []);
 
+  // "Send Direct Message" from the node list (#4325). Selecting the node was
+  // already enough to open the conversation, but the compose box was left
+  // unfocused, so the button dropped you somewhere you still had to click
+  // before typing. The DM view honors this request once it has rendered a
+  // compose box for the same node, then clears it.
+  const [pendingComposeFocus, setPendingComposeFocus] = useState<string | null>(null);
+
+  const openDmForCompose = useCallback((nodeId: string) => {
+    // Reuse the draft-safe selection path so the empty draft we want isn't
+    // racing the #4183 scoping effect.
+    composeConvKeyRef.current = `dm:${nodeId}`;
+    setSelectedDMNode(nodeId);
+    setNewMessage('');
+    setPendingComposeFocus(nodeId);
+  }, []);
+
+  const clearComposeFocus = useCallback(() => setPendingComposeFocus(null), []);
+
   // Use TanStack Query hooks for unread counts - only enable when authenticated.
   // Exclude MQTT messages from the count when the user has opted to hide them,
   // so the sidebar dot and channel badges don't light up for MQTT-only traffic.
@@ -133,6 +163,9 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
     newMessage,
     setNewMessage,
     openDmWithDraft,
+    openDmForCompose,
+    pendingComposeFocus,
+    clearComposeFocus,
     replyingTo,
     setReplyingTo,
     pendingMessages,
@@ -151,6 +184,7 @@ export const MessagingProvider: React.FC<MessagingProviderProps> = ({ children, 
     selectedChannel, setSelectedChannel,
     newMessage, setNewMessage,
     openDmWithDraft,
+    openDmForCompose, pendingComposeFocus, clearComposeFocus,
     replyingTo, setReplyingTo,
     pendingMessages, setPendingMessages,
     unreadCounts, setUnreadCounts,

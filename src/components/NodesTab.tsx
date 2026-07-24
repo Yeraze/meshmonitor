@@ -68,6 +68,8 @@ interface NodesTabProps {
   toggleFavoriteLock?: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
   setActiveTab: (tab: TabType) => void;
   setSelectedDMNode: (nodeId: string) => void;
+  /** Select a node for a new DM and ask the DM view to focus its compose box (#4325). */
+  openDmForCompose: (nodeId: string) => void;
   markerRefs: React.MutableRefObject<Map<string, LeafletMarker>>;
   traceroutePathsElements: React.ReactNode;
   selectedNodeTraceroute: React.ReactNode;
@@ -345,6 +347,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   toggleFavoriteLock,
   setActiveTab,
   setSelectedDMNode,
+  openDmForCompose,
   markerRefs,
   traceroutePathsElements,
   selectedNodeTraceroute,
@@ -1094,13 +1097,17 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     };
   }, [toggleFavoriteLock]);
 
+  // "Send Direct Message" (#4325). Selecting the node already opened the
+  // conversation; openDmForCompose additionally asks the DM view to focus its
+  // compose box, so the button leaves you able to type instead of on a
+  // conversation you still have to click into.
   const handleDMClick = useCallback((node: DeviceInfo) => {
     return (e: React.MouseEvent) => {
       e.stopPropagation();
-      setSelectedDMNode(node.user?.id || '');
+      openDmForCompose(node.user?.id || '');
       setActiveTab('messages');
     };
-  }, [setSelectedDMNode, setActiveTab]);
+  }, [openDmForCompose, setActiveTab]);
 
   const handleCopyNodeInfoClick = useCallback((node: DeviceInfo) => {
     return (e: React.MouseEvent) => {

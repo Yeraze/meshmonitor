@@ -488,6 +488,9 @@ function App() {
     newMessage,
     setNewMessage,
     openDmWithDraft,
+    openDmForCompose,
+    pendingComposeFocus,
+    clearComposeFocus,
     replyingTo,
     setReplyingTo,
     pendingMessages: _pendingMessages, // Not used directly - we use pendingMessagesRef for interval access
@@ -3600,6 +3603,7 @@ function App() {
                   toggleFavoriteLock={toggleFavoriteLock}
                   setActiveTab={setActiveTab}
                   setSelectedDMNode={setSelectedDMNode}
+                  openDmForCompose={openDmForCompose}
                   markerRefs={markerRefs}
                   traceroutePathsElements={traceroutePathsElements}
                   selectedNodeTraceroute={selectedNodeTraceroute}
@@ -3750,6 +3754,8 @@ function App() {
             connectionStatus={connectionStatus}
             selectedDMNode={selectedDMNode}
             setSelectedDMNode={setSelectedDMNode}
+            pendingComposeFocus={pendingComposeFocus}
+            clearComposeFocus={clearComposeFocus}
             newMessage={newMessage}
             setNewMessage={setNewMessage}
             replyingTo={replyingTo}

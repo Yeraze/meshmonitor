@@ -50,7 +50,7 @@
   "auto_favorite.saved": "Auto-favorite settings saved",
   "auto_favorite.save_failed": "Failed to save auto-favorite settings",
   "auto_favorite.load_failed": "Failed to load auto-favorite config",
-  "nav.nodes": "Nodes",
+  "nav.nodes": "Map",
   "nav.messages": "Node Details",
   "nav.channels": "Channels",
   "nav.info": "Info",
