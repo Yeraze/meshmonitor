@@ -212,6 +212,20 @@ describe('MessagesTab compose focus (#4325)', () => {
     expect(clearComposeFocus).toHaveBeenCalled();
   });
 
+  it('ignores an empty-nodeId request rather than focusing the empty conversation', () => {
+    // `handleDMClick` falls back to '' when a node somehow has no user.id.
+    // Both guards test truthiness, so '' short-circuits before any focus —
+    // asserted here so that stays true if the guards are ever rewritten.
+    const clearComposeFocus = vi.fn();
+    render(
+      <MessagesTab
+        {...makeProps({ pendingComposeFocus: '', selectedDMNode: '', clearComposeFocus })}
+      />,
+    );
+
+    expect(document.activeElement).not.toBe(textarea());
+  });
+
   it('still focuses when the compose box mounts after the request arrives', () => {
     // The regression: on the first pass there is no textarea (here modelled via
     // messages:write being absent). A request consumed against the null ref
