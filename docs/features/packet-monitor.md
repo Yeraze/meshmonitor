@@ -10,6 +10,14 @@ MeshCore sources have their own equivalent — the **OTA Packet Monitor** access
 MQTT sources (`mqtt_broker` and `mqtt_bridge`) also have their own gateway-aware equivalent — see [MQTT sources](#mqtt-sources) below.
 :::
 
+::: tip ATAK / CoT Integration
+The `ATAK_PLUGIN`, `ATAK_PLUGIN_V2`, and `ATAK_FORWARDER` rows below are one
+piece of a larger integration — ATAK contacts also render on MeshMonitor's
+maps, and a streaming CoT feed can expose MeshMonitor as an ATAK/WinTAK
+network input. See [ATAK / CoT Integration](/features/atak) for the full
+picture.
+:::
+
 ![Packet Monitor](/images/features/packet-monitor.png)
 
 ## Accessing the Packet Monitor

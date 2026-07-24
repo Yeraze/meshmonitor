@@ -107,7 +107,8 @@ export default defineConfig({
             { text: 'Telemetry Widgets', link: '/features/telemetry-widgets' },
             { text: 'Traffic Management', link: '/features/traffic-management' },
             { text: 'Solar Monitoring', link: '/features/solar-monitoring' },
-            { text: 'Packet Monitor', link: '/features/packet-monitor' }
+            { text: 'Packet Monitor', link: '/features/packet-monitor' },
+            { text: 'ATAK / CoT Integration', link: '/features/atak' }
           ]
         },
         {

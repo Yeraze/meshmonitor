@@ -1,6 +1,6 @@
 # ATAK / CoT Integration Epic (issue #3691)
 
-**Status:** Phase 1 merged (PR #4307); Phase 2 implemented (PR pending); Phase 3 pending
+**Status:** Phase 1 merged (PR #4307); Phase 2 implemented (PR pending); Phase 3 implemented (PR pending)
 **Orchestrated via:** /epic (2026-07-23)
 
 ## Goal
@@ -95,16 +95,17 @@ Spec: `ATAK_COT_PHASE1_SPEC.md`.
   with toggle, popup correct; browser-validated; PR merged. ← PR pending
 
 ### Phase 3 — CoT feed output (TCP streaming server)
-- [ ] Settings-gated TCP server (enabled + port; **default off**), keys added
+- [x] Settings-gated TCP server (enabled + port; **default off**), keys added
       to `VALID_SETTINGS_KEYS`, Settings UI per SettingsDraft recipe.
-- [ ] Emits CoT `<event>` XML on connect (snapshot) + on updates for:
+- [x] Emits CoT `<event>` XML on connect (snapshot) + periodic full resend for:
       (a) ATAK contacts (from Phase 2 table), (b) all positioned nodes from
       every source incl. MeshCore. Stable uid scheme (e.g.
       `MESHMON-<sourceId>-<nodeId>`), proper stale times, team/role/battery
       detail where known.
-- [ ] Docs: README/docs for the feed + Docker/helm port-mapping note.
+- [x] Docs: `docs/features/atak.md` (consolidates Phases 1–3) for the feed +
+      Docker/helm port-mapping note; CHANGELOG entry; `Dockerfile` `EXPOSE`.
 - **Exit criteria:** ATAK client connecting to the socket sees mesh nodes +
-  ATAK contacts as map contacts; settings off-by-default; PR merged.
+  ATAK contacts as map contacts; settings off-by-default; PR merged. ← PR pending
 
 ### Post-epic
 - [ ] File follow-up issue: V2 (port 78) zstd-dictionary research spike.
@@ -145,3 +146,26 @@ Spec: `ATAK_COT_PHASE1_SPEC.md`.
   verified live (z 2016+, hit-tested popup incl. STALE badge). Deploy gotcha:
   the `atak-contact-marker` string lives in the markerIcons chunk while the
   Marker JSX lives in the main chunk — grep the right bundle when verifying.
+- (2026-07-23, Phase 3) MeshCore nodes live in `meshcore_nodes`, not `nodes` —
+  the original spec assumed one shared node table, which would have silently
+  omitted every MeshCore node from the feed. Fixed in c4672f27 by reading both
+  `databaseService.nodes.getAllNodes(ALL_SOURCES)` and
+  `databaseService.meshcore.getAllNodes()` and building an event from each.
+  Two unit gotchas the MeshCore builder must respect: `lastHeard` on
+  `meshcore_nodes` is epoch **milliseconds** (Meshtastic's `nodes.lastHeard`
+  is epoch **seconds** — a ×1000 mismatch here would silently mark every
+  MeshCore node as stale or not-yet-stale incorrectly), and `batteryMv` is
+  battery **voltage in millivolts**, not a 0–100 percentage, so it is
+  deliberately omitted from CoT's `<status battery>` rather than mapped
+  1:1 like the Meshtastic `batteryLevel` field is.
+- (2026-07-23, Phase 3) Distribution model is a **periodic 30s full-snapshot
+  resend** (`COT_RESEND_INTERVAL_MS`) rather than push-on-event. ATAK
+  de-dupes by `uid` and honors each event's `stale` time, so re-sending an
+  unchanged event is a free idempotent refresh — this avoids having to hook
+  every node/telemetry/contact mutation path into the feed and keeps the
+  service's only I/O surface the listener + timer. See spec §3.4.
+- (2026-07-23, Phase 3) Security posture, unchanged from the epic decision
+  table: plaintext TCP, bound on `0.0.0.0` (ATAK EUDs are remote, not
+  localhost), no auth, no TLS, default off, 16-client cap, default port
+  `8088`. Documented as trusted-network-only in `docs/features/atak.md`;
+  TLS remains a deferred follow-up.

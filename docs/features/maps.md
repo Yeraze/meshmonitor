@@ -112,6 +112,13 @@ Waypoints — Meshtastic's `WAYPOINT_APP` pins — render directly on the per-so
 
 ### ATAK Contacts
 
+::: tip Full ATAK / CoT documentation
+This section covers only how ATAK contacts render on the map. For packet
+decoding, GeoChat messages, and the streaming CoT feed that exposes
+MeshMonitor as an ATAK/WinTAK network input, see
+[ATAK / CoT Integration](/features/atak).
+:::
+
 ATAK contacts — positions reported by ATAK/WinTAK devices over the Meshtastic
 ATAK plugin (TAKPacket PLI, portnum 72) — render as team-colored circular
 markers with a callsign label on the per-source Nodes map, the Dashboard map,
