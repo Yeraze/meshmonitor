@@ -10,9 +10,11 @@ import {
   escapeXml,
   buildNodeEvent,
   buildContactEvent,
+  buildMeshCoreNodeEvent,
   nodeUid,
 } from './cotFeedService.js';
 import type { AtakContactRow } from '../../db/repositories/atakContacts.js';
+import type { DbMeshCoreNode } from '../../db/repositories/meshcore.js';
 import type { DbNode } from '../../db/types.js';
 
 const NOW = Date.parse('2026-07-23T12:00:00.000Z');
@@ -283,5 +285,97 @@ describe('buildContactEvent', () => {
     const root = parseEvent(xml);
     expect(root.getAttribute('uid')).toBe('a"><evil attr="');
     expect(root.getElementsByTagName('evil').length).toBe(0);
+  });
+});
+
+const MC_PUBKEY = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2';
+
+function makeMeshCoreNode(overrides: Partial<DbMeshCoreNode> = {}): DbMeshCoreNode {
+  return {
+    publicKey: MC_PUBKEY,
+    name: 'Repeater North',
+    advType: 2,
+    latitude: 40.1,
+    longitude: -105.2,
+    altitude: 1650,
+    batteryMv: 4100, // millivolts — must NOT surface as <status battery>
+    // meshcore_nodes.lastHeard is epoch MILLISECONDS (unlike nodes.lastHeard,
+    // which is seconds) — one minute ago here.
+    lastHeard: NOW - ONE_MIN,
+    sourceId: 'meshcore-1',
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  } as DbMeshCoreNode;
+}
+
+describe('buildMeshCoreNodeEvent', () => {
+  it('produces a well-formed <event> with the !pubkey8 uid convention and name callsign', () => {
+    const node = makeMeshCoreNode();
+    const xml = buildMeshCoreNodeEvent(node, 'My MeshCore Source', NOW);
+    expect(xml).not.toBeNull();
+    const root = parseEvent(xml!);
+
+    expect(root.getAttribute('uid')).toBe('MESHMON-meshcore-1-!a1b2c3d4');
+    expect(root.getAttribute('type')).toBe('a-f-G-U-C');
+
+    const point = root.getElementsByTagName('point')[0];
+    expect(point.getAttribute('lat')).toBe('40.1');
+    expect(point.getAttribute('lon')).toBe('-105.2');
+    expect(point.getAttribute('hae')).toBe('1650');
+
+    const contact = root.getElementsByTagName('contact')[0];
+    expect(contact.getAttribute('callsign')).toBe('Repeater North');
+
+    const remarks = root.getElementsByTagName('remarks')[0];
+    expect(remarks.textContent).toContain('My MeshCore Source');
+  });
+
+  it('treats lastHeard as MILLISECONDS: stale = lastHeard + 60min, no x1000', () => {
+    const node = makeMeshCoreNode({ lastHeard: NOW - ONE_MIN });
+    const xml = buildMeshCoreNodeEvent(node, undefined, NOW)!;
+    const root = parseEvent(xml);
+    const expectedStale = new Date(NOW - ONE_MIN + 60 * ONE_MIN).toISOString();
+    expect(root.getAttribute('stale')).toBe(expectedStale);
+  });
+
+  it('returns null when already-stale (lastHeard ms older than 60 min)', () => {
+    expect(buildMeshCoreNodeEvent(makeMeshCoreNode({ lastHeard: NOW - 61 * ONE_MIN }), undefined, NOW)).toBeNull();
+  });
+
+  it('returns null when lastHeard is missing', () => {
+    expect(buildMeshCoreNodeEvent(makeMeshCoreNode({ lastHeard: null }), undefined, NOW)).toBeNull();
+  });
+
+  it('returns null for null or Null-Island positions', () => {
+    expect(buildMeshCoreNodeEvent(makeMeshCoreNode({ latitude: null, longitude: null }), undefined, NOW)).toBeNull();
+    expect(buildMeshCoreNodeEvent(makeMeshCoreNode({ latitude: 0, longitude: 0 }), undefined, NOW)).toBeNull();
+    expect(buildMeshCoreNodeEvent(makeMeshCoreNode({ latitude: NaN, longitude: 10 }), undefined, NOW)).toBeNull();
+  });
+
+  it('falls back callsign to the !pubkey8 id when name is missing', () => {
+    const xml = buildMeshCoreNodeEvent(makeMeshCoreNode({ name: null }), undefined, NOW)!;
+    expect(parseEvent(xml).getElementsByTagName('contact')[0].getAttribute('callsign')).toBe('!a1b2c3d4');
+  });
+
+  it('omits <status battery> — batteryMv is millivolts, not a percentage', () => {
+    const xml = buildMeshCoreNodeEvent(makeMeshCoreNode({ batteryMv: 4100 }), undefined, NOW)!;
+    expect(parseEvent(xml).getElementsByTagName('status').length).toBe(0);
+  });
+
+  it('escapes an XML injection payload in the node name (E5)', () => {
+    const node = makeMeshCoreNode({ name: 'a"/><evil>' });
+    const xml = buildMeshCoreNodeEvent(node, undefined, NOW)!;
+    const root = parseEvent(xml);
+    const contactEls = root.getElementsByTagName('contact');
+    expect(contactEls.length).toBe(1);
+    expect(contactEls[0].getAttribute('callsign')).toBe('a"/><evil>');
+    expect(root.getElementsByTagName('evil').length).toBe(0);
+  });
+
+  it('two distinct MeshCore nodes get distinct uids (E9)', () => {
+    const a = buildMeshCoreNodeEvent(makeMeshCoreNode(), undefined, NOW)!;
+    const b = buildMeshCoreNodeEvent(makeMeshCoreNode({ publicKey: 'deadbeef'.repeat(8) }), undefined, NOW)!;
+    expect(parseEvent(a).getAttribute('uid')).not.toBe(parseEvent(b).getAttribute('uid'));
   });
 });

@@ -18,9 +18,22 @@ import type { AtakContactRow } from '../../db/repositories/atakContacts.js';
 
 // vi.mock factories are hoisted above these module-level consts, so the seed
 // data must be built inside vi.hoisted() to be visible at mock-factory time.
-const { SEED_NODE, SEED_CONTACT } = vi.hoisted(() => {
+const { SEED_NODE, SEED_CONTACT, SEED_MESHCORE_NODE } = vi.hoisted(() => {
   const now = Date.now();
   return {
+    SEED_MESHCORE_NODE: {
+      publicKey: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2',
+      name: 'Repeater North',
+      advType: 2,
+      latitude: 40.1,
+      longitude: -105.2,
+      altitude: 1650,
+      batteryMv: 4100,
+      lastHeard: now - 60_000, // meshcore_nodes.lastHeard is epoch MILLISECONDS
+      sourceId: 'meshcore-1',
+      createdAt: now,
+      updatedAt: now,
+    },
     SEED_NODE: {
       nodeNum: 0xaabbccdd,
       nodeId: '!aabbccdd',
@@ -63,6 +76,7 @@ vi.mock('../../services/database.js', () => {
     settings: { getSetting: vi.fn().mockResolvedValue(null) },
     atakContacts: { getContacts: vi.fn().mockResolvedValue([SEED_CONTACT]) },
     nodes: { getAllNodes: vi.fn().mockResolvedValue([SEED_NODE]) },
+    meshcore: { getAllNodes: vi.fn().mockResolvedValue([SEED_MESHCORE_NODE]) },
   };
   return { default: shared };
 });
@@ -129,14 +143,18 @@ describe('CotFeedService integration (real TCP)', () => {
     vi.restoreAllMocks();
   });
 
-  it('sends a snapshot on connect containing the seeded node and contact uids', async () => {
+  it('sends a snapshot on connect containing the seeded node, contact, and MeshCore uids', async () => {
     const port = await startServer();
     const socket = await connectClient(port);
     openSockets.push(socket);
 
-    const data = await collectUntil(socket, (buf) => buf.includes('</event>'));
+    // Wait until all three seeded events have arrived (three </event> closers).
+    const data = await collectUntil(socket, (buf) => (buf.match(/<\/event>/g) ?? []).length >= 3);
     expect(data).toContain('uid="MESHMON-source-a-!aabbccdd"');
     expect(data).toContain('uid="EUD-ALPHA-1"');
+    // MeshCore node from the separate meshcore_nodes table: !<pubkey8> uid.
+    expect(data).toContain('uid="MESHMON-meshcore-1-!a1b2c3d4"');
+    expect(data).toContain('Repeater North');
     expect(data).toContain('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>');
   });
 

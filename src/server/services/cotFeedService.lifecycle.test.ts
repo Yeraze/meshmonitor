@@ -14,6 +14,7 @@ vi.mock('../../services/database.js', () => {
     settings: { getSetting: vi.fn().mockResolvedValue(null) },
     atakContacts: { getContacts: vi.fn().mockResolvedValue([]) },
     nodes: { getAllNodes: vi.fn().mockResolvedValue([]) },
+    meshcore: { getAllNodes: vi.fn().mockResolvedValue([]) },
   };
   return { default: shared };
 });

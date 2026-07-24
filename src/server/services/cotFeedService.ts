@@ -20,11 +20,13 @@
  * rationale.
  *
  * **Feed content** (§Q3 — emit both, no de-dupe heuristic): every ATAK
- * contact row across all sources (`atakContacts.getContacts(ALL_SOURCES)`)
- * AND every positioned mesh node across all sources including MeshCore
- * (`nodes.getAllNodes(ALL_SOURCES)`). A node that also carries an ATAK
- * contact renders as two distinct CoT events (the EUD and the mesh radio are
- * different real-world things) — deliberately NOT de-duped.
+ * contact row across all sources (`atakContacts.getContacts(ALL_SOURCES)`),
+ * every positioned Meshtastic/MQTT node (`nodes.getAllNodes(ALL_SOURCES)`),
+ * AND every positioned MeshCore node (`meshcore.getAllNodes()` — MeshCore
+ * lives in the separate `meshcore_nodes` table, never in `nodes`). A node
+ * that also carries an ATAK contact renders as two distinct CoT events (the
+ * EUD and the mesh radio are different real-world things) — deliberately
+ * NOT de-duped.
  *
  * **Security** (see spec §3): bind address is `0.0.0.0` by design (ATAK EUDs
  * are remote), default OFF, no auth, no TLS — plaintext feed, document as a
@@ -37,7 +39,9 @@ import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import { ALL_SOURCES } from '../../db/repositories/base.js';
+import { isBogusPosition } from '../../utils/nullIsland.js';
 import type { DbNode } from '../../db/types.js';
+import type { DbMeshCoreNode } from '../../db/repositories/meshcore.js';
 import type { AtakContactRow } from '../../db/repositories/atakContacts.js';
 import { ATAK_CONTACT_STALE_MS } from './atakContactService.js';
 import { teamLabel, roleLabel } from '../../utils/atakTeam.js';
@@ -190,6 +194,70 @@ export function buildNodeEvent(node: NodeRow, sourceName: string | undefined, no
     hae,
     callsign,
     battery: node.batteryLevel != null ? node.batteryLevel : undefined,
+    remarks: remarksParts.join(' · '),
+  });
+}
+
+/**
+ * Positioned MeshCore node → CoT `<event>` XML. MeshCore nodes live in the
+ * separate `meshcore_nodes` table (NOT `nodes`) keyed by 64-hex-char
+ * publicKey; the uid uses the established `!<pubkey8>` nodeId convention so
+ * it matches how MeshCore nodes are identified elsewhere (§1f).
+ *
+ * Unit gotchas vs the Meshtastic builder:
+ * - `lastHeard` here is epoch **milliseconds** (verified against
+ *   `getInactiveMeshcoreNodes(sourceId, cutoffMs)` and the explicit comment
+ *   in inactiveNodeNotificationService.ts) — no ×1000.
+ * - `batteryMv` is battery voltage in **millivolts**, NOT a 0-100
+ *   percentage — CoT `<status battery>` expects a percentage, so battery is
+ *   deliberately omitted for MeshCore.
+ *
+ * Returns `null` when there is no usable position (null/non-finite/bogus per
+ * `isBogusPosition`, which also rejects Null Island (0,0)) or the computed
+ * `stale` (lastHeard + 60 min) has already passed.
+ */
+export function buildMeshCoreNodeEvent(
+  node: DbMeshCoreNode,
+  sourceName: string | undefined,
+  now: number,
+): string | null {
+  const lat = node.latitude;
+  const lon = node.longitude;
+  if (
+    lat == null || lon == null || !Number.isFinite(lat) || !Number.isFinite(lon) ||
+    isBogusPosition(lat, lon)
+  ) {
+    return null;
+  }
+
+  // lastHeard is epoch MILLISECONDS for meshcore_nodes (unlike nodes.lastHeard
+  // which is seconds). A never-heard node has no cadence to stale against.
+  const staleMs = (node.lastHeard ?? 0) + COT_NODE_STALE_MS;
+  if (staleMs <= now) {
+    return null;
+  }
+
+  const sourceId = node.sourceId ?? '';
+  const pubkey8 = node.publicKey.substring(0, 8);
+  const nodeId = `!${pubkey8}`;
+  const callsign = node.name || nodeId;
+
+  const remarksParts = [sourceName ?? sourceId, `MeshCore ${nodeId}`];
+  if (node.lastHeard != null) {
+    const ageSec = Math.max(0, Math.floor((now - node.lastHeard) / 1000));
+    remarksParts.push(`heard ${ageSec}s ago`);
+  }
+
+  return renderEvent({
+    uid: nodeUid({ sourceId, nodeId }),
+    timeMs: now,
+    staleMs,
+    lat,
+    lon,
+    hae: node.altitude != null ? node.altitude : COT_UNKNOWN_SENTINEL,
+    callsign,
+    // batteryMv is millivolts, not a percentage — intentionally NOT mapped
+    // to <status battery>.
     remarks: remarksParts.join(' · '),
   });
 }
@@ -466,6 +534,20 @@ class CotFeedService {
       }
     } catch (error) {
       logger.error('CoT feed: failed to load nodes for snapshot:', error);
+    }
+
+    try {
+      // MeshCore nodes live in the separate meshcore_nodes table — the
+      // `nodes` table has zero MeshCore rows, so without this read the feed
+      // would omit MeshCore entirely. meshcore.getAllNodes() is the existing
+      // cross-source read (no sourceId parameter).
+      const meshcoreNodes = await databaseService.meshcore.getAllNodes();
+      for (const node of meshcoreNodes) {
+        const event = buildMeshCoreNodeEvent(node, node.sourceId ? sourceNames.get(node.sourceId) : undefined, now);
+        if (event) events.push(event);
+      }
+    } catch (error) {
+      logger.error('CoT feed: failed to load MeshCore nodes for snapshot:', error);
     }
 
     return events.join('');
