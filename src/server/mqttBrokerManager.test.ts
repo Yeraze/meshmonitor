@@ -46,7 +46,7 @@ vi.mock('../services/database.js', () => ({
   },
 }));
 
-import { MqttBrokerManager } from './mqttBrokerManager.js';
+import { MqttBrokerManager, resolveDownlinkHopLimit } from './mqttBrokerManager.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import databaseService from '../services/database.js';
 import { PortNum } from './constants/meshtastic.js';
@@ -338,7 +338,7 @@ describe('MqttBrokerManager zero-hop injection', () => {
     }
   });
 
-  async function startManager(opts: { zeroHop: boolean }): Promise<void> {
+  async function startManager(opts: { zeroHop?: boolean; hopOverride?: number }): Promise<void> {
     port = await ephemeralPort();
     manager = new MqttBrokerManager('zhi-broker', 'Zero Hop Broker', {
       listener: { port, host: '127.0.0.1' },
@@ -346,6 +346,7 @@ describe('MqttBrokerManager zero-hop injection', () => {
       gateway: { nodeNum: 0xdeadbeef, nodeId: '!deadbeef', longName: 'MM', shortName: 'MM' },
       rootTopic: 'msh',
       zeroHopInjection: opts.zeroHop,
+      downlinkHopLimitOverride: opts.hopOverride,
     });
     await manager.start();
   }
@@ -480,5 +481,135 @@ describe('MqttBrokerManager zero-hop injection', () => {
 
     const received = await receivedPromise;
     expect(received.equals(garbage)).toBe(true);
+  });
+
+  // --- Configurable downlink hop_limit override (#4081) -------------------
+  //
+  // Same forward-transform seam as zero-hop, but with an arbitrary 0-7 target
+  // instead of a hardcoded 0.
+
+  /** Publish `payload` and resolve with what a `msh/#` subscriber receives. */
+  async function roundTrip(payload: Buffer): Promise<Buffer> {
+    subscriber = await connectClient('sub');
+    await new Promise<void>((resolve, reject) => {
+      subscriber!.subscribe('msh/#', { qos: 0 }, (err) => (err ? reject(err) : resolve()));
+    });
+    publisher = await connectClient('pub');
+    const receivedPromise = new Promise<Buffer>((resolve) => {
+      subscriber!.once('message', (_topic, p) => resolve(p));
+    });
+    await new Promise<void>((resolve, reject) => {
+      publisher!.publish('msh/US/2/e/LongFast/!12345678', payload, { qos: 0 }, (err) =>
+        err ? reject(err) : resolve(),
+      );
+    });
+    return receivedPromise;
+  }
+
+  it('rewrites hop_limit to a nonzero override on delivery', async () => {
+    await startManager({ hopOverride: 7 });
+
+    const received = await roundTrip(buildEnvelopeWithHopLimit(3));
+    const decoded = meshtasticProtobufService.decodeServiceEnvelope(received);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.packet.hopLimit).toBe(7);
+    // hop_start still reflects what the originator set — the override must not
+    // corrupt the hops-taken math consumers derive from hop_start - hop_limit.
+    expect(decoded!.packet.hopStart).toBe(3);
+  });
+
+  it('raises a zero hop_limit packet to the override (proto3 omits the field)', async () => {
+    await startManager({ hopOverride: 5 });
+
+    // hopLimit 0 is omitted on the wire, so the transform sees `undefined`.
+    const original = buildEnvelopeWithHopLimit(0);
+    const received = await roundTrip(original);
+    const decoded = meshtasticProtobufService.decodeServiceEnvelope(received);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.packet.hopLimit).toBe(5);
+  });
+
+  it('forwards byte-for-byte when the packet already sits at the override', async () => {
+    await startManager({ hopOverride: 3 });
+
+    const original = buildEnvelopeWithHopLimit(3);
+    const received = await roundTrip(original);
+    expect(received.equals(original)).toBe(true);
+  });
+
+  it('honors an explicit override of 0 exactly like the legacy zero-hop toggle', async () => {
+    await startManager({ hopOverride: 0 });
+
+    const received = await roundTrip(buildEnvelopeWithHopLimit(4));
+    const decoded = meshtasticProtobufService.decodeServiceEnvelope(received);
+    expect(decoded!.packet.hopLimit ?? 0).toBe(0);
+    expect(decoded!.packet.hopStart).toBe(4);
+  });
+
+  it('lets a numeric override win over a stale legacy zeroHopInjection flag', async () => {
+    await startManager({ zeroHop: true, hopOverride: 6 });
+
+    const received = await roundTrip(buildEnvelopeWithHopLimit(2));
+    const decoded = meshtasticProtobufService.decodeServiceEnvelope(received);
+    expect(decoded!.packet.hopLimit).toBe(6);
+  });
+
+  it('leaves the local-packet event on the original payload with a nonzero override', async () => {
+    await startManager({ hopOverride: 7 });
+
+    publisher = await connectClient('pub');
+    const original = buildEnvelopeWithHopLimit(2);
+
+    const localPacketPromise = new Promise<Buffer>((resolve) => {
+      manager!.once('local-packet', (p: { payload: Buffer }) => resolve(p.payload));
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      publisher!.publish('msh/US/2/e/LongFast/!12345678', original, { qos: 0 }, (err) =>
+        err ? reject(err) : resolve(),
+      );
+    });
+
+    const captured = await localPacketPromise;
+    const decoded = meshtasticProtobufService.decodeServiceEnvelope(captured);
+    expect(decoded!.packet.hopLimit).toBe(2);
+  });
+});
+
+describe('resolveDownlinkHopLimit', () => {
+  const base = {
+    listener: { port: 1883 },
+    auth: { username: 'u', password: 'p' },
+    gateway: { nodeNum: 1, nodeId: '!1', longName: 'l', shortName: 's' },
+  };
+
+  it('returns null when nothing is configured (pass-through)', () => {
+    expect(resolveDownlinkHopLimit({ ...base })).toBeNull();
+    expect(resolveDownlinkHopLimit({ ...base, zeroHopInjection: false })).toBeNull();
+  });
+
+  it('maps the legacy zeroHopInjection boolean to 0', () => {
+    expect(resolveDownlinkHopLimit({ ...base, zeroHopInjection: true })).toBe(0);
+  });
+
+  it('returns the numeric override across the whole 0-7 range', () => {
+    for (let n = 0; n <= 7; n++) {
+      expect(resolveDownlinkHopLimit({ ...base, downlinkHopLimitOverride: n })).toBe(n);
+    }
+  });
+
+  it('prefers the numeric override over the legacy boolean', () => {
+    expect(
+      resolveDownlinkHopLimit({ ...base, zeroHopInjection: true, downlinkHopLimitOverride: 4 }),
+    ).toBe(4);
+  });
+
+  it('ignores out-of-range or non-integer overrides and falls back', () => {
+    for (const bad of [-1, 8, 3.5, NaN]) {
+      expect(resolveDownlinkHopLimit({ ...base, downlinkHopLimitOverride: bad })).toBeNull();
+      expect(
+        resolveDownlinkHopLimit({ ...base, zeroHopInjection: true, downlinkHopLimitOverride: bad }),
+      ).toBe(0);
+    }
   });
 });

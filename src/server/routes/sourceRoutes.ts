@@ -9,7 +9,7 @@ import { meshcoreConfigFromSource, ensureMeshCoreManagerStarted } from '../meshc
 import { MeshCoreManager } from '../meshcoreManager.js';
 import { isMeshCoreManager, isMeshtasticManager } from '../sourceManagerTypes.js';
 import { loRaCenterFrequencyMhz, REGION_SHORT_NAME } from '../../utils/loraFrequency.js';
-import { MqttBrokerManager, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
+import { MqttBrokerManager, MAX_HOP_LIMIT, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
 import { PortNum } from '../constants/meshtastic.js';
@@ -135,6 +135,22 @@ function validateMqttBridgeIgnoreOkToMqtt(config: Record<string, any>): string |
   if (value === undefined || value === null) return null;
   if (typeof value !== 'boolean') {
     return 'mqtt_bridge ignoreOkToMqtt must be a boolean';
+  }
+  return null;
+}
+
+/**
+ * Validate the optional `downlinkHopLimitOverride` on an mqtt_broker config
+ * (#4081). Absent (undefined/null) means "pass hop_limit through unchanged",
+ * which is also what the legacy `zeroHopInjection: false` meant. When
+ * present it must be an integer 0–7 — `hop_limit` is a 3-bit protobuf field,
+ * so anything larger cannot be encoded.
+ */
+function validateMqttBrokerHopLimitOverride(config: Record<string, unknown>): string | null {
+  const value = config?.downlinkHopLimitOverride;
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > MAX_HOP_LIMIT) {
+    return `mqtt_broker downlinkHopLimitOverride must be an integer between 0 and ${MAX_HOP_LIMIT}`;
   }
   return null;
 }
@@ -420,6 +436,12 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
         return res.status(400).json({ error: ignoreOkErr });
       }
     }
+    if (type === 'mqtt_broker') {
+      const hopErr = validateMqttBrokerHopLimitOverride(config ?? {});
+      if (hopErr) {
+        return res.status(400).json({ error: hopErr });
+      }
+    }
     if (!config || typeof config !== 'object') {
       return res.status(400).json({ error: 'config is required and must be an object' });
     }
@@ -550,6 +572,14 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         const ignoreOkErr = validateMqttBridgeIgnoreOkToMqtt(config);
         if (ignoreOkErr) {
           return res.status(400).json({ error: ignoreOkErr });
+        }
+      }
+
+      // Validate the mqtt_broker downlink hop-limit override (#4081).
+      if (existing.type === 'mqtt_broker') {
+        const hopErr = validateMqttBrokerHopLimitOverride(config);
+        if (hopErr) {
+          return res.status(400).json({ error: hopErr });
         }
       }
 
