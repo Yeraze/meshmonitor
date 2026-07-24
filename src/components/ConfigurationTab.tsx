@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { UiIcon } from './icons';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
@@ -52,6 +53,7 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { sourceId } = useSource();
+  const queryClient = useQueryClient();
 
   // Device Config State
   const [longName, setLongName] = useState('');
@@ -891,6 +893,9 @@ const ConfigurationTab: React.FC<ConfigurationTabProps> = ({ nodes, channels = [
       }, sourceId);
       setStatusMessage(t('config.lora_saved'));
       showToast(t('config.lora_saved_toast'), 'success');
+      // Refresh TX status promptly so the global banner + gated controls reflect
+      // the new txEnabled value without waiting for the 30s poll (#4294).
+      void queryClient.invalidateQueries({ queryKey: ['txStatus'] });
       onConfigChangeTriggeringReboot?.();
     } catch (error) {
       logger.error('Error saving LoRa config:', error);

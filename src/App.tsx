@@ -47,6 +47,7 @@ import { ResourceType } from './types/permission';
 import api, { type ChannelDatabaseEntry } from './services/api';
 import { getPacketStats } from './services/packetApi';
 import { logger } from './utils/logger';
+import { isTxDisabledBody } from './utils/txDisabled';
 // generateArrowMarkers moved to useTraceroutePaths hook
 // isNodeComplete/getEffectivePosition/effectiveMapMaxAgeHours/
 // nodePassesTransportFilter/transportCutoffSec moved with processedNodes/
@@ -243,6 +244,8 @@ function App() {
 
   // Monitor device TX status to show warning banner when TX is disabled
   const { isTxDisabled } = useTxStatus({ baseUrl, sourceId });
+  // MQTT-bridge sources are never gated (different transport, not affected by radio TX state)
+  const txGated = isTxDisabled && !isMqttBridge;
 
   // Check for version updates. TanStack Query's refetchInterval replaces the
   // hand-rolled setInterval (#3962 Phase 5.1); the hook stops polling on a 404
@@ -1999,13 +2002,22 @@ function App() {
       const nodeNum = parseInt(nodeNumStr, 16);
 
       // Use direct fetch with CSRF token (consistent with other message endpoints)
-      await authFetch(`${baseUrl}/api/position/request`, {
+      const response = await authFetch(`${baseUrl}/api/position/request`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ destination: nodeNum, sourceId: sourceId || undefined, ...(channel !== undefined && { channel }) }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        setPositionLoading(null);
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+        }
+        return;
+      }
 
       logger.debug(`📍 Position request sent to ${nodeId}`);
 
@@ -2045,13 +2057,22 @@ function App() {
       const nodeNum = parseInt(nodeNumStr, 16);
 
       // Use direct fetch with CSRF token
-      await authFetch(`${baseUrl}/api/nodeinfo/request`, {
+      const response = await authFetch(`${baseUrl}/api/nodeinfo/request`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ destination: nodeNum, sourceId: sourceId || undefined, ...(channel !== undefined && { channel }) }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        setNodeInfoLoading(null);
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+        }
+        return;
+      }
 
       logger.debug(`🔑 NodeInfo request sent to ${nodeId}`);
 
@@ -2080,6 +2101,7 @@ function App() {
       // Set loading state
       setNeighborInfoLoading(nodeId);
 
+      let response: Response;
       if (sourceType === 'meshcore' && sourceId) {
         const normalized = nodeId.toLowerCase();
         if (!/^[0-9a-f]{64}$/.test(normalized)) {
@@ -2087,7 +2109,7 @@ function App() {
           setNeighborInfoLoading(null);
           return;
         }
-        await authFetch(`${baseUrl}/api/sources/${sourceId}/meshcore/neighbors/request`, {
+        response = await authFetch(`${baseUrl}/api/sources/${sourceId}/meshcore/neighbors/request`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ publicKey: normalized }),
@@ -2097,12 +2119,21 @@ function App() {
         // Meshtastic: convert hex nodeId to numeric destination
         const nodeNumStr = nodeId.replace('!', '');
         const nodeNum = parseInt(nodeNumStr, 16);
-        await authFetch(`${baseUrl}/api/neighborinfo/request`, {
+        response = await authFetch(`${baseUrl}/api/neighborinfo/request`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ destination: nodeNum, sourceId: sourceId || undefined }),
         });
         logger.debug(`🏠 NeighborInfo request sent to ${nodeId}`);
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        setNeighborInfoLoading(null);
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+        }
+        return;
       }
 
       // Clear loading state after 30 seconds
@@ -2148,6 +2179,11 @@ function App() {
 
       if (!response.ok) {
         const detail = await response.json().catch(() => ({}));
+        if (isTxDisabledBody(response.status, detail)) {
+          setTelemetryRequestLoading(null);
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          return;
+        }
         throw new Error(detail.error || `Telemetry request failed (${response.status})`);
       }
 
@@ -2322,6 +2358,10 @@ function App() {
         setTimeout(() => refetchPoll(), 500);
       } else {
         const errorData = await response.json();
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          return;
+        }
         setError(`Failed to send reaction: ${errorData.error || 'Unknown error'}`);
       }
     } catch (err) {
@@ -2682,7 +2722,6 @@ function App() {
         setTimeout(() => refetchPoll(), 1000);
       } else {
         const errorData = await response.json();
-        setError(`Failed to send message: ${errorData.error}`);
 
         // Remove the message from local state if sending failed
         setMessages(prev => prev.filter(msg => msg.id !== tempId));
@@ -2696,6 +2735,12 @@ function App() {
           pendingMessagesRef.current = updated; // Update ref
           return updated;
         });
+
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          return;
+        }
+        setError(`Failed to send message: ${errorData.error}`);
       }
     } catch (err) {
       setError(`Failed to send message: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -2733,6 +2778,10 @@ function App() {
         setTimeout(() => refetchPoll(), 1000);
       } else {
         const errorData = await response.json();
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          return;
+        }
         setError(`Failed to send bell: ${errorData.error}`);
       }
     } catch (err) {
@@ -2757,6 +2806,11 @@ function App() {
       if (response.ok) {
         logger.debug('Bell DM sent successfully');
       } else {
+        const errorData = await response.json().catch(() => ({}));
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          return;
+        }
         setError('Failed to send bell DM');
       }
     } catch (err) {
@@ -2779,6 +2833,10 @@ function App() {
         setTimeout(() => refetchPoll(), 1000);
       } else {
         const errorData = await response.json();
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          return;
+        }
         setError(`Failed to send position: ${errorData.error}`);
       }
     } catch (err) {
@@ -2864,7 +2922,6 @@ function App() {
         setTimeout(() => refetchPoll(), 1000);
       } else {
         const errorData = await response.json();
-        setError(`Failed to resend message: ${errorData.error}`);
 
         // Remove the message from local state if sending failed
         setMessages(prev => prev.filter(msg => msg.id !== tempId));
@@ -2880,6 +2937,12 @@ function App() {
           pendingMessagesRef.current = updated;
           return updated;
         });
+
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          return;
+        }
+        setError(`Failed to resend message: ${errorData.error}`);
       }
     } catch (err) {
       setError(`Failed to resend message: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -3545,6 +3608,7 @@ function App() {
                   tracerouteBounds={tracerouteBounds}
                   onTraceroute={handleTraceroute}
                   connectionStatus={connectionStatus}
+                  txDisabled={txGated}
                   tracerouteLoading={tracerouteLoading}
                   onDeleteNode={handleDeleteNode}
                   onPurgeNodeFromDevice={handlePurgeNodeFromDevice}
@@ -3669,6 +3733,7 @@ function App() {
             focusMessageId={focusMessageId}
             onFocusMessageHandled={() => setFocusMessageId(null)}
             mqttReadOnly={isMqttBridge}
+            txDisabled={txGated}
           />
               </ErrorBoundary>
             }
@@ -3738,6 +3803,7 @@ function App() {
             focusMessageId={focusMessageId}
             onFocusMessageHandled={() => setFocusMessageId(null)}
             mqttReadOnly={isMqttBridge}
+            txDisabled={txGated}
             toggleIgnored={toggleIgnored}
             toggleHideFromMap={toggleHideFromMap}
             toggleFavorite={toggleFavorite}
@@ -3795,6 +3861,7 @@ function App() {
         onDeleteNode={handleDeleteNode}
         onPurgeNodeFromDevice={handlePurgeNodeFromDevice}
         currentNodeNum={currentNodeId ? (nodes.find(n => n.user?.id === currentNodeId)?.nodeNum ?? null) : null}
+        txDisabled={txGated}
       />
 
       {/* News Popup */}

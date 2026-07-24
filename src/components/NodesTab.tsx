@@ -81,6 +81,8 @@ interface NodesTabProps {
   onTraceroute?: (nodeId: string) => void;
   /** Current connection status */
   connectionStatus?: string;
+  /** TX disabled on this source (epic #4294 Phase 2) — ORed into the traceroute run button's disabled state. */
+  txDisabled?: boolean;
   /** Node ID currently being tracerouted (for loading state) */
   tracerouteLoading?: string | null;
   /** Handler for deleting a node from local database */
@@ -199,6 +201,23 @@ export function computeNeighborLinkStyle(
     },
     arrows: isBidirectional ? undefined : { color: lineColor },
   };
+}
+
+/**
+ * Traceroute run-button gating for the map node popup (epic #4294 Phase 2).
+ * Extracted as a pure function (module-scope, exported) — the popup lives
+ * inside a Leaflet Popup/Marker/MapContainer tree that isn't practical to
+ * fully render in jsdom (see NodesTab.test.tsx's helper-only pattern), so
+ * the gating logic is pinned with a unit test independent of the render.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- #4294 pure helper co-located with its only consumer for adapter unit testing; not a component
+export function isTracerouteRunDisabled(
+  connectionStatus: string | undefined,
+  tracerouteLoading: string | null | undefined,
+  nodeUserId: string | undefined,
+  txDisabled: boolean,
+): boolean {
+  return connectionStatus !== 'connected' || tracerouteLoading === nodeUserId || txDisabled;
 }
 
 /**
@@ -334,6 +353,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   tracerouteBounds,
   onTraceroute,
   connectionStatus,
+  txDisabled = false,
   tracerouteLoading,
   onDeleteNode,
   onPurgeNodeFromDevice,
@@ -1677,7 +1697,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           distanceUnit={distanceUnit}
                           onRunTraceroute={node.user?.id && onTraceroute ? () => onTraceroute(node.user!.id) : undefined}
                           running={tracerouteLoading === node.user?.id}
-                          runDisabled={connectionStatus !== 'connected' || tracerouteLoading === node.user?.id}
+                          runDisabled={isTracerouteRunDisabled(connectionStatus, tracerouteLoading, node.user?.id, txDisabled)}
+                          runDisabledReason={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
                         />
                       ) : undefined}
                     />
@@ -2936,9 +2957,11 @@ const NodesTab = React.memo(NodesTabComponent, (prevProps, nextProps) => {
     return false; // Allow re-render
   }
 
-  // If connection status or traceroute loading state changed, must re-render
-  // (for traceroute button disabled state and loading indicator)
+  // If connection status, TX-disabled state, or traceroute loading state
+  // changed, must re-render (for traceroute button disabled state and
+  // loading indicator; txDisabled added for epic #4294 Phase 2)
   if (prevProps.connectionStatus !== nextProps.connectionStatus ||
+      prevProps.txDisabled !== nextProps.txDisabled ||
       prevProps.tracerouteLoading !== nextProps.tracerouteLoading) {
     return false; // Allow re-render
   }

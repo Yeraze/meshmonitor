@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import apiService from '../services/api';
 import { useToast } from './ToastContainer';
 import { useResolvedSourceId } from '../hooks/useResolvedSourceId';
+import { useTxStatus } from '../hooks/useTxStatus';
+import { isTxDisabledError } from '../utils/txDisabled';
+import { appBasename } from '../init';
 import { MODEM_PRESET_OPTIONS, REGION_OPTIONS, FEM_LNA_MODE_OPTIONS } from './configuration/constants';
 import type { Channel } from '../types/device';
 import { ImportConfigModal } from './configuration/ImportConfigModal';
@@ -29,9 +33,15 @@ interface AdminCommandsTabProps {
 const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeId, channels: _channels = [], onChannelsUpdated: _onChannelsUpdated }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   // Resolve a concrete sourceId (context source, else primary) — channel-write
   // admin actions require one; other admin calls default to primary anyway.
   const sourceId = useResolvedSourceId();
+  // TX status for the active source — remote-node admin is unavailable while
+  // TX is disabled (Phase 1 backend rejects every remote transmit primitive
+  // with a 409 TX_DISABLED). Local-node admin is unaffected (it's how a user
+  // re-enables TX in the first place).
+  const { isTxDisabled } = useTxStatus({ baseUrl: appBasename, sourceId });
 
   // Use consolidated state hook for config-related state
   const {
@@ -265,6 +275,21 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       setSelectedNodeNum(nodeOptionsMemo[0].nodeNum);
     }
   }, [nodeOptionsMemo, selectedNodeNum]);
+
+  // Determine if we're managing a remote node (not the local node). Hoisted
+  // once here (rather than recomputed per-handler) so the TX-disabled gate
+  // (#4294) can derive off it too.
+  const localNodeNum = useMemo(
+    () => nodeOptions.find(n => n.isLocal)?.nodeNum,
+    [nodeOptions]
+  );
+  const isManagingRemoteNode = useMemo(
+    () => selectedNodeNum !== null && selectedNodeNum !== 0 && selectedNodeNum !== localNodeNum,
+    [selectedNodeNum, localNodeNum]
+  );
+  // Remote-node admin is unavailable while TX is disabled on this source.
+  // Local-node admin (incl. the LoRa "Set" that re-enables TX) stays usable.
+  const remoteAdminBlocked = isManagingRemoteNode && isTxDisabled;
 
   // Filter nodes based on search query
   const filteredNodes = useMemo(() => {
@@ -500,7 +525,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           sx126xRxBoostedGain: config.sx126xRxBoostedGain,
           ignoreMqtt: config.ignoreMqtt,
           configOkToMqtt: config.configOkToMqtt,
-          txEnabled: config.txEnabled ?? true,  // Default to true if undefined
+          txEnabled: config.txEnabled !== false,  // Default true only when genuinely absent; reflect an explicit device `false` (#4294)
           overrideDutyCycle: config.overrideDutyCycle ?? false,
           paFanDisabled: config.paFanDisabled ?? false
         });
@@ -1056,7 +1081,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   sx126xRxBoostedGain: config.sx126xRxBoostedGain,
                   ignoreMqtt: config.ignoreMqtt,
                   configOkToMqtt: config.configOkToMqtt,
-                  txEnabled: config.txEnabled ?? true,  // Default to true if undefined
+                  txEnabled: config.txEnabled !== false,  // Default true only when genuinely absent; reflect an explicit device `false` (#4294)
                   overrideDutyCycle: config.overrideDutyCycle ?? false,
                   paFanDisabled: config.paFanDisabled ?? false
                 });
@@ -1399,15 +1424,17 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     }
   };
 
-  // Determine if we're managing a remote node (not the local node)
-  // Calculate this once per render to avoid recalculating in handlers
-  const localNodeNum = nodeOptions.find(n => n.isLocal)?.nodeNum;
-  const isManagingRemoteNode = selectedNodeNum !== null && selectedNodeNum !== localNodeNum && selectedNodeNum !== 0;
-
   const executeCommand = useCallback(async (command: string, params: any = {}) => {
     if (selectedNodeNum === null) {
       showToast(t('admin_commands.please_select_node'), 'error');
       throw new Error(t('admin_commands.no_node_selected'));
+    }
+
+    // Remote-node admin is unavailable while TX is disabled on this source
+    // (#4294) — block before the network round-trip and explain why.
+    if (remoteAdminBlocked) {
+      showToast(t('tx_disabled.remote_admin_notice'), 'warning');
+      throw new Error('TX_DISABLED_REMOTE_ADMIN_BLOCKED');
     }
 
     setIsExecuting(true);
@@ -1421,13 +1448,19 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       showToast(result.message || t('admin_commands.command_executed', { command }), 'success');
       return result;
     } catch (error: any) {
-      showToast(error.message || t('admin_commands.failed_execute_command'), 'error');
+      // A 409 TX_DISABLED can still slip through as a race (TX flipped off
+      // between render and send) even when remoteAdminBlocked was false.
+      if (isTxDisabledError(error)) {
+        showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+      } else {
+        showToast(error.message || t('admin_commands.failed_execute_command'), 'error');
+      }
       console.error('Admin command error:', error);
       throw error;
     } finally {
       setIsExecuting(false);
     }
-  }, [selectedNodeNum, sourceId, showToast, t]);
+  }, [selectedNodeNum, sourceId, remoteAdminBlocked, showToast, t]);
 
   const handleReboot = useCallback(async () => {
     if (!confirm(t('admin_commands.reboot_confirmation', { seconds: rebootSeconds }))) {
@@ -1668,11 +1701,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
     try {
       await executeCommand('setLoRaConfig', { config });
+      // Refresh TX status so the global banner + gating update promptly
+      // instead of waiting for the 30s poll (#4294). Harmless for remote
+      // saves; this is the path that re-enables TX for the local node.
+      void queryClient.invalidateQueries({ queryKey: ['txStatus'] });
     } catch (error) {
       // Error already handled by executeCommand (toast shown)
       console.error('Set LoRa config command failed:', error);
     }
-  }, [configState.lora, executeCommand]);
+  }, [configState.lora, executeCommand, queryClient]);
 
   const handleSetPositionConfig = useCallback(async () => {
     // Calculate position flags from checkboxes using utility function
@@ -2359,6 +2396,26 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         { id: 'admin-auto-favorites', label: t('auto_favorite.nav', 'Automatic Favorites') },
       ]} />
 
+      {remoteAdminBlocked && (
+        <div
+          className="admin-notice-banner"
+          role="status"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.75rem 1rem',
+            marginBottom: '1rem',
+            borderRadius: '4px',
+            backgroundColor: 'var(--ctp-yellow)',
+            color: 'var(--ctp-base)',
+            fontWeight: 500
+          }}
+        >
+          <UiIcon name="alert" /> {t('tx_disabled.remote_admin_notice')}
+        </div>
+      )}
+
       {/* Node Selection Section */}
       <div id="admin-target-node" className="settings-section">
         <h3>{t('admin_commands.target_node')}</h3>
@@ -2474,14 +2531,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             </button>
             <button
               onClick={handleRequestDeviceMetadata}
-              disabled={isLoadingDeviceMetadata || selectedNodeNum === null}
+              disabled={isLoadingDeviceMetadata || selectedNodeNum === null || remoteAdminBlocked}
+              title={remoteAdminBlocked ? t('tx_disabled.remote_admin_notice') : undefined}
               className="save-button"
               style={{
                 width: '100%',
                 maxWidth: '600px',
                 marginTop: '0.5rem',
-                opacity: (isLoadingDeviceMetadata || selectedNodeNum === null) ? 0.5 : 1,
-                cursor: (isLoadingDeviceMetadata || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+                opacity: (isLoadingDeviceMetadata || selectedNodeNum === null || remoteAdminBlocked) ? 0.5 : 1,
+                cursor: (isLoadingDeviceMetadata || selectedNodeNum === null || remoteAdminBlocked) ? 'not-allowed' : 'pointer'
               }}
             >
               {isLoadingDeviceMetadata ? t('common.loading') : t('admin_commands.retrieve_device_metadata', 'Retrieve Device Metadata')}
@@ -2489,12 +2547,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', maxWidth: '600px', width: '100%' }}>
               <button
                 onClick={handleSendReboot}
-                disabled={isLoadingReboot || selectedNodeNum === null}
+                disabled={isLoadingReboot || selectedNodeNum === null || remoteAdminBlocked}
+                title={remoteAdminBlocked ? t('tx_disabled.remote_admin_notice') : undefined}
                 className="save-button"
                 style={{
                   flex: 1,
-                  opacity: (isLoadingReboot || selectedNodeNum === null) ? 0.5 : 1,
-                  cursor: (isLoadingReboot || selectedNodeNum === null) ? 'not-allowed' : 'pointer',
+                  opacity: (isLoadingReboot || selectedNodeNum === null || remoteAdminBlocked) ? 0.5 : 1,
+                  cursor: (isLoadingReboot || selectedNodeNum === null || remoteAdminBlocked) ? 'not-allowed' : 'pointer',
                   backgroundColor: 'var(--ctp-red)'
                 }}
               >
@@ -2502,12 +2561,13 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
               </button>
               <button
                 onClick={handleSetTime}
-                disabled={isLoadingSetTime || selectedNodeNum === null}
+                disabled={isLoadingSetTime || selectedNodeNum === null || remoteAdminBlocked}
+                title={remoteAdminBlocked ? t('tx_disabled.remote_admin_notice') : undefined}
                 className="save-button"
                 style={{
                   flex: 1,
-                  opacity: (isLoadingSetTime || selectedNodeNum === null) ? 0.5 : 1,
-                  cursor: (isLoadingSetTime || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+                  opacity: (isLoadingSetTime || selectedNodeNum === null || remoteAdminBlocked) ? 0.5 : 1,
+                  cursor: (isLoadingSetTime || selectedNodeNum === null || remoteAdminBlocked) ? 'not-allowed' : 'pointer'
                 }}
               >
                 {isLoadingSetTime ? t('common.loading') : t('admin_commands.set_time', 'Set Time')}
@@ -2809,7 +2869,16 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             <input
               type="checkbox"
               checked={configState.lora.txEnabled}
-              onChange={(e) => setLoRaConfig({ txEnabled: e.target.checked })}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                // Disabling TX makes the node invisible to the mesh — confirm
+                // only on the true->false transition (#4294). Cancelling
+                // leaves the checkbox in its prior (checked) state.
+                if (!checked && configState.lora.txEnabled && !window.confirm(t('lora_config.tx_disable_confirm'))) {
+                  return;
+                }
+                setLoRaConfig({ txEnabled: checked });
+              }}
               disabled={isExecuting}
               style={{ width: 'auto', margin: 0, flexShrink: 0 }}
             />
@@ -2852,10 +2921,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         <button
           className="save-button"
           onClick={handleSetLoRaConfig}
-          disabled={isExecuting || selectedNodeNum === null}
+          disabled={isExecuting || selectedNodeNum === null || remoteAdminBlocked}
+          title={remoteAdminBlocked ? t('tx_disabled.remote_admin_notice') : undefined}
           style={{
-            opacity: (isExecuting || selectedNodeNum === null) ? 0.5 : 1,
-            cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer'
+            opacity: (isExecuting || selectedNodeNum === null || remoteAdminBlocked) ? 0.5 : 1,
+            cursor: (isExecuting || selectedNodeNum === null || remoteAdminBlocked) ? 'not-allowed' : 'pointer'
           }}
         >
           {isExecuting ? t('common.saving') : t('admin_commands.save_lora_config')}
@@ -3445,13 +3515,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           <div style={{ flex: 1, minWidth: '200px' }}>
             <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}><UiIcon name="favorite" /> {t('admin_commands.favorites')}</h4>
             {(() => {
-              const isDisabled = isExecuting || nodeManagementNodeNum === null;
+              const isDisabled = isExecuting || nodeManagementNodeNum === null || remoteAdminBlocked;
+              const blockedTitle = remoteAdminBlocked ? t('tx_disabled.remote_admin_notice') : undefined;
 
               return (
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <button
                     onClick={handleSetFavoriteNode}
                     disabled={isDisabled}
+                    title={blockedTitle}
                     style={{
                       flex: 1,
                       padding: '0.75rem 1rem',
@@ -3470,6 +3542,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   <button
                     onClick={handleRemoveFavoriteNode}
                     disabled={isDisabled}
+                    title={blockedTitle}
                     style={{
                       flex: 1,
                       padding: '0.75rem 1rem',
@@ -3492,13 +3565,15 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           <div style={{ flex: 1, minWidth: '200px' }}>
             <h4 style={{ marginBottom: '0.75rem', color: 'var(--ctp-text)' }}><UiIcon name="blocked" /> {t('admin_commands.ignored_nodes')}</h4>
             {(() => {
-              const isDisabled = isExecuting || nodeManagementNodeNum === null;
+              const isDisabled = isExecuting || nodeManagementNodeNum === null || remoteAdminBlocked;
+              const blockedTitle = remoteAdminBlocked ? t('tx_disabled.remote_admin_notice') : undefined;
 
               return (
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <button
                     onClick={handleSetIgnoredNode}
                     disabled={isDisabled}
+                    title={blockedTitle}
                     style={{
                       flex: 1,
                       padding: '0.75rem 1rem',
@@ -3517,6 +3592,7 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                   <button
                     onClick={handleRemoveIgnoredNode}
                     disabled={isDisabled}
+                    title={blockedTitle}
                     style={{
                       flex: 1,
                       padding: '0.75rem 1rem',
@@ -3857,17 +3933,18 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             </label>
             <button
               onClick={handleReboot}
-              disabled={isExecuting || selectedNodeNum === null}
+              disabled={isExecuting || selectedNodeNum === null || remoteAdminBlocked}
+              title={remoteAdminBlocked ? t('tx_disabled.remote_admin_notice') : undefined}
               style={{
                 backgroundColor: '#ff6b6b',
                 color: '#fff',
                 padding: '0.75rem 1.5rem',
                 border: 'none',
                 borderRadius: '4px',
-                cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer',
+                cursor: (isExecuting || selectedNodeNum === null || remoteAdminBlocked) ? 'not-allowed' : 'pointer',
                 fontSize: '1rem',
                 fontWeight: 'bold',
-                opacity: (isExecuting || selectedNodeNum === null) ? 0.6 : 1
+                opacity: (isExecuting || selectedNodeNum === null || remoteAdminBlocked) ? 0.6 : 1
               }}
             >
               <UiIcon name="refresh" /> {t('admin_commands.reboot_device')}
@@ -3875,17 +3952,18 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           </div>
           <button
             onClick={handlePurgeNodeDb}
-            disabled={isExecuting || selectedNodeNum === null}
+            disabled={isExecuting || selectedNodeNum === null || remoteAdminBlocked}
+            title={remoteAdminBlocked ? t('tx_disabled.remote_admin_notice') : undefined}
             style={{
               backgroundColor: '#d32f2f',
               color: '#fff',
               padding: '0.75rem 1.5rem',
               border: 'none',
               borderRadius: '4px',
-              cursor: (isExecuting || selectedNodeNum === null) ? 'not-allowed' : 'pointer',
+              cursor: (isExecuting || selectedNodeNum === null || remoteAdminBlocked) ? 'not-allowed' : 'pointer',
               fontSize: '1rem',
               fontWeight: 'bold',
-              opacity: (isExecuting || selectedNodeNum === null) ? 0.6 : 1
+              opacity: (isExecuting || selectedNodeNum === null || remoteAdminBlocked) ? 0.6 : 1
             }}
           >
             <UiIcon name="delete" /> {t('admin_commands.purge_node_database')}

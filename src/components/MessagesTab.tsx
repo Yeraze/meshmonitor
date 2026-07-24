@@ -117,6 +117,9 @@ export interface MessagesTabProps {
   // Connection state
   connectionStatus: string;
 
+  /** TX disabled on this source (epic #4294 Phase 2) — disable send/request controls with a tooltip, keep reads working. */
+  txDisabled?: boolean;
+
   // Selected state
   selectedDMNode: string | null;
   setSelectedDMNode: (nodeId: string) => void;
@@ -222,6 +225,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   messages,
   currentNodeId,
   connectionStatus,
+  txDisabled = false,
   selectedDMNode,
   setSelectedDMNode,
   newMessage,
@@ -1205,7 +1209,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                   void handleTraceroute(selectedDMNode);
                                   setShowActionsMenu(false);
                                 }}
-                                disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
+                                disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode || txDisabled}
+                                title={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
                               >
                                 <UiIcon name="route" /> {t('messages.traceroute_button')}
                                 {tracerouteLoading === selectedDMNode && <span className="spinner"></span>}
@@ -1236,7 +1241,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 void handleExchangePosition(selectedDMNode);
                                 setShowActionsMenu(false);
                               }}
-                              disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode}
+                              disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode || txDisabled}
+                              title={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
                             >
                               <UiIcon name="location" /> {t('messages.exchange_position')}
                               {positionLoading === selectedDMNode && <span className="spinner"></span>}
@@ -1247,7 +1253,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 void handleExchangeNodeInfo(selectedDMNode);
                                 setShowActionsMenu(false);
                               }}
-                              disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode}
+                              disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode || txDisabled}
+                              title={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
                             >
                               <UiIcon name="key" /> {t('messages.exchange_node_info')}
                               {nodeInfoLoading === selectedDMNode && <span className="spinner"></span>}
@@ -1258,7 +1265,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 setShowTelemetryRequestModal(true);
                                 setShowActionsMenu(false);
                               }}
-                              disabled={connectionStatus !== 'connected' || telemetryRequestLoading === selectedDMNode}
+                              disabled={connectionStatus !== 'connected' || telemetryRequestLoading === selectedDMNode || txDisabled}
+                              title={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
                             >
                               <UiIcon name="telemetry" /> {t('messages.request_telemetry')}
                               {telemetryRequestLoading === selectedDMNode && <span className="spinner"></span>}
@@ -1292,7 +1300,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               void handleScanForAdmin(selectedDMNode);
                               setShowActionsMenu(false);
                             }}
-                            disabled={connectionStatus !== 'connected' || adminScanLoading === selectedDMNode}
+                            disabled={connectionStatus !== 'connected' || adminScanLoading === selectedDMNode || txDisabled}
+                            title={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
                           >
                             <UiIcon name="search" /> {t('messages.scan_for_admin')}
                             {adminScanLoading === selectedDMNode && <span className="spinner"></span>}
@@ -1672,7 +1681,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                                 <button
                                   className="resend-button"
                                   onClick={() => handleResendMessage(msg)}
-                                  title={t('messages.resend_button_title')}
+                                  disabled={txDisabled}
+                                  title={txDisabled ? t('tx_disabled.control_tooltip') : t('messages.resend_button_title')}
                                   aria-label={t('messages.resend_button_title')}
                                 >
                                   ↻
@@ -1693,7 +1703,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                               <button
                                 className="emoji-picker-button"
                                 onClick={() => setEmojiPickerMessage(msg)}
-                                title={t('messages.emoji_button_title')}
+                                disabled={txDisabled}
+                                title={txDisabled ? t('tx_disabled.control_tooltip') : t('messages.emoji_button_title')}
                                 aria-label={t('messages.emoji_button_title')}
                               >
                                 <UiIcon name="reaction" size={15} />
@@ -1732,6 +1743,11 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             <LinkPreview text={msg.text} />
                             {reactions.length > 0 && (
                               <div className="message-reactions">
+                                {/* Reaction chips stay clickable even when txDisabled — see the
+                                    matching comment in ChannelsTab.tsx (epic #4294 Phase 2, §3.2/§3.3):
+                                    they double as the read affordance for "who reacted", and a
+                                    re-tap while TX is off is caught by the handleSendTapback
+                                    failure-branch toast in App.tsx rather than pre-emptively blocked. */}
                                 {reactions.map(reaction => (
                                   <span
                                     key={reaction.id}
@@ -1798,18 +1814,24 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         placeholder={t('messages.dm_placeholder', { name: getNodeName(selectedDMNode) })}
                         className="message-input"
                         rows={1}
+                        disabled={txDisabled}
+                        title={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
                         onKeyDown={e => {
                           if (
-                            e.key === 'Enter' &&
-                            !e.shiftKey &&
-                            !e.ctrlKey &&
-                            !e.metaKey &&
-                            !e.altKey &&
-                            !e.nativeEvent.isComposing
+                            txDisabled ||
+                            !(
+                              e.key === 'Enter' &&
+                              !e.shiftKey &&
+                              !e.ctrlKey &&
+                              !e.metaKey &&
+                              !e.altKey &&
+                              !e.nativeEvent.isComposing
+                            )
                           ) {
-                            e.preventDefault();
-                            void handleSendDirectMessage(selectedDMNode);
+                            return;
                           }
+                          e.preventDefault();
+                          void handleSendDirectMessage(selectedDMNode);
                         }}
                       />
                       <div className={byteCountDisplay.className}>
@@ -1823,16 +1845,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     />
                     <button
                       onClick={() => { void onSendBell?.(selectedDMNode, newMessage); setNewMessage(''); }}
+                      disabled={txDisabled}
                       className="send-btn channel-action-btn"
-                      title="Send alert bell"
+                      title={txDisabled ? t('tx_disabled.control_tooltip') : 'Send alert bell'}
                       aria-label="Send alert bell"
                     >
                       <UiIcon name="notifications" size={16} />
                     </button>
                     <button
                       onClick={() => handleSendDirectMessage(selectedDMNode)}
-                      disabled={!newMessage.trim()}
+                      disabled={!newMessage.trim() || txDisabled}
                       className="send-btn"
+                      title={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
                       aria-label={t('common.send')}
                     >
                       <UiIcon name="send" size={16} />
@@ -2043,7 +2067,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 <div style={{ display: 'flex', flex: '1 1 auto', minWidth: '120px', position: 'relative' }}>
                   <button
                     onClick={() => handleTraceroute(selectedDMNode)}
-                    disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
+                    disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode || txDisabled}
+                    title={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
                     style={{
                       flex: 1,
                       padding: '0.5rem 1rem',
@@ -2051,8 +2076,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       color: 'var(--ctp-base)',
                       border: 'none',
                       borderRadius: channels.length > 1 ? '4px 0 0 4px' : '4px',
-                      cursor: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode ? 'not-allowed' : 'pointer',
-                      opacity: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode ? 0.5 : 1,
+                      cursor: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode || txDisabled ? 'not-allowed' : 'pointer',
+                      opacity: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode || txDisabled ? 0.5 : 1,
                       fontSize: '0.9rem'
                     }}
                   >
@@ -2064,8 +2089,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         e.stopPropagation();
                         setShowTracerouteChannelDropdown(prev => !prev);
                       }}
-                      disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode}
-                      title={t('messages.traceroute_channel')}
+                      disabled={connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode || txDisabled}
+                      title={txDisabled ? t('tx_disabled.control_tooltip') : t('messages.traceroute_channel')}
                       aria-label={t('messages.traceroute_channel')}
                       style={{
                         padding: '0.5rem 0.5rem',
@@ -2074,8 +2099,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         border: 'none',
                         borderLeft: '1px solid var(--ctp-base)',
                         borderRadius: '0 4px 4px 0',
-                        cursor: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode ? 'not-allowed' : 'pointer',
-                        opacity: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode ? 0.5 : 1,
+                        cursor: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode || txDisabled ? 'not-allowed' : 'pointer',
+                        opacity: connectionStatus !== 'connected' || tracerouteLoading === selectedDMNode || txDisabled ? 0.5 : 1,
                         fontSize: '0.9rem'
                       }}
                     >
@@ -2129,7 +2154,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 <div style={{ display: 'flex', flex: '1 1 auto', minWidth: '120px', position: 'relative' }}>
                   <button
                     onClick={() => handleExchangeNodeInfo(selectedDMNode)}
-                    disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode}
+                    disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode || txDisabled}
+                    title={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
                     style={{
                       flex: 1,
                       padding: '0.5rem 1rem',
@@ -2137,8 +2163,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       color: 'var(--ctp-base)',
                       border: 'none',
                       borderRadius: channels.length > 1 ? '4px 0 0 4px' : '4px',
-                      cursor: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode ? 'not-allowed' : 'pointer',
-                      opacity: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode ? 0.5 : 1,
+                      cursor: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode || txDisabled ? 'not-allowed' : 'pointer',
+                      opacity: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode || txDisabled ? 0.5 : 1,
                       fontSize: '0.9rem'
                     }}
                   >
@@ -2150,8 +2176,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         e.stopPropagation();
                         setShowNodeInfoChannelDropdown(prev => !prev);
                       }}
-                      disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode}
-                      title={t('messages.exchange_node_info_channel')}
+                      disabled={connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode || txDisabled}
+                      title={txDisabled ? t('tx_disabled.control_tooltip') : t('messages.exchange_node_info_channel')}
                       aria-label={t('messages.exchange_node_info_channel')}
                       style={{
                         padding: '0.5rem 0.5rem',
@@ -2160,8 +2186,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         border: 'none',
                         borderLeft: '1px solid var(--ctp-base)',
                         borderRadius: '0 4px 4px 0',
-                        cursor: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode ? 'not-allowed' : 'pointer',
-                        opacity: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode ? 0.5 : 1,
+                        cursor: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode || txDisabled ? 'not-allowed' : 'pointer',
+                        opacity: connectionStatus !== 'connected' || nodeInfoLoading === selectedDMNode || txDisabled ? 0.5 : 1,
                         fontSize: '0.9rem'
                       }}
                     >
@@ -2215,7 +2241,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                 <div style={{ display: 'flex', flex: '1 1 auto', minWidth: '120px', position: 'relative' }}>
                   <button
                     onClick={() => handleExchangePosition(selectedDMNode)}
-                    disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode}
+                    disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode || txDisabled}
+                    title={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
                     style={{
                       flex: 1,
                       padding: '0.5rem 1rem',
@@ -2223,8 +2250,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                       color: 'var(--ctp-base)',
                       border: 'none',
                       borderRadius: channels.length > 1 ? '4px 0 0 4px' : '4px',
-                      cursor: connectionStatus !== 'connected' || positionLoading === selectedDMNode ? 'not-allowed' : 'pointer',
-                      opacity: connectionStatus !== 'connected' || positionLoading === selectedDMNode ? 0.5 : 1,
+                      cursor: connectionStatus !== 'connected' || positionLoading === selectedDMNode || txDisabled ? 'not-allowed' : 'pointer',
+                      opacity: connectionStatus !== 'connected' || positionLoading === selectedDMNode || txDisabled ? 0.5 : 1,
                       fontSize: '0.9rem'
                     }}
                   >
@@ -2236,8 +2263,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         e.stopPropagation();
                         setShowPositionChannelDropdown(prev => !prev);
                       }}
-                      disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode}
-                      title={t('messages.exchange_position_channel')}
+                      disabled={connectionStatus !== 'connected' || positionLoading === selectedDMNode || txDisabled}
+                      title={txDisabled ? t('tx_disabled.control_tooltip') : t('messages.exchange_position_channel')}
                       aria-label={t('messages.exchange_position_channel')}
                       style={{
                         padding: '0.5rem 0.5rem',
@@ -2246,8 +2273,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         border: 'none',
                         borderLeft: '1px solid var(--ctp-base)',
                         borderRadius: '0 4px 4px 0',
-                        cursor: connectionStatus !== 'connected' || positionLoading === selectedDMNode ? 'not-allowed' : 'pointer',
-                        opacity: connectionStatus !== 'connected' || positionLoading === selectedDMNode ? 0.5 : 1,
+                        cursor: connectionStatus !== 'connected' || positionLoading === selectedDMNode || txDisabled ? 'not-allowed' : 'pointer',
+                        opacity: connectionStatus !== 'connected' || positionLoading === selectedDMNode || txDisabled ? 0.5 : 1,
                         fontSize: '0.9rem'
                       }}
                     >
@@ -2300,7 +2327,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               {!actionsReadOnly && hasPermission('traceroute', 'write') && (
                 <button
                   onClick={() => handleRequestNeighborInfo(selectedDMNode)}
-                  disabled={connectionStatus !== 'connected' || neighborInfoLoading === selectedDMNode}
+                  disabled={connectionStatus !== 'connected' || neighborInfoLoading === selectedDMNode || txDisabled}
+                  title={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
                   style={{
                     flex: '1 1 auto',
                     minWidth: '120px',
@@ -2309,8 +2337,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     color: 'var(--ctp-base)',
                     border: 'none',
                     borderRadius: '4px',
-                    cursor: connectionStatus !== 'connected' || neighborInfoLoading === selectedDMNode ? 'not-allowed' : 'pointer',
-                    opacity: connectionStatus !== 'connected' || neighborInfoLoading === selectedDMNode ? 0.5 : 1,
+                    cursor: connectionStatus !== 'connected' || neighborInfoLoading === selectedDMNode || txDisabled ? 'not-allowed' : 'pointer',
+                    opacity: connectionStatus !== 'connected' || neighborInfoLoading === selectedDMNode || txDisabled ? 0.5 : 1,
                     fontSize: '0.9rem'
                   }}
                 >
