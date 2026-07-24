@@ -61,6 +61,9 @@
 /* Switch */
 .ae-switch { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--ctp-subtext1); cursor: pointer; }
 
+/* TX-disabled advisory badge (#4294 P3) — hint only, never disables the checkbox. */
+.ae-tx-warn { color: var(--ctp-yellow); font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.25rem; margin-left: 0.4rem; }
+
 /* Form fields */
 .ae-field { margin-bottom: 0.85rem; }
 .ae-field-label { display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; font-weight: 600; color: var(--ctp-subtext1); margin-bottom: 0.3rem; }

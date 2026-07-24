@@ -106,7 +106,8 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # Expose ports
 # 3001: MeshMonitor Express server
 # 8000: Internal Apprise API (not exposed to host by default)
-EXPOSE 3001 8000
+# 8088: ATAK/CoT feed (settings-gated, default off — see docs/features/atak.md)
+EXPOSE 3001 8000 8088
 
 # Set environment variables
 ENV NODE_ENV=production

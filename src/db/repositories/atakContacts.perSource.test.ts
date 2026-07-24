@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { AtakContactsRepository, type AtakContactRow } from './atakContacts.js';
+import { ALL_SOURCES } from './base.js';
 import { createTestDb, type TestDb } from '../../server/test-helpers/testDb.js';
 
 const SRC_A = 'source-a';
@@ -103,6 +104,16 @@ describe('AtakContactsRepository - per-source isolation', () => {
 
   it('getContacts throws on an empty sourceId (withSourceScope fail-closed)', async () => {
     await expect(repo.getContacts('')).rejects.toThrow(/sourceId is required/);
+  });
+
+  it('getContacts(ALL_SOURCES) returns rows from every source in one query (ATAK/CoT Phase 3 feed read)', async () => {
+    await repo.upsertContact(makeRow({ uid: 'EUD-001', sourceId: SRC_A }));
+    await repo.upsertContact(makeRow({ uid: 'EUD-002', sourceId: SRC_A }));
+    await repo.upsertContact(makeRow({ uid: 'EUD-003', sourceId: SRC_B }));
+
+    const all = await repo.getContacts(ALL_SOURCES);
+    expect(all.map((c) => c.uid).sort()).toEqual(['EUD-001', 'EUD-002', 'EUD-003']);
+    expect(new Set(all.map((c) => c.sourceId))).toEqual(new Set([SRC_A, SRC_B]));
   });
 
   it('deleteContactsForSource throws on an empty sourceId (withSourceScope fail-closed)', async () => {

@@ -107,10 +107,29 @@ v1 API errors use the envelope format:
 
 Per-source v1 endpoints return `400 MISSING_SOURCE_ID` when `sourceId` is absent from a request that requires it. There is no silent fallback to the primary source.
 
+**Transmit-disabled sources (`409 TX_DISABLED`):** any transmit action — message send, traceroute,
+position/nodeinfo/neighbor/telemetry request, or remote-node admin command — returns `409` with
+`code: "TX_DISABLED"` when the target source's LoRa radio has `lora.txEnabled = false` (receive-only
+mode; see [Receive-Only Mode](/docs/features/receive-only-mode.md)):
+
+```json
+{
+  "success": false,
+  "error": "Transmit is disabled on this source",
+  "code": "TX_DISABLED"
+}
+```
+
+Nothing is transmitted. Re-enable **TX Enabled** in the source's LoRa configuration to clear it. This
+applies to both the v1 endpoints above and the equivalent main-API routes (`/api/messages/send`,
+`/api/traceroute`, `/api/position/request`, `/api/nodeinfo/request`, `/api/neighborinfo/request`,
+`/api/telemetry/request`, `/api/admin/commands`).
+
 **Common Status Codes:**
 - `200` - Success
 - `400` - Bad Request (invalid parameters, or missing `sourceId` on a per-source endpoint)
 - `404` - Not Found
+- `409` - Conflict (e.g. `TX_DISABLED` — target source is in receive-only mode)
 - `500` - Internal Server Error
 
 ## Endpoints
@@ -826,6 +845,8 @@ Manually trigger a traceroute request to a specific node to discover the network
 
 **Error Responses:**
 - `400`: Missing or invalid destination node ID
+- `409`: Transmit disabled on this source (`TX_DISABLED`) — the source's LoRa radio is in
+  receive-only mode; see [Receive-Only Mode](/docs/features/receive-only-mode.md)
 - `500`: Failed to send traceroute
 
 **Example:**

@@ -48,6 +48,8 @@ interface NodePopupProps {
   onDeleteNode?: (nodeNum: number) => void;
   onPurgeNodeFromDevice?: (nodeNum: number) => void;
   currentNodeNum?: number | null;
+  /** TX disabled on this source (epic #4294 Phase 2) — ORed into the traceroute run button's disabled state. */
+  txDisabled?: boolean;
 }
 
 export const NodePopup: React.FC<NodePopupProps> = ({
@@ -69,6 +71,7 @@ export const NodePopup: React.FC<NodePopupProps> = ({
   onDeleteNode,
   onPurgeNodeFromDevice,
   currentNodeNum,
+  txDisabled = false,
 }) => {
   const { t } = useTranslation();
 
@@ -179,7 +182,8 @@ export const NodePopup: React.FC<NodePopupProps> = ({
             } : undefined}
             onRunTraceroute={node.user?.id && onTraceroute ? () => onTraceroute(node.user!.id) : undefined}
             running={tracerouteLoading === node.user?.id}
-            runDisabled={connectionStatus !== 'connected' || tracerouteLoading === node.user?.id}
+            runDisabled={connectionStatus !== 'connected' || tracerouteLoading === node.user?.id || txDisabled}
+            runDisabledReason={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
           />
         ) : undefined}
       />

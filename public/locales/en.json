@@ -118,6 +118,11 @@
   "banners.update_manual": "See the update guide for instructions specific to your deployment.",
   "banners.update_guide_link": "Update guide",
 
+  "tx_disabled.control_tooltip": "Transmit is disabled on this node's radio. Re-enable TX in the LoRa configuration to use this.",
+  "tx_disabled.send_blocked_toast": "Transmit is disabled on this source — nothing was sent.",
+  "tx_disabled.remote_admin_notice": "Remote-node admin is unavailable while Transmit is disabled on this source. Local-node admin still works — you can re-enable TX in the LoRa Config below.",
+  "tx_disabled.automation_source_warning": "Transmit is disabled on this source — messages sent through it will be skipped.",
+
   "purgeModal.title": "Purge Data for {{nodeName}}",
   "purgeModal.warning": "These actions cannot be undone. All data for this node will be permanently deleted.",
   "purgeModal.purgeMessages": "Purge All Messages",
@@ -1688,6 +1693,13 @@
   "settings.apprise_server_test_success": "Connected successfully ({{latency}}ms)",
   "settings.apprise_server_test_failure": "Connection failed: {{error}}",
 
+  "settings.atak_cot_section": "ATAK / CoT Feed",
+  "settings.atak_cot_section_description": "Streams mesh node positions and ATAK contacts to ATAK/WinTAK clients over a plaintext TCP Cursor-on-Target feed (add MeshMonitor as a network input in ATAK).",
+  "settings.atak_cot_enabled_label": "Enable CoT feed",
+  "settings.atak_cot_enabled_description": "No encryption or authentication — use only on a trusted network.",
+  "settings.atak_cot_port_label": "Feed port",
+  "settings.atak_cot_port_description": "TCP port ATAK/WinTAK clients connect to. Default 8088.",
+
   "settings.analytics": "Analytics",
   "settings.analytics_provider_label": "Analytics Provider",
   "settings.analytics_provider_description": "Select an analytics service to track visitor traffic on your instance.",
@@ -3257,6 +3269,7 @@
   "lora_config.ok_to_mqtt_description": "Sets the ok_to_mqtt flag on outgoing packets, allowing them to be forwarded to MQTT by other nodes",
   "lora_config.tx_enabled": "TX Enabled",
   "lora_config.tx_enabled_description": "Enable radio transmission. Disable to make the node listen-only.",
+  "lora_config.tx_disable_confirm": "Disable transmit on this node?\n\nThe node becomes invisible to the mesh: it can still receive, but it will not send messages, respond to traceroutes, or accept remote administration until you re-enable TX. Continue?",
   "lora_config.override_duty_cycle": "Override Duty Cycle",
   "lora_config.override_duty_cycle_description": "WARNING: Exceed regulatory duty cycle limits. Use only where permitted by law.",
   "lora_config.pa_fan_disabled": "PA Fan Disabled",

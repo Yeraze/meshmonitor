@@ -147,6 +147,10 @@ export interface SettingsCallbacks {
   // intervalHours arg. A null sourceId is a no-op (no global scheduler).
   restartAutoDeleteByDistanceService?: (sourceId?: string | null) => void;
   stopAutoDeleteByDistanceService?: (sourceId?: string | null) => void;
+  // ATAK/CoT Phase 3 (issue #3691): global singleton (not per-source). Re-read
+  // cotFeedEnabled/cotFeedPort and (re)start or stop the CoT feed server.
+  restartCotFeed?: () => void;
+  stopCotFeed?: () => void;
 }
 
 let callbacks: SettingsCallbacks = {};
@@ -891,6 +895,19 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
           `✅ Low battery notification service restarted (check: ${checkInterval}min, cooldown: ${cooldown}h)`
         );
       }
+    }
+
+    // ATAK/CoT Phase 3 (issue #3691): global singleton (this code path only
+    // runs for global saves — the `if (sourceId)` branch above returns
+    // early). A single restart callback covers both the enable-toggle and a
+    // port change; restartCotFeed internally calls
+    // cotFeedService.startFromSettings(), which stops the feed when
+    // disabled, so stopCotFeed is invoked too only for symmetry/explicitness.
+    const cotFeedSettings = ['cotFeedEnabled', 'cotFeedPort'];
+    const cotFeedSettingsChanged = cotFeedSettings.some((key) => key in filteredSettings);
+    if (cotFeedSettingsChanged) {
+      callbacks.restartCotFeed?.();
+      logger.debug('✅ CoT feed server settings applied');
     }
 
     const announceSettings = [

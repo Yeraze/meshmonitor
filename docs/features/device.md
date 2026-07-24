@@ -293,6 +293,18 @@ MeshMonitor will warn you before setting ROUTER mode. Only use this for powered,
 When "Use Preset" is disabled, you must manually configure bandwidth, spreading factor, and coding rate. Incorrect settings can prevent communication with other nodes or violate regulatory requirements. Only disable presets if you have specific technical requirements and understand LoRa modulation parameters.
 :::
 
+### TX Enabled
+
+**Description**: Enables or disables radio transmission on this source's node.
+
+**Effect**: When enabled (default), the node transmits normally — messages, traceroutes, requests, and its own NodeInfo/Position/Telemetry broadcasts all go out over LoRa. When disabled, the node becomes **receive-only**: it keeps decoding everything it hears, but every outbound LoRa packet is dropped at the radio.
+
+**Side Effects**: Unchecking this shows a confirmation dialog, because disabling TX has broad consequences — see [Receive-Only Mode](/features/receive-only-mode) for the full list of what still works and what doesn't.
+
+::: warning Receive-Only Mode
+Disabling TX makes the node **invisible to the mesh** — it stops announcing itself, so other nodes will eventually age it out. MeshMonitor's own transmit controls (send, traceroute, remote admin, etc.) are disabled with a tooltip while this is off, and a persistent banner reminds you TX is disabled. See [Receive-Only Mode](/features/receive-only-mode) for details.
+:::
+
 ### Manual LoRa Parameters
 
 These parameters are only available when "Use Preset" is disabled. They provide fine-grained control over radio modulation for advanced users.

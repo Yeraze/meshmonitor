@@ -90,6 +90,9 @@ export interface ChannelsTabProps {
   // Connection state
   connectionStatus: string;
 
+  /** TX disabled on this source (epic #4294 Phase 2) — disable send/request controls with a tooltip, keep reads working. */
+  txDisabled?: boolean;
+
   // Channel selection
   selectedChannel: number;
   setSelectedChannel: (channel: number) => void;
@@ -170,6 +173,7 @@ export default function ChannelsTab({
   currentNodeId,
   sourceId = null,
   connectionStatus,
+  txDisabled = false,
   selectedChannel,
   setSelectedChannel,
   selectedChannelRef,
@@ -1104,6 +1108,12 @@ export default function ChannelsTab({
                                           // tooltip, but a hover-only affordance is
                                           // unusable on touch and invisible at a glance.
                                           const reactorName = getNodeShortName(reaction.from);
+                                          // Reaction chips stay clickable even when txDisabled: they are
+                                          // also the read affordance for "who reacted" (hover tooltip +
+                                          // inline name), and disabling them would hide that read-only
+                                          // info. A re-tap while TX is off surfaces the 409 via the
+                                          // handleSendTapback failure-branch toast (App.tsx) instead of
+                                          // being pre-emptively blocked here (epic #4294 Phase 2, §3.2).
                                           return (
                                             <span
                                               key={reaction.id}
@@ -1158,7 +1168,8 @@ export default function ChannelsTab({
                                         <button
                                           className="emoji-picker-button"
                                           onClick={() => setEmojiPickerMessage(msg)}
-                                          title={t('channels.emoji_button_title')}
+                                          disabled={txDisabled}
+                                          title={txDisabled ? t('tx_disabled.control_tooltip') : t('channels.emoji_button_title')}
                                           aria-label={t('channels.emoji_button_title')}
                                         >
                                           <UiIcon name="reaction" size={15} />
@@ -1217,18 +1228,24 @@ export default function ChannelsTab({
                               placeholder={t('channels.send_placeholder', { name: getChannelName(selectedChannel) })}
                               className="message-input"
                               rows={1}
+                              disabled={txDisabled}
+                              title={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
                               onKeyDown={e => {
                                 if (
-                                  e.key === 'Enter' &&
-                                  !e.shiftKey &&
-                                  !e.ctrlKey &&
-                                  !e.metaKey &&
-                                  !e.altKey &&
-                                  !e.nativeEvent.isComposing
+                                  txDisabled ||
+                                  !(
+                                    e.key === 'Enter' &&
+                                    !e.shiftKey &&
+                                    !e.ctrlKey &&
+                                    !e.metaKey &&
+                                    !e.altKey &&
+                                    !e.nativeEvent.isComposing
+                                  )
                                 ) {
-                                  e.preventDefault();
-                                  void handleSendMessage(selectedChannel);
+                                  return;
                                 }
+                                e.preventDefault();
+                                void handleSendMessage(selectedChannel);
                               }}
                             />
                             <div className={byteCountDisplay.className}>
@@ -1242,24 +1259,27 @@ export default function ChannelsTab({
                           />
                           <button
                             onClick={() => { void onSendBell?.(selectedChannel, newMessage); setNewMessage(''); }}
+                            disabled={txDisabled}
                             className="send-btn channel-action-btn"
-                            title="Send alert bell"
+                            title={txDisabled ? t('tx_disabled.control_tooltip') : 'Send alert bell'}
                             aria-label="Send alert bell"
                           >
                             <UiIcon name="notifications" size={16} />
                           </button>
                           <button
                             onClick={() => onSendPosition?.(selectedChannel)}
+                            disabled={txDisabled}
                             className="send-btn channel-action-btn"
-                            title="Send position"
+                            title={txDisabled ? t('tx_disabled.control_tooltip') : 'Send position'}
                             aria-label="Send position"
                           >
                             <UiIcon name="location" size={16} />
                           </button>
                           <button
                             onClick={() => handleSendMessage(selectedChannel)}
-                            disabled={!newMessage.trim()}
+                            disabled={!newMessage.trim() || txDisabled}
                             className="send-btn"
+                            title={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
                           >
                             <UiIcon name="send" size={16} />
                           </button>
