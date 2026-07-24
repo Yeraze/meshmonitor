@@ -237,11 +237,47 @@ upgrade — an old row can't be distinguished from a genuinely unreadable one, s
 only produce wrong answers. Expect an empty violation history immediately after upgrading; it
 fills in as new MQTT traffic arrives.
 
-#### Current availability
+#### Viewing violations
 
-This is currently a backend-only capability: violations are detected and recorded, but there is
-no user interface for them yet. A violation badge on Packet Monitor rows and a searchable
-gateway violation report under Analysis & Reports are planned for a future release.
+A **`violation` badge** appears in the **Type** column of the MQTT Packet Monitor's packet list
+when a packet has at least one violating reception. Because the list groups a packet's
+per-gateway receptions into a single row, the badge means **at least one** gateway that relayed
+the packet violated the bit — it does not mean every gateway did, and it does not say which one.
+Open the packet to find out.
+
+The packet detail view is where that attribution happens. It adds an `ok_to_mqtt` row to the
+packet summary and an `ok_to_mqtt` column to the per-gateway receptions table, showing one of
+four states for each individual reception:
+
+| State | Meaning |
+|-------|---------|
+| **violation** | This gateway relayed the packet even though the sender did not opt in. The only state rendered as a highlighted badge. |
+| **allowed** | The sender set the bit; relaying the packet was permitted. |
+| **opted out** | The sender did not opt in, but no third-party relay of this reception could be established, so it isn't a violation. This can happen for several reasons — it is not simply "the sender published its own packet." |
+| **unknown** | The bit could not be read: the payload wasn't decryptable, or the packet was captured before violation detection existed. |
+
+Only `violation` renders as a badge; `allowed`, `opted out`, and `unknown` are shown as plain text
+in the detail view. This is deliberate — `unknown` is the majority state on any channel
+MeshMonitor has no key for, and badging it would drown out the real signal. For the same reason,
+the packet list shows the badge only for confirmed violations; the other three states are visible
+only in the detail view.
+
+#### Capture must be on to see the badge
+
+Violation *recording* (described above) is on by default, but the badge and per-gateway column
+read from the MQTT Packet Monitor's own capture log (see
+[Capture opt-in and retention](#capture-opt-in-and-retention)), which is **opt-in and off by
+default**. On a default install, violations are being recorded in the background while the badge
+never appears, because there is no captured packet list for it to attach to.
+
+When capture is off, the Packet Monitor says so explicitly — in both the capture-disabled banner
+and the empty state. **Absence of badges does not mean absence of violations.** Turn capture on
+to see per-packet, per-gateway violation badges.
+
+#### Still to come
+
+A searchable, gateway-level violation report under Analysis & Reports is planned for a future
+release, giving a way to review violation history without needing MQTT packet capture enabled.
 
 ## Use Cases
 
