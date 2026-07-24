@@ -2,9 +2,29 @@
 
 **Epic issue:** #4294 (original bug report, reopened as tracker; #4308 closed as duplicate)
 **Status:**
-- [x] Phase 1 — Backend: honor the flag + central guard (branch `feature/tx-disabled-backend`)
-- [ ] Phase 2 — Frontend: gating UX
+- [x] Phase 1 — Backend: honor the flag + central guard (PR #4309, merged)
+- [x] Phase 2 — Frontend: gating UX (branch `feature/tx-disabled-frontend`)
 - [ ] Phase 3 — Polish + docs
+
+**Phase 2 deviations & findings (2026-07-23):**
+- No shared ConfirmDialog exists — reused the app's `window.confirm(t(...))` danger idiom
+  (as DeviceConfigSection does). Tooltips use native `disabled` + `title` (app-wide idiom).
+- One gated surface the spec's inventory missed: `NodesTab.tsx` renders `TracerouteBody`
+  directly for the MAIN map popup (a separate path from App's single `<NodePopup>`). Gated
+  via an exported pure `isTracerouteRunDisabled()` helper (WP3 follow-up commit 0e451008).
+  Audit confirmed no other TracerouteBody/NodeActions consumers were missed (MeshCoreMap =
+  NodeActions only + never gated; DashboardNodePopup = read-only).
+- `useAdminCommandsState.ts` (referenced in the original scope) does not exist — the only
+  frontend force-true sites were two `?? true` in AdminCommandsTab, changed to `!== false`.
+- AdminCommandsTab residual: Device/Module config-section "Set" buttons live in separate
+  files and are protected by the `executeCommand` choke-point guard + the inline
+  remote-admin notice, not each visually disabled. Functionally correct (no remote write
+  succeeds); proven by a test clicking a stubbed section save and asserting no network call.
+  Per-button disabling of those sections is a possible Phase 3 nicety, not a gap.
+- Browser-validated live (TX-disabled Sandbox source): channels/DM gating + tooltips, LoRa
+  confirm (accept/cancel), banner-appears-without-reload after save (invalidation), map-popup
+  traceroute gating, clean console. Note: the live sandbox HARDWARE node reverts
+  `tx_enabled` to true on its own config re-read — a device quirk, not app behavior.
 
 **Phase 1 deviations & findings (2026-07-23):**
 - **"Preserve" ≠ strip.** `setLoRaConfig` sends the ENTIRE LoRaConfig struct (whole-message
