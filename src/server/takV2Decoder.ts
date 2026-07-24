@@ -31,8 +31,24 @@ import { logger } from '../utils/logger.js';
 /** Flags value meaning "body is raw TAKPacketV2 protobuf, no zstd". */
 export const TAK_V2_UNCOMPRESSED = 0xff;
 
-/** Decompression-bomb guard, matching the TAKPacket-SDK decoder limit. */
+/**
+ * Decompression-bomb guard, matching the TAKPacket-SDK decoder limit.
+ * Note this is checked AFTER decompression (zstd-napi's one-shot API has no
+ * max-output parameter), so the real pre-decompression bound is
+ * MAX_WIRE_PAYLOAD below: a ≤237-byte zstd frame can expand to at most a few
+ * MB (RLE blocks emit ≤128 KB per ~4-byte block), so the worst-case cost of
+ * a malicious frame is a transient single-digit-MB allocation that this
+ * guard then drops — not an unbounded one.
+ */
 const MAX_DECOMPRESSED_SIZE = 4096;
+
+/**
+ * ATAK V2 wire payloads are LoRa-MTU-bounded (≤237 bytes, WIRE_FORMAT.md §2).
+ * Reject anything larger before decompressing — it cannot be a legitimate
+ * packet, and this caps the decompression-bomb input surface. Slightly
+ * generous to tolerate any envelope slop.
+ */
+const MAX_WIRE_PAYLOAD = 256;
 
 /** 4-byte zstd frame magic, stripped on the wire and re-prepended here. */
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
@@ -61,6 +77,10 @@ interface ZstdDecompressor {
   setParameters(params: { windowLogMax?: number }): void;
 }
 
+// Module-level caches, shared across all packets on Node's single-threaded
+// event loop (decompress() is a synchronous one-shot call, so no interleaving
+// is possible). If decoding ever moves onto worker threads, give each thread
+// its own Decompressor instances — zstd contexts are not thread-safe.
 let zstdModuleFailed = false;
 const decompressors = new Map<number, ZstdDecompressor | null>();
 
@@ -125,6 +145,10 @@ function getDecompressor(dictId: number): ZstdDecompressor | null {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 protobufjs decode() output has no generated TS type, matching the port-72 convention
 export function decodeTakV2Payload(payload: Uint8Array, root: protobuf.Root): any | null {
   if (!payload || payload.length < 2) return null;
+  if (payload.length > MAX_WIRE_PAYLOAD) {
+    logger.debug(`⚠️ ATAK V2: wire payload ${payload.length} bytes exceeds the ${MAX_WIRE_PAYLOAD}-byte LoRa MTU bound; dropping`);
+    return null;
+  }
 
   const flags = payload[0];
   const body = payload.subarray(1);
@@ -137,7 +161,7 @@ export function decodeTakV2Payload(payload: Uint8Array, root: protobuf.Root): an
     const dec = getDecompressor(dictId);
     if (!dec) return null;
     try {
-      protobufBytes = dec.decompress(Buffer.concat([ZSTD_MAGIC, Buffer.from(body)]));
+      protobufBytes = dec.decompress(Buffer.concat([ZSTD_MAGIC, body]));
     } catch (error) {
       logger.debug(`⚠️ ATAK V2: zstd decompression failed (dict ${dictId}, ${body.length} bytes):`, (error as Error).message);
       return null;
@@ -173,6 +197,11 @@ export function decodeTakV2Payload(payload: Uint8Array, root: protobuf.Root): an
 export function takV2Variant(tak: any): string | undefined {
   if (!tak || typeof tak !== 'object') return undefined;
   if (typeof tak.payloadVariant === 'string') return tak.payloadVariant;
+  // Multi-word members appear twice (camelCase + snake_case) because the
+  // shape may be a protobufjs Message (camelCase) or a plain/toObject shape
+  // that kept wire naming; the snake_case hits are normalized to camelCase on
+  // return below. A future multi-word variant needs BOTH an entry here and a
+  // normalization case.
   const variants = [
     'chat', 'aircraft', 'rawDetail', 'raw_detail', 'shape', 'marker', 'rab',
     'route', 'casevac', 'emergency', 'task', 'taktalk', 'taktalkRoom', 'taktalk_room',

@@ -91,8 +91,10 @@ COPY --from=builder /app/dist ./dist
 # Copy protobuf definitions needed by the server
 COPY --from=builder /app/protobufs ./protobufs
 
-# Copy ATAK V2 zstd dictionaries needed by the server (#4317)
-COPY --from=builder /app/takpacket-sdk ./takpacket-sdk
+# Copy ATAK V2 zstd dictionaries needed by the server (#4317) — dictionaries
+# only; the rest of the submodule (testdata, docs, language bindings) is not
+# needed at runtime
+COPY --from=builder /app/takpacket-sdk/dictionaries ./takpacket-sdk/dictionaries
 
 # Fix ownership of dist directory for node user
 RUN chown -R node:node ./dist

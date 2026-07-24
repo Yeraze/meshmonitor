@@ -89,6 +89,11 @@ describe.skipIf(!hasFixtures || !hasProtobufs)('takV2Decoder', () => {
       expect(decodeTakV2Payload(Buffer.alloc(0), root)).toBeNull();
     });
 
+    it('returns null for a payload above the LoRa MTU bound without decompressing', () => {
+      const oversized = Buffer.concat([Buffer.from([0x00]), Buffer.alloc(300, 0x41)]);
+      expect(decodeTakV2Payload(oversized, root)).toBeNull();
+    });
+
     it('returns null for a corrupt zstd body', () => {
       const wire = Buffer.from([0x00, 0xde, 0xad, 0xbe, 0xef, 0x01, 0x02]);
       expect(decodeTakV2Payload(wire, root)).toBeNull();

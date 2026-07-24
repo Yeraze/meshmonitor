@@ -797,6 +797,16 @@ describe('MeshtasticProtobufService', () => {
       expect(formatTakV2Preview(result, someBytes)).toBe('[ATAK V2, unknown dict 16, 4 bytes (not decoded)]');
     });
 
+    it('labels an uncompressed (0xFF) V2 payload that fails protobuf parse as not decoded', () => {
+      if (!requireProtobufs()) return;
+
+      // 0xFF flags + bytes that are not a valid TAKPacketV2 protobuf.
+      const wire = Uint8Array.from([0xff, 0xff, 0xff, 0xff, 0xff]);
+      const result = service.processPayload(78, wire as any);
+      expect(result).toBeInstanceOf(Uint8Array);
+      expect(formatTakV2Preview(result, wire)).toBe('[ATAK V2 uncompressed, 5 bytes (not decoded)]');
+    });
+
     it('previews V2 GeoChat and rich-CoT variants (#4317)', () => {
       if (!requireProtobufs()) return;
 

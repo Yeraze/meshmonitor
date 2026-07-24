@@ -343,6 +343,16 @@ describe('MeshtasticManager - ATAK V2 persistence (processTakV2Packet)', () => {
     expect(mockUpsertContact).not.toHaveBeenCalled();
   });
 
+  it('swallows GeoChat message-insertion failures (RX-only, best-effort)', async () => {
+    mockInsertMessage.mockRejectedValueOnce(new Error('db down'));
+    const packet = makeMeshPacket(0x1111, 0xffffffff, 0, 57);
+    await expect(manager.processTakV2Packet(packet, {
+      callsign: 'BRAVO-2',
+      chat: { message: 'On station' },
+    })).resolves.toBeUndefined();
+    expect(mockEmitNewMessage).not.toHaveBeenCalled();
+  });
+
   it('swallows contact-persistence failures (RX-only, best-effort)', async () => {
     mockUpsertContact.mockRejectedValueOnce(new Error('db down'));
     const packet = makeMeshPacket(0x1111, 0xffffffff, 0, 56);

@@ -6441,6 +6441,9 @@ class MeshtasticManager implements ISourceManager {
       // Implicit PLI: no payload_variant set = position report → contact
       // upsert (never a Messages row). Errors are logged, never thrown
       // (RX-only, best-effort — same contract as the V1 PLI path).
+      // Note the dictionary ID and the variant are orthogonal: an
+      // aircraft-dict (dict 1) packet with no variant set is still a
+      // position report and lands here by design.
       if (variant === undefined) {
         try {
           const pliFromNum = Number(meshPacket.from);
@@ -6455,7 +6458,9 @@ class MeshtasticManager implements ISourceManager {
         return;
       }
 
-      // Only the GeoChat variant becomes a message this phase.
+      // Only the GeoChat variant becomes a message this phase. A DB failure
+      // in the insert/emit path below is covered by this method's outer
+      // catch (logged, never thrown) — same RX-only contract as V1.
       if (variant !== 'chat') return;
       const chat = tak.chat;
 
