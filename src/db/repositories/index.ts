@@ -91,5 +91,13 @@ export type {
   MqttGroupedPacket,
   MqttGateway,
 } from './mqttPacketLog.js';
+export { MqttOkToMqttViolationsRepository } from './mqttOkToMqttViolations.js';
+export type {
+  DbMqttOkToMqttViolation,
+  ViolationGatewaySort,
+  ViolationListSort,
+  ViolationRangeQuery,
+  MqttViolationGateway,
+} from './mqttOkToMqttViolations.js';
 export { AtakContactsRepository } from './atakContacts.js';
 export type { AtakContactRow } from './atakContacts.js';

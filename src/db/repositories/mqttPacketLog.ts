@@ -9,7 +9,7 @@
  * (`getGateways`). See docs/internal/dev-notes/MQTT_PACKET_MONITOR_PHASE1_SPEC.md
  * §2.6/§3 for the design this file implements verbatim.
  */
-import { eq, and, gte, lt, asc, desc, isNotNull, inArray, sql, type SQL } from 'drizzle-orm';
+import { eq, and, gte, lte, lt, asc, desc, isNull, isNotNull, inArray, sql, type SQL } from 'drizzle-orm';
 import { BaseRepository } from './base.js';
 
 export type MqttIngestOutcome =
@@ -46,6 +46,12 @@ export interface DbMqttPacket {
   ingestOutcome: MqttIngestOutcome;
   payloadSize?: number | null;
   payloadPreview?: string | null;
+  /** Raw `Data.bitfield` (protobuf field 9). NULL = absent/undecryptable = ok_to_mqtt unknown (#4114). */
+  bitfield?: number | null;
+  /** 0/1, NOT a boolean column — MAX(okToMqttViolation) in the grouped query needs an int (#4114). */
+  okToMqttViolation: number; // 0 | 1
+  /** Raw MQTT topic this reception arrived on. Diagnostic (#4114). */
+  topic?: string | null;
   createdAt: number;
 }
 
@@ -75,6 +81,8 @@ export interface MqttGroupedPacket {
   ingestOutcome: string;
   payloadSize: number | null;
   payloadPreview: string | null;
+  bitfield: number | null; // representative (MAX) — exact: the field is the originator's
+  okToMqttViolation: number; // MAX — 1 => at least one gateway violated
   gatewayCount: number; // COUNT(DISTINCT gatewayId)
   receptionCount: number; // COUNT(*)
   firstHeard: number; // MIN(timestamp)
@@ -154,6 +162,8 @@ export class MqttPacketLogRepository extends BaseRepository {
         ingestOutcome: sql<string>`MAX(${t.ingestOutcome})`,
         payloadSize: sql<number | null>`MAX(${t.payloadSize})`,
         payloadPreview: sql<string | null>`MAX(${t.payloadPreview})`,
+        bitfield: sql<number | null>`MAX(${t.bitfield})`,
+        okToMqttViolation: sql<number>`MAX(${t.okToMqttViolation})`,
         gatewayCount: sql<number>`COUNT(DISTINCT ${t.gatewayId})`,
         receptionCount: sql<number>`COUNT(*)`,
         firstHeard: sql<number>`MIN(${t.timestamp})`,
@@ -231,6 +241,97 @@ export class MqttPacketLogRepository extends BaseRepository {
       .groupBy(t.gatewayId)
       .orderBy(sql`MAX(${t.timestamp}) DESC`);
     return this.normalizeBigInts(rows) as unknown as MqttGateway[];
+  }
+
+  /**
+   * Suspected ok_to_mqtt violations (#4114): relayed receptions whose bit was
+   * unreadable (`bitfield IS NULL`). Bounded by this table's retention
+   * window — see MQTT_OK_TO_MQTT_PHASE1_SPEC.md §2(e). Excludes
+   * self-published rows (`gatewayNodeNum === fromNode`) and rows where
+   * either identity is unknown, since relaying cannot be proven for those.
+   */
+  async getSuspectedViolations(q: {
+    sourceIds: string[];
+    since: number;
+    until: number;
+    gatewayId?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<DbMqttPacket[]> {
+    if (q.sourceIds.length === 0) return [];
+    const t = this.tables.mqttPacketLog;
+    const conditions: SQL[] = [
+      inArray(t.sourceId, q.sourceIds),
+      isNull(t.bitfield),
+      isNotNull(t.gatewayNodeNum),
+      isNotNull(t.fromNode),
+      sql`${t.gatewayNodeNum} <> ${t.fromNode}`,
+      gte(t.timestamp, q.since),
+      lte(t.timestamp, q.until),
+    ];
+    if (q.gatewayId) {
+      conditions.push(eq(t.gatewayId, q.gatewayId));
+    }
+    const rows = await this.db
+      .select()
+      .from(t)
+      .where(and(...conditions))
+      .orderBy(desc(t.timestamp))
+      .limit(q.limit ?? 500)
+      .offset(q.offset ?? 0);
+    return this.normalizeBigInts(rows) as unknown as DbMqttPacket[];
+  }
+
+  /**
+   * Per-gateway aggregate over the same "suspected" predicate as
+   * {@link getSuspectedViolations} — powers the `includeUnknown` merge on
+   * the gateway summary route.
+   */
+  async getSuspectedViolationGateways(q: {
+    sourceIds: string[];
+    since: number;
+    until: number;
+  }): Promise<
+    Array<{
+      gatewayId: string | null;
+      gatewayNodeNum: number | null;
+      suspectedCount: number;
+      distinctOriginators: number;
+      firstSeen: number;
+      lastSeen: number;
+    }>
+  > {
+    if (q.sourceIds.length === 0) return [];
+    const t = this.tables.mqttPacketLog;
+    const conditions: SQL[] = [
+      inArray(t.sourceId, q.sourceIds),
+      isNull(t.bitfield),
+      isNotNull(t.gatewayNodeNum),
+      isNotNull(t.fromNode),
+      sql`${t.gatewayNodeNum} <> ${t.fromNode}`,
+      gte(t.timestamp, q.since),
+      lte(t.timestamp, q.until),
+    ];
+    const rows = await this.db
+      .select({
+        gatewayId: t.gatewayId,
+        gatewayNodeNum: sql<number | null>`MAX(${t.gatewayNodeNum})`,
+        suspectedCount: sql<number>`COUNT(*)`,
+        distinctOriginators: sql<number>`COUNT(DISTINCT ${t.fromNode})`,
+        firstSeen: sql<number>`MIN(${t.timestamp})`,
+        lastSeen: sql<number>`MAX(${t.timestamp})`,
+      })
+      .from(t)
+      .where(and(...conditions))
+      .groupBy(t.gatewayId);
+    return this.normalizeBigInts(rows) as unknown as Array<{
+      gatewayId: string | null;
+      gatewayNodeNum: number | null;
+      suspectedCount: number;
+      distinctOriginators: number;
+      firstSeen: number;
+      lastSeen: number;
+    }>;
   }
 
   /**
