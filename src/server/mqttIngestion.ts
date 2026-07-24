@@ -143,6 +143,14 @@ export interface MqttIngestionInput {
    * `databaseService.ignoredNodes` instead.
    */
   filter?: MqttPacketFilter;
+  /** Raw MQTT topic this envelope arrived on. Diagnostic; persisted on the packet log (#4114). */
+  topic?: string;
+  /**
+   * This source's OWN gateway node number, used by the self-echo guard so MeshMonitor can
+   * never flag itself as a violating gateway (#4114, §2(f.1)). `null`/omitted when the
+   * source has no local identity yet — the guard then simply does not apply.
+   */
+  localGatewayNodeNum?: number | null;
 }
 
 export interface MqttIngestionResult {
@@ -194,6 +202,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
             emoji?: number;
             replyId?: number;
             channelDatabaseId?: number;
+            bitfield?: number;                 // ← ADD (#4114): the ok_to_mqtt bit must survive decrypt
           };
         }).decoded = {
           portnum: r.portnum,
@@ -201,6 +210,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
           emoji: r.emoji,
           replyId: r.replyId,
           channelDatabaseId: r.channelDatabaseId,
+          bitfield: r.bitfield,                // ← ADD
         };
       }
     } catch (err) {
@@ -586,7 +596,13 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
  */
 export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<MqttIngestionResult> {
   const result = await ingestServiceEnvelopeInner(input);
-  void mqttPacketLogService.logEnvelope(input.sourceId, input.envelope, result);
+  void mqttPacketLogService.logEnvelope(
+    input.sourceId,
+    input.envelope,
+    result,
+    input.topic,
+    input.localGatewayNodeNum,
+  );
   if (
     (result.reason === 'ignored' || result.reason === 'geo-ignored' || result.reason === 'distance') &&
     typeof input.envelope.packet?.from === 'number'
