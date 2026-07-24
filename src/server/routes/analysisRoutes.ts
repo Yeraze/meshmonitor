@@ -608,15 +608,18 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
     // Fetch confirmed rows (capped at 2000 — see §3.17 step 7 / §6 risk 2)
     // and always sort/paginate the (possibly merged) list in the handler so
     // the includeUnknown=true and includeUnknown=false paths share one code
-    // path.
-    const confirmedRows = await databaseService.mqttOkToMqttViolations.getGatewaySummary({
-      ...rangeQuery,
-      limit: 2000,
-      offset: 0,
-    });
-    const confirmedTotal = await databaseService.mqttOkToMqttViolations.getGatewaySummaryCount(rangeQuery);
-    const sourceIdPairs = await databaseService.mqttOkToMqttViolations.getGatewaySourceIds(rangeQuery);
+    // path. The three queries below have no data dependency on each other,
+    // so run them concurrently rather than round-tripping in sequence.
+    const [confirmedRows, confirmedTotal, sourceIdPairs] = await Promise.all([
+      databaseService.mqttOkToMqttViolations.getGatewaySummary({ ...rangeQuery, limit: 2000, offset: 0 }),
+      databaseService.mqttOkToMqttViolations.getGatewaySummaryCount(rangeQuery),
+      databaseService.mqttOkToMqttViolations.getGatewaySourceIds(rangeQuery),
+    ]);
 
+    // Seeded from the confirmed side; the suspected side (below) unions its
+    // own (gatewayId, sourceId) pairs in — a gateway can be known to have
+    // touched a source via either signal, and a suspected-only gateway must
+    // still report which source(s) it was seen on (#4114 code review).
     const sourceIdsByGateway = new Map<string, Set<string>>();
     for (const pair of sourceIdPairs) {
       const set = sourceIdsByGateway.get(pair.gatewayId) ?? new Set<string>();
@@ -634,8 +637,13 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
     if (includeUnknown) {
       suspectedAvailable = await mqttPacketLogService.isEnabled();
       if (suspectedAvailable) {
-        suspectedWindowMs = (await mqttPacketLogService.getMaxAgeHours()) * 60 * 60 * 1000;
-        const suspectedRows = await databaseService.mqttPacketLog.getSuspectedViolationGateways(rangeQuery);
+        // No dependency between these three — run concurrently.
+        const [maxAgeHours, suspectedRows, suspectedSourceIdPairs] = await Promise.all([
+          mqttPacketLogService.getMaxAgeHours(),
+          databaseService.mqttPacketLog.getSuspectedViolationGateways(rangeQuery),
+          databaseService.mqttPacketLog.getSuspectedGatewaySourceIds(rangeQuery),
+        ]);
+        suspectedWindowMs = maxAgeHours * 60 * 60 * 1000;
         for (const row of suspectedRows) {
           if (!row.gatewayId) continue;
           suspectedByGateway.set(row.gatewayId, {
@@ -645,6 +653,11 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
             firstSeen: row.firstSeen,
             lastSeen: row.lastSeen,
           });
+        }
+        for (const pair of suspectedSourceIdPairs) {
+          const set = sourceIdsByGateway.get(pair.gatewayId) ?? new Set<string>();
+          set.add(pair.sourceId);
+          sourceIdsByGateway.set(pair.gatewayId, set);
         }
       }
     }
@@ -656,6 +669,11 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
       mergedByGateway.set(g.gatewayId, {
         ...g,
         suspectedCount: suspected?.suspectedCount ?? 0,
+        // A gateway confirmed AND suspected in the same window must report
+        // the true first/last-seen span across both signals, not just the
+        // confirmed side's (#4114 code review).
+        firstSeen: suspected ? Math.min(g.firstSeen, suspected.firstSeen) : g.firstSeen,
+        lastSeen: suspected ? Math.max(g.lastSeen, suspected.lastSeen) : g.lastSeen,
         sourceIds: Array.from(sourceIdsByGateway.get(g.gatewayId) ?? []),
       });
     }
@@ -771,12 +789,11 @@ router.get('/mqtt-violations/packets', async (req: Request, res: Response) => {
 
     const rangeQuery = { sourceIds, since, until, gatewayId: gateway };
 
-    const confirmedRows = await databaseService.mqttOkToMqttViolations.getViolations({
-      ...rangeQuery,
-      limit: 2000,
-      offset: 0,
-    });
-    const confirmedTotal = await databaseService.mqttOkToMqttViolations.getViolationCount(rangeQuery);
+    // No data dependency between these two — run concurrently.
+    const [confirmedRows, confirmedTotal] = await Promise.all([
+      databaseService.mqttOkToMqttViolations.getViolations({ ...rangeQuery, limit: 2000, offset: 0 }),
+      databaseService.mqttOkToMqttViolations.getViolationCount(rangeQuery),
+    ]);
 
     let suspectedAvailable = false;
     let suspectedWindowMs = 0;
@@ -785,12 +802,13 @@ router.get('/mqtt-violations/packets', async (req: Request, res: Response) => {
     if (includeUnknown) {
       suspectedAvailable = await mqttPacketLogService.isEnabled();
       if (suspectedAvailable) {
-        suspectedWindowMs = (await mqttPacketLogService.getMaxAgeHours()) * 60 * 60 * 1000;
-        suspectedRows = await databaseService.mqttPacketLog.getSuspectedViolations({
-          ...rangeQuery,
-          limit: 2000,
-          offset: 0,
-        });
+        // No dependency between these two — run concurrently.
+        const [maxAgeHours, rows] = await Promise.all([
+          mqttPacketLogService.getMaxAgeHours(),
+          databaseService.mqttPacketLog.getSuspectedViolations({ ...rangeQuery, limit: 2000, offset: 0 }),
+        ]);
+        suspectedWindowMs = maxAgeHours * 60 * 60 * 1000;
+        suspectedRows = rows;
       }
     }
 

@@ -335,6 +335,40 @@ export class MqttPacketLogRepository extends BaseRepository {
   }
 
   /**
+   * Distinct `(gatewayId, sourceId)` pairs over the same "suspected"
+   * predicate as {@link getSuspectedViolationGateways} — powers the
+   * per-gateway `sourceIds` array for suspected-only gateways on the
+   * `/mqtt-violations/gateways` route (#4114). `sourceId` can't be added to
+   * that method's aggregate projection ungrouped (MySQL `ONLY_FULL_GROUP_BY`),
+   * so this mirrors `MqttOkToMqttViolationsRepository.getGatewaySourceIds`,
+   * which exists for the identical reason on the confirmed-violations side.
+   */
+  async getSuspectedGatewaySourceIds(q: {
+    sourceIds: string[];
+    since: number;
+    until: number;
+  }): Promise<Array<{ gatewayId: string; sourceId: string }>> {
+    if (q.sourceIds.length === 0) return [];
+    const t = this.tables.mqttPacketLog;
+    const conditions: SQL[] = [
+      inArray(t.sourceId, q.sourceIds),
+      isNull(t.bitfield),
+      isNotNull(t.gatewayNodeNum),
+      isNotNull(t.fromNode),
+      sql`${t.gatewayNodeNum} <> ${t.fromNode}`,
+      gte(t.timestamp, q.since),
+      lte(t.timestamp, q.until),
+    ];
+    const rows = await this.db
+      .selectDistinct({ gatewayId: t.gatewayId, sourceId: t.sourceId })
+      .from(t)
+      .where(and(...conditions));
+    return (rows as Array<{ gatewayId: string | null; sourceId: string }>).filter(
+      (r): r is { gatewayId: string; sourceId: string } => r.gatewayId != null,
+    );
+  }
+
+  /**
    * Raw row count (receptions, not groups), optionally scoped to one source.
    * Used by retention (count-based trim).
    */

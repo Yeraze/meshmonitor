@@ -248,7 +248,7 @@ describe('analysisRoutes — GET /mqtt-violations/gateways', () => {
     expect(res.body.data.gateways.some((g: any) => g.gatewayId === '!44444444')).toBe(false);
   });
 
-  it('includeUnknown=true with mqtt_packet_log_enabled on ⇒ suspected gateway merged in', async () => {
+  it('includeUnknown=true with mqtt_packet_log_enabled on ⇒ suspected gateway merged in, with its sourceIds populated', async () => {
     await harness.db.settings.setSetting('mqtt_packet_log_enabled', '1');
     mqttPacketLogService.resetEnabledCache();
     await harness.db.mqttPacketLog.insertPacket(makeSuspectedPacket({ sourceId: harness.sourceA }));
@@ -262,6 +262,60 @@ describe('analysisRoutes — GET /mqtt-violations/gateways', () => {
     expect(suspectedGw).toBeDefined();
     expect(suspectedGw.violationCount).toBe(0);
     expect(suspectedGw.suspectedCount).toBe(1);
+    // Regression (#4114 code review): a gateway seen ONLY in the suspected set
+    // (mqtt_packet_log) must still report which source it was observed on —
+    // it must not silently fall back to an empty sourceIds array.
+    expect(suspectedGw.sourceIds).toEqual([harness.sourceA]);
+  });
+
+  it('a gateway present in BOTH the confirmed and suspected sets merges counts without one overwriting the other, and spans firstSeen/lastSeen', async () => {
+    await harness.db.settings.setSetting('mqtt_packet_log_enabled', '1');
+    mqttPacketLogService.resetEnabledCache();
+
+    // Confirmed violation on !11111111 at T0 (seeded in beforeEach: !11111111
+    // already carries 2 confirmed violations at T0 and T0+1000).
+    // Add a suspected (bitfield-unreadable) reception from the SAME gateway,
+    // outside that confirmed window on both ends, so the merged firstSeen/
+    // lastSeen must span both signals rather than reporting only the
+    // confirmed side's.
+    await harness.db.mqttPacketLog.insertPacket(
+      makeSuspectedPacket({
+        sourceId: harness.sourceA,
+        packetId: 9099,
+        fromNode: 0xffffffff,
+        fromNodeId: '!ffffffff',
+        gatewayId: '!11111111',
+        gatewayNodeNum: 0x11111111,
+        timestamp: T0 - 5000, // earlier than the confirmed rows' T0
+      }),
+    );
+    await harness.db.mqttPacketLog.insertPacket(
+      makeSuspectedPacket({
+        sourceId: harness.sourceA,
+        packetId: 9100,
+        fromNode: 0xffffffff,
+        fromNodeId: '!ffffffff',
+        gatewayId: '!11111111',
+        gatewayNodeNum: 0x11111111,
+        timestamp: T0 + 6000, // later than the confirmed rows' T0+1000
+      }),
+    );
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/gateways?since=0&includeUnknown=true');
+    expect(res.status).toBe(200);
+    const gw = res.body.data.gateways.find((g: any) => g.gatewayId === '!11111111');
+    expect(gw).toBeDefined();
+    // Confirmed count (2 rows seeded in beforeEach) must survive the merge...
+    expect(gw.violationCount).toBe(2);
+    // ...and the suspected count (2 rows seeded above) must be added, not
+    // overwrite the confirmed count.
+    expect(gw.suspectedCount).toBe(2);
+    // firstSeen/lastSeen must span BOTH the confirmed rows (T0..T0+1000) and
+    // the suspected rows (T0-5000..T0+6000) — not just the confirmed side.
+    expect(gw.firstSeen).toBe(T0 - 5000);
+    expect(gw.lastSeen).toBe(T0 + 6000);
+    expect(gw.sourceIds).toEqual([harness.sourceA]);
   });
 });
 
