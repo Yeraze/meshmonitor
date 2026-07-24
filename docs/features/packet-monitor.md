@@ -184,6 +184,65 @@ These are flagged with an outcome badge (`encrypted`, `ignored`, `geo-ignored`,
 the monitor stays useful for diagnosing why a packet's contents aren't visible
 elsewhere in MeshMonitor.
 
+### `ok_to_mqtt` violation detection
+
+Every Meshtastic packet carries an `ok_to_mqtt` bit (bit 0 of `Data.bitfield`) by which the
+originating node signals whether it consents to its traffic being relayed to MQTT. Firmware
+only enforces this bit when a gateway relays *someone else's* packet, and it skips the check
+entirely whenever the gateway believes its configured broker address is private — a check that
+is a plain IP-range test with no awareness of NAT or port forwarding. A gateway reaching its
+broker through a LAN-literal address that is *also* port-forwarded to the internet gets
+misclassified as private, and will silently relay opted-out traffic to what is effectively a
+public broker.
+
+MeshMonitor detects this condition: when a received MQTT packet's `ok_to_mqtt` bit is
+**explicitly clear** and the publishing gateway is not the packet's originator, that is a
+provable, confirmed violation, and MeshMonitor records it. A packet whose bit cannot be read at
+all — because the field was never set, or because the packet is encrypted and MeshMonitor has no
+matching channel key — is recorded only as *unknown/suspected*, never as a confirmed violation.
+
+::: info Not necessarily malicious
+The overwhelmingly likely cause of a detected violation is the firmware misconfiguration
+described above — a gateway whose broker address merely looks private but isn't — not a
+deliberate attempt to bypass a node's opt-out. Treat a violation as a configuration issue worth
+flagging to the gateway operator, not as evidence of hostile intent.
+:::
+
+#### Settings
+
+Violation detection is controlled by three settings, all with working defaults out of the box —
+no configuration is required to start collecting violation history:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `mqtt_oktomqtt_violation_log_enabled` | ON | Kill switch for recording violations. **Unlike** `mqtt_packet_log_enabled` (opt-in, default off), this setting is **on by default**: set it to `0` to disable violation logging; any other value — including leaving it unset — keeps it on. |
+| `mqtt_oktomqtt_violation_retention_days` | `90` | How long a confirmed violation record is retained. |
+| `mqtt_oktomqtt_violation_max_count` | `50000` | Maximum number of violation records retained per source before the oldest are trimmed. |
+
+#### Retention is independent of the Packet Monitor
+
+Confirmed violations are stored in their own record set with their own retention policy — 90
+days / 50,000 records per source — deliberately independent of the Packet Monitor's much shorter
+window (24 hours / 5,000 rows, see [Capture opt-in and retention](#capture-opt-in-and-retention)
+above) and of whether MQTT packet capture is enabled at all. Violation history is therefore
+retained even on installs that never turn on the MQTT Packet Monitor, and isn't lost when the
+packet log trims itself daily.
+
+#### Forward-only detection
+
+Violation detection only covers MQTT traffic received **after** upgrading to a MeshMonitor
+version with this feature. There is no backfill: the `ok_to_mqtt` bit was never previously
+stored, so there is nothing to retroactively re-evaluate for packets received before the
+upgrade — an old row can't be distinguished from a genuinely unreadable one, so guessing would
+only produce wrong answers. Expect an empty violation history immediately after upgrading; it
+fills in as new MQTT traffic arrives.
+
+#### Current availability
+
+This is currently a backend-only capability: violations are detected and recorded, but there is
+no user interface for them yet. A violation badge on Packet Monitor rows and a searchable
+gateway violation report under Analysis & Reports are planned for a future release.
+
 ## Use Cases
 
 The Packet Monitor is useful for:
