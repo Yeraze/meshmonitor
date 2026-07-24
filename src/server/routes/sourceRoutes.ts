@@ -251,6 +251,8 @@ interface SourceRadioSummary {
   regionName?: string;
   /** Meshtastic only — drives RX-sensitivity auto-seed. */
   modemPreset?: number;
+  /** Meshtastic only. Fail-open true (matches firmware default) when the field is unset. */
+  txEnabled?: boolean;
 }
 
 // Wrapped in try/catch so a manager that throws from getCurrentConfig()/
@@ -276,6 +278,7 @@ function computeSourceRadioSummary(sourceId: string): SourceRadioSummary | null 
         frequencyMhz,
         regionName: REGION_SHORT_NAME[region],
         modemPreset: Number(lora.modemPreset ?? 0),
+        txEnabled: lora.txEnabled ?? true,
       };
     }
     if (isMeshCoreManager(mgr)) {

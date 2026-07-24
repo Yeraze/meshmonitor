@@ -121,6 +121,7 @@
   "tx_disabled.control_tooltip": "Transmit is disabled on this node's radio. Re-enable TX in the LoRa configuration to use this.",
   "tx_disabled.send_blocked_toast": "Transmit is disabled on this source — nothing was sent.",
   "tx_disabled.remote_admin_notice": "Remote-node admin is unavailable while Transmit is disabled on this source. Local-node admin still works — you can re-enable TX in the LoRa Config below.",
+  "tx_disabled.automation_source_warning": "Transmit is disabled on this source — messages sent through it will be skipped.",
 
   "purgeModal.title": "Purge Data for {{nodeName}}",
   "purgeModal.warning": "These actions cannot be undone. All data for this node will be permanently deleted.",

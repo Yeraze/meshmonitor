@@ -72,7 +72,8 @@ export default defineConfig({
             { text: 'Settings', link: '/features/settings' },
             { text: 'Global Settings', link: '/features/global-settings' },
             { text: 'Multi-Source', link: '/features/multi-source' },
-            { text: 'Device Configuration', link: '/features/device' }
+            { text: 'Device Configuration', link: '/features/device' },
+            { text: 'Receive-Only Mode', link: '/features/receive-only-mode' }
           ]
         },
         {

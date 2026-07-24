@@ -189,8 +189,8 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
     apiService.get<Variable[]>('/api/automations/variables')
       .then((vs) => setVariables(vs.map((v) => ({ name: v.name, type: v.type }))))
       .catch(() => setVariables([]));
-    apiService.get<Array<{ id: string; name: string; type?: string; enabled?: boolean }>>('/api/sources')
-      .then((ss) => setSources(ss.map((s) => ({ id: s.id, name: s.name, type: s.type, enabled: s.enabled }))))
+    apiService.get<Array<{ id: string; name: string; type?: string; enabled?: boolean; radio?: { txEnabled?: boolean } }>>('/api/sources')
+      .then((ss) => setSources(ss.map((s) => ({ id: s.id, name: s.name, type: s.type, enabled: s.enabled, txEnabled: s.radio?.txEnabled }))))
       .catch(() => setSources([]));
     apiService.get<UnifiedChannelOption[]>('/api/automations/channels')
       .then((cs) => setChannels(cs))
