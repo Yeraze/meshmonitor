@@ -456,7 +456,18 @@
   white-space: normal;
 }
 
-/* Per-gateway receptions table inside the detail modal. */
+/* Per-gateway receptions table inside the detail modal. The table's cells are
+   `white-space: nowrap` (below), so at 7 columns it can exceed the modal's
+   width — scroll horizontally inside this wrapper rather than letting
+   `.mqpm-modal-content`'s `overflow: hidden` clip the last column (#4114
+   Phase 2 browser-validation fix). Scoped to the table only, so the
+   packet-info `.mqpm-dl-section` above it is unaffected. */
+.mqpm-recv-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .mqpm-recv-table {
   width: 100%;
   border-collapse: collapse;

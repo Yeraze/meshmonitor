@@ -170,32 +170,34 @@ const MqttPacketDetailModal: React.FC<Props> = ({ packet, prefix, csrfFetch, nod
             ) : receptions.length === 0 ? (
               <div className="mqpm-empty">{t('mqtt.packets.empty', 'No packets captured yet. Waiting for MQTT traffic…')}</div>
             ) : (
-              <table className="mqpm-recv-table">
-                <thead>
-                  <tr>
-                    <th>{t('mqtt.packets.gateway', 'Gateway')}</th>
-                    <th>{t('mqtt.packets.time', 'Time')}</th>
-                    <th>{t('mqtt.packets.rxTime', 'Rx time')}</th>
-                    <th>{t('mqtt.packets.rssi', 'RSSI')}</th>
-                    <th>{t('mqtt.packets.snr', 'SNR')}</th>
-                    <th>{t('mqtt.packets.hops', 'Hops')}</th>
-                    <th>{t('mqtt.packets.okToMqtt', 'ok_to_mqtt')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {receptions.map((r, idx) => (
-                    <tr key={`${r.gatewayId ?? 'unknown'}-${r.timestamp}-${idx}`}>
-                      <td>{nodeName(r.gatewayNodeNum) ?? r.gatewayId ?? '—'}</td>
-                      <td className="mqpm-mono">{formatHeard(r.timestamp)}</td>
-                      <td className="mqpm-mono">{r.rxTime != null && r.rxTime > 0 ? formatHeard(r.rxTime) : '—'}</td>
-                      <td className="mqpm-mono">{r.rxRssi ?? '—'}</td>
-                      <td className="mqpm-mono">{r.rxSnr != null ? r.rxSnr.toFixed(2) : '—'}</td>
-                      <td className="mqpm-mono">{r.hopStart != null && r.hopLimit != null ? r.hopStart - r.hopLimit : '—'}</td>
-                      <td><MqttOkToMqttMarker state={okToMqttState(r)} scope="gateway" /></td>
+              <div className="mqpm-recv-table-wrap">
+                <table className="mqpm-recv-table">
+                  <thead>
+                    <tr>
+                      <th>{t('mqtt.packets.gateway', 'Gateway')}</th>
+                      <th>{t('mqtt.packets.time', 'Time')}</th>
+                      <th>{t('mqtt.packets.rxTime', 'Rx time')}</th>
+                      <th>{t('mqtt.packets.rssi', 'RSSI')}</th>
+                      <th>{t('mqtt.packets.snr', 'SNR')}</th>
+                      <th>{t('mqtt.packets.hops', 'Hops')}</th>
+                      <th>{t('mqtt.packets.okToMqtt', 'ok_to_mqtt')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {receptions.map((r, idx) => (
+                      <tr key={`${r.gatewayId ?? 'unknown'}-${r.timestamp}-${idx}`}>
+                        <td>{nodeName(r.gatewayNodeNum) ?? r.gatewayId ?? '—'}</td>
+                        <td className="mqpm-mono">{formatHeard(r.timestamp)}</td>
+                        <td className="mqpm-mono">{r.rxTime != null && r.rxTime > 0 ? formatHeard(r.rxTime) : '—'}</td>
+                        <td className="mqpm-mono">{r.rxRssi ?? '—'}</td>
+                        <td className="mqpm-mono">{r.rxSnr != null ? r.rxSnr.toFixed(2) : '—'}</td>
+                        <td className="mqpm-mono">{r.hopStart != null && r.hopLimit != null ? r.hopStart - r.hopLimit : '—'}</td>
+                        <td><MqttOkToMqttMarker state={okToMqttState(r)} scope="gateway" /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </section>
         </div>
