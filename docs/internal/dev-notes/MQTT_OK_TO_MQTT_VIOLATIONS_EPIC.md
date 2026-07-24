@@ -180,7 +180,7 @@ Deliverables:
 Exit criteria: full Vitest suite green (`success: true` via `--reporter=json`), `lint:ci`
 green (in-repo failures only), typecheck green, PR merged. No user-visible change yet.
 
-### Phase 2 — Packet Monitor UI: violation badge + detail modal marker  [ ]
+### Phase 2 — Packet Monitor UI: violation badge + detail modal marker  [x]
 
 Deliverables:
 - Violation badge on grouped rows in `MqttPacketMonitorView.tsx`, reusing the existing
@@ -214,7 +214,78 @@ Deliverables:
 Exit criteria: report validated in the browser against real data, suite/lint/typecheck/CI
 green, PR merged, issue #4114 closed.
 
+**Inherited from Phase 2 — do these in Phase 3:**
+1. **Extend the capture-off note to point at the report.** Phase 2 deliberately did not name the
+   Reports view, because it did not exist yet. Once the report ships, extend
+   `mqtt.packets.violationsStillRecorded` to end with "…they are listed in Reports →
+   ok_to_mqtt violations." One locale edit plus the matching inline `t()` defaults.
+2. **`suspectedAvailable` does not mean what its name suggests.** Verified live: it is `false`
+   whenever `includeUnknown` is not requested, because the packet-log path is deliberately not
+   executed at all — it does **not** mean "the packet log is disabled". Only when
+   `includeUnknown=true` does it report the real availability. The report must not render
+   "suspected data unavailable" off the default-params response.
+3. **Reuse `okToMqttState()` / `MqttOkToMqttMarker`** (`src/components/MQTT/`) rather than
+   re-deriving the four states, and in particular never recompute `relayed` client-side.
+   Note the fourth state is named `optedOut`, not `self`.
+4. **The report reads `body.data`** — `ApiService.request()` does not unwrap the envelope.
+
 ## Deviations / notes
+
+### Phase 2 (2026-07-24)
+
+Spec: `MQTT_OK_TO_MQTT_PHASE2_SPEC.md`. Three work packages (WP1 primitives → WP2 badge ∥ WP3
+modal), plus one browser-found fix. Frontend only — **zero backend files touched**, which was
+the phase boundary and it held.
+
+**Corrections to earlier assumptions (both found during Phase 2, both matter):**
+
+1. **The state is FOUR-valued, not tri-state.** Phase 1's spec and this epic both described it as
+   tri-state. But `okToMqttViolation === 0` with the bit *explicitly clear* is reachable and
+   distinct from both "allowed" and "unknown" — it means the sender opted out but no third-party
+   relay could be attributed. Per Phase 1 §2(f) that covers self-publish (rows 2/4/15), malformed
+   or absent `gatewayId` (rows 8/9), and missing `fromNode` (row 10). Rendering it as "allowed"
+   would have been factually wrong on screen. Named **`optedOut`** (not `self`, which would imply
+   only the self-publish sub-case).
+2. **`MqttPacketMonitorView.tsx` was never a baselined `fetch` violation.** The epic previously
+   claimed it was a "baselined legacy `useCsrfFetch` site". `eslint-baseline.json` has **no entry**
+   for either edited component, and the lint selector targets `fetch(...)`, not `csrfFetch(...)`.
+   The practical consequence is the opposite of what was assumed: these files have **zero baseline
+   headroom**, so any new `no-explicit-any` / `exhaustive-deps` violation fails `lint:ci` outright.
+
+**Design decisions worth remembering:**
+
+- **Only `violation` is badged.** `unknown` is the majority state wherever MeshMonitor lacks a
+  channel PSK (measured: 258 of 500 sampled live packets), so badging it would drown the real
+  signal. The grouped list renders violations only; the full four-state readout is modal-only.
+- **The grouped-row badge means "at least one gateway violated"** (`MAX()` over receptions), not
+  "all did" and not "this one did" — the tooltip says so and points at the modal.
+- Styling extends the co-located `MqttPacketMonitor.css` (`mqpm-*`), not a CSS module: it is not
+  one of the frozen `src/styles/` sheets, a module cannot extend `.mqpm-badge` without duplicating
+  it, and the tree still contains exactly one `*.module.css`.
+- No `SettingsTab` field and no new `VALID_SETTINGS_KEYS` entry, so the
+  `server.settings-persistence.test.ts` allowlist trap (Phase 1 note 4) was avoided by
+  construction.
+
+**Browser validation (live dev container, real Florida MQTT source):**
+
+- **The feature detects real violations in production traffic** — 13 of 500 sampled packets, and
+  7 offending gateways in the durable table, the worst with 22 confirmed violations seen across
+  all three MQTT sources. No staged data was needed; the spec's test-only SQLite staging path
+  (§5.4) went unused.
+- Per-gateway attribution verified on a genuinely **mixed** packet (`4014764407`): 4 gateways
+  badged `violation`, 1 rendering `unknown`, each with the correct distinct tooltip.
+- Phase 1's WP5 `sourceIds` fix confirmed live (gateways aggregating across 3 sources).
+- **Defect found only by looking at it:** the new 7th column overflowed the modal by ~78 px with
+  `overflow-x: visible`, rendering as "ok_to_m…" / "⚠ vio…". jsdom has no layout, so every
+  component test passed. Fixed by wrapping the receptions table in
+  `.mqpm-recv-table-wrap { overflow-x: auto }` (commit `38b9b8af`), re-verified in-browser at
+  desktop and 390×844 mobile, with the modal/page still never scrolling horizontally.
+  **Lesson: a new table column is a layout change, and layout changes need a browser.**
+
+**Validation gap, deliberate:** the capture-off availability note was **not** browser-verified.
+`mqtt_packet_log_enabled` is global, so toggling it off would have interrupted capture on a live
+system carrying real traffic. It is covered by two component tests and the string was confirmed
+present in the served bundle.
 
 ### Phase 1 (2026-07-24)
 
