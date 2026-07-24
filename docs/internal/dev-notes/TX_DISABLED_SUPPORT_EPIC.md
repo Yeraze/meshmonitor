@@ -3,8 +3,22 @@
 **Epic issue:** #4294 (original bug report, reopened as tracker; #4308 closed as duplicate)
 **Status:**
 - [x] Phase 1 — Backend: honor the flag + central guard (PR #4309, merged)
-- [x] Phase 2 — Frontend: gating UX (branch `feature/tx-disabled-frontend`)
-- [ ] Phase 3 — Polish + docs
+- [x] Phase 2 — Frontend: gating UX (PR #4313, merged)
+- [x] Phase 3 — Polish + docs (branch `feature/tx-disabled-docs`)
+
+**Phase 3 deviations & findings (2026-07-24):**
+- Automations badge: `useTxStatus` is single-source and can't be looped, and the builder has
+  no design-time single sourceId (automations fan out at runtime). Instead of inventing
+  per-source machinery, exposed a fail-open `txEnabled` on the existing public `GET /api/sources`
+  radio summary (`computeSourceRadioSummary`, reusing the same choke point as the frequency
+  feature) and rendered an advisory `UiIcon` badge per selected source row in `sendSourceMulti`.
+  Advisory only — the checkbox stays enabled; runtime skip-and-record (Phase 1) is the real guard.
+- Receive-only-mode user doc added at `docs/features/receive-only-mode.md` + VitePress sidebar +
+  cross-link from device.md; `409 TX_DISABLED` + the config/lora-honors-txEnabled note documented
+  in REST_API.md and API_REFERENCE.md. `docs/api/API.md` left alone (marked outdated).
+- **Follow-up filed separately:** the Phase 1 remote-import-preserve TODO (an
+  `requestRemoteConfig(LORA_CONFIG)` round-trip for fully-accurate remote-node txEnabled preserve)
+  is out of docs/polish scope; current fail-open behavior is safe. Filed as its own issue.
 
 **Phase 2 deviations & findings (2026-07-23):**
 - No shared ConfirmDialog exists — reused the app's `window.confirm(t(...))` danger idiom
