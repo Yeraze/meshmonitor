@@ -135,6 +135,16 @@ describe('MqttOkToMqttViolationsRepository', () => {
       });
       expect(byDistinctOriginatorsDesc.map(r => r.gatewayId)).toEqual(['!gw000001', '!gw000002']);
 
+      const byDistinctOriginatorsAsc = await repo.getGatewaySummary({
+        sourceIds: [SOURCE], since: 0, until: Date.now() + 1_000_000, sort: 'distinctOriginators', dir: 'asc',
+      });
+      expect(byDistinctOriginatorsAsc.map(r => r.gatewayId)).toEqual(['!gw000002', '!gw000001']);
+
+      const byViolationCountDesc = await repo.getGatewaySummary({
+        sourceIds: [SOURCE], since: 0, until: Date.now() + 1_000_000, sort: 'violationCount', dir: 'desc',
+      });
+      expect(byViolationCountDesc.map(r => r.gatewayId)).toEqual(['!gw000001', '!gw000002']);
+
       const byGatewayIdAsc = await repo.getGatewaySummary({
         sourceIds: [SOURCE], since: 0, until: Date.now() + 1_000_000, sort: 'gatewayId', dir: 'asc',
       });
@@ -197,6 +207,23 @@ describe('MqttOkToMqttViolationsRepository', () => {
     it('orders newest-first by default', async () => {
       const rows = await repo.getViolations({ sourceIds: [SOURCE], since: 0, until: Date.now() + 1_000_000 });
       expect(rows.map(r => r.packetId)).toEqual([2, 1]);
+    });
+
+    it('sorts by fromNode and gatewayId, both directions', async () => {
+      const byFromNodeAsc = await repo.getViolations({
+        sourceIds: [SOURCE], since: 0, until: Date.now() + 1_000_000, sort: 'fromNode', dir: 'asc',
+      });
+      expect(byFromNodeAsc.map(r => r.fromNode)).toEqual([10, 20]);
+
+      const byFromNodeDesc = await repo.getViolations({
+        sourceIds: [SOURCE], since: 0, until: Date.now() + 1_000_000, sort: 'fromNode', dir: 'desc',
+      });
+      expect(byFromNodeDesc.map(r => r.fromNode)).toEqual([20, 10]);
+
+      const byGatewayIdAsc = await repo.getViolations({
+        sourceIds: [SOURCE], since: 0, until: Date.now() + 1_000_000, sort: 'gatewayId', dir: 'asc',
+      });
+      expect(byGatewayIdAsc.map(r => r.gatewayId)).toEqual(['!gw000001', '!gw000002']);
     });
   });
 
