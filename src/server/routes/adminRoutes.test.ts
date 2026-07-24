@@ -328,6 +328,40 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
       });
 
       expect(res.status).toBe(200);
+      expect(requestRemoteConfig).toHaveBeenCalledWith(999, 5, false);
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: true }), expect.anything());
+      spy.mockRestore();
+    });
+
+    it('interprets a cached snapshot with omitted txEnabled as enabled (matches the live-path semantics)', async () => {
+      const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+      const getSessionPasskey = vi.fn().mockReturnValue(new Uint8Array([1, 2, 3, 4]));
+      // Live fetch unavailable; cached snapshot has a lora object but no
+      // txEnabled field — same as a proto3-omitted/default read. It must be
+      // treated as enabled (!== false), not deferred to the decoded URL value.
+      const requestRemoteConfig = vi.fn().mockResolvedValue(null);
+      const getRemoteNodeConfig = vi.fn().mockReturnValue({
+        deviceConfig: { lora: { hopLimit: 3 } },
+        moduleConfig: {},
+        lastUpdated: 0,
+      });
+      await sourceManagerRegistry.addManager(makeFakeManager({ sendAdminCommand, getSessionPasskey, requestRemoteConfig, getRemoteNodeConfig }));
+
+      const spy = vi.spyOn(protobufService, 'createSetLoRaConfigMessage');
+      const channelUrlService = (await import('../services/channelUrlService.js')).default;
+      (channelUrlService.decodeUrl as any).mockReturnValue({
+        channels: undefined,
+        loraConfig: { hopLimit: 3, txEnabled: false }, // would win if the cache were ignored
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/import-config').send({
+        sourceId: harness.sourceA,
+        nodeNum: 999,
+        url: 'meshtastic://mock',
+      });
+
+      expect(res.status).toBe(200);
       expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: true }), expect.anything());
       spy.mockRestore();
     });

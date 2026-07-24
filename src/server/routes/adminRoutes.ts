@@ -1304,8 +1304,13 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
           }
           if (remoteTxEnabled === undefined) {
             const cachedRemoteLora = aicManager.getRemoteNodeConfig(destinationNodeNum)?.deviceConfig?.lora;
-            remoteTxEnabled = cachedRemoteLora?.txEnabled !== undefined
-              ? cachedRemoteLora.txEnabled
+            // Cached snapshot comes from the same requestRemoteConfig source as
+            // the live fetch above, so interpret it with the same
+            // isTxEnabled()-style semantics (disabled only when explicitly
+            // false). Only when there is no cached LoRa snapshot at all do we
+            // consult the decoded URL's own txEnabled, then fail-open true.
+            remoteTxEnabled = cachedRemoteLora
+              ? cachedRemoteLora.txEnabled !== false
               : (decoded.loraConfig.txEnabled ?? true);
           }
           const loraConfigToImport = {
