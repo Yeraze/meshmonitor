@@ -8,7 +8,7 @@
  * coords → null lat/lon, no-pli → null.
  */
 import { describe, it, expect } from 'vitest';
-import { buildContactRow, ATAK_CONTACT_STALE_MS, ATAK_CONTACT_RETENTION_MS } from './atakContactService.js';
+import { buildContactRow, buildContactRowV2, ATAK_CONTACT_STALE_MS, ATAK_CONTACT_RETENTION_MS } from './atakContactService.js';
 
 const makeMeshPacket = (from: number) => ({ from, to: 0xffffffff, id: 1, channel: 0 });
 
@@ -171,5 +171,77 @@ describe('atakContactService.buildContactRow', () => {
   it('exposes the fixed stale/retention window constants', () => {
     expect(ATAK_CONTACT_STALE_MS).toBe(15 * 60 * 1000);
     expect(ATAK_CONTACT_RETENTION_MS).toBe(24 * 60 * 60 * 1000);
+  });
+});
+
+describe('atakContactService.buildContactRowV2', () => {
+  const fullV2 = () => ({
+    callsign: 'BRAVO-2',
+    deviceCallsign: 'ANDROID-abc',
+    uid: 'ANDROID-uid-123',
+    team: 9,
+    role: 2,
+    battery: 64,
+    latitudeI: 371234500,
+    longitudeI: -1225432100,
+    altitude: 120,
+    speed: 450,   // cm/s → 5 m/s (rounded)
+    course: 9050, // degrees×100 → 91° (rounded)
+  });
+
+  it('maps a full implicit-PLI TAKPacketV2 to a contact row with unit normalization', () => {
+    const row = buildContactRowV2(makeMeshPacket(0x2222), fullV2(), 'source-a');
+
+    expect(row).not.toBeNull();
+    expect(row).toMatchObject({
+      uid: 'ANDROID-uid-123', // V2's explicit uid wins over callsigns
+      sourceId: 'source-a',
+      nodeNum: 0x2222,
+      callsign: 'BRAVO-2',
+      deviceCallsign: 'ANDROID-abc',
+      team: 9,
+      role: 2,
+      battery: 64,
+      altitude: 120,
+      speed: 5,  // 450 cm/s
+      course: 91, // 9050 deg×100 (rounded)
+    });
+    expect(row!.latitude).toBeCloseTo(37.12345, 5);
+    expect(row!.longitude).toBeCloseTo(-122.54321, 5);
+  });
+
+  it('falls back uid → deviceCallsign → callsign → nodeNum', () => {
+    const base = { latitudeI: 371234500, longitudeI: -1225432100 };
+    expect(buildContactRowV2(makeMeshPacket(0xAA), { ...base, deviceCallsign: 'EUD-9', callsign: 'C' }, 's')!.uid).toBe('EUD-9');
+    expect(buildContactRowV2(makeMeshPacket(0xAA), { ...base, callsign: 'C' }, 's')!.uid).toBe('C');
+    expect(buildContactRowV2(makeMeshPacket(0xAA), base, 's')!.uid).toBe('!000000aa');
+  });
+
+  it('handles snake_case protobuf field fallbacks', () => {
+    const row = buildContactRowV2(makeMeshPacket(0x2222), {
+      device_callsign: 'EUD-2',
+      latitude_i: 371234500,
+      longitude_i: -1225432100,
+    }, 'source-a');
+    expect(row?.uid).toBe('EUD-2');
+    expect(row?.latitude).toBeCloseTo(37.12345, 5);
+  });
+
+  it('drops the 9999999 "no altitude" sentinel', () => {
+    const row = buildContactRowV2(makeMeshPacket(1), { ...fullV2(), altitude: 9999999 }, 's');
+    expect(row?.altitude).toBeNull();
+  });
+
+  it('nulls bogus (Null Island) coordinates but still upserts identity fields', () => {
+    const row = buildContactRowV2(makeMeshPacket(1), { ...fullV2(), latitudeI: 0, longitudeI: 0 }, 's');
+    expect(row).not.toBeNull();
+    expect(row?.latitude).toBeNull();
+    expect(row?.longitude).toBeNull();
+    expect(row?.callsign).toBe('BRAVO-2');
+  });
+
+  it('returns null for unusable shapes', () => {
+    expect(buildContactRowV2(makeMeshPacket(1), null, 's')).toBeNull();
+    expect(buildContactRowV2(makeMeshPacket(1), new Uint8Array([1, 2]), 's')).toBeNull();
   });
 });

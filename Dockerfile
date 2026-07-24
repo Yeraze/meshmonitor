@@ -32,6 +32,15 @@ RUN if [ ! -f "protobufs/meshtastic/mesh.proto" ]; then \
       exit 1; \
     fi
 
+# ATAK V2 zstd dictionaries (#4317) — runtime data files from the
+# takpacket-sdk git submodule; only the dictionaries directory is needed
+COPY takpacket-sdk/dictionaries ./takpacket-sdk/dictionaries
+RUN if [ ! -f "takpacket-sdk/dictionaries/dict_non_aircraft.zstd" ]; then \
+      echo "ERROR: TAKPacket-SDK dictionaries not found! Git submodule may not be initialized."; \
+      echo "Run: git submodule update --init --recursive"; \
+      exit 1; \
+    fi
+
 # Copy config files and source needed for builds
 COPY tsconfig.json tsconfig.server.json tsconfig.node.json vite.config.ts index.html embed.html ./
 COPY src ./src
@@ -81,6 +90,11 @@ COPY --from=builder /app/dist ./dist
 
 # Copy protobuf definitions needed by the server
 COPY --from=builder /app/protobufs ./protobufs
+
+# Copy ATAK V2 zstd dictionaries needed by the server (#4317) — dictionaries
+# only; the rest of the submodule (testdata, docs, language bindings) is not
+# needed at runtime
+COPY --from=builder /app/takpacket-sdk/dictionaries ./takpacket-sdk/dictionaries
 
 # Fix ownership of dist directory for node user
 RUN chown -R node:node ./dist

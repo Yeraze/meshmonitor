@@ -30,7 +30,7 @@ receipts, and arbitrary detail payloads. MeshMonitor decodes this in the
 | Packet Type | What you see |
 |-------------|--------------|
 | `ATAK_PLUGIN` (72) | `[ATAK PLI …]` for position reports, `[ATAK GeoChat …]` for chat (also delivered to Messages), `[ATAK detail …]`, or `[ATAK GeoChat receipt]` — full decoded `TAKPacket` in the detail view |
-| `ATAK_PLUGIN_V2` (78) | Firmware 2.8+ rich CoT, zstd-compressed — shown as `[ATAK V2 (not decoded), N bytes]`. Decoding is a planned follow-up. |
+| `ATAK_PLUGIN_V2` (78) | Firmware 2.8+ rich CoT (`TAKPacketV2`, zstd dictionary compression) — fully decoded: `[ATAK V2 PLI …]`, `[ATAK V2 GeoChat …]`, `[ATAK V2 marker/route/CASEVAC/EMERGENCY/…]` with the full decoded packet in the detail view. See "ATAK V2 decoding" below. |
 | `ATAK_FORWARDER` (257) | Third-party [ATAK Forwarder](https://github.com/paulmandal/atak-forwarder) packets — identified by name only, not decoded (it's not the official plugin format). |
 
 ATAK **GeoChat** messages are also persisted into MeshMonitor's Messages —
@@ -59,6 +59,47 @@ Nodes map, the Dashboard map, and the Map Analysis canvas.
 
 See [Interactive Maps](/features/maps#atak-contacts) for how ATAK contacts
 fit alongside the other map layers.
+
+## ATAK V2 decoding (portnum 78)
+
+The V2 protocol (`TAKPacketV2`, used by the official plugin for rich CoT —
+shapes, routes, markers, CASEVAC, emergency alerts, TAKTALK, aircraft
+tracks) compresses each packet with **zstd against a shared pre-trained
+dictionary**. The wire payload is `[1 flags byte][zstd body]`; flags bits
+0–5 select the dictionary (`0` = non-aircraft, `1` = aircraft), and `0xFF`
+means the body is an uncompressed `TAKPacketV2` protobuf. Firmware forwards
+these payloads untouched, so MeshMonitor decompresses them itself.
+
+What MeshMonitor does with a decoded V2 packet:
+
+- **Implicit PLI** (no payload variant = position report): upserts the same
+  per-source ATAK contact as a V1 PLI (Phase 2 above), including the map
+  marker and the CoT feed. V2 wire units are normalized on ingest (speed
+  cm/s → m/s, course degrees×100 → degrees, altitude `9999999` = "no
+  altitude" dropped).
+- **GeoChat**: persisted to Messages exactly like V1 GeoChat (channel/DM
+  routing from the mesh envelope, `[ATAK <callsign>]` prefix, push
+  notifications). V2 chat text is never unishox2-compressed, so there is no
+  labeled-but-undecoded case.
+- **Rich CoT variants** (shapes, markers, routes, range & bearing, CASEVAC,
+  emergency, task, TAKTALK, aircraft, raw detail): decoded and visible in
+  the Packet Monitor (variant-labeled preview + full JSON in the detail
+  view). Dedicated map/feed surfaces for these are a follow-up.
+
+**Dictionaries.** The two zstd dictionaries ship in the
+[`meshtastic/TAKPacket-SDK`](https://github.com/meshtastic/TAKPacket-SDK)
+repository (GPL-3.0) and are vendored as the `takpacket-sdk/` git submodule
+— consumed as runtime data files, the same posture as the GPL-3.0
+`protobufs/` submodule. No SDK code is compiled into MeshMonitor; the
+decoder is implemented against the published wire spec
+(`takpacket-sdk/WIRE_FORMAT.md`). If the submodule is missing at runtime (or
+the `zstd-napi` native module can't load), V2 packets gracefully degrade to
+the pre-4.14 labeled-but-undecoded behavior — uncompressed (`0xFF`) packets
+still decode.
+
+Baremetal deployments must initialize the submodule
+(`git submodule update --init --recursive`); the Docker image and LXC
+template include the dictionaries automatically.
 
 ## Phase 3 — CoT feed (ATAK/WinTAK network input)
 
