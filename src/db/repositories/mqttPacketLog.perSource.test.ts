@@ -12,20 +12,7 @@ import { MqttPacketLogRepository, type DbMqttPacket } from './mqttPacketLog.js';
 import * as schema from '../schema/index.js';
 import { createTestDb } from '../../server/test-helpers/testDb.js';
 
-/**
- * `DbMqttPacket` does not yet declare the ok_to_mqtt columns added to the
- * `mqtt_packet_log` table by migration 128 (#4114) — that repository-level
- * typing lands separately (see MQTT_OK_TO_MQTT_PHASE1_SPEC.md WP3, §3.9).
- * Extend locally so this factory can exercise the new columns across the
- * existing per-source isolation assertions ahead of that change landing.
- */
-type DbMqttPacketWithOkToMqtt = DbMqttPacket & {
-  bitfield?: number | null;
-  okToMqttViolation?: number;
-  topic?: string | null;
-};
-
-function makePacket(sourceId: string, overrides: Partial<DbMqttPacketWithOkToMqtt> = {}): DbMqttPacketWithOkToMqtt {
+function makePacket(sourceId: string, overrides: Partial<DbMqttPacket> = {}): DbMqttPacket {
   const now = 1_700_000_000_000;
   return {
     sourceId,
