@@ -163,6 +163,30 @@ describe('sourceRoutes — mqtt_broker downlinkHopLimitOverride validation', () 
     expect(stored.zeroHopInjection).toBeUndefined();
   });
 
+  it('does not apply the broker validator when PUTting a bridge', async () => {
+    // The PUT handler gates on `existing.type`, so a bogus hop override on a
+    // bridge must sail through exactly as it does on POST.
+    await harness.db.sources.createSource({
+      id: 'hop-bridge',
+      name: 'Bridge',
+      type: 'mqtt_bridge',
+      config: { upstream: { url: 'mqtt://example.invalid:1883' }, subscriptions: ['msh/#'] },
+      enabled: false,
+    });
+    const agent = await harness.loginAs(harness.admin);
+
+    const res = await agent.put('/hop-bridge').send({
+      config: {
+        upstream: { url: 'mqtt://example.invalid:1883' },
+        subscriptions: ['msh/#'],
+        downlinkHopLimitOverride: 99,
+      },
+    });
+
+    expect(res.status).toBe(200);
+    await harness.db.sources.deleteSource('hop-bridge').catch(() => {});
+  });
+
   it('does not apply the broker validator to other source types', async () => {
     const agent = await harness.loginAs(harness.admin);
 

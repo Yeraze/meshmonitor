@@ -436,14 +436,19 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
         return res.status(400).json({ error: ignoreOkErr });
       }
     }
+    if (!config || typeof config !== 'object') {
+      return res.status(400).json({ error: 'config is required and must be an object' });
+    }
+
+    // Deliberately placed AFTER the config-object guard (unlike the
+    // mqtt_bridge validators above, which predate it and take `config ?? {}`):
+    // the validator then never has to reason about a null config, so adding a
+    // field read to it later can't turn into a TypeError.
     if (type === 'mqtt_broker') {
-      const hopErr = validateMqttBrokerHopLimitOverride(config ?? {});
+      const hopErr = validateMqttBrokerHopLimitOverride(config);
       if (hopErr) {
         return res.status(400).json({ error: hopErr });
       }
-    }
-    if (!config || typeof config !== 'object') {
-      return res.status(400).json({ error: 'config is required and must be an object' });
     }
 
     const vnErr = await validateVirtualNodeConfig(type, config);
