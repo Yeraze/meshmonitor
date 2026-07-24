@@ -191,6 +191,18 @@ describe('buildNodeEvent', () => {
     expect(buildNodeEvent(makeNode({ lastHeard: null }), undefined, NOW)).toBeNull();
   });
 
+  it('clamps a future lastHeard (bad device clock): stale = now + window, event still emitted', () => {
+    // 10 years in the future — a real row like this produced stale="2036-…"
+    // that would never expire on ATAK clients.
+    const futureNode = makeNode({ lastHeard: Math.floor(NOW / 1000) + 10 * 365 * 24 * 3600 });
+    const xml = buildNodeEvent(futureNode, undefined, NOW);
+    expect(xml).not.toBeNull();
+    const root = parseEvent(xml!);
+    expect(root.getAttribute('stale')).toBe(new Date(NOW + 60 * ONE_MIN).toISOString());
+    // Remarks age uses the clamped value: "heard 0s ago", never negative.
+    expect(root.getElementsByTagName('remarks')[0].textContent).toContain('heard 0s ago');
+  });
+
   it('escapes an XML injection payload in the callsign (E5)', () => {
     const node = makeNode({ shortName: 'a"/><evil>', longName: null });
     const xml = buildNodeEvent(node, undefined, NOW)!;
@@ -259,6 +271,13 @@ describe('buildContactEvent', () => {
   it('returns null when already-stale (lastSeen older than 15 min)', () => {
     const stale = makeContact({ lastSeen: NOW - 16 * ONE_MIN });
     expect(buildContactEvent(stale, NOW)).toBeNull();
+  });
+
+  it('clamps a future lastSeen: stale = now + window (symmetry with node builders)', () => {
+    const future = makeContact({ lastSeen: NOW + 10 * 365 * 24 * 3600 * 1000 });
+    const xml = buildContactEvent(future, NOW);
+    expect(xml).not.toBeNull();
+    expect(parseEvent(xml!).getAttribute('stale')).toBe(new Date(NOW + 15 * ONE_MIN).toISOString());
   });
 
   it('team/role enum maps to ATAK label strings', () => {
@@ -345,6 +364,15 @@ describe('buildMeshCoreNodeEvent', () => {
 
   it('returns null when lastHeard is missing', () => {
     expect(buildMeshCoreNodeEvent(makeMeshCoreNode({ lastHeard: null }), undefined, NOW)).toBeNull();
+  });
+
+  it('clamps a future lastHeard (bad device clock): stale = now + window, event still emitted', () => {
+    const futureNode = makeMeshCoreNode({ lastHeard: NOW + 10 * 365 * 24 * 3600 * 1000 }); // +10y in ms
+    const xml = buildMeshCoreNodeEvent(futureNode, undefined, NOW);
+    expect(xml).not.toBeNull();
+    const root = parseEvent(xml!);
+    expect(root.getAttribute('stale')).toBe(new Date(NOW + 60 * ONE_MIN).toISOString());
+    expect(root.getElementsByTagName('remarks')[0].textContent).toContain('heard 0s ago');
   });
 
   it('returns null for null or Null-Island positions', () => {

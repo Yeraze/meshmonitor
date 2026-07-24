@@ -169,7 +169,10 @@ export function buildNodeEvent(node: NodeRow, sourceName: string | undefined, no
 
   // lastHeard is epoch seconds; a node we've never actually heard from has no
   // meaningful report cadence to stale against, so treat it as already stale.
-  const lastHeardMs = (node.lastHeard ?? 0) * 1000;
+  // Clamp to `now`: a device with a bad (future) clock must not yield a CoT
+  // event that never expires on ATAK clients (live validation caught a real
+  // row emitting stale="2036-…"). Worst case becomes stale = now + window.
+  const lastHeardMs = Math.min((node.lastHeard ?? 0) * 1000, now);
   const staleMs = lastHeardMs + COT_NODE_STALE_MS;
   if (staleMs <= now) {
     return null;
@@ -181,7 +184,8 @@ export function buildNodeEvent(node: NodeRow, sourceName: string | undefined, no
   const remarksParts = [sourceName ?? node.sourceId, node.nodeId];
   if (node.hwModel != null) remarksParts.push(`hw=${node.hwModel}`);
   if (node.lastHeard != null) {
-    const ageSec = Math.max(0, Math.floor(now / 1000) - node.lastHeard);
+    // Uses the clamped value so a future-clocked device reads "heard 0s ago".
+    const ageSec = Math.max(0, Math.floor((now - lastHeardMs) / 1000));
     remarksParts.push(`heard ${ageSec}s ago`);
   }
 
@@ -232,7 +236,11 @@ export function buildMeshCoreNodeEvent(
 
   // lastHeard is epoch MILLISECONDS for meshcore_nodes (unlike nodes.lastHeard
   // which is seconds). A never-heard node has no cadence to stale against.
-  const staleMs = (node.lastHeard ?? 0) + COT_NODE_STALE_MS;
+  // Clamp to `now`: a bad (future) device clock must not yield a CoT event
+  // that never expires (live validation caught a real row emitting
+  // stale="2036-…"). Worst case becomes stale = now + window.
+  const lastHeardMs = Math.min(node.lastHeard ?? 0, now);
+  const staleMs = lastHeardMs + COT_NODE_STALE_MS;
   if (staleMs <= now) {
     return null;
   }
@@ -244,7 +252,8 @@ export function buildMeshCoreNodeEvent(
 
   const remarksParts = [sourceName ?? sourceId, `MeshCore ${nodeId}`];
   if (node.lastHeard != null) {
-    const ageSec = Math.max(0, Math.floor((now - node.lastHeard) / 1000));
+    // Uses the clamped value so a future-clocked device reads "heard 0s ago".
+    const ageSec = Math.max(0, Math.floor((now - lastHeardMs) / 1000));
     remarksParts.push(`heard ${ageSec}s ago`);
   }
 
@@ -274,7 +283,10 @@ export function buildContactEvent(row: AtakContactRow, now: number): string | nu
     return null;
   }
 
-  const staleMs = row.lastSeen + ATAK_CONTACT_STALE_MS;
+  // lastSeen is MeshMonitor-stamped (Date.now at ingest) so it can't
+  // realistically be future, but clamp anyway for symmetry with the node
+  // builders — no CoT event may outlive now + its window.
+  const staleMs = Math.min(row.lastSeen, now) + ATAK_CONTACT_STALE_MS;
   if (staleMs <= now) {
     return null;
   }
