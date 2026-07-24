@@ -84,6 +84,27 @@ export async function findCopyCandidates(
   return candidates;
 }
 
+/**
+ * Snapshot of a node's current NodeInfo fields on one source, in the same
+ * shape as `CopyCandidate['node']`. Null when the node is unknown to that
+ * source. Lets callers that don't already hold the target row (e.g. the
+ * cross-source enrichment report) render the "current" side of the copy diff.
+ */
+export async function getNodeInfoSnapshot(
+  nodeNum: number,
+  sourceId: string,
+): Promise<CopyCandidate['node'] | null> {
+  const node = await databaseService.nodes.getNode(nodeNum, sourceId);
+  if (!node) return null;
+  return {
+    nodeNum: node.nodeNum,
+    nodeId: node.nodeId,
+    ...pickNodeInfoFields(node),
+    updatedAt: node.updatedAt,
+    lastHeard: node.lastHeard ?? null,
+  };
+}
+
 /** Runtime guard for field names arriving from the request body. */
 export function isNodeInfoField(value: unknown): value is NodeInfoField {
   return typeof value === 'string' && (NODE_INFO_FIELDS as readonly string[]).includes(value);
