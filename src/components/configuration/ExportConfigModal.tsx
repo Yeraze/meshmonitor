@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from '../icons';
-import QRCode from 'qrcode';
+import { QrCodeCanvas } from '../common/QrCodeCanvas';
 import apiService from '../../services/api';
 import type { Channel } from '../../types/device';
 import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
@@ -33,7 +33,6 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
   const [generatedUrl, setGeneratedUrl] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -108,22 +107,6 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
       setGeneratedUrl('');
     }
   }, [selectedChannels, includeLoraConfig, isOpen, generateUrl]);
-
-  useEffect(() => {
-    // Generate QR code when URL changes
-    if (generatedUrl && qrCanvasRef.current) {
-      QRCode.toCanvas(qrCanvasRef.current, generatedUrl, {
-        width: 256,
-        margin: 2,
-        color: {
-          dark: '#cdd6f4', // Catppuccin text color
-          light: '#1e1e2e' // Catppuccin base color
-        }
-      }).catch((err: any) => {
-        console.error('Failed to generate QR code:', err);
-      });
-    }
-  }, [generatedUrl]);
 
   const toggleChannel = (channelId: number) => {
     const newSelected = new Set(selectedChannels);
@@ -407,7 +390,12 @@ export const ExportConfigModal: React.FC<ExportConfigModalProps> = ({
                 borderRadius: '8px',
                 display: 'inline-block'
               }}>
-                <canvas ref={qrCanvasRef} />
+                <QrCodeCanvas
+                  value={generatedUrl}
+                  darkColor="#cdd6f4"
+                  lightColor="#1e1e2e"
+                  onError={(err) => console.error('Failed to generate QR code:', err)}
+                />
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--ctp-subtext0)', marginTop: '0.5rem', textAlign: 'center' }}>
                 {t('export_config.scan_qr_description')}

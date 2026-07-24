@@ -1,0 +1,130 @@
+.node-contact-share {
+  font-weight: 400;
+}
+
+.node-contact-share-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.node-contact-share-name {
+  margin-bottom: 4px;
+  color: var(--ctp-text);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.node-contact-share-summary,
+.node-contact-share-instructions,
+.node-contact-share-status {
+  color: var(--ctp-subtext0);
+  font-size: 0.9rem;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.node-contact-share-toggle,
+.node-contact-share-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-sm);
+  padding: 7px 12px;
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.node-contact-share-toggle:hover,
+.node-contact-share-copy:hover {
+  border-color: var(--ctp-blue);
+  color: var(--ctp-blue);
+}
+
+.node-contact-share-toggle:focus-visible,
+.node-contact-share-copy:focus-visible,
+.node-contact-share-url:focus-visible {
+  outline: 2px solid var(--ctp-blue);
+  outline-offset: 2px;
+}
+
+.node-contact-share-content {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ctp-surface1);
+}
+
+.node-contact-share-instructions {
+  margin: 0 0 14px;
+  text-align: center;
+}
+
+.node-contact-share-error {
+  margin-bottom: 12px;
+  color: var(--ctp-red);
+  font-size: 0.9rem;
+}
+
+.node-contact-share-qr {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.node-contact-share-canvas {
+  display: block;
+  max-width: 100%;
+  height: auto !important;
+  border: 8px solid #ffffff;
+  border-radius: var(--radius-sm);
+}
+
+.node-contact-share-url-row {
+  display: flex;
+  gap: 8px;
+}
+
+.node-contact-share-url {
+  min-width: 0;
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-sm);
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.node-contact-share-copy {
+  background: var(--ctp-blue);
+  border-color: var(--ctp-blue);
+  color: var(--ctp-base);
+}
+
+.node-contact-share-copy:hover {
+  background: var(--ctp-sapphire);
+  border-color: var(--ctp-sapphire);
+  color: var(--ctp-base);
+}
+
+@media (max-width: 768px) {
+  .node-contact-share-heading,
+  .node-contact-share-url-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .node-contact-share-toggle,
+  .node-contact-share-copy {
+    width: 100%;
+  }
+}

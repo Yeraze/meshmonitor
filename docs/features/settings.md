@@ -285,6 +285,19 @@ When information is unavailable, the block displays "N/A" for that metric. This 
 - Information isn't available from the device type
 - Connection was lost before all data was received
 
+### Share a Meshtastic Contact
+
+For a node with a stored Meshtastic identity, expand **Share contact** to create
+a QR code and a `https://meshtastic.org/v/#…` URL. Scan the QR code or open the
+URL in a compatible Meshtastic app to add the node as a contact without waiting
+for another NodeInfo broadcast.
+
+The contact preserves the node number, names, hardware model, role, public key,
+licensing status, and messageability status available to MeshMonitor.
+Unmessagable nodes can still be shared: that flag means the node cannot receive
+direct messages, not that its contact record is invalid. Contact sharing is
+separate from channel sharing, which uses Meshtastic's `/e/#` URL format.
+
 ## Solar Monitoring
 
 **Description**: Configure solar production monitoring to visualize expected solar power generation on telemetry graphs.

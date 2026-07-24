@@ -32,6 +32,10 @@ export interface SignalTrendResult {
   noiseFloorRising: boolean;
 }
 
+export interface MeshtasticContactUrl {
+  url: string;
+}
+
 /**
  * Error thrown by ApiService.request when the server returns a non-OK response.
  * Callers can distinguish by `status` (e.g. 429 for rate limit) and `code`
@@ -866,6 +870,14 @@ class ApiService {
       `/api/telemetry/${encodeURIComponent(validatedNodeId ?? nodeId)}/signal-trend${qs}`,
     );
     return body.data;
+  }
+
+  /** Generate a source-scoped Meshtastic SharedContact URL for a node. */
+  async getMeshtasticContactUrl(nodeNum: number, sourceId: string): Promise<string> {
+    const body = await this.get<{ success: boolean; data: MeshtasticContactUrl }>(
+      `/api/nodes/${nodeNum}/contact-url?sourceId=${encodeURIComponent(sourceId)}`,
+    );
+    return body.data.url;
   }
 
   async updateTracerouteInterval(minutes: number) {
