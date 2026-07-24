@@ -261,23 +261,29 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
     expect(calledWith).toMatchObject({ hopLimit: 3, txEnabled: true });
   });
 
-  describe('POST /import-config (remote node) — best-effort txEnabled preserve', () => {
-    // The remote branch has no local isTxEnabled() to consult; it prefers a
-    // cached remote-config snapshot (getRemoteNodeConfig), falling back to
+  describe('POST /import-config (remote node) — txEnabled preserve (#4315)', () => {
+    // The remote branch fetches the remote node's LIVE LoRa config first
+    // (requestRemoteConfig, LORA_CONFIG=5) and reuses its actual txEnabled,
+    // interpreted with isTxEnabled()-style semantics (disabled only when
+    // explicitly false). It falls back — when the live fetch throws or returns
+    // nothing — to a cached remote-config snapshot (getRemoteNodeConfig), then
     // the decoded URL's own txEnabled, and finally to true (fail-open).
     // createSetLoRaConfigMessage is real (not mocked) — spy on it to inspect
     // the exact config object it received before protobuf-encoding, since
     // sendAdminCommand only sees opaque encoded bytes.
 
-    it('uses the cached remote-config snapshot when available, overriding the decoded value', async () => {
+    it('uses the live remote LoRa config txEnabled, overriding the decoded value', async () => {
       const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
       const getSessionPasskey = vi.fn().mockReturnValue(new Uint8Array([1, 2, 3, 4]));
+      // Live fetch reports the remote device currently has TX disabled.
+      const requestRemoteConfig = vi.fn().mockResolvedValue({ txEnabled: false });
+      // Cached snapshot disagrees (true) — the live value must win over it.
       const getRemoteNodeConfig = vi.fn().mockReturnValue({
-        deviceConfig: { lora: { txEnabled: false } },
+        deviceConfig: { lora: { txEnabled: true } },
         moduleConfig: {},
-        lastUpdated: Date.now(),
+        lastUpdated: 0,
       });
-      await sourceManagerRegistry.addManager(makeFakeManager({ sendAdminCommand, getSessionPasskey, getRemoteNodeConfig }));
+      await sourceManagerRegistry.addManager(makeFakeManager({ sendAdminCommand, getSessionPasskey, requestRemoteConfig, getRemoteNodeConfig }));
 
       const spy = vi.spyOn(protobufService, 'createSetLoRaConfigMessage');
       const channelUrlService = (await import('../services/channelUrlService.js')).default;
@@ -294,15 +300,108 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
       });
 
       expect(res.status).toBe(200);
+      expect(requestRemoteConfig).toHaveBeenCalledWith(999, 5, false);
       expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: false }), expect.anything());
       spy.mockRestore();
     });
 
-    it('falls back to the decoded URL txEnabled when no cached remote config exists', async () => {
+    it('treats a live config with an omitted txEnabled as enabled (fail-open, matches isTxEnabled)', async () => {
       const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
       const getSessionPasskey = vi.fn().mockReturnValue(new Uint8Array([1, 2, 3, 4]));
+      // proto3 omits a false bool, but a device with TX enabled likewise omits
+      // nothing meaningful here — the live config comes back without txEnabled.
+      const requestRemoteConfig = vi.fn().mockResolvedValue({ hopLimit: 3 });
+      await sourceManagerRegistry.addManager(makeFakeManager({ sendAdminCommand, getSessionPasskey, requestRemoteConfig }));
+
+      const spy = vi.spyOn(protobufService, 'createSetLoRaConfigMessage');
+      const channelUrlService = (await import('../services/channelUrlService.js')).default;
+      (channelUrlService.decodeUrl as any).mockReturnValue({
+        channels: undefined,
+        loraConfig: { hopLimit: 3, txEnabled: false },
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/import-config').send({
+        sourceId: harness.sourceA,
+        nodeNum: 999,
+        url: 'meshtastic://mock',
+      });
+
+      expect(res.status).toBe(200);
+      expect(requestRemoteConfig).toHaveBeenCalledWith(999, 5, false);
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: true }), expect.anything());
+      spy.mockRestore();
+    });
+
+    it('interprets a cached snapshot with omitted txEnabled as enabled (matches the live-path semantics)', async () => {
+      const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+      const getSessionPasskey = vi.fn().mockReturnValue(new Uint8Array([1, 2, 3, 4]));
+      // Live fetch unavailable; cached snapshot has a lora object but no
+      // txEnabled field — same as a proto3-omitted/default read. It must be
+      // treated as enabled (!== false), not deferred to the decoded URL value.
+      const requestRemoteConfig = vi.fn().mockResolvedValue(null);
+      const getRemoteNodeConfig = vi.fn().mockReturnValue({
+        deviceConfig: { lora: { hopLimit: 3 } },
+        moduleConfig: {},
+        lastUpdated: 0,
+      });
+      await sourceManagerRegistry.addManager(makeFakeManager({ sendAdminCommand, getSessionPasskey, requestRemoteConfig, getRemoteNodeConfig }));
+
+      const spy = vi.spyOn(protobufService, 'createSetLoRaConfigMessage');
+      const channelUrlService = (await import('../services/channelUrlService.js')).default;
+      (channelUrlService.decodeUrl as any).mockReturnValue({
+        channels: undefined,
+        loraConfig: { hopLimit: 3, txEnabled: false }, // would win if the cache were ignored
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/import-config').send({
+        sourceId: harness.sourceA,
+        nodeNum: 999,
+        url: 'meshtastic://mock',
+      });
+
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: true }), expect.anything());
+      spy.mockRestore();
+    });
+
+    it('falls back to the cached remote-config snapshot when the live fetch throws', async () => {
+      const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+      const getSessionPasskey = vi.fn().mockReturnValue(new Uint8Array([1, 2, 3, 4]));
+      const requestRemoteConfig = vi.fn().mockRejectedValue(new Error('remote config timeout'));
+      const getRemoteNodeConfig = vi.fn().mockReturnValue({
+        deviceConfig: { lora: { txEnabled: false } },
+        moduleConfig: {},
+        lastUpdated: 0,
+      });
+      await sourceManagerRegistry.addManager(makeFakeManager({ sendAdminCommand, getSessionPasskey, requestRemoteConfig, getRemoteNodeConfig }));
+
+      const spy = vi.spyOn(protobufService, 'createSetLoRaConfigMessage');
+      const channelUrlService = (await import('../services/channelUrlService.js')).default;
+      (channelUrlService.decodeUrl as any).mockReturnValue({
+        channels: undefined,
+        loraConfig: { hopLimit: 3, txEnabled: true },
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/import-config').send({
+        sourceId: harness.sourceA,
+        nodeNum: 999,
+        url: 'meshtastic://mock',
+      });
+
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: false }), expect.anything());
+      spy.mockRestore();
+    });
+
+    it('falls back to the decoded URL txEnabled when the live fetch returns nothing and no cached config exists', async () => {
+      const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+      const getSessionPasskey = vi.fn().mockReturnValue(new Uint8Array([1, 2, 3, 4]));
+      const requestRemoteConfig = vi.fn().mockResolvedValue(null);
       const getRemoteNodeConfig = vi.fn().mockReturnValue(null);
-      await sourceManagerRegistry.addManager(makeFakeManager({ sendAdminCommand, getSessionPasskey, getRemoteNodeConfig }));
+      await sourceManagerRegistry.addManager(makeFakeManager({ sendAdminCommand, getSessionPasskey, requestRemoteConfig, getRemoteNodeConfig }));
 
       const spy = vi.spyOn(protobufService, 'createSetLoRaConfigMessage');
       const channelUrlService = (await import('../services/channelUrlService.js')).default;
@@ -323,11 +422,12 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
       spy.mockRestore();
     });
 
-    it('falls back to true (fail-open) when neither a cached remote config nor a decoded txEnabled exists', async () => {
+    it('falls back to true (fail-open) when the live fetch, cached config, and decoded txEnabled are all absent', async () => {
       const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
       const getSessionPasskey = vi.fn().mockReturnValue(new Uint8Array([1, 2, 3, 4]));
+      const requestRemoteConfig = vi.fn().mockResolvedValue(null);
       const getRemoteNodeConfig = vi.fn().mockReturnValue(null);
-      await sourceManagerRegistry.addManager(makeFakeManager({ sendAdminCommand, getSessionPasskey, getRemoteNodeConfig }));
+      await sourceManagerRegistry.addManager(makeFakeManager({ sendAdminCommand, getSessionPasskey, requestRemoteConfig, getRemoteNodeConfig }));
 
       const spy = vi.spyOn(protobufService, 'createSetLoRaConfigMessage');
       const channelUrlService = (await import('../services/channelUrlService.js')).default;

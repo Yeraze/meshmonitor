@@ -1279,23 +1279,40 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
           // txEnabled=false), so we must supply an explicit value, never
           // strip the key.
           //
-          // Best-effort remote preserve: use the manager's cached remote-config
-          // snapshot (populated only if requestRemoteConfig(LORA_CONFIG) was
-          // called for this node earlier — e.g. via /load-config or
-          // /export-config with includeLoraConfig). This import flow does not
-          // itself fetch the remote node's current LoRa config first — that
-          // would need an extra requestRemoteConfig round-trip (session
-          // passkey + mesh RTT) not currently part of this flow. Falls back to
-          // the decoded URL's own txEnabled (real since #4294's export fix;
-          // older exported URLs may still carry the old forced `true`), and
-          // finally to true (fail-open) if that's absent too.
-          // TODO(#4294 follow-up): a fully-accurate remote preserve would
-          // fetch the remote node's live LoRa config via requestRemoteConfig
-          // before importing.
-          const cachedRemoteLora = aicManager.getRemoteNodeConfig(destinationNodeNum)?.deviceConfig?.lora;
-          const remoteTxEnabled = cachedRemoteLora?.txEnabled !== undefined
-            ? cachedRemoteLora.txEnabled
-            : (decoded.loraConfig.txEnabled ?? true);
+          // Fully-accurate remote preserve (issue #4315): fetch the remote
+          // node's LIVE LoRa config first and reuse its actual txEnabled. This
+          // import flow is already a slow multi-round-trip path (per-channel
+          // pacing above), so one more requestRemoteConfig round-trip (session
+          // passkey + mesh RTT) is acceptable. Interpret the result with the
+          // same semantics as the local branch's isTxEnabled() — txEnabled is
+          // disabled only when it is explicitly `false`; a present-but-not-false
+          // (incl. proto3-omitted) value means enabled/fail-open.
+          //
+          // Fallbacks, if the live fetch fails/times out: the manager's cached
+          // remote-config snapshot (populated by an earlier /load-config or
+          // /export-config), then the decoded URL's own txEnabled (real since
+          // #4294's export fix; older exported URLs may still carry the old
+          // forced `true`), and finally true (fail-open).
+          let remoteTxEnabled: boolean | undefined;
+          try {
+            const liveRemoteLora = await aicManager.requestRemoteConfig(destinationNodeNum, 5, false); // LORA_CONFIG = 5
+            if (liveRemoteLora) {
+              remoteTxEnabled = liveRemoteLora.txEnabled !== false;
+            }
+          } catch (error) {
+            logger.warn(`⚠️ Could not fetch live remote LoRa config for txEnabled preserve on node ${destinationNodeNum}; falling back to cached/URL value:`, error);
+          }
+          if (remoteTxEnabled === undefined) {
+            const cachedRemoteLora = aicManager.getRemoteNodeConfig(destinationNodeNum)?.deviceConfig?.lora;
+            // Cached snapshot comes from the same requestRemoteConfig source as
+            // the live fetch above, so interpret it with the same
+            // isTxEnabled()-style semantics (disabled only when explicitly
+            // false). Only when there is no cached LoRa snapshot at all do we
+            // consult the decoded URL's own txEnabled, then fail-open true.
+            remoteTxEnabled = cachedRemoteLora
+              ? cachedRemoteLora.txEnabled !== false
+              : (decoded.loraConfig.txEnabled ?? true);
+          }
           const loraConfigToImport = {
             ...decoded.loraConfig,
             txEnabled: remoteTxEnabled,
