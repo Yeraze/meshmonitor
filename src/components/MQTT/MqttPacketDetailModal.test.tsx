@@ -9,7 +9,7 @@
  * See docs/internal/dev-notes/MQTT_PACKET_MONITOR_PHASE2_SPEC.md §5.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import MqttPacketDetailModal from './MqttPacketDetailModal';
 import type { MqttGroupedPacket, MqttReception } from './mqttPacketTypes';
 
@@ -45,6 +45,8 @@ const basePacket = (overrides: Partial<MqttGroupedPacket> = {}): MqttGroupedPack
   receptionCount: 6,
   firstHeard: 1700000000000,
   lastHeard: 1700000005000,
+  bitfield: 1,
+  okToMqttViolation: 0,
   ...overrides,
 });
 
@@ -57,6 +59,8 @@ const baseReception = (overrides: Partial<MqttReception> = {}): MqttReception =>
   rxRssi: -68,
   hopLimit: 3,
   hopStart: 5,
+  bitfield: 1,
+  okToMqttViolation: 0,
   ...overrides,
 });
 
@@ -221,5 +225,186 @@ describe('MqttPacketDetailModal', () => {
     expect(content).toBeTruthy();
     fireEvent.click(content as Element);
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  // #4114 Phase 2 WP3 — packet-level ok_to_mqtt row + per-gateway attribution.
+  it('renders the packet-level ok_to_mqtt row as a violation', () => {
+    const nodeName = vi.fn(() => null);
+    render(
+      <MqttPacketDetailModal
+        packet={basePacket({ okToMqttViolation: 1, bitfield: 0 })}
+        prefix={prefix}
+        csrfFetch={csrfFetch as any}
+        nodeName={nodeName}
+        onClose={vi.fn()}
+      />
+    );
+
+    const badge = screen.getByText('violation');
+    expect(badge.className).toContain('mqpm-badge-violation');
+    expect(badge.getAttribute('title')).toBe(
+      'At least one gateway relayed this packet to MQTT although the sender did not opt in (ok_to_mqtt = 0). Open the packet to see which gateway.'
+    );
+  });
+
+  it("renders 'allowed' when the sender opted in", () => {
+    const nodeName = vi.fn(() => null);
+    render(
+      <MqttPacketDetailModal
+        packet={basePacket()}
+        prefix={prefix}
+        csrfFetch={csrfFetch as any}
+        nodeName={nodeName}
+        onClose={vi.fn()}
+      />
+    );
+
+    const el = screen.getByText('allowed');
+    expect(el.className).toContain('mqpm-oktomqtt-ok');
+  });
+
+  it("renders 'unknown' when the bitfield is null", () => {
+    const nodeName = vi.fn(() => null);
+    render(
+      <MqttPacketDetailModal
+        packet={basePacket({ bitfield: null })}
+        prefix={prefix}
+        csrfFetch={csrfFetch as any}
+        nodeName={nodeName}
+        onClose={vi.fn()}
+      />
+    );
+
+    const el = screen.getByText('unknown');
+    expect(el.className).toContain('mqpm-oktomqtt-unknown');
+    expect(el.getAttribute('title')).toBe(
+      'The ok_to_mqtt bit could not be read for this reception — the payload was not decryptable, or the packet was captured before violation detection was added.'
+    );
+  });
+
+  it("renders 'opted out' when the bit is clear but no violation was recorded", () => {
+    const nodeName = vi.fn(() => null);
+    render(
+      <MqttPacketDetailModal
+        packet={basePacket({ bitfield: 0, okToMqttViolation: 0 })}
+        prefix={prefix}
+        csrfFetch={csrfFetch as any}
+        nodeName={nodeName}
+        onClose={vi.fn()}
+      />
+    );
+
+    const el = screen.getByText('opted out');
+    expect(el.className).toContain('mqpm-oktomqtt-self');
+  });
+
+  it('the per-gateway column attributes the violating gateway among clean ones', async () => {
+    csrfFetch.mockResolvedValue(
+      jsonResponse({
+        success: true,
+        data: {
+          receptions: [
+            baseReception({ gatewayId: '!aaaaaaaa', gatewayNodeNum: 1, bitfield: 0, okToMqttViolation: 1 }),
+            baseReception({ gatewayId: '!bbbbbbbb', gatewayNodeNum: 2, bitfield: 1, okToMqttViolation: 0 }),
+            baseReception({ gatewayId: '!cccccccc', gatewayNodeNum: 3, bitfield: null, okToMqttViolation: 0 }),
+          ],
+        },
+      })
+    );
+    const nodeName = vi.fn((n: number | null) => {
+      if (n === 1) return 'Gateway A';
+      if (n === 2) return 'Gateway B';
+      if (n === 3) return 'Gateway C';
+      return null;
+    });
+
+    const { container } = render(
+      <MqttPacketDetailModal
+        packet={basePacket()}
+        prefix={prefix}
+        csrfFetch={csrfFetch as any}
+        nodeName={nodeName}
+        onClose={vi.fn()}
+      />
+    );
+
+    await screen.findByText('Gateway A');
+
+    const rowA = within(screen.getByText('Gateway A').closest('tr')!);
+    expect(rowA.getByText('violation')).toBeTruthy();
+    expect(rowA.queryByText('allowed')).toBeNull();
+    expect(rowA.queryByText('unknown')).toBeNull();
+
+    const rowB = within(screen.getByText('Gateway B').closest('tr')!);
+    expect(rowB.getByText('allowed')).toBeTruthy();
+    expect(rowB.queryByText('violation')).toBeNull();
+
+    const rowC = within(screen.getByText('Gateway C').closest('tr')!);
+    expect(rowC.getByText('unknown')).toBeTruthy();
+    expect(rowC.queryByText('violation')).toBeNull();
+
+    expect(container.querySelectorAll('.mqpm-recv-table .mqpm-badge-violation').length).toBe(1);
+  });
+
+  it('the per-gateway violation marker uses the gateway-scoped tooltip', async () => {
+    csrfFetch.mockResolvedValue(
+      jsonResponse({
+        success: true,
+        data: {
+          receptions: [
+            baseReception({ gatewayId: '!aaaaaaaa', gatewayNodeNum: 1, bitfield: 0, okToMqttViolation: 1 }),
+            baseReception({ gatewayId: '!bbbbbbbb', gatewayNodeNum: 2, bitfield: 1, okToMqttViolation: 0 }),
+            baseReception({ gatewayId: '!cccccccc', gatewayNodeNum: 3, bitfield: null, okToMqttViolation: 0 }),
+          ],
+        },
+      })
+    );
+    const nodeName = vi.fn((n: number | null) => {
+      if (n === 1) return 'Gateway A';
+      if (n === 2) return 'Gateway B';
+      if (n === 3) return 'Gateway C';
+      return null;
+    });
+
+    const { container } = render(
+      <MqttPacketDetailModal
+        packet={basePacket()}
+        prefix={prefix}
+        csrfFetch={csrfFetch as any}
+        nodeName={nodeName}
+        onClose={vi.fn()}
+      />
+    );
+
+    await screen.findByText('Gateway A');
+
+    const badge = container.querySelector('.mqpm-recv-table .mqpm-badge-violation');
+    expect(badge).toBeTruthy();
+    expect(badge!.getAttribute('title')).toBe(
+      'This gateway relayed the packet to MQTT although the sender did not opt in (ok_to_mqtt = 0).'
+    );
+  });
+
+  it('the receptions table renders the ok_to_mqtt header', async () => {
+    csrfFetch.mockResolvedValue(
+      jsonResponse({ success: true, data: { receptions: [baseReception()] } })
+    );
+    const nodeName = vi.fn(() => null);
+
+    const { container } = render(
+      <MqttPacketDetailModal
+        packet={basePacket()}
+        prefix={prefix}
+        csrfFetch={csrfFetch as any}
+        nodeName={nodeName}
+        onClose={vi.fn()}
+      />
+    );
+
+    await screen.findByText('!aabbccdd');
+
+    const headers = container.querySelectorAll('.mqpm-recv-table th');
+    expect(headers.length).toBe(7);
+    expect(screen.getByText('ok_to_mqtt', { selector: 'th' })).toBeTruthy();
   });
 });

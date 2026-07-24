@@ -12,6 +12,8 @@ import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useDialogA11y } from '../../hooks/useDialogA11y';
 import type { MqttGroupedPacket, MqttReception } from './mqttPacketTypes';
+import { okToMqttState } from './okToMqttState';
+import MqttOkToMqttMarker from './MqttOkToMqttMarker';
 
 interface Props {
   packet: MqttGroupedPacket;
@@ -142,6 +144,9 @@ const MqttPacketDetailModal: React.FC<Props> = ({ packet, prefix, csrfFetch, nod
                 : <span className="mqpm-badge">{packet.ingestOutcome}</span>}
             </Row>
             <Row label={t('mqtt.packets.encrypted', 'Encrypted')}>{packet.encrypted ? t('common.yes', 'Yes') : t('common.no', 'No')}</Row>
+            <Row label={t('mqtt.packets.okToMqtt', 'ok_to_mqtt')}>
+              <MqttOkToMqttMarker state={okToMqttState(packet)} scope="packet" />
+            </Row>
             <Row label={t('mqtt.packets.size', 'Size')} mono>{packet.payloadSize != null ? `${packet.payloadSize} B` : '—'}</Row>
             <Row label={t('mqtt.packets.gatewayCount', 'Gateways')} mono>{packet.gatewayCount}</Row>
             <Row label={t('mqtt.packets.receptions', 'Receptions')} mono>{packet.receptionCount}</Row>
@@ -174,6 +179,7 @@ const MqttPacketDetailModal: React.FC<Props> = ({ packet, prefix, csrfFetch, nod
                     <th>{t('mqtt.packets.rssi', 'RSSI')}</th>
                     <th>{t('mqtt.packets.snr', 'SNR')}</th>
                     <th>{t('mqtt.packets.hops', 'Hops')}</th>
+                    <th>{t('mqtt.packets.okToMqtt', 'ok_to_mqtt')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -185,6 +191,7 @@ const MqttPacketDetailModal: React.FC<Props> = ({ packet, prefix, csrfFetch, nod
                       <td className="mqpm-mono">{r.rxRssi ?? '—'}</td>
                       <td className="mqpm-mono">{r.rxSnr != null ? r.rxSnr.toFixed(2) : '—'}</td>
                       <td className="mqpm-mono">{r.hopStart != null && r.hopLimit != null ? r.hopStart - r.hopLimit : '—'}</td>
+                      <td><MqttOkToMqttMarker state={okToMqttState(r)} scope="gateway" /></td>
                     </tr>
                   ))}
                 </tbody>
