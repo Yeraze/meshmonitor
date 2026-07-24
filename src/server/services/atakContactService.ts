@@ -130,6 +130,75 @@ export function buildContactRow(
 }
 
 /**
+ * TAKPacketV2's "no altitude" sentinel (ATAK hae=9999999.0) — see the
+ * altitude field comment in protobufs/meshtastic/atak.proto.
+ */
+const TAK_V2_NO_ALTITUDE = 9999999;
+
+/**
+ * Pure mapper: decoded implicit-PLI TAKPacketV2 (portnum 78, #4317) →
+ * `AtakContactRow`. The V2 envelope carries identity and position at the top
+ * level (no Contact/Group/Status sub-messages like V1), and V2 has an
+ * explicit `uid` field — preferred over the V1-style callsign fallbacks.
+ *
+ * Unit normalization to match the V1-populated columns (INTEGER, V1 wire
+ * units): V2 `speed` is cm/s → stored as m/s; V2 `course` is degrees×100 →
+ * stored as degrees. `altitude` drops the 9999999 "no altitude" sentinel.
+ * There is no unishox2/is_compressed concern in V2 — strings are always
+ * clean after zstd decompression.
+ */
+export function buildContactRowV2(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 untyped protobuf-decoded MeshPacket shape, matching buildContactRow's existing convention
+  meshPacket: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 untyped protobuf-decoded TAKPacketV2 shape, matching buildContactRow's existing convention
+  tak: any,
+  sourceId: string,
+): AtakContactRow | null {
+  if (!tak || typeof tak !== 'object' || tak instanceof Uint8Array) return null;
+
+  const nodeNumRaw = Number(meshPacket?.from);
+  const nodeNum = Number.isFinite(nodeNumRaw) ? nodeNumRaw >>> 0 : null;
+
+  const callsign: string | null = tak.callsign || null;
+  const deviceCallsign: string | null = tak.deviceCallsign ?? tak.device_callsign ?? null;
+  const uid: string = tak.uid || deviceCallsign || callsign || nodeNumFallbackUid(nodeNum);
+
+  const latitudeI = tak.latitudeI ?? tak.latitude_i;
+  const longitudeI = tak.longitudeI ?? tak.longitude_i;
+  let latitude: number | null = typeof latitudeI === 'number' ? latitudeI * 1e-7 : null;
+  let longitude: number | null = typeof longitudeI === 'number' ? longitudeI * 1e-7 : null;
+  if (latitude !== null && longitude !== null && isBogusPosition(latitude, longitude)) {
+    latitude = null;
+    longitude = null;
+  }
+
+  const altitudeRaw = typeof tak.altitude === 'number' ? tak.altitude : null;
+  const altitude = altitudeRaw === TAK_V2_NO_ALTITUDE ? null : altitudeRaw;
+  const speed = typeof tak.speed === 'number' ? Math.round(tak.speed / 100) : null; // cm/s → m/s
+  const course = typeof tak.course === 'number' ? Math.round(tak.course / 100) : null; // deg×100 → deg
+
+  const now = Date.now();
+
+  return {
+    uid,
+    sourceId,
+    nodeNum,
+    callsign,
+    deviceCallsign,
+    team: typeof tak.team === 'number' ? tak.team : null,
+    role: typeof tak.role === 'number' ? tak.role : null,
+    battery: typeof tak.battery === 'number' ? tak.battery : null,
+    latitude,
+    longitude,
+    altitude,
+    speed,
+    course,
+    lastSeen: now,
+    createdAt: now,
+  };
+}
+
+/**
  * Cleanup scheduler for `atak_contacts` retention (fixed 24h window). Modeled
  * on `MqttPacketLogService` — a small singleton that starts a `setInterval`
  * in its constructor and exposes `stop()` for test teardown.

@@ -7,6 +7,7 @@
 import { loadProtobufDefinitions, getProtobufRoot, type FromRadio, type MeshPacket } from './protobufLoader.js';
 import { logger } from '../utils/logger.js';
 import { PortNum } from './constants/meshtastic.js';
+import { decodeTakV2Payload, takV2Variant, takV2DictName, TAK_V2_UNCOMPRESSED } from './takV2Decoder.js';
 
 export class MeshtasticProtobufService {
   private static instance: MeshtasticProtobufService;
@@ -924,6 +925,16 @@ export class MeshtasticProtobufService {
           return TAKPacket.decode(payload); // throws are caught by the outer try/catch → returns raw payload
         }
 
+        case PortNum.ATAK_PLUGIN_V2: {
+          // TAKPacketV2 (portnum 78, #4317): wire is [1 flags byte][zstd body
+          // with magic stripped] against a shared dictionary, or [0xFF][raw
+          // protobuf]. decodeTakV2Payload returns null on any failure
+          // (missing dictionary/native module, corrupt frame, unknown dict
+          // ID) → return the raw payload, the same contract as an
+          // undecodable port.
+          return decodeTakV2Payload(payload, root) ?? payload;
+        }
+
         default:
           logger.debug(`⚠️ Unhandled port number: ${portnum}`);
           return payload;
@@ -1836,6 +1847,79 @@ export function formatTakPreview(tak: any, payloadSize: number): string {
     return `[ATAK detail${who}: ${n} bytes]`;
   }
   return `[ATAK packet${who}]`;
+}
+
+/**
+ * Human-readable one-line preview for an ATAK V2 packet (Packet Monitor,
+ * #4317). `v2` is the processPayload result: a decoded TAKPacketV2, or the
+ * raw Uint8Array wire payload when decode fell back (missing dictionary,
+ * corrupt frame). `rawPayload` is always the wire payload — its first byte
+ * is the flags byte, used to label undecoded packets by dictionary.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 decoded protobuf oneof shape (TAKPacketV2 | raw Uint8Array); no generated TS type for protobufjs decode() output here
+export function formatTakV2Preview(v2: any, rawPayload: Uint8Array): string {
+  const size = rawPayload?.length ?? 0;
+
+  // Decode fell back to the raw payload — label with the dictionary the
+  // sender used so an operator can tell "dictionary missing" from garbage.
+  if (!v2 || typeof v2 !== 'object' || v2 instanceof Uint8Array) {
+    if (size < 1) return `[ATAK V2, ${size} bytes (not decoded)]`;
+    const flags = rawPayload[0];
+    if (flags === TAK_V2_UNCOMPRESSED) {
+      return `[ATAK V2 uncompressed, ${size} bytes (not decoded)]`;
+    }
+    return `[ATAK V2, ${takV2DictName(flags & 0x3f)}, ${size} bytes (not decoded)]`;
+  }
+
+  const callsign = v2.callsign || v2.deviceCallsign || v2.device_callsign;
+  const who = callsign ? ` ${callsign}` : '';
+  const variant = takV2Variant(v2);
+
+  switch (variant) {
+    case undefined: {
+      // No payload_variant = implicit PLI (position report).
+      const lat = Number(v2.latitudeI ?? v2.latitude_i ?? 0) / 1e7;
+      const lon = Number(v2.longitudeI ?? v2.longitude_i ?? 0) / 1e7;
+      return `[ATAK V2 PLI${who}: ${lat.toFixed(5)}°, ${lon.toFixed(5)}°]`;
+    }
+    case 'chat': {
+      const chat = v2.chat;
+      const receiptType = Number(chat.receiptType ?? chat.receipt_type ?? 0);
+      if (receiptType !== 0 || chat.receiptForUid || chat.receipt_for_uid) {
+        return `[ATAK V2 GeoChat receipt${who}]`;
+      }
+      const msg = typeof chat.message === 'string' ? chat.message.substring(0, 80) : '';
+      return `[ATAK V2 GeoChat${who}: "${msg}"]`;
+    }
+    case 'aircraft':
+      return `[ATAK V2 aircraft track${who}]`;
+    case 'shape':
+      return `[ATAK V2 drawn shape${who}]`;
+    case 'marker':
+      return `[ATAK V2 marker${who}]`;
+    case 'rab':
+      return `[ATAK V2 range & bearing${who}]`;
+    case 'route':
+      return `[ATAK V2 route${who}]`;
+    case 'casevac':
+      return `[ATAK V2 CASEVAC${who}]`;
+    case 'emergency':
+      return `[ATAK V2 EMERGENCY${who}]`;
+    case 'task':
+      return `[ATAK V2 task${who}]`;
+    case 'taktalk': {
+      const msg = typeof v2.taktalk?.message === 'string' ? v2.taktalk.message.substring(0, 60) : '';
+      return msg ? `[ATAK V2 TAKTALK${who}: "${msg}"]` : `[ATAK V2 TAKTALK${who}]`;
+    }
+    case 'taktalkRoom':
+      return `[ATAK V2 TAKTALK room${who}]`;
+    case 'rawDetail': {
+      const bytes = v2.rawDetail ?? v2.raw_detail;
+      return `[ATAK V2 detail${who}: ${bytes?.length ?? 0} bytes]`;
+    }
+    default:
+      return `[ATAK V2 ${variant}${who}]`;
+  }
 }
 
 // Export singleton instance

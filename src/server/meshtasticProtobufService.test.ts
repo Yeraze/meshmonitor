@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { MeshtasticProtobufService, formatTakPreview } from './meshtasticProtobufService';
+import { MeshtasticProtobufService, formatTakPreview, formatTakV2Preview } from './meshtasticProtobufService';
 import { loadProtobufDefinitions, getProtobufRoot } from './protobufLoader';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -766,13 +766,48 @@ describe('MeshtasticProtobufService', () => {
       expect(formatTakPreview(result, payload.length)).toBe('[ATAK GeoChat (compressed)]');
     });
 
-    it('does NOT decode ATAK_PLUGIN_V2 (port 78) - returns the raw payload', () => {
+    it('decodes ATAK_PLUGIN_V2 (port 78) uncompressed payloads to TAKPacketV2 (#4317)', () => {
       if (!requireProtobufs()) return;
 
-      const someBytes = Uint8Array.from([0x10, 0x20, 0x30, 0x40]);
+      const root = getProtobufRoot()!;
+      const TAKPacketV2 = root.lookupType('meshtastic.TAKPacketV2');
+      const pb = TAKPacketV2.encode(TAKPacketV2.create({
+        callsign: 'HAWK',
+        latitudeI: 388895000,
+        longitudeI: -770353000,
+      })).finish();
+      // [0xFF][raw protobuf] = skip-compress wire form, no dictionary needed.
+      const wire = new Uint8Array(1 + pb.length);
+      wire[0] = 0xff;
+      wire.set(pb, 1);
+
+      const result = service.processPayload(78, wire as any);
+      expect(result).not.toBeInstanceOf(Uint8Array);
+      expect(result.callsign).toBe('HAWK');
+      expect(formatTakV2Preview(result, wire)).toBe('[ATAK V2 PLI HAWK: 38.88950°, -77.03530°]');
+    });
+
+    it('falls back to the raw payload for an unknown V2 dictionary ID and labels the preview', () => {
+      if (!requireProtobufs()) return;
+
+      const someBytes = Uint8Array.from([0x10, 0x20, 0x30, 0x40]); // dict 16 is reserved
       const result = service.processPayload(78, someBytes as any);
       expect(result).toBeInstanceOf(Uint8Array);
       expect(Array.from(result as Uint8Array)).toEqual([0x10, 0x20, 0x30, 0x40]);
+      expect(formatTakV2Preview(result, someBytes)).toBe('[ATAK V2, unknown dict 16, 4 bytes (not decoded)]');
+    });
+
+    it('previews V2 GeoChat and rich-CoT variants (#4317)', () => {
+      if (!requireProtobufs()) return;
+
+      expect(formatTakV2Preview({ callsign: 'HAWK', chat: { message: 'On station' } }, new Uint8Array(10)))
+        .toBe('[ATAK V2 GeoChat HAWK: "On station"]');
+      expect(formatTakV2Preview({ callsign: 'HAWK', chat: { message: '', receiptType: 1 } }, new Uint8Array(10)))
+        .toBe('[ATAK V2 GeoChat receipt HAWK]');
+      expect(formatTakV2Preview({ callsign: 'HAWK', emergency: {} }, new Uint8Array(10)))
+        .toBe('[ATAK V2 EMERGENCY HAWK]');
+      expect(formatTakV2Preview({ route: { name: 'EXFIL' } }, new Uint8Array(10)))
+        .toBe('[ATAK V2 route]');
     });
 
     it('does not throw on malformed TAKPacket bytes and previews as undecodable', () => {

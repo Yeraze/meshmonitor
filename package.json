@@ -92,7 +92,8 @@
     "ts-overlapping-marker-spiderfier-leaflet": "^1.0.5",
     "uuid": "^14.0.1",
     "web-push": "^3.6.7",
-    "yamljs": "^0.3.0"
+    "yamljs": "^0.3.0",
+    "zstd-napi": "^0.0.13"
   },
   "devDependencies": {
     "@eslint/compat": "^2.1.0",

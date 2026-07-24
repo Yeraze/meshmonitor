@@ -14,9 +14,11 @@ import { PortNum } from '../../server/constants/meshtastic.js';
  * Chat-like portnums that render in the DM thread view (#3691). Telemetry,
  * traceroute, and other non-chat DM rows stay excluded. ATAK GeoChat DMs
  * (PortNum.ATAK_PLUGIN, 72) are persisted by processTakPacket with
- * channel = -1 and must surface alongside plain text messages.
+ * channel = -1 and must surface alongside plain text messages. ATAK V2
+ * GeoChat DMs (PortNum.ATAK_PLUGIN_V2, 78, #4317) follow the same path via
+ * processTakV2Packet.
  */
-const DM_CHAT_PORTNUMS = [PortNum.TEXT_MESSAGE_APP, PortNum.ATAK_PLUGIN];
+const DM_CHAT_PORTNUMS = [PortNum.TEXT_MESSAGE_APP, PortNum.ATAK_PLUGIN, PortNum.ATAK_PLUGIN_V2];
 
 /**
  * Repository for message operations

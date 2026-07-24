@@ -1,6 +1,7 @@
 import databaseService, { type DbMessage } from '../services/database.js';
-import { buildContactRow } from './services/atakContactService.js';
-import meshtasticProtobufService, { formatTakPreview } from './meshtasticProtobufService.js';
+import { buildContactRow, buildContactRowV2 } from './services/atakContactService.js';
+import meshtasticProtobufService, { formatTakPreview, formatTakV2Preview } from './meshtasticProtobufService.js';
+import { takV2Variant } from './takV2Decoder.js';
 import protobufService, { convertIpv4ConfigToStrings } from './protobufService.js';
 import { getProtobufRoot, type MeshBeaconPayload } from './protobufLoader.js';
 import { TcpTransport } from './tcpTransport.js';
@@ -5561,8 +5562,14 @@ class MeshtasticManager implements ISourceManager {
                 processedPayload, meshPacket.decoded.payload.length);
               // decodedPayload keeps the decoded TAKPacket object → renders as JSON in the detail view.
             } else if (portnum === PortNum.ATAK_PLUGIN_V2) {
-              payloadPreview = `[ATAK V2 (not decoded), ${meshPacket.decoded.payload.length} bytes]`;
-              decodedPayload = null; // suppress raw-Uint8Array dump into metadata.decoded_payload
+              // #4317: decoded TAKPacketV2 renders as JSON in the detail view;
+              // when decode fell back (missing dictionary, corrupt frame) the
+              // preview names the dictionary and the raw-bytes dump stays
+              // suppressed as before.
+              payloadPreview = formatTakV2Preview(processedPayload, meshPacket.decoded.payload);
+              if (processedPayload instanceof Uint8Array) {
+                decodedPayload = null; // suppress raw-Uint8Array dump into metadata.decoded_payload
+              }
             } else if (portnum === PortNum.ATAK_FORWARDER) {
               payloadPreview = `[ATAK Forwarder (not decoded), ${meshPacket.decoded.payload.length} bytes]`;
               decodedPayload = null;
@@ -5835,6 +5842,18 @@ class MeshtasticManager implements ISourceManager {
             // preview-only (Packet Monitor) this phase — see processTakPacket.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 decoded protobuf oneof shape (TAKPacket | raw Uint8Array); no generated TS type for protobufjs decode() output here
             await this.processTakPacket(meshPacket, processedPayload as any, {
+              ...context,
+              decryptedBy,
+              decryptedChannelId: decryptedChannelId ?? undefined,
+            });
+            break;
+          case PortNum.ATAK_PLUGIN_V2:
+            // ATAK TAKPacketV2 (RX-only, #4317): implicit PLI upserts an
+            // atak_contacts row, GeoChat persists as a Messages row; the
+            // rich-CoT variants (shapes/routes/markers/…) stay
+            // Packet-Monitor-only (decoded JSON) this phase.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 decoded protobuf oneof shape (TAKPacketV2 | raw Uint8Array); no generated TS type for protobufjs decode() output here
+            await this.processTakV2Packet(meshPacket, processedPayload as any, {
               ...context,
               decryptedBy,
               decryptedChannelId: decryptedChannelId ?? undefined,
@@ -6395,6 +6414,133 @@ class MeshtasticManager implements ISourceManager {
       }
     } catch (error) {
       logger.error('❌ Error processing ATAK TAKPacket:', error);
+    }
+  }
+
+  /**
+   * Process a decoded ATAK TAKPacketV2 (PortNum 78 / ATAK_PLUGIN_V2, #4317).
+   *
+   * RX-only, mirroring processTakPacket's phase scoping: the implicit-PLI
+   * case (no payload_variant set) upserts an `atak_contacts` row via
+   * `buildContactRowV2`; the GeoChat variant becomes a Messages row; every
+   * rich-CoT variant (shapes, markers, routes, rab, casevac, emergency,
+   * task, TAKTALK, aircraft, raw_detail) stays Packet-Monitor-only (decoded
+   * JSON in metadata) until there's a dedicated surface for it. Unlike V1
+   * there is no unishox2/is_compressed concern — strings are always clean
+   * after zstd decompression. GeoChat receipts are still skipped.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 meshPacket/tak are untyped protobuf-decoded shapes (no generated TS type for protobufjs decode() output), matching processTakPacket's existing convention
+  private async processTakV2Packet(meshPacket: any, tak: any, context?: ProcessingContext): Promise<void> {
+    try {
+      // Decode failed upstream (processPayload fell back to the raw
+      // Uint8Array — missing dictionary or corrupt frame) — nothing to persist.
+      if (!tak || typeof tak !== 'object' || tak instanceof Uint8Array) return;
+
+      const variant = takV2Variant(tak);
+
+      // Implicit PLI: no payload_variant set = position report → contact
+      // upsert (never a Messages row). Errors are logged, never thrown
+      // (RX-only, best-effort — same contract as the V1 PLI path).
+      if (variant === undefined) {
+        try {
+          const pliFromNum = Number(meshPacket.from);
+          const row = buildContactRowV2(meshPacket, tak, this.sourceId);
+          if (row) {
+            await this.ensureMessageEndpointNodes(pliFromNum, pliFromNum); // carrying node row
+            await databaseService.atakContacts.upsertContact(row);
+          }
+        } catch (error) {
+          logger.error('❌ Error persisting ATAK V2 PLI contact:', error);
+        }
+        return;
+      }
+
+      // Only the GeoChat variant becomes a message this phase.
+      if (variant !== 'chat') return;
+      const chat = tak.chat;
+
+      // Receipts (delivered/read acks) must NOT surface as chat messages.
+      const receiptType = Number(chat.receiptType ?? chat.receipt_type ?? 0);
+      const receiptForUid = chat.receiptForUid ?? chat.receipt_for_uid;
+      if (receiptType !== 0 || receiptForUid) return;
+
+      const rawMsg = typeof chat.message === 'string' ? chat.message.trim() : '';
+      if (!rawMsg) return;
+
+      // Presentation: same `[ATAK …]` provenance prefix as V1 GeoChat —
+      // V2 carries callsign at the top level (no Contact sub-message).
+      const callsign = tak.callsign || tak.deviceCallsign || tak.device_callsign;
+      const toCallsign = chat.toCallsign ?? chat.to_callsign;
+      const tag = callsign
+        ? (toCallsign ? `[ATAK ${callsign}→${toCallsign}]` : `[ATAK ${callsign}]`)
+        : '[ATAK]';
+      const messageText = `${tag} ${rawMsg}`;
+
+      // Routing/channel: use the Meshtastic envelope, NOT the ATAK UID
+      // fields (same reasoning as processTakPacket).
+      const fromNum = Number(meshPacket.from);
+      const toNum = Number(meshPacket.to);
+      const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+      const toNodeId = `!${toNum.toString(16).padStart(8, '0')}`;
+      const isDirectMessage = toNum !== 4294967295;
+      const channelIndex = isDirectMessage ? -1 : (meshPacket.channel !== undefined ? meshPacket.channel : 0);
+
+      await this.ensureMessageEndpointNodes(fromNum, toNum);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 camelCase/snake_case dual-access on an untyped protobuf-decoded meshPacket, matching processTakPacket's existing convention
+      const hopStart = (meshPacket as any).hopStart ?? (meshPacket as any).hop_start ?? null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 camelCase/snake_case dual-access on an untyped protobuf-decoded meshPacket, matching processTakPacket's existing convention
+      const hopLimit = (meshPacket as any).hopLimit ?? (meshPacket as any).hop_limit ?? null;
+
+      const message: TextMessage = {
+        // Same format as processTextMessageProtobuf — load-bearing for
+        // cross-source dedup in /api/unified/messages.
+        id: `${this.sourceId}_${fromNum}_${meshPacket.id || Date.now()}`,
+        fromNodeNum: fromNum,
+        toNodeNum: toNum,
+        fromNodeId,
+        toNodeId,
+        text: messageText,
+        channel: channelIndex,
+        portnum: PortNum.ATAK_PLUGIN_V2,
+        timestamp: Date.now(),
+        rxTime: plausibleRxTime(meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : undefined) ?? undefined,
+        hopStart,
+        hopLimit,
+        relayNode: meshPacket.relayNode ?? undefined,
+        viaMqtt: meshPacket.viaMqtt === true || isViaMqtt(meshPacket.transportMechanism),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 snake_case fallback on an untyped protobuf-decoded meshPacket, matching processTakPacket's existing convention
+        rxSnr: meshPacket.rxSnr ?? (meshPacket as any).rx_snr,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 snake_case fallback on an untyped protobuf-decoded meshPacket, matching processTakPacket's existing convention
+        rxRssi: meshPacket.rxRssi ?? (meshPacket as any).rx_rssi,
+        createdAt: Date.now(),
+        decryptedBy: context?.decryptedBy ?? null,
+        sourceIp: null,
+        sourcePath: 'tcp_radio',
+        spoofSuspected: this.assessLocalSpoof(meshPacket).spoofSuspected || undefined,
+      };
+
+      const wasInserted = await databaseService.messages.insertMessage(message, this.sourceId);
+
+      if (wasInserted) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 TextMessage/DbMessage shape mismatch on emit, matching processTakPacket's existing convention
+        dataEventEmitter.emitNewMessage(message as any, this.sourceId);
+        if (isDirectMessage) {
+          logger.debug(`💾 Saved ATAK V2 GeoChat DM from ${message.fromNodeId} to ${message.toNodeId}: "${messageText.substring(0, 30)}..."`);
+        } else {
+          logger.debug(`💾 Saved ATAK V2 GeoChat from ${message.fromNodeId} on channel ${channelIndex}: "${messageText.substring(0, 30)}..."`);
+        }
+
+        // GeoChat is a real message — same push notification as text.
+        await this.sendMessagePushNotification(message, messageText, isDirectMessage);
+
+        // Deliberately NO checkAutoAcknowledge / handleAutoPingCommand /
+        // checkAutoResponder — RX-only (see processTakPacket doc comment).
+      } else {
+        logger.debug(`⏭️ Skipped duplicate ATAK V2 GeoChat ${message.id} (echo from device)`);
+      }
+    } catch (error) {
+      logger.error('❌ Error processing ATAK TAKPacketV2:', error);
     }
   }
 
@@ -9711,9 +9857,10 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // Skip non-chat messages (telemetry, traceroutes, etc.). ATAK GeoChat
-      // (PortNum.ATAK_PLUGIN) is a real chat message too — see processTakPacket —
+      // (PortNum.ATAK_PLUGIN, and its V2 form on PortNum.ATAK_PLUGIN_V2) is a
+      // real chat message too — see processTakPacket / processTakV2Packet —
       // and gets a push notification the same as a text message (spec §7.3).
-      if (message.portnum !== PortNum.TEXT_MESSAGE_APP && message.portnum !== PortNum.ATAK_PLUGIN) {
+      if (message.portnum !== PortNum.TEXT_MESSAGE_APP && message.portnum !== PortNum.ATAK_PLUGIN && message.portnum !== PortNum.ATAK_PLUGIN_V2) {
         return;
       }
 
