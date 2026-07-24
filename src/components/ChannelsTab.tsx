@@ -1070,55 +1070,6 @@ export default function ChannelsTab({
                                       </div>
                                     </div>
                                   )}
-                                  {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
-                                    <div className="message-actions">
-                                      {/* Hide reply/resend for Channel Database channels (read-only) - device channels are 0-7 */}
-                                      {selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
-                                        isMine ? (
-                                          <button
-                                            className="resend-button"
-                                            onClick={() => handleResendMessage(msg)}
-                                            title={t('channels.resend_button_title')}
-                                            aria-label={t('channels.resend_button_title')}
-                                          >
-                                            <UiIcon name="refresh" size={15} />
-                                          </button>
-                                        ) : (
-                                          <button
-                                            className="reply-button"
-                                            onClick={() => {
-                                              setReplyingTo(msg);
-                                              channelMessageInputRef.current?.focus();
-                                            }}
-                                            title={t('channels.reply_button_title')}
-                                            aria-label={t('channels.reply_button_title')}
-                                          >
-                                            <UiIcon name="reply" size={15} />
-                                          </button>
-                                        )
-                                      )}
-                                      {/* Hide emoji reactions for Channel Database channels (read-only) */}
-                                      {selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
-                                        <button
-                                          className="emoji-picker-button"
-                                          onClick={() => setEmojiPickerMessage(msg)}
-                                          disabled={txDisabled}
-                                          title={txDisabled ? t('tx_disabled.control_tooltip') : t('channels.emoji_button_title')}
-                                          aria-label={t('channels.emoji_button_title')}
-                                        >
-                                          <UiIcon name="reaction" size={15} />
-                                        </button>
-                                      )}
-                                      <button
-                                        className="delete-button"
-                                        onClick={() => handleDeleteMessage(msg)}
-                                        title={t('channels.delete_button_title')}
-                                        aria-label={t('channels.delete_button_title')}
-                                      >
-                                        <UiIcon name="delete" size={15} />
-                                      </button>
-                                    </div>
-                                  )}
                                   <div className={`message-bubble ${isMine ? 'mine' : 'theirs'}${msg.spoofSuspected ? ' spoofed' : ''}`}>
                                     {msg.spoofSuspected && (
                                       <div
@@ -1180,6 +1131,60 @@ export default function ChannelsTab({
                                       </div>
                                     )}
                                   </div>
+                                  {/* Rendered AFTER the bubble (issue #4311): on touch/no-hover
+                                      displays .message-actions sits in normal flow, so keeping it
+                                      between .sender-name and .message-bubble pushed the long name
+                                      away from its own bubble. On hover displays it stays an
+                                      absolutely-positioned overlay (unaffected by DOM order). */}
+                                  {hasPermission(`channel_${selectedChannel}` as ResourceType, 'write') && (
+                                    <div className="message-actions">
+                                      {/* Hide reply/resend for Channel Database channels (read-only) - device channels are 0-7 */}
+                                      {selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
+                                        isMine ? (
+                                          <button
+                                            className="resend-button"
+                                            onClick={() => handleResendMessage(msg)}
+                                            title={t('channels.resend_button_title')}
+                                            aria-label={t('channels.resend_button_title')}
+                                          >
+                                            <UiIcon name="refresh" size={15} />
+                                          </button>
+                                        ) : (
+                                          <button
+                                            className="reply-button"
+                                            onClick={() => {
+                                              setReplyingTo(msg);
+                                              channelMessageInputRef.current?.focus();
+                                            }}
+                                            title={t('channels.reply_button_title')}
+                                            aria-label={t('channels.reply_button_title')}
+                                          >
+                                            <UiIcon name="reply" size={15} />
+                                          </button>
+                                        )
+                                      )}
+                                      {/* Hide emoji reactions for Channel Database channels (read-only) */}
+                                      {selectedChannel >= 0 && selectedChannel < CHANNEL_DB_OFFSET && (
+                                        <button
+                                          className="emoji-picker-button"
+                                          onClick={() => setEmojiPickerMessage(msg)}
+                                          disabled={txDisabled}
+                                          title={txDisabled ? t('tx_disabled.control_tooltip') : t('channels.emoji_button_title')}
+                                          aria-label={t('channels.emoji_button_title')}
+                                        >
+                                          <UiIcon name="reaction" size={15} />
+                                        </button>
+                                      )}
+                                      <button
+                                        className="delete-button"
+                                        onClick={() => handleDeleteMessage(msg)}
+                                        title={t('channels.delete_button_title')}
+                                        aria-label={t('channels.delete_button_title')}
+                                      >
+                                        <UiIcon name="delete" size={15} />
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                                 {isMine && <div className="message-status"><MessageStatusIndicator message={msg} /></div>}
                               </div>
