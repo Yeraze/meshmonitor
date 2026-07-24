@@ -202,7 +202,9 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
             emoji?: number;
             replyId?: number;
             channelDatabaseId?: number;
-            bitfield?: number;                 // ← ADD (#4114): the ok_to_mqtt bit must survive decrypt
+            // The originator's ok_to_mqtt bit must survive server-side decrypt —
+            // violation detection reads it off the synthesized shape (#4114).
+            bitfield?: number;
           };
         }).decoded = {
           portnum: r.portnum,
@@ -210,7 +212,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
           emoji: r.emoji,
           replyId: r.replyId,
           channelDatabaseId: r.channelDatabaseId,
-          bitfield: r.bitfield,                // ← ADD
+          bitfield: r.bitfield,
         };
       }
     } catch (err) {
