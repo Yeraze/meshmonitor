@@ -4,6 +4,7 @@ import { PortNum } from '../constants/meshtastic.js';
 import meshtasticProtobufService from '../meshtasticProtobufService.js';
 import { nodeNumToId, type ServiceEnvelopeShape } from '../mqttPacketFilter.js';
 import type { MqttIngestionResult } from '../mqttIngestion.js';
+import { detectOkToMqttViolation, parseGatewayNodeNum, type OkToMqttViolationEval } from '../utils/okToMqtt.js';
 import type {
   DbMqttPacket,
   MqttGroupedPacket,
@@ -11,6 +12,13 @@ import type {
   MqttGateway,
   MqttIngestOutcome,
 } from '../../db/repositories/mqttPacketLog.js';
+import type {
+  DbMqttOkToMqttViolation,
+  MqttViolationGateway,
+  ViolationGatewaySort,
+  ViolationListSort,
+  ViolationRangeQuery,
+} from '../../db/repositories/mqttOkToMqttViolations.js';
 
 /**
  * Service for the MQTT Packet Monitor — the multi-gateway-reception
@@ -26,9 +34,13 @@ class MqttPacketLogService {
   private readonly CLEANUP_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
   private readonly DEFAULT_MAX_COUNT = 5000;
   private readonly DEFAULT_MAX_AGE_HOURS = 24;
+  private readonly DEFAULT_VIOLATION_RETENTION_DAYS = 90;
+  private readonly DEFAULT_VIOLATION_MAX_COUNT = 50000;
 
   private enabledCache: { value: boolean; expires: number } | null = null;
   private readonly ENABLED_TTL_MS = 5000;
+
+  private violationEnabledCache: { value: boolean; expires: number } | null = null;
 
   constructor() {
     this.startCleanupScheduler();
@@ -66,6 +78,29 @@ class MqttPacketLogService {
     } catch (error) {
       logger.error('❌ Failed to cleanup MQTT packet logs:', error);
     }
+
+    // Phase 2 (#4114): the durable ok_to_mqtt violations table has its own
+    // retention — a different table, a different cutoff (default 90d vs
+    // 24h), and a different per-source cap — deliberately independent of the
+    // packet log's own sweep above so it survives even when the packet log
+    // is disabled/cleared. See MQTT_OK_TO_MQTT_PHASE1_SPEC.md §2(d). Reuses
+    // this same 15-minute timer — do NOT add a second `setInterval`.
+    try {
+      const days = await this.getViolationRetentionDays();
+      const vCutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+      let vRemoved = await databaseService.mqttOkToMqttViolations.deleteViolationsOlderThan(vCutoff);
+
+      const vMax = await this.getViolationMaxCount();
+      for (const sid of await databaseService.mqttOkToMqttViolations.getViolationSourceIds()) {
+        vRemoved += await databaseService.mqttOkToMqttViolations.trimViolationsToCount(sid, vMax);
+      }
+
+      if (vRemoved > 0) {
+        logger.debug(`🧹 MQTT ok_to_mqtt violations cleanup: removed ${vRemoved} old violations`);
+      }
+    } catch (error) {
+      logger.error('❌ Failed to cleanup MQTT ok_to_mqtt violations:', error);
+    }
   }
 
   /**
@@ -101,22 +136,76 @@ class MqttPacketLogService {
   }
 
   /**
+   * Kill switch for the durable ok_to_mqtt violation write (#4114). DEFAULT
+   * ON, and — unlike every other enable flag in this file — INVERTED:
+   * `=== '0'` means off; anything else, including unset, means on. This is
+   * deliberate: the violation write must keep working on every existing
+   * install that never touched settings, since the packet log itself
+   * (`isEnabled()` above) is opt-in and default OFF. See
+   * MQTT_OK_TO_MQTT_PHASE1_SPEC.md §2(g). Cached for `ENABLED_TTL_MS`.
+   */
+  async isViolationLogEnabled(): Promise<boolean> {
+    const now = Date.now();
+    if (this.violationEnabledCache && now < this.violationEnabledCache.expires) {
+      return this.violationEnabledCache.value;
+    }
+    const raw = await databaseService.getSettingAsync('mqtt_oktomqtt_violation_log_enabled');
+    const value = raw !== '0';
+    this.violationEnabledCache = { value, expires: now + this.ENABLED_TTL_MS };
+    return value;
+  }
+
+  /** Test seam — clears the TTL cache so a just-written setting is observed immediately. */
+  resetViolationEnabledCache(): void {
+    this.violationEnabledCache = null;
+  }
+
+  async getViolationRetentionDays(): Promise<number> {
+    const raw = await databaseService.getSettingAsync('mqtt_oktomqtt_violation_retention_days');
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : this.DEFAULT_VIOLATION_RETENTION_DAYS;
+  }
+
+  async getViolationMaxCount(): Promise<number> {
+    const raw = await databaseService.getSettingAsync('mqtt_oktomqtt_violation_max_count');
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : this.DEFAULT_VIOLATION_MAX_COUNT;
+  }
+
+  /**
    * Ingestion entry point — the single method the `mqttIngestion.ts` hook
    * calls. Owns the enabled-gate, the row build, and the best-effort insert
    * so the hook itself stays a one-liner. Never throws — a logging failure
    * must not break the MQTT ingest pipeline.
+   *
+   * The durable ok_to_mqtt violation write (#4114) is independent of the
+   * packet-log opt-in: it has its own kill switch (default ON, see
+   * {@link isViolationLogEnabled}) so Phase 3's report works out of the box
+   * even on installs that never enabled the packet monitor. The eval is
+   * computed once, with `localGatewayNodeNum`, and reused for both the
+   * packet-log row and the violation row so they can never disagree.
    */
   async logEnvelope(
     sourceId: string,
     envelope: ServiceEnvelopeShape,
     result: MqttIngestionResult,
+    topic?: string,
+    localGatewayNodeNum?: number | null,
   ): Promise<void> {
     try {
       if (!envelope.packet) return; // nothing to log
-      if (!(await this.isEnabled())) return; // no-op when disabled (cached)
-      const row = buildMqttPacketLogRow(sourceId, envelope, result);
+      const v = detectOkToMqttViolation(envelope, localGatewayNodeNum); // pure, cheap, no await
+      const packetLogEnabled = await this.isEnabled(); // cached, 5s TTL
+      const wantViolation = v.isViolation && (await this.isViolationLogEnabled()); // cached
+      if (!packetLogEnabled && !wantViolation) return; // fast path: nothing to write
+      const row = buildMqttPacketLogRow(sourceId, envelope, result, topic, v);
       if (!row) return;
-      await databaseService.mqttPacketLog.insertPacket(row);
+      if (wantViolation) {
+        await databaseService.mqttOkToMqttViolations.insertViolation(buildViolationRow(row));
+      }
+      if (packetLogEnabled) {
+        await databaseService.mqttPacketLog.insertPacket(row);
+      }
     } catch (err) {
       logger.error('❌ Failed to log MQTT packet:', err);
     }
@@ -140,6 +229,56 @@ class MqttPacketLogService {
 
   async clearPackets(sourceId?: string): Promise<number> {
     return databaseService.mqttPacketLog.deleteAllPackets(sourceId);
+  }
+
+  async getViolationGatewaySummary(
+    q: ViolationRangeQuery & { sort?: ViolationGatewaySort; dir?: 'asc' | 'desc' },
+  ): Promise<MqttViolationGateway[]> {
+    return databaseService.mqttOkToMqttViolations.getGatewaySummary(q);
+  }
+
+  async getViolationGatewaySummaryCount(q: ViolationRangeQuery): Promise<number> {
+    return databaseService.mqttOkToMqttViolations.getGatewaySummaryCount(q);
+  }
+
+  async getViolationGatewaySourceIds(
+    q: ViolationRangeQuery,
+  ): Promise<Array<{ gatewayId: string; sourceId: string }>> {
+    return databaseService.mqttOkToMqttViolations.getGatewaySourceIds(q);
+  }
+
+  async getViolations(
+    q: ViolationRangeQuery & { sort?: ViolationListSort; dir?: 'asc' | 'desc' },
+  ): Promise<DbMqttOkToMqttViolation[]> {
+    return databaseService.mqttOkToMqttViolations.getViolations(q);
+  }
+
+  async getViolationCount(q: ViolationRangeQuery): Promise<number> {
+    return databaseService.mqttOkToMqttViolations.getViolationCount(q);
+  }
+
+  async getSuspectedViolations(q: {
+    sourceIds: string[];
+    since: number;
+    until: number;
+    gatewayId?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<DbMqttPacket[]> {
+    return databaseService.mqttPacketLog.getSuspectedViolations(q);
+  }
+
+  async getSuspectedViolationGateways(q: { sourceIds: string[]; since: number; until: number }): Promise<
+    Array<{
+      gatewayId: string | null;
+      gatewayNodeNum: number | null;
+      suspectedCount: number;
+      distinctOriginators: number;
+      firstSeen: number;
+      lastSeen: number;
+    }>
+  > {
+    return databaseService.mqttPacketLog.getSuspectedViolationGateways(q);
   }
 
   stop(): void {
@@ -177,16 +316,6 @@ function mapOutcome(result: MqttIngestionResult): MqttIngestOutcome {
 }
 
 /**
- * Parse a `!aabbccdd`-formatted gateway id back into its numeric nodeNum.
- * Returns null for a missing/malformed id.
- */
-function parseGatewayNodeNum(id: string | null | undefined): number | null {
-  if (!id || !id.startsWith('!')) return null;
-  const n = parseInt(id.slice(1), 16);
-  return Number.isNaN(n) ? null : n >>> 0;
-}
-
-/**
  * Lightweight payload preview — text only. Position/telemetry summaries are
  * deferred to a later phase (no protobuf re-decode here).
  */
@@ -204,6 +333,8 @@ export function buildMqttPacketLogRow(
   sourceId: string,
   envelope: ServiceEnvelopeShape,
   result: MqttIngestionResult,
+  topic?: string,
+  evaluated?: OkToMqttViolationEval,
 ): DbMqttPacket | null {
   const p = envelope.packet;
   if (!p) return null;
@@ -215,6 +346,12 @@ export function buildMqttPacketLogRow(
   const decoded = p.decoded; // inner may have synthesized this on server-decrypt
   const portnum = typeof decoded?.portnum === 'number' ? decoded.portnum : null;
   const gatewayId = envelope.gatewayId ?? null;
+  // `evaluated` is the already-computed eval from `logEnvelope` (which knows
+  // `localGatewayNodeNum`, the self-echo guard of §2(f.1)). Direct unit-test
+  // callers that omit it fall back to a no-local-identity eval — the guard
+  // then simply doesn't apply, which is the correct default for a caller
+  // with no local identity to compare against (#4114).
+  const v = evaluated ?? detectOkToMqttViolation(envelope);
   return {
     sourceId,
     packetId: num(p.id),
@@ -239,7 +376,36 @@ export function buildMqttPacketLogRow(
     ingestOutcome: mapOutcome(result),
     payloadSize: decoded?.payload?.length ?? (p.encrypted?.length ?? null),
     payloadPreview: buildPreview(portnum, decoded?.payload),
+    bitfield: v.bitfield,
+    okToMqttViolation: v.isViolation ? 1 : 0,
+    topic: topic ?? null,
     createdAt: now,
+  };
+}
+
+/**
+ * Project a packet-log row onto the durable violation row (#4114). Pure
+ * field projection off the already-built `DbMqttPacket` — deliberately NOT
+ * derived independently from the envelope, so the packet-log row and the
+ * durable violation row can never disagree. Caller has already established
+ * `row.okToMqttViolation === 1`.
+ */
+export function buildViolationRow(row: DbMqttPacket): DbMqttOkToMqttViolation {
+  return {
+    sourceId: row.sourceId,
+    packetId: row.packetId ?? null,
+    fromNode: row.fromNode ?? null,
+    fromNodeId: row.fromNodeId ?? null,
+    gatewayId: row.gatewayId ?? null,
+    gatewayNodeNum: row.gatewayNodeNum ?? null,
+    channelId: row.channelId ?? null,
+    portnum: row.portnum ?? null,
+    portnumName: row.portnumName ?? null,
+    bitfield: row.bitfield ?? null,
+    topic: row.topic ?? null,
+    rxTime: row.rxTime ?? null,
+    timestamp: row.timestamp,
+    createdAt: row.createdAt,
   };
 }
 

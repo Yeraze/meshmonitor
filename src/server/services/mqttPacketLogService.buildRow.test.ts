@@ -9,7 +9,7 @@ vi.mock('../../services/database.js', () => ({
   default: {},
 }));
 
-import { buildMqttPacketLogRow } from './mqttPacketLogService.js';
+import { buildMqttPacketLogRow, buildViolationRow } from './mqttPacketLogService.js';
 import type { ServiceEnvelopeShape } from '../mqttPacketFilter.js';
 import type { MqttIngestionResult } from '../mqttIngestion.js';
 import { PortNum } from '../constants/meshtastic.js';
@@ -55,6 +55,10 @@ describe('buildMqttPacketLogRow', () => {
     it.each(cases)('maps %j -> %s', (result, expected) => {
       const row = buildMqttPacketLogRow('src-a', envelope(), result);
       expect(row?.ingestOutcome).toBe(expected);
+      // #4114: okToMqttViolation defaults to 0 — none of these fixtures set
+      // decoded.bitfield, so the tri-state is 'unknown', never a confirmed
+      // violation. Proves no pre-existing assertion regresses.
+      expect(row?.okToMqttViolation).toBe(0);
     });
 
     it('ingested:true always wins even if a reason is also set', () => {
@@ -261,6 +265,81 @@ describe('buildMqttPacketLogRow', () => {
       expect(row?.sourceId).toBe('src-b');
       expect(row?.channel).toBe(8);
       expect(row?.channelId).toBe('LongFast');
+    });
+  });
+
+  describe('ok_to_mqtt fields (bitfield / okToMqttViolation / topic) — #4114', () => {
+    it('topic is null when omitted', () => {
+      const row = buildMqttPacketLogRow('src-a', envelope(), { ingested: true, portnum: 1 });
+      expect(row?.topic).toBeNull();
+    });
+
+    it('topic is carried through when provided', () => {
+      const row = buildMqttPacketLogRow(
+        'src-a',
+        envelope(),
+        { ingested: true, portnum: 1 },
+        'msh/US/2/e/LongFast/!433e0f28',
+      );
+      expect(row?.topic).toBe('msh/US/2/e/LongFast/!433e0f28');
+    });
+
+    it('bitfield is null when decoded.bitfield is absent (unknown)', () => {
+      const row = buildMqttPacketLogRow('src-a', envelope(), { ingested: true, portnum: 1 });
+      expect(row?.bitfield).toBeNull();
+      expect(row?.okToMqttViolation).toBe(0);
+    });
+
+    it('bitfield/okToMqttViolation reflect the caller-supplied `evaluated` eval (self-echo guard passthrough)', () => {
+      const env = envelope({ gatewayId: '!22222222' }); // distinct from packet.from (0x11111111)
+      env.packet!.decoded = { portnum: PortNum.TEXT_MESSAGE_APP, payload: new TextEncoder().encode('hi'), bitfield: 0 };
+      const evaluated = {
+        state: 'no' as const,
+        bitfield: 0,
+        fromNode: 0x11111111,
+        gatewayNodeNum: 0x22222222,
+        selfGateway: false,
+        relayed: true,
+        isViolation: true,
+        isSuspected: false,
+      };
+      const row = buildMqttPacketLogRow('src-a', env, { ingested: true, portnum: 1 }, undefined, evaluated);
+      expect(row?.bitfield).toBe(0);
+      expect(row?.okToMqttViolation).toBe(1);
+    });
+
+    it('falls back to its own no-local-identity eval when `evaluated` is omitted', () => {
+      const env = envelope({ gatewayId: '!22222222' });
+      env.packet!.decoded = { portnum: PortNum.TEXT_MESSAGE_APP, payload: new TextEncoder().encode('hi'), bitfield: 0 };
+      const row = buildMqttPacketLogRow('src-a', env, { ingested: true, portnum: 1 });
+      expect(row?.bitfield).toBe(0);
+      expect(row?.okToMqttViolation).toBe(1); // gateway (0x22222222) !== from (0x11111111), bit clear
+    });
+  });
+
+  describe('buildViolationRow', () => {
+    it('projects the packet-log row field-for-field onto the violation row shape', () => {
+      const env = envelope({ gatewayId: '!22222222' });
+      env.packet!.decoded = { portnum: PortNum.TEXT_MESSAGE_APP, payload: new TextEncoder().encode('hi'), bitfield: 0 };
+      const row = buildMqttPacketLogRow('src-a', env, { ingested: true, portnum: 1 }, 'msh/US/2/e/LongFast/!22222222');
+      expect(row).not.toBeNull();
+      const v = buildViolationRow(row!);
+      expect(v).toEqual({
+        sourceId: row!.sourceId,
+        packetId: row!.packetId,
+        fromNode: row!.fromNode,
+        fromNodeId: row!.fromNodeId,
+        gatewayId: row!.gatewayId,
+        gatewayNodeNum: row!.gatewayNodeNum,
+        channelId: row!.channelId,
+        portnum: row!.portnum,
+        portnumName: row!.portnumName,
+        bitfield: row!.bitfield,
+        topic: row!.topic,
+        rxTime: row!.rxTime,
+        timestamp: row!.timestamp,
+        createdAt: row!.createdAt,
+      });
     });
   });
 });
