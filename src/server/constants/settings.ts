@@ -300,6 +300,10 @@ export const VALID_SETTINGS_KEYS = [
   // every elevation fetch is server-proxied.
   'elevationEnabled',
   'elevationSourceUrl',
+  // ATAK/CoT Phase 3 (issue #3691): plaintext TCP CoT feed for ATAK/WinTAK.
+  // Default OFF. When enabled, streams CoT <event> XML on cotFeedPort.
+  'cotFeedEnabled',
+  'cotFeedPort',
 ] as const;
 
 export type ValidSettingKey = typeof VALID_SETTINGS_KEYS[number];

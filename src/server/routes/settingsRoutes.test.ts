@@ -549,6 +549,66 @@ describe('settingsRoutes', () => {
     });
   });
 
+  // Issue #3691 Phase 3: saving either cotFeed* key triggers the global CoT
+  // feed restart callback (mirrors the noIndexEnabled gate spy test above —
+  // this is also a global, not per-source, singleton).
+  describe('POST /api/settings — restartCotFeed callback (#3691)', () => {
+    const restartCotFeedSpy = vi.fn();
+
+    beforeEach(() => {
+      setSettingsCallbacks({ restartCotFeed: restartCotFeedSpy });
+      restartCotFeedSpy.mockClear();
+    });
+
+    afterAll(() => {
+      setSettingsCallbacks({});
+    });
+
+    it('restarts the CoT feed when cotFeedEnabled is saved', async () => {
+      const app = createApp(adminUser);
+
+      const res = await request(app)
+        .post('/api/settings')
+        .send({ cotFeedEnabled: '1' });
+
+      expect(res.status).toBe(200);
+      expect(restartCotFeedSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('restarts the CoT feed when cotFeedPort is saved', async () => {
+      const app = createApp(adminUser);
+
+      const res = await request(app)
+        .post('/api/settings')
+        .send({ cotFeedPort: '8089' });
+
+      expect(res.status).toBe(200);
+      expect(restartCotFeedSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves the feed untouched when the payload has no cotFeed keys', async () => {
+      const app = createApp(adminUser);
+
+      const res = await request(app)
+        .post('/api/settings')
+        .send({ meshName: 'Somewhere' });
+
+      expect(res.status).toBe(200);
+      expect(restartCotFeedSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not restart when saving cotFeed keys under a sourceId scope', async () => {
+      const app = createApp(adminUser);
+
+      const res = await request(app)
+        .post('/api/settings?sourceId=mqtt-broker-1')
+        .send({ cotFeedEnabled: '1' });
+
+      expect(res.status).toBe(200);
+      expect(restartCotFeedSpy).not.toHaveBeenCalled();
+    });
+  });
+
   describe('POST /api/settings — per-source auto-delete-by-distance (#3901)', () => {
     const restartSpy = vi.fn();
     const stopSpy = vi.fn();
