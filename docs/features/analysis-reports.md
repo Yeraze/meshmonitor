@@ -76,8 +76,9 @@ For every node seen on two or more of your permitted sources, the report checks 
 1. Open the dashboard, click **Analysis & Reports** in the sidebar.
 2. Click the **NodeInfo Enrichment** card.
 3. Review the summary tiles — **Nodes**, **Targets**, **Fillable fields** — above the table.
-4. Click **Fix** on a row to apply just that (node, target source) pair, or **Fix All** to apply every row currently listed.
-5. Click **Refresh** to re-run the analysis, e.g. after applying fixes or after new NodeInfo has arrived over the mesh.
+4. Click anywhere on a row to preview the copy in the standard **Copy NodeInfo** dialog: the row's donor source is preselected, its fillable fields are pre-checked, and the current vs. incoming value of every field is shown side by side. You can adjust the field selection or switch donors before confirming — note that unlike the row's Fix button, fields you check by hand in the dialog may overwrite existing values.
+5. Click **Fix** on a row to apply just that (node, target source) pair, or **Fix All** to apply every row currently listed.
+6. Click **Refresh** to re-run the analysis, e.g. after applying fixes or after new NodeInfo has arrived over the mesh.
 
 ### Applying fixes
 

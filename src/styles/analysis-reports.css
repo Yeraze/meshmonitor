@@ -457,6 +457,11 @@
   background: var(--ctp-surface0);
 }
 
+/* Rows that open a preview modal on click (e.g. NodeInfo enrichment). */
+.reports-table tbody tr.reports-row--clickable {
+  cursor: pointer;
+}
+
 /* ── Forecast section ───────────────────────────────────────────────────── */
 
 .reports-forecast {

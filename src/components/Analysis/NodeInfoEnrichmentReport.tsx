@@ -18,6 +18,7 @@ import api, { ApiError } from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { UiIcon } from '../icons';
 import { nodeInfoFieldLabel } from '../../utils/nodeInfoFields';
+import { CopyNodeInfoModal } from '../CopyNodeInfoModal';
 
 interface EnrichmentTarget {
   targetSourceId: string;
@@ -71,6 +72,8 @@ const NodeInfoEnrichmentReport: React.FC = () => {
   const { showToast } = useToast();
   const [pushToNodeDb, setPushToNodeDb] = useState(false);
   const [inFlightRowKey, setInFlightRowKey] = useState<string | null>(null);
+  // Row whose copy diff is being previewed in the CopyNodeInfoModal.
+  const [previewRow, setPreviewRow] = useState<EnrichmentRow | null>(null);
 
   const { data, isLoading, error, isFetching } = useQuery<EnrichmentAnalysis>({
     queryKey: ANALYSIS_KEY,
@@ -246,7 +249,12 @@ const NodeInfoEnrichmentReport: React.FC = () => {
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr key={row.rowKey}>
+                  <tr
+                    key={row.rowKey}
+                    className="reports-row--clickable"
+                    onClick={() => setPreviewRow(row)}
+                    title={t('analysis.enrichment.row_preview', 'Click to preview the copy')}
+                  >
                     <td>
                       <div className="reports-node__name">{row.displayName}</div>
                       <div className="reports-node__meta">{row.nodeId}</div>
@@ -264,7 +272,10 @@ const NodeInfoEnrichmentReport: React.FC = () => {
                       <button
                         type="button"
                         className="reports-btn"
-                        onClick={() => handleFixRow(row)}
+                        onClick={(e) => {
+                          e.stopPropagation(); // don't also open the row's preview modal
+                          handleFixRow(row);
+                        }}
                         disabled={applyMutation.isPending}
                       >
                         <UiIcon name="copy" size={14} />
@@ -280,6 +291,16 @@ const NodeInfoEnrichmentReport: React.FC = () => {
           </div>
         </>
       )}
+
+      <CopyNodeInfoModal
+        isOpen={previewRow !== null}
+        nodeNum={previewRow?.nodeNum ?? null}
+        targetSourceId={previewRow?.targetSourceId ?? null}
+        initialDonorSourceId={previewRow?.donorSourceId ?? null}
+        preselectFields={previewRow?.fillableFields ?? null}
+        onClose={() => setPreviewRow(null)}
+        onCopied={() => void qc.invalidateQueries({ queryKey: ANALYSIS_KEY })}
+      />
     </>
   );
 };

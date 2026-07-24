@@ -158,7 +158,7 @@ router.post('/nodes/enrichment/apply', optionalAuth(), handleEnrichmentApply);
 
 // Copy NodeInfo from another source
 import {
-  findCopyCandidates, copyNodeInfo, isNodeInfoField, NODE_INFO_FIELDS,
+  findCopyCandidates, getNodeInfoSnapshot, copyNodeInfo, isNodeInfoField, NODE_INFO_FIELDS,
   type NodeInfoField,
 } from '../services/nodeInfoCopyService.js';
 
@@ -172,8 +172,13 @@ router.get('/nodes/:nodeNum/copy-candidates', requirePermission('nodes', 'read')
     if (isNaN(nodeNum)) {
       return res.status(400).json({ error: 'nodeNum must be a number' });
     }
-    const candidates = await findCopyCandidates(nodeNum, sourceId);
-    res.json({ success: true, data: candidates });
+    // `target` is the node's current row on the target source (null if unseen
+    // there) so callers without the row in hand can render the copy diff.
+    const [candidates, target] = await Promise.all([
+      findCopyCandidates(nodeNum, sourceId),
+      getNodeInfoSnapshot(nodeNum, sourceId),
+    ]);
+    res.json({ success: true, data: { candidates, target } });
   } catch (error) {
     logger.error('Error getting copy candidates:', error);
     res.status(500).json({ error: 'Failed to retrieve copy candidates' });
