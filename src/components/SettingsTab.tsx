@@ -112,6 +112,10 @@ interface SettingsDraft {
   appriseApiServerUrl: string;
   elevationEnabled: boolean;
   elevationSourceUrl: string;
+  // ATAK/CoT Phase 3 (issue #3691): global singleton plaintext TCP CoT feed
+  // server, not per-source — mirrors the elevation fields above.
+  cotFeedEnabled: boolean;
+  cotFeedPort: number;
 }
 
 type SettingsDraftAction =
@@ -212,7 +216,7 @@ interface SettingsTabProps {
 const GLOBAL_SECTIONS = new Set([
   'settings-language', 'settings-units', 'settings-appearance', 'settings-link-previews', 'settings-privacy', 'settings-meshcore-messaging', 'settings-map',
   'settings-security',
-  'settings-apprise-server', 'settings-elevation', 'settings-backup', 'settings-channel-database',
+  'settings-apprise-server', 'settings-elevation', 'settings-atak-cot', 'settings-backup', 'settings-channel-database',
   'settings-maintenance', 'settings-analytics',
   // Position estimation is a single global, cross-source batch job (issue
   // #3271) — it belongs in global Settings, not the per-source Automation tab.
@@ -387,6 +391,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     appriseApiServerUrl: '',
     elevationEnabled: false,
     elevationSourceUrl: '',
+    cotFeedEnabled: false,
+    cotFeedPort: 8088,
   }));
 
   // Single stable field updater — every JSX onChange calls this instead of a per-field
@@ -412,6 +418,10 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // `elevationSourceUrl` (stripSecretSettings returns the full map to admins).
   const [initialElevationEnabled, setInitialElevationEnabled] = useState(false);
   const [initialElevationSourceUrl, setInitialElevationSourceUrl] = useState('');
+  // ATAK/CoT feed server (#3691 Phase 3 WP2). Same pattern as elevation above:
+  // global singleton, no context/prop home, default OFF / port 8088.
+  const [initialCotFeedEnabled, setInitialCotFeedEnabled] = useState(false);
+  const [initialCotFeedPort, setInitialCotFeedPort] = useState(8088);
   // nodeDimming* lives in SettingsContext directly (not a draft mirror — its JSX binds straight to
   // context state), but is still dirty-tracked/saved/reset alongside the draft (see
   // nodeDimmingChanged / handleSave / resetChanges below).
@@ -557,6 +567,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
             : '';
           updateField('elevationSourceUrl', elevationSourceUrl);
           setInitialElevationSourceUrl(elevationSourceUrl);
+
+          // Load ATAK/CoT feed settings (#3691 Phase 3). Default OFF; absent
+          // port key => 8088.
+          const cotFeedEnabledOn = settings.cotFeedEnabled === '1' || settings.cotFeedEnabled === 'true';
+          updateField('cotFeedEnabled', cotFeedEnabledOn);
+          setInitialCotFeedEnabled(cotFeedEnabledOn);
+          const cotFeedPortParsed = parseInt(settings.cotFeedPort || '8088', 10);
+          const cotFeedPort = Number.isFinite(cotFeedPortParsed) && cotFeedPortParsed > 0 ? cotFeedPortParsed : 8088;
+          updateField('cotFeedPort', cotFeedPort);
+          setInitialCotFeedPort(cotFeedPort);
         }
       } catch (error) {
         logger.error('Failed to fetch server settings:', error);
@@ -634,6 +654,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       appriseApiServerUrl: initialAppriseApiServerUrl,
       elevationEnabled: initialElevationEnabled,
       elevationSourceUrl: initialElevationSourceUrl,
+      cotFeedEnabled: initialCotFeedEnabled,
+      cotFeedPort: initialCotFeedPort,
     };
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours,
       temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays,
@@ -643,7 +665,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialMeshcoreCliTimeoutSeconds,
-      initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialElevationEnabled, initialElevationSourceUrl]);
+      initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialElevationEnabled, initialElevationSourceUrl,
+      initialCotFeedEnabled, initialCotFeedPort]);
 
   // Re-seed the draft's category-A/B fields whenever the upstream props/context values change.
   // PINNED BEHAVIOR (do not add a dirty-guard here — that would be a behavior change, out of
@@ -820,6 +843,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialAppriseApiServerUrl(d.appriseApiServerUrl.trim());
     setInitialElevationEnabled(d.elevationEnabled);
     setInitialElevationSourceUrl(d.elevationSourceUrl.trim());
+    setInitialCotFeedEnabled(d.cotFeedEnabled);
+    setInitialCotFeedPort(d.cotFeedPort);
   }, [setNeighborInfoMinZoom, setDefaultMapCenterLat, setDefaultMapCenterLon, setDefaultMapCenterZoom,
       setMapCenterTargetZoom, setDefaultLandingPage, setAppearanceMode, setDarkTheme, setLightTheme,
       setNodeHopsCalculation, setPreferredDashboardSortOption, setLinkPreviewsEnabled, setDiscardInvalidPositions,
@@ -887,6 +912,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         appriseApiServerUrl: draft.appriseApiServerUrl.trim(),
         elevationEnabled: draft.elevationEnabled ? 'true' : 'false',
         elevationSourceUrl: draft.elevationSourceUrl.trim(),
+        cotFeedEnabled: draft.cotFeedEnabled ? '1' : '0',
+        cotFeedPort: String(draft.cotFeedPort),
       };
 
       // Save to server
@@ -2328,6 +2355,52 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 </p>
               )}
             </div>
+          </div>
+        </div>}
+
+        {show('settings-atak-cot') && isAdmin && <div id="settings-atak-cot" className="settings-section">
+          <h3>{t('settings.atak_cot_section', 'ATAK / CoT Feed')}</h3>
+          <p className="setting-description">
+            {t(
+              'settings.atak_cot_section_description',
+              'Streams mesh node positions and ATAK contacts to ATAK/WinTAK clients over a plaintext TCP Cursor-on-Target feed (add MeshMonitor as a network input in ATAK).'
+            )}
+          </p>
+          <div className="setting-item">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                id="cotFeedEnabled"
+                type="checkbox"
+                checked={draft.cotFeedEnabled}
+                onChange={(e) => updateField('cotFeedEnabled', e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              <span>{t('settings.atak_cot_enabled_label', 'Enable CoT feed')}</span>
+            </label>
+            <span className="setting-description">
+              {t(
+                'settings.atak_cot_enabled_description',
+                'No encryption or authentication — use only on a trusted network.'
+              )}
+            </span>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="cotFeedPort">
+              {t('settings.atak_cot_port_label', 'Feed port')}
+              <span className="setting-description">
+                {t('settings.atak_cot_port_description', 'TCP port ATAK/WinTAK clients connect to. Default 8088.')}
+              </span>
+            </label>
+            <input
+              id="cotFeedPort"
+              type="number"
+              min="1"
+              max="65535"
+              disabled={!draft.cotFeedEnabled}
+              value={draft.cotFeedPort}
+              onChange={(e) => updateField('cotFeedPort', parseInt(e.target.value))}
+              className="setting-input"
+            />
           </div>
         </div>}
 
