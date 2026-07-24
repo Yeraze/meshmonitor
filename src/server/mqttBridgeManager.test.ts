@@ -116,6 +116,7 @@ import databaseService from '../services/database.js';
 import { PortNum } from './constants/meshtastic.js';
 import type { GeoSweepStats } from './services/mqttGeoSweepService.js';
 import { loadProtobufDefinitions, getProtobufRoot } from './protobufLoader.js';
+import { channelDecryptionService } from './services/channelDecryptionService.js';
 
 async function ephemeralPort(): Promise<number> {
   const net = await import('net');
@@ -1150,6 +1151,139 @@ describe('MqttBridgeManager', () => {
     expect(bridge.getStatus().uplinkOkToMqttDrops).toBe(0);
 
     await new Promise<void>((r) => localClient.end(true, {}, () => r()));
+  });
+
+  it('ok_to_mqtt: encrypted packet with no decoded bitfield attempts server-side decryption via channelDecryptionService', async () => {
+    // `decoded` and `encrypted` are a real protobuf oneof on MeshPacket
+    // (mesh.proto `payload_variant`) — a genuinely encrypted reception never
+    // carries a parallel `decoded` field on the wire, so this constructs the
+    // natural "encrypted-only" shape. It exercises the exact same branch of
+    // resolveOkToMqttForEnvelope as "decoded present but bitfield absent"
+    // (both skip the plaintext-bitfield check and fall through to the
+    // decrypt attempt); the literal "decoded object present, bitfield unset"
+    // shape is covered directly against the pure function in
+    // src/server/utils/okToMqtt.test.ts.
+    const tryDecryptSpy = vi
+      .spyOn(channelDecryptionService, 'tryDecrypt')
+      .mockResolvedValue({ success: false, error: 'no matching key (test)' });
+
+    const publishesByClient: Array<{ clientId: string | null; topic: string }> = [];
+    upstream.aedes.on('publish', (packet, client) => {
+      if (!client) return;
+      publishesByClient.push({ clientId: client.id, topic: packet.topic });
+    });
+
+    bridge = new MqttBridgeManager('encrypted-unknown-bridge', 'EncUnknown', {
+      brokerSourceId: 'local-broker',
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: [],
+      mode: 'publish_only',
+    });
+    await sourceManagerRegistry.addManager(bridge);
+
+    const localClient = connect(`mqtt://127.0.0.1:${localPort}`, {
+      username: 'u',
+      password: 'p',
+      reconnectPeriod: 0,
+      clientId: '!33333333',
+    });
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('local connect timeout')), 3000);
+      localClient.once('connect', () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+
+    const envelopeBytes = meshtasticProtobufService.encodeServiceEnvelope({
+      packet: {
+        from: 0x33333333,
+        to: 0xffffffff,
+        channel: 0,
+        id: 0x40000005,
+        encrypted: new Uint8Array([1, 2, 3, 4]),
+      },
+      channelId: 'LongFast',
+      gatewayId: '!33333333',
+    });
+    if (!envelopeBytes) throw new Error('encode failed');
+
+    try {
+      localClient.publish('msh/CA/ON/PTBO', Buffer.from(envelopeBytes));
+
+      await new Promise((r) => setTimeout(r, 500));
+
+      // The encrypted branch was reached and decryption was attempted with
+      // the ok_to_mqtt evaluator's expected args. (The local broker's own
+      // ingestion of this same locally-published packet independently
+      // calls tryDecrypt too, to decode message/telemetry content — so this
+      // asserts "at least once with these args", not an exact call count.)
+      expect(tryDecryptSpy).toHaveBeenCalledWith(expect.any(Uint8Array), 0x40000005, 0x33333333, 0);
+    } finally {
+      await new Promise<void>((r) => localClient.end(true, {}, () => r()));
+      tryDecryptSpy.mockRestore();
+    }
+  });
+
+  it('ok_to_mqtt: an "unknown" resolution (decrypt failure) is fail-closed — packet not uplinked, uplinkOkToMqttDrops incremented', async () => {
+    const tryDecryptSpy = vi
+      .spyOn(channelDecryptionService, 'tryDecrypt')
+      .mockResolvedValue({ success: false, error: 'no matching key (test)' });
+
+    const publishesByClient: Array<{ clientId: string | null; topic: string }> = [];
+    upstream.aedes.on('publish', (packet, client) => {
+      if (!client) return;
+      publishesByClient.push({ clientId: client.id, topic: packet.topic });
+    });
+
+    bridge = new MqttBridgeManager('encrypted-unknown-drop-bridge', 'EncUnknownDrop', {
+      brokerSourceId: 'local-broker',
+      upstream: { url: `mqtt://127.0.0.1:${upstreamPort}` },
+      subscriptions: [],
+      mode: 'publish_only',
+    });
+    await sourceManagerRegistry.addManager(bridge);
+
+    const localClient = connect(`mqtt://127.0.0.1:${localPort}`, {
+      username: 'u',
+      password: 'p',
+      reconnectPeriod: 0,
+      clientId: '!44444444',
+    });
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('local connect timeout')), 3000);
+      localClient.once('connect', () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+
+    const envelopeBytes = meshtasticProtobufService.encodeServiceEnvelope({
+      packet: {
+        from: 0x44444444,
+        to: 0xffffffff,
+        channel: 0,
+        id: 0x40000006,
+        encrypted: new Uint8Array([5, 6, 7, 8]),
+      },
+      channelId: 'LongFast',
+      gatewayId: '!44444444',
+    });
+    if (!envelopeBytes) throw new Error('encode failed');
+
+    try {
+      localClient.publish('msh/CA/ON/PTBO', Buffer.from(envelopeBytes));
+
+      await new Promise((r) => setTimeout(r, 500));
+
+      // 'unknown' (decrypt failed) must be fail-closed: not republished, drop
+      // counter incremented — the same policy as an explicit bit-0-unset packet.
+      expect(publishesByClient.some((p) => p.topic === 'msh/CA/ON/PTBO')).toBe(false);
+      expect(bridge.getStatus().uplinkOkToMqttDrops).toBeGreaterThanOrEqual(1);
+    } finally {
+      await new Promise<void>((r) => localClient.end(true, {}, () => r()));
+      tryDecryptSpy.mockRestore();
+    }
   });
 
   // ---------------------------------------------------------------------------

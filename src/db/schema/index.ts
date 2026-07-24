@@ -21,6 +21,7 @@ export * from './notifications.js';
 // Packet logging
 export * from './packets.js';
 export * from './mqttPacketLog.js';
+export * from './mqttOkToMqttViolations.js';
 
 // Miscellaneous tables
 export * from './misc.js';

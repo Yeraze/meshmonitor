@@ -142,6 +142,7 @@ import { migration as addPositionLocationSourceMigration, runMigration124Postgre
 import { migration as addXeddsaSignedMigration, runMigration125Postgres, runMigration125Mysql } from '../server/migrations/125_add_xeddsa_signed_to_packet_log.js';
 import { migration as addTransportFlagsMigration, runMigration126Postgres, runMigration126Mysql } from '../server/migrations/126_add_transport_flags_to_nodes.js';
 import { migration as addAtakContactsMigration, runMigration127Postgres, runMigration127Mysql } from '../server/migrations/127_add_atak_contacts.js';
+import { migration as mqttOkToMqttViolationsMigration, runMigration128Postgres, runMigration128Mysql } from '../server/migrations/128_mqtt_oktomqtt_violations.js';
 
 // ============================================================================
 // Registry
@@ -2020,4 +2021,19 @@ registry.register({
   sqlite: (db) => addAtakContactsMigration.up(db),
   postgres: (client) => runMigration127Postgres(client),
   mysql: (pool) => runMigration127Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 128: `ok_to_mqtt` violation detection (#4114) — adds bitfield /
+// okToMqttViolation / topic to `mqtt_packet_log`, plus the retention-immune
+// `mqtt_ok_to_mqtt_violations` history table.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 128,
+  name: 'mqtt_oktomqtt_violations',
+  settingsKey: 'migration_128_mqtt_oktomqtt_violations',
+  sqlite: (db) => mqttOkToMqttViolationsMigration.up(db),
+  postgres: (client) => runMigration128Postgres(client),
+  mysql: (pool) => runMigration128Mysql(pool),
 });

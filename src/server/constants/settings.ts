@@ -103,6 +103,15 @@ export const VALID_SETTINGS_KEYS = [
   'mqtt_packet_log_enabled',
   'mqtt_packet_log_max_count',
   'mqtt_packet_log_max_age_hours',
+  // `ok_to_mqtt` violation detection (#4114). Durable-write kill switch is
+  // DEFAULT ON — inverted from the `mqtt_packet_log_enabled` convention
+  // (`=== '1'` means on): here `=== '0'` means off, and anything else,
+  // including unset, means on. This is deliberate so the feature works on
+  // installs that never touched settings. See
+  // docs/internal/dev-notes/MQTT_OK_TO_MQTT_PHASE1_SPEC.md §2(g).
+  'mqtt_oktomqtt_violation_log_enabled',
+  'mqtt_oktomqtt_violation_retention_days',
+  'mqtt_oktomqtt_violation_max_count',
   // Rolling retention window (days) for the MeshCore position-history trail (#3852).
   'meshcore_position_history_retention_days',
   'solarMonitoringEnabled',

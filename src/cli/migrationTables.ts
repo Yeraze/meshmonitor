@@ -58,6 +58,11 @@ export const TABLE_ORDER = [
   'packet_log',
   // 4124: MQTT packet monitor reception log (per-gateway rows; sourceId, no FKs)
   'mqtt_packet_log',
+  // 4114: durable ok_to_mqtt violation history (sourceId, no FKs). Deliberately
+  // migrated — unlike the transient packet logs above, this table is long-retention
+  // history (90d) that the Analysis report reads, so dropping it on a backend
+  // migration would silently erase the record of every detected violation.
+  'mqtt_ok_to_mqtt_violations',
   // 3691 Phase 2: per-source ATAK contact state (composite PK uid+sourceId, no FKs)
   'atak_contacts',
   'backup_history',
@@ -108,7 +113,8 @@ export const SOURCE_SCOPED_TABLES = new Set([
   // every backend, so the `sourceId` backfill check never applies to it.
   'embed_profiles', 'meshcore_nodes', 'meshcore_messages',
   'meshcore_neighbor_info', 'meshcore_packet_log',
-  'meshcore_heard_repeaters', 'mqtt_packet_log', 'atak_contacts',
+  'meshcore_heard_repeaters', 'mqtt_packet_log', 'mqtt_ok_to_mqtt_violations',
+  'atak_contacts',
   'auto_favorite_targets', 'auto_favorite_assignments',
   'dead_drop_messages',
 ]);

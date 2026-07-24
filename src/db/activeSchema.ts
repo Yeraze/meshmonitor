@@ -57,6 +57,9 @@ import {
 import {
   mqttPacketLogSqlite, mqttPacketLogPostgres, mqttPacketLogMysql,
 } from './schema/mqttPacketLog.js';
+import {
+  mqttOkToMqttViolationsSqlite, mqttOkToMqttViolationsPostgres, mqttOkToMqttViolationsMysql,
+} from './schema/mqttOkToMqttViolations.js';
 
 // Miscellaneous tables
 import {
@@ -192,6 +195,8 @@ export interface ActiveSchema {
   packetLog: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4124 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   mqttPacketLog: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4114 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  mqttOkToMqttViolations: any;
 
   // Miscellaneous tables
   backupHistory: any;
@@ -290,6 +295,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     readMessages: readMessagesSqlite,
     packetLog: packetLogSqlite,
     mqttPacketLog: mqttPacketLogSqlite,
+    mqttOkToMqttViolations: mqttOkToMqttViolationsSqlite,
     backupHistory: backupHistorySqlite,
     systemBackupHistory: systemBackupHistorySqlite,
     customThemes: customThemesSqlite,
@@ -348,6 +354,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     readMessages: readMessagesPostgres,
     packetLog: packetLogPostgres,
     mqttPacketLog: mqttPacketLogPostgres,
+    mqttOkToMqttViolations: mqttOkToMqttViolationsPostgres,
     backupHistory: backupHistoryPostgres,
     systemBackupHistory: systemBackupHistoryPostgres,
     customThemes: customThemesPostgres,
@@ -406,6 +413,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     readMessages: readMessagesMysql,
     packetLog: packetLogMysql,
     mqttPacketLog: mqttPacketLogMysql,
+    mqttOkToMqttViolations: mqttOkToMqttViolationsMysql,
     backupHistory: backupHistoryMysql,
     systemBackupHistory: systemBackupHistoryMysql,
     customThemes: customThemesMysql,

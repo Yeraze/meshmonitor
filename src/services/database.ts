@@ -46,6 +46,7 @@ import {
   WaypointsRepository,
   MeshCoreRepository,
   MqttPacketLogRepository,
+  MqttOkToMqttViolationsRepository,
   AtakContactsRepository,
   EstimatedPositionsRepository,
   AutoFavoriteTargetsRepository,
@@ -483,6 +484,7 @@ class DatabaseService {
   public waypointsRepo: WaypointsRepository | null = null;
   public meshcoreRepo: MeshCoreRepository | null = null;
   public mqttPacketLogRepo: MqttPacketLogRepository | null = null;
+  public mqttOkToMqttViolationsRepo: MqttOkToMqttViolationsRepository | null = null;
   public atakContactsRepo: AtakContactsRepository | null = null;
   public estimatedPositionsRepo: EstimatedPositionsRepository | null = null;
   public autoFavoriteTargetsRepo: AutoFavoriteTargetsRepository | null = null;
@@ -673,6 +675,11 @@ class DatabaseService {
   get mqttPacketLog(): MqttPacketLogRepository {
     if (!this.mqttPacketLogRepo) throw new Error('Database not initialized');
     return this.mqttPacketLogRepo;
+  }
+
+  get mqttOkToMqttViolations(): MqttOkToMqttViolationsRepository {
+    if (!this.mqttOkToMqttViolationsRepo) throw new Error('Database not initialized');
+    return this.mqttOkToMqttViolationsRepo;
   }
 
   get atakContacts(): AtakContactsRepository {
@@ -920,6 +927,7 @@ class DatabaseService {
       this.waypointsRepo = new WaypointsRepository(drizzleDb, this.drizzleDbType);
       this.meshcoreRepo = new MeshCoreRepository(drizzleDb, this.drizzleDbType);
       this.mqttPacketLogRepo = new MqttPacketLogRepository(drizzleDb, this.drizzleDbType);
+      this.mqttOkToMqttViolationsRepo = new MqttOkToMqttViolationsRepository(drizzleDb, this.drizzleDbType);
       this.atakContactsRepo = new AtakContactsRepository(drizzleDb, this.drizzleDbType);
       this.estimatedPositionsRepo = new EstimatedPositionsRepository(drizzleDb, this.drizzleDbType);
       this.autoFavoriteTargetsRepo = new AutoFavoriteTargetsRepository(drizzleDb, this.drizzleDbType);

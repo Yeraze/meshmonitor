@@ -63,6 +63,13 @@ vi.mock('../services/database.js', () => ({
     mqttPacketLog: {
       insertPacket: vi.fn(async () => undefined),
     },
+    // #4114: violation writes are independent of mqtt_packet_log_enabled and
+    // default ON — most fixtures below never set decoded.bitfield, so the
+    // tri-state is 'unknown' and this is never actually invoked, but the
+    // mock must exist so a stray call doesn't throw "not a function".
+    mqttOkToMqttViolations: {
+      insertViolation: vi.fn(async () => undefined),
+    },
   },
 }));
 
@@ -277,6 +284,33 @@ describe('MQTT Packet Monitor — ingestion hook', () => {
       expect(c[0].packetId).toBe(0xabcdef01);
       expect(c[0].fromNode).toBe(NODE_A);
     }
+  });
+
+  it('threads topic from MqttIngestionInput onto the logged row (#4114)', async () => {
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor({ portnum: 1, gatewayId: '!00000001' }),
+      topic: 'msh/US/2/e/LongFast/!00000001',
+    });
+    expect(result.ingested).toBe(true);
+
+    await flush();
+    expect(databaseService.mqttPacketLog.insertPacket).toHaveBeenCalledTimes(1);
+    const row = (databaseService.mqttPacketLog.insertPacket as any).mock.calls[0][0];
+    expect(row.topic).toBe('msh/US/2/e/LongFast/!00000001');
+  });
+
+  it('still logs (topic null) when topic is omitted — optional field', async () => {
+    const result = await ingestServiceEnvelope({
+      sourceId: 'bridge-1',
+      envelope: envFor({ portnum: 1, gatewayId: '!00000001' }),
+    });
+    expect(result.ingested).toBe(true);
+
+    await flush();
+    expect(databaseService.mqttPacketLog.insertPacket).toHaveBeenCalledTimes(1);
+    const row = (databaseService.mqttPacketLog.insertPacket as any).mock.calls[0][0];
+    expect(row.topic).toBeNull();
   });
 
   it('does not log when mqtt_packet_log_enabled is unset (disabled)', async () => {

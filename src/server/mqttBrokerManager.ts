@@ -14,6 +14,7 @@ import { EventEmitter } from 'events';
 import { MqttBroker, type MqttBrokerPublish } from './transports/mqttBroker.js';
 import { MqttPacketFilter, type ServiceEnvelopeShape } from './mqttPacketFilter.js';
 import { ingestServiceEnvelope, bootstrapMqttChannelDatabase } from './mqttIngestion.js';
+import { parseGatewayNodeNum } from './utils/okToMqtt.js';
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import type { ISourceManager, SourceStatus } from './sourceManagerRegistry.js';
 import type { Source } from '../db/repositories/sources.js';
@@ -318,6 +319,11 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
       sourceId: this.sourceId,
       envelope,
       filter: this.filter,
+      topic: msg.topic,
+      // Self-echo guard (#4114, §2(f.1)): this source's own gateway node
+      // number, so a local publish is never mistaken for a relayed copy of
+      // someone else's packet.
+      localGatewayNodeNum: parseGatewayNodeNum(this.config.gateway.nodeId),
     })
       .then((result) => {
         if (result.ingested) this.packetsIngested++;

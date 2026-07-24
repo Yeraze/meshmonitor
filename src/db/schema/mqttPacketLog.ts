@@ -50,11 +50,21 @@ export const mqttPacketLogSqlite = sqliteTable('mqtt_packet_log', {
   encrypted: integer('encrypted').notNull().default(0),
   /** 'server' when MeshMonitor decrypted an encrypted copy server-side, else null. */
   decryptedBy: text('decryptedBy'),
-  /** 'ingested' | 'encrypted' | 'ignored' | 'geo-ignored' | 'unsupported-portnum' | 'decode-error'. */
+  /** 'ingested' | 'encrypted' | 'ignored' | 'geo-ignored' | 'distance' | 'unsupported-portnum' | 'decode-error'. */
   ingestOutcome: text('ingestOutcome').notNull(),
   payloadSize: integer('payloadSize'),
   /** Text preview (TEXT_MESSAGE_APP only in Phase 1) or null. */
   payloadPreview: text('payloadPreview'),
+  /** Raw `Data.bitfield` (protobuf field 9). NULL = absent/undecryptable = ok_to_mqtt unknown (#4114). */
+  bitfield: integer('bitfield'),
+  /**
+   * 0/1 integer, NOT a boolean column type - same load-bearing reason as `encrypted` above:
+   * the grouped query does `MAX(okToMqttViolation)` and PostgreSQL has no MAX(boolean).
+   * 1 => bit 0 was explicitly clear AND the publishing gateway is not the originator (#4114).
+   */
+  okToMqttViolation: integer('okToMqttViolation').notNull().default(0),
+  /** Raw MQTT topic this reception arrived on. Diagnostic (#4114). */
+  topic: text('topic'),
   createdAt: integer('createdAt').notNull(),
 });
 
@@ -88,6 +98,9 @@ export const mqttPacketLogPostgres = pgTable('mqtt_packet_log', {
   ingestOutcome: pgText('ingestOutcome').notNull(),
   payloadSize: pgInteger('payloadSize'),
   payloadPreview: pgText('payloadPreview'),
+  bitfield: pgInteger('bitfield'),
+  okToMqttViolation: pgInteger('okToMqttViolation').notNull().default(0),
+  topic: pgText('topic'),
   createdAt: pgBigint('createdAt', { mode: 'number' }).notNull(),
 });
 
@@ -120,5 +133,8 @@ export const mqttPacketLogMysql = mysqlTable('mqtt_packet_log', {
   ingestOutcome: myVarchar('ingestOutcome', { length: 24 }).notNull(),
   payloadSize: myInt('payloadSize'),
   payloadPreview: myVarchar('payloadPreview', { length: 256 }),
+  bitfield: myInt('bitfield'),
+  okToMqttViolation: myInt('okToMqttViolation').notNull().default(0),
+  topic: myVarchar('topic', { length: 512 }),
   createdAt: myBigint('createdAt', { mode: 'number' }).notNull(),
 });

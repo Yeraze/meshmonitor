@@ -16,8 +16,17 @@ import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { optionalAuth } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
+import { ok, fail } from '../utils/apiResponse.js';
 import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 import type { PositionRow } from '../../db/repositories/analysis.js';
+import mqttPacketLogService from '../services/mqttPacketLogService.js';
+import type {
+  ViolationGatewaySort,
+  ViolationListSort,
+  MqttViolationGateway,
+  DbMqttOkToMqttViolation,
+} from '../../db/repositories/mqttOkToMqttViolations.js';
+import type { DbMqttPacket } from '../../db/repositories/mqttPacketLog.js';
 import {
   identifySolarNodes,
   summarizeSolarProduction,
@@ -65,6 +74,82 @@ function clampPageSize(raw: unknown): number {
 function parseSinceMs(raw: unknown): number {
   const n = parseInt(String(raw ?? '0'), 10);
   return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+// ── ok_to_mqtt violation detection (#4114) ──────────────────────────────────
+//
+// Two new helpers below (`parseUntilMs`, `parseLookbackDays`, `parseBoolParam`)
+// are genuinely new — there is no `parseUntilMs`/`parseLookbackDays`/
+// `parseBoolParam` under any similar name elsewhere in this file. `parseLookbackDays`
+// deliberately accepts BOTH `lookbackDays` and `lookback_days` spellings so it does
+// not become a third convention alongside the solar handlers' inline
+// `lookback_days` parser (clamp 1..90) below, which is intentionally left
+// untouched — see MQTT_OK_TO_MQTT_PHASE1_SPEC.md §3.17.
+
+function parseUntilMs(raw: unknown): number {
+  const n = parseInt(String(raw ?? ''), 10);
+  return Number.isFinite(n) && n > 0 ? n : Date.now();
+}
+
+function parseLookbackDays(raw: unknown): number {
+  const n = parseInt(String(raw ?? '7'), 10);
+  if (!Number.isFinite(n)) return 7;
+  return Math.min(Math.max(n, 1), 365);
+}
+
+function parseBoolParam(raw: unknown): boolean {
+  return raw === 'true' || raw === '1';
+}
+
+const VIOLATION_GATEWAY_SORTS = ['violationCount', 'lastSeen', 'distinctOriginators', 'gatewayId'] as const;
+const VIOLATION_LIST_SORTS = ['timestamp', 'fromNode', 'gatewayId'] as const;
+
+/** Row shape for the merged `/mqtt-violations/gateways` response. */
+interface ViolationGatewayRow extends MqttViolationGateway {
+  suspectedCount: number;
+  sourceIds: string[];
+}
+
+/** Row shape for the merged `/mqtt-violations/packets` response. */
+interface ViolationPacketRow {
+  id: number | undefined;
+  kind: 'confirmed' | 'suspected';
+  sourceId: string;
+  packetId: number | null;
+  fromNode: number | null;
+  fromNodeId: string | null;
+  gatewayId: string | null;
+  gatewayNodeNum: number | null;
+  channelId: string | null;
+  portnum: number | null;
+  portnumName: string | null;
+  bitfield: number | null;
+  topic: string | null;
+  rxTime: number | null;
+  timestamp: number;
+}
+
+function toViolationPacketRow(
+  kind: 'confirmed' | 'suspected',
+  row: DbMqttOkToMqttViolation | DbMqttPacket,
+): ViolationPacketRow {
+  return {
+    id: row.id,
+    kind,
+    sourceId: row.sourceId,
+    packetId: row.packetId ?? null,
+    fromNode: row.fromNode ?? null,
+    fromNodeId: row.fromNodeId ?? null,
+    gatewayId: row.gatewayId ?? null,
+    gatewayNodeNum: row.gatewayNodeNum ?? null,
+    channelId: row.channelId ?? null,
+    portnum: row.portnum ?? null,
+    portnumName: row.portnumName ?? null,
+    bitfield: row.bitfield ?? null,
+    topic: row.topic ?? null,
+    rxTime: row.rxTime ?? null,
+    timestamp: row.timestamp,
+  };
 }
 
 /**
@@ -450,6 +535,314 @@ router.get('/hop-counts', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error in GET /api/analysis/hop-counts:', error);
     res.status(500).json({ error: 'Failed to fetch hop counts' });
+  }
+});
+
+/**
+ * GET /api/analysis/mqtt-violations/gateways
+ *
+ * Per-gateway `ok_to_mqtt` violation summary (#4114). Confirmed violations
+ * come from the durable `mqtt_ok_to_mqtt_violations` table (90-day
+ * retention, independent of the packet monitor). "Suspected" rows
+ * (`includeUnknown=true`) come from `mqtt_packet_log` instead — bounded by
+ * that table's much shorter retention window and gated on
+ * `mqtt_packet_log_enabled` — so the response reports `suspectedAvailable`
+ * / `suspectedWindowMs` alongside them. See
+ * docs/internal/dev-notes/MQTT_OK_TO_MQTT_PHASE1_SPEC.md §2(e)/§3.17.
+ */
+router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
+  try {
+    const permitted = await resolvePermittedSourceIds(req, 'packetmonitor');
+    const requested = parseSourcesParam(req.query.sources);
+    const sourceIds = requested ? permitted.filter((id) => requested.includes(id)) : permitted;
+
+    const until = parseUntilMs(req.query.until);
+    const lookbackDays = parseLookbackDays(req.query.lookbackDays ?? req.query.lookback_days);
+    const hasExplicitSince = typeof req.query.since === 'string' && req.query.since.trim() !== '';
+    const since = hasExplicitSince
+      ? parseSinceMs(req.query.since)
+      : until - lookbackDays * 24 * 60 * 60 * 1000;
+
+    if (since > until) {
+      fail(res, 400, 'INVALID_RANGE', 'since must be <= until');
+      return;
+    }
+
+    const sortRaw = typeof req.query.sort === 'string' ? req.query.sort : 'violationCount';
+    if (!(VIOLATION_GATEWAY_SORTS as readonly string[]).includes(sortRaw)) {
+      fail(res, 400, 'INVALID_SORT_FIELD', 'Unsupported sort field');
+      return;
+    }
+    const sort = sortRaw as ViolationGatewaySort;
+
+    const dirRaw = typeof req.query.dir === 'string' ? req.query.dir : 'desc';
+    if (dirRaw !== 'asc' && dirRaw !== 'desc') {
+      fail(res, 400, 'INVALID_SORT_DIRECTION', 'Sort direction must be asc or desc');
+      return;
+    }
+    const dir = dirRaw;
+
+    const includeUnknown = parseBoolParam(req.query.includeUnknown);
+    const limit = clampPageSize(req.query.limit);
+    const offsetRaw = parseInt(String(req.query.offset ?? '0'), 10);
+    const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
+
+    if (sourceIds.length === 0) {
+      ok(res, {
+        gateways: [],
+        total: 0,
+        limit,
+        offset,
+        since,
+        until,
+        includeUnknown,
+        suspectedAvailable: false,
+        suspectedWindowMs: 0,
+        sources: [],
+      });
+      return;
+    }
+
+    const rangeQuery = { sourceIds, since, until };
+
+    // Fetch confirmed rows (capped at 2000 — see §3.17 step 7 / §6 risk 2)
+    // and always sort/paginate the (possibly merged) list in the handler so
+    // the includeUnknown=true and includeUnknown=false paths share one code
+    // path. The three queries below have no data dependency on each other,
+    // so run them concurrently rather than round-tripping in sequence.
+    const [confirmedRows, confirmedTotal, sourceIdPairs] = await Promise.all([
+      databaseService.mqttOkToMqttViolations.getGatewaySummary({ ...rangeQuery, limit: 2000, offset: 0 }),
+      databaseService.mqttOkToMqttViolations.getGatewaySummaryCount(rangeQuery),
+      databaseService.mqttOkToMqttViolations.getGatewaySourceIds(rangeQuery),
+    ]);
+
+    // Seeded from the confirmed side; the suspected side (below) unions its
+    // own (gatewayId, sourceId) pairs in — a gateway can be known to have
+    // touched a source via either signal, and a suspected-only gateway must
+    // still report which source(s) it was seen on (#4114 code review).
+    const sourceIdsByGateway = new Map<string, Set<string>>();
+    for (const pair of sourceIdPairs) {
+      const set = sourceIdsByGateway.get(pair.gatewayId) ?? new Set<string>();
+      set.add(pair.sourceId);
+      sourceIdsByGateway.set(pair.gatewayId, set);
+    }
+
+    let suspectedAvailable = false;
+    let suspectedWindowMs = 0;
+    const suspectedByGateway = new Map<
+      string,
+      { suspectedCount: number; gatewayNodeNum: number | null; distinctOriginators: number; firstSeen: number; lastSeen: number }
+    >();
+
+    if (includeUnknown) {
+      suspectedAvailable = await mqttPacketLogService.isEnabled();
+      if (suspectedAvailable) {
+        // No dependency between these three — run concurrently.
+        const [maxAgeHours, suspectedRows, suspectedSourceIdPairs] = await Promise.all([
+          mqttPacketLogService.getMaxAgeHours(),
+          databaseService.mqttPacketLog.getSuspectedViolationGateways(rangeQuery),
+          databaseService.mqttPacketLog.getSuspectedGatewaySourceIds(rangeQuery),
+        ]);
+        suspectedWindowMs = maxAgeHours * 60 * 60 * 1000;
+        for (const row of suspectedRows) {
+          if (!row.gatewayId) continue;
+          suspectedByGateway.set(row.gatewayId, {
+            suspectedCount: row.suspectedCount,
+            gatewayNodeNum: row.gatewayNodeNum,
+            distinctOriginators: row.distinctOriginators,
+            firstSeen: row.firstSeen,
+            lastSeen: row.lastSeen,
+          });
+        }
+        for (const pair of suspectedSourceIdPairs) {
+          const set = sourceIdsByGateway.get(pair.gatewayId) ?? new Set<string>();
+          set.add(pair.sourceId);
+          sourceIdsByGateway.set(pair.gatewayId, set);
+        }
+      }
+    }
+
+    const mergedByGateway = new Map<string, ViolationGatewayRow>();
+    for (const g of confirmedRows) {
+      if (!g.gatewayId) continue;
+      const suspected = suspectedByGateway.get(g.gatewayId);
+      mergedByGateway.set(g.gatewayId, {
+        ...g,
+        suspectedCount: suspected?.suspectedCount ?? 0,
+        // A gateway confirmed AND suspected in the same window must report
+        // the true first/last-seen span across both signals, not just the
+        // confirmed side's (#4114 code review).
+        firstSeen: suspected ? Math.min(g.firstSeen, suspected.firstSeen) : g.firstSeen,
+        lastSeen: suspected ? Math.max(g.lastSeen, suspected.lastSeen) : g.lastSeen,
+        sourceIds: Array.from(sourceIdsByGateway.get(g.gatewayId) ?? []),
+      });
+    }
+    // Gateways present only in the suspected set appear with violationCount: 0.
+    for (const [gatewayId, suspected] of suspectedByGateway) {
+      if (mergedByGateway.has(gatewayId)) continue;
+      mergedByGateway.set(gatewayId, {
+        gatewayId,
+        gatewayNodeNum: suspected.gatewayNodeNum,
+        violationCount: 0,
+        distinctOriginators: suspected.distinctOriginators,
+        firstSeen: suspected.firstSeen,
+        lastSeen: suspected.lastSeen,
+        suspectedCount: suspected.suspectedCount,
+        sourceIds: Array.from(sourceIdsByGateway.get(gatewayId) ?? []),
+      });
+    }
+
+    const merged = Array.from(mergedByGateway.values());
+    const dirMultiplier = dir === 'asc' ? 1 : -1;
+    merged.sort((a, b) => {
+      if (sort === 'gatewayId') {
+        return dirMultiplier * String(a.gatewayId ?? '').localeCompare(String(b.gatewayId ?? ''));
+      }
+      return dirMultiplier * ((a[sort] ?? 0) - (b[sort] ?? 0));
+    });
+
+    const total = includeUnknown ? merged.length : confirmedTotal;
+    const gateways = merged.slice(offset, offset + limit);
+
+    ok(res, {
+      gateways,
+      total,
+      limit,
+      offset,
+      since,
+      until,
+      includeUnknown,
+      suspectedAvailable,
+      suspectedWindowMs,
+      sources: sourceIds,
+    });
+  } catch (error) {
+    logger.error('Error in GET /api/analysis/mqtt-violations/gateways:', error);
+    fail(res, 500, 'MQTT_VIOLATIONS_FETCH_FAILED', 'Failed to fetch ok_to_mqtt violations');
+  }
+});
+
+/**
+ * GET /api/analysis/mqtt-violations/packets
+ *
+ * Drill-down list of individual `ok_to_mqtt` violations (#4114), optionally
+ * filtered to one `gateway`. Same confirmed/suspected split as
+ * `/mqtt-violations/gateways` — see that handler's doc comment and
+ * MQTT_OK_TO_MQTT_PHASE1_SPEC.md §2(e)/§3.17.
+ */
+router.get('/mqtt-violations/packets', async (req: Request, res: Response) => {
+  try {
+    const permitted = await resolvePermittedSourceIds(req, 'packetmonitor');
+    const requested = parseSourcesParam(req.query.sources);
+    const sourceIds = requested ? permitted.filter((id) => requested.includes(id)) : permitted;
+
+    const until = parseUntilMs(req.query.until);
+    const lookbackDays = parseLookbackDays(req.query.lookbackDays ?? req.query.lookback_days);
+    const hasExplicitSince = typeof req.query.since === 'string' && req.query.since.trim() !== '';
+    const since = hasExplicitSince
+      ? parseSinceMs(req.query.since)
+      : until - lookbackDays * 24 * 60 * 60 * 1000;
+
+    if (since > until) {
+      fail(res, 400, 'INVALID_RANGE', 'since must be <= until');
+      return;
+    }
+
+    const sortRaw = typeof req.query.sort === 'string' ? req.query.sort : 'timestamp';
+    if (!(VIOLATION_LIST_SORTS as readonly string[]).includes(sortRaw)) {
+      fail(res, 400, 'INVALID_SORT_FIELD', 'Unsupported sort field');
+      return;
+    }
+    const sort = sortRaw as ViolationListSort;
+
+    const dirRaw = typeof req.query.dir === 'string' ? req.query.dir : 'desc';
+    if (dirRaw !== 'asc' && dirRaw !== 'desc') {
+      fail(res, 400, 'INVALID_SORT_DIRECTION', 'Sort direction must be asc or desc');
+      return;
+    }
+    const dir = dirRaw;
+
+    const includeUnknown = parseBoolParam(req.query.includeUnknown);
+    const gateway = typeof req.query.gateway === 'string' && req.query.gateway.trim() !== ''
+      ? req.query.gateway
+      : undefined;
+    const limit = clampPageSize(req.query.limit);
+    const offsetRaw = parseInt(String(req.query.offset ?? '0'), 10);
+    const offset = Number.isFinite(offsetRaw) && offsetRaw >= 0 ? offsetRaw : 0;
+
+    if (sourceIds.length === 0) {
+      ok(res, {
+        violations: [],
+        total: 0,
+        limit,
+        offset,
+        since,
+        until,
+        gateway: gateway ?? null,
+        includeUnknown,
+        suspectedAvailable: false,
+        suspectedWindowMs: 0,
+        sources: [],
+      });
+      return;
+    }
+
+    const rangeQuery = { sourceIds, since, until, gatewayId: gateway };
+
+    // No data dependency between these two — run concurrently.
+    const [confirmedRows, confirmedTotal] = await Promise.all([
+      databaseService.mqttOkToMqttViolations.getViolations({ ...rangeQuery, limit: 2000, offset: 0 }),
+      databaseService.mqttOkToMqttViolations.getViolationCount(rangeQuery),
+    ]);
+
+    let suspectedAvailable = false;
+    let suspectedWindowMs = 0;
+    let suspectedRows: DbMqttPacket[] = [];
+
+    if (includeUnknown) {
+      suspectedAvailable = await mqttPacketLogService.isEnabled();
+      if (suspectedAvailable) {
+        // No dependency between these two — run concurrently.
+        const [maxAgeHours, rows] = await Promise.all([
+          mqttPacketLogService.getMaxAgeHours(),
+          databaseService.mqttPacketLog.getSuspectedViolations({ ...rangeQuery, limit: 2000, offset: 0 }),
+        ]);
+        suspectedWindowMs = maxAgeHours * 60 * 60 * 1000;
+        suspectedRows = rows;
+      }
+    }
+
+    const merged = [
+      ...confirmedRows.map((r) => toViolationPacketRow('confirmed', r)),
+      ...suspectedRows.map((r) => toViolationPacketRow('suspected', r)),
+    ];
+    const dirMultiplier = dir === 'asc' ? 1 : -1;
+    merged.sort((a, b) => {
+      if (sort === 'gatewayId') {
+        return dirMultiplier * String(a.gatewayId ?? '').localeCompare(String(b.gatewayId ?? ''));
+      }
+      return dirMultiplier * ((a[sort] ?? 0) - (b[sort] ?? 0));
+    });
+
+    const total = includeUnknown ? merged.length : confirmedTotal;
+    const violations = merged.slice(offset, offset + limit);
+
+    ok(res, {
+      violations,
+      total,
+      limit,
+      offset,
+      since,
+      until,
+      gateway: gateway ?? null,
+      includeUnknown,
+      suspectedAvailable,
+      suspectedWindowMs,
+      sources: sourceIds,
+    });
+  } catch (error) {
+    logger.error('Error in GET /api/analysis/mqtt-violations/packets:', error);
+    fail(res, 500, 'MQTT_VIOLATIONS_FETCH_FAILED', 'Failed to fetch ok_to_mqtt violations');
   }
 });
 
