@@ -33,16 +33,49 @@ export interface MqttBrokerSourceConfig {
   };
   rootTopic?: string;
   /**
-   * When true, clamp `hop_limit` to 0 on Meshtastic ServiceEnvelopes the
-   * broker forwards back to its connected MQTT clients (issue #3084).
-   * Mirrors how Meshtastic's public broker behaves — devices receiving an
-   * MQTT-bridged packet won't re-flood it over RF. The transform runs on
-   * delivery to each subscriber; the original payload still drives our
-   * ingestion and uplink-bridge paths, so persisted hop diagnostics and
-   * upstream re-publishes stay accurate. Defaults to false to preserve
-   * the existing pass-through behavior for private-broker setups.
+   * Legacy zero-hop toggle (issue #3084). Superseded by
+   * `downlinkHopLimitOverride` (#4081) but still honored so stored configs
+   * written before 4.14 keep clamping to 0 without a data migration:
+   * `true` with no numeric override is equivalent to
+   * `downlinkHopLimitOverride: 0`. The override always wins when both are
+   * present. New saves from the UI write only the numeric field, so a source
+   * migrates itself the next time it is edited.
    */
   zeroHopInjection?: boolean;
+  /**
+   * When set (0–7), rewrite `hop_limit` to this value on Meshtastic
+   * ServiceEnvelopes the broker forwards back to its connected MQTT clients
+   * (issue #4081). `0` reproduces the public Meshtastic broker's behavior —
+   * devices receiving an MQTT-bridged packet won't re-flood it over RF. A
+   * nonzero value deliberately does the opposite: packets pulled in from
+   * MQTT get re-injected with that many hops left, so every node in RF range
+   * may rebroadcast them. That is an airtime/flood risk on a busy mesh and
+   * is opt-in for a reason.
+   *
+   * The transform runs on delivery to each subscriber; the original payload
+   * still drives our ingestion and uplink-bridge paths, so persisted hop
+   * diagnostics and upstream re-publishes stay accurate. Undefined (with no
+   * legacy `zeroHopInjection`) means pass through unchanged.
+   */
+  downlinkHopLimitOverride?: number;
+}
+
+/** Protocol max for `hop_limit` — it is a 3-bit field (`HOP_MAX` in firmware). */
+export const MAX_HOP_LIMIT = 7;
+
+/**
+ * Resolve the effective downlink hop-limit override for a broker config, or
+ * null for "pass through unchanged". The numeric `downlinkHopLimitOverride`
+ * wins; the legacy `zeroHopInjection` boolean maps to 0. Out-of-range or
+ * non-integer values are ignored (the route layer rejects them on save, so
+ * this only guards hand-edited or pre-validation configs).
+ */
+export function resolveDownlinkHopLimit(config: MqttBrokerSourceConfig): number | null {
+  const override = config.downlinkHopLimitOverride;
+  if (typeof override === 'number' && Number.isInteger(override) && override >= 0 && override <= MAX_HOP_LIMIT) {
+    return override;
+  }
+  return config.zeroHopInjection ? 0 : null;
 }
 
 export interface MqttBrokerStatus extends SourceStatus {
@@ -103,13 +136,14 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
     if (this.broker) return;
     await bootstrapMqttChannelDatabase(this.sourceId);
     const rootTopicPrefix = (this.config.rootTopic ?? 'msh') + '/';
+    const hopLimitOverride = resolveDownlinkHopLimit(this.config);
     this.broker = new MqttBroker({
       port: this.config.listener.port,
       host: this.config.listener.host,
       auth: this.config.auth,
       brokerId: `meshmonitor-${this.sourceId}`,
-      forwardTransform: this.config.zeroHopInjection
-        ? (topic, payload) => this.applyZeroHop(rootTopicPrefix, topic, payload)
+      forwardTransform: hopLimitOverride !== null
+        ? (topic, payload) => this.applyHopLimitOverride(rootTopicPrefix, topic, payload, hopLimitOverride)
         : undefined,
     });
 
@@ -231,19 +265,30 @@ export class MqttBrokerManager extends EventEmitter implements ISourceManager {
   }
 
   /**
-   * Zero-hop forward transform. Returns a rewritten payload with
-   * `hop_limit = 0` for Meshtastic ServiceEnvelopes on this broker's
-   * root topic, or null to pass the original through. Anything that
-   * isn't a decodable ServiceEnvelope (off-topic, MQTT control, malformed
-   * payload, packet already at zero) falls through unchanged.
+   * Hop-limit forward transform (#3084 zero-hop, generalized in #4081).
+   * Returns a rewritten payload with `hop_limit = hopLimit` for Meshtastic
+   * ServiceEnvelopes on this broker's root topic, or null to pass the
+   * original through. Anything that isn't a decodable ServiceEnvelope
+   * (off-topic, MQTT control, malformed payload, packet already at the
+   * target value) falls through unchanged.
+   *
+   * `hop_start` is deliberately left alone: it records what the originator
+   * set, and rewriting it would corrupt the hop diagnostics every consumer
+   * derives from `hop_start - hop_limit`.
    */
-  private applyZeroHop(rootTopicPrefix: string, topic: string, payload: Buffer): Buffer | null {
+  private applyHopLimitOverride(
+    rootTopicPrefix: string,
+    topic: string,
+    payload: Buffer,
+    hopLimit: number,
+  ): Buffer | null {
     if (!topic.startsWith(rootTopicPrefix)) return null;
     const decoded = meshtasticProtobufService.decodeServiceEnvelope(payload, { quiet: true });
     if (!decoded || !decoded.packet) return null;
     const packet = decoded.packet as { hopLimit?: number; hopStart?: number };
-    if (packet.hopLimit === undefined || packet.hopLimit === 0) return null;
-    packet.hopLimit = 0;
+    // proto3 omits zero on the wire, so an absent field means hop_limit 0.
+    if ((packet.hopLimit ?? 0) === hopLimit) return null;
+    packet.hopLimit = hopLimit;
     const reencoded = meshtasticProtobufService.encodeServiceEnvelope({
       packet: decoded.packet,
       channelId: decoded.channelId,
