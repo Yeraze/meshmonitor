@@ -4536,6 +4536,7 @@
   "analysis.mqtt_violations.col_suspected_title": "Receptions where the ok_to_mqtt bit could not be read — usually because MeshMonitor has no key for the channel. Not proven, and not sortable.",
   "analysis.mqtt_violations.col_originators": "Originators",
   "analysis.mqtt_violations.col_sources": "Sources",
+  "analysis.mqtt_violations.col_sources_count": "{{count}} sources",
   "analysis.mqtt_violations.col_first_seen": "First seen",
   "analysis.mqtt_violations.col_last_seen": "Last seen",
   "analysis.mqtt_violations.sort_by": "Sort by {{column}}",

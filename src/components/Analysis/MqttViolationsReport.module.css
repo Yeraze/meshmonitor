@@ -74,9 +74,31 @@
   font-family: var(--font-mono, monospace);
 }
 
+/*
+ * Bug (#4114 Phase 3 browser validation): this used to be
+ * `white-space: normal; max-width: 18rem;` so the raw comma-joined UUID list
+ * could wrap. `.reports-table td` (analysis-reports.css) sets
+ * `white-space: nowrap` at higher specificity (element+class beats a lone
+ * class), so `white-space: normal` here never actually applied — the cell
+ * silently rendered on one un-wrapped line and painted straight over the
+ * First seen column (measured scrollWidth 769 vs clientWidth 418).
+ *
+ * Fix is two-part: (1) the cell now renders a short label — the single
+ * source id, or "N sources" — instead of the full joined UUID list, with
+ * the full list always reachable via `title`; opaque UUIDs aren't
+ * meaningful to read inline and this scales to any source count (PHASE3
+ * §2(h) precedent: don't try to resolve human names, just don't dump raw
+ * ids unbounded). (2) `white-space: nowrap` here matches (rather than
+ * fights) the global rule, and `overflow: hidden` + `text-overflow:
+ * ellipsis` + `max-width` are new properties the global rule never sets, so
+ * they apply regardless of the specificity tie on `white-space` — the box
+ * can no longer be forced wider than `max-width` by its content.
+ */
 .sourcesCell {
-  white-space: normal;
-  max-width: 18rem;
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .topicCell {

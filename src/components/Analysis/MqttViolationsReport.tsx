@@ -767,7 +767,20 @@ const MqttViolationsReport: React.FC = () => {
                           </td>
                         )}
                         <td>{row.distinctOriginators}</td>
-                        <td className={styles.sourcesCell}>{row.sourceIds.join(', ')}</td>
+                        <td
+                          className={styles.sourcesCell}
+                          title={row.sourceIds.join(', ') || undefined}
+                        >
+                          {row.sourceIds.length === 0
+                            ? '—'
+                            : row.sourceIds.length === 1
+                              ? row.sourceIds[0]
+                              : t(
+                                  'analysis.mqtt_violations.col_sources_count',
+                                  '{{count}} sources',
+                                  { count: row.sourceIds.length },
+                                )}
+                        </td>
                         <td>{new Date(row.firstSeen).toLocaleString()}</td>
                         <td>{new Date(row.lastSeen).toLocaleString()}</td>
                       </tr>
