@@ -318,6 +318,43 @@ describe('MqttViolationsReport', () => {
     expect(url).toContain('offset=0');
   });
 
+  // #4332 follow-up: changing the summary's page size left drill.offset
+  // untouched, so an expanded gateway could be stranded on a drill-down page
+  // that no longer exists for its own result set (empty for no visible
+  // reason). Changing the page size must reset it back to 0.
+  it('test 6b: changing the summary page size resets the drill-down offset', async () => {
+    const user = userEvent.setup();
+    routeApiGet(
+      () => baseResponse({ gateways: [gatewayRow()], total: 1 }),
+      () => packetsResponse({ violations: [packetRow()], total: 250, limit: 100, offset: 0 }),
+    );
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!433e0f28');
+
+    const row = screen.getByText('!433e0f28').closest('tr')!;
+    await user.click(row);
+    await screen.findByText('violation');
+    expect(api.get).toHaveBeenCalledTimes(2);
+
+    // Advance the drill-down to offset=100 (page 2) before touching the
+    // summary's page size.
+    const detailCell = screen.getByText(/Violating packets published by/i).closest('td')!;
+    await user.click(within(detailCell).getByRole('button', { name: /^Next$/i }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(3));
+    expect(urlOf(vi.mocked(api.get), 2)).toContain('offset=100');
+
+    // Changing the summary's page size must reset drill.offset back to 0 —
+    // the next packets request should carry offset=0 again, not the stale 100.
+    await user.selectOptions(screen.getByRole('combobox', { name: /Rows per page/i }), '25');
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(5)); // gateways refetch + packets refetch
+    const packetsCalls = vi
+      .mocked(api.get)
+      .mock.calls.filter((call) => String(call[0]).includes('/mqtt-violations/packets'));
+    const lastPacketsUrl = String(packetsCalls[packetsCalls.length - 1][0]);
+    expect(lastPacketsUrl).toContain('offset=0');
+  });
+
   // #4330: capApplied must gate everything cap-related — never `total >= cap`.
   // Prior to the fix this test asserted the old `total >= API_SCAN_CAP`
   // inference without ever setting `capApplied`; it now explicitly opts in
@@ -820,6 +857,96 @@ describe('MqttViolationsReport', () => {
         (call) => String(call[0]).includes('/mqtt-violations/packets') && String(call[0]).includes('limit=2000'),
       );
     expect(exportCall).toBeDefined();
+  });
+
+  // #4332 follow-up: the export request limit and its honesty message must
+  // come from the most recently loaded response's `scanCap`, not the local
+  // API_SCAN_CAP constant — otherwise the two can silently drift apart.
+  it('test 16c: gateway CSV export uses the loaded response\'s scanCap, not the local constant', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url.includes('limit=500')) {
+        return baseResponse({
+          gateways: manyGatewayRows(500),
+          total: 600,
+          limit: 500,
+          offset: 0,
+          scanCap: 500,
+        });
+      }
+      // Initial summary load — scanCap: 500 is the server's echoed cap for
+      // this (hypothetical) window, deliberately different from the local
+      // API_SCAN_CAP (2000) so a test using the wrong source of truth fails.
+      return baseResponse({ gateways: [gatewayRow()], total: 1, scanCap: 500 });
+    });
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!433e0f28');
+
+    await user.click(screen.getByRole('button', { name: /Export CSV/i }));
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    const exportUrl = urlOf(vi.mocked(api.get), 1);
+    expect(exportUrl).toContain('/api/analysis/mqtt-violations/gateways?');
+    expect(exportUrl).toContain('limit=500');
+    expect(exportUrl).not.toContain('limit=2000');
+
+    // capped because exported(500) >= scanCap(500); the message must quote
+    // 500, not the local 2000 constant.
+    await waitFor(() =>
+      expect(screen.getAllByText(/500 of 600 matching rows/).length).toBeGreaterThan(0),
+    );
+    expect(screen.queryByText(/2,000 rows/)).not.toBeInTheDocument();
+  });
+
+  it('test 16d: drill-down CSV export uses the packets response\'s scanCap, not the summary\'s', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url.includes('/mqtt-violations/packets') && url.includes('limit=300')) {
+        return packetsResponse({
+          violations: [packetRow(), packetRow({ id: 2, packetId: 998 })],
+          total: 400,
+          scanCap: 300,
+        });
+      }
+      if (url.includes('/mqtt-violations/packets')) {
+        // Drill-down's own live query — scanCap: 300, deliberately different
+        // from the summary's scanCap: 500 below, to prove the export reads
+        // packetsQuery.data, not data.
+        return packetsResponse({ violations: [packetRow()], total: 1, scanCap: 300 });
+      }
+      return baseResponse({ gateways: [gatewayRow()], total: 1, scanCap: 500 });
+    });
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!433e0f28');
+
+    const row = screen.getByText('!433e0f28').closest('tr')!;
+    await user.click(row);
+    await screen.findByText('violation');
+
+    const exportButtons = screen.getAllByRole('button', { name: /Export CSV/i });
+    await user.click(exportButtons[exportButtons.length - 1]);
+
+    await waitFor(() => expect(downloadTextFile).toHaveBeenCalledTimes(1));
+    const exportCall = vi
+      .mocked(api.get)
+      .mock.calls.find(
+        (call) => String(call[0]).includes('/mqtt-violations/packets') && String(call[0]).includes('limit=300'),
+      );
+    expect(exportCall).toBeDefined();
+    const noWrongCapCall = vi
+      .mocked(api.get)
+      .mock.calls.find(
+        (call) => String(call[0]).includes('/mqtt-violations/packets') && String(call[0]).includes('limit=500'),
+      );
+    expect(noWrongCapCall).toBeUndefined();
+
+    // capped because exported(2) < scanCap(300) but total(400) > exported(2).
+    await waitFor(() =>
+      expect(screen.getAllByText(/2 of 400 matching rows/).length).toBeGreaterThan(0),
+    );
+    expect(screen.getAllByText(/300 rows/).length).toBeGreaterThan(0);
   });
 
   it('test 9b (#4330 regression): drill-down default path, total above scanCap but capApplied=false renders the real total/pager and no cap warnings', async () => {

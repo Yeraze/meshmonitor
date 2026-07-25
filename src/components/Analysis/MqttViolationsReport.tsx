@@ -29,9 +29,10 @@
  * the summary. It reuses the Phase 2 `okToMqttState()`/`MqttOkToMqttMarker`
  * primitives via the `kind` -> fields adapter (§2(a.3)) and never recomputes
  * `relayed` itself. CSV export (§2(d)) re-fetches the *whole* filtered
- * result set (capped at `API_SCAN_CAP`, the same ceiling the server
- * enforces) rather than exporting only the current page, and always
- * surfaces the cap to the user instead of silently truncating.
+ * result set (capped at the most recently loaded response's `scanCap`,
+ * falling back to the local `API_SCAN_CAP` constant if nothing has loaded
+ * yet — #4332 follow-up) rather than exporting only the current page, and
+ * always surfaces the cap to the user instead of silently truncating.
  */
 import { Fragment, useMemo, useState } from 'react';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
@@ -145,14 +146,21 @@ function rowKeyOf(row: ViolationGatewayRow): string {
  * (PHASE3 §2(d)). Never a silent truncation: `capped` is true whenever the
  * export hit the API's hard ceiling OR the server reports more rows exist
  * than were actually exported.
+ *
+ * `exportCap` is the request limit the caller actually used (the most
+ * recently loaded response's `scanCap`, falling back to `API_SCAN_CAP` only
+ * when nothing has loaded yet — #4332 follow-up). It must be the same value
+ * used to build the export request, so the message never drifts from what
+ * was actually asked for.
  */
 function buildExportMessage(
   t: TFn,
   exported: number,
   total: number,
+  exportCap: number,
 ): { message: string; capped: boolean } {
-  const capped = exported >= API_SCAN_CAP || total > exported;
-  const cap = API_SCAN_CAP.toLocaleString();
+  const capped = exported >= exportCap || total > exported;
+  const cap = exportCap.toLocaleString();
   const message = capped
     ? t(
         'analysis.mqtt_violations.export_capped',
@@ -266,6 +274,10 @@ const MqttViolationsReport: React.FC = () => {
     const patch = { limit, offset: 0 };
     setDraft((d) => ({ ...d, ...patch }));
     setApplied((a) => ({ ...a, ...patch }));
+    // The summary's own page size doesn't bound the drill-down's result set,
+    // but an expanded gateway can be left pointing at a drill-down page that
+    // no longer exists once the summary reloads — reset it too (#4332).
+    setDrill((d) => ({ ...d, offset: 0 }));
   };
 
   /** Toggle expand/collapse. Always resets the drill-down's own pagination
@@ -293,19 +305,27 @@ const MqttViolationsReport: React.FC = () => {
 
   /**
    * CSV export re-fetches the *whole* filtered result set at the API's hard
-   * ceiling (`limit=API_SCAN_CAP, offset=0`), not just the current page
-   * (§2(d)). A one-shot `fetchQuery` rather than a second live `useQuery` —
-   * this is an imperative action, not a render-driven data need.
+   * ceiling (`limit=scanCap, offset=0`), not just the current page (§2(d)).
+   * A one-shot `fetchQuery` rather than a second live `useQuery` — this is
+   * an imperative action, not a render-driven data need.
+   *
+   * The cap itself is a deliberate client-side choice (avoid pulling
+   * unbounded rows into the browser) — only the *number* comes from the
+   * server: the most recently loaded summary response's `scanCap`, falling
+   * back to the local `API_SCAN_CAP` constant only if nothing has loaded
+   * yet, so the request limit and the honesty message can never drift from
+   * what the server actually enforces (#4332 follow-up).
    */
   const handleExportGateways = async () => {
     setGatewayExportPending(true);
+    const exportCap = data?.scanCap ?? API_SCAN_CAP;
     try {
       const body = await queryClient.fetchQuery({
         queryKey: ['mqtt-violations-gateways-export', applied],
         queryFn: async () => {
           const b = await api.get<{ success: boolean; data: ViolationGatewaysResponse }>(
             `/api/analysis/mqtt-violations/gateways?${buildViolationParams(applied, {
-              limit: API_SCAN_CAP,
+              limit: exportCap,
               offset: 0,
             })}`,
           );
@@ -314,7 +334,7 @@ const MqttViolationsReport: React.FC = () => {
       });
       const csv = buildGatewaysCsv(body.gateways);
       downloadTextFile(gatewaysCsvFilename(), csv, 'text/csv');
-      const { message, capped } = buildExportMessage(t, body.gateways.length, body.total);
+      const { message, capped } = buildExportMessage(t, body.gateways.length, body.total, exportCap);
       setGatewayExportWarning(capped ? message : null);
       showToast(message, capped ? 'error' : 'success');
     } catch {
@@ -327,6 +347,10 @@ const MqttViolationsReport: React.FC = () => {
 
   const handleExportPackets = async (gatewayId: string) => {
     setDrillExportPending(true);
+    // The drill-down's own packets response, not the summary's — the two
+    // endpoints echo the same server constant today, but this stays correct
+    // if that ever changes (#4332 follow-up).
+    const exportCap = packetsQuery.data?.scanCap ?? API_SCAN_CAP;
     try {
       const body = await queryClient.fetchQuery({
         queryKey: ['mqtt-violations-packets-export', gatewayId, applied, drill.sort, drill.dir],
@@ -336,7 +360,7 @@ const MqttViolationsReport: React.FC = () => {
               gateway: gatewayId,
               sort: drill.sort,
               dir: drill.dir,
-              limit: API_SCAN_CAP,
+              limit: exportCap,
               offset: 0,
             })}`,
           );
@@ -345,7 +369,7 @@ const MqttViolationsReport: React.FC = () => {
       });
       const csv = buildPacketsCsv(body.violations);
       downloadTextFile(packetsCsvFilename(gatewayId), csv, 'text/csv');
-      const { message, capped } = buildExportMessage(t, body.violations.length, body.total);
+      const { message, capped } = buildExportMessage(t, body.violations.length, body.total, exportCap);
       setDrillExportWarning(capped ? message : null);
       showToast(message, capped ? 'error' : 'success');
     } catch {
