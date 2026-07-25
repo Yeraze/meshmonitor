@@ -367,11 +367,16 @@ const MqttViolationsReport: React.FC = () => {
   const hasData = hasSources && gateways.length > 0;
   const infoBannersEligible = hasSources && (isEmpty || hasData);
 
-  const capReached = !!data && data.total >= API_SCAN_CAP;
-  const reachable = data ? Math.min(data.total, API_SCAN_CAP) : 0;
+  // Gate on the server's own `capApplied` echo, never on `total >= scanCap`
+  // (#4330). On the default path capApplied is always false and `total` is
+  // an exact COUNT with every row reachable, so a mesh with more rows than
+  // the cap still pages correctly instead of being clamped/mislabeled.
+  const capApplied = data?.capApplied === true;
+  const scanCap = data?.scanCap ?? API_SCAN_CAP;
+  const reachable = data ? (capApplied ? Math.min(data.total, scanCap) : data.total) : 0;
   const totalPages = data ? Math.max(1, Math.ceil(reachable / data.limit)) : 1;
   const currentPage = data ? Math.floor(data.offset / data.limit) + 1 : 1;
-  const capLabel = API_SCAN_CAP.toLocaleString();
+  const capLabel = scanCap.toLocaleString();
 
   const windowFmt = data ? formatSuspectedWindow(data.suspectedWindowMs) : null;
   const windowText =
@@ -399,11 +404,17 @@ const MqttViolationsReport: React.FC = () => {
     'Receptions where the ok_to_mqtt bit could not be read — usually because MeshMonitor has no key for the channel. Not proven, and not sortable.',
   );
 
-  // Drill-down cap honesty (§2(c) rule 5 — same treatment as the summary table).
+  // Drill-down cap honesty (§2(c) rule 5 — same treatment as the summary
+  // table, gated on the response's own `capApplied`/`scanCap`, not a
+  // `total >= cap` inference (#4330).
   const drillTotal = packetsQuery.data?.total ?? 0;
-  const drillCapReached = !!packetsQuery.data && drillTotal >= API_SCAN_CAP;
+  const drillCapApplied = packetsQuery.data?.capApplied === true;
+  const drillScanCap = packetsQuery.data?.scanCap ?? API_SCAN_CAP;
+  const drillCapLabel = drillScanCap.toLocaleString();
   const drillLimit = packetsQuery.data?.limit ?? drill.limit;
-  const drillReachable = packetsQuery.data ? Math.min(drillTotal, API_SCAN_CAP) : 0;
+  const drillReachable = packetsQuery.data
+    ? (drillCapApplied ? Math.min(drillTotal, drillScanCap) : drillTotal)
+    : 0;
   const drillTotalPages = packetsQuery.data ? Math.max(1, Math.ceil(drillReachable / drillLimit)) : 1;
   const drillCurrentPage = packetsQuery.data
     ? Math.floor(packetsQuery.data.offset / drillLimit) + 1
@@ -630,7 +641,7 @@ const MqttViolationsReport: React.FC = () => {
 
       {run && !isLoading && !error && data && hasData && (
         <>
-          {capReached && (
+          {capApplied && (
             <div className="reports-banner reports-banner--warning">
               {t(
                 'analysis.mqtt_violations.cap_warning',
@@ -639,7 +650,7 @@ const MqttViolationsReport: React.FC = () => {
               )}
             </div>
           )}
-          {capReached && applied.dir === 'asc' && (
+          {capApplied && applied.dir === 'asc' && (
             <div className="reports-banner reports-banner--warning">
               {t(
                 'analysis.mqtt_violations.cap_warning_asc',
@@ -652,7 +663,7 @@ const MqttViolationsReport: React.FC = () => {
           <div className="reports-stats">
             <Stat
               label={t('analysis.mqtt_violations.stat_gateways', 'Gateways')}
-              value={capReached ? `${capLabel}+` : stats.gatewayCount.toLocaleString()}
+              value={capApplied ? `${capLabel}+` : stats.gatewayCount.toLocaleString()}
             />
             <Stat
               label={t('analysis.mqtt_violations.stat_confirmed', 'Confirmed violations')}
@@ -883,21 +894,21 @@ const MqttViolationsReport: React.FC = () => {
                                 packetsQuery.data &&
                                 drillHasData && (
                                   <>
-                                    {drillCapReached && (
+                                    {drillCapApplied && (
                                       <div className="reports-banner reports-banner--warning">
                                         {t(
                                           'analysis.mqtt_violations.cap_warning',
                                           'Showing the first {{cap}} rows. The API caps a single scan at {{cap}} rows, so the total and any later pages are incomplete — narrow the window or select fewer sources.',
-                                          { cap: capLabel },
+                                          { cap: drillCapLabel },
                                         )}
                                       </div>
                                     )}
-                                    {drillCapReached && drill.dir === 'asc' && (
+                                    {drillCapApplied && drill.dir === 'asc' && (
                                       <div className="reports-banner reports-banner--warning">
                                         {t(
                                           'analysis.mqtt_violations.cap_warning_asc',
                                           'Sorting ascending inside a capped scan orders only those {{cap}} rows, not the whole window.',
-                                          { cap: capLabel },
+                                          { cap: drillCapLabel },
                                         )}
                                       </div>
                                     )}
@@ -1034,7 +1045,7 @@ const MqttViolationsReport: React.FC = () => {
           <div className={styles.pager}>
             <span className={styles.pagerInfo}>
               <span>
-                {capReached
+                {capApplied
                   ? t('analysis.mqtt_violations.total_rows_capped', '{{cap}}+ gateways', {
                       cap: capLabel,
                     })

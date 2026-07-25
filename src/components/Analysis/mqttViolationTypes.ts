@@ -52,6 +52,19 @@ export interface ViolationResponseMeta {
   /** MEANINGLESS unless includeUnknown === true. */
   suspectedWindowMs: number;
   sources: string[];
+  /**
+   * True only when a pre-merge fetch actually saturated the server's scan
+   * cap before sorting (#4330). ALWAYS false on the default
+   * (`includeUnknown=false`) path — that path sorts/pages in SQL with an
+   * exact COUNT, so every row at every offset is reachable and there is no
+   * cap. Never infer "capped" from `total >= scanCap` — a mesh can
+   * legitimately have more rows than the cap with none of them dropped.
+   */
+  capApplied: boolean;
+  /** The server's scan-cap ceiling (currently 2000). Use this, not a local
+   * constant, whenever a cap value is displayed to the user — it can never
+   * drift from what the server actually enforced. */
+  scanCap: number;
 }
 
 export interface ViolationGatewaysResponse extends ViolationResponseMeta {

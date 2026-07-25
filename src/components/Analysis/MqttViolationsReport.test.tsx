@@ -56,11 +56,12 @@ import api, { ApiError } from '../../services/api';
 import { downloadTextFile } from '../../utils/nodeExport';
 import { ToastProvider } from '../ToastContainer';
 import MqttViolationsReport from './MqttViolationsReport';
-import type {
-  ViolationGatewayRow,
-  ViolationGatewaysResponse,
-  ViolationPacketRow,
-  ViolationPacketsResponse,
+import {
+  API_SCAN_CAP,
+  type ViolationGatewayRow,
+  type ViolationGatewaysResponse,
+  type ViolationPacketRow,
+  type ViolationPacketsResponse,
 } from './mqttViolationTypes';
 
 function renderReport() {
@@ -105,6 +106,10 @@ function baseResponse(overrides: Partial<ViolationGatewaysResponse> = {}): {
       suspectedAvailable: false,
       suspectedWindowMs: 0,
       sources: ['mqtt-a'],
+      // Default-path default: the server never applies the cap on this path
+      // (#4330) — tests that want a saturated opt-in scan must override both.
+      capApplied: false,
+      scanCap: API_SCAN_CAP,
       ...overrides,
     },
   };
@@ -158,6 +163,8 @@ function packetsResponse(overrides: Partial<ViolationPacketsResponse> = {}): {
       suspectedWindowMs: 0,
       sources: ['mqtt-a'],
       gateway: '!433e0f28',
+      capApplied: false,
+      scanCap: API_SCAN_CAP,
       ...overrides,
     },
   };
@@ -311,12 +318,25 @@ describe('MqttViolationsReport', () => {
     expect(url).toContain('offset=0');
   });
 
-  it('test 7: cap honesty — 2,000+ label, cap warnings, and clamped pager', async () => {
+  // #4330: capApplied must gate everything cap-related — never `total >= cap`.
+  // Prior to the fix this test asserted the old `total >= API_SCAN_CAP`
+  // inference without ever setting `capApplied`; it now explicitly opts in
+  // (`capApplied: true`), which is the only case (opt-in scan that actually
+  // saturated) where the server ever reports it.
+  it('test 7: opt-in capApplied=true — 2,000+ label, cap warnings, and clamped pager', async () => {
     const user = userEvent.setup();
     vi.mocked(api.get).mockResolvedValue(
-      baseResponse({ gateways: [gatewayRow()], total: 5000, limit: 50, offset: 0 }),
+      baseResponse({
+        gateways: [gatewayRow()],
+        total: 5000,
+        limit: 50,
+        offset: 0,
+        includeUnknown: true,
+        capApplied: true,
+      }),
     );
     renderReport();
+    await user.click(screen.getByRole('checkbox', { name: /Include unproven/i }));
     await user.click(screen.getByRole('button', { name: /Run report/i }));
 
     expect(await screen.findByText(/2,000\+ gateways/)).toBeInTheDocument();
@@ -332,6 +352,8 @@ describe('MqttViolationsReport', () => {
         total: 5000,
         limit: 50,
         offset: 0,
+        includeUnknown: true,
+        capApplied: true,
       }),
     );
     await user.click(screen.getByRole('button', { name: 'Confirmed' }));
@@ -339,6 +361,71 @@ describe('MqttViolationsReport', () => {
     expect(
       await screen.findByText(/Sorting ascending inside a capped scan/i),
     ).toBeInTheDocument();
+  });
+
+  it('test 7b (#4330 regression): default path, total above scanCap but capApplied=false renders the real total, offers real paging, and shows no cap warnings', async () => {
+    const user = userEvent.setup();
+    // 2,268 mirrors the live-system number cited in issue #4330 — every row
+    // is reachable on the default path even though it exceeds the 2,000 cap.
+    vi.mocked(api.get).mockResolvedValue(
+      baseResponse({
+        gateways: [gatewayRow()],
+        total: 2268,
+        limit: 50,
+        offset: 0,
+        capApplied: false,
+      }),
+    );
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+
+    // Real total, not the old "2,000+" clamp.
+    expect(await screen.findByText('2,268 gateways')).toBeInTheDocument();
+    expect(screen.queryByText(/2,000\+ gateways/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Showing the first 2,000 rows/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sorting ascending inside a capped scan/i)).not.toBeInTheDocument();
+    // Paging reaches past the old 2000-row/40-page clamp: ceil(2268/50) = 46.
+    expect(screen.getByText('Page 1 of 46')).toBeInTheDocument();
+
+    // Ascending sort must not trigger the "capped scan" caveat either — no
+    // rows were dropped before ordering on this path.
+    vi.mocked(api.get).mockResolvedValue(
+      baseResponse({
+        gateways: [gatewayRow()],
+        total: 2268,
+        limit: 50,
+        offset: 0,
+        capApplied: false,
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Confirmed' }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('2,268 gateways')).toBeInTheDocument();
+    expect(screen.queryByText(/Sorting ascending inside a capped scan/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Page 1 of 46')).toBeInTheDocument();
+  });
+
+  it('test 7c: opt-in response with capApplied=false renders no cap warnings', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.get).mockResolvedValue(
+      baseResponse({
+        gateways: [gatewayRow()],
+        total: 2268,
+        limit: 50,
+        offset: 0,
+        includeUnknown: true,
+        suspectedAvailable: true,
+        capApplied: false,
+      }),
+    );
+    renderReport();
+    await user.click(screen.getByRole('checkbox', { name: /Include unproven/i }));
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+
+    expect(await screen.findByText('2,268 gateways')).toBeInTheDocument();
+    expect(screen.queryByText(/2,000\+ gateways/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Showing the first 2,000 rows/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sorting ascending inside a capped scan/i)).not.toBeInTheDocument();
   });
 
   it('test 8: includeUnknown toggle changes request and rendering', async () => {
@@ -733,6 +820,125 @@ describe('MqttViolationsReport', () => {
         (call) => String(call[0]).includes('/mqtt-violations/packets') && String(call[0]).includes('limit=2000'),
       );
     expect(exportCall).toBeDefined();
+  });
+
+  it('test 9b (#4330 regression): drill-down default path, total above scanCap but capApplied=false renders the real total/pager and no cap warnings', async () => {
+    const user = userEvent.setup();
+    routeApiGet(
+      () => baseResponse({ gateways: [gatewayRow()], total: 1 }),
+      () =>
+        packetsResponse({
+          violations: [packetRow()],
+          total: 3000,
+          limit: 100,
+          offset: 0,
+          capApplied: false,
+        }),
+    );
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!433e0f28');
+
+    const row = screen.getByText('!433e0f28').closest('tr')!;
+    await user.click(row);
+    await screen.findByText('violation');
+
+    const detailCell = screen.getByText(/Violating packets published by/i).closest('td')!;
+    // ceil(3000/100) = 30 pages, well past the old 20-page (2000/100) clamp.
+    expect(within(detailCell).getByText('Page 1 of 30')).toBeInTheDocument();
+    expect(
+      within(detailCell).queryByText(/Showing the first 2,000 rows/i),
+    ).not.toBeInTheDocument();
+    expect(
+      within(detailCell).queryByText(/Sorting ascending inside a capped scan/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it('test 9c: drill-down opt-in capApplied=true renders the cap warning, clamped pager, and ascending variant', async () => {
+    const user = userEvent.setup();
+    routeApiGet(
+      () =>
+        baseResponse({
+          gateways: [gatewayRow()],
+          total: 1,
+          includeUnknown: true,
+          suspectedAvailable: true,
+        }),
+      () =>
+        packetsResponse({
+          violations: [packetRow()],
+          total: 5000,
+          limit: 100,
+          offset: 0,
+          includeUnknown: true,
+          suspectedAvailable: true,
+          capApplied: true,
+        }),
+    );
+    renderReport();
+    await user.click(screen.getByRole('checkbox', { name: /Include unproven/i }));
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!433e0f28');
+
+    const row = screen.getByText('!433e0f28').closest('tr')!;
+    await user.click(row);
+    await screen.findByText('violation');
+
+    const detailCell = screen.getByText(/Violating packets published by/i).closest('td')!;
+    expect(
+      within(detailCell).getByText(/Showing the first 2,000 rows/i),
+    ).toBeInTheDocument();
+    // 2000 reachable / 100 per page = 20 pages.
+    expect(within(detailCell).getByText('Page 1 of 20')).toBeInTheDocument();
+    expect(
+      within(detailCell).queryByText(/Sorting ascending inside a capped scan/i),
+    ).not.toBeInTheDocument();
+
+    // Time is the drill-down's default active sort (desc) — one click flips it to asc.
+    await user.click(within(detailCell).getByRole('button', { name: 'Time' }));
+    expect(
+      await within(detailCell).findByText(/Sorting ascending inside a capped scan/i),
+    ).toBeInTheDocument();
+  });
+
+  it('test 9d: drill-down opt-in capApplied=false renders no cap warnings', async () => {
+    const user = userEvent.setup();
+    routeApiGet(
+      () =>
+        baseResponse({
+          gateways: [gatewayRow()],
+          total: 1,
+          includeUnknown: true,
+          suspectedAvailable: true,
+        }),
+      () =>
+        packetsResponse({
+          violations: [packetRow()],
+          total: 3000,
+          limit: 100,
+          offset: 0,
+          includeUnknown: true,
+          suspectedAvailable: true,
+          capApplied: false,
+        }),
+    );
+    renderReport();
+    await user.click(screen.getByRole('checkbox', { name: /Include unproven/i }));
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!433e0f28');
+
+    const row = screen.getByText('!433e0f28').closest('tr')!;
+    await user.click(row);
+    await screen.findByText('violation');
+
+    const detailCell = screen.getByText(/Violating packets published by/i).closest('td')!;
+    expect(
+      within(detailCell).queryByText(/Showing the first 2,000 rows/i),
+    ).not.toBeInTheDocument();
+    expect(
+      within(detailCell).queryByText(/Sorting ascending inside a capped scan/i),
+    ).not.toBeInTheDocument();
+    expect(within(detailCell).getByText('Page 1 of 30')).toBeInTheDocument();
   });
 
   it('test 18: aria-expanded lives on the expand button, not the <tr> (role="row" doesn\'t support it)', async () => {
