@@ -174,6 +174,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       <nav className="sidebar-nav">
         <SectionHeader title={t('nav.section_main')} />
         <div className="sidebar-section">
+          {/* Labelled "Map" (#4325) — the tab is the map + node list, and the
+              Map icon never matched the old "Nodes" label. The `nodes` tab id
+              and the `nav.nodes` locale key are deliberately unchanged: the id
+              is part of the route (/source/:id/nodes) so renaming it would
+              break existing bookmarks, and the key is what every locale file
+              is already translated against. Same divergence as `nav.messages`,
+              which reads "Node Details". */}
           <NavItem id="nodes" label={t('nav.nodes')} icon={icon('nodes')} />
           {hasAnyChannelPermission() && (
             <NavItem

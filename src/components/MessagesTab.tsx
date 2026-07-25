@@ -122,6 +122,10 @@ export interface MessagesTabProps {
 
   // Selected state
   selectedDMNode: string | null;
+  /** Node whose compose box the node list asked us to focus (#4325), or null. */
+  pendingComposeFocus?: string | null;
+  /** Consume the focus request above. */
+  clearComposeFocus?: () => void;
   setSelectedDMNode: (nodeId: string) => void;
 
   // Message input
@@ -228,6 +232,8 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   txDisabled = false,
   selectedDMNode,
   setSelectedDMNode,
+  pendingComposeFocus = null,
+  clearComposeFocus,
   newMessage,
   setNewMessage,
   replyingTo,
@@ -525,6 +531,48 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const dmMessageInputRef = useRef<HTMLTextAreaElement>(null);
 
   useAutoResizeTextarea(dmMessageInputRef, newMessage);
+
+  // Honor a "Send Direct Message" focus request from the node list (#4325).
+  //
+  // Two paths, because the request usually arrives BEFORE the compose textarea
+  // exists: navigating in from the node list mounts this tab, and on that first
+  // pass the conversation pane (and its textarea) has not rendered yet. An
+  // effect alone therefore fires against a null ref and, if it consumed the
+  // request, the box would never get focused — that was the original bug.
+  //
+  //  - `attachDmInput` (callback ref) fires the moment the textarea mounts and
+  //    focuses it if a request is outstanding. This is the normal path.
+  //  - The effect below covers the case where the textarea is ALREADY mounted
+  //    when the request lands (same conversation re-requested), which the
+  //    callback ref cannot see because it does not re-fire.
+  //
+  // A request is only consumed once actually honored, except for a stale one
+  // aimed at a different node, which is dropped so it can't fire later.
+  const composeFocusTargetRef = useRef<string | null>(null);
+  composeFocusTargetRef.current =
+    pendingComposeFocus && pendingComposeFocus === selectedDMNode ? pendingComposeFocus : null;
+  const clearComposeFocusRef = useRef(clearComposeFocus);
+  clearComposeFocusRef.current = clearComposeFocus;
+
+  const attachDmInput = useCallback((el: HTMLTextAreaElement | null) => {
+    dmMessageInputRef.current = el;
+    if (el && composeFocusTargetRef.current) {
+      el.focus();
+      composeFocusTargetRef.current = null;
+      clearComposeFocusRef.current?.();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!pendingComposeFocus || !clearComposeFocus) return;
+    if (pendingComposeFocus !== selectedDMNode) {
+      clearComposeFocus();
+      return;
+    }
+    if (!dmMessageInputRef.current) return; // textarea not mounted yet — attachDmInput will take it
+    dmMessageInputRef.current.focus();
+    clearComposeFocus();
+  }, [pendingComposeFocus, selectedDMNode, clearComposeFocus]);
 
   // Helper functions
   const getNodeName = useCallback(
@@ -1807,7 +1855,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   <div className="message-input-container">
                     <div className="input-with-counter">
                       <textarea
-                        ref={dmMessageInputRef}
+                        ref={attachDmInput}
                         value={newMessage}
                         onChange={e => setNewMessage(e.target.value)}
                         onFocus={scrollInputIntoView}

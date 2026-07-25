@@ -50,7 +50,7 @@
     "auto_favorite.saved": "Ustawienia automatycznego dodawania do ulubionych zostały zapisane",
     "auto_favorite.save_failed": "Nie udało się zapisać ustawień automatycznego dodawania do ulubionych",
     "auto_favorite.load_failed": "Nie udało się wczytać konfiguracji automatycznego dodawania do ulubionych",
-    "nav.nodes": "Węzły",
+    "nav.nodes": "Mapa",
     "nav.channels": "Kanały",
     "nav.info": "Info",
     "nav.messages": "Szczegóły węzła",
