@@ -2,7 +2,7 @@
 
 The **Analysis & Reports** workspace is a global, cross-source analytics page that runs analytical reports against the telemetry, position, and routing data MeshMonitor has collected from every source you can read. It lives at `/reports` and is linked from the bottom of the dashboard sidebar (right under *Map Analysis*).
 
-Two reports are currently bundled with the workspace: **Solar Monitoring Analysis** and **NodeInfo Enrichment** — see below. The card-grid landing page is designed to host additional reports over time without changing the routing or navigation surface.
+Three reports are currently bundled with the workspace: **Solar Monitoring Analysis**, **NodeInfo Enrichment**, and **ok_to_mqtt Violations** — see below. The card-grid landing page is designed to host additional reports over time without changing the routing or navigation surface.
 
 ## Solar Monitoring Analysis
 
@@ -90,6 +90,82 @@ Because a row reflects only its single best donor, fixing it can uncover further
 
 > **On-demand only.** This report has no background scheduler — it runs interactively whenever you open the card or click Refresh/Fix.
 
+## ok_to_mqtt Violations
+
+Reviews `ok_to_mqtt` violation history across every MQTT source you can read, so you can find
+which gateways on your mesh are relaying opted-out traffic without needing to enable the [MQTT
+Packet Monitor](./packet-monitor#mqtt-sources) on any of them. See [`ok_to_mqtt` violation
+detection](./packet-monitor#ok-to-mqtt-violation-detection) for what the bit means and why a
+violation is almost always a gateway misconfiguration, not malicious intent.
+
+This report is **cross-source**: a single run scans every MQTT source you have permission to
+read and aggregates the results into one gateway list. Because a scan spans multiple sources, it
+does not run automatically — pick a window and click **Run report**.
+
+### What gets analyzed
+
+The report distinguishes two kinds of evidence, with different time horizons, and is explicit
+about which one you're looking at:
+
+- **Confirmed violations** come from a durable record kept for up to 90 days: a gateway
+  relayed a packet whose `ok_to_mqtt` bit was explicitly clear and the gateway was not the
+  packet's originator. This is proof.
+- **Suspected violations** ("unreadable bit") are packets whose `ok_to_mqtt` bit could not be
+  read at all — usually because MeshMonitor has no channel key to decrypt them. These come from
+  the [MQTT Packet Monitor's capture log](./packet-monitor#capture-opt-in-and-retention), which
+  by default only reaches back 24 hours and must be enabled to contribute anything. A suspected
+  count is **not** proof of a violation — it only means the bit couldn't be evaluated either way.
+  Suspected rows are included only when you turn on **Include unproven (unreadable bit)** (off
+  by default), and the report shows a separate Suspected column and an on-screen note about the
+  shorter horizon whenever it's on.
+
+### Running the report
+
+1. Open the dashboard, click **Analysis & Reports** in the sidebar.
+2. Click the **ok_to_mqtt Violations** card.
+3. Set the **Window** — either a preset (24 h / 7 days / 30 days / 90 days) or an explicit
+   From/To date range — and optionally check **Include unproven (unreadable bit)**.
+4. Click **Run report**.
+
+### Gateway summary table
+
+One row per offending gateway, identified by its raw `!hexid` rather than a friendly name —
+resolving names would mean an extra request per source for a cosmetic label, so the report
+doesn't do it. Columns: **Gateway**, **Confirmed** violation count, **Suspected** count (only
+shown when the unproven toggle is on), distinct **Originators** affected, which **Sources** saw
+the gateway, and **First seen** / **Last seen** timestamps. The table is sortable by gateway,
+confirmed count, originators, and last seen, and paginated.
+
+### Drill-down
+
+Click a gateway row to expand it into that gateway's individual violating packets — time,
+source, originator, channel, port, packet ID, bitfield, and MQTT topic — sortable and paginated
+independently of the summary table.
+
+### Result caps
+
+A single scan returns at most 2,000 rows. When a scan hits that ceiling, the report shows the
+count as `2,000+` instead of a number it can't vouch for, and paging is limited accordingly. If
+you sort **ascending** on a capped scan, be aware the retained rows are the highest-count /
+most-recent ones — an ascending sort over a capped result does **not** show the true bottom of
+the full window. Narrowing the window (or the set of sources) is the reliable way to see the
+rest; this limitation is tracked as [#4330](https://github.com/Yeraze/meshmonitor/issues/4330).
+
+### CSV export
+
+Both the gateway summary and an individual gateway's drill-down can be exported to CSV. Exports
+cover the whole filtered result set, not just the page you're viewing — but they're subject to
+the same 2,000-row cap as the on-screen scan. If a matching set is larger than what was exported,
+the report tells you how many rows were exported versus how many matched, rather than silently
+truncating the file.
+
+### Empty is good news
+
+No violations in the selected window means no gateway on your mesh was caught relaying
+opted-out traffic — that's the expected, healthy outcome. Detection is also **forward-only**: it
+only covers traffic received after upgrading to a MeshMonitor version with this feature, so a
+freshly upgraded install should expect an empty report until new MQTT traffic arrives.
+
 ## Permissions
 
 ### Solar Monitoring
@@ -105,7 +181,17 @@ Both solar endpoints are scoped to the requesting user's permitted source IDs:
 - **Analysis** (`GET /api/nodes/enrichment/analysis`) only ever computes over sources the caller holds `nodes:read` on — admins see every source, anonymous/unauthenticated callers see none (an empty, but never a `403`, response).
 - **Applying** (`POST /api/nodes/enrichment/apply`) requires `nodes:read` on the donor source and `nodes:write` on every target source referenced by the request. A single missing grant rejects the whole batch with `403 FORBIDDEN` — partial application of an under-permissioned batch never happens.
 
-The page itself is publicly routable for both reports; only the underlying data is gated.
+### ok_to_mqtt Violations
+
+Both endpoints (`GET /api/analysis/mqtt-violations/gateways` and `/packets`) scope every scan to
+the MQTT sources the requesting user holds `packetmonitor:read` on — the same permission that
+gates the [MQTT Packet Monitor](./packet-monitor#mqtt-sources) itself. Admins see every enabled
+source; a user with no source permissions (including signed-out/Anonymous, if that permission
+was revoked) gets a `200` response with an empty source list rather than an error, which the
+report renders as "no sources available to you" instead of "no violations found" — the two are
+distinguishable without an extra request.
+
+The page itself is publicly routable for all three reports; only the underlying data is gated.
 
 ## API
 
@@ -127,8 +213,24 @@ Two endpoints under `/api/nodes/enrichment/*` (also mirrored at `/api/v1/nodes/e
 
 Error codes: `INVALID_REQUEST` / `INVALID_ITEM` (400, malformed request body), `FORBIDDEN` (403, missing `nodes:read`/`nodes:write` — includes a `missing` list), `ENRICHMENT_ANALYSIS_FAILED` / `ENRICHMENT_APPLY_FAILED` (500).
 
+### ok_to_mqtt Violations
+
+Two endpoints under `/api/analysis/*`, using the standard `{ success, data }` response envelope:
+
+- `GET /api/analysis/mqtt-violations/gateways` — the gateway summary, paginated with `limit`/`offset`, sortable via `sort`/`dir` (`violationCount`, `lastSeen`, `distinctOriginators`, `gatewayId`).
+- `GET /api/analysis/mqtt-violations/packets?gateway=!hexid` — one gateway's drill-down, sortable via `sort`/`dir` (`timestamp`, `fromNode`, `gatewayId`).
+
+Both accept `lookbackDays` (1–365) or an explicit `since`/`until` (epoch ms) window, an
+`includeUnknown` flag to fold in suspected rows, and an optional `sources` filter. Both responses
+cap a single scan at 2,000 rows and echo the resolved window and source list, so the client can
+tell "no violations in this window" apart from "no sources you can read" and can detect when the
+2,000-row cap was hit.
+
+Error codes: `INVALID_RANGE` (400, `since` after `until`), `INVALID_SORT_FIELD` / `INVALID_SORT_DIRECTION` (400), `MQTT_VIOLATIONS_FETCH_FAILED` (500).
+
 ## Related
 
 - [Solar Monitoring](./solar-monitoring) — configuration of the forecast.solar integration that powers the production curve and forecast factor
+- [Packet Monitor](./packet-monitor#ok-to-mqtt-violation-detection) — how `ok_to_mqtt` violation detection works, including the per-packet badge in the MQTT Packet Monitor that this report complements
 - [Map Analysis](./map-analysis) — cross-source map / coverage workspace at `/analysis`
 - [Analytics](./analytics) — analytics dashboards in the per-source view
