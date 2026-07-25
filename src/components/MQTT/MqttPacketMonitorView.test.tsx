@@ -383,7 +383,7 @@ describe('MqttPacketMonitorView', () => {
     // Both the disabled banner and the disabled empty state render the note
     // simultaneously (there are no packets), so assert at least one instance.
     expect(screen.getAllByText(
-      'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here.'
+      'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here. Confirmed violations are always listed in Analysis & Reports → ok_to_mqtt violations.'
     ).length).toBeGreaterThan(0);
   });
 
@@ -394,7 +394,7 @@ describe('MqttPacketMonitorView', () => {
 
     await screen.findByText('No packets captured. Enable capture to start recording.');
     const note = screen.getByText(
-      'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here.',
+      'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here. Confirmed violations are always listed in Analysis & Reports → ok_to_mqtt violations.',
       { selector: '.mqpm-empty-note' }
     );
     expect(note).toBeTruthy();
@@ -407,7 +407,7 @@ describe('MqttPacketMonitorView', () => {
 
     await screen.findByText('No packets captured yet. Waiting for MQTT traffic…');
     expect(screen.queryByText(
-      'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here.'
+      'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here. Confirmed violations are always listed in Analysis & Reports → ok_to_mqtt violations.'
     )).toBeNull();
   });
 });

@@ -338,7 +338,7 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
             {t('mqtt.packets.disabled', 'MQTT packet capture is off. No new packets will be recorded until you enable it.')}
             {' '}
             <span className="mqpm-banner-note">
-              {t('mqtt.packets.violationsStillRecorded', 'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here.')}
+              {t('mqtt.packets.violationsStillRecorded', 'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here. Confirmed violations are always listed in Analysis & Reports → ok_to_mqtt violations.')}
             </span>
           </span>
           {canWriteSettings && (
@@ -467,7 +467,7 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
               : t('mqtt.packets.emptyDisabled', 'No packets captured. Enable capture to start recording.')}
             {!enabled && (
               <div className="mqpm-empty-note">
-                {t('mqtt.packets.violationsStillRecorded', 'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here.')}
+                {t('mqtt.packets.violationsStillRecorded', 'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here. Confirmed violations are always listed in Analysis & Reports → ok_to_mqtt violations.')}
               </div>
             )}
           </div>

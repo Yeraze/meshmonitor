@@ -274,10 +274,13 @@ When capture is off, the Packet Monitor says so explicitly — in both the captu
 and the empty state. **Absence of badges does not mean absence of violations.** Turn capture on
 to see per-packet, per-gateway violation badges.
 
-#### Still to come
+#### Reviewing violation history without packet capture
 
-A searchable, gateway-level violation report under Analysis & Reports is planned for a future
-release, giving a way to review violation history without needing MQTT packet capture enabled.
+Violation *recording* runs independently of the Packet Monitor (see above), and there's a
+dedicated place to review it: the **ok_to_mqtt Violations** report under **Analysis & Reports**.
+It aggregates confirmed violations across every MQTT source you can read — no need to turn on
+MQTT packet capture on any of them just to see gateway violation history. See
+[ok_to_mqtt Violations](/features/analysis-reports#ok-to-mqtt-violations) for details.
 
 ## Use Cases
 
