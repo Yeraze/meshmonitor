@@ -1,9 +1,20 @@
 # MQTT `ok_to_mqtt` Violation Detection — Epic Plan
 
 **Tracking issue:** #4114
-**Status:** Phase 1 in progress
+**Status:** COMPLETE — all three phases merged 2026-07-24/25.
 **Branch strategy:** one worktree + PR per phase, branched from `origin/main`.
 **Started:** 2026-07-24
+
+| Phase | PR | Scope |
+|---|---|---|
+| 1 — Backend detection + durable history | #4324 | migration 128, tri-state evaluator, ingest capture, cross-source endpoints |
+| 2 — Packet Monitor badge + per-gateway attribution | #4328 | badge, four-state marker, detail-view column |
+| 3 — Reports view | #4331 | gateway summary + drill-down, window control, CSV, unproven toggle |
+
+**Follow-up filed:** #4330 — the endpoints cap at 2000 rows and never pass `sort`/`dir` to SQL,
+so rows past offset 2000 are unreachable and ascending sorts over a saturated scan are wrong.
+Phase 3 mitigates honestly in the UI (`2,000+`, clamped paging, two distinct warnings); the
+backend fix is tracked separately. **Revisit Phase 3's cap warnings when #4330 lands.**
 
 ## Goal
 
@@ -125,7 +136,7 @@ found during Stage 0 exploration:
   `api.get`, **explicitly returning `body.data`** because `ApiService` does not unwrap the
   envelope); deferred-run pattern from `SolarMonitoringReport.tsx:110-121, 167-184`;
   filters/pagination/CSV mechanics from `AuditLogTab.tsx:52-62, 130-194`. Prefer the existing
-  CSV helpers `escapeCsvField` / `downloadTextFile` in `src/utils/nodeExport.ts:123, 207-212`
+  CSV helpers `escapeCsv` (module-private at `src/utils/nodeExport.ts:124` — Phase 3 exports it) / `downloadTextFile` (`:207-212`)
   over hand-rolling a Blob.
 - **`.reports-*` global classes** in `src/styles/analysis-reports.css` cover the shared chrome
   (stats row, panel, controls, table, banners, buttons, pills). Reuse those; put genuinely new
@@ -196,7 +207,7 @@ Deliverables:
 
 Exit criteria: UI validated in the browser, suite/lint/typecheck/CI green, PR merged.
 
-### Phase 3 — Reports: `ok_to_mqtt` gateway violation report  [ ]
+### Phase 3 — Reports: `ok_to_mqtt` gateway violation report  [x]
 
 Deliverables:
 - New report component under `src/components/Analysis/`, registered in `AnalysisTab.tsx`
@@ -204,7 +215,7 @@ Deliverables:
 - Gateway summary table (violation count, distinct originators affected, sources, first/last
   seen) with drill-down to the underlying violating packets.
 - Lookback/date-range control using the deferred-run pattern (no expensive scan on mount);
-  CSV export via `escapeCsvField`/`downloadTextFile`; sortable columns + pagination;
+  CSV export via `escapeCsv`/`downloadTextFile`; sortable columns + pagination;
   include-`unknown`-bitfield toggle, off by default.
 - TanStack `useQuery` + `ApiService` (raw `fetch()` is lint-banned here), unwrapping
   `body.data` explicitly.
@@ -230,6 +241,64 @@ green, PR merged, issue #4114 closed.
 4. **The report reads `body.data`** — `ApiService.request()` does not unwrap the envelope.
 
 ## Deviations / notes
+
+### Phase 3 (2026-07-24/25) — final phase
+
+Spec: `MQTT_OK_TO_MQTT_PHASE3_SPEC.md`. Four work packages (WP1 types/CSV ∥ WP4 locale →
+WP2 shell → WP3 drill-down/export), plus one browser-found fix. Frontend only — **zero backend
+files touched**, so the phase boundary held for the second phase running.
+
+**Corrections found during Phase 3 (all verified against the tree, not assumed):**
+
+1. **`escapeCsvField` never existed.** The helper is `escapeCsv` (`src/utils/nodeExport.ts:124`)
+   and was module-private; WP1 exported it. This epic doc named it wrongly in two places —
+   corrected. Lesson: a helper name copied out of an exploration summary is a claim, not a fact.
+2. **The 2000-row cap is broader than Phase 1 §3.17 documented.** Both endpoints pass
+   `limit: 2000, offset: 0` **unconditionally** (`analysisRoutes.ts:614`, `:794`, `:808`), not
+   only when `includeUnknown=true`. So even with `includeUnknown=false` — where `total` is a real
+   `COUNT` and can exceed 2000 — rows past offset 2000 are unreachable and a naive pager would
+   offer empty pages.
+3. **`sort`/`dir` never reach SQL.** The retained 2000 rows are always the repository defaults
+   (`COUNT(*) DESC` / `timestamp DESC` — `mqttOkToMqttViolations.ts:125-126`, `:198`), so an
+   **ascending** sort over a saturated scan orders only the worst/newest 2000. Undocumented before
+   this phase. Both (2) and (3) are filed as **#4330**; Phase 3 mitigates in the UI only.
+4. **`suspectedCount` is not sortable** — absent from `VIOLATION_GATEWAY_SORTS`, so the interview's
+   "column sorting" feature cannot cover it. Its header renders with no sort affordance.
+5. **`AuditLogTab.tsx` is a bad CSV template** — it pseudo-escapes with `replace(/,/g, ';')`
+   instead of quoting, joins rows with `\n` rather than CRLF, and puts raw `toISOString()` colons
+   into filenames (illegal on Windows). It was named as the template in the phase brief; the spec
+   explicitly overrode that in favour of `nodesToCsv`.
+6. **The spec's own `onRun` snippet had a double-fetch bug.** Calling `refetch()` unconditionally
+   is not the harmless no-op the spec assumed: it closes over pre-update `applied` state and fires
+   immediately, racing TanStack's automatic refetch once the new queryKey commits. WP2 caught it
+   (a test expected 2 calls and saw 3) and gated `refetch()` behind a shallow filter comparison.
+
+**Browser validation (live dev container, real production data):**
+
+- Report pulled **7 gateways / 2,268 confirmed violations / 229 affected originators** over 7 days;
+  with unproven included, 71 gateways / 971 suspected. Confirmed counts had grown ~20× since the
+  Phase 2 validation a few hours earlier, purely from continuous recording.
+- **Deferred run proven** — zero requests on mount, and the unproven toggle also does not auto-fetch.
+- Sorting emits only whitelisted params; exactly the 4 API-sortable headers are clickable.
+- Drill-down fetches per-gateway with independent sort/paging; CSV exports real data with CRLF and
+  a proper header row.
+- **The `suspectedAvailable` trap was avoided** — gated on `data?.includeUnknown === true` from the
+  response echo, so no false "unavailable" warning on a default run.
+- **Defect found only by looking at it:** the Sources cell rendered joined UUIDs at 769 px inside a
+  418 px box and painted over the First seen column. Root cause was CSS specificity — the global
+  `.reports-table td` (0-1-1) beat `.sourcesCell` (0-1-0), so the module's `white-space: normal`
+  silently lost, and nothing clipped the overflow. Fixed by rendering a count with the full list in
+  a `title`, plus `overflow: hidden` + `text-overflow: ellipsis` (properties the global rule never
+  sets, so no specificity fight). Verified zero collisions across all 71 rows at desktop and 390 px.
+  **This is the second phase running where a table-layout defect passed every component test** —
+  jsdom has no layout engine. Treat any new column or width constraint as browser-verify-required.
+
+**Two things I flagged during validation that were NOT defects** (recorded so the next reader
+doesn't re-investigate): the gateway cell's apparent `!hexid`+nodeNum concatenation is two stacked
+block `div`s that `textContent` joins; and an apparent duplicate header row in the drill table is a
+scoped-`querySelectorAll` artifact (descendant selectors match against the whole document, so the
+inner `<thead>` row matches `tbody tr` via the *outer* table's `<tbody>`). The console 404 on
+`/locales/en-US.json` is pre-existing i18next region fallback, unrelated to this epic.
 
 ### Phase 2 (2026-07-24)
 
