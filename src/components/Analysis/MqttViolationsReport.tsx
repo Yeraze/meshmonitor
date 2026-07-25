@@ -736,10 +736,25 @@ const MqttViolationsReport: React.FC = () => {
                         data-suspected-only={isSuspectedOnly ? 'true' : undefined}
                         onClick={() => handleRowToggle(rowKey)}
                         title={rowTitle}
-                        aria-expanded={isExpanded}
                       >
                         <td className={styles.expandButton}>
-                          <UiIcon name={isExpanded ? 'chevronUp' : 'chevronDown'} size={14} />
+                          {/* `aria-expanded` belongs on the control that toggles the
+                              state, not on the <tr> — role="row" doesn't support it.
+                              This button is that control (and duplicates the row's
+                              own onClick, guarded by stopPropagation so a click here
+                              doesn't also fire the row handler and toggle twice). */}
+                          <button
+                            type="button"
+                            className={styles.expandButtonControl}
+                            aria-expanded={isExpanded}
+                            aria-label={rowTitle}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRowToggle(rowKey);
+                            }}
+                          >
+                            <UiIcon name={isExpanded ? 'chevronUp' : 'chevronDown'} size={14} />
+                          </button>
                         </td>
                         <td title={`${nodeRef} (${row.gatewayNodeNum ?? '—'})`}>
                           <div className="reports-node__name">{nodeRef || '—'}</div>
@@ -937,7 +952,12 @@ const MqttViolationsReport: React.FC = () => {
                                               bitfield: v.bitfield,
                                             });
                                             const fromRef = formatNodeRef(v.fromNodeId, v.fromNode);
-                                            const vKey = `${v.sourceId}-${v.packetId ?? v.id ?? ''}-${v.timestamp}`;
+                                            // `kind` is load-bearing: with includeUnknown=true the
+                                            // list merges rows from two different tables (durable
+                                            // violations + packet log), so a confirmed and a
+                                            // suspected row can otherwise share
+                                            // sourceId/packetId/timestamp and collide.
+                                            const vKey = `${v.kind}-${v.sourceId}-${v.packetId ?? v.id ?? ''}-${v.timestamp}`;
                                             return (
                                               <tr key={vKey}>
                                                 <td>

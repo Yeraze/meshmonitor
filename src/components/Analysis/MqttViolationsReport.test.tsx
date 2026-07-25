@@ -734,4 +734,87 @@ describe('MqttViolationsReport', () => {
       );
     expect(exportCall).toBeDefined();
   });
+
+  it('test 18: aria-expanded lives on the expand button, not the <tr> (role="row" doesn\'t support it)', async () => {
+    const user = userEvent.setup();
+    routeApiGet(
+      () => baseResponse({ gateways: [gatewayRow()], total: 1 }),
+      () => packetsResponse({ violations: [packetRow()], total: 1 }),
+    );
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!433e0f28');
+
+    const row = screen.getByText('!433e0f28').closest('tr')!;
+    expect(row).not.toHaveAttribute('aria-expanded');
+
+    const expandButton = within(row).getByRole('button', { name: /Show violating packets/i });
+    expect(expandButton).toHaveAttribute('aria-expanded', 'false');
+    // Coordinator's other ask: the control needs an accessible name of its
+    // own — it's an icon-only button, so this would otherwise be silent.
+    expect(expandButton).toHaveAccessibleName();
+
+    await user.click(expandButton);
+
+    // Flips to true, the drill-down renders, and the row still carries no
+    // aria-expanded — and, since the button's own click handler
+    // stopPropagation()s, clicking it doesn't also fire the row's onClick
+    // and toggle a second time (which would net out to "nothing happened").
+    await waitFor(() => expect(expandButton).toHaveAttribute('aria-expanded', 'true'));
+    expect(row).not.toHaveAttribute('aria-expanded');
+    expect(await screen.findByText('violation')).toBeInTheDocument();
+  });
+
+  it('test 19: drill-down rows sharing sourceId/packetId/timestamp across confirmed+suspected still render distinctly (kind-qualified key)', async () => {
+    const user = userEvent.setup();
+    const sharedTimestamp = Date.UTC(2026, 6, 20, 12, 0, 1);
+    routeApiGet(
+      () => baseResponse({ gateways: [gatewayRow()], total: 1 }),
+      () =>
+        packetsResponse({
+          violations: [
+            // Same id/sourceId/packetId/timestamp on purpose — this is the
+            // exact pair the old `${sourceId}-${packetId}-${timestamp}` key
+            // (with no `kind`) collided on when includeUnknown merges the
+            // durable-violations table with the packet log.
+            packetRow({
+              id: 1,
+              kind: 'confirmed',
+              sourceId: 'mqtt-a',
+              packetId: 12345,
+              timestamp: sharedTimestamp,
+              bitfield: 0,
+            }),
+            packetRow({
+              id: 1,
+              kind: 'suspected',
+              sourceId: 'mqtt-a',
+              packetId: 12345,
+              timestamp: sharedTimestamp,
+              bitfield: null,
+            }),
+          ],
+          total: 2,
+        }),
+    );
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!433e0f28');
+    const row = screen.getByText('!433e0f28').closest('tr')!;
+    await user.click(row);
+
+    // Both rows render distinctly — one via the marker's 'violation' text,
+    // the other via 'unknown' — rather than React collapsing them.
+    expect(await screen.findByText('violation')).toBeInTheDocument();
+    expect(screen.getByText('unknown')).toBeInTheDocument();
+
+    const duplicateKeyWarning = consoleErrorSpy.mock.calls.some((call) =>
+      call.some((arg) => typeof arg === 'string' && arg.includes('same key')),
+    );
+    expect(duplicateKeyWarning).toBe(false);
+
+    consoleErrorSpy.mockRestore();
+  });
 });
