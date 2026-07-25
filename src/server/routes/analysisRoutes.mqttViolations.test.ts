@@ -213,6 +213,14 @@ describe('analysisRoutes — GET /mqtt-violations/gateways', () => {
     expect(res2.body.data.gateways[0].gatewayId).not.toBe(res.body.data.gateways[0].gatewayId);
   });
 
+  it('a negative offset is clamped to 0 rather than passed through', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/gateways?since=0&limit=10&offset=-5');
+    expect(res.status).toBe(200);
+    expect(res.body.data.offset).toBe(0);
+    expect(res.body.data.gateways.length).toBe(3);
+  });
+
   it('lookbackDays clamps to 1..365 and is ignored when since is explicit', async () => {
     const agent = await harness.loginAs(harness.admin);
     // lookbackDays=99999 would clamp to 365; explicit since=0 must win regardless.
@@ -316,6 +324,110 @@ describe('analysisRoutes — GET /mqtt-violations/gateways', () => {
     expect(gw.firstSeen).toBe(T0 - 5000);
     expect(gw.lastSeen).toBe(T0 + 6000);
     expect(gw.sourceIds).toEqual([harness.sourceA]);
+  });
+
+  // ── #4330: capApplied / scanCap contract + the sourceIds trap ──────────
+
+  it('#4330: capApplied is false and scanCap is 2000 on the default (includeUnknown=false) path', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/gateways?since=0');
+    expect(res.status).toBe(200);
+    expect(res.body.data.capApplied).toBe(false);
+    expect(res.body.data.scanCap).toBe(2000);
+  });
+
+  it('#4330: sourceIds is populated per gateway on the default path (the merge-skip trap)', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/gateways?since=0');
+    expect(res.status).toBe(200);
+    expect(res.body.data.gateways.length).toBeGreaterThan(0);
+    for (const g of res.body.data.gateways) {
+      expect(Array.isArray(g.sourceIds)).toBe(true);
+      expect(g.sourceIds.length).toBeGreaterThan(0);
+    }
+    const gw1 = res.body.data.gateways.find((g: any) => g.gatewayId === '!11111111');
+    expect(gw1.sourceIds).toEqual([harness.sourceA]);
+  });
+
+  it('#4330: includeUnknown=true reports capApplied=false when the pre-merge fetch does not saturate', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/gateways?since=0&includeUnknown=true');
+    expect(res.status).toBe(200);
+    expect(res.body.data.capApplied).toBe(false);
+    expect(res.body.data.scanCap).toBe(2000);
+  });
+});
+
+describe('analysisRoutes — GET /mqtt-violations/gateways — pagination beyond the 2000-row cap (#4330)', () => {
+  let harness: RouteTestHarness;
+  const TOTAL_GATEWAYS = 2100;
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({ mount: (app) => app.use('/', analysisRoutes) });
+    // Each violation carries a distinct gatewayId/gatewayNodeNum, so the
+    // per-gateway summary groups into TOTAL_GATEWAYS rows — well past the
+    // old hardcoded 2000-row cap.
+    const inserts: Promise<void>[] = [];
+    for (let i = 0; i < TOTAL_GATEWAYS; i++) {
+      const gatewayNodeNum = 0x50000000 + i;
+      const gatewayId = `!${gatewayNodeNum.toString(16).padStart(8, '0')}`;
+      inserts.push(
+        harness.db.mqttOkToMqttViolations.insertViolation(
+          makeViolation({
+            sourceId: harness.sourceA,
+            packetId: 5000 + i,
+            fromNode: 0xaaaaaaaa,
+            fromNodeId: '!aaaaaaaa',
+            gatewayId,
+            gatewayNodeNum,
+            timestamp: T0 + i,
+          }),
+        ),
+      );
+    }
+    await Promise.all(inserts);
+  }, 30_000);
+
+  afterEach(async () => {
+    await harness.db.mqttOkToMqttViolations.deleteAllViolations(harness.sourceA);
+    await harness.cleanup();
+  }, 30_000);
+
+  it('#4330: total is exact beyond the cap and capApplied is false on the default path', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/gateways?since=0&limit=50&offset=0');
+    expect(res.status).toBe(200);
+    expect(res.body.data.total).toBe(TOTAL_GATEWAYS);
+    expect(res.body.data.capApplied).toBe(false);
+    expect(res.body.data.scanCap).toBe(2000);
+  });
+
+  it('#4330 regression: offset beyond 2000 returns real, non-empty rows', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/gateways?since=0&limit=500&offset=2050');
+    expect(res.status).toBe(200);
+    expect(res.body.data.gateways.length).toBe(TOTAL_GATEWAYS - 2050);
+    expect(res.body.data.total).toBe(TOTAL_GATEWAYS);
+  });
+
+  it('#4330 regression: ascending sort by lastSeen returns the earliest groups first, not just the tail of a truncated scan', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/gateways?since=0&sort=lastSeen&dir=asc&limit=5&offset=0');
+    expect(res.status).toBe(200);
+    const lastSeens = res.body.data.gateways.map((g: any) => g.lastSeen);
+    expect(lastSeens).toEqual([...lastSeens].sort((a, b) => a - b));
+    // i=0 inserted at T0 — the true earliest. The old bug would only ever
+    // sort within whatever subset of rows the hardcoded 2000-row confirmed
+    // fetch happened to retain, which could omit this row entirely.
+    expect(lastSeens[0]).toBe(T0);
+  });
+
+  it('#4330: includeUnknown=true reports capApplied=true once the confirmed pre-merge fetch saturates', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/gateways?since=0&includeUnknown=true&limit=10&offset=0');
+    expect(res.status).toBe(200);
+    expect(res.body.data.capApplied).toBe(true);
+    expect(res.body.data.scanCap).toBe(2000);
   });
 });
 
@@ -425,6 +537,14 @@ describe('analysisRoutes — GET /mqtt-violations/packets', () => {
     expect(res.body.data.total).toBe(3);
   });
 
+  it('a negative offset is clamped to 0 rather than passed through', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/packets?since=0&limit=10&offset=-5');
+    expect(res.status).toBe(200);
+    expect(res.body.data.offset).toBe(0);
+    expect(res.body.data.violations.length).toBe(3);
+  });
+
   it('includeUnknown=true with mqtt_packet_log_enabled on merges suspected rows with kind: suspected', async () => {
     await harness.db.settings.setSetting('mqtt_packet_log_enabled', '1');
     mqttPacketLogService.resetEnabledCache();
@@ -448,5 +568,86 @@ describe('analysisRoutes — GET /mqtt-violations/packets', () => {
     const res = await agent.get('/mqtt-violations/packets?since=0');
     expect(res.status).toBe(200);
     expect(res.body.data.violations.every((v: any) => v.kind === 'confirmed')).toBe(true);
+  });
+
+  // ── #4330: capApplied / scanCap contract ────────────────────────────────
+
+  it('#4330: capApplied is false and scanCap is 2000 on the default (includeUnknown=false) path', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/packets?since=0');
+    expect(res.status).toBe(200);
+    expect(res.body.data.capApplied).toBe(false);
+    expect(res.body.data.scanCap).toBe(2000);
+  });
+
+  it('#4330: includeUnknown=true reports capApplied=false when the pre-merge fetch does not saturate', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/packets?since=0&includeUnknown=true');
+    expect(res.status).toBe(200);
+    expect(res.body.data.capApplied).toBe(false);
+    expect(res.body.data.scanCap).toBe(2000);
+  });
+});
+
+describe('analysisRoutes — GET /mqtt-violations/packets — pagination beyond the 2000-row cap (#4330)', () => {
+  let harness: RouteTestHarness;
+  const TOTAL_VIOLATIONS = 2100;
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({ mount: (app) => app.use('/', analysisRoutes) });
+    const inserts: Promise<void>[] = [];
+    for (let i = 0; i < TOTAL_VIOLATIONS; i++) {
+      inserts.push(
+        harness.db.mqttOkToMqttViolations.insertViolation(
+          makeViolation({
+            sourceId: harness.sourceA,
+            packetId: 6000 + i,
+            fromNode: 0xaaaaaaaa,
+            fromNodeId: '!aaaaaaaa',
+            timestamp: T0 + i,
+          }),
+        ),
+      );
+    }
+    await Promise.all(inserts);
+  }, 30_000);
+
+  afterEach(async () => {
+    await harness.db.mqttOkToMqttViolations.deleteAllViolations(harness.sourceA);
+    await harness.cleanup();
+  }, 30_000);
+
+  it('#4330: total is exact beyond the cap and capApplied is false on the default path', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/packets?since=0&limit=50&offset=0');
+    expect(res.status).toBe(200);
+    expect(res.body.data.total).toBe(TOTAL_VIOLATIONS);
+    expect(res.body.data.capApplied).toBe(false);
+    expect(res.body.data.scanCap).toBe(2000);
+  });
+
+  it('#4330 regression: offset beyond 2000 returns real, non-empty rows', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/packets?since=0&limit=500&offset=2050');
+    expect(res.status).toBe(200);
+    expect(res.body.data.violations.length).toBe(TOTAL_VIOLATIONS - 2050);
+    expect(res.body.data.total).toBe(TOTAL_VIOLATIONS);
+  });
+
+  it('#4330 regression: ascending sort by timestamp returns the oldest rows first, not just the tail of a truncated scan', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/packets?since=0&sort=timestamp&dir=asc&limit=5&offset=0');
+    expect(res.status).toBe(200);
+    const timestamps = res.body.data.violations.map((v: any) => v.timestamp);
+    expect(timestamps).toEqual([...timestamps].sort((a, b) => a - b));
+    expect(timestamps[0]).toBe(T0);
+  });
+
+  it('#4330: includeUnknown=true reports capApplied=true once the confirmed pre-merge fetch saturates', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/packets?since=0&includeUnknown=true&limit=10&offset=0');
+    expect(res.status).toBe(200);
+    expect(res.body.data.capApplied).toBe(true);
+    expect(res.body.data.scanCap).toBe(2000);
   });
 });
