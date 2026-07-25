@@ -28,8 +28,23 @@ helm lint "$CHART_DIR"
 echo "==> Packaging chart into $OUT_DIR"
 helm package "$CHART_DIR" --destination "$OUT_DIR"
 
+# $OUT_DIR (docs/public/charts/) is gitignored and rebuilt from a clean
+# checkout on every run, so it only ever contains the chart version just
+# packaged above. Without merging in the index already live at $REPO_URL,
+# `helm repo index` would overwrite the published index.yaml with a
+# single-entry index, deleting every previously released version from the
+# repo (#4335). Fetch the current published index, if any, and merge it in.
+EXISTING_INDEX="$(mktemp)"
+trap 'rm -f "$EXISTING_INDEX"' EXIT
+
 echo "==> Generating repository index (url: $REPO_URL)"
-helm repo index "$OUT_DIR" --url "$REPO_URL"
+if curl -fsSL "$REPO_URL/index.yaml" -o "$EXISTING_INDEX"; then
+  echo "==> Merging with existing published index ($REPO_URL/index.yaml)"
+  helm repo index "$OUT_DIR" --url "$REPO_URL" --merge "$EXISTING_INDEX"
+else
+  echo "==> No existing published index found at $REPO_URL/index.yaml; generating fresh index"
+  helm repo index "$OUT_DIR" --url "$REPO_URL"
+fi
 
 echo "==> Helm repository contents:"
 ls -la "$OUT_DIR"
