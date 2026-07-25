@@ -32,8 +32,11 @@ describe('NodeUnmessageableBadge', () => {
 
     // The already-translated sentence is reused rather than replaced, so #4326
     // costs translators one short string instead of invalidating the long one.
-    expect(label).toContain('nodes.unmessageable');
-    expect(label).toContain('nodes.unmessageable_open_details');
+    // i18n is unconfigured under jsdom, so t() echoes the key — which lets this
+    // pin the exact two keys AND the ". " joiner the label is assembled from.
+    // (Asserting the English fallbacks instead would pass just as well without
+    // the reuse, and would not catch a swapped key.)
+    expect(label).toBe('nodes.unmessageable. nodes.unmessageable_open_details');
     expect(screen.getByTestId('node-unmessageable-badge')).toHaveAttribute('title', label);
   });
 });

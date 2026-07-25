@@ -3,7 +3,15 @@
  * Catppuccin custom properties defined in App.css, so no per-scheme blocks
  * are needed here. */
 
-/* Bottom-center is the one edge of the map that no existing overlay claims:
+/* Containing block: this is anchored to `.map-container`, the element it is
+   rendered inside as a BaseMap sibling. That works because `.map-container`
+   is itself `position: absolute` (nodes.css) — any non-static position makes
+   an element a containing block, not just `relative`. Do not "fix" the
+   apparent missing `position: relative` by adding one further up; the next
+   positioned ancestor is `.nodes-map-area`, and anchoring there would push
+   this banner outside the map when the packet monitor shrinks the container.
+
+   Bottom-center is the one edge of the map that no existing overlay claims:
    the Features panel and the legend sit top-right, the tileset selector
    defaults to top-left, and nodes.css relocates Leaflet's zoom controls to
    bottom-right (20px). Top-center would collide with the tileset selector on
