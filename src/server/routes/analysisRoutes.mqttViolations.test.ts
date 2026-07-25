@@ -213,6 +213,14 @@ describe('analysisRoutes — GET /mqtt-violations/gateways', () => {
     expect(res2.body.data.gateways[0].gatewayId).not.toBe(res.body.data.gateways[0].gatewayId);
   });
 
+  it('a negative offset is clamped to 0 rather than passed through', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/gateways?since=0&limit=10&offset=-5');
+    expect(res.status).toBe(200);
+    expect(res.body.data.offset).toBe(0);
+    expect(res.body.data.gateways.length).toBe(3);
+  });
+
   it('lookbackDays clamps to 1..365 and is ignored when since is explicit', async () => {
     const agent = await harness.loginAs(harness.admin);
     // lookbackDays=99999 would clamp to 365; explicit since=0 must win regardless.
@@ -527,6 +535,14 @@ describe('analysisRoutes — GET /mqtt-violations/packets', () => {
     const res = await agent.get('/mqtt-violations/packets?since=0&limit=1&offset=0');
     expect(res.body.data.violations.length).toBe(1);
     expect(res.body.data.total).toBe(3);
+  });
+
+  it('a negative offset is clamped to 0 rather than passed through', async () => {
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/mqtt-violations/packets?since=0&limit=10&offset=-5');
+    expect(res.status).toBe(200);
+    expect(res.body.data.offset).toBe(0);
+    expect(res.body.data.violations.length).toBe(3);
   });
 
   it('includeUnknown=true with mqtt_packet_log_enabled on merges suspected rows with kind: suspected', async () => {

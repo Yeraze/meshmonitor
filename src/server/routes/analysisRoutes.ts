@@ -721,6 +721,18 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
 
     const mergedByGateway = new Map<string, ViolationGatewayRow>();
     for (const g of confirmedRows) {
+      // Defensive only, not reachable via the write path (#4330 review):
+      // a confirmed row exists in mqtt_ok_to_mqtt_violations only when
+      // detectOkToMqttViolation() set isViolation, which requires
+      // `relayed`, which requires gatewayNodeNum !== null — and
+      // gatewayNodeNum is parseGatewayNodeNum(envelope.gatewayId), which is
+      // non-null only when envelope.gatewayId was itself a valid, non-empty
+      // `!`-prefixed id. buildViolationRow() stores that same
+      // envelope.gatewayId verbatim (mqttPacketLogService.ts:348,399), so a
+      // written violation row can never carry a null gatewayId. This guard
+      // therefore cannot cause `total = merged.length` (below) to diverge
+      // from `capApplied = confirmedRows.length >= API_SCAN_CAP` — every
+      // row fetched here is counted by both.
       if (!g.gatewayId) continue;
       const suspected = suspectedByGateway.get(g.gatewayId);
       mergedByGateway.set(g.gatewayId, {
@@ -889,16 +901,20 @@ router.get('/mqtt-violations/packets', async (req: Request, res: Response) => {
     // tables — a SQL UNION was considered and declined for this PR. Both
     // pre-merge fetches below are capped at API_SCAN_CAP; capApplied reports
     // whether either cap actually dropped rows before the merge.
-    const confirmedRows = await databaseService.mqttOkToMqttViolations.getViolations({
-      ...rangeQuery,
-      limit: API_SCAN_CAP,
-      offset: 0,
-    });
+    // The confirmed fetch and the suspectedAvailable check have no data
+    // dependency on each other — run them concurrently (#4330 review).
+    const [confirmedRows, suspectedAvailable] = await Promise.all([
+      databaseService.mqttOkToMqttViolations.getViolations({
+        ...rangeQuery,
+        limit: API_SCAN_CAP,
+        offset: 0,
+      }),
+      mqttPacketLogService.isEnabled(),
+    ]);
 
     let suspectedWindowMs = 0;
     let suspectedRows: DbMqttPacket[] = [];
 
-    const suspectedAvailable = await mqttPacketLogService.isEnabled();
     if (suspectedAvailable) {
       // No dependency between these two — run concurrently.
       const [maxAgeHours, rows] = await Promise.all([
