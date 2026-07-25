@@ -47,6 +47,8 @@ import { getPacketStats } from '../services/packetApi';
 
 import { BaseMap } from './map/BaseMap';
 import { MapLoadingOverlay } from './map/MapLoadingOverlay';
+import { MapModeIndicator } from './map/MapModeIndicator';
+import { NodeUnmessageableBadge } from './NodeUnmessageableBadge';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from './map/layers/AccuracyRegionsLayer';
 import { NodeCard } from './map/popups/NodeCard';
@@ -1123,6 +1125,23 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     };
   }, [setSelectedDMNode, setActiveTab]);
 
+  // #4326: unmessageable nodes get no DM button in the node list, and the
+  // badge that replaces it used to be an inert <span> — a genuine dead end,
+  // since the list was then offering no route at all to the node's details.
+  // The badge now reaches Node Details, matching what the map popup's "More
+  // Details" action already does for these nodes (that popup has never gated
+  // on messageability). Messaging itself stays unavailable: this uses
+  // setSelectedDMNode rather than openDmForCompose, so the compose box isn't
+  // focused, and MessagesTab independently hides the composer behind its
+  // `dmReadOnlyReason === 'unmessageable'` banner.
+  const handleNodeDetailsClick = useCallback((node: DeviceInfo) => {
+    return (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setSelectedDMNode(node.user?.id || '');
+      setActiveTab('messages');
+    };
+  }, [setSelectedDMNode, setActiveTab]);
+
   // Simple toggle callbacks
   const handleCollapseNodeList = useCallback(() => {
     setIsNodeListCollapsed(!isNodeListCollapsed);
@@ -2152,12 +2171,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         </button>
                       )}
                       {hasPermission('messages', 'read') && node.isUnmessagable && (
-                        <span
-                          className="node-indicator-icon"
-                          title={t('nodes.unmessageable', 'This node reports itself as unmessageable (router/repeater/sensor) — it cannot receive direct messages')}
-                        >
-                          <UiIcon name="blocked" size={16} />
-                        </span>
+                        <NodeUnmessageableBadge onOpenDetails={handleNodeDetailsClick(node)} />
                       )}
                       {!isNodeComplete(node) && hasPermission('nodes', 'write') && (
                         <button
@@ -2672,6 +2686,26 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </div>
             </div>
         )}
+            {/* #4326: "Show Traceroute" silently changes what clicking a node
+                does — for any node with a stored route the info popup is
+                suppressed in favor of the route overlay (see the
+                `!(showRoute && hasValidTraceroute)` popup gate above). The
+                only evidence of that mode used to be a checkbox inside the
+                Features panel, which is collapsible and draggable, so the
+                behavior read as random. This banner lives outside that panel
+                and stays put. */}
+            {shouldShowData() && showRoute && (
+              <MapModeIndicator
+                icon="route"
+                label={t('map.tracerouteModeActive', 'Traceroute mode')}
+                hint={t(
+                  'map.tracerouteModeHint',
+                  'Clicking a node with a stored route shows its path instead of its info popup'
+                )}
+                onDisable={() => setShowRoute(false)}
+                disableLabel={t('map.tracerouteModeDisable', 'Turn off Show Traceroute')}
+              />
+            )}
             <BaseMap
               center={mapDefaults.center}
               zoom={mapDefaults.zoom}
