@@ -120,8 +120,11 @@ export function buildNodeExportRows(
   });
 }
 
-/** Escape a single CSV field per RFC 4180. */
-function escapeCsv(value: string): string {
+/**
+ * Escape a single CSV field per RFC 4180.
+ * Exported for reuse by other CSV builders (#4114 Phase 3) — do not fork it.
+ */
+export function escapeCsv(value: string): string {
   if (/[",\r\n]/.test(value)) {
     return `"${value.replace(/"/g, '""')}"`;
   }
