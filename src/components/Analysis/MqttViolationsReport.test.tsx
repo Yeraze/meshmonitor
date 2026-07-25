@@ -2,12 +2,11 @@
  * @vitest-environment jsdom
  *
  * MqttViolationsReport — ok_to_mqtt violation gateway summary report
- * (#4114 Phase 3 WP2). Covers the deferred run, sorting/pagination against
+ * (#4114 Phase 3). Covers the deferred run, sorting/pagination against
  * the API whitelist, cap honesty, the `includeUnknown` toggle, all six
  * render-state precedence rules, the `suspectedAvailable` trap, and the
- * client-side date-range guard. Drill-down fetch/render and CSV export are
- * WP3's territory (MqttViolationsReport.tsx `// WP3:` seams) and are not
- * covered here.
+ * client-side date-range guard (WP2), plus the drill-down fetch/render and
+ * its own states, and CSV export for both tables (WP3, tests 9/10/16).
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -46,15 +45,31 @@ vi.mock('../../services/api', async (orig) => {
   };
 });
 
+// Spy on the DOM download side-effect only; keep the real `escapeCsv` (used
+// internally by mqttViolationsCsv.ts) so the generated CSV string is real.
+vi.mock('../../utils/nodeExport', async (orig) => {
+  const actual = await orig<typeof import('../../utils/nodeExport')>();
+  return { ...actual, downloadTextFile: vi.fn() };
+});
+
 import api, { ApiError } from '../../services/api';
+import { downloadTextFile } from '../../utils/nodeExport';
+import { ToastProvider } from '../ToastContainer';
 import MqttViolationsReport from './MqttViolationsReport';
-import type { ViolationGatewayRow, ViolationGatewaysResponse } from './mqttViolationTypes';
+import type {
+  ViolationGatewayRow,
+  ViolationGatewaysResponse,
+  ViolationPacketRow,
+  ViolationPacketsResponse,
+} from './mqttViolationTypes';
 
 function renderReport() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MqttViolationsReport />
+      <ToastProvider>
+        <MqttViolationsReport />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -95,8 +110,72 @@ function baseResponse(overrides: Partial<ViolationGatewaysResponse> = {}): {
   };
 }
 
+function manyGatewayRows(count: number): ViolationGatewayRow[] {
+  return Array.from({ length: count }, (_, i) =>
+    gatewayRow({
+      gatewayId: `!${i.toString(16).padStart(8, '0')}`,
+      gatewayNodeNum: i,
+    }),
+  );
+}
+
+function packetRow(overrides: Partial<ViolationPacketRow> = {}): ViolationPacketRow {
+  return {
+    id: 1,
+    kind: 'confirmed',
+    sourceId: 'mqtt-a',
+    packetId: 12345,
+    fromNode: 0x11223344,
+    fromNodeId: '!11223344',
+    gatewayId: '!433e0f28',
+    gatewayNodeNum: 0x433e0f28,
+    channelId: 'LongFast',
+    portnum: 1,
+    portnumName: 'TEXT_MESSAGE_APP',
+    bitfield: 0,
+    topic: 'msh/US/2/e/LongFast/!433e0f28',
+    rxTime: Date.UTC(2026, 6, 20, 12, 0, 0),
+    timestamp: Date.UTC(2026, 6, 20, 12, 0, 1),
+    ...overrides,
+  };
+}
+
+function packetsResponse(overrides: Partial<ViolationPacketsResponse> = {}): {
+  success: true;
+  data: ViolationPacketsResponse;
+} {
+  return {
+    success: true,
+    data: {
+      violations: [],
+      total: 0,
+      limit: 100,
+      offset: 0,
+      since: Date.UTC(2026, 6, 17),
+      until: Date.UTC(2026, 6, 24),
+      includeUnknown: false,
+      suspectedAvailable: false,
+      suspectedWindowMs: 0,
+      sources: ['mqtt-a'],
+      gateway: '!433e0f28',
+      ...overrides,
+    },
+  };
+}
+
 function urlOf(mockFn: ReturnType<typeof vi.fn>, callIndex = 0): string {
   return mockFn.mock.calls[callIndex][0] as string;
+}
+
+/** Route the shared `api.get` mock by which endpoint the URL hits. */
+function routeApiGet(
+  gateways: () => ReturnType<typeof baseResponse> | Promise<ReturnType<typeof baseResponse>>,
+  packets: () => ReturnType<typeof packetsResponse> | Promise<ReturnType<typeof packetsResponse>>,
+) {
+  vi.mocked(api.get).mockImplementation(async (url: string) => {
+    if (url.includes('/mqtt-violations/packets')) return packets();
+    return gateways();
+  });
 }
 
 describe('MqttViolationsReport', () => {
@@ -443,5 +522,216 @@ describe('MqttViolationsReport', () => {
     await user.click(screen.getByRole('checkbox', { name: /Include unproven/i }));
 
     expect(api.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('test 9: drill-down fetch + render; collapsing fires no third request', async () => {
+    const user = userEvent.setup();
+    routeApiGet(
+      () => baseResponse({ gateways: [gatewayRow()], total: 1 }),
+      () =>
+        packetsResponse({
+          violations: [
+            packetRow({ kind: 'confirmed' }),
+            packetRow({ id: 2, packetId: 999, kind: 'suspected', bitfield: null }),
+          ],
+          total: 2,
+        }),
+    );
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!433e0f28');
+    expect(api.get).toHaveBeenCalledTimes(1);
+
+    const row = screen.getByText('!433e0f28').closest('tr')!;
+    await user.click(row);
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    const url = urlOf(vi.mocked(api.get), 1);
+    expect(url).toContain('/api/analysis/mqtt-violations/packets?');
+    // URLSearchParams percent-encodes '!' as %21 (unlike encodeURIComponent).
+    expect(url).toContain('gateway=%21433e0f28');
+    expect(url).toContain('sort=timestamp');
+    expect(url).toContain('dir=desc');
+    expect(url).toContain('limit=100');
+    expect(url).toContain('offset=0');
+
+    // Reused marker: 'violation' for the confirmed row, 'unknown' for the suspected one.
+    expect(await screen.findByText('violation')).toBeInTheDocument();
+    expect(screen.getByText('unknown')).toBeInTheDocument();
+
+    // Collapse — no third request, and the drill-down content disappears.
+    await user.click(row);
+    await waitFor(() => expect(screen.queryByText('violation')).not.toBeInTheDocument());
+    expect(api.get).toHaveBeenCalledTimes(2);
+  });
+
+  it('test 10a: drill-down loading state renders without unmounting the summary', async () => {
+    const user = userEvent.setup();
+    let resolvePackets!: (value: ReturnType<typeof packetsResponse>) => void;
+    const pending = new Promise<ReturnType<typeof packetsResponse>>((resolve) => {
+      resolvePackets = resolve;
+    });
+    routeApiGet(
+      () => baseResponse({ gateways: [gatewayRow()], total: 1 }),
+      () => pending,
+    );
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!433e0f28');
+
+    const row = screen.getByText('!433e0f28').closest('tr')!;
+    await user.click(row);
+
+    expect(await screen.findByText('Loading packets…')).toBeInTheDocument();
+    expect(screen.getByText('!433e0f28')).toBeInTheDocument();
+
+    resolvePackets(packetsResponse({ violations: [], total: 0 }));
+    await waitFor(() => expect(screen.queryByText('Loading packets…')).not.toBeInTheDocument());
+  });
+
+  it('test 10b: drill-down error state maps the code and keeps the summary rendered', async () => {
+    const user = userEvent.setup();
+    routeApiGet(
+      () => baseResponse({ gateways: [gatewayRow()], total: 1 }),
+      () => {
+        throw new ApiError('boom', 500, { code: 'MQTT_VIOLATIONS_FETCH_FAILED' });
+      },
+    );
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!433e0f28');
+
+    const row = screen.getByText('!433e0f28').closest('tr')!;
+    await user.click(row);
+
+    expect(
+      await screen.findByText('Failed to read ok_to_mqtt violation history.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('!433e0f28')).toBeInTheDocument();
+  });
+
+  it('test 10c: drill-down empty state shows the hint when unproven rows are hidden', async () => {
+    const user = userEvent.setup();
+    routeApiGet(
+      () => baseResponse({ gateways: [gatewayRow()], total: 1 }),
+      () => packetsResponse({ violations: [], total: 0 }),
+    );
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!433e0f28');
+
+    const row = screen.getByText('!433e0f28').closest('tr')!;
+    await user.click(row);
+
+    expect(
+      await screen.findByText('No individual rows for this gateway in this window.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Unproven receptions are hidden/i)).toBeInTheDocument();
+  });
+
+  it('test 10d: drill-down empty state omits the hint when unproven rows are included', async () => {
+    const user = userEvent.setup();
+    routeApiGet(
+      () =>
+        baseResponse({
+          gateways: [gatewayRow()],
+          total: 1,
+          includeUnknown: true,
+          suspectedAvailable: true,
+          suspectedWindowMs: 86_400_000,
+        }),
+      () =>
+        packetsResponse({
+          violations: [],
+          total: 0,
+          includeUnknown: true,
+          suspectedAvailable: true,
+          suspectedWindowMs: 86_400_000,
+        }),
+    );
+    renderReport();
+    await user.click(screen.getByRole('checkbox', { name: /Include unproven/i }));
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!433e0f28');
+
+    const row = screen.getByText('!433e0f28').closest('tr')!;
+    await user.click(row);
+
+    expect(
+      await screen.findByText('No individual rows for this gateway in this window.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Unproven receptions are hidden/i)).not.toBeInTheDocument();
+  });
+
+  it('test 16: gateway CSV export re-fetches the full set (limit=2000) and reports the cap', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url.includes('limit=2000')) {
+        return baseResponse({ gateways: manyGatewayRows(2000), total: 3412, limit: 2000, offset: 0 });
+      }
+      return baseResponse({ gateways: [gatewayRow()], total: 1 });
+    });
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!433e0f28');
+
+    await user.click(screen.getByRole('button', { name: /Export CSV/i }));
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    const exportUrl = urlOf(vi.mocked(api.get), 1);
+    expect(exportUrl).toContain('/api/analysis/mqtt-violations/gateways?');
+    expect(exportUrl).toContain('limit=2000');
+    expect(exportUrl).toContain('offset=0');
+
+    // Both a dismissable banner and a toast render the same message —
+    // assert at least one instance rather than assuming exactly one.
+    await waitFor(() => expect(screen.getAllByText(/2,000 of 3,412/).length).toBeGreaterThan(0));
+    expect(downloadTextFile).toHaveBeenCalledTimes(1);
+    const [filename, csv, mimeType] = vi.mocked(downloadTextFile).mock.calls[0];
+    expect(filename).toMatch(/^mqtt-oktomqtt-violations-gateways-.*\.csv$/);
+    expect(filename).not.toContain(':');
+    expect(mimeType).toBe('text/csv');
+    expect(csv.split('\r\n')[0]).toBe('Gateway ID,Gateway Node Num,Violation Count,Suspected Count,Distinct Originators,Source IDs,First Seen,Last Seen');
+    expect(csv).toContain('!00000000');
+  });
+
+  it('test 16b: drill-down CSV export re-fetches the full set (limit=2000) for that gateway', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url.includes('/mqtt-violations/packets') && url.includes('limit=2000')) {
+        return packetsResponse({
+          violations: [packetRow(), packetRow({ id: 2, packetId: 998 })],
+          total: 2,
+        });
+      }
+      if (url.includes('/mqtt-violations/packets')) {
+        return packetsResponse({ violations: [packetRow()], total: 1 });
+      }
+      return baseResponse({ gateways: [gatewayRow()], total: 1 });
+    });
+    renderReport();
+    await user.click(screen.getByRole('button', { name: /Run report/i }));
+    await screen.findByText('!433e0f28');
+
+    const row = screen.getByText('!433e0f28').closest('tr')!;
+    await user.click(row);
+    await screen.findByText('violation');
+
+    const exportButtons = screen.getAllByRole('button', { name: /Export CSV/i });
+    // [0] = gateway-summary export in the controls row; the drill-down's own
+    // export button is the last one rendered (inside the expanded detail cell).
+    await user.click(exportButtons[exportButtons.length - 1]);
+
+    await waitFor(() => expect(downloadTextFile).toHaveBeenCalledTimes(1));
+    const [filename, csv] = vi.mocked(downloadTextFile).mock.calls[0];
+    expect(filename).toMatch(/^mqtt-oktomqtt-violations-433e0f28-.*\.csv$/);
+    expect(filename).not.toContain('!');
+    expect(csv).toContain('confirmed');
+    const exportCall = vi
+      .mocked(api.get)
+      .mock.calls.find(
+        (call) => String(call[0]).includes('/mqtt-violations/packets') && String(call[0]).includes('limit=2000'),
+      );
+    expect(exportCall).toBeDefined();
   });
 });
