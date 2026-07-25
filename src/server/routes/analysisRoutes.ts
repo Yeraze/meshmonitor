@@ -104,6 +104,18 @@ function parseBoolParam(raw: unknown): boolean {
 const VIOLATION_GATEWAY_SORTS = ['violationCount', 'lastSeen', 'distinctOriginators', 'gatewayId'] as const;
 const VIOLATION_LIST_SORTS = ['timestamp', 'fromNode', 'gatewayId'] as const;
 
+/**
+ * Cap on the pre-merge fetch used ONLY by the `includeUnknown=true` path
+ * (#4330). It bounds `getGatewaySummary`/`getViolations`'s "confirmed" fetch
+ * and `getSuspectedViolations`'s "suspected" fetch before they are merged and
+ * re-sorted in JS — a merge that cannot be pushed into SQL because the two
+ * sides come from different tables (see the handler doc comments). It plays
+ * NO role in the default `includeUnknown=false` path, which pages entirely
+ * in SQL and is uncapped. Exposed to the frontend as `scanCap` so it never
+ * hardcodes the number independently.
+ */
+const API_SCAN_CAP = 2000;
+
 /** Row shape for the merged `/mqtt-violations/gateways` response. */
 interface ViolationGatewayRow extends MqttViolationGateway {
   suspectedCount: number;
@@ -599,20 +611,68 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
         suspectedAvailable: false,
         suspectedWindowMs: 0,
         sources: [],
+        capApplied: false,
+        scanCap: API_SCAN_CAP,
       });
       return;
     }
 
     const rangeQuery = { sourceIds, since, until };
 
-    // Fetch confirmed rows (capped at 2000 — see §3.17 step 7 / §6 risk 2)
-    // and always sort/paginate the (possibly merged) list in the handler so
-    // the includeUnknown=true and includeUnknown=false paths share one code
-    // path. The three queries below have no data dependency on each other,
-    // so run them concurrently rather than round-tripping in sequence.
-    const [confirmedRows, confirmedTotal, sourceIdPairs] = await Promise.all([
-      databaseService.mqttOkToMqttViolations.getGatewaySummary({ ...rangeQuery, limit: 2000, offset: 0 }),
-      databaseService.mqttOkToMqttViolations.getGatewaySummaryCount(rangeQuery),
+    if (!includeUnknown) {
+      // ── Default path (#4330 fix) ──────────────────────────────────────
+      // Only the confirmed table is involved, so there is nothing to merge:
+      // push sort/dir/limit/offset straight into SQL. `total` is an exact
+      // COUNT and every row at every offset is reachable — no cap, ever.
+      const [gatewayRows, total, sourceIdPairs] = await Promise.all([
+        databaseService.mqttOkToMqttViolations.getGatewaySummary({ ...rangeQuery, sort, dir, limit, offset }),
+        databaseService.mqttOkToMqttViolations.getGatewaySummaryCount(rangeQuery),
+        databaseService.mqttOkToMqttViolations.getGatewaySourceIds(rangeQuery),
+      ]);
+
+      const sourceIdsByGateway = new Map<string, Set<string>>();
+      for (const pair of sourceIdPairs) {
+        const set = sourceIdsByGateway.get(pair.gatewayId) ?? new Set<string>();
+        set.add(pair.sourceId);
+        sourceIdsByGateway.set(pair.gatewayId, set);
+      }
+
+      // Trap (#4330): sourceIds is attached here from the separate
+      // getGatewaySourceIds query — skipping this step silently drops it
+      // (every row would come back with sourceIds: []).
+      const gateways: ViolationGatewayRow[] = gatewayRows
+        .filter((g): g is MqttViolationGateway & { gatewayId: string } => g.gatewayId != null)
+        .map((g) => ({
+          ...g,
+          suspectedCount: 0,
+          sourceIds: Array.from(sourceIdsByGateway.get(g.gatewayId) ?? []),
+        }));
+
+      ok(res, {
+        gateways,
+        total,
+        limit,
+        offset,
+        since,
+        until,
+        includeUnknown,
+        suspectedAvailable: false,
+        suspectedWindowMs: 0,
+        sources: sourceIds,
+        capApplied: false,
+        scanCap: API_SCAN_CAP,
+      });
+      return;
+    }
+
+    // ── includeUnknown=true (#4330: opt-in, still merged+sorted in JS) ──
+    // Confirmed rows (durable table) and suspected rows (mqtt_packet_log)
+    // must be merged before ordering because they come from two different
+    // tables — a SQL UNION was considered and declined for this PR. The
+    // confirmed fetch below is capped at API_SCAN_CAP; capApplied reports
+    // whether that cap actually dropped rows before the merge.
+    const [confirmedRows, sourceIdPairs] = await Promise.all([
+      databaseService.mqttOkToMqttViolations.getGatewaySummary({ ...rangeQuery, limit: API_SCAN_CAP, offset: 0 }),
       databaseService.mqttOkToMqttViolations.getGatewaySourceIds(rangeQuery),
     ]);
 
@@ -627,38 +687,35 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
       sourceIdsByGateway.set(pair.gatewayId, set);
     }
 
-    let suspectedAvailable = false;
     let suspectedWindowMs = 0;
     const suspectedByGateway = new Map<
       string,
       { suspectedCount: number; gatewayNodeNum: number | null; distinctOriginators: number; firstSeen: number; lastSeen: number }
     >();
 
-    if (includeUnknown) {
-      suspectedAvailable = await mqttPacketLogService.isEnabled();
-      if (suspectedAvailable) {
-        // No dependency between these three — run concurrently.
-        const [maxAgeHours, suspectedRows, suspectedSourceIdPairs] = await Promise.all([
-          mqttPacketLogService.getMaxAgeHours(),
-          databaseService.mqttPacketLog.getSuspectedViolationGateways(rangeQuery),
-          databaseService.mqttPacketLog.getSuspectedGatewaySourceIds(rangeQuery),
-        ]);
-        suspectedWindowMs = maxAgeHours * 60 * 60 * 1000;
-        for (const row of suspectedRows) {
-          if (!row.gatewayId) continue;
-          suspectedByGateway.set(row.gatewayId, {
-            suspectedCount: row.suspectedCount,
-            gatewayNodeNum: row.gatewayNodeNum,
-            distinctOriginators: row.distinctOriginators,
-            firstSeen: row.firstSeen,
-            lastSeen: row.lastSeen,
-          });
-        }
-        for (const pair of suspectedSourceIdPairs) {
-          const set = sourceIdsByGateway.get(pair.gatewayId) ?? new Set<string>();
-          set.add(pair.sourceId);
-          sourceIdsByGateway.set(pair.gatewayId, set);
-        }
+    const suspectedAvailable = await mqttPacketLogService.isEnabled();
+    if (suspectedAvailable) {
+      // No dependency between these three — run concurrently.
+      const [maxAgeHours, suspectedRows, suspectedSourceIdPairs] = await Promise.all([
+        mqttPacketLogService.getMaxAgeHours(),
+        databaseService.mqttPacketLog.getSuspectedViolationGateways(rangeQuery),
+        databaseService.mqttPacketLog.getSuspectedGatewaySourceIds(rangeQuery),
+      ]);
+      suspectedWindowMs = maxAgeHours * 60 * 60 * 1000;
+      for (const row of suspectedRows) {
+        if (!row.gatewayId) continue;
+        suspectedByGateway.set(row.gatewayId, {
+          suspectedCount: row.suspectedCount,
+          gatewayNodeNum: row.gatewayNodeNum,
+          distinctOriginators: row.distinctOriginators,
+          firstSeen: row.firstSeen,
+          lastSeen: row.lastSeen,
+        });
+      }
+      for (const pair of suspectedSourceIdPairs) {
+        const set = sourceIdsByGateway.get(pair.gatewayId) ?? new Set<string>();
+        set.add(pair.sourceId);
+        sourceIdsByGateway.set(pair.gatewayId, set);
       }
     }
 
@@ -701,8 +758,11 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
       return dirMultiplier * ((a[sort] ?? 0) - (b[sort] ?? 0));
     });
 
-    const total = includeUnknown ? merged.length : confirmedTotal;
+    const total = merged.length;
     const gateways = merged.slice(offset, offset + limit);
+    // capApplied: the pre-merge confirmed fetch hit the cap, meaning rows
+    // were dropped before the merge/sort ran (#4330).
+    const capApplied = confirmedRows.length >= API_SCAN_CAP;
 
     ok(res, {
       gateways,
@@ -715,6 +775,8 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
       suspectedAvailable,
       suspectedWindowMs,
       sources: sourceIds,
+      capApplied,
+      scanCap: API_SCAN_CAP,
     });
   } catch (error) {
     logger.error('Error in GET /api/analysis/mqtt-violations/gateways:', error);
@@ -783,33 +845,68 @@ router.get('/mqtt-violations/packets', async (req: Request, res: Response) => {
         suspectedAvailable: false,
         suspectedWindowMs: 0,
         sources: [],
+        capApplied: false,
+        scanCap: API_SCAN_CAP,
       });
       return;
     }
 
     const rangeQuery = { sourceIds, since, until, gatewayId: gateway };
 
-    // No data dependency between these two — run concurrently.
-    const [confirmedRows, confirmedTotal] = await Promise.all([
-      databaseService.mqttOkToMqttViolations.getViolations({ ...rangeQuery, limit: 2000, offset: 0 }),
-      databaseService.mqttOkToMqttViolations.getViolationCount(rangeQuery),
-    ]);
+    if (!includeUnknown) {
+      // ── Default path (#4330 fix) ──────────────────────────────────────
+      // Only the confirmed table is involved, so there is nothing to merge:
+      // push sort/dir/limit/offset straight into SQL. `total` is an exact
+      // COUNT and every row at every offset is reachable — no cap, ever.
+      const [confirmedRows, total] = await Promise.all([
+        databaseService.mqttOkToMqttViolations.getViolations({ ...rangeQuery, sort, dir, limit, offset }),
+        databaseService.mqttOkToMqttViolations.getViolationCount(rangeQuery),
+      ]);
 
-    let suspectedAvailable = false;
+      const violations = confirmedRows.map((r) => toViolationPacketRow('confirmed', r));
+
+      ok(res, {
+        violations,
+        total,
+        limit,
+        offset,
+        since,
+        until,
+        gateway: gateway ?? null,
+        includeUnknown,
+        suspectedAvailable: false,
+        suspectedWindowMs: 0,
+        sources: sourceIds,
+        capApplied: false,
+        scanCap: API_SCAN_CAP,
+      });
+      return;
+    }
+
+    // ── includeUnknown=true (#4330: opt-in, still merged+sorted in JS) ──
+    // Confirmed rows (durable table) and suspected rows (mqtt_packet_log)
+    // must be merged before ordering because they come from two different
+    // tables — a SQL UNION was considered and declined for this PR. Both
+    // pre-merge fetches below are capped at API_SCAN_CAP; capApplied reports
+    // whether either cap actually dropped rows before the merge.
+    const confirmedRows = await databaseService.mqttOkToMqttViolations.getViolations({
+      ...rangeQuery,
+      limit: API_SCAN_CAP,
+      offset: 0,
+    });
+
     let suspectedWindowMs = 0;
     let suspectedRows: DbMqttPacket[] = [];
 
-    if (includeUnknown) {
-      suspectedAvailable = await mqttPacketLogService.isEnabled();
-      if (suspectedAvailable) {
-        // No dependency between these two — run concurrently.
-        const [maxAgeHours, rows] = await Promise.all([
-          mqttPacketLogService.getMaxAgeHours(),
-          databaseService.mqttPacketLog.getSuspectedViolations({ ...rangeQuery, limit: 2000, offset: 0 }),
-        ]);
-        suspectedWindowMs = maxAgeHours * 60 * 60 * 1000;
-        suspectedRows = rows;
-      }
+    const suspectedAvailable = await mqttPacketLogService.isEnabled();
+    if (suspectedAvailable) {
+      // No dependency between these two — run concurrently.
+      const [maxAgeHours, rows] = await Promise.all([
+        mqttPacketLogService.getMaxAgeHours(),
+        databaseService.mqttPacketLog.getSuspectedViolations({ ...rangeQuery, limit: API_SCAN_CAP, offset: 0 }),
+      ]);
+      suspectedWindowMs = maxAgeHours * 60 * 60 * 1000;
+      suspectedRows = rows;
     }
 
     const merged = [
@@ -824,8 +921,11 @@ router.get('/mqtt-violations/packets', async (req: Request, res: Response) => {
       return dirMultiplier * ((a[sort] ?? 0) - (b[sort] ?? 0));
     });
 
-    const total = includeUnknown ? merged.length : confirmedTotal;
+    const total = merged.length;
     const violations = merged.slice(offset, offset + limit);
+    // capApplied: either pre-merge fetch hit its cap, meaning rows were
+    // dropped before the merge/sort ran (#4330).
+    const capApplied = confirmedRows.length >= API_SCAN_CAP || suspectedRows.length >= API_SCAN_CAP;
 
     ok(res, {
       violations,
@@ -839,6 +939,8 @@ router.get('/mqtt-violations/packets', async (req: Request, res: Response) => {
       suspectedAvailable,
       suspectedWindowMs,
       sources: sourceIds,
+      capApplied,
+      scanCap: API_SCAN_CAP,
     });
   } catch (error) {
     logger.error('Error in GET /api/analysis/mqtt-violations/packets:', error);
