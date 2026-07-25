@@ -30,6 +30,16 @@ export class SharedContactValidationError extends Error {
   }
 }
 
+interface SharedContactPayloadOptions {
+  validatePublicKeyLength?: boolean;
+  /**
+   * Contact URLs must use an internally consistent identity. The legacy
+   * AdminMessage.add_contact path opts out to preserve its pre-existing
+   * pass-through behavior for radio NodeDB repair.
+   */
+  validateIdentity?: boolean;
+}
+
 function decodeHexBytes(value: string, fieldName: string, expectedLength: number): Buffer {
   const normalized = value.replace(/[:-]/g, '');
   if (!new RegExp(`^[0-9a-fA-F]{${expectedLength * 2}}$`).test(normalized)) {
@@ -61,25 +71,27 @@ function decodeBase64Bytes(value: string, fieldName: string, expectedLength?: nu
  */
 export function buildSharedContactPayload(
   identity: SharedContactIdentity,
-  options: { validatePublicKeyLength?: boolean } = {},
+  options: SharedContactPayloadOptions = {},
 ) {
-  if (
-    !isValidNodeNum(identity.nodeNum)
-    || identity.nodeNum === 0
-    || identity.nodeNum === MAX_NODE_NUM
-  ) {
-    throw new SharedContactValidationError('nodeNum must identify a real Meshtastic node');
-  }
-
   const expectedNodeId = `!${identity.nodeNum.toString(16).padStart(8, '0')}`;
-  if (identity.nodeId.toLowerCase() !== expectedNodeId) {
-    throw new SharedContactValidationError(
-      `nodeId ${identity.nodeId} does not match nodeNum ${identity.nodeNum}`,
-    );
+  if (options.validateIdentity !== false) {
+    if (
+      !isValidNodeNum(identity.nodeNum)
+      || identity.nodeNum === 0
+      || identity.nodeNum === MAX_NODE_NUM
+    ) {
+      throw new SharedContactValidationError('nodeNum must identify a real Meshtastic node');
+    }
+
+    if (identity.nodeId.toLowerCase() !== expectedNodeId) {
+      throw new SharedContactValidationError(
+        `nodeId ${identity.nodeId} does not match nodeNum ${identity.nodeNum}`,
+      );
+    }
   }
 
   const user: Record<string, unknown> = {
-    id: expectedNodeId,
+    id: options.validateIdentity === false ? identity.nodeId : expectedNodeId,
   };
 
   if (identity.longName != null) user.longName = identity.longName;

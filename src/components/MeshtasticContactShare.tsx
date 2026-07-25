@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import apiService from '../services/api';
 import { QrCodeCanvas } from './common/QrCodeCanvas';
 import { UiIcon } from './icons';
-import './MeshtasticContactShare.css';
+import styles from './MeshtasticContactShare.module.css';
 
 interface MeshtasticContactShareProps {
   nodeNum: number;
@@ -51,10 +51,10 @@ export const MeshtasticContactShare: React.FC<MeshtasticContactShareProps> = ({
       .then(contactUrl => {
         if (!cancelled) setUrl(contactUrl);
       })
-      .catch((requestError: unknown) => {
+      .catch(() => {
         if (!cancelled) {
           setUrl(null);
-          setError(requestError instanceof Error ? requestError.message : generationError);
+          setError(generationError);
         }
       })
       .finally(() => {
@@ -100,14 +100,14 @@ export const MeshtasticContactShare: React.FC<MeshtasticContactShareProps> = ({
   };
 
   return (
-    <div className="node-detail-card node-detail-card-2col node-contact-share">
-      <div className="node-contact-share-heading">
+    <div className={`node-detail-card node-detail-card-2col ${styles.root}`}>
+      <div className={styles.heading}>
         <div>
           <div className="node-detail-label">
             {t('node_details.contact_share.title', 'Share contact')}
           </div>
-          <div className="node-contact-share-name">{nodeName}</div>
-          <div className="node-contact-share-summary">
+          <div className={styles.name}>{nodeName}</div>
+          <div className={styles.summary}>
             {t(
               'node_details.contact_share.summary',
               'Create a Meshtastic contact QR code and URL for this node.',
@@ -116,7 +116,7 @@ export const MeshtasticContactShare: React.FC<MeshtasticContactShareProps> = ({
         </div>
         <button
           type="button"
-          className="node-contact-share-toggle"
+          className={styles.toggle}
           aria-expanded={expanded}
           onClick={() => setExpanded(value => !value)}
         >
@@ -128,31 +128,31 @@ export const MeshtasticContactShare: React.FC<MeshtasticContactShareProps> = ({
       </div>
 
       {expanded && (
-        <div className="node-contact-share-content">
+        <div className={styles.content}>
           {loading && (
-            <div role="status" className="node-contact-share-status">
+            <div role="status" className={styles.status}>
               {t('node_details.contact_share.loading', 'Generating contact…')}
             </div>
           )}
 
           {error && (
-            <div role="alert" className="node-contact-share-error">
+            <div role="alert" className={styles.error}>
               {error}
             </div>
           )}
 
           {url && !loading && (
             <>
-              <p className="node-contact-share-instructions">
+              <p className={styles.instructions}>
                 {t(
                   'node_details.contact_share.instructions',
                   'Scan this QR code or open the URL in Meshtastic to add this node as a contact.',
                 )}
               </p>
-              <div className="node-contact-share-qr">
+              <div className={styles.qr}>
                 <QrCodeCanvas
                   value={url}
-                  className="node-contact-share-canvas"
+                  className={styles.canvas}
                   ariaLabel={t(
                     'node_details.contact_share.qr_label',
                     'Meshtastic contact QR code',
@@ -160,10 +160,10 @@ export const MeshtasticContactShare: React.FC<MeshtasticContactShareProps> = ({
                   onError={handleQrError}
                 />
               </div>
-              <div className="node-contact-share-url-row">
+              <div className={styles.urlRow}>
                 <input
                   type="text"
-                  className="node-contact-share-url"
+                  className={styles.url}
                   value={url}
                   readOnly
                   aria-label={t(
@@ -173,7 +173,7 @@ export const MeshtasticContactShare: React.FC<MeshtasticContactShareProps> = ({
                 />
                 <button
                   type="button"
-                  className="node-contact-share-copy"
+                  className={styles.copy}
                   onClick={() => void handleCopy()}
                 >
                   <UiIcon name={copied ? 'check' : 'copy'} size={15} />

@@ -98,7 +98,9 @@ describe('NodeDetailsBlock contact sharing', () => {
     const { rerender } = render(<NodeDetailsBlock node={baseNode} sourceId="source-a" />);
 
     fireEvent.click(screen.getByRole('button', { name: /create qr code/i }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid contact identity');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Failed to generate contact URL',
+    );
 
     rerender(<NodeDetailsBlock node={baseNode} />);
     expect(screen.queryByText('Share contact')).not.toBeInTheDocument();

@@ -1,32 +1,32 @@
-.node-contact-share {
+.root {
   font-weight: 400;
 }
 
-.node-contact-share-heading {
+.heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
 
-.node-contact-share-name {
+.name {
   margin-bottom: 4px;
   color: var(--ctp-text);
   font-size: 1rem;
   font-weight: 600;
 }
 
-.node-contact-share-summary,
-.node-contact-share-instructions,
-.node-contact-share-status {
+.summary,
+.instructions,
+.status {
   color: var(--ctp-subtext0);
   font-size: 0.9rem;
   font-weight: 400;
   line-height: 1.4;
 }
 
-.node-contact-share-toggle,
-.node-contact-share-copy {
+.toggle,
+.copy {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -43,56 +43,57 @@
   white-space: nowrap;
 }
 
-.node-contact-share-toggle:hover,
-.node-contact-share-copy:hover {
+.toggle:hover,
+.copy:hover {
   border-color: var(--ctp-blue);
   color: var(--ctp-blue);
 }
 
-.node-contact-share-toggle:focus-visible,
-.node-contact-share-copy:focus-visible,
-.node-contact-share-url:focus-visible {
+.toggle:focus-visible,
+.copy:focus-visible,
+.url:focus-visible {
   outline: 2px solid var(--ctp-blue);
   outline-offset: 2px;
 }
 
-.node-contact-share-content {
+.content {
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--ctp-surface1);
 }
 
-.node-contact-share-instructions {
+.instructions {
   margin: 0 0 14px;
   text-align: center;
 }
 
-.node-contact-share-error {
+.error {
   margin-bottom: 12px;
   color: var(--ctp-red);
   font-size: 0.9rem;
 }
 
-.node-contact-share-qr {
+.qr {
   display: flex;
   justify-content: center;
   margin-bottom: 16px;
 }
 
-.node-contact-share-canvas {
+.canvas {
   display: block;
   max-width: 100%;
+  /* qrcode writes an inline height; responsive sizing must override it. */
   height: auto !important;
   border: 8px solid #ffffff;
   border-radius: var(--radius-sm);
 }
 
-.node-contact-share-url-row {
+.urlRow {
   display: flex;
   gap: 8px;
 }
 
-.node-contact-share-url {
+.url {
   min-width: 0;
   flex: 1;
   padding: 8px 10px;
@@ -104,27 +105,27 @@
   font-size: 0.82rem;
 }
 
-.node-contact-share-copy {
+.copy {
   background: var(--ctp-blue);
   border-color: var(--ctp-blue);
   color: var(--ctp-base);
 }
 
-.node-contact-share-copy:hover {
+.copy:hover {
   background: var(--ctp-sapphire);
   border-color: var(--ctp-sapphire);
   color: var(--ctp-base);
 }
 
 @media (max-width: 768px) {
-  .node-contact-share-heading,
-  .node-contact-share-url-row {
+  .heading,
+  .urlRow {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .node-contact-share-toggle,
-  .node-contact-share-copy {
+  .toggle,
+  .copy {
     width: 100%;
   }
 }

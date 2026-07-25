@@ -32,6 +32,7 @@ import { requireSourceId } from '../utils/requireSourceId.js';
 import { optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { isValidNodeNum, MAX_NODE_NUM } from '../constants/meshtastic.js';
+import { fail, ok } from '../utils/apiResponse.js';
 import {
   encodeSharedContactUrl,
   SharedContactValidationError,
@@ -168,49 +169,41 @@ router.post('/nodes/enrichment/apply', optionalAuth(), handleEnrichmentApply);
  */
 router.get(
   '/nodes/:nodeNum/contact-url',
-  requireSourceId('query'),
-  requirePermission('nodes', 'read'),
+  requirePermission('nodes', 'read', {
+    sourceIdFrom: 'query',
+    requireSourceId: true,
+  }),
   async (req, res) => {
     try {
       const nodeNum = Number(req.params.nodeNum);
       const sourceId = req.query.sourceId as string;
 
       if (!isValidNodeNum(nodeNum) || nodeNum === 0 || nodeNum === MAX_NODE_NUM) {
-        return res.status(400).json({
-          error: 'Invalid nodeNum',
-          code: 'INVALID_NODE_NUM',
-        });
+        return fail(res, 400, 'INVALID_NODE_NUM', 'Invalid nodeNum');
       }
 
       const node = await databaseService.nodes.getNode(nodeNum, sourceId);
       if (!node) {
-        return res.status(404).json({
-          error: 'Node not found',
-          code: 'NODE_NOT_FOUND',
-        });
+        return fail(res, 404, 'NODE_NOT_FOUND', 'Node not found');
       }
 
       if (!await checkNodeChannelAccess(node.nodeId, req.user, sourceId)) {
-        return res.status(403).json({
-          error: 'Insufficient permissions',
-          code: 'FORBIDDEN',
-        });
+        return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
       }
 
       const url = encodeSharedContactUrl(node);
-      return res.json({ success: true, data: { url } });
+      return ok(res, { url });
     } catch (error) {
       if (error instanceof SharedContactValidationError) {
-        return res.status(400).json({
-          error: error.message,
-          code: 'INVALID_CONTACT_IDENTITY',
-        });
+        return fail(res, 400, 'INVALID_CONTACT_IDENTITY', error.message);
       }
       logger.error('Error generating SharedContact URL:', error);
-      return res.status(500).json({
-        error: 'Failed to generate contact URL',
-        code: 'INTERNAL_ERROR',
-      });
+      return fail(
+        res,
+        500,
+        'INTERNAL_ERROR',
+        'Failed to generate contact URL',
+      );
     }
   },
 );

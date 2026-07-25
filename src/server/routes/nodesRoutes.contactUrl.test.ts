@@ -124,6 +124,28 @@ describe('nodesRoutes — GET /nodes/:nodeNum/contact-url', () => {
     expect(res.status).toBe(200);
   });
 
+  it('does not combine node permission from one source with channel access on another', async () => {
+    await harness.db.nodes.upsertNode(testNode(), harness.sourceA);
+    const agent = await harness.loginAs(harness.limited);
+
+    await harness.grant(harness.limited.id, 'nodes', 'read', harness.sourceB);
+    await harness.grant(
+      harness.limited.id,
+      'channel_0',
+      'viewOnMap',
+      harness.sourceA,
+    );
+
+    const res = await agent
+      .get(`/nodes/${NODE_NUM}/contact-url`)
+      .query({ sourceId: harness.sourceA });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({
+      code: 'FORBIDDEN',
+    });
+  });
+
   it('returns ordinary errors for missing scope, invalid identity, and missing nodes', async () => {
     const agent = await harness.loginAs(harness.admin);
 

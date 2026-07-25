@@ -32,9 +32,14 @@ export const QrCodeCanvas: React.FC<QrCodeCanvasProps> = ({
   }, [onError]);
 
   useEffect(() => {
-    if (!value || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (!value) {
+      canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
 
-    void QRCode.toCanvas(canvasRef.current, value, {
+    void QRCode.toCanvas(canvas, value, {
       width: size,
       margin: 2,
       color: {

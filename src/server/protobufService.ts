@@ -797,9 +797,12 @@ class ProtobufService {
             publicKey: publicKeyBase64,
             hwModel,
           },
-          // Preserve the existing AdminMessage helper's permissive behavior.
-          // Contact URLs use the default strict 32-byte PKI validation.
-          { validatePublicKeyLength: false },
+          // Preserve the existing AdminMessage helper's permissive pass-through
+          // behavior. Contact URLs retain strict identity and PKI validation.
+          {
+            validatePublicKeyLength: false,
+            validateIdentity: false,
+          },
         ),
       });
 
