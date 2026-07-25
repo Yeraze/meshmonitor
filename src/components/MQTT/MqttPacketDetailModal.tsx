@@ -168,7 +168,7 @@ const MqttPacketDetailModal: React.FC<Props> = ({ packet, prefix, csrfFetch, nod
             ) : receptionsError ? (
               <div className="mqpm-error">{receptionsError}</div>
             ) : receptions.length === 0 ? (
-              <div className="mqpm-empty">{t('mqtt.packets.empty', 'No packets captured yet. Waiting for MQTT traffic…')}</div>
+              <div className="mqpm-empty">{t('mqtt.packets.noReceptionsFound', 'No receptions recorded for this packet.')}</div>
             ) : (
               <div className="mqpm-recv-table-wrap">
                 <table className="mqpm-recv-table">

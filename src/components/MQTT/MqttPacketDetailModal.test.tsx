@@ -295,7 +295,7 @@ describe('MqttPacketDetailModal', () => {
     );
 
     const el = screen.getByText('opted out');
-    expect(el.className).toContain('mqpm-oktomqtt-self');
+    expect(el.className).toContain('mqpm-oktomqtt-optedout');
   });
 
   it('the per-gateway column attributes the violating gateway among clean ones', async () => {
@@ -307,6 +307,7 @@ describe('MqttPacketDetailModal', () => {
             baseReception({ gatewayId: '!aaaaaaaa', gatewayNodeNum: 1, bitfield: 0, okToMqttViolation: 1 }),
             baseReception({ gatewayId: '!bbbbbbbb', gatewayNodeNum: 2, bitfield: 1, okToMqttViolation: 0 }),
             baseReception({ gatewayId: '!cccccccc', gatewayNodeNum: 3, bitfield: null, okToMqttViolation: 0 }),
+            baseReception({ gatewayId: '!dddddddd', gatewayNodeNum: 4, bitfield: 0, okToMqttViolation: 0 }),
           ],
         },
       })
@@ -315,6 +316,7 @@ describe('MqttPacketDetailModal', () => {
       if (n === 1) return 'Gateway A';
       if (n === 2) return 'Gateway B';
       if (n === 3) return 'Gateway C';
+      if (n === 4) return 'Gateway D';
       return null;
     });
 
@@ -342,6 +344,12 @@ describe('MqttPacketDetailModal', () => {
     const rowC = within(screen.getByText('Gateway C').closest('tr')!);
     expect(rowC.getByText('unknown')).toBeTruthy();
     expect(rowC.queryByText('violation')).toBeNull();
+
+    const rowDEl = screen.getByText('Gateway D').closest('tr')!;
+    const rowD = within(rowDEl);
+    expect(rowD.getByText('opted out')).toBeTruthy();
+    expect(rowD.queryByText('violation')).toBeNull();
+    expect(rowDEl.querySelector('.mqpm-badge-violation')).toBeNull();
 
     expect(container.querySelectorAll('.mqpm-recv-table .mqpm-badge-violation').length).toBe(1);
   });

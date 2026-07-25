@@ -56,10 +56,10 @@ export const MqttOkToMqttMarker: React.FC<Props> = ({ state, scope }) => {
   if (state === 'optedOut') {
     return (
       <span
-        className="mqpm-oktomqtt mqpm-oktomqtt-self"
-        title={t('mqtt.packets.okToMqttSelfTitle', 'The sender opted out of ok_to_mqtt, but no third-party relay could be established for this reception, so this is not a violation.')}
+        className="mqpm-oktomqtt mqpm-oktomqtt-optedout"
+        title={t('mqtt.packets.okToMqttOptedOutTitle', 'The sender opted out of ok_to_mqtt, but no third-party relay could be established for this reception, so this is not a violation.')}
       >
-        {t('mqtt.packets.okToMqttSelf', 'opted out')}
+        {t('mqtt.packets.okToMqttOptedOut', 'opted out')}
       </span>
     );
   }
