@@ -8,9 +8,10 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import SolarMonitoringReport from './SolarMonitoringReport';
 import NodeInfoEnrichmentReport from './NodeInfoEnrichmentReport';
+import MqttViolationsReport from './MqttViolationsReport';
 import { UiIcon, type UiIconName } from '../icons';
 
-type AnalysisType = 'solar-monitoring' | 'nodeinfo-enrichment' | null;
+type AnalysisType = 'solar-monitoring' | 'nodeinfo-enrichment' | 'mqtt-oktomqtt-violations' | null;
 
 interface AnalysisCard {
   id: Exclude<AnalysisType, null>;
@@ -42,6 +43,15 @@ const AnalysisTab: React.FC = () => {
       ),
       icon: 'identity',
     },
+    {
+      id: 'mqtt-oktomqtt-violations',
+      title: t('analysis.mqtt_violations.title', 'ok_to_mqtt Violations'),
+      description: t(
+        'analysis.mqtt_violations.description',
+        "Find MQTT gateways that uplinked other nodes' packets even though the sender did not opt in to MQTT (ok_to_mqtt = 0).",
+      ),
+      icon: 'securityAlert',
+    },
   ];
 
   if (selected === 'solar-monitoring') {
@@ -70,6 +80,21 @@ const AnalysisTab: React.FC = () => {
           <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
         </button>
         <NodeInfoEnrichmentReport />
+      </div>
+    );
+  }
+
+  if (selected === 'mqtt-oktomqtt-violations') {
+    return (
+      <div className="reports-section">
+        <button
+          type="button"
+          className="reports-section__back"
+          onClick={() => setSelected(null)}
+        >
+          <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
+        </button>
+        <MqttViolationsReport />
       </div>
     );
   }

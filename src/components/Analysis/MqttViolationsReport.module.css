@@ -1,0 +1,98 @@
+/* MqttViolationsReport styling (#4114 Phase 3 §2(i)/§3.5). CSS module — do
+ * not add these rules to the global sheets (CLAUDE.md CSS containment).
+ * Everything shared (panel/controls/table/banners/buttons/pills/stats) comes
+ * from `.reports-*` in src/styles/analysis-reports.css instead. */
+
+.sortHeader {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  color: var(--ctp-subtext0);
+}
+
+.sortHeaderActive {
+  color: var(--ctp-text);
+}
+
+.sortIcon {
+  flex-shrink: 0;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+.pagerInfo {
+  color: var(--ctp-subtext0);
+  font-size: 0.85rem;
+}
+
+/* Mandatory: without this, the nested drill-down `.reports-table-wrap` can
+ * never scroll — the inherited `.reports-table td { white-space: nowrap }`
+ * forces the parent cell wide (Phase 2's overflow lesson, PHASE3 §2(i)). */
+.detailCell {
+  padding: 0;
+  white-space: normal;
+}
+
+.detailInner {
+  padding: 0.75rem 1rem;
+  background: var(--ctp-mantle);
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.suspectedCell {
+  color: var(--ctp-subtext0);
+  font-family: var(--font-mono, monospace);
+}
+
+.suspectedOnlyRow {
+  color: var(--ctp-subtext0);
+}
+
+.mutedZero {
+  color: var(--ctp-subtext0);
+  font-family: var(--font-mono, monospace);
+}
+
+.sourcesCell {
+  white-space: normal;
+  max-width: 18rem;
+}
+
+.topicCell {
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--ctp-subtext0);
+}
+
+.expandButton {
+  width: 1.5rem;
+  text-align: center;
+  color: var(--ctp-subtext0);
+}
