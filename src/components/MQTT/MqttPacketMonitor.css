@@ -236,6 +236,45 @@
   background: color-mix(in srgb, var(--ctp-red) 15%, transparent);
 }
 
+/* ok_to_mqtt violation (#4114). Sixth member of the badge family above. Shares
+   --ctp-red with .mqpm-badge-error deliberately (red = worst); differentiated
+   structurally by the border + the alert icon + the word, never by hue alone. */
+.mqpm-badge-violation {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ctp-red);
+  background: color-mix(in srgb, var(--ctp-red) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ctp-red) 45%, transparent);
+}
+
+/* Non-violating ok_to_mqtt states: quiet mono text, deliberately NOT badges, so
+   that `unknown` — the majority state on channels with no PSK — never reads as
+   an alert. See MQTT_OK_TO_MQTT_PHASE2_SPEC.md §2(b). */
+.mqpm-oktomqtt {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.mqpm-oktomqtt-ok {
+  color: var(--ctp-green);
+}
+
+.mqpm-oktomqtt-optedout {
+  color: var(--ctp-subtext0);
+}
+
+.mqpm-oktomqtt-unknown {
+  color: var(--ctp-overlay0);
+}
+
+/* The Type cell can now hold the portnum/outcome badge plus the violation badge. */
+.mqpm-type-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .mqpm-route {
   color: var(--ctp-subtext0);
   font-size: 12px;
@@ -417,7 +456,18 @@
   white-space: normal;
 }
 
-/* Per-gateway receptions table inside the detail modal. */
+/* Per-gateway receptions table inside the detail modal. The table's cells are
+   `white-space: nowrap` (below), so at 7 columns it can exceed the modal's
+   width — scroll horizontally inside this wrapper rather than letting
+   `.mqpm-modal-content`'s `overflow: hidden` clip the last column (#4114
+   Phase 2 browser-validation fix). Scoped to the table only, so the
+   packet-info `.mqpm-dl-section` above it is unaffected. */
+.mqpm-recv-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .mqpm-recv-table {
   width: 100%;
   border-collapse: collapse;
@@ -447,4 +497,17 @@
   border: 1px solid color-mix(in srgb, var(--ctp-yellow) 30%, transparent);
   border-radius: 4px;
   padding: 0.4rem 0.6rem;
+}
+
+/* Capture-off availability note (#4114 Phase 2 §2(c)) — violation detection is
+   independent of the packet-log opt-in, so "no badge" must not read as
+   "no violations". */
+.mqpm-banner-note {
+  color: var(--ctp-subtext0);
+}
+
+.mqpm-empty-note {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ctp-subtext0);
 }

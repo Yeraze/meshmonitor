@@ -33,6 +33,13 @@ export interface MqttGroupedPacket {
   ingestOutcome: string;
   payloadSize: number | null;
   payloadPreview: string | null;
+  /** Raw `Data.bitfield` (protobuf field 9), MAX across the packet's gateway
+   *  receptions — exact, since the field is the originator's (#4114). NULL =
+   *  unreadable on every copy = ok_to_mqtt unknown. */
+  bitfield: number | null;
+  /** MAX(okToMqttViolation) — 1 means AT LEAST ONE gateway violated the bit for
+   *  this packet, not that all did, and not which one (#4114). */
+  okToMqttViolation: number;
   gatewayCount: number;
   receptionCount: number;
   firstHeard: number;
@@ -56,4 +63,9 @@ export interface MqttReception {
   rxRssi: number | null;
   hopLimit: number | null;
   hopStart: number | null;
+  /** Raw `Data.bitfield` for this reception. NULL = ok_to_mqtt unknown (#4114). */
+  bitfield?: number | null;
+  /** 0 | 1 — server-computed, with the relayed/self-gateway guard already applied.
+   *  Never recompute this client-side (#4114, Phase 2 spec §2(b)/§1 correction). */
+  okToMqttViolation: number;
 }
