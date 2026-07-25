@@ -11,10 +11,27 @@
 | 2 — Packet Monitor badge + per-gateway attribution | #4328 | badge, four-state marker, detail-view column |
 | 3 — Reports view | #4331 | gateway summary + drill-down, window control, CSV, unproven toggle |
 
-**Follow-up filed:** #4330 — the endpoints cap at 2000 rows and never pass `sort`/`dir` to SQL,
-so rows past offset 2000 are unreachable and ascending sorts over a saturated scan are wrong.
-Phase 3 mitigates honestly in the UI (`2,000+`, clamped paging, two distinct warnings); the
-backend fix is tracked separately. **Revisit Phase 3's cap warnings when #4330 lands.**
+**Follow-up #4330 — RESOLVED** (see below). The endpoints capped at 2000 rows and never passed
+`sort`/`dir` to SQL, so rows past offset 2000 were unreachable and ascending sorts over a
+saturated scan were wrong. Phase 3 mitigated honestly in the UI; #4330 then fixed the backend:
+
+- **`includeUnknown=false` (the default) is now fully fixed** — `sort`/`dir`/`limit`/`offset` push
+  into SQL, `total` is an exact `COUNT`, every row at every offset is reachable. No cap.
+- **`includeUnknown=true` keeps the in-handler merge** (two differently-shaped tables must be
+  interleaved before ordering) and therefore keeps a cap, deliberately and narrowly. Saturation is
+  far less likely there: the suspected side is already bounded by `mqtt_packet_log`'s own retention
+  (24 h default) and row cap. A SQL `UNION` was considered and declined — dialect-correct union
+  over two differently-shaped tables plus an aggregate-over-union for the summary was judged too
+  much query-layer risk for the benefit.
+- **New response contract: `capApplied: boolean` + `scanCap: number`** on both endpoints.
+  `capApplied` is **always `false`** on the default path, and `true` on the opt-in path only when a
+  pre-merge fetch actually saturated. **The UI must gate every cap affordance on `capApplied`, never
+  on `total >= cap`** — that inference was the bug's frontend twin: on a mesh with >2000 violations
+  and everything reachable, it rendered `2,000+`, clamped paging to hide reachable rows, and showed
+  false warnings. An existing Phase 3 test had encoded exactly that wrong inference.
+- Trap re-encountered: on the gateways endpoint `sourceIds` is attached from a **separate**
+  `getGatewaySourceIds` query inside the merge loop. Skipping the merge on the fast path silently
+  returns `sourceIds: []` for every row. Guarded with a test.
 
 ## Goal
 
