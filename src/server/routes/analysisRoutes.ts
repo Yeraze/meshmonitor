@@ -34,6 +34,7 @@ import {
   type SolarTelemetryRow,
   type NodeNameLookup,
 } from '../services/solarAnalysis.js';
+import { parseGatewayNodeNum } from '../utils/okToMqtt.js';
 
 const router = Router();
 router.use(optionalAuth());
@@ -120,6 +121,8 @@ const API_SCAN_CAP = 2000;
 interface ViolationGatewayRow extends MqttViolationGateway {
   suspectedCount: number;
   sourceIds: string[];
+  gatewayLongName: string | null;
+  gatewayShortName: string | null;
 }
 
 /** Row shape for the merged `/mqtt-violations/packets` response. */
@@ -130,8 +133,12 @@ interface ViolationPacketRow {
   packetId: number | null;
   fromNode: number | null;
   fromNodeId: string | null;
+  fromLongName: string | null;
+  fromShortName: string | null;
   gatewayId: string | null;
   gatewayNodeNum: number | null;
+  gatewayLongName: string | null;
+  gatewayShortName: string | null;
   channelId: string | null;
   portnum: number | null;
   portnumName: string | null;
@@ -152,8 +159,14 @@ function toViolationPacketRow(
     packetId: row.packetId ?? null,
     fromNode: row.fromNode ?? null,
     fromNodeId: row.fromNodeId ?? null,
+    // Filled in by attachNodeNames() once the page is known — resolving names
+    // per row here would issue one query per row.
+    fromLongName: null,
+    fromShortName: null,
     gatewayId: row.gatewayId ?? null,
     gatewayNodeNum: row.gatewayNodeNum ?? null,
+    gatewayLongName: null,
+    gatewayShortName: null,
     channelId: row.channelId ?? null,
     portnum: row.portnum ?? null,
     portnumName: row.portnumName ?? null,
@@ -162,6 +175,81 @@ function toViolationPacketRow(
     rxTime: row.rxTime ?? null,
     timestamp: row.timestamp,
   };
+}
+
+/**
+ * nodeNum for a violation row, preferring the stored column and falling back
+ * to parsing the `!hex` id.
+ *
+ * The fallback matters for coverage: `gatewayNodeNum` is null on older rows and
+ * on the suspected (packet-log) side, and those are exactly the rows that would
+ * otherwise stay bare ids in the report.
+ */
+function resolveNodeNum(nodeNum: number | null | undefined, id: string | null | undefined): number | null {
+  if (typeof nodeNum === 'number') return nodeNum;
+  return parseGatewayNodeNum(id);
+}
+
+/**
+ * Attach display names to a PAGE of violation rows (#4114 follow-up: the report
+ * showed bare ids for most nodes).
+ *
+ * Deliberately runs on the already-paged slice, not the full scan — one extra
+ * query per request bounded by the page size, rather than by however many rows
+ * the window matched. Scoped to `sourceIds` (the caller's permitted sources) so
+ * a name cannot leak in from a source the user has no access to.
+ *
+ * Names are additive: every existing field keeps its meaning, and a nodeNum
+ * with no NodeInfo on any permitted source simply stays null, leaving the
+ * client's existing id rendering untouched.
+ */
+async function attachNodeNames<
+  T extends {
+    gatewayId?: string | null;
+    gatewayNodeNum?: number | null;
+    gatewayLongName: string | null;
+    gatewayShortName: string | null;
+    fromNode?: number | null;
+    fromNodeId?: string | null;
+    fromLongName?: string | null;
+    fromShortName?: string | null;
+  },
+>(rows: T[], sourceIds: string[]): Promise<T[]> {
+  if (rows.length === 0 || sourceIds.length === 0) return rows;
+
+  const wanted = new Set<number>();
+  for (const row of rows) {
+    const gw = resolveNodeNum(row.gatewayNodeNum, row.gatewayId);
+    if (gw != null) wanted.add(gw);
+    const from = resolveNodeNum(row.fromNode, row.fromNodeId);
+    if (from != null) wanted.add(from);
+  }
+  if (wanted.size === 0) return rows;
+
+  let names: Map<number, { longName: string | null; shortName: string | null }>;
+  try {
+    names = await databaseService.nodes.getNodeNamesByNums(Array.from(wanted), sourceIds);
+  } catch (error) {
+    // Names are a display nicety; a lookup failure must not take down a report
+    // that is otherwise fully populated.
+    logger.warn('mqtt-violations: node name lookup failed, falling back to ids:', error);
+    return rows;
+  }
+
+  return rows.map((row) => {
+    const gw = resolveNodeNum(row.gatewayNodeNum, row.gatewayId);
+    const gwNames = gw != null ? names.get(gw) : undefined;
+    const from = resolveNodeNum(row.fromNode, row.fromNodeId);
+    const fromNames = from != null ? names.get(from) : undefined;
+    return {
+      ...row,
+      gatewayLongName: gwNames?.longName ?? null,
+      gatewayShortName: gwNames?.shortName ?? null,
+      ...(('fromLongName' in row)
+        ? { fromLongName: fromNames?.longName ?? null, fromShortName: fromNames?.shortName ?? null }
+        : {}),
+    };
+  });
 }
 
 /**
@@ -640,13 +728,17 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
       // Trap (#4330): sourceIds is attached here from the separate
       // getGatewaySourceIds query — skipping this step silently drops it
       // (every row would come back with sourceIds: []).
-      const gateways: ViolationGatewayRow[] = gatewayRows
+      const gatewayPage: ViolationGatewayRow[] = gatewayRows
         .filter((g): g is MqttViolationGateway & { gatewayId: string } => g.gatewayId != null)
         .map((g) => ({
           ...g,
           suspectedCount: 0,
           sourceIds: Array.from(sourceIdsByGateway.get(g.gatewayId) ?? []),
+          gatewayLongName: null,
+          gatewayShortName: null,
         }));
+      // Named after paging: this slice is already the page being returned.
+      const gateways = await attachNodeNames(gatewayPage, sourceIds);
 
       ok(res, {
         gateways,
@@ -744,6 +836,8 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
         firstSeen: suspected ? Math.min(g.firstSeen, suspected.firstSeen) : g.firstSeen,
         lastSeen: suspected ? Math.max(g.lastSeen, suspected.lastSeen) : g.lastSeen,
         sourceIds: Array.from(sourceIdsByGateway.get(g.gatewayId) ?? []),
+        gatewayLongName: null,
+        gatewayShortName: null,
       });
     }
     // Gateways present only in the suspected set appear with violationCount: 0.
@@ -758,6 +852,8 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
         lastSeen: suspected.lastSeen,
         suspectedCount: suspected.suspectedCount,
         sourceIds: Array.from(sourceIdsByGateway.get(gatewayId) ?? []),
+        gatewayLongName: null,
+        gatewayShortName: null,
       });
     }
 
@@ -771,7 +867,8 @@ router.get('/mqtt-violations/gateways', async (req: Request, res: Response) => {
     });
 
     const total = merged.length;
-    const gateways = merged.slice(offset, offset + limit);
+    // Named after slicing, so the lookup covers only the returned page.
+    const gateways = await attachNodeNames(merged.slice(offset, offset + limit), sourceIds);
     // capApplied: the pre-merge confirmed fetch hit the cap, meaning rows
     // were dropped before the merge/sort ran (#4330).
     const capApplied = confirmedRows.length >= API_SCAN_CAP;
@@ -875,7 +972,10 @@ router.get('/mqtt-violations/packets', async (req: Request, res: Response) => {
         databaseService.mqttOkToMqttViolations.getViolationCount(rangeQuery),
       ]);
 
-      const violations = confirmedRows.map((r) => toViolationPacketRow('confirmed', r));
+      const violations = await attachNodeNames(
+        confirmedRows.map((r) => toViolationPacketRow('confirmed', r)),
+        sourceIds,
+      );
 
       ok(res, {
         violations,
@@ -938,7 +1038,8 @@ router.get('/mqtt-violations/packets', async (req: Request, res: Response) => {
     });
 
     const total = merged.length;
-    const violations = merged.slice(offset, offset + limit);
+    // Named after slicing, so the lookup covers only the returned page.
+    const violations = await attachNodeNames(merged.slice(offset, offset + limit), sourceIds);
     // capApplied: either pre-merge fetch hit its cap, meaning rows were
     // dropped before the merge/sort ran (#4330).
     const capApplied = confirmedRows.length >= API_SCAN_CAP || suspectedRows.length >= API_SCAN_CAP;

@@ -50,7 +50,7 @@ import {
   API_SCAN_CAP,
   DEFAULT_VIOLATION_FILTERS,
   buildViolationParams,
-  formatNodeRef,
+  formatNodeDisplay,
   formatSuspectedWindow,
   type SortDir,
   type ViolationFilters,
@@ -753,7 +753,12 @@ const MqttViolationsReport: React.FC = () => {
                   const rowKey = rowKeyOf(row);
                   const isExpanded = expandedGateway === rowKey;
                   const isSuspectedOnly = row.violationCount === 0 && row.suspectedCount > 0;
-                  const nodeRef = formatNodeRef(row.gatewayId, row.gatewayNodeNum);
+                  const gatewayDisplay = formatNodeDisplay(
+                    row.gatewayLongName,
+                    row.gatewayShortName,
+                    row.gatewayId,
+                    row.gatewayNodeNum,
+                  );
                   const rowGatewayId = row.gatewayId;
                   const rowTitle = isSuspectedOnly
                     ? t(
@@ -791,10 +796,10 @@ const MqttViolationsReport: React.FC = () => {
                             <UiIcon name={isExpanded ? 'chevronUp' : 'chevronDown'} size={14} />
                           </button>
                         </td>
-                        <td title={`${nodeRef} (${row.gatewayNodeNum ?? '—'})`}>
-                          <div className="reports-node__name">{nodeRef || '—'}</div>
-                          {row.gatewayNodeNum != null && (
-                            <div className="reports-node__meta">{row.gatewayNodeNum}</div>
+                        <td title={gatewayDisplay.title}>
+                          <div className="reports-node__name">{gatewayDisplay.primary}</div>
+                          {gatewayDisplay.secondary && (
+                            <div className="reports-node__meta">{gatewayDisplay.secondary}</div>
                           )}
                         </td>
                         <td>
@@ -843,7 +848,7 @@ const MqttViolationsReport: React.FC = () => {
                                   {t(
                                     'analysis.mqtt_violations.drill_title',
                                     'Violating packets published by {{gateway}}',
-                                    { gateway: nodeRef || rowKey },
+                                    { gateway: gatewayDisplay.primary || rowKey },
                                   )}
                                 </strong>
                                 {rowGatewayId && (
@@ -986,7 +991,12 @@ const MqttViolationsReport: React.FC = () => {
                                               okToMqttViolation: v.kind === 'confirmed' ? 1 : 0,
                                               bitfield: v.bitfield,
                                             });
-                                            const fromRef = formatNodeRef(v.fromNodeId, v.fromNode);
+                                            const fromDisplay = formatNodeDisplay(
+                                              v.fromLongName,
+                                              v.fromShortName,
+                                              v.fromNodeId,
+                                              v.fromNode,
+                                            );
                                             // `kind` is load-bearing: with includeUnknown=true the
                                             // list merges rows from two different tables (durable
                                             // violations + packet log), so a confirmed and a
@@ -1000,7 +1010,12 @@ const MqttViolationsReport: React.FC = () => {
                                                 </td>
                                                 <td>{new Date(v.timestamp).toLocaleString()}</td>
                                                 <td>{v.sourceId}</td>
-                                                <td title={fromRef || undefined}>{fromRef || '—'}</td>
+                                                <td title={fromDisplay.title}>
+                                                  <div className="reports-node__name">{fromDisplay.primary}</div>
+                                                  {fromDisplay.secondary && (
+                                                    <div className="reports-node__meta">{fromDisplay.secondary}</div>
+                                                  )}
+                                                </td>
                                                 <td>{v.channelId ?? '—'}</td>
                                                 <td title={v.portnumName ?? undefined}>
                                                   {v.portnum ?? '—'}

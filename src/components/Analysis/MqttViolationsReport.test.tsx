@@ -79,6 +79,10 @@ function gatewayRow(overrides: Partial<ViolationGatewayRow> = {}): ViolationGate
   return {
     gatewayId: '!433e0f28',
     gatewayNodeNum: 0x433e0f28,
+    // Unnamed by default so the existing id-based assertions keep exercising
+    // the no-NodeInfo fallback; tests that care about names override these.
+    gatewayLongName: null,
+    gatewayShortName: null,
     violationCount: 5,
     suspectedCount: 0,
     distinctOriginators: 2,
@@ -132,8 +136,12 @@ function packetRow(overrides: Partial<ViolationPacketRow> = {}): ViolationPacket
     packetId: 12345,
     fromNode: 0x11223344,
     fromNodeId: '!11223344',
+    fromLongName: null,
+    fromShortName: null,
     gatewayId: '!433e0f28',
     gatewayNodeNum: 0x433e0f28,
+    gatewayLongName: null,
+    gatewayShortName: null,
     channelId: 'LongFast',
     portnum: 1,
     portnumName: 'TEXT_MESSAGE_APP',
@@ -815,7 +823,9 @@ describe('MqttViolationsReport', () => {
     expect(filename).toMatch(/^mqtt-oktomqtt-violations-gateways-.*\.csv$/);
     expect(filename).not.toContain(':');
     expect(mimeType).toBe('text/csv');
-    expect(csv.split('\r\n')[0]).toBe('Gateway ID,Gateway Node Num,Violation Count,Suspected Count,Distinct Originators,Source IDs,First Seen,Last Seen');
+    // Name columns sit next to the id they describe, which shifts every later
+    // column's position — intentional, see GATEWAY_CSV_COLUMNS.
+    expect(csv.split('\r\n')[0]).toBe('Gateway ID,Gateway Node Num,Gateway Long Name,Gateway Short Name,Violation Count,Suspected Count,Distinct Originators,Source IDs,First Seen,Last Seen');
     expect(csv).toContain('!00000000');
   });
 
@@ -1149,5 +1159,92 @@ describe('MqttViolationsReport', () => {
     expect(duplicateKeyWarning).toBe(false);
 
     consoleErrorSpy.mockRestore();
+  });
+
+  // The report used to label every row with its raw `!hex` id, which for most
+  // rows was all the reader ever saw.
+  describe('node names', () => {
+    it('shows the gateway name as the row label, with the id kept beneath it', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.get).mockResolvedValue(
+        baseResponse({
+          gateways: [
+            gatewayRow({
+              gatewayId: '!433e0f28',
+              gatewayLongName: 'Yeraze Station G2',
+              gatewayShortName: 'YRZE',
+            }),
+          ],
+          total: 1,
+        }),
+      );
+      renderReport();
+      await user.click(screen.getByRole('button', { name: /Run report/i }));
+
+      const name = await screen.findByText('Yeraze Station G2');
+      expect(name).toBeInTheDocument();
+      expect(name.className).toContain('reports-node__name');
+
+      // The id is still on screen — a named row must stay traceable back to
+      // the gateway it came from.
+      const id = screen.getByText('!433e0f28');
+      expect(id.className).toContain('reports-node__meta');
+    });
+
+    it('falls back to the short name when only that is known', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.get).mockResolvedValue(
+        baseResponse({
+          gateways: [gatewayRow({ gatewayLongName: null, gatewayShortName: 'YRZE' })],
+          total: 1,
+        }),
+      );
+      renderReport();
+      await user.click(screen.getByRole('button', { name: /Run report/i }));
+
+      expect(await screen.findByText('YRZE')).toBeInTheDocument();
+    });
+
+    it('still shows the id for a gateway with no NodeInfo, as before', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.get).mockResolvedValue(
+        baseResponse({
+          gateways: [gatewayRow({ gatewayLongName: null, gatewayShortName: null })],
+          total: 1,
+        }),
+      );
+      renderReport();
+      await user.click(screen.getByRole('button', { name: /Run report/i }));
+
+      const id = await screen.findByText('!433e0f28');
+      expect(id.className).toContain('reports-node__name');
+    });
+
+    it('names the originating node in the drill-down too', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.get).mockImplementation(async (url: string) => {
+        if (url.includes('/mqtt-violations/packets')) {
+          return packetsResponse({
+            violations: [
+              packetRow({ fromLongName: 'Atlas Solar', fromShortName: 'ATLS' }),
+            ],
+            total: 1,
+          });
+        }
+        return baseResponse({
+          gateways: [gatewayRow({ gatewayLongName: 'Gateway One' })],
+          total: 1,
+        });
+      });
+      renderReport();
+      await user.click(screen.getByRole('button', { name: /Run report/i }));
+
+      const row = (await screen.findByText('Gateway One')).closest('tr')!;
+      await user.click(row);
+
+      expect(await screen.findByText('Atlas Solar')).toBeInTheDocument();
+      // ...and its id remains available beneath the name.
+      expect(screen.getByText('!11223344')).toBeInTheDocument();
+    });
   });
 });
