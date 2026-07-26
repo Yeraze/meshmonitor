@@ -37,14 +37,36 @@ helm package "$CHART_DIR" --destination "$OUT_DIR"
 EXISTING_INDEX="$(mktemp)"
 trap 'rm -f "$EXISTING_INDEX"' EXIT
 
+#
+# Distinguish "no index published yet" from "could not reach the index": both
+# are non-2xx as far as `curl -f` is concerned, but only the first is safe to
+# proceed from. Regenerating a fresh index after a transient DNS/5xx/TLS
+# failure would silently reintroduce #4335 and drop every released version,
+# while exiting 0. A failed deploy is recoverable by re-running; an
+# overwritten index is visible to everyone running `helm repo update`, so we
+# fail loudly instead.
 echo "==> Generating repository index (url: $REPO_URL)"
-if curl -fsSL "$REPO_URL/index.yaml" -o "$EXISTING_INDEX"; then
-  echo "==> Merging with existing published index ($REPO_URL/index.yaml)"
-  helm repo index "$OUT_DIR" --url "$REPO_URL" --merge "$EXISTING_INDEX"
-else
-  echo "==> No existing published index found at $REPO_URL/index.yaml; generating fresh index"
-  helm repo index "$OUT_DIR" --url "$REPO_URL"
-fi
+# curl still writes %{http_code} (as 000) when it never got a response, so do
+# not append a fallback code here — that would report a doubled "000000".
+HTTP_CODE="$(curl -sSL -w '%{http_code}' -o "$EXISTING_INDEX" "$REPO_URL/index.yaml" || true)"
+HTTP_CODE="${HTTP_CODE:-000}"
+
+case "$HTTP_CODE" in
+  200)
+    echo "==> Merging with existing published index ($REPO_URL/index.yaml)"
+    helm repo index "$OUT_DIR" --url "$REPO_URL" --merge "$EXISTING_INDEX"
+    ;;
+  404)
+    echo "==> No existing published index found at $REPO_URL/index.yaml; generating fresh index"
+    helm repo index "$OUT_DIR" --url "$REPO_URL"
+    ;;
+  *)
+    echo "error: could not fetch $REPO_URL/index.yaml (HTTP $HTTP_CODE)." >&2
+    echo "       Refusing to publish an index that would drop already-released chart versions (#4335)." >&2
+    echo "       Re-run the deploy once the chart repository is reachable again." >&2
+    exit 1
+    ;;
+esac
 
 echo "==> Helm repository contents:"
 ls -la "$OUT_DIR"
