@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/nodes.css';
 import { Popup, Tooltip, Polyline, Circle, useMap } from 'react-leaflet';
@@ -755,25 +755,51 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     mobile: isMobileLayout(window.innerWidth, window.innerHeight),
   }));
 
-  useEffect(() => {
+  // useLayoutEffect + ResizeObserver rather than useEffect + resize/
+  // orientationchange listeners. The initial state above has to fall back to
+  // window.innerWidth because the ref is null until the DOM exists, and that
+  // over-estimates the container by the width of the app rail. Measuring in a
+  // layout effect corrects it before paint, so the resizable's bounds are never
+  // briefly wrong (which could otherwise persist a clamped width the user never
+  // chose). The observer also catches container changes that fire no window
+  // event at all.
+  useLayoutEffect(() => {
+    const el = splitViewRef.current;
     const measure = () => {
-      const measured = splitViewRef.current?.getBoundingClientRect().width;
+      const measured = el?.getBoundingClientRect().width;
       const next = {
         availableWidth: measured && measured > 0 ? measured : window.innerWidth,
         mobile: isMobileLayout(window.innerWidth, window.innerHeight),
       };
-      // Bail on no-op updates: `resize` fires continuously during a window drag,
-      // and this state feeds the resizable's bounds.
+      // Bail on no-op updates: this fires continuously during a window drag and
+      // the value feeds the resizable's bounds.
       setSidebarMetrics(prev =>
         prev.availableWidth === next.availableWidth && prev.mobile === next.mobile ? prev : next
       );
     };
     measure();
-    window.addEventListener('resize', measure);
+
+    if (!el || typeof ResizeObserver === 'undefined') {
+      // jsdom and very old browsers: fall back to the window events.
+      window.addEventListener('resize', measure);
+      window.addEventListener('orientationchange', measure);
+      return () => {
+        window.removeEventListener('resize', measure);
+        window.removeEventListener('orientationchange', measure);
+      };
+    }
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    // ResizeObserver sees the container resize, but `mobile` also depends on
+    // viewport HEIGHT, which can cross the landscape threshold without the
+    // container's width changing.
     window.addEventListener('orientationchange', measure);
+    window.addEventListener('resize', measure);
     return () => {
-      window.removeEventListener('resize', measure);
+      observer.disconnect();
       window.removeEventListener('orientationchange', measure);
+      window.removeEventListener('resize', measure);
     };
   }, []);
 

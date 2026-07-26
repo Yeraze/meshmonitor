@@ -42,11 +42,26 @@ describe('isMobileLayout', () => {
     expect(isMobileLayout(w, h)).toBe(false);
   });
 
-  it('does not treat a short PORTRAIT window as mobile landscape', () => {
-    // height <= 500 but portrait — the CSS query requires orientation: landscape.
-    expect(isMobileLayout(900, 480)).toBe(true);  // landscape (900 > 480)
-    expect(isMobileLayout(480, 400)).toBe(true);  // width rule catches this one
-    expect(isMobileLayout(1000, 1000)).toBe(false); // square: not landscape
+  it('treats a wide, short viewport as mobile landscape', () => {
+    expect(isMobileLayout(900, 480)).toBe(true);
+  });
+
+  it('falls back to the width rule for a narrow, short viewport', () => {
+    // Reaches `true` via `width <= 768`, not via the landscape branch.
+    expect(isMobileLayout(480, 400)).toBe(true);
+  });
+
+  it('is not mobile for a large square viewport', () => {
+    // Square counts as landscape per the CSS, but 1000px height is far past
+    // the 500px limit, so the landscape branch does not apply.
+    expect(isMobileLayout(1000, 1000)).toBe(false);
+  });
+
+  it('matches the CSS treatment of a square viewport as landscape', () => {
+    // `orientation: landscape` fires at width === height. Unreachable in
+    // practice (a square under the 500px height limit is also under the 768px
+    // width rule), but pinned so the "mirrors the CSS" claim stays honest.
+    expect(isMobileLayout(400, 400)).toBe(true);
   });
 });
 

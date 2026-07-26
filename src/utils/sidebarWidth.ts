@@ -38,7 +38,12 @@ export const NODE_SIDEBAR_DESKTOP_MAX_FRACTION = 0.5;
  */
 export function isMobileLayout(viewportWidth: number, viewportHeight: number): boolean {
   if (viewportWidth <= MOBILE_BREAKPOINT_PX) return true;
-  return viewportHeight <= MOBILE_LANDSCAPE_MAX_HEIGHT_PX && viewportWidth > viewportHeight;
+  // `>=` not `>`: CSS `orientation: landscape` counts a square viewport as
+  // landscape. The two can only ever disagree at width === height, which also
+  // requires height <= 500 and therefore width <= 500 — already caught by the
+  // width rule above — so this is about making the "mirrors the CSS" claim
+  // exactly true rather than about a reachable case.
+  return viewportHeight <= MOBILE_LANDSCAPE_MAX_HEIGHT_PX && viewportWidth >= viewportHeight;
 }
 
 /**
