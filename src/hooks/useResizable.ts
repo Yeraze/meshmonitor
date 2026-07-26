@@ -63,13 +63,30 @@ export function useResizable(options: UseResizableOptions): UseResizableReturn {
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartRef = useRef<{ startPos: number; startSize: number } | null>(null);
 
-  // Constrain size to bounds
+  // Constrain size to bounds.
+  //
+  // The safety ceiling has to be measured on the axis being resized. It used to
+  // be `window.innerHeight * 0.8` unconditionally, which is meaningless for a
+  // horizontal resizable: it capped a *width* against the viewport's *height*,
+  // so a landscape phone (e.g. 844x390) could not drag a sidebar past 312px no
+  // matter what maxHeight the caller asked for.
+  //
+  // Vertical callers keep the exact previous behaviour (0.8 of the viewport
+  // height). Horizontal callers get the full viewport width as the ceiling, so
+  // an explicit maxHeight is what actually governs — a full-width panel is a
+  // legitimate layout on a narrow screen, where a 0.8 ceiling would just strand
+  // an unusable sliver of the other pane.
   const constrainSize = useCallback((newSize: number): number => {
-    const effectiveMaxHeight = typeof maxHeight === 'number'
-      ? Math.min(maxHeight, window.innerHeight * 0.8)
+    const ceiling = direction === 'horizontal'
+      ? window.innerWidth
       : window.innerHeight * 0.8;
-    return Math.max(minHeight, Math.min(newSize, effectiveMaxHeight));
-  }, [minHeight, maxHeight]);
+    const effectiveMax = typeof maxHeight === 'number'
+      ? Math.min(maxHeight, ceiling)
+      : ceiling;
+    // A caller whose max is below its own min (very narrow viewport) must not
+    // end up with min winning and overflowing the container.
+    return Math.min(Math.max(minHeight, Math.min(newSize, effectiveMax)), ceiling);
+  }, [minHeight, maxHeight, direction]);
 
   // Handle mouse move during resize
   const handleMouseMove = useCallback((e: MouseEvent) => {
@@ -174,6 +191,24 @@ export function useResizable(options: UseResizableOptions): UseResizableReturn {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [constrainSize]);
+
+  // ...and on mount / whenever the bounds themselves change. The initial value
+  // comes straight from localStorage (or defaultHeight) and used to be applied
+  // unclamped, so a size that no longer fits the current bounds survived until
+  // the user happened to resize the window. On a phone that stranded the node
+  // list at its 380px desktop default inside a 342px container, pushing its
+  // drag handle off-screen — unreachable, so there was no way to correct it.
+  // Depending on constrainSize also re-clamps when a caller's maxHeight changes
+  // (e.g. rotating the device), not just on first render.
+  useEffect(() => {
+    setSize(currentSize => {
+      const clamped = constrainSize(currentSize);
+      // Only persist when we actually had to correct something, so this never
+      // writes a value the user didn't choose.
+      if (clamped !== currentSize) saveSize(id, clamped);
+      return clamped;
+    });
+  }, [constrainSize, id]);
 
   return {
     size,

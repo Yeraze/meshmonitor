@@ -34,6 +34,7 @@ import WaypointEditorModal from './WaypointEditorModal';
 import { useWaypoints } from '../hooks/useWaypoints';
 import type { Waypoint, WaypointInput } from '../types/waypoint';
 import { useResizable } from '../hooks/useResizable';
+import { resolveNodeSidebarMaxWidth, isMobileLayout, NODE_SIDEBAR_MIN_WIDTH_PX } from '../utils/sidebarWidth';
 import ZoomHandler from './ZoomHandler';
 import MapPositionHandler from './MapPositionHandler';
 import PolarGridOverlay from './PolarGridOverlay.js';
@@ -742,7 +743,43 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     return saved === 'true';
   });
 
-  // Node list sidebar resizable width (default 380px, min 200px, max 50% viewport)
+  // Width of the split-view container, which is what the node list may claim —
+  // not the viewport. The container is `position: fixed; left: var(--sidebar-width);
+  // right: 0`, so it already excludes the app rail. Tracked in state (rather than
+  // read inline) so the ceiling follows an orientation change or window resize:
+  // a plain `window.innerWidth` read only re-evaluates when something else
+  // happens to re-render this component.
+  const splitViewRef = useRef<HTMLDivElement>(null);
+  const [sidebarMetrics, setSidebarMetrics] = useState(() => ({
+    availableWidth: window.innerWidth,
+    mobile: isMobileLayout(window.innerWidth, window.innerHeight),
+  }));
+
+  useEffect(() => {
+    const measure = () => {
+      const measured = splitViewRef.current?.getBoundingClientRect().width;
+      const next = {
+        availableWidth: measured && measured > 0 ? measured : window.innerWidth,
+        mobile: isMobileLayout(window.innerWidth, window.innerHeight),
+      };
+      // Bail on no-op updates: `resize` fires continuously during a window drag,
+      // and this state feeds the resizable's bounds.
+      setSidebarMetrics(prev =>
+        prev.availableWidth === next.availableWidth && prev.mobile === next.mobile ? prev : next
+      );
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('orientationchange', measure);
+    };
+  }, []);
+
+  // Node list sidebar resizable width. Mobile viewports may drag it to the full
+  // container width (the map sits behind a toggle there, so half-width was an
+  // arbitrary ceiling); desktop keeps the 50% split. See utils/sidebarWidth.ts.
   const {
     size: sidebarWidth,
     isResizing: isSidebarResizing,
@@ -751,8 +788,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   } = useResizable({
     id: 'nodes-sidebar-width',
     defaultHeight: 380,
-    minHeight: 200,
-    maxHeight: Math.round(window.innerWidth * 0.5),
+    minHeight: NODE_SIDEBAR_MIN_WIDTH_PX,
+    maxHeight: resolveNodeSidebarMaxWidth(sidebarMetrics.availableWidth, sidebarMetrics.mobile),
     direction: 'horizontal'
   });
 
@@ -1927,7 +1964,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const mapDefaults = getMapCenter();
 
   return (
-    <div className="nodes-split-view nodes-anchored-view">
+    <div ref={splitViewRef} className="nodes-split-view nodes-anchored-view">
       {/* Anchored Node List Sidebar */}
       <div
         ref={sidebarRef}
