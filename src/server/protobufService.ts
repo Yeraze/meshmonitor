@@ -1,6 +1,7 @@
 import protobuf from 'protobufjs';
 import path from 'path';
 import { getProtobufRoot } from './protobufLoader.js';
+import { buildSharedContactPayload } from './services/sharedContactService.js';
 import { logger } from '../utils/logger.js';
 import { PortNum } from './constants/meshtastic.js';
 import { MODULE_FIELD_BY_ID } from './constants/configTypes.js';
@@ -786,22 +787,23 @@ class ProtobufService {
         throw new Error('AdminMessage type not found in loaded proto files');
       }
 
-      const userData: any = {
-        id: nodeId,
-        longName,
-        shortName,
-        publicKey: Buffer.from(publicKeyBase64, 'base64'),
-      };
-      if (hwModel !== undefined) {
-        userData.hwModel = hwModel;
-      }
-
       const adminMsg = AdminMessage.create({
-        addContact: {
-          nodeNum,
-          user: userData,
-          manuallyVerified: false,
-        },
+        addContact: buildSharedContactPayload(
+          {
+            nodeNum,
+            nodeId,
+            longName,
+            shortName,
+            publicKey: publicKeyBase64,
+            hwModel,
+          },
+          // Preserve the existing AdminMessage helper's permissive pass-through
+          // behavior. Contact URLs retain strict identity and PKI validation.
+          {
+            validatePublicKeyLength: false,
+            validateIdentity: false,
+          },
+        ),
       });
 
       const encoded = AdminMessage.encode(adminMsg).finish();

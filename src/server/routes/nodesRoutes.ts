@@ -31,6 +31,12 @@ import { resolveRequestSourceId } from '../utils/sourceResolver.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
 import { optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
+import { isValidNodeNum, MAX_NODE_NUM } from '../constants/meshtastic.js';
+import { fail, ok } from '../utils/apiResponse.js';
+import {
+  encodeSharedContactUrl,
+  SharedContactValidationError,
+} from '../services/sharedContactService.js';
 
 const router = express.Router();
 
@@ -155,6 +161,52 @@ import { handleEnrichmentAnalysis, handleEnrichmentApply } from './shared/enrich
 
 router.get('/nodes/enrichment/analysis', optionalAuth(), handleEnrichmentAnalysis);
 router.post('/nodes/enrichment/apply', optionalAuth(), handleEnrichmentApply);
+
+/**
+ * Generate a Meshtastic SharedContact URL for a source-scoped node.
+ * Unmessagable nodes remain shareable: the capability flag is preserved in
+ * the encoded User rather than treated as a contact-format restriction.
+ */
+router.get(
+  '/nodes/:nodeNum/contact-url',
+  requirePermission('nodes', 'read', {
+    sourceIdFrom: 'query',
+    requireSourceId: true,
+  }),
+  async (req, res) => {
+    try {
+      const nodeNum = Number(req.params.nodeNum);
+      const sourceId = req.query.sourceId as string;
+
+      if (!isValidNodeNum(nodeNum) || nodeNum === 0 || nodeNum === MAX_NODE_NUM) {
+        return fail(res, 400, 'INVALID_NODE_NUM', 'Invalid nodeNum');
+      }
+
+      const node = await databaseService.nodes.getNode(nodeNum, sourceId);
+      if (!node) {
+        return fail(res, 404, 'NODE_NOT_FOUND', 'Node not found');
+      }
+
+      if (!await checkNodeChannelAccess(node.nodeId, req.user, sourceId)) {
+        return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
+      }
+
+      const url = encodeSharedContactUrl(node);
+      return ok(res, { url });
+    } catch (error) {
+      if (error instanceof SharedContactValidationError) {
+        return fail(res, 400, 'INVALID_CONTACT_IDENTITY', error.message);
+      }
+      logger.error('Error generating SharedContact URL:', error);
+      return fail(
+        res,
+        500,
+        'INTERNAL_ERROR',
+        'Failed to generate contact URL',
+      );
+    }
+  },
+);
 
 // Copy NodeInfo from another source
 import {

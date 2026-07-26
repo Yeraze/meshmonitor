@@ -70,4 +70,21 @@ describe('createAddContactMessage', () => {
 
     expect(decoded.addContact.user.hwModel).toBeFalsy();
   });
+
+  it('preserves the legacy pass-through behavior for inconsistent identities', () => {
+    const encoded = protobufService.createAddContactMessage(
+      0,
+      '!legacy-id',
+      'Legacy Node',
+      'LN',
+      'AQID',
+    );
+
+    const root = getProtobufRoot()!;
+    const AdminMessage = root.lookupType('meshtastic.AdminMessage');
+    const decoded = AdminMessage.decode(encoded) as any;
+
+    expect(decoded.addContact.nodeNum).toBe(0);
+    expect(decoded.addContact.user.id).toBe('!legacy-id');
+  });
 });
