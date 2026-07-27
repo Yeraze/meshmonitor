@@ -846,6 +846,18 @@ class MeshtasticManager implements ISourceManager {
   // favoritesService.ts's header comment for the full rationale.
   private autoFavoritingNodes = new Set<number>();  // Track nodes currently being auto-favorited
   private deviceNodeNums: Set<number> = new Set();  // Nodes in the connected radio's local database
+  /**
+   * Nodes we have positive evidence the radio already holds a PUBLIC KEY for
+   * (issue #4368). Deliberately distinct from `deviceNodeNums`, which only says
+   * the radio knows the node exists — it can know a node without holding its
+   * key, and guarding on it alone would break PKI DMs in that case.
+   *
+   * Gates `pushContactToRadio`. Sending `add_contact` is not free: the firmware
+   * favorites the contact in `NodeDB::addFromContact()` to protect it from
+   * NodeDB eviction, so re-pushing before every DM re-favorited every
+   * recipient. Push only when the radio actually needs the key.
+   */
+  private deviceContactKeyNums: Set<number> = new Set();
   // autoFavoriteSweepRunning moved to FavoritesService (#3962 Phase 4.2a PR4 §4c) — no pinned test reaches into it.
   private rebootMergeInProgress = false;  // Guard against broadcasts during node identity merge
   private lastHeapPurgeAt: number | null = null;  // Timestamp of last auto heap purge
@@ -1662,6 +1674,9 @@ class MeshtasticManager implements ISourceManager {
       this.initConfigCache = [];
       this.startConfigCapture();
       this.deviceNodeNums.clear();
+      // Key evidence is per-connection: a different radio (or one whose NodeDB
+      // was wiped while we were away) may not hold the keys the last one did.
+      this.deviceContactKeyNums.clear();
       this.channel0Exists = false;  // Reset channel 0 cache on reconnect
 
       // Snapshot channel state before config sync for migration detection (#2425)
@@ -7035,6 +7050,10 @@ class MeshtasticManager implements ISourceManager {
         // Convert Uint8Array to base64 for storage
         nodeData.publicKey = Buffer.from(user.publicKey).toString('base64');
         nodeData.hasPKC = true;
+        // This NodeInfo reached us THROUGH the radio, so the radio saw the same
+        // key and stored it in its own NodeDB. That is our evidence that a
+        // pre-DM add_contact would be redundant (issue #4368).
+        this.deviceContactKeyNums.add(fromNum);
         logger.debug(`🔐 Received NodeInfo with public key for ${nodeId} (${user.longName}): ${nodeData.publicKey.substring(0, 20)}... (${user.publicKey.length} bytes)`);
 
         // Check for key security issues
@@ -8644,6 +8663,13 @@ class MeshtasticManager implements ISourceManager {
           // Convert Uint8Array to base64 for storage
           const deviceSyncKey = Buffer.from(nodeInfo.user.publicKey).toString('base64');
 
+          // The radio is reporting a key out of its OWN NodeDB — the most direct
+          // evidence there is that a pre-DM add_contact would be redundant
+          // (issue #4368). Recorded regardless of the mismatch handling below:
+          // a mismatched key still means the radio HAS one, and the DM path
+          // skips PKI (and so the push) entirely while keyMismatchDetected is set.
+          this.deviceContactKeyNums.add(Number(nodeInfo.num));
+
           // Device sync keys should NOT overwrite mesh-received keys for remote nodes.
           // The connected device's internal nodeDb may have stale/incorrect cached keys,
           // while mesh-received keys (from processNodeInfoMessageProtobuf) come directly
@@ -9032,7 +9058,18 @@ class MeshtasticManager implements ISourceManager {
             pkiEncrypted = true;
             logger.debug(`🔐 DM to !${destination.toString(16).padStart(8, '0')} — requesting PKI encryption (node has public key)`);
             try {
-              await this.pushContactToRadio(targetNode);
+              // Only push when the radio actually needs the key (issue #4368).
+              // add_contact is not idempotent from the user's perspective: the
+              // firmware favorites the contact in NodeDB::addFromContact() to
+              // shield it from NodeDB eviction, so pushing before EVERY DM
+              // re-favorited every recipient — including automated Auto-Ack
+              // replies. Pushing once (or never, when the radio already showed
+              // us the key) still guarantees PKI works.
+              if (!this.deviceContactKeyNums.has(destination)) {
+                await this.pushContactToRadio(targetNode);
+              } else {
+                logger.debug(`📇 Skipping add_contact for !${destination.toString(16).padStart(8, '0')} — radio already holds its public key`);
+              }
             } catch {
               // Non-fatal — radio may already have the contact, or the send failed
               // transiently. On failure deviceNodeNums is left untouched (the add only
@@ -12908,6 +12945,9 @@ class MeshtasticManager implements ISourceManager {
     // restored. Track it locally so the UI's "not in device DB" warning clears on the
     // next poll without waiting for the radio to independently re-report the node.
     this.deviceNodeNums.add(targetNode.nodeNum);
+    // We just handed the radio this node's key, so further pre-DM pushes are
+    // redundant until the connection resets or a key repair purges it (#4368).
+    this.deviceContactKeyNums.add(targetNode.nodeNum);
     logger.debug(`📇 Pushed contact for !${targetNode.nodeNum.toString(16).padStart(8, '0')} to radio NodeDB before PKI DM`);
   }
 
@@ -13331,6 +13371,14 @@ class MeshtasticManager implements ISourceManager {
     return this.deviceNodeNums.has(nodeNum);
   }
 
+  /**
+   * Whether we have evidence the radio already holds this node's public key,
+   * and so does not need an `add_contact` before a PKI DM (issue #4368).
+   */
+  hasDeviceContactKey(nodeNum: number): boolean {
+    return this.deviceContactKeyNums.has(nodeNum);
+  }
+
   // ── Narrow accessors for NodeDbMaintenanceService (#3962 Phase 4.2a PR2 §4f) ──
   // These exist only to bridge previously-private state to the extracted
   // service without widening the fields themselves or touching the
@@ -13358,6 +13406,9 @@ class MeshtasticManager implements ISourceManager {
   /** Drop a node from the connected radio's local-database tracking set. */
   removeDeviceNodeNum(nodeNum: number): void {
     this.deviceNodeNums.delete(nodeNum);
+    // Key-repair purges (sendRemoveNode) take the key with the node, so the
+    // next DM must push the contact again rather than assume it is there.
+    this.deviceContactKeyNums.delete(nodeNum);
   }
 
   // ── Narrow accessor for AutoAnnounceService (#3962 Phase 4.2a PR3 §4b) ──
