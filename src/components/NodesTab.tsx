@@ -61,6 +61,7 @@ import type { GeoJsonLayer } from '../server/services/geojsonService.js';
 import { CopyNodeInfoModal } from './CopyNodeInfoModal';
 import { UiIcon } from './icons';
 import { useToast } from './ToastContainer';
+import { logger } from '../utils/logger';
 
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
@@ -242,14 +243,14 @@ const DefaultCenterController: React.FC<{
   const hadSavedPosition = useRef(localStorage.getItem('mapCenter') !== null);
 
   useEffect(() => {
-    console.log('[DefaultCenterController] effect fired', {
+    logger.debug('[DefaultCenterController] effect fired', {
       applied: applied.current,
       hadSaved: hadSavedPosition.current,
       lat, lon, zoom,
     });
     if (applied.current || hadSavedPosition.current) return;
     if (lat !== null && lon !== null && zoom !== null) {
-      console.log('[DefaultCenterController] applying configured default', lat, lon, zoom);
+      logger.debug('[DefaultCenterController] applying configured default', lat, lon, zoom);
       applied.current = true;
       map.setView([lat, lon], zoom, { animate: false });
     }
