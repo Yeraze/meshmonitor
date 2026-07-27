@@ -58,7 +58,6 @@ import { toNodeCardModel, type NodeCardModel } from './map/popups/nodeCardModel'
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import api from '../services/api';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
-import type { MapStyle } from '../server/services/mapStyleService.js';
 import { CopyNodeInfoModal } from './CopyNodeInfoModal';
 import { UiIcon } from './icons';
 import { useToast } from './ToastContainer';
@@ -484,6 +483,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     defaultMapCenterLon,
     defaultMapCenterZoom,
     mapCenterTargetZoom,
+    mapStyles,
+    activeStyleId,
+    activeStyleJson,
+    setActiveMapStyleId,
   } = useSettings();
 
   // Effective map age cap from the Map Features age slider (#3322), clamped to
@@ -835,11 +838,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // Track if packet logging is enabled on the server
   const [packetLogEnabled, setPacketLogEnabled] = useState<boolean>(false);
   const [geoJsonLayers, setGeoJsonLayers] = useState<GeoJsonLayer[]>([]);
-  const [mapStyles, setMapStyles] = useState<MapStyle[]>([]);
-  const [activeStyleId, setActiveStyleId] = useState<string | null>(() => {
-    try { return localStorage.getItem('meshmonitor-activeMapStyleId') || null; } catch { return null; }
-  });
-  const [activeStyleJson, setActiveStyleJson] = useState<Record<string, unknown> | null>(null);
+  // mapStyles/activeStyleId/activeStyleJson now live in SettingsContext
+  // (issue #4348) so DashboardMap can share the same active style.
 
   // Track if map controls are collapsed
   const [isMapControlsCollapsed, setIsMapControlsCollapsed] = useState(() => {
@@ -995,42 +995,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     void fetchGeoJsonLayers();
   }, []);
 
-  useEffect(() => {
-    const fetchMapStyles = async () => {
-      try {
-        const data = await api.get<MapStyle[]>('/api/map-styles/styles');
-        setMapStyles(data);
-
-        // Determine which style to use: localStorage > server default > none
-        let resolvedStyleId = activeStyleId;
-
-        if (!resolvedStyleId) {
-          // No localStorage value — check server default
-          try {
-            const settings = await api.get<{ activeMapStyleId?: string }>('/api/settings');
-            if (settings.activeMapStyleId) {
-              resolvedStyleId = settings.activeMapStyleId;
-              setActiveStyleId(resolvedStyleId);
-            }
-          } catch { /* ignore settings fetch failure */ }
-        }
-
-        // Load style data if we have a resolved ID
-        if (resolvedStyleId && data.some((s: MapStyle) => s.id === resolvedStyleId)) {
-          try {
-            setActiveStyleJson(await api.get<Record<string, unknown>>(`/api/map-styles/styles/${resolvedStyleId}/data`));
-          } catch { /* ignore style data fetch failure */ }
-        } else if (resolvedStyleId) {
-          // Saved style no longer exists, clear it
-          setActiveStyleId(null);
-          try { localStorage.removeItem('meshmonitor-activeMapStyleId'); } catch { /* ignore */ }
-        }
-      } catch (err) {
-        console.error('Failed to fetch map styles:', err);
-      }
-    };
-    void fetchMapStyles();
-  }, []);
+  // mapStyles/activeStyleId/activeStyleJson are fetched and resolved once by
+  // SettingsContext's own mount effect (issue #4348) — no local fetch needed.
 
   // Refs to access latest values without recreating listeners
   const processedNodesRef = useRef(processedNodes);
@@ -2690,28 +2656,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         Map Style
                         <select
                           value={activeStyleId ?? ''}
-                          onChange={async (e) => {
+                          onChange={(e) => {
                             const styleId = e.target.value || null;
-                            setActiveStyleId(styleId);
-                            try { localStorage.setItem('meshmonitor-activeMapStyleId', styleId ?? ''); } catch { /* ignore */ }
-                            // Save as server default so incognito/new browsers get this style
-                            void api.getBaseUrl().then(baseUrl => {
-                              csrfFetch(`${baseUrl}/api/settings`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ activeMapStyleId: styleId ?? '' }),
-                              }).catch(err => console.error('Failed to save map style setting:', err));
-                            });
-                            if (styleId) {
-                              try {
-                                const data = await api.get<Record<string, unknown>>(`/api/map-styles/styles/${styleId}/data`);
-                                setActiveStyleJson(data);
-                              } catch (err) {
-                                console.error('Failed to fetch map style data:', err);
-                              }
-                            } else {
-                              setActiveStyleJson(null);
-                            }
+                            void setActiveMapStyleId(styleId);
                           }}
                           style={{ padding: '2px 6px', border: '1px solid var(--border-color, #ccc)', borderRadius: '3px', background: 'var(--input-bg, #fff)', color: 'var(--text-color, #000)' }}
                         >

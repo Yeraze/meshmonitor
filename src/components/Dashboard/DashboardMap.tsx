@@ -168,6 +168,7 @@ export default function DashboardMap({
     defaultMapCenterLat,
     defaultMapCenterLon,
     defaultMapCenterZoom,
+    activeStyleJson,
   } = useSettings();
 
   // A Default Map Center is only "configured" when all three parts are set.
@@ -627,6 +628,7 @@ export default function DashboardMap({
         zoom={hasConfiguredDefaultCenter ? defaultMapCenterZoom : 10}
         tilesetId={tilesetId}
         customTilesets={customTilesets}
+        styleJson={activeStyleJson ?? undefined}
         zoomControl
         showTilesetSelector={showTileSelector}
         onTilesetChange={setMapTileset}

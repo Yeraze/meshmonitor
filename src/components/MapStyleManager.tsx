@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { MapStyle } from '../server/services/mapStyleService.js';
 import api from '../services/api';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
+import { useSettings } from '../contexts/SettingsContext';
+import { UiIcon } from './icons';
 
 const MapStyleManager: React.FC = () => {
   const [styles, setStyles] = useState<MapStyle[]>([]);
@@ -15,6 +17,7 @@ const MapStyleManager: React.FC = () => {
   const [generatingStyle, setGeneratingStyle] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const csrfFetch = useCsrfFetch();
+  const { activeStyleId, setActiveMapStyleId, loadMapStyles } = useSettings();
 
   const fetchStyles = useCallback(async () => {
     try {
@@ -49,6 +52,7 @@ const MapStyleManager: React.FC = () => {
         throw new Error(err.error ?? 'Upload failed');
       }
       await fetchStyles();
+      await loadMapStyles();
     } catch (err) {
       console.error('Failed to upload map style:', err);
       alert(`Upload failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -75,6 +79,7 @@ const MapStyleManager: React.FC = () => {
       setImportUrl('');
       setImportName('');
       await fetchStyles();
+      await loadMapStyles();
     } catch (err) {
       console.error('Failed to import map style from URL:', err);
       alert(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -110,7 +115,12 @@ const MapStyleManager: React.FC = () => {
       setTileJsonName('');
     } catch (err) {
       console.error('Failed to generate map style from tileserver:', err);
-      alert(`Generation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      alert(
+        `Generation failed: ${message}\n\n` +
+        'This field expects a raw TileJSON endpoint (e.g. /data/v3.json), not a style.json file. ' +
+        'To import a style.json directly, use the "Style URL" field above instead.'
+      );
     } finally {
       setGeneratingStyle(false);
     }
@@ -141,8 +151,14 @@ const MapStyleManager: React.FC = () => {
       });
       if (!response.ok) throw new Error('Delete failed');
       setStyles(prev => prev.filter(s => s.id !== id));
+      if (activeStyleId === id) {
+        // The active style just got deleted — clear the selection everywhere.
+        await setActiveMapStyleId(null);
+      }
+      await loadMapStyles();
     } catch (err) {
       console.error('Failed to delete map style:', err);
+      alert(`Delete failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -158,6 +174,13 @@ const MapStyleManager: React.FC = () => {
           <span className="setting-description">Upload and manage MapLibre GL style JSON files for vector tile layers.</span>
         </label>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {/* Import: upload a file directly, or fetch a ready style.json by URL.
+              Both save immediately as a usable map style (issue #4348). */}
+          <div style={{ fontWeight: 600, fontSize: '0.9em' }}>Import an Existing Style</div>
+          <div style={{ fontSize: '0.85em', color: 'var(--text-muted, #888)', marginBottom: '2px' }}>
+            Upload a MapLibre GL style.json file, or fetch one from a URL. Both are saved immediately as a usable map style.
+          </div>
+
           {/* File upload */}
           <div>
             <input
@@ -204,12 +227,17 @@ const MapStyleManager: React.FC = () => {
             </button>
           </div>
 
-          {/* Generate from tileserver */}
-          <div style={{ marginTop: '4px', borderTop: '1px solid var(--border-color, #eee)', paddingTop: '8px' }}>
-            <div style={{ fontSize: '0.85em', color: 'var(--text-muted, #888)', marginBottom: '4px' }}>
-              Generate a default style from your tileserver's TileJSON endpoint (e.g.{' '}
-              <code style={{ fontSize: '0.9em' }}>http://tileserver:8080/data/v3.json</code>).
-              Edit the downloaded file and upload it above.
+          {/* Generate from tileserver: this is a DIFFERENT feature from the
+              import above — it builds a brand-new style from a raw TileJSON
+              endpoint and only downloads it to your browser (issue #4348,
+              problem 3). It does not save a map style server-side; edit the
+              downloaded file and upload it above to actually use it. */}
+          <div style={{ marginTop: '8px', borderTop: '1px solid var(--border-color, #eee)', paddingTop: '8px' }}>
+            <div style={{ fontWeight: 600, fontSize: '0.9em' }}>Generate a New Style from Tileserver</div>
+            <div style={{ fontSize: '0.85em', color: 'var(--text-muted, #888)', margin: '2px 0 4px' }}>
+              Generate a default style from your tileserver's raw TileJSON endpoint (e.g.{' '}
+              <code style={{ fontSize: '0.9em' }}>http://tileserver:8080/data/v3.json</code>) and download it.
+              This does not save a style — edit the downloaded file and upload it above.
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
               <input
@@ -268,6 +296,32 @@ const MapStyleManager: React.FC = () => {
               }}>
                 {style.sourceType === 'upload' ? 'Upload' : 'URL'}
               </span>
+
+              {/* Active indicator / Activate action — same "which style is
+                  used on the map" state as the in-map "Map Style" dropdown,
+                  surfaced here so it's discoverable from Settings (#4348). */}
+              {activeStyleId === style.id ? (
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.75em',
+                  padding: '2px 6px',
+                  borderRadius: '3px',
+                  background: 'var(--success-color, #28a745)',
+                  color: '#fff',
+                  whiteSpace: 'nowrap',
+                }}>
+                  <UiIcon name="check" /> Active
+                </span>
+              ) : (
+                <button
+                  onClick={() => void setActiveMapStyleId(style.id)}
+                  style={{ padding: '2px 8px', background: 'var(--accent-color, #4a9eff)', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '0.85em', whiteSpace: 'nowrap' }}
+                >
+                  Activate
+                </button>
+              )}
 
               {/* Delete */}
               <button
