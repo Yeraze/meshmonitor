@@ -2875,7 +2875,8 @@
   "map_style_manager.unknown_error": "Unknown error",
   "map_style_manager.upload_failed": "Upload failed: {{message}}",
   "map_style_manager.import_failed": "Import failed: {{message}}",
-  "map_style_manager.generate_failed": "Generation failed: {{message}}\n\nThis field expects a raw TileJSON endpoint (e.g. /data/v3.json), not a style.json file. To import a style.json directly, use the \"Style URL\" field above instead.",
+  "map_style_manager.generate_failed": "Generation failed: {{message}}",
+  "map_style_manager.generate_failed_hint": "This field expects a raw TileJSON endpoint (e.g. /data/v3.json), not a style.json file. To import a style.json directly, use the \"Style URL\" field above instead.",
   "map_style_manager.delete_failed": "Delete failed: {{message}}",
 
   "telemetry.loading": "Loading telemetry data...",

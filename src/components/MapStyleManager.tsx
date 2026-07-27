@@ -121,9 +121,12 @@ const MapStyleManager: React.FC = () => {
       setTileJsonName('');
     } catch (err) {
       console.error('Failed to generate map style from tileserver:', err);
-      alert(t('map_style_manager.generate_failed', {
+      // The static hint is a separate key so translators get a clean sentence
+      // instead of one string mixing {{message}} with literal \n\n formatting.
+      const failure = t('map_style_manager.generate_failed', {
         message: err instanceof Error ? err.message : t('map_style_manager.unknown_error'),
-      }));
+      });
+      alert(`${failure}\n\n${t('map_style_manager.generate_failed_hint')}`);
     } finally {
       setGeneratingStyle(false);
     }
