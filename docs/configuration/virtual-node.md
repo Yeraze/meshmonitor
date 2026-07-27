@@ -77,7 +77,8 @@ This prevents mobile apps from accidentally or maliciously modifying your physic
 3. In the **Virtual Node** section, toggle **Enable Virtual Node**.
 4. Enter the TCP port mobile apps should connect to (the historical default was `4404`). It must not collide with the source's upstream TCP port or another source's VN port.
 5. Optionally enable **Allow admin commands** — leave off unless you trust every connected client (see [Security Filtering](#security-filtering)).
-6. Click **Save**. The endpoint hot-swaps without restarting the upstream TCP connection.
+6. On a **MeshCore** source, optionally enable **Allow PKI export** — see [PKI private-key export](#pki-private-key-export-meshcore) before you do.
+7. Click **Save**. The endpoint hot-swaps without restarting the upstream TCP connection.
 
 Configuration lives in the `sources.config` JSON column as:
 
@@ -92,6 +93,42 @@ Configuration lives in the `sources.config` JSON column as:
   }
 }
 ```
+
+### PKI private-key export (MeshCore)
+
+Some tools authenticate *as the node itself* rather than talking to it — Remote-Terminal's
+community MQTT bridge is one — and ask the connected radio for its Ed25519 private key via
+`ExportPrivateKey(23)`. Without support for that command the Virtual Node returned
+"unsupported", which those tools report as connecting through a proxy that will not forward
+the key-export command.
+
+**Allow PKI export** (`virtualNode.allowPkiExport`, MeshCore sources only, default **off**)
+serves that request from the same key the existing REST export route uses. Each export writes
+an audit row.
+
+```json
+{
+  "virtualNode": {
+    "enabled": true,
+    "port": 5000,
+    "allowPkiExport": false
+  }
+}
+```
+
+Read this before turning it on:
+
+- **The Virtual Node port has no client authentication.** Anything that can reach the port and
+  is allowed to ask will receive the key.
+- **The private key is the node's identity.** A client holding it can permanently impersonate
+  your node — this is a strictly larger grant than admin commands, which only change the node.
+  For that reason it is a **separate** switch from **Allow admin commands**; enabling one never
+  enables the other.
+- **Leave it off unless a specific tool needs it, on a network you trust.** With the gate off
+  the Virtual Node answers `Disabled`, byte-identical to firmware compiled without
+  `ENABLE_PRIVATE_KEY_EXPORT`, so a client shows an accurate "unavailable" rather than hanging.
+
+The **Info** tab shows a **PKI Export** row so you can see the current state at a glance.
 
 ### Docker Compose Example
 
