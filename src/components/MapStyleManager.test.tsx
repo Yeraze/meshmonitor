@@ -48,13 +48,16 @@ describe('MapStyleManager', () => {
     vi.unstubAllGlobals();
   });
 
+  // The global react-i18next mock in src/test/setup.ts makes t() return the
+  // key itself, so UI copy is asserted by translation key rather than English.
+
   it('shows an Active badge for the currently active style and an Activate button for the rest', async () => {
     settingsMock.activeStyleId = 'style-a';
     render(<MapStyleManager />);
 
     await screen.findByDisplayValue('Style A');
-    expect(screen.getByText('Active')).toBeDefined();
-    expect(screen.getByRole('button', { name: 'Activate' })).toBeDefined();
+    expect(screen.getByText('map_style_manager.active')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'map_style_manager.activate' })).toBeDefined();
   });
 
   it('activating a style calls the shared setActiveMapStyleId setter', async () => {
@@ -62,7 +65,7 @@ describe('MapStyleManager', () => {
     render(<MapStyleManager />);
 
     await screen.findByDisplayValue('Style A');
-    const activateButtons = screen.getAllByRole('button', { name: 'Activate' });
+    const activateButtons = screen.getAllByRole('button', { name: 'map_style_manager.activate' });
     await user.click(activateButtons[0]);
 
     expect(mockSetActiveMapStyleId).toHaveBeenCalledWith('style-a');
@@ -76,7 +79,7 @@ describe('MapStyleManager', () => {
     render(<MapStyleManager />);
 
     await screen.findByDisplayValue('Style A');
-    const [deleteA] = screen.getAllByRole('button', { name: 'Delete' });
+    const [deleteA] = screen.getAllByRole('button', { name: 'common.delete' });
     await user.click(deleteA);
 
     await waitFor(() => expect(mockSetActiveMapStyleId).toHaveBeenCalledWith(null));
@@ -95,11 +98,11 @@ describe('MapStyleManager', () => {
     render(<MapStyleManager />);
 
     await screen.findByDisplayValue('Style A');
-    const [deleteA] = screen.getAllByRole('button', { name: 'Delete' });
+    const [deleteA] = screen.getAllByRole('button', { name: 'common.delete' });
     await user.click(deleteA);
 
     await waitFor(() => expect(consoleErrorSpy).toHaveBeenCalled());
-    expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Delete failed'));
+    expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('map_style_manager.delete_failed'));
     expect(mockSetActiveMapStyleId).not.toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
   });
