@@ -425,6 +425,10 @@ describe('Settings Persistence', () => {
         // publicly via GET /api/settings by useElevationEnabled(), but that's
         // a direct fetch, not SettingsContext.
         'elevationEnabled', 'elevationSourceUrl',
+        // ATAK/CoT feed server settings (#3691 Phase 3 WP2) — loaded directly
+        // by SettingsTab (admin-only field, no global hook), same pattern as
+        // elevationEnabled/elevationSourceUrl above.
+        'cotFeedEnabled', 'cotFeedPort',
       ];
 
       const keysNotLoaded = SETTINGS_TAB_SENDS.filter(

@@ -107,7 +107,7 @@ For environments where Docker isn't available or preferred, you can run MeshMoni
 ### 1. System Requirements
 
 **Required software:**
-- **Node.js 20+** (Node.js 24 LTS recommended)
+- **Node.js 22+** (Node.js 24 LTS recommended)
 - **npm** (included with Node.js)
 - **git** (for cloning the repository and protobuf submodule)
 - **Build tools** for compiling native modules (bcrypt, better-sqlite3)

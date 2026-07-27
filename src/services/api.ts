@@ -32,6 +32,10 @@ export interface SignalTrendResult {
   noiseFloorRising: boolean;
 }
 
+export interface MeshtasticContactUrl {
+  url: string;
+}
+
 /**
  * Error thrown by ApiService.request when the server returns a non-OK response.
  * Callers can distinguish by `status` (e.g. 429 for rate limit) and `code`
@@ -458,28 +462,62 @@ class ApiService {
     return response.json();
   }
 
-  async exportChannel(channelId: number): Promise<void> {
+  /**
+   * Streams a response body to a browser download (blob + anchor click).
+   * Filename resolves from opts.filename, else the response's
+   * Content-Disposition header, else opts.defaultName, else a generic
+   * fallback. Throws ApiError on non-ok (same as request()) before ever
+   * touching the DOM. Mirrors request()'s CSRF/credentials handling for
+   * mutating downloads (opts.method other than GET).
+   */
+  async download(endpoint: string, opts?: {
+    method?: string; body?: unknown; filename?: string; defaultName?: string;
+  }): Promise<void> {
     await this.ensureBaseUrl();
-    const response = await fetch(`${this.baseUrl}/api/channels/${channelId}/export`, {
+
+    const method = opts?.method ?? 'GET';
+    const headers: Record<string, string> = {};
+
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase())) {
+      Object.assign(headers, this.getHeadersWithCsrf());
+    }
+
+    const options: RequestInit = {
+      method,
+      headers,
       credentials: 'include',
-    });
+    };
+
+    if (opts?.body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      options.body = JSON.stringify(opts.body);
+    }
+
+    const response = await fetch(`${this.baseUrl}${endpoint}`, options);
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to export channel');
+      const body = await response.json().catch(() => ({ error: 'Request failed' })) as {
+        error?: string;
+        code?: string;
+      };
+      const message = body.error || `Request failed with status ${response.status}`;
+      throw new ApiError(message, response.status, { code: body.code, body });
     }
 
-    // Get filename from Content-Disposition header or create default
-    const contentDisposition = response.headers.get('Content-Disposition');
-    let filename = `channel-${channelId}-${Date.now()}.json`;
-    if (contentDisposition) {
-      const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
-      if (filenameMatch) {
-        filename = filenameMatch[1];
+    let filename = opts?.filename;
+    if (!filename) {
+      const contentDisposition = response.headers.get('Content-Disposition');
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
       }
     }
+    if (!filename) {
+      filename = opts?.defaultName ?? `download-${Date.now()}`;
+    }
 
-    // Download the file
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -489,6 +527,37 @@ class ApiService {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
+  }
+
+  /**
+   * GET an endpoint that returns text/* (not JSON) — e.g. a YAML backup
+   * download whose caller already knows the filename. `request()` always
+   * calls response.json(), which would throw on a text body; this bypasses
+   * that. Throws ApiError on non-ok, same as request().
+   */
+  async getText(endpoint: string): Promise<string> {
+    await this.ensureBaseUrl();
+
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ error: 'Request failed' })) as {
+        error?: string;
+        code?: string;
+      };
+      const message = body.error || `Request failed with status ${response.status}`;
+      throw new ApiError(message, response.status, { code: body.code, body });
+    }
+
+    return response.text();
+  }
+
+  async exportChannel(channelId: number): Promise<void> {
+    return this.download(`/api/channels/${channelId}/export`, {
+      defaultName: `channel-${channelId}-${Date.now()}.json`,
+    });
   }
 
   async importChannel(slotId: number, channelData: any, sourceId?: string | null): Promise<Channel> {
@@ -801,6 +870,14 @@ class ApiService {
       `/api/telemetry/${encodeURIComponent(validatedNodeId ?? nodeId)}/signal-trend${qs}`,
     );
     return body.data;
+  }
+
+  /** Generate a source-scoped Meshtastic SharedContact URL for a node. */
+  async getMeshtasticContactUrl(nodeNum: number, sourceId: string): Promise<string> {
+    const body = await this.get<{ success: boolean; data: MeshtasticContactUrl }>(
+      `/api/nodes/${nodeNum}/contact-url?sourceId=${encodeURIComponent(sourceId)}`,
+    );
+    return body.data.url;
   }
 
   async updateTracerouteInterval(minutes: number) {

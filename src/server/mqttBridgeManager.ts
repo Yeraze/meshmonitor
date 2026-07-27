@@ -47,7 +47,7 @@ import {
   formatGatewayClientId,
   type PublisherStatus,
 } from './mqttBridgePublisherPool.js';
-import { channelDecryptionService } from './services/channelDecryptionService.js';
+import { allowsUplink, resolveOkToMqttForEnvelope } from './utils/okToMqtt.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { mqttGeoSweepService, type GeoSweepStats } from './services/mqttGeoSweepService.js';
 
@@ -469,33 +469,21 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
    * this packet to be republished upstream. Mirrors firmware
    * `MQTT::onSend` (MQTT.cpp:767-788) — checks bit 0 of `Data.bitfield`.
    *
-   * - Decoded packet with bit set → allow.
-   * - Decoded packet with bit unset or `bitfield` absent → drop.
-   * - Encrypted packet → try server-side decryption via the channel DB,
-   *   then re-check. If decryption fails (no matching key), drop. This
-   *   matches firmware's fail-closed behavior on public brokers.
+   * Delegates to the shared tri-state evaluator in `./utils/okToMqtt.js`
+   * (#4114) — `resolveOkToMqttForEnvelope` reproduces this method's
+   * original control flow exactly (decoded bitfield, else server-side
+   * decrypt via the channel DB, else unknown), and `allowsUplink` applies
+   * the fail-closed uplink policy: only an explicit `'yes'` allows
+   * republishing. An `'unknown'` result (bit unreadable, decrypt failed,
+   * or no matching channel key) → drop. This matches firmware's
+   * fail-closed behavior on public brokers.
    *
    * Note: we deliberately do NOT special-case "private" upstream brokers
    * (per design — operator picks the override per-bridge via
    * `ignoreOkToMqtt` instead of relying on hostname heuristics).
    */
   private async evaluateOkToMqtt(envelope: ServiceEnvelopeShape): Promise<boolean> {
-    const decoded = envelope.packet?.decoded;
-    if (decoded && typeof decoded.bitfield === 'number') {
-      return (decoded.bitfield & 0x1) === 1;
-    }
-    // Encrypted path — try decryption against the channel DB so we can
-    // read the originator's bitfield. If we can't decrypt, fail closed.
-    const enc = envelope.packet?.encrypted;
-    const id = envelope.packet?.id;
-    const from = envelope.packet?.from;
-    if (!enc || typeof id !== 'number' || typeof from !== 'number') return false;
-    const channelHash = typeof envelope.packet?.channel === 'number'
-      ? envelope.packet.channel
-      : undefined;
-    const result = await channelDecryptionService.tryDecrypt(enc, id, from, channelHash);
-    if (!result.success || typeof result.bitfield !== 'number') return false;
-    return (result.bitfield & 0x1) === 1;
+    return allowsUplink(await resolveOkToMqttForEnvelope(envelope));
   }
 
   getLocalNodeInfo() {
@@ -699,6 +687,12 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       sourceId: this.sourceId,
       envelope,
       filter: this.downlinkFilter,
+      topic,
+      // Self-echo guard (#4114, §2(f.1)): `null` before the broker reports
+      // local node info / after a disconnect — the guard then simply does
+      // not apply. Belt-and-braces on top of the (non-airtight) echo
+      // suppression above (`matchesEcho`).
+      localGatewayNodeNum: this.brokerGatewayNum,
     })
       .then((result) => {
         if (result.ingested) this.downlinkIngested++;

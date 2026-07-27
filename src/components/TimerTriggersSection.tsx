@@ -9,6 +9,7 @@ import { Channel } from '../types/device';
 import { useSaveBar } from '../hooks/useSaveBar';
 import ScriptTestModal from './ScriptTestModal';
 import { UiIcon } from './icons';
+import apiService from '../services/api';
 
 /**
  * Format script for dropdown display
@@ -81,22 +82,19 @@ const TimerTriggersSection: React.FC<TimerTriggersSectionProps> = ({
   useEffect(() => {
     const fetchScripts = async () => {
       try {
-        const response = await fetch(`${baseUrl}/api/scripts`);
-        if (response.ok) {
-          const data = await response.json();
-          // Handle both new metadata format and legacy string array format
-          const scripts: ScriptMetadata[] = (data.scripts || []).map((script: ScriptMetadata | string) => {
-            if (typeof script === 'string') {
-              // Legacy format - convert to metadata object
-              const filename = script.split('/').pop() || script;
-              const ext = filename.split('.').pop()?.toLowerCase() || '';
-              const language = ext === 'py' ? 'Python' : ext === 'js' || ext === 'mjs' ? 'JavaScript' : ext === 'sh' ? 'Shell' : 'Script';
-              return { path: script, filename, language };
-            }
-            return script;
-          });
-          setAvailableScripts(scripts);
-        }
+        const data = await apiService.get<{ scripts?: (ScriptMetadata | string)[] }>('/api/scripts');
+        // Handle both new metadata format and legacy string array format
+        const scripts: ScriptMetadata[] = (data.scripts || []).map((script: ScriptMetadata | string) => {
+          if (typeof script === 'string') {
+            // Legacy format - convert to metadata object
+            const filename = script.split('/').pop() || script;
+            const ext = filename.split('.').pop()?.toLowerCase() || '';
+            const language = ext === 'py' ? 'Python' : ext === 'js' || ext === 'mjs' ? 'JavaScript' : ext === 'sh' ? 'Shell' : 'Script';
+            return { path: script, filename, language };
+          }
+          return script;
+        });
+        setAvailableScripts(scripts);
       } catch (error) {
         console.error('Failed to fetch available scripts:', error);
       }

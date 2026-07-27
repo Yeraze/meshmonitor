@@ -57,6 +57,9 @@ import {
 import {
   mqttPacketLogSqlite, mqttPacketLogPostgres, mqttPacketLogMysql,
 } from './schema/mqttPacketLog.js';
+import {
+  mqttOkToMqttViolationsSqlite, mqttOkToMqttViolationsPostgres, mqttOkToMqttViolationsMysql,
+} from './schema/mqttOkToMqttViolations.js';
 
 // Miscellaneous tables
 import {
@@ -153,6 +156,11 @@ import {
   deadDropMessagesSqlite, deadDropMessagesPostgres, deadDropMessagesMysql,
 } from './schema/deadDrop.js';
 
+// ATAK contacts table (ATAK/CoT Phase 2, issue #3691)
+import {
+  atakContactsSqlite, atakContactsPostgres, atakContactsMysql,
+} from './schema/atakContacts.js';
+
 /**
  * Runtime table map interface.
  *
@@ -187,6 +195,8 @@ export interface ActiveSchema {
   packetLog: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4124 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
   mqttPacketLog: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4114 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  mqttOkToMqttViolations: any;
 
   // Miscellaneous tables
   backupHistory: any;
@@ -254,6 +264,10 @@ export interface ActiveSchema {
   // Dead Drop / Mailbox — async per-source message store
   deadDropMessages: any;
 
+  // ATAK contacts (ATAK/CoT Phase 2, issue #3691)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  atakContacts: any;
+
   // Allow dynamic access for flexibility
   [key: string]: any;
 }
@@ -281,6 +295,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     readMessages: readMessagesSqlite,
     packetLog: packetLogSqlite,
     mqttPacketLog: mqttPacketLogSqlite,
+    mqttOkToMqttViolations: mqttOkToMqttViolationsSqlite,
     backupHistory: backupHistorySqlite,
     systemBackupHistory: systemBackupHistorySqlite,
     customThemes: customThemesSqlite,
@@ -318,6 +333,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteAssignments: autoFavoriteAssignmentsSqlite,
     sourcePkiKeys: sourcePkiKeysSqlite,
     deadDropMessages: deadDropMessagesSqlite,
+    atakContacts: atakContactsSqlite,
   },
   postgres: {
     nodes: nodesPostgres,
@@ -338,6 +354,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     readMessages: readMessagesPostgres,
     packetLog: packetLogPostgres,
     mqttPacketLog: mqttPacketLogPostgres,
+    mqttOkToMqttViolations: mqttOkToMqttViolationsPostgres,
     backupHistory: backupHistoryPostgres,
     systemBackupHistory: systemBackupHistoryPostgres,
     customThemes: customThemesPostgres,
@@ -375,6 +392,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteAssignments: autoFavoriteAssignmentsPostgres,
     sourcePkiKeys: sourcePkiKeysPostgres,
     deadDropMessages: deadDropMessagesPostgres,
+    atakContacts: atakContactsPostgres,
   },
   mysql: {
     nodes: nodesMysql,
@@ -395,6 +413,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     readMessages: readMessagesMysql,
     packetLog: packetLogMysql,
     mqttPacketLog: mqttPacketLogMysql,
+    mqttOkToMqttViolations: mqttOkToMqttViolationsMysql,
     backupHistory: backupHistoryMysql,
     systemBackupHistory: systemBackupHistoryMysql,
     customThemes: customThemesMysql,
@@ -432,6 +451,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteAssignments: autoFavoriteAssignmentsMysql,
     sourcePkiKeys: sourcePkiKeysMysql,
     deadDropMessages: deadDropMessagesMysql,
+    atakContacts: atakContactsMysql,
   },
 };
 

@@ -42,6 +42,9 @@ function makePacket(overrides: Partial<DbMqttPacket> = {}): DbMqttPacket {
     ingestOutcome: 'ingested',
     payloadSize: 12,
     payloadPreview: 'hello',
+    bitfield: null,
+    okToMqttViolation: 0,
+    topic: null,
     createdAt: now,
     ...overrides,
   };
@@ -231,5 +234,115 @@ describe('MqttPacketLogRepository — grouped query correctness', () => {
     expect(typeof receptions[0].packetId).toBe('number');
     expect(typeof receptions[0].fromNode).toBe('number');
     expect(typeof receptions[0].timestamp).toBe('number');
+  });
+
+  describe('ok_to_mqtt columns (#4114)', () => {
+    it('MAX(okToMqttViolation) surfaces on the grouped row: one flagged reception out of three', async () => {
+      await repo.insertPacket(makePacket({
+        packetId: 100, fromNode: 111, gatewayId: '!gw000001', timestamp: 1000, okToMqttViolation: 0, bitfield: 1,
+      }));
+      await repo.insertPacket(makePacket({
+        packetId: 100, fromNode: 111, gatewayId: '!gw000002', timestamp: 2000, okToMqttViolation: 1, bitfield: 0,
+      }));
+      await repo.insertPacket(makePacket({
+        packetId: 100, fromNode: 111, gatewayId: '!gw000003', timestamp: 3000, okToMqttViolation: 0, bitfield: 1,
+      }));
+
+      const groups = await repo.getGroupedPackets({ sourceId: SOURCE });
+      expect(groups).toHaveLength(1);
+      expect(groups[0].okToMqttViolation).toBe(1);
+    });
+
+    it('MAX(okToMqttViolation) is 0 when no reception was flagged', async () => {
+      await repo.insertPacket(makePacket({ packetId: 101, fromNode: 112, gatewayId: '!gw000001', okToMqttViolation: 0 }));
+      await repo.insertPacket(makePacket({ packetId: 101, fromNode: 112, gatewayId: '!gw000002', okToMqttViolation: 0 }));
+
+      const groups = await repo.getGroupedPackets({ sourceId: SOURCE });
+      const g = groups.find(row => row.packetId === 101);
+      expect(g?.okToMqttViolation).toBe(0);
+    });
+
+    it('MAX(bitfield) surfaces the representative value and is null when every reception is null', async () => {
+      await repo.insertPacket(makePacket({ packetId: 102, fromNode: 113, gatewayId: '!gw000001', bitfield: 3 }));
+      await repo.insertPacket(makePacket({ packetId: 102, fromNode: 113, gatewayId: '!gw000002', bitfield: null }));
+
+      await repo.insertPacket(makePacket({ packetId: 103, fromNode: 114, gatewayId: '!gw000001', bitfield: null }));
+      await repo.insertPacket(makePacket({ packetId: 103, fromNode: 114, gatewayId: '!gw000002', bitfield: null }));
+
+      const groups = await repo.getGroupedPackets({ sourceId: SOURCE });
+      expect(groups.find(g => g.packetId === 102)?.bitfield).toBe(3);
+      expect(groups.find(g => g.packetId === 103)?.bitfield).toBeNull();
+    });
+
+    it('getReceptions returns the per-reception okToMqttViolation/bitfield/topic (bare-select auto-pickup)', async () => {
+      await repo.insertPacket(makePacket({
+        packetId: 104, fromNode: 115, gatewayId: '!gw000001',
+        bitfield: 0, okToMqttViolation: 1, topic: 'msh/US/2/e/LongFast/!gw000001',
+      }));
+
+      const receptions = await repo.getReceptions(SOURCE, 104, 115);
+      expect(receptions).toHaveLength(1);
+      expect(receptions[0].bitfield).toBe(0);
+      expect(receptions[0].okToMqttViolation).toBe(1);
+      expect(receptions[0].topic).toBe('msh/US/2/e/LongFast/!gw000001');
+    });
+
+    it('getSuspectedViolations matches only bitfield IS NULL AND gatewayNodeNum <> fromNode, excluding self-published and confirmed rows', async () => {
+      // Suspected: unreadable bit, relayed by a different gateway.
+      await repo.insertPacket(makePacket({
+        packetId: 200, fromNode: 300, gatewayId: '!00000400', gatewayNodeNum: 0x400,
+        bitfield: null, okToMqttViolation: 0, timestamp: 1000,
+      }));
+      // Confirmed violation (bitfield NOT NULL) — must NOT appear as suspected.
+      await repo.insertPacket(makePacket({
+        packetId: 201, fromNode: 301, gatewayId: '!00000401', gatewayNodeNum: 0x401,
+        bitfield: 0, okToMqttViolation: 1, timestamp: 1100,
+      }));
+      // Self-published (gatewayNodeNum === fromNode) — must NOT appear as suspected.
+      await repo.insertPacket(makePacket({
+        packetId: 202, fromNode: 302, gatewayId: '!00000402', gatewayNodeNum: 302,
+        bitfield: null, okToMqttViolation: 0, timestamp: 1200,
+      }));
+      // gatewayNodeNum unknown — relaying cannot be proven — must NOT appear.
+      await repo.insertPacket(makePacket({
+        packetId: 203, fromNode: 303, gatewayId: null, gatewayNodeNum: null,
+        bitfield: null, okToMqttViolation: 0, timestamp: 1300,
+      }));
+
+      const suspected = await repo.getSuspectedViolations({ sourceIds: [SOURCE], since: 0, until: Date.now() + 1_000_000 });
+      expect(suspected.map(r => r.packetId)).toEqual([200]);
+    });
+
+    it('getSuspectedViolations returns [] for an empty sourceIds array', async () => {
+      await repo.insertPacket(makePacket({ packetId: 210, fromNode: 400, gatewayId: '!gw', gatewayNodeNum: 999, bitfield: null }));
+      expect(await repo.getSuspectedViolations({ sourceIds: [], since: 0, until: Date.now() })).toEqual([]);
+    });
+
+    it('getSuspectedViolationGateways aggregates the same predicate per gateway', async () => {
+      await repo.insertPacket(makePacket({
+        packetId: 220, fromNode: 500, gatewayId: '!00000600', gatewayNodeNum: 0x600,
+        bitfield: null, timestamp: 1000,
+      }));
+      await repo.insertPacket(makePacket({
+        packetId: 221, fromNode: 501, gatewayId: '!00000600', gatewayNodeNum: 0x600,
+        bitfield: null, timestamp: 2000,
+      }));
+      // Different gateway.
+      await repo.insertPacket(makePacket({
+        packetId: 222, fromNode: 502, gatewayId: '!00000601', gatewayNodeNum: 0x601,
+        bitfield: null, timestamp: 1500,
+      }));
+
+      const gateways = await repo.getSuspectedViolationGateways({ sourceIds: [SOURCE], since: 0, until: Date.now() + 1_000_000 });
+      const gw600 = gateways.find(g => g.gatewayId === '!00000600');
+      expect(gw600).toBeDefined();
+      expect(gw600?.suspectedCount).toBe(2);
+      expect(gw600?.distinctOriginators).toBe(2);
+      expect(gw600?.firstSeen).toBe(1000);
+      expect(gw600?.lastSeen).toBe(2000);
+
+      const gw601 = gateways.find(g => g.gatewayId === '!00000601');
+      expect(gw601?.suspectedCount).toBe(1);
+    });
   });
 });

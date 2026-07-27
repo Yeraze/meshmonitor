@@ -398,6 +398,34 @@ describe('TracerouteBody', () => {
     );
     expect(container.querySelector('.spinner')).not.toBeNull();
   });
+
+  it('sets the run button title from runDisabledReason (epic #4294 Phase 2 — TX-disabled tooltip)', () => {
+    const onRun = vi.fn();
+    const { rerender } = render(
+      <TracerouteBody
+        recentTraceroute={null}
+        nodes={[]}
+        distanceUnit="km"
+        onRunTraceroute={onRun}
+      />,
+    );
+    // No reason given — no title attribute.
+    expect(screen.getByText(/Traceroute/).closest('button')).not.toHaveAttribute('title');
+
+    rerender(
+      <TracerouteBody
+        recentTraceroute={null}
+        nodes={[]}
+        distanceUnit="km"
+        onRunTraceroute={onRun}
+        runDisabled
+        runDisabledReason="Transmit is disabled on this node's radio."
+      />,
+    );
+    const btn = screen.getByText(/Traceroute/).closest('button')!;
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute('title', "Transmit is disabled on this node's radio.");
+  });
 });
 
 describe('NodeActions', () => {

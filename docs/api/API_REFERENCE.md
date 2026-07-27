@@ -466,6 +466,10 @@ Send a text message to the mesh network.
 }
 ```
 
+**Error Responses:**
+- `409 TX_DISABLED` — Transmit is disabled on this source (receive-only mode); nothing was sent.
+  See [Receive-Only Mode](/docs/features/receive-only-mode.md).
+
 ---
 
 ## Channel Management
@@ -611,6 +615,10 @@ Initiate a traceroute to a specific node.
   "message": "Traceroute sent to node 987654321"
 }
 ```
+
+**Error Responses:**
+- `409 TX_DISABLED` — Transmit is disabled on this source (receive-only mode); nothing was sent.
+  See [Receive-Only Mode](/docs/features/receive-only-mode.md).
 
 ### GET /api/traceroutes/recent
 Get recent traceroute results.
@@ -838,6 +846,20 @@ Configure LoRa radio settings.
 ```
 
 **Note:** This triggers a device reboot to apply changes.
+
+::: tip Transmit (TX) Enabled honoring (#4294)
+The LoRa configuration write path no longer force-overrides `txEnabled` to `true`. MeshMonitor
+honors whatever value is submitted, and backfills the device's current value when a client omits
+the field (LoRa config is written as a whole-message replace, so an omitted boolean would
+otherwise decode as `false`). This lets a source legitimately run in **receive-only mode** — see
+[Receive-Only Mode](/docs/features/receive-only-mode.md).
+
+Channel-URL import and remote-node config import likewise **preserve** the device's current
+`txEnabled` value instead of forcing it to `true` — importing channels or a remote config no
+longer covertly re-enables TX on a receive-only node. Remote-node import preservation is
+best-effort (falls back to the last cached remote config, then the decoded URL value, then
+`true` if neither is available); export always emits the actual current value.
+:::
 
 ### POST /api/set-position-config
 Configure position and GPS settings, including fixed position.
@@ -1085,10 +1107,26 @@ v1 API endpoints use the envelope format:
 }
 ```
 
+**Transmit-disabled sources (`409 TX_DISABLED`):** any transmit action — message send, traceroute,
+position/nodeinfo/neighbor/telemetry request, or remote-node admin command — returns the envelope
+format above with `code: "TX_DISABLED"` and HTTP `409` when the target source's LoRa radio has
+`lora.txEnabled = false` (receive-only mode; see [Receive-Only Mode](/docs/features/receive-only-mode.md)):
+
+```json
+{
+  "success": false,
+  "error": "Transmit is disabled on this source",
+  "code": "TX_DISABLED"
+}
+```
+
+Nothing is transmitted. Re-enable **TX Enabled** in the source's LoRa configuration to clear it.
+
 **Common Status Codes:**
 - `200` - Success
 - `400` - Bad Request (invalid parameters, or missing `sourceId` on a per-source v1 endpoint)
 - `404` - Not Found
+- `409` - Conflict (e.g. `TX_DISABLED` — target source is in receive-only mode)
 - `500` - Internal Server Error
 - `503` - Service Unavailable (Meshtastic not connected)
 

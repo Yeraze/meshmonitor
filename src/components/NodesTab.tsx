@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/nodes.css';
 import { Popup, Tooltip, Polyline, Circle, useMap } from 'react-leaflet';
@@ -22,16 +22,19 @@ import { getTilesetById } from '../config/tilesets';
 import { getEffectiveHops, getMapHoverTooltipMeta } from '../utils/nodeHops';
 import { buildNodeExportRows, nodesToCsv, nodesToHtml, downloadTextFile } from '../utils/nodeExport';
 import { useMapContext } from '../contexts/MapContext';
-import { useTelemetryNodes, useDeviceConfig, useNodes } from '../hooks/useServerData';
+import { useTelemetryNodes, useDeviceConfig, useNodes, setNodeFieldInCache } from '../hooks/useServerData';
+import { useQueryClient } from '@tanstack/react-query';
 import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useSource } from '../contexts/SourceContext';
 import DashboardWaypoints from './Dashboard/DashboardWaypoints';
+import DashboardAtakContacts from './Dashboard/DashboardAtakContacts';
 import WaypointEditorModal from './WaypointEditorModal';
 import { useWaypoints } from '../hooks/useWaypoints';
 import type { Waypoint, WaypointInput } from '../types/waypoint';
 import { useResizable } from '../hooks/useResizable';
+import { resolveNodeSidebarMaxWidth, isMobileLayout, NODE_SIDEBAR_MIN_WIDTH_PX } from '../utils/sidebarWidth';
 import ZoomHandler from './ZoomHandler';
 import MapPositionHandler from './MapPositionHandler';
 import PolarGridOverlay from './PolarGridOverlay.js';
@@ -45,6 +48,8 @@ import { getPacketStats } from '../services/packetApi';
 
 import { BaseMap } from './map/BaseMap';
 import { MapLoadingOverlay } from './map/MapLoadingOverlay';
+import { MapModeIndicator } from './map/MapModeIndicator';
+import { NodeUnmessageableBadge } from './NodeUnmessageableBadge';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from './map/layers/AccuracyRegionsLayer';
 import { NodeCard } from './map/popups/NodeCard';
@@ -53,9 +58,10 @@ import { toNodeCardModel, type NodeCardModel } from './map/popups/nodeCardModel'
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import api from '../services/api';
 import type { GeoJsonLayer } from '../server/services/geojsonService.js';
-import type { MapStyle } from '../server/services/mapStyleService.js';
 import { CopyNodeInfoModal } from './CopyNodeInfoModal';
 import { UiIcon } from './icons';
+import { useToast } from './ToastContainer';
+import { logger } from '../utils/logger';
 
 interface NodesTabProps {
   processedNodes: DeviceInfo[];
@@ -63,8 +69,10 @@ interface NodesTabProps {
   centerMapOnNode: (node: DeviceInfo) => void;
   toggleFavorite: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
   toggleFavoriteLock?: (node: DeviceInfo, event: React.MouseEvent) => Promise<void>;
-  setActiveTab: React.Dispatch<React.SetStateAction<TabType>>;
+  setActiveTab: (tab: TabType) => void;
   setSelectedDMNode: (nodeId: string) => void;
+  /** Select a node for a new DM and ask the DM view to focus its compose box (#4325). */
+  openDmForCompose: (nodeId: string) => void;
   markerRefs: React.MutableRefObject<Map<string, LeafletMarker>>;
   traceroutePathsElements: React.ReactNode;
   selectedNodeTraceroute: React.ReactNode;
@@ -78,6 +86,8 @@ interface NodesTabProps {
   onTraceroute?: (nodeId: string) => void;
   /** Current connection status */
   connectionStatus?: string;
+  /** TX disabled on this source (epic #4294 Phase 2) — ORed into the traceroute run button's disabled state. */
+  txDisabled?: boolean;
   /** Node ID currently being tracerouted (for loading state) */
   tracerouteLoading?: string | null;
   /** Handler for deleting a node from local database */
@@ -199,6 +209,23 @@ export function computeNeighborLinkStyle(
 }
 
 /**
+ * Traceroute run-button gating for the map node popup (epic #4294 Phase 2).
+ * Extracted as a pure function (module-scope, exported) — the popup lives
+ * inside a Leaflet Popup/Marker/MapContainer tree that isn't practical to
+ * fully render in jsdom (see NodesTab.test.tsx's helper-only pattern), so
+ * the gating logic is pinned with a unit test independent of the render.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- #4294 pure helper co-located with its only consumer for adapter unit testing; not a component
+export function isTracerouteRunDisabled(
+  connectionStatus: string | undefined,
+  tracerouteLoading: string | null | undefined,
+  nodeUserId: string | undefined,
+  txDisabled: boolean,
+): boolean {
+  return connectionStatus !== 'connected' || tracerouteLoading === nodeUserId || txDisabled;
+}
+
+/**
  * Controller that applies the configured default map center once server settings load.
  * Only acts when there was no saved localStorage position at mount time (new session / anonymous).
  * The configured default takes priority over auto-calculated node positions.
@@ -216,14 +243,14 @@ const DefaultCenterController: React.FC<{
   const hadSavedPosition = useRef(localStorage.getItem('mapCenter') !== null);
 
   useEffect(() => {
-    console.log('[DefaultCenterController] effect fired', {
+    logger.debug('[DefaultCenterController] effect fired', {
       applied: applied.current,
       hadSaved: hadSavedPosition.current,
       lat, lon, zoom,
     });
     if (applied.current || hadSavedPosition.current) return;
     if (lat !== null && lon !== null && zoom !== null) {
-      console.log('[DefaultCenterController] applying configured default', lat, lon, zoom);
+      logger.debug('[DefaultCenterController] applying configured default', lat, lon, zoom);
       applied.current = true;
       map.setView([lat, lon], zoom, { animate: false });
     }
@@ -276,8 +303,10 @@ const TracerouteBoundsController: React.FC<{
  * - Right-click anywhere (when `canCreate`) opens the editor with that
  *   location seeded as the new waypoint's coordinates.
  *
- * Toggles the `waypoint-placing` class on the leaflet container so CSS can
- * change the cursor to a crosshair during placement.
+ * Toggles the `waypoint-placing` class on the leaflet container. That class
+ * drives the crosshair cursor AND (issue #4342) makes interactive overlay
+ * geometry click-through, so the pick below always wins over a feature popup —
+ * see the rule in WaypointEditorModal.css for why that is load-bearing.
  */
 const WaypointMapEventBridge: React.FC<{
   placing: boolean;
@@ -288,8 +317,14 @@ const WaypointMapEventBridge: React.FC<{
 
   useEffect(() => {
     const container = map.getContainer();
-    if (placing) container.classList.add('waypoint-placing');
-    else container.classList.remove('waypoint-placing');
+    if (placing) {
+      container.classList.add('waypoint-placing');
+      // A popup left open from a previous click floats above the map with its
+      // own pointer-events, so it would eat the placement click (#4342).
+      map.closePopup();
+    } else {
+      container.classList.remove('waypoint-placing');
+    }
     return () => container.classList.remove('waypoint-placing');
   }, [placing, map]);
 
@@ -323,6 +358,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   toggleFavoriteLock,
   setActiveTab,
   setSelectedDMNode,
+  openDmForCompose,
   markerRefs,
   traceroutePathsElements,
   selectedNodeTraceroute,
@@ -331,6 +367,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   tracerouteBounds,
   onTraceroute,
   connectionStatus,
+  txDisabled = false,
   tracerouteLoading,
   onDeleteNode,
   onPurgeNodeFromDevice,
@@ -356,6 +393,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setShowRfNodes,
     showWaypoints,
     setShowWaypoints,
+    showAtakContacts,
+    setShowAtakContacts,
     showAnimations,
     setShowAnimations,
     showEstimatedPositions,
@@ -453,6 +492,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     defaultMapCenterLon,
     defaultMapCenterZoom,
     mapCenterTargetZoom,
+    mapStyles,
+    activeStyleId,
+    activeStyleJson,
+    setActiveMapStyleId,
   } = useSettings();
 
   // Effective map age cap from the Map Features age slider (#3322), clamped to
@@ -466,9 +509,33 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   const { hasPermission } = useAuth();
   const csrfFetch = useCsrfFetch();
+  const { showToast } = useToast();
 
   // ----- Copy NodeInfo modal state -----
   const [copyNodeInfoTarget, setCopyNodeInfoTarget] = useState<DeviceInfo | null>(null);
+
+  // ----- Security warning clear state (#4302) -----
+  const queryClient = useQueryClient();
+  const [clearingSecurityNode, setClearingSecurityNode] = useState<number | null>(null);
+  const handleClearSecurityWarning = useCallback(async (nodeNum: number) => {
+    setClearingSecurityNode(nodeNum);
+    try {
+      await api.post(`/api/security/nodes/${nodeNum}/clear`, { sourceId: currentSourceId });
+      // Optimistically drop the flags in the poll cache so the warning icon
+      // disappears immediately instead of lingering until the next poll (#4302).
+      setNodeFieldInCache(queryClient, currentSourceId, nodeNum, {
+        keyIsLowEntropy: false,
+        duplicateKeyDetected: false,
+        keyMismatchDetected: false,
+        keySecurityIssueDetails: undefined,
+      });
+      showToast(t('nodes.security_risk_cleared', 'Security warning cleared'), 'success');
+    } catch {
+      showToast(t('nodes.security_risk_clear_failed', 'Failed to clear security warning'), 'error');
+    } finally {
+      setClearingSecurityNode(null);
+    }
+  }, [currentSourceId, queryClient, showToast, t]);
 
   // ----- Waypoint authoring state -----
   const canWriteWaypoints = hasPermission('waypoints', 'write');
@@ -688,7 +755,69 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     return saved === 'true';
   });
 
-  // Node list sidebar resizable width (default 380px, min 200px, max 50% viewport)
+  // Width of the split-view container, which is what the node list may claim —
+  // not the viewport. The container is `position: fixed; left: var(--sidebar-width);
+  // right: 0`, so it already excludes the app rail. Tracked in state (rather than
+  // read inline) so the ceiling follows an orientation change or window resize:
+  // a plain `window.innerWidth` read only re-evaluates when something else
+  // happens to re-render this component.
+  const splitViewRef = useRef<HTMLDivElement>(null);
+  const [sidebarMetrics, setSidebarMetrics] = useState(() => ({
+    availableWidth: window.innerWidth,
+    mobile: isMobileLayout(window.innerWidth, window.innerHeight),
+  }));
+
+  // useLayoutEffect + ResizeObserver rather than useEffect + resize/
+  // orientationchange listeners. The initial state above has to fall back to
+  // window.innerWidth because the ref is null until the DOM exists, and that
+  // over-estimates the container by the width of the app rail. Measuring in a
+  // layout effect corrects it before paint, so the resizable's bounds are never
+  // briefly wrong (which could otherwise persist a clamped width the user never
+  // chose). The observer also catches container changes that fire no window
+  // event at all.
+  useLayoutEffect(() => {
+    const el = splitViewRef.current;
+    const measure = () => {
+      const measured = el?.getBoundingClientRect().width;
+      const next = {
+        availableWidth: measured && measured > 0 ? measured : window.innerWidth,
+        mobile: isMobileLayout(window.innerWidth, window.innerHeight),
+      };
+      // Bail on no-op updates: this fires continuously during a window drag and
+      // the value feeds the resizable's bounds.
+      setSidebarMetrics(prev =>
+        prev.availableWidth === next.availableWidth && prev.mobile === next.mobile ? prev : next
+      );
+    };
+    measure();
+
+    if (!el || typeof ResizeObserver === 'undefined') {
+      // jsdom and very old browsers: fall back to the window events.
+      window.addEventListener('resize', measure);
+      window.addEventListener('orientationchange', measure);
+      return () => {
+        window.removeEventListener('resize', measure);
+        window.removeEventListener('orientationchange', measure);
+      };
+    }
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    // ResizeObserver sees the container resize, but `mobile` also depends on
+    // viewport HEIGHT, which can cross the landscape threshold without the
+    // container's width changing.
+    window.addEventListener('orientationchange', measure);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('orientationchange', measure);
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+
+  // Node list sidebar resizable width. Mobile viewports may drag it to the full
+  // container width (the map sits behind a toggle there, so half-width was an
+  // arbitrary ceiling); desktop keeps the 50% split. See utils/sidebarWidth.ts.
   const {
     size: sidebarWidth,
     isResizing: isSidebarResizing,
@@ -697,8 +826,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   } = useResizable({
     id: 'nodes-sidebar-width',
     defaultHeight: 380,
-    minHeight: 200,
-    maxHeight: Math.round(window.innerWidth * 0.5),
+    minHeight: NODE_SIDEBAR_MIN_WIDTH_PX,
+    maxHeight: resolveNodeSidebarMaxWidth(sidebarMetrics.availableWidth, sidebarMetrics.mobile),
     direction: 'horizontal'
   });
 
@@ -718,11 +847,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // Track if packet logging is enabled on the server
   const [packetLogEnabled, setPacketLogEnabled] = useState<boolean>(false);
   const [geoJsonLayers, setGeoJsonLayers] = useState<GeoJsonLayer[]>([]);
-  const [mapStyles, setMapStyles] = useState<MapStyle[]>([]);
-  const [activeStyleId, setActiveStyleId] = useState<string | null>(() => {
-    try { return localStorage.getItem('meshmonitor-activeMapStyleId') || null; } catch { return null; }
-  });
-  const [activeStyleJson, setActiveStyleJson] = useState<Record<string, unknown> | null>(null);
+  // mapStyles/activeStyleId/activeStyleJson now live in SettingsContext
+  // (issue #4348) so DashboardMap can share the same active style.
 
   // Track if map controls are collapsed
   const [isMapControlsCollapsed, setIsMapControlsCollapsed] = useState(() => {
@@ -869,10 +995,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   useEffect(() => {
     const fetchGeoJsonLayers = async () => {
       try {
-        const baseUrl = await api.getBaseUrl();
-        const response = await fetch(`${baseUrl}/api/geojson/layers`);
-        if (!response.ok) return;
-        const data = await response.json();
+        const data = await api.get<GeoJsonLayer[]>('/api/geojson/layers');
         setGeoJsonLayers(data);
       } catch (err) {
         console.error('Failed to fetch GeoJSON layers:', err);
@@ -881,49 +1004,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     void fetchGeoJsonLayers();
   }, []);
 
-  useEffect(() => {
-    const fetchMapStyles = async () => {
-      try {
-        const baseUrl = await api.getBaseUrl();
-        const response = await fetch(`${baseUrl}/api/map-styles/styles`);
-        if (!response.ok) return;
-        const data = await response.json();
-        setMapStyles(data);
-
-        // Determine which style to use: localStorage > server default > none
-        let resolvedStyleId = activeStyleId;
-
-        if (!resolvedStyleId) {
-          // No localStorage value — check server default
-          try {
-            const settingsRes = await fetch(`${baseUrl}/api/settings`, { credentials: 'include' });
-            if (settingsRes.ok) {
-              const settings = await settingsRes.json();
-              if (settings.activeMapStyleId) {
-                resolvedStyleId = settings.activeMapStyleId;
-                setActiveStyleId(resolvedStyleId);
-              }
-            }
-          } catch { /* ignore settings fetch failure */ }
-        }
-
-        // Load style data if we have a resolved ID
-        if (resolvedStyleId && data.some((s: MapStyle) => s.id === resolvedStyleId)) {
-          const styleRes = await fetch(`${baseUrl}/api/map-styles/styles/${resolvedStyleId}/data`);
-          if (styleRes.ok) {
-            setActiveStyleJson(await styleRes.json());
-          }
-        } else if (resolvedStyleId) {
-          // Saved style no longer exists, clear it
-          setActiveStyleId(null);
-          try { localStorage.removeItem('meshmonitor-activeMapStyleId'); } catch { /* ignore */ }
-        }
-      } catch (err) {
-        console.error('Failed to fetch map styles:', err);
-      }
-    };
-    void fetchMapStyles();
-  }, []);
+  // mapStyles/activeStyleId/activeStyleJson are fetched and resolved once by
+  // SettingsContext's own mount effect (issue #4348) — no local fetch needed.
 
   // Refs to access latest values without recreating listeners
   const processedNodesRef = useRef(processedNodes);
@@ -1055,13 +1137,17 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     };
   }, [toggleFavoriteLock]);
 
+  // "Send Direct Message" (#4325). Selecting the node already opened the
+  // conversation; openDmForCompose additionally asks the DM view to focus its
+  // compose box, so the button leaves you able to type instead of on a
+  // conversation you still have to click into.
   const handleDMClick = useCallback((node: DeviceInfo) => {
     return (e: React.MouseEvent) => {
       e.stopPropagation();
-      setSelectedDMNode(node.user?.id || '');
+      openDmForCompose(node.user?.id || '');
       setActiveTab('messages');
     };
-  }, [setSelectedDMNode, setActiveTab]);
+  }, [openDmForCompose, setActiveTab]);
 
   const handleCopyNodeInfoClick = useCallback((node: DeviceInfo) => {
     return (e: React.MouseEvent) => {
@@ -1073,6 +1159,23 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const handlePopupDMClick = useCallback((node: DeviceInfo) => {
     return () => {
       setSelectedDMNode(node.user!.id);
+      setActiveTab('messages');
+    };
+  }, [setSelectedDMNode, setActiveTab]);
+
+  // #4326: unmessageable nodes get no DM button in the node list, and the
+  // badge that replaces it used to be an inert <span> — a genuine dead end,
+  // since the list was then offering no route at all to the node's details.
+  // The badge now reaches Node Details, matching what the map popup's "More
+  // Details" action already does for these nodes (that popup has never gated
+  // on messageability). Messaging itself stays unavailable: this uses
+  // setSelectedDMNode rather than openDmForCompose, so the compose box isn't
+  // focused, and MessagesTab independently hides the composer behind its
+  // `dmReadOnlyReason === 'unmessageable'` banner.
+  const handleNodeDetailsClick = useCallback((node: DeviceInfo) => {
+    return (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setSelectedDMNode(node.user?.id || '');
       setActiveTab('messages');
     };
   }, [setSelectedDMNode, setActiveTab]);
@@ -1491,7 +1594,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       return {
         key: markerKey,
         position,
-        iconSig: `${node.nodeNum}-${hops}-${isSelected}-${node.user?.role}-${node.user?.shortName}-${showLabel}-${shouldAnimate}-${showRoute && isSelected}-${mapPinStyle}`,
+        iconSig: `${node.nodeNum}-${hops}-${isSelected}-${node.user?.role}-${node.isUnmessagable ? 1 : 0}-${node.user?.shortName}-${showLabel}-${shouldAnimate}-${showRoute && isSelected}-${mapPinStyle}`,
         buildIcon: () =>
           createNodeIcon({
             variant: 'meshtastic',
@@ -1499,6 +1602,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
             isSelected,
             isRouter,
             roleCategory,
+            isUnmessagable: !!node.isUnmessagable,
             shortName: node.user?.shortName,
             showLabel: showLabel || shouldAnimate,
             animate: shouldAnimate,
@@ -1657,7 +1761,8 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           distanceUnit={distanceUnit}
                           onRunTraceroute={node.user?.id && onTraceroute ? () => onTraceroute(node.user!.id) : undefined}
                           running={tracerouteLoading === node.user?.id}
-                          runDisabled={connectionStatus !== 'connected' || tracerouteLoading === node.user?.id}
+                          runDisabled={isTracerouteRunDisabled(connectionStatus, tracerouteLoading, node.user?.id, txDisabled)}
+                          runDisabledReason={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
                         />
                       ) : undefined}
                     />
@@ -1860,7 +1965,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const mapDefaults = getMapCenter();
 
   return (
-    <div className="nodes-split-view nodes-anchored-view">
+    <div ref={splitViewRef} className="nodes-split-view nodes-anchored-view">
       {/* Anchored Node List Sidebar */}
       <div
         ref={sidebarRef}
@@ -2104,12 +2209,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         </button>
                       )}
                       {hasPermission('messages', 'read') && node.isUnmessagable && (
-                        <span
-                          className="node-indicator-icon"
-                          title={t('nodes.unmessageable', 'This node reports itself as unmessageable (router/repeater/sensor) — it cannot receive direct messages')}
-                        >
-                          <UiIcon name="blocked" size={16} />
-                        </span>
+                        <NodeUnmessageableBadge onOpenDetails={handleNodeDetailsClick(node)} />
                       )}
                       {!isNodeComplete(node) && hasPermission('nodes', 'write') && (
                         <button
@@ -2121,18 +2221,51 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         </button>
                       )}
                       {(node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) && (
-                        <span
-                          className="security-warning-icon"
-                          title={node.keySecurityIssueDetails || 'Key security issue detected'}
-                          style={{
-                            fontSize: '16px',
-                            color: '#f44336',
-                            marginLeft: '4px',
-                            cursor: 'help'
-                          }}
-                        >
-                          <UiIcon name={node.keyMismatchDetected ? 'unlock' : 'alert'} size={16} />
-                        </span>
+                        hasPermission('security', 'write') ? (
+                          <button
+                            className="security-warning-icon"
+                            title={t(
+                              'nodes.security_risk_clear_title',
+                              '{{details}} — click to clear this security warning',
+                              { details: node.keySecurityIssueDetails || t('nodes.security_risk_generic', 'Key security issue detected') }
+                            )}
+                            aria-label={t(
+                              'nodes.security_risk_clear_title',
+                              '{{details}} — click to clear this security warning',
+                              { details: node.keySecurityIssueDetails || t('nodes.security_risk_generic', 'Key security issue detected') }
+                            )}
+                            disabled={clearingSecurityNode === node.nodeNum}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleClearSecurityWarning(node.nodeNum);
+                            }}
+                            style={{
+                              fontSize: '16px',
+                              color: '#f44336',
+                              marginLeft: '4px',
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              cursor: clearingSecurityNode === node.nodeNum ? 'default' : 'pointer',
+                              opacity: clearingSecurityNode === node.nodeNum ? 0.5 : 1,
+                            }}
+                          >
+                            <UiIcon name={node.keyMismatchDetected ? 'unlock' : 'alert'} size={16} />
+                          </button>
+                        ) : (
+                          <span
+                            className="security-warning-icon"
+                            title={node.keySecurityIssueDetails || t('nodes.security_risk_generic', 'Key security issue detected')}
+                            style={{
+                              fontSize: '16px',
+                              color: '#f44336',
+                              marginLeft: '4px',
+                              cursor: 'help'
+                            }}
+                          >
+                            <UiIcon name={node.keyMismatchDetected ? 'unlock' : 'alert'} size={16} />
+                          </span>
+                        )
                       )}
                       <div className="node-short">
                         {node.user?.shortName || '-'}
@@ -2383,6 +2516,14 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   <label className="map-control-item">
                     <input
                       type="checkbox"
+                      checked={showAtakContacts}
+                      onChange={(e) => setShowAtakContacts(e.target.checked)}
+                    />
+                    <span>{t('map.showAtakContacts', 'Show ATAK Contacts')}</span>
+                  </label>
+                  <label className="map-control-item">
+                    <input
+                      type="checkbox"
                       checked={showMotion}
                       onChange={(e) => setShowMotion(e.target.checked)}
                     />
@@ -2524,32 +2665,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         Map Style
                         <select
                           value={activeStyleId ?? ''}
-                          onChange={async (e) => {
+                          onChange={(e) => {
                             const styleId = e.target.value || null;
-                            setActiveStyleId(styleId);
-                            try { localStorage.setItem('meshmonitor-activeMapStyleId', styleId ?? ''); } catch { /* ignore */ }
-                            // Save as server default so incognito/new browsers get this style
-                            void api.getBaseUrl().then(baseUrl => {
-                              csrfFetch(`${baseUrl}/api/settings`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ activeMapStyleId: styleId ?? '' }),
-                              }).catch(err => console.error('Failed to save map style setting:', err));
-                            });
-                            if (styleId) {
-                              try {
-                                const baseUrl = await api.getBaseUrl();
-                                const response = await fetch(`${baseUrl}/api/map-styles/styles/${styleId}/data`);
-                                if (response.ok) {
-                                  const data = await response.json();
-                                  setActiveStyleJson(data);
-                                }
-                              } catch (err) {
-                                console.error('Failed to fetch map style data:', err);
-                              }
-                            } else {
-                              setActiveStyleJson(null);
-                            }
+                            void setActiveMapStyleId(styleId);
                           }}
                           style={{ padding: '2px 6px', border: '1px solid var(--border-color, #ccc)', borderRadius: '3px', background: 'var(--input-bg, #fff)', color: 'var(--text-color, #000)' }}
                         >
@@ -2587,6 +2705,26 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
               </div>
             </div>
         )}
+            {/* #4326: "Show Traceroute" silently changes what clicking a node
+                does — for any node with a stored route the info popup is
+                suppressed in favor of the route overlay (see the
+                `!(showRoute && hasValidTraceroute)` popup gate above). The
+                only evidence of that mode used to be a checkbox inside the
+                Features panel, which is collapsible and draggable, so the
+                behavior read as random. This banner lives outside that panel
+                and stays put. */}
+            {shouldShowData() && showRoute && (
+              <MapModeIndicator
+                icon="route"
+                label={t('map.tracerouteModeActive', 'Traceroute mode')}
+                hint={t(
+                  'map.tracerouteModeHint',
+                  'Clicking a node with a stored route shows its path instead of its info popup'
+                )}
+                onDisable={() => setShowRoute(false)}
+                disableLabel={t('map.tracerouteModeDisable', 'Turn off Show Traceroute')}
+              />
+            )}
             <BaseMap
               center={mapDefaults.center}
               zoom={mapDefaults.zoom}
@@ -2611,6 +2749,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 onPick={(lat, lon) => startCreateAtCoords(lat, lon)}
               />
               {showWaypoints && <DashboardWaypoints sourceId={currentSourceId ?? null} actions={waypointActions} />}
+              {showAtakContacts && <DashboardAtakContacts sourceId={currentSourceId ?? null} />}
               <DefaultCenterController
                 lat={defaultMapCenterLat}
                 lon={defaultMapCenterLon}
@@ -2878,9 +3017,11 @@ const NodesTab = React.memo(NodesTabComponent, (prevProps, nextProps) => {
     return false; // Allow re-render
   }
 
-  // If connection status or traceroute loading state changed, must re-render
-  // (for traceroute button disabled state and loading indicator)
+  // If connection status, TX-disabled state, or traceroute loading state
+  // changed, must re-render (for traceroute button disabled state and
+  // loading indicator; txDisabled added for epic #4294 Phase 2)
   if (prevProps.connectionStatus !== nextProps.connectionStatus ||
+      prevProps.txDisabled !== nextProps.txDisabled ||
       prevProps.tracerouteLoading !== nextProps.tracerouteLoading) {
     return false; // Allow re-render
   }

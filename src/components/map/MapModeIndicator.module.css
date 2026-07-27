@@ -1,0 +1,93 @@
+/* MapModeIndicator (issue #4326). CSS module — do not add these rules to the
+ * global sheets (CLAUDE.md CSS containment rule). Theming comes from the
+ * Catppuccin custom properties defined in App.css, so no per-scheme blocks
+ * are needed here. */
+
+/* Containing block: this is anchored to `.map-container`, the element it is
+   rendered inside as a BaseMap sibling. That works because `.map-container`
+   is itself `position: absolute` (nodes.css) — any non-static position makes
+   an element a containing block, not just `relative`. Do not "fix" the
+   apparent missing `position: relative` by adding one further up; the next
+   positioned ancestor is `.nodes-map-area`, and anchoring there would push
+   this banner outside the map when the packet monitor shrinks the container.
+
+   Bottom-center is the one edge of the map that no existing overlay claims:
+   the Features panel and the legend sit top-right, the tileset selector
+   defaults to top-left, and nodes.css relocates Leaflet's zoom controls to
+   bottom-right (20px). Top-center would collide with the tileset selector on
+   narrower viewports. */
+.indicator {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* Above the Leaflet panes but below the draggable Features panel
+     (`.map-controls`, z-index 1000) so a dragged panel is never occluded. */
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  /* 40rem clears the English label+hint at ~37rem with room for a longer
+     translation; the ellipsis below is the fallback past that. */
+  max-width: min(90%, 40rem);
+  padding: 0.3rem 0.5rem 0.3rem 0.6rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--ctp-surface2);
+  background: var(--ctp-surface0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  color: var(--ctp-text);
+  font-size: 0.8rem;
+  line-height: 1.2;
+  user-select: none;
+  pointer-events: auto;
+}
+
+.icon {
+  flex-shrink: 0;
+  color: var(--ctp-blue);
+  display: inline-flex;
+}
+
+.label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.hint {
+  color: var(--ctp-subtext0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disable {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem;
+  margin-left: 0.15rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ctp-subtext0);
+  cursor: pointer;
+}
+
+.disable:hover {
+  background: var(--ctp-surface1);
+  color: var(--ctp-text);
+}
+
+/* On narrow screens the explanatory hint is the first thing to go — the
+   mode name plus the dismiss control still answer "why did my click do
+   that?" without crowding the map. */
+@media (max-width: 768px) {
+  .indicator {
+    font-size: 0.75rem;
+  }
+
+  .hint {
+    display: none;
+  }
+}

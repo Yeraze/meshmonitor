@@ -9,6 +9,7 @@ import express from 'express';
 import session from 'express-session';
 import request from 'supertest';
 import databaseService from '../../services/database.js';
+import { TxDisabledError } from '../errors/txDisabledError.js';
 
 // ---------------------------------------------------------------------------
 // sourceManagerRegistry stub — messageRoutes resolves its default-source
@@ -942,6 +943,49 @@ describe('Message Deletion Routes', () => {
 
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Device communication error');
+    });
+  });
+
+  describe('POST /api/messages/send', () => {
+    beforeEach(() => {
+      registryStub.getManager.mockReset().mockReturnValue(undefined);
+      registryStub.getAllManagers.mockReset().mockReturnValue([]);
+      registryStub.getPrimaryMeshtasticSourceId.mockReset().mockReturnValue(null);
+    });
+
+    it('returns 409 TX_DISABLED when the manager throws TxDisabledError', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      registryStub.getManager.mockReturnValue({
+        sourceId: 'source-a',
+        sourceType: 'meshtastic_tcp',
+        getLocalNodeInfo: () => ({ nodeNum: 1 }),
+        sendTextMessage: vi.fn().mockRejectedValue(new TxDisabledError()),
+      });
+
+      const response = await request(app)
+        .post('/api/messages/send')
+        .send({ text: 'hello', sourceId: 'source-a' });
+
+      expect(response.status).toBe(409);
+      expect(response.body.success).toBe(false);
+      expect(response.body.code).toBe('TX_DISABLED');
+    });
+
+    it('sends successfully when transmit is enabled', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      registryStub.getManager.mockReturnValue({
+        sourceId: 'source-a',
+        sourceType: 'meshtastic_tcp',
+        getLocalNodeInfo: () => ({ nodeNum: 1 }),
+        sendTextMessage: vi.fn().mockResolvedValue(undefined),
+      });
+
+      const response = await request(app)
+        .post('/api/messages/send')
+        .send({ text: 'hello', sourceId: 'source-a' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
     });
   });
 });

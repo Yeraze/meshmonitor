@@ -38,8 +38,8 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
         <div className="tileset-header">
           <div className="tileset-selector-title">
             {activeMapTilesetMode === 'dark'
-              ? t('tileset.map_style_dark', 'Map Style (Dark mode)')
-              : t('tileset.map_style_light', 'Map Style (Light mode)')}
+              ? t('tileset.tileset_dark', 'Tileset (Dark mode)')
+              : t('tileset.tileset_light', 'Tileset (Light mode)')}
           </div>
           <button
             className="tileset-collapse-btn"

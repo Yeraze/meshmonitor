@@ -12,6 +12,7 @@ import { useChannels, useDeviceConfig } from '../hooks/useServerData';
 import apiService, { SignalTrendResult } from '../services/api';
 import './NodeDetailsBlock.css';
 import { UiIcon, type UiIconName } from './icons';
+import { MeshtasticContactShare } from './MeshtasticContactShare';
 
 interface NodeDetailsBlockProps {
   node: DeviceInfo | null;
@@ -272,6 +273,13 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
   const role = user?.role;
   const publicKey = user?.publicKey;
   const hardwareImageUrl = getHardwareImageUrl(hwModel);
+  const shareableContact = (
+    sourceId
+    && user
+    && Number.isInteger(node.nodeNum)
+    && node.nodeNum > 0
+    && node.nodeNum < 0xFFFFFFFF
+  ) ? { sourceId, user } : null;
 
   return (
     <div className="node-details-block">
@@ -471,6 +479,19 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
               {publicKey}
             </div>
           </div>
+        )}
+
+        {shareableContact && (
+          <MeshtasticContactShare
+            nodeNum={node.nodeNum}
+            sourceId={shareableContact.sourceId}
+            nodeName={
+              shareableContact.user.longName
+              || shareableContact.user.shortName
+              || shareableContact.user.id
+              || formatNodeIdHex(node.nodeNum)
+            }
+          />
         )}
 
         {/* Hops Away */}

@@ -31,6 +31,12 @@ import { resolveRequestSourceId } from '../utils/sourceResolver.js';
 import { requireSourceId } from '../utils/requireSourceId.js';
 import { optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
+import { isValidNodeNum, MAX_NODE_NUM } from '../constants/meshtastic.js';
+import { fail, ok } from '../utils/apiResponse.js';
+import {
+  encodeSharedContactUrl,
+  SharedContactValidationError,
+} from '../services/sharedContactService.js';
 
 const router = express.Router();
 
@@ -147,9 +153,64 @@ router.get('/nodes/active', optionalAuth(), async (req, res) => {
   }
 });
 
+// NodeInfo enrichment (cross-source fill-blanks-only). Registered before the
+// parametric /nodes/:nodeNum/... and /nodes/:nodeId/... routes as
+// defense-in-depth — these are literal 2-segment paths that don't collide
+// with any of them, but registering first removes all doubt.
+import { handleEnrichmentAnalysis, handleEnrichmentApply } from './shared/enrichmentHandlers.js';
+
+router.get('/nodes/enrichment/analysis', optionalAuth(), handleEnrichmentAnalysis);
+router.post('/nodes/enrichment/apply', optionalAuth(), handleEnrichmentApply);
+
+/**
+ * Generate a Meshtastic SharedContact URL for a source-scoped node.
+ * Unmessagable nodes remain shareable: the capability flag is preserved in
+ * the encoded User rather than treated as a contact-format restriction.
+ */
+router.get(
+  '/nodes/:nodeNum/contact-url',
+  requirePermission('nodes', 'read', {
+    sourceIdFrom: 'query',
+    requireSourceId: true,
+  }),
+  async (req, res) => {
+    try {
+      const nodeNum = Number(req.params.nodeNum);
+      const sourceId = req.query.sourceId as string;
+
+      if (!isValidNodeNum(nodeNum) || nodeNum === 0 || nodeNum === MAX_NODE_NUM) {
+        return fail(res, 400, 'INVALID_NODE_NUM', 'Invalid nodeNum');
+      }
+
+      const node = await databaseService.nodes.getNode(nodeNum, sourceId);
+      if (!node) {
+        return fail(res, 404, 'NODE_NOT_FOUND', 'Node not found');
+      }
+
+      if (!await checkNodeChannelAccess(node.nodeId, req.user, sourceId)) {
+        return fail(res, 403, 'FORBIDDEN', 'Insufficient permissions');
+      }
+
+      const url = encodeSharedContactUrl(node);
+      return ok(res, { url });
+    } catch (error) {
+      if (error instanceof SharedContactValidationError) {
+        return fail(res, 400, 'INVALID_CONTACT_IDENTITY', error.message);
+      }
+      logger.error('Error generating SharedContact URL:', error);
+      return fail(
+        res,
+        500,
+        'INTERNAL_ERROR',
+        'Failed to generate contact URL',
+      );
+    }
+  },
+);
+
 // Copy NodeInfo from another source
 import {
-  findCopyCandidates, copyNodeInfo, isNodeInfoField, NODE_INFO_FIELDS,
+  findCopyCandidates, getNodeInfoSnapshot, copyNodeInfo, isNodeInfoField, NODE_INFO_FIELDS,
   type NodeInfoField,
 } from '../services/nodeInfoCopyService.js';
 
@@ -163,8 +224,13 @@ router.get('/nodes/:nodeNum/copy-candidates', requirePermission('nodes', 'read')
     if (isNaN(nodeNum)) {
       return res.status(400).json({ error: 'nodeNum must be a number' });
     }
-    const candidates = await findCopyCandidates(nodeNum, sourceId);
-    res.json({ success: true, data: candidates });
+    // `target` is the node's current row on the target source (null if unseen
+    // there) so callers without the row in hand can render the copy diff.
+    const [candidates, target] = await Promise.all([
+      findCopyCandidates(nodeNum, sourceId),
+      getNodeInfoSnapshot(nodeNum, sourceId),
+    ]);
+    res.json({ success: true, data: { candidates, target } });
   } catch (error) {
     logger.error('Error getting copy candidates:', error);
     res.status(500).json({ error: 'Failed to retrieve copy candidates' });

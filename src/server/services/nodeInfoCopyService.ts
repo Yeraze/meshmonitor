@@ -24,11 +24,22 @@ export interface CopyNodeInfoResult {
   pushedToDevice: boolean;
 }
 
+/** Canonical "this NodeInfo field is empty" predicate. */
+export function isNodeInfoFieldBlank(value: unknown): boolean {
+  return value == null || value === '';
+}
+
+/** Count of NODE_INFO_FIELDS that are non-blank on a node. Used for donor ranking. */
+export function countFilledNodeInfoFields(node: Partial<DbNode>): number {
+  return NODE_INFO_FIELDS.filter(f => !isNodeInfoFieldBlank(node[f as keyof DbNode])).length;
+}
+
+/** Analysis field set — NODE_INFO_FIELDS minus the derived hasPKC flag. */
+export const ANALYZE_NODE_INFO_FIELDS =
+  NODE_INFO_FIELDS.filter(f => f !== 'hasPKC') as readonly NodeInfoField[];
+
 function countFilledFields(node: DbNode): number {
-  return NODE_INFO_FIELDS.filter(f => {
-    const val = node[f as keyof DbNode];
-    return val !== null && val !== undefined && val !== '';
-  }).length;
+  return countFilledNodeInfoFields(node);
 }
 
 function pickNodeInfoFields(node: DbNode): Pick<DbNode, NodeInfoField> {
@@ -71,6 +82,27 @@ export async function findCopyCandidates(
 
   candidates.sort((a, b) => b.fieldsFilled - a.fieldsFilled || b.node.updatedAt - a.node.updatedAt);
   return candidates;
+}
+
+/**
+ * Snapshot of a node's current NodeInfo fields on one source, in the same
+ * shape as `CopyCandidate['node']`. Null when the node is unknown to that
+ * source. Lets callers that don't already hold the target row (e.g. the
+ * cross-source enrichment report) render the "current" side of the copy diff.
+ */
+export async function getNodeInfoSnapshot(
+  nodeNum: number,
+  sourceId: string,
+): Promise<CopyCandidate['node'] | null> {
+  const node = await databaseService.nodes.getNode(nodeNum, sourceId);
+  if (!node) return null;
+  return {
+    nodeNum: node.nodeNum,
+    nodeId: node.nodeId,
+    ...pickNodeInfoFields(node),
+    updatedAt: node.updatedAt,
+    lastHeard: node.lastHeard ?? null,
+  };
 }
 
 /** Runtime guard for field names arriving from the request body. */

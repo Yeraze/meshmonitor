@@ -388,6 +388,48 @@ describe('MeshtasticManager - Node Identity Guards', () => {
       // Should not even fetch nodes
       expect(mockGetNodesNeedingKeyRepairAsync).not.toHaveBeenCalled();
     });
+
+    it('should skip all repairs when TX is disabled (#4294 WP3)', async () => {
+      manager.rebootMergeInProgress = false; // reset from the prior "reboot merge" test
+      manager.actualDeviceConfig = { lora: { txEnabled: false } };
+      mockGetNodesNeedingKeyRepairAsync.mockResolvedValue([
+        {
+          nodeNum: REMOTE_NODE_NUM,
+          nodeId: '!3ade68b1',
+          longName: 'Remote Node',
+          attemptCount: 0,
+          lastAttemptTime: null,
+        },
+      ]);
+
+      await manager.processKeyRepairs();
+
+      expect(loggerModule.logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('Key repair: Skipping - TX disabled')
+      );
+      expect(mockGetNodesNeedingKeyRepairAsync).not.toHaveBeenCalled();
+      expect(manager.sendNodeInfoRequest).not.toHaveBeenCalled();
+    });
+
+    it('should process key repair normally when TX is enabled', async () => {
+      manager.rebootMergeInProgress = false;
+      manager.actualDeviceConfig = { lora: { txEnabled: true } };
+      const remoteNode = {
+        nodeNum: REMOTE_NODE_NUM,
+        nodeId: '!3ade68b1',
+        longName: 'Remote Node',
+        attemptCount: 0,
+        lastAttemptTime: null,
+        channel: 0,
+      };
+      mockGetNodesNeedingKeyRepairAsync.mockResolvedValue([remoteNode]);
+      mockIsNodeSuppressed.mockReturnValue(false);
+      mockGetNode.mockReturnValue(remoteNode);
+
+      await manager.processKeyRepairs();
+
+      expect(manager.sendNodeInfoRequest).toHaveBeenCalledWith(REMOTE_NODE_NUM, 0);
+    });
   });
 
   describe('rebootMergeInProgress guard', () => {

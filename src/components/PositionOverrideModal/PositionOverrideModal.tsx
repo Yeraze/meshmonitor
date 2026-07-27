@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import Modal from '../common/Modal';
 import { useResolvedSourceId } from '../../hooks/useResolvedSourceId';
+import apiService from '../../services/api';
 import './PositionOverrideModal.css';
 
 interface Node {
@@ -27,7 +28,6 @@ interface PositionOverrideModalProps {
   onClose: () => void;
   onSave: (nodeNum: number, data: PositionOverride) => Promise<void>;
   getNodeName: (nodeId: string) => string;
-  baseUrl: string;
 }
 
 export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
@@ -36,7 +36,6 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
   onClose,
   onSave,
   getNodeName,
-  baseUrl,
 }) => {
   const { t } = useTranslation();
   const sourceId = useResolvedSourceId();
@@ -67,14 +66,8 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
       setLoading(true);
       setError(null);
       const sourceQuery = `?sourceId=${encodeURIComponent(sourceId)}`;
-      fetch(`${baseUrl}/api/nodes/${nodeId}/position-override${sourceQuery}`, {
-        credentials: 'include',
-      })
-        .then(res => {
-          if (res.ok) return res.json();
-          throw new Error('Failed to load position override');
-        })
-        .then((data: PositionOverride) => {
+      apiService.get<PositionOverride>(`/api/nodes/${nodeId}/position-override${sourceQuery}`)
+        .then((data) => {
           setEnabled(data.enabled);
           setIsPrivate(data.isPrivate ?? false);
           setLatitude(data.latitude?.toString() ?? '');
@@ -96,7 +89,7 @@ export const PositionOverrideModal: React.FC<PositionOverrideModalProps> = ({
     if (!isOpen) {
       loadedForNodeRef.current = null;
     }
-  }, [isOpen, nodeId, baseUrl, sourceId]);
+  }, [isOpen, nodeId, sourceId]);
 
   // Reset error state when values change
   useEffect(() => {

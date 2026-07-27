@@ -6,6 +6,7 @@
  * the graph model in compile.ts.
  */
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TRIGGERS, CONDITIONS, ACTIONS, BLOCK_BY_TYPE, fieldsFor, type BlockDef, type FieldDef } from './catalog';
 import type { WorkflowForm, FormBlock, Rule } from './compile';
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
@@ -15,7 +16,7 @@ import type { GeofenceShape } from '../auto-responder/types';
 import { UiIcon } from '../icons';
 
 export interface VariableOption { name: string; type: string; }
-export interface SourceOption { id: string; name: string; type?: string; enabled?: boolean; }
+export interface SourceOption { id: string; name: string; type?: string; enabled?: boolean; txEnabled?: boolean; }
 export interface UnifiedChannelOption {
   name: string; protocol?: string; encryption?: string;
   sources?: Array<{ sourceId: string; sourceName?: string; slot: number }>;
@@ -64,6 +65,7 @@ function defaultParams(type: string, triggerType: string): Record<string, unknow
 function FieldInput({ field, value, onChange, variables, sources, channels, scripts, regions, triggerType }: {
   field: FieldDef; value: unknown; onChange: (v: unknown) => void; variables: VariableOption[]; sources: SourceOption[]; channels: UnifiedChannelOption[]; scripts: ScriptOption[]; regions: string[]; triggerType: string;
 }) {
+  const { t } = useTranslation();
   let control;
   const varNames = variables.map((v) => v.name);
   switch (field.kind) {
@@ -155,11 +157,20 @@ function FieldInput({ field, value, onChange, variables, sources, channels, scri
           {sendable.length === 0 && <div className="ae-muted">No sendable (non-MQTT) sources.</div>}
           {sendable.map((s) => {
             const badge = protoBadge(s.type);
+            const txWarning = t(
+              'tx_disabled.automation_source_warning',
+              'Transmit is disabled on this source — messages sent through it will be skipped.',
+            );
             return (
               <label key={s.id} className="ae-switch" style={{ display: 'block', marginBottom: '0.2rem' }}>
                 <input type="checkbox" checked={sel.includes(s.id)} onChange={(e) =>
                   onChange(e.target.checked ? [...sel, s.id] : sel.filter((x) => x !== s.id))} />
                 {' '}{s.name}{badge ? <span className="ae-chip">{badge}</span> : null}
+                {s.txEnabled === false && (
+                  <span className="ae-tx-warn" title={txWarning}>
+                    <UiIcon name="alert" size={14} /> {txWarning}
+                  </span>
+                )}
               </label>
             );
           })}

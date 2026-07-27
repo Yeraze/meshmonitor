@@ -45,7 +45,7 @@ MeshMonitor is a full-stack web application for monitoring Meshtastic mesh netwo
 
 Before starting, ensure you have:
 
-- **Node.js 20+** (22+ recommended)
+- **Node.js 22+** (24 recommended)
 - **npm** (comes with Node.js)
 - **Git** with submodule support
 - **Docker** and **Docker Compose** (for containerized development)

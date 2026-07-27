@@ -12,6 +12,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import { ALL_SOURCES } from '../../../db/repositories/index.js';
+import { TxDisabledError } from '../../errors/txDisabledError.js';
 
 // Token constants
 const VALID_TEST_TOKEN = 'mm_v1_test_token_12345678901234567890';
@@ -973,6 +974,25 @@ describe('POST /api/v1/messages - Error Handling', () => {
 
     expect(response.body).toHaveProperty('success', false);
     expect(response.body).toHaveProperty('error', 'Internal Server Error');
+  });
+
+  it('should return 409 TX_DISABLED when transmit is disabled on this source', async () => {
+    const meshtasticManager = await import('../../meshtasticManager.js');
+    vi.mocked(meshtasticManager.fallbackManager.sendTextMessage).mockRejectedValueOnce(
+      new TxDisabledError()
+    );
+
+    const response = await request(app)
+      .post('/api/v1/messages')
+      .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`)
+      .send({
+        text: 'Test message',
+        channel: 0
+      })
+      .expect(409);
+
+    expect(response.body).toHaveProperty('success', false);
+    expect(response.body).toHaveProperty('code', 'TX_DISABLED');
   });
 });
 

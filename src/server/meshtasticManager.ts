@@ -1,5 +1,7 @@
 import databaseService, { type DbMessage } from '../services/database.js';
-import meshtasticProtobufService from './meshtasticProtobufService.js';
+import { buildContactRow, buildContactRowV2 } from './services/atakContactService.js';
+import meshtasticProtobufService, { formatTakPreview, formatTakV2Preview } from './meshtasticProtobufService.js';
+import { takV2Variant } from './takV2Decoder.js';
 import protobufService, { convertIpv4ConfigToStrings } from './protobufService.js';
 import { getProtobufRoot, type MeshBeaconPayload } from './protobufLoader.js';
 import { TcpTransport } from './tcpTransport.js';
@@ -38,6 +40,7 @@ import { waypointService } from './services/waypointService.js';
 import type { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
 import { MessageQueueService } from './messageQueueService.js';
 import { resolveAutoWelcomeDelaySeconds } from './autoWelcomeDelay.js';
+import { TxDisabledError } from './errors/txDisabledError.js';
 import { resolveAutoAckPreSendDelaySeconds } from './autoAckDelay.js';
 import { normalizeTriggerPatterns, normalizeTriggerChannels } from '../utils/autoResponderUtils.js';
 import { matchAutoResponderPattern } from './utils/autoResponderMatcher.js';
@@ -289,7 +292,7 @@ type TextMessage = {
   toNodeId: string;
   text: string;
   channel: number;
-  portnum: 1; // TEXT_MESSAGE_APP
+  portnum: number; // PortNum — 1 (TEXT_MESSAGE_APP) for text, 72 (ATAK_PLUGIN) for ATAK GeoChat
   requestId?: number; // For Virtual Node messages, preserve packet ID for ACK matching
   timestamp: number;
   rxTime?: number;
@@ -2225,6 +2228,13 @@ class MeshtasticManager implements ISourceManager {
 
     // The traceroute execution logic
     const executeTraceroute = async () => {
+      // TX-disabled radios cannot send OTA traceroutes; skip quietly and let the
+      // interval keep running so a later TX re-enable resumes automatically (#4294).
+      if (!this.isTxEnabled()) {
+        logger.debug('🗺️ Auto-traceroute: Skipping - TX disabled on this source');
+        return;
+      }
+
       // Check time window schedule (per-source — written by AutoTracerouteSection
       // via /api/settings?sourceId=, so must be read with getSettingForSource).
       const scheduleEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'tracerouteScheduleEnabled');
@@ -2380,6 +2390,13 @@ class MeshtasticManager implements ISourceManager {
     logger.debug(`📊 Starting remote LocalStats scheduler with ${this.remoteLocalStatsIntervalMinutes} minute interval (initial jitter: ${Math.round(initialJitterMs / 1000)}s)`);
 
     const executeRemoteLocalStats = async () => {
+      // TX-disabled radios cannot send remote telemetry requests; skip quietly and
+      // let the interval keep running so a later TX re-enable resumes automatically (#4294).
+      if (!this.isTxEnabled()) {
+        logger.debug('📊 Remote LocalStats: Skipping - TX disabled on this source');
+        return;
+      }
+
       // Per-source schedule window (written by AutoLocalStatsSection via
       // /api/settings?sourceId=, so read with getSettingForSource).
       const scheduleEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'remoteLocalStatsScheduleEnabled');
@@ -2645,6 +2662,13 @@ class MeshtasticManager implements ISourceManager {
     logger.debug(`🔑 Starting remote admin scanner with ${this.remoteAdminScannerIntervalMinutes} minute interval`);
 
     this.remoteAdminScannerInterval = setInterval(async () => {
+      // TX-disabled radios cannot send remote admin packets; skip quietly and let
+      // the interval keep running so a later TX re-enable resumes automatically (#4294).
+      if (!this.isTxEnabled()) {
+        logger.debug('🔑 Remote admin scanner: Skipping - TX disabled on this source');
+        return;
+      }
+
       // Check time window schedule
       const scheduleEnabled = await databaseService.settings.getSettingForSource(this.sourceId, 'remoteAdminScheduleEnabled');
       if (scheduleEnabled === 'true') {
@@ -2879,6 +2903,13 @@ class MeshtasticManager implements ISourceManager {
   private async processKeyRepairs(): Promise<void> {
     if (this.rebootMergeInProgress) {
       logger.debug('🔐 Key repair: skipping - reboot merge in progress');
+      return;
+    }
+
+    // TX-disabled radios cannot send NodeInfo exchanges; skip quietly and let the
+    // interval keep running so a later TX re-enable resumes automatically (#4294).
+    if (!this.isTxEnabled()) {
+      logger.debug('🔐 Key repair: Skipping - TX disabled on this source');
       return;
     }
 
@@ -3273,6 +3304,12 @@ class MeshtasticManager implements ISourceManager {
       // Schedule the cron job
       const job = scheduleCron(trigger.cronExpression, async () => {
         logger.debug(`⏱️ Timer "${trigger.name}" triggered (cron: ${trigger.cronExpression})`);
+        // TX-disabled radios cannot send the timer's mesh output; skip quietly and
+        // let the cron job keep running so a later TX re-enable resumes automatically (#4294).
+        if (!this.isTxEnabled()) {
+          logger.debug(`⏱️ Timer "${trigger.name}": Skipping - TX disabled on this source`);
+          return;
+        }
         // Airtime cutoff: skip timer automations while the mesh is congested
         if (await this.isAutomationAirtimeGated()) {
           return;
@@ -4262,8 +4299,19 @@ class MeshtasticManager implements ISourceManager {
             logger.debug(`📊 Position config after Proto3 defaults: positionBroadcastSecs=${parsed.data.position.positionBroadcastSecs}, positionBroadcastSmartEnabled=${parsed.data.position.positionBroadcastSmartEnabled}, fixedPosition=${parsed.data.position.fixedPosition}`);
           }
 
-          // Merge the actual device configuration (don't overwrite)
-          this.actualDeviceConfig = { ...this.actualDeviceConfig, ...parsed.data };
+          // Merge the actual device configuration (don't overwrite).
+          // Block-scoped (no-case-declarations): this `case` clause has no
+          // braces of its own, so `const` here needs an explicit block.
+          {
+            const prevTxEnabled = this.actualDeviceConfig?.lora?.txEnabled !== false;
+            this.actualDeviceConfig = { ...this.actualDeviceConfig, ...parsed.data };
+            const nextTxEnabled = this.actualDeviceConfig?.lora?.txEnabled !== false;
+            if (prevTxEnabled !== nextTxEnabled) {
+              logger.info(nextTxEnabled
+                ? `📡 [${this.sourceId}] TX re-enabled — autonomous senders resume`
+                : `🚫 [${this.sourceId}] TX disabled — pausing autonomous senders (node is now receive-only)`);
+            }
+          }
           logger.debug('📊 Merged actualDeviceConfig now has keys:', Object.keys(this.actualDeviceConfig));
           logger.debug('📊 actualDeviceConfig.lora present:', !!this.actualDeviceConfig?.lora);
           if (parsed.data.lora) {
@@ -5509,6 +5557,22 @@ class MeshtasticManager implements ISourceManager {
               } else {
                 payloadPreview = `[S&F ${rrName}]`;
               }
+            } else if (portnum === PortNum.ATAK_PLUGIN) {
+              payloadPreview = formatTakPreview(
+                processedPayload, meshPacket.decoded.payload.length);
+              // decodedPayload keeps the decoded TAKPacket object → renders as JSON in the detail view.
+            } else if (portnum === PortNum.ATAK_PLUGIN_V2) {
+              // #4317: decoded TAKPacketV2 renders as JSON in the detail view;
+              // when decode fell back (missing dictionary, corrupt frame) the
+              // preview names the dictionary and the raw-bytes dump stays
+              // suppressed as before.
+              payloadPreview = formatTakV2Preview(processedPayload, meshPacket.decoded.payload);
+              if (processedPayload instanceof Uint8Array) {
+                decodedPayload = null; // suppress raw-Uint8Array dump into metadata.decoded_payload
+              }
+            } else if (portnum === PortNum.ATAK_FORWARDER) {
+              payloadPreview = `[ATAK Forwarder (not decoded), ${meshPacket.decoded.payload.length} bytes]`;
+              decodedPayload = null;
             } else {
               payloadPreview = `[${portnumName}]`;
             }
@@ -5772,6 +5836,29 @@ class MeshtasticManager implements ISourceManager {
           case PortNum.WAYPOINT_APP:
             await this.processWaypointMessage(meshPacket, processedPayload as any);
             break;
+          case PortNum.ATAK_PLUGIN:
+            // ATAK TAKPacket (RX-only, Phase 1): GeoChat variant persists as
+            // a Messages row; PLI/detail/compressed/receipts are
+            // preview-only (Packet Monitor) this phase — see processTakPacket.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 decoded protobuf oneof shape (TAKPacket | raw Uint8Array); no generated TS type for protobufjs decode() output here
+            await this.processTakPacket(meshPacket, processedPayload as any, {
+              ...context,
+              decryptedBy,
+              decryptedChannelId: decryptedChannelId ?? undefined,
+            });
+            break;
+          case PortNum.ATAK_PLUGIN_V2:
+            // ATAK TAKPacketV2 (RX-only, #4317): implicit PLI upserts an
+            // atak_contacts row, GeoChat persists as a Messages row; the
+            // rich-CoT variants (shapes/routes/markers/…) stay
+            // Packet-Monitor-only (decoded JSON) this phase.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 decoded protobuf oneof shape (TAKPacketV2 | raw Uint8Array); no generated TS type for protobufjs decode() output here
+            await this.processTakV2Packet(meshPacket, processedPayload as any, {
+              ...context,
+              decryptedBy,
+              decryptedChannelId: decryptedChannelId ?? undefined,
+            });
+            break;
           case PortNum.MESH_BEACON_APP: {
             // MeshBeacon (firmware 2.8+, #3854): decoded and captured in the
             // Packet Monitor (preview + full decoded payload in metadata).
@@ -5924,6 +6011,57 @@ class MeshtasticManager implements ISourceManager {
   }
 
   /**
+   * Ensure the `from` node row exists, and — when `toNum` is the broadcast
+   * address (4294967295 / 0xFFFFFFFF) — ensure the `!ffffffff` pseudo-node
+   * row exists too. Shared by processTextMessageProtobuf and processTakPacket
+   * (ATAK GeoChat) so both message paths get identical endpoint bookkeeping.
+   */
+  private async ensureMessageEndpointNodes(fromNum: number, toNum: number): Promise<void> {
+    // Ensure the from node exists in the database
+    const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+    const existingFromNode = await databaseService.nodes.getNode(fromNum);
+    if (!existingFromNode) {
+      // Create a basic node entry if it doesn't exist
+      const basicNodeData = {
+        nodeNum: fromNum,
+        nodeId: fromNodeId,
+        longName: `Node ${fromNodeId}`,
+        shortName: fromNodeId.slice(-4),
+        lastHeard: Date.now() / 1000,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      await databaseService.upsertNodeAsync(basicNodeData, this.sourceId);
+      logger.debug(`📝 Created basic node entry for ${fromNodeId}`);
+    }
+
+    if (toNum === 4294967295) {
+      // For broadcast messages, we need a `!ffffffff` row in the nodes
+      // table because messages.toNodeNum has a NOT NULL FK to nodes.nodeNum.
+      // BUT: do NOT stamp `lastHeard` on this synthetic row. Stamping it
+      // causes getActiveNodes() to return it, which the virtual node server
+      // then ships to connected Meshtastic apps as a real node — see
+      // issue #2602 (zombie nodes on the map). The broadcast pseudo-node
+      // is not a real radio peer; it must never appear in the activity-
+      // filtered node list.
+      const broadcastNodeNum = 4294967295;
+      const existingBroadcastNode = await databaseService.nodes.getNode(broadcastNodeNum);
+      if (!existingBroadcastNode) {
+        const broadcastNodeData = {
+          nodeNum: broadcastNodeNum,
+          nodeId: '!ffffffff',
+          longName: 'Broadcast',
+          shortName: 'BCAST',
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        };
+        await databaseService.upsertNodeAsync(broadcastNodeData, this.sourceId);
+        logger.debug(`📝 Created broadcast node entry (no lastHeard — pseudo-node)`);
+      }
+    }
+  }
+
+  /**
    * Process text message using protobuf types
    */
   private async processTextMessageProtobuf(meshPacket: any, messageText: string, context?: ProcessingContext): Promise<void> {
@@ -5934,52 +6072,13 @@ class MeshtasticManager implements ISourceManager {
         const fromNum = Number(meshPacket.from);
         const toNum = Number(meshPacket.to);
 
-        // Ensure the from node exists in the database
+        // Ensure the from node (and, for broadcast, the !ffffffff pseudo-node) exist.
         const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
-        const existingFromNode = await databaseService.nodes.getNode(fromNum);
-        if (!existingFromNode) {
-          // Create a basic node entry if it doesn't exist
-          const basicNodeData = {
-            nodeNum: fromNum,
-            nodeId: fromNodeId,
-            longName: `Node ${fromNodeId}`,
-            shortName: fromNodeId.slice(-4),
-            lastHeard: Date.now() / 1000,
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          };
-          await databaseService.upsertNodeAsync(basicNodeData, this.sourceId);
-          logger.debug(`📝 Created basic node entry for ${fromNodeId}`);
-        }
+        await this.ensureMessageEndpointNodes(fromNum, toNum);
 
         // Handle broadcast address (4294967295 = 0xFFFFFFFF)
         const actualToNum = toNum;
         const toNodeId = `!${toNum.toString(16).padStart(8, '0')}`;
-
-        if (toNum === 4294967295) {
-          // For broadcast messages, we need a `!ffffffff` row in the nodes
-          // table because messages.toNodeNum has a NOT NULL FK to nodes.nodeNum.
-          // BUT: do NOT stamp `lastHeard` on this synthetic row. Stamping it
-          // causes getActiveNodes() to return it, which the virtual node server
-          // then ships to connected Meshtastic apps as a real node — see
-          // issue #2602 (zombie nodes on the map). The broadcast pseudo-node
-          // is not a real radio peer; it must never appear in the activity-
-          // filtered node list.
-          const broadcastNodeNum = 4294967295;
-          const existingBroadcastNode = await databaseService.nodes.getNode(broadcastNodeNum);
-          if (!existingBroadcastNode) {
-            const broadcastNodeData = {
-              nodeNum: broadcastNodeNum,
-              nodeId: '!ffffffff',
-              longName: 'Broadcast',
-              shortName: 'BCAST',
-              createdAt: Date.now(),
-              updatedAt: Date.now()
-            };
-            await databaseService.upsertNodeAsync(broadcastNodeData, this.sourceId);
-            logger.debug(`📝 Created broadcast node entry (no lastHeard — pseudo-node)`);
-          }
-        }
 
         // Determine if this is a direct message or a channel message
         // Direct messages (not broadcast) should use channel -1
@@ -6171,6 +6270,282 @@ class MeshtasticManager implements ISourceManager {
       }
     } catch (error) {
       logger.error('❌ Error processing text message:', error);
+    }
+  }
+
+  /**
+   * Process a decoded ATAK TAKPacket (PortNum 72 / ATAK_PLUGIN).
+   *
+   * RX-only. The GeoChat variant becomes a Messages row. The PLI variant
+   * (Phase 2, #3691) upserts an `atak_contacts` row via `atakContactService`
+   * and never becomes a Messages row. `detail` (opaque bytes) stays
+   * preview-only via the Packet Monitor (see
+   * meshtasticProtobufService.formatTakPreview). GeoChat receipts
+   * (delivery/read acks) and compressed (unishox2, out of scope) chat text
+   * are deliberately not persisted either — see the edge-case tables in
+   * ATAK_COT_PHASE1_SPEC.md §4 / ATAK_COT_PHASE2_SPEC.md §3.
+   *
+   * Reuses the text-message persistence pattern (ensureMessageEndpointNodes,
+   * identical row-id format, insertMessage, emitNewMessage, push
+   * notification) but — unlike processTextMessageProtobuf — deliberately
+   * does NOT call checkAutoAcknowledge / handleAutoPingCommand /
+   * checkAutoResponder: this is RX-only, and a plain-text auto-reply would
+   * go out as a normal Meshtastic TEXT_MESSAGE_APP that the ATAK plugin
+   * (which only ingests portnum 72) can't consume.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 meshPacket/tak are untyped protobuf-decoded shapes (no generated TS type for protobufjs decode() output), matching processTextMessageProtobuf's existing convention
+  private async processTakPacket(meshPacket: any, tak: any, context?: ProcessingContext): Promise<void> {
+    try {
+      // Decode failed upstream (processPayload's outer try/catch returns the
+      // raw Uint8Array) or the shape is otherwise unusable — nothing to persist.
+      if (!tak || typeof tak !== 'object' || tak instanceof Uint8Array) return;
+
+      // Phase 2 (#3691): PLI variant → ATAK contact upsert (position/status/team).
+      // Compressed string fields are unishox2 (out of scope), but PLI ints and
+      // Group/Status/Contact scalars are still valid when is_compressed=true —
+      // atakContactService keys uid on the carrying node in that case. PLI
+      // never becomes a Messages row; errors are logged, never thrown (RX-only,
+      // best-effort — a contact-persistence failure must not break decoding).
+      const pli = tak.pli;
+      if (pli) {
+        try {
+          const pliFromNum = Number(meshPacket.from);
+          const row = buildContactRow(meshPacket, tak, this.sourceId);
+          if (row) {
+            await this.ensureMessageEndpointNodes(pliFromNum, pliFromNum); // carrying node row
+            await databaseService.atakContacts.upsertContact(row);
+          }
+        } catch (error) {
+          logger.error('❌ Error persisting ATAK PLI contact:', error);
+        }
+        return; // PLI does not become a Messages row
+      }
+
+      // Only the GeoChat oneof variant becomes a message. `detail` is
+      // preview-only (Packet Monitor).
+      const chat = tak.chat;
+      if (!chat) return;
+
+      // Compressed strings are unishox2-encoded (out of scope this phase) —
+      // don't persist garbage/undecoded text.
+      if (tak.isCompressed ?? tak.is_compressed) return;
+
+      // Receipts (delivered/read acks) must NOT surface as chat messages.
+      const receiptType = Number(chat.receiptType ?? chat.receipt_type ?? 0);
+      const receiptForUid = chat.receiptForUid ?? chat.receipt_for_uid;
+      if (receiptType !== 0 || receiptForUid) return;
+
+      const rawMsg = typeof chat.message === 'string' ? chat.message.trim() : '';
+      if (!rawMsg) return;
+
+      // Presentation: no callsign column on the messages table, so the ATAK
+      // callsign is prefixed into `text` for provenance (spec §3).
+      const callsign = tak.contact?.callsign ?? tak.contact?.deviceCallsign ?? tak.contact?.device_callsign;
+      const toCallsign = chat.toCallsign ?? chat.to_callsign;
+      const tag = callsign
+        ? (toCallsign ? `[ATAK ${callsign}→${toCallsign}]` : `[ATAK ${callsign}]`)
+        : '[ATAK]';
+      const messageText = `${tag} ${rawMsg}`;
+
+      // Routing/channel: use the Meshtastic envelope, NOT the ATAK UID
+      // fields — chat.to / chat.toCallsign are ATAK UID strings, not
+      // Meshtastic nodeNums, and there is no UID→node map until Phase 2.
+      const fromNum = Number(meshPacket.from);
+      const toNum = Number(meshPacket.to);
+      const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+      const toNodeId = `!${toNum.toString(16).padStart(8, '0')}`;
+      const isDirectMessage = toNum !== 4294967295;
+      const channelIndex = isDirectMessage ? -1 : (meshPacket.channel !== undefined ? meshPacket.channel : 0);
+
+      // Ensure the from node (and, for broadcast, the !ffffffff pseudo-node) exist.
+      await this.ensureMessageEndpointNodes(fromNum, toNum);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 camelCase/snake_case dual-access on an untyped protobuf-decoded meshPacket, matching processTextMessageProtobuf's existing convention
+      const hopStart = (meshPacket as any).hopStart ?? (meshPacket as any).hop_start ?? null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 camelCase/snake_case dual-access on an untyped protobuf-decoded meshPacket, matching processTextMessageProtobuf's existing convention
+      const hopLimit = (meshPacket as any).hopLimit ?? (meshPacket as any).hop_limit ?? null;
+
+      const message: TextMessage = {
+        // Same format as processTextMessageProtobuf — load-bearing for
+        // cross-source dedup in /api/unified/messages.
+        id: `${this.sourceId}_${fromNum}_${meshPacket.id || Date.now()}`,
+        fromNodeNum: fromNum,
+        toNodeNum: toNum,
+        fromNodeId,
+        toNodeId,
+        text: messageText,
+        channel: channelIndex,
+        portnum: PortNum.ATAK_PLUGIN,
+        timestamp: Date.now(),
+        rxTime: plausibleRxTime(meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : undefined) ?? undefined,
+        hopStart,
+        hopLimit,
+        relayNode: meshPacket.relayNode ?? undefined,
+        viaMqtt: meshPacket.viaMqtt === true || isViaMqtt(meshPacket.transportMechanism),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 snake_case fallback on an untyped protobuf-decoded meshPacket, matching processTextMessageProtobuf's existing convention
+        rxSnr: meshPacket.rxSnr ?? (meshPacket as any).rx_snr,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 snake_case fallback on an untyped protobuf-decoded meshPacket, matching processTextMessageProtobuf's existing convention
+        rxRssi: meshPacket.rxRssi ?? (meshPacket as any).rx_rssi,
+        createdAt: Date.now(),
+        decryptedBy: context?.decryptedBy ?? null,
+        sourceIp: null,
+        sourcePath: 'tcp_radio',
+        spoofSuspected: this.assessLocalSpoof(meshPacket).spoofSuspected || undefined,
+      };
+
+      const wasInserted = await databaseService.messages.insertMessage(message, this.sourceId);
+
+      if (wasInserted) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #3691 TextMessage/DbMessage shape mismatch on emit, matching processTextMessageProtobuf's existing convention
+        dataEventEmitter.emitNewMessage(message as any, this.sourceId);
+        if (isDirectMessage) {
+          logger.debug(`💾 Saved ATAK GeoChat DM from ${message.fromNodeId} to ${message.toNodeId}: "${messageText.substring(0, 30)}..."`);
+        } else {
+          logger.debug(`💾 Saved ATAK GeoChat from ${message.fromNodeId} on channel ${channelIndex}: "${messageText.substring(0, 30)}..."`);
+        }
+
+        // GeoChat is a real message — send the same push notification as text.
+        await this.sendMessagePushNotification(message, messageText, isDirectMessage);
+
+        // Deliberately NO checkAutoAcknowledge / handleAutoPingCommand /
+        // checkAutoResponder — RX-only (see method doc comment above).
+      } else {
+        logger.debug(`⏭️ Skipped duplicate ATAK GeoChat ${message.id} (echo from device)`);
+      }
+    } catch (error) {
+      logger.error('❌ Error processing ATAK TAKPacket:', error);
+    }
+  }
+
+  /**
+   * Process a decoded ATAK TAKPacketV2 (PortNum 78 / ATAK_PLUGIN_V2, #4317).
+   *
+   * RX-only, mirroring processTakPacket's phase scoping: the implicit-PLI
+   * case (no payload_variant set) upserts an `atak_contacts` row via
+   * `buildContactRowV2`; the GeoChat variant becomes a Messages row; every
+   * rich-CoT variant (shapes, markers, routes, rab, casevac, emergency,
+   * task, TAKTALK, aircraft, raw_detail) stays Packet-Monitor-only (decoded
+   * JSON in metadata) until there's a dedicated surface for it. Unlike V1
+   * there is no unishox2/is_compressed concern — strings are always clean
+   * after zstd decompression. GeoChat receipts are still skipped.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 meshPacket/tak are untyped protobuf-decoded shapes (no generated TS type for protobufjs decode() output), matching processTakPacket's existing convention
+  private async processTakV2Packet(meshPacket: any, tak: any, context?: ProcessingContext): Promise<void> {
+    try {
+      // Decode failed upstream (processPayload fell back to the raw
+      // Uint8Array — missing dictionary or corrupt frame) — nothing to persist.
+      if (!tak || typeof tak !== 'object' || tak instanceof Uint8Array) return;
+
+      const variant = takV2Variant(tak);
+
+      // Implicit PLI: no payload_variant set = position report → contact
+      // upsert (never a Messages row). Errors are logged, never thrown
+      // (RX-only, best-effort — same contract as the V1 PLI path).
+      // Note the dictionary ID and the variant are orthogonal: an
+      // aircraft-dict (dict 1) packet with no variant set is still a
+      // position report and lands here by design.
+      if (variant === undefined) {
+        try {
+          const pliFromNum = Number(meshPacket.from);
+          const row = buildContactRowV2(meshPacket, tak, this.sourceId);
+          if (row) {
+            await this.ensureMessageEndpointNodes(pliFromNum, pliFromNum); // carrying node row
+            await databaseService.atakContacts.upsertContact(row);
+          }
+        } catch (error) {
+          logger.error('❌ Error persisting ATAK V2 PLI contact:', error);
+        }
+        return;
+      }
+
+      // Only the GeoChat variant becomes a message this phase. A DB failure
+      // in the insert/emit path below is covered by this method's outer
+      // catch (logged, never thrown) — same RX-only contract as V1.
+      if (variant !== 'chat') return;
+      const chat = tak.chat;
+
+      // Receipts (delivered/read acks) must NOT surface as chat messages.
+      const receiptType = Number(chat.receiptType ?? chat.receipt_type ?? 0);
+      const receiptForUid = chat.receiptForUid ?? chat.receipt_for_uid;
+      if (receiptType !== 0 || receiptForUid) return;
+
+      const rawMsg = typeof chat.message === 'string' ? chat.message.trim() : '';
+      if (!rawMsg) return;
+
+      // Presentation: same `[ATAK …]` provenance prefix as V1 GeoChat —
+      // V2 carries callsign at the top level (no Contact sub-message).
+      const callsign = tak.callsign || tak.deviceCallsign || tak.device_callsign;
+      const toCallsign = chat.toCallsign ?? chat.to_callsign;
+      const tag = callsign
+        ? (toCallsign ? `[ATAK ${callsign}→${toCallsign}]` : `[ATAK ${callsign}]`)
+        : '[ATAK]';
+      const messageText = `${tag} ${rawMsg}`;
+
+      // Routing/channel: use the Meshtastic envelope, NOT the ATAK UID
+      // fields (same reasoning as processTakPacket).
+      const fromNum = Number(meshPacket.from);
+      const toNum = Number(meshPacket.to);
+      const fromNodeId = `!${fromNum.toString(16).padStart(8, '0')}`;
+      const toNodeId = `!${toNum.toString(16).padStart(8, '0')}`;
+      const isDirectMessage = toNum !== 4294967295;
+      const channelIndex = isDirectMessage ? -1 : (meshPacket.channel !== undefined ? meshPacket.channel : 0);
+
+      await this.ensureMessageEndpointNodes(fromNum, toNum);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 camelCase/snake_case dual-access on an untyped protobuf-decoded meshPacket, matching processTakPacket's existing convention
+      const hopStart = (meshPacket as any).hopStart ?? (meshPacket as any).hop_start ?? null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 camelCase/snake_case dual-access on an untyped protobuf-decoded meshPacket, matching processTakPacket's existing convention
+      const hopLimit = (meshPacket as any).hopLimit ?? (meshPacket as any).hop_limit ?? null;
+
+      const message: TextMessage = {
+        // Same format as processTextMessageProtobuf — load-bearing for
+        // cross-source dedup in /api/unified/messages.
+        id: `${this.sourceId}_${fromNum}_${meshPacket.id || Date.now()}`,
+        fromNodeNum: fromNum,
+        toNodeNum: toNum,
+        fromNodeId,
+        toNodeId,
+        text: messageText,
+        channel: channelIndex,
+        portnum: PortNum.ATAK_PLUGIN_V2,
+        timestamp: Date.now(),
+        rxTime: plausibleRxTime(meshPacket.rxTime ? Number(meshPacket.rxTime) * 1000 : undefined) ?? undefined,
+        hopStart,
+        hopLimit,
+        relayNode: meshPacket.relayNode ?? undefined,
+        viaMqtt: meshPacket.viaMqtt === true || isViaMqtt(meshPacket.transportMechanism),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 snake_case fallback on an untyped protobuf-decoded meshPacket, matching processTakPacket's existing convention
+        rxSnr: meshPacket.rxSnr ?? (meshPacket as any).rx_snr,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 snake_case fallback on an untyped protobuf-decoded meshPacket, matching processTakPacket's existing convention
+        rxRssi: meshPacket.rxRssi ?? (meshPacket as any).rx_rssi,
+        createdAt: Date.now(),
+        decryptedBy: context?.decryptedBy ?? null,
+        sourceIp: null,
+        sourcePath: 'tcp_radio',
+        spoofSuspected: this.assessLocalSpoof(meshPacket).spoofSuspected || undefined,
+      };
+
+      const wasInserted = await databaseService.messages.insertMessage(message, this.sourceId);
+
+      if (wasInserted) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4317 TextMessage/DbMessage shape mismatch on emit, matching processTakPacket's existing convention
+        dataEventEmitter.emitNewMessage(message as any, this.sourceId);
+        if (isDirectMessage) {
+          logger.debug(`💾 Saved ATAK V2 GeoChat DM from ${message.fromNodeId} to ${message.toNodeId}: "${messageText.substring(0, 30)}..."`);
+        } else {
+          logger.debug(`💾 Saved ATAK V2 GeoChat from ${message.fromNodeId} on channel ${channelIndex}: "${messageText.substring(0, 30)}..."`);
+        }
+
+        // GeoChat is a real message — same push notification as text.
+        await this.sendMessagePushNotification(message, messageText, isDirectMessage);
+
+        // Deliberately NO checkAutoAcknowledge / handleAutoPingCommand /
+        // checkAutoResponder — RX-only (see processTakPacket doc comment).
+      } else {
+        logger.debug(`⏭️ Skipped duplicate ATAK V2 GeoChat ${message.id} (echo from device)`);
+      }
+    } catch (error) {
+      logger.error('❌ Error processing ATAK TAKPacketV2:', error);
     }
   }
 
@@ -8598,6 +8973,15 @@ class MeshtasticManager implements ISourceManager {
   }
 
 
+  /**
+   * Current transmit state for THIS source, read from the in-memory device config.
+   * Defaults to true when config hasn't arrived yet (fail-open: don't block sends
+   * before we know the radio's state). No DB access — safe to call per packet.
+   */
+  isTxEnabled(): boolean {
+    return this.actualDeviceConfig?.lora?.txEnabled !== false;
+  }
+
   // Configuration retrieval methods
   async getDeviceConfig(): Promise<any> {
     // Return config data from what we've received via TCP stream
@@ -8618,6 +9002,10 @@ class MeshtasticManager implements ISourceManager {
   async sendTextMessage(text: string, channel: number = 0, destination?: number, replyId?: number, emoji?: number, userId?: number, attribution?: { sourceIp?: string | null; sourcePath?: 'http_api' | 'tcp_radio' | 'mqtt_bridge' | 'system' | null }): Promise<number> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
     }
 
     try {
@@ -8787,6 +9175,10 @@ class MeshtasticManager implements ISourceManager {
       throw new Error('Not connected to Meshtastic node');
     }
 
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
+    }
+
     if (!this.localNodeInfo) {
       throw new Error('Local node information not available');
     }
@@ -8833,6 +9225,10 @@ class MeshtasticManager implements ISourceManager {
   async sendPositionRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
     }
 
     if (!this.localNodeInfo) {
@@ -8910,6 +9306,10 @@ class MeshtasticManager implements ISourceManager {
       throw new Error('Not connected to Meshtastic node');
     }
 
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
+    }
+
     if (!this.localNodeInfo) {
       throw new Error('Local node information not available');
     }
@@ -8977,6 +9377,10 @@ class MeshtasticManager implements ISourceManager {
   async sendNeighborInfoRequest(destination: number, channel: number = 0): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
     }
 
     if (!this.localNodeInfo) {
@@ -9204,6 +9608,10 @@ class MeshtasticManager implements ISourceManager {
   ): Promise<{ packetId: number; requestId: number }> {
     if (!this.isConnected || !this.transport) {
       throw new Error('Not connected to Meshtastic node');
+    }
+
+    if (!this.isTxEnabled()) {
+      throw new TxDisabledError();
     }
 
     if (!this.localNodeInfo) {
@@ -9453,8 +9861,11 @@ class MeshtasticManager implements ISourceManager {
         return;
       }
 
-      // Skip non-text messages (telemetry, traceroutes, etc.)
-      if (message.portnum !== 1) { // 1 = TEXT_MESSAGE_APP
+      // Skip non-chat messages (telemetry, traceroutes, etc.). ATAK GeoChat
+      // (PortNum.ATAK_PLUGIN, and its V2 form on PortNum.ATAK_PLUGIN_V2) is a
+      // real chat message too — see processTakPacket / processTakV2Packet —
+      // and gets a push notification the same as a text message (spec §7.3).
+      if (message.portnum !== PortNum.TEXT_MESSAGE_APP && message.portnum !== PortNum.ATAK_PLUGIN && message.portnum !== PortNum.ATAK_PLUGIN_V2) {
         return;
       }
 
@@ -9562,6 +9973,12 @@ class MeshtasticManager implements ISourceManager {
 
       // Skip if auto-acknowledge is disabled
       if (autoAckEnabled !== 'true') {
+        return;
+      }
+
+      // TX-disabled radios cannot send the ack reply; skip quietly (#4294).
+      if (!this.isTxEnabled()) {
+        logger.debug('⏭️ Skipping auto-acknowledge - TX disabled on this source');
         return;
       }
 
@@ -9884,6 +10301,13 @@ class MeshtasticManager implements ISourceManager {
       return false;
     }
 
+    // TX-disabled radios cannot send ping replies; skip quietly rather than
+    // letting sendTextMessage throw TxDisabledError partway through (#4294).
+    if (!this.isTxEnabled()) {
+      logger.debug('⏭️  Auto-ping command received but TX is disabled on this source');
+      return false;
+    }
+
     // Airtime cutoff: skip auto-ping while the mesh is congested
     if (await this.isAutomationAirtimeGated()) {
       return false;
@@ -9985,6 +10409,12 @@ class MeshtasticManager implements ISourceManager {
    * Send the next ping in the auto-ping session
    */
   private async sendNextAutoPing(session: AutoPingSession): Promise<void> {
+    // TX-disabled radios cannot send pings; skip this tick quietly and leave the
+    // session's interval running so it resumes automatically on TX re-enable (#4294).
+    if (!this.isTxEnabled()) {
+      return;
+    }
+
     // Check if session is complete — send summary as the final message
     if (session.completedPings >= session.totalPings) {
       void this.finalizeAutoPingSession(session.requestedBy);
@@ -10288,6 +10718,12 @@ class MeshtasticManager implements ISourceManager {
 
       // Skip if auto-responder is disabled
       if (autoResponderEnabled !== 'true') {
+        return;
+      }
+
+      // TX-disabled radios cannot send the auto-responder reply; skip quietly (#4294).
+      if (!this.isTxEnabled()) {
+        logger.debug('⏭️ Skipping auto-responder - TX disabled on this source');
         return;
       }
 

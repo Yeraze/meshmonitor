@@ -307,6 +307,49 @@ describe('rebroadcastTick', () => {
     expect(result).toEqual(refreshed);
     expect(emit.mock.calls.find((c) => c[0] === 'upserted')).toBeTruthy();
   });
+
+  // #4294 WP3 — TX-disabled Meshtastic sources must not attempt the OTA send.
+  describe('TX-disabled skip (#4294 WP3)', () => {
+    it('does NOT stamp lastBroadcastAt or call broadcastWaypoint when the source manager reports TX disabled', async () => {
+      mockFindOldestEligible.mockResolvedValueOnce(eligibleRow());
+      const broadcastWaypoint = vi.fn().mockResolvedValue(42);
+      mockGetManager.mockReturnValueOnce({ broadcastWaypoint, isTxEnabled: () => false });
+
+      const result = await waypointService.rebroadcastTick();
+
+      expect(result).toBeNull();
+      expect(broadcastWaypoint).not.toHaveBeenCalled();
+      expect(mockMarkRebroadcasted).not.toHaveBeenCalled();
+    });
+
+    it('broadcasts normally when the source manager reports TX enabled', async () => {
+      const row = eligibleRow();
+      mockFindOldestEligible.mockResolvedValueOnce(row);
+      const broadcastWaypoint = vi.fn().mockResolvedValue(42);
+      mockGetManager.mockReturnValueOnce({ broadcastWaypoint, isTxEnabled: () => true });
+      mockMarkRebroadcasted.mockResolvedValueOnce(true);
+      mockGet.mockResolvedValueOnce({ ...row, lastBroadcastAt: 1234 });
+
+      const result = await waypointService.rebroadcastTick();
+
+      expect(broadcastWaypoint).toHaveBeenCalledOnce();
+      expect(result).not.toBeNull();
+    });
+
+    it('broadcasts normally when the manager has no isTxEnabled (e.g. a MeshCore manager, never gated)', async () => {
+      const row = eligibleRow();
+      mockFindOldestEligible.mockResolvedValueOnce(row);
+      const broadcastWaypoint = vi.fn().mockResolvedValue(42);
+      mockGetManager.mockReturnValueOnce({ broadcastWaypoint });
+      mockMarkRebroadcasted.mockResolvedValueOnce(true);
+      mockGet.mockResolvedValueOnce({ ...row, lastBroadcastAt: 1234 });
+
+      const result = await waypointService.rebroadcastTick();
+
+      expect(broadcastWaypoint).toHaveBeenCalledOnce();
+      expect(result).not.toBeNull();
+    });
+  });
 });
 
 describe('expireSweep', () => {

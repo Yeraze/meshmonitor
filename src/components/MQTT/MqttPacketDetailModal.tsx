@@ -12,6 +12,8 @@ import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useDialogA11y } from '../../hooks/useDialogA11y';
 import type { MqttGroupedPacket, MqttReception } from './mqttPacketTypes';
+import { okToMqttState } from './okToMqttState';
+import MqttOkToMqttMarker from './MqttOkToMqttMarker';
 
 interface Props {
   packet: MqttGroupedPacket;
@@ -23,7 +25,7 @@ interface Props {
 
 const BROADCAST_NODE_NUM = 0xffffffff;
 
-const ENCRYPTED_OUTCOME_BADGES = new Set(['encrypted', 'ignored', 'geo-ignored', 'unsupported-portnum', 'decode-error']);
+const ENCRYPTED_OUTCOME_BADGES = new Set(['encrypted', 'ignored', 'geo-ignored', 'distance', 'unsupported-portnum', 'decode-error']);
 
 function outcomeBadgeClass(outcome: string): string {
   switch (outcome) {
@@ -33,6 +35,8 @@ function outcomeBadgeClass(outcome: string): string {
       return 'mqpm-badge mqpm-badge-ignored';
     case 'geo-ignored':
       return 'mqpm-badge mqpm-badge-geo-ignored';
+    case 'distance':
+      return 'mqpm-badge mqpm-badge-distance';
     case 'unsupported-portnum':
     case 'decode-error':
       return 'mqpm-badge mqpm-badge-error';
@@ -140,6 +144,9 @@ const MqttPacketDetailModal: React.FC<Props> = ({ packet, prefix, csrfFetch, nod
                 : <span className="mqpm-badge">{packet.ingestOutcome}</span>}
             </Row>
             <Row label={t('mqtt.packets.encrypted', 'Encrypted')}>{packet.encrypted ? t('common.yes', 'Yes') : t('common.no', 'No')}</Row>
+            <Row label={t('mqtt.packets.okToMqtt', 'ok_to_mqtt')}>
+              <MqttOkToMqttMarker state={okToMqttState(packet)} scope="packet" />
+            </Row>
             <Row label={t('mqtt.packets.size', 'Size')} mono>{packet.payloadSize != null ? `${packet.payloadSize} B` : '—'}</Row>
             <Row label={t('mqtt.packets.gatewayCount', 'Gateways')} mono>{packet.gatewayCount}</Row>
             <Row label={t('mqtt.packets.receptions', 'Receptions')} mono>{packet.receptionCount}</Row>
@@ -161,32 +168,36 @@ const MqttPacketDetailModal: React.FC<Props> = ({ packet, prefix, csrfFetch, nod
             ) : receptionsError ? (
               <div className="mqpm-error">{receptionsError}</div>
             ) : receptions.length === 0 ? (
-              <div className="mqpm-empty">{t('mqtt.packets.empty', 'No packets captured yet. Waiting for MQTT traffic…')}</div>
+              <div className="mqpm-empty">{t('mqtt.packets.noReceptionsFound', 'No receptions recorded for this packet.')}</div>
             ) : (
-              <table className="mqpm-recv-table">
-                <thead>
-                  <tr>
-                    <th>{t('mqtt.packets.gateway', 'Gateway')}</th>
-                    <th>{t('mqtt.packets.time', 'Time')}</th>
-                    <th>{t('mqtt.packets.rxTime', 'Rx time')}</th>
-                    <th>{t('mqtt.packets.rssi', 'RSSI')}</th>
-                    <th>{t('mqtt.packets.snr', 'SNR')}</th>
-                    <th>{t('mqtt.packets.hops', 'Hops')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {receptions.map((r, idx) => (
-                    <tr key={`${r.gatewayId ?? 'unknown'}-${r.timestamp}-${idx}`}>
-                      <td>{nodeName(r.gatewayNodeNum) ?? r.gatewayId ?? '—'}</td>
-                      <td className="mqpm-mono">{formatHeard(r.timestamp)}</td>
-                      <td className="mqpm-mono">{r.rxTime != null && r.rxTime > 0 ? formatHeard(r.rxTime) : '—'}</td>
-                      <td className="mqpm-mono">{r.rxRssi ?? '—'}</td>
-                      <td className="mqpm-mono">{r.rxSnr != null ? r.rxSnr.toFixed(2) : '—'}</td>
-                      <td className="mqpm-mono">{r.hopStart != null && r.hopLimit != null ? r.hopStart - r.hopLimit : '—'}</td>
+              <div className="mqpm-recv-table-wrap">
+                <table className="mqpm-recv-table">
+                  <thead>
+                    <tr>
+                      <th>{t('mqtt.packets.gateway', 'Gateway')}</th>
+                      <th>{t('mqtt.packets.time', 'Time')}</th>
+                      <th>{t('mqtt.packets.rxTime', 'Rx time')}</th>
+                      <th>{t('mqtt.packets.rssi', 'RSSI')}</th>
+                      <th>{t('mqtt.packets.snr', 'SNR')}</th>
+                      <th>{t('mqtt.packets.hops', 'Hops')}</th>
+                      <th>{t('mqtt.packets.okToMqtt', 'ok_to_mqtt')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {receptions.map((r, idx) => (
+                      <tr key={`${r.gatewayId ?? 'unknown'}-${r.timestamp}-${idx}`}>
+                        <td>{nodeName(r.gatewayNodeNum) ?? r.gatewayId ?? '—'}</td>
+                        <td className="mqpm-mono">{formatHeard(r.timestamp)}</td>
+                        <td className="mqpm-mono">{r.rxTime != null && r.rxTime > 0 ? formatHeard(r.rxTime) : '—'}</td>
+                        <td className="mqpm-mono">{r.rxRssi ?? '—'}</td>
+                        <td className="mqpm-mono">{r.rxSnr != null ? r.rxSnr.toFixed(2) : '—'}</td>
+                        <td className="mqpm-mono">{r.hopStart != null && r.hopLimit != null ? r.hopStart - r.hopLimit : '—'}</td>
+                        <td><MqttOkToMqttMarker state={okToMqttState(r)} scope="gateway" /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </section>
         </div>

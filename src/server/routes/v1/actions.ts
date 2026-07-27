@@ -18,6 +18,7 @@ import { resolveSourceManager } from '../../utils/resolveSourceManager.js';
 import { logger } from '../../../utils/logger.js';
 import { PortNum } from '../../constants/meshtastic.js';
 import { attachSource, resolvedSourceIdFromPath } from './sourceParam.js';
+import { isTxDisabledError } from '../../errors/txDisabledError.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -101,6 +102,9 @@ router.post('/traceroute', attachSource('traceroute', 'write'), async (req: Requ
       },
     });
   } catch (error) {
+    if (isTxDisabledError(error)) {
+      return res.status(409).json({ success: false, error: 'Transmit is disabled on this source', code: 'TX_DISABLED' });
+    }
     logger.error('[v1/actions] Error sending traceroute:', error);
     res.status(500).json({ success: false, error: 'Failed to send traceroute' });
   }
@@ -158,6 +162,9 @@ router.post('/request-position', attachSource('messages', 'write'), async (req: 
       },
     });
   } catch (error) {
+    if (isTxDisabledError(error)) {
+      return res.status(409).json({ success: false, error: 'Transmit is disabled on this source', code: 'TX_DISABLED' });
+    }
     logger.error('[v1/actions] Error requesting position:', error);
     res.status(500).json({ success: false, error: 'Failed to request position' });
   }
@@ -214,6 +221,9 @@ router.post('/request-nodeinfo', attachSource('messages', 'write'), async (req: 
       },
     });
   } catch (error) {
+    if (isTxDisabledError(error)) {
+      return res.status(409).json({ success: false, error: 'Transmit is disabled on this source', code: 'TX_DISABLED' });
+    }
     logger.error('[v1/actions] Error requesting nodeinfo:', error);
     res.status(500).json({ success: false, error: 'Failed to request node info' });
   }
@@ -272,6 +282,9 @@ router.post('/request-neighbors', attachSource('traceroute', 'write'), async (re
       },
     });
   } catch (error) {
+    if (isTxDisabledError(error)) {
+      return res.status(409).json({ success: false, error: 'Transmit is disabled on this source', code: 'TX_DISABLED' });
+    }
     logger.error('[v1/actions] Error requesting neighbor info:', error);
     res.status(500).json({ success: false, error: 'Failed to request neighbor info' });
   }

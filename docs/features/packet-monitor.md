@@ -10,6 +10,14 @@ MeshCore sources have their own equivalent — the **OTA Packet Monitor** access
 MQTT sources (`mqtt_broker` and `mqtt_bridge`) also have their own gateway-aware equivalent — see [MQTT sources](#mqtt-sources) below.
 :::
 
+::: tip ATAK / CoT Integration
+The `ATAK_PLUGIN`, `ATAK_PLUGIN_V2`, and `ATAK_FORWARDER` rows below are one
+piece of a larger integration — ATAK contacts also render on MeshMonitor's
+maps, and a streaming CoT feed can expose MeshMonitor as an ATAK/WinTAK
+network input. See [ATAK / CoT Integration](/features/atak) for the full
+picture.
+:::
+
 ![Packet Monitor](/images/features/packet-monitor.png)
 
 ## Accessing the Packet Monitor
@@ -41,6 +49,9 @@ The Packet Monitor displays **only incoming packets** received from the mesh net
 | TRACEROUTE (70) | Traceroute responses |
 | NEIGHBORINFO (71) | Neighbor information |
 | MESH_BEACON (37) | Firmware 2.8+ periodic beacon advertising a joinable channel (name/preset) — [early preview](/faq#firmware-2-8-early-preview), decoded as `[MeshBeacon: "..."]` |
+| ATAK_PLUGIN (72) | ATAK (Team Awareness Kit) plugin packets — decoded as `[ATAK PLI ...]` (position), `[ATAK GeoChat ...]` (chat, also delivered to Messages), `[ATAK detail ...]`, or `[ATAK GeoChat receipt]`; full decoded TAKPacket in the detail view |
+| ATAK_PLUGIN_V2 (78) | ATAK V2 (firmware 2.8+ rich CoT, zstd-compressed) — shown as `[ATAK V2 (not decoded), N bytes]`; decoding is a planned follow-up |
+| ATAK_FORWARDER (257) | Third-party ATAK Forwarder packets — identified by name, not decoded |
 
 ::: tip Signed-packet shield (firmware 2.8 early preview)
 Packets carrying a firmware-verified **XEdDSA signature** (Meshtastic's new packet-signing scheme, not yet in an official release) show a small shield icon next to the entry. This only reflects what the connected node itself reported as verified — MeshMonitor doesn't re-verify the signature.
@@ -172,6 +183,104 @@ These are flagged with an outcome badge (`encrypted`, `ignored`, `geo-ignored`,
 `unsupported-portnum`, or `decode-error`) in place of the decoded packet type, so
 the monitor stays useful for diagnosing why a packet's contents aren't visible
 elsewhere in MeshMonitor.
+
+### `ok_to_mqtt` violation detection
+
+Every Meshtastic packet carries an `ok_to_mqtt` bit (bit 0 of `Data.bitfield`) by which the
+originating node signals whether it consents to its traffic being relayed to MQTT. Firmware
+only enforces this bit when a gateway relays *someone else's* packet, and it skips the check
+entirely whenever the gateway believes its configured broker address is private — a check that
+is a plain IP-range test with no awareness of NAT or port forwarding. A gateway reaching its
+broker through a LAN-literal address that is *also* port-forwarded to the internet gets
+misclassified as private, and will silently relay opted-out traffic to what is effectively a
+public broker.
+
+MeshMonitor detects this condition: when a received MQTT packet's `ok_to_mqtt` bit is
+**explicitly clear** and the publishing gateway is not the packet's originator, that is a
+provable, confirmed violation, and MeshMonitor records it. A packet whose bit cannot be read at
+all — because the field was never set, or because the packet is encrypted and MeshMonitor has no
+matching channel key — is recorded only as *unknown/suspected*, never as a confirmed violation.
+
+::: info Not necessarily malicious
+The overwhelmingly likely cause of a detected violation is the firmware misconfiguration
+described above — a gateway whose broker address merely looks private but isn't — not a
+deliberate attempt to bypass a node's opt-out. Treat a violation as a configuration issue worth
+flagging to the gateway operator, not as evidence of hostile intent.
+:::
+
+#### Settings
+
+Violation detection is controlled by three settings, all with working defaults out of the box —
+no configuration is required to start collecting violation history:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `mqtt_oktomqtt_violation_log_enabled` | ON | Kill switch for recording violations. **Unlike** `mqtt_packet_log_enabled` (opt-in, default off), this setting is **on by default**: set it to `0` to disable violation logging; any other value — including leaving it unset — keeps it on. |
+| `mqtt_oktomqtt_violation_retention_days` | `90` | How long a confirmed violation record is retained. |
+| `mqtt_oktomqtt_violation_max_count` | `50000` | Maximum number of violation records retained per source before the oldest are trimmed. |
+
+#### Retention is independent of the Packet Monitor
+
+Confirmed violations are stored in their own record set with their own retention policy — 90
+days / 50,000 records per source — deliberately independent of the Packet Monitor's much shorter
+window (24 hours / 5,000 rows, see [Capture opt-in and retention](#capture-opt-in-and-retention)
+above) and of whether MQTT packet capture is enabled at all. Violation history is therefore
+retained even on installs that never turn on the MQTT Packet Monitor, and isn't lost when the
+packet log trims itself daily.
+
+#### Forward-only detection
+
+Violation detection only covers MQTT traffic received **after** upgrading to a MeshMonitor
+version with this feature. There is no backfill: the `ok_to_mqtt` bit was never previously
+stored, so there is nothing to retroactively re-evaluate for packets received before the
+upgrade — an old row can't be distinguished from a genuinely unreadable one, so guessing would
+only produce wrong answers. Expect an empty violation history immediately after upgrading; it
+fills in as new MQTT traffic arrives.
+
+#### Viewing violations
+
+A **`violation` badge** appears in the **Type** column of the MQTT Packet Monitor's packet list
+when a packet has at least one violating reception. Because the list groups a packet's
+per-gateway receptions into a single row, the badge means **at least one** gateway that relayed
+the packet violated the bit — it does not mean every gateway did, and it does not say which one.
+Open the packet to find out.
+
+The packet detail view is where that attribution happens. It adds an `ok_to_mqtt` row to the
+packet summary and an `ok_to_mqtt` column to the per-gateway receptions table, showing one of
+four states for each individual reception:
+
+| State | Meaning |
+|-------|---------|
+| **violation** | This gateway relayed the packet even though the sender did not opt in. The only state rendered as a highlighted badge. |
+| **allowed** | The sender set the bit; relaying the packet was permitted. |
+| **opted out** | The sender did not opt in, but no third-party relay of this reception could be established, so it isn't a violation. This can happen for several reasons — it is not simply "the sender published its own packet." |
+| **unknown** | The bit could not be read: the payload wasn't decryptable, or the packet was captured before violation detection existed. |
+
+Only `violation` renders as a badge; `allowed`, `opted out`, and `unknown` are shown as plain text
+in the detail view. This is deliberate — `unknown` is the majority state on any channel
+MeshMonitor has no key for, and badging it would drown out the real signal. For the same reason,
+the packet list shows the badge only for confirmed violations; the other three states are visible
+only in the detail view.
+
+#### Capture must be on to see the badge
+
+Violation *recording* (described above) is on by default, but the badge and per-gateway column
+read from the MQTT Packet Monitor's own capture log (see
+[Capture opt-in and retention](#capture-opt-in-and-retention)), which is **opt-in and off by
+default**. On a default install, violations are being recorded in the background while the badge
+never appears, because there is no captured packet list for it to attach to.
+
+When capture is off, the Packet Monitor says so explicitly — in both the capture-disabled banner
+and the empty state. **Absence of badges does not mean absence of violations.** Turn capture on
+to see per-packet, per-gateway violation badges.
+
+#### Reviewing violation history without packet capture
+
+Violation *recording* runs independently of the Packet Monitor (see above), and there's a
+dedicated place to review it: the **ok_to_mqtt Violations** report under **Analysis & Reports**.
+It aggregates confirmed violations across every MQTT source you can read — no need to turn on
+MQTT packet capture on any of them just to see gateway violation history. See
+[ok_to_mqtt Violations](/features/analysis-reports#ok-to-mqtt-violations) for details.
 
 ## Use Cases
 

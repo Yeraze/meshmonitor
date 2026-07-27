@@ -20,6 +20,8 @@ import {
 import { parseDestinationNum } from '../utils/parseDestination.js';
 import { transformDbMessageToMeshMessage } from '../utils/transformDbMessage.js';
 import { filterNodesByChannelPermission } from '../utils/nodeEnhancer.js';
+import { fail } from '../utils/apiResponse.js';
+import { isTxDisabledError } from '../errors/txDisabledError.js';
 
 const router = express.Router();
 
@@ -1314,6 +1316,9 @@ router.post('/send', optionalAuth(), async (req, res) => {
 
     res.json({ success: true });
   } catch (error) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error sending message:', error);
     res.status(500).json({ error: 'Failed to send message' });
   }

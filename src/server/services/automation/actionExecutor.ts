@@ -8,6 +8,7 @@
  */
 import { type AutomationNode, AUTOMATION_DELAY_MAX_SECONDS } from '../../../types/automation.js';
 import { type EngineEvalContext, interpolateAsync, resolveOperand } from './engineContext.js';
+import { isTxDisabledError } from '../../errors/txDisabledError.js';
 
 export type NodeManageOp = 'favorite' | 'unfavorite' | 'ignore' | 'unignore' | 'delete';
 
@@ -123,6 +124,25 @@ async function str(ctx: EngineEvalContext, raw: unknown): Promise<string | undef
 async function isMeshCoreSource(ctx: EngineEvalContext, sourceId: string | null): Promise<boolean> {
   if (!sourceId) return false;
   return (await ctx.data.getSourceProtocol?.(sourceId)) === 'meshcore';
+}
+
+/**
+ * Run a mesh-send action dep call and push its result into `results`. A
+ * `TxDisabledError` from a TX-disabled Meshtastic source (#4294) is caught and
+ * converted into the file's existing skip shape — mirroring the MeshCore-
+ * unsupported skips above — so the run stays `status: 'completed'` instead of
+ * failing. Any other error rethrows, preserving existing failure behavior.
+ */
+async function pushOrSkipTxDisabled<T>(results: unknown[], fn: () => Promise<T>): Promise<void> {
+  try {
+    results.push(await fn());
+  } catch (error) {
+    if (isTxDisabledError(error)) {
+      results.push({ skipped: true, reason: 'TX_DISABLED' });
+      return;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -272,7 +292,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           // channel broadcasts, so dropping the override on a DM is correct, not a leak.
           // A channel-only fallback send (no `to`) still honors the scope override.
           const fallbackScope = destination != null ? {} : scopeArg;
-          results.push(await deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...fallbackScope }));
+          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: fallbackChannel, destination, replyId, ...fallbackScope }));
           continue;
         }
         const srcChannels = (await ctx.data.getChannels?.(sid)) ?? [];
@@ -280,7 +300,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           if (sel.protocol && proto && sel.protocol !== proto) continue; // wrong-protocol channel
           const match = srcChannels.find((c) => c.name.toLowerCase() === sel.name.toLowerCase() && c.role !== 0);
           if (!match) continue; // channel not present on this source
-          results.push(await deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId, ...scopeArg }));
+          await pushOrSkipTxDisabled(results, () => deps.sendMessage({ sourceId: sid, text, channel: match.id, destination, replyId, ...scopeArg }));
         }
       }
 
@@ -317,7 +337,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           results.push({ skipped: true, reason: 'tapback is not supported on MeshCore' });
           continue;
         }
-        results.push(await deps.sendTapback({ sourceId: sid, emoji, channel, destination, replyId }));
+        await pushOrSkipTxDisabled(results, () => deps.sendTapback({ sourceId: sid, emoji, channel, destination, replyId }));
       }
       // Unwrap the single-target case so the result shape (and run-log
       // resolvedParams) matches the original one-target behavior.
@@ -374,7 +394,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           }
           if (!target) throw new Error(`action.requestData: no target node for "${op}"`);
         }
-        results.push(await deps.requestData({ sourceId: sid, op, target, channel, telemetryType: op === 'telemetry' ? telemetryType : undefined }));
+        await pushOrSkipTxDisabled(results, () => deps.requestData({ sourceId: sid, op, target, channel, telemetryType: op === 'telemetry' ? telemetryType : undefined }));
       }
       return results.length === 1 ? results[0] : results;
     }
@@ -409,7 +429,7 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
           results.push({ skipped: true, reason: 'remote-admin reboot is not supported on MeshCore' });
           continue;
         }
-        results.push(await deps.rebootDevice({ sourceId: sid, seconds, targetNodeNum }));
+        await pushOrSkipTxDisabled(results, () => deps.rebootDevice({ sourceId: sid, seconds, targetNodeNum }));
       }
       return results.length === 1 ? results[0] : results;
     }

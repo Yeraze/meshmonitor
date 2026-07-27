@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { flushSync } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 // Popup and Polyline moved to useTraceroutePaths hook
 // Recharts imports moved to useTraceroutePaths hook
-import L from 'leaflet';
+// L (leaflet default export) moved with markerRefs to useSourceView (#3962 5.4 PR4)
 import 'leaflet/dist/leaflet.css';
 import './App.css';
 import './components/map/leafletDefaultIcon';
@@ -23,26 +22,7 @@ import MessagesTab from './components/MessagesTab';
 import ChannelsTab from './components/ChannelsTab';
 import PacketMonitorPanel from './components/PacketMonitorPanel';
 import MqttPacketMonitorView from './components/MQTT/MqttPacketMonitorView';
-import AutoAcknowledgeSection from './components/AutoAcknowledgeSection';
-import { AutomationTokenReference } from './components/AutomationTokenReference';
-import { buildMeshtasticTokenGroups } from './components/meshtasticAutomationTokens';
-import AutoTracerouteSection from './components/AutoTracerouteSection';
-import AutoLocalStatsSection from './components/AutoLocalStatsSection';
-import AutoAnnounceSection from './components/AutoAnnounceSection';
-import AutoWelcomeSection from './components/AutoWelcomeSection';
-import AutoResponderSection from './components/AutoResponderSection';
-import AutoKeyManagementSection from './components/AutoKeyManagementSection';
-import AutoDeleteByDistanceSection from './components/AutoDeleteByDistanceSection';
-import TimerTriggersSection from './components/TimerTriggersSection';
-import GeofenceTriggersSection from './components/GeofenceTriggersSection';
-import RemoteAdminScannerSection from './components/RemoteAdminScannerSection';
-import AutoTimeSyncSection from './components/AutoTimeSyncSection';
-import AutoPingSection from './components/AutoPingSection';
-import AutoFavoriteSection from './components/AutoFavoriteSection';
-import AutoHeapManagementSection from './components/AutoHeapManagementSection';
-import AirtimeCutoffSection from './components/AirtimeCutoffSection';
-import IgnoredNodesSection from './components/IgnoredNodesSection';
-import SectionNav from './components/SectionNav';
+import AutomationTab from './components/AutomationTab';
 import { ToastProvider, useToast } from './components/ToastContainer';
 import DeviceNotificationToaster from './components/DeviceNotificationToaster';
 import { RebootModal } from './components/RebootModal';
@@ -61,21 +41,22 @@ import { type TemperatureUnit } from './utils/temperature';
 // calculateDistance and formatDistance moved to useTraceroutePaths hook
 import { DeviceInfo, Channel } from './types/device';
 import { MeshMessage } from './types/message';
-import { SortField, SortDirection, NodeFilters } from './types/ui';
+import { NodeFilters } from './types/ui';
+import { getHashTabRedirectTarget } from './utils/tabHashRedirect';
 import { ResourceType } from './types/permission';
 import api, { type ChannelDatabaseEntry } from './services/api';
 import { getPacketStats } from './services/packetApi';
 import { logger } from './utils/logger';
+import { isTxDisabledBody } from './utils/txDisabled';
 // generateArrowMarkers moved to useTraceroutePaths hook
-import { isNodeComplete, getEffectivePosition } from './utils/nodeHelpers';
-import { effectiveMapMaxAgeHours } from './utils/mapAge';
-import { nodePassesTransportFilter, transportCutoffSec } from './utils/nodeTransport';
+// isNodeComplete/getEffectivePosition/effectiveMapMaxAgeHours/
+// nodePassesTransportFilter/transportCutoffSec moved with processedNodes/
+// visibleNodeNums/centerMapOnNode to useSourceView (#3962 5.4 PR4)
 import { settingsToMatrix } from './utils/autoAckMatrix';
 import { applyHomoglyphOptimization } from './utils/homoglyph';
-import { playSound, playChannelSound, DEFAULT_SOUND_ID } from './utils/notificationSounds';
 import Sidebar from './components/Sidebar';
 import { SearchModal } from './components/SearchModal/SearchModal.js';
-import { SettingsProvider, useSettings, useNotificationMuteSettings } from './contexts/SettingsContext';
+import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { MapProvider, useMapContext } from './contexts/MapContext';
 import type { PositionHistoryItem } from './contexts/MapContext';
 import { DataProvider, useData } from './contexts/DataContext';
@@ -85,41 +66,37 @@ import { AutomationProvider, useAutomation } from './contexts/AutomationContext'
 import { useAuth } from './contexts/AuthContext';
 import { useCsrf } from './contexts/CsrfContext';
 import { useSource } from './contexts/SourceContext';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Routes, Route, Navigate } from 'react-router-dom';
 import { useWebSocketConnected } from './contexts/WebSocketContext';
 import { useHealth } from './hooks/useHealth';
 import { useTxStatus } from './hooks/useTxStatus';
 import { useVersionCheck } from './hooks/useVersionCheck';
+import { useQueryClient } from '@tanstack/react-query';
 import { usePoll, type PollData } from './hooks/usePoll';
-import { useTraceroutePaths } from './hooks/useTraceroutePaths';
+import { useNodes, useChannels, setNodeFieldInCache } from './hooks/useServerData';
+import { useSourceView } from './hooks/useSourceView';
+import { useMessagingView } from './hooks/useMessagingView';
 import { useNotificationNavigationHandler } from './hooks/useNotificationNavigationHandler';
+import { appBasename } from './init';
 import LoginModal from './components/LoginModal';
 import LoginPage from './components/LoginPage';
 import { SaveBarProvider, SaveBarGroup } from './contexts/SaveBarContext';
 import { SaveBar } from './components/SaveBar';
 import ErrorBoundary from './components/common/ErrorBoundary';
 
-// Track pending favorite/ignored requests outside component to persist across
-// remounts (App is re-keyed on source switch). Keys are composite strings
-// `${sourceId}:${nodeNum}` so that an optimistic toggle on Source A does not
-// bleed into Source B's view of the same node (bug: single nodeNum key meant
-// clicking favorite on Source 1 forced the same optimistic state onto Source
-// 2's poll response because both sources share nodeNums on overlapping meshes).
-const favoritePendingKey = (sourceId: string | null | undefined, nodeNum: number) =>
-  `${sourceId ?? ''}:${nodeNum}`;
-
-// Entries expire (#4240) — see src/utils/pendingToggles.ts for why a plain Map
-// deadlocked the toggles permanently.
-const pendingFavoriteRequests = new PendingToggleMap();
-const pendingIgnoredRequests = new PendingToggleMap();
-const pendingHideFromMapRequests = new PendingToggleMap();
-
-const ALL_PENDING_TOGGLE_MAPS = [
-  pendingFavoriteRequests,
+// Pending favorite/ignored/hide-from-map toggle tracking lives in
+// src/utils/pendingToggles.ts as module-level singletons. Favorite/
+// favoriteLock (and the sweepAll/reconciliation-on-read step, now
+// applyPendingNodeOverrides) moved fully into useSourceView.ts /
+// useServerData.ts's useNodes() (#3962 5.4 PR4 + PR8); toggleIgnored/
+// toggleHideFromMap below still use pendingIgnoredRequests/
+// pendingHideFromMapRequests/favoritePendingKey directly for their
+// rapid-click guard and pending-state bookkeeping.
+import {
+  favoritePendingKey,
   pendingIgnoredRequests,
   pendingHideFromMapRequests,
-];
-import { PendingToggleMap, sweepAll } from './utils/pendingToggles';
+} from './utils/pendingToggles';
 import TracerouteHistoryModal from './components/TracerouteHistoryModal';
 import RouteSegmentTraceroutesModal from './components/RouteSegmentTraceroutesModal';
 
@@ -136,7 +113,19 @@ function App() {
   const isMqttBroker = sourceType === 'mqtt_broker';
   const isMqtt = isMqttBridge || isMqttBroker;
   const navigate = useNavigate();
-const location = useLocation();
+  const location = useLocation();
+
+  // Hash->path redirect shim (#3962 5.4 PR1, kept >= 1 release). See
+  // getHashTabRedirectTarget for the full rationale + enumerated
+  // bookmark/embed refs it covers. Forward `state` (e.g. focusDmNodeId) so
+  // downstream effects that read location.state still see it after redirect.
+  useEffect(() => {
+    const target = getHashTabRedirectTarget(location.pathname, location.hash);
+    if (target) {
+      void navigate(target, { replace: true, state: location.state });
+    }
+  }, [location.hash, location.pathname, location.state, navigate]);
+
   const webSocketConnected = useWebSocketConnected();
   const { showToast } = useToast();
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -231,59 +220,32 @@ const location = useLocation();
   const showRebootModalRef = useRef<boolean>(false); // Track reboot modal state for interval closure
   const connectionStatusRef = useRef<string>('disconnected'); // Track connection status for interval closure
   const localNodeIdRef = useRef<string>(''); // Track local node ID for immediate access (bypasses React state delay)
-  const pendingMessagesRef = useRef<Map<string, MeshMessage>>(new Map()); // Track pending messages for interval access (bypasses closure stale state)
+  // pendingMessagesRef, the container refs, and channelMessagesRef/messagesRef
+  // moved into useMessagingView (#3962 5.4 PR7) — that hook now owns them and
+  // returns pendingMessagesRef/channelMessagesContainerRef/dmMessagesContainerRef
+  // for the send/resend/tapback handlers below to keep using.
   const homoglyphEnabledRef = useRef<boolean>(false); // Track homoglyph setting for send handlers
 
   // Constants for emoji tapbacks
   const EMOJI_FLAG = 1; // Protobuf flag indicating this is a tapback/reaction
 
-  const channelMessagesContainerRef = useRef<HTMLDivElement>(null);
-  const dmMessagesContainerRef = useRef<HTMLDivElement>(null);
-  const lastScrollLoadTimeRef = useRef<number>(0); // Throttle scroll-triggered loads (200ms)
-  // Track latest channelMessages/messages via refs so the infinite-scroll loaders
-  // see current state without rebuilding their closure on every poll. Without
-  // this the first scroll-up uses a stale offset (0) captured at mount and the
-  // resulting fetch is filtered out by dedup, so the user sees nothing load.
-  const channelMessagesRef = useRef<{ [key: number]: MeshMessage[] }>({});
-  const messagesRef = useRef<MeshMessage[]>([]);
-
-  // Detect base URL from pathname
-  const detectBaseUrl = () => {
-    const pathname = window.location.pathname;
-    const pathParts = pathname.split('/').filter(Boolean);
-
-    if (pathParts.length > 0) {
-      // Remove any trailing segments that look like app routes
-      const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard', 'source', 'unified', 'analysis'];
-      const baseSegments = [];
-
-      for (const segment of pathParts) {
-        if (appRoutes.includes(segment.toLowerCase())) {
-          break;
-        }
-        baseSegments.push(segment);
-      }
-
-      if (baseSegments.length > 0) {
-        return '/' + baseSegments.join('/');
-      }
-    }
-
-    return '';
-  };
-
-  // Initialize baseUrl from pathname immediately to avoid 404s on initial render
-  const initialBaseUrl = detectBaseUrl();
-  const [baseUrl, setBaseUrl] = useState<string>(initialBaseUrl);
-
-  // Also set the baseUrl in the api service to skip its auto-detection
-  api.setBaseUrl(initialBaseUrl);
+  // baseUrl = appBasename (imported from './init'), the deployment base
+  // path. App used to hand-roll its own copy of this by walking the current
+  // pathname (detectBaseUrl); that duplicated logic — and a second copy in
+  // AppWithToast below — are gone as of #3962 5.4 PR8. appBasename is
+  // derived once from the server-injected <base> tag before React mounts,
+  // and is already the value react-router's BrowserRouter trusts for every
+  // route in the app (main.tsx `basename={appBasename}`), so App no longer
+  // needs its own state for it.
+  const baseUrl = appBasename;
 
   // Monitor server health and auto-reload on version change (e.g., after auto-upgrade)
   useHealth({ baseUrl, reloadOnVersionChange: true });
 
   // Monitor device TX status to show warning banner when TX is disabled
   const { isTxDisabled } = useTxStatus({ baseUrl, sourceId });
+  // MQTT-bridge sources are never gated (different transport, not affected by radio TX state)
+  const txGated = isTxDisabled && !isMqttBridge;
 
   // Check for version updates. TanStack Query's refetchInterval replaces the
   // hand-rolled setInterval (#3962 Phase 5.1); the hook stops polling on a 404
@@ -296,8 +258,6 @@ const location = useLocation();
     inactiveNodeThresholdHours,
     inactiveNodeCheckIntervalMinutes,
     inactiveNodeCooldownHours,
-    tracerouteIntervalMinutes,
-    remoteLocalStatsIntervalMinutes,
     temperatureUnit,
     distanceUnit,
     telemetryVisualizationHours,
@@ -317,14 +277,11 @@ const location = useLocation();
     solarMonitoringLongitude,
     solarMonitoringAzimuth,
     solarMonitoringDeclination,
-    enableAudioNotifications,
     tapbackEmojis,
     setMaxNodeAgeHours,
     setInactiveNodeThresholdHours,
     setInactiveNodeCheckIntervalMinutes,
     setInactiveNodeCooldownHours,
-    setTracerouteIntervalMinutes,
-    setRemoteLocalStatsIntervalMinutes,
     setTemperatureUnit,
     setDistanceUnit,
     positionHistoryLineStyle,
@@ -347,16 +304,17 @@ const location = useLocation();
     overlayColors: schemeColors,
   } = useSettings();
 
-  const { isChannelMuted, isDMMuted } = useNotificationMuteSettings();
+  // isChannelMuted/isDMMuted moved into useMessagingView (#3962 5.4 PR7) —
+  // its only consumer (applyPollMessages' notification-sound logic) lives
+  // there now, which calls useNotificationMuteSettings() itself.
 
   // Map context
+  // showPaths/showRoute/showMqttNodes/showUdpNodes/showRfNodes/
+  // showEstimatedPositions/mapZoom/mapMaxAgeHours moved out of this
+  // destructure — their only consumers (processedNodes/visibleNodeNums/
+  // useTraceroutePaths) now live in useSourceView, which calls
+  // useMapContext() itself (#3962 5.4 PR4).
   const {
-    showPaths,
-    showRoute,
-    showMqttNodes,
-    showUdpNodes,
-    showRfNodes,
-    showEstimatedPositions,
     setMapCenterTarget,
     traceroutes,
     setTraceroutes,
@@ -364,27 +322,25 @@ const location = useLocation();
     setPositionHistory,
     selectedNodeId,
     setSelectedNodeId,
-    mapZoom,
-    mapMaxAgeHours,
   } = useMapContext();
 
-  // Effective map age cap for traceroute/route-segment visibility (#3322):
-  // the Map Features age slider, clamped to [1, maxNodeAgeHours]. null = follow
-  // the global setting, so default behavior is unchanged.
-  const effectiveMapMaxAge = effectiveMapMaxAgeHours(mapMaxAgeHours, maxNodeAgeHours);
+  // effectiveMapMaxAge (#3322) moved into useSourceView (#3962 5.4 PR4) —
+  // its only consumers (visibleNodeNums, useTraceroutePaths) live there now,
+  // and the hook recomputes it itself from useMapContext()/useSettings().
 
-  // Data context
+  // Data context. `nodes`/`channels` no longer live here — DataContext
+  // stopped mirroring poll-derived server data for them (#3962 5.4 PR8); they
+  // now come straight from the poll query cache via useNodes()/useChannels()
+  // below. `connectionStatus` stays: it is a client-driven state machine
+  // ('rebooting'/'configuring'/'node-offline'/'connecting'/etc, set from
+  // checkConnectionStatus/handleReboot*/handleDisconnect/handleReconnect/
+  // FirmwareUpdateSection) with no poll-cache equivalent — useConnectionInfo()
+  // only exposes the boolean connected/nodeResponsive/configuring/
+  // userDisconnected flags the server reports, not this richer client state
+  // machine, so it does not map cleanly onto DataContext deletion.
   const {
-    nodes,
-    setNodes,
-    channels,
-    setChannels,
     connectionStatus,
     setConnectionStatus,
-    messages,
-    setMessages,
-    channelMessages,
-    setChannelMessages,
     deviceInfo,
     setDeviceInfo,
     deviceConfig,
@@ -393,23 +349,27 @@ const location = useLocation();
     setCurrentNodeId,
     nodeAddress,
     setNodeAddress,
-    nodesWithTelemetry,
-    setNodesWithTelemetry,
-    nodesWithWeatherTelemetry,
-    setNodesWithWeatherTelemetry,
-    nodesWithEstimatedPosition,
-    setNodesWithEstimatedPosition,
-    nodesWithPKC,
-    setNodesWithPKC,
-    channelHasMore,
-    setChannelHasMore,
-    channelLoadingMore,
-    setChannelLoadingMore,
-    dmHasMore,
-    setDmHasMore,
-    dmLoadingMore,
-    setDmLoadingMore,
   } = useData();
+
+  // nodes/channels sourced from the poll query cache (#3962 5.4 PR8).
+  // queryClient backs the optimistic toggleIgnored/toggleHideFromMap writes
+  // below (setNodeFieldInCache) — the query-cache-native replacement for the
+  // old DataContext setNodes(...) writes.
+  const { nodes } = useNodes();
+  const { channels } = useChannels();
+  const queryClient = useQueryClient();
+
+  // Telemetry availability Sets (nodesWithTelemetry/nodesWithWeatherTelemetry/
+  // nodesWithEstimatedPosition/nodesWithPKC) were sourced here directly from
+  // the poll cache (#3962 5.4 PR2) but were consumed ONLY by processedNodes/
+  // visibleNodeNums, both now owned by useSourceView (#3962 5.4 PR4), which
+  // calls useTelemetryNodes() itself.
+
+  // messages/channelMessages (+ their channelHasMore/channelLoadingMore/
+  // dmHasMore/dmLoadingMore pagination state) were sourced here directly from
+  // DataContext but are not pure poll-cache mirrors — the optimistic-send
+  // merge and infinite-scroll pagination logic they need now live in
+  // useMessagingView (#3962 5.4 PR7), which owns this state itself.
 
   // Consolidated polling for nodes, messages, channels, config
   // Enabled only when connected and not in reboot/user-disconnected state
@@ -528,6 +488,9 @@ const location = useLocation();
     newMessage,
     setNewMessage,
     openDmWithDraft,
+    openDmForCompose,
+    pendingComposeFocus,
+    clearComposeFocus,
     replyingTo,
     setReplyingTo,
     pendingMessages: _pendingMessages, // Not used directly - we use pendingMessagesRef for interval access
@@ -542,15 +505,10 @@ const location = useLocation();
     unreadCountsData,
   } = useMessaging();
 
-  // The poll callback (processPollData) is memoized without unreadCountsData in
-  // its deps, so bridge the latest filtered counts through a ref. This lets the
-  // per-channel unread badges honor the "Show MQTT/Bridge Messages" toggle the
-  // same way the sidebar dot does (#3787) — the dedicated unread query already
-  // applies excludeMqtt, but the /poll aggregate does not.
-  const unreadCountsDataRef = useRef(unreadCountsData);
-  useEffect(() => {
-    unreadCountsDataRef.current = unreadCountsData;
-  }, [unreadCountsData]);
+  // The unreadCountsData ref-bridge for the poll callback (App's
+  // processPollData is memoized without unreadCountsData in its deps) moved
+  // into useMessagingView (#3962 5.4 PR7) — applyPollMessages needs it, the
+  // favicon effect below reads unreadCountsData directly from context.
 
   // UI context
   const {
@@ -560,11 +518,14 @@ const location = useLocation();
     setShowMqttMessages,
     error,
     setError,
+    // tracerouteLoading still consumed below (messages block, NodePopup);
+    // setTracerouteLoading's only consumer (handleTraceroute) moved into
+    // useSourceView, which calls useUI() itself (#3962 5.4 PR4).
     tracerouteLoading,
-    setTracerouteLoading,
     nodeFilter: _nodeFilter, // Deprecated - kept for backward compatibility
     setNodeFilter: _setNodeFilter, // Deprecated
-    nodesNodeFilter,
+    // nodesNodeFilter/sortField/sortDirection's only consumer (processedNodes)
+    // moved into useSourceView, which reads them itself via useUI().
     messagesNodeFilter,
     setMessagesNodeFilter,
     securityFilter,
@@ -572,9 +533,7 @@ const location = useLocation();
     channelFilter,
     dmFilter,
     setDmFilter,
-    sortField,
     setSortField: _setSortField,
-    sortDirection,
     setSortDirection: _setSortDirection,
     showStatusModal,
     setShowStatusModal,
@@ -604,52 +563,56 @@ const location = useLocation();
     setSelectedDMNode(focusId);
   }, [location.state, setActiveTab, setSelectedChannel, setSelectedDMNode]);
 
-  // Automation context
+  // Automation context. App no longer renders the automation tab directly
+  // (moved to AutomationTab, which reads the full context itself — #3962
+  // 5.4 PR6) but still needs these setters for the legacy /api/config
+  // settings-load effect below, which hydrates AutomationContext state from
+  // the server response on mount.
   const {
-    autoAckEnabled, setAutoAckEnabled,
-    autoAckRegex, setAutoAckRegex,
-    autoAckMessage, setAutoAckMessage,
-    autoAckMessageDirect, setAutoAckMessageDirect,
-    autoAckChannels, setAutoAckChannels,
-    autoAckSkipIncompleteNodes, setAutoAckSkipIncompleteNodes,
-    autoAckIgnoredNodes, setAutoAckIgnoredNodes,
-    autoAckMatrix, setAutoAckMatrix,
-    autoAckCooldownSeconds, setAutoAckCooldownSeconds,
-    autoAckPreSendDelaySeconds, setAutoAckPreSendDelaySeconds,
-    autoAckMaxAttempts, setAutoAckMaxAttempts,
-    autoAckTestMessages, setAutoAckTestMessages,
-    autoAnnounceEnabled, setAutoAnnounceEnabled,
-    autoAnnounceIntervalHours, setAutoAnnounceIntervalHours,
-    autoAnnounceMessage, setAutoAnnounceMessage,
-    autoAnnounceChannelIndexes, setAutoAnnounceChannelIndexes,
-    autoAnnounceOnStart, setAutoAnnounceOnStart,
-    autoAnnounceUseSchedule, setAutoAnnounceUseSchedule,
-    autoAnnounceSchedule, setAutoAnnounceSchedule,
-    autoAnnounceNodeInfoEnabled, setAutoAnnounceNodeInfoEnabled,
-    autoAnnounceNodeInfoChannels, setAutoAnnounceNodeInfoChannels,
-    autoAnnounceNodeInfoDelaySeconds, setAutoAnnounceNodeInfoDelaySeconds,
-    autoWelcomeEnabled, setAutoWelcomeEnabled,
-    autoWelcomeMessage, setAutoWelcomeMessage,
-    autoWelcomeTarget, setAutoWelcomeTarget,
-    autoWelcomeWaitForName, setAutoWelcomeWaitForName,
-    autoWelcomeMaxHops, setAutoWelcomeMaxHops,
-    autoWelcomeDelay, setAutoWelcomeDelay,
-    autoResponderEnabled, setAutoResponderEnabled,
-    autoResponderTriggers, setAutoResponderTriggers,
-    autoResponderSkipIncompleteNodes, setAutoResponderSkipIncompleteNodes,
-    autoKeyManagementEnabled, setAutoKeyManagementEnabled,
-    autoKeyManagementIntervalMinutes, setAutoKeyManagementIntervalMinutes,
-    autoKeyManagementMaxExchanges, setAutoKeyManagementMaxExchanges,
-    autoKeyManagementAutoPurge, setAutoKeyManagementAutoPurge,
-    autoKeyManagementImmediatePurge, setAutoKeyManagementImmediatePurge,
-    timerTriggers, setTimerTriggers,
-    geofenceTriggers, setGeofenceTriggers,
-    autoDeleteByDistanceEnabled, setAutoDeleteByDistanceEnabled,
-    autoDeleteByDistanceIntervalHours, setAutoDeleteByDistanceIntervalHours,
-    autoDeleteByDistanceThresholdKm, setAutoDeleteByDistanceThresholdKm,
-    autoDeleteByDistanceLat, setAutoDeleteByDistanceLat,
-    autoDeleteByDistanceLon, setAutoDeleteByDistanceLon,
-    autoDeleteByDistanceAction, setAutoDeleteByDistanceAction,
+    setAutoAckEnabled,
+    setAutoAckRegex,
+    setAutoAckMessage,
+    setAutoAckMessageDirect,
+    setAutoAckChannels,
+    setAutoAckSkipIncompleteNodes,
+    setAutoAckIgnoredNodes,
+    setAutoAckMatrix,
+    setAutoAckCooldownSeconds,
+    setAutoAckPreSendDelaySeconds,
+    setAutoAckMaxAttempts,
+    setAutoAckTestMessages,
+    setAutoAnnounceEnabled,
+    setAutoAnnounceIntervalHours,
+    setAutoAnnounceMessage,
+    setAutoAnnounceChannelIndexes,
+    setAutoAnnounceOnStart,
+    setAutoAnnounceUseSchedule,
+    setAutoAnnounceSchedule,
+    setAutoAnnounceNodeInfoEnabled,
+    setAutoAnnounceNodeInfoChannels,
+    setAutoAnnounceNodeInfoDelaySeconds,
+    setAutoWelcomeEnabled,
+    setAutoWelcomeMessage,
+    setAutoWelcomeTarget,
+    setAutoWelcomeWaitForName,
+    setAutoWelcomeMaxHops,
+    setAutoWelcomeDelay,
+    setAutoResponderEnabled,
+    setAutoResponderTriggers,
+    setAutoResponderSkipIncompleteNodes,
+    setAutoKeyManagementEnabled,
+    setAutoKeyManagementIntervalMinutes,
+    setAutoKeyManagementMaxExchanges,
+    setAutoKeyManagementAutoPurge,
+    setAutoKeyManagementImmediatePurge,
+    setTimerTriggers,
+    setGeofenceTriggers,
+    setAutoDeleteByDistanceEnabled,
+    setAutoDeleteByDistanceIntervalHours,
+    setAutoDeleteByDistanceThresholdKm,
+    setAutoDeleteByDistanceLat,
+    setAutoDeleteByDistanceLon,
+    setAutoDeleteByDistanceAction,
   } = useAutomation();
 
   // Check tab permissions and redirect if unauthorized
@@ -745,8 +708,8 @@ const location = useLocation();
   // Track previous total unread count to detect when new messages arrive
   const previousUnreadTotal = useRef<number>(0);
 
-  // Track the newest message ID to detect NEW messages (count-based tracking fails at the 100 message limit)
-  const newestMessageId = useRef<string>('');
+  // newestMessageId moved into useMessagingView (#3962 5.4 PR7) — its only
+  // consumer (applyPollMessages' new-message-sound detection) lives there now.
 
   // Position exchange loading state (separate from traceroute loading)
   const [positionLoading, setPositionLoading] = useState<string | null>(null);
@@ -760,27 +723,8 @@ const location = useLocation();
   // Telemetry request loading state
   const [telemetryRequestLoading, setTelemetryRequestLoading] = useState<string | null>(null);
 
-  // Play the notification sound configured for a given channel using the
-  // synthesized Web Audio sound library. Channel `-1` is the DM pseudo-channel;
-  // when no channel is supplied (or it is undefined) the default sound plays,
-  // preserving the previous single-tone behavior. Honors the master audio
-  // toggle exactly as before.
-  const playNotificationSound = useCallback((channelId?: number) => {
-    // Check if audio notifications are enabled
-    if (!enableAudioNotifications) {
-      logger.debug('🔇 Audio notifications disabled, skipping sound');
-      return;
-    }
-
-    logger.debug('🔊 playNotificationSound called for channel:', channelId);
-    if (channelId === undefined) {
-      playSound(DEFAULT_SOUND_ID);
-    } else {
-      // Scope the lookup to the active source so per-source selections (and the
-      // DM pseudo-channel) don't leak across sources that share channel numbers.
-      playChannelSound(channelId, sourceId);
-    }
-  }, [enableAudioNotifications, sourceId]);
+  // playNotificationSound moved into useMessagingView (#3962 5.4 PR7) — its
+  // only consumer (applyPollMessages) lives there now.
 
   // Update favicon with red dot when there are unread messages
   const updateFavicon = useCallback(
@@ -914,6 +858,55 @@ const location = useLocation();
     [getCsrfToken, refreshCsrfToken]
   );
 
+  // Shared node/traceroute/map orchestration — processedNodes, marker refs,
+  // traceroute path rendering, favorite/delete/purge handlers (#3962 5.4
+  // PR4, task54_spec.md §7). This is the block that makes the nodes route
+  // (and the not-yet-migrated messages/dashboard blocks that still consume
+  // these same handlers) work; see src/hooks/useSourceView.ts.
+  const {
+    processedNodes,
+    shouldShowData,
+    centerMapOnNode,
+    toggleFavorite,
+    toggleFavoriteLock,
+    markerRefs,
+    traceroutePathsElements,
+    selectedNodeTraceroute,
+    visibleNodeNums,
+    tracerouteNodeNums,
+    tracerouteBounds,
+    handleTraceroute,
+    handleDeleteNode,
+    handlePurgeNodeFromDevice,
+  } = useSourceView({
+    baseUrl,
+    authFetch,
+    refetchPoll,
+    nodeFilters,
+    mergedThemeColors,
+    setSelectedRouteSegment,
+    setShowPurgeDataModal,
+  });
+
+  // Messaging state machinery — messages/channelMessages state (moved off
+  // DataContext), optimistic pendingMessages merge, channel/direct
+  // pagination, and the 8 activeTab-gated scroll/auto-load/mark-as-read
+  // effects (#3962 5.4 PR7, task54_spec.md §3 row 7). The send/resend/
+  // tapback handlers below still consume messages/setMessages/
+  // channelMessages/setChannelMessages/pendingMessagesRef/the two container
+  // refs exactly as they consumed the old DataContext fields — see
+  // src/hooks/useMessagingView.ts.
+  const {
+    messages,
+    setMessages,
+    channelMessages,
+    setChannelMessages,
+    pendingMessagesRef,
+    channelMessagesContainerRef,
+    dmMessagesContainerRef,
+    applyPollMessages,
+  } = useMessagingView();
+
   // Function to detect MQTT/bridge messages that should be filtered
   const isMqttBridgeMessage = (msg: MeshMessage): boolean => {
     // Primary check: use the viaMqtt field from the packet if available
@@ -943,34 +936,32 @@ const location = useLocation();
       }
     });
   };
-  const markerRefs = useRef<Map<string, L.Marker>>(new Map());
 
   // Load configuration and check connection status on startup
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Load configuration from server
-        let configBaseUrl = '';
+        // Load configuration from server. The base path itself no longer
+        // comes from here (#3962 5.4 PR8 deleted App's local
+        // detectBaseUrl/baseUrl-state duplicate) — appBasename (src/init.ts)
+        // is derived from the server-injected <base> tag before React even
+        // mounts, and is what react-router's own BrowserRouter already
+        // trusts for every route in this app.
         try {
           const config = await api.getConfig();
           setNodeAddress(config.meshtasticNodeIp);
-          configBaseUrl = config.baseUrl || '';
-          setBaseUrl(configBaseUrl);
         } catch (error) {
           logger.error('Failed to load config:', error);
           // Don't assert a hardcoded fallback address (#3611) — that would show
           // the wrong IP for a configured source. Leave it empty; the per-source
           // address arrives with the next poll (status.nodeIp).
           setNodeAddress('');
-          // Keep initialBaseUrl detected from pathname — resetting to '' would break
-          // API calls when BASE_URL is configured on the server.
-          configBaseUrl = initialBaseUrl;
         }
 
         // Load settings from server (per-source if a sourceId is active, so
         // per-source automation values win over global defaults)
         const settingsQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
-        const settingsResponse = await authFetch(`${baseUrl}/api/settings${settingsQuery}`);
+        const settingsResponse = await authFetch(`${appBasename}/api/settings${settingsQuery}`);
         if (settingsResponse.ok) {
           const settings = await settingsResponse.json();
 
@@ -1239,8 +1230,8 @@ const location = useLocation();
           }
         }
 
-        // Check connection status with the loaded baseUrl
-        await checkConnectionStatus(configBaseUrl);
+        // Check connection status
+        await checkConnectionStatus();
       } catch (_error) {
         // Avoid asserting a hardcoded fallback address (#3611); leave empty so a
         // wrong IP never appears for a configured source.
@@ -1395,392 +1386,10 @@ const location = useLocation();
     localStorage.setItem('nodeFilters', JSON.stringify(nodeFilters));
   }, [nodeFilters]);
 
-  // Check if container is scrolled near bottom (within 100px)
-  const isScrolledNearBottom = useCallback((container: HTMLDivElement | null): boolean => {
-    if (!container) return true;
-    const threshold = 100;
-    const { scrollTop, scrollHeight, clientHeight } = container;
-    return scrollHeight - scrollTop - clientHeight < threshold;
-  }, []);
-
-  // Check if container is scrolled near top (within 100px)
-  const isScrolledNearTop = useCallback((container: HTMLDivElement | null): boolean => {
-    if (!container) return false;
-    return container.scrollTop < 100;
-  }, []);
-
-  // Keep refs in sync with the latest state so infinite-scroll loaders read
-  // current values instead of a stale closure. See comment at the ref decls.
-  useEffect(() => {
-    channelMessagesRef.current = channelMessages;
-  }, [channelMessages]);
-
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
-
-  // Load more channel messages (for infinite scroll)
-  const loadMoreChannelMessages = useCallback(async () => {
-    if (channelLoadingMore[selectedChannel] || channelHasMore[selectedChannel] === false) {
-      return;
-    }
-
-    const currentMessages = channelMessagesRef.current[selectedChannel] || [];
-    const offset = currentMessages.length;
-    const container = channelMessagesContainerRef.current;
-
-    // Store scroll position before loading
-    const scrollHeightBefore = container?.scrollHeight || 0;
-
-    setChannelLoadingMore(prev => ({ ...prev, [selectedChannel]: true }));
-
-    try {
-      const result = await api.getChannelMessages(selectedChannel, 100, offset, sourceId);
-
-      if (result.messages.length > 0) {
-        // Process timestamps for new messages
-        const processedMessages = result.messages.map(msg => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp),
-          receivedAt: new Date(msg.receivedAt ?? msg.timestamp),
-        }));
-
-        // Prepend older messages to the existing list, deduplicating by id
-        setChannelMessages(prev => {
-          const existingMessages = prev[selectedChannel] || [];
-          const existingIds = new Set(existingMessages.map(m => m.id));
-          const newMessages = processedMessages.filter(m => !existingIds.has(m.id));
-          return {
-            ...prev,
-            [selectedChannel]: [...newMessages, ...existingMessages],
-          };
-        });
-
-        // Restore scroll position after messages are prepended
-        requestAnimationFrame(() => {
-          if (container) {
-            const scrollHeightAfter = container.scrollHeight;
-            container.scrollTop = scrollHeightAfter - scrollHeightBefore;
-          }
-        });
-      }
-
-      setChannelHasMore(prev => ({ ...prev, [selectedChannel]: result.hasMore }));
-    } catch (error) {
-      logger.error('Failed to load more channel messages:', error);
-      showToast(t('toast.failed_load_older_messages'), 'error');
-    } finally {
-      setChannelLoadingMore(prev => ({ ...prev, [selectedChannel]: false }));
-    }
-  }, [
-    selectedChannel,
-    channelLoadingMore,
-    channelHasMore,
-    setChannelMessages,
-    setChannelHasMore,
-    setChannelLoadingMore,
-    showToast,
-  ]);
-
-  // Load more direct messages (for infinite scroll)
-  const loadMoreDirectMessages = useCallback(async () => {
-    if (!selectedDMNode || !currentNodeId) return;
-
-    const dmKey = [currentNodeId, selectedDMNode].sort().join('_');
-    if (dmLoadingMore[dmKey] || dmHasMore[dmKey] === false) {
-      return;
-    }
-
-    // Get current DM messages from the messages array (channel -1 or direct messages)
-    const currentDMs = messagesRef.current.filter(
-      msg =>
-        (msg.fromNodeId === currentNodeId && msg.toNodeId === selectedDMNode) ||
-        (msg.fromNodeId === selectedDMNode && msg.toNodeId === currentNodeId)
-    );
-    const offset = currentDMs.length;
-    const container = dmMessagesContainerRef.current;
-
-    // Store scroll position before loading
-    const scrollHeightBefore = container?.scrollHeight || 0;
-
-    setDmLoadingMore(prev => ({ ...prev, [dmKey]: true }));
-
-    try {
-      const result = await api.getDirectMessages(currentNodeId, selectedDMNode, 100, offset, sourceId);
-
-      if (result.messages.length > 0) {
-        // Process timestamps for new messages
-        const processedMessages = result.messages.map(msg => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp),
-          receivedAt: new Date(msg.receivedAt ?? msg.timestamp),
-        }));
-
-        // Prepend older messages to the existing list
-        setMessages(prev => {
-          // Remove duplicates by id
-          const existingIds = new Set(prev.map(m => m.id));
-          const newMessages = processedMessages.filter(m => !existingIds.has(m.id));
-          return [...newMessages, ...prev];
-        });
-
-        // Restore scroll position after messages are prepended
-        requestAnimationFrame(() => {
-          if (container) {
-            const scrollHeightAfter = container.scrollHeight;
-            container.scrollTop = scrollHeightAfter - scrollHeightBefore;
-          }
-        });
-      }
-
-      setDmHasMore(prev => ({ ...prev, [dmKey]: result.hasMore }));
-    } catch (error) {
-      logger.error('Failed to load more direct messages:', error);
-      showToast(t('toast.failed_load_older_messages'), 'error');
-    } finally {
-      setDmLoadingMore(prev => ({ ...prev, [dmKey]: false }));
-    }
-  }, [
-    selectedDMNode,
-    currentNodeId,
-    dmLoadingMore,
-    dmHasMore,
-    setMessages,
-    setDmHasMore,
-    setDmLoadingMore,
-    showToast,
-  ]);
-
-  // Handle scroll events to track scroll position (throttled for load-more)
-  const handleChannelScroll = useCallback(() => {
-    if (channelMessagesContainerRef.current) {
-      const atBottom = isScrolledNearBottom(channelMessagesContainerRef.current);
-      setIsChannelScrolledToBottom(atBottom);
-
-      // Check if scrolled near top and trigger load more (throttled to 200ms)
-      const now = Date.now();
-      if (isScrolledNearTop(channelMessagesContainerRef.current) && now - lastScrollLoadTimeRef.current > 200) {
-        lastScrollLoadTimeRef.current = now;
-        void loadMoreChannelMessages();
-      }
-    }
-  }, [isScrolledNearBottom, isScrolledNearTop, loadMoreChannelMessages]);
-
-  const handleDMScroll = useCallback(() => {
-    if (dmMessagesContainerRef.current) {
-      const atBottom = isScrolledNearBottom(dmMessagesContainerRef.current);
-      setIsDMScrolledToBottom(atBottom);
-
-      // Check if scrolled near top and trigger load more (throttled to 200ms)
-      const now = Date.now();
-      if (isScrolledNearTop(dmMessagesContainerRef.current) && now - lastScrollLoadTimeRef.current > 200) {
-        lastScrollLoadTimeRef.current = now;
-        void loadMoreDirectMessages();
-      }
-    }
-  }, [isScrolledNearBottom, isScrolledNearTop, loadMoreDirectMessages]);
-
-  // Attach scroll event listeners. The handler closures are stable now (they
-  // read state via refs), so we re-run this effect when navigation could have
-  // swapped the underlying DOM node — channel switch, DM switch, or tab
-  // switch — to be sure we attach to the freshly mounted container. Without
-  // this the very first scroll on the initial channel never fires the
-  // load-more handler.
-  useEffect(() => {
-    const channelContainer = channelMessagesContainerRef.current;
-    const dmContainer = dmMessagesContainerRef.current;
-
-    if (channelContainer) {
-      channelContainer.addEventListener('scroll', handleChannelScroll);
-    }
-    if (dmContainer) {
-      dmContainer.addEventListener('scroll', handleDMScroll);
-    }
-
-    return () => {
-      if (channelContainer) {
-        channelContainer.removeEventListener('scroll', handleChannelScroll);
-      }
-      if (dmContainer) {
-        dmContainer.removeEventListener('scroll', handleDMScroll);
-      }
-    };
-  }, [handleChannelScroll, handleDMScroll, activeTab, selectedChannel, selectedDMNode]);
-
-  // Force scroll to bottom when channel changes OR when switching to channels tab
-  // Note: We track initial scroll per channel to avoid re-scrolling when user manually scrolls
-  useEffect(() => {
-    if (activeTab === 'channels' && selectedChannel >= 0) {
-      const currentChannelMessages = channelMessages[selectedChannel] || [];
-      const hasMessages = currentChannelMessages.length > 0;
-
-      // Always scroll to bottom when entering the channels tab or changing channels
-      if (hasMessages) {
-        // Use setTimeout to ensure messages are rendered before scrolling
-        setTimeout(() => {
-          if (channelMessagesContainerRef.current) {
-            channelMessagesContainerRef.current.scrollTop = channelMessagesContainerRef.current.scrollHeight;
-            setIsChannelScrolledToBottom(true);
-          }
-        }, 100);
-      }
-    }
-  }, [selectedChannel, activeTab]);
-
-  // Auto-scroll to bottom when new messages arrive and user is already at the bottom
-  const prevChannelMsgCountRef = useRef<Record<number, number>>({});
-  useEffect(() => {
-    const currentMessages = channelMessages[selectedChannel] || [];
-    const prevCount = prevChannelMsgCountRef.current[selectedChannel] || 0;
-    const currentCount = currentMessages.length;
-
-    if (currentCount > prevCount && prevCount > 0) {
-      // New messages arrived — auto-scroll if user was near the bottom
-      const container = channelMessagesContainerRef.current;
-      if (container) {
-        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
-        if (isNearBottom) {
-          setTimeout(() => {
-            if (channelMessagesContainerRef.current) {
-              channelMessagesContainerRef.current.scrollTo({
-                top: channelMessagesContainerRef.current.scrollHeight,
-                behavior: 'smooth'
-              });
-            }
-          }, 50);
-        }
-      }
-    }
-
-    prevChannelMsgCountRef.current = {
-      ...prevChannelMsgCountRef.current,
-      [selectedChannel]: currentCount
-    };
-  }, [channelMessages, selectedChannel]);
-
-  // Auto-scroll DMs to bottom when new messages arrive and user is at the bottom
-  const prevDMMsgCountRef = useRef(0);
-  useEffect(() => {
-    const currentCount = messages.length;
-    const prevCount = prevDMMsgCountRef.current;
-
-    if (currentCount > prevCount && prevCount > 0 && activeTab === 'messages') {
-      const container = dmMessagesContainerRef.current;
-      if (container) {
-        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
-        if (isNearBottom) {
-          setTimeout(() => {
-            if (dmMessagesContainerRef.current) {
-              dmMessagesContainerRef.current.scrollTo({
-                top: dmMessagesContainerRef.current.scrollHeight,
-                behavior: 'smooth'
-              });
-            }
-          }, 50);
-        }
-      }
-    }
-
-    prevDMMsgCountRef.current = currentCount;
-  }, [messages, activeTab]);
-
-  // Auto-load more channel messages if container doesn't have a scrollbar
-  // This fixes the case where a channel has no recent messages and infinite scroll never triggers
-  useEffect(() => {
-    if (activeTab === 'channels' && selectedChannel >= 0) {
-      // Skip if we're already loading or know there are no more messages
-      if (channelLoadingMore[selectedChannel] || channelHasMore[selectedChannel] === false) {
-        return;
-      }
-
-      // Check after a delay to allow the DOM to render
-      const checkTimer = setTimeout(() => {
-        const container = channelMessagesContainerRef.current;
-        if (container) {
-          // If container doesn't have a scrollbar, load more messages
-          const hasScrollbar = container.scrollHeight > container.clientHeight;
-          if (!hasScrollbar) {
-            void loadMoreChannelMessages();
-          }
-        }
-      }, 200);
-
-      return () => clearTimeout(checkTimer);
-    }
-  }, [selectedChannel, activeTab, channelLoadingMore, channelHasMore, loadMoreChannelMessages]);
-
-  // Force scroll to bottom when DM node changes OR when switching to messages tab
-  useEffect(() => {
-    if (activeTab === 'messages' && selectedDMNode && currentNodeId) {
-      const currentDMMessages = messages.filter(
-        msg =>
-          (msg.fromNodeId === currentNodeId && msg.toNodeId === selectedDMNode) ||
-          (msg.fromNodeId === selectedDMNode && msg.toNodeId === currentNodeId)
-      );
-      const hasMessages = currentDMMessages.length > 0;
-
-      // Always scroll to bottom when entering the messages tab or changing conversations
-      if (hasMessages) {
-        setTimeout(() => {
-          if (dmMessagesContainerRef.current) {
-            dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
-            setIsDMScrolledToBottom(true);
-          }
-        }, 150);
-      }
-    }
-  }, [selectedDMNode, activeTab, currentNodeId]);
-
-  // Auto-load more DM messages if container doesn't have a scrollbar
-  // This fixes the case where a conversation has no recent messages and infinite scroll never triggers
-  useEffect(() => {
-    if (activeTab === 'messages' && selectedDMNode && currentNodeId) {
-      const dmKey = [currentNodeId, selectedDMNode].sort().join('_');
-
-      // Skip if we're already loading or know there are no more messages
-      if (dmLoadingMore[dmKey] || dmHasMore[dmKey] === false) {
-        return;
-      }
-
-      // Check after a delay to allow the DOM to render
-      const checkTimer = setTimeout(() => {
-        const container = dmMessagesContainerRef.current;
-        if (container) {
-          // If container doesn't have a scrollbar, load more messages
-          const hasScrollbar = container.scrollHeight > container.clientHeight;
-          if (!hasScrollbar) {
-            void loadMoreDirectMessages();
-          }
-        }
-      }, 200);
-
-      return () => clearTimeout(checkTimer);
-    }
-  }, [selectedDMNode, activeTab, currentNodeId, dmLoadingMore, dmHasMore, loadMoreDirectMessages]);
-
-  // Unread counts polling is now handled by useUnreadCounts hook in MessagingContext
-
-  // Mark messages as read when viewing a channel — also re-fires when new messages arrive
-  // so that incoming messages are immediately marked as read while the user is viewing the channel.
-  // Without the message count dependency, new messages would show as "unread" until the user
-  // clicks away and back (#2316).
-  const currentChannelMsgCount = (channelMessages[selectedChannel] || []).length;
-  useEffect(() => {
-    if (activeTab === 'channels' && selectedChannel >= 0) {
-      void markMessagesAsRead(undefined, selectedChannel);
-    }
-  }, [selectedChannel, activeTab, markMessagesAsRead, currentChannelMsgCount]);
-
-  // Mark messages as read when viewing a DM conversation — also re-fires on new messages
-  // Filter to only the selected conversation so we don't fire on messages from other DMs
-  const currentDMMsgCount = selectedDMNode
-    ? messages.filter(msg => msg.fromNodeId === selectedDMNode || msg.toNodeId === selectedDMNode).length
-    : 0;
-  useEffect(() => {
-    if (activeTab === 'messages' && selectedDMNode) {
-      void markMessagesAsRead(undefined, undefined, selectedDMNode);
-    }
-  }, [selectedDMNode, activeTab, markMessagesAsRead, currentDMMsgCount]);
+  // Message scroll-position tracking / infinite-scroll pagination / auto-load
+  // / mark-as-read effects (isScrolledNearBottom/isScrolledNearTop through
+  // the DM mark-as-read effect) moved into useMessagingView (#3962 5.4 PR7)
+  // — see src/hooks/useMessagingView.ts.
 
   // Handle push notification navigation (click on notification -> navigate to channel/DM and scroll to message)
   useNotificationNavigationHandler(
@@ -1887,22 +1496,8 @@ const location = useLocation();
     };
   }, [connectionStatus]);
 
-  // Timer to update message status indicators (timeout detection after 30s)
-  // Only runs when on channels/messages tabs to reduce CPU usage on mobile (#1769)
-  const [, setStatusTick] = useState(0);
-  useEffect(() => {
-    // Only run timer when viewing messaging tabs where status indicators are visible
-    if (activeTab !== 'channels' && activeTab !== 'messages') {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      // Force re-render to update message status indicators
-      setStatusTick(prev => prev + 1);
-    }, 5000); // Update every 5 seconds (reduced from 1s for mobile performance)
-
-    return () => clearInterval(interval);
-  }, [activeTab]);
+  // The message-status-indicator re-render timer (5s tick, gated to
+  // channels/messages tabs) moved into useMessagingView (#3962 5.4 PR7).
 
   const requestFullNodeDatabase = async () => {
     try {
@@ -2014,10 +1609,7 @@ const location = useLocation();
     }
   };
 
-  const checkConnectionStatus = async (providedBaseUrl?: string) => {
-    // Use the provided baseUrl or fall back to the state value
-    const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
-
+  const checkConnectionStatus = async () => {
     try {
       // Use consolidated polling endpoint to check connection status.
       // When inside a SourceProvider (multi-source dashboard), pass sourceId
@@ -2025,7 +1617,7 @@ const location = useLocation();
       // would show the legacy singleton's status, which is "disconnected" in
       // 4.0 multi-source mode.
       const pollQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
-      const response = await authFetch(`${urlBase}/api/poll${pollQuery}`);
+      const response = await authFetch(`${appBasename}/api/poll${pollQuery}`);
       if (response.ok) {
         const pollData = await response.json();
         const status = pollData.connection;
@@ -2057,7 +1649,7 @@ const location = useLocation();
           // Still fetch cached data from backend on page load
           // This ensures we show cached data even after refresh
           try {
-            await fetchChannels(urlBase);
+            await fetchChannels();
             await refetchPoll();
           } catch (error) {
             logger.error('Failed to fetch cached data while disconnected:', error);
@@ -2096,7 +1688,7 @@ const location = useLocation();
 
                 // Improved initialization sequence
                 try {
-                  await fetchChannels(urlBase);
+                  await fetchChannels();
                   await refetchPoll();
                   setConnectionStatus('connected');
                   logger.debug('✅ Initialization complete, status set to connected');
@@ -2169,11 +1761,9 @@ const location = useLocation();
   };
 
   const fetchChannels = useCallback(
-    async (providedBaseUrl?: string) => {
-      // Use the provided baseUrl or fall back to the state value
-      const urlBase = providedBaseUrl !== undefined ? providedBaseUrl : baseUrl;
+    async () => {
       try {
-        const channelsUrl = sourceId ? `${urlBase}/api/channels?sourceId=${encodeURIComponent(sourceId)}` : `${urlBase}/api/channels`;
+        const channelsUrl = sourceId ? `${appBasename}/api/channels?sourceId=${encodeURIComponent(sourceId)}` : `${appBasename}/api/channels`;
         const channelsResponse = await authFetch(channelsUrl);
         if (channelsResponse.ok) {
           const channelsData = await channelsResponse.json();
@@ -2216,13 +1806,16 @@ const location = useLocation();
             }
           }
 
-          setChannels(channelsData);
+          // channelsData itself is no longer stored — useChannels() reads
+          // channels from the poll cache (#3962 5.4 PR8); this fetch exists
+          // to resolve the initial/fallback selectedChannel above ahead of
+          // the next poll response.
         }
       } catch (error) {
         logger.error('Error fetching channels:', error);
       }
     },
-    [baseUrl, authFetch, selectedChannel, setSelectedChannel, setChannels, sourceId]
+    [authFetch, selectedChannel, setSelectedChannel, sourceId]
   );
 
   // Process poll data from usePoll hook - handles all data processing from consolidated /api/poll endpoint
@@ -2238,262 +1831,20 @@ const location = useLocation();
         localNodeIdRef.current = localNodeId;
       }
 
-      // Process nodes data
-      if (data.nodes) {
-        const pendingFavorite = pendingFavoriteRequests;
-        const pendingIgnored = pendingIgnoredRequests;
-        const pendingHideFromMap = pendingHideFromMapRequests;
+      // Nodes are no longer processed here (#3962 5.4 PR8): DataContext
+      // stopped mirroring poll-derived nodes, and the pending
+      // favorite/ignored/hide-from-map reconciliation that used to run here
+      // moved to applyPendingNodeOverrides() (src/utils/pendingToggles.ts),
+      // applied by useNodes() (src/hooks/useServerData.ts) on every read of
+      // the poll cache — the same cache `data` already came from.
 
-        // #4240: drop expired entries BEFORE the size check, and independently
-        // of which nodes came back. The per-node reconciliation below can only
-        // clear an entry whose node is present in this response under the
-        // current sourceId; this sweep is what unsticks everything else.
-        sweepAll(ALL_PENDING_TOGGLE_MAPS);
-
-        if (pendingFavorite.size === 0 && pendingIgnored.size === 0 && pendingHideFromMap.size === 0) {
-          setNodes(data.nodes as DeviceInfo[]);
-        } else {
-          setNodes(
-            (data.nodes as DeviceInfo[]).map((serverNode: DeviceInfo) => {
-              const updatedNode = { ...serverNode };
-
-              // Handle pending favorite requests — key is scoped by sourceId
-              // so Source A's optimistic toggles don't leak into Source B's view.
-              const favKey = favoritePendingKey(sourceId, serverNode.nodeNum);
-              const pendingFavoriteState = pendingFavorite.get(favKey);
-              if (pendingFavoriteState !== undefined) {
-                if (serverNode.isFavorite === pendingFavoriteState) {
-                  pendingFavorite.delete(favKey);
-                } else {
-                  updatedNode.isFavorite = pendingFavoriteState;
-                }
-              }
-
-              // Handle pending ignored requests — same per-source scoping
-              const ignKey = favoritePendingKey(sourceId, serverNode.nodeNum);
-              const pendingIgnoredState = pendingIgnored.get(ignKey);
-              if (pendingIgnoredState !== undefined) {
-                if (serverNode.isIgnored === pendingIgnoredState) {
-                  pendingIgnored.delete(ignKey);
-                } else {
-                  updatedNode.isIgnored = pendingIgnoredState;
-                }
-              }
-
-              // Handle pending hide-from-map requests — same per-source scoping
-              const hfmKey = favoritePendingKey(sourceId, serverNode.nodeNum);
-              const pendingHideFromMapState = pendingHideFromMap.get(hfmKey);
-              if (pendingHideFromMapState !== undefined) {
-                if (Boolean(serverNode.hideFromMap) === pendingHideFromMapState) {
-                  pendingHideFromMap.delete(hfmKey);
-                } else {
-                  updatedNode.hideFromMap = pendingHideFromMapState;
-                }
-              }
-
-              return updatedNode;
-            })
-          );
-        }
-      }
-
-      // Process messages data
+      // Process messages data — optimistic-merge + pagination-preserving
+      // logic lives in useMessagingView (#3962 5.4 PR7); this just feeds it
+      // the poll payload + the two App-local values it needs (localNodeId
+      // computed above, and the currently-selected channel so the unread
+      // count for an open channel zeroes instead of incrementing).
       if (data.messages) {
-        const messagesData = data.messages;
-        const processedMessages = messagesData.map((msg: any) => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp),
-          receivedAt: new Date(msg.receivedAt ?? msg.timestamp),
-        }));
-
-        // Play notification sound if new messages arrived from OTHER users
-        if (processedMessages.length > 0) {
-          const currentNewestMessage = processedMessages[0];
-          const currentNewestId = currentNewestMessage.id;
-
-          if (newestMessageId.current && currentNewestId !== newestMessageId.current) {
-            const isFromOther = currentNewestMessage.fromNodeId !== localNodeId;
-            const isTextMessage = currentNewestMessage.portnum === 1;
-
-            if (isFromOther && isTextMessage) {
-              logger.debug('New message arrived from other user:', currentNewestMessage.fromNodeId);
-              const isDM = currentNewestMessage.channel === -1;
-              const muted = isDM
-                ? isDMMuted(currentNewestMessage.fromNodeId)
-                : isChannelMuted(currentNewestMessage.channel);
-              if (!muted) {
-                // Play the sound configured for this channel (channel -1 is the
-                // DM pseudo-channel, which has its own selectable sound too).
-                playNotificationSound(currentNewestMessage.channel);
-              } else {
-                logger.debug('🔇 Notification sound suppressed (muted):', isDM ? `DM from ${currentNewestMessage.fromNodeId}` : `channel ${currentNewestMessage.channel}`);
-              }
-            }
-          }
-
-          newestMessageId.current = currentNewestId;
-        }
-
-        // Check for matching messages to remove from pending
-        const currentPending = pendingMessagesRef.current;
-        const updatedPending = new Map(currentPending);
-        let pendingChanged = false;
-
-        if (currentPending.size > 0) {
-          currentPending.forEach((pendingMsg, tempId) => {
-            const isDM = pendingMsg.channel === -1;
-
-            const matchingMessage = processedMessages.find((msg: MeshMessage) => {
-              if (msg.text !== pendingMsg.text) return false;
-
-              const senderMatches =
-                (localNodeId && msg.from === localNodeId) ||
-                msg.from === pendingMsg.from ||
-                msg.fromNodeId === pendingMsg.fromNodeId;
-
-              if (!senderMatches) return false;
-              if (Math.abs(msg.timestamp.getTime() - pendingMsg.timestamp.getTime()) >= 30000) return false;
-
-              if (isDM) {
-                const matches =
-                  msg.toNodeId === pendingMsg.toNodeId ||
-                  (msg.to === pendingMsg.to && (msg.channel === 0 || msg.channel === -1));
-                return matches;
-              } else {
-                return msg.channel === pendingMsg.channel;
-              }
-            });
-
-            if (matchingMessage) {
-              updatedPending.delete(tempId);
-              pendingChanged = true;
-            }
-          });
-
-          if (pendingChanged) {
-            pendingMessagesRef.current = updatedPending;
-            setPendingMessages(updatedPending);
-          }
-        }
-
-        // Compute merged messages using setMessages callback to access current state
-        // Preserve older DM messages loaded via infinite scroll (similar to channel messages)
-        const pendingIds = new Set(Array.from(pendingMessagesRef.current.keys()));
-        const pollMsgIds = new Set(processedMessages.map((m: MeshMessage) => m.id));
-
-        setMessages(currentMessages => {
-          // Keep older messages that aren't in the poll (they were loaded via infinite scroll)
-          // Poll returns newest messages, so any messages not in poll are older
-          const olderMsgs = (currentMessages || []).filter(m => {
-            // If message is in poll results, don't keep it (poll version is authoritative)
-            if (pollMsgIds.has(m.id)) return false;
-
-            // For pending messages (temp IDs), only keep if still pending
-            if (m.id.toString().startsWith('temp_')) {
-              if (!pendingIds.has(m.id)) return false;
-              // Safety net: filter out if a matching server message already exists
-              // This catches edge cases where the ref timing or text/sender matching fails
-              // Must use localNodeId fallback (same as primary dedup) because temp messages
-              // created before first poll may have fromNodeId='me' instead of the real node ID
-              const hasServerMatch = processedMessages.some((pm: MeshMessage) =>
-                pm.text === m.text &&
-                ((localNodeId && pm.from === localNodeId) || pm.fromNodeId === m.fromNodeId || pm.from === m.from) &&
-                Math.abs(pm.timestamp.getTime() - m.timestamp.getTime()) < 30000
-              );
-              if (hasServerMatch) return false;
-              return true;
-            }
-
-            // Keep all other older messages (loaded via infinite scroll)
-            return true;
-          });
-
-          // Combine: older messages + poll messages (poll messages are newer/updated)
-          // Sort by timestamp to maintain order
-          const merged = [...olderMsgs, ...processedMessages];
-          merged.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-          return merged;
-        });
-
-        // Group messages by channel (use processedMessages since we don't need pending for channel groups)
-        const channelGroups: { [key: number]: MeshMessage[] } = {};
-        processedMessages.forEach((msg: MeshMessage) => {
-          if (msg.channel === -1) return;
-          if (!channelGroups[msg.channel]) {
-            channelGroups[msg.channel] = [];
-          }
-          channelGroups[msg.channel].push(msg);
-        });
-
-        // Update unread counts from the dedicated (filtered) unread query rather
-        // than the raw /poll aggregate, so the per-channel badges respect the
-        // "Show MQTT/Bridge Messages" toggle just like the sidebar dot (#3787).
-        // Fall back to the poll payload only until the first dedicated fetch lands.
-        const currentSelected = selectedChannelRef.current;
-        const newUnreadCounts: { [key: number]: number } = {};
-
-        const filteredChannelUnreads = unreadCountsDataRef.current?.channels ?? data.unreadCounts?.channels;
-        if (filteredChannelUnreads) {
-          Object.entries(filteredChannelUnreads).forEach(([channelId, count]) => {
-            const chId = parseInt(channelId, 10);
-            if (chId === currentSelected) {
-              newUnreadCounts[chId] = 0;
-            } else {
-              newUnreadCounts[chId] = count as number;
-            }
-          });
-        }
-
-        setUnreadCounts(newUnreadCounts);
-
-        // Merge poll messages with existing messages (preserve older messages loaded via infinite scroll)
-        setChannelMessages(prev => {
-          const merged: { [key: number]: MeshMessage[] } = {};
-
-          // Get all channel IDs from both existing and new messages
-          const allChannelIds = new Set([...Object.keys(prev).map(Number), ...Object.keys(channelGroups).map(Number)]);
-
-          allChannelIds.forEach(channelId => {
-            const existingMsgs = prev[channelId] || [];
-            const pollMsgs = channelGroups[channelId] || [];
-
-            // Create a map of poll message IDs for quick lookup
-            const pollMsgIds = new Set(pollMsgs.map(m => m.id));
-
-            // Keep older messages that aren't in the poll (they were loaded via infinite scroll)
-            // Poll returns newest 100, so any messages not in poll are older
-            // Also filter out pending messages that are no longer pending (they've been matched to real messages)
-            const olderMsgs = existingMsgs.filter(m => {
-              // If message is in poll results, don't keep it (poll version is authoritative)
-              if (pollMsgIds.has(m.id)) return false;
-
-              // For pending messages (temp IDs), only keep if still pending
-              // Once matched/acknowledged, pendingIds won't contain it anymore
-              // Channel messages use 'temp_' prefix, DMs use 'temp_dm_' prefix
-              if (m.id.toString().startsWith('temp_')) {
-                if (!pendingIds.has(m.id)) return false;
-                // Safety net: filter out if a matching server message already exists
-                // Must use localNodeId fallback (same as primary dedup) because temp messages
-                // created before first poll may have fromNodeId='me' instead of the real node ID
-                const hasServerMatch = pollMsgs.some(pm =>
-                  pm.text === m.text &&
-                  ((localNodeId && pm.from === localNodeId) || pm.fromNodeId === m.fromNodeId || pm.from === m.from) &&
-                  Math.abs(pm.timestamp.getTime() - m.timestamp.getTime()) < 30000
-                );
-                if (hasServerMatch) return false;
-                return true;
-              }
-
-              // Keep all other older messages (loaded via infinite scroll)
-              return true;
-            });
-
-            // Combine: older messages + poll messages (poll messages are newer/updated)
-            merged[channelId] = [...olderMsgs, ...pollMsgs];
-          });
-
-          return merged;
-        });
+        applyPollMessages(data, localNodeId, selectedChannelRef.current);
       }
 
       // Process config data
@@ -2514,25 +1865,19 @@ const location = useLocation();
         setCurrentNodeId(data.config.localNodeInfo.nodeId);
       }
 
-      // Process telemetry availability data
-      if (data.telemetryNodes) {
-        setNodesWithTelemetry(new Set(data.telemetryNodes.nodes || []));
-        setNodesWithWeatherTelemetry(new Set(data.telemetryNodes.weather || []));
-        setNodesWithEstimatedPosition(new Set(data.telemetryNodes.estimatedPosition || []));
-        setNodesWithPKC(new Set(data.telemetryNodes.pkc || []));
-      }
+      // Telemetry availability data is now sourced directly from the poll
+      // cache via useTelemetryNodes() (#3962 5.4 PR2) — no longer written
+      // into DataContext here.
 
-      // Process channels data
-      if (data.channels) {
-        setChannels(data.channels as Channel[]);
-      }
+      // Channels are no longer processed here either (#3962 5.4 PR8) — they
+      // come straight from the poll cache via useChannels().
 
       // Process traceroutes data (synced via poll for consistency across all views)
       if (data.traceroutes) {
         setTraceroutes(data.traceroutes);
       }
     },
-    [currentNodeId, playNotificationSound, setTraceroutes, isChannelMuted, isDMMuted]
+    [currentNodeId, setTraceroutes, applyPollMessages]
   );
 
   // Process poll data when it changes (from usePoll hook)
@@ -2575,10 +1920,7 @@ const location = useLocation();
     return recentTraceroutes.length > 0 ? recentTraceroutes[0] : null;
   };
 
-  // Helper to check if we should show cached data
-  const shouldShowData = () => {
-    return connectionStatus === 'connected' || connectionStatus === 'user-disconnected';
-  };
+  // shouldShowData moved to useSourceView (#3962 5.4 PR4)
 
   const handleDisconnect = async () => {
     try {
@@ -2641,47 +1983,7 @@ const location = useLocation();
     }
   };
 
-  const handleTraceroute = async (nodeId: string, channel?: number) => {
-    if (connectionStatus !== 'connected') {
-      return;
-    }
-
-    try {
-      // Set loading state
-      setTracerouteLoading(nodeId);
-
-      // Convert nodeId to node number
-      const nodeNumStr = nodeId.replace('!', '');
-      const nodeNum = parseInt(nodeNumStr, 16);
-
-      await authFetch(`${baseUrl}/api/traceroute`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ destination: nodeNum, sourceId, ...(channel !== undefined && { channel }) }),
-      });
-
-      logger.debug(`🗺️ Traceroute request sent to ${nodeId}`);
-
-      // Poll for traceroute results with increasing delays
-      // This provides faster UI feedback instead of waiting for the 5s poll interval
-      const pollDelays = [2000, 5000, 10000, 15000]; // 2s, 5s, 10s, 15s
-      pollDelays.forEach(delay => {
-        setTimeout(() => {
-          void refetchPoll();
-        }, delay);
-      });
-
-      // Clear loading state after 30 seconds
-      setTimeout(() => {
-        setTracerouteLoading(null);
-      }, 30000);
-    } catch (error) {
-      logger.error('Failed to send traceroute:', error);
-      setTracerouteLoading(null);
-    }
-  };
+  // handleTraceroute moved to useSourceView (#3962 5.4 PR4)
 
   const handleExchangePosition = async (nodeId: string, channel?: number) => {
     if (connectionStatus !== 'connected') {
@@ -2703,13 +2005,22 @@ const location = useLocation();
       const nodeNum = parseInt(nodeNumStr, 16);
 
       // Use direct fetch with CSRF token (consistent with other message endpoints)
-      await authFetch(`${baseUrl}/api/position/request`, {
+      const response = await authFetch(`${baseUrl}/api/position/request`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ destination: nodeNum, sourceId: sourceId || undefined, ...(channel !== undefined && { channel }) }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        setPositionLoading(null);
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+        }
+        return;
+      }
 
       logger.debug(`📍 Position request sent to ${nodeId}`);
 
@@ -2749,13 +2060,22 @@ const location = useLocation();
       const nodeNum = parseInt(nodeNumStr, 16);
 
       // Use direct fetch with CSRF token
-      await authFetch(`${baseUrl}/api/nodeinfo/request`, {
+      const response = await authFetch(`${baseUrl}/api/nodeinfo/request`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ destination: nodeNum, sourceId: sourceId || undefined, ...(channel !== undefined && { channel }) }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        setNodeInfoLoading(null);
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+        }
+        return;
+      }
 
       logger.debug(`🔑 NodeInfo request sent to ${nodeId}`);
 
@@ -2784,6 +2104,7 @@ const location = useLocation();
       // Set loading state
       setNeighborInfoLoading(nodeId);
 
+      let response: Response;
       if (sourceType === 'meshcore' && sourceId) {
         const normalized = nodeId.toLowerCase();
         if (!/^[0-9a-f]{64}$/.test(normalized)) {
@@ -2791,7 +2112,7 @@ const location = useLocation();
           setNeighborInfoLoading(null);
           return;
         }
-        await authFetch(`${baseUrl}/api/sources/${sourceId}/meshcore/neighbors/request`, {
+        response = await authFetch(`${baseUrl}/api/sources/${sourceId}/meshcore/neighbors/request`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ publicKey: normalized }),
@@ -2801,12 +2122,21 @@ const location = useLocation();
         // Meshtastic: convert hex nodeId to numeric destination
         const nodeNumStr = nodeId.replace('!', '');
         const nodeNum = parseInt(nodeNumStr, 16);
-        await authFetch(`${baseUrl}/api/neighborinfo/request`, {
+        response = await authFetch(`${baseUrl}/api/neighborinfo/request`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ destination: nodeNum, sourceId: sourceId || undefined }),
         });
         logger.debug(`🏠 NeighborInfo request sent to ${nodeId}`);
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        setNeighborInfoLoading(null);
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+        }
+        return;
       }
 
       // Clear loading state after 30 seconds
@@ -2852,6 +2182,11 @@ const location = useLocation();
 
       if (!response.ok) {
         const detail = await response.json().catch(() => ({}));
+        if (isTxDisabledBody(response.status, detail)) {
+          setTelemetryRequestLoading(null);
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          return;
+        }
         throw new Error(detail.error || `Telemetry request failed (${response.status})`);
       }
 
@@ -3026,6 +2361,10 @@ const location = useLocation();
         setTimeout(() => refetchPoll(), 500);
       } else {
         const errorData = await response.json();
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          return;
+        }
         setError(`Failed to send reaction: ${errorData.error || 'Unknown error'}`);
       }
     } catch (err) {
@@ -3261,111 +2600,8 @@ const location = useLocation();
     }
   };
 
-  const handleDeleteNode = async (nodeNum: number) => {
-    const node = nodes.find(n => n.nodeNum === nodeNum);
-    const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
-
-    if (
-      !window.confirm(
-        `Are you sure you want to DELETE ${nodeName} from the local database?\n\nThis will remove:\n- The node from the map and node list\n- All messages with this node\n- All traceroutes for this node\n- All telemetry data for this node\n\nThis action cannot be undone.`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      const response = await authFetch(`${baseUrl}/api/messages/nodes/${nodeNum}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ sourceId }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        showToast(
-          t('toast.deleted_node', {
-            node: nodeName,
-            messages: data.messagesDeleted,
-            traceroutes: data.traceroutesDeleted,
-            telemetry: data.telemetryDeleted,
-          }),
-          'success'
-        );
-        // Close the purge data modal if open
-        setShowPurgeDataModal(false);
-        // Clear the selected DM node if it's the one being deleted
-        const deletedNode = nodes.find(n => n.nodeNum === nodeNum);
-        if (deletedNode && selectedDMNode === deletedNode.user?.id) {
-          setSelectedDMNode('');
-        }
-        // Refresh data from backend to ensure consistency
-        void refetchPoll();
-      } else {
-        const errorData = await response.json();
-        showToast(t('toast.failed_delete_node', { error: errorData.message || t('errors.unknown') }), 'error');
-      }
-    } catch (err) {
-      showToast(
-        t('toast.failed_delete_node', { error: err instanceof Error ? err.message : t('errors.network') }),
-        'error'
-      );
-    }
-  };
-
-  const handlePurgeNodeFromDevice = async (nodeNum: number) => {
-    const node = nodes.find(n => n.nodeNum === nodeNum);
-    const nodeName = node?.user?.shortName || node?.user?.longName || `Node ${nodeNum}`;
-
-    if (
-      !window.confirm(
-        `Are you sure you want to PURGE ${nodeName} from BOTH the connected device AND the local database?\n\nThis will:\n- Send an admin command to remove the node from the device NodeDB\n- Remove the node from the map and node list\n- Delete all messages with this node\n- Delete all traceroutes for this node\n- Delete all telemetry data for this node\n\nThis action cannot be undone and affects both the device and local database.`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      const response = await authFetch(`${baseUrl}/api/messages/nodes/${nodeNum}/purge-from-device`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ sourceId }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        showToast(
-          t('toast.purged_node_device', {
-            node: nodeName,
-            messages: data.messagesDeleted,
-            traceroutes: data.traceroutesDeleted,
-            telemetry: data.telemetryDeleted,
-          }),
-          'success'
-        );
-        // Close the purge data modal if open
-        setShowPurgeDataModal(false);
-        // Clear the selected DM node if it's the one being deleted
-        const purgedNode = nodes.find(n => n.nodeNum === nodeNum);
-        if (purgedNode && selectedDMNode === purgedNode.user?.id) {
-          setSelectedDMNode('');
-        }
-        // Refresh data from backend to ensure consistency
-        void refetchPoll();
-      } else {
-        const errorData = await response.json();
-        showToast(t('toast.failed_purge_node_device', { error: errorData.message || t('errors.unknown') }), 'error');
-      }
-    } catch (err) {
-      showToast(
-        t('toast.failed_purge_node_device', { error: err instanceof Error ? err.message : t('errors.network') }),
-        'error'
-      );
-    }
-  };
+  // handleDeleteNode + handlePurgeNodeFromDevice moved to useSourceView
+  // (#3962 5.4 PR4)
 
   const handlePositionOverrideSave = async (
     nodeNum: number,
@@ -3489,7 +2725,6 @@ const location = useLocation();
         setTimeout(() => refetchPoll(), 1000);
       } else {
         const errorData = await response.json();
-        setError(`Failed to send message: ${errorData.error}`);
 
         // Remove the message from local state if sending failed
         setMessages(prev => prev.filter(msg => msg.id !== tempId));
@@ -3503,6 +2738,12 @@ const location = useLocation();
           pendingMessagesRef.current = updated; // Update ref
           return updated;
         });
+
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          return;
+        }
+        setError(`Failed to send message: ${errorData.error}`);
       }
     } catch (err) {
       setError(`Failed to send message: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -3540,6 +2781,10 @@ const location = useLocation();
         setTimeout(() => refetchPoll(), 1000);
       } else {
         const errorData = await response.json();
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          return;
+        }
         setError(`Failed to send bell: ${errorData.error}`);
       }
     } catch (err) {
@@ -3564,6 +2809,11 @@ const location = useLocation();
       if (response.ok) {
         logger.debug('Bell DM sent successfully');
       } else {
+        const errorData = await response.json().catch(() => ({}));
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          return;
+        }
         setError('Failed to send bell DM');
       }
     } catch (err) {
@@ -3586,6 +2836,10 @@ const location = useLocation();
         setTimeout(() => refetchPoll(), 1000);
       } else {
         const errorData = await response.json();
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          return;
+        }
         setError(`Failed to send position: ${errorData.error}`);
       }
     } catch (err) {
@@ -3671,7 +2925,6 @@ const location = useLocation();
         setTimeout(() => refetchPoll(), 1000);
       } else {
         const errorData = await response.json();
-        setError(`Failed to resend message: ${errorData.error}`);
 
         // Remove the message from local state if sending failed
         setMessages(prev => prev.filter(msg => msg.id !== tempId));
@@ -3687,6 +2940,12 @@ const location = useLocation();
           pendingMessagesRef.current = updated;
           return updated;
         });
+
+        if (isTxDisabledBody(response.status, errorData)) {
+          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          return;
+        }
+        setError(`Failed to resend message: ${errorData.error}`);
       }
     } catch (err) {
       setError(`Failed to resend message: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -3754,369 +3013,12 @@ const location = useLocation();
       .sort((a, b) => a - b);
   };
 
-  // Helper function to sort nodes
-  const sortNodes = (nodes: DeviceInfo[], field: SortField, direction: SortDirection): DeviceInfo[] => {
-    return [...nodes].sort((a, b) => {
-      let aVal: any, bVal: any;
+  // sortNodes, filterNodes, processedNodes, and centerMapOnNode moved to
+  // useSourceView (#3962 5.4 PR4)
 
-      switch (field) {
-        case 'longName':
-          aVal = a.user?.longName || `Node ${a.nodeNum}`;
-          bVal = b.user?.longName || `Node ${b.nodeNum}`;
-          break;
-        case 'shortName':
-          aVal = a.user?.shortName || '';
-          bVal = b.user?.shortName || '';
-          break;
-        case 'id':
-          aVal = a.user?.id || a.nodeNum;
-          bVal = b.user?.id || b.nodeNum;
-          break;
-        case 'lastHeard':
-          aVal = a.lastHeard || 0;
-          bVal = b.lastHeard || 0;
-          break;
-        case 'snr':
-          aVal = a.snr || -999;
-          bVal = b.snr || -999;
-          break;
-        case 'battery':
-          aVal = a.deviceMetrics?.batteryLevel || -1;
-          bVal = b.deviceMetrics?.batteryLevel || -1;
-          break;
-        case 'hwModel':
-          aVal = a.user?.hwModel || 0;
-          bVal = b.user?.hwModel || 0;
-          break;
-        case 'hops': {
-          // For nodes without hop data, use fallback values that push them to bottom
-          // Ascending: use 999 (high value = bottom), Descending: use -1 (low value = bottom)
-          const noHopFallback = direction === 'asc' ? 999 : -1;
-          aVal = a.hopsAway !== undefined && a.hopsAway !== null ? a.hopsAway : noHopFallback;
-          bVal = b.hopsAway !== undefined && b.hopsAway !== null ? b.hopsAway : noHopFallback;
-          break;
-        }
-        default:
-          return 0;
-      }
-
-      if (typeof aVal === 'string' && typeof bVal === 'string') {
-        const comparison = aVal.toLowerCase().localeCompare(bVal.toLowerCase());
-        return direction === 'asc' ? comparison : -comparison;
-      } else {
-        const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-        return direction === 'asc' ? comparison : -comparison;
-      }
-    });
-  };
-
-  // Helper function to filter nodes
-  const filterNodes = (nodes: DeviceInfo[], filter: string): DeviceInfo[] => {
-    if (!filter.trim()) return nodes;
-
-    const lowerFilter = filter.toLowerCase();
-    return nodes.filter(node => {
-      const longName = (node.user?.longName || '').toLowerCase();
-      const shortName = (node.user?.shortName || '').toLowerCase();
-      const id = (node.user?.id || '').toLowerCase();
-
-      return longName.includes(lowerFilter) || shortName.includes(lowerFilter) || id.includes(lowerFilter);
-    });
-  };
-
-  // Get processed (filtered and sorted) nodes
-  const processedNodes = useMemo((): DeviceInfo[] => {
-    const cutoffTime = Date.now() / 1000 - maxNodeAgeHours * 60 * 60;
-
-    // Age filter (favorites are always visible)
-    const ageFiltered = nodes.filter(node => {
-      if (node.isFavorite) return true;
-      if (!node.lastHeard) return false;
-      return node.lastHeard >= cutoffTime;
-    });
-
-    // Only apply nodesNodeFilter when Nodes tab is active
-    // Messages tab will apply its own messagesNodeFilter
-    const textFiltered = activeTab === 'nodes' ? filterNodes(ageFiltered, nodesNodeFilter) : ageFiltered;
-
-    // Apply advanced filters
-    const advancedFiltered = textFiltered.filter(node => {
-      const nodeId = node.user?.id;
-      const isShowMode = nodeFilters.filterMode === 'show';
-
-      // MQTT filter
-      if (nodeFilters.showMqtt) {
-        const matches = node.viaMqtt;
-        if (isShowMode && !matches) return false; // Show mode: exclude non-matches
-        if (!isShowMode && matches) return false; // Hide mode: exclude matches
-      }
-
-      // Telemetry filter
-      if (nodeFilters.showTelemetry) {
-        const matches = nodeId && nodesWithTelemetry.has(nodeId);
-        if (isShowMode && !matches) return false;
-        if (!isShowMode && matches) return false;
-      }
-
-      // Environment metrics filter
-      if (nodeFilters.showEnvironment) {
-        const matches = nodeId && nodesWithWeatherTelemetry.has(nodeId);
-        if (isShowMode && !matches) return false;
-        if (!isShowMode && matches) return false;
-      }
-
-      // Power source filter
-      const batteryLevel = node.deviceMetrics?.batteryLevel;
-      if (nodeFilters.powerSource !== 'both' && batteryLevel !== undefined) {
-        const isPowered = batteryLevel === 101;
-        if (nodeFilters.powerSource === 'powered' && !isPowered) {
-          return false;
-        }
-        if (nodeFilters.powerSource === 'battery' && isPowered) {
-          return false;
-        }
-      }
-
-      // Position filter
-      if (nodeFilters.showPosition) {
-        const hasPosition = node.position && node.position.latitude != null && node.position.longitude != null;
-        const matches = hasPosition;
-        if (isShowMode && !matches) return false;
-        if (!isShowMode && matches) return false;
-      }
-
-      // Hops filter (always applies regardless of mode)
-      if (node.hopsAway != null) {
-        if (node.hopsAway < nodeFilters.minHops || node.hopsAway > nodeFilters.maxHops) {
-          return false;
-        }
-      }
-
-      // PKI filter
-      if (nodeFilters.showPKI) {
-        const matches = nodeId && nodesWithPKC.has(nodeId);
-        if (isShowMode && !matches) return false;
-        if (!isShowMode && matches) return false;
-      }
-
-      // Remote Admin filter
-      if (nodeFilters.showRemoteAdmin) {
-        const matches = !!node.hasRemoteAdmin;
-        if (isShowMode && !matches) return false;
-        if (!isShowMode && matches) return false;
-      }
-
-      /**
-       * Unknown nodes filter
-       * Identifies nodes that lack both longName and shortName, which are typically
-       * displayed as "Node 12345678" in the UI. These nodes have only been detected
-       * but haven't provided identifying information yet.
-       */
-      if (nodeFilters.showUnknown) {
-        const hasLongName = node.user?.longName && node.user.longName.trim() !== '';
-        const hasShortName = node.user?.shortName && node.user.shortName.trim() !== '';
-        const isUnknown = !hasLongName && !hasShortName;
-        const matches = isUnknown;
-        if (isShowMode && !matches) return false;
-        if (!isShowMode && matches) return false;
-      }
-
-      // Ignored nodes filter - hide ignored nodes by default
-      // When showIgnored is false (default): hide ignored nodes
-      // When showIgnored is true: show ignored nodes
-      if (!nodeFilters.showIgnored && node.isIgnored) {
-        return false;
-      }
-
-      // Favorite locked filter
-      if (nodeFilters.showFavoriteLocked) {
-        const matches = !!node.favoriteLocked;
-        if (isShowMode && !matches) return false;
-        if (!isShowMode && matches) return false;
-      }
-
-      // Device role filter
-      if (nodeFilters.deviceRoles.length > 0) {
-        const role = typeof node.user?.role === 'number' ? node.user.role : parseInt(node.user?.role || '0');
-        const matches = nodeFilters.deviceRoles.includes(role);
-        if (isShowMode && !matches) return false;
-        if (!isShowMode && matches) return false;
-      }
-
-      // Channel filter
-      if (nodeFilters.channels.length > 0) {
-        const nodeChannel = node.channel ?? -1;
-        const matches = nodeFilters.channels.includes(nodeChannel);
-        if (isShowMode && !matches) return false;
-        if (!isShowMode && matches) return false;
-      }
-
-      return true;
-    });
-
-    // Separate favorites from non-favorites
-    const favorites = advancedFiltered.filter(node => node.isFavorite);
-    const nonFavorites = advancedFiltered.filter(node => !node.isFavorite);
-
-    // Sort each group independently
-    const sortedFavorites = sortNodes(favorites, sortField, sortDirection);
-    const sortedNonFavorites = sortNodes(nonFavorites, sortField, sortDirection);
-
-    // Concatenate: favorites first, then non-favorites
-    return [...sortedFavorites, ...sortedNonFavorites];
-  }, [
-    nodes,
-    maxNodeAgeHours,
-    activeTab,
-    nodesNodeFilter,
-    sortField,
-    sortDirection,
-    nodeFilters,
-    nodesWithTelemetry,
-    nodesWithWeatherTelemetry,
-    nodesWithPKC,
-  ]);
-
-  // Function to center map on a specific node
-  const centerMapOnNode = useCallback((node: DeviceInfo) => {
-    const effectivePos = getEffectivePosition(node);
-    if (effectivePos.latitude != null && effectivePos.longitude != null) {
-      setMapCenterTarget([effectivePos.latitude, effectivePos.longitude]);
-    }
-  }, []);
-
-  // pendingFavoriteRequests is defined as a module-level variable to persist across remounts
-
-  // Function to toggle node favorite status
-  const toggleFavorite = async (node: DeviceInfo, event: React.MouseEvent) => {
-    event.stopPropagation(); // Prevent node selection when clicking star
-
-    if (!node.user?.id) {
-      logger.error('Cannot toggle favorite: node has no user ID');
-      return;
-    }
-
-    // Prevent multiple rapid clicks on the same node (scoped to current source)
-    const favKey = favoritePendingKey(sourceId, node.nodeNum);
-    if (pendingFavoriteRequests.get(favKey) !== undefined) {
-      return;
-    }
-
-    // Store the original state before any updates
-    const originalFavoriteStatus = node.isFavorite;
-    const newFavoriteStatus = !originalFavoriteStatus;
-
-    try {
-      // Mark this request as pending with the expected new state
-      pendingFavoriteRequests.set(favKey, newFavoriteStatus);
-
-      // Optimistically update the UI - use flushSync to force immediate render
-      // This prevents the polling from overwriting the optimistic update before it renders
-      flushSync(() => {
-        setNodes(prevNodes => {
-          const updated = prevNodes.map(n =>
-            n.nodeNum === node.nodeNum ? { ...n, isFavorite: newFavoriteStatus } : n
-          );
-          return updated;
-        });
-      });
-
-      // Send update to backend (with device sync enabled by default)
-      const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/favorite`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          isFavorite: newFavoriteStatus,
-          syncToDevice: true, // Enable two-way sync to Meshtastic device
-          sourceId,
-        }),
-      });
-
-      if (!response.ok) {
-        if (response.status === 403) {
-          showToast(t('toast.insufficient_permissions_favorites'), 'error');
-          // Revert to original state using the saved original value
-          setNodes(prevNodes =>
-            prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isFavorite: originalFavoriteStatus } : n))
-          );
-          return;
-        }
-        throw new Error('Failed to update favorite status');
-      }
-
-      const result = await response.json();
-
-      // Log the result including device sync status
-      let statusMessage = `${newFavoriteStatus ? '⭐' : '☆'} Node ${node.user.id} favorite status updated`;
-      if (result.deviceSync) {
-        if (result.deviceSync.status === 'success') {
-          statusMessage += ' (synced to device ✓)';
-        } else if (result.deviceSync.status === 'failed') {
-          // Only show error for actual failures (not firmware compatibility)
-          statusMessage += ` (device sync failed: ${result.deviceSync.error || 'unknown error'})`;
-        }
-        // 'skipped' status (e.g., pre-2.7 firmware) is not shown to user - logged on server only
-      }
-      logger.debug(statusMessage);
-    } catch (error) {
-      logger.error('Error toggling favorite:', error);
-      // Revert to original state using the saved original value
-      setNodes(prevNodes =>
-        prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isFavorite: originalFavoriteStatus } : n))
-      );
-      // Remove from pending on error since we reverted
-      pendingFavoriteRequests.delete(favKey);
-      showToast(t('toast.failed_update_favorite'), 'error');
-    }
-    // Note: On success, the polling logic will remove from pendingFavoriteRequests
-    // when it detects the server has caught up
-  };
-
-  // Function to toggle node favorite lock status
-  const toggleFavoriteLock = async (node: DeviceInfo, event: React.MouseEvent) => {
-    event.stopPropagation();
-
-    if (!node.user?.id) {
-      logger.error('Cannot toggle favorite lock: node has no user ID');
-      return;
-    }
-
-    const newLocked = !node.favoriteLocked;
-
-    try {
-      // Optimistically update the UI
-      flushSync(() => {
-        setNodes(prevNodes =>
-          prevNodes.map(n =>
-            n.nodeNum === node.nodeNum ? { ...n, favoriteLocked: newLocked } : n
-          )
-        );
-      });
-
-      const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/favorite-lock`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locked: newLocked, sourceId }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
-      }
-
-      logger.debug(`${newLocked ? '🔒' : '🔓'} Node ${node.user.id} favorite lock set to: ${newLocked}`);
-    } catch (error) {
-      logger.error('Error toggling favorite lock:', error);
-      // Revert
-      setNodes(prevNodes =>
-        prevNodes.map(n =>
-          n.nodeNum === node.nodeNum ? { ...n, favoriteLocked: !newLocked } : n
-        )
-      );
-      showToast(t('toast.failed_update_favorite_lock', 'Failed to update favorite lock'), 'error');
-    }
-  };
+  // toggleFavorite + toggleFavoriteLock moved to useSourceView (#3962 5.4
+  // PR4) — toggleIgnored/toggleHideFromMap below are messages-tab-only
+  // (not in the NodesTab census) and stay here until PR7.
 
   // Function to toggle node ignored status
   const toggleIgnored = async (node: DeviceInfo, event: React.MouseEvent) => {
@@ -4141,14 +3043,10 @@ const location = useLocation();
       // Mark this request as pending with the expected new state
       pendingIgnoredRequests.set(ignKey, newIgnoredStatus);
 
-      // Optimistically update the UI - use flushSync to force immediate render
-      // This prevents the polling from overwriting the optimistic update before it renders
-      flushSync(() => {
-        setNodes(prevNodes => {
-          const updated = prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isIgnored: newIgnoredStatus } : n));
-          return updated;
-        });
-      });
+      // Optimistically update the UI by writing straight into the poll
+      // query cache (#3962 5.4 PR8) — useNodes() re-derives via
+      // applyPendingNodeOverrides on every cache change.
+      setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { isIgnored: newIgnoredStatus });
 
       // Send update to backend (with device sync enabled by default)
       const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/ignored`, {
@@ -4167,9 +3065,7 @@ const location = useLocation();
         if (response.status === 403) {
           showToast(t('toast.insufficient_permissions_ignored'), 'error');
           // Revert to original state using the saved original value
-          setNodes(prevNodes =>
-            prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isIgnored: originalIgnoredStatus } : n))
-          );
+          setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { isIgnored: originalIgnoredStatus });
           return;
         }
         throw new Error('Failed to update ignored status');
@@ -4192,9 +3088,7 @@ const location = useLocation();
     } catch (error) {
       logger.error('Error toggling ignored:', error);
       // Revert to original state using the saved original value
-      setNodes(prevNodes =>
-        prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, isIgnored: originalIgnoredStatus } : n))
-      );
+      setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { isIgnored: originalIgnoredStatus });
       // Remove from pending on error since we reverted
       pendingIgnoredRequests.delete(ignKey);
       showToast(t('toast.failed_update_ignored'), 'error');
@@ -4238,11 +3132,10 @@ const location = useLocation();
     try {
       pendingHideFromMapRequests.set(hfmKey, newStatus);
 
-      flushSync(() => {
-        setNodes(prevNodes =>
-          prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, hideFromMap: newStatus } : n))
-        );
-      });
+      // Optimistically update the UI by writing straight into the poll
+      // query cache (#3962 5.4 PR8) — useNodes() re-derives via
+      // applyPendingNodeOverrides on every cache change.
+      setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { hideFromMap: newStatus });
 
       const response = await authFetch(`${baseUrl}/api/nodes/${node.user.id}/hide-from-map`, {
         method: 'POST',
@@ -4259,9 +3152,7 @@ const location = useLocation();
       if (!response.ok) {
         if (response.status === 403) {
           showToast(t('toast.insufficient_permissions_hide_from_map', 'You do not have permission to change map visibility'), 'error');
-          setNodes(prevNodes =>
-            prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, hideFromMap: originalStatus } : n))
-          );
+          setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { hideFromMap: originalStatus });
           pendingHideFromMapRequests.delete(hfmKey);
           return;
         }
@@ -4271,9 +3162,7 @@ const location = useLocation();
       logger.debug(`🗺️ Node ${node.user.id} hideFromMap → ${newStatus}`);
     } catch (error) {
       logger.error('Error toggling hideFromMap:', error);
-      setNodes(prevNodes =>
-        prevNodes.map(n => (n.nodeNum === node.nodeNum ? { ...n, hideFromMap: originalStatus } : n))
-      );
+      setNodeFieldInCache(queryClient, sourceId, node.nodeNum, { hideFromMap: originalStatus });
       pendingHideFromMapRequests.delete(hfmKey);
       showToast(t('toast.failed_update_hide_from_map', 'Failed to update map visibility'), 'error');
     }
@@ -4343,104 +3232,9 @@ const location = useLocation();
 
   // Removed renderSettingsTab - using SettingsTab component instead
 
-  // Create stable digests of nodes and traceroutes that only change when relevant data changes
-  // This prevents unnecessary recalculation of traceroutePathsElements
-  // Uses getEffectivePosition to respect position overrides (Issue #1526)
-  const nodesPositionDigest = useMemo(() => {
-    return nodes.map(n => {
-      const effectivePos = getEffectivePosition(n);
-      return {
-        nodeNum: n.nodeNum,
-        position: effectivePos.latitude != null && effectivePos.longitude != null
-          ? {
-              latitude: effectivePos.latitude,
-              longitude: effectivePos.longitude,
-            }
-          : undefined,
-        user: n.user
-          ? {
-              longName: n.user.longName,
-              shortName: n.user.shortName,
-              id: n.user.id,
-            }
-          : undefined,
-        viaMqtt: n.viaMqtt ?? false,
-      };
-    });
-  }, [nodes.map(n => {
-    const pos = getEffectivePosition(n);
-    return `${n.nodeNum}-${pos.latitude}-${pos.longitude}-${n.viaMqtt ? '1' : '0'}`;
-  }).join(',')]);
-
-  const traceroutesDigest = useMemo(() => {
-    return traceroutes.map(tr => ({
-      fromNodeNum: tr.fromNodeNum,
-      toNodeNum: tr.toNodeNum,
-      fromNodeId: tr.fromNodeId,
-      toNodeId: tr.toNodeId,
-      route: tr.route,
-      routeBack: tr.routeBack,
-      snrTowards: tr.snrTowards,
-      snrBack: tr.snrBack,
-      timestamp: tr.timestamp,
-      createdAt: tr.createdAt,
-    }));
-  }, [
-    traceroutes
-      .map(tr => `${tr.fromNodeNum}-${tr.toNodeNum}-${tr.route}-${tr.routeBack}-${tr.timestamp || tr.createdAt}`)
-      .join(','),
-  ]);
-
-  // Traceroute paths rendering - extracted to useTraceroutePaths hook
-  const tracerouteCallbacks = useMemo(
-    () => ({
-      onSelectNode: (nodeId: string, position: [number, number]) => {
-        setSelectedNodeId(nodeId);
-        setMapCenterTarget(position);
-      },
-      onSelectRouteSegment: (nodeNum1: number, nodeNum2: number) => {
-        setSelectedRouteSegment({ nodeNum1, nodeNum2 });
-      },
-    }),
-    [setSelectedNodeId, setMapCenterTarget]
-  );
-
-  // Compute visible node numbers for neighbor-info line and traceroute path filtering.
-  // Must mirror the per-marker filter in NodesTab so that lines are hidden whenever
-  // their endpoint nodes are hidden (Issues #1102, #3147).
-  const visibleNodeNums = useMemo(() => {
-    // #4240: one clock read per recompute. Deliberately computed INSIDE the memo
-    // rather than listed as a dependency — a fresh timestamp every render would
-    // invalidate this memo on every render.
-    const transportCutoff = transportCutoffSec(effectiveMapMaxAge);
-    const visibleNodes = processedNodes.filter(node => {
-      if (!node.position?.latitude || !node.position?.longitude) return false;
-      // #4162/#3549: "Hide from Map" suppresses the marker (NodesTab drops it
-      // at nodesWithPosition), so it must also drop from this visible set —
-      // otherwise route-segment / neighbor lines dangle to a marker-less node.
-      if (node.hideFromMap) return false;
-      if (!nodePassesTransportFilter(node, { showRfNodes, showUdpNodes, showMqttNodes }, transportCutoff)) return false;
-      if (!showIncompleteNodes && !isNodeComplete(node)) return false;
-      if (!showEstimatedPositions && node.user?.id && nodesWithEstimatedPosition.has(node.user.id)) return false;
-      return true;
-    });
-    return new Set(visibleNodes.map(n => n.nodeNum));
-  }, [processedNodes, showRfNodes, showUdpNodes, showMqttNodes, showIncompleteNodes, showEstimatedPositions, nodesWithEstimatedPosition, effectiveMapMaxAge]);
-
-  const { traceroutePathsElements, selectedNodeTraceroute, tracerouteNodeNums, tracerouteBounds } = useTraceroutePaths({
-    showPaths,
-    showRoute,
-    selectedNodeId,
-    currentNodeId,
-    nodesPositionDigest,
-    traceroutesDigest,
-    distanceUnit,
-    maxNodeAgeHours: effectiveMapMaxAge,
-    themeColors: mergedThemeColors,
-    callbacks: tracerouteCallbacks,
-    visibleNodeNums,
-    mapZoom,
-  });
+  // nodesPositionDigest, traceroutesDigest, tracerouteCallbacks,
+  // visibleNodeNums, and the useTraceroutePaths() call all moved to
+  // useSourceView (#3962 5.4 PR4)
 
   // Navigate to message from search result
   const handleNavigateToMessage = useCallback((result: { id: string; source: string; channel?: number; fromNodeId?: string; fromNodeNum?: number }) => {
@@ -4573,7 +3367,6 @@ const location = useLocation();
         onClose={() => setShowPositionOverrideModal(false)}
         onSave={handlePositionOverrideSave}
         getNodeName={getNodeName}
-        baseUrl={baseUrl}
       />
 
       <NodeInfoModal
@@ -4669,32 +3462,237 @@ const location = useLocation();
           </div>
         )}
 
-        {activeTab === 'nodes' && (
-          <ErrorBoundary fallbackTitle="Nodes failed to load">
-          <NodesTab
-            processedNodes={processedNodes}
-            shouldShowData={shouldShowData}
-            centerMapOnNode={centerMapOnNode}
-            toggleFavorite={toggleFavorite}
-            toggleFavoriteLock={toggleFavoriteLock}
-            setActiveTab={setActiveTab}
-            setSelectedDMNode={setSelectedDMNode}
-            markerRefs={markerRefs}
-            traceroutePathsElements={traceroutePathsElements}
-            selectedNodeTraceroute={selectedNodeTraceroute}
-            visibleNodeNums={visibleNodeNums}
-            tracerouteNodeNums={tracerouteNodeNums}
-            tracerouteBounds={tracerouteBounds}
-            onTraceroute={handleTraceroute}
-            connectionStatus={connectionStatus}
-            tracerouteLoading={tracerouteLoading}
-            onDeleteNode={handleDeleteNode}
-            onPurgeNodeFromDevice={handlePurgeNodeFromDevice}
+        {/*
+          Tab region nested Routes (#3962 5.4 PR1). All 15 tabs are now
+          `<Route>` elements (task54_spec.md §3) — the `path="*"` fallback
+          below renders nothing, preserving prior blank-fallback behavior for
+          an unrecognized sub-path. `audit` was the PR1 proof leaf; PR3
+          migrated the other leaf tabs; PR4 migrated `nodes` (the default/
+          index tab) alongside extracting its shared node/traceroute/map
+          orchestration into `useSourceView` (src/hooks/useSourceView.ts);
+          PR5 migrated info/dashboard/configuration; PR6 migrated settings/
+          automation; PR7 migrated channels/messages alongside extracting
+          their messaging state machinery into `useMessagingView`
+          (src/hooks/useMessagingView.ts) — see that file's doc comment.
+        */}
+        <Routes>
+          <Route index element={<Navigate to="nodes" replace />} />
+          <Route
+            path="audit"
+            element={<ErrorBoundary fallbackTitle="Audit Log failed to load"><AuditLogTab /></ErrorBoundary>}
           />
-          </ErrorBoundary>
-        )}
-        {activeTab === 'channels' && (
-          <ErrorBoundary fallbackTitle="Channels failed to load">
+          <Route
+            path="notifications"
+            element={<ErrorBoundary fallbackTitle="Notifications failed to load"><NotificationsTab isAdmin={authStatus?.user?.isAdmin || false} /></ErrorBoundary>}
+          />
+          <Route
+            path="users"
+            element={<ErrorBoundary fallbackTitle="Users failed to load"><UsersTab /></ErrorBoundary>}
+          />
+          <Route
+            path="security"
+            element={<ErrorBoundary fallbackTitle="Security failed to load"><SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} openDmWithDraft={openDmWithDraft} /></ErrorBoundary>}
+          />
+          <Route
+            path="admin"
+            element={authStatus?.user?.isAdmin ? (
+              <ErrorBoundary fallbackTitle="Admin Commands failed to load">
+                <AdminCommandsTab
+                  key={sourceId || 'default'}
+                  nodes={nodes}
+                  currentNodeId={currentNodeId}
+                  channels={channels}
+                  onChannelsUpdated={fetchChannels}
+                />
+              </ErrorBoundary>
+            ) : null}
+          />
+          <Route
+            path="mqtt-config"
+            element={isMqttBridge && sourceId ? (
+              <ErrorBoundary fallbackTitle="Configuration failed to load">
+                <MqttBridgeConfigurationView key={sourceId} sourceId={sourceId} />
+              </ErrorBoundary>
+            ) : null}
+          />
+          <Route
+            path="packetmonitor"
+            element={
+              <ErrorBoundary fallbackTitle="Packet Monitor failed to load">
+                <div style={{ height: 'calc(100dvh - var(--header-height, 60px) - 4rem)', overflow: 'hidden' }}>
+                  {isMqtt && sourceId ? (
+                    <MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />
+                  ) : (
+                    <PacketMonitorPanel onClose={() => setActiveTab('nodes')} />
+                  )}
+                </div>
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="info"
+            element={
+              <ErrorBoundary fallbackTitle="Info failed to load">
+                <InfoTab
+                  connectionStatus={connectionStatus}
+                  nodeAddress={nodeAddress}
+                  deviceInfo={deviceInfo}
+                  deviceConfig={deviceConfig}
+                  nodes={nodes}
+                  channels={channels}
+                  messages={messages}
+                  channelMessages={channelMessages}
+                  currentNodeId={currentNodeId}
+                  temperatureUnit={temperatureUnit}
+                  telemetryHours={telemetryVisualizationHours}
+                  baseUrl={baseUrl}
+                  getAvailableChannels={getAvailableChannels}
+                  distanceUnit={distanceUnit}
+                  timeFormat={timeFormat}
+                  dateFormat={dateFormat}
+                  isAuthenticated={authStatus?.authenticated || false}
+                />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="dashboard"
+            element={
+              <ErrorBoundary fallbackTitle="Dashboard failed to load">
+                <Dashboard
+                  temperatureUnit={temperatureUnit}
+                  telemetryHours={telemetryVisualizationHours}
+                  favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}
+                  baseUrl={baseUrl}
+                  currentNodeId={currentNodeId}
+                  canEdit={hasPermission('dashboard', 'write')}
+                  onOpenNodeDetails={(nodeId: string) => {
+                    setSelectedDMNode(nodeId);
+                    setActiveTab('messages');
+                  }}
+                />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="configuration"
+            element={
+              <ErrorBoundary fallbackTitle="Configuration failed to load">
+                <ConfigurationTab
+                  key={sourceId || 'default'}
+                  baseUrl={baseUrl}
+                  nodes={nodes}
+                  channels={channels}
+                  onRebootDevice={handleRebootDevice}
+                  onConfigChangeTriggeringReboot={handleConfigChangeTriggeringReboot}
+                  onChannelsUpdated={() => fetchChannels()}
+                  refreshTrigger={configRefreshTrigger}
+                />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="nodes"
+            element={
+              <ErrorBoundary fallbackTitle="Nodes failed to load">
+                <NodesTab
+                  processedNodes={processedNodes}
+                  shouldShowData={shouldShowData}
+                  centerMapOnNode={centerMapOnNode}
+                  toggleFavorite={toggleFavorite}
+                  toggleFavoriteLock={toggleFavoriteLock}
+                  setActiveTab={setActiveTab}
+                  setSelectedDMNode={setSelectedDMNode}
+                  openDmForCompose={openDmForCompose}
+                  markerRefs={markerRefs}
+                  traceroutePathsElements={traceroutePathsElements}
+                  selectedNodeTraceroute={selectedNodeTraceroute}
+                  visibleNodeNums={visibleNodeNums}
+                  tracerouteNodeNums={tracerouteNodeNums}
+                  tracerouteBounds={tracerouteBounds}
+                  onTraceroute={handleTraceroute}
+                  connectionStatus={connectionStatus}
+                  txDisabled={txGated}
+                  tracerouteLoading={tracerouteLoading}
+                  onDeleteNode={handleDeleteNode}
+                  onPurgeNodeFromDevice={handlePurgeNodeFromDevice}
+                />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="automation"
+            element={
+              <ErrorBoundary fallbackTitle="Automation failed to load">
+                <AutomationTab baseUrl={baseUrl} channels={channels} nodes={nodes} currentNodeId={currentNodeId} />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="settings"
+            element={
+              <ErrorBoundary fallbackTitle="Settings failed to load">
+                <SaveBarGroup id="settings">
+                  <SettingsTab
+                    mode="source"
+                    maxNodeAgeHours={maxNodeAgeHours}
+                    inactiveNodeThresholdHours={inactiveNodeThresholdHours}
+                    inactiveNodeCheckIntervalMinutes={inactiveNodeCheckIntervalMinutes}
+                    inactiveNodeCooldownHours={inactiveNodeCooldownHours}
+                    temperatureUnit={temperatureUnit}
+                    distanceUnit={distanceUnit}
+                    positionHistoryLineStyle={positionHistoryLineStyle}
+                    telemetryVisualizationHours={telemetryVisualizationHours}
+                    favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}
+                    preferredSortField={preferredSortField}
+                    preferredSortDirection={preferredSortDirection}
+                    timeFormat={timeFormat}
+                    dateFormat={dateFormat}
+                    mapTilesetLight={mapTilesetLight}
+                    mapTilesetDark={mapTilesetDark}
+                    mapPinStyle={mapPinStyle}
+                    iconStyle={iconStyle}
+                    theme={theme}
+                    language={language}
+                    solarMonitoringEnabled={solarMonitoringEnabled}
+                    solarMonitoringLatitude={solarMonitoringLatitude}
+                    solarMonitoringLongitude={solarMonitoringLongitude}
+                    solarMonitoringAzimuth={solarMonitoringAzimuth}
+                    solarMonitoringDeclination={solarMonitoringDeclination}
+                    currentNodeId={currentNodeId}
+                    nodes={nodes}
+                    baseUrl={baseUrl}
+                    onMaxNodeAgeChange={setMaxNodeAgeHours}
+                    onInactiveNodeThresholdHoursChange={setInactiveNodeThresholdHours}
+                    onInactiveNodeCheckIntervalMinutesChange={setInactiveNodeCheckIntervalMinutes}
+                    onInactiveNodeCooldownHoursChange={setInactiveNodeCooldownHours}
+                    onTemperatureUnitChange={setTemperatureUnit}
+                    onDistanceUnitChange={setDistanceUnit}
+                    onPositionHistoryLineStyleChange={setPositionHistoryLineStyle}
+                    onTelemetryVisualizationChange={setTelemetryVisualizationHours}
+                    onFavoriteTelemetryStorageDaysChange={setFavoriteTelemetryStorageDays}
+                    onPreferredSortFieldChange={setPreferredSortField}
+                    onPreferredSortDirectionChange={setPreferredSortDirection}
+                    onTimeFormatChange={setTimeFormat}
+                    onDateFormatChange={setDateFormat}
+                    onMapTilesetsChange={setMapTilesets}
+                    onMapPinStyleChange={setMapPinStyle}
+                    onIconStyleChange={setIconStyle}
+                    onLanguageChange={setLanguage}
+                    onSolarMonitoringEnabledChange={setSolarMonitoringEnabled}
+                    onSolarMonitoringLatitudeChange={setSolarMonitoringLatitude}
+                    onSolarMonitoringLongitudeChange={setSolarMonitoringLongitude}
+                    onSolarMonitoringAzimuthChange={setSolarMonitoringAzimuth}
+                    onSolarMonitoringDeclinationChange={setSolarMonitoringDeclination}
+                  />
+                </SaveBarGroup>
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="channels"
+            element={
+              <ErrorBoundary fallbackTitle="Channels failed to load">
           <ChannelsTab
             channels={channels}
             channelDatabaseEntries={channelDatabaseEntries}
@@ -4739,22 +3737,25 @@ const location = useLocation();
             focusMessageId={focusMessageId}
             onFocusMessageHandled={() => setFocusMessageId(null)}
             mqttReadOnly={isMqttBridge}
+            txDisabled={txGated}
           />
-          </ErrorBoundary>
-        )}
-        {activeTab === 'messages' && (
-          <ErrorBoundary fallbackTitle="Messages failed to load">
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="messages"
+            element={
+              <ErrorBoundary fallbackTitle="Messages failed to load">
           <MessagesTab
             processedNodes={processedNodes}
             nodes={nodes}
             messages={messages}
             currentNodeId={currentNodeId}
-            nodesWithTelemetry={nodesWithTelemetry}
-            nodesWithWeatherTelemetry={nodesWithWeatherTelemetry}
-            nodesWithPKC={nodesWithPKC}
             connectionStatus={connectionStatus}
             selectedDMNode={selectedDMNode}
             setSelectedDMNode={setSelectedDMNode}
+            pendingComposeFocus={pendingComposeFocus}
+            clearComposeFocus={clearComposeFocus}
             newMessage={newMessage}
             setNewMessage={setNewMessage}
             replyingTo={replyingTo}
@@ -4808,6 +3809,7 @@ const location = useLocation();
             focusMessageId={focusMessageId}
             onFocusMessageHandled={() => setFocusMessageId(null)}
             mqttReadOnly={isMqttBridge}
+            txDisabled={txGated}
             toggleIgnored={toggleIgnored}
             toggleHideFromMap={toggleHideFromMap}
             toggleFavorite={toggleFavorite}
@@ -4821,387 +3823,20 @@ const location = useLocation();
               }
             }}
           />
-          </ErrorBoundary>
-        )}
-        {activeTab === 'info' && (
-          <ErrorBoundary fallbackTitle="Info failed to load">
-          <InfoTab
-            connectionStatus={connectionStatus}
-            nodeAddress={nodeAddress}
-            deviceInfo={deviceInfo}
-            deviceConfig={deviceConfig}
-            nodes={nodes}
-            channels={channels}
-            messages={messages}
-            channelMessages={channelMessages}
-            currentNodeId={currentNodeId}
-            temperatureUnit={temperatureUnit}
-            telemetryHours={telemetryVisualizationHours}
-            baseUrl={baseUrl}
-            getAvailableChannels={getAvailableChannels}
-            distanceUnit={distanceUnit}
-            timeFormat={timeFormat}
-            dateFormat={dateFormat}
-            isAuthenticated={authStatus?.authenticated || false}
+              </ErrorBoundary>
+            }
           />
-          </ErrorBoundary>
-        )}
-        {activeTab === 'dashboard' && (
-          <ErrorBoundary fallbackTitle="Dashboard failed to load">
-          <Dashboard
-            temperatureUnit={temperatureUnit}
-            telemetryHours={telemetryVisualizationHours}
-            favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}
-            baseUrl={baseUrl}
-            currentNodeId={currentNodeId}
-            canEdit={hasPermission('dashboard', 'write')}
-            onOpenNodeDetails={(nodeId: string) => {
-              setSelectedDMNode(nodeId);
-              setActiveTab('messages');
-            }}
-          />
-          </ErrorBoundary>
-        )}
-        {activeTab === 'settings' && (
-          <ErrorBoundary fallbackTitle="Settings failed to load">
-          <SaveBarGroup id="settings">
-          <SettingsTab
-            mode="source"
-            maxNodeAgeHours={maxNodeAgeHours}
-            inactiveNodeThresholdHours={inactiveNodeThresholdHours}
-            inactiveNodeCheckIntervalMinutes={inactiveNodeCheckIntervalMinutes}
-            inactiveNodeCooldownHours={inactiveNodeCooldownHours}
-            temperatureUnit={temperatureUnit}
-            distanceUnit={distanceUnit}
-            positionHistoryLineStyle={positionHistoryLineStyle}
-            telemetryVisualizationHours={telemetryVisualizationHours}
-            favoriteTelemetryStorageDays={favoriteTelemetryStorageDays}
-            preferredSortField={preferredSortField}
-            preferredSortDirection={preferredSortDirection}
-            timeFormat={timeFormat}
-            dateFormat={dateFormat}
-            mapTilesetLight={mapTilesetLight}
-            mapTilesetDark={mapTilesetDark}
-            mapPinStyle={mapPinStyle}
-            iconStyle={iconStyle}
-            theme={theme}
-            language={language}
-            solarMonitoringEnabled={solarMonitoringEnabled}
-            solarMonitoringLatitude={solarMonitoringLatitude}
-            solarMonitoringLongitude={solarMonitoringLongitude}
-            solarMonitoringAzimuth={solarMonitoringAzimuth}
-            solarMonitoringDeclination={solarMonitoringDeclination}
-            currentNodeId={currentNodeId}
-            nodes={nodes}
-            baseUrl={baseUrl}
-            onMaxNodeAgeChange={setMaxNodeAgeHours}
-            onInactiveNodeThresholdHoursChange={setInactiveNodeThresholdHours}
-            onInactiveNodeCheckIntervalMinutesChange={setInactiveNodeCheckIntervalMinutes}
-            onInactiveNodeCooldownHoursChange={setInactiveNodeCooldownHours}
-            onTemperatureUnitChange={setTemperatureUnit}
-            onDistanceUnitChange={setDistanceUnit}
-            onPositionHistoryLineStyleChange={setPositionHistoryLineStyle}
-            onTelemetryVisualizationChange={setTelemetryVisualizationHours}
-            onFavoriteTelemetryStorageDaysChange={setFavoriteTelemetryStorageDays}
-            onPreferredSortFieldChange={setPreferredSortField}
-            onPreferredSortDirectionChange={setPreferredSortDirection}
-            onTimeFormatChange={setTimeFormat}
-            onDateFormatChange={setDateFormat}
-            onMapTilesetsChange={setMapTilesets}
-            onMapPinStyleChange={setMapPinStyle}
-            onIconStyleChange={setIconStyle}
-            onLanguageChange={setLanguage}
-            onSolarMonitoringEnabledChange={setSolarMonitoringEnabled}
-            onSolarMonitoringLatitudeChange={setSolarMonitoringLatitude}
-            onSolarMonitoringLongitudeChange={setSolarMonitoringLongitude}
-            onSolarMonitoringAzimuthChange={setSolarMonitoringAzimuth}
-            onSolarMonitoringDeclinationChange={setSolarMonitoringDeclination}
-          />
-          </SaveBarGroup>
-          </ErrorBoundary>
-        )}
-        {activeTab === 'automation' && (
-          <ErrorBoundary fallbackTitle="Automation failed to load">
-          <SaveBarGroup id="automation">
-          <div className="settings-tab">
-            <SectionNav
-              items={[
-                { id: 'airtime-cutoff', label: t('automation.airtime_cutoff.title', 'Cutoff Airtime Utilization Threshold') },
-                { id: 'auto-welcome', label: t('automation.welcome.title', 'Auto Welcome') },
-                { id: 'auto-favorite', label: t('automation.auto_favorite.title', 'Auto Favorite') },
-                { id: 'auto-traceroute', label: t('automation.traceroute.title', 'Auto Traceroute') },
-                { id: 'auto-localstats', label: t('automation.auto_localstats.title', 'Auto Remote LocalStats') },
-                { id: 'auto-ping', label: t('automation.auto_ping.title', 'Auto Ping') },
-                { id: 'auto-heap-management', label: t('automation.auto_heap.title', 'Auto Heap Management') },
-                { id: 'remote-admin-scanner', label: t('automation.remote_admin_scanner.title', 'Remote Admin Scanner') },
-                { id: 'auto-time-sync', label: t('automation.time_sync.title', 'Auto Time Sync') },
-                { id: 'auto-acknowledge', label: t('automation.acknowledge.title', 'Auto Acknowledge') },
-                { id: 'auto-announce', label: t('automation.announce.title', 'Auto Announce') },
-                { id: 'auto-responder', label: t('automation.auto_responder.title', 'Auto Responder') },
-                { id: 'auto-key-management', label: t('automation.auto_key_management.title', 'Auto Key Management') },
-                { id: 'timer-triggers', label: t('automation.timer_triggers.title', 'Timer Triggers') },
-                { id: 'geofence-triggers', label: t('automation.geofence_triggers.title', 'Geofence Triggers') },
-                { id: 'auto-delete-by-distance', label: t('automation.distance_delete.title', 'Auto Delete by Distance') },
-                { id: 'ignored-nodes', label: t('automation.ignored_nodes.title', 'Ignored Nodes') },
-              ]}
-            />
-            <div className="settings-content">
-              <AutomationTokenReference
-                title={t('automation.tokens.title', 'Available message tokens')}
-                intro={t(
-                  'automation.tokens.intro',
-                  'These placeholders are substituted in the message templates below. Reply tokens only expand when responding to a received message.',
-                )}
-                groups={buildMeshtasticTokenGroups({
-                  replyTitle: t('automation.tokens.reply_title', 'When replying (Auto-Acknowledge, Auto-Responder)'),
-                  replyNote: t('automation.tokens.reply_note', 'Resolved from the message that triggered the reply.'),
-                  globalTitle: t('automation.tokens.global_title', 'Available everywhere'),
-                  globalNote: t('automation.tokens.global_note', 'Also work in Auto-Announce and Auto-Welcome.'),
-                })}
-                footer={
-                  <>
-                    💡 {t('automation.tokens.engine_tip', 'Want maximum flexibility? Try the')}{' '}
-                    <Link to="/automations" style={{ color: 'var(--ctp-mauve)', fontWeight: 'bold' }}>
-                      {t('automation.engine_link', 'Automation Engine')}
-                    </Link>{' '}
-                    {t('automation.tokens.engine_tip2', '— build global “when this happens, do that” workflows across every source.')}
-                  </>
-                }
-              />
-              <div id="airtime-cutoff">
-                <AirtimeCutoffSection baseUrl={baseUrl} />
-              </div>
-              <div id="auto-welcome">
-                <AutoWelcomeSection
-                  enabled={autoWelcomeEnabled}
-                  message={autoWelcomeMessage}
-                  target={autoWelcomeTarget}
-                  waitForName={autoWelcomeWaitForName}
-                  maxHops={autoWelcomeMaxHops}
-                  delay={autoWelcomeDelay}
-                  channels={channels}
-                  baseUrl={baseUrl}
-                  onEnabledChange={setAutoWelcomeEnabled}
-                  onMessageChange={setAutoWelcomeMessage}
-                  onTargetChange={setAutoWelcomeTarget}
-                  onWaitForNameChange={setAutoWelcomeWaitForName}
-                  onMaxHopsChange={setAutoWelcomeMaxHops}
-                  onDelayChange={setAutoWelcomeDelay}
-                />
-              </div>
-              <div id="auto-favorite">
-                <AutoFavoriteSection baseUrl={baseUrl} />
-              </div>
-              <div id="auto-traceroute">
-                <AutoTracerouteSection
-                  intervalMinutes={tracerouteIntervalMinutes}
-                  baseUrl={baseUrl}
-                  onIntervalChange={setTracerouteIntervalMinutes}
-                />
-              </div>
-              <div id="auto-localstats">
-                <AutoLocalStatsSection
-                  intervalMinutes={remoteLocalStatsIntervalMinutes}
-                  baseUrl={baseUrl}
-                  onIntervalChange={setRemoteLocalStatsIntervalMinutes}
-                />
-              </div>
-              <div id="auto-ping">
-                <AutoPingSection
-                  baseUrl={baseUrl}
-                />
-              </div>
-              <div id="auto-heap-management">
-                <AutoHeapManagementSection baseUrl={baseUrl} />
-              </div>
-              <div id="remote-admin-scanner">
-                <RemoteAdminScannerSection
-                  baseUrl={baseUrl}
-                />
-              </div>
-              <div id="auto-time-sync">
-                <AutoTimeSyncSection
-                  baseUrl={baseUrl}
-                />
-              </div>
-              <div id="auto-acknowledge">
-                <AutoAcknowledgeSection
-                  enabled={autoAckEnabled}
-                  regex={autoAckRegex}
-                  message={autoAckMessage}
-                  messageDirect={autoAckMessageDirect}
-                  channels={channels}
-                  enabledChannels={autoAckChannels}
-                  skipIncompleteNodes={autoAckSkipIncompleteNodes}
-                  ignoredNodes={autoAckIgnoredNodes}
-                  matrix={autoAckMatrix}
-                  testMessages={autoAckTestMessages}
-                  cooldownSeconds={autoAckCooldownSeconds}
-                  onCooldownSecondsChange={setAutoAckCooldownSeconds}
-                  preSendDelaySeconds={autoAckPreSendDelaySeconds}
-                  onPreSendDelaySecondsChange={setAutoAckPreSendDelaySeconds}
-                  maxAttempts={autoAckMaxAttempts}
-                  onMaxAttemptsChange={setAutoAckMaxAttempts}
-                  baseUrl={baseUrl}
-                  onEnabledChange={setAutoAckEnabled}
-                  onRegexChange={setAutoAckRegex}
-                  onMessageChange={setAutoAckMessage}
-                  onMessageDirectChange={setAutoAckMessageDirect}
-                  onChannelsChange={setAutoAckChannels}
-                  onSkipIncompleteNodesChange={setAutoAckSkipIncompleteNodes}
-                  onIgnoredNodesChange={setAutoAckIgnoredNodes}
-                  onMatrixChange={setAutoAckMatrix}
-                  onTestMessagesChange={setAutoAckTestMessages}
-                />
-              </div>
-              <div id="auto-announce">
-                <AutoAnnounceSection
-                  enabled={autoAnnounceEnabled}
-                  intervalHours={autoAnnounceIntervalHours}
-                  message={autoAnnounceMessage}
-                  channelIndexes={autoAnnounceChannelIndexes}
-                  announceOnStart={autoAnnounceOnStart}
-                  useSchedule={autoAnnounceUseSchedule}
-                  schedule={autoAnnounceSchedule}
-                  channels={channels}
-                  baseUrl={baseUrl}
-                  onEnabledChange={setAutoAnnounceEnabled}
-                  onIntervalChange={setAutoAnnounceIntervalHours}
-                  onMessageChange={setAutoAnnounceMessage}
-                  onChannelIndexesChange={setAutoAnnounceChannelIndexes}
-                  onAnnounceOnStartChange={setAutoAnnounceOnStart}
-                  onUseScheduleChange={setAutoAnnounceUseSchedule}
-                  onScheduleChange={setAutoAnnounceSchedule}
-                  nodeInfoEnabled={autoAnnounceNodeInfoEnabled}
-                  nodeInfoChannels={autoAnnounceNodeInfoChannels}
-                  nodeInfoDelaySeconds={autoAnnounceNodeInfoDelaySeconds}
-                  onNodeInfoEnabledChange={setAutoAnnounceNodeInfoEnabled}
-                  onNodeInfoChannelsChange={setAutoAnnounceNodeInfoChannels}
-                  onNodeInfoDelayChange={setAutoAnnounceNodeInfoDelaySeconds}
-                />
-              </div>
-              <div id="auto-responder">
-                <AutoResponderSection
-                  enabled={autoResponderEnabled}
-                  triggers={autoResponderTriggers}
-                  channels={channels}
-                  skipIncompleteNodes={autoResponderSkipIncompleteNodes}
-                  baseUrl={baseUrl}
-                  onEnabledChange={setAutoResponderEnabled}
-                  onTriggersChange={setAutoResponderTriggers}
-                  onSkipIncompleteNodesChange={setAutoResponderSkipIncompleteNodes}
-                />
-              </div>
-              <div id="auto-key-management">
-                <AutoKeyManagementSection
-                  enabled={autoKeyManagementEnabled}
-                  intervalMinutes={autoKeyManagementIntervalMinutes}
-                  maxExchanges={autoKeyManagementMaxExchanges}
-                  autoPurge={autoKeyManagementAutoPurge}
-                  immediatePurge={autoKeyManagementImmediatePurge}
-                  baseUrl={baseUrl}
-                  onEnabledChange={setAutoKeyManagementEnabled}
-                  onIntervalChange={setAutoKeyManagementIntervalMinutes}
-                  onMaxExchangesChange={setAutoKeyManagementMaxExchanges}
-                  onAutoPurgeChange={setAutoKeyManagementAutoPurge}
-                  onImmediatePurgeChange={setAutoKeyManagementImmediatePurge}
-                />
-              </div>
-              <div id="timer-triggers">
-                <TimerTriggersSection
-                  triggers={timerTriggers}
-                  channels={channels}
-                  baseUrl={baseUrl}
-                  onTriggersChange={setTimerTriggers}
-                />
-              </div>
-              <div id="geofence-triggers">
-                <GeofenceTriggersSection
-                  triggers={geofenceTriggers}
-                  channels={channels}
-                  nodes={nodes}
-                  baseUrl={baseUrl}
-                  onTriggersChange={setGeofenceTriggers}
-                />
-              </div>
-              <div id="auto-delete-by-distance">
-                <AutoDeleteByDistanceSection
-                  enabled={autoDeleteByDistanceEnabled}
-                  intervalHours={autoDeleteByDistanceIntervalHours}
-                  thresholdKm={autoDeleteByDistanceThresholdKm}
-                  homeLat={autoDeleteByDistanceLat}
-                  homeLon={autoDeleteByDistanceLon}
-                  localNodeLat={currentNodeId ? nodes.find((n: any) => n.user?.id === currentNodeId)?.position?.latitude : undefined}
-                  localNodeLon={currentNodeId ? nodes.find((n: any) => n.user?.id === currentNodeId)?.position?.longitude : undefined}
-                  baseUrl={baseUrl}
-                  onEnabledChange={setAutoDeleteByDistanceEnabled}
-                  onIntervalChange={setAutoDeleteByDistanceIntervalHours}
-                  onThresholdChange={setAutoDeleteByDistanceThresholdKm}
-                  onHomeLatChange={setAutoDeleteByDistanceLat}
-                  onHomeLonChange={setAutoDeleteByDistanceLon}
-                  action={autoDeleteByDistanceAction}
-                  onActionChange={setAutoDeleteByDistanceAction}
-                />
-              </div>
-              <div id="ignored-nodes">
-                <IgnoredNodesSection
-                  baseUrl={baseUrl}
-                />
-              </div>
-            </div>
-          </div>
-          </SaveBarGroup>
-          </ErrorBoundary>
-        )}
-        {activeTab === 'configuration' && (
-          <ErrorBoundary fallbackTitle="Configuration failed to load">
-          <ConfigurationTab
-            key={sourceId || 'default'}
-            baseUrl={baseUrl}
-            nodes={nodes}
-            channels={channels}
-            onRebootDevice={handleRebootDevice}
-            onConfigChangeTriggeringReboot={handleConfigChangeTriggeringReboot}
-            onChannelsUpdated={() => fetchChannels()}
-            refreshTrigger={configRefreshTrigger}
-          />
-          </ErrorBoundary>
-        )}
-        {activeTab === 'mqtt-config' && isMqttBridge && sourceId && (
-          <ErrorBoundary fallbackTitle="Configuration failed to load">
-            <MqttBridgeConfigurationView key={sourceId} sourceId={sourceId} />
-          </ErrorBoundary>
-        )}
-        {activeTab === 'notifications' && <ErrorBoundary fallbackTitle="Notifications failed to load"><NotificationsTab isAdmin={authStatus?.user?.isAdmin || false} /></ErrorBoundary>}
-        {activeTab === 'users' && <ErrorBoundary fallbackTitle="Users failed to load"><UsersTab /></ErrorBoundary>}
-        {activeTab === 'audit' && <ErrorBoundary fallbackTitle="Audit Log failed to load"><AuditLogTab /></ErrorBoundary>}
-        {activeTab === 'admin' && authStatus?.user?.isAdmin && (
-          <ErrorBoundary fallbackTitle="Admin Commands failed to load">
-          <AdminCommandsTab
-            key={sourceId || 'default'}
-            nodes={nodes}
-            currentNodeId={currentNodeId}
-            channels={channels}
-            onChannelsUpdated={fetchChannels}
-          />
-          </ErrorBoundary>
-        )}
-        {activeTab === 'security' && (
-          <ErrorBoundary fallbackTitle="Security failed to load">
-          <SecurityTab onTabChange={setActiveTab} onSelectDMNode={setSelectedDMNode} openDmWithDraft={openDmWithDraft} />
-          </ErrorBoundary>
-        )}
-        {activeTab === 'packetmonitor' && (
-          <ErrorBoundary fallbackTitle="Packet Monitor failed to load">
-            <div style={{ height: 'calc(100dvh - var(--header-height, 60px) - 4rem)', overflow: 'hidden' }}>
-              {isMqtt && sourceId ? (
-                <MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />
-              ) : (
-                <PacketMonitorPanel onClose={() => setActiveTab('nodes')} />
-              )}
-            </div>
-          </ErrorBoundary>
-        )}
+          {/* 'audit' migrated to <Route path="audit"> above (#3962 5.4 PR1 proof leaf) */}
+          {/* 'notifications', 'users', 'admin', 'security', 'mqtt-config', 'packetmonitor'
+              migrated to <Route> elements above (#3962 5.4 PR3 leaf tab group) */}
+          {/* 'automation', 'settings' migrated to <Route> elements above (#3962 5.4 PR6) */}
+          {/* 'info', 'dashboard', 'configuration' migrated to <Route> elements above
+              (#3962 5.4 PR5) */}
+          {/* 'channels', 'messages' migrated to <Route> elements above (#3962 5.4 PR7) —
+              every tab is now a route; this catch-all preserves the prior blank-fallback
+              behavior for an unrecognized sub-path. */}
+          <Route path="*" element={null} />
+        </Routes>
       </main>
 
       {/* Node Popup */}
@@ -5232,6 +3867,7 @@ const location = useLocation();
         onDeleteNode={handleDeleteNode}
         onPurgeNodeFromDevice={handlePurgeNodeFromDevice}
         currentNodeNum={currentNodeId ? (nodes.find(n => n.user?.id === currentNodeId)?.nodeNum ?? null) : null}
+        txDisabled={txGated}
       />
 
       {/* News Popup */}
@@ -5276,39 +3912,16 @@ const location = useLocation();
 }
 
 const AppWithToast = () => {
-  // Detect base URL for SettingsProvider
-  const detectBaseUrl = () => {
-    const pathname = window.location.pathname;
-    const pathParts = pathname.split('/').filter(Boolean);
-
-    if (pathParts.length > 0) {
-      const appRoutes = ['nodes', 'channels', 'messages', 'settings', 'info', 'dashboard', 'source', 'unified', 'analysis'];
-      const baseSegments = [];
-
-      for (const segment of pathParts) {
-        if (appRoutes.includes(segment.toLowerCase())) {
-          break;
-        }
-        baseSegments.push(segment);
-      }
-
-      if (baseSegments.length > 0) {
-        return '/' + baseSegments.join('/');
-      }
-    }
-
-    return '';
-  };
-
-  const initialBaseUrl = detectBaseUrl();
-
+  // Second detectBaseUrl copy deleted (#3962 5.4 PR8) — see the comment on
+  // App's own `baseUrl` above. Same appBasename constant for all three
+  // providers.
   return (
-    <SettingsProvider baseUrl={initialBaseUrl}>
+    <SettingsProvider baseUrl={appBasename}>
       <MapProvider>
         <DataProvider>
           <UIProvider>
-            <MessagingProvider baseUrl={initialBaseUrl}>
-              <AutomationProvider baseUrl={initialBaseUrl}>
+            <MessagingProvider baseUrl={appBasename}>
+              <AutomationProvider baseUrl={appBasename}>
               <ToastProvider>
                 <DeviceNotificationToaster />
                 <SaveBarProvider>

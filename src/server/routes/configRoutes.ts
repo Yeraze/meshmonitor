@@ -17,6 +17,8 @@ import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionConfig.js';
 import { isValidModuleConfigType } from '../constants/moduleConfig.js';
 import { getEnvironmentConfig } from '../config/environment.js';
+import { fail } from '../utils/apiResponse.js';
+import { isTxDisabledError } from '../errors/txDisabledError.js';
 
 const env = getEnvironmentConfig();
 const BASE_URL = env.baseUrl;
@@ -126,15 +128,26 @@ router.post('/lora', requirePermission('configuration', 'write'), async (req, re
     const { sourceId: cfgLoraSourceId, ...config } = req.body;
     const cfgLoraManager = resolveSourceManager(cfgLoraSourceId);
 
-    // IMPORTANT: Always force txEnabled to true
-    // MeshMonitor users need TX enabled to send messages
-    // Ignore any incoming configuration that tries to disable TX
+    // Pass through the submitted txEnabled as-is (issue #4294) — this is the
+    // one legitimate place a user sets TX on/off. Do NOT force it to true here;
+    // that used to silently revert receive-only radios back to TX-enabled on
+    // every unrelated LoRa config save.
+    //
+    // BUT: setLoRaConfig sends the device the ENTIRE LoRaConfig struct (it's a
+    // whole-message replace, not a patch), and proto3 decodes a missing/omitted
+    // bool field as false (createSetLoRaConfigMessage only includes txEnabled
+    // when it's !== undefined). So when the caller's payload doesn't include
+    // txEnabled at all (e.g. saving hopLimit from a form that doesn't carry a
+    // TX toggle), we MUST backfill it explicitly from the device's current
+    // state — leaving it undefined would silently transmit txEnabled=false and
+    // kill the radio. This is the exact #1328 mechanism that motivated the
+    // original (overly broad) force-true.
     const loraConfigToSet = {
       ...config,
-      txEnabled: true,
+      txEnabled: config.txEnabled !== undefined ? config.txEnabled : cfgLoraManager.isTxEnabled(),
     };
 
-    logger.debug(`⚙️ Setting LoRa config with txEnabled defaulted: txEnabled=${loraConfigToSet.txEnabled}`);
+    logger.debug(`⚙️ Setting LoRa config: txEnabled=${loraConfigToSet.txEnabled}`);
     await cfgLoraManager.setLoRaConfig(loraConfigToSet);
     res.json({ success: true, message: 'LoRa configuration sent' });
   } catch (error) {
@@ -216,6 +229,31 @@ router.post('/module/telemetry', requirePermission('configuration', 'write'), as
   }
 });
 
+// IMPORTANT: '/module/request' must be registered before the '/module/:moduleType'
+// wildcard below — Express matches routes in registration order, and ':moduleType'
+// would otherwise swallow the literal path "request" (moduleType='request'), making
+// this handler permanently unreachable (found while adding TX-disabled 409 mapping,
+// issue #4294 — the frontend's `/api/config/module/request` call was 400ing with
+// "Invalid module type: request" instead of ever reaching this handler).
+router.post('/module/request', requirePermission('configuration', 'write'), async (req, res) => {
+  try {
+    const { configType, sourceId: cfgModReqSourceId } = req.body;
+    if (configType === undefined) {
+      res.status(400).json({ error: 'configType is required' });
+      return;
+    }
+    const cfgModReqManager = resolveSourceManager(cfgModReqSourceId);
+    await cfgModReqManager.requestModuleConfig(configType);
+    res.json({ success: true, message: 'Module config request sent' });
+  } catch (error) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
+    logger.error('Error requesting module config:', error);
+    res.status(500).json({ error: 'Failed to request module configuration' });
+  }
+});
+
 // Generic module config endpoint - handles extnotif, storeforward, rangetest, cannedmsg, audio,
 // remotehardware, detectionsensor, paxcounter, serial, ambientlighting, statusmessage, trafficmanagement
 router.post('/module/:moduleType', requirePermission('configuration', 'write'), async (req, res) => {
@@ -268,22 +306,6 @@ router.post('/request', requirePermission('configuration', 'write'), async (req,
   } catch (error) {
     logger.error('Error requesting config:', error);
     res.status(500).json({ error: 'Failed to request configuration' });
-  }
-});
-
-router.post('/module/request', requirePermission('configuration', 'write'), async (req, res) => {
-  try {
-    const { configType, sourceId: cfgModReqSourceId } = req.body;
-    if (configType === undefined) {
-      res.status(400).json({ error: 'configType is required' });
-      return;
-    }
-    const cfgModReqManager = resolveSourceManager(cfgModReqSourceId);
-    await cfgModReqManager.requestModuleConfig(configType);
-    res.json({ success: true, message: 'Module config request sent' });
-  } catch (error) {
-    logger.error('Error requesting module config:', error);
-    res.status(500).json({ error: 'Failed to request module configuration' });
   }
 });
 

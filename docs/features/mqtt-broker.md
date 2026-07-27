@@ -25,7 +25,7 @@ A self-contained MQTT broker, backed by [Aedes](https://github.com/moscajs/aedes
 - Listens on `0.0.0.0:<port>` (configurable; defaults to the IANA-registered MQTT port `1883`).
 - Authenticates every CONNECT with a single shared username/password pair (default-deny: connections without configured credentials are rejected).
 - Decodes [`ServiceEnvelope`](https://github.com/meshtastic/protobufs/blob/master/meshtastic/mqtt.proto) packets from any client that publishes under its `rootTopic` (default `msh`), and ingests decodable payloads (NodeInfo, Position, TextMessage, Telemetry) into the database under this source's `sourceId`. Other clients subscribed to the broker still see the raw byte-for-byte publish, so devices can fan out to each other over MQTT just like they would on a public broker.
-- Optionally clamps `hop_limit` to `0` on every Meshtastic packet it delivers to a connected client ("Zero-hop injection" — see below), matching `mqtt.meshtastic.org`'s behavior so MQTT-bridged packets don't trigger RF re-broadcasts.
+- Optionally rewrites `hop_limit` on every Meshtastic packet it delivers to a connected client ("Override hop limit on delivery" — see below). The usual setting is `0`, matching `mqtt.meshtastic.org`'s behavior so MQTT-bridged packets don't trigger RF re-broadcasts.
 - Generates a synthetic gateway identity (`nodeNum`, `!nodeId`, longName, shortName) at create time so its publishes look like they're coming from a real node to upstream brokers.
 
 **When to use a broker**
@@ -93,7 +93,7 @@ The field is stored in the bridge's `config.mode` JSON field; omitting it (or st
 | **Topic rewriting (cross-root bridging)?** | No | **Yes** — `downlinkTopicRewrite` + `uplinkTopicRewrite` ([details](#topic-rewriting)) | No (requires parent broker) |
 | **Server-side ingestion of decoded packets?** | Yes — under broker `sourceId` | Yes — under bridge `sourceId` (downlink) | Yes — under bridge `sourceId` (downlink) |
 | **Echo suppression (no feedback loops)?** | n/a | Yes (60s `topic+packetId` cache) | Yes |
-| **Zero-hop injection toggle?** | Yes ([details](#zero-hop-injection)) | n/a | n/a |
+| **Hop-limit override on delivery?** | Yes, `0`–`7` ([details](#zero-hop-injection)) | n/a | n/a |
 | **Synthetic gateway identity for outbound publishes?** | Yes (auto-generated at create) | Inherited from parent broker | n/a (no outbound until used as proxy target) |
 | **Default-deny authentication on the listener?** | Yes | n/a | n/a |
 | **Can serve as a `mqttLink` client-proxy target?** | Yes | Yes | **Yes** — primary use case |
@@ -135,7 +135,7 @@ In **Dashboard → Sources → Add Source**, pick **Embedded MQTT Broker (device
 | Listener port | Default `1883` ([IANA-registered MQTT port](https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml?search=mqtt)) |
 | Username / Password | Shared credential for all clients |
 | Root topic | Default `msh` — must match what your devices publish under |
-| Zero-hop injection | Off by default. When on, the broker clamps `hop_limit` to `0` on every Meshtastic packet it delivers to a connected device — matching the behavior of [Meshtastic's public broker](https://meshtastic.org/docs/software/integrations/mqtt/). See [Zero-hop injection](#zero-hop-injection) below for when to use it. |
+| Override hop limit on delivery | Off by default. When on, pick a value `0`–`7`; the broker rewrites `hop_limit` to it on every Meshtastic packet it delivers to a connected device. `0` (zero-hop injection) matches the behavior of [Meshtastic's public broker](https://meshtastic.org/docs/software/integrations/mqtt/); nonzero values deliberately let bridged packets re-flood over RF. See [Zero-hop injection](#zero-hop-injection) below for when to use it. |
 
 Save. MeshMonitor will start the broker; you'll see `MQTT broker listening on 0.0.0.0:1883` in the container logs and a new source card in the sidebar.
 
@@ -230,7 +230,7 @@ uplinkTopicRewrite:
   to:   msh/US/TX        # foreign root — what Houston subscribers see
 ```
 
-4. Optionally pair with a **geographic bounding box** in the downlink filter to drop TX traffic from outside the area you care about, and **Zero-hop injection** on the broker to keep the bridged packets from triggering extra RF hops.
+4. Optionally pair with a **geographic bounding box** in the downlink filter to drop TX traffic from outside the area you care about, and a **hop-limit override of `0`** on the broker to keep the bridged packets from triggering extra RF hops.
 
 Filters run on the original (pre-rewrite) topic; the rewrite only changes what gets published. Ingestion records and the bridge's `local-packet` event also use the original topic, so dashboards stay accurate.
 
@@ -243,7 +243,7 @@ Echo suppression is keyed on the **post-rewrite** topic — so an inbound TX pac
 ::: warning Read before deploying
 - **PSKs must match.** Topic rewriting moves bytes, not encryption. If the two meshes use different channel PSKs, the relayed packets arrive at devices on the other side as undecodable noise.
 - **Filter the firehose first.** Without a topic block-list, channel allow-list, portnum allow-list, or **geographic bounding box** in the downlink filter, dropping the entire `msh/US/TX/#` into a local mesh can saturate RF.
-- **Pair with Zero-hop injection** on the broker. Without it, inbound foreign-mesh packets arrive carrying their original `hop_limit` and devices on the receiving side will re-broadcast them over RF — re-flooding the foreign mesh's traffic across your local airwaves.
+- **Pair with a hop-limit override of `0`** on the broker. Without it, inbound foreign-mesh packets arrive carrying their original `hop_limit` and devices on the receiving side will re-broadcast them over RF — re-flooding the foreign mesh's traffic across your local airwaves. Setting a *nonzero* override here does that on purpose; don't.
 - **Standalone bridges cannot rewrite.** A bridge without a parent broker has no parent-broker republish path (downlink) and no `local-packet` event source (uplink), so rewriting would silently do nothing. The validator rejects rewrite fields on standalone bridges.
 - **No wildcards.** `from` / `to` are literal prefixes only. `msh/US/+` is rejected by the validator.
 - **Single rule per direction.** v1 supports one `{from, to}` per direction. Folding multiple foreign roots into one local root (`msh/US/TX/* → msh/US/LA/*` AND `msh/CA/QC/* → msh/US/LA/*`) would need separate bridges today.
@@ -251,25 +251,37 @@ Echo suppression is keyed on the **post-rewrite** topic — so an inbound TX pac
 
 ## Zero-hop injection
 
-::: tip Added in 4.6.3
-The **Zero-hop injection** toggle on the broker source ships in 4.6.3 ([issue #3084](https://github.com/Yeraze/meshmonitor/issues/3084)).
+::: tip Added in 4.6.3, extended in 4.14
+The **Zero-hop injection** toggle on the broker source ships in 4.6.3 ([issue #3084](https://github.com/Yeraze/meshmonitor/issues/3084)). In 4.14 it became a full **hop-limit override** with a configurable `0`–`7` value ([issue #4081](https://github.com/Yeraze/meshmonitor/issues/4081)) — `0` is the original zero-hop behavior and remains the recommended setting.
 :::
 
 Meshtastic's public broker at `mqtt.meshtastic.org` overwrites the `hop_limit` field on every packet it re-publishes to its MQTT clients, setting it to `0`. Devices that receive a packet via MQTT therefore see "no hops remaining" and skip the RF re-broadcast — the firmware enforces a max of 7 hops (10 on older firmware), so without this clamp an MQTT-bridged packet can flood several RF rings before dying out.
 
-If you run a private broker and bridge it to public upstreams, you may want the same behavior. **Zero-hop injection** is an opt-in toggle on the `mqtt_broker` source that does exactly this:
+If you run a private broker and bridge it to public upstreams, you may want the same behavior. **Override hop limit on delivery** is an opt-in setting on the `mqtt_broker` source that does exactly this:
 
-- **Disabled (default)** — packets are forwarded byte-for-byte. Use this for fully private setups where you actually want MQTT-bridged packets to take additional RF hops (small isolated mesh, deliberate fan-out).
-- **Enabled** — the broker decodes each Meshtastic `ServiceEnvelope` it delivers to a connected client, clamps `hop_limit` to `0`, and re-encodes. `hop_start` is preserved so receivers can still compute "how far has this travelled". Mirrors Meshtastic's public broker so private deployments behave the same way.
+- **Disabled (default)** — packets are forwarded byte-for-byte. Use this for fully private setups where you actually want MQTT-bridged packets to take whatever RF hops their original `hop_limit` allows (small isolated mesh, deliberate fan-out).
+- **Enabled with a value of `0`** — the broker decodes each Meshtastic `ServiceEnvelope` it delivers to a connected client, clamps `hop_limit` to `0`, and re-encodes. Mirrors Meshtastic's public broker so private deployments behave the same way. This is what the old "Zero-hop injection" checkbox did, and existing broker sources keep this behavior with no change on your part.
+- **Enabled with a value of `1`–`7`** — the same rewrite, but to a chosen nonzero value. See the warning below before using this.
+
+`hop_start` is never modified, whatever the override, so receivers can still compute "how far has this travelled" from `hop_start - hop_limit`.
+
+### Nonzero overrides: read this first
+
+::: warning A nonzero hop limit re-floods your local mesh
+Packets arriving over MQTT may have originated on a physically distant, completely unrelated mesh. With a nonzero override, **every node in RF range rebroadcasts them, up to that many hops**. On a busy mesh or a broker bridged to a public upstream, this is a real airtime and flood risk.
+
+MeshMonitor isn't bound by Meshtastic LLC's public-broker zero-hop philosophy, so the option exists — but treat it as an advanced setting for deliberately fanning MQTT traffic into a small, private, low-traffic mesh, not as a general-purpose knob.
+:::
 
 Implementation notes:
 
-- The clamp only applies to packets the broker **delivers to its MQTT subscribers** (devices, sidecars, anything that connected to your `mqtt_broker` listener). The original `hop_limit` is preserved in:
+- The rewrite only applies to packets the broker **delivers to its MQTT subscribers** (devices, sidecars, anything that connected to your `mqtt_broker` listener). The original `hop_limit` is preserved in:
   - The MeshMonitor database (so hop diagnostics stay accurate)
   - The payload re-published upstream via any attached `mqtt_bridge` (so the next broker in the chain sees the original value)
-- Topics outside the broker's `rootTopic` (e.g. non-Meshtastic publishes), non-decodable payloads, and packets that already have `hop_limit == 0` are passed through unchanged.
+- Topics outside the broker's `rootTopic` (e.g. non-Meshtastic publishes), non-decodable payloads, and packets that already sit at the target value are passed through unchanged.
+- The stored config field is `downlinkHopLimitOverride` (integer, `0`–`7`; `hop_limit` is a 3-bit protocol field, so `7` is the max). Sources saved before 4.14 carry the older boolean `zeroHopInjection` instead; it is still honored and means the same thing as `downlinkHopLimitOverride: 0`. Editing and saving such a source migrates it to the numeric field.
 
-If you're seeing your private broker flood the mesh after attaching a bridge to a public upstream, this toggle is almost certainly what you want.
+If you're seeing your private broker flood the mesh after attaching a bridge to a public upstream, enabling this with a value of `0` is almost certainly what you want.
 
 ## Comparison: embedded broker vs MQTT proxy sidecar vs node's built-in MQTT
 
@@ -285,7 +297,7 @@ If you're seeing your private broker flood the mesh after attaching a bridge to 
 | **Recovery on broker outage** | Manual node restart | Manual sidecar restart | mqtt.js auto-reconnect with backoff |
 | **Default-deny auth** | Per-device | Per-device | Broker refuses connections without configured username/password |
 | **TLS** | Yes (on device) | Yes (on device + proxy) | **Plain TCP only in v1** (TLS / WSS deferred — track in [#3003](https://github.com/Yeraze/meshmonitor/issues/3003)) |
-| **Zero-hop injection** | n/a (no broker) | n/a (passthrough relay) | **Optional per broker** — clamp `hop_limit` to 0 on delivery to match public-broker behavior ([details](#zero-hop-injection)) |
+| **Zero-hop injection** | n/a (no broker) | n/a (passthrough relay) | **Optional per broker** — rewrite `hop_limit` (0–7) on delivery; 0 matches public-broker behavior ([details](#zero-hop-injection)) |
 | **Operational visibility** | Limited firmware logs | Docker logs | Per-source `packetsIn / packetsIngested / packetsDropped / lastError` in `/api/sources/:id/status` |
 
 ### Plain-English summary

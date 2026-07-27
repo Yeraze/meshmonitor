@@ -354,6 +354,8 @@ export interface TracerouteBodyProps {
   onRunTraceroute?: () => void;
   running?: boolean;
   runDisabled?: boolean;
+  /** Explanatory tooltip for the run button when `runDisabled` is true (e.g. TX-disabled, epic #4294). */
+  runDisabledReason?: string;
 }
 
 /** `.node-popup-traceroute` fwd/return summary + optional History/Run buttons. */
@@ -365,6 +367,7 @@ export const TracerouteBody: React.FC<TracerouteBodyProps> = ({
   onRunTraceroute,
   running = false,
   runDisabled = false,
+  runDisabledReason,
 }) => {
   const { t } = useTranslation();
   return (
@@ -429,7 +432,7 @@ export const TracerouteBody: React.FC<TracerouteBodyProps> = ({
       )}
 
       {onRunTraceroute && (
-        <button className="node-popup-btn" onClick={onRunTraceroute} disabled={runDisabled}>
+        <button className="node-popup-btn" onClick={onRunTraceroute} disabled={runDisabled} title={runDisabledReason}>
           {running ? <span className="spinner"></span> : <UiIcon name="radioSignal" />} {t('node_popup.traceroute', 'Traceroute')}
         </button>
       )}

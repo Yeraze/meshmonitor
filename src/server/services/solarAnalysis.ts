@@ -349,18 +349,35 @@ export interface NodeNameLookup {
  * voltage channels (e.g. ch1Voltage). Caller is responsible for fetching
  * rows from the database.
  */
+/**
+ * Build the nodeNum → display-name map for the analysis. The caller passes
+ * one entry per (node, source), so the same nodeNum can appear several times —
+ * with the name blank on sources that never received its NodeInfo. A blank row
+ * must not clobber a name another source knows: prefer any longName over any
+ * shortName, first named row wins within a tier, and never store the hex
+ * fallback (node_name resolution falls back for genuinely nameless nodes).
+ */
+export function buildNodeNameMap(nodes: NodeNameLookup[]): Map<number, string> {
+  const nodeNames = new Map<number, string>();
+  const shortNameOnly = new Set<number>();
+  for (const node of nodes) {
+    if (node.longName && (!nodeNames.has(node.nodeNum) || shortNameOnly.has(node.nodeNum))) {
+      nodeNames.set(node.nodeNum, node.longName);
+      shortNameOnly.delete(node.nodeNum);
+    } else if (node.shortName && !nodeNames.has(node.nodeNum)) {
+      nodeNames.set(node.nodeNum, node.shortName);
+      shortNameOnly.add(node.nodeNum);
+    }
+  }
+  return nodeNames;
+}
+
 export function identifySolarNodes(
   telemetryRows: SolarTelemetryRow[],
   nodes: NodeNameLookup[],
   lookbackDays: number,
 ): SolarNodesAnalysis {
-  // Build node name lookup
-  const nodeNames = new Map<number, string>();
-  for (const node of nodes) {
-    if (node.longName) nodeNames.set(node.nodeNum, node.longName);
-    else if (node.shortName) nodeNames.set(node.nodeNum, node.shortName);
-    else nodeNames.set(node.nodeNum, `!${(node.nodeNum >>> 0).toString(16).padStart(8, '0')}`);
-  }
+  const nodeNames = buildNodeNameMap(nodes);
 
   // Group telemetry by node, then date, then metric
   // Structure: Map<nodeNum, Map<dateKey, Map<metricName, MetricReading[]>>>

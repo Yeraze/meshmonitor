@@ -60,6 +60,8 @@ const basePacket = (overrides: Partial<MqttGroupedPacket> = {}): MqttGroupedPack
   receptionCount: 3,
   firstHeard: 1700000000000,
   lastHeard: 1700000005000,
+  bitfield: 1,
+  okToMqttViolation: 0,
   ...overrides,
 });
 
@@ -329,5 +331,83 @@ describe('MqttPacketMonitorView', () => {
     await waitFor(() => {
       expect(csrfFetchMock.mock.calls.length).toBeGreaterThan(callCountAfterInitialLoad);
     });
+  });
+
+  it('renders the ok_to_mqtt violation badge on a grouped row when okToMqttViolation is 1', async () => {
+    installFetchRouter({ packets: [basePacket({ okToMqttViolation: 1, bitfield: 0 })] });
+
+    render(<MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />);
+
+    const badge = await screen.findByText('violation');
+    expect(badge.className).toContain('mqpm-badge-violation');
+    expect(badge.className).toContain('mqpm-badge');
+    expect(screen.getByText('TEXT_MESSAGE_APP')).toBeTruthy();
+  });
+
+  it('does not render the violation badge when okToMqttViolation is 0', async () => {
+    installFetchRouter({ packets: [basePacket()] });
+
+    render(<MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />);
+
+    await screen.findByText('hello world');
+    expect(screen.queryByText('violation')).toBeNull();
+  });
+
+  it('does not render the violation badge for a suspected (null bitfield) row', async () => {
+    installFetchRouter({ packets: [basePacket({ bitfield: null, okToMqttViolation: 0 })] });
+
+    render(<MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />);
+
+    await screen.findByText('hello world');
+    expect(screen.queryByText('violation')).toBeNull();
+    expect(screen.queryByText('unknown')).toBeNull();
+  });
+
+  it('the violation badge explains the at-least-one-gateway semantic in its title', async () => {
+    installFetchRouter({ packets: [basePacket({ okToMqttViolation: 1, bitfield: 0 })] });
+
+    render(<MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />);
+
+    const badge = await screen.findByText('violation');
+    expect(badge.getAttribute('title')).toBe(
+      'At least one gateway relayed this packet to MQTT although the sender did not opt in (ok_to_mqtt = 0). Open the packet to see which gateway.'
+    );
+  });
+
+  it('the capture-disabled banner says violation detection keeps running', async () => {
+    installFetchRouter({ packets: [], enabled: false });
+
+    render(<MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />);
+
+    await screen.findByText('MQTT packet capture is off. No new packets will be recorded until you enable it.');
+    // Both the disabled banner and the disabled empty state render the note
+    // simultaneously (there are no packets), so assert at least one instance.
+    expect(screen.getAllByText(
+      'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here. Confirmed violations are always listed in Analysis & Reports → ok_to_mqtt violations.'
+    ).length).toBeGreaterThan(0);
+  });
+
+  it('the disabled empty state repeats the violation-detection note', async () => {
+    installFetchRouter({ packets: [], enabled: false });
+
+    render(<MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />);
+
+    await screen.findByText('No packets captured. Enable capture to start recording.');
+    const note = screen.getByText(
+      'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here. Confirmed violations are always listed in Analysis & Reports → ok_to_mqtt violations.',
+      { selector: '.mqpm-empty-note' }
+    );
+    expect(note).toBeTruthy();
+  });
+
+  it('the enabled empty state does not show the violation-detection note', async () => {
+    installFetchRouter({ packets: [], enabled: true });
+
+    render(<MqttPacketMonitorView baseUrl={baseUrl} sourceId={sourceId} />);
+
+    await screen.findByText('No packets captured yet. Waiting for MQTT traffic…');
+    expect(screen.queryByText(
+      'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here. Confirmed violations are always listed in Analysis & Reports → ok_to_mqtt violations.'
+    )).toBeNull();
   });
 });

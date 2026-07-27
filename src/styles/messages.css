@@ -53,7 +53,10 @@
   font-size: 0.75rem;
   font-weight: 600;
   flex-shrink: 0;
-  margin-bottom: 2px;
+  /* Nudge the avatar up off the baseline so it sits alongside its message
+     rather than below it (#4311 follow-up). The container is align-items:
+     flex-end, so a larger bottom margin lifts the avatar. */
+  margin-bottom: 7px;
   cursor: help;
 }
 
@@ -261,11 +264,15 @@
   position: relative;
 }
 
-/* Message actions positioned above the bubble to avoid overlapping content */
+/* Message actions tucked just under the bubble's bottom-right, lightly
+   overlapping it (#4311 follow-up). Anchored to the bottom of .message-content
+   — whose last child is always .message-bubble — so the toolbar sits on the
+   message it relates to regardless of a sender-name/reply preview above it. */
 .message-actions {
   position: absolute;
-  top: -12px;
-  right: 0;
+  top: auto;
+  bottom: -1.375rem;
+  right: 4px;
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;
@@ -291,7 +298,9 @@
   .message-actions {
     opacity: 1;
     position: static;
-    margin-top: 0.25rem;
+    /* In-flow after the bubble (#4311); pull up a touch so it barely overlaps
+       the bubble's bottom edge instead of floating below it. */
+    margin-top: -6px;
     justify-content: flex-end;
   }
 

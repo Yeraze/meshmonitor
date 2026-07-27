@@ -1,14 +1,14 @@
 # MeshMonitor — Claude Agent Brief
 
-**Version:** 4.13.0 (multi-source architecture)
-**Stack:** React 19 + TS + Vite frontend / Node.js 20+ (Docker image ships Node 24; CI matrix covers 20/22/24/25) + Express 5 + TS backend / SQLite (default), PostgreSQL, MySQL via Drizzle ORM / Meshtastic protobuf-over-TCP and MeshCore (native `meshcore.js` for companion, serial CLI for repeater) through a per-source manager registry.
+**Version:** 4.13.x (multi-source architecture)
+**Stack:** React 19 + TS + Vite frontend / Node.js 22+ (Docker image ships Node 24; armv7 image ships Node 22 — the lowest supported runtime, since Node 24 has no ARMv7 build; CI matrix covers 22/24/25) + Express 5 + TS backend / SQLite (default), PostgreSQL, MySQL via Drizzle ORM / Meshtastic protobuf-over-TCP and MeshCore (native `meshcore.js` for companion, serial CLI for repeater) through a per-source manager registry.
 
 ## Read order for new agents
 
 1. **This file** — invariants, rules, and gotchas. Skim end-to-end.
 2. **`docs/internal/dev-notes/ARCHITECTURE_LESSONS.md`** — MUST-READ before touching node communication, state management, backup/restore, async operations, multi-database, or multi-source.
 3. **`docs/internal/dev-notes/MESHCORE_REMOTE_ADMIN.md`** — MUST-READ before touching MeshCore CLI/admin routes, the credential store, the danger guard, or the shared `CliConsoleBody` primitive.
-4. **`src/server/sourceManagerRegistry.ts`** + **`src/server/meshtasticManager.ts`** + **`src/server/bootstrapSources.ts`** — read these before any feature touching nodes/messages/telemetry. There is no global `meshtasticManager` singleton; everything is per-source. The `meshtasticManager` default export is a live Proxy alias (see Multi-Source section below), not a concrete instance.
+4. **`src/server/sourceManagerRegistry.ts`** + **`src/server/meshtasticManager.ts`** + **`src/server/bootstrapSources.ts`** — read these before any feature touching nodes/messages/telemetry. There is no global `meshtasticManager` singleton and no default export; everything is per-source — resolve the primary via `getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager` (see Multi-Source section below). Connection lifecycle runs through the explicit state machine in `src/server/meshtastic/connectionStateMachine.ts` (#3962 4.2b).
 5. **One repository under `src/db/repositories/`** (e.g. `auth.ts`) — read before adding a query. Raw SQL outside this directory is ESLint-banned.
 
 ## Where things live
@@ -21,7 +21,7 @@
 | Migrations | `src/server/migrations/NNN_*.ts` (75+ total), registry in `src/db/migrations.ts` |
 | Backup/restore | `src/server/services/systemBackupService.ts`, `systemRestoreService.ts` |
 | Routes | `src/server/routes/*` |
-| Packet monitors | Meshtastic: `packet_log` table + `packetLogService.ts` + `packetRoutes.ts` + `PacketMonitorPanel.tsx`. MeshCore (OTA via `LogRxData`): `meshcore_packet_log` table + `meshcorePacketLogService.ts` + `/packets` routes in `meshcoreRoutes.ts` + `MeshCorePacketMonitorView.tsx`. MQTT (per-gateway receptions, N rows per packet, deduped at query time): `mqtt_packet_log` table + `mqttPacketLogService.ts` + `mqttPacketRoutes.ts` (`/api/sources/:id/mqtt/packets`), hooked via the `ingestServiceEnvelope` wrapper. All opt-in (`*_packet_log_enabled`). |
+| Packet monitors | Meshtastic: `packet_log` table + `packetLogService.ts` + `packetRoutes.ts` + `PacketMonitorPanel.tsx`. MeshCore (OTA via `LogRxData`): `meshcore_packet_log` table + `meshcorePacketLogService.ts` + `/packets` routes in `meshcorePacketRoutes.ts` (mounted via the `meshcoreRoutes.ts` barrel) + `MeshCorePacketMonitorView.tsx`. MQTT (per-gateway receptions, N rows per packet, deduped at query time): `mqtt_packet_log` table + `mqttPacketLogService.ts` + `mqttPacketRoutes.ts` (`/api/sources/:id/mqtt/packets`), hooked via the `ingestServiceEnvelope` wrapper. All opt-in (`*_packet_log_enabled`). |
 | Frontend pages | `src/pages/*` (`Unified*Page` = multi-source aware) |
 | Shared map shell | `src/components/map/` — `BaseMap` (MapContainer + raster/vector tile branch + optional TilesetSelector/resize). New map surfaces MUST compose `BaseMap` instead of hand-rolling `MapContainer`; shared layers land here during epic #4047. |
 | ESLint config | `eslint.config.mjs` (raw-SQL ban lives here) |
@@ -34,6 +34,7 @@
 - **All DatabaseService methods are async** (`Async` suffix). Tests mock with `mockResolvedValue`.
 - **Never push directly to main. Always use a branch.**
 - **App-owned interface icons use `UiIcon`.** Do not hardcode emoji or Unicode icon stand-ins in JSX or locale UI copy. Use `BrandIcon` for supported Simple Icons brand marks. User/content/protocol emoji require an issue-referenced exception when the distinction is not obvious.
+- **CSS containment (#3962 Task 5.6).** New components style with CSS modules (`Component.module.css`) scoped to that component, not the global sheets. The legacy global sheets (`src/styles/nodes.css` and siblings) are frozen — additions are discouraged; extend a CSS module instead where practical. `src/styles/nodes.css` in particular carries a hard ordering constraint: a mobile `@media` override must be declared *after* any unconditional base rule for the same selector, or it is silently shadowed by the cascade (issue #3532, bitten twice). See the banner comment at the top of that file before moving or adding rules there.
 - After bulk find-and-replace or sed, verify modified functions have correct `async`/`await` signatures. Route handlers and callbacks need `async` if `await` was added inside.
 
 ### Response envelope
@@ -242,9 +243,17 @@ Default credentials: `admin/changeme1`. Override with `API_USER` and `API_PASS` 
 ## Adding New Settings
 
 When adding a new user-configurable setting:
-- **MUST** add the key to `src/server/constants/settings.ts` `VALID_SETTINGS_KEYS` — without this, the setting silently fails to save.
-- In `SettingsTab.tsx`, the `handleSave` `useCallback` has a large dependency array — new `localFoo` state AND the context `setFoo` setter must be added to it, or the save callback uses stale values.
-- See `src/contexts/SettingsContext.tsx` for the full state/setter/localStorage/server-load pattern.
+- **MUST** add the key to `src/server/constants/settings.ts` `VALID_SETTINGS_KEYS` — without this,
+  the setting silently fails to save.
+- **SettingsTab uses a single `SettingsDraft` reducer (Task 5.3).** Add the field to the
+  `SettingsDraft` type and to `buildBaseline()` (its context/prop or `initial*` source), then bind
+  the input with `updateField('<key>', value)`. Add the key to the explicit `const settings = {…}`
+  object literal in `handleSave` (this literal is intentionally hand-maintained — the
+  `server.settings-persistence.test.ts` source-extraction and the server allowlist both key off it).
+  **You do NOT touch any dependency array** — `handleSave`, the dirty-diff, the re-seed effect, and
+  `resetChanges` all read the draft generically.
+- See `src/contexts/SettingsContext.tsx` for the state/setter/localStorage/server-load pattern (only
+  needed for settings that also live in context, i.e. categories A/B).
 
 ## Versioning & Release
 

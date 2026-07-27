@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, LocateFixed, Maximize, Clock, Ruler, Mountain, RotateCcw,
-  MapPin, Palette, Flag, CircleDashed, Radar, Route, Share2, Flame, Spline, Signal, Box,
+  MapPin, Palette, Flag, CircleDashed, Radar, Route, Share2, Flame, Spline, Signal, Box, Users,
 } from 'lucide-react';
 import { useDashboardSources } from '../../hooks/useDashboardData';
 import LayerToggleButton from './LayerToggleButton';
@@ -41,6 +41,7 @@ const UNTIMED_LAYERS: { key: LayerKey; label: string; icon: ReactNode }[] = [
   { key: 'hopShading',  label: 'Hop Shading',      icon: <Palette size={ICON} /> },
   { key: 'waypoints',   label: 'Waypoints',        icon: <Flag size={ICON} /> },
   { key: 'accuracyRegions', label: 'Accuracy Regions', icon: <CircleDashed size={ICON} /> },
+  { key: 'atakContacts', label: 'ATAK Contacts',    icon: <Users size={ICON} /> },
 ];
 
 export default function MapAnalysisToolbar() {

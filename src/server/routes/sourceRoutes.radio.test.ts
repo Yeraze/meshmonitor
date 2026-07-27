@@ -42,7 +42,7 @@ describe('GET /api/sources — radio summary (#4111 P3 WP-1)', () => {
     await harness.cleanup();
   });
 
-  it('includes a meshtastic radio summary (frequencyMhz/regionName/modemPreset) — visible anonymously', async () => {
+  it('includes a meshtastic radio summary (frequencyMhz/regionName/modemPreset/txEnabled) — visible anonymously', async () => {
     mockGetManager.mockImplementation((sourceId: string) => {
       if (sourceId !== harness.sourceA) return null;
       return {
@@ -72,7 +72,64 @@ describe('GET /api/sources — radio summary (#4111 P3 WP-1)', () => {
       frequencyMhz: expect.closeTo(907.125, 2),
       regionName: 'US',
       modemPreset: 0,
+      txEnabled: true,
     });
+  });
+
+  it('reflects txEnabled: false on the meshtastic summary when the source is receive-only (#4294 P3)', async () => {
+    mockGetManager.mockImplementation((sourceId: string) => {
+      if (sourceId !== harness.sourceA) return null;
+      return {
+        sourceType: 'meshtastic_tcp',
+        getCurrentConfig: () => ({
+          deviceConfig: {
+            lora: {
+              region: 1,
+              channelNum: 21,
+              overrideFrequency: 0,
+              frequencyOffset: 0,
+              bandwidth: 250,
+              modemPreset: 0,
+              txEnabled: false,
+            },
+          },
+        }),
+      };
+    });
+
+    const agent = await harness.loginAs(null);
+    const res = await agent.get('/');
+
+    const a = res.body.find((s: { id: string }) => s.id === harness.sourceA);
+    expect(a.radio.txEnabled).toBe(false);
+  });
+
+  it('fails open to txEnabled: true when the field is absent from lora config (#4294 P3)', async () => {
+    mockGetManager.mockImplementation((sourceId: string) => {
+      if (sourceId !== harness.sourceA) return null;
+      return {
+        sourceType: 'meshtastic_tcp',
+        getCurrentConfig: () => ({
+          deviceConfig: {
+            lora: {
+              region: 1,
+              channelNum: 21,
+              overrideFrequency: 0,
+              frequencyOffset: 0,
+              bandwidth: 250,
+              modemPreset: 0,
+              // txEnabled intentionally omitted
+            },
+          },
+        }),
+      };
+    });
+
+    const agent = await harness.loginAs(null);
+    const res = await agent.get('/');
+
+    const a = res.body.find((s: { id: string }) => s.id === harness.sourceA);
+    expect(a.radio.txEnabled).toBe(true);
   });
 
   it('honors overrideFrequency on the meshtastic summary', async () => {

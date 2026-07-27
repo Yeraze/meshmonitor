@@ -1,5 +1,5 @@
 {
-    "nav.nodes": "Noder",
+    "nav.nodes": "Kart",
     "nav.messages": "Meldinger",
     "nav.channels": "Kanaler",
     "nav.info": "Info",
@@ -3595,6 +3595,7 @@
         "maxAgeAll": "",
         "showRf": "",
         "showWaypoints": "",
+        "showAtakContacts": "",
         "maximumAge": ""
     },
     "settings.analytics_measurement_id_description": "",
@@ -4192,6 +4193,12 @@
     "settings.apprise_server_testing": "Testing…",
     "settings.apprise_server_test_success": "Connected successfully ({{latency}}ms)",
     "settings.apprise_server_test_failure": "Connection failed: {{error}}",
+    "settings.atak_cot_section": "",
+    "settings.atak_cot_section_description": "",
+    "settings.atak_cot_enabled_label": "",
+    "settings.atak_cot_enabled_description": "",
+    "settings.atak_cot_port_label": "",
+    "settings.atak_cot_port_description": "",
     "node_popup.hops_one": "",
     "node_popup.hops_other": "",
     "node_popup.sources_seen_by_one": "",

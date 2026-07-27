@@ -38,6 +38,7 @@ import { solarMonitoringService } from './services/solarMonitoringService.js';
 import { newsService } from './services/newsService.js';
 import { inactiveNodeNotificationService } from './services/inactiveNodeNotificationService.js';
 import { lowBatteryNotificationService } from './services/lowBatteryNotificationService.js';
+import { cotFeedService } from './services/cotFeedService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import { versionCheckService } from './services/versionCheckService.js';
 import { dynamicCspMiddleware, refreshTileHostnameCache } from './middleware/dynamicCsp.js';
@@ -453,6 +454,16 @@ setTimeout(async () => {
     lowBatteryNotificationService.start(lowBatteryCheckIntervalMinutes, lowBatteryCooldownHours);
     logger.info('✅ Low battery notification service started');
 
+    // Start the ATAK/CoT feed server (issue #3691 Phase 3), reading
+    // cotFeedEnabled/cotFeedPort from settings. Own try/catch: a bind
+    // failure or settings-read error here must never abort the rest of
+    // boot (the feed is opt-in and off by default).
+    try {
+      await cotFeedService.startFromSettings();
+    } catch (error) {
+      logger.error('Failed to start CoT feed server on startup:', error);
+    }
+
     // Auto-delete-by-distance scheduler is now started per-source inside
     // MeshtasticManager.startDistanceDeleteScheduler() as part of the normal
     // scheduler stagger after configComplete.
@@ -609,6 +620,7 @@ import tileServerRoutes from './routes/tileServerTest.js';
 import v1Router from './routes/v1/index.js';
 import meshcoreRoutes from './routes/meshcoreRoutes.js';
 import mqttPacketRoutes from './routes/mqttPacketRoutes.js';
+import atakRoutes from './routes/atakRoutes.js';
 // meshcoreConfigFromSource / ensureMeshCoreManagerStarted moved to bootstrapSources.ts
 import { isMeshtasticManager } from './sourceManagerTypes.js';
 import { MeshCoreTelemetryPoller, setMeshCoreTelemetryPoller } from './services/meshcoreTelemetryPoller.js';
@@ -736,6 +748,13 @@ apiRouter.use('/sources/:id/meshcore', meshcoreRoutes);
 // a source is disconnected or reconfigured. See
 // docs/internal/dev-notes/MQTT_PACKET_MONITOR_PHASE1_SPEC.md §2.11/§2.12.
 apiRouter.use('/sources/:id/mqtt/packets', mqttPacketRoutes);
+
+// ATAK Contacts routes — nested under `/api/sources/:id/atak` so each
+// request resolves the contact table bound to a specific source. No
+// source-type check (mirrors meshcore/mqtt): a non-Meshtastic or
+// disconnected source simply has no rows. See
+// docs/internal/dev-notes/ATAK_COT_PHASE2_SPEC.md §2g.
+apiRouter.use('/sources/:id/atak', atakRoutes);
 
 // Link preview routes
 apiRouter.use('/', linkPreviewRoutes);
@@ -919,6 +938,9 @@ setSettingsCallbacks({
     const mgr = sourceManagerRegistry.getManager(sourceId);
     mgr?.stopDistanceDeleteScheduler();
   },
+  // ATAK/CoT Phase 3 (issue #3691): global singleton, not per-source.
+  restartCotFeed: () => { void cotFeedService.startFromSettings(); },
+  stopCotFeed: () => { void cotFeedService.stop(); },
 });
 
 // Wire up side-effect callbacks for systemRoutes (server-lifecycle shutdown).
@@ -995,6 +1017,17 @@ function gracefulShutdown(reason: string, exitCode = 0): void {
   logger.info(`🛑 Initiating graceful shutdown: ${reason} (exit ${exitCode})`);
 
   const shutdownDependencies = (): void => {
+    // Stop the ATAK/CoT feed server (issue #3691 Phase 3): closes the TCP
+    // listener and destroys connected client sockets. Fire-and-forget —
+    // stop() is async (waits on server.close()'s callback) but shutdown must
+    // not block on it; process.exit() below tears down any open sockets
+    // regardless, this just gives it a clean chance to do so first.
+    try {
+      void cotFeedService.stop();
+    } catch (error) {
+      logger.error('Error stopping CoT feed server:', error);
+    }
+
     // Disconnect from Meshtastic
     try {
       (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).disconnect();

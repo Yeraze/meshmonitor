@@ -7,9 +7,11 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import SolarMonitoringReport from './SolarMonitoringReport';
+import NodeInfoEnrichmentReport from './NodeInfoEnrichmentReport';
+import MqttViolationsReport from './MqttViolationsReport';
 import { UiIcon, type UiIconName } from '../icons';
 
-type AnalysisType = 'solar-monitoring' | null;
+type AnalysisType = 'solar-monitoring' | 'nodeinfo-enrichment' | 'mqtt-oktomqtt-violations' | null;
 
 interface AnalysisCard {
   id: Exclude<AnalysisType, null>;
@@ -18,11 +20,7 @@ interface AnalysisCard {
   icon: UiIconName;
 }
 
-interface AnalysisTabProps {
-  baseUrl: string;
-}
-
-const AnalysisTab: React.FC<AnalysisTabProps> = ({ baseUrl }) => {
+const AnalysisTab: React.FC = () => {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<AnalysisType>(null);
 
@@ -36,6 +34,24 @@ const AnalysisTab: React.FC<AnalysisTabProps> = ({ baseUrl }) => {
       ),
       icon: 'sun',
     },
+    {
+      id: 'nodeinfo-enrichment',
+      title: t('analysis.enrichment.title', 'NodeInfo Enrichment'),
+      description: t(
+        'analysis.enrichment.description',
+        'Fill blank NodeInfo fields (name, hardware, role, …) for nodes seen on multiple sources by copying from a source that already has the data.',
+      ),
+      icon: 'identity',
+    },
+    {
+      id: 'mqtt-oktomqtt-violations',
+      title: t('analysis.mqtt_violations.title', 'ok_to_mqtt Violations'),
+      description: t(
+        'analysis.mqtt_violations.description',
+        "Find MQTT gateways that uplinked other nodes' packets even though the sender did not opt in to MQTT (ok_to_mqtt = 0).",
+      ),
+      icon: 'securityAlert',
+    },
   ];
 
   if (selected === 'solar-monitoring') {
@@ -48,7 +64,37 @@ const AnalysisTab: React.FC<AnalysisTabProps> = ({ baseUrl }) => {
         >
           <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
         </button>
-        <SolarMonitoringReport baseUrl={baseUrl} />
+        <SolarMonitoringReport />
+      </div>
+    );
+  }
+
+  if (selected === 'nodeinfo-enrichment') {
+    return (
+      <div className="reports-section">
+        <button
+          type="button"
+          className="reports-section__back"
+          onClick={() => setSelected(null)}
+        >
+          <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
+        </button>
+        <NodeInfoEnrichmentReport />
+      </div>
+    );
+  }
+
+  if (selected === 'mqtt-oktomqtt-violations') {
+    return (
+      <div className="reports-section">
+        <button
+          type="button"
+          className="reports-section__back"
+          onClick={() => setSelected(null)}
+        >
+          <UiIcon name="back" size={16} /> {t('analysis.back_to_reports', 'Back to reports')}
+        </button>
+        <MqttViolationsReport />
       </div>
     );
   }

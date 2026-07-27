@@ -72,7 +72,8 @@ export default defineConfig({
             { text: 'Settings', link: '/features/settings' },
             { text: 'Global Settings', link: '/features/global-settings' },
             { text: 'Multi-Source', link: '/features/multi-source' },
-            { text: 'Device Configuration', link: '/features/device' }
+            { text: 'Device Configuration', link: '/features/device' },
+            { text: 'Receive-Only Mode', link: '/features/receive-only-mode' }
           ]
         },
         {
@@ -107,7 +108,8 @@ export default defineConfig({
             { text: 'Telemetry Widgets', link: '/features/telemetry-widgets' },
             { text: 'Traffic Management', link: '/features/traffic-management' },
             { text: 'Solar Monitoring', link: '/features/solar-monitoring' },
-            { text: 'Packet Monitor', link: '/features/packet-monitor' }
+            { text: 'Packet Monitor', link: '/features/packet-monitor' },
+            { text: 'ATAK / CoT Integration', link: '/features/atak' }
           ]
         },
         {

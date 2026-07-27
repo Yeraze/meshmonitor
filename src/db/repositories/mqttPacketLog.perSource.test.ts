@@ -38,6 +38,9 @@ function makePacket(sourceId: string, overrides: Partial<DbMqttPacket> = {}): Db
     ingestOutcome: 'ingested',
     payloadSize: 12,
     payloadPreview: 'hello',
+    bitfield: null,
+    okToMqttViolation: 0,
+    topic: null,
     createdAt: now,
     ...overrides,
   };

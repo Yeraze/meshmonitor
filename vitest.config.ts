@@ -23,6 +23,7 @@ export default defineConfig({
       '**/node_modules/**',
       '**/dist/**',
       '**/.paperclip/**',
+      'takpacket-sdk/**', // git submodule — has its own vitest suite (#4317)
     ],
     env: {
       DATABASE_PATH: ':memory:',

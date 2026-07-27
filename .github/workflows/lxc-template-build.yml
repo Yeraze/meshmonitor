@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         # No submodules needed here — build-lxc-template.sh clones the repo
         # directly into the container rootfs and handles submodules itself.
         # No Node.js setup needed — the script installs Node.js 24 via
@@ -57,7 +57,7 @@ jobs:
           cat lxc/build/*.sha256
 
       - name: Upload template as artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: meshmonitor-lxc-template-${{ steps.get_version.outputs.version }}
           path: |
@@ -67,7 +67,7 @@ jobs:
 
       - name: Upload to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3
         with:
           files: |
             lxc/build/*.tar.gz

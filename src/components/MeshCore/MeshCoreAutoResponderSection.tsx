@@ -33,6 +33,8 @@ interface MeshCoreAutoResponderTrigger {
   listenDMs: boolean;
   replyAsDM: boolean;
   cooldownSeconds: number;
+  /** Delay (s) after a match before sending the reply. 0 = immediate, max 120 (#3953). */
+  preSendDelaySeconds?: number;
   /** MeshCore scope/region for the reply (#3833). */
   scopeMode?: ScopeMode;
   scopeName?: string;
@@ -78,6 +80,7 @@ const newTrigger = (): MeshCoreAutoResponderTrigger => ({
   listenDMs: true,
   replyAsDM: false,
   cooldownSeconds: 60,
+  preSendDelaySeconds: 0,
   scopeMode: 'inherit',
   scopeName: '',
 });
@@ -430,6 +433,25 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
                     max={3600}
                     value={tr.cooldownSeconds}
                     onChange={(e) => updateTrigger(tr.id, { cooldownSeconds: Math.max(0, Math.min(3600, parseInt(e.target.value, 10) || 0)) })}
+                    disabled={disabled || !canWrite}
+                    className="meshcore-input"
+                    style={{ width: '80px' }}
+                  />
+                </label>
+                <label
+                  style={{ fontSize: '0.85rem' }}
+                  title={t(
+                    'meshcore.automation.responder.presend_delay_help',
+                    'Wait this long after a match before replying, so a relaying repeater can finish its own transmission first (0 = send immediately, max 120).',
+                  )}
+                >
+                  {t('meshcore.automation.responder.presend_delay', 'Pre-Send Delay (s)')}{' '}
+                  <input
+                    type="number"
+                    min={0}
+                    max={120}
+                    value={tr.preSendDelaySeconds ?? 0}
+                    onChange={(e) => updateTrigger(tr.id, { preSendDelaySeconds: Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)) })}
                     disabled={disabled || !canWrite}
                     className="meshcore-input"
                     style={{ width: '80px' }}

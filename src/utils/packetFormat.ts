@@ -64,6 +64,8 @@ export const getPortnumColor = (portnum: number): string => {
     case 72: // ATAK_PLUGIN - teal
     case 73:
       return '#009688'; // MAP_REPORT - teal
+    case 78:
+      return '#26a69a'; // ATAK_PLUGIN_V2 - lighter teal
     case 256: // PRIVATE_APP - gray
     case 257:
       return '#757575'; // ATAK_FORWARDER - gray

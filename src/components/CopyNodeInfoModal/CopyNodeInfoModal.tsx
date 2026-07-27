@@ -4,6 +4,7 @@ import Modal from '../common/Modal';
 import { useSource } from '../../contexts/SourceContext';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import api from '../../services/api';
+import { NODE_INFO_DISPLAY_FIELDS as DISPLAY_FIELDS } from '../../utils/nodeInfoFields';
 import './CopyNodeInfoModal.css';
 
 interface CopyCandidate {
@@ -31,7 +32,13 @@ interface CopyCandidate {
 interface CopyNodeInfoModalProps {
   isOpen: boolean;
   nodeNum: number | null;
-  currentNode: {
+  /**
+   * The target's current NodeInfo values. Optional — when omitted the modal
+   * falls back to the `target` snapshot returned by the copy-candidates
+   * endpoint (used by callers that don't hold the target row, e.g. the
+   * cross-source enrichment report).
+   */
+  currentNode?: {
     longName?: string | null;
     shortName?: string | null;
     hwModel?: number | null;
@@ -41,20 +48,19 @@ interface CopyNodeInfoModalProps {
     hasPKC?: boolean | null;
     firmwareVersion?: string | null;
   } | null;
+  /** Copy-destination source. Defaults to the active SourceContext source. */
+  targetSourceId?: string | null;
+  /** Donor to preselect in the source dropdown when present in the candidates. */
+  initialDonorSourceId?: string | null;
+  /**
+   * Restrict the *default* field selection to these keys (still only rows that
+   * would change something). The user can adjust afterwards. Used by the
+   * enrichment report to preview exactly its fill-blanks field set.
+   */
+  preselectFields?: string[] | null;
   onClose: () => void;
   onCopied: () => void;
 }
-
-const DISPLAY_FIELDS = [
-  { key: 'longName', label: 'Long Name' },
-  { key: 'shortName', label: 'Short Name' },
-  { key: 'hwModel', label: 'Hardware Model' },
-  { key: 'role', label: 'Role' },
-  { key: 'macaddr', label: 'MAC Address' },
-  { key: 'publicKey', label: 'Public Key' },
-  { key: 'hasPKC', label: 'Has PKC' },
-  { key: 'firmwareVersion', label: 'Firmware' },
-] as const;
 
 function formatFieldValue(key: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
@@ -75,14 +81,19 @@ export const CopyNodeInfoModal: React.FC<CopyNodeInfoModalProps> = ({
   isOpen,
   nodeNum,
   currentNode,
+  targetSourceId,
+  initialDonorSourceId,
+  preselectFields,
   onClose,
   onCopied,
 }) => {
   const { t } = useTranslation();
-  const { sourceId } = useSource();
+  const { sourceId: contextSourceId } = useSource();
   const csrfFetch = useCsrfFetch();
+  const sourceId = targetSourceId ?? contextSourceId;
 
   const [candidates, setCandidates] = useState<CopyCandidate[]>([]);
+  const [fetchedTarget, setFetchedTarget] = useState<CopyCandidate['node'] | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [pushToNodeDb, setPushToNodeDb] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -93,6 +104,7 @@ export const CopyNodeInfoModal: React.FC<CopyNodeInfoModalProps> = ({
   useEffect(() => {
     if (!isOpen || nodeNum === null || !sourceId) {
       setCandidates([]);
+      setFetchedTarget(null);
       setSelectedSourceId(null);
       setPushToNodeDb(false);
       setError(null);
@@ -103,34 +115,32 @@ export const CopyNodeInfoModal: React.FC<CopyNodeInfoModalProps> = ({
     setLoading(true);
     setError(null);
 
-    api.getBaseUrl()
-      .then(baseUrl =>
-        fetch(
-          `${baseUrl}/api/nodes/${nodeNum}/copy-candidates?sourceId=${encodeURIComponent(sourceId)}`,
-          { credentials: 'include' },
-        ),
-      )
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to load candidates');
-        return res.json();
-      })
+    api.get<{ data?: { candidates?: CopyCandidate[]; target?: CopyCandidate['node'] | null } }>(
+      `/api/nodes/${nodeNum}/copy-candidates?sourceId=${encodeURIComponent(sourceId)}`,
+    )
       .then(data => {
-        const list: CopyCandidate[] = data.data ?? [];
+        const list: CopyCandidate[] = data.data?.candidates ?? [];
         setCandidates(list);
+        setFetchedTarget(data.data?.target ?? null);
         if (list.length > 0) {
-          setSelectedSourceId(list[0].sourceId);
+          const preferred = initialDonorSourceId
+            && list.some(c => c.sourceId === initialDonorSourceId)
+            ? initialDonorSourceId
+            : list[0].sourceId;
+          setSelectedSourceId(preferred);
         }
       })
       .catch(err => {
         setError(err.message);
       })
       .finally(() => setLoading(false));
-  }, [isOpen, nodeNum, sourceId]);
+  }, [isOpen, nodeNum, sourceId, initialDonorSourceId]);
 
   const selectedCandidate = candidates.find(c => c.sourceId === selectedSourceId) ?? null;
+  const effectiveCurrentNode = currentNode ?? fetchedTarget;
 
   const diffRows = DISPLAY_FIELDS.map(({ key, label }) => {
-    const currentVal = currentNode ? (currentNode as any)[key] : null;
+    const currentVal = effectiveCurrentNode ? (effectiveCurrentNode as any)[key] : null;
     const incomingVal = selectedCandidate ? (selectedCandidate.node as any)[key] : null;
     const isNew = (currentVal == null || currentVal === '') &&
                   incomingVal != null && incomingVal !== '';
@@ -159,9 +169,12 @@ export const CopyNodeInfoModal: React.FC<CopyNodeInfoModalProps> = ({
   // array every render, so depending on it would re-run this effect forever and
   // stomp the user's checkbox edits on each pass.
   useEffect(() => {
-    setSelectedFields(new Set(diffRows.filter(r => r.differs).map(r => r.key as string)));
+    const changed = diffRows.filter(r => r.differs).map(r => r.key as string);
+    setSelectedFields(new Set(
+      preselectFields ? changed.filter(k => preselectFields.includes(k)) : changed,
+    ));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- #4244 see comment above
-  }, [selectedSourceId, currentNode]);
+  }, [selectedSourceId, currentNode, fetchedTarget, preselectFields]);
 
   const toggleField = useCallback((key: string) => {
     setSelectedFields(prev => {

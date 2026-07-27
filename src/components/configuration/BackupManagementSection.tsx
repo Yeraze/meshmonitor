@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import apiService from '../../services/api';
+import apiService, { ApiError } from '../../services/api';
 import { useToast } from '../ToastContainer';
 import { logger } from '../../utils/logger';
 import { useSaveBar } from '../../hooks/useSaveBar';
@@ -66,27 +66,24 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
 
   const loadBackupSettings = async () => {
     try {
-      const baseUrl = await apiService.getBaseUrl();
-      const response = await fetch(`${baseUrl}/api/backup/settings`, {
-        credentials: 'same-origin'
-      });
-
-      if (response.ok) {
-        const settings = await response.json();
-        const enabled = settings.enabled || false;
-        const max = settings.maxBackups || 7;
-        const time = settings.backupTime || '02:00';
-        setAutoBackupEnabled(enabled);
-        setMaxBackups(max);
-        setBackupTime(time);
-        // Update initial values to match loaded settings
-        initialValuesRef.current = {
-          autoBackupEnabled: enabled,
-          maxBackups: max,
-          backupTime: time
-        };
-      }
+      const settings = await apiService.get<{ enabled?: boolean; maxBackups?: number; backupTime?: string }>('/api/backup/settings');
+      const enabled = settings.enabled || false;
+      const max = settings.maxBackups || 7;
+      const time = settings.backupTime || '02:00';
+      setAutoBackupEnabled(enabled);
+      setMaxBackups(max);
+      setBackupTime(time);
+      // Update initial values to match loaded settings
+      initialValuesRef.current = {
+        autoBackupEnabled: enabled,
+        maxBackups: max,
+        backupTime: time
+      };
     } catch (error) {
+      // Preserve the prior silent-ignore on a non-ok HTTP response; only a
+      // genuine network/transport failure gets logged (same split as the
+      // old `if (response.ok) {...}` with no else branch).
+      if (error instanceof ApiError) return;
       logger.error('Error loading backup settings:', error);
     }
   };
@@ -94,29 +91,11 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
   const handleSaveBackupSettings = async () => {
     try {
       setIsSavingSettings(true);
-      const baseUrl = await apiService.getBaseUrl();
-
-      // Get CSRF token
-      const csrfToken = sessionStorage.getItem('csrfToken');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (csrfToken) {
-        headers['X-CSRF-Token'] = csrfToken;
-      }
-
-      const response = await fetch(`${baseUrl}/api/backup/settings`, {
-        method: 'POST',
-        headers,
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          enabled: autoBackupEnabled,
-          maxBackups,
-          backupTime
-        })
+      await apiService.post('/api/backup/settings', {
+        enabled: autoBackupEnabled,
+        maxBackups,
+        backupTime
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to save backup settings');
-      }
 
       // Update initial values to match saved settings
       initialValuesRef.current = {
@@ -150,43 +129,14 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
     try {
       showToast(t('backup_management.toast_creating_backup'), 'info');
 
-      const baseUrl = await apiService.getBaseUrl();
       // Scope the backup to the currently-selected source so multi-source
       // setups back up the active source rather than always the primary one.
       // When sourceId is null (legacy/single-source view) the backend falls
       // back to the primary manager, preserving existing behavior.
-      const backupUrl = sourceId
-        ? `${baseUrl}/api/device/backup?save=true&sourceId=${encodeURIComponent(sourceId)}`
-        : `${baseUrl}/api/device/backup?save=true`;
-      const response = await fetch(backupUrl, {
-        method: 'GET',
-        credentials: 'same-origin'
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to create backup: ${response.statusText}`);
-      }
-
-      const contentDisposition = response.headers.get('Content-Disposition');
-      let filename = 'meshtastic-backup.yaml';
-      if (contentDisposition) {
-        const matches = /filename="?([^"]+)"?/.exec(contentDisposition);
-        if (matches && matches[1]) {
-          filename = matches[1];
-        }
-      }
-
-      const yamlContent = await response.text();
-
-      const blob = new Blob([yamlContent], { type: 'application/x-yaml' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const endpoint = sourceId
+        ? `/api/device/backup?save=true&sourceId=${encodeURIComponent(sourceId)}`
+        : '/api/device/backup?save=true';
+      await apiService.download(endpoint, { defaultName: 'meshtastic-backup.yaml' });
 
       showToast(t('backup_management.toast_backup_created'), 'success');
       if (onBackupCreated) onBackupCreated();
@@ -199,17 +149,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
   const handleShowBackups = async () => {
     try {
       setIsLoadingBackups(true);
-      const baseUrl = await apiService.getBaseUrl();
-
-      const response = await fetch(`${baseUrl}/api/backup/list`, {
-        credentials: 'same-origin'
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to load backup list');
-      }
-
-      const backups = await response.json();
+      const backups = await apiService.get<BackupFile[]>('/api/backup/list');
       setBackupList(backups);
       setIsBackupModalOpen(true);
     } catch (error) {
@@ -222,17 +162,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
 
   const handleDownloadBackup = async (filename: string) => {
     try {
-      const baseUrl = await apiService.getBaseUrl();
-
-      const response = await fetch(`${baseUrl}/api/backup/download/${encodeURIComponent(filename)}`, {
-        credentials: 'same-origin'
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to download backup');
-      }
-
-      const yamlContent = await response.text();
+      const yamlContent = await apiService.getText(`/api/backup/download/${encodeURIComponent(filename)}`);
 
       const blob = new Blob([yamlContent], { type: 'application/x-yaml' });
       const url = window.URL.createObjectURL(blob);
@@ -257,16 +187,7 @@ const BackupManagementSection: React.FC<BackupManagementSectionProps> = ({ onBac
     }
 
     try {
-      const baseUrl = await apiService.getBaseUrl();
-
-      const response = await fetch(`${baseUrl}/api/backup/delete/${encodeURIComponent(filename)}`, {
-        method: 'DELETE',
-        credentials: 'same-origin'
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete backup');
-      }
+      await apiService.delete(`/api/backup/delete/${encodeURIComponent(filename)}`);
 
       showToast(t('backup_management.toast_deleted'), 'success');
       // Refresh the backup list

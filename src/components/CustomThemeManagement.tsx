@@ -4,7 +4,6 @@ import { UiIcon } from './icons';
 import { ThemeEditor } from './ThemeEditor';
 import { useSettings, type CustomTheme, type BuiltInTheme } from '../contexts/SettingsContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useCsrf } from '../contexts/CsrfContext';
 import api from '../services/api';
 import './CustomThemeManagement.css';
 
@@ -12,7 +11,6 @@ export const CustomThemeManagement: React.FC = () => {
   const { t } = useTranslation();
   const { customThemes, loadCustomThemes, theme, darkTheme, lightTheme, setDarkTheme, setLightTheme } = useSettings();
   const { authStatus } = useAuth();
-  const { getToken: getCsrfToken } = useCsrf();
 
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingTheme, setEditingTheme] = useState<CustomTheme | null>(null);
@@ -39,36 +37,12 @@ export const CustomThemeManagement: React.FC = () => {
   };
 
   const handleSave = async (name: string, slug: string, definition: Record<string, string>) => {
-    const baseUrl = await api.getBaseUrl();
-    const csrfToken = getCsrfToken();
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
+    const body = { name, slug, definition };
 
-    if (csrfToken) {
-      headers['X-CSRF-Token'] = csrfToken;
-    }
-
-    const url = editingTheme
-      ? `${baseUrl}/api/themes/${editingTheme.slug}`
-      : `${baseUrl}/api/themes`;
-
-    const method = editingTheme ? 'PUT' : 'POST';
-
-    const response = await fetch(url, {
-      method,
-      headers,
-      credentials: 'include',
-      body: JSON.stringify({
-        name,
-        slug,
-        definition
-      })
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to save theme');
+    if (editingTheme) {
+      await api.put(`/api/themes/${editingTheme.slug}`, body);
+    } else {
+      await api.post('/api/themes', body);
     }
 
     // Reload themes
@@ -82,23 +56,10 @@ export const CustomThemeManagement: React.FC = () => {
       return;
     }
 
-    const baseUrl = await api.getBaseUrl();
-    const csrfToken = getCsrfToken();
-    const headers: Record<string, string> = {};
-
-    if (csrfToken) {
-      headers['X-CSRF-Token'] = csrfToken;
-    }
-
-    const response = await fetch(`${baseUrl}/api/themes/${themeSlug}`, {
-      method: 'DELETE',
-      headers,
-      credentials: 'include'
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      alert(t('theme_management.delete_failed', { error: error.error }));
+    try {
+      await api.delete(`/api/themes/${themeSlug}`);
+    } catch (error) {
+      alert(t('theme_management.delete_failed', { error: error instanceof Error ? error.message : String(error) }));
       return;
     }
 

@@ -14,6 +14,7 @@
 import meshtasticProtobufService from './meshtasticProtobufService.js';
 import { channelDecryptionService } from './services/channelDecryptionService.js';
 import mqttPacketLogService from './services/mqttPacketLogService.js';
+import { autoDeleteByDistanceService } from './services/autoDeleteByDistanceService.js';
 import databaseService from '../services/database.js';
 
 /**
@@ -142,11 +143,19 @@ export interface MqttIngestionInput {
    * `databaseService.ignoredNodes` instead.
    */
   filter?: MqttPacketFilter;
+  /** Raw MQTT topic this envelope arrived on. Diagnostic; persisted on the packet log (#4114). */
+  topic?: string;
+  /**
+   * This source's OWN gateway node number, used by the self-echo guard so MeshMonitor can
+   * never flag itself as a violating gateway (#4114, §2(f.1)). `null`/omitted when the
+   * source has no local identity yet — the guard then simply does not apply.
+   */
+  localGatewayNodeNum?: number | null;
 }
 
 export interface MqttIngestionResult {
   ingested: boolean;
-  reason?: 'no-packet' | 'no-decoded' | 'encrypted' | 'unsupported-portnum' | 'ignored' | 'geo-ignored' | 'decode-error';
+  reason?: 'no-packet' | 'no-decoded' | 'encrypted' | 'unsupported-portnum' | 'ignored' | 'geo-ignored' | 'distance' | 'decode-error';
   portnum?: number;
 }
 
@@ -193,6 +202,9 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
             emoji?: number;
             replyId?: number;
             channelDatabaseId?: number;
+            // The originator's ok_to_mqtt bit must survive server-side decrypt —
+            // violation detection reads it off the synthesized shape (#4114).
+            bitfield?: number;
           };
         }).decoded = {
           portnum: r.portnum,
@@ -200,6 +212,7 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
           emoji: r.emoji,
           replyId: r.replyId,
           channelDatabaseId: r.channelDatabaseId,
+          bitfield: r.bitfield,
         };
       }
     } catch (err) {
@@ -370,6 +383,19 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
       if (positionIsBogus) {
         logger.debug(`MQTT: dropping bogus position (${lat}, ${lng}) precisionBits=${precisionBits} from ${fromNodeId}`);
       }
+
+      // Inline auto-delete-by-distance (#3900): when this MQTT source has the
+      // feature enabled, evaluate the fix as it arrives so a node beyond the
+      // configured radius never touches the nodeDB / map — rather than waiting
+      // for the next periodic sweep. Only on a trustworthy (non-bogus) fix; a
+      // bogus position is not a reliable basis for a distance decision.
+      if (!positionIsBogus && lat != null && lng != null) {
+        const outcome = await autoDeleteByDistanceService.applyInlineDistanceCheck(sourceId, fromNum, lat, lng);
+        if (outcome !== 'kept') {
+          return { ingested: false, reason: 'distance', portnum };
+        }
+      }
+
       const node: Partial<DbNode> = {
         nodeNum: fromNum,
         nodeId: fromNodeId,
@@ -572,9 +598,15 @@ async function ingestServiceEnvelopeInner(input: MqttIngestionInput): Promise<Mq
  */
 export async function ingestServiceEnvelope(input: MqttIngestionInput): Promise<MqttIngestionResult> {
   const result = await ingestServiceEnvelopeInner(input);
-  void mqttPacketLogService.logEnvelope(input.sourceId, input.envelope, result);
+  void mqttPacketLogService.logEnvelope(
+    input.sourceId,
+    input.envelope,
+    result,
+    input.topic,
+    input.localGatewayNodeNum,
+  );
   if (
-    (result.reason === 'ignored' || result.reason === 'geo-ignored') &&
+    (result.reason === 'ignored' || result.reason === 'geo-ignored' || result.reason === 'distance') &&
     typeof input.envelope.packet?.from === 'number'
   ) {
     const fromNum = input.envelope.packet.from >>> 0;

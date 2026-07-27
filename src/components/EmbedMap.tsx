@@ -13,6 +13,7 @@ import { TraceroutePathsLayer } from './map/layers/TraceroutePathsLayer';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
 import type { TracerouteRenderSegment } from '../utils/tracerouteSegments';
 import { UiIcon } from './icons';
+import api from '../services/api';
 
 interface EmbedConfig {
   id: string;
@@ -127,21 +128,22 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
   const [loading, setLoading] = useState(true);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const baseUrl = useRef(
-    window.location.pathname.replace(/\/embed\/.*$/, '')
-  ).current;
+  // The embed route is a standalone public page (src/embed.tsx) — it's the
+  // only consumer of ApiService in this bundle, so pinning the singleton's
+  // base URL here (skipping ApiService's own /api/config auto-detection,
+  // which isn't guaranteed to resolve the same prefix on this route) is
+  // safe. The lazy useState initializer runs exactly once, so setBaseUrl
+  // fires on mount only, not on every render.
+  useState(() => {
+    api.setBaseUrl(window.location.pathname.replace(/\/embed\/.*$/, ''));
+  });
 
   // Fetch embed config on mount
   useEffect(() => {
     let cancelled = false;
     async function fetchConfig() {
       try {
-        const res = await fetch(`${baseUrl}/api/embed/${profileId}/config`);
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({ error: 'Failed to load embed configuration' }));
-          throw new Error(body.error || `HTTP ${res.status}`);
-        }
-        const data = await res.json();
+        const data = await api.get<EmbedConfig>(`/api/embed/${profileId}/config`);
         if (!cancelled) {
           setConfig(data);
           setLoading(false);
@@ -155,46 +157,40 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     }
     void fetchConfig();
     return () => { cancelled = true; };
-  }, [profileId, baseUrl]);
+  }, [profileId]);
 
   // Fetch nodes
   const fetchNodes = useCallback(async () => {
     if (!config) return;
     try {
-      const res = await fetch(`${baseUrl}/api/embed/${profileId}/nodes`);
-      if (!res.ok) return;
-      const data: EmbedNode[] = await res.json();
+      const data = await api.get<EmbedNode[]>(`/api/embed/${profileId}/nodes`);
       setNodes(data);
     } catch {
       // Silently ignore poll errors
     }
-  }, [config, baseUrl, profileId]);
+  }, [config, profileId]);
 
   // Fetch neighbor info
   const fetchNeighborInfo = useCallback(async () => {
     if (!config || !config.showNeighborInfo) return;
     try {
-      const res = await fetch(`${baseUrl}/api/embed/${profileId}/neighborinfo`);
-      if (!res.ok) return;
-      const data: EmbedNeighborSegment[] = await res.json();
+      const data = await api.get<EmbedNeighborSegment[]>(`/api/embed/${profileId}/neighborinfo`);
       setNeighborSegments(data);
     } catch {
       // Silently ignore
     }
-  }, [config, baseUrl, profileId]);
+  }, [config, profileId]);
 
   // Fetch traceroute segments
   const fetchTraceroutes = useCallback(async () => {
     if (!config || !config.showPaths) return;
     try {
-      const res = await fetch(`${baseUrl}/api/embed/${profileId}/traceroutes`);
-      if (!res.ok) return;
-      const data: EmbedTracerouteSegment[] = await res.json();
+      const data = await api.get<EmbedTracerouteSegment[]>(`/api/embed/${profileId}/traceroutes`);
       setTracerouteSegments(data);
     } catch {
       // Silently ignore
     }
-  }, [config, baseUrl, profileId]);
+  }, [config, profileId]);
 
   // Fetch public GeoJSON overlay layers once config is available (issue #3407).
   // Only layers flagged publiclyVisible are returned by the embed endpoint.
@@ -203,16 +199,14 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch(`${baseUrl}/api/embed/${profileId}/geojson/layers`);
-        if (!res.ok) return;
-        const data: GeoJsonLayer[] = await res.json();
+        const data = await api.get<GeoJsonLayer[]>(`/api/embed/${profileId}/geojson/layers`);
         if (!cancelled) setGeoJsonLayers(data);
       } catch {
         // Silently ignore — overlays are optional
       }
     })();
     return () => { cancelled = true; };
-  }, [config, baseUrl, profileId]);
+  }, [config, profileId]);
 
   // Start polling when config is loaded
   useEffect(() => {
@@ -426,7 +420,6 @@ export function EmbedMap({ profileId }: EmbedMapProps) {
         {geoJsonLayers.length > 0 && (
           <GeoJsonOverlay
             layers={geoJsonLayers}
-            baseUrl={baseUrl}
             dataPathPrefix={`/api/embed/${profileId}/geojson/layers`}
           />
         )}

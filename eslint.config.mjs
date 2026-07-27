@@ -20,6 +20,7 @@ export default [
       'docs/**',      // VitePress site is its own project; .vitepress/cache is build output
       'examples/**',
       'protobufs/**', // git submodule — vendored
+      'takpacket-sdk/**', // git submodule — vendored (ATAK V2 zstd dictionaries, #4317)
       'public/**',
     ],
   },

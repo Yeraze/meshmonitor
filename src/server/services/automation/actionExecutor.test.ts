@@ -4,6 +4,7 @@ import type { EngineEvalContext } from './engineContext.js';
 import type { TriggerContext } from './triggerContext.js';
 import type { AutomationNode } from '../../../types/automation.js';
 import type { VariableResolver } from './variableResolver.js';
+import { TxDisabledError } from '../../errors/txDisabledError.js';
 
 function recorder() {
   const calls: Array<{ fn: string; args: any }> = [];
@@ -15,6 +16,35 @@ function recorder() {
     rebootDevice: async (a) => { calls.push({ fn: 'rebootDevice', args: a }); return 6; },
     notify: async (a) => { calls.push({ fn: 'notify', args: a }); return 4; },
     runScript: async (a) => { calls.push({ fn: 'runScript', args: a }); return { success: true, stdout: '', returnValue: { ok: 1 } }; },
+  };
+  return { calls, deps };
+}
+
+/**
+ * Like `recorder()`, but the named dep function throws `TxDisabledError`
+ * instead of recording a call — simulates a mesh-send action hitting a
+ * TX-disabled Meshtastic source's primitive guard (#4294 WP1/WP3). Other dep
+ * functions still record normally, so mixed-source scenarios can be composed.
+ */
+function recorderWithTxDisabled(failFn: keyof ActionDeps) {
+  const { calls, deps } = recorder();
+  (deps as any)[failFn] = async () => {
+    throw new TxDisabledError();
+  };
+  return { calls, deps };
+}
+
+/**
+ * Like `recorderWithTxDisabled`, but only the given source's call throws —
+ * other sources still record normally. Used for mixed-source multi-select
+ * scenarios (mirrors the MeshCore mixed-source tests above).
+ */
+function recorderWithTxDisabledForSource(failFn: 'sendMessage' | 'sendTapback' | 'requestData' | 'rebootDevice', targetSourceId: string) {
+  const { calls, deps } = recorder();
+  const original = deps[failFn] as (a: any) => Promise<unknown>;
+  (deps as any)[failFn] = async (a: any) => {
+    if (a.sourceId === targetSourceId) throw new TxDisabledError();
+    return original(a);
   };
   return { calls, deps };
 }
@@ -740,5 +770,77 @@ describe('executeAction', () => {
     await executeAction(node('action.delay', { seconds: 9999 }), ctx({}), { ...deps, sleep });
     await executeAction(node('action.delay', { seconds: 2.9 }), ctx({}), { ...deps, sleep });
     expect(slept).toEqual([300_000, 2_000]);
+  });
+
+  // ── TX-disabled skip (#4294 epic, Phase 1 WP3, §8) ────────────────────────
+  // A TX-disabled Meshtastic source's primitive guard throws TxDisabledError
+  // (WP1). The action executor must catch it and record a skip — mirroring the
+  // MeshCore-unsupported skips above — so the automation run stays
+  // status:'completed' instead of failing.
+  describe('TX-disabled skip (#4294 WP3)', () => {
+    it('sendMessage: a TX-disabled source is recorded as a TX_DISABLED skip, not a thrown error', async () => {
+      const { calls, deps } = recorderWithTxDisabled('sendMessage');
+      const result = await executeAction(
+        node('action.sendMessage', { text: 'hello' }),
+        ctx({ from: 5, channel: 2, isDM: false }),
+        deps,
+      );
+      expect(result).toEqual({ skipped: true, reason: 'TX_DISABLED' });
+      expect(calls).toHaveLength(0);
+    });
+
+    it('sendTapback: a TX-disabled source is recorded as a TX_DISABLED skip', async () => {
+      const { calls, deps } = recorderWithTxDisabled('sendTapback');
+      const result = await executeAction(
+        node('action.tapback', { emoji: '👍' }),
+        ctx({ from: 5, channel: 3, packetId: 99, isDM: false }),
+        deps,
+      );
+      expect(result).toEqual({ skipped: true, reason: 'TX_DISABLED' });
+      expect(calls).toHaveLength(0);
+    });
+
+    it('requestData: a TX-disabled source is recorded as a TX_DISABLED skip', async () => {
+      const { calls, deps } = recorderWithTxDisabled('requestData');
+      const result = await executeAction(
+        node('action.requestData', { op: 'traceroute', to: '12345', channel: 1 }),
+        ctx({ from: 5, channel: 0 }),
+        deps,
+      );
+      expect(result).toEqual({ skipped: true, reason: 'TX_DISABLED' });
+      expect(calls).toHaveLength(0);
+    });
+
+    it('deviceReboot: a TX-disabled remote-admin target is recorded as a TX_DISABLED skip', async () => {
+      const { calls, deps } = recorderWithTxDisabled('rebootDevice');
+      const result = await executeAction(
+        node('action.deviceReboot', { targetNodeNum: 42 }),
+        ctx({ from: 1 }, 'default'),
+        deps,
+      );
+      expect(result).toEqual({ skipped: true, reason: 'TX_DISABLED' });
+      expect(calls).toHaveLength(0);
+    });
+
+    it('sendMessage: a mixed multi-source select skips the TX-disabled source but still sends on the others', async () => {
+      const { calls, deps } = recorderWithTxDisabledForSource('sendMessage', 'radioOff');
+      const result = await executeAction(
+        node('action.sendMessage', { text: 'hi', sourceIds: ['radioA', 'radioOff'] }),
+        ctx({ from: 5, channel: 2, isDM: false }),
+        deps,
+      );
+      expect(calls.map((c) => c.args.sourceId)).toEqual(['radioA']);
+      expect(result).toEqual([1, { skipped: true, reason: 'TX_DISABLED' }]);
+    });
+
+    it('a non-TX error still rethrows unchanged (only TxDisabledError is converted to a skip)', async () => {
+      const { deps } = recorder();
+      (deps as any).sendMessage = async () => { throw new Error('boom'); };
+      await expect(executeAction(
+        node('action.sendMessage', { text: 'hi' }),
+        ctx({ from: 5, channel: 2, isDM: false }),
+        deps,
+      )).rejects.toThrow('boom');
+    });
   });
 });

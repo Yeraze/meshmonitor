@@ -1,0 +1,64 @@
+/* AtakContactsLayer popup styling (ATAK/CoT Phase 2, issue #3691). CSS
+ * module — do not add these rules to the global sheets (CLAUDE.md CSS
+ * containment rule). */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.35rem 0.75rem;
+  margin-top: 0.4rem;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teamSwatch {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  flex-shrink: 0;
+}
+
+.staleBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  background: rgba(217, 119, 6, 0.18);
+  color: #b45309;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  width: fit-content;
+}
+
+@media (prefers-color-scheme: dark) {
+  .staleBadge {
+    background: rgba(217, 119, 6, 0.28);
+    color: #fbbf24;
+  }
+}
+
+:root[data-theme='dark'] .staleBadge {
+  background: rgba(217, 119, 6, 0.28);
+  color: #fbbf24;
+}
+
+:root[data-theme='light'] .staleBadge {
+  background: rgba(217, 119, 6, 0.18);
+  color: #b45309;
+}

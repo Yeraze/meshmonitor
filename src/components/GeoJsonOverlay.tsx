@@ -12,11 +12,6 @@ interface GeoJsonOverlayProps {
    * so anonymous viewers only receive public layer data (issue #3407).
    */
   dataPathPrefix?: string;
-  /**
-   * Base URL override. Defaults to `api.getBaseUrl()`; the embed map passes the
-   * base it derived from `window.location` so data fetches resolve correctly.
-   */
-  baseUrl?: string;
 }
 
 type GeoJsonData = GeoJSON.GeoJsonObject;
@@ -24,21 +19,20 @@ type GeoJsonData = GeoJSON.GeoJsonObject;
 const GeoJsonOverlay: React.FC<GeoJsonOverlayProps> = ({
   layers,
   dataPathPrefix = '/api/geojson/layers',
-  baseUrl,
 }) => {
   const [dataCache, setDataCache] = useState<Record<string, GeoJsonData>>({});
 
   const fetchLayerData = useCallback(async (layer: GeoJsonLayer) => {
     try {
-      const root = baseUrl ?? await api.getBaseUrl();
-      const response = await fetch(`${root}${dataPathPrefix}/${layer.id}/data`);
-      if (!response.ok) return;
-      const data = await response.json();
+      // api's base URL is resolved (or pinned, on the standalone embed route
+      // — see EmbedMap) before this ever fires, so a plain apiService.get
+      // resolves the same endpoint the old explicit baseUrl override did.
+      const data = await api.get<GeoJsonData>(`${dataPathPrefix}/${layer.id}/data`);
       setDataCache(prev => ({ ...prev, [layer.id]: data }));
     } catch (err) {
       console.error(`Failed to fetch GeoJSON data for layer ${layer.id}:`, err);
     }
-  }, [dataPathPrefix, baseUrl]);
+  }, [dataPathPrefix]);
 
   useEffect(() => {
     layers.forEach(layer => {

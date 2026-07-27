@@ -50,6 +50,7 @@ function makeFakeManager(overrides: Partial<{
   transportReady: boolean;
   localNodeInfo: { nodeNum: number } | null;
   sessionPasskeys: Map<number, Uint8Array>;
+  txEnabled: boolean;
 }> = {}) {
   const state = {
     transportReady: overrides.transportReady ?? true,
@@ -61,6 +62,7 @@ function makeFakeManager(overrides: Partial<{
     remoteNodeDeviceMetadata: new Map<number, any>(),
     pendingModuleConfigRequests: new Map<number, string>(),
     moduleConfigsEverFetched: false,
+    txEnabled: overrides.txEnabled ?? true,
   };
 
   return {
@@ -77,6 +79,7 @@ function makeFakeManager(overrides: Partial<{
     getRemoteNodeDeviceMetadataMap: vi.fn(() => state.remoteNodeDeviceMetadata),
     resetModuleConfigState: vi.fn(() => { state.moduleConfigsEverFetched = false; }),
     setModuleConfigsEverFetched: vi.fn((v: boolean) => { state.moduleConfigsEverFetched = v; }),
+    isTxEnabled: vi.fn(() => state.txEnabled),
   };
 }
 
@@ -303,6 +306,85 @@ describe('RemoteAdminService', () => {
       const firstSendOrder = (mgr.sendLocalAdminPacket as any).mock.invocationCallOrder[0];
       expect(resetOrder).toBeLessThan(firstSendOrder);
       expect(firstSendOrder).toBeLessThan(fetchedOrder);
+    });
+  });
+
+  describe('TX-disabled guard (#4294 WP1) — remote target blocked, local target unaffected', () => {
+    it('requestRemoteSessionPasskey to a remote node throws TxDisabledError when TX is off', async () => {
+      const mgr = makeFakeManager({ txEnabled: false });
+      const svc = new RemoteAdminService(mgr as any);
+      await expect(svc.requestRemoteSessionPasskey(222)).rejects.toMatchObject({ isTxDisabledError: true, code: 'TX_DISABLED' });
+      expect(mgr.sendLocalAdminPacket).not.toHaveBeenCalled();
+    });
+
+    it('requestRemoteConfig to a remote node throws TxDisabledError when TX is off', async () => {
+      const mgr = makeFakeManager({ txEnabled: false, sessionPasskeys: new Map([[222, new Uint8Array([1])]]) });
+      const svc = new RemoteAdminService(mgr as any);
+      await expect(svc.requestRemoteConfig(222, 5, false)).rejects.toMatchObject({ isTxDisabledError: true });
+      expect(mgr.sendLocalAdminPacket).not.toHaveBeenCalled();
+    });
+
+    it('requestRemoteChannel to a remote node throws TxDisabledError when TX is off', async () => {
+      const mgr = makeFakeManager({ txEnabled: false, sessionPasskeys: new Map([[222, new Uint8Array([1])]]) });
+      const svc = new RemoteAdminService(mgr as any);
+      await expect(svc.requestRemoteChannel(222, 3)).rejects.toMatchObject({ isTxDisabledError: true });
+    });
+
+    it('requestRemoteOwner to a remote node throws TxDisabledError when TX is off', async () => {
+      const mgr = makeFakeManager({ txEnabled: false, sessionPasskeys: new Map([[222, new Uint8Array([1])]]) });
+      const svc = new RemoteAdminService(mgr as any);
+      await expect(svc.requestRemoteOwner(222)).rejects.toMatchObject({ isTxDisabledError: true });
+    });
+
+    it('requestRemoteDeviceMetadata to a remote node throws TxDisabledError when TX is off', async () => {
+      const mgr = makeFakeManager({ txEnabled: false, sessionPasskeys: new Map([[222, new Uint8Array([1])]]) });
+      const svc = new RemoteAdminService(mgr as any);
+      await expect(svc.requestRemoteDeviceMetadata(222)).rejects.toMatchObject({ isTxDisabledError: true });
+    });
+
+    it('sendRebootCommand to a remote node throws TxDisabledError when TX is off', async () => {
+      const mgr = makeFakeManager({ txEnabled: false });
+      const svc = new RemoteAdminService(mgr as any);
+      await expect(svc.sendRebootCommand(222, 5)).rejects.toMatchObject({ isTxDisabledError: true });
+      expect(mgr.sendLocalAdminPacket).not.toHaveBeenCalled();
+    });
+
+    it('sendSetTimeCommand to a remote node throws TxDisabledError when TX is off', async () => {
+      const mgr = makeFakeManager({ txEnabled: false });
+      const svc = new RemoteAdminService(mgr as any);
+      await expect(svc.sendSetTimeCommand(222)).rejects.toMatchObject({ isTxDisabledError: true });
+      expect(mgr.sendLocalAdminPacket).not.toHaveBeenCalled();
+    });
+
+    it('local-node targets (dest 0 or local nodeNum) are NOT blocked by TX-disabled', async () => {
+      const mgr = makeFakeManager({ txEnabled: false });
+      const svc = new RemoteAdminService(mgr as any);
+
+      await expect(svc.sendRebootCommand(LOCAL_NODE_NUM, 5)).resolves.toBeUndefined();
+      await expect(svc.sendSetTimeCommand(0)).resolves.toBeUndefined();
+      expect(mgr.sendLocalAdminPacket).toHaveBeenCalledTimes(2);
+    });
+
+    it('requestModuleConfig (always local) is unaffected by TX-disabled', async () => {
+      const mgr = makeFakeManager({ txEnabled: false });
+      const svc = new RemoteAdminService(mgr as any);
+      await expect(svc.requestModuleConfig(14)).resolves.toBeUndefined();
+      expect(mgr.sendLocalAdminPacket).toHaveBeenCalledTimes(1);
+    });
+
+    it('remote sends succeed normally when TX is enabled', async () => {
+      vi.useFakeTimers();
+      try {
+        const mgr = makeFakeManager({ txEnabled: true });
+        const svc = new RemoteAdminService(mgr as any);
+        const promise = svc.sendRebootCommand(222, 5);
+        await vi.advanceTimersByTimeAsync(1);
+        mgr.state.sessionPasskeys.set(222, new Uint8Array([7]));
+        await vi.advanceTimersByTimeAsync(500);
+        await expect(promise).resolves.toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

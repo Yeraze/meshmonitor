@@ -15,13 +15,22 @@ export const AUTO_ACK_PRESEND_DELAY_DEFAULT_SECONDS = 0;
 export const AUTO_ACK_PRESEND_DELAY_MAX_SECONDS = 120;
 
 /**
+ * Clamp a numeric pre-send delay to the valid range. Non-finite / negative
+ * values mean "no delay" (0); values are capped at 120s. Shared by the
+ * setting-string resolver below and per-trigger numeric fields (e.g. the
+ * MeshCore Auto-Responder pre-send delay, #3953).
+ */
+export function clampPreSendDelaySeconds(n: number | null | undefined): number {
+  if (n == null || !Number.isFinite(n) || n < 0) return AUTO_ACK_PRESEND_DELAY_DEFAULT_SECONDS;
+  return Math.min(n, AUTO_ACK_PRESEND_DELAY_MAX_SECONDS);
+}
+
+/**
  * Resolve a stored auto-ack pre-send delay setting to a clamped number of
  * seconds. Absent / empty / invalid / negative values mean "no delay" (0);
  * values are capped at 120s.
  */
 export function resolveAutoAckPreSendDelaySeconds(raw: string | null | undefined): number {
   if (raw == null || raw === '') return AUTO_ACK_PRESEND_DELAY_DEFAULT_SECONDS;
-  const n = parseInt(raw, 10);
-  if (!Number.isFinite(n) || n < 0) return AUTO_ACK_PRESEND_DELAY_DEFAULT_SECONDS;
-  return Math.min(n, AUTO_ACK_PRESEND_DELAY_MAX_SECONDS);
+  return clampPreSendDelaySeconds(parseInt(raw, 10));
 }

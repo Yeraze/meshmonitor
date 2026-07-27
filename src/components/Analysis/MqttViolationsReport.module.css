@@ -1,0 +1,135 @@
+/* MqttViolationsReport styling (#4114 Phase 3 §2(i)/§3.5). CSS module — do
+ * not add these rules to the global sheets (CLAUDE.md CSS containment).
+ * Everything shared (panel/controls/table/banners/buttons/pills/stats) comes
+ * from `.reports-*` in src/styles/analysis-reports.css instead. */
+
+.sortHeader {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  color: var(--ctp-subtext0);
+}
+
+.sortHeaderActive {
+  color: var(--ctp-text);
+}
+
+.sortIcon {
+  flex-shrink: 0;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+.pagerInfo {
+  color: var(--ctp-subtext0);
+  font-size: 0.85rem;
+}
+
+/* Mandatory: without this, the nested drill-down `.reports-table-wrap` can
+ * never scroll — the inherited `.reports-table td { white-space: nowrap }`
+ * forces the parent cell wide (Phase 2's overflow lesson, PHASE3 §2(i)). */
+.detailCell {
+  padding: 0;
+  white-space: normal;
+}
+
+.detailInner {
+  padding: 0.75rem 1rem;
+  background: var(--ctp-mantle);
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.suspectedCell {
+  color: var(--ctp-subtext0);
+  font-family: var(--font-mono, monospace);
+}
+
+.suspectedOnlyRow {
+  color: var(--ctp-subtext0);
+}
+
+.mutedZero {
+  color: var(--ctp-subtext0);
+  font-family: var(--font-mono, monospace);
+}
+
+/*
+ * Bug (#4114 Phase 3 browser validation): this used to be
+ * `white-space: normal; max-width: 18rem;` so the raw comma-joined UUID list
+ * could wrap. `.reports-table td` (analysis-reports.css) sets
+ * `white-space: nowrap` at higher specificity (element+class beats a lone
+ * class), so `white-space: normal` here never actually applied — the cell
+ * silently rendered on one un-wrapped line and painted straight over the
+ * First seen column (measured scrollWidth 769 vs clientWidth 418).
+ *
+ * Fix is two-part: (1) the cell now renders a short label — the single
+ * source id, or "N sources" — instead of the full joined UUID list, with
+ * the full list always reachable via `title`; opaque UUIDs aren't
+ * meaningful to read inline and this scales to any source count (PHASE3
+ * §2(h) precedent: don't try to resolve human names, just don't dump raw
+ * ids unbounded). (2) `white-space: nowrap` here matches (rather than
+ * fights) the global rule, and `overflow: hidden` + `text-overflow:
+ * ellipsis` + `max-width` are new properties the global rule never sets, so
+ * they apply regardless of the specificity tie on `white-space` — the box
+ * can no longer be forced wider than `max-width` by its content.
+ */
+.sourcesCell {
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topicCell {
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--ctp-subtext0);
+}
+
+.expandButton {
+  width: 1.5rem;
+  text-align: center;
+  color: var(--ctp-subtext0);
+}
+
+/* The actual expand/collapse control (carries aria-expanded — see
+ * MqttViolationsReport.tsx, a <tr> can't). Transparent button, inherits the
+ * cell's muted color so it reads the same as the old bare-icon cell did. */
+.expandButtonControl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  color: inherit;
+}

@@ -26,6 +26,8 @@ export interface NodeRecord extends MaybePositionedNode {
   longName?: string | null;
   shortName?: string | null;
   hideFromMap?: boolean | null;
+  /** #4295: node reports itself as unable to receive DMs; drives the map ban-badge. */
+  isUnmessagable?: boolean | null;
   user?: { role?: string | number | null } | null;
   isMeshCore?: boolean;
   advType?: number | null;

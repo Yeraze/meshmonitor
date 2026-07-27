@@ -445,6 +445,90 @@ function runNodesTests(getBackend: () => TestBackend) {
     expect(unscoped.size).toBe(1); // at most one row per nodeNum in the result map
   });
 
+  // --- getNodeNamesByNums ---
+  // Added so the ok_to_mqtt violations report can label rows with names
+  // instead of bare `!hex` ids.
+
+  it('getNodeNamesByNums - returns names keyed by nodeNum', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.upsertNode(makeNode(600, { sourceId: 'src-a', longName: 'Gateway One', shortName: 'GW1' }));
+    await repo.upsertNode(makeNode(601, { sourceId: 'src-a', longName: 'Gateway Two', shortName: 'GW2' }));
+
+    const map = await repo.getNodeNamesByNums([600, 601, 999], ['src-a']);
+    expect(map.get(600)).toEqual({ longName: 'Gateway One', shortName: 'GW1' });
+    expect(map.get(601)).toEqual({ longName: 'Gateway Two', shortName: 'GW2' });
+    // A nodeNum with no row is simply absent — callers fall back to the id.
+    expect(map.has(999)).toBe(false);
+  });
+
+  it('getNodeNamesByNums - never returns names from a source outside the given list', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // This is a permission boundary, not just a filter: the report scopes the
+    // lookup to the caller's permitted sources, so a name from a source they
+    // cannot see must not leak into the response.
+    await repo.upsertNode(makeNode(610, { sourceId: 'permitted', longName: 'Visible Node', shortName: 'VIS' }));
+    await repo.upsertNode(makeNode(611, { sourceId: 'forbidden', longName: 'Secret Node', shortName: 'SEC' }));
+
+    const map = await repo.getNodeNamesByNums([610, 611], ['permitted']);
+    expect(map.get(610)?.longName).toBe('Visible Node');
+    expect(map.has(611)).toBe(false);
+  });
+
+  it('getNodeNamesByNums - prefers a source that actually has a name over one that does not', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // Same physical node heard on two sources; only one ever got NodeInfo.
+    // Whichever row the query returns first, the named one must win, or the
+    // report would show a bare id for a node it demonstrably knows.
+    await repo.upsertNode(makeNode(620, { sourceId: 'src-a', longName: '', shortName: '' }));
+    await repo.upsertNode(makeNode(620, { sourceId: 'src-b', longName: 'Named Here', shortName: 'NMD' }));
+
+    const map = await repo.getNodeNamesByNums([620], ['src-a', 'src-b']);
+    expect(map.get(620)?.longName).toBe('Named Here');
+    expect(map.get(620)?.shortName).toBe('NMD');
+  });
+
+  it('getNodeNamesByNums - returns an empty map for empty inputs', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    expect((await repo.getNodeNamesByNums([], ['src-a'])).size).toBe(0);
+    // No permitted sources must mean no lookup at all, not an unscoped one.
+    expect((await repo.getNodeNamesByNums([600], [])).size).toBe(0);
+  });
+
+  it('getNodeNamesByNums - drops out-of-range nodeNums instead of failing the batch', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // One bad entry would otherwise fail the whole query against a PG/MySQL
+    // bigint column (#3186) — the valid sibling must still come back.
+    await repo.upsertNode(makeNode(630, { sourceId: 'src-a', longName: 'Fine Node', shortName: 'FINE' }));
+
+    const map = await repo.getNodeNamesByNums([630, -1, 2 ** 33], ['src-a']);
+    expect(map.get(630)?.longName).toBe('Fine Node');
+  });
+
   // --- getLowBatteryMonitoredNodes ---
 
   it('getLowBatteryMonitoredNodes - returns only monitored nodes below threshold, excluding 101 and nulls', async () => {

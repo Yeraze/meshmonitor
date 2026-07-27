@@ -1,0 +1,131 @@
+.root {
+  font-weight: 400;
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.name {
+  margin-bottom: 4px;
+  color: var(--ctp-text);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.summary,
+.instructions,
+.status {
+  color: var(--ctp-subtext0);
+  font-size: 0.9rem;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.toggle,
+.copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-sm);
+  padding: 7px 12px;
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.toggle:hover,
+.copy:hover {
+  border-color: var(--ctp-blue);
+  color: var(--ctp-blue);
+}
+
+.toggle:focus-visible,
+.copy:focus-visible,
+.url:focus-visible {
+  outline: 2px solid var(--ctp-blue);
+  outline-offset: 2px;
+}
+
+.content {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ctp-surface1);
+}
+
+.instructions {
+  margin: 0 0 14px;
+  text-align: center;
+}
+
+.error {
+  margin-bottom: 12px;
+  color: var(--ctp-red);
+  font-size: 0.9rem;
+}
+
+.qr {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.canvas {
+  display: block;
+  max-width: 100%;
+  /* qrcode writes an inline height; responsive sizing must override it. */
+  height: auto !important;
+  border: 8px solid #ffffff;
+  border-radius: var(--radius-sm);
+}
+
+.urlRow {
+  display: flex;
+  gap: 8px;
+}
+
+.url {
+  min-width: 0;
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-sm);
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.copy {
+  background: var(--ctp-blue);
+  border-color: var(--ctp-blue);
+  color: var(--ctp-base);
+}
+
+.copy:hover {
+  background: var(--ctp-sapphire);
+  border-color: var(--ctp-sapphire);
+  color: var(--ctp-base);
+}
+
+@media (max-width: 768px) {
+  .heading,
+  .urlRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toggle,
+  .copy {
+    width: 100%;
+  }
+}

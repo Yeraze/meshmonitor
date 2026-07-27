@@ -11,10 +11,22 @@ export type TabType =
   | 'users'
   | 'audit'
   | 'security'
-  | 'themes'
+  // 'themes' removed (#3962 5.4 PR1): it had no `activeTab === 'themes'` render
+  // in App and no Sidebar entry — custom-theme management lives inside the
+  // `settings` tab (see CustomThemeManagement in SettingsTab), gated by the
+  // separate `themes` *permission* resource (types/permission.ts), which is
+  // unrelated to this tab enum. Was a dead VALID_TABS entry, never reachable.
   | 'admin'
   | 'packetmonitor'
   | 'mqtt-config';
+
+// Valid tab types. Used by UIContext's activeTab<->route adapter to validate
+// a path segment, and by App's hash->path redirect shim (#3962 5.4 PR1) to
+// recognize a legacy `#tab` bookmark/deep-link. Lives here (not in
+// UIContext.tsx) so it isn't a non-component named export from a file
+// react-refresh treats as a component module. 'themes' intentionally
+// omitted — see comment above.
+export const VALID_TABS: TabType[] = ['nodes', 'channels', 'messages', 'info', 'settings', 'automation', 'dashboard', 'configuration', 'notifications', 'users', 'audit', 'security', 'admin', 'packetmonitor', 'mqtt-config'];
 
 export type SortField = 'longName' | 'shortName' | 'id' | 'lastHeard' | 'snr' | 'battery' | 'hwModel' | 'hops';
 

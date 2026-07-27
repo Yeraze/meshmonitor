@@ -24,6 +24,7 @@ import TriggerItem from './auto-responder/TriggerItem';
 import PatternExamples from './auto-responder/PatternExamples';
 import ScriptManagement from './auto-responder/ScriptManagement';
 import { UiIcon } from './icons';
+import apiService from '../services/api';
 
 const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   enabled,
@@ -106,22 +107,19 @@ const AutoResponderSection: React.FC<AutoResponderSectionProps> = ({
   // Fetch available scripts when component mounts and after import/delete
     const fetchScripts = async () => {
       try {
-        const response = await fetch(`${baseUrl}/api/scripts`);
-        if (response.ok) {
-          const data = await response.json();
-          // Handle both new metadata format and legacy string array format
-          const scripts: ScriptMetadata[] = (data.scripts || []).map((script: ScriptMetadata | string) => {
-            if (typeof script === 'string') {
-              // Legacy format - convert to metadata object
-              const filename = script.split('/').pop() || script;
-              const ext = filename.split('.').pop()?.toLowerCase() || '';
-              const language = ext === 'py' ? 'Python' : ext === 'js' || ext === 'mjs' ? 'JavaScript' : ext === 'sh' ? 'Shell' : 'Script';
-              return { path: script, filename, language };
-            }
-            return script;
-          });
-          setAvailableScripts(scripts);
-        }
+        const data = await apiService.get<{ scripts?: (ScriptMetadata | string)[] }>('/api/scripts');
+        // Handle both new metadata format and legacy string array format
+        const scripts: ScriptMetadata[] = (data.scripts || []).map((script: ScriptMetadata | string) => {
+          if (typeof script === 'string') {
+            // Legacy format - convert to metadata object
+            const filename = script.split('/').pop() || script;
+            const ext = filename.split('.').pop()?.toLowerCase() || '';
+            const language = ext === 'py' ? 'Python' : ext === 'js' || ext === 'mjs' ? 'JavaScript' : ext === 'sh' ? 'Shell' : 'Script';
+            return { path: script, filename, language };
+          }
+          return script;
+        });
+        setAvailableScripts(scripts);
       } catch (error) {
         console.error('Failed to fetch available scripts:', error);
       }

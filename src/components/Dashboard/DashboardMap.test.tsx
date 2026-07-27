@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     defaultMapCenterLat: null as number | null,
     defaultMapCenterLon: null as number | null,
     defaultMapCenterZoom: null as number | null,
+    activeStyleJson: null as Record<string, unknown> | null,
   },
 }));
 
@@ -32,7 +33,12 @@ const mocks = vi.hoisted(() => ({
 // `leaflet` mock below doesn't provide) — both are stubbed the same way
 // BaseMap.test.tsx does it, so this bare-component render stays dependency-free.
 vi.mock('../VectorTileLayer', () => ({
-  VectorTileLayer: () => <div data-testid="vector-tile-layer" />,
+  // Surfaces styleJson as a data attribute (issue #4348) so tests can assert
+  // DashboardMap forwards the active MapLibre style through to the vector
+  // tile layer, matching NodesTab's behavior.
+  VectorTileLayer: ({ styleJson }: { styleJson?: Record<string, unknown> }) => (
+    <div data-testid="vector-tile-layer" data-style-json={styleJson ? JSON.stringify(styleJson) : ''} />
+  ),
 }));
 vi.mock('../map/leafletDefaultIcon', () => ({}));
 
@@ -134,16 +140,27 @@ vi.mock('../../utils/mapIcons', () => ({
 }));
 
 vi.mock('../../config/tilesets', () => ({
-  getTilesetById: () => ({
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '© OSM',
-    maxZoom: 19,
-  }),
+  // Resolves the fixture vector tileset (below) as a vector tileset so
+  // BaseMap takes its VectorTileLayer branch (issue #4348 problem 4); every
+  // other id keeps the pre-existing raster stub the rest of this file relies on.
+  getTilesetById: (id: string) => (
+    id === 'custom-vector-1'
+      ? { url: 'http://tileserver.local/data/v3/{z}/{x}/{y}.pbf', attribution: '', maxZoom: 19, isVector: true }
+      : { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '© OSM', maxZoom: 19 }
+  ),
   DEFAULT_TILESET_ID: 'osm',
 }));
 
 vi.mock('./DashboardWaypoints', () => ({
   default: () => <div data-testid="dashboard-waypoints" />,
+}));
+
+// DashboardAtakContacts' import chain (AtakContactsLayer → useAtakContacts)
+// reaches `../init`, which calls `api.setBaseUrl(...)` at module scope — a
+// method the lean api mock above deliberately omits. Mock it out like
+// DashboardWaypoints (#3691).
+vi.mock('./DashboardAtakContacts', () => ({
+  default: () => <div data-testid="dashboard-atak-contacts" />,
 }));
 
 // useMarkerSpiderfier drives the real Leaflet OverlappingMarkerSpiderfier,
@@ -300,6 +317,7 @@ describe('DashboardMap', () => {
     mocks.settings.defaultMapCenterLat = null;
     mocks.settings.defaultMapCenterLon = null;
     mocks.settings.defaultMapCenterZoom = null;
+    mocks.settings.activeStyleJson = null;
   });
 
   // --- Default Map Center vs auto-fit (issue #4125) ---------------------------
@@ -639,5 +657,45 @@ describe('DashboardMap', () => {
     const markers = screen.getAllByTestId('map-marker');
     expect(markers).toHaveLength(1);
     expect(markers[0].textContent).not.toContain('MC');
+  });
+
+  // --- Active Map Style passthrough (issue #4348 problem 4) --------------
+  // DashboardMap previously never applied a custom MapLibre style at all —
+  // it didn't consume activeStyleJson from SettingsContext or forward it to
+  // BaseMap. These tests guard the fix: the vector tile layer must receive
+  // whatever style is currently active, and must not blow up when none is.
+
+  const vectorCustomTileset = {
+    id: 'custom-vector-1',
+    name: 'Self-hosted vector',
+    url: 'http://tileserver.local/data/v3/{z}/{x}/{y}.pbf',
+    attribution: '',
+    isVector: true,
+    createdAt: 0,
+    updatedAt: 0,
+  };
+
+  it('forwards the active map style JSON into the vector tile layer', () => {
+    const styleJson = { version: 8, sources: {}, layers: [] };
+    mocks.settings.activeStyleJson = styleJson;
+    render(
+      <DashboardMap
+        {...defaultProps}
+        tilesetId={vectorCustomTileset.id}
+        customTilesets={[vectorCustomTileset]}
+      />,
+    );
+    expect(screen.getByTestId('vector-tile-layer').dataset.styleJson).toBe(JSON.stringify(styleJson));
+  });
+
+  it('renders the vector tile layer without a style when no map style is active', () => {
+    render(
+      <DashboardMap
+        {...defaultProps}
+        tilesetId={vectorCustomTileset.id}
+        customTilesets={[vectorCustomTileset]}
+      />,
+    );
+    expect(screen.getByTestId('vector-tile-layer').dataset.styleJson).toBe('');
   });
 });

@@ -29,6 +29,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNodes } from '../../hooks/useServerData';
 import type { MqttGroupedPacket, MqttGateway } from './mqttPacketTypes';
 import MqttPacketDetailModal from './MqttPacketDetailModal';
+import { okToMqttState } from './okToMqttState';
+import MqttOkToMqttMarker from './MqttOkToMqttMarker';
 import './MqttPacketMonitor.css';
 
 interface MqttPacketMonitorViewProps {
@@ -54,7 +56,7 @@ function formatTime(ts: number): string {
   return d.toLocaleTimeString([], { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
 }
 
-const ENCRYPTED_OUTCOME_BADGES = new Set(['encrypted', 'ignored', 'geo-ignored', 'unsupported-portnum', 'decode-error']);
+const ENCRYPTED_OUTCOME_BADGES = new Set(['encrypted', 'ignored', 'geo-ignored', 'distance', 'unsupported-portnum', 'decode-error']);
 
 function outcomeBadgeClass(outcome: string): string {
   switch (outcome) {
@@ -64,6 +66,8 @@ function outcomeBadgeClass(outcome: string): string {
       return 'mqpm-badge mqpm-badge-ignored';
     case 'geo-ignored':
       return 'mqpm-badge mqpm-badge-geo-ignored';
+    case 'distance':
+      return 'mqpm-badge mqpm-badge-distance';
     case 'unsupported-portnum':
     case 'decode-error':
       return 'mqpm-badge mqpm-badge-error';
@@ -276,10 +280,19 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
   }, [nodeName, t]);
 
   const renderType = useCallback((p: MqttGroupedPacket) => {
-    if (p.encrypted && !p.portnumName && ENCRYPTED_OUTCOME_BADGES.has(p.ingestOutcome)) {
-      return <span className={outcomeBadgeClass(p.ingestOutcome)}>{p.ingestOutcome}</span>;
-    }
-    return <span className="mqpm-badge">{p.portnumName ?? '—'}</span>;
+    const typeBadge = (p.encrypted && !p.portnumName && ENCRYPTED_OUTCOME_BADGES.has(p.ingestOutcome))
+      ? <span className={outcomeBadgeClass(p.ingestOutcome)}>{p.ingestOutcome}</span>
+      : <span className="mqpm-badge">{p.portnumName ?? '—'}</span>;
+    // MAX(okToMqttViolation) => "at least one gateway violated" (#4114 §2(a)).
+    // Only the violation state is surfaced in the list; the full four-state
+    // readout lives in the detail modal.
+    if (okToMqttState(p) !== 'violation') return typeBadge;
+    return (
+      <span className="mqpm-type-cell">
+        {typeBadge}
+        <MqttOkToMqttMarker state="violation" scope="packet" />
+      </span>
+    );
   }, []);
 
   return (
@@ -323,6 +336,10 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
         <div className="mqpm-disabled-banner">
           <span>
             {t('mqtt.packets.disabled', 'MQTT packet capture is off. No new packets will be recorded until you enable it.')}
+            {' '}
+            <span className="mqpm-banner-note">
+              {t('mqtt.packets.violationsStillRecorded', 'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here. Confirmed violations are always listed in Analysis & Reports → ok_to_mqtt violations.')}
+            </span>
           </span>
           {canWriteSettings && (
             <button className="mqpm-btn" disabled={savingSettings} onClick={() => void handleToggleEnabled()}>
@@ -448,6 +465,11 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
             {enabled
               ? t('mqtt.packets.empty', 'No packets captured yet. Waiting for MQTT traffic…')
               : t('mqtt.packets.emptyDisabled', 'No packets captured. Enable capture to start recording.')}
+            {!enabled && (
+              <div className="mqpm-empty-note">
+                {t('mqtt.packets.violationsStillRecorded', 'ok_to_mqtt violation detection keeps running while capture is off — turning capture on only makes the per-packet violation badge visible here. Confirmed violations are always listed in Analysis & Reports → ok_to_mqtt violations.')}
+              </div>
+            )}
           </div>
         ) : (
           <table className="mqpm-table">

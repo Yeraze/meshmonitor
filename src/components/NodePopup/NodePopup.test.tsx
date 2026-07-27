@@ -298,6 +298,54 @@ describe('NodePopup (chat overlay)', () => {
     expect(screen.queryByText(/Purge from Device/)).not.toBeInTheDocument();
   });
 
+  it('disables the run-traceroute button with the shared tooltip when txDisabled (epic #4294 Phase 2)', () => {
+    const { container } = render(
+      <NodePopup
+        nodePopup={nodePopupState}
+        nodes={[localNode, remoteNode]}
+        timeFormat="24"
+        dateFormat="MM/DD/YYYY"
+        hasPermission={allowAll}
+        onDMNode={vi.fn()}
+        onShowOnMap={vi.fn()}
+        onClose={vi.fn()}
+        onTraceroute={vi.fn()}
+        connectionStatus="connected"
+        txDisabled
+      />,
+    );
+    // Switch to the Traceroute tab (mirrors the existing "shows the tab bar…"
+    // test above) — the run button only renders inside that tab body.
+    fireEvent.click(screen.getByTitle('Traceroute'));
+    const btn = container.querySelector('.node-popup-btn:not(.traceroute-history-btn)');
+    expect(btn).not.toBeNull();
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute('title', 'tx_disabled.control_tooltip');
+  });
+
+  it('leaves the run-traceroute button enabled when txDisabled is false and connected', () => {
+    const { container } = render(
+      <NodePopup
+        nodePopup={nodePopupState}
+        nodes={[localNode, remoteNode]}
+        timeFormat="24"
+        dateFormat="MM/DD/YYYY"
+        hasPermission={allowAll}
+        onDMNode={vi.fn()}
+        onShowOnMap={vi.fn()}
+        onClose={vi.fn()}
+        onTraceroute={vi.fn()}
+        connectionStatus="connected"
+        txDisabled={false}
+      />,
+    );
+    fireEvent.click(screen.getByTitle('Traceroute'));
+    const btn = container.querySelector('.node-popup-btn:not(.traceroute-history-btn)');
+    expect(btn).not.toBeNull();
+    expect(btn).not.toBeDisabled();
+    expect(btn).not.toHaveAttribute('title');
+  });
+
   it('omits all danger actions without messages:write permission', () => {
     render(
       <NodePopup

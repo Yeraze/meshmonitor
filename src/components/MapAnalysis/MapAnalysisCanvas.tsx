@@ -27,6 +27,7 @@ import PositionTrailsLayer from './layers/PositionTrailsLayer';
 import CoverageHeatmapLayer from './layers/CoverageHeatmapLayer';
 import SnrOverlayLayer from './layers/SnrOverlayLayer';
 import WaypointsLayer from '../map/layers/WaypointsLayer';
+import AtakContactsLayer from '../map/layers/AtakContactsLayer';
 import PolarGridLayer from './layers/PolarGridLayer';
 import AccuracyRegionsLayer from './layers/AccuracyRegionsLayer';
 import TimeSliderControl from './TimeSliderControl';
@@ -233,6 +234,9 @@ export default function MapAnalysisCanvas() {
         )}
         <Pane name="waypoints" style={{ zIndex: 650 }}>
           {config.layers.waypoints.enabled && <WaypointsLayer />}
+        </Pane>
+        <Pane name="atakContacts" style={{ zIndex: 640 }}>
+          {config.layers.atakContacts.enabled && <AtakContactsLayer />}
         </Pane>
         {/* #4016: obscured-position accuracy squares, beneath the markers so the
             offset marker reads as sitting inside its uncertainty cell. */}

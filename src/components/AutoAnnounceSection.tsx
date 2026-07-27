@@ -9,6 +9,7 @@ import { useSourceQuery } from '../hooks/useSourceQuery';
 import { useSource } from '../contexts/SourceContext';
 import { useSaveBar } from '../hooks/useSaveBar';
 import { UiIcon } from './icons';
+import apiService from '../services/api';
 
 interface AutoAnnounceSectionProps {
   enabled: boolean;
@@ -106,11 +107,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
     setLastAnnouncementTime(null);
     const fetchLastAnnouncementTime = async () => {
       try {
-        const response = await fetch(`${baseUrl}/api/announce/last${sourceQuery}`);
-        if (response.ok) {
-          const data = await response.json();
-          setLastAnnouncementTime(data.lastAnnouncementTime);
-        }
+        const data = await apiService.get<{ lastAnnouncementTime: number | null }>(`/api/announce/last${sourceQuery}`);
+        setLastAnnouncementTime(data.lastAnnouncementTime);
       } catch (error) {
         console.error('Failed to fetch last announcement time:', error);
       }
@@ -277,13 +275,8 @@ const AutoAnnounceSection: React.FC<AutoAnnounceSectionProps> = ({
       }
       setIsPreviewLoading(true);
       try {
-        const response = await fetch(`${baseUrl}/api/announce/preview?message=${encodeURIComponent(localMessage)}`);
-        if (response.ok) {
-          const data = await response.json();
-          setPreviewMessage(data.preview);
-        } else {
-          setPreviewMessage(localMessage);
-        }
+        const data = await apiService.get<{ preview: string }>(`/api/announce/preview?message=${encodeURIComponent(localMessage)}`);
+        setPreviewMessage(data.preview);
       } catch {
         setPreviewMessage(localMessage);
       } finally {

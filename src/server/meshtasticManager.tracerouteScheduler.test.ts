@@ -406,4 +406,58 @@ describe('MeshtasticManager - Traceroute Scheduler', () => {
       expect(manager.tracerouteInterval).not.toBeNull();
     });
   });
+
+  describe('TX-disabled skip (#4294 WP3)', () => {
+    it('does not call sendTraceroute when TX is disabled, but keeps the interval running', async () => {
+      manager.actualDeviceConfig = { lora: { txEnabled: false } };
+      manager.lastTracerouteSentTime = 0;
+
+      startScheduler(1);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(manager.sendTraceroute).not.toHaveBeenCalled();
+      // The interval itself must still be armed so a later TX re-enable resumes.
+      expect(manager.tracerouteInterval).not.toBeNull();
+    });
+
+    it('calls sendTraceroute once TX is re-enabled on a later tick', async () => {
+      manager.actualDeviceConfig = { lora: { txEnabled: false } };
+      manager.lastTracerouteSentTime = 0;
+
+      startScheduler(1);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(manager.sendTraceroute).not.toHaveBeenCalled();
+
+      // TX comes back on before the next tick.
+      manager.actualDeviceConfig = { lora: { txEnabled: true } };
+      manager.lastTracerouteSentTime = 0;
+      await vi.advanceTimersByTimeAsync(60 * 1000);
+
+      expect(manager.sendTraceroute).toHaveBeenCalledTimes(1);
+    });
+
+    it('calls sendTraceroute normally when TX is enabled', async () => {
+      manager.actualDeviceConfig = { lora: { txEnabled: true } };
+      manager.lastTracerouteSentTime = 0;
+
+      startScheduler(1);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(manager.sendTraceroute).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not log at error level across repeated ticks while TX is disabled', async () => {
+      const { logger } = await import('../utils/logger.js');
+      manager.actualDeviceConfig = { lora: { txEnabled: false } };
+      manager.lastTracerouteSentTime = 0;
+
+      startScheduler(1);
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(60 * 1000);
+      await vi.advanceTimersByTimeAsync(60 * 1000);
+
+      expect(manager.sendTraceroute).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
+    });
+  });
 });

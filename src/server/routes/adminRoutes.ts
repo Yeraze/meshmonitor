@@ -22,6 +22,8 @@ import { getRoutingErrorName } from '../constants/meshtastic.js';
 import { CONFIG_TYPE_MAP, MODULE_FIELD_BY_ID, DEVICE_FIELD_BY_ID } from '../constants/configTypes.js';
 import { autoFavoriteManagementScheduler } from '../services/autoFavoriteManagementService.js';
 import protobufService from '../protobufService.js';
+import { fail } from '../utils/apiResponse.js';
+import { isTxDisabledError } from '../errors/txDisabledError.js';
 
 const router = express.Router();
 
@@ -611,9 +613,13 @@ router.post('/load-config', requireAdmin(), async (req, res) => {
       }
 
       res.json({ config });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      if (isTxDisabledError(error)) {
+        return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+      }
+      const message = error instanceof Error ? error.message : String(error);
       logger.error(`Error loading ${configType} config:`, error);
-      res.status(500).json({ error: `Failed to load ${configType} config: ${error.message}` });
+      res.status(500).json({ error: `Failed to load ${configType} config: ${message}` });
     }
   } catch (error: any) {
     logger.error('Error in load-config endpoint:', error);
@@ -653,6 +659,9 @@ router.post('/ensure-session-passkey', requireAdmin(), async (req, res) => {
       ...status
     });
   } catch (error: any) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error ensuring session passkey:', error);
     res.status(500).json({ error: error.message || 'Failed to ensure session passkey' });
   }
@@ -772,6 +781,9 @@ router.post('/get-channel', requireAdmin(), async (req, res) => {
       }
     }
   } catch (error: any) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error getting channel:', error);
     res.status(500).json({ error: error.message || 'Failed to get channel' });
   }
@@ -832,6 +844,9 @@ router.post('/load-owner', requireAdmin(), async (req, res) => {
       }
     }
   } catch (error: any) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error getting owner:', error);
     res.status(500).json({ error: error.message || 'Failed to get owner info' });
   }
@@ -911,6 +926,9 @@ router.post('/get-device-metadata', requireAdmin(), async (req, res) => {
       }
     }
   } catch (error: any) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error getting device metadata:', error);
     res.status(500).json({ error: error.message || 'Failed to get device metadata' });
   }
@@ -928,6 +946,9 @@ router.post('/reboot', requireAdmin(), async (req, res) => {
     logger.debug(`✅ Sent reboot command to node ${destinationNodeNum} (in ${seconds} seconds)`);
     res.json({ success: true, message: `Reboot command sent (node will reboot in ${seconds} seconds)` });
   } catch (error: any) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error sending reboot command:', error);
     res.status(500).json({ error: error.message || 'Failed to send reboot command' });
   }
@@ -969,6 +990,9 @@ router.post('/set-time', requireAdmin(), async (req, res) => {
     logger.debug(`✅ Sent set-time command to node ${destinationNodeNum}`);
     res.json({ success: true, message: 'Time sync command sent successfully' });
   } catch (error: any) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error sending set-time command:', error);
     res.status(500).json({ error: error.message || 'Failed to send set-time command' });
   }
@@ -1063,7 +1087,7 @@ router.post('/export-config', requireAdmin(), async (req, res) => {
             frequencyOffset: deviceConfig.lora.frequencyOffset,
             region: deviceConfig.lora.region,
             hopLimit: deviceConfig.lora.hopLimit,
-            txEnabled: true,
+            txEnabled: deviceConfig.lora.txEnabled,
             txPower: deviceConfig.lora.txPower,
             channelNum: deviceConfig.lora.channelNum,
             sx126xRxBoostedGain: deviceConfig.lora.sx126xRxBoostedGain,
@@ -1083,7 +1107,7 @@ router.post('/export-config', requireAdmin(), async (req, res) => {
             frequencyOffset: loraConfigData.frequencyOffset,
             region: loraConfigData.region,
             hopLimit: loraConfigData.hopLimit,
-            txEnabled: true,
+            txEnabled: loraConfigData.txEnabled,
             txPower: loraConfigData.txPower,
             channelNum: loraConfigData.channelNum,
             sx126xRxBoostedGain: loraConfigData.sx126xRxBoostedGain,
@@ -1101,6 +1125,9 @@ router.post('/export-config', requireAdmin(), async (req, res) => {
 
     res.json({ url });
   } catch (error) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error exporting configuration:', error);
     res.status(500).json({ error: 'Failed to export configuration' });
   }
@@ -1177,9 +1204,17 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
       // Import LoRa config
       if (decoded.loraConfig) {
         try {
+          // Preserve the device's current txEnabled rather than importing the
+          // URL's value (issue #4294) — local-node import via setLoRaConfig,
+          // which sends the device the ENTIRE LoRaConfig struct (whole-message
+          // replace, not a patch). proto3 decodes an omitted bool as false, so
+          // stripping the key would silently reach the radio as
+          // txEnabled=false and kill TX (the #1328 mechanism that motivated
+          // the original, overly-broad force-true). Backfill explicitly with
+          // the device's actual current value instead.
           const loraConfigToImport = {
             ...decoded.loraConfig,
-            txEnabled: true,
+            txEnabled: aicManager.isTxEnabled(),
           };
           await aicManager.setLoRaConfig(loraConfigToImport);
           // Pacing: LoRa config triggers heavier device processing; allow extra time
@@ -1236,9 +1271,51 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
       // Import LoRa config using admin command
       if (decoded.loraConfig) {
         try {
+          // Preserve the remote device's current txEnabled rather than
+          // importing the URL's value (issue #4294) — same whole-struct-
+          // replace / proto3-missing-bool-defaults-to-false hazard as the
+          // local branch above (setLoRaConfig / createSetLoRaConfigMessage
+          // sends the ENTIRE LoRaConfig; an omitted key reaches the radio as
+          // txEnabled=false), so we must supply an explicit value, never
+          // strip the key.
+          //
+          // Fully-accurate remote preserve (issue #4315): fetch the remote
+          // node's LIVE LoRa config first and reuse its actual txEnabled. This
+          // import flow is already a slow multi-round-trip path (per-channel
+          // pacing above), so one more requestRemoteConfig round-trip (session
+          // passkey + mesh RTT) is acceptable. Interpret the result with the
+          // same semantics as the local branch's isTxEnabled() — txEnabled is
+          // disabled only when it is explicitly `false`; a present-but-not-false
+          // (incl. proto3-omitted) value means enabled/fail-open.
+          //
+          // Fallbacks, if the live fetch fails/times out: the manager's cached
+          // remote-config snapshot (populated by an earlier /load-config or
+          // /export-config), then the decoded URL's own txEnabled (real since
+          // #4294's export fix; older exported URLs may still carry the old
+          // forced `true`), and finally true (fail-open).
+          let remoteTxEnabled: boolean | undefined;
+          try {
+            const liveRemoteLora = await aicManager.requestRemoteConfig(destinationNodeNum, 5, false); // LORA_CONFIG = 5
+            if (liveRemoteLora) {
+              remoteTxEnabled = liveRemoteLora.txEnabled !== false;
+            }
+          } catch (error) {
+            logger.warn(`⚠️ Could not fetch live remote LoRa config for txEnabled preserve on node ${destinationNodeNum}; falling back to cached/URL value:`, error);
+          }
+          if (remoteTxEnabled === undefined) {
+            const cachedRemoteLora = aicManager.getRemoteNodeConfig(destinationNodeNum)?.deviceConfig?.lora;
+            // Cached snapshot comes from the same requestRemoteConfig source as
+            // the live fetch above, so interpret it with the same
+            // isTxEnabled()-style semantics (disabled only when explicitly
+            // false). Only when there is no cached LoRa snapshot at all do we
+            // consult the decoded URL's own txEnabled, then fail-open true.
+            remoteTxEnabled = cachedRemoteLora
+              ? cachedRemoteLora.txEnabled !== false
+              : (decoded.loraConfig.txEnabled ?? true);
+          }
           const loraConfigToImport = {
             ...decoded.loraConfig,
-            txEnabled: true,
+            txEnabled: remoteTxEnabled,
           };
           const adminMessage = protobufService.createSetLoRaConfigMessage(loraConfigToImport, sessionPasskey);
           await aicManager.sendAdminCommand(adminMessage, destinationNodeNum);
@@ -1260,6 +1337,9 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
       requiresReboot,
     });
   } catch (error: any) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error importing configuration:', error);
     res.status(500).json({ error: error.message || 'Failed to import configuration' });
   }
@@ -1569,6 +1649,9 @@ router.post('/commands', requireAdmin(), async (req, res) => {
       } : {})
     });
   } catch (error: any) {
+    if (isTxDisabledError(error)) {
+      return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
+    }
     logger.error('Error executing admin command:', error);
     res.status(500).json({ error: error.message || 'Failed to execute admin command' });
   }

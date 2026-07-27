@@ -22,6 +22,7 @@ import { getNodeTypeCategory } from '../../utils/nodeTypeCategory';
 import { NodeMarkersLayer, type NodeMarkerDescriptor } from '../map/layers/NodeMarkersLayer';
 import type { CustomTileset } from '../../config/tilesets';
 import DashboardWaypoints from './DashboardWaypoints';
+import DashboardAtakContacts from './DashboardAtakContacts';
 import DashboardNodePopup, { type NodeSourceRef } from './DashboardNodePopup';
 import DashboardNeighborPopup from './DashboardNeighborPopup';
 import GeoJsonOverlay from '../GeoJsonOverlay';
@@ -167,6 +168,7 @@ export default function DashboardMap({
     defaultMapCenterLat,
     defaultMapCenterLon,
     defaultMapCenterZoom,
+    activeStyleJson,
   } = useSettings();
 
   // A Default Map Center is only "configured" when all three parts are set.
@@ -238,6 +240,8 @@ export default function DashboardMap({
     setShowNeighborInfo,
     showWaypoints,
     setShowWaypoints,
+    showAtakContacts,
+    setShowAtakContacts,
     showPolarGrid,
     setShowPolarGrid,
     mapMaxAgeHours,
@@ -256,10 +260,7 @@ export default function DashboardMap({
     let cancelled = false;
     void (async () => {
       try {
-        const baseUrl = await api.getBaseUrl();
-        const response = await fetch(`${baseUrl}/api/geojson/layers`);
-        if (!response.ok) return;
-        const data = await response.json();
+        const data = await api.get<GeoJsonLayer[]>('/api/geojson/layers');
         if (!cancelled) setGeoJsonLayers(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error('Failed to fetch GeoJSON layers:', err);
@@ -517,7 +518,7 @@ export default function DashboardMap({
     return {
       key: markerKey,
       position: [pos.lat, pos.lng],
-      iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${roleCategory}|${mapPinStyle}`,
+      iconSig: `${hops}|${shortName ?? ''}|${isRouter ? 1 : 0}|${roleCategory}|${node.isUnmessagable ? 1 : 0}|${mapPinStyle}`,
       buildIcon: () =>
         createNodeIcon({
           variant: 'meshtastic',
@@ -525,6 +526,7 @@ export default function DashboardMap({
           isSelected: false,
           isRouter,
           roleCategory,
+          isUnmessagable: !!node.isUnmessagable,
           shortName,
           showLabel: true,
           pinStyle: mapPinStyle,
@@ -626,6 +628,7 @@ export default function DashboardMap({
         zoom={hasConfiguredDefaultCenter ? defaultMapCenterZoom : 10}
         tilesetId={tilesetId}
         customTilesets={customTilesets}
+        styleJson={activeStyleJson ?? undefined}
         zoomControl
         showTilesetSelector={showTileSelector}
         onTilesetChange={setMapTileset}
@@ -655,6 +658,8 @@ export default function DashboardMap({
         ))}
 
         {showWaypoints && <DashboardWaypoints sourceId={sourceId} />}
+
+        {showAtakContacts && <DashboardAtakContacts sourceId={sourceId} />}
 
         <NodeMarkersLayer markers={nodeMarkers} />
 
@@ -844,6 +849,14 @@ export default function DashboardMap({
               onChange={(e) => setShowWaypoints(e.target.checked)}
             />
             <span>Show Waypoints</span>
+          </label>
+          <label className="map-control-item">
+            <input
+              type="checkbox"
+              checked={showAtakContacts}
+              onChange={(e) => setShowAtakContacts(e.target.checked)}
+            />
+            <span>Show ATAK Contacts</span>
           </label>
           <label className="map-control-item">
             <input
