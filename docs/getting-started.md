@@ -95,7 +95,7 @@ Choose one based on your deployment method:
 - **Proxmox LXC**: Proxmox VE 7.0+
 - **Kubernetes**: Kubernetes cluster with Helm 3+
 - **NixOS**: NixOS system
-- **Bare Metal**: Node.js 20+ and npm
+- **Bare Metal**: Node.js 22+ and npm
 
 ## Quick Start with Docker Compose
 

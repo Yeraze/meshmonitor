@@ -78,7 +78,9 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [20.x, 22.x, 24.x]
+        # Keep in step with ci.yml's matrix. Node 20 dropped — see the comment
+        # there; the lowest shipped target is armv7 on Node 22.
+        node-version: [22.x, 24.x]
 
     steps:
       - name: Checkout code
