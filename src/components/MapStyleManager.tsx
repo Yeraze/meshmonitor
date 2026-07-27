@@ -34,13 +34,6 @@ const MapStyleManager: React.FC = () => {
     void fetchStyles();
   }, [fetchStyles]);
 
-  // Activate a style as the app-wide default (issue #4348). This is the same
-  // action as the "Map Style" dropdown on the map's Features panel — exposed
-  // here too so the active style is discoverable from Settings.
-  const activateStyle = useCallback(async (id: string) => {
-    await setActiveMapStyleId(id);
-  }, [setActiveMapStyleId]);
-
   const handleUpload = async (file: File) => {
     setUploading(true);
     try {
@@ -303,10 +296,9 @@ const MapStyleManager: React.FC = () => {
                 {style.sourceType === 'upload' ? 'Upload' : 'URL'}
               </span>
 
-              {/* Active indicator / Activate action (issue #4348) — this is
-                  the same "which style is used on the map" state as the
-                  in-map "Map Style" dropdown, surfaced here so it's
-                  discoverable from Settings. */}
+              {/* Active indicator / Activate action — same "which style is
+                  used on the map" state as the in-map "Map Style" dropdown,
+                  surfaced here so it's discoverable from Settings (#4348). */}
               {activeStyleId === style.id ? (
                 <span style={{
                   display: 'inline-flex',
@@ -323,7 +315,7 @@ const MapStyleManager: React.FC = () => {
                 </span>
               ) : (
                 <button
-                  onClick={() => void activateStyle(style.id)}
+                  onClick={() => void setActiveMapStyleId(style.id)}
                   style={{ padding: '2px 8px', background: 'var(--accent-color, #4a9eff)', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '0.85em', whiteSpace: 'nowrap' }}
                 >
                   Activate
