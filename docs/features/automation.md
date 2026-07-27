@@ -56,6 +56,12 @@ When enabled, MeshMonitor monitors all incoming messages for patterns matching t
 🤖 Copy, direct connection! SNR: {SNR}dB RSSI: {RSSI}dBm at {TIME}
 ```
 
+**Auto-Ack Resend Attempts**: How many times to resend an unacknowledged direct-message reply.
+
+- **Range**: 1–3 (default 3). The server clamps the value, so it cannot be raised into a repeat-broadcast mechanism.
+- **1** uses the least airtime; **3** gives the best odds of delivery on a lossy link.
+- Channel (broadcast) replies always send once — there is no ACK to wait for, so a resend would just be a duplicate.
+
 **Separate Templates for Direct vs. Multi-hop**: You can configure different acknowledgment messages for direct connections (0 hops) versus multi-hop messages. This allows you to include signal quality metrics like SNR and RSSI for direct connections while showing hop count for relayed messages.
 
 **Example Custom Templates**:
