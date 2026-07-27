@@ -81,6 +81,7 @@ describe('MapStyleManager', () => {
 
     await waitFor(() => expect(mockSetActiveMapStyleId).toHaveBeenCalledWith(null));
     expect(mockLoadMapStyles).toHaveBeenCalled();
+    expect(screen.queryByDisplayValue('Style A')).toBeNull();
   });
 
   it('does not clear the active style when the delete request fails', async () => {
