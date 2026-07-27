@@ -9,6 +9,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { computeNeighborLinkStyle, isTracerouteRunDisabled } from './NodesTab';
 import {
   getEffectivePosition,
@@ -135,6 +137,46 @@ describe('NodesTab', () => {
     it('returns null when the node has no rendered marker (caller falls back to raw center)', () => {
       const nodePositions = new Map<number, [number, number]>();
       expect(resolveMarkerCenterTarget(NODE_NUM, nodePositions)).toBeNull();
+    });
+  });
+
+  // Issue #4342 — "GeoJSON overlay tooltip blocks waypoint creation".
+  //
+  // Leaflet's bindPopup handler calls DomEvent.stop() on the layer's click
+  // (leaflet/src/layer/Popup.js `_openPopup`), which sets
+  // originalEvent._stopped, and Map._fireDOMEvent bails out of its target loop
+  // as soon as that flag is set — BEFORE it reaches the map itself. So any
+  // click landing on popup-bound overlay geometry (a GeoJSON feature, a node
+  // or waypoint marker, a traceroute line, a neighbor link, an accuracy
+  // region) opened that layer's popup and never reached the map 'click'
+  // handler in WaypointMapEventBridge, so no waypoint was created.
+  //
+  // The fix makes interactive geometry click-through for the duration of
+  // placement, which is a hit-testing property jsdom cannot exercise — so this
+  // pins the CSS contract instead: as long as `.waypoint-placing` is on the
+  // container (WaypointMapEventBridge's first effect), interactive overlay
+  // geometry must not be a pointer target. Deleting that rule silently
+  // reintroduces the bug.
+  describe('waypoint placement mode suppresses overlay hit-testing (#4342)', () => {
+    const css = readFileSync(resolve('src/components/WaypointEditorModal.css'), 'utf8');
+
+    // Strip comments so the prose above the rule can't satisfy the assertions.
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, '');
+
+    it('makes .leaflet-interactive click-through while .waypoint-placing is set', () => {
+      const rule = rules.match(
+        /\.leaflet-container\.waypoint-placing\s+\.leaflet-interactive\s*\{[^}]*\}/g,
+      )?.find(r => /pointer-events\s*:\s*none/.test(r));
+
+      expect(rule, 'pointer-events:none rule for .waypoint-placing .leaflet-interactive is missing').toBeDefined();
+      // Leaflet's own `.leaflet-pane > svg path.leaflet-interactive` /
+      // `.leaflet-marker-icon.leaflet-interactive { pointer-events: auto }`
+      // rules are more specific, so the override has to be !important.
+      expect(rule).toMatch(/pointer-events\s*:\s*none\s*!important/);
+    });
+
+    it('keeps the crosshair cursor rule that signals placement mode', () => {
+      expect(rules).toMatch(/\.leaflet-container\.waypoint-placing[^{]*\{[^}]*cursor\s*:\s*crosshair/);
     });
   });
 
