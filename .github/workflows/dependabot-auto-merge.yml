@@ -22,7 +22,7 @@ jobs:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Wait for checks to complete
-        uses: lewagon/wait-on-check-action@1d57e2c51a58d812d2765e036a028b6bdb5a6154  # v1.8.1
+        uses: lewagon/wait-on-check-action@2271c86c146b96545b4e871b855e10ffa6f50773  # v1.9.0
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           check-regexp: '(Build Check|Test Suite|Security Scan|Docker Build|Quick Tests).*'
