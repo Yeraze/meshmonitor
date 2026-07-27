@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     defaultMapCenterLat: null as number | null,
     defaultMapCenterLon: null as number | null,
     defaultMapCenterZoom: null as number | null,
+    activeStyleJson: null as Record<string, unknown> | null,
   },
 }));
 

@@ -32,12 +32,12 @@ describe('TilesetSelector', () => {
 
   it('identifies the light-mode slot edited by the in-map selector', () => {
     render(<TilesetSelector selectedTilesetId="osm" onTilesetChange={vi.fn()} />);
-    expect(screen.getByText('Map Style (Light mode)')).toBeDefined();
+    expect(screen.getByText('Tileset (Light mode)')).toBeDefined();
   });
 
   it('identifies the dark-mode slot edited by the in-map selector', () => {
     settings.activeMapTilesetMode = 'dark';
     render(<TilesetSelector selectedTilesetId="cartoDark" onTilesetChange={vi.fn()} />);
-    expect(screen.getByText('Map Style (Dark mode)')).toBeDefined();
+    expect(screen.getByText('Tileset (Dark mode)')).toBeDefined();
   });
 });

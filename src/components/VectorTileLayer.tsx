@@ -206,7 +206,7 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14, styleJson }: V
           source: 'vector-tiles',
           'source-layer': 'transportation_name',
           layout: {
-            'text-field': '{name}',
+            'text-field': ['coalesce', ['get', 'name'], ['get', 'name:latin']],
             'text-font': ['Open Sans Regular'],
             'symbol-placement': 'line',
             'text-size': {
@@ -232,7 +232,7 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14, styleJson }: V
           source: 'vector-tiles',
           'source-layer': 'place',
           layout: {
-            'text-field': '{name}',
+            'text-field': ['coalesce', ['get', 'name'], ['get', 'name:latin']],
             'text-font': ['Open Sans Regular'],
             'text-size': {
               base: 1,
@@ -254,7 +254,7 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14, styleJson }: V
           source: 'vector-tiles',
           'source-layer': 'water_name',
           layout: {
-            'text-field': '{name}',
+            'text-field': ['coalesce', ['get', 'name'], ['get', 'name:latin']],
             'text-font': ['Open Sans Regular'],
             'text-size': {
               base: 1,
@@ -277,7 +277,7 @@ export function VectorTileLayer({ url, attribution, maxZoom = 14, styleJson }: V
           'source-layer': 'poi',
           minzoom: 14,
           layout: {
-            'text-field': '{name}',
+            'text-field': ['coalesce', ['get', 'name'], ['get', 'name:latin']],
             'text-font': ['Open Sans Regular'],
             'text-size': 11,
             'text-offset': [0, 0.8],

@@ -14,6 +14,7 @@ import { DEFAULT_TARGET_ZOOM } from '../utils/mapZoomAnimation';
 import { setDiscardInvalidPositionsDisplay } from '../utils/positionDisplayConfig';
 import { setActiveWindowHours } from '../utils/activeWindowConfig';
 import { IconStyleProvider, type IconStyle } from './IconStyleContext';
+import type { MapStyle } from '../server/services/mapStyleService.js';
 
 export type { IconStyle } from './IconStyleContext';
 
@@ -119,6 +120,13 @@ interface SettingsContextType {
   customThemes: CustomTheme[];
   customTilesets: CustomTileset[];
   isLoadingThemes: boolean;
+  /** MapLibre style JSON manifest (issue #4348) — lifted out of NodesTab-local
+   *  state so both NodesTab and DashboardMap can render the same active style. */
+  mapStyles: MapStyle[];
+  activeStyleId: string | null;
+  activeStyleJson: Record<string, unknown> | null;
+  setActiveMapStyleId: (id: string | null) => Promise<void>;
+  loadMapStyles: () => Promise<void>;
   solarMonitoringEnabled: boolean;
   solarMonitoringLatitude: number;
   solarMonitoringLongitude: number;
@@ -551,6 +559,16 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   // Custom tilesets state (database-only, not persisted in localStorage)
   const [customTilesets, setCustomTilesets] = useState<CustomTileset[]>([]);
+
+  // Map style state (issue #4348): which MapLibre style JSON (if any) is
+  // active, lifted out of NodesTab-local state so DashboardMap can also
+  // render it. activeStyleId is seeded from localStorage; the server-side
+  // `activeMapStyleId` setting acts as the cross-browser default.
+  const [mapStyles, setMapStyles] = useState<MapStyle[]>([]);
+  const [activeStyleId, setActiveStyleIdState] = useState<string | null>(() => {
+    try { return localStorage.getItem('meshmonitor-activeMapStyleId') || null; } catch { return null; }
+  });
+  const [activeStyleJson, setActiveStyleJson] = useState<Record<string, unknown> | null>(null);
 
   const overlayScheme = React.useMemo<OverlayScheme>(() => {
     const customTileset = customTilesets.find(ct => `custom-${ct.id}` === mapTileset);
@@ -1229,6 +1247,95 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     }
   }, [customTilesets, baseUrl, getCsrfToken]);
 
+  /**
+   * Load the map style manifest and resolve which style (if any) is active
+   * (issue #4348). Resolution order: localStorage (per-browser override) >
+   * the server-side `activeMapStyleId` setting (cross-browser default) > none.
+   * Reads localStorage directly (rather than closing over `activeStyleId`
+   * state) so this callback has a stable identity and is safe to re-run
+   * (e.g. after MapStyleManager uploads/deletes a style) without re-firing
+   * its mount effect.
+   */
+  const loadMapStyles = React.useCallback(async () => {
+    try {
+      const data = await api.get<MapStyle[]>('/api/map-styles/styles');
+      if (!Array.isArray(data)) return;
+      setMapStyles(data);
+
+      let resolvedStyleId: string | null = null;
+      try { resolvedStyleId = localStorage.getItem('meshmonitor-activeMapStyleId') || null; } catch { /* ignore */ }
+
+      if (!resolvedStyleId) {
+        // No localStorage value — fall back to the server-side default.
+        try {
+          const settings = await api.get<{ activeMapStyleId?: string }>('/api/settings');
+          if (settings.activeMapStyleId) {
+            resolvedStyleId = settings.activeMapStyleId;
+            setActiveStyleIdState(resolvedStyleId);
+          }
+        } catch { /* ignore settings fetch failure */ }
+      } else {
+        setActiveStyleIdState(resolvedStyleId);
+      }
+
+      if (resolvedStyleId && data.some((s: MapStyle) => s.id === resolvedStyleId)) {
+        try {
+          setActiveStyleJson(await api.get<Record<string, unknown>>(`/api/map-styles/styles/${resolvedStyleId}/data`));
+        } catch (error) {
+          logger.error('Failed to fetch active map style data:', error);
+        }
+      } else if (resolvedStyleId) {
+        // Saved style no longer exists — clear it.
+        setActiveStyleIdState(null);
+        try { localStorage.removeItem('meshmonitor-activeMapStyleId'); } catch { /* ignore */ }
+      }
+    } catch (error) {
+      logger.error('Failed to load map styles:', error);
+    }
+  }, []);
+
+  /**
+   * Mark a map style active (or clear it with `null`), persisting the choice
+   * to localStorage (per-browser) and the server-side `activeMapStyleId`
+   * setting (cross-browser default), then loads its style JSON.
+   */
+  const setActiveMapStyleId = React.useCallback(async (id: string | null) => {
+    setActiveStyleIdState(id);
+    try {
+      if (id) localStorage.setItem('meshmonitor-activeMapStyleId', id);
+      else localStorage.removeItem('meshmonitor-activeMapStyleId');
+    } catch { /* ignore */ }
+
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const csrfToken = getCsrfToken();
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
+
+      await fetch(`${baseUrl}/api/settings`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ activeMapStyleId: id ?? '' })
+      });
+
+      logger.debug('✅ Active map style setting saved:', id);
+    } catch (error) {
+      logger.error('Failed to save active map style setting:', error);
+    }
+
+    if (id) {
+      try {
+        setActiveStyleJson(await api.get<Record<string, unknown>>(`/api/map-styles/styles/${id}/data`));
+      } catch (error) {
+        logger.error('Failed to fetch map style data:', error);
+      }
+    } else {
+      setActiveStyleJson(null);
+    }
+  }, [baseUrl, getCsrfToken]);
+
   // Load settings from server on mount
   React.useEffect(() => {
     const loadServerSettings = async () => {
@@ -1632,6 +1739,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     void loadCustomThemes();
   }, [loadCustomThemes]);
 
+  // Load map styles on mount (issue #4348)
+  React.useEffect(() => {
+    void loadMapStyles();
+  }, [loadMapStyles]);
+
   React.useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -1713,6 +1825,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     customThemes,
     customTilesets,
     isLoadingThemes,
+    mapStyles,
+    activeStyleId,
+    activeStyleJson,
+    setActiveMapStyleId,
+    loadMapStyles,
     linkPreviewsEnabled,
     discardInvalidPositions,
     noIndexEnabled,
@@ -1828,6 +1945,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     customThemes,
     customTilesets,
     isLoadingThemes,
+    mapStyles,
+    activeStyleId,
+    activeStyleJson,
+    setActiveMapStyleId,
+    loadMapStyles,
     linkPreviewsEnabled,
     discardInvalidPositions,
     noIndexEnabled,
@@ -1966,6 +2088,8 @@ export const useMapSettings = () => {
     addCustomTileset: s.addCustomTileset, updateCustomTileset: s.updateCustomTileset, deleteCustomTileset: s.deleteCustomTileset,
     positionHistoryLineStyle: s.positionHistoryLineStyle, setPositionHistoryLineStyle: s.setPositionHistoryLineStyle,
     temporaryTileset: s.temporaryTileset, setTemporaryTileset: s.setTemporaryTileset,
+    mapStyles: s.mapStyles, activeStyleId: s.activeStyleId, activeStyleJson: s.activeStyleJson,
+    setActiveMapStyleId: s.setActiveMapStyleId, loadMapStyles: s.loadMapStyles,
   };
 };
 

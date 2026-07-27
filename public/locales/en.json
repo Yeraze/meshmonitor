@@ -2791,8 +2791,8 @@
   "theme_gallery.persistence_desc": "Your theme choice is saved automatically and will persist across sessions. All themes work seamlessly across all pages and components.",
 
   "tileset.map_style": "Map Style",
-  "tileset.map_style_light": "Map Style (Light mode)",
-  "tileset.map_style_dark": "Map Style (Dark mode)",
+  "tileset.tileset_light": "Tileset (Light mode)",
+  "tileset.tileset_dark": "Tileset (Dark mode)",
   "tileset.custom": "Custom",
   "tileset.collapse": "Collapse tileset selector",
   "tileset.expand": "Expand tileset selector",
