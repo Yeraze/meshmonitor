@@ -245,3 +245,93 @@ describe('MeshCore virtual node "Allow admin commands" checkbox', () => {
     expect(body.config.virtualNode.allowAdminCommands).toBe(true);
   });
 });
+
+// "Allow PKI export" — a SEPARATE gate from "Allow admin commands". It serves
+// ExportPrivateKey(23) over the virtual node port, which lets a client copy the
+// node's identity, so it must never ride along with the admin toggle and must
+// default off for every source saved before the option existed.
+describe('MeshCore virtual node "Allow PKI export" checkbox', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const PKI_CHECKBOX = { name: 'meshcore.form.allow_pki_export' } as const;
+
+  it('is unchecked for a source whose config predates the option, even with admin commands on', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'edit-MC Source' }));
+
+    const admin = await screen.findByRole('checkbox', { name: 'meshcore.form.allow_admin_commands' });
+    const pki = await screen.findByRole('checkbox', PKI_CHECKBOX);
+    expect(admin).toBeChecked();
+    expect(pki).not.toBeChecked();
+  });
+
+  it('persists allowPkiExport: true when the user checks it and saves', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...meshcoreSource }),
+    }) as any;
+
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'edit-MC Source' }));
+
+    const pki = await screen.findByRole('checkbox', PKI_CHECKBOX);
+    fireEvent.click(pki);
+    expect(pki).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: /^common\.save$/i }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/sources/src-mc',
+        expect.objectContaining({ method: 'PUT' }),
+      );
+    });
+
+    const call = (global.fetch as any).mock.calls.find(([url]: [string]) => url === '/api/sources/src-mc');
+    const body = JSON.parse(call[1].body as string);
+    expect(body.config.virtualNode.allowPkiExport).toBe(true);
+  });
+
+  it('writes allowPkiExport: false when left untouched, without disturbing allowAdminCommands', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...meshcoreSource }),
+    }) as any;
+
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'edit-MC Source' }));
+    await screen.findByRole('checkbox', PKI_CHECKBOX);
+
+    fireEvent.click(screen.getByRole('button', { name: /^common\.save$/i }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/sources/src-mc',
+        expect.objectContaining({ method: 'PUT' }),
+      );
+    });
+
+    const call = (global.fetch as any).mock.calls.find(([url]: [string]) => url === '/api/sources/src-mc');
+    const body = JSON.parse(call[1].body as string);
+    expect(body.config.virtualNode.allowPkiExport).toBe(false);
+    expect(body.config.virtualNode.allowAdminCommands).toBe(true);
+  });
+
+  it('toggling admin commands does not turn on PKI export', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...meshcoreSource }),
+    }) as any;
+
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'edit-MC Source' }));
+
+    const admin = await screen.findByRole('checkbox', { name: 'meshcore.form.allow_admin_commands' });
+    const pki = await screen.findByRole('checkbox', PKI_CHECKBOX);
+    fireEvent.click(admin);
+    fireEvent.click(admin);
+    expect(pki).not.toBeChecked();
+  });
+});

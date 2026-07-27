@@ -31,6 +31,10 @@ router.get('/virtual-node/status', requireAuth(), (_req: Request, res: Response)
         enabled: true,
         isRunning: vn.isRunning(),
         allowAdminCommands: vn.isAdminCommandsAllowed(),
+        // MeshCore VNs only — the Meshtastic virtual node has no key-export
+        // command, so it reports undefined and the UI omits the row entirely
+        // rather than showing a permanently-"Blocked" toggle that isn't real.
+        allowPkiExport: typeof vn.isPkiExportAllowed === 'function' ? vn.isPkiExportAllowed() : undefined,
         clientCount: vn.getClientCount(),
         clients: vn.getClientDetails(),
       };

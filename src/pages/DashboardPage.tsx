@@ -137,6 +137,10 @@ function DashboardInner() {
   const [formVnEnabled, setFormVnEnabled] = useState(false);
   const [formVnPort, setFormVnPort] = useState('');
   const [formVnAllowAdmin, setFormVnAllowAdmin] = useState(false);
+  // MeshCore-only: serve ExportPrivateKey(23) over the virtual node port.
+  // Security-sensitive, so it never defaults on and is never inherited when
+  // switching a form between source types.
+  const [formVnAllowPkiExport, setFormVnAllowPkiExport] = useState(false);
   const [formHeartbeat, setFormHeartbeat] = useState('30'); // seconds, 0 = disabled (issue 2609)
   const [formAutoConnect, setFormAutoConnect] = useState(true); // issue #2773
   const [formPassiveMode, setFormPassiveMode] = useState(false); // issue #3122 — large/fragile TCP nodes
@@ -330,6 +334,7 @@ function DashboardInner() {
     setFormVnEnabled(false);
     setFormVnPort('');
     setFormVnAllowAdmin(false);
+    setFormVnAllowPkiExport(false);
     setFormHeartbeat('30');
     setFormAutoConnect(true);
     setFormPassiveMode(false);
@@ -428,10 +433,13 @@ function DashboardInner() {
     setFormName(source.name);
     setFormHost(cfg?.host ?? '');
     setFormPort(String(cfg?.port ?? 4403));
-    const vn = cfg?.virtualNode as { enabled?: boolean; port?: number; allowAdminCommands?: boolean } | undefined;
+    const vn = cfg?.virtualNode as
+      | { enabled?: boolean; port?: number; allowAdminCommands?: boolean; allowPkiExport?: boolean }
+      | undefined;
     setFormVnEnabled(vn?.enabled === true);
     setFormVnPort(vn?.port != null ? String(vn.port) : '');
     setFormVnAllowAdmin(vn?.allowAdminCommands === true);
+    setFormVnAllowPkiExport(vn?.allowPkiExport === true);
     setFormHeartbeat(String(cfg?.heartbeatIntervalSeconds ?? 0));
     // Default to true when unset (legacy sources pre-#2773 auto-connected).
     setFormAutoConnect(cfg?.autoConnect !== false);
@@ -579,7 +587,14 @@ function DashboardInner() {
           setFormError(t('source.form.error_vn_port_range'));
           return;
         }
-        cfg.virtualNode = { enabled: true, port: vnPort, allowAdminCommands: formVnAllowAdmin };
+        // allowPkiExport is MeshCore-only — the Meshtastic VN has no equivalent
+        // key-export command, so it is not written in the branch below.
+        cfg.virtualNode = {
+          enabled: true,
+          port: vnPort,
+          allowAdminCommands: formVnAllowAdmin,
+          allowPkiExport: formVnAllowPkiExport,
+        };
       }
     } else {
       if (!formHost.trim()) { setFormError(t('source.form.error_host_required')); return; }
@@ -1534,6 +1549,17 @@ function DashboardInner() {
                       </label>
                       <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
                         {t('meshcore.form.allow_admin_help', 'Third-party clients connected to the virtual node can send config/admin commands to your MeshCore node. Leave off unless you trust the clients.')}
+                      </p>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 8 }}>
+                        <input
+                          type="checkbox"
+                          checked={formVnAllowPkiExport}
+                          onChange={(e) => setFormVnAllowPkiExport(e.target.checked)}
+                        />
+                        {t('meshcore.form.allow_pki_export', 'Allow PKI export')}
+                      </label>
+                      <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
+                        {t('meshcore.form.allow_pki_export_help', 'Let connected clients read your node\'s private key. Some tools (e.g. Remote-Terminal\'s community MQTT) require it to authenticate as your node. The virtual node port has no client authentication, so anyone who can reach it can copy your node identity. Leave off unless you need it. Requires node firmware built with ENABLE_PRIVATE_KEY_EXPORT.')}
                       </p>
                     </>
                   )}

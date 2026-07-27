@@ -71,7 +71,10 @@ frame, one node ack, no mapping ambiguity.
 ## Deliberately out of scope (follow-ups)
 
 - **Destructive / identity / contact commands** — `Reboot`(19),
-  `ExportPrivateKey`(23)/`ImportPrivateKey`(24), `AddUpdateContact`(9)/
-  `RemoveContact`(15), `SendSelfAdvert`(7). Still `Err(UnsupportedCmd)`; each
-  warrants its own design + review.
+  `ImportPrivateKey`(24), `AddUpdateContact`(9)/`RemoveContact`(15),
+  `SendSelfAdvert`(7). Still `Err(UnsupportedCmd)`; each warrants its own
+  design + review.
+  - `ExportPrivateKey`(23) has since been implemented behind its **own**
+    `allowPkiExport` flag (discussion #3933) — deliberately *not* covered by
+    `allowAdminCommands`. See `MESHCORE_VN_PKI_EXPORT.md`.
 - **Repeater (serial-CLI) sources** — this is Companion (`meshcore.js`) only.

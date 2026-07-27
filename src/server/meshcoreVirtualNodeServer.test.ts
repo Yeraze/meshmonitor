@@ -77,6 +77,8 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
   setChannelMock = vi.fn().mockResolvedValue(undefined);
   setOtherParamsMock = vi.fn().mockResolvedValue(true);
   sendAdvertMock = vi.fn().mockResolvedValue(true);
+  // 128-char hex — the 64 raw bytes a real node returns for ExportPrivateKey(23).
+  exportPrivateKeyMock = vi.fn().mockResolvedValue('ab'.repeat(64));
   // Default: a successful login on legacy firmware (no admin flag / version) →
   // empty result object. Per-test overrides supply isAdmin/firmwareVerLevel to
   // exercise the firmware >= 1.16 relay (#4094).
@@ -129,6 +131,7 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
     return this.setOtherParamsMock(params) as Promise<boolean>;
   }
   sendAdvert() { return this.sendAdvertMock() as Promise<boolean>; }
+  exportPrivateKey() { return this.exportPrivateKeyMock() as Promise<string | null>; }
   loginToNode(publicKey: string, password: string) {
     return this.loginToNodeMock(publicKey, password) as Promise<MeshCoreLoginResult | null>;
   }
@@ -1384,5 +1387,105 @@ describe('MeshCoreVirtualNodeServer — SendTxtMsg CLI relay (#4106)', () => {
     expect(sent[0]).toBe(ResponseCodes.Sent);
     expect(manager.sendMessageWithResultMock).toHaveBeenCalledWith('hi', REMOTE_KEY, undefined);
     expect(manager.sendCliCommandMock).not.toHaveBeenCalled();
+  });
+});
+
+// ExportPrivateKey(23) over the Virtual Node. Tools that authenticate as the
+// node itself (e.g. Remote-Terminal's community MQTT bridge) ask the connected
+// "radio" for its private key. Before this the command fell through to
+// Err(UnsupportedCmd), which those tools report as "connecting through a proxy
+// that doesn't forward the key-export command". Gated on its own
+// `allowPkiExport` flag — NOT allowAdminCommands — because the key lets a
+// client permanently impersonate the node, not merely reconfigure it.
+describe('MeshCoreVirtualNodeServer — ExportPrivateKey (allowPkiExport gate)', () => {
+  let server: MeshCoreVirtualNodeServer;
+  let client: TestClient;
+  let manager: FakeManager;
+
+  async function startWith(opts: { allowPkiExport?: boolean; allowAdminCommands?: boolean }): Promise<void> {
+    manager = new FakeManager();
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager, databaseService: CHANNELS_DB, ...opts });
+    await server.start();
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+  }
+
+  afterEach(async () => {
+    client?.close();
+    await server?.stop();
+  });
+
+  const exportFrame: number[] = [CommandCodes.ExportPrivateKey];
+
+  it('returns Disabled(15) and never asks the node when allowPkiExport is off', async () => {
+    await startWith({ allowPkiExport: false });
+    const res = await client.request(exportFrame);
+    expect(res[0]).toBe(ResponseCodes.Disabled);
+    expect(res.length).toBe(1);
+    expect(manager.exportPrivateKeyMock).not.toHaveBeenCalled();
+  });
+
+  it('defaults to off when the option is omitted entirely', async () => {
+    await startWith({});
+    expect(server.isPkiExportAllowed()).toBe(false);
+    const res = await client.request(exportFrame);
+    expect(res[0]).toBe(ResponseCodes.Disabled);
+    expect(manager.exportPrivateKeyMock).not.toHaveBeenCalled();
+  });
+
+  // The two flags are independent: enabling admin commands must NOT silently
+  // hand out the node identity as a side effect.
+  it('stays blocked when allowAdminCommands is on but allowPkiExport is off', async () => {
+    await startWith({ allowAdminCommands: true, allowPkiExport: false });
+    const res = await client.request(exportFrame);
+    expect(res[0]).toBe(ResponseCodes.Disabled);
+    expect(manager.exportPrivateKeyMock).not.toHaveBeenCalled();
+  });
+
+  // ...and conversely, allowing key export must not unlock config mutation.
+  it('does not unlock admin config commands when only allowPkiExport is on', async () => {
+    await startWith({ allowPkiExport: true, allowAdminCommands: false });
+    const nameFrame = [CommandCodes.SetAdvertName, ...Buffer.from('pwned', 'utf8')];
+    const res = await client.request(nameFrame);
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.UnsupportedCmd);
+    expect(manager.setNameMock).not.toHaveBeenCalled();
+  });
+
+  it('returns PrivateKey(14) + the 64 raw key bytes when allowPkiExport is on', async () => {
+    await startWith({ allowPkiExport: true });
+    const res = await client.request(exportFrame);
+    expect(res[0]).toBe(ResponseCodes.PrivateKey);
+    expect(res.length).toBe(1 + 64);
+    expect(Buffer.from(res.subarray(1)).toString('hex')).toBe('ab'.repeat(64));
+    expect(manager.exportPrivateKeyMock).toHaveBeenCalledTimes(1);
+  });
+
+  // A node whose firmware lacks ENABLE_PRIVATE_KEY_EXPORT (or that is offline)
+  // gives us null. We must not answer with a zero-padded 64-byte "key" —
+  // meshcore.js reads a fixed 64 bytes with no length check, so a padded reply
+  // would look like a valid key to the app.
+  it('returns Err(BadState) when the node has no key to give', async () => {
+    await startWith({ allowPkiExport: true });
+    manager.exportPrivateKeyMock.mockResolvedValueOnce(null);
+    const res = await client.request(exportFrame);
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.BadState);
+  });
+
+  it('returns Err(BadState) when the node returns a short/malformed key', async () => {
+    await startWith({ allowPkiExport: true });
+    manager.exportPrivateKeyMock.mockResolvedValueOnce('abcd');
+    const res = await client.request(exportFrame);
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.BadState);
+  });
+
+  it('returns Err(BadState) when the manager throws', async () => {
+    await startWith({ allowPkiExport: true });
+    manager.exportPrivateKeyMock.mockRejectedValueOnce(new Error('disconnected'));
+    const res = await client.request(exportFrame);
+    expect(res[0]).toBe(ResponseCodes.Err);
+    expect(res[1]).toBe(ErrorCodes.BadState);
   });
 });
