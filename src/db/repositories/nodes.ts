@@ -181,6 +181,61 @@ export class NodesRepository extends BaseRepository {
   }
 
   /**
+   * Display names for a batch of nodeNums, scoped to a set of sources.
+   *
+   * Exists so reports can label rows without pulling whole node records:
+   * it selects three columns instead of `select()`'s full row, and takes an
+   * ARRAY of sourceIds because callers scope by the user's permitted sources
+   * (getNodesByNums' single optional sourceId cannot express that, and
+   * omitting it would search every source — leaking names from sources the
+   * caller has no permission for).
+   *
+   * A nodeNum can exist in several sources with differing NodeInfo freshness.
+   * The first non-empty name wins, so a source that never heard a NodeInfo
+   * (empty/absent names) does not mask a source that did.
+   */
+  async getNodeNamesByNums(
+    nodeNums: number[],
+    sourceIds: string[],
+  ): Promise<Map<number, { longName: string | null; shortName: string | null }>> {
+    const map = new Map<number, { longName: string | null; shortName: string | null }>();
+    if (nodeNums.length === 0 || sourceIds.length === 0) return map;
+
+    // Same out-of-range guard as getNodesByNums (#3186): one bad entry would
+    // otherwise fail the whole batch against a PG/MySQL bigint column.
+    const validNums = nodeNums.filter((n) => {
+      if (isValidNodeNum(n)) return true;
+      logger.warn(`NodesRepository.getNodeNamesByNums: dropping out-of-range nodeNum ${n}`);
+      return false;
+    });
+    if (validNums.length === 0) return map;
+
+    const { nodes } = this.tables;
+    const result = await this.db
+      .select({ nodeNum: nodes.nodeNum, longName: nodes.longName, shortName: nodes.shortName })
+      .from(nodes)
+      .where(and(inArray(nodes.nodeNum, validNums), inArray(nodes.sourceId, sourceIds)));
+
+    for (const row of result) {
+      // nodeNum is BIGINT on PG/MySQL and arrives as a string there — coerce
+      // before using it as a Map key or lookups by number silently miss.
+      const nodeNum = Number(row.nodeNum);
+      const longName = row.longName ?? null;
+      const shortName = row.shortName ?? null;
+      const existing = map.get(nodeNum);
+      if (!existing) {
+        map.set(nodeNum, { longName, shortName });
+        continue;
+      }
+      map.set(nodeNum, {
+        longName: existing.longName || longName,
+        shortName: existing.shortName || shortName,
+      });
+    }
+    return map;
+  }
+
+  /**
    * Get a node by nodeId, optionally scoped to a source.
    *
    * After migration 029, (nodeId, sourceId) is the composite unique key. When

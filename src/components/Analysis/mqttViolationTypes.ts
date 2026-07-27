@@ -13,6 +13,13 @@ export type SortDir = 'asc' | 'desc';
 export interface ViolationGatewayRow {
   gatewayId: string | null;
   gatewayNodeNum: number | null;
+  /**
+   * Display names resolved server-side from `nodes`, scoped to the caller's
+   * permitted sources. Null when that nodeNum has no NodeInfo on any of them —
+   * the report then falls back to the id, which is all it ever showed before.
+   */
+  gatewayLongName: string | null;
+  gatewayShortName: string | null;
   violationCount: number;
   suspectedCount: number;
   distinctOriginators: number;
@@ -28,8 +35,13 @@ export interface ViolationPacketRow {
   packetId: number | null;
   fromNode: number | null;
   fromNodeId: string | null;
+  /** See ViolationGatewayRow.gatewayLongName — same resolution and fallback. */
+  fromLongName: string | null;
+  fromShortName: string | null;
   gatewayId: string | null;
   gatewayNodeNum: number | null;
+  gatewayLongName: string | null;
+  gatewayShortName: string | null;
   channelId: string | null;
   portnum: number | null;
   portnumName: string | null;
@@ -168,6 +180,56 @@ export function formatNodeRef(
   if (id) return id;
   if (num != null) return `!${(num >>> 0).toString(16).padStart(8, '0')}`;
   return '';
+}
+
+/** Two-line node cell: a human label on top, the identifier beneath. */
+export interface NodeDisplay {
+  /** Name when one is known, otherwise the id — never empty. */
+  primary: string;
+  /** Second line, or null when there is nothing more to add. */
+  secondary: string | null;
+  /** Everything known about the node, for the cell's `title`. */
+  title: string;
+}
+
+/**
+ * Choose what to show for a node in the violations report.
+ *
+ * The report used to print the raw `!hex` id as the primary label, which for
+ * most rows is the only thing the reader saw. Names now win the top line and
+ * the id moves underneath, so a row is still traceable.
+ *
+ * Falls back to exactly the previous rendering (id on top, nodeNum beneath)
+ * when no name is known — an unnamed node is not a regression, it is the old
+ * behaviour, so a mesh with no NodeInfo looks unchanged rather than broken.
+ */
+export function formatNodeDisplay(
+  longName: string | null | undefined,
+  shortName: string | null | undefined,
+  id: string | null | undefined,
+  num: number | null | undefined,
+): NodeDisplay {
+  const ref = formatNodeRef(id, num);
+  const name = (longName ?? '').trim() || (shortName ?? '').trim();
+
+  if (!name) {
+    return {
+      primary: ref || '—',
+      secondary: num != null ? String(num) : null,
+      title: ref ? `${ref}${num != null ? ` (${num})` : ''}` : '—',
+    };
+  }
+
+  const titleParts = [name];
+  if (ref) titleParts.push(ref);
+  if (num != null) titleParts.push(`(${num})`);
+  return {
+    primary: name,
+    // The id is more useful than the decimal nodeNum for cross-referencing, and
+    // the nodeNum stays in the tooltip.
+    secondary: ref || (num != null ? String(num) : null),
+    title: titleParts.join(' '),
+  };
 }
 
 /**

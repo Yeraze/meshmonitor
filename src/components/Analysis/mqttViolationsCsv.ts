@@ -11,6 +11,13 @@ import type { ViolationGatewayRow, ViolationPacketRow } from './mqttViolationTyp
 export const GATEWAY_CSV_COLUMNS: ReadonlyArray<{ key: string; label: string }> = [
   { key: 'gatewayId', label: 'Gateway ID' },
   { key: 'gatewayNodeNum', label: 'Gateway Node Num' },
+  // Name columns sit beside the id they describe rather than at the end: these
+  // files are read by people, and a name several columns away from its id is
+  // barely easier to scan than the bare id the report used to show. This does
+  // shift the later columns' positions — a consumer indexing by position rather
+  // than by header will need updating.
+  { key: 'gatewayLongName', label: 'Gateway Long Name' },
+  { key: 'gatewayShortName', label: 'Gateway Short Name' },
   { key: 'violationCount', label: 'Violation Count' },
   { key: 'suspectedCount', label: 'Suspected Count' },
   { key: 'distinctOriginators', label: 'Distinct Originators' },
@@ -26,8 +33,12 @@ export const PACKET_CSV_COLUMNS: ReadonlyArray<{ key: string; label: string }> =
   { key: 'packetId', label: 'Packet ID' },
   { key: 'fromNode', label: 'From Node' },
   { key: 'fromNodeId', label: 'From Node ID' },
+  { key: 'fromLongName', label: 'From Long Name' },
+  { key: 'fromShortName', label: 'From Short Name' },
   { key: 'gatewayId', label: 'Gateway ID' },
   { key: 'gatewayNodeNum', label: 'Gateway Node Num' },
+  { key: 'gatewayLongName', label: 'Gateway Long Name' },
+  { key: 'gatewayShortName', label: 'Gateway Short Name' },
   { key: 'channelId', label: 'Channel ID' },
   { key: 'portnum', label: 'Port Num' },
   { key: 'portnumName', label: 'Port Num Name' },
@@ -59,6 +70,8 @@ export function buildGatewaysCsv(rows: ViolationGatewayRow[]): string {
     csvRow([
       formatCell(row.gatewayId),
       formatCell(row.gatewayNodeNum),
+      formatCell(row.gatewayLongName),
+      formatCell(row.gatewayShortName),
       formatCell(row.violationCount),
       formatCell(row.suspectedCount),
       formatCell(row.distinctOriginators),
@@ -81,8 +94,12 @@ export function buildPacketsCsv(rows: ViolationPacketRow[]): string {
       formatCell(row.packetId),
       formatCell(row.fromNode),
       formatCell(row.fromNodeId),
+      formatCell(row.fromLongName),
+      formatCell(row.fromShortName),
       formatCell(row.gatewayId),
       formatCell(row.gatewayNodeNum),
+      formatCell(row.gatewayLongName),
+      formatCell(row.gatewayShortName),
       formatCell(row.channelId),
       formatCell(row.portnum),
       formatCell(row.portnumName),
