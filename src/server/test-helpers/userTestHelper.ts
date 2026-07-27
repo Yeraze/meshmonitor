@@ -14,7 +14,25 @@ import bcrypt from 'bcrypt';
 import { AuthRepository } from '../../db/repositories/auth.js';
 import { User, CreateUserInput, UpdateUserInput } from '../../types/auth.js';
 
-const SALT_ROUNDS = 12;
+/**
+ * bcrypt cost factor for test fixtures ONLY.
+ *
+ * This is deliberately the bcrypt minimum (4), not production's 10
+ * (`localAuth.ts`). The cost factor is a brute-force hardening knob — nothing
+ * in the suite asserts on it, and every call here hashes a throwaway literal
+ * like 'password123' into an in-memory DB that dies with the process.
+ *
+ * It is worth this comment because the number is load-bearing for CI time:
+ * these helpers run inside `beforeEach`, so the cost is paid per test, not per
+ * file. At 12 a single hash costs ~209ms; at 4 it costs ~2ms. That one constant
+ * accounted for ~185s of the ~352s total suite execution time across the five
+ * files that use this helper (meshcoreRoutes, userRoutes, authRoutes,
+ * auditRoutes, packetRoutes).
+ *
+ * Do NOT raise this to "match production" — production hashing is covered by
+ * `localAuth.ts`/`mfa.ts`, which set their own rounds.
+ */
+const SALT_ROUNDS = 4;
 
 /**
  * Map a DbUser (authMethod field) to the legacy User shape (authProvider field).
