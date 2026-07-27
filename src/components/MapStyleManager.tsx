@@ -158,6 +158,7 @@ const MapStyleManager: React.FC = () => {
       await loadMapStyles();
     } catch (err) {
       console.error('Failed to delete map style:', err);
+      alert(`Delete failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 

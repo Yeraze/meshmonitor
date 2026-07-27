@@ -88,6 +88,8 @@ describe('MapStyleManager', () => {
     settingsMock.activeStyleId = 'style-a';
     mockCsrfFetch.mockResolvedValue({ ok: false });
     vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+    const alertSpy = vi.fn();
+    vi.stubGlobal('alert', alertSpy);
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const user = userEvent.setup();
     render(<MapStyleManager />);
@@ -97,6 +99,7 @@ describe('MapStyleManager', () => {
     await user.click(deleteA);
 
     await waitFor(() => expect(consoleErrorSpy).toHaveBeenCalled());
+    expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Delete failed'));
     expect(mockSetActiveMapStyleId).not.toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
   });
