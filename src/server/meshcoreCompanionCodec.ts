@@ -83,6 +83,8 @@ export const ResponseCodes = {
   NoMoreMessages: 10,
   BatteryVoltage: 12,
   DeviceInfo: 13,
+  PrivateKey: 14,
+  Disabled: 15,
   ChannelInfo: 18,
 } as const;
 
@@ -961,6 +963,34 @@ export function encodeNoMoreMessages(): Buffer {
 /** Encode an Ok(0) response. */
 export function encodeOk(): Buffer {
   return Buffer.from([ResponseCodes.Ok]);
+}
+
+/**
+ * Encode a PrivateKey(14) response — the node's 64-byte Ed25519 private key.
+ *
+ * Wire layout is `[14][key:64]` with the key as raw bytes; meshcore.js's
+ * `onPrivateKeyResponse` reads exactly 64 bytes and does no length check, so a
+ * short buffer would silently hand the app a truncated key. We therefore reject
+ * anything that isn't a 128-char hex string rather than zero-padding it.
+ */
+export function encodePrivateKey(privateKeyHex: string): Buffer {
+  if (!/^[0-9a-fA-F]{128}$/.test(privateKeyHex ?? '')) {
+    throw new Error('encodePrivateKey requires a 128-char hex private key');
+  }
+  return Buffer.concat([Buffer.from([ResponseCodes.PrivateKey]), Buffer.from(privateKeyHex, 'hex')]);
+}
+
+/**
+ * Encode a Disabled(15) response — "this node does not offer that feature".
+ *
+ * This is what real MeshCore firmware built *without* `ENABLE_PRIVATE_KEY_EXPORT`
+ * returns for ExportPrivateKey(23), and meshcore.js turns it into a distinct
+ * `reject("disabled")`. Using it (rather than Err) when the Virtual Node's PKI
+ * export toggle is off means apps show an accurate "key export unavailable"
+ * message instead of a generic failure.
+ */
+export function encodeDisabled(): Buffer {
+  return Buffer.from([ResponseCodes.Disabled]);
 }
 
 /** Encode an Err(1) response with an optional error code. */

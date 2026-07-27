@@ -36,6 +36,14 @@ export interface MeshCoreSourceConfig {
     enabled?: boolean;
     port?: number;
     allowAdminCommands?: boolean;
+    /**
+     * Allow connected apps to read the node's Ed25519 private key over the
+     * Virtual Node port via ExportPrivateKey(23). SECURITY-SENSITIVE, and
+     * deliberately separate from `allowAdminCommands`: the VN port has no
+     * per-client auth, so anything that can reach it gets the key. Off by
+     * default.
+     */
+    allowPkiExport?: boolean;
   };
 }
 
@@ -54,6 +62,7 @@ export function virtualNodeConfigFromSource(cfg: MeshCoreSourceConfig): MeshCore
     enabled: true,
     port: typeof vn.port === 'number' && vn.port > 0 ? vn.port : DEFAULT_VIRTUAL_NODE_PORT,
     allowAdminCommands: vn.allowAdminCommands === true,
+    allowPkiExport: vn.allowPkiExport === true,
   };
 }
 

@@ -1207,6 +1207,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         port: vn.port,
         manager: this,
         allowAdminCommands: vn.allowAdminCommands,
+        allowPkiExport: vn.allowPkiExport,
       });
       await this.virtualNodeServer.start();
     } catch (err) {

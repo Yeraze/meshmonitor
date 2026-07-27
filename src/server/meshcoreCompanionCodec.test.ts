@@ -26,6 +26,8 @@ import {
   encodeLoginSuccessPush,
   encodeLogRxData,
   encodeNoMoreMessages,
+  encodePrivateKey,
+  encodeDisabled,
   PushCodes,
   packTelemetryMode,
   pubKeyHexToBytes,
@@ -471,5 +473,55 @@ describe('config-command parsers (#3904)', () => {
     expect(() => parseSetTxPower(Buffer.from([CommandCodes.SetTxPower]))).toThrow();
     expect(() => parseSetAdvertLatLon(Buffer.from([CommandCodes.SetAdvertLatLon, 0, 0]))).toThrow();
     expect(() => parseSetChannel(Buffer.from([CommandCodes.SetChannel, 0]))).toThrow();
+  });
+});
+
+// ExportPrivateKey(23) support. meshcore.js's onPrivateKeyResponse reads a
+// fixed 64 bytes with NO length check, so a short frame would silently hand the
+// app a truncated (or zero-padded) key that still looks valid — hence the
+// encoder validates rather than pads.
+describe('meshcoreCompanionCodec — PrivateKey / Disabled responses', () => {
+  const KEY_HEX = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4'.repeat(2) + '00'.repeat(16);
+
+  it('response codes match the library', () => {
+    expect(ResponseCodes.PrivateKey).toBe(Constants.ResponseCodes.PrivateKey);
+    expect(ResponseCodes.Disabled).toBe(Constants.ResponseCodes.Disabled);
+  });
+
+  it('encodes PrivateKey as [14][key:64]', () => {
+    const frame = encodePrivateKey(KEY_HEX);
+    expect(frame.length).toBe(65);
+    expect(frame[0]).toBe(ResponseCodes.PrivateKey);
+    expect(frame.subarray(1).toString('hex')).toBe(KEY_HEX.toLowerCase());
+  });
+
+  it('round-trips through meshcore.js: PrivateKey decodes to the same 64 bytes', async () => {
+    const decoded = await decodeWithMeshcore(ResponseCodes.PrivateKey, encodePrivateKey(KEY_HEX));
+    expect(Buffer.from(decoded.privateKey).toString('hex')).toBe(KEY_HEX.toLowerCase());
+  });
+
+  it('accepts upper-case hex', () => {
+    expect(encodePrivateKey(KEY_HEX.toUpperCase()).subarray(1).toString('hex')).toBe(KEY_HEX.toLowerCase());
+  });
+
+  it.each([
+    ['empty', ''],
+    ['too short', 'ab'.repeat(31)],
+    ['too long', 'ab'.repeat(65)],
+    ['non-hex', 'z'.repeat(128)],
+    ['odd length', 'a'.repeat(127)],
+  ])('rejects a %s key rather than padding it', (_label, bad) => {
+    expect(() => encodePrivateKey(bad)).toThrow(/128-char hex/);
+  });
+
+  it('encodes Disabled as a bare [15]', () => {
+    const frame = encodeDisabled();
+    expect(frame.length).toBe(1);
+    expect(frame[0]).toBe(ResponseCodes.Disabled);
+  });
+
+  it('round-trips through meshcore.js: Disabled fires the disabled event', async () => {
+    const decoded = await decodeWithMeshcore(ResponseCodes.Disabled, encodeDisabled());
+    expect(decoded).toBeDefined();
   });
 });

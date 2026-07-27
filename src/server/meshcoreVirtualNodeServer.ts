@@ -29,6 +29,8 @@ import {
   encodeNoMoreMessages,
   encodeOk,
   encodeErr,
+  encodePrivateKey,
+  encodeDisabled,
   packTelemetryMode,
   pubKeyHexToBytes,
   hexToBytes,
@@ -97,6 +99,13 @@ export interface MeshCoreVirtualNodeManager {
   }): Promise<boolean>;
   /** Broadcast a self-advertisement from the physical node (flood). */
   sendAdvert(): Promise<boolean>;
+  /**
+   * Read the physical node's Ed25519 private key as a 128-char hex string, or
+   * null when the node refused / is disconnected / its firmware was built
+   * without `ENABLE_PRIVATE_KEY_EXPORT`. Only reached when the VN's
+   * `allowPkiExport` flag is on.
+   */
+  exportPrivateKey(): Promise<string | null>;
   /**
    * Log in to a remote node with a password (issue #3904). Resolves a
    * `MeshCoreLoginResult` (carrying the remote's admin flag + firmware version
@@ -192,6 +201,18 @@ interface ChannelRow {
 }
 interface ChannelsDb {
   channels: { getAllChannels(sourceId?: string): Promise<ChannelRow[]> };
+  /**
+   * Optional so injected test doubles don't have to stub it. Used only to
+   * record private-key exports served over the VN port; a missing
+   * implementation degrades to "no audit row", never to a failed export.
+   */
+  auditLogAsync?(
+    userId: number | null,
+    action: string,
+    resource: string,
+    details: string,
+    ip: string | null,
+  ): Promise<unknown>;
 }
 
 export interface MeshCoreVirtualNodeServerOptions {
@@ -199,6 +220,12 @@ export interface MeshCoreVirtualNodeServerOptions {
   manager: MeshCoreVirtualNodeManager;
   /** Allow config-mutating commands through to the real node (default false). */
   allowAdminCommands?: boolean;
+  /**
+   * Allow ExportPrivateKey(23) to be served over this port (default false).
+   * Separate from `allowAdminCommands` because the risk is different in kind:
+   * admin commands change the node, key export hands out its identity.
+   */
+  allowPkiExport?: boolean;
   /** Injectable channels source; defaults to the real DatabaseService facade. */
   databaseService?: ChannelsDb;
 }
@@ -211,6 +238,7 @@ export interface MeshCoreVirtualNodeConfig {
   enabled: boolean;
   port: number;
   allowAdminCommands: boolean;
+  allowPkiExport: boolean;
 }
 
 interface ConnectedClient {
@@ -246,6 +274,7 @@ interface ConnectedClient {
 export class MeshCoreVirtualNodeServer extends EventEmitter {
   private readonly options: MeshCoreVirtualNodeServerOptions;
   private readonly allowAdminCommands: boolean;
+  private readonly allowPkiExport: boolean;
   private readonly db: ChannelsDb;
   private server: Server | null = null;
   private clients: Map<string, ConnectedClient> = new Map();
@@ -272,6 +301,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     super();
     this.options = options;
     this.allowAdminCommands = options.allowAdminCommands ?? false;
+    this.allowPkiExport = options.allowPkiExport ?? false;
     this.db = options.databaseService ?? (databaseService as unknown as ChannelsDb);
   }
 
@@ -353,6 +383,32 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
 
   isAdminCommandsAllowed(): boolean {
     return this.allowAdminCommands;
+  }
+
+  isPkiExportAllowed(): boolean {
+    return this.allowPkiExport;
+  }
+
+  /**
+   * Per-client detail for the virtual-node status endpoint. Shape must match
+   * the Meshtastic `VirtualNodeServer.getClientDetails()` — `statusRoutes`
+   * calls it on whichever VN a manager exposes, and the Info tab renders both
+   * through the same component. Its absence here meant
+   * `GET /api/status/virtual-node/status` threw for any MeshCore source with a
+   * VN enabled, and the route's catch turned that into a blanket 500.
+   */
+  getClientDetails(): Array<{
+    id: string;
+    ip: string;
+    connectedAt: Date;
+    lastActivity: Date;
+  }> {
+    return Array.from(this.clients.entries()).map(([clientId, client]) => ({
+      id: clientId,
+      ip: client.socket.remoteAddress || 'unknown',
+      connectedAt: client.connectedAt,
+      lastActivity: client.lastActivity,
+    }));
   }
 
   // ───────────────────────── client lifecycle ─────────────────────────
@@ -513,6 +569,11 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
           // allowAdminCommands (the real node answers based on the session).
           void this.handleSendBinaryReq(clientId, command);
           break;
+        case CommandCodes.ExportPrivateKey:
+          // Reading the node's identity key. Gated on its OWN flag, not
+          // allowAdminCommands — see handleExportPrivateKey.
+          void this.handleExportPrivateKey(clientId);
+          break;
         // Config-mutating commands (issue #3904): forwarded to the real node
         // only when `allowAdminCommands` is enabled; otherwise the app gets an
         // explicit Err (UnsupportedCmd) instead of a silent hang.
@@ -560,6 +621,87 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
       }
     } catch (error) {
       logger.error(`[MeshCore VN ${this.sourceId}] error handling command ${command.code} from ${clientId}:`, error);
+    }
+  }
+
+  /**
+   * ExportPrivateKey(23): hand the connected app the physical node's Ed25519
+   * private key. Some MeshCore tooling (e.g. Remote-Terminal's community MQTT
+   * bridge) authenticates by signing with the node's own identity key, so it
+   * asks the "radio" it is connected to for that key. Without this case the
+   * command fell through to `Err(UnsupportedCmd)` and such tools reported that
+   * they were talking to a proxy that doesn't forward key export.
+   *
+   * Gated on its own `allowPkiExport` flag rather than `allowAdminCommands`,
+   * because the exposure is different in kind: admin commands let a client
+   * *change* the node, whereas the private key lets a client *become* it, on
+   * any mesh, forever, with no way to tell the copies apart. The VN port has no
+   * per-client authentication, so this must be an explicit, separate opt-in.
+   *
+   * Responses:
+   *   - flag off        → Disabled(15), byte-identical to firmware built
+   *                       without ENABLE_PRIVATE_KEY_EXPORT, so apps show an
+   *                       accurate "key export unavailable" rather than hanging
+   *   - key unavailable → Err(BadState) (node disconnected, or its own firmware
+   *                       refuses export — we can only relay what it gives us)
+   *   - success         → PrivateKey(14) + 64 raw key bytes
+   */
+  private async handleExportPrivateKey(clientId: string): Promise<void> {
+    if (!this.allowPkiExport) {
+      logger.debug(
+        `[MeshCore VN ${this.sourceId}] ExportPrivateKey blocked from ${clientId} (allowPkiExport off)`,
+      );
+      this.send(clientId, encodeDisabled());
+      return;
+    }
+    let hex: string | null;
+    try {
+      hex = await this.options.manager.exportPrivateKey();
+    } catch (err) {
+      logger.warn(
+        `[MeshCore VN ${this.sourceId}] ExportPrivateKey from ${clientId} failed: ${(err as Error).message}`,
+      );
+      this.send(clientId, encodeErr(ErrorCodes.BadState));
+      return;
+    }
+    let frame: Buffer;
+    try {
+      // Throws on a malformed/short key rather than shipping a truncated one —
+      // meshcore.js reads a fixed 64 bytes with no length check.
+      frame = encodePrivateKey(hex ?? '');
+    } catch {
+      logger.warn(
+        `[MeshCore VN ${this.sourceId}] ExportPrivateKey from ${clientId}: node returned no usable key`,
+      );
+      this.send(clientId, encodeErr(ErrorCodes.BadState));
+      return;
+    }
+    // Handing out the node identity is worth an audit row even though the VN
+    // port has no user session to attribute it to (userId null, client IP).
+    this.auditPkiExport(clientId);
+    logger.info(
+      `[MeshCore VN ${this.sourceId}] ExportPrivateKey served to ${clientId} (allowPkiExport on)`,
+    );
+    this.send(clientId, frame);
+  }
+
+  /** Fire-and-forget audit row for a served key export. Never throws. */
+  private auditPkiExport(clientId: string): void {
+    try {
+      const ip = this.clients.get(clientId)?.socket.remoteAddress ?? null;
+      void this.db
+        .auditLogAsync?.(
+          null,
+          'meshcore_vn_export_private_key',
+          'configuration',
+          JSON.stringify({ sourceId: this.sourceId, clientId }),
+          ip,
+        )
+        ?.catch((err: unknown) =>
+          logger.error(`[MeshCore VN ${this.sourceId}] audit write failed:`, err),
+        );
+    } catch (err) {
+      logger.error(`[MeshCore VN ${this.sourceId}] audit write failed:`, err);
     }
   }
 

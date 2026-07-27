@@ -146,8 +146,9 @@ the **inverse**: encode `0x3e` responses/pushes and decode `0x3c` commands.
 
 **Lifecycle & ownership.** One `MeshCoreVirtualNodeServer` per MeshCore source, owned by
 that source's `meshcoreManager`, started/stopped with the source. Config lives on the
-source row (`sources.config.virtualNode = { enabled, port, allowAdminCommands }`), mirroring
-the Meshtastic `VirtualNodeConfig` shape so the existing source-config UI extends naturally.
+source row (`sources.config.virtualNode = { enabled, port, allowAdminCommands, allowPkiExport }`),
+mirroring the Meshtastic `VirtualNodeConfig` shape so the existing source-config UI extends
+naturally. (`allowPkiExport` is MeshCore-only — the Meshtastic VN has no key-export command.)
 
 **Identity.** `SelfInfo` advertises the **real node's** public key + name (already captured
 by `meshcoreManager`). This is essential: the phone's contacts and any PKI the app displays
@@ -156,8 +157,14 @@ crypto in companion mode. The app↔VN link is plaintext companion frames over l
 
 **Safety.** Reuse the Meshtastic VN's `allowAdminCommands` gate (default **false**). With it
 off, read + send-message work, but config-mutating commands (`SetRadioParams`, `SetAdvertName`,
-`ImportPrivateKey`, `Reboot`, …) are refused with `Err`(1)/`Disabled`(15). `ExportPrivateKey`(23)
-is **always** refused regardless of the gate. All connects/admin-forwards are audit-logged.
+`ImportPrivateKey`, `Reboot`, …) are refused with `Err`(1)/`Disabled`(15). All connects/
+admin-forwards are audit-logged.
+
+`ExportPrivateKey`(23) was originally refused unconditionally. It is now served behind a
+**second, independent** gate — `allowPkiExport`, also default **false** — because handing out
+the identity key is a different decision from allowing config writes: it lets a client
+permanently impersonate the node, and the VN port has no per-client auth. Enabling admin
+commands must never enable key export, or vice versa. See `MESHCORE_VN_PKI_EXPORT.md`.
 
 ## 5. Phasing (one mergeable PR per phase, behaviour-preserving, green-CI gated)
 

@@ -120,7 +120,7 @@ describe('virtualNodeConfigFromSource', () => {
 
   it('returns the config when enabled is true', () => {
     const vn = virtualNodeConfigFromSource({ virtualNode: { enabled: true, port: 5001, allowAdminCommands: true } });
-    expect(vn).toEqual({ enabled: true, port: 5001, allowAdminCommands: true });
+    expect(vn).toEqual({ enabled: true, port: 5001, allowAdminCommands: true, allowPkiExport: false });
   });
 
   it(`falls back to DEFAULT_VIRTUAL_NODE_PORT (${DEFAULT_VIRTUAL_NODE_PORT}) when port is missing`, () => {
@@ -136,5 +136,38 @@ describe('virtualNodeConfigFromSource', () => {
   it('defaults allowAdminCommands to false when absent', () => {
     const vn = virtualNodeConfigFromSource({ virtualNode: { enabled: true, port: 5001 } });
     expect(vn?.allowAdminCommands).toBe(false);
+  });
+
+  // Private-key export must never be on unless explicitly saved as `true` —
+  // it lets any client on the VN port copy the node's identity.
+  it('defaults allowPkiExport to false when absent', () => {
+    const vn = virtualNodeConfigFromSource({ virtualNode: { enabled: true, port: 5001 } });
+    expect(vn?.allowPkiExport).toBe(false);
+  });
+
+  it('passes allowPkiExport through when explicitly true', () => {
+    const vn = virtualNodeConfigFromSource({ virtualNode: { enabled: true, port: 5001, allowPkiExport: true } });
+    expect(vn?.allowPkiExport).toBe(true);
+  });
+
+  it.each([['string "true"', 'true'], ['1', 1], ['null', null], ['undefined', undefined]])(
+    'coerces a non-boolean allowPkiExport (%s) to false',
+    (_label, value) => {
+      const vn = virtualNodeConfigFromSource({
+        virtualNode: { enabled: true, port: 5001, allowPkiExport: value as unknown as boolean },
+      });
+      expect(vn?.allowPkiExport).toBe(false);
+    },
+  );
+
+  it('keeps the two virtual-node gates independent', () => {
+    const adminOnly = virtualNodeConfigFromSource({
+      virtualNode: { enabled: true, port: 5001, allowAdminCommands: true },
+    });
+    expect(adminOnly?.allowPkiExport).toBe(false);
+    const pkiOnly = virtualNodeConfigFromSource({
+      virtualNode: { enabled: true, port: 5001, allowPkiExport: true },
+    });
+    expect(pkiOnly?.allowAdminCommands).toBe(false);
   });
 });
