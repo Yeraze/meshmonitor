@@ -19,7 +19,7 @@ See [.devcontainer/README.md](https://github.com/yeraze/meshmonitor/blob/main/.d
 
 Before you begin, ensure you have:
 
-- **Node.js 20+** (Node.js 22+ recommended)
+- **Node.js 22+** (Node.js 24 recommended)
 - **npm** (comes with Node.js)
 - **Git** with submodule support
 - A Meshtastic device connected to your network via IP (WiFi or Ethernet)
@@ -341,7 +341,7 @@ npm install
 
 ### Node Version Issues
 
-MeshMonitor requires Node.js 20+. Check your version:
+MeshMonitor requires Node.js 22+. Check your version:
 
 ```bash
 node --version  # Should be v20.x.x or higher

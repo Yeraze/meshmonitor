@@ -269,7 +269,7 @@ For a complete feature list and technical details, visit **[meshmonitor.org](htt
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22+
 - Docker (recommended) or local Node.js environment
 - At least one mesh source — a Meshtastic device (WiFi/Ethernet, or Serial/BLE via bridge), a MeshCore device, or an MQTT broker
 

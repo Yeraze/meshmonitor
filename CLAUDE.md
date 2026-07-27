@@ -1,7 +1,7 @@
 # MeshMonitor — Claude Agent Brief
 
 **Version:** 4.13.x (multi-source architecture)
-**Stack:** React 19 + TS + Vite frontend / Node.js 20+ (Docker image ships Node 24; CI matrix covers 20/22/24/25) + Express 5 + TS backend / SQLite (default), PostgreSQL, MySQL via Drizzle ORM / Meshtastic protobuf-over-TCP and MeshCore (native `meshcore.js` for companion, serial CLI for repeater) through a per-source manager registry.
+**Stack:** React 19 + TS + Vite frontend / Node.js 22+ (Docker image ships Node 24; armv7 image ships Node 22 — the lowest supported runtime, since Node 24 has no ARMv7 build; CI matrix covers 22/24/25) + Express 5 + TS backend / SQLite (default), PostgreSQL, MySQL via Drizzle ORM / Meshtastic protobuf-over-TCP and MeshCore (native `meshcore.js` for companion, serial CLI for repeater) through a per-source manager registry.
 
 ## Read order for new agents
 

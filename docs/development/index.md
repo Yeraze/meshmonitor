@@ -10,7 +10,7 @@ If you're using Claude Code as your AI assistant, check out our **[Claude Code G
 
 ### Prerequisites
 
-- Node.js 20 or later (22+ recommended)
+- Node.js 22 or later (24 recommended)
 - npm
 - Git
 - A Meshtastic device or `meshtasticd`

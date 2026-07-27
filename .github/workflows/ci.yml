@@ -43,7 +43,13 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [20.x, 22.x, 24.x, 25.x]
+        # Node 20 dropped: nothing we ship runs it. The main image is Node 24,
+        # the LXC template is NodeSource 24, and armv7 — the lowest target — is
+        # Node 22 (Dockerfile.armv7 pins 22 because Node 24 has no ARMv7 build).
+        # 20.x was test-only, and the ecosystem has moved past it: node-gyp 13
+        # and its bundled undici require >=22, so a native rebuild of
+        # better-sqlite3 now fails outright on Node 20.
+        node-version: [22.x, 24.x, 25.x]
 
     steps:
       - name: Checkout code
