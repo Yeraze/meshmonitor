@@ -302,8 +302,10 @@ const TracerouteBoundsController: React.FC<{
  * - Right-click anywhere (when `canCreate`) opens the editor with that
  *   location seeded as the new waypoint's coordinates.
  *
- * Toggles the `waypoint-placing` class on the leaflet container so CSS can
- * change the cursor to a crosshair during placement.
+ * Toggles the `waypoint-placing` class on the leaflet container. That class
+ * drives the crosshair cursor AND (issue #4342) makes interactive overlay
+ * geometry click-through, so the pick below always wins over a feature popup —
+ * see the rule in WaypointEditorModal.css for why that is load-bearing.
  */
 const WaypointMapEventBridge: React.FC<{
   placing: boolean;
@@ -314,8 +316,14 @@ const WaypointMapEventBridge: React.FC<{
 
   useEffect(() => {
     const container = map.getContainer();
-    if (placing) container.classList.add('waypoint-placing');
-    else container.classList.remove('waypoint-placing');
+    if (placing) {
+      container.classList.add('waypoint-placing');
+      // A popup left open from a previous click floats above the map with its
+      // own pointer-events, so it would eat the placement click (#4342).
+      map.closePopup();
+    } else {
+      container.classList.remove('waypoint-placing');
+    }
     return () => container.classList.remove('waypoint-placing');
   }, [placing, map]);
 

@@ -248,3 +248,20 @@
 .leaflet-container.waypoint-placing .leaflet-interactive {
   cursor: crosshair !important;
 }
+
+/* Issue #4342 — placement mode is modal: overlay geometry must not swallow the
+ * click. Leaflet's bindPopup handler calls DomEvent.stop() on the layer's click
+ * (leaflet/src/layer/Popup.js `_openPopup`), which flags originalEvent._stopped
+ * and makes Map._fireDOMEvent bail BEFORE the map's own 'click' fires. So a
+ * click landing on a GeoJSON feature — or any node marker, waypoint marker,
+ * traceroute line, neighbor link, accuracy region — opened that layer's popup
+ * and WaypointMapEventBridge never saw the pick. Making interactive geometry
+ * click-through for the duration of placement routes every click to the map
+ * itself, and stops sticky tooltips from tracking the crosshair as a bonus.
+ *
+ * This covers the SVG-path and DOM-marker renderers, which is everything the
+ * app renders today; a canvas renderer (`preferCanvas`) hit-tests in JS and
+ * would need a JS-side guard instead. */
+.leaflet-container.waypoint-placing .leaflet-interactive {
+  pointer-events: none !important;
+}
