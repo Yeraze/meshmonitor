@@ -1489,3 +1489,34 @@ describe('MeshCoreVirtualNodeServer — ExportPrivateKey (allowPkiExport gate)',
     expect(res[1]).toBe(ErrorCodes.BadState);
   });
 });
+
+// statusRoutes calls getClientDetails() on whichever VN a manager exposes. The
+// MeshCore VN was missing it, so GET /api/status/virtual-node/status threw and
+// the route's catch turned that into a 500 for EVERY source, not just this one.
+describe('MeshCoreVirtualNodeServer — getClientDetails (status endpoint contract)', () => {
+  let server: MeshCoreVirtualNodeServer;
+  let client: TestClient;
+
+  afterEach(async () => {
+    client?.close();
+    await server?.stop();
+  });
+
+  it('reports id/ip/connectedAt/lastActivity for each connected client', async () => {
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager: new FakeManager(), databaseService: CHANNELS_DB });
+    await server.start();
+    expect(server.getClientDetails()).toEqual([]);
+
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+    await vi.waitFor(() => expect(server.getClientCount()).toBe(1));
+
+    const details = server.getClientDetails();
+    expect(details).toHaveLength(1);
+    expect(details[0].id).toMatch(/^mcvn-\d+$/);
+    expect(typeof details[0].ip).toBe('string');
+    expect(details[0].ip.length).toBeGreaterThan(0);
+    expect(details[0].connectedAt).toBeInstanceOf(Date);
+    expect(details[0].lastActivity).toBeInstanceOf(Date);
+  });
+});

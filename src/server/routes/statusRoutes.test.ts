@@ -60,6 +60,78 @@ describe('GET /virtual-node/status', () => {
     expect(res.body.sources[0].isRunning).toBe(true);
     expect(res.body.sources[0].clientCount).toBe(2);
   });
+
+  // `getAllManagers()` mixes VN implementations, so every method this handler
+  // calls has to be treated as optional. A MeshCore VN without
+  // `getClientDetails` used to throw here and the catch turned it into a 500 —
+  // taking down the status of every *other* source with it.
+  it('degrades to an empty client list when a VN lacks getClientDetails', async () => {
+    mockRegistry.getAllManagers.mockReturnValue([
+      {
+        sourceId: 's1',
+        getStatus: () => ({ sourceId: 's1', sourceName: 'One' }),
+        virtualNodeServer: {
+          isRunning: () => true,
+          isAdminCommandsAllowed: () => false,
+          getClientCount: () => 1,
+        },
+      },
+    ]);
+    const res = await request(app).get('/virtual-node/status');
+    expect(res.status).toBe(200);
+    expect(res.body.sources[0].clientCount).toBe(1);
+    expect(res.body.sources[0].clients).toEqual([]);
+  });
+
+  // allowPkiExport is MeshCore-only. Meshtastic VNs have no key-export command,
+  // so they must report `undefined` (field omitted) — the Info tab keys off that
+  // to hide the row entirely rather than show a permanently-"Blocked" toggle.
+  it('reports allowPkiExport for a MeshCore VN and omits it for a Meshtastic VN', async () => {
+    mockRegistry.getAllManagers.mockReturnValue([
+      {
+        sourceId: 'mc-on',
+        getStatus: () => ({ sourceId: 'mc-on', sourceName: 'MeshCore on' }),
+        virtualNodeServer: {
+          isRunning: () => true,
+          isAdminCommandsAllowed: () => false,
+          isPkiExportAllowed: () => true,
+          getClientCount: () => 0,
+          getClientDetails: () => [],
+        },
+      },
+      {
+        sourceId: 'mc-off',
+        getStatus: () => ({ sourceId: 'mc-off', sourceName: 'MeshCore off' }),
+        virtualNodeServer: {
+          isRunning: () => true,
+          isAdminCommandsAllowed: () => true,
+          isPkiExportAllowed: () => false,
+          getClientCount: () => 0,
+          getClientDetails: () => [],
+        },
+      },
+      {
+        sourceId: 'mt',
+        getStatus: () => ({ sourceId: 'mt', sourceName: 'Meshtastic' }),
+        virtualNodeServer: {
+          isRunning: () => true,
+          isAdminCommandsAllowed: () => true,
+          getClientCount: () => 0,
+          getClientDetails: () => [],
+        },
+      },
+    ]);
+    const res = await request(app).get('/virtual-node/status');
+    expect(res.status).toBe(200);
+    const [mcOn, mcOff, mt] = res.body.sources;
+    expect(mcOn.allowPkiExport).toBe(true);
+    expect(mcOff.allowPkiExport).toBe(false);
+    // JSON drops undefined, so the key is absent for Meshtastic VNs.
+    expect(mt).not.toHaveProperty('allowPkiExport');
+    // The PKI gate must not bleed into the admin gate.
+    expect(mcOn.allowAdminCommands).toBe(false);
+    expect(mcOff.allowAdminCommands).toBe(true);
+  });
 });
 
 describe('GET /automation/airtime-status', () => {

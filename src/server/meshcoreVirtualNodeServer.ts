@@ -389,6 +389,28 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
     return this.allowPkiExport;
   }
 
+  /**
+   * Per-client detail for the virtual-node status endpoint. Shape must match
+   * the Meshtastic `VirtualNodeServer.getClientDetails()` — `statusRoutes`
+   * calls it on whichever VN a manager exposes, and the Info tab renders both
+   * through the same component. Its absence here meant
+   * `GET /api/status/virtual-node/status` threw for any MeshCore source with a
+   * VN enabled, and the route's catch turned that into a blanket 500.
+   */
+  getClientDetails(): Array<{
+    id: string;
+    ip: string;
+    connectedAt: Date;
+    lastActivity: Date;
+  }> {
+    return Array.from(this.clients.entries()).map(([clientId, client]) => ({
+      id: clientId,
+      ip: client.socket.remoteAddress || 'unknown',
+      connectedAt: client.connectedAt,
+      lastActivity: client.lastActivity,
+    }));
+  }
+
   // ───────────────────────── client lifecycle ─────────────────────────
 
   private handleNewClient(socket: Socket): void {

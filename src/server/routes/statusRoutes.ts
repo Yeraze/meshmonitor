@@ -36,7 +36,10 @@ router.get('/virtual-node/status', requireAuth(), (_req: Request, res: Response)
         // rather than showing a permanently-"Blocked" toggle that isn't real.
         allowPkiExport: typeof vn.isPkiExportAllowed === 'function' ? vn.isPkiExportAllowed() : undefined,
         clientCount: vn.getClientCount(),
-        clients: vn.getClientDetails(),
+        // Duck-typed like the rest of this handler: `getAllManagers()` mixes VN
+        // implementations, and one missing method used to take the whole
+        // endpoint down with a 500 rather than degrading that single source.
+        clients: typeof vn.getClientDetails === 'function' ? vn.getClientDetails() : [],
       };
     });
 

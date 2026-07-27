@@ -73,6 +73,20 @@ precisely why the row matters. The write is fire-and-forget and can never fail
 the export; `ChannelsDb.auditLogAsync` is optional so injected test doubles
 don't have to stub it.
 
+## Drive-by: `getClientDetails()` on the MeshCore VN
+
+Surfacing `allowPkiExport` in the Info tab meant reading
+`GET /api/status/virtual-node/status` — which turned out to be broken for
+MeshCore sources entirely. `statusRoutes` calls `vn.getClientDetails()` on
+whichever VN a manager exposes; the Meshtastic VN implements it, the MeshCore VN
+never did. Any MeshCore source with a VN enabled threw `TypeError`, and the
+route's `catch` flattened that into a 500 for **every** source in the response.
+
+Fixed on both ends: `MeshCoreVirtualNodeServer.getClientDetails()` now exists
+(same `{ id, ip, connectedAt, lastActivity }` shape as the Meshtastic one, so the
+shared Info tab component renders both), and the route duck-types the call so one
+missing method degrades that single source instead of the whole endpoint.
+
 ## Known limitation: MeshCore VN config is not hot-swappable
 
 `sourceRoutes` only hot-swaps virtual-node config for `meshtastic_tcp` sources,
