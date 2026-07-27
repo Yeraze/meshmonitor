@@ -52,6 +52,15 @@ After deploying with the generated configuration:
 - **Plan to use Virtual Node**: Publishes a host port so mobile apps (and the optional MQTT Proxy) can reach MeshMonitor's Virtual Node once you enable it. In 4.0 the Virtual Node is a **per-source** setting — enable it and choose an in-container port in **Dashboard → Edit Source → Virtual Node** after startup. The legacy `ENABLE_VIRTUAL_NODE` / `VIRTUAL_NODE_PORT` / `VIRTUAL_NODE_ALLOW_ADMIN_COMMANDS` environment variables were removed.
 - **Disable Anonymous Access**: When enabled, users must authenticate before accessing MeshMonitor. Useful for deployments accessible from the internet.
 
+### Export Format
+
+The configurator can hand you the same deployment in two shapes:
+
+- **docker-compose** (default): a `docker-compose.yml` plus a separate `.env` file holding secrets and credentials. Use this when you run `docker compose up` yourself.
+- **Portainer Stack**: a single YAML to paste into Portainer's stack web editor. Portainer has no `.env` file to read, so this format drops `env_file: .env` and instead lists the variables you must set in Portainer's own **Environment variables** form — `SESSION_SECRET`, your database credentials, and the BLE address, depending on what you picked above.
+
+The services, ports, and volumes are identical between the two. Only how the secrets reach the container changes.
+
 ### Additional Settings
 
 - **Watchtower (unattended updates)**: Adds a [Watchtower](/configuration/updating#unattended-updates-with-watchtower) service, label-scoped to only watch the `meshmonitor` container, so new releases are pulled and applied automatically.

@@ -54,6 +54,15 @@ Click any node marker to view detailed information:
 - **Position accuracy** (🎯) — a human-readable estimate derived from the node's reported GPS precision (e.g. "~91 m"), shown whenever the node broadcasts a non-full precision fix
 - **Location source** (🛰️) — how the position was obtained: Manual, Internal GPS, or External GPS. Hidden when the node hasn't reported a source.
 
+#### Share a Node as a Contact
+
+The node detail card has a **Share contact** action that turns the node into a standard Meshtastic contact you can hand to someone else:
+
+- **QR code** — point the Meshtastic app's contact scanner at it to add the node, its name, and its public key in one step.
+- **Contact URL** — the same contact encoded as a `https://meshtastic.org/v/#…` link you can paste into chat or a browser. (`/v/` is the contact form; `/e/` is the channel-set link, which this is not.)
+
+Both carry the node's public key, so the receiving device can send PKI-encrypted direct messages without anyone retyping a key. This shares a *contact*, not your channel keys — the link contains no PSK and grants no access to your MeshMonitor instance.
+
 ### Map Controls
 
 #### Zoom Controls
