@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MapStyleManager from './MapStyleManager';
@@ -42,6 +42,10 @@ describe('MapStyleManager', () => {
     vi.clearAllMocks();
     settingsMock.activeStyleId = null;
     mockApiGet.mockResolvedValue([styleA, styleB]);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('shows an Active badge for the currently active style and an Activate button for the rest', async () => {
