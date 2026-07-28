@@ -24,6 +24,11 @@ import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
 import { MeshCoreNativeBackend, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
 import { resolveMessageScope } from './meshcoreScopeResolve.js';
 import {
+  parseMeshCoreIgnoreList,
+  isMeshCoreIgnoreListEmpty,
+  isMeshCoreSenderIgnored,
+} from './meshcoreAutoAckIgnore.js';
+import {
   MeshCoreVirtualNodeServer,
   type MeshCoreVirtualNodeConfig,
 } from './meshcoreVirtualNodeServer.js';
@@ -6898,6 +6903,24 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         );
         if (channelIdx === undefined || !enabledChannels.has(channelIdx)) {
           logger.debug(`[MeshCore:${sourceId}] Auto-ack: channel ${channelIdx} not in allowlist`);
+          return;
+        }
+      }
+
+      // Per-sender ignore list (#4391): keeps a chatty bot from echo-looping
+      // with the auto-responder. Checked BEFORE the cooldown so an ignored
+      // sender never consumes a cooldown slot. Entries match a public key
+      // (or key prefix) and/or a contact/sender name — see meshcoreAutoAckIgnore.ts.
+      const ignoreList = parseMeshCoreIgnoreList(
+        await settings.getSettingForSource(sourceId, 'meshcoreAutoAckIgnoredNodes'),
+      );
+      if (!isMeshCoreIgnoreListEmpty(ignoreList)) {
+        const senderContact = this.resolveContactByPrefix(message.fromPublicKey);
+        if (isMeshCoreSenderIgnored(ignoreList, {
+          publicKey: message.fromPublicKey,
+          names: [message.fromName, senderContact?.advName, senderContact?.name],
+        })) {
+          logger.debug(`[MeshCore:${sourceId}] Auto-ack: sender ${message.fromName ?? message.fromPublicKey} is on the ignore list`);
           return;
         }
       }

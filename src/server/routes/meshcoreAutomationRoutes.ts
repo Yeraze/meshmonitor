@@ -268,6 +268,7 @@ router.get(
       const cooldownSeconds = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckCooldownSeconds');
       const preSendDelaySeconds = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckPreSendDelaySeconds');
       const testMessages = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckTestMessages');
+      const ignoredNodes = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckIgnoredNodes');
       const scopeMode = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckScopeMode');
       const scopeName = await settings.getSettingForSource(sourceId, 'meshcoreAutoAckScopeName');
 
@@ -290,6 +291,8 @@ router.get(
           // value written directly to the DB can't escape the UI's bounds.
           preSendDelaySeconds: resolveAutoAckPreSendDelaySeconds(preSendDelaySeconds),
           testMessages: testMessages || 'test\nTest message\nping\nPING\nHello world\nTESTING 123',
+          // Per-sender ignore list (#4391): key prefixes and/or contact names.
+          ignoredNodes: ignoredNodes || '',
           // MeshCore scope/region for the ack reply (#3833).
           scopeMode: (scopeMode as 'inherit' | 'trigger' | 'unscoped' | 'named') || 'inherit',
           scopeName: scopeName || '',
@@ -320,6 +323,7 @@ router.post(
         cooldownSeconds,
         preSendDelaySeconds,
         testMessages,
+        ignoredNodes,
         scopeMode,
         scopeName,
       } = req.body as {
@@ -332,6 +336,7 @@ router.post(
         cooldownSeconds?: number;
         preSendDelaySeconds?: number;
         testMessages?: string;
+        ignoredNodes?: string;
         scopeMode?: 'inherit' | 'trigger' | 'unscoped' | 'named';
         scopeName?: string;
       };
@@ -378,6 +383,11 @@ router.post(
       }
       if (testMessages !== undefined) {
         await settings.setSourceSetting(sourceId, 'meshcoreAutoAckTestMessages', testMessages);
+      }
+      if (ignoredNodes !== undefined) {
+        // Stored verbatim (minus edge whitespace) so the operator's own layout
+        // survives a round-trip; parsing happens at match time (#4391).
+        await settings.setSourceSetting(sourceId, 'meshcoreAutoAckIgnoredNodes', String(ignoredNodes).trim());
       }
       if (scopeMode !== undefined) {
         const mode = ['inherit', 'trigger', 'unscoped', 'named'].includes(String(scopeMode)) ? String(scopeMode) : 'inherit';
