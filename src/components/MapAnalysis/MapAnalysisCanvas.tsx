@@ -46,6 +46,7 @@ export default function MapAnalysisCanvas() {
     mapTileset,
     customTilesets,
     setMapTileset,
+    activeStyleJson,
   } = useSettings();
   const {
     config,
@@ -211,6 +212,7 @@ export default function MapAnalysisCanvas() {
         zoom={zoom}
         tilesetId={mapTileset}
         customTilesets={customTilesets}
+        styleJson={activeStyleJson ?? undefined}
         showTilesetSelector
         onTilesetChange={setMapTileset}
       >
