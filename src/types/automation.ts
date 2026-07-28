@@ -122,6 +122,35 @@ export type TapbackEmojiMode = 'fixed' | 'hopCount';
 export const TAPBACK_EMOJI_MODES: readonly TapbackEmojiMode[] = ['fixed', 'hopCount'];
 
 /**
+ * What a trigger's `cooldownSeconds` window is keyed by (#4340 Phase 2).
+ *
+ *  - 'automation'  one timer for the whole rule — the pre-4.14 behaviour and
+ *                  what an ABSENT/unrecognised value means. Never change this.
+ *  - 'node'        one timer per subject node (message sender / telemetry or
+ *                  geofence node), so acking one range-tester does not suppress
+ *                  the ack to the next one.
+ *  - 'sourceNode'  one timer per (source, node), so the same physical node heard
+ *                  via two sources cools down independently.
+ *
+ * Key shapes mirror AutomationVariablesRepository.buildScopeKey exactly
+ * ('' / '<node>' / '<source>:<node>') so cooldown keys and variable scope keys
+ * read identically in logs and traces.
+ */
+export const COOLDOWN_SCOPES = ['automation', 'node', 'sourceNode'] as const;
+export type CooldownScope = (typeof COOLDOWN_SCOPES)[number];
+
+/**
+ * Coerce a stored `params.cooldownScope` to a CooldownScope. Absent, blank, or
+ * unrecognised → 'automation'. Deliberately lenient at RUNTIME (graphs written
+ * before validation existed must still run) while validateAutomationGraph
+ * rejects unrecognised values at SAVE time — the same split Phase 1 used for
+ * action.tapback's emojiMode.
+ */
+export function parseCooldownScope(raw: unknown): CooldownScope {
+  return COOLDOWN_SCOPES.includes(raw as CooldownScope) ? (raw as CooldownScope) : 'automation';
+}
+
+/**
  * Match modes for `condition.meshcoreScope` (#3914). A MeshCore text message
  * carries a region "scope" (`scopeCode` 0 = unscoped, >0 = a region; `scopeName`
  * = the resolved region). This condition matches:
@@ -331,6 +360,16 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
   if (errors.length === 0) {
     for (const n of rawNodes as AutomationNode[]) {
       const p = (n.params ?? {}) as Record<string, unknown>;
+      // Cooldown scope (#4340 Phase 2) is a trigger-level param every trigger type
+      // shares, so it is checked once here rather than duplicated into seven cases
+      // (which would silently miss any trigger type added later). Optional:
+      // absent/unset = 'automation', the pre-4.14 behaviour every stored automation
+      // depends on — same contract as action.tapback's emojiMode.
+      if (categoryOf(n.type) === 'trigger'
+          && p.cooldownScope != null
+          && !COOLDOWN_SCOPES.includes(p.cooldownScope as CooldownScope)) {
+        errors.push(`${n.type} "${n.id}" requires params.cooldownScope ∈ {automation,node,sourceNode}`);
+      }
       switch (n.type) {
         case 'flow.collapse':
           if (!COLLAPSE_MODES.includes(p.mode as CollapseMode)) {

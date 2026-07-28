@@ -94,7 +94,7 @@ trigger field and registered token; write the #4340 recipe and close the issue.
   no new table).
 - Recipe documented; #4340 closed with a link to it.
 
-### Phase 2 — Per-node cooldown scope — [ ] not started
+### Phase 2 — Per-node cooldown scope — [x] complete
 
 Add `cooldownScope: 'automation' | 'node' | 'sourceNode'` to trigger params;
 key `lastFired` by the composite; make the trace message name the node.
@@ -174,3 +174,98 @@ _(updated at each phase close)_
   `src/components/automations/catalog.ts`): it exposes *Message text*, *Sender node id*, *Recipient
   node id*, and *MeshCore scope/region* — no channel name. The recipe ships only the
   two-automation form and documents the gap instead of a workaround that doesn't exist yet.
+
+### Phase 2 close (2026-07-28)
+
+- **`TriggerContext.subjectNodeKey` is new, and deliberately cooldown-only.** `subjectNodeNum`
+  already drives node hydration (`getSubjectNode`) and variable scoping, both of which need a real
+  Meshtastic node number — widening it to also carry a MeshCore pubkey string would have broken
+  both. `subjectNodeKey` is an **optional** protocol-agnostic sibling: `undefined` (the default, and
+  what every existing Meshtastic builder and test-literal construction site leaves it as) means
+  "derive it from `subjectNodeNum`"; an explicit `null` means "this event has no stable per-subject
+  identity at all"; a set string is the identity to key cooldown off directly. `subjectKeyOf(ctx)`
+  resolves it. This kept every non-MeshCore builder, `automationSimulator.ts`, and every existing
+  `TriggerContext` test-literal untouched.
+- **MeshCore is only *half* scopable, and the failure mode is subtle enough to spell out.**
+  `buildMeshCoreMessageContext` sets `subjectNodeKey` to the sender's `fromPublicKey` for a **DM or
+  room post** — the same identity `meshcoreManager`'s own per-sender auto-ack cooldown already uses
+  — but to `null` for a **channel** post. The naive fix (key off `ctx.fields.from` unconditionally)
+  would have kept working for DMs while silently keying a channel automation off the synthetic
+  `channel-<idx>` slot string that *every sender on that channel shares* — a per-channel cooldown
+  wearing a per-node label, indistinguishable from correct behaviour until two different senders on
+  the same channel failed to cool down independently. `isChannel` (already computed for
+  `parseMeshCoreChannelIdx`) gates it explicitly.
+- **No subject ⇒ degrade to the automation-wide key, not "never fire" or "never cool down."**
+  `cooldownKeyFor` falls back to the automation-wide key (and marks the verdict `degraded`) for
+  Schedule triggers, System triggers, and MeshCore channel messages — every case with no stable
+  per-subject identity. *Never fire* would be a silent breakage (a Schedule automation with
+  `cooldownScope: 'node'`, reachable via JSON import, would stop firing with no visible cause) —
+  exactly the class of bug this phase exists to prevent. *Never cool down* would turn a throttle
+  into a spam faucet on a MeshCore channel and grow the map unbounded. *Automation-wide fallback* is
+  provably no worse than pre-Phase-2 behaviour, costs exactly one map entry, and the live trace names
+  it out loud (`cooldown active — Ns remaining (automation-wide (this event has no subject node))`).
+- **`showIf` gained a `truthy` operator.** Phase 1's `equals`/`notEquals` can't express "a number
+  field that is set" — `cooldownSeconds` can legitimately be `undefined` (never touched), `''`
+  (cleared — the `number` renderer emits `''`), or `0`, and `notEquals: 0` would show the field in
+  the first two cases. `truthy` covers all three uniformly via `Boolean(v)`. Known, harmless wart:
+  the string `'0'` is truthy, so it would show an extra select — not reachable through the number
+  renderer today. **Phase 1 semantics are preserved verbatim: hidden ≠ cleared.** Setting the
+  cooldown back to `0` hides *Cooldown applies to* but keeps `params.cooldownScope`, and the engine
+  ignores it anyway (`cooldownGate` returns early when `cooldownSeconds <= 0`) — the value survives a
+  hide/show round-trip, browser-validated.
+- **Eviction: an exact expiry pass, with a hard backstop.** `lastFired` is now
+  `Map<automationId, Map<cooldownKey, ms>>` — one inner map per automation, one entry per distinct
+  subject under `node`/`sourceNode` scope. Unlike a packet-dedup set, a cooldown entry has a provable
+  expiry: once `now - ts >= cooldownSeconds * 1000` it can never suppress anything again, so deleting
+  it is behaviour-neutral. `markFired` prunes only past a high watermark
+  (`COOLDOWN_KEYS_MAX = 4096`, mirroring `autoAckProcessedPackets`'s `> 1000` trim), first doing the
+  exact expiry pass, then — only if still over `COOLDOWN_KEYS_TRIM_TO = 2048` (the pathological case
+  of more than 2048 distinct subjects firing inside a single cooldown window) — dropping the oldest
+  entries as a backstop. Deliberately **not** modelled on `meshtasticManager.autoAckCooldowns`
+  (`Map<nodeNum, ms>`), which is never evicted at all — it gets away with that because it's
+  per-manager and bounded in practice by one radio's NodeDB, while the engine's map is per
+  (automation × node) across every source including MQTT firehoses, so the same choice would be a
+  real leak here. Also: `lastFired` is no longer written unconditionally — `markFired` returns
+  immediately when `cooldownSeconds <= 0`, since a timestamp that's never read is memory spent for
+  nothing, keeping the common cooldown-less automation at exactly zero cooldown-map entries.
+- **Validation is a pre-switch guard, not a per-trigger-type `case`.** `cooldownScope` is a
+  trigger-level param shared by all seven trigger types; duplicating it into seven `case` labels
+  inside `validateAutomationGraph`'s `switch (n.type)` would silently miss the eighth trigger type
+  someone adds later. It's checked once via `categoryOf(n.type) === 'trigger'` immediately before the
+  switch. Orchestrator-approved deviation from the brief's per-`case` precedent (`action.tapback`'s
+  `emojiMode`, which is right for a *single-block* param but wrong for a param seven blocks share).
+- **Finding beyond the brief: the validation guard makes `parseCooldownScope`'s runtime leniency
+  unreachable via the normal load path.** `parseCooldownScope` is documented as "deliberately lenient
+  at runtime" (absent/unrecognised → `'automation'`) on the theory that graphs written before
+  validation existed must still run — but `validateAutomationGraph` now rejects an unrecognised
+  `cooldownScope` **at save/import time**, so a stored automation can never reach `load()` with a
+  bogus value in the first place; the automation is rejected wholesale, not silently downgraded to
+  `'automation'` scope. The runtime leniency is real defence-in-depth (it protects against a graph
+  written directly to the DB, bypassing validation), but it is not exercised by any path a normal
+  user can trigger. The engine test for this case (§6, case (e)) asserts the **actual** observed
+  behaviour — the automation is rejected and never loads — rather than the spec's original wording of
+  "`'bogus'` behaves as `'automation'`" at runtime, which describes `parseCooldownScope` in isolation,
+  not the end-to-end load path.
+- **Lint ratchet caught a new `no-explicit-any` (baseline 6 → 7) in `automationEngineService.ts`.**
+  The `cooldownScope` lookup at `load()` originally cast through `(triggerNode.params as any)`,
+  copying the existing `cooldownSeconds` line it sits beside. `params` is already typed
+  `Record<string, unknown>`, so the cast was unnecessary — dropped it (`triggerNode.params?.cooldownScope`)
+  rather than growing the baseline. `npm run lint:ci` confirmed the ratchet holds at 6 with the cast
+  removed.
+- **The disable → re-enable edge case, restated precisely.** `load()` now drops `lastFired` state for
+  any automation id no longer present in `this.index` (deleted or disabled), since a dead id is
+  unreachable from any dispatch site and would otherwise strand up to `COOLDOWN_KEYS_MAX` entries
+  forever for a node-scoped automation on a churny mesh. Observable edge, accepted: disabling and
+  re-enabling a rule **inside its own cooldown window** now lets it fire immediately instead of
+  waiting out the remainder, whereas before this phase the cooldown map was keyed only by
+  `automationId` and survived a disable/enable cycle. Erring toward firing is the safer direction of
+  the two available (the alternative — leaking cooldown state for automations that no longer exist —
+  is strictly worse), and it is pinned by a regression test (§6 case (j)).
+- **Two out-of-scope follow-ups still need issues filed (spec §8).** `geofenceState`
+  (`Map<'${automationId}:${nodeNum}', boolean>`, `automationEngineService.ts:121-122, :514-516`) and
+  `meshtasticManager.autoAckCooldowns` (`Map<nodeNum, ms>`, `meshtasticManager.ts:825`) have the same
+  unbounded-growth shape this phase just fixed for `lastFired`, and neither was touched here.
+  `geofenceState` in particular can't reuse this phase's "delete once expired" eviction verbatim —
+  deleting an entry there is *not* behaviour-neutral, since it resets the enter/exit dwell baseline
+  for that node, so it needs its own design decision rather than a copy-paste of `pruneCooldownKeys`.
+  Both need a follow-up issue; neither has one yet as of this close.

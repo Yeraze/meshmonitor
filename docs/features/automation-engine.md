@@ -39,8 +39,9 @@ Key properties:
   (below) to scope a workflow to a subset of sources when you want.
 - **Permission-gated.** The tab and its API are gated by a dedicated global `automations`
   permission, separate from the legacy per-source `automation` permission.
-- **Cooldown / rate-limit** per automation prevents mesh spam, plus a per-run action cap and a
-  loop guard so an automation can't runaway-recurse.
+- **Cooldown / rate-limit** per automation, or **per node / per source+node** via the trigger's
+  *Cooldown applies to* (below), prevents mesh spam, plus a per-run action cap and a loop guard
+  so an automation can't runaway-recurse.
 - **Variables** — a separate management area for user-defined values (constants and runtime
   flags/counters) referenced anywhere as `{{ var.name }}`.
 - **Run log** — every fire is recorded with its per-step outcome for debugging.
@@ -93,7 +94,9 @@ every hour). It is backed by a live [croner](https://github.com/Hexagon/croner) 
 - A cron job is armed per enabled schedule automation; **create / update / enable / disable /
   delete** all re-arm correctly (the old job is stopped first, so there are never stale or
   duplicate jobs).
-- The per-automation **cooldown** is honored on each fire.
+- The **cooldown** is honored on each fire. A schedule trigger has no triggering message and no
+  subject node, so its cooldown is always **automation-wide** — the *Cooldown applies to* field
+  isn't offered here (see [Cooldown applies to](#cooldown-applies-to)).
 - The cron is **validated at save time** (5-field, no seconds) — an invalid expression is rejected
   in the builder rather than silently never firing.
 
@@ -113,6 +116,48 @@ Defines a geographic region and fires when a node **enters**, **leaves**, or **d
 inside)** it. The region is drawn directly on a Leaflet map — either a **circle** (center + radius)
 or a **polygon** — using the shared geofence map editor. Evaluation is shape-aware (point-in-circle
 or polygon ray-cast). See also the dedicated [Geofence Triggers](/features/geofence-triggers) page.
+
+### Cooldown applies to
+
+The five triggers with a **Cooldown (seconds)** field — **A message is received**, **A new node is
+discovered**, **A node is updated**, **Telemetry is received**, and **A node enters/leaves a
+region** — also get a **Cooldown applies to** select, directly beneath it. It's hidden until you set
+a non-zero cooldown, and setting the cooldown back to `0` hides it again without losing your choice
+— the value is remembered if you raise the cooldown again later. (Schedule and System triggers have
+no cooldown field at all, so they get no scope field either.)
+
+| Value | Meaning |
+| --- | --- |
+| **The whole automation (one shared timer)** | One timer for the whole rule — the default, and what an automation with no scope set (including every automation saved before this feature existed) behaves as. On a busy channel, acking one sender suppresses the ack to the next one until the window elapses. |
+| **Each node separately** | One timer per subject node (the message sender, the telemetry/geofence node, …) — acking one range-tester no longer suppresses the ack to the next. |
+| **Each node, per source** | One timer per (source, node) — the same physical node heard via two sources (e.g. a Meshtastic TCP link and an MQTT bridge) cools down independently. |
+
+**Worked example** — `trigger.message` on channel `Primary`, cooldown `60`, scope **Each node
+separately**:
+
+| t | event | verdict |
+| --- | --- | --- |
+| 0s | node 111 sends "test" | fires |
+| 5s | node 222 sends "test" | **fires** (under *The whole automation* this would be suppressed) |
+| 20s | node 111 sends "test" | suppressed — `cooldown active — 40s remaining (node 111)` |
+| 70s | node 111 sends "test" | fires (window elapsed) |
+
+Under **Each node, per source**, node 111 heard on `tcp-1` and on `mqtt-1` cools down independently
+— a message on one source never suppresses the ack on the other.
+
+**Degraded fallback, honestly stated.** Per-node/per-source scoping needs a subject to key off. When
+an event has none, the cooldown falls back to one shared timer — the same behaviour as *The whole
+automation* — rather than never firing or never cooling down. This applies to:
+
+- **Schedule** and **System** triggers (no triggering message, so no subject node at all).
+- **MeshCore channel messages.** MeshCore **DMs and room posts** get real per-sender cooldown, keyed
+  by the sender's public key — the same identity Auto-Acknowledge's own per-node cooldown uses. A
+  **channel** post cannot, on any design: the protocol carries no per-sender identity on a channel
+  packet, only a synthetic per-channel slot key shared by *every* sender on that channel, so keying
+  off it would look per-node while actually being per-channel.
+
+The live trace names which fallback applied, e.g. `cooldown active — 12s remaining (automation-wide
+(this event has no subject node))`.
 
 ## Conditions
 
@@ -293,8 +338,10 @@ text body for channel-specific wording — exactly the byte pressure the issue d
 - **Text contains:** `test` — or use **Text matches regex** `\b(test|ping)\b` for word-boundary
   matching so it doesn't fire on "latest" or "pingpong".
 - **On channels:** `Primary`.
-- **Cooldown (seconds):** leave at `0`. See [Cooldown caveat](#cooldown-caveat-per-automation-not-per-node)
-  below before raising it.
+- **Cooldown (seconds):** `60`. **Cooldown applies to:** *Each node separately* — see
+  [Cooldown applies to](#cooldown-applies-to). This keys the throttle off the sending node, so
+  acking one range-tester no longer suppresses the ack to the next one who pings inside the same
+  60 seconds.
 
 **THEN**
 1. `Send a tapback (reaction)` → **Emoji source:** *The message's hop count*.
@@ -328,16 +375,6 @@ a text condition on the channel — isn't available today: the **Text comparison
 picker (`Field` on `condition.string`) offers *Message text*, *Sender node id*, *Recipient node id*,
 and *MeshCore scope/region* for a message trigger, but not the channel name. Use the two-automation
 form above; it costs one extra automation, not any extra typing per rule.
-
-### Cooldown caveat (per-automation, not per-node)
-
-Be aware before you set a non-zero **Cooldown (seconds)**: the engine's cooldown currently applies
-to the whole automation, not to each sending node individually. On a busy channel, a cooldown after
-acking one range-tester suppresses acks to the *next* tester who pings before the window elapses.
-Leave it at `0` for this recipe, or accept that trade-off deliberately. Per-node cooldown scope is
-planned for Phase 2 of the epic this recipe belongs to (see
-[`AUTOACK_AUTOMATION_EPIC.md`](https://github.com/Yeraze/meshmonitor/blob/main/docs/internal/dev-notes/AUTOACK_AUTOMATION_EPIC.md)
-internally).
 
 ### Byte budget
 
@@ -506,7 +543,10 @@ showing **why it did or didn't run**:
 - **fired** — the trigger matched and the action steps ran; the per-step trace is shown.
 - **prefiltered** — the event was filtered out before the conditions ran (e.g. wrong source/channel),
   with the reason.
-- **cooldown** — the rule matched but was suppressed by its cooldown window.
+- **cooldown** — the rule matched but was suppressed by its cooldown window. The reason names the
+  key that was cooling down, e.g. `cooldown active — 40s remaining (node 111)` or
+  `cooldown active — 12s remaining (automation-wide (this event has no subject node))` (see
+  [Cooldown applies to](#cooldown-applies-to)).
 
 The panel keeps the most recent entries in a rolling buffer and **auto-stops after 5 minutes** (and
 on close or disconnect), so a trace never runs unbounded.

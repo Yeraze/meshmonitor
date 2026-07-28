@@ -6,6 +6,7 @@ import {
   buildTelemetryContext,
   buildSystemContext,
   buildScheduleContext,
+  buildGeofenceContext,
   deriveHops,
   messageMatchesFilter,
   meshCoreMessageMatchesFilter,
@@ -14,7 +15,9 @@ import {
   messageFilterChannelNames,
   messageFilterUsesChannelName,
   resolveTriggerPath,
+  subjectKeyOf,
   BROADCAST_ADDR,
+  type TriggerContext,
 } from './triggerContext.js';
 import type { DbMessage } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
@@ -153,6 +156,48 @@ describe('other trigger contexts', () => {
     expect(ctx.triggerType).toBe('trigger.schedule');
     expect(ctx.subjectNodeNum).toBeNull();
     expect(ctx.fields.timestamp).toBe(1234);
+  });
+
+  // #4340 Phase 2: every Meshtastic-side builder leaves subjectNodeKey undefined
+  // — subjectKeyOf() then derives it from subjectNodeNum.
+  it('every Meshtastic builder leaves subjectNodeKey undefined', () => {
+    expect(buildMessageContext(msg(), 'default', 1).subjectNodeKey).toBeUndefined();
+    expect(buildNodeContext('trigger.nodeUpdated', 999, [], 'default', 5).subjectNodeKey).toBeUndefined();
+    expect(buildTelemetryContext(7, 'batteryLevel', 18, '%', 'default', 5).subjectNodeKey).toBeUndefined();
+    expect(buildSystemContext('bootup', null, null, undefined, 5).subjectNodeKey).toBeUndefined();
+    expect(buildScheduleContext(null, 1234).subjectNodeKey).toBeUndefined();
+    expect(buildGeofenceContext(5, 'enter', 0, 0, 1, 'default', 5).subjectNodeKey).toBeUndefined();
+  });
+});
+
+describe('subjectKeyOf (#4340 Phase 2)', () => {
+  it('derives from subjectNodeNum for a Meshtastic message context', () => {
+    const ctx = buildMessageContext(msg(), 'default', 1234);
+    expect(subjectKeyOf(ctx)).toBe('111');
+  });
+
+  it('is null for a schedule context (no subject node)', () => {
+    const ctx = buildScheduleContext(null, 1234);
+    expect(subjectKeyOf(ctx)).toBeNull();
+  });
+
+  it('is the stringified nodeNum for a system context that carries one, null otherwise', () => {
+    const withNode = buildSystemContext('source-connected', 'default', 42, undefined, 5);
+    expect(subjectKeyOf(withNode)).toBe('42');
+    const withoutNode = buildSystemContext('bootup', null, null, undefined, 5);
+    expect(subjectKeyOf(withoutNode)).toBeNull();
+  });
+
+  it('an explicit subjectNodeKey: null wins over a non-null subjectNodeNum', () => {
+    const ctx: TriggerContext = {
+      triggerType: 'trigger.message',
+      sourceId: 'default',
+      subjectNodeNum: 111,
+      subjectNodeKey: null,
+      timestamp: 1,
+      fields: {},
+    };
+    expect(subjectKeyOf(ctx)).toBeNull();
   });
 });
 
@@ -296,6 +341,9 @@ describe('buildMeshCoreMessageContext (#3833)', () => {
     );
     expect(ctx.triggerType).toBe('trigger.message');
     expect(ctx.subjectNodeNum).toBeNull();
+    // #4340 Phase 2: a channel post's fromPublicKey is the synthetic channel-<idx>
+    // slot key SHARED by every sender — cooldown must degrade, not key off it.
+    expect(ctx.subjectNodeKey).toBeNull();
     expect(ctx.fields.channel).toBe(3);
     expect(ctx.fields.isBroadcast).toBe(true);
     expect(ctx.fields.isDM).toBe(false);
@@ -326,6 +374,8 @@ describe('buildMeshCoreMessageContext (#3833)', () => {
     expect(ctx.fields.from).toBe('aabbcc');
     // scopeCode 0 = explicitly unscoped → not "scoped"
     expect(ctx.fields.scoped).toBe(false);
+    // #4340 Phase 2: a DM carries the real sender pubkey as its cooldown key.
+    expect(ctx.subjectNodeKey).toBe('aabbcc');
   });
 
   it('a room post is neither DM nor broadcast and has no channel', () => {
@@ -337,6 +387,8 @@ describe('buildMeshCoreMessageContext (#3833)', () => {
     expect(ctx.fields.channel).toBeUndefined();
     expect(ctx.fields.isDM).toBe(false);
     expect(ctx.fields.isBroadcast).toBe(false);
+    // #4340 Phase 2: a room post's author pubkey is a real per-sender identity.
+    expect(ctx.subjectNodeKey).toBe('authorkey');
   });
 
   // Universal cross-protocol tokens (#3978)

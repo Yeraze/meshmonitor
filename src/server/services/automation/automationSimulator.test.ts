@@ -38,6 +38,28 @@ describe('simulateAutomation', () => {
     expect((r.actions[0].resolvedParams as any).replyId).toBe(42); // reply to triggering packet
   });
 
+  // #4340 Phase 2: the simulator has no lastFired map and never gates on
+  // cooldownScope — a dry-run must always show the operator what WOULD happen,
+  // regardless of the rule's real-world cooldown state. Pinned so nobody adds
+  // cooldown modelling to the tester later without a deliberate decision.
+  it('cooldownScope is a no-op in the simulator: the same subject fires on every dry-run', async () => {
+    const graph: AutomationGraph = {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: { textContains: 'ping', cooldownSeconds: 60, cooldownScope: 'node' } },
+        { id: 'a', type: 'action.tapback', params: { emoji: '👍' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    };
+    const opts = { graph, varsRepo, event: { kind: 'message' as const, text: 'ping', from: 111 }, now: 1_000_000 };
+    const first = await simulateAutomation(opts);
+    const second = await simulateAutomation(opts); // same subject, same `now` — still fires
+    expect(first.matched).toBe(true);
+    expect(first.actions).toHaveLength(1);
+    expect(second.matched).toBe(true);
+    expect(second.actions).toHaveLength(1);
+  });
+
   it('false branch is not taken (condition routes correctly)', async () => {
     const graph: AutomationGraph = {
       version: 1,

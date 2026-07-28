@@ -2,9 +2,10 @@
  * Automation Engine service (#3653, §4) — the runtime orchestrator.
  *
  * Loads enabled automations, indexes them by trigger type, and on each mesh event
- * builds the trigger context, fast-fails on the trigger pre-filter, enforces a
- * per-automation cooldown, evaluates the graph (condition routing / collapse /
- * fanout / actions / setVar), and writes a run-log row.
+ * builds the trigger context, fast-fails on the trigger pre-filter, enforces the
+ * trigger's cooldown at its configured scope (automation / node / source+node),
+ * evaluates the graph (condition routing / collapse / fanout / actions / setVar),
+ * and writes a run-log row.
  *
  * Phase 1a is synchronous: every run completes to `completed`/`failed`; the
  * `waiting` status and flow.delay arrive in 1b. Mesh IO is injected via ActionDeps
@@ -16,9 +17,11 @@ import type { AutomationsRepository } from '../../../db/repositories/automations
 import {
   validateAutomationGraph,
   categoryOf,
+  parseCooldownScope,
   type AutomationGraph,
   type AutomationNode,
   type TriggerType,
+  type CooldownScope,
 } from '../../../types/automation.js';
 import { VariableResolver } from './variableResolver.js';
 import {
@@ -49,6 +52,7 @@ import {
   type NodeDataProvider,
   varContextFromTrigger,
   resolveOperand,
+  cooldownKeyFor,
 } from './engineContext.js';
 
 interface LoadedAutomation {
@@ -58,7 +62,33 @@ interface LoadedAutomation {
   triggerNode: AutomationNode;
   triggerType: TriggerType;
   cooldownSeconds: number;
+  cooldownScope: CooldownScope;
 }
+
+/**
+ * Per-automation cooldown-key bounds (#4340 Phase 2). Under 'automation' scope
+ * an automation holds exactly ONE key, as before. Under 'node'/'sourceNode' it
+ * holds one per distinct subject — on a large mesh with MQTT sources that is
+ * thousands, so it must be bounded.
+ *
+ * Shape copied from meshtasticManager's autoAckProcessedPackets high-water trim
+ * (`> 1000 → keep last 500`, :9992): prune only when a high watermark is passed,
+ * and always bring the size well under it, so pruning is amortised O(1) per fire.
+ *
+ * Refined with an EXACT first pass: unlike a packet-dedup set, a cooldown entry
+ * has a provable expiry — once `now - ts >= cooldownSeconds*1000` it can never
+ * suppress anything, so deleting it is behaviour-neutral. The hard trim below is
+ * only a backstop for the pathological case of >TRIM_TO distinct subjects firing
+ * inside a single cooldown window.
+ *
+ * Deliberately NOT modelled on meshtasticManager's autoAckCooldowns
+ * (Map<nodeNum, ms>, :825) — that map is never evicted at all. It gets away with
+ * it because it is per-manager and bounded in practice by one radio's NodeDB;
+ * the engine's is per (automation × node) across EVERY source including MQTT
+ * firehoses, so the same choice would be a real leak here.
+ */
+const COOLDOWN_KEYS_MAX = 4096;
+const COOLDOWN_KEYS_TRIM_TO = 2048;
 
 /** Compact result of evaluating one automation — persisted run-log shape is unchanged;
  *  this is the subset the live trace ("view logs") streams to the browser. */
@@ -116,8 +146,8 @@ export class AutomationEngineService {
 
   /** triggerType → loaded automations. */
   private index = new Map<TriggerType, LoadedAutomation[]>();
-  /** automationId → last fired ms (cooldown). */
-  private lastFired = new Map<string, number>();
+  /** automationId → cooldown key → last fired ms. Inner key shape: cooldownKeyFor(). */
+  private lastFired = new Map<string, Map<string, number>>();
   /** `${automationId}:${nodeNum}` → was the node inside the geofence last check. */
   private geofenceState = new Map<string, boolean>();
   /** automationId → live cron job, for `trigger.schedule` automations. */
@@ -154,13 +184,27 @@ export class AutomationEngineService {
       if (!triggerNode) continue;
       const triggerType = triggerNode.type as TriggerType;
       const cooldownSeconds = Number((triggerNode.params as any)?.cooldownSeconds ?? 0) || 0;
+      // No `as any` needed: params is Record<string, unknown> and parseCooldownScope
+      // takes unknown. (The cooldownSeconds line above predates the lint ratchet.)
+      const cooldownScope = parseCooldownScope(triggerNode.params?.cooldownScope);
       const entry: LoadedAutomation = {
-        id: row.id, name: row.name, graph: result.graph, triggerNode, triggerType, cooldownSeconds,
+        id: row.id, name: row.name, graph: result.graph, triggerNode, triggerType, cooldownSeconds, cooldownScope,
       };
       if (!index.has(triggerType)) index.set(triggerType, []);
       index.get(triggerType)!.push(entry);
     }
     this.index = index;
+    // Drop cooldown state for automations that are no longer loaded (deleted or
+    // disabled). They are unreachable — runTrigger/onSchedule/checkGeofences only
+    // iterate `this.index` — so this is unobservable while they stay out of the
+    // index. One observable edge, accepted: disabling and re-enabling a rule inside
+    // its own cooldown window now lets it fire immediately instead of waiting out
+    // the remainder. Erring toward firing is the safe direction, and without this a
+    // deleted node-scoped automation would strand up to COOLDOWN_KEYS_MAX entries
+    // forever.
+    const liveIds = new Set<string>();
+    for (const list of index.values()) for (const a of list) liveIds.add(a.id);
+    for (const id of this.lastFired.keys()) if (!liveIds.has(id)) this.lastFired.delete(id);
     this.rescheduleCron();
     logger.info(`[AutomationEngine] loaded ${rows.length} enabled automation(s)`);
   }
@@ -202,14 +246,12 @@ export class AutomationEngineService {
     const now = this.now();
     const ctx = buildScheduleContext(null, now);
     const traced = automationTraceBus.activeCount() > 0 && automationTraceBus.isTracing(a.id, now);
-    if (!this.cooledDown(a, now)) {
-      if (traced) {
-        const remainingMs = Math.max(0, a.cooldownSeconds * 1000 - (now - (this.lastFired.get(a.id) ?? 0)));
-        this.emitTrace(a, ctx, now, { outcome: 'cooldown', reason: `cooldown active — ${Math.ceil(remainingMs / 1000)}s remaining` });
-      }
+    const gate = this.cooldownGate(a, ctx, now);
+    if (!gate.ok) {
+      if (traced) this.emitTrace(a, ctx, now, { outcome: 'cooldown', reason: gate.reason });
       return 0;
     }
-    this.lastFired.set(a.id, now);
+    this.markFired(a, gate.key, now);
     const fr = await this.fireAutomation(a, ctx, now);
     if (traced) this.emitTrace(a, ctx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
     return 1;
@@ -246,10 +288,53 @@ export class AutomationEngineService {
     if (!r.ok) throw new Error(r.error);
   }
 
-  private cooledDown(a: LoadedAutomation, now: number): boolean {
-    if (a.cooldownSeconds <= 0) return true;
-    const last = this.lastFired.get(a.id);
-    return last == null || now - last >= a.cooldownSeconds * 1000;
+  /**
+   * Cooldown verdict for one automation against one event. Returns the key to
+   * stamp on success, or the trace reason on suppression.
+   *
+   * This is the ONLY place the cooldown window is evaluated. The three call sites
+   * (message/node/telemetry/system dispatch, schedule dispatch, geofence) must all
+   * route through it — a scope fix applied to only one of them is the exact bug
+   * this phase exists to prevent.
+   */
+  private cooldownGate(
+    a: LoadedAutomation,
+    ctx: TriggerContext,
+    now: number,
+  ): { ok: true; key: string } | { ok: false; reason: string } {
+    if (a.cooldownSeconds <= 0) return { ok: true, key: '' };
+    const { key, label } = cooldownKeyFor(a.cooldownScope, ctx);
+    const last = this.lastFired.get(a.id)?.get(key);
+    const windowMs = a.cooldownSeconds * 1000;
+    if (last == null || now - last >= windowMs) return { ok: true, key };
+    const remainingMs = Math.max(0, windowMs - (now - last));
+    return { ok: false, reason: `cooldown active — ${Math.ceil(remainingMs / 1000)}s remaining (${label})` };
+  }
+
+  /** Stamp a fire against its cooldown key, bounding the per-automation key set. */
+  private markFired(a: LoadedAutomation, key: string, now: number): void {
+    // No cooldown ⇒ nothing can ever be suppressed ⇒ never grow the map. (Today
+    // the timestamp is written unconditionally, but it is only ever READ inside
+    // the `cooldownSeconds > 0` branch, so skipping it is unobservable and keeps
+    // memory at zero for the overwhelmingly common cooldown-less automation.)
+    if (a.cooldownSeconds <= 0) return;
+    let inner = this.lastFired.get(a.id);
+    if (!inner) { inner = new Map(); this.lastFired.set(a.id, inner); }
+    inner.set(key, now);
+    if (inner.size > COOLDOWN_KEYS_MAX) this.pruneCooldownKeys(a, inner, now);
+  }
+
+  private pruneCooldownKeys(a: LoadedAutomation, inner: Map<string, number>, now: number): void {
+    const windowMs = a.cooldownSeconds * 1000;
+    // Exact pass: an entry older than the window can no longer suppress anything.
+    for (const [k, ts] of inner) if (now - ts >= windowMs) inner.delete(k);
+    if (inner.size <= COOLDOWN_KEYS_TRIM_TO) return;
+    // Backstop: more than COOLDOWN_KEYS_TRIM_TO distinct subjects fired inside one
+    // window. Drop the oldest — they expire soonest — accepting that those few
+    // subjects may fire once early rather than growing without bound.
+    const byAge = [...inner.entries()].sort((x, y) => x[1] - y[1]);
+    for (let i = 0; i < byAge.length - COOLDOWN_KEYS_TRIM_TO; i++) inner.delete(byAge[i][0]);
+    logger.debug(`[AutomationEngine] "${a.name}" cooldown keys trimmed to ${inner.size} (scope=${a.cooldownScope})`);
   }
 
   /**
@@ -275,14 +360,12 @@ export class AutomationEngineService {
         if (traced) this.emitTrace(a, ctx, now, { outcome: 'prefiltered', reason: describeMiss?.(a) ?? 'did not match the trigger filter' });
         continue;
       }
-      if (!this.cooledDown(a, now)) {
-        if (traced) {
-          const remainingMs = Math.max(0, a.cooldownSeconds * 1000 - (now - (this.lastFired.get(a.id) ?? 0)));
-          this.emitTrace(a, ctx, now, { outcome: 'cooldown', reason: `cooldown active — ${Math.ceil(remainingMs / 1000)}s remaining` });
-        }
+      const gate = this.cooldownGate(a, ctx, now);
+      if (!gate.ok) {
+        if (traced) this.emitTrace(a, ctx, now, { outcome: 'cooldown', reason: gate.reason });
         continue;
       }
-      this.lastFired.set(a.id, now);
+      this.markFired(a, gate.key, now);
       fired++;
       const fr = await this.fireAutomation(a, ctx, now);
       if (traced) this.emitTrace(a, ctx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
@@ -522,14 +605,12 @@ export class AutomationEngineService {
         if (traced) this.emitTrace(a, geoCtx, now, { outcome: 'prefiltered', reason: prev === undefined ? 'first sighting — baseline only' : `no ${mode} transition (node ${inside ? 'inside' : 'outside'})` });
         continue;
       }
-      if (!this.cooledDown(a, now)) {
-        if (traced) {
-          const remainingMs = Math.max(0, a.cooldownSeconds * 1000 - (now - (this.lastFired.get(a.id) ?? 0)));
-          this.emitTrace(a, geoCtx, now, { outcome: 'cooldown', reason: `cooldown active — ${Math.ceil(remainingMs / 1000)}s remaining` });
-        }
+      const gate = this.cooldownGate(a, geoCtx, now);
+      if (!gate.ok) {
+        if (traced) this.emitTrace(a, geoCtx, now, { outcome: 'cooldown', reason: gate.reason });
         continue;
       }
-      this.lastFired.set(a.id, now);
+      this.markFired(a, gate.key, now);
       fired++;
       const fr = await this.fireAutomation(a, geoCtx, now);
       if (traced) this.emitTrace(a, geoCtx, now, { outcome: 'fired', status: fr.status, conditionResults: fr.conditionResults, actions: fr.actions, steps: fr.steps });
