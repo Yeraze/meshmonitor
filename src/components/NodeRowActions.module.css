@@ -1,0 +1,32 @@
+/* Node-row action-strip grouping (issue #4379). CSS module — do not add these
+ * rules to the global sheets (CLAUDE.md CSS containment rule).
+ *
+ * `.node-actions` used to be one undifferentiated flex strip that interleaved
+ * inert `<span class="node-indicator-icon">` status icons with real buttons.
+ * Nothing told you which was which, which is the complaint #4379 was filed
+ * over. These two wrappers split the strip into "facts about this node" and
+ * "things you can do to it", with a rule between them.
+ */
+
+/* Informational only: location, MQTT, store & forward, telemetry, weather,
+ * PKC, remote admin, unmessageable. Nothing in here is clickable. */
+.indicators {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Interactive: send DM, copy NodeInfo, clear security warning, open details. */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* The divider only earns its place when there is actually something to divide
+ * — a node with no indicators at all would otherwise get a stray leading rule.
+ * `:empty` matches because JSX emits no text nodes for the false branches. */
+.indicators:not(:empty) + .actions {
+  padding-left: 0.5rem;
+  border-left: 1px solid var(--ctp-surface1);
+}

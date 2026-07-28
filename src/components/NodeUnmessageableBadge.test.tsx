@@ -1,42 +1,46 @@
 /**
  * @vitest-environment jsdom
  *
- * Issue #4326 — in the node list, a node that reports itself unmessageable
- * gets this badge instead of the Send-DM button. It used to be an inert
- * <span> with no click handler, so the list offered no route at all to the
- * node's details. It must now be an actual control that opens Node Details.
+ * Issue #4379 — the unmessageable badge is an inert status indicator again.
+ *
+ * #4326 gave unmessageable nodes a badge in place of the Send-DM button, and
+ * #4333 made that badge clickable so the node list stopped being a dead end.
+ * #4379 rejected the *placement*: it was the one interactive element in a row
+ * of look-alike inert icons, and it hung "go to Node Details" off a messaging
+ * icon. The route to details now lives in NodeDetailsButton, on every row, so
+ * this badge must go back to being purely informational.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { NodeUnmessageableBadge } from './NodeUnmessageableBadge';
 
 describe('NodeUnmessageableBadge', () => {
-  it('renders as a button, not an inert badge', () => {
-    render(<NodeUnmessageableBadge onOpenDetails={vi.fn()} />);
-    expect(screen.getByTestId('node-unmessageable-badge').tagName).toBe('BUTTON');
-    expect(screen.getByRole('button')).toBeInTheDocument();
+  it('renders as an inert indicator, not a control', () => {
+    render(<NodeUnmessageableBadge />);
+
+    const badge = screen.getByTestId('node-unmessageable-badge');
+    expect(badge.tagName).toBe('SPAN');
+    // The regression #4379 guards against is this badge becoming clickable
+    // again. Nothing in the indicator group should be exposed as a control.
+    expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('opens node details when clicked', async () => {
-    const onOpenDetails = vi.fn();
-    render(<NodeUnmessageableBadge onOpenDetails={onOpenDetails} />);
+  it('sits in the indicator group so it matches the other status icons', () => {
+    render(<NodeUnmessageableBadge />);
 
-    await userEvent.click(screen.getByRole('button'));
-    expect(onOpenDetails).toHaveBeenCalledTimes(1);
+    // Sharing `.node-indicator-icon` with location/MQTT/telemetry is what makes
+    // it *look* inert. A bespoke class would let it drift back into looking
+    // interactive, which is the whole complaint in #4379.
+    expect(screen.getByTestId('node-unmessageable-badge')).toHaveClass('node-indicator-icon');
   });
 
-  it('keeps the existing unmessageable explanation and advertises the new click path', () => {
-    render(<NodeUnmessageableBadge onOpenDetails={vi.fn()} />);
-    const label = screen.getByTestId('node-unmessageable-badge').getAttribute('aria-label') ?? '';
+  it('explains itself with the pre-existing translated sentence and nothing else', () => {
+    render(<NodeUnmessageableBadge />);
+    const badge = screen.getByTestId('node-unmessageable-badge');
 
-    // The already-translated sentence is reused rather than replaced, so #4326
-    // costs translators one short string instead of invalidating the long one.
     // i18n is unconfigured under jsdom, so t() echoes the key — which lets this
-    // pin the exact two keys AND the ". " joiner the label is assembled from.
-    // (Asserting the English fallbacks instead would pass just as well without
-    // the reuse, and would not catch a swapped key.)
-    expect(label).toBe('nodes.unmessageable. nodes.unmessageable_open_details');
-    expect(screen.getByTestId('node-unmessageable-badge')).toHaveAttribute('title', label);
+    // pin the exact key rather than the English fallback. The "click to open
+    // its details" half that #4333 appended is gone along with the click.
+    expect(badge).toHaveAttribute('title', 'nodes.unmessageable');
   });
 });

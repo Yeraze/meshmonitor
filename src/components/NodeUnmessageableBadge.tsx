@@ -1,47 +1,39 @@
 import { useTranslation } from 'react-i18next';
 import { UiIcon } from './icons';
-import styles from './NodeUnmessageableBadge.module.css';
-
-export interface NodeUnmessageableBadgeProps {
-  /** Opens the node's details (the Messages tab's Node Details block). */
-  onOpenDetails: (e: React.MouseEvent) => void;
-}
 
 /**
- * The "this node can't receive DMs" badge shown in the node list in place of
- * the Send-DM button (issue #4326).
+ * The "this node can't receive DMs" badge shown in the node list's indicator
+ * group (issue #4326).
  *
- * It used to be an inert `<span>`, which made the node list a dead end for
- * unmessageable nodes: no DM button, no details link, nothing. It is now a
- * button that reaches Node Details, matching what the map popup's "More
- * Details" action has always done for these nodes — that popup has never
- * gated on messageability. Messaging itself stays unavailable: MessagesTab
- * hides the composer behind its `dmReadOnlyReason === 'unmessageable'`
- * banner, which also offers the explicit "message anyway" override.
+ * It is an inert indicator, exactly like the location / MQTT / telemetry icons
+ * beside it. #4333 briefly made it a button that opened Node Details — that
+ * fixed a real dead end (unmessageable nodes had no route to their details at
+ * all) but did it in the wrong place: it was the one clickable thing in a row
+ * of look-alike status icons, and it described the destination as messaging
+ * when Node Details covers far more than that. #4379 moved the affordance out
+ * to `NodeDetailsButton`, which every node row now gets, so the badge is back
+ * to stating a fact and nothing more — it looks inert because it is inert.
  *
- * The long explanatory sentence reuses the pre-existing (already translated)
- * `nodes.unmessageable` string, with the new affordance appended as its own
- * short key.
+ * Messaging itself stays unavailable regardless: MessagesTab hides the
+ * composer behind its `dmReadOnlyReason === 'unmessageable'` banner, which
+ * also offers the explicit "message anyway" override.
  */
-export function NodeUnmessageableBadge({ onOpenDetails }: NodeUnmessageableBadgeProps) {
+export function NodeUnmessageableBadge() {
   const { t } = useTranslation();
 
-  const label = `${t(
+  const label = t(
     'nodes.unmessageable',
     'This node reports itself as unmessageable (router/repeater/sensor) — it cannot receive direct messages'
-  )}. ${t('nodes.unmessageable_open_details', 'Click to open its details.')}`;
+  );
 
   return (
-    <button
-      type="button"
-      className={styles.badge}
+    <span
+      className="node-indicator-icon"
       data-testid="node-unmessageable-badge"
       title={label}
-      aria-label={label}
-      onClick={onOpenDetails}
     >
-      <UiIcon name="blocked" size={16} />
-    </button>
+      <UiIcon name="blocked" size={15} />
+    </span>
   );
 }
 
