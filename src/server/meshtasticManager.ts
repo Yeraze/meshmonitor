@@ -50,6 +50,7 @@ import { shouldGateAutomations, averageStrongestNeighborUtilization, DEFAULT_AIR
 import { resolveLastHopName } from './utils/lastHop.js';
 import { resolveLastHeardSec } from './utils/replayGuard.js';
 import { autoAckIsZeroHop, autoAckCellKey, resolveAutoAckReplyRouting } from './utils/autoAckDecision.js';
+import { hopCountEmoji, HOP_COUNT_EMOJIS } from '../utils/hopEmoji.js';
 import { scriptDependencyEnv } from './utils/scriptRunner.js';
 import { canonicalMessageTime, plausibleRxTime } from './utils/messageTime.js';
 import { canonicalTelemetryType, canonicalTelemetryUnit } from './utils/telemetryKeys.js';
@@ -10180,9 +10181,10 @@ class MeshtasticManager implements ISourceManager {
       // Delivered the same way the trigger arrived: DM→DM, channel→channel.
       // Note: packetId can be 0 (valid unsigned integer), so check explicitly.
       if (cellTapbackEnabled && packetId != null) {
-        // Hop count emojis: *️⃣ for 0 (direct), 1️⃣-7️⃣ for 1-7+ hops
-        const HOP_COUNT_EMOJIS = ['*️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣'];
-        const hopEmoji = HOP_COUNT_EMOJIS[Math.min(hopsTraveled, 7)];
+        // Hop count emojis: *️⃣ for 0 (direct), 1️⃣-7️⃣ for 1-7+ hops. Shared with the
+        // Automation Engine's action.tapback emojiMode=hopCount (src/utils/hopEmoji.ts).
+        // `hopsTraveled` is already floored at 0 above, so the fallback is unreachable.
+        const hopEmoji = hopCountEmoji(hopsTraveled) ?? HOP_COUNT_EMOJIS[0];
         const tapbackTarget = isDirectMessage
           ? `!${fromNum.toString(16).padStart(8, '0')}`
           : `channel ${channelIndex}`;
