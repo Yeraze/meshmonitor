@@ -17,6 +17,7 @@ import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { useOwnNodePositions } from '../../hooks/useOwnNodePositions';
 import { useElevationEnabled } from '../../hooks/useElevationEnabled';
 import { useTerrainCapabilities } from '../../hooks/useTerrainCapabilities';
+import { useEffectiveViewMode } from './useEffectiveViewMode';
 import { LayerKey } from '../../hooks/useMapAnalysisConfig';
 import {
   usePositions,
@@ -36,6 +37,15 @@ const TIMED_LAYERS: { key: LayerKey; label: string; options: Array<number | null
   { key: 'trails',      label: 'Trails',      options: LOOKBACK_OPTIONS,     icon: <Spline size={ICON} /> },
   { key: 'snrOverlay',  label: 'SNR Overlay', options: SNR_LOOKBACK_OPTIONS, icon: <Signal size={ICON} /> },
 ];
+/**
+ * Layers the 3D (MapLibre) canvas can actually draw (#4371 C). Everything else
+ * is Leaflet-only rendering — raster heatmaps, SVG rings, DOM marker overlays —
+ * and its toggle is disabled with an explanatory tooltip while in 3D, rather
+ * than silently doing nothing. The config value is left untouched, so the layer
+ * comes back exactly as it was on switching to 2D.
+ */
+const THREE_D_CAPABLE_LAYERS = new Set<LayerKey>(['markers', 'traceroutes', 'neighbors']);
+
 const UNTIMED_LAYERS: { key: LayerKey; label: string; icon: ReactNode }[] = [
   { key: 'markers',     label: 'Markers',          icon: <MapPin size={ICON} /> },
   { key: 'hopShading',  label: 'Hop Shading',      icon: <Palette size={ICON} /> },
@@ -95,6 +105,16 @@ export default function MapAnalysisToolbar() {
       .map(([key, label]) => ({ key, label }))
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [analysisNodes]);
+
+  // #4371 C: which toggles are inert because the 3D canvas can't draw them.
+  // Keyed on the EFFECTIVE view mode, not raw `config.viewMode`: when a
+  // persisted `'3d'` is force-corrected to 2D (capabilities unavailable), the
+  // canvas falls back immediately while the config write-back lands a render
+  // later — reading the raw value greyed out the 2D-only toggles while a 2D
+  // map was on screen.
+  const in3D = useEffectiveViewMode().effectiveViewMode === '3d';
+  const twoDOnly = (key: LayerKey) => in3D && !THREE_D_CAPABLE_LAYERS.has(key);
+  const twoDOnlyTitle = (label: string) => `${label} — 2D view only`;
 
   // Polar grid (#3971): centered on each active source's own-node position.
   // Disable the toggle when no active source has a resolvable own node.
@@ -263,6 +283,8 @@ export default function MapAnalysisToolbar() {
           icon={icon}
           enabled={config.layers[key].enabled}
           onToggle={(next) => setLayerEnabled(key, next)}
+          disabled={twoDOnly(key)}
+          title={twoDOnly(key) ? twoDOnlyTitle(label) : undefined}
         />
       ))}
       <LayerToggleButton
@@ -270,8 +292,12 @@ export default function MapAnalysisToolbar() {
         icon={<Radar size={ICON} />}
         enabled={config.layers.polarGrid.enabled && hasOwnNode}
         onToggle={(next) => setLayerEnabled('polarGrid', next)}
-        disabled={!hasOwnNode}
-        title={hasOwnNode ? undefined : 'Polar Grid — no source has a known own-node position'}
+        disabled={!hasOwnNode || twoDOnly('polarGrid')}
+        title={
+          twoDOnly('polarGrid')
+            ? twoDOnlyTitle('Polar Grid')
+            : hasOwnNode ? undefined : 'Polar Grid — no source has a known own-node position'
+        }
       />
       {TIMED_LAYERS.map(({ key, label, options, icon }) => (
         <LayerToggleButton
@@ -284,6 +310,8 @@ export default function MapAnalysisToolbar() {
           lookbackOptions={options}
           onLookbackChange={(h) => setLayerLookback(key, h)}
           loading={layerLoading[key] ?? false}
+          disabled={twoDOnly(key)}
+          title={twoDOnly(key) ? twoDOnlyTitle(label) : undefined}
         />
       ))}
       {config.layers.traceroutes.enabled && <TracerouteControls />}

@@ -18,13 +18,23 @@ const CACHE_TTL_MS = 60000; // 1 minute cache
 /**
  * Extract hostname with protocol from a URL
  * Returns format like "http://example.com:8080" or "https://example.com"
+ *
+ * Tile URLs are templates, so the leading `{s}` subdomain placeholder is
+ * rewritten to a `*` wildcard (#4371). Left as-is it yields a literal
+ * `https://{s}.example.com` source, which matches nothing — the tiles are then
+ * blocked in 3D, where MapLibre fetches them (governed by `connect-src`),
+ * while 2D keeps working because Leaflet loads them as `<img>` under the
+ * permissive `img-src`.
  */
-function extractHostFromUrl(url: string): string | null {
+export function extractHostFromUrl(url: string): string | null {
   try {
     const parsed = new URL(url);
     // Include protocol, hostname, and port if non-standard
     const port = parsed.port ? `:${parsed.port}` : '';
-    return `${parsed.protocol}//${parsed.hostname}${port}`;
+    const hostname = parsed.hostname.startsWith('{s}.')
+      ? `*.${parsed.hostname.slice('{s}.'.length)}`
+      : parsed.hostname;
+    return `${parsed.protocol}//${hostname}${port}`;
   } catch {
     return null;
   }
@@ -93,8 +103,14 @@ export async function buildConnectSrcDirective(isProduction: boolean, cookieSecu
     // WebSocket protocols for Socket.io real-time updates
     'ws:',
     'wss:',
-    // Built-in tile servers
+    // Built-in tile servers. MUST stay in step with the TILESETS catalog in
+    // src/config/tilesets.ts — a built-in tileset missing here renders a blank
+    // basemap in the 3D map (MapLibre fetches tiles, so they fall under
+    // connect-src) while looking fine in 2D (Leaflet uses <img>, and img-src is
+    // permissive). `tile.openstreetmap.fr` was missing exactly that way (#4371).
+    // dynamicCsp.test.ts imports the real catalog and fails if the two drift.
     'https://*.tile.openstreetmap.org',
+    'https://*.tile.openstreetmap.fr',
     'https://*.basemaps.cartocdn.com',
     'https://*.tile.opentopomap.org',
     'https://server.arcgisonline.com',
