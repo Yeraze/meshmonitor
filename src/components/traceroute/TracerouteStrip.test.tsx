@@ -607,6 +607,67 @@ describe('TracerouteStrip', () => {
     expect(parseFloat(popup.style.left)).toBeGreaterThanOrEqual(0);
   });
 
+  it('clamps against the RIGHT viewport edge too, not just the left', () => {
+    const graph = buildTracerouteStripGraph({
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: '[]',
+      routeBack: null,
+    });
+    const meta = new Map<number, TracerouteStripNodeMeta>([
+      [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+      [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+    ]);
+
+    render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+    const div = nodeDivFor('FRM');
+
+    // Anchor hard against the right edge — a centred popup would overflow.
+    const vw = window.innerWidth;
+    vi.spyOn(div, 'getBoundingClientRect').mockReturnValue({
+      top: 400, bottom: 436, left: vw - 34, right: vw - 2, width: 32, height: 36,
+      x: vw - 34, y: 400, toJSON: () => ({}),
+    } as DOMRect);
+
+    fireEvent.mouseEnter(div);
+    const popup = document.querySelector('[role="tooltip"]') as HTMLElement;
+    Object.defineProperty(popup, 'offsetWidth', { value: 240, configurable: true });
+    Object.defineProperty(popup, 'offsetHeight', { value: 100, configurable: true });
+    fireEvent.scroll(window);
+
+    const left = parseFloat(popup.style.left);
+    expect(left + 240).toBeLessThanOrEqual(vw);
+  });
+
+  it('hides when the anchor scrolls out of view rather than following it off-screen', () => {
+    const graph = buildTracerouteStripGraph({
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: '[]',
+      routeBack: null,
+    });
+    const meta = new Map<number, TracerouteStripNodeMeta>([
+      [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+      [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+    ]);
+
+    render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+    const div = nodeDivFor('FRM');
+
+    fireEvent.mouseEnter(div);
+    expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+
+    // Simulate the panel scrolling the glyph entirely above the viewport.
+    vi.spyOn(div, 'getBoundingClientRect').mockReturnValue({
+      top: -320, bottom: -273, left: 500, right: 532, width: 32, height: 47,
+      x: 500, y: -320, toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent.scroll(window);
+
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    expect(div.getAttribute('aria-describedby')).toBeNull();
+  });
+
   it('removes its scroll/resize listeners when the popup hides', () => {
     const graph = buildTracerouteStripGraph({
       fromNodeNum: 100,

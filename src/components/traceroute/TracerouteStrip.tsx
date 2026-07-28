@@ -78,7 +78,6 @@ interface HoverState {
 interface PopupPosition {
   left: number;
   top: number;
-  placement: 'above' | 'below';
 }
 
 const DEFAULT_GLYPH_SIZE = 32;
@@ -163,13 +162,13 @@ export function TracerouteStrip({
       return;
     }
 
-    let placement: 'above' | 'below' = 'above';
+    // Prefer above the glyph; flip below when it doesn't fit. If neither side
+    // fits (very short viewport, very tall card) the popup is clamped into
+    // view and may overlap the anchor — being readable beats being correctly
+    // placed but off-screen.
     let top = a.top - POPUP_GAP - height;
     if (top < POPUP_GAP) {
-      placement = 'below';
       top = a.bottom + POPUP_GAP;
-      // Neither side fits (very short viewport): clamp into view rather than
-      // letting it run off the bottom.
       if (top + height > vh - POPUP_GAP) {
         top = Math.max(POPUP_GAP, vh - POPUP_GAP - height);
       }
@@ -181,9 +180,7 @@ export function TracerouteStrip({
     );
 
     setPopupPos((prev) =>
-      prev && prev.left === left && prev.top === top && prev.placement === placement
-        ? prev
-        : { left, top, placement },
+      prev && prev.left === left && prev.top === top ? prev : { left, top },
     );
   }, [hover, hide]);
 
