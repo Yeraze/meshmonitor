@@ -45,6 +45,16 @@ import {
 
 export { BROADCAST_ADDR };
 
+/** "!a1b2c3d4" fallback node id, padded to 8 hex digits. Shared by
+ *  `TracerouteStrip.tsx` (unknown/missing-meta placeholder) and
+ *  `tracerouteStripMeta.ts` (its own node-id/short-name fallback) — this
+ *  module is the neutral common dependency of both, so it lives here rather
+ *  than in either consumer (avoids a cycle: `tracerouteStripMeta.ts` already
+ *  imports a type from `TracerouteStrip.tsx`). */
+export function paddedHexId(nodeNum: number): string {
+  return `!${nodeNum.toString(16).padStart(8, '0')}`;
+}
+
 /** Which leg of the traceroute an edge/node belongs to. */
 export type StripLeg = 'forward' | 'return';
 

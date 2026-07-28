@@ -5,7 +5,7 @@
  * legs diverge. Replaces the two plain-text route lines in the Node Details
  * traceroute box (`MessagesTab.tsx`, wired up in WP4).
  *
- * A pure function of `(graph, meta, compact)` — no contexts, no hooks besides
+ * A pure function of `(graph, meta)` — no contexts, no hooks besides
  * `useTranslation`, `useId`, and one `useMemo` around `layoutTracerouteStrip`.
  * All graph math (dedup, divergence, column layout, edge geometry) already
  * happened in `src/utils/tracerouteStrip.ts` (WP2); this component only
@@ -19,7 +19,7 @@ import type { NodeTypeCategory } from '../../utils/nodeTypeCategory';
 import { getHopColor } from '../../utils/roleGlyphSvg';
 import {
   layoutTracerouteStrip,
-  type StripLayoutOptions,
+  paddedHexId,
   type TracerouteStripGraph,
 } from '../../utils/tracerouteStrip';
 import { NodeGlyph } from './NodeGlyph';
@@ -44,49 +44,21 @@ export interface TracerouteStripProps {
   graph: TracerouteStripGraph;
   /** nodeNum -> metadata. A missing entry renders the unknown placeholder. */
   meta: Map<number, TracerouteStripNodeMeta>;
-  /** Narrow-container mode: smaller pitch + glyph + font. Driven by the
-   *  `compact` prop, not only a media query — the split-view side panel is
-   *  narrow even on a wide viewport. */
-  compact?: boolean;
 }
 
-/** Layout numbers for the narrow (split-view) presentation — spec §4.4.
- *  `topBand`/`bottomBand` are sized (via `layoutTracerouteStrip`'s internal
- *  `minBand`) to clear a compact node's full glyph+name footprint plus an
- *  SNR label — see the "SNR-label collision avoidance" section of
- *  `tracerouteStrip.ts` (#4381 follow-up: a live-deployment check caught both
- *  labels overlapping node content, which no unit test could see). */
-const COMPACT_LAYOUT: Partial<StripLayoutOptions> = {
-  colWidth: 48,
-  rowHeight: 44,
-  glyphSize: 24,
-  nameHeight: 11,
-  topBand: 40,
-  bottomBand: 40,
-};
-
 const DEFAULT_GLYPH_SIZE = 32;
-const COMPACT_GLYPH_SIZE = 24;
 
 function cx(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(' ');
 }
 
-/** "!a1b2c3d4" fallback node id, matching `tracerouteStripMeta.ts`'s shape. */
-function paddedHexId(nodeNum: number): string {
-  return `!${nodeNum.toString(16).padStart(8, '0')}`;
-}
-
-export function TracerouteStrip({ graph, meta, compact }: TracerouteStripProps) {
+export function TracerouteStrip({ graph, meta }: TracerouteStripProps) {
   const { t } = useTranslation();
   const uid = useId();
 
-  const layout = useMemo(
-    () => layoutTracerouteStrip(graph, compact ? COMPACT_LAYOUT : undefined),
-    [graph, compact],
-  );
+  const layout = useMemo(() => layoutTracerouteStrip(graph), [graph]);
 
-  const glyphSize = compact ? COMPACT_GLYPH_SIZE : DEFAULT_GLYPH_SIZE;
+  const glyphSize = DEFAULT_GLYPH_SIZE;
   const arrowId = `${uid}-head`;
 
   const stripLabel = t('messages.traceroute_strip_label', 'Traceroute path');
@@ -95,7 +67,7 @@ export function TracerouteStrip({ graph, meta, compact }: TracerouteStripProps) 
   const unknownNodeLabel = t('messages.traceroute_unknown_node', 'Unknown');
 
   return (
-    <div className={cx(styles.scroller, compact && styles.compact)} role="group" aria-label={stripLabel}>
+    <div className={styles.scroller} role="group" aria-label={stripLabel}>
       <div className={styles.canvas} style={{ width: layout.width, height: layout.height }}>
         <svg
           className={styles.edges}

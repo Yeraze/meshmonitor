@@ -473,10 +473,12 @@ describe('layoutTracerouteStrip', () => {
       route: '[]',
       routeBack: null,
     });
-    // Mirrors the real COMPACT_LAYOUT in TracerouteStrip.tsx — topBand/
-    // bottomBand are exactly the minimum the SNR-label-clearance geometry
-    // requires for this glyphSize/nameHeight (see the "SNR label collision
-    // avoidance" describe block below), not arbitrary round numbers.
+    // A small-size options preset (the component no longer has a "compact"
+    // mode of its own — #4381 follow-up — but StripLayoutOptions still
+    // supports arbitrary overrides). topBand/bottomBand are exactly the
+    // minimum the SNR-label-clearance geometry requires for this
+    // glyphSize/nameHeight (see the "SNR label collision avoidance" describe
+    // block below), not arbitrary round numbers.
     const compactOpts = { colWidth: 48, rowHeight: 44, glyphSize: 24, nameHeight: 11, topBand: 40, bottomBand: 40 };
     const layout = layoutTracerouteStrip(graph, compactOpts);
     expect(layout.width).toBe(2 * 48);
@@ -665,5 +667,50 @@ describe('layoutTracerouteStrip — per-leg edge lanes (#4381 follow-up #2)', ()
         expect(distFromToGlyph).toBeGreaterThanOrEqual(opts.glyphSize / 2);
       }
     }
+  });
+
+  it('offsets forward/return lanes horizontally for a purely vertical chord (dx===0 canonicalPerpendicular branch)', () => {
+    // canonicalPerpendicular's `dx === 0 && dy < 0` branch only fires for a
+    // chord with NO horizontal component at all — i.e. two nodes in the same
+    // column on different rows. Every other test in this file exercises
+    // same-row (horizontal) or dog-leg (diagonal) chords, so this is the only
+    // coverage for that branch. Hand-built graph (not buildTracerouteStripGraph
+    // — real traceroute data never places both endpoints of one edge in the
+    // same column) with a forward edge one way and a return edge the other,
+    // between two nodes that share column 0 but sit on different rows.
+    const graph: TracerouteStripGraph = {
+      nodes: [
+        { id: 'n0', nodeNum: FROM, row: 0, col: 0, legs: ['forward'], shared: false, isUnknown: false },
+        { id: 'n1', nodeNum: TO, row: 1, col: 0, legs: ['return'], shared: false, isUnknown: false },
+      ],
+      edges: [
+        { id: 'fwd', leg: 'forward', fromId: 'n0', toId: 'n1', snr: null, snrUnknown: false },
+        { id: 'ret', leg: 'return', fromId: 'n1', toId: 'n0', snr: null, snrUnknown: false },
+      ],
+      columns: 1,
+      hasForward: true,
+      hasReturn: true,
+      isEmpty: false,
+    };
+    const layout = layoutTracerouteStrip(graph);
+    const colCenterX = layout.centers.get('n0')!.x;
+    expect(layout.centers.get('n1')!.x).toBe(colCenterX); // confirms the chord truly has dx === 0
+
+    const fwdPath = layout.edgePaths.get('fwd')!;
+    const retPath = layout.edgePaths.get('ret')!;
+
+    // With no horizontal component to the chord itself, the per-leg lane
+    // offset is purely horizontal (canonicalPerpendicular rotates the
+    // vertical unit vector 90° into a horizontal one) — every point of the
+    // forward path lands on one side of the column, every point of the
+    // return path on the other.
+    for (const p of fwdPath) expect(p.x).toBeCloseTo(colCenterX + 5, 5);
+    for (const p of retPath) expect(p.x).toBeCloseTo(colCenterX - 5, 5);
+
+    // Offset in opposite directions and never collinear (10px apart, same side
+    // consistently — not just at one point).
+    expect(fwdPath[0].x).not.toBeCloseTo(retPath[0].x, 1);
+    expect(fwdPath.every((p) => p.x > colCenterX)).toBe(true);
+    expect(retPath.every((p) => p.x < colCenterX)).toBe(true);
   });
 });

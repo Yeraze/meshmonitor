@@ -5,7 +5,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { TracerouteStrip, type TracerouteStripNodeMeta } from './TracerouteStrip';
 import { buildTracerouteStripGraph, type TracerouteStripInput } from '../../utils/tracerouteStrip';
-import styles from './TracerouteStrip.module.css';
 
 // The global setup.ts mock for react-i18next ignores the `defaultValue`
 // argument entirely (it only interpolates `{{token}}` placeholders into the
@@ -342,27 +341,5 @@ describe('TracerouteStrip', () => {
     const tipId = div.getAttribute('aria-describedby');
     const tooltip = document.getElementById(tipId!);
     expect(tooltip!.textContent).toBe('!000000c8'); // 200 in padded hex
-  });
-
-  it('applies the compact prop to the scroller and scales the layout', () => {
-    const input: TracerouteStripInput = {
-      fromNodeNum: 100,
-      toNodeNum: 200,
-      route: JSON.stringify([110]),
-      routeBack: null,
-    };
-    const graph = buildTracerouteStripGraph(input);
-    const meta = new Map<number, TracerouteStripNodeMeta>([
-      [100, makeMeta({ nodeNum: 100, shortName: 'FRM' })],
-      [110, makeMeta({ nodeNum: 110, shortName: 'MID' })],
-      [200, makeMeta({ nodeNum: 200, shortName: 'TGT' })],
-    ]);
-
-    const { container: wide } = render(<TracerouteStrip graph={graph} meta={meta} />);
-    const { container: narrow } = render(<TracerouteStrip graph={graph} meta={meta} compact />);
-
-    const wideCanvas = wide.querySelector(`.${styles.canvas}`) as HTMLElement;
-    const narrowCanvas = narrow.querySelector(`.${styles.canvas}`) as HTMLElement;
-    expect(parseFloat(narrowCanvas.style.width)).toBeLessThan(parseFloat(wideCanvas.style.width));
   });
 });

@@ -9,7 +9,7 @@
  */
 import type { DeviceInfo } from '../types/device';
 import type { NodeHopsCalculation } from '../contexts/SettingsContext';
-import type { TracerouteStripGraph } from './tracerouteStrip';
+import { paddedHexId, type TracerouteStripGraph } from './tracerouteStrip';
 import type { TracerouteStripNodeMeta } from '../components/traceroute/TracerouteStrip';
 import { getEffectiveHops } from './nodeHops';
 import { getNodeTypeCategory } from './nodeTypeCategory';
@@ -28,12 +28,6 @@ export interface BuildStripNodeMetaOptions {
   hopsCalculation: NodeHopsCalculation;
   traceroutes: TracerouteStripMetaTraceroute[];
   currentNodeNum: number | null;
-}
-
-/** "!a1b2c3d4" fallback node id — padded hex, matching `TracerouteStrip.tsx`'s
- *  own placeholder-node fallback. */
-function paddedHexId(nodeNum: number): string {
-  return `!${nodeNum.toString(16).padStart(8, '0')}`;
 }
 
 /**

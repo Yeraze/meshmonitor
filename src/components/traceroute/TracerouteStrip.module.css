@@ -160,20 +160,8 @@
   border: 0;
 }
 
-/* Compact mode (spec §4.4): driven by the `compact` prop (layout numbers),
- * not only a media query — the split-view side panel can be narrow on a wide
- * viewport. */
-.compact .shortName {
-  font-size: 0.6rem;
-  max-width: 44px;
-}
-
 @media (max-width: 768px) {
   .shortName {
     font-size: 0.6rem;
-  }
-
-  .compact .shortName {
-    font-size: 0.55rem;
   }
 }

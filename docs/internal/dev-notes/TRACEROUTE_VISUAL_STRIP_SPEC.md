@@ -606,14 +606,20 @@ export interface TracerouteStripProps {
   graph: TracerouteStripGraph;
   /** nodeNum -> metadata. A missing entry renders the unknown placeholder. */
   meta: Map<number, TracerouteStripNodeMeta>;
-  /** Narrow-container mode: smaller pitch + glyph + font. */
-  compact?: boolean;
 }
 ```
 
-The component is a pure function of `(graph, meta, compact)` — no contexts, no
+The component is a pure function of `(graph, meta)` — no contexts, no
 hooks except `useTranslation`, `useId`, and one `useMemo` around
 `layoutTracerouteStrip`. That is what makes it cheap to test.
+
+There is no `compact` prop (#4381 follow-up): the only consumer never varied
+it in a way that tracked the panel's actual rendered width, so it always
+rendered at default size in practice — dead code, removed. Narrow containers
+are handled by `.scroller`'s horizontal scroll (§4.4), not a layout-numbers
+switch. `layoutTracerouteStrip` itself still accepts arbitrary
+`Partial<StripLayoutOptions>` overrides — that capability isn't removed, just
+no longer wired to a component prop.
 
 DOM structure:
 
@@ -724,13 +730,11 @@ inside its own container" rule. The box lives inside `.traceroute-info`, which
 in split view (`.messages-split-view .traceroute-info`) is a narrow side panel;
 the scroller is what absorbs that.
 
-**Compact mode.** Driven by the `compact` prop (layout numbers), not only by a
-media query, because the split-view panel can be narrow on a wide viewport.
-`compact` → `colWidth 48`, `rowHeight 44`, `glyphSize 24`, `topBand 34`,
-`bottomBand 20`, `.shortName { font-size: 0.6rem; max-width: 44px; }`.
-Additionally, a `@media (max-width: 768px)` block in the module shrinks the
-short-name font one more step. MessagesTab passes `compact` when the node list
-is not collapsed (split view) — see §5.
+**Narrow widths.** No `compact` mode (#4381 follow-up — see §4.3): the strip
+always renders at default size, and `.scroller`'s horizontal scroll (above)
+absorbs a genuinely narrow container. A `@media (max-width: 768px)` block in
+the module shrinks `.shortName`'s font one step for small viewports; that rule
+is independent of container width and stays.
 
 **Tooltip band.** `topBand` reserves vertical room so a tooltip anchored upward
 from row 0 stays inside `.canvas` and is not clipped by `overflow-y: hidden`.
