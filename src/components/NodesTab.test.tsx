@@ -224,12 +224,27 @@ describe('NodesTab', () => {
       expect(guard).toMatch(/hasPermission\('messages', 'read'\)/);
     });
 
-    it('still withholds the Send-DM button from unmessageable nodes', () => {
-      const dmAt = actionGroup.indexOf("t('nodes.send_dm')");
-      expect(dmAt).toBeGreaterThan(-1);
-      const guard = actionGroup.slice(0, dmAt);
+    it('no longer ships a separate Send-DM button beside the details button', () => {
+      // The DM button sat immediately next to NodeDetailsButton and navigated to
+      // the same place. #4379 folded them into one control.
+      expect(actionGroup).not.toContain("t('nodes.send_dm')");
+      expect(src).not.toContain('handleDMClick');
+    });
 
-      expect(guard).toMatch(/!node\.isUnmessagable/);
+    it('keeps #4325 compose-focus alive through the merged handler', () => {
+      // openDmForCompose sets pendingComposeFocus, which MessagesTab consumes to
+      // focus the compose box. The removed DM button was its ONLY caller, so if
+      // this branch goes away the entire chain — MessagingContext's
+      // pendingComposeFocus/clearComposeFocus and MessagesTab's focus effect —
+      // becomes unreachable dead code.
+      const handler = src.slice(
+        src.indexOf('const handleNodeDetailsClick'),
+        src.indexOf('const handleCollapseNodeList'),
+      );
+      expect(handler).toContain('openDmForCompose(nodeId)');
+      // Unmessageable nodes have no composer to focus, so they must NOT take
+      // the compose path.
+      expect(handler).toMatch(/if \(node\.isUnmessagable\)\s*\{\s*setSelectedDMNode\(nodeId\)/);
     });
 
     it('routes row double-click to details as a second path, like MeshCore', () => {

@@ -1139,18 +1139,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     };
   }, [toggleFavoriteLock]);
 
-  // "Send Direct Message" (#4325). Selecting the node already opened the
-  // conversation; openDmForCompose additionally asks the DM view to focus its
-  // compose box, so the button leaves you able to type instead of on a
-  // conversation you still have to click into.
-  const handleDMClick = useCallback((node: DeviceInfo) => {
-    return (e: React.MouseEvent) => {
-      e.stopPropagation();
-      openDmForCompose(node.user?.id || '');
-      setActiveTab('messages');
-    };
-  }, [openDmForCompose, setActiveTab]);
-
   const handleCopyNodeInfoClick = useCallback((node: DeviceInfo) => {
     return (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -1173,19 +1161,30 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // ones. Matches what the map popup's "More Details" action has always done
   // (that popup has never gated on messageability).
   //
-  // This deliberately uses setSelectedDMNode rather than openDmForCompose, so
-  // the compose box is NOT focused — "look at this node" and "message this
-  // node" are separate intents even though they currently land on the same
-  // tab. For unmessageable nodes messaging stays unavailable regardless:
-  // MessagesTab hides the composer behind its
+  // This is also what used to be the Send-DM button. That button sat directly
+  // beside this one and went to the same place, so #4379 folded the two
+  // together rather than shipping a row with two near-identical controls.
+  // The merge has to preserve #4325: `openDmForCompose` additionally asks the
+  // DM view to focus its compose box, which is what lets you click a node and
+  // start typing instead of landing on a conversation you must click into
+  // again. It was the ONLY caller of that path, so branching here is what
+  // keeps the whole pendingComposeFocus chain alive.
+  //
+  // Unmessageable nodes take the plain `setSelectedDMNode` route: there is no
+  // composer to focus, because MessagesTab hides it behind the
   // `dmReadOnlyReason === 'unmessageable'` banner.
   const handleNodeDetailsClick = useCallback((node: DeviceInfo) => {
     return (e: React.MouseEvent) => {
       e.stopPropagation();
-      setSelectedDMNode(node.user?.id || '');
+      const nodeId = node.user?.id || '';
+      if (node.isUnmessagable) {
+        setSelectedDMNode(nodeId);
+      } else {
+        openDmForCompose(nodeId);
+      }
       setActiveTab('messages');
     };
-  }, [setSelectedDMNode, setActiveTab]);
+  }, [setSelectedDMNode, openDmForCompose, setActiveTab]);
 
   // Simple toggle callbacks
   const handleCollapseNodeList = useCallback(() => {
@@ -2233,15 +2232,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         )}
                       </span>
                       <span className={nodeRowStyles.actions}>
-                        {hasPermission('messages', 'read') && !node.isUnmessagable && (
-                          <button
-                            className="dm-icon"
-                            title={t('nodes.send_dm')}
-                            onClick={handleDMClick(node)}
-                          >
-                            <UiIcon name="messages" size={16} />
-                          </button>
-                        )}
                         {!isNodeComplete(node) && hasPermission('nodes', 'write') && (
                           <button
                             className="dm-icon"
@@ -2285,8 +2275,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                         {/* Every node gets this, messageable or not — #4379 asks for
                             one consistent route to Node Details rather than an
                             affordance that only appears on unmessageable rows. It
-                            stays gated on messages:read because Node Details still
-                            lives inside the Messages tab. */}
+                            also replaces the Send-DM button that used to sit right
+                            here: two adjacent controls going to the same place was
+                            the redundancy #4379 set out to remove. It stays gated
+                            on messages:read because Node Details still lives inside
+                            the Messages tab. */}
                         {hasPermission('messages', 'read') && (
                           <NodeDetailsButton onOpenDetails={handleNodeDetailsClick(node)} />
                         )}
