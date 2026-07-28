@@ -18,6 +18,11 @@ export interface Waypoint {
   iconCodepoint: number | null;
   iconEmoji: string | null;
   isVirtual: boolean;
+  /**
+   * Device channel slot (0-7) the waypoint is broadcast on. `null` on rows
+   * created before #4341 — readers fall back to slot 0, the old behaviour.
+   */
+  channel: number | null;
   rebroadcastIntervalS: number | null;
   lastBroadcastAt: number | null;
   firstSeenAt: number;
@@ -35,5 +40,7 @@ export interface WaypointInput {
   expire?: number | null;
   locked_to?: number | null;
   virtual?: boolean;
+  /** Device channel slot (0-7) to broadcast on. Omitted = slot 0. */
+  channel?: number | null;
   rebroadcast_interval_s?: number | null;
 }

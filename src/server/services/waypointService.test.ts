@@ -60,7 +60,12 @@ vi.mock('./dataEventEmitter.js', () => ({
   },
 }));
 
-import { waypointService, codepointToEmoji, emojiToCodepoint } from './waypointService.js';
+import {
+  waypointService,
+  codepointToEmoji,
+  emojiToCodepoint,
+  normalizeWaypointChannel,
+} from './waypointService.js';
 
 beforeEach(() => {
   mockUpsert.mockReset();
@@ -349,6 +354,108 @@ describe('rebroadcastTick', () => {
       expect(broadcastWaypoint).toHaveBeenCalledOnce();
       expect(result).not.toBeNull();
     });
+  });
+});
+
+// #4341 — the user-chosen broadcast channel has to survive persistence and be
+// reused by the rebroadcast scheduler; unspecified must stay on slot 0.
+describe('broadcast channel (#4341)', () => {
+  describe('normalizeWaypointChannel', () => {
+    it('passes through valid device slots', () => {
+      for (const slot of [0, 1, 5, 7]) {
+        expect(normalizeWaypointChannel(slot)).toBe(slot);
+      }
+    });
+
+    it('collapses null/undefined/out-of-range values to slot 0', () => {
+      expect(normalizeWaypointChannel(null)).toBe(0);
+      expect(normalizeWaypointChannel(undefined)).toBe(0);
+      expect(normalizeWaypointChannel(8)).toBe(0);
+      expect(normalizeWaypointChannel(-1)).toBe(0);
+      expect(normalizeWaypointChannel(2.5)).toBe(0);
+      // Channel-Database virtual channels can never carry a waypoint.
+      expect(normalizeWaypointChannel(101)).toBe(0);
+    });
+  });
+
+  it('createLocal persists the chosen channel', async () => {
+    mockGetExistingIds.mockResolvedValueOnce(new Set());
+    mockUpsert.mockImplementationOnce(async (v: any) => ({ ...v }));
+
+    await waypointService.createLocal('s1', 1, { latitude: 1, longitude: 2, channel: 4 });
+
+    expect(mockUpsert).toHaveBeenCalledWith(expect.objectContaining({ channel: 4 }));
+  });
+
+  it('createLocal defaults to slot 0 when no channel is given', async () => {
+    mockGetExistingIds.mockResolvedValueOnce(new Set());
+    mockUpsert.mockImplementationOnce(async (v: any) => ({ ...v }));
+
+    await waypointService.createLocal('s1', 1, { latitude: 1, longitude: 2 });
+
+    expect(mockUpsert).toHaveBeenCalledWith(expect.objectContaining({ channel: 0 }));
+  });
+
+  it('update keeps the stored channel when the field is omitted', async () => {
+    mockGet.mockResolvedValueOnce(eligibleRow({ channel: 6 }));
+    mockUpsert.mockImplementationOnce(async (v: any) => ({ ...v }));
+
+    await waypointService.update('s1', 7, 0, { name: 'renamed' });
+
+    expect(mockUpsert).toHaveBeenCalledWith(expect.objectContaining({ channel: 6 }));
+  });
+
+  it('update writes a new channel when one is supplied', async () => {
+    mockGet.mockResolvedValueOnce(eligibleRow({ channel: 6 }));
+    mockUpsert.mockImplementationOnce(async (v: any) => ({ ...v }));
+
+    await waypointService.update('s1', 7, 0, { channel: 2 });
+
+    expect(mockUpsert).toHaveBeenCalledWith(expect.objectContaining({ channel: 2 }));
+  });
+
+  it('upsertFromMesh records the channel the packet arrived on', async () => {
+    mockUpsert.mockImplementationOnce(async (v: any) => ({ ...v }));
+
+    await waypointService.upsertFromMesh('s1', 99, { id: 3, latitudeI: 1e7, longitudeI: 2e7 }, 5);
+
+    expect(mockUpsert).toHaveBeenCalledWith(expect.objectContaining({ channel: 5 }));
+  });
+
+  it('upsertFromMesh leaves the stored channel untouched when the packet channel is unknown', async () => {
+    mockUpsert.mockImplementationOnce(async (v: any) => ({ ...v }));
+
+    await waypointService.upsertFromMesh('s1', 99, { id: 3, latitudeI: 1e7, longitudeI: 2e7 });
+
+    expect(mockUpsert.mock.calls[0][0].channel).toBeUndefined();
+  });
+
+  it("rebroadcastTick sends on the waypoint's stored channel", async () => {
+    const row = eligibleRow({ channel: 3 });
+    mockFindOldestEligible.mockResolvedValueOnce(row);
+    const broadcastWaypoint = vi.fn().mockResolvedValue(42);
+    mockGetManager.mockReturnValueOnce({ broadcastWaypoint });
+    mockMarkRebroadcasted.mockResolvedValueOnce(true);
+    mockGet.mockResolvedValueOnce({ ...row, lastBroadcastAt: 1234 });
+
+    await waypointService.rebroadcastTick();
+
+    expect(broadcastWaypoint).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), {
+      channel: 3,
+    });
+  });
+
+  it('rebroadcastTick falls back to slot 0 for rows predating the column', async () => {
+    const row = eligibleRow({ channel: null });
+    mockFindOldestEligible.mockResolvedValueOnce(row);
+    const broadcastWaypoint = vi.fn().mockResolvedValue(42);
+    mockGetManager.mockReturnValueOnce({ broadcastWaypoint });
+    mockMarkRebroadcasted.mockResolvedValueOnce(true);
+    mockGet.mockResolvedValueOnce({ ...row, lastBroadcastAt: 1234 });
+
+    await waypointService.rebroadcastTick();
+
+    expect(broadcastWaypoint).toHaveBeenCalledWith(expect.anything(), { channel: 0 });
   });
 });
 

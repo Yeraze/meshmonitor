@@ -56,6 +56,7 @@ vi.mock('../services/waypointService.js', () => ({
 import databaseService from '../../services/database.js';
 import waypointRoutes from './waypoints.js';
 import { waypointService } from '../services/waypointService.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 
 const mockWaypointService = waypointService as unknown as {
@@ -233,6 +234,145 @@ describe('Waypoint routes', () => {
         .post(`/api/sources/${harness.sourceA}/waypoints`)
         .send({ lat: 30, lon: -90, rebroadcast_interval_s: 600 });
       expect(res.status).toBe(201);
+    });
+  });
+
+  // ── Broadcast channel selection (#4341) ─────────────────────────────────────
+
+  describe('broadcast channel (#4341)', () => {
+    /** Register a fake connected manager and hand back its broadcast spies. */
+    function mockManager() {
+      const broadcastWaypoint = vi.fn().mockResolvedValue(1234);
+      const broadcastWaypointDelete = vi.fn().mockResolvedValue(1234);
+      (sourceManagerRegistry.getManager as ReturnType<typeof vi.fn>).mockReturnValue({
+        getLocalNodeInfo: () => ({ nodeNum: 42 }),
+        broadcastWaypoint,
+        broadcastWaypointDelete,
+      });
+      return { broadcastWaypoint, broadcastWaypointDelete };
+    }
+
+    it('threads the chosen channel into createLocal and the outgoing packet', async () => {
+      const { broadcastWaypoint } = mockManager();
+      mockWaypointService.createLocal.mockResolvedValue({
+        sourceId: harness.sourceA, waypointId: 7, latitude: 30, longitude: -90,
+        name: '', description: '', iconCodepoint: null, expireAt: null, lockedTo: null,
+        isVirtual: false, channel: 3,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent
+        .post(`/api/sources/${harness.sourceA}/waypoints`)
+        .send({ lat: 30, lon: -90, channel: 3 });
+
+      expect(res.status).toBe(201);
+      expect(mockWaypointService.createLocal).toHaveBeenCalledWith(
+        harness.sourceA,
+        42,
+        expect.objectContaining({ channel: 3 }),
+        expect.any(Object),
+      );
+      expect(broadcastWaypoint).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 7 }),
+        { channel: 3 },
+      );
+    });
+
+    it('defaults to slot 0 when the caller omits the channel (pre-#4341 behaviour)', async () => {
+      const { broadcastWaypoint } = mockManager();
+      mockWaypointService.createLocal.mockResolvedValue({
+        sourceId: harness.sourceA, waypointId: 8, latitude: 30, longitude: -90,
+        name: '', description: '', iconCodepoint: null, expireAt: null, lockedTo: null,
+        isVirtual: false, channel: 0,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent
+        .post(`/api/sources/${harness.sourceA}/waypoints`)
+        .send({ lat: 30, lon: -90 });
+
+      expect(res.status).toBe(201);
+      expect(mockWaypointService.createLocal).toHaveBeenCalledWith(
+        harness.sourceA,
+        42,
+        expect.objectContaining({ channel: 0 }),
+        expect.any(Object),
+      );
+      expect(broadcastWaypoint).toHaveBeenCalledWith(expect.anything(), { channel: 0 });
+    });
+
+    it('falls back to slot 0 for a stored row that predates the column (channel null)', async () => {
+      const { broadcastWaypoint } = mockManager();
+      mockWaypointService.createLocal.mockResolvedValue({
+        sourceId: harness.sourceA, waypointId: 9, latitude: 30, longitude: -90,
+        name: '', description: '', iconCodepoint: null, expireAt: null, lockedTo: null,
+        isVirtual: false, channel: null,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      await agent.post(`/api/sources/${harness.sourceA}/waypoints`).send({ lat: 30, lon: -90 });
+
+      expect(broadcastWaypoint).toHaveBeenCalledWith(expect.anything(), { channel: 0 });
+    });
+
+    it.each([8, -1, 1.5, 'abc'])('rejects an out-of-range channel (%s) with 400', async (bad) => {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent
+        .post(`/api/sources/${harness.sourceA}/waypoints`)
+        .send({ lat: 30, lon: -90, channel: bad });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/channel must be an integer between 0 and 7/);
+    });
+
+    it('PATCH threads a new channel through update and the rebroadcast packet', async () => {
+      const { broadcastWaypoint } = mockManager();
+      mockWaypointService.update.mockResolvedValue({
+        sourceId: harness.sourceA, waypointId: 5, latitude: 30, longitude: -90,
+        name: '', description: '', iconCodepoint: null, expireAt: null, lockedTo: null,
+        isVirtual: false, channel: 2,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent
+        .patch(`/api/sources/${harness.sourceA}/waypoints/5`)
+        .send({ channel: 2 });
+
+      expect(res.status).toBe(200);
+      expect(mockWaypointService.update).toHaveBeenCalledWith(
+        harness.sourceA,
+        5,
+        42,
+        expect.objectContaining({ channel: 2 }),
+      );
+      expect(broadcastWaypoint).toHaveBeenCalledWith(expect.anything(), { channel: 2 });
+    });
+
+    it('PATCH leaves the stored channel alone when the field is omitted', async () => {
+      mockManager();
+      mockWaypointService.update.mockResolvedValue({
+        sourceId: harness.sourceA, waypointId: 5, latitude: 30, longitude: -90,
+        name: '', description: '', isVirtual: false, channel: 4,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      await agent.patch(`/api/sources/${harness.sourceA}/waypoints/5`).send({ name: 'edit' });
+
+      const fields = mockWaypointService.update.mock.calls[0][3];
+      expect(fields).not.toHaveProperty('channel');
+    });
+
+    it('sends the delete tombstone on the waypoint\'s own channel', async () => {
+      const { broadcastWaypointDelete } = mockManager();
+      vi.spyOn(databaseService.waypoints, 'getAsync').mockResolvedValue({
+        sourceId: harness.sourceA, waypointId: 1, isVirtual: false, channel: 5,
+      } as any);
+      mockWaypointService.deleteLocal.mockResolvedValue(true);
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.delete(`/api/sources/${harness.sourceA}/waypoints/1`);
+
+      expect(res.status).toBe(200);
+      expect(broadcastWaypointDelete).toHaveBeenCalledWith(1, { channel: 5 });
     });
   });
 

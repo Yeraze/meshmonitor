@@ -144,6 +144,7 @@ import { migration as addTransportFlagsMigration, runMigration126Postgres, runMi
 import { migration as addAtakContactsMigration, runMigration127Postgres, runMigration127Mysql } from '../server/migrations/127_add_atak_contacts.js';
 import { migration as mqttOkToMqttViolationsMigration, runMigration128Postgres, runMigration128Mysql } from '../server/migrations/128_mqtt_oktomqtt_violations.js';
 import { migration as addShowAtakContactsMigration, runMigration129Postgres, runMigration129Mysql } from '../server/migrations/129_add_show_atak_contacts_to_map_prefs.js';
+import { migration as addWaypointChannelMigration, runMigration130Postgres, runMigration130Mysql } from '../server/migrations/130_add_waypoint_channel.js';
 
 // ============================================================================
 // Registry
@@ -2052,4 +2053,20 @@ registry.register({
   sqlite: (db) => addShowAtakContactsMigration.up(db),
   postgres: (client) => runMigration129Postgres(client),
   mysql: (pool) => runMigration129Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 130: per-waypoint broadcast channel (#4341). Waypoints used to go
+// out on the implicit slot 0; the editor now lets the user choose, and the
+// choice has to survive reloads and drive the rebroadcast scheduler.
+// NULL = not chosen, and every read site falls back to 0.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 130,
+  name: 'add_waypoint_channel',
+  settingsKey: 'migration_130_add_waypoint_channel',
+  sqlite: (db) => addWaypointChannelMigration.up(db),
+  postgres: (client) => runMigration130Postgres(client),
+  mysql: (pool) => runMigration130Mysql(pool),
 });

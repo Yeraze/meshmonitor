@@ -58,6 +58,7 @@ Authoring is available on the per-source dashboard map for users with `waypoints
    - **Icon** — pick an emoji from the picker (rendered with VS-16 forcing so it shows as an emoji on every platform)
    - **Lock to me** — only your node can edit this waypoint after broadcast
    - **Expires** — toggle on to set an expiry timestamp; off means "never expires"
+   - **Channel** — which of the source's channels the waypoint is broadcast on. The list comes from the waypoint's own source, so you only ever see channels that source can transmit on. Leave it alone and the waypoint goes out on Primary (slot 0), the channel every waypoint used before this option existed. The picker is disabled for virtual waypoints, which are never transmitted.
 5. Click **Save**. MeshMonitor allocates a waypoint id (Python-style id allocation), persists the row, and broadcasts a WAYPOINT_APP packet to the mesh.
 
 ### Edit
@@ -76,16 +77,20 @@ Waypoints are exposed on the v1 source-scoped routes, gated by `waypoints:read|w
 | --- | --- | --- |
 | `GET`    | `/api/sources/:id/waypoints` | List waypoints (supports `?bbox=` and `?include_expired=`) |
 | `POST`   | `/api/sources/:id/waypoints` | Create a local waypoint and broadcast it |
-| `PATCH`  | `/api/sources/:id/waypoints/:waypointId` | Update name/description/icon/expiry/lock |
+| `PATCH`  | `/api/sources/:id/waypoints/:waypointId` | Update name/description/icon/expiry/lock/channel |
 | `DELETE` | `/api/sources/:id/waypoints/:waypointId` | Delete locally and broadcast a tombstone |
 
 All mutations require the standard `X-CSRF-Token` header. Mutations on a waypoint with `locked_to` set to another node return `403`.
+
+`POST` and `PATCH` accept an optional `channel` field — an integer device channel slot `0`-`7`. Anything else returns `400`. Omit it and the waypoint stays on slot 0.
 
 ## Database
 
 Waypoints live in a per-source `waypoints` table introduced in migration **053**, with composite primary key `(sourceId, waypointId)`, a foreign key to `sources` with `ON DELETE CASCADE`, and indexes on `(sourceId, expireAt)` and `(sourceId, ownerNodeNum)`.
 
 Migrations **054** / **055** seed the new `waypoints:read` / `waypoints:write` permissions for existing users by cloning their `messages` grants per source.
+
+Migration **130** adds the `channel` column that records which slot a waypoint is broadcast on. Rows created before it read back as `NULL`, which every send site treats as slot 0 — the same channel they always used.
 
 The daily database maintenance tick sweeps expired waypoints (with a grace window) and emits `waypoint:expired` events for each removed row.
 

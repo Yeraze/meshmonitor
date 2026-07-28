@@ -63,6 +63,32 @@ function parseRebroadcastIntervalS(raw: unknown): number | null | undefined | { 
   return n;
 }
 
+/**
+ * Highest device channel slot a Meshtastic radio exposes. The protobuf layer
+ * already clamps out-of-range values to 0, but rejecting them here means a
+ * typo surfaces as a 400 instead of silently landing on Primary.
+ */
+export const MAX_CHANNEL_INDEX = 7;
+
+/**
+ * Parse the `channel` body field (#4341). Returns:
+ *   - `undefined` when the caller omitted it (no change on PATCH; slot 0 on POST)
+ *   - a slot index 0..7 when valid
+ *   - a string error message when the value is out of range / not an integer
+ *
+ * `null` is treated as "unset" and collapses to `undefined` so clearing the
+ * field falls back to today's default rather than writing a NULL the reader
+ * would have to interpret anyway.
+ */
+function parseChannel(raw: unknown): number | undefined | { error: string } {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > MAX_CHANNEL_INDEX) {
+    return { error: `channel must be an integer between 0 and ${MAX_CHANNEL_INDEX}` };
+  }
+  return n;
+}
+
 // GET /api/sources/:id/waypoints?includeExpired=&bbox=minLat,minLon,maxLat,maxLon
 router.get(
   '/',
@@ -125,6 +151,12 @@ router.post(
         ? null
         : Number(body.locked_to);
       const virtual = Boolean(body.virtual);
+      const parsedChannel = parseChannel(body.channel);
+      if (parsedChannel && typeof parsedChannel === 'object' && 'error' in parsedChannel) {
+        return badRequest(res, parsedChannel.error);
+      }
+      // Omitted / cleared => slot 0, exactly where waypoints went before #4341.
+      const channel = (parsedChannel as number | undefined) ?? 0;
       const parsedRebroadcast = parseRebroadcastIntervalS(body.rebroadcast_interval_s);
       if (parsedRebroadcast && typeof parsedRebroadcast === 'object' && 'error' in parsedRebroadcast) {
         return badRequest(res, parsedRebroadcast.error);
@@ -150,6 +182,7 @@ router.post(
           icon,
           expireAt,
           lockedTo,
+          channel,
           rebroadcastIntervalS,
         },
         { virtual },
@@ -160,16 +193,20 @@ router.post(
       // the rebroadcast scheduler (follow-up PR) will retry.
       if (!virtual && manager && typeof (manager as any).broadcastWaypoint === 'function') {
         try {
-          await (manager as any).broadcastWaypoint({
-            id: persisted.waypointId,
-            latitude: persisted.latitude,
-            longitude: persisted.longitude,
-            expire: persisted.expireAt ?? 0,
-            lockedTo: persisted.lockedTo ?? 0,
-            name: persisted.name,
-            description: persisted.description,
-            icon: persisted.iconCodepoint ?? 0,
-          });
+          await (manager as any).broadcastWaypoint(
+            {
+              id: persisted.waypointId,
+              latitude: persisted.latitude,
+              longitude: persisted.longitude,
+              expire: persisted.expireAt ?? 0,
+              lockedTo: persisted.lockedTo ?? 0,
+              name: persisted.name,
+              description: persisted.description,
+              icon: persisted.iconCodepoint ?? 0,
+            },
+            // Stored value is already validated on write; NULL rows predate #4341.
+            { channel: persisted.channel ?? 0 },
+          );
         } catch (err) {
           logger.warn(`Failed to broadcast new waypoint ${persisted.waypointId}:`, err);
         }
@@ -218,6 +255,14 @@ router.patch(
       if (body.locked_to !== undefined) {
         fields.lockedTo = body.locked_to === null ? null : Number(body.locked_to);
       }
+      if (body.channel !== undefined) {
+        const parsed = parseChannel(body.channel);
+        if (parsed && typeof parsed === 'object' && 'error' in parsed) {
+          return badRequest(res, parsed.error);
+        }
+        // An explicit null/'' clears the choice back to the slot-0 default.
+        fields.channel = (parsed as number | undefined) ?? 0;
+      }
       if (body.rebroadcast_interval_s !== undefined) {
         const parsed = parseRebroadcastIntervalS(body.rebroadcast_interval_s);
         if (parsed && typeof parsed === 'object' && 'error' in parsed) {
@@ -241,16 +286,20 @@ router.patch(
 
       if (!persisted.isVirtual && manager && typeof (manager as any).broadcastWaypoint === 'function') {
         try {
-          await (manager as any).broadcastWaypoint({
-            id: persisted.waypointId,
-            latitude: persisted.latitude,
-            longitude: persisted.longitude,
-            expire: persisted.expireAt ?? 0,
-            lockedTo: persisted.lockedTo ?? 0,
-            name: persisted.name,
-            description: persisted.description,
-            icon: persisted.iconCodepoint ?? 0,
-          });
+          await (manager as any).broadcastWaypoint(
+            {
+              id: persisted.waypointId,
+              latitude: persisted.latitude,
+              longitude: persisted.longitude,
+              expire: persisted.expireAt ?? 0,
+              lockedTo: persisted.lockedTo ?? 0,
+              name: persisted.name,
+              description: persisted.description,
+              icon: persisted.iconCodepoint ?? 0,
+            },
+            // Stored value is already validated on write; NULL rows predate #4341.
+            { channel: persisted.channel ?? 0 },
+          );
         } catch (err) {
           logger.warn(`Failed to broadcast updated waypoint ${persisted.waypointId}:`, err);
         }
@@ -297,7 +346,11 @@ router.delete(
 
       if (removed && !existing.isVirtual && manager && typeof (manager as any).broadcastWaypointDelete === 'function') {
         try {
-          await (manager as any).broadcastWaypointDelete(waypointId);
+          // The tombstone has to go out on the same channel the waypoint lives
+          // on, otherwise listeners on that channel never see the delete.
+          await (manager as any).broadcastWaypointDelete(waypointId, {
+            channel: existing.channel ?? 0,
+          });
         } catch (err) {
           logger.warn(`Failed to broadcast waypoint delete ${waypointId}:`, err);
         }

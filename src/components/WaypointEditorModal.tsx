@@ -5,7 +5,7 @@
  * behavior. In create mode pass `initial={null}` (or omit it); in edit mode
  * pass the existing waypoint and the dialog pre-fills.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Modal from './common/Modal';
 import type { Waypoint, WaypointInput } from '../types/waypoint';
 import './WaypointEditorModal.css';
@@ -13,9 +13,27 @@ import { UiIcon } from './icons';
 
 const DEFAULT_EMOJIS = ['📍', '🏠', '🏕️', '⛺', '🚗', '🛟', '⚠️', '⭐', '🚩', '🛠️'];
 
+/**
+ * Highest device channel slot a Meshtastic radio exposes. Virtual channels
+ * from the Channel Database use ids at/above `CHANNEL_DB_OFFSET` (100) and
+ * cannot carry an outgoing waypoint, so they are filtered out of the picker.
+ */
+const MAX_CHANNEL_INDEX = 7;
+
+/** Minimal shape the picker needs — matches `Channel` from `types/device`. */
+export interface WaypointChannelOption {
+  id: number;
+  name?: string;
+}
+
 export interface WaypointEditorModalProps {
   isOpen: boolean;
   initial?: Waypoint | null;
+  /**
+   * Channels of the waypoint's own source. Slots above 7 (Channel Database
+   * virtual channels) are ignored — the radio cannot transmit on them.
+   */
+  channels?: WaypointChannelOption[];
   /** Optional callback to enter map-pick mode for coordinates. */
   onPickLocation?: () => void;
   onClose: () => void;
@@ -41,7 +59,13 @@ function localToExpireSeconds(local: string): number | null {
 }
 
 export default function WaypointEditorModal(props: WaypointEditorModalProps) {
-  const { isOpen, initial, onPickLocation, onClose, onSave, selfNodeNum, defaultCoords } = props;
+  const { isOpen, initial, channels, onPickLocation, onClose, onSave, selfNodeNum, defaultCoords } =
+    props;
+
+  const deviceChannels = useMemo(
+    () => (channels ?? []).filter((c) => Number.isInteger(c.id) && c.id >= 0 && c.id <= MAX_CHANNEL_INDEX),
+    [channels],
+  );
 
   const [lat, setLat] = useState('');
   const [lon, setLon] = useState('');
@@ -52,9 +76,20 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
   const [hasExpiry, setHasExpiry] = useState(false);
   const [lockToSelf, setLockToSelf] = useState(false);
   const [virtual, setVirtual] = useState(false);
+  const [channel, setChannel] = useState(0);
   const [rebroadcast, setRebroadcast] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // A waypoint can name a slot the source no longer reports (renamed, or the
+  // channel list has not loaded). Keep it in the list so the picker shows the
+  // real stored value instead of silently rendering blank.
+  const channelOptions = useMemo(() => {
+    if (deviceChannels.some((c) => c.id === channel)) return deviceChannels;
+    return [...deviceChannels, { id: channel, name: `Channel ${channel}` }].sort(
+      (a, b) => a.id - b.id,
+    );
+  }, [deviceChannels, channel]);
 
   // Reset form when opened or `initial` changes
   useEffect(() => {
@@ -71,6 +106,8 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
         initial.lockedTo != null && selfNodeNum != null && initial.lockedTo === selfNodeNum,
       );
       setVirtual(Boolean(initial.isVirtual));
+      // `null` on rows created before #4341 — those went out on slot 0.
+      setChannel(initial.channel ?? 0);
       setRebroadcast(
         initial.rebroadcastIntervalS
           ? String(Math.max(10, Math.round(initial.rebroadcastIntervalS / 60)))
@@ -86,6 +123,7 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
       setExpireLocal('');
       setLockToSelf(false);
       setVirtual(false);
+      setChannel(0);
       setRebroadcast('');
     }
     setError(null);
@@ -137,6 +175,7 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
       expire,
       locked_to: lockToSelf && selfNodeNum != null ? selfNodeNum : null,
       virtual,
+      channel,
       rebroadcast_interval_s: rebroadcastIntervalS,
     };
   }
@@ -285,6 +324,29 @@ export default function WaypointEditorModal(props: WaypointEditorModalProps) {
             onChange={(e) => setVirtual(e.target.checked)}
           />
           <span>Virtual (do not broadcast)</span>
+        </label>
+
+        <label className="form-label">
+          Channel
+          <select
+            className="form-input"
+            value={channel}
+            onChange={(e) => setChannel(Number(e.target.value))}
+            disabled={virtual || deviceChannels.length === 0}
+            aria-label="Broadcast channel"
+          >
+            {channelOptions.map((ch) => (
+              <option key={ch.id} value={ch.id}>
+                {ch.name || `Channel ${ch.id}`}
+                {ch.id === 0 ? ' (Primary)' : ''}
+              </option>
+            ))}
+          </select>
+          <span className="form-hint">
+            {virtual
+              ? 'Virtual waypoints are never transmitted, so the channel is unused.'
+              : 'The waypoint and any rebroadcasts go out on this channel.'}
+          </span>
         </label>
 
         <label className="form-label">
