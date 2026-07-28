@@ -21,6 +21,7 @@ import {
   unmessageableBadgeSvg,
 } from './markerIcons';
 import * as roleGlyphSvg from '../../utils/roleGlyphSvg';
+import roleGlyphSvgSource from '../../utils/roleGlyphSvg.ts?raw';
 import type { NodeTypeCategory } from '../../utils/nodeTypeCategory';
 
 const divIconMock = vi.mocked(L.divIcon);
@@ -528,14 +529,13 @@ describe('markerIcons re-exports — extraction guard (issue #4381 WP1)', () => 
     expect(unmessageableBadgeSvg(10)).toBe(roleGlyphSvg.unmessageableBadgeSvg(10));
   });
 
-  it('src/utils/roleGlyphSvg.ts is Leaflet-free (no leaflet import, no React import)', async () => {
-    const fs = await import('node:fs/promises');
-    const path = await import('node:path');
-    const source = await fs.readFile(
-      path.resolve(__dirname, '../../utils/roleGlyphSvg.ts'),
-      'utf-8',
-    );
-    expect(source).not.toMatch(/from ['"]leaflet['"]/);
-    expect(source).not.toMatch(/from ['"]react['"]/);
+  it('src/utils/roleGlyphSvg.ts is Leaflet-free (no leaflet import, no React import)', () => {
+    // Loaded via Vite's `?raw` import (not `fs`/`__dirname`, which don't exist
+    // under ESM outside a Vitest shim) so the assertion runs against the exact
+    // module text the bundler sees. The patterns match the module specifier
+    // generally, not just `from '...'`, so a dynamic `import('leaflet')` would
+    // be caught too, not only a static import.
+    expect(roleGlyphSvgSource).not.toMatch(/['"]leaflet['"]/);
+    expect(roleGlyphSvgSource).not.toMatch(/['"]react['"]/);
   });
 });
