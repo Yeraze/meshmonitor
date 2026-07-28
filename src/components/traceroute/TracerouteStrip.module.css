@@ -1,0 +1,179 @@
+/* TracerouteStrip (issue #4381 WP3). CSS module — scoped to this component
+ * per CLAUDE.md's CSS containment rule. `src/styles/nodes.css` is NOT
+ * touched: this nests inside the existing `.traceroute-info` box there,
+ * which supplies the surrounding card chrome, and must not add rules to
+ * that frozen file (see its banner comment / issue #3532).
+ *
+ * Both traceroute legs share ONE color (`--ctp-pink`), matching
+ * `overlayColors.tracerouteForward === tracerouteReturn` on the map —
+ * direction is carried by arrowheads + dash pattern, never by hue. Do not
+ * invent a second traceroute color here.
+ */
+
+.scroller {
+  overflow-x: auto;
+  overflow-y: hidden; /* tooltips live inside the reserved topBand */
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+  padding-bottom: 2px; /* keeps the focus ring off the scrollbar */
+}
+
+.canvas {
+  position: relative;
+}
+
+.edges {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.forwardEdge,
+.returnEdge {
+  fill: none;
+  stroke: var(--ctp-pink);
+  stroke-width: 2;
+}
+
+/* Return leg is differentiated by dash pattern + label lane, not by hue. */
+.returnEdge {
+  stroke-dasharray: 4 3;
+}
+
+.arrowHead {
+  fill: var(--ctp-pink);
+}
+
+.node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: default;
+}
+
+.node:focus-visible {
+  outline: 2px solid var(--ctp-blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.shortName {
+  font-size: 0.7rem;
+  color: var(--ctp-subtext1);
+  max-width: 58px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.snrLabel {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 0.7rem;
+  color: var(--ctp-subtext0);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* `.above`/`.below` carry the lane identity (forward always above, return
+ * always below, regardless of traversal direction — spec §3.4). The label's
+ * actual vertical offset comes from the pure layout module; these classes
+ * exist as the assertable hook for that distinction and a home for any
+ * future visual differentiation. */
+.above,
+.below {
+  /* intentionally empty */
+}
+
+.snrUnknown {
+  display: inline-block;
+  padding: 0.05rem 0.3rem;
+  background-color: var(--ctp-overlay0);
+  color: var(--ctp-text);
+  border-radius: 3px;
+  font-size: 0.85em;
+  font-weight: 500;
+  pointer-events: auto;
+  cursor: help;
+}
+
+.tooltip {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  min-width: 120px;
+  max-width: 220px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: 4px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--ctp-text);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  white-space: normal;
+  text-align: left;
+  z-index: 20;
+  /* Always in the DOM (never `display: none`) so `aria-describedby`
+   * resolves for assistive tech; visibility is purely visual. */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.node:hover .tooltip,
+.node:focus-visible .tooltip {
+  opacity: 1;
+}
+
+.tipLong {
+  font-weight: 600;
+}
+
+.tipRole,
+.tipId {
+  color: var(--ctp-subtext1);
+}
+
+/* Visually-hidden lane caption ("Forward"/"Return") announced ahead of each
+ * SNR label's value, for screen-reader users who can't rely on vertical
+ * position to distinguish the two lanes. Standard clip-based sr-only
+ * pattern — never `display: none` for the same reason as `.tooltip`. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Compact mode (spec §4.4): driven by the `compact` prop (layout numbers),
+ * not only a media query — the split-view side panel can be narrow on a wide
+ * viewport. */
+.compact .shortName {
+  font-size: 0.6rem;
+  max-width: 44px;
+}
+
+@media (max-width: 768px) {
+  .shortName {
+    font-size: 0.6rem;
+  }
+
+  .compact .shortName {
+    font-size: 0.55rem;
+  }
+}
