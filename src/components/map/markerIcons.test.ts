@@ -16,8 +16,12 @@ import {
   createNodeIcon,
   createTracerouteEndpointIcon,
   getHopColor,
+  roleGlyphInnerSvg,
   roleGlyphMarkerSvg,
+  unmessageableBadgeSvg,
 } from './markerIcons';
+import * as roleGlyphSvg from '../../utils/roleGlyphSvg';
+import roleGlyphSvgSource from '../../utils/roleGlyphSvg.ts?raw';
 import type { NodeTypeCategory } from '../../utils/nodeTypeCategory';
 
 const divIconMock = vi.mocked(L.divIcon);
@@ -471,5 +475,67 @@ describe('createNodeIcon — official pinStyle keeps the short-name visible for 
 
     expect(icon.html).toContain('PLAIN');
     expect(icon.html).not.toContain('bottom: -2px');
+  });
+});
+
+describe('markerIcons re-exports — extraction guard (issue #4381 WP1)', () => {
+  // `roleGlyphInnerSvg`/`roleGlyphMarkerSvg`/`getHopColor`/`unmessageableBadgeSvg`
+  // were relocated verbatim to the Leaflet-free `src/utils/roleGlyphSvg.ts` so
+  // the Node Details traceroute strip can import them without pulling Leaflet
+  // into a non-map bundle/test. `markerIcons.ts` re-exports the same function
+  // references — assert identity (not just equal output) so a future refactor
+  // that accidentally re-implements rather than re-exports is caught.
+  it('re-exports the exact same function references as roleGlyphSvg', () => {
+    expect(roleGlyphInnerSvg).toBe(roleGlyphSvg.roleGlyphInnerSvg);
+    expect(roleGlyphMarkerSvg).toBe(roleGlyphSvg.roleGlyphMarkerSvg);
+    expect(getHopColor).toBe(roleGlyphSvg.getHopColor);
+    expect(unmessageableBadgeSvg).toBe(roleGlyphSvg.unmessageableBadgeSvg);
+  });
+
+  it('roleGlyphInnerSvg produces identical output via either import path', () => {
+    const categories: NodeTypeCategory[] = [
+      'standard',
+      'mtRouter',
+      'mtRouterLate',
+      'repeater',
+      'roomServer',
+      'sensor',
+      'companion',
+    ];
+    for (const category of categories) {
+      expect(roleGlyphInnerSvg(category, '#123456')).toBe(
+        roleGlyphSvg.roleGlyphInnerSvg(category, '#123456'),
+      );
+    }
+  });
+
+  it('roleGlyphMarkerSvg produces identical output via either import path, including the "" fallback for standard', () => {
+    expect(roleGlyphMarkerSvg('standard', '#123456', 24)).toBe('');
+    expect(roleGlyphMarkerSvg('standard', '#123456', 24)).toBe(
+      roleGlyphSvg.roleGlyphMarkerSvg('standard', '#123456', 24),
+    );
+    expect(roleGlyphMarkerSvg('mtRouter', '#123456', 24)).toBe(
+      roleGlyphSvg.roleGlyphMarkerSvg('mtRouter', '#123456', 24),
+    );
+  });
+
+  it('getHopColor produces identical output via either import path', () => {
+    for (const hops of [0, 1, 3, 6, 999]) {
+      expect(getHopColor(hops)).toBe(roleGlyphSvg.getHopColor(hops));
+    }
+  });
+
+  it('unmessageableBadgeSvg produces identical output via either import path', () => {
+    expect(unmessageableBadgeSvg(10)).toBe(roleGlyphSvg.unmessageableBadgeSvg(10));
+  });
+
+  it('src/utils/roleGlyphSvg.ts is Leaflet-free (no leaflet import, no React import)', () => {
+    // Loaded via Vite's `?raw` import (not `fs`/`__dirname`, which don't exist
+    // under ESM outside a Vitest shim) so the assertion runs against the exact
+    // module text the bundler sees. The patterns match the module specifier
+    // generally, not just `from '...'`, so a dynamic `import('leaflet')` would
+    // be caught too, not only a static import.
+    expect(roleGlyphSvgSource).not.toMatch(/['"]leaflet['"]/);
+    expect(roleGlyphSvgSource).not.toMatch(/['"]react['"]/);
   });
 });
