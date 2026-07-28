@@ -1,10 +1,11 @@
 /**
- * Traceroute Visual Strip — pure graph + layout util (issue #4381 WP2).
+ * Traceroute Visual Strip — pure graph + layout util (issue #4381 WP2; spine
+ * model rewrite WP-A/WP-B, addendum A of the spec).
  *
  * Pure, React-free, Leaflet-free, `DeviceInfo`-free — safe to import from a
  * node-environment test or from any presentation layer. This module owns the
- * one graph shape the strip renders: a deduplicated, single-column-axis,
- * two-row DAG built from a traceroute's forward + return legs, plus a fixed
+ * one graph shape the strip renders: a deduplicated, single-column-axis DAG
+ * built from a traceroute's forward + return legs, plus a fixed
  * (non-DOM-measured) pixel layout for it.
  *
  * See `docs/internal/dev-notes/TRACEROUTE_VISUAL_STRIP_SPEC.md` §3 for the
@@ -25,13 +26,24 @@
  * re-indexing the survivors' samples — that index stability is what makes
  * the surviving edges carry correct SNR after hops are removed.
  *
- * Cross-leg dedup rule: a node number appearing in both legs is drawn once.
- * The main row (row 0) is built by walking the "primary" leg (forward if
- * present, else return) in order; the FIRST occurrence of each node number
- * in that walk claims the main-row column other legs anchor to
- * (`mainNodeFirst`, "first-occurrence-wins"). A later repeat of the same
- * node number within the SAME leg (a loop) still gets its own separate
- * `StripNode` and column — only cross-leg matching dedups.
+ * THE SPINE MODEL (§3.4 of the spec, replacing the old "primary leg on row 0"
+ * design after a live-mesh mis-rendering, #4392 follow-up). The middle band is
+ * the SPINE: exactly the nodes present in BOTH legs (first-occurrence-wins
+ * per nodeNum, walking the forward leg's own order). Forward-leg-exclusive
+ * nodes are raised ABOVE the spine (`lane: 'forward'`); return-leg-exclusive
+ * nodes are dropped BELOW it (`lane: 'return'`). A fully symmetric traceroute
+ * — an all-shared spine — still renders as one flat row. `BROADCAST_ADDR`
+ * hops are excluded from spine construction and can never be spine nodes
+ * (see the comment on `buildTwoLegGraph` below); two independent unknown hops
+ * in the two legs must never dedup onto one shared node.
+ *
+ * `row` is a DENSE, non-negative index over whichever of the three lanes
+ * (`forward`, `spine`, `return`, in that top-to-bottom order) actually have
+ * at least one node — an unoccupied lane costs no vertical space, which is
+ * what keeps a symmetric traceroute a single flat row. `StripNode.id` is
+ * keyed on `lane`, not `row`, because `row` is derived/dense and would
+ * otherwise make ids unstable as lane occupancy changes; `layout.centers`
+ * keys off `id`, so that stability matters.
  */
 
 import {
@@ -55,21 +67,38 @@ export function paddedHexId(nodeNum: number): string {
   return `!${nodeNum.toString(16).padStart(8, '0')}`;
 }
 
-/** Which leg of the traceroute an edge/node belongs to. */
+/** Which leg of the traceroute an edge belongs to. */
 export type StripLeg = 'forward' | 'return';
 
+/** Which of the three horizontal bands a node sits in.
+ *  'spine'   = present in BOTH legs (the true overlap), or the only leg when
+ *              just one leg exists.
+ *  'forward' = forward-leg-exclusive; raised ABOVE the spine.
+ *  'return'  = return-leg-exclusive; dropped BELOW the spine. */
+export type StripLane = 'forward' | 'spine' | 'return';
+
 export interface StripNode {
-  /** Stable, unique within one graph: `${row}-${col}-${nodeNum}`. Assigned
-   *  only after row/column placement is fully finalized. */
+  /** Stable, unique within one graph: `${lane}-${col}-${nodeNum}`.
+   *  Keyed on `lane`, NOT `row`, on purpose — `row` is a dense index that
+   *  shifts when a lane becomes occupied/unoccupied, and `layout.centers`
+   *  keys off `id`. Assigned only after placement is fully finalized. */
   id: string;
   nodeNum: number;
-  /** 0 = main row, 1 = return-only branch sub-row. */
-  row: 0 | 1;
-  /** 0-based column index; the SAME column axis is shared by both rows. */
+  /** Semantic band. The source of truth for "which leg(s) is this in". */
+  lane: StripLane;
+  /** DENSE top-to-bottom visual row index: 0 = topmost OCCUPIED lane.
+   *  Derived from `lane` + which lanes the graph actually populates, so an
+   *  unused lane costs no vertical space. `layoutTracerouteStrip` keys its
+   *  geometry off `row`; `lane` is for semantics, tests, and renderer class
+   *  hooks. */
+  row: number;
+  /** 0-based column index; the SAME column axis is shared by all lanes. */
   col: number;
   /** Legs this node participates in. Length 2 => it is the shared overlap. */
   legs: StripLeg[];
-  /** Convenience: `legs.length === 2`. */
+  /** Convenience: `legs.length === 2`. In a two-leg graph this is exactly
+   *  `lane === 'spine'`. In a SINGLE-leg graph every node is on the spine
+   *  lane but `shared` is false — only one leg exists to be shared with. */
   shared: boolean;
   /** True for BROADCAST_ADDR — render the neutral "Unknown" placeholder. */
   isUnknown: boolean;
@@ -89,7 +118,8 @@ export interface StripEdge {
 }
 
 export interface TracerouteStripGraph {
-  /** Ordered: row 0 left→right, then row 1 left→right. */
+  /** Ordered by (`row` asc, `col` asc): the topmost occupied lane left→right,
+   *  then the next, then the next. */
   nodes: StripNode[];
   /** Forward edges first (source order), then return edges (source order). */
   edges: StripEdge[];
@@ -199,10 +229,10 @@ function buildReturnRawHops(input: TracerouteStripInput, routeBack: number[]): R
 }
 
 // ---------------------------------------------------------------------------
-// Step 3-5: row/column placement, dedup, divergence, edges — the core that
+// Step 3-5: spine/lane placement, dedup, divergence, edges — the core that
 // operates on already-parsed-and-filtered legs. Exported (in addition to the
 // public `buildTracerouteStripGraph` JSON entry point below) purely for
-// testability: the "legs share no node" branch (§3.4 "case neither defined")
+// testability: the "legs share no node at all" shape (§3.4.8 "empty spine")
 // is structurally unreachable through the public JSON-parsing entry point —
 // forward and return legs generated from one TracerouteStripInput always
 // share both fromNodeNum and toNodeNum — so the spec calls for a test with
@@ -234,7 +264,7 @@ function normalizeLegInput(input: StripLegInput): InternalLegInput {
 }
 
 /**
- * Core row/column/edge builder — operates on already-filtered leg hop lists.
+ * Core graph builder — operates on already-filtered leg hop lists.
  * `buildTracerouteStripGraph` is a thin JSON-parsing wrapper around this.
  *
  * @internal exported for the §3.7 case-21 test (hand-built disjoint legs);
@@ -247,80 +277,164 @@ export function buildStripGraphFromLegs(
   const primary = normalizeLegInput(primaryInput);
   const secondary = secondaryInput ? normalizeLegInput(secondaryInput) : undefined;
 
-  const graph = buildGraphCore(primary, secondary);
+  const forward = primary.leg === 'forward' ? primary : secondary?.leg === 'forward' ? secondary : undefined;
+  const ret = primary.leg === 'return' ? primary : secondary?.leg === 'return' ? secondary : undefined;
+
+  const graph = buildGraphCore(forward, ret);
   return {
     ...graph,
-    hasForward: primary.leg === 'forward' || secondary?.leg === 'forward',
-    hasReturn: primary.leg === 'return' || secondary?.leg === 'return',
+    hasForward: !!forward,
+    hasReturn: !!ret,
     isEmpty: false,
   };
 }
 
-function buildGraphCore(
-  primary: InternalLegInput,
-  secondary: InternalLegInput | undefined,
-): Pick<TracerouteStripGraph, 'nodes' | 'edges' | 'columns'> {
-  const allNodes: StripNode[] = [];
-  const mainNodeFirst = new Map<number, StripNode>();
+/** Build the edges for one leg from its finalized StripNode sequence — one
+ *  element per filtered hop (§3.4's 1:1 correspondence), so `hops[k]`'s SNR
+ *  sample still lines up with `sequence[k]` regardless of lane placement. */
+function buildLegEdges(leg: StripLeg, sequence: StripNode[], hops: InternalLegHop[]): StripEdge[] {
+  const edges: StripEdge[] = [];
+  for (let k = 1; k < sequence.length; k++) {
+    const raw = hops[k]?.snr;
+    const scaled = raw === undefined ? undefined : raw / 4;
+    const snrUnknown = scaled !== undefined && isUnknownSnr(scaled);
+    const snr = scaled === undefined || snrUnknown ? null : scaled;
+    const from = sequence[k - 1];
+    const to = sequence[k];
+    edges.push({
+      id: `${leg}:${from.id}>${to.id}`,
+      leg,
+      fromId: from.id,
+      toId: to.id,
+      snr,
+      snrUnknown,
+    });
+  }
+  return edges;
+}
 
-  // --- Step 3: main row (row 0) ---
-  primary.hops.forEach((hop, i) => {
+/** §3.4.8 single-leg case: "that leg IS the spine" — every hop becomes a
+ *  `lane: 'spine'` node at its own ordinal column, one row, no anchor map,
+ *  no run machinery. Byte-for-byte today's (pre-spine-model) single-leg
+ *  behavior, including a loop within the leg getting its own spine column
+ *  per occurrence (a loop only becomes a *branch* once a second leg exists
+ *  to define a spine to branch off of). */
+function buildSingleLegGraph(leg: InternalLegInput): Pick<TracerouteStripGraph, 'nodes' | 'edges' | 'columns'> {
+  const nodes: StripNode[] = leg.hops.map((hop, i) => ({
+    id: '',
+    nodeNum: hop.nodeNum,
+    lane: 'spine',
+    row: 0,
+    col: i,
+    legs: [leg.leg],
+    shared: false,
+    isUnknown: hop.isUnknown,
+  }));
+  for (const n of nodes) n.id = `${n.lane}-${n.col}-${n.nodeNum}`;
+  const columns = nodes.reduce((m, n) => Math.max(m, n.col), -1) + 1;
+  const edges = buildLegEdges(leg.leg, nodes, leg.hops);
+  return { nodes, edges, columns };
+}
+
+/**
+ * §3.4.1–§3.4.8 two-leg spine builder. Both legs are present.
+ *
+ * Step 1 (§3.4.3): the spine is exactly the nodes shared by both legs,
+ * walked in the FORWARD leg's own order (first-occurrence-wins per
+ * nodeNum) — §3.4.2's orientation rule: the spine's left-to-right order is
+ * the forward leg's traversal order, and the return leg travels right to
+ * left across the same axis.
+ *
+ * UNKNOWN HOPS CAN NEVER BE SPINE NODES (I6, load-bearing — see spec §3.3 /
+ * §1.4 and case 22/27). `BROADCAST_ADDR` is not a node identity; it is the
+ * firmware's "a hop happened here and nobody recorded who" placeholder
+ * (`TraceRouteModule::insertUnknownHops()`), independently backfilled on
+ * each leg. Two independent unknowns must never dedup onto one shared
+ * StripNode — that would draw a shared node that does not exist. Both the
+ * `sharedNums` set below and the per-leg walk exclude `isUnknown` hops from
+ * ever resolving to (or becoming) a spine anchor.
+ *
+ * Step 2 (§3.4.4/§3.4.5): each leg is then walked, forward first (order
+ * fixed here purely for column-packing determinism), against the spine.
+ * Each hop either lands on its shared spine node (first-occurrence-wins
+ * PER LEG — a later revisit of an already-anchored node within the SAME
+ * leg, e.g. a loop, is treated as unanchored and gets its own branch node)
+ * or accumulates into a maximal run that gets placed on that leg's own lane
+ * once the run's bounding anchors (if any) are known.
+ */
+function buildTwoLegGraph(
+  forward: InternalLegInput,
+  ret: InternalLegInput,
+): Pick<TracerouteStripGraph, 'nodes' | 'edges' | 'columns'> {
+  // --- Step 1: spine construction (§3.4.3) ---
+  const returnNums = new Set(ret.hops.filter((h) => !h.isUnknown).map((h) => h.nodeNum));
+
+  const allNodes: StripNode[] = [];
+  const spineAnchor = new Map<number, StripNode>();
+
+  for (const hop of forward.hops) {
+    if (hop.isUnknown) continue; // I6: never a spine candidate.
+    if (!returnNums.has(hop.nodeNum)) continue; // forward-exclusive; not spine.
+    if (spineAnchor.has(hop.nodeNum)) continue; // first-occurrence-wins.
     const node: StripNode = {
       id: '',
       nodeNum: hop.nodeNum,
-      row: 0,
-      col: i,
-      legs: [primary.leg],
-      shared: false,
-      isUnknown: hop.isUnknown,
+      lane: 'spine',
+      row: 0, // placeholder; assigned below once lane occupancy is known
+      col: spineAnchor.size,
+      legs: ['forward', 'return'],
+      shared: true,
+      isUnknown: false,
     };
     allNodes.push(node);
-    // First-occurrence-wins: a repeat of the same node number later in this
-    // same leg (a loop) does NOT overwrite the anchor column other legs
-    // resolve against.
-    //
-    // Unknown (BROADCAST_ADDR) hops are EXCLUDED from this anchor map on
-    // purpose. Firmware's TraceRouteModule::insertUnknownHops() backfills
-    // route[i] = NODENUM_BROADCAST (+ snr_list[i] = INT8_MIN) whenever the
-    // packet's hop_start/hop_limit imply more hops than were actually
-    // appended — routinely triggered by any relay running firmware too old
-    // to participate in path recording. So the SAME sentinel value can (and
-    // does) show up in both the forward and return leg of one traceroute,
-    // representing two INDEPENDENT unidentified hops. Registering it here
-    // would let the return leg "anchor" onto the forward leg's unknown hop
-    // and get drawn as one shared node — a false overlap. Two "we don't know
-    // who this was" hops must never be claimed to be the same node.
-    if (!hop.isUnknown && !mainNodeFirst.has(hop.nodeNum)) {
-      mainNodeFirst.set(hop.nodeNum, node);
-    }
-  });
-  // Snapshot the primary traversal order for edge-building below — taken
-  // BEFORE any secondary-leg branch nodes are pushed onto `allNodes`.
-  const primarySequence = allNodes.slice();
+    spineAnchor.set(hop.nodeNum, node);
+  }
 
-  const secondarySequence: StripNode[] = [];
+  // --- Column-placement machinery, shared by both legs' runs (§3.4.5) ---
 
-  if (secondary) {
-    /** Mutates every already-placed node's column: `col > after` shifts by
-     *  `+count`. `after = -1` is valid (shifts everything). */
-    const insertColumns = (after: number, count: number): void => {
-      for (const n of allNodes) {
-        if (n.col > after) n.col += count;
-      }
-    };
-    const maxCol = (): number => allNodes.reduce((m, n) => Math.max(m, n.col), -1);
+  /** Mutates every already-placed node's column: `col > after` shifts by
+   *  `+count`. `after = -1` is valid (shifts everything). The column axis
+   *  is shared across all three lanes, so this touches every lane. */
+  const insertColumns = (after: number, count: number): void => {
+    for (const n of allNodes) if (n.col > after) n.col += count;
+  };
+  const maxCol = (): number => allNodes.reduce((m, n) => Math.max(m, n.col), -1);
+  /** Occupancy is checked PER LANE (§3.4.5's `freeCols` refinement): a
+   *  forward-lane node and a return-lane node may legitimately share a
+   *  column (different rows), but two nodes of the SAME lane never may —
+   *  that would collide their ids (`${lane}-${col}-${nodeNum}`). */
+  const occupiedCols = (lane: StripLane): Set<number> =>
+    new Set(allNodes.filter((n) => n.lane === lane).map((n) => n.col));
+  const freeCols = (lane: StripLane, lo: number, hi: number): number[] => {
+    const occ = occupiedCols(lane);
+    const out: number[] = [];
+    for (let c = lo + 1; c < hi; c++) if (!occ.has(c)) out.push(c);
+    return out;
+  };
+
+  /**
+   * Walk one leg against the spine (§3.4.4), placing its branch nodes on
+   * `lane` as runs are flushed against their bounding spine anchors
+   * (§3.4.5). Returns the leg's own StripNode sequence — spine nodes and
+   * this leg's branch nodes only (never the other leg's lane, invariant
+   * I1) — 1:1 with `leg.hops` for SNR pairing.
+   */
+  const walkLeg = (leg: InternalLegInput, lane: 'forward' | 'return'): StripNode[] => {
+    const sequence: StripNode[] = [];
+    const usedThisLeg = new Set<number>();
+    let prevAnchor: StripNode | undefined;
+    let pendingRun: InternalLegHop[] = [];
+
     const makeBranchNode = (hop: InternalLegHop, col: number): StripNode => ({
       id: '',
       nodeNum: hop.nodeNum,
-      row: 1,
+      lane,
+      row: 0,
       col,
-      legs: [secondary.leg],
+      legs: [leg.leg],
       shared: false,
       isUnknown: hop.isUnknown,
     });
-
-    let prevAnchor: StripNode | undefined;
-    let pendingRun: InternalLegHop[] = [];
 
     const flushRun = (nextAnchor: StripNode | undefined): void => {
       const k = pendingRun.length;
@@ -332,20 +446,32 @@ function buildGraphCore(
         const a = prevAnchor.col;
         const b = nextAnchor.col;
         const lo = Math.min(a, b);
-        const hi = Math.max(a, b);
-        const available = hi - lo - 1;
-        if (available < k) {
-          const deficit = k - available;
+        let hi = Math.max(a, b);
+        let free = freeCols(lane, lo, hi);
+        if (free.length < k) {
+          const deficit = k - free.length;
           // `lo` is stable across this call: insertColumns only shifts
           // columns strictly greater than `after`, and `after === lo`.
           insertColumns(lo, deficit);
+          hi = Math.max(prevAnchor.col, nextAnchor.col); // re-read: one of them just shifted
+          free = freeCols(lane, lo, hi);
         }
-        const ordered = b < a ? [...pendingRun].reverse() : pendingRun;
-        placed = ordered.map((hop, idx) => makeBranchNode(hop, lo + 1 + idx));
+        const target = free.slice(0, k);
+        // `order`/`target` determine which COLUMN each hop gets (reversed
+        // when the run is walked right-to-left), but `placed` — and hence
+        // `sequence` — must stay in the leg's own hop-encounter order: the
+        // hop<->sequence 1:1 correspondence (§3.4's SNR pairing, and correct
+        // edge topology) depends on it, independent of fill direction. Map
+        // hop -> column via the (possibly reversed) `order`, then re-walk
+        // `pendingRun` in its original order to build `placed`.
+        const order = b < a ? [...pendingRun].reverse() : pendingRun;
+        const colForHop = new Map<InternalLegHop, number>();
+        order.forEach((hop, idx) => colForHop.set(hop, target[idx]));
+        placed = pendingRun.map((hop) => makeBranchNode(hop, colForHop.get(hop)!));
       } else if (!prevAnchor && nextAnchor) {
         // Only `b` defined — run leads the leg (structurally unreachable for
         // real traceroute data, since a leg's own first hop is always one of
-        // the two shared endpoints; kept for completeness per spec §3.4).
+        // the two shared endpoints; kept for completeness per spec §3.4.5).
         const bBefore = nextAnchor.col;
         insertColumns(bBefore - 1, k);
         const b = nextAnchor.col; // re-read: insertColumns just shifted it
@@ -355,91 +481,75 @@ function buildGraphCore(
         const base = maxCol();
         placed = pendingRun.map((hop, idx) => makeBranchNode(hop, base + 1 + idx));
       } else {
-        // Neither defined — the two legs share no node at all. Real
-        // forward/return legs always share both endpoints, so this only
-        // happens with hand-built disjoint input (§3.7 case 21). Place the
-        // whole run on row 1 starting at column 0 rather than throwing.
+        // Neither defined — the two legs share no node at all (§3.4.8 empty
+        // spine). Real forward/return legs always share both endpoints, so
+        // this only happens with hand-built disjoint input (§3.7 case 21).
+        // Place the whole run in lane `lane` starting at column 0, in source
+        // order, rather than throwing.
         placed = pendingRun.map((hop, idx) => makeBranchNode(hop, idx));
       }
 
-      for (const n of placed) {
-        allNodes.push(n);
-        secondarySequence.push(n);
-      }
+      for (const n of placed) allNodes.push(n);
+      sequence.push(...placed);
       pendingRun = [];
     };
 
-    for (const hop of secondary.hops) {
+    for (const hop of leg.hops) {
       // An unknown (BROADCAST_ADDR) hop must never resolve to an existing
-      // main-row anchor, even if one happens to be registered under the same
-      // nodeNum (defense in depth alongside the registration-time exclusion
-      // above) — see that comment for the firmware rationale
-      // (insertUnknownHops backfills NODENUM_BROADCAST independently on each
-      // leg, so two unknown hops are never provably the same physical node).
-      const anchor = hop.isUnknown ? undefined : mainNodeFirst.get(hop.nodeNum);
+      // spine anchor (I6), and a nodeNum this leg has already anchored once
+      // (a loop) is treated as unanchored on its later occurrences —
+      // first-occurrence-wins PER LEG, which keeps this leg's own column
+      // sequence monotone even when the physical route doubles back.
+      const anchor = hop.isUnknown || usedThisLeg.has(hop.nodeNum) ? undefined : spineAnchor.get(hop.nodeNum);
       if (anchor) {
         flushRun(anchor);
-        if (!anchor.legs.includes(secondary.leg)) {
-          anchor.legs.push(secondary.leg);
-        }
-        anchor.shared = anchor.legs.length === 2;
-        secondarySequence.push(anchor);
+        usedThisLeg.add(hop.nodeNum);
+        sequence.push(anchor);
         prevAnchor = anchor;
       } else {
         pendingRun.push(hop);
       }
     }
     flushRun(undefined);
-  }
+    return sequence;
+  };
 
-  // --- Finalize: sort row0-then-row1 (each left-to-right), assign ids ---
+  // Forward first, then return — order matters only for column-packing
+  // determinism (spec §3.4.4).
+  const forwardSequence = walkLeg(forward, 'forward');
+  const returnSequence = walkLeg(ret, 'return');
+
+  // --- §3.4.6: lane occupancy -> the dense `row` index ---
+  const laneOrder: StripLane[] = ['forward', 'spine', 'return'];
+  const occupiedLanes = laneOrder.filter((lane) => allNodes.some((n) => n.lane === lane));
+  const rowOfLane = new Map<StripLane, number>(occupiedLanes.map((lane, idx) => [lane, idx]));
+  for (const n of allNodes) n.row = rowOfLane.get(n.lane)!;
+
+  // --- Finalize: sort by (row, col), assign ids ---
   allNodes.sort((x, y) => x.row - y.row || x.col - y.col);
-  for (const n of allNodes) {
-    n.id = `${n.row}-${n.col}-${n.nodeNum}`;
-  }
+  for (const n of allNodes) n.id = `${n.lane}-${n.col}-${n.nodeNum}`;
   const columns = allNodes.reduce((m, n) => Math.max(m, n.col), -1) + 1;
 
   // --- Step 4/5: edges. Built after ids are finalized (edge ids embed
   // StripNode.id). ---
-  const buildLegEdges = (leg: StripLeg, sequence: StripNode[], hops: InternalLegHop[]): StripEdge[] => {
-    const edges: StripEdge[] = [];
-    for (let k = 1; k < sequence.length; k++) {
-      const raw = hops[k]?.snr;
-      const scaled = raw === undefined ? undefined : raw / 4;
-      const snrUnknown = scaled !== undefined && isUnknownSnr(scaled);
-      const snr = scaled === undefined || snrUnknown ? null : scaled;
-      const from = sequence[k - 1];
-      const to = sequence[k];
-      edges.push({
-        id: `${leg}:${from.id}>${to.id}`,
-        leg,
-        fromId: from.id,
-        toId: to.id,
-        snr,
-        snrUnknown,
-      });
-    }
-    return edges;
-  };
-
-  const forwardEdges =
-    primary.leg === 'forward'
-      ? buildLegEdges('forward', primarySequence, primary.hops)
-      : secondary?.leg === 'forward'
-        ? buildLegEdges('forward', secondarySequence, secondary.hops)
-        : [];
-  const returnEdges =
-    primary.leg === 'return'
-      ? buildLegEdges('return', primarySequence, primary.hops)
-      : secondary?.leg === 'return'
-        ? buildLegEdges('return', secondarySequence, secondary.hops)
-        : [];
+  const forwardEdges = buildLegEdges('forward', forwardSequence, forward.hops);
+  const returnEdges = buildLegEdges('return', returnSequence, ret.hops);
 
   return {
     nodes: allNodes,
     edges: [...forwardEdges, ...returnEdges],
     columns,
   };
+}
+
+function buildGraphCore(
+  forward: InternalLegInput | undefined,
+  ret: InternalLegInput | undefined,
+): Pick<TracerouteStripGraph, 'nodes' | 'edges' | 'columns'> {
+  if (forward && ret) return buildTwoLegGraph(forward, ret);
+  const only = forward ?? ret;
+  if (!only) return { nodes: [], edges: [], columns: 0 };
+  return buildSingleLegGraph(only);
 }
 
 // ---------------------------------------------------------------------------
@@ -461,13 +571,10 @@ export function buildTracerouteStripGraph(input: TracerouteStripInput): Tracerou
     return { nodes: [], edges: [], columns: 0, hasForward: false, hasReturn: false, isEmpty: true };
   }
 
-  const primary: InternalLegInput = hasForward
-    ? { leg: 'forward', hops: forwardHops! }
-    : { leg: 'return', hops: returnHops! };
-  const secondary: InternalLegInput | undefined =
-    hasForward && hasReturn ? { leg: 'return', hops: returnHops! } : undefined;
+  const forward: InternalLegInput | undefined = hasForward ? { leg: 'forward', hops: forwardHops! } : undefined;
+  const ret: InternalLegInput | undefined = hasReturn ? { leg: 'return', hops: returnHops! } : undefined;
 
-  const core = buildGraphCore(primary, secondary);
+  const core = buildGraphCore(forward, ret);
 
   return { ...core, hasForward, hasReturn, isEmpty: false };
 }
@@ -479,7 +586,8 @@ export function buildTracerouteStripGraph(input: TracerouteStripInput): Tracerou
 export interface StripLayoutOptions {
   /** Column pitch in px. */
   colWidth: number;
-  /** Vertical pitch between row 0 and row 1, px. */
+  /** Vertical pitch between adjacent OCCUPIED rows, px.
+   *  Floored at `2 * labelOffset(o)` — see §3.5.2 C3 / `minRowHeight()`. */
   rowHeight: number;
   /** Glyph edge length in px. */
   glyphSize: number;
@@ -492,15 +600,16 @@ export interface StripLayoutOptions {
    *  original fixed +/-14px offset put labels inside the glyph/name because
    *  it only ever accounted for `glyphSize`). */
   nameHeight: number;
-  /** Height reserved above row 0 for the forward SNR lane + tooltips, px. */
+  /** Height reserved above the TOPMOST occupied row for its SNR lane +
+   *  tooltips, px. Floored at `minBand()`. */
   topBand: number;
-  /** Height reserved below the last row for the return SNR lane, px. */
+  /** Height reserved below the BOTTOMMOST occupied row, px. Floored likewise. */
   bottomBand: number;
 }
 
 const DEFAULT_LAYOUT_OPTIONS: StripLayoutOptions = {
   colWidth: 64,
-  rowHeight: 56,
+  rowHeight: 76, // was 56 before the spine model — see §3.5.2 C3.
   glyphSize: 32,
   nameHeight: 14,
   topBand: 44,
@@ -518,9 +627,10 @@ export interface StripLayout {
   /** StripNode.id -> glyph CENTER, in the container's coordinate space. */
   centers: Map<string, StripPoint>;
   /** Per-edge polyline through 2 or 3 points, already offset off the glyph
-   *  edges so the arrowhead lands on the rim, not under the icon. */
+   *  edges so the arrowhead lands on the rim, not under the icon, and
+   *  translated into its leg's lane. */
   edgePaths: Map<string, StripPoint[]>;
-  /** Where each edge's SNR label anchors (above for forward, below for return). */
+  /** Where each edge's SNR label anchors (§3.5.1). */
   labelAnchors: Map<string, StripPoint>;
 }
 
@@ -571,6 +681,16 @@ function labelOffset(o: StripLayoutOptions): number {
  *  canvas once it sits `labelOffset` away from the outermost row's center. */
 function minBand(o: StripLayoutOptions): number {
   return labelOffset(o) + LABEL_HALF_HEIGHT;
+}
+
+/** Minimum rowHeight (§3.5.2 C3): a same-row label sits `labelOffset` off
+ *  its own row's center and must still clear the ADJACENT row by the same
+ *  margin (`rowHeight - labelOffset >= labelOffset`); a crossing edge's
+ *  label sits at the gap midpoint, `rowHeight / 2` from each endpoint row,
+ *  which needs the same floor. Below this floor a forward label on the
+ *  spine row could land inside the raised row above it. */
+function minRowHeight(o: StripLayoutOptions): number {
+  return 2 * labelOffset(o);
 }
 
 // ---------------------------------------------------------------------------
@@ -625,10 +745,12 @@ export function layoutTracerouteStrip(
   opts?: Partial<StripLayoutOptions>,
 ): StripLayout {
   const o: StripLayoutOptions = { ...DEFAULT_LAYOUT_OPTIONS, ...opts };
-  // Defensive floor: guarantee the label-clearance invariant even if a caller
-  // passes custom bands too small for its glyphSize/nameHeight.
+  // Defensive floors: guarantee the label-clearance invariants even if a
+  // caller passes custom bands/rowHeight too small for its glyphSize/
+  // nameHeight (§3.5.2 C2/C3).
   const topBand = Math.max(o.topBand, minBand(o));
   const bottomBand = Math.max(o.bottomBand, minBand(o));
+  const rowHeight = Math.max(o.rowHeight, minRowHeight(o));
   const offset = labelOffset(o);
 
   const centers = new Map<string, StripPoint>();
@@ -637,12 +759,12 @@ export function layoutTracerouteStrip(
     maxRow = Math.max(maxRow, n.row);
     centers.set(n.id, {
       x: n.col * o.colWidth + o.colWidth / 2,
-      y: topBand + n.row * o.rowHeight + o.glyphSize / 2,
+      y: topBand + n.row * rowHeight + o.glyphSize / 2,
     });
   }
 
   const width = graph.columns * o.colWidth;
-  const height = topBand + (maxRow + 1) * o.rowHeight + bottomBand;
+  const height = topBand + (maxRow + 1) * rowHeight + bottomBand;
 
   const nodeById = new Map(graph.nodes.map((n) => [n.id, n] as const));
   const edgePaths = new Map<string, StripPoint[]>();
@@ -656,8 +778,9 @@ export function layoutTracerouteStrip(
     const toNode = nodeById.get(e.toId);
     if (!c0 || !c1 || !fromNode || !toNode) continue; // defensive; should not happen
 
+    const sameRow = fromNode.row === toNode.row;
     let path: StripPoint[];
-    if (fromNode.row === toNode.row) {
+    if (sameRow) {
       const start = pullToward(c0, c1, pullIn);
       const end = pullToward(c1, c0, pullIn);
       path = [start, end];
@@ -682,12 +805,19 @@ export function layoutTracerouteStrip(
 
     edgePaths.set(e.id, path);
 
+    // §3.5.1: the label's Y anchors off ROW CENTERS, not the (lane-offset-
+    // translated) path — otherwise, with three possible rows, a flat +/-
+    // offset from the path can land inside the wrong lane's node footprint.
+    // X still comes from the translated path, which is what keeps a purely
+    // vertical chord's two legs horizontally separated.
     const first = path[0];
     const last = path[path.length - 1];
     const midX = (first.x + last.x) / 2;
-    const midY = (first.y + last.y) / 2;
-    const signedOffset = e.leg === 'forward' ? -offset : offset;
-    labelAnchors.set(e.id, { x: midX, y: midY + signedOffset });
+    const laneYSign = e.leg === 'forward' ? -1 : 1; // forward=up, return=down
+    const anchorY = sameRow
+      ? c0.y + laneYSign * offset // same-row: offset off this row's center
+      : (c0.y + c1.y) / 2; // crossing: middle of the inter-row gap
+    labelAnchors.set(e.id, { x: midX, y: anchorY });
   }
 
   return { width, height, centers, edgePaths, labelAnchors };
