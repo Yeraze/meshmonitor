@@ -9,6 +9,24 @@ const repoRoot = resolve(__dirname, '..');
 const blogDir = join(repoRoot, 'docs/blog');
 const newsJsonPath = join(repoRoot, 'docs/public/news.json');
 
+// Blog posts use site-root-relative links (`/features/atak`) because that is what
+// VitePress wants. The news feed is read by MeshMonitor instances, where a
+// root-relative link resolves against the instance's own base URL and 404s, so
+// every root-relative target becomes absolute on its way into news.json.
+const SITE_ORIGIN = 'https://meshmonitor.org';
+
+export function absolutizeLinks(markdown) {
+  return (
+    markdown
+      // [text](/path "title") and ![alt](/path)
+      .replace(/(\]\()\/(?!\/)/g, `$1${SITE_ORIGIN}/`)
+      // href="/path" / src='/path' in any raw HTML
+      .replace(/\b(href|src)=(["'])\/(?!\/)/g, `$1=$2${SITE_ORIGIN}/`)
+      // reference-style definitions: [label]: /path
+      .replace(/^(\[[^\]]+\]:\s*)\/(?!\/)/gm, `$1${SITE_ORIGIN}/`)
+  );
+}
+
 function toIsoString(value) {
   if (value instanceof Date) return value.toISOString().replace(/\.\d{3}Z$/, 'Z');
   return String(value);
@@ -28,7 +46,7 @@ function loadPosts() {
     if (!fm.id || !fm.title || !fm.date) {
       throw new Error(`${basename(filePath)}: frontmatter missing required id/title/date`);
     }
-    const content = parsed.content.replace(/^\n+/, '').replace(/\s+$/, '');
+    const content = absolutizeLinks(parsed.content.replace(/^\n+/, '').replace(/\s+$/, ''));
     const item = {};
     if (fm.minVersion !== undefined) item.minVersion = String(fm.minVersion);
     item.id = String(fm.id);
@@ -56,5 +74,7 @@ function build() {
   return { count: items.length, lastUpdated };
 }
 
-const { count, lastUpdated } = build();
-console.log(`wrote ${newsJsonPath} — ${count} item(s), lastUpdated=${lastUpdated}`);
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const { count, lastUpdated } = build();
+  console.log(`wrote ${newsJsonPath} — ${count} item(s), lastUpdated=${lastUpdated}`);
+}

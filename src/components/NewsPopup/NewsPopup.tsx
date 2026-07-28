@@ -12,6 +12,26 @@ import type { NewsItem, NewsFeed } from '../../types/ui';
 import api from '../../services/api';
 import './NewsPopup.css';
 
+/**
+ * News content is authored as blog posts on meshmonitor.org, so any
+ * site-root-relative link in it ("/features/atak") points at the docs site,
+ * not at this instance. Resolving it here would send the user to
+ * <instance-base-url>/features/atak, which does not exist. The feed generator
+ * absolutizes these, but older feed items are already published relative — so
+ * rewrite them on render too.
+ */
+const NEWS_SITE_ORIGIN = 'https://meshmonitor.org';
+
+const absolutizeNewsUrl = (url: string | undefined): string | undefined => {
+  if (!url) return url;
+  // Root-relative only: leave protocol-relative ("//host"), absolute, anchor,
+  // and mailto/data URLs alone.
+  if (url.startsWith('/') && !url.startsWith('//')) {
+    return `${NEWS_SITE_ORIGIN}${url}`;
+  }
+  return url;
+};
+
 interface NewsPopupProps {
   isOpen: boolean;
   onClose: () => void;
@@ -268,8 +288,19 @@ export const NewsPopup: React.FC<NewsPopupProps> = ({
               <ReactMarkdown
                 components={{
                   a(props) {
-                    const { node: _node, ...rest } = props;
-                    return <a {...rest} target="_blank" rel="noopener noreferrer" />;
+                    const { node: _node, href, ...rest } = props;
+                    return (
+                      <a
+                        {...rest}
+                        href={absolutizeNewsUrl(href)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      />
+                    );
+                  },
+                  img(props) {
+                    const { node: _node, src, ...rest } = props;
+                    return <img {...rest} src={absolutizeNewsUrl(src)} />;
                   },
                 }}
               >
