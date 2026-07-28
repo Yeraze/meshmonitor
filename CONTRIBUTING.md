@@ -127,18 +127,19 @@ Our CI/CD pipeline runs automatically on all PRs:
 
 ### GitHub Actions Workflows
 
-1. **PR Tests** (`pr-tests.yml`)
-   - Runs on every PR
-   - Quick validation of changes
-   - Type checking and unit tests
-
-2. **Full CI** (`ci.yml`)
-   - Comprehensive testing
-   - Multiple Node.js versions
-   - Docker build validation
+1. **CI** (`ci.yml`)
+   - Runs on every PR, whatever branch it targets
+   - Lint ratchet, type checking, and the full unit suite on Node 22 / 24 / 25
+     (against real PostgreSQL and MySQL service containers)
+   - Frontend, server, documentation, and Docker build validation
    - Security scanning
 
-3. **Release Pipeline** (`release.yml`)
+   A separate `pr-tests.yml` used to run alongside this one, but every job in it
+   was a strict subset of a job here — it re-ran the same suite a fourth time on
+   Node 24 and then re-ran parts of it again. Its one unique job, the VitePress
+   documentation build, now lives in `ci.yml`.
+
+2. **Release Pipeline** (`release.yml`)
    - Runs on version tags
    - Full test suite
    - Multi-platform Docker builds

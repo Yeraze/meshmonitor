@@ -4,8 +4,18 @@ on:
   push:
     branches: [ main, develop ]
   pull_request:
-    branches: [ main, develop ]
+    # Deliberately NOT filtered by target branch. The retired pr-tests.yml ran on
+    # PRs into *any* branch; this workflow used to be limited to main/develop, so
+    # narrowing it here would silently leave PRs targeting release/feature
+    # branches with no test run at all.
     types: [ opened, synchronize, reopened ]
+
+# Inherited from the retired pr-tests.yml: without this, every push to a PR
+# branch starts a full run and the superseded ones keep burning runners to
+# completion.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -134,6 +144,35 @@ jobs:
           ls -la dist/
           echo "Checking server build..."
           ls -la dist/server/
+
+  docs-build:
+    name: Documentation Build
+    runs-on: ubuntu-latest
+
+    # Absorbed from the retired pr-tests.yml, where it was the ONE job with
+    # coverage this workflow did not already have. It is not redundant with
+    # deploy-docs.yml: that only runs on push to main, i.e. after merge — so
+    # without this, a VitePress build break is caught by the deploy, not the PR.
+    #
+    # Run unconditionally rather than behind a dorny/paths-filter `docs` gate.
+    # The old gate keyed on `docs/**` and `**.md`, which missed the VitePress
+    # config and the docs' own dependencies, and the build is ~1 min. Dropping
+    # the gate is what let the `changed-files` job retire with pr-tests.yml.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --prefer-offline --no-audit --legacy-peer-deps
+
+      - name: Build documentation
+        run: npm run docs:build
 
   docker:
     name: Docker Build
