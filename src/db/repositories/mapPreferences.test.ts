@@ -57,6 +57,19 @@ describe('userMapPreferences — positionHistoryPointsOnly toggle (#3492)', () =
   });
 });
 
+describe('userMapPreferences — showAtakContacts toggle (#4378)', () => {
+  it('maps JS `showAtakContacts` → SQL column `show_atak_contacts` on all three backends', () => {
+    for (const table of [
+      schema.userMapPreferencesSqlite,
+      schema.userMapPreferencesPostgres,
+      schema.userMapPreferencesMysql,
+    ]) {
+      const col = (table as unknown as { showAtakContacts: { name: string } }).showAtakContacts;
+      expect(col.name).toBe('show_atak_contacts');
+    }
+  });
+});
+
 describe('userMapPreferences — per-theme tilesets (#4096)', () => {
   it('maps both themed fields to snake_case columns on all three backends', () => {
     for (const table of [

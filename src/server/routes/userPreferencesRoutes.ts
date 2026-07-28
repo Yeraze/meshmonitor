@@ -40,10 +40,10 @@ router.post('/map-preferences', requireAuth(), async (req, res) => {
       return res.status(403).json({ error: 'Cannot save preferences for anonymous user' });
     }
 
-    const { mapTileset, mapTilesetLight, mapTilesetDark, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, positionHistoryPointsOnly, positionHistoryHours, mapMaxAgeHours } = req.body;
+    const { mapTileset, mapTilesetLight, mapTilesetDark, showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, showAtakContacts, positionHistoryPointsOnly, positionHistoryHours, mapMaxAgeHours } = req.body;
 
     // Validate boolean values
-    const booleanFields = { showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, positionHistoryPointsOnly };
+    const booleanFields = { showPaths, showNeighborInfo, showRoute, showMotion, showMqttNodes, showUdpNodes, showRfNodes, showMeshCoreNodes, showWaypoints, showAnimations, showAccuracyRegions, showEstimatedPositions, showAtakContacts, positionHistoryPointsOnly };
     for (const [key, value] of Object.entries(booleanFields)) {
       if (value !== undefined && typeof value !== 'boolean') {
         return res.status(400).json({ error: `${key} must be a boolean` });
@@ -82,6 +82,7 @@ router.post('/map-preferences', requireAuth(), async (req, res) => {
       showAnimations,
       showAccuracyRegions,
       showEstimatedPositions,
+      showAtakContacts,
       positionHistoryPointsOnly,
       positionHistoryHours,
       mapMaxAgeHours,

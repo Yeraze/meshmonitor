@@ -143,6 +143,7 @@ import { migration as addXeddsaSignedMigration, runMigration125Postgres, runMigr
 import { migration as addTransportFlagsMigration, runMigration126Postgres, runMigration126Mysql } from '../server/migrations/126_add_transport_flags_to_nodes.js';
 import { migration as addAtakContactsMigration, runMigration127Postgres, runMigration127Mysql } from '../server/migrations/127_add_atak_contacts.js';
 import { migration as mqttOkToMqttViolationsMigration, runMigration128Postgres, runMigration128Mysql } from '../server/migrations/128_mqtt_oktomqtt_violations.js';
+import { migration as addShowAtakContactsMigration, runMigration129Postgres, runMigration129Mysql } from '../server/migrations/129_add_show_atak_contacts_to_map_prefs.js';
 
 // ============================================================================
 // Registry
@@ -2036,4 +2037,19 @@ registry.register({
   sqlite: (db) => mqttOkToMqttViolationsMigration.up(db),
   postgres: (client) => runMigration128Postgres(client),
   mysql: (pool) => runMigration128Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 129: persist the "Show ATAK Contacts" map toggle (#4378). #3691
+// added the toggle and its MapContext default but never the column behind it,
+// so every save was silently dropped by the route's explicit field list.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 129,
+  name: 'add_show_atak_contacts_to_map_prefs',
+  settingsKey: 'migration_129_add_show_atak_contacts_to_map_prefs',
+  sqlite: (db) => addShowAtakContactsMigration.up(db),
+  postgres: (client) => runMigration129Postgres(client),
+  mysql: (pool) => runMigration129Mysql(pool),
 });
