@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   validateAutomationGraph,
   categoryOf,
+  parseCooldownScope,
   AUTOMATION_CONFIG_VERSION,
   type AutomationGraph,
 } from './automation.js';
@@ -119,6 +120,44 @@ describe('validateAutomationGraph', () => {
     const bad = validateAutomationGraph(withTapback({ emojiMode: 'random' }));
     expect(bad.valid).toBe(false);
     expect(bad.errors.join(' ')).toMatch(/emojiMode ∈ \{fixed,hopCount\}/);
+  });
+
+  // ── trigger.* cooldownScope (#4340 Phase 2) ─────────────────────────────
+  it('trigger.message: cooldownScope validates when present, and absence still validates', () => {
+    const withTrigger = (params: Record<string, unknown>): AutomationGraph => ({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params },
+        { id: 'a', type: 'action.tapback', params: { emoji: '👍' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    // absent → valid (pre-Phase-2 stored automations keep validating unchanged)
+    expect(validateAutomationGraph(withTrigger({})).valid).toBe(true);
+    expect(validateAutomationGraph(withTrigger({ textContains: 'ping' })).valid).toBe(true);
+    // valid scopes
+    expect(validateAutomationGraph(withTrigger({ cooldownScope: 'automation' })).valid).toBe(true);
+    expect(validateAutomationGraph(withTrigger({ cooldownScope: 'node' })).valid).toBe(true);
+    expect(validateAutomationGraph(withTrigger({ cooldownScope: 'sourceNode' })).valid).toBe(true);
+    // invalid scope → error
+    const bad = validateAutomationGraph(withTrigger({ cooldownScope: 'perNode' }));
+    expect(bad.valid).toBe(false);
+    expect(bad.errors.join(' ')).toMatch(/cooldownScope ∈ \{automation,node,sourceNode\}/);
+  });
+
+  it('cooldownScope guard applies to every trigger type, not just trigger.message', () => {
+    const withTelemetryTrigger = (params: Record<string, unknown>): AutomationGraph => ({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.telemetry', params },
+        { id: 'a', type: 'action.tapback', params: { emoji: '👍' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    expect(validateAutomationGraph(withTelemetryTrigger({ cooldownScope: 'node' })).valid).toBe(true);
+    const bad = validateAutomationGraph(withTelemetryTrigger({ cooldownScope: 'bogus' }));
+    expect(bad.valid).toBe(false);
+    expect(bad.errors.join(' ')).toMatch(/trigger\.telemetry .* requires params\.cooldownScope ∈ \{automation,node,sourceNode\}/);
   });
 
   it('rejects non-object config', () => {
@@ -247,5 +286,21 @@ describe('validateAutomationGraph', () => {
       ],
       edges: [{ from: 't', to: 'v' }, { from: 'v', to: 'a' }],
     })).errors.join()).toMatch(/requires params.variable/);
+  });
+});
+
+describe('parseCooldownScope', () => {
+  it('round-trips each valid value', () => {
+    expect(parseCooldownScope('automation')).toBe('automation');
+    expect(parseCooldownScope('node')).toBe('node');
+    expect(parseCooldownScope('sourceNode')).toBe('sourceNode');
+  });
+
+  it('coerces absent/blank/unrecognised values to "automation"', () => {
+    expect(parseCooldownScope(undefined)).toBe('automation');
+    expect(parseCooldownScope(null)).toBe('automation');
+    expect(parseCooldownScope('')).toBe('automation');
+    expect(parseCooldownScope('bogus')).toBe('automation');
+    expect(parseCooldownScope(0)).toBe('automation');
   });
 });
