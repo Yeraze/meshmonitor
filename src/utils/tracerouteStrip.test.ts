@@ -345,9 +345,15 @@ describe('buildTracerouteStripGraph — §3.7 edge cases', () => {
     expect(() => buildTracerouteStripGraph(input)).not.toThrow();
     const graph = buildTracerouteStripGraph(input);
     expect(graph.isEmpty).toBe(false);
+    // Spec §3.7's summary phrase for this case says "single column when the
+    // route is empty" — that is NOT literal: §3.4's per-element rule ("each
+    // element becomes a StripNode ... its own column") still applies to the
+    // two endpoint hops here, so this yields 2 StripNodes / 2 columns, same
+    // as the loop case (case 12). Confirmed correct reading with the spec
+    // author: "single ROW" is what's meant (no divergence is possible for a
+    // degenerate self-path, so row 1 stays unused) — do NOT "fix" this back
+    // to asserting a single column.
     expect(graph.nodes).toHaveLength(2);
-    // Degenerate zero-travel path — no divergence possible, everything
-    // stays on the single main row (row 1 unused).
     expect(graph.nodes.every((n) => n.row === 0)).toBe(true);
     expect(graph.edges).toHaveLength(1);
   });
@@ -368,6 +374,40 @@ describe('buildTracerouteStripGraph — §3.7 edge cases', () => {
     expect(row1.map((n) => n.nodeNum)).toEqual([3, 4]);
     expect(row1[0].col).toBe(0);
     expect(row1.every((n) => !n.shared)).toBe(true);
+  });
+
+  it('case 22: BROADCAST_ADDR in BOTH legs must never cross-leg dedup — two independent unknown hops stay two nodes', () => {
+    // Firmware backfills NODENUM_BROADCAST independently per leg
+    // (TraceRouteModule::insertUnknownHops), so the forward leg's "we don't
+    // know who this was" and the return leg's are almost always two
+    // DIFFERENT physical (unknown) relays. Merging them into one shared
+    // StripNode would draw a false overlap.
+    const input: TracerouteStripInput = {
+      fromNodeNum: FROM,
+      toNodeNum: TO,
+      route: JSON.stringify([BROADCAST_ADDR]),
+      routeBack: JSON.stringify([BROADCAST_ADDR]),
+      snrTowards: JSON.stringify([10, 20]),
+      snrBack: JSON.stringify([30, 40]),
+    };
+    const graph = buildTracerouteStripGraph(input);
+
+    const unknownNodes = graph.nodes.filter((n) => n.nodeNum === BROADCAST_ADDR);
+    expect(unknownNodes).toHaveLength(2); // two distinct StripNodes, not one
+    expect(unknownNodes.every((n) => !n.shared)).toBe(true); // neither is shared
+
+    // The return leg's unknown hop must land on the branch row, not get
+    // anchored onto the forward leg's unknown hop.
+    const returnUnknown = unknownNodes.find((n) => n.legs.includes('return'));
+    expect(returnUnknown).toBeDefined();
+    expect(returnUnknown!.row).toBe(1);
+
+    // The fix must not over-correct: the genuinely shared endpoints
+    // (fromNodeNum/toNodeNum) still dedup correctly in this same graph.
+    const fromNode = findNode(graph, FROM, 0)[0];
+    const toNode = findNode(graph, TO, 0)[0];
+    expect(fromNode.shared).toBe(true);
+    expect(toNode.shared).toBe(true);
   });
 });
 

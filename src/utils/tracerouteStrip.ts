@@ -268,7 +268,19 @@ function buildGraphCore(
     // First-occurrence-wins: a repeat of the same node number later in this
     // same leg (a loop) does NOT overwrite the anchor column other legs
     // resolve against.
-    if (!mainNodeFirst.has(hop.nodeNum)) {
+    //
+    // Unknown (BROADCAST_ADDR) hops are EXCLUDED from this anchor map on
+    // purpose. Firmware's TraceRouteModule::insertUnknownHops() backfills
+    // route[i] = NODENUM_BROADCAST (+ snr_list[i] = INT8_MIN) whenever the
+    // packet's hop_start/hop_limit imply more hops than were actually
+    // appended — routinely triggered by any relay running firmware too old
+    // to participate in path recording. So the SAME sentinel value can (and
+    // does) show up in both the forward and return leg of one traceroute,
+    // representing two INDEPENDENT unidentified hops. Registering it here
+    // would let the return leg "anchor" onto the forward leg's unknown hop
+    // and get drawn as one shared node — a false overlap. Two "we don't know
+    // who this was" hops must never be claimed to be the same node.
+    if (!hop.isUnknown && !mainNodeFirst.has(hop.nodeNum)) {
       mainNodeFirst.set(hop.nodeNum, node);
     }
   });
@@ -348,7 +360,13 @@ function buildGraphCore(
     };
 
     for (const hop of secondary.hops) {
-      const anchor = mainNodeFirst.get(hop.nodeNum);
+      // An unknown (BROADCAST_ADDR) hop must never resolve to an existing
+      // main-row anchor, even if one happens to be registered under the same
+      // nodeNum (defense in depth alongside the registration-time exclusion
+      // above) — see that comment for the firmware rationale
+      // (insertUnknownHops backfills NODENUM_BROADCAST independently on each
+      // leg, so two unknown hops are never provably the same physical node).
+      const anchor = hop.isUnknown ? undefined : mainNodeFirst.get(hop.nodeNum);
       if (anchor) {
         flushRun(anchor);
         if (!anchor.legs.includes(secondary.leg)) {
