@@ -12,7 +12,9 @@
 
 .scroller {
   overflow-x: auto;
-  overflow-y: hidden; /* tooltips live inside the reserved topBand */
+  /* The strip's own content never needs to overflow vertically, and the hover
+   * popup escapes via a portal rather than by being let out of here. */
+  overflow-y: hidden;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
   max-width: 100%;
@@ -114,52 +116,35 @@
   cursor: help;
 }
 
-.tooltip {
-  position: absolute;
-  top: -6px;
-  left: 50%;
-  transform: translate(-50%, -100%);
-  min-width: 120px;
-  max-width: 220px;
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface2);
-  border-radius: 4px;
-  padding: 0.35rem 0.5rem;
-  font-size: 0.75rem;
-  line-height: 1.3;
-  color: var(--ctp-text);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  white-space: normal;
-  text-align: left;
-  z-index: 20;
-  /* Always in the DOM (never `display: none`) so `aria-describedby`
-   * resolves for assistive tech; visibility is purely visual. */
-  opacity: 0;
+/* The hover popup is portalled to `document.body` and positioned in viewport
+ * coordinates by JS. It MUST NOT be a descendant of `.node`: that element
+ * carries a `transform`, which would make it the containing block for a
+ * `position: fixed` child and re-trap the popup inside `.scroller`'s
+ * `overflow: hidden` — the exact clipping this replaced.
+ *
+ * Rendered only while hovered/focused, so there is no always-in-DOM
+ * requirement here; `aria-describedby` is set on the node only while the
+ * popup exists, so the reference never dangles. */
+.hoverPopup {
+  position: fixed;
+  z-index: 10002; /* matches NodePopup's chat overlay */
+  /* Non-interactive by design: the popup is a preview, not a surface to
+   * click into, so it never steals the pointer from the glyph beneath it. */
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  /* Hidden until measured and placed, so the first paint can't flash at the
+   * provisional 0,0 position. */
+  opacity: 0;
+  transition: opacity 0.12s ease;
 }
 
-.node:hover .tooltip,
-.node:focus-visible .tooltip {
+.hoverPopupReady {
   opacity: 1;
-}
-
-.tipLong {
-  font-weight: 600;
-}
-
-.tipRole,
-.tipId {
-  color: var(--ctp-subtext1);
 }
 
 /* Visually-hidden lane caption ("Forward"/"Return") announced ahead of each
  * SNR label's value, for screen-reader users who can't rely on vertical
  * position to distinguish the two lanes. Standard clip-based sr-only
- * pattern — never `display: none` for the same reason as `.tooltip`. */
+ * pattern — never `display: none`, which would drop it from the a11y tree. */
 .srOnly {
   position: absolute;
   width: 1px;

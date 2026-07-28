@@ -1964,7 +1964,13 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           // Always renders at default size (#4381 follow-up):
                           // narrow panels are handled by `.scroller`'s
                           // horizontal scroll, not a width heuristic.
-                          <TracerouteStrip graph={stripGraph} meta={stripMeta} />
+                          <TracerouteStrip
+                            graph={stripGraph}
+                            meta={stripMeta}
+                            timeFormat={timeFormat}
+                            dateFormat={dateFormat}
+                            distanceUnit={distanceUnit}
+                          />
                         ) : (
                           <div className="traceroute-route">
                             {t('messages.traceroute_no_response', 'No response received')}
