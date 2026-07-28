@@ -184,7 +184,9 @@ export class AutomationEngineService {
       if (!triggerNode) continue;
       const triggerType = triggerNode.type as TriggerType;
       const cooldownSeconds = Number((triggerNode.params as any)?.cooldownSeconds ?? 0) || 0;
-      const cooldownScope = parseCooldownScope((triggerNode.params as any)?.cooldownScope);
+      // No `as any` needed: params is Record<string, unknown> and parseCooldownScope
+      // takes unknown. (The cooldownSeconds line above predates the lint ratchet.)
+      const cooldownScope = parseCooldownScope(triggerNode.params?.cooldownScope);
       const entry: LoadedAutomation = {
         id: row.id, name: row.name, graph: result.graph, triggerNode, triggerType, cooldownSeconds, cooldownScope,
       };
