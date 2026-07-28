@@ -434,7 +434,7 @@ MeshMonitor publishes two rolling Docker image tags, letting you choose your upg
 
 **`:latest`** is the default and is recommended for most users. It moves only when a stable version ships, so you get a tested build and fewer surprise updates.
 
-**`:dev`** moves with every pre-release (release candidate). It's useful if you want new features or fixes immediately and are comfortable with RC stability. Note that `:dev` can briefly lag behind `:latest` right after a stable release ships — there is a short window where `:dev` points to the last RC while `:latest` has already moved to the new stable build. This resolves once the next RC is published.
+**`:dev`** moves with **every release** — release candidates *and* stable releases. It's useful if you want new features or fixes immediately and are comfortable with RC stability. Because stable releases are promoted to `:dev` as well, the fast track is always a superset of the stable track: `:dev` is never older than `:latest`, and it never moves backwards.
 
 In addition to these rolling tags, every release (stable and RC) gets an **exact version tag** (e.g. `:4.13.0`, `:4.13.0-rc3`) for pinning, and stable releases also move the **major** (`:4`) and **major.minor** (`:4.13`) tags for Kubernetes-style rolling upgrades within a version line.
 
