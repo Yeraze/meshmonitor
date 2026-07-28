@@ -154,7 +154,7 @@ Three lint commands:
 ```bash
 npm run lint:ci 2>&1 | grep '^FAIL' | grep -v '.claude/worktrees'
 ```
-Empty output = the CI gate passes. The same applies to Vitest, which scans those worktrees and inflates the suite count.
+Empty output = the CI gate passes. Vitest **no longer** has this problem — `vitest.config.ts` excludes `**/.claude/worktrees/**`. (It used to: two leftover worktrees tripled the local suite, adding ~11 min and ~22k phantom tests, and reported failures from the worktrees' own stale dependencies.) ESLint still walks them, so the `grep -v` above is still required for `lint:ci`.
 
 **`npx eslint <file>` exiting 0 does not mean the ratchet passes.** The ratchet compares *per-file, per-rule counts* against the baseline, so adding one `react-hooks/exhaustive-deps` violation to an already-baselined file fails CI while plain ESLint reports nothing new. Always confirm with `lint:ci` before pushing.
 
