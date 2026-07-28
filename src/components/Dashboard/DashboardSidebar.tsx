@@ -27,6 +27,13 @@ import type { DashboardSource, SourceStatus, UnifiedStatus } from '../../hooks/u
 import { UNIFIED_SOURCE_ID } from '../../hooks/useDashboardData';
 import { useAuth } from '../../contexts/AuthContext';
 import { BrandIcon, UiIcon } from '../icons';
+import styles from './DashboardSidebar.module.css';
+
+// Every sidebar navigation link renders an icon before its label (issue #4395).
+// The global `.dashboard-sidebar-link` rule carries the colour and typography;
+// the CSS-module class adds the flex layout that aligns the glyph with the text.
+const SIDEBAR_LINK_CLASS =
+  `dashboard-sidebar-link dashboard-sidebar-link--active ${styles.linkWithIcon}`;
 
 // Persisted, user-resizable sidebar width (issue #3356). The width is stored
 // in localStorage so it survives reloads; min/max bounds keep the layout from
@@ -787,38 +794,43 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
 
       <div className="dashboard-sidebar-links">
         <button
-          className="dashboard-sidebar-link dashboard-sidebar-link--active"
+          className={SIDEBAR_LINK_CLASS}
           onClick={() => navigate('/unified/messages')}
         >
+          <UiIcon name="messages" size={18} />
           {t('source.sidebar.unified_messages')}
         </button>
         <button
-          className="dashboard-sidebar-link dashboard-sidebar-link--active"
+          className={SIDEBAR_LINK_CLASS}
           onClick={() => navigate('/unified/telemetry')}
         >
+          <UiIcon name="telemetry" size={18} />
           {t('source.sidebar.unified_telemetry')}
         </button>
         <button
-          className="dashboard-sidebar-link dashboard-sidebar-link--active"
+          className={SIDEBAR_LINK_CLASS}
           onClick={() => navigate('/unified/packets')}
         >
+          <UiIcon name="package" size={18} />
           {t('source.sidebar.unified_packets', 'Unified Packets')}
         </button>
         <button
-          className="dashboard-sidebar-link dashboard-sidebar-link--active"
+          className={SIDEBAR_LINK_CLASS}
           onClick={() => navigate('/analysis')}
         >
+          <UiIcon name="map" size={18} />
           {t('source.sidebar.map_analysis')}
         </button>
         <button
-          className="dashboard-sidebar-link dashboard-sidebar-link--active"
+          className={SIDEBAR_LINK_CLASS}
           onClick={() => navigate('/reports')}
         >
+          <UiIcon name="reports" size={18} />
           {t('source.sidebar.reports', 'Analysis & Reports')}
         </button>
         {hasPermission('automations', 'read') && (
           <button
-            className="dashboard-sidebar-link dashboard-sidebar-link--active"
+            className={SIDEBAR_LINK_CLASS}
             onClick={() => navigate('/automations')}
           >
             <UiIcon name="bot" size={18} />

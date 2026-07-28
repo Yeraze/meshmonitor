@@ -189,6 +189,23 @@ describe('DashboardSidebar', () => {
     expect(screen.getByRole('button', { name: /source\.sidebar\.unified_telemetry/ })).toBeInTheDocument();
   });
 
+  it('gives every sidebar navigation link an icon (#4395)', () => {
+    renderSidebar();
+    const links = Array.from(
+      document.querySelectorAll('.dashboard-sidebar-links .dashboard-sidebar-link'),
+    );
+    // Unified Messages, Unified Telemetry, Unified Packets, Map Analysis,
+    // Analysis & Reports, Automation Engine.
+    expect(links).toHaveLength(6);
+    for (const link of links) {
+      expect(link.querySelector('[data-ui-icon]')).not.toBeNull();
+    }
+    const iconNames = links.map((l) =>
+      l.querySelector('[data-ui-icon]')?.getAttribute('data-ui-icon'),
+    );
+    expect(iconNames).toEqual(['messages', 'telemetry', 'package', 'map', 'reports', 'bot']);
+  });
+
   it('renders Map Analysis link below the unified links and navigates to /analysis on click', async () => {
     const navigate = vi.fn();
     vi.mocked(useNavigate).mockReturnValue(navigate);

@@ -1,0 +1,20 @@
+/**
+ * DashboardSidebar — scoped styles (issue #4395).
+ *
+ * The six bottom-of-sidebar navigation links each render a `UiIcon` before
+ * their label. The legacy global `.dashboard-sidebar-link` rule in
+ * `src/styles/dashboard.css` is frozen, so the flex layout that keeps the icon
+ * and label aligned lives here and is applied alongside the global class.
+ */
+
+.linkWithIcon {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Keep the glyph from being squeezed when a long label wraps the flex line. */
+.linkWithIcon > svg,
+.linkWithIcon > [data-ui-icon] {
+  flex-shrink: 0;
+}
