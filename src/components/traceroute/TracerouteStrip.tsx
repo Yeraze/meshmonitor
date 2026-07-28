@@ -155,6 +155,14 @@ export function TracerouteStrip({
     const vw = window.innerWidth;
     const vh = window.innerHeight;
 
+    // The anchor can be scrolled out of view while the popup is open (hover,
+    // then scroll the panel). Anchoring to something off-screen would drag the
+    // popup off with it, so drop it instead.
+    if (a.bottom < 0 || a.top > vh || a.right < 0 || a.left > vw) {
+      hide();
+      return;
+    }
+
     let placement: 'above' | 'below' = 'above';
     let top = a.top - POPUP_GAP - height;
     if (top < POPUP_GAP) {
@@ -177,7 +185,7 @@ export function TracerouteStrip({
         ? prev
         : { left, top, placement },
     );
-  }, [hover]);
+  }, [hover, hide]);
 
   // Position after the popup has rendered (so it can be measured), before paint.
   useLayoutEffect(() => {
