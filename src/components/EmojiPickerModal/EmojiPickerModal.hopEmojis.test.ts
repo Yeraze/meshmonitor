@@ -1,0 +1,43 @@
+import { describe, it, expect } from 'vitest';
+import { DEFAULT_TAPBACK_EMOJIS } from './EmojiPickerModal';
+
+// Regression test for #4340 WP1 §2.3: the 8 hop-count entries in
+// DEFAULT_TAPBACK_EMOJIS used to be hand-typed literals — a second copy of the
+// same table AutoAck carries. They're now generated from the shared
+// src/utils/hopEmoji.ts table. This pins the resulting array so the generated
+// entries stay element-for-element identical to the original literals (same
+// order, same glyphs, same titles).
+
+describe('EmojiPickerModal - DEFAULT_TAPBACK_EMOJIS hop-count entries (#4340)', () => {
+  const HOP_TITLES = [
+    'Direct (0 hops)',
+    '1 hop',
+    '2 hops',
+    '3 hops',
+    '4 hops',
+    '5 hops',
+    '6 hops',
+    '7+ hops',
+  ];
+  const HOP_GLYPHS = ['*️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣'];
+
+  it('contains exactly the 8 hop entries, in order, with the original titles', () => {
+    const hopEntries = DEFAULT_TAPBACK_EMOJIS.filter((e) => HOP_GLYPHS.includes(e.emoji));
+    expect(hopEntries).toHaveLength(8);
+    expect(hopEntries.map((e) => e.emoji)).toEqual(HOP_GLYPHS);
+    expect(hopEntries.map((e) => e.title)).toEqual(HOP_TITLES);
+  });
+
+  it('places the hop entries as a contiguous block right after "Double exclamation"', () => {
+    const idx = DEFAULT_TAPBACK_EMOJIS.findIndex((e) => e.title === 'Double exclamation');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    const following = DEFAULT_TAPBACK_EMOJIS.slice(idx + 1, idx + 9);
+    expect(following.map((e) => e.emoji)).toEqual(HOP_GLYPHS);
+  });
+
+  it('array length and non-hop entries are otherwise unchanged (32 total)', () => {
+    expect(DEFAULT_TAPBACK_EMOJIS).toHaveLength(32);
+    expect(DEFAULT_TAPBACK_EMOJIS[0]).toEqual({ emoji: '👍', title: 'Thumbs up' });
+    expect(DEFAULT_TAPBACK_EMOJIS[DEFAULT_TAPBACK_EMOJIS.length - 1]).toEqual({ emoji: '💯', title: '100' });
+  });
+});

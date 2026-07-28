@@ -6,6 +6,7 @@
  * Used by both the builder (next to the message fields) and the Test panel.
  */
 import { UiIcon } from '../icons';
+import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX } from '../../utils/hopEmoji';
 
 // All `{{ trigger.* }}` tokens, by trigger type. `sourceId`/`timestamp` are added to every group.
 export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
@@ -22,6 +23,9 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
     ['to', 'Recipient node number'], ['toId', 'Recipient node id'], ['channel', 'Channel index'],
     ['portnum', 'Port number'], ['packetId', 'Packet id (used as tapback replyId) — Meshtastic only; unset for MeshCore, where replyToTrigger instead auto-prepends the @[senderLabel] mention'],
     ['hops', 'Hop count (hopStart − hopLimit)'], ['hopStart', 'Hop start'], ['hopLimit', 'Hop limit'],
+    // #4340: these are protocol/content emoji (the actual glyphs sent over the mesh),
+    // not UI iconography — UiIcon does not apply. See CLAUDE.md "App-owned interface icons".
+    ['hopEmoji', `Hop count as an emoji — ${HOP_COUNT_EMOJIS[0]} direct, ${HOP_COUNT_EMOJIS[1]}–${HOP_COUNT_EMOJIS[HOP_EMOJI_MAX]} (${HOP_COUNT_EMOJIS[HOP_EMOJI_MAX]} = 7 or more); blank when the hop count is unknown`],
     ['snr', 'Receive SNR — RF-received messages only'], ['rssi', 'Receive RSSI dBm — RF only'],
     ['isBroadcast', 'true if broadcast (alias of isChannel)'],
     ['wantAck', 'Sender requested an ack'], ['replyId', 'Replied-to packet id'],

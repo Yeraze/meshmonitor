@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { MeshMessage } from '../../types/message';
 import './EmojiPickerModal.css';
 import { UiIcon } from '../icons';
+import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX } from '../../utils/hopEmoji';
 
 /**
  * Tapback emoji type
@@ -29,15 +30,12 @@ export const DEFAULT_TAPBACK_EMOJIS: TapbackEmoji[] = [
   { emoji: '❓', title: 'Question' },
   { emoji: '❗', title: 'Exclamation' },
   { emoji: '‼️', title: 'Double exclamation' },
-  // Hop count emojis (for ping/test responses)
-  { emoji: '*️⃣', title: 'Direct (0 hops)' },
-  { emoji: '1️⃣', title: '1 hop' },
-  { emoji: '2️⃣', title: '2 hops' },
-  { emoji: '3️⃣', title: '3 hops' },
-  { emoji: '4️⃣', title: '4 hops' },
-  { emoji: '5️⃣', title: '5 hops' },
-  { emoji: '6️⃣', title: '6 hops' },
-  { emoji: '7️⃣', title: '7+ hops' },
+  // Hop count emojis (for ping/test responses) — glyphs come from the single
+  // shared table so they can never drift from Auto-Acknowledge / automations.
+  ...HOP_COUNT_EMOJIS.map((emoji, hops) => ({
+    emoji,
+    title: hops === 0 ? 'Direct (0 hops)' : hops === HOP_EMOJI_MAX ? '7+ hops' : `${hops} hop${hops === 1 ? '' : 's'}`,
+  })),
   // Fun emojis (OLED compatible)
   { emoji: '💩', title: 'Poop' },
   { emoji: '👋', title: 'Wave' },

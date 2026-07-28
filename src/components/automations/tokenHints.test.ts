@@ -19,6 +19,10 @@ describe('classifyToken', () => {
     expect(classifyToken('var.flag', valid)).toBe('ok');
     expect(classifyToken('NOW', valid)).toBe('ok');
   });
+  it('ok for {{ trigger.hopEmoji }} on trigger.message (#4340)', () => {
+    const valid = validTokenSet('trigger.message', []);
+    expect(classifyToken('trigger.hopEmoji', valid)).toBe('ok');
+  });
   it('foreign for a real token that belongs to a DIFFERENT trigger', () => {
     const sys = validTokenSet('trigger.system', []);
     // trigger.from is a message token — valid somewhere, but not for system

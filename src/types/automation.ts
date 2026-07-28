@@ -117,6 +117,10 @@ export type NumericOp = (typeof NUMERIC_OPS)[number];
 export const REQUEST_OPS = ['telemetry', 'position', 'traceroute', 'nodeinfo', 'neighbors', 'advert'] as const;
 export type RequestOp = (typeof REQUEST_OPS)[number];
 
+/** Where action.tapback's emoji comes from. Absent = 'fixed' (pre-4.14 behaviour). */
+export type TapbackEmojiMode = 'fixed' | 'hopCount';
+export const TAPBACK_EMOJI_MODES: readonly TapbackEmojiMode[] = ['fixed', 'hopCount'];
+
 /**
  * Match modes for `condition.meshcoreScope` (#3914). A MeshCore text message
  * carries a region "scope" (`scopeCode` 0 = unscoped, >0 = a region; `scopeName`
@@ -367,6 +371,13 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
         case 'action.requestData':
           if (p.op != null && !REQUEST_OPS.includes(p.op as RequestOp)) {
             errors.push(`action.requestData "${n.id}" requires a valid params.op`);
+          }
+          break;
+        case 'action.tapback':
+          // Optional. Absent/unset = 'fixed' — every pre-existing stored automation
+          // must keep validating and behaving exactly as before.
+          if (p.emojiMode != null && !TAPBACK_EMOJI_MODES.includes(p.emojiMode as TapbackEmojiMode)) {
+            errors.push(`action.tapback "${n.id}" requires params.emojiMode ∈ {fixed,hopCount}`);
           }
           break;
         case 'action.deviceReboot':

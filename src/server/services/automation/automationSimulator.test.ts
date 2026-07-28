@@ -175,6 +175,45 @@ describe('simulateAutomation', () => {
     expect(fail.conditionResults['c']).toBe(false);
   });
 
+  // ── action.tapback emojiMode=hopCount (#4340) ───────────────────────────
+  it("tapback emojiMode 'hopCount': dry-run resolves the derived emoji, no IO", async () => {
+    const graph: AutomationGraph = {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: {} },
+        { id: 'a', type: 'action.tapback', params: { emojiMode: 'hopCount' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    };
+    const r = await simulateAutomation({
+      graph, varsRepo,
+      event: { kind: 'message', text: 'ping', from: 111, hopStart: 3, hopLimit: 0, packetId: 1 },
+    });
+    expect(r.status).toBe('completed');
+    expect(r.actions).toHaveLength(1);
+    expect(r.actions[0].type).toBe('action.tapback');
+    expect((r.actions[0].resolvedParams as any).emoji).toBe('3️⃣');
+  });
+
+  it("tapback emojiMode 'hopCount' with no hop fields: the recorded skip surfaces as the action's resolved params", async () => {
+    const graph: AutomationGraph = {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: {} },
+        { id: 'a', type: 'action.tapback', params: { emojiMode: 'hopCount' } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    };
+    const r = await simulateAutomation({
+      graph, varsRepo,
+      event: { kind: 'message', text: 'ping', from: 111 }, // no hopStart/hopLimit
+    });
+    expect(r.status).toBe('completed');
+    expect(r.actions).toHaveLength(1);
+    expect(r.actions[0].ok).toBe(true); // a recorded skip is not an execution failure
+    expect(r.actions[0].resolvedParams).toMatchObject({ skipped: true, reason: expect.stringMatching(/no hop count/) });
+  });
+
   it('runScript: dry-run records the action without spawning a process', async () => {
     const graph: AutomationGraph = {
       version: 1,
