@@ -242,8 +242,11 @@ function App() {
   // Monitor server health and auto-reload on version change (e.g., after auto-upgrade)
   useHealth({ baseUrl, reloadOnVersionChange: true });
 
-  // Monitor device TX status to show warning banner when TX is disabled
-  const { isTxDisabled } = useTxStatus({ baseUrl, sourceId });
+  // Monitor device TX status to show warning banner when TX is disabled.
+  // `isTxDisabled` already accounts for the UDP-broadcast relay path: a radio
+  // with TX off but UDP Broadcast on can still send, and reports isUdpRelay
+  // instead so the banner stays honest about how packets leave (#4394).
+  const { isTxDisabled, isUdpRelay } = useTxStatus({ baseUrl, sourceId });
   // MQTT-bridge sources are never gated (different transport, not affected by radio TX state)
   const txGated = isTxDisabled && !isMqttBridge;
 
@@ -3318,6 +3321,7 @@ function App() {
 
       <AppBanners
         isTxDisabled={isTxDisabled}
+        isUdpRelay={isUdpRelay}
         configIssues={configIssues}
         updateAvailable={updateAvailable}
         latestVersion={latestVersion}

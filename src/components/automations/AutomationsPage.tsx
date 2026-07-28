@@ -189,8 +189,18 @@ function AutomationEditor({ automation, onClose }: { automation: Automation | 'n
     apiService.get<Variable[]>('/api/automations/variables')
       .then((vs) => setVariables(vs.map((v) => ({ name: v.name, type: v.type }))))
       .catch(() => setVariables([]));
-    apiService.get<Array<{ id: string; name: string; type?: string; enabled?: boolean; radio?: { txEnabled?: boolean } }>>('/api/sources')
-      .then((ss) => setSources(ss.map((s) => ({ id: s.id, name: s.name, type: s.type, enabled: s.enabled, txEnabled: s.radio?.txEnabled }))))
+    apiService.get<Array<{ id: string; name: string; type?: string; enabled?: boolean; radio?: { txEnabled?: boolean; canTransmit?: boolean } }>>('/api/sources')
+      // `canTransmit` includes the UDP-broadcast relay path — a TX-disabled radio
+      // with UDP Broadcast on still delivers automation sends (#4394). The
+      // builder prefers it and falls back to `txEnabled` on older servers.
+      .then((ss) => setSources(ss.map((s) => ({
+        id: s.id,
+        name: s.name,
+        type: s.type,
+        enabled: s.enabled,
+        txEnabled: s.radio?.txEnabled,
+        canTransmit: s.radio?.canTransmit,
+      }))))
       .catch(() => setSources([]));
     apiService.get<UnifiedChannelOption[]>('/api/automations/channels')
       .then((cs) => setChannels(cs))

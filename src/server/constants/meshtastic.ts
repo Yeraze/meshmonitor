@@ -108,6 +108,36 @@ export const TransportMechanism = {
 export type TransportMechanismType = typeof TransportMechanism[keyof typeof TransportMechanism];
 
 /**
+ * Flags for `Config.NetworkConfig.enabled_protocols` (a bit field).
+ * From meshtastic.Config.NetworkConfig.ProtocolFlags in config.proto.
+ */
+export const NetworkProtocolFlags = {
+  /** Do not broadcast packets over any auxiliary network protocol */
+  NO_BROADCAST: 0x0000,
+  /** Broadcast packets via UDP over the local network */
+  UDP_BROADCAST: 0x0001,
+} as const;
+
+export type NetworkProtocolFlagsType = typeof NetworkProtocolFlags[keyof typeof NetworkProtocolFlags];
+
+/**
+ * True when a device's `network.enabledProtocols` bit field has UDP_BROADCAST set.
+ *
+ * Firmware `Router::send()` calls `udpHandler->onSend(p)` gated ONLY on this
+ * flag — there is no `tx_enabled` check on that path — so a TX-disabled node
+ * still emits every outgoing packet onto the local LAN, where a peer with a
+ * working radio (e.g. a CLIENT_BASE) relays it onto the mesh (#4394).
+ *
+ * Tolerant of the proto3 shapes we see on the wire: absent/null/undefined
+ * (field omitted, meaning 0) and non-numeric junk both read as "off".
+ */
+export function isUdpBroadcastEnabled(enabledProtocols: unknown): boolean {
+  const flags = Number(enabledProtocols ?? 0);
+  if (!Number.isFinite(flags)) return false;
+  return (flags & NetworkProtocolFlags.UDP_BROADCAST) !== 0;
+}
+
+/**
  * Get the name of a transport mechanism
  */
 export function getTransportMechanismName(mechanism: number): string {

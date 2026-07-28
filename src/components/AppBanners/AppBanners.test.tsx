@@ -114,6 +114,21 @@ describe('AppBanners — warning banners', () => {
     expect(screen.getByText(/banners\.tx_disabled/)).toBeInTheDocument();
   });
 
+  // #4394: radio TX off + UDP Broadcast on — sends still reach the mesh through a
+  // LAN peer, so the banner must explain the relay instead of claiming the device
+  // cannot send.
+  it('renders the UDP-relay banner instead of the "cannot send" one', () => {
+    render(
+      <AppBanners {...baseProps} updateAvailable={false} isTxDisabled={false} isUdpRelay deploymentMethod="docker" />
+    );
+    expect(screen.getByText(/banners\.tx_disabled_udp_relay/)).toBeInTheDocument();
+  });
+
+  it('shows no TX banner when TX is fine and there is no relay', () => {
+    render(<AppBanners {...baseProps} updateAvailable={false} isTxDisabled={false} deploymentMethod="docker" />);
+    expect(screen.queryByText(/banners\.tx_disabled/)).not.toBeInTheDocument();
+  });
+
   it('renders a config issue banner with a docs link', () => {
     render(
       <AppBanners

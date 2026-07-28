@@ -58,6 +58,8 @@ function makeFakeManager(overrides: Partial<{
   rebootMergeInProgress: boolean;
   automationAirtimeGated: boolean;
   txEnabled: boolean;
+  /** #4394: `network.enabledProtocols & UDP_BROADCAST` — a LAN peer relays our sends. */
+  udpRelayEnabled: boolean;
 }> = {}) {
   const state = {
     sourceId: overrides.sourceId ?? 'test-source',
@@ -65,6 +67,7 @@ function makeFakeManager(overrides: Partial<{
     rebootMergeInProgress: overrides.rebootMergeInProgress ?? false,
     automationAirtimeGated: overrides.automationAirtimeGated ?? false,
     txEnabled: overrides.txEnabled ?? true,
+    udpRelayEnabled: overrides.udpRelayEnabled ?? false,
   };
   return {
     state,
@@ -73,6 +76,8 @@ function makeFakeManager(overrides: Partial<{
     isRebootMergeInProgress: vi.fn(() => state.rebootMergeInProgress),
     isAutomationAirtimeGated: vi.fn(async () => state.automationAirtimeGated),
     isTxEnabled: vi.fn(() => state.txEnabled),
+    isUdpBroadcastRelayEnabled: vi.fn(() => state.udpRelayEnabled),
+    canTransmit: vi.fn(() => state.txEnabled || state.udpRelayEnabled),
     replaceAnnouncementTokens: vi.fn(async (message: string) => message.replace('{VERSION}', '9.9.9')),
     messageQueue: { enqueue: vi.fn() },
     broadcastNodeInfoToChannels: vi.fn().mockResolvedValue(undefined),
@@ -219,6 +224,19 @@ describe('AutoAnnounceService', () => {
       expect(sendSpy).not.toHaveBeenCalled();
 
       mgr.state.txEnabled = true;
+      await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000);
+
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+    });
+
+    // #4394: the radio is off, but UDP Broadcast puts the announcement on the LAN
+    // where a peer relays it onto the mesh — the tick must not be skipped.
+    it('onTick still announces when TX is off but UDP Broadcast relays (#4394)', async () => {
+      const mgr = makeFakeManager({ deviceConnected: true, txEnabled: false, udpRelayEnabled: true });
+      const svc = new AutoAnnounceService(mgr as any);
+      const sendSpy = vi.spyOn(svc, 'sendAutoAnnouncement').mockResolvedValue(undefined);
+
+      await svc.startAnnounceScheduler();
       await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000);
 
       expect(sendSpy).toHaveBeenCalledTimes(1);

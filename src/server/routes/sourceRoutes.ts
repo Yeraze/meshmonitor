@@ -269,6 +269,14 @@ interface SourceRadioSummary {
   modemPreset?: number;
   /** Meshtastic only. Fail-open true (matches firmware default) when the field is unset. */
   txEnabled?: boolean;
+  /** Meshtastic only. `network.enabledProtocols & UDP_BROADCAST` — a LAN peer relays our sends (#4394). */
+  udpRelayEnabled?: boolean;
+  /**
+   * Meshtastic only. Whether sends from this source have any path onto the mesh:
+   * `txEnabled || udpRelayEnabled`. Consumers gating "can this source send?" must
+   * read THIS, not `txEnabled` (#4394).
+   */
+  canTransmit?: boolean;
 }
 
 // Wrapped in try/catch so a manager that throws from getCurrentConfig()/
@@ -290,11 +298,17 @@ function computeSourceRadioSummary(sourceId: string): SourceRadioSummary | null 
         undefined,
         Number(lora.modemPreset ?? 0),
       );
+      const txEnabled = lora.txEnabled ?? true;
+      const udpRelayEnabled = typeof mgr.isUdpBroadcastRelayEnabled === 'function'
+        ? mgr.isUdpBroadcastRelayEnabled()
+        : false;
       return {
         frequencyMhz,
         regionName: REGION_SHORT_NAME[region],
         modemPreset: Number(lora.modemPreset ?? 0),
-        txEnabled: lora.txEnabled ?? true,
+        txEnabled,
+        udpRelayEnabled,
+        canTransmit: txEnabled || udpRelayEnabled,
       };
     }
     if (isMeshCoreManager(mgr)) {
