@@ -106,6 +106,27 @@ describe('buildMessageContext', () => {
     expect(buildMessageContext(msg(), 'default', 1).fields.senderLabel).toBe('!0000006f');
     expect(buildMessageContext(msg(), 'default', 1).fields.protocol).toBe('meshtastic');
   });
+
+  // hopEmoji (#4340)
+  it('sets hopEmoji from the derived hop count', () => {
+    const ctx = buildMessageContext(msg({ hopStart: 3, hopLimit: 1 }), 'default', 1);
+    expect(ctx.fields.hops).toBe(2);
+    expect(ctx.fields.hopEmoji).toBe('2️⃣');
+  });
+
+  it('hopEmoji is undefined when hopStart/hopLimit are absent (unknown hops)', () => {
+    const ctx = buildMessageContext(msg({ hopStart: undefined, hopLimit: undefined }), 'default', 1);
+    expect(ctx.fields.hops).toBeUndefined();
+    expect(ctx.fields.hopEmoji).toBeUndefined();
+  });
+
+  it('documented divergence: a negative derived hop count clamps hopEmoji to *️⃣ while `hops` stays negative', () => {
+    // deriveHops has no hopStart >= hopLimit guard (unlike AutoAck's hopsTraveled) —
+    // this is deliberate, see §4.3 of the hop-tapback spec. Do NOT "fix" deriveHops.
+    const ctx = buildMessageContext(msg({ hopStart: 1, hopLimit: 3 }), 'default', 1);
+    expect(ctx.fields.hops).toBe(-2);
+    expect(ctx.fields.hopEmoji).toBe('*️⃣');
+  });
 });
 
 describe('other trigger contexts', () => {
@@ -284,6 +305,13 @@ describe('buildMeshCoreMessageContext (#3833)', () => {
     expect(ctx.fields.scopeName).toBe('paris');
     expect(ctx.fields.scoped).toBe(true);
     expect(ctx.fields.hops).toBe(2);
+    expect(ctx.fields.hopEmoji).toBe('2️⃣'); // #4340
+  });
+
+  it('hopEmoji is undefined when msg.hopCount is absent (#4340)', () => {
+    const ctx = buildMeshCoreMessageContext(mcMsg({ fromPublicKey: 'aabbcc' }), 'default', 1);
+    expect(ctx.fields.hops).toBeUndefined();
+    expect(ctx.fields.hopEmoji).toBeUndefined();
   });
 
   it('maps a DM: recipient pubkey present, no channel, isDM', () => {
