@@ -52,7 +52,10 @@ describe('absolutizeLinks()', () => {
   });
 
   it('rewrites every occurrence in a multi-link document', () => {
-    const out = absolutizeLinks('[a](/one) then [b](/two) and [c](/three)');
-    expect(out.match(/https:\/\/meshmonitor\.org/g)).toHaveLength(3);
+    expect(absolutizeLinks('[a](/one) then [b](/two) and [c](/three)')).toBe(
+      '[a](https://meshmonitor.org/one) then ' +
+        '[b](https://meshmonitor.org/two) and ' +
+        '[c](https://meshmonitor.org/three)'
+    );
   });
 });
