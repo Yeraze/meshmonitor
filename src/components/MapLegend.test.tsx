@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 // Mock Leaflet before importing components
@@ -177,5 +177,116 @@ describe('MapLegend', () => {
       expect(screen.getByText('map.legend.local')).toBeInTheDocument();
       expect(screen.getByText('6+')).toBeInTheDocument();
     });
+  });
+});
+
+/**
+ * #4389: on mobile the legend was force-hidden by
+ * `.map-legend-wrapper { display: none }` while the Features-panel "Show
+ * Legend" checkbox stayed visible and toggleable — a control driving something
+ * that could never appear. The mobile branch renders a docked, tap-to-expand
+ * card instead of the draggable overlay.
+ */
+describe('MapLegend — mobile card (#4389)', () => {
+  const setViewport = (mobile: boolean) => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: mobile && query.includes('max-width'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia;
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    setViewport(false);
+  });
+
+  it('renders the card variant, not the draggable overlay, on a mobile viewport', () => {
+    setViewport(true);
+    const { container } = render(<MapLegend />);
+
+    expect(container.querySelector('.map-legend-mobile')).not.toBeNull();
+    expect(container.querySelector('.draggable-overlay')).toBeNull();
+  });
+
+  it('keeps the draggable overlay on a desktop viewport', () => {
+    setViewport(false);
+    const { container } = render(<MapLegend />);
+
+    expect(container.querySelector('.map-legend-mobile')).toBeNull();
+    expect(container.querySelector('.draggable-overlay')).not.toBeNull();
+  });
+
+  it('starts compact on mobile and expands on a header tap', () => {
+    setViewport(true);
+    const { container } = render(<MapLegend />);
+
+    // Compact by default: header only, no legend rows.
+    expect(container.querySelector('.map-legend')).toHaveClass('collapsed');
+    expect(container.querySelectorAll('.legend-item').length).toBe(0);
+
+    fireEvent.click(container.querySelector('.legend-header')!);
+
+    expect(container.querySelector('.map-legend')).not.toHaveClass('collapsed');
+    expect(container.querySelectorAll('.legend-item').length).toBe(4);
+  });
+
+  it('collapses again on a second header tap', () => {
+    setViewport(true);
+    const { container } = render(<MapLegend />);
+    const header = container.querySelector('.legend-header')!;
+
+    fireEvent.click(header);
+    expect(container.querySelector('.map-legend')).not.toHaveClass('collapsed');
+
+    fireEvent.click(header);
+    expect(container.querySelector('.map-legend')).toHaveClass('collapsed');
+    expect(container.querySelectorAll('.legend-item').length).toBe(0);
+  });
+
+  it('counts a chevron tap once — the click must not also reach the header', () => {
+    setViewport(true);
+    const { container } = render(<MapLegend />);
+
+    fireEvent.click(container.querySelector('.legend-header')!); // expand
+    fireEvent.click(container.querySelector('.legend-collapse-btn')!);
+
+    expect(container.querySelector('.map-legend')).toHaveClass('collapsed');
+  });
+
+  it('scrolls its content inside the card rather than growing off-screen', () => {
+    setViewport(true);
+    const { container } = render(<MapLegend />);
+    fireEvent.click(container.querySelector('.legend-header')!);
+
+    // The scroll container is the mobile-only `.legend-body` — `.map-legend-mobile
+    // .legend-body` carries max-height + overflow-y in MapLegend.css.
+    const body = container.querySelector('.legend-body');
+    expect(body).not.toBeNull();
+    expect(body!.querySelectorAll('.legend-item').length).toBe(4);
+  });
+
+  it('does not wrap the body on desktop, so flex spacing is unchanged', () => {
+    setViewport(false);
+    const { container } = render(<MapLegend />);
+
+    expect(container.querySelector('.legend-body')).toBeNull();
+    expect(container.querySelectorAll('.map-legend > .legend-item').length).toBe(4);
+  });
+
+  it('honors a stored collapse preference over the mobile default', () => {
+    localStorage.setItem('mapLegendCollapsed', 'false');
+    setViewport(true);
+    const { container } = render(<MapLegend />);
+
+    expect(container.querySelector('.map-legend')).not.toHaveClass('collapsed');
   });
 });

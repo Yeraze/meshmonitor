@@ -142,9 +142,84 @@
   white-space: nowrap;
 }
 
-/* Hide on mobile devices */
+/*
+ * Mobile: a docked, tap-to-expand legend card (#4389).
+ *
+ * This block used to be `.map-legend-wrapper { display: none }`, which hid the
+ * legend outright while the Features-panel "Show Legend" checkbox stayed
+ * visible and toggleable — the control looked broken because it drove
+ * something CSS had already removed. MapLegend now renders a non-draggable
+ * card at this breakpoint (see the `isMobile` branch in MapLegend.tsx), so the
+ * panel is positioned here rather than hidden.
+ *
+ * Deliberately NOT the #4380 full-width bottom sheet. That fix suits a
+ * "pick one, then dismiss" control; the legend is reference material with
+ * nothing to select, so it is a small corner card that stays where the reader
+ * put it. Sitting above and behind the tile-selector sheet lets both be open.
+ *
+ * `.draggable-overlay` keeps its own mobile `display: none` in
+ * DraggableOverlay.css — untouched, since this card no longer renders through
+ * DraggableOverlay and PositionHistoryLegend still relies on that rule.
+ */
 @media (max-width: 768px) {
-  .map-legend-wrapper {
-    display: none;
+  .map-legend-mobile {
+    position: fixed;
+    left: 12px;
+    /* Clears the collapsed tile-selector bottom sheet (~48px, #4380) and the
+       Leaflet attribution strip, plus the home indicator on notched devices. */
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 60px);
+    /* Under the tile-selector sheet (1200): if the two ever overlap, the panel
+       the user just tapped wins. */
+    z-index: 1150;
+    /* Never wider than the screen — the page must not scroll sideways. */
+    max-width: min(320px, calc(100vw - 24px));
+    background: var(--ctp-surface0);
+    border: 1px solid var(--ctp-surface1);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 2px 12px rgb(0 0 0 / 35%);
+    overflow: hidden;
+  }
+
+  .map-legend-mobile .map-legend {
+    max-width: 100%;
+  }
+
+  /* The whole header is the tap target, so give it a finger-sized row. */
+  .map-legend-mobile .legend-header {
+    cursor: pointer;
+    min-height: 44px;
+  }
+
+  .map-legend-mobile .legend-collapse-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  /* Long legend content scrolls inside the card instead of growing it past
+     the top of the screen. `.legend-body` exists on mobile only (see
+     MapLegend.tsx) so desktop flex spacing is untouched. */
+  .map-legend-mobile .legend-body {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    width: 100%;
+    max-height: 50vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    /* Scrolling the legend must not pan the map underneath it. */
+    overscroll-behavior: contain;
+  }
+
+  /* Labels wrap rather than pushing the card wider than the viewport. */
+  .map-legend-mobile .legend-label,
+  .map-legend-mobile .legend-time-label {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .map-legend-mobile .legend-item {
+    max-width: 100%;
   }
 }
