@@ -9,6 +9,7 @@
 import { type AutomationNode, AUTOMATION_DELAY_MAX_SECONDS } from '../../../types/automation.js';
 import { type EngineEvalContext, interpolateAsync, resolveOperand } from './engineContext.js';
 import { isTxDisabledError } from '../../errors/txDisabledError.js';
+import { hopCountEmoji } from '../../../utils/hopEmoji.js';
 
 export type NodeManageOp = 'favorite' | 'unfavorite' | 'ignore' | 'unignore' | 'delete';
 
@@ -316,7 +317,24 @@ export async function executeAction(node: AutomationNode, ctx: EngineEvalContext
     }
 
     case 'action.tapback': {
-      const emoji = String(p.emoji ?? '👍');
+      // emojiMode (#4340): 'fixed' (default, and what an absent param means) uses the
+      // configured emoji; 'hopCount' derives it from the triggering message's hop
+      // count via the table AutoAcknowledge uses (src/utils/hopEmoji.ts).
+      const hopMode = p.emojiMode === 'hopCount';
+      let emoji: string;
+      if (hopMode) {
+        const derived = hopCountEmoji(ctx.trigger.fields.hops as number | null | undefined);
+        if (derived === undefined) {
+          // No hop information: a schedule/system trigger wired to a tapback, or a
+          // message whose hopStart/hopLimit were absent. Record a no-op skip in the
+          // same shape as the MeshCore/TX-disabled skips rather than throwing — a
+          // throw would mark the whole run failed and spam the run log.
+          return { skipped: true, reason: 'tapback emojiMode=hopCount: the trigger carries no hop count' };
+        }
+        emoji = derived;
+      } else {
+        emoji = String(p.emoji ?? '👍');
+      }
       // Default replyId is the triggering packet; route the way the trigger arrived.
       const replyId = p.replyId != null ? await num(ctx, p.replyId) : (ctx.trigger.fields.packetId as number | undefined);
       const destination = isDM ? (ctx.trigger.fields.from as number | undefined) : undefined;
