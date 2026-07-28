@@ -54,7 +54,10 @@ export function buildStripNodeMeta(
 
   for (const stripNode of graph.nodes) {
     const nodeNum = stripNode.nodeNum;
-    if (meta.has(nodeNum)) continue; // dedup across row0/row1 occurrences
+    // One meta entry per nodeNum: the same node can appear as several
+    // StripNodes (an in-leg loop, or occurrences across the forward/spine/
+    // return lanes), and they all render from the same metadata.
+    if (meta.has(nodeNum)) continue;
 
     const node = byNodeNum.get(nodeNum);
     if (!node) continue; // no map entry — component renders the unknown placeholder
