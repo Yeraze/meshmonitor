@@ -62,8 +62,6 @@ const COMPACT_LAYOUT: Partial<StripLayoutOptions> = {
 const DEFAULT_GLYPH_SIZE = 32;
 const COMPACT_GLYPH_SIZE = 24;
 
-const UNKNOWN_HOP_COLOR = '#9ca3af';
-
 function cx(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(' ');
 }
@@ -176,15 +174,21 @@ export function TracerouteStrip({ graph, meta, compact }: TracerouteStripProps) 
           const roleLabel = nodeMeta?.roleLabel ?? null;
           const nodeId = nodeMeta?.nodeId ?? paddedHexId(n.nodeNum);
           const category: NodeTypeCategory = nodeMeta?.category ?? 'standard';
-          const color = nodeMeta ? getHopColor(nodeMeta.hops) : UNKNOWN_HOP_COLOR;
+          // Reuses the map's existing "unknown hops = grey" convention
+          // (getHopColor(999)) instead of inventing a second grey — and for a
+          // placeholder node this value never actually reaches the DOM anyway
+          // (NodeGlyph's `unknown` branch renders unknownNodeSvg, which
+          // ignores `color` entirely).
+          const color = getHopColor(nodeMeta?.hops ?? 999);
           const unmessagable = !!nodeMeta?.unmessagable;
 
           const displayName = longName ? `${longName} (${shortName})` : shortName;
-          const accessibleName = t('messages.traceroute_node_label', '{{name}}, {{role}}, {{id}}', {
-            name: displayName,
-            role: roleLabel ?? '',
-            id: nodeId,
-          });
+          // Join only the present segments — a null roleLabel (very common:
+          // an unlearned role, or the unknown-hop placeholder) must not leave
+          // a dangling ", ," in the accessible name.
+          const accessibleName = [displayName, roleLabel, nodeId]
+            .filter((part): part is string => !!part)
+            .join(t('messages.traceroute_node_label_separator', ', '));
 
           const tipId = `${uid}-tip-${n.id}`;
 

@@ -274,6 +274,29 @@ describe('TracerouteStrip', () => {
     expect(label).toContain('!00000064'); // 100 in padded hex
   });
 
+  it('omits the role segment (no dangling ", ,") from the aria-label when roleLabel is null', () => {
+    const input: TracerouteStripInput = {
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: '[]',
+      routeBack: null,
+    };
+    const graph = buildTracerouteStripGraph(input);
+    const meta = new Map<number, TracerouteStripNodeMeta>([
+      // roleLabel deliberately omitted -> null via makeMeta's default.
+      [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+      [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+    ]);
+
+    render(<TracerouteStrip graph={graph} meta={meta} />);
+
+    const div = nodeDivFor('FRM');
+    const label = div.getAttribute('aria-label') ?? '';
+    expect(label).toContain('From Node');
+    expect(label).toContain('!00000064');
+    expect(label).not.toMatch(/,\s*,/);
+  });
+
   it('keeps the tooltip in the DOM (never display:none) and wires it via aria-describedby', () => {
     const input: TracerouteStripInput = {
       fromNodeNum: 100,

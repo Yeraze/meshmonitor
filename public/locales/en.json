@@ -479,7 +479,7 @@
   "messages.traceroute_hop_snr": "{{snr}} dB",
   "messages.traceroute_snr_unknown": "Unknown SNR (MQTT-bridged hop, decrypt failure, or old firmware)",
   "messages.traceroute_unknown_node": "Unknown",
-  "messages.traceroute_node_label": "{{name}}, {{role}}, {{id}}",
+  "messages.traceroute_node_label_separator": ", ",
   "messages.traceroute_no_response": "No response received",
   "messages.traceroute_no_return_path": "No return path data",
   "messages.neighbor_info_title": "Neighbor Info",
