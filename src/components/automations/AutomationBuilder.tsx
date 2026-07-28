@@ -7,7 +7,7 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { TRIGGERS, CONDITIONS, ACTIONS, BLOCK_BY_TYPE, fieldsFor, type BlockDef, type FieldDef } from './catalog';
+import { TRIGGERS, CONDITIONS, ACTIONS, BLOCK_BY_TYPE, fieldsFor, fieldVisible, type BlockDef, type FieldDef } from './catalog';
 import type { WorkflowForm, FormBlock, Rule } from './compile';
 import SubstitutionsHelpDrawer from './SubstitutionsHelp';
 import GeofenceFieldInput from './GeofenceFieldInput';
@@ -224,7 +224,7 @@ function BlockFields({ block, triggerType, variables, sources, channels, scripts
   if (!def) return null;
   return (
     <>
-      {def.fields.map((f) => {
+      {def.fields.filter((f) => fieldVisible(f, block.params)).map((f) => {
         const field = f.kind === 'fieldselect' ? { ...f, groups: fieldsFor(block.type, triggerType) } : f;
         return <FieldInput key={f.name} field={field} value={block.params[f.name]} variables={variables} sources={sources} channels={channels} scripts={scripts} regions={regions} triggerType={triggerType}
           onChange={(v) => onParams({ ...block.params, [f.name]: v })} />;

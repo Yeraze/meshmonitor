@@ -50,6 +50,17 @@ describe('interpolate', () => {
     const lk = (p: string) => ({ 'var.lastTimestamp': 1782331391 } as Record<string, number>)[p];
     expect(interpolate('{{ var.lastTimestamp }}', lk)).toBe('1782331391');
   });
+
+  // {{ trigger.hopEmoji }} (#4340) — populated by triggerContext.ts, rendered here
+  // through the same generic token-lookup path every other trigger.* field uses.
+  it('renders {{ trigger.hopEmoji }} when present, and blank when the field is unknown', () => {
+    const withHop = (p: string) => ({ 'trigger.hopEmoji': '3️⃣' } as Record<string, string>)[p];
+    expect(interpolate('hops: {{ trigger.hopEmoji }}', withHop)).toBe('hops: 3️⃣');
+    // Unknown hop count → the field is undefined → renders blank, matching the
+    // documented "unknown/empty value renders blank" contract.
+    const noHop = () => undefined;
+    expect(interpolate('hops: [{{ trigger.hopEmoji }}]', noHop)).toBe('hops: []');
+  });
 });
 
 describe('extractPaths', () => {

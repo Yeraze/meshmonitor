@@ -10,6 +10,7 @@ import type { DbMessage } from '../../../services/database.js';
 import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { TriggerType } from '../../../types/automation.js';
 import { compileUserRegex } from '../../../utils/safeRegex.js';
+import { hopCountEmoji } from '../../../utils/hopEmoji.js';
 
 /** Meshtastic broadcast address (0xFFFFFFFF); also defined inline in the manager. */
 export const BROADCAST_ADDR = 0xffffffff;
@@ -65,6 +66,7 @@ export function buildMessageContext(
   const fromName = (labels?.fromName && String(labels.fromName).trim()) || fromId;
   const channelName = isDM ? undefined : (labels?.channelName ?? undefined);
   const senderLabel = fromName || channelName || fromId;
+  const hops = deriveHops(msg);
   const fields: Record<string, unknown> = {
     from: Number(msg.fromNodeNum),
     fromId: msg.fromNodeId,
@@ -77,7 +79,13 @@ export function buildMessageContext(
     senderLabel,
     portnum: msg.portnum,
     packetId: Number.isFinite(parsedPacketId) ? parsedPacketId : undefined,
-    hops: deriveHops(msg),
+    hops,
+    // #4340: hopCountEmoji clamps a negative hop count to 0 (*️⃣), but `hops`
+    // above is deriveHops' raw (possibly negative, on a malformed hopStart <
+    // hopLimit packet) value — deliberately NOT aligned. Changing deriveHops to
+    // guard against this would silently alter every existing condition.numeric
+    // on field `hops`, so the divergence is documented here instead.
+    hopEmoji: hopCountEmoji(hops),
     hopStart: msg.hopStart,
     hopLimit: msg.hopLimit,
     isDM,
@@ -143,6 +151,7 @@ export function buildMeshCoreMessageContext(
   // (channel posts may carry no name prefix), else the channel name, else the raw
   // id (a pubkey for DMs/rooms, or the synthetic `channel-<idx>` key).
   const senderLabel = fromName || channelName || fromId;
+  const hops = msg.hopCount ?? undefined;
   const fields: Record<string, unknown> = {
     // MeshCore senders are pubkey strings; channel messages have no per-sender
     // pubkey, so `from` is the synthetic `channel-<idx>` key. `fromName` carries
@@ -159,7 +168,10 @@ export function buildMeshCoreMessageContext(
     isDM,
     isChannel,
     isBroadcast: isChannel,
-    hops: msg.hopCount ?? undefined,
+    hops,
+    // #4340: same shared table as the Meshtastic context; MeshCore has no
+    // tapback concept, but the token is usable in action.sendMessage bodies.
+    hopEmoji: hopCountEmoji(hops),
     snr: msg.snr,
     rssi: msg.rssi,
     // MeshCore scope/region (#3833). `scopeCode` 0 = explicitly unscoped, null/

@@ -375,6 +375,83 @@ describe('executeAction', () => {
     expect(Array.isArray(result)).toBe(false);
   });
 
+  // ── emojiMode (#4340) ───────────────────────────────────────────────────
+  it('tapback: emojiMode absent defaults to the configured emoji (👍)', async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.tapback', {}),
+      ctx({ from: 5, channel: 3, packetId: 99, isDM: false }),
+      deps,
+    );
+    expect(calls[0].args).toMatchObject({ emoji: '👍' });
+  });
+
+  it("tapback: emojiMode 'fixed' uses the configured emoji", async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.tapback', { emojiMode: 'fixed', emoji: '✅' }),
+      ctx({ from: 5, channel: 3, packetId: 99, isDM: false }),
+      deps,
+    );
+    expect(calls[0].args).toMatchObject({ emoji: '✅' });
+  });
+
+  it("tapback: emojiMode 'hopCount' derives the emoji from trigger.hops (0/3/9/-2)", async () => {
+    const cases: Array<[number, string]> = [[0, '*️⃣'], [3, '3️⃣'], [9, '7️⃣'], [-2, '*️⃣']];
+    for (const [hops, expected] of cases) {
+      const { calls, deps } = recorder();
+      await executeAction(
+        node('action.tapback', { emojiMode: 'hopCount' }),
+        ctx({ from: 5, channel: 3, packetId: 99, isDM: false, hops }),
+        deps,
+      );
+      expect(calls[0].args).toMatchObject({ emoji: expected });
+    }
+  });
+
+  it("tapback: emojiMode 'hopCount' ignores a stale params.emoji", async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.tapback', { emojiMode: 'hopCount', emoji: '💯' }),
+      ctx({ from: 5, channel: 3, packetId: 99, isDM: false, hops: 3 }),
+      deps,
+    );
+    expect(calls[0].args).toMatchObject({ emoji: '3️⃣' });
+  });
+
+  it("tapback: emojiMode 'hopCount' with no hop info records a skip and never calls sendTapback", async () => {
+    const { calls, deps } = recorder();
+    const result = await executeAction(
+      node('action.tapback', { emojiMode: 'hopCount' }),
+      ctx({ from: 5, channel: 3, packetId: 99, isDM: false }), // no `hops` field
+      deps,
+    );
+    expect(result).toEqual({ skipped: true, reason: expect.stringMatching(/no hop count/) });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("tapback: emojiMode 'hopCount' on a MeshCore source with hops present still hits the existing MeshCore skip", async () => {
+    const { calls, deps } = recorder();
+    const result = await executeAction(
+      node('action.tapback', { emojiMode: 'hopCount' }),
+      ctx({ from: 5, channel: 3, packetId: 99, isDM: false, hops: 2 }, 'mc', 'meshcore'),
+      deps,
+    );
+    expect(result).toMatchObject({ skipped: true, reason: 'tapback is not supported on MeshCore' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("tapback: emojiMode 'hopCount' sends the same derived emoji to every selected source", async () => {
+    const { calls, deps } = recorder();
+    await executeAction(
+      node('action.tapback', { emojiMode: 'hopCount', sourceIds: ['radioA', 'radioB'] }),
+      ctx({ from: 5, channel: 3, packetId: 99, isDM: false, hops: 1 }),
+      deps,
+    );
+    expect(calls.map((c) => c.args.sourceId)).toEqual(['radioA', 'radioB']);
+    expect(calls.every((c) => c.args.emoji === '1️⃣')).toBe(true);
+  });
+
   it('nodeManage: defaults to the subject node and validates op', async () => {
     const { calls, deps } = recorder();
     await executeAction(node('action.nodeManage', { op: 'favorite' }), ctx({ from: 222 }), deps);
