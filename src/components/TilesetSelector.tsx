@@ -4,6 +4,7 @@ import { UiIcon } from './icons';
 import { getAllTilesets, type TilesetId } from '../config/tilesets';
 import { useSettings } from '../contexts/SettingsContext';
 import { DraggableOverlay } from './DraggableOverlay';
+import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
 import './TilesetSelector.css';
 
 interface TilesetSelectorProps {
@@ -27,6 +28,71 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
   const { customTilesets, activeMapTilesetMode } = useSettings();
   const tilesets = getAllTilesets(customTilesets);
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const isMobile = useIsMobileViewport();
+
+  const title =
+    activeMapTilesetMode === 'dark'
+      ? t('tileset.tileset_dark', 'Tileset (Dark mode)')
+      : t('tileset.tileset_light', 'Tileset (Light mode)');
+
+  const handleTilesetChange = (tilesetId: TilesetId) => {
+    onTilesetChange(tilesetId);
+    // Dismiss-on-select, mobile only: the sheet covers the map it is styling,
+    // so leaving it open would hide the result of the choice just made. On
+    // desktop the panel sits beside the map and stays put, as it always has.
+    if (isMobile) setIsCollapsed(true);
+  };
+
+  const panel = (
+    <div className={`tileset-selector ${isCollapsed ? 'collapsed' : ''}`}>
+      <div className="tileset-header">
+        <div className="tileset-selector-title">{title}</div>
+        <button
+          className="tileset-collapse-btn"
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          onMouseDown={(e) => e.stopPropagation()}
+          title={isCollapsed ? t('tileset.expand') : t('tileset.collapse')}
+        >
+          <UiIcon name={isCollapsed ? 'chevronDown' : 'chevronUp'} />
+        </button>
+      </div>
+      {!isCollapsed && (
+        <div className="tileset-buttons">
+          {tilesets.map((tileset) => (
+            <button
+              key={tileset.id}
+              className={`tileset-button ${selectedTilesetId === tileset.id ? 'active' : ''}`}
+              onClick={() => handleTilesetChange(tileset.id)}
+              title={tileset.description || tileset.name}
+            >
+              <div
+                className="tileset-preview"
+                style={{
+                  backgroundImage: `url(${getTilePreviewUrl(tileset.url)})`
+                }}
+              />
+              <div className="tileset-name">
+                {tileset.name}
+                {tileset.isCustom && <span className="custom-badge">{t('tileset.custom')}</span>}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  // Mobile: a full-width bottom sheet instead of the draggable overlay (#4380).
+  // Dragging a floating panel around a phone screen is not useful, and the
+  // overlay was force-hidden by CSS on this breakpoint — the Features-panel
+  // checkbox stayed toggleable but controlled something that could never
+  // appear. Collapsed, the sheet is a tappable title bar pinned to the bottom;
+  // expanded, it lists the tilesets full-width.
+  if (isMobile) {
+    return (
+      <div className="tileset-selector-wrapper tileset-selector-sheet">{panel}</div>
+    );
+  }
 
   return (
     <DraggableOverlay
@@ -34,46 +100,7 @@ export const TilesetSelector: React.FC<TilesetSelectorProps> = ({
       defaultPosition={getDefaultPosition()}
       className="tileset-selector-wrapper"
     >
-      <div className={`tileset-selector ${isCollapsed ? 'collapsed' : ''}`}>
-        <div className="tileset-header">
-          <div className="tileset-selector-title">
-            {activeMapTilesetMode === 'dark'
-              ? t('tileset.tileset_dark', 'Tileset (Dark mode)')
-              : t('tileset.tileset_light', 'Tileset (Light mode)')}
-          </div>
-          <button
-            className="tileset-collapse-btn"
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            onMouseDown={(e) => e.stopPropagation()}
-            title={isCollapsed ? t('tileset.expand') : t('tileset.collapse')}
-          >
-            <UiIcon name={isCollapsed ? 'chevronDown' : 'chevronUp'} />
-          </button>
-        </div>
-        {!isCollapsed && (
-          <div className="tileset-buttons">
-            {tilesets.map((tileset) => (
-              <button
-                key={tileset.id}
-                className={`tileset-button ${selectedTilesetId === tileset.id ? 'active' : ''}`}
-                onClick={() => onTilesetChange(tileset.id)}
-                title={tileset.description || tileset.name}
-              >
-                <div
-                  className="tileset-preview"
-                  style={{
-                    backgroundImage: `url(${getTilePreviewUrl(tileset.url)})`
-                  }}
-                />
-                <div className="tileset-name">
-                  {tileset.name}
-                  {tileset.isCustom && <span className="custom-badge">{t('tileset.custom')}</span>}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {panel}
     </DraggableOverlay>
   );
 };
