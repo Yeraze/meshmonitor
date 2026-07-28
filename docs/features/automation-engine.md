@@ -155,6 +155,19 @@ or more actions.
 Reacts to the triggering message with an emoji. Minimal by design — it carries no routing logic
 (the conditions do the routing).
 
+- **Emoji source** — *A fixed emoji* (default; what every existing automation does before this
+  field existed) or *The message's hop count*.
+- Hop-count mode reacts with `*️⃣` for a direct (0-hop) message and `1️⃣`–`7️⃣` above, clamping at
+  `7️⃣` — the same table Auto-Acknowledge uses, so the two features never drift apart.
+- Triggers with no hop information (a Schedule or System trigger wired to a tapback, or a message
+  whose hop data is missing) record a **skipped no-op**, not a run failure.
+- The **Emoji** field is hidden while hop-count mode is selected; your fixed emoji is remembered if
+  you switch back to it later.
+- MeshCore sources are still skipped — MeshCore has no tapback concept on the protocol.
+- **Send via sources** — which radios send the reaction. Leave none to use the source that
+  triggered the automation — but a source **is required** for source-less triggers (System events
+  and Schedules).
+
 ### Send a message
 
 Sends text to a channel or as a DM, with full `{{ }}` token interpolation in the body.
@@ -262,6 +275,107 @@ to let a repeater finish transmitting before replying. The pause only lasts for 
 durable across a restart; the dry-run [simulator](#testing-dry-run) resolves it instantly instead of
 actually waiting.
 
+## Recipe — per-channel range-test acks (issue #4340)
+
+A common base-station setup runs a busy **primary** community channel plus a quieter secondary
+channel (call it **RangeTest**) set aside for range testers. The operator wants an ack on the
+primary channel to redirect testers to RangeTest, while the ack on RangeTest itself says something
+appropriate for people who are already there. One global Auto-Acknowledge body can't be true in
+both places at once — this recipe answers it with two small automations.
+
+**The key insight:** a hop-count tapback is a **separate packet** whose entire payload is the
+reaction emoji. Moving the "how many hops did that take" signal into the tapback frees the whole
+text body for channel-specific wording — exactly the byte pressure the issue describes.
+
+### Automation A — "Range-test ack — Primary"
+
+**WHEN** *A message is received*
+- **Text contains:** `test` — or use **Text matches regex** `\b(test|ping)\b` for word-boundary
+  matching so it doesn't fire on "latest" or "pingpong".
+- **On channels:** `Primary`.
+- **Cooldown (seconds):** leave at `0`. See [Cooldown caveat](#cooldown-caveat-per-automation-not-per-node)
+  below before raising it.
+
+**THEN**
+1. `Send a tapback (reaction)` → **Emoji source:** *The message's hop count*.
+2. `Send a message` → leave **On channels** empty (it replies on the triggering channel), body:
+
+   ```
+   {{ trigger.hopEmoji }} {{ trigger.senderLabel }} {{ trigger.hops }}h {{ trigger.snr }}dB · range tests → #RangeTest
+   ```
+
+### Automation B — "Range-test ack — RangeTest"
+
+Identical trigger, except **On channels:** `RangeTest`.
+
+**THEN** the same hop-count tapback, plus a body that doesn't repeat the channel redirect (they're
+already there):
+
+```
+{{ trigger.hopEmoji }} {{ trigger.senderLabel }} {{ trigger.hops }}h SNR {{ trigger.snr }} RSSI {{ trigger.rssi }}
+```
+
+### Tapback-only variant
+
+Delete the `Send a message` action from both automations. The hop-count reaction alone answers a
+range test — direct-or-how-many-hops — at 7 bytes and zero channel noise. Add the text action back
+only where you actually want channel-specific wording.
+
+### Why two automations, not one with two rules
+
+The obvious alternative — one automation, trigger on `Primary, RangeTest`, then two rules gated by
+a text condition on the channel — isn't available today: the **Text comparison** condition's field
+picker (`Field` on `condition.string`) offers *Message text*, *Sender node id*, *Recipient node id*,
+and *MeshCore scope/region* for a message trigger, but not the channel name. Use the two-automation
+form above; it costs one extra automation, not any extra typing per rule.
+
+### Cooldown caveat (per-automation, not per-node)
+
+Be aware before you set a non-zero **Cooldown (seconds)**: the engine's cooldown currently applies
+to the whole automation, not to each sending node individually. On a busy channel, a cooldown after
+acking one range-tester suppresses acks to the *next* tester who pings before the window elapses.
+Leave it at `0` for this recipe, or accept that trade-off deliberately. Per-node cooldown scope is
+planned for Phase 2 of the epic this recipe belongs to (see
+[`AUTOACK_AUTOMATION_EPIC.md`](https://github.com/Yeraze/meshmonitor/blob/main/docs/internal/dev-notes/AUTOACK_AUTOMATION_EPIC.md)
+internally).
+
+### Byte budget
+
+Keycap emoji (`*️⃣`, `1️⃣`…`7️⃣`) are **7 bytes each** in UTF-8 (base character + `U+FE0F` +
+`U+20E3`, 1 + 3 + 3 bytes). `{{ trigger.hopEmoji }}` therefore costs 7 bytes wherever it appears in
+a text body — one more reason the tapback (whose entire payload *is* the emoji) is the cheaper way
+to carry that signal than embedding it in text.
+
+With representative values (`senderLabel` = `N0CALL-1`, 3 hops, SNR `-6.5`, RSSI `-110`), the two
+example bodies above come out to:
+
+| Body | Bytes (`getUtf8ByteLength`) |
+| --- | --- |
+| Automation A ("… range tests → #RangeTest") | 56 |
+| Automation B ("… SNR … RSSI …") | 38 |
+
+Both are far under any applicable limit, leaving plenty of headroom to make the wording friendlier.
+On the limit itself: the issue's **237 bytes** is the Meshtastic LoRa on-air MTU — the *total*
+packet size, including its 16-byte header, not the usable text payload. The protobuf definitions
+(`protobufs/meshtastic/mesh.proto`, `Constants.DATA_PAYLOAD_LEN`) put the actual `Data` payload
+budget behind that header at **233 bytes**, a few bytes tighter than 237 once the header is
+accounted for. Separately, **MeshMonitor's own `MAX_MESSAGE_BYTES = 200`** constant
+(`src/server/constants/meshtastic.ts`) is a self-imposed, more conservative cap — but it is enforced
+only by the HTTP compose route (`routes/v1/messages.ts`, used by the message-composer UI and the
+public API). The Automation Engine's **Send a message** action does not go through that route: it
+calls the source manager's `sendTextMessage()` directly, so it is **not** subject to the 200-byte
+check or to any MeshMonitor-side truncation. In practice this means an automation body can use the
+full ~233-byte protocol budget if it needs to — but for this recipe there's no need to get anywhere
+near it.
+
+### Closing the loop
+
+Auto-Acknowledge stays a single global body by design; this recipe answers issue #4340 without
+adding a second configuration axis to it, by moving the per-channel branching into the Automation
+Engine feature built for exactly that. Two short automations — one per channel — replace the
+would-be per-channel Auto-Acknowledge field, and the hop-count tapback carries the "how many hops
+did that take" signal for free, in its own packet, regardless of which text (if any) accompanies it.
+
 ## Variables
 
 Variables are a separate, first-class management area under the Automations tab. A variable is
@@ -311,6 +425,7 @@ values, the set-variable value) accept **double-brace tokens**:
 | Token | Resolves to |
 | --- | --- |
 | `{{ trigger.* }}` | A field from the current trigger (e.g. `{{ trigger.text }}`, `{{ trigger.fromId }}`, `{{ trigger.hops }}`, `{{ trigger.value }}`, `{{ trigger.latestVersion }}`). The available fields depend on the trigger type |
+| `{{ trigger.hopEmoji }}` | The message trigger's hop count as an emoji — `*️⃣` direct, `1️⃣`–`7️⃣` (`7️⃣` = 7 or more). Same mapping as the tapback's hop-count mode above. Blank when the hop count is unknown |
 | `{{ trigger.sourceId }}` / `{{ trigger.timestamp }}` | Available for every trigger; `timestamp` renders as a local date/time |
 | `{{ var.name }}` | A user-defined variable; `{{ var.name.field }}` for nested `json` access |
 | `{{ NOW }}` | The current time, rendered as a local `YYYY-MM-DD HH:mm:ss` |
