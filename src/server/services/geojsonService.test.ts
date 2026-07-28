@@ -276,4 +276,63 @@ describe('GeoJsonService', () => {
       expect(() => service.getPublicLayerData(priv.id)).toThrow(/not found/i);
     });
   });
+
+  // --- Click-popup opt-out (issue #4344) ---
+  describe('disablePopup', () => {
+    it('defaults new layers to disablePopup=false (popup stays on)', () => {
+      const layer = service.addLayer('popup.geojson', validFeatureCollection);
+      expect(layer.disablePopup).toBe(false);
+    });
+
+    it('defaults discovered layers to disablePopup=false', () => {
+      fs.writeFileSync(path.join(tmpDir, 'dropped-in.geojson'), validFeatureCollection, 'utf-8');
+      const discovered = service.discoverLayers();
+      expect(discovered).toHaveLength(1);
+      expect(discovered[0].disablePopup).toBe(false);
+    });
+
+    it('backfills disablePopup=false for legacy manifest entries', () => {
+      // Legacy manifest written without the field (pre-#4344)
+      const legacy = { layers: [{ id: 'legacy', name: 'Legacy', filename: 'legacy.geojson', visible: true, publiclyVisible: false, style: { color: '#000', opacity: 0.7, weight: 2, fillOpacity: 0.3 }, createdAt: 1, updatedAt: 1 }] };
+      fs.writeFileSync(path.join(tmpDir, 'manifest.json'), JSON.stringify(legacy));
+      const manifest = service.loadManifest();
+      expect(manifest.layers[0].disablePopup).toBe(false);
+    });
+
+    it('round-trips through the manifest on disk', () => {
+      const layer = service.addLayer('roundtrip.geojson', validFeatureCollection);
+
+      expect(service.updateLayer(layer.id, { disablePopup: true }).disablePopup).toBe(true);
+      // Fresh instance re-reads manifest.json — proves it persisted rather than
+      // only mutating the in-memory object.
+      expect(
+        new GeoJsonService(tmpDir).getLayers().find(l => l.id === layer.id)?.disablePopup
+      ).toBe(true);
+
+      expect(service.updateLayer(layer.id, { disablePopup: false }).disablePopup).toBe(false);
+      expect(
+        new GeoJsonService(tmpDir).getLayers().find(l => l.id === layer.id)?.disablePopup
+      ).toBe(false);
+    });
+
+    it('leaves the other layer fields untouched when toggled', () => {
+      const layer = service.addLayer('isolated.geojson', validFeatureCollection);
+      service.updateLayer(layer.id, { publiclyVisible: true, name: 'keepme' });
+
+      const updated = service.updateLayer(layer.id, { disablePopup: true });
+      expect(updated.name).toBe('keepme');
+      expect(updated.publiclyVisible).toBe(true);
+      expect(updated.visible).toBe(true);
+      expect(updated.style.color).toBe(layer.style.color);
+    });
+
+    it('is preserved on layers served to public viewers', () => {
+      const pub = service.addLayer('pubpopup.geojson', validFeatureCollection);
+      service.updateLayer(pub.id, { publiclyVisible: true, disablePopup: true });
+
+      const publicLayers = service.getPublicLayers();
+      expect(publicLayers).toHaveLength(1);
+      expect(publicLayers[0].disablePopup).toBe(true);
+    });
+  });
 });
