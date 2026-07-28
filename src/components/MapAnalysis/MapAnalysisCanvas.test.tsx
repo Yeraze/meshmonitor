@@ -7,12 +7,24 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import MapAnalysisCanvas from './MapAnalysisCanvas';
-import { MapAnalysisProvider, useMapAnalysisCtx } from './MapAnalysisContext';
+import { MapAnalysisProvider, useMapAnalysisCtx, type MapViewState } from './MapAnalysisContext';
 
 // Stub react-leaflet — Vitest's jsdom doesn't provide all the DOM bits Leaflet needs.
 vi.mock('react-leaflet', () => ({
-  MapContainer: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="map-container">{children}</div>
+  MapContainer: ({
+    children,
+    center,
+    zoom,
+  }: {
+    children: React.ReactNode;
+    center: [number, number];
+    zoom: number;
+  }) => (
+    // center/zoom surfaced so the #4371 view-carryover tests can assert what
+    // the 2D map mounted at.
+    <div data-testid="map-container" data-center={center.join(',')} data-zoom={zoom}>
+      {children}
+    </div>
   ),
   TileLayer: () => <div data-testid="tile-layer" />,
   Marker: ({
@@ -160,6 +172,10 @@ vi.mock('./use3DTracerouteLines', () => ({
 // without needing a WebGL context.
 vi.mock('../map/Base3DMap', () => ({
   Base3DMap: (props: {
+    center: [number, number];
+    zoom: number;
+    pitch?: number;
+    bearing?: number;
     nodes: Array<{ key: string; lat: number; lng: number; label?: string }>;
     basemap: { tiles: string[]; usedFallback: boolean };
     terrainTileUrl: string;
@@ -169,12 +185,19 @@ vi.mock('../map/Base3DMap', () => ({
     onLineClick?: (key: string) => void;
     initialExaggeration?: number;
     onExaggerationChange?: (v: number) => void;
+    onViewChange?: (v: { center: [number, number]; zoom: number; pitch: number; bearing: number }) => void;
+    onMapReady?: (map: unknown) => void;
   }) => (
     <div
       data-testid="base-3d-map"
       data-terrain-url={props.terrainTileUrl}
       data-line-keys={(props.lines ?? []).map((l) => l.key).join(',')}
       data-initial-exaggeration={props.initialExaggeration}
+      data-center={props.center.join(',')}
+      data-zoom={props.zoom}
+      data-pitch={props.pitch ?? ''}
+      data-bearing={props.bearing ?? ''}
+      data-node-count={props.nodes.length}
     >
       {props.nodes.map((n) => (
         <button
@@ -212,7 +235,34 @@ vi.mock('../map/Base3DMap', () => ({
       >
         change-exaggeration
       </button>
+      {/* #4371: simulate the user panning/rotating the 3D camera. */}
+      <button
+        type="button"
+        data-testid="base-3d-move-camera"
+        onClick={() =>
+          props.onViewChange?.({ center: [44.4, -111.1], zoom: 15, pitch: 25, bearing: 275 })
+        }
+      >
+        move-camera
+      </button>
+      {/* #4371: simulate maplibre's `load` handing the map instance out. */}
+      <button
+        type="button"
+        data-testid="base-3d-map-ready"
+        onClick={() => props.onMapReady?.({ fake: 'maplibre-map' })}
+      >
+        map-ready
+      </button>
     </div>
+  ),
+}));
+
+// Follow3DController's own behavior is covered by Follow3DController.test.tsx;
+// here it's a marker so this suite can assert the 3D branch mounts it and
+// feeds it the map instance Base3DMap hands out (#4371 B).
+vi.mock('./Follow3DController', () => ({
+  default: ({ map }: { map: unknown }) => (
+    <div data-testid="follow-3d-controller" data-has-map={String(map !== null)} />
   ),
 }));
 
@@ -265,6 +315,18 @@ const wrapper = ({ children }: { children: React.ReactNode }) => {
 function SelectedProbe() {
   const ctx = useMapAnalysisCtx();
   return <div data-testid="selected-probe">{JSON.stringify(ctx.selected)}</div>;
+}
+
+/**
+ * Seeds the shared camera ref (#4371 A) as if a map had already reported a
+ * view, standing in for `MapViewStateController` — whose own publishing is
+ * covered by MapViewStateController.test.tsx, and which is inert here because
+ * this suite stubs `useMap()` to null.
+ */
+function ViewSeeder({ view }: { view: MapViewState }) {
+  const { mapViewRef } = useMapAnalysisCtx();
+  mapViewRef.current = view;
+  return null;
 }
 
 describe('MapAnalysisCanvas', () => {
@@ -513,6 +575,121 @@ describe('MapAnalysisCanvas', () => {
 
         const stored = JSON.parse(localStorage.getItem('mapAnalysis.config.v1')!);
         expect(stored.exaggeration).toBe(1.9);
+      });
+    });
+
+    // #4371 A: the view survives a mode switch instead of snapping back to the
+    // Default Map Center (or, with none set, the [30, -90] fallback).
+    describe('view-state carryover (#4371 A)', () => {
+      it('2D mounts at the Default Map Center when no map has reported a view yet', () => {
+        render(<MapAnalysisCanvas />, { wrapper });
+        expect(screen.getByTestId('map-container')).toHaveAttribute('data-center', '30,-90');
+        expect(screen.getByTestId('map-container')).toHaveAttribute('data-zoom', '10');
+      });
+
+      it('3D mounts at the view the 2D map was showing, not the Default Map Center', () => {
+        persist3d();
+        render(
+          <>
+            <ViewSeeder view={{ center: [47.6, -122.3], zoom: 13 }} />
+            <MapAnalysisCanvas />
+          </>,
+          { wrapper },
+        );
+        const map3d = screen.getByTestId('base-3d-map');
+        expect(map3d).toHaveAttribute('data-center', '47.6,-122.3');
+        expect(map3d).toHaveAttribute('data-zoom', '13');
+      });
+
+      it('3D restores the pitch/bearing carried through a previous 3D session', () => {
+        persist3d();
+        render(
+          <>
+            <ViewSeeder view={{ center: [47.6, -122.3], zoom: 13, pitch: 35, bearing: 210 }} />
+            <MapAnalysisCanvas />
+          </>,
+          { wrapper },
+        );
+        const map3d = screen.getByTestId('base-3d-map');
+        expect(map3d).toHaveAttribute('data-pitch', '35');
+        expect(map3d).toHaveAttribute('data-bearing', '210');
+      });
+
+      it('leaves pitch/bearing unset (Base3DMap defaults apply) on a first 3D entry from 2D', () => {
+        persist3d();
+        render(
+          <>
+            <ViewSeeder view={{ center: [47.6, -122.3], zoom: 13 }} />
+            <MapAnalysisCanvas />
+          </>,
+          { wrapper },
+        );
+        expect(screen.getByTestId('base-3d-map')).toHaveAttribute('data-pitch', '');
+      });
+
+      it('a 3D camera move carries into the 2D map when the view flips back', () => {
+        persist3d();
+        render(<MapAnalysisCanvas />, { wrapper });
+
+        // Pan/rotate in 3D, then bounce back to 2D via the unsupported signal.
+        fireEvent.click(screen.getByTestId('base-3d-move-camera'));
+        fireEvent.click(screen.getByTestId('base-3d-trigger-unsupported'));
+
+        const map2d = screen.getByTestId('map-container');
+        expect(map2d).toHaveAttribute('data-center', '44.4,-111.1');
+        expect(map2d).toHaveAttribute('data-zoom', '15');
+      });
+    });
+
+    // #4371 B: Follow/Auto-zoom works in 3D.
+    describe('follow plumbing (#4371 B)', () => {
+      it('mounts Follow3DController and the Resume affordance in the 3D branch', () => {
+        persist3d();
+        render(<MapAnalysisCanvas />, { wrapper });
+        expect(screen.getByTestId('follow-3d-controller')).toBeInTheDocument();
+      });
+
+      it('hands Follow3DController the map instance once Base3DMap reports it ready', () => {
+        persist3d();
+        render(<MapAnalysisCanvas />, { wrapper });
+        expect(screen.getByTestId('follow-3d-controller')).toHaveAttribute('data-has-map', 'false');
+
+        fireEvent.click(screen.getByTestId('base-3d-map-ready'));
+
+        expect(screen.getByTestId('follow-3d-controller')).toHaveAttribute('data-has-map', 'true');
+      });
+
+      it('does NOT mount the 3D follow controller in the 2D branch', () => {
+        render(<MapAnalysisCanvas />, { wrapper });
+        expect(screen.queryByTestId('follow-3d-controller')).toBeNull();
+      });
+    });
+
+    // #4371 C: layer switching in 3D.
+    describe('layer plumbing (#4371 C)', () => {
+      it('renders the tileset selector in 3D, the same control the 2D branch gets', () => {
+        persist3d();
+        render(<MapAnalysisCanvas />, { wrapper });
+        expect(screen.getByText(/Tileset \(/i)).toBeInTheDocument();
+      });
+
+      it('feeds Base3DMap the node markers while the markers layer is on (default)', () => {
+        persist3d();
+        render(<MapAnalysisCanvas />, { wrapper });
+        expect(screen.getByTestId('base-3d-map')).toHaveAttribute('data-node-count', '1');
+      });
+
+      it('drops the 3D node markers when the markers layer is toggled off', () => {
+        localStorage.setItem(
+          'mapAnalysis.config.v1',
+          JSON.stringify({
+            version: 1,
+            viewMode: '3d',
+            layers: { markers: { enabled: false, lookbackHours: null } },
+          }),
+        );
+        render(<MapAnalysisCanvas />, { wrapper });
+        expect(screen.getByTestId('base-3d-map')).toHaveAttribute('data-node-count', '0');
       });
     });
   });

@@ -32,11 +32,24 @@ export interface Line3DFeature {
   dash?: number[];
 }
 
+/** Camera state reported by `onViewChange` (#4371 A). */
+export interface Map3DViewState {
+  /** [lat, lng] — Leaflet order, so callers can hand it straight to a 2D map. */
+  center: [number, number];
+  zoom: number;
+  pitch: number;
+  bearing: number;
+}
+
 export interface Base3DMapProps {
   /** Initial center, [lat, lng] (converted to MapLibre's [lng, lat] internally). */
   center: [number, number];
   /** Initial zoom. */
   zoom: number;
+  /** Initial pitch in degrees. Mount-only, like `center`/`zoom`. Default 60. */
+  pitch?: number;
+  /** Initial bearing in degrees. Mount-only, like `center`/`zoom`. Default 0. */
+  bearing?: number;
   /** Raster basemap source, from `resolve3DBasemap`. */
   basemap: Basemap3DSource;
   /** Same-origin DEM tile URL template, from `buildTerrainTileUrl`. */
@@ -66,6 +79,19 @@ export interface Base3DMapProps {
   initialExaggeration?: number;
   /** Fired with the new exaggeration value whenever the slider changes. */
   onExaggerationChange?: (value: number) => void;
+  /**
+   * Fired on every `moveend` with the current camera (#4371 A) — pans, zooms,
+   * rotations, and programmatic moves alike. Callers use it to hand the view
+   * off to another map surface.
+   */
+  onViewChange?: (view: Map3DViewState) => void;
+  /**
+   * Fired with the underlying `maplibregl.Map` once its `load` completes, and
+   * with `null` when the map is torn down (#4371 B). The 3D equivalent of
+   * `BaseMap`'s `mapRef` — the escape hatch controllers like
+   * `Follow3DController` need, since MapLibre has no `useMap()` child context.
+   */
+  onMapReady?: (map: maplibregl.Map | null) => void;
   className?: string;
 }
 
@@ -177,6 +203,8 @@ function dashGroupsOf(lines: Line3DFeature[]): Map<string, number[]> {
 export function Base3DMap({
   center,
   zoom,
+  pitch,
+  bearing,
   basemap,
   terrainTileUrl,
   nodes,
@@ -186,6 +214,8 @@ export function Base3DMap({
   onUnsupported,
   initialExaggeration,
   onExaggerationChange,
+  onViewChange,
+  onMapReady,
   className,
 }: Base3DMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -206,6 +236,10 @@ export function Base3DMap({
   onExaggerationChangeRef.current = onExaggerationChange;
   const onUnsupportedRef = useRef(onUnsupported);
   onUnsupportedRef.current = onUnsupported;
+  const onViewChangeRef = useRef(onViewChange);
+  onViewChangeRef.current = onViewChange;
+  const onMapReadyRef = useRef(onMapReady);
+  onMapReadyRef.current = onMapReady;
   // Notify-once guard: refs survive StrictMode's dev double-mount (the same
   // component instance is remounted with state/refs preserved), so
   // `onUnsupported` fires exactly once even when the mount effect runs twice.
@@ -293,7 +327,8 @@ export function Base3DMap({
         },
         center: [center[1], center[0]],
         zoom,
-        pitch: INITIAL_PITCH,
+        pitch: pitch ?? INITIAL_PITCH,
+        bearing: bearing ?? 0,
         attributionControl: false,
       });
     } catch (err) {
@@ -313,6 +348,19 @@ export function Base3DMap({
       }),
       'bottom-right',
     );
+
+    // Camera reporting (#4371 A). Registered before `load` so a move during
+    // tile loading is still reported; `getCenter()`/`getZoom()` are valid as
+    // soon as the map is constructed.
+    map.on('moveend', () => {
+      const c = map.getCenter();
+      onViewChangeRef.current?.({
+        center: [c.lat, c.lng],
+        zoom: map.getZoom(),
+        pitch: map.getPitch(),
+        bearing: map.getBearing(),
+      });
+    });
 
     map.on('load', () => {
       map.addSource(TERRAIN_SOURCE_ID, {
@@ -391,15 +439,19 @@ export function Base3DMap({
       }
 
       setLoaded(true);
+      // Hand the map out only once its style/sources exist, so consumers can
+      // safely drive the camera and query layers (#4371 B).
+      onMapReadyRef.current?.(map);
     });
 
     return () => {
       setLoaded(false);
+      onMapReadyRef.current?.(null);
       map.remove();
       mapRef.current = null;
     };
-    // Mount-once: center/zoom are applied only at construction (BaseMap
-    // convention, see BaseMap.tsx), basemap/terrainTileUrl identity changes
+    // Mount-once: center/zoom/pitch/bearing are applied only at construction
+    // (BaseMap convention, see BaseMap.tsx), basemap/terrainTileUrl identity changes
     // are handled by the dedicated effects below rather than remounting.
     // `nodes`/`lines` here only seed the initial sources — subsequent
     // updates are patched by the dedicated sync effects below.

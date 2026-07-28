@@ -207,4 +207,55 @@ describe('MapAnalysisToolbar', () => {
       expect(screen.getByRole('button', { name: '3D View' })).toHaveClass('active');
     });
   });
+
+  // #4371 C: toggles the 3D canvas can't act on are disabled with a reason
+  // rather than silently doing nothing.
+  describe('2D-only layer toggles in 3D (#4371 C)', () => {
+    const render3d = () => {
+      localStorage.setItem('mapAnalysis.config.v1', JSON.stringify({ version: 1, viewMode: '3d' }));
+      // Give Polar Grid an own-node position so it isn't disabled for that reason.
+      unifiedNodes = [{ nodeNum: 1, latitude: 30, longitude: -90 }];
+      render(<MapAnalysisToolbar />, { wrapper });
+    };
+
+    it.each(['Heatmap', 'Trails', 'Hop Shading', 'SNR Overlay', 'Waypoints', 'Accuracy Regions', 'ATAK Contacts', 'Polar Grid'])(
+      'disables %s in 3D and says why',
+      (label) => {
+        render3d();
+        const btn = screen.getByRole('button', { name: new RegExp(`^${label}$`, 'i') });
+        expect(btn).toBeDisabled();
+        expect(btn).toHaveAttribute('title', `${label} — 2D view only`);
+      },
+    );
+
+    it.each(['Markers', 'Traceroutes', 'Neighbors'])('leaves %s enabled in 3D (the 3D canvas draws it)', (label) => {
+      render3d();
+      expect(screen.getByRole('button', { name: new RegExp(`^${label}$`, 'i') })).not.toBeDisabled();
+    });
+
+    it('leaves every layer toggle enabled in 2D', () => {
+      render(<MapAnalysisToolbar />, { wrapper });
+      // Polar Grid is excluded: it has its own #3971 own-node-position gate,
+      // covered above.
+      for (const label of ['Heatmap', 'Trails', 'Waypoints', 'SNR Overlay', 'ATAK Contacts']) {
+        expect(screen.getByRole('button', { name: new RegExp(`^${label}$`, 'i') })).not.toBeDisabled();
+      }
+    });
+
+    it('keeps a 2D-only layer’s persisted state untouched while in 3D', () => {
+      localStorage.setItem(
+        'mapAnalysis.config.v1',
+        JSON.stringify({
+          version: 1,
+          viewMode: '3d',
+          layers: { heatmap: { enabled: true, lookbackHours: 24 } },
+        }),
+      );
+      render(<MapAnalysisToolbar />, { wrapper });
+      // Disabled, but still shown as on — switching back to 2D restores it.
+      const btn = screen.getByRole('button', { name: /^heatmap$/i });
+      expect(btn).toBeDisabled();
+      expect(btn).toHaveClass('active');
+    });
+  });
 });

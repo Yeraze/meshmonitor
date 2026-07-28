@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pane } from 'react-leaflet';
+import type maplibregl from 'maplibre-gl';
 import 'leaflet/dist/leaflet.css';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useMapAnalysisCtx } from './MapAnalysisContext';
@@ -11,7 +12,8 @@ import LinkProfileDrawer from './LinkProfileDrawer';
 import LinkProfileHoverLayer from './LinkProfileHoverLayer';
 import type { LinkEndpoint } from '../../utils/linkProfile';
 import { BaseMap } from '../map/BaseMap';
-import { Base3DMap, type Node3DFeature, type Line3DFeature } from '../map/Base3DMap';
+import { Base3DMap, type Node3DFeature, type Line3DFeature, type Map3DViewState } from '../map/Base3DMap';
+import { TilesetSelector } from '../TilesetSelector';
 import { resolve3DBasemap, buildTerrainTileUrl } from '../../config/basemap3d';
 import { useTerrainCapabilities } from '../../hooks/useTerrainCapabilities';
 import { appBasename } from '../../init';
@@ -33,10 +35,15 @@ import AccuracyRegionsLayer from './layers/AccuracyRegionsLayer';
 import TimeSliderControl from './TimeSliderControl';
 import MapLegend from './MapLegend';
 import FollowController from './FollowController';
+import Follow3DController from './Follow3DController';
 import FollowResumeButton from './FollowResumeButton';
+import MapViewStateController from './MapViewStateController';
 
 const FALLBACK_CENTER: [number, number] = [30, -90];
 const FALLBACK_ZOOM = 10;
+
+/** Stable empty list so toggling the markers layer off doesn't churn Base3DMap's source. */
+const NO_3D_NODES: Node3DFeature[] = [];
 
 export default function MapAnalysisCanvas() {
   const {
@@ -59,6 +66,7 @@ export default function MapAnalysisCanvas() {
     setLinkEndpoints,
     linkVerdict,
     setExaggeration,
+    mapViewRef,
   } = useMapAnalysisCtx();
 
   // #3636: measurement endpoints, from the same visible+positioned node list
@@ -100,11 +108,19 @@ export default function MapAnalysisCanvas() {
     [analysisNodes],
   );
 
-  const center: [number, number] = [
+  // #4371 A: mount the incoming branch at the view the outgoing one was
+  // showing, so switching 2D↔3D doesn't snap back to the Default Map Center
+  // (or, with none configured, to the [30, -90] fallback). `mapViewRef` is
+  // written on every `moveend` by whichever map is mounted, and is null until
+  // one has reported — reading it during render is deliberate: both BaseMap
+  // and Base3DMap consume center/zoom at mount only, so this is a seed, not
+  // reactive state.
+  const liveView = mapViewRef.current;
+  const center: [number, number] = liveView?.center ?? [
     defaultMapCenterLat ?? FALLBACK_CENTER[0],
     defaultMapCenterLon ?? FALLBACK_CENTER[1],
   ];
-  const zoom = defaultMapCenterZoom ?? FALLBACK_ZOOM;
+  const zoom = liveView?.zoom ?? defaultMapCenterZoom ?? FALLBACK_ZOOM;
 
   // #3826 Phase 2 WP-D: 3D branch (spec §3.10) + force-2D guard (spec §3.11).
   // A persisted `viewMode:'3d'` must never strand the user once capabilities
@@ -179,22 +195,46 @@ export default function MapAnalysisCanvas() {
   // the user back to the working 2D map so they aren't stranded in 3D mode.
   const handle3DUnsupported = useCallback(() => setViewMode('2d'), [setViewMode]);
 
+  // #4371 A: record the 3D camera so the 2D map can pick it up on switch back.
+  const handle3DViewChange = useCallback(
+    (view: Map3DViewState) => {
+      mapViewRef.current = view;
+    },
+    [mapViewRef],
+  );
+
+  // #4371 B: MapLibre has no `useMap()` child context, so the map instance is
+  // held in state and handed to Follow3DController once Base3DMap reports it.
+  const [map3D, setMap3D] = useState<maplibregl.Map | null>(null);
+
   if (effectiveViewMode === '3d') {
     return (
       <div className="map-analysis-canvas" style={{ position: 'relative' }}>
         <Base3DMap
           center={center}
           zoom={zoom}
+          pitch={liveView?.pitch}
+          bearing={liveView?.bearing}
           basemap={basemap3D}
           terrainTileUrl={terrainTileUrl}
-          nodes={node3DFeatures}
+          nodes={config.layers.markers.enabled ? node3DFeatures : NO_3D_NODES}
           onNodeClick={handleNode3DClick}
           lines={lines3D}
           onLineClick={handleLine3DClick}
           onUnsupported={handle3DUnsupported}
           initialExaggeration={config.exaggeration}
           onExaggerationChange={setExaggeration}
+          onViewChange={handle3DViewChange}
+          onMapReady={setMap3D}
         />
+        {/* #4371 C: basemap switching in 3D. The same controlled selector the
+            2D branch gets via BaseMap's `showTilesetSelector` — Base3DMap
+            takes an already-resolved `basemap`, so it's mounted here as a
+            sibling rather than behind a prop. `basemap3D` recomputes from
+            `mapTileset` and Base3DMap swaps its raster source in place. */}
+        <TilesetSelector selectedTilesetId={mapTileset} onTilesetChange={setMapTileset} />
+        <Follow3DController map={map3D} />
+        <FollowResumeButton />
         {basemap3D.usedFallback && (
           <div className="map-analysis-3d-fallback-note">
             Showing default basemap in 3D — the selected map style is vector-only
@@ -214,6 +254,7 @@ export default function MapAnalysisCanvas() {
         showTilesetSelector
         onTilesetChange={setMapTileset}
       >
+        <MapViewStateController />
         <FollowController />
         {measureMode && (
           <MeasureDistanceController
