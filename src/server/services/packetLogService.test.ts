@@ -132,11 +132,22 @@ describe('PacketLogService', () => {
   });
 
   describe('Packet Filtering', () => {
+    /**
+     * Captured once per test and shared with the `since` case below, which
+     * needs to place a cutoff *between* these fixtures. Re-reading the clock
+     * inside that test instead made it flaky: the fixtures sit 100ms/50ms/0ms
+     * behind this value, so a cutoff of `Date.now() - 60` only lands between
+     * the first two packets while under 10ms has elapsed since seeding. On a
+     * loaded CI runner it routinely did not, and the middle packet dropped out
+     * of the window — "expected 1 to be 2", with nothing actually broken.
+     */
+    let baseTime: number;
+
     beforeEach(async () => {
       databaseService.setSetting('packet_log_enabled', '1');
 
       // Add test data
-      const baseTime = Date.now();
+      baseTime = Date.now();
 
       await packetLogService.logPacket({
         packet_id: 1,
@@ -208,9 +219,12 @@ describe('PacketLogService', () => {
     });
 
     it('should filter by since timestamp', async () => {
-      const baseTime = Date.now();
+      // Cutoff sits between the -100ms fixture and the -50ms one, anchored to
+      // the same clock read that seeded them. `since` is an absolute epoch-ms
+      // bound compared as `timestamp >= since` — not a relative window, so the
+      // 60 here is 60 milliseconds, not the "60s" an earlier comment claimed.
       const packets = await packetLogService.getPackets({ since: baseTime - 60 });
-      expect(packets.length).toBe(2); // Should only get packets from last 60s
+      expect(packets.length).toBe(2); // the -50ms and -0ms packets; -100ms excluded
     });
 
     it('should support multiple filters combined', async () => {
