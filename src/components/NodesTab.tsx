@@ -50,6 +50,8 @@ import { BaseMap } from './map/BaseMap';
 import { MapLoadingOverlay } from './map/MapLoadingOverlay';
 import { MapModeIndicator } from './map/MapModeIndicator';
 import { NodeUnmessageableBadge } from './NodeUnmessageableBadge';
+import { NodeDetailsButton } from './NodeDetailsButton';
+import nodeRowStyles from './NodeRowActions.module.css';
 import { NeighborLinksLayer, type NeighborLinkDescriptor } from './map/layers/NeighborLinksLayer';
 import { AccuracyRegionsLayer, type AccuracyRegionDescriptor } from './map/layers/AccuracyRegionsLayer';
 import { NodeCard } from './map/popups/NodeCard';
@@ -1163,14 +1165,19 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     };
   }, [setSelectedDMNode, setActiveTab]);
 
-  // #4326: unmessageable nodes get no DM button in the node list, and the
-  // badge that replaces it used to be an inert <span> — a genuine dead end,
-  // since the list was then offering no route at all to the node's details.
-  // The badge now reaches Node Details, matching what the map popup's "More
-  // Details" action already does for these nodes (that popup has never gated
-  // on messageability). Messaging itself stays unavailable: this uses
-  // setSelectedDMNode rather than openDmForCompose, so the compose box isn't
-  // focused, and MessagesTab independently hides the composer behind its
+  // "Open Node Details" — the NodeDetailsButton on every row, and row
+  // double-click (#4379). #4326/#4333 reached this same destination by making
+  // the unmessageable badge itself clickable; that affordance was invisible
+  // among the inert status icons and misdescribed where it went, so it now
+  // has its own labelled control on every node instead of just unmessageable
+  // ones. Matches what the map popup's "More Details" action has always done
+  // (that popup has never gated on messageability).
+  //
+  // This deliberately uses setSelectedDMNode rather than openDmForCompose, so
+  // the compose box is NOT focused — "look at this node" and "message this
+  // node" are separate intents even though they currently land on the same
+  // tab. For unmessageable nodes messaging stays unavailable regardless:
+  // MessagesTab hides the composer behind its
   // `dmReadOnlyReason === 'unmessageable'` banner.
   const handleNodeDetailsClick = useCallback((node: DeviceInfo) => {
     return (e: React.MouseEvent) => {
@@ -2143,6 +2150,10 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   key={node.nodeNum}
                   className={`node-item ${selectedNodeId === node.user?.id ? 'selected' : ''}`}
                   onClick={handleNodeClick(node)}
+                  /* Second path to Node Details, matching MeshCore's node list
+                     (#4379). Single-click is already taken — it selects the node
+                     and centers the map on it — so double-click is the free slot. */
+                  onDoubleClick={hasPermission('messages', 'read') ? handleNodeDetailsClick(node) : undefined}
                 >
                   <div className="node-header">
                     <div className="node-name">
@@ -2178,50 +2189,69 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                       </div>
                     </div>
                     <div className="node-actions">
-                      {node.position && node.position.latitude != null && node.position.longitude != null && (
-                        <span className="node-indicator-icon" title={t('nodes.location')}><UiIcon name="location" size={15} /></span>
-                      )}
-                      {node.viaMqtt && (
-                        <span className="node-indicator-icon" title={t('nodes.via_mqtt')}><UiIcon name="network" size={15} /></span>
-                      )}
-                      {node.isStoreForwardServer && (
-                        <span className="node-indicator-icon" title={t('nodes.store_forward_server', 'Store & Forward Server')}><UiIcon name="package" size={15} /></span>
-                      )}
-                      {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
-                        <span className="node-indicator-icon" title={t('nodes.has_telemetry')}><UiIcon name="telemetry" size={15} /></span>
-                      )}
-                      {node.user?.id && nodesWithWeatherTelemetry.has(node.user.id) && (
-                        <span className="node-indicator-icon" title={t('nodes.has_weather')}><UiIcon name="weather" size={15} /></span>
-                      )}
-                      {node.user?.id && nodesWithPKC.has(node.user.id) && (
-                        <span className="node-indicator-icon" title={t('nodes.has_pkc')}><UiIcon name="encryptedKey" size={15} /></span>
-                      )}
-                      {node.hasRemoteAdmin && (
-                        <span className="node-indicator-icon" title={t('nodes.has_remote_admin')}><UiIcon name="wrench" size={15} /></span>
-                      )}
-                      {hasPermission('messages', 'read') && !node.isUnmessagable && (
-                        <button
-                          className="dm-icon"
-                          title={t('nodes.send_dm')}
-                          onClick={handleDMClick(node)}
-                        >
-                          <UiIcon name="messages" size={16} />
-                        </button>
-                      )}
-                      {hasPermission('messages', 'read') && node.isUnmessagable && (
-                        <NodeUnmessageableBadge onOpenDetails={handleNodeDetailsClick(node)} />
-                      )}
-                      {!isNodeComplete(node) && hasPermission('nodes', 'write') && (
-                        <button
-                          className="dm-icon"
-                          title={t('nodes.copy_nodeinfo')}
-                          onClick={handleCopyNodeInfoClick(node)}
-                        >
-                          <UiIcon name="copy" size={16} />
-                        </button>
-                      )}
-                      {(node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) && (
-                        hasPermission('security', 'write') ? (
+                      {/* #4379: inert status icons and interactive controls used to
+                          share one undifferentiated strip, so nothing signalled which
+                          of them you could click. They are now two groups with a rule
+                          between them — facts on the left, actions on the right. */}
+                      <span className={nodeRowStyles.indicators}>
+                        {node.position && node.position.latitude != null && node.position.longitude != null && (
+                          <span className="node-indicator-icon" title={t('nodes.location')}><UiIcon name="location" size={15} /></span>
+                        )}
+                        {node.viaMqtt && (
+                          <span className="node-indicator-icon" title={t('nodes.via_mqtt')}><UiIcon name="network" size={15} /></span>
+                        )}
+                        {node.isStoreForwardServer && (
+                          <span className="node-indicator-icon" title={t('nodes.store_forward_server', 'Store & Forward Server')}><UiIcon name="package" size={15} /></span>
+                        )}
+                        {node.user?.id && nodesWithTelemetry.has(node.user.id) && (
+                          <span className="node-indicator-icon" title={t('nodes.has_telemetry')}><UiIcon name="telemetry" size={15} /></span>
+                        )}
+                        {node.user?.id && nodesWithWeatherTelemetry.has(node.user.id) && (
+                          <span className="node-indicator-icon" title={t('nodes.has_weather')}><UiIcon name="weather" size={15} /></span>
+                        )}
+                        {node.user?.id && nodesWithPKC.has(node.user.id) && (
+                          <span className="node-indicator-icon" title={t('nodes.has_pkc')}><UiIcon name="encryptedKey" size={15} /></span>
+                        )}
+                        {node.hasRemoteAdmin && (
+                          <span className="node-indicator-icon" title={t('nodes.has_remote_admin')}><UiIcon name="wrench" size={15} /></span>
+                        )}
+                        {node.isUnmessagable && <NodeUnmessageableBadge />}
+                        {/* The read-only half of the security warning. Its clickable
+                            twin lives in the action group below. */}
+                        {(node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) && !hasPermission('security', 'write') && (
+                          <span
+                            className="security-warning-icon"
+                            title={node.keySecurityIssueDetails || t('nodes.security_risk_generic', 'Key security issue detected')}
+                            style={{
+                              fontSize: '16px',
+                              color: '#f44336',
+                              cursor: 'help'
+                            }}
+                          >
+                            <UiIcon name={node.keyMismatchDetected ? 'unlock' : 'alert'} size={16} />
+                          </span>
+                        )}
+                      </span>
+                      <span className={nodeRowStyles.actions}>
+                        {hasPermission('messages', 'read') && !node.isUnmessagable && (
+                          <button
+                            className="dm-icon"
+                            title={t('nodes.send_dm')}
+                            onClick={handleDMClick(node)}
+                          >
+                            <UiIcon name="messages" size={16} />
+                          </button>
+                        )}
+                        {!isNodeComplete(node) && hasPermission('nodes', 'write') && (
+                          <button
+                            className="dm-icon"
+                            title={t('nodes.copy_nodeinfo')}
+                            onClick={handleCopyNodeInfoClick(node)}
+                          >
+                            <UiIcon name="copy" size={16} />
+                          </button>
+                        )}
+                        {(node.keyIsLowEntropy || node.duplicateKeyDetected || node.keySecurityIssueDetails) && hasPermission('security', 'write') && (
                           <button
                             className="security-warning-icon"
                             title={t(
@@ -2242,7 +2272,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                             style={{
                               fontSize: '16px',
                               color: '#f44336',
-                              marginLeft: '4px',
                               background: 'none',
                               border: 'none',
                               padding: 0,
@@ -2252,21 +2281,16 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           >
                             <UiIcon name={node.keyMismatchDetected ? 'unlock' : 'alert'} size={16} />
                           </button>
-                        ) : (
-                          <span
-                            className="security-warning-icon"
-                            title={node.keySecurityIssueDetails || t('nodes.security_risk_generic', 'Key security issue detected')}
-                            style={{
-                              fontSize: '16px',
-                              color: '#f44336',
-                              marginLeft: '4px',
-                              cursor: 'help'
-                            }}
-                          >
-                            <UiIcon name={node.keyMismatchDetected ? 'unlock' : 'alert'} size={16} />
-                          </span>
-                        )
-                      )}
+                        )}
+                        {/* Every node gets this, messageable or not — #4379 asks for
+                            one consistent route to Node Details rather than an
+                            affordance that only appears on unmessageable rows. It
+                            stays gated on messages:read because Node Details still
+                            lives inside the Messages tab. */}
+                        {hasPermission('messages', 'read') && (
+                          <NodeDetailsButton onOpenDetails={handleNodeDetailsClick(node)} />
+                        )}
+                      </span>
                       <div className="node-short">
                         {node.user?.shortName || '-'}
                       </div>
