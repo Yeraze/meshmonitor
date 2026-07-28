@@ -89,7 +89,18 @@ vi.mock('./PacketStatsChart', () => ({ default: () => null }));
 // for pre-existing calls like `t('messages.last_traced', { time })` that
 // carry no positional default at all, so those age/badge lines render their
 // real English text too, not the raw key.
-const enDict = enLocale as Record<string, string>;
+//
+// en.json is NOT flat — most keys are dotted strings, but it also has
+// genuinely nested objects (e.g. `map: { maximumAge: ... }`), so the whole
+// import can't be honestly typed as `Record<string, string>`. Type it as
+// `Record<string, unknown>` and narrow per lookup instead: a key that
+// resolves to a nested object degrades to the fallback rather than ever
+// interpolating `[object Object]` into rendered text.
+const enDict = enLocale as Record<string, unknown>;
+function lookupEnDefault(key: string): string | undefined {
+  const value = enDict[key];
+  return typeof value === 'string' ? value : undefined;
+}
 vi.mock('react-i18next', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useTranslation: () => ({
@@ -107,7 +118,7 @@ vi.mock('react-i18next', async (importOriginal) => ({
         options = arg2;
         defaultValue = typeof options?.defaultValue === 'string' ? options.defaultValue : undefined;
       }
-      let out = defaultValue ?? enDict[key] ?? key;
+      let out = defaultValue ?? lookupEnDefault(key) ?? key;
       if (options) {
         for (const [k, v] of Object.entries(options)) {
           out = out.replace(new RegExp(`{{${k}}}`, 'g'), String(v));
