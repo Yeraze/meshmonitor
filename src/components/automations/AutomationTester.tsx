@@ -264,8 +264,14 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
     headline = `Send message → ${p.destination != null ? `DM to node ${p.destination}` : `channel ${p.channel ?? 0}`}`;
     sent = <div className="ae-test-sent">{String(p.text ?? '')}</div>;
   } else if (a.type === 'action.tapback') {
-    headline = `Tapback → ${p.destination != null ? `DM to node ${p.destination}` : `channel ${p.channel ?? 0}`}`;
-    sent = <div className="ae-test-sent">{String(p.emoji ?? '')}</div>;
+    // emojiMode=hopCount with no hop info on the trigger records a skip (#4340)
+    // instead of sending — see actionExecutor.ts action.tapback.
+    if (p.skipped) {
+      headline = `Tapback → skipped (${String(p.reason ?? '')})`;
+    } else {
+      headline = `Tapback → ${p.destination != null ? `DM to node ${p.destination}` : `channel ${p.channel ?? 0}`}`;
+      sent = <div className="ae-test-sent">{String(p.emoji ?? '')}</div>;
+    }
   } else if (a.type === 'action.notify') {
     headline = 'Notify (Apprise)';
     sent = (
