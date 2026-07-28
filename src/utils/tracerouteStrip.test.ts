@@ -574,3 +574,96 @@ describe('layoutTracerouteStrip — SNR label collision avoidance (#4381 follow-
     });
   });
 });
+
+describe('layoutTracerouteStrip — per-leg edge lanes (#4381 follow-up #2)', () => {
+  // Live deployment found the forward and return edges drawn on the
+  // IDENTICAL line whenever the return leg reverses the forward leg between
+  // the same two nodes — the most common outcome, and exactly the case
+  // dedup collapses onto one row. `points="51,60 77,60"` (solid forward) and
+  // `points="77,60 51,60"` (dashed return) render as one muddy
+  // double-headed blob. Each leg now gets its own lane via a small
+  // perpendicular translation in `layoutTracerouteStrip`.
+
+  it('separates the forward and return edge paths between the same node pair (no longer collinear)', () => {
+    // Direct path, both legs present between the identical pair (spec §3.7
+    // case 8) — the exact scenario from the live bug report.
+    const input: TracerouteStripInput = {
+      fromNodeNum: FROM,
+      toNodeNum: TO,
+      route: '[]',
+      routeBack: '[]',
+      snrBack: JSON.stringify([-40]),
+    };
+    const graph = buildTracerouteStripGraph(input);
+    const layout = layoutTracerouteStrip(graph);
+    const fwdEdge = graph.edges.find((e) => e.leg === 'forward')!;
+    const retEdge = graph.edges.find((e) => e.leg === 'return')!;
+    const fwdPath = layout.edgePaths.get(fwdEdge.id)!;
+    const retPath = layout.edgePaths.get(retEdge.id)!;
+
+    const rowCenterY = layout.centers.get(graph.nodes[0].id)!.y;
+
+    // Both paths still span the same x-range (same two nodes)...
+    const fwdXs = fwdPath.map((p) => p.x).sort((a, b) => a - b);
+    const retXs = retPath.map((p) => p.x).sort((a, b) => a - b);
+    expect(fwdXs).toEqual(retXs);
+
+    // ...but forward sits in the "above" lane and return in the "below"
+    // lane, each offset LANE_OFFSET (5px) from the shared centerline, for a
+    // full 10px separation — no longer the same horizontal line.
+    for (const p of fwdPath) expect(p.y).toBeCloseTo(rowCenterY - 5, 5);
+    for (const p of retPath) expect(p.y).toBeCloseTo(rowCenterY + 5, 5);
+    expect(fwdPath[0].y).not.toBeCloseTo(retPath[0].y, 1);
+  });
+
+  it('keeps the row-crossing branch edge a 3-point polyline that stays clear of both glyphs', () => {
+    // F = A->B->C->D, R = D->E->A (spec §3.7 case 10): D->E and E->A cross
+    // rows, so they exercise the 3-point dog-leg path, not the 2-point
+    // same-row path.
+    const input: TracerouteStripInput = {
+      fromNodeNum: A,
+      toNodeNum: D,
+      route: JSON.stringify([B, C]),
+      routeBack: JSON.stringify([E]),
+      snrBack: JSON.stringify([1, 2]),
+    };
+    const graph = buildTracerouteStripGraph(input);
+    const opts = { colWidth: 64, rowHeight: 56, glyphSize: 32, nameHeight: 14, topBand: 44, bottomBand: 44 };
+    const layout = layoutTracerouteStrip(graph, opts);
+    const pullIn = opts.glyphSize / 2 + 3;
+
+    const nodeById = new Map(graph.nodes.map((n) => [n.id, n] as const));
+    const crossingEdges = graph.edges.filter((e) => e.leg === 'return');
+    expect(crossingEdges).toHaveLength(2);
+
+    for (const e of crossingEdges) {
+      const path = layout.edgePaths.get(e.id)!;
+      // Still a dog-leg, not distorted into a 2-point line.
+      expect(path).toHaveLength(3);
+
+      const fromCenter = layout.centers.get(e.fromId)!;
+      const toCenter = layout.centers.get(e.toId)!;
+      const fromNode = nodeById.get(e.fromId)!;
+      const toNode = nodeById.get(e.toId)!;
+
+      // A pure perpendicular translation can only move the rim endpoints
+      // FARTHER from their own node's center than the plain pull-in
+      // distance (sqrt(pullIn^2 + offset^2) >= pullIn) — i.e. never closer,
+      // never under the glyph.
+      const startDist = Math.hypot(path[0].x - fromCenter.x, path[0].y - fromCenter.y);
+      const endDist = Math.hypot(path[2].x - toCenter.x, path[2].y - toCenter.y);
+      expect(startDist).toBeGreaterThanOrEqual(pullIn - 1e-9);
+      expect(endDist).toBeGreaterThanOrEqual(pullIn - 1e-9);
+
+      // The elbow (dog-leg midpoint) must not land inside EITHER endpoint's
+      // glyph radius — it needs to clear the row it doesn't already sit on.
+      const elbow = path[1];
+      const distFromFromGlyph = Math.hypot(elbow.x - fromCenter.x, elbow.y - fromCenter.y);
+      const distFromToGlyph = Math.hypot(elbow.x - toCenter.x, elbow.y - toCenter.y);
+      if (fromNode.row !== toNode.row) {
+        expect(distFromFromGlyph).toBeGreaterThanOrEqual(opts.glyphSize / 2);
+        expect(distFromToGlyph).toBeGreaterThanOrEqual(opts.glyphSize / 2);
+      }
+    }
+  });
+});

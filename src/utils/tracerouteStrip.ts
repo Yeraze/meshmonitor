@@ -563,6 +563,53 @@ function minBand(o: StripLayoutOptions): number {
   return labelOffset(o) + LABEL_HALF_HEIGHT;
 }
 
+// ---------------------------------------------------------------------------
+// Per-leg edge lanes (#4381 follow-up #2, caught in live deployment). When a
+// return leg exactly reverses the forward leg between the same two nodes —
+// the single most common traceroute outcome, and exactly the case dedup
+// collapses onto one row — both edges connected the identical two rim
+// points, just walked in opposite directions. Rendered on top of each other,
+// the dashed return line overlaid the solid forward line and the two
+// arrowheads sat at opposite ends of one segment: a single muddy
+// double-headed blob instead of two readable arrows.
+//
+// Deliberate choice: the offset applies unconditionally, by `e.leg` alone —
+// a forward-only or return-only graph (no competing leg to collide with)
+// still renders its single line off-center (forward up / return down) rather
+// than centered. This keeps the rule uniform (no `hasForward`/`hasReturn`
+// branching here) and matches the SNR-label convention, which already labels
+// a lone return leg "below" even though nothing else occupies "above" (spec
+// §3.4). A future reader should not "fix" a single-leg strip's slightly
+// off-center line — it's intentional.
+// ---------------------------------------------------------------------------
+
+/** Perpendicular separation between the forward and return lanes, px. */
+const LANE_OFFSET = 5;
+
+/**
+ * Unit vector perpendicular to the chord from `a` to `b`, canonicalized so
+ * the SAME physical chord yields the SAME vector regardless of which
+ * direction a given edge happens to traverse it — forward and return
+ * routinely traverse the identical chord in opposite directions (a return
+ * leg walks right-to-left across the row forward walked left-to-right), and
+ * lane assignment must be by leg identity, not by direction (the same rule
+ * `labelOffset`'s sign already follows). "Up" is defined as `y <= 0`: for a
+ * same-row (horizontal) chord this is straight up the screen, matching the
+ * forward-label-above / return-label-below convention already in place.
+ */
+function canonicalPerpendicular(a: StripPoint, b: StripPoint): StripPoint {
+  let dx = b.x - a.x;
+  let dy = b.y - a.y;
+  if (dx < 0 || (dx === 0 && dy < 0)) {
+    dx = -dx;
+    dy = -dy;
+  }
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  return { x: uy, y: -ux }; // 90° rotation; canonical dx>=0 => y<=0 ("up")
+}
+
 export function layoutTracerouteStrip(
   graph: TracerouteStripGraph,
   opts?: Partial<StripLayoutOptions>,
@@ -610,6 +657,19 @@ export function layoutTracerouteStrip(
       const end = pullToward(c1, mid, pullIn);
       path = [start, mid, end];
     }
+
+    // Give each leg its own lane: translate the WHOLE path (2 or 3 points)
+    // by a small perpendicular vector, computed from the true endpoint
+    // centers (not the rim-pulled points) so the offset direction is stable
+    // regardless of pull-in. A pure translation can't distort the
+    // row-crossing dog-leg's shape or push it into either glyph — it just
+    // slides the same line sideways by a few px.
+    const perpUp = canonicalPerpendicular(c0, c1);
+    const laneSign = e.leg === 'forward' ? 1 : -1; // forward=up, return=down
+    const laneDx = perpUp.x * LANE_OFFSET * laneSign;
+    const laneDy = perpUp.y * LANE_OFFSET * laneSign;
+    path = path.map((p) => ({ x: p.x + laneDx, y: p.y + laneDy }));
+
     edgePaths.set(e.id, path);
 
     const first = path[0];
