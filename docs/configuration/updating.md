@@ -73,8 +73,9 @@ untouched. MeshMonitor migrates its own database schema on startup.
 
 ::: tip Your image tag picks your update cadence
 The tag in your `image:` line decides how often there is anything to pull:
-**`:latest`** follows stable releases (~weekly), **`:dev`** follows release
-candidates (~daily), and an exact tag like `:4.13.0` never moves. This
+**`:latest`** follows stable releases (~weekly), **`:dev`** follows every
+release — candidates *and* stable (~daily) — and an exact tag like
+`:4.13.0` never moves. This
 applies to manual pulls and Watchtower alike — Watchtower updates whatever
 tag the container runs. See the
 [release-tracks FAQ entry](/faq#how-often-does-meshmonitor-release) for the

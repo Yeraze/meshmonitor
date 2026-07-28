@@ -286,8 +286,15 @@ jobs:
             ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-main \
             ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-armv7
 
-      - name: Create and push manifest for dev tag (pre-release only)
-        if: github.event_name == 'release' && steps.check_prerelease.outputs.is_prerelease == 'true'
+      # `:dev` moves on EVERY release, pre-release or stable. Gating it on
+      # pre-releases alone stranded the fast track behind the stable track for
+      # the whole window between a stable cut and the next RC — `:dev` users
+      # would sit on the last RC while `:latest` had newer code. A stable
+      # release is by definition at least as new as the RCs that preceded it,
+      # so promoting it to `:dev` too keeps the fast track a superset of the
+      # stable track and never moves `:dev` backwards.
+      - name: Create and push manifest for dev tag (every release, incl. stable)
+        if: github.event_name == 'release'
         run: |
           docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:dev \
             ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-main \
