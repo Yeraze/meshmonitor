@@ -114,6 +114,9 @@ export const userMapPreferencesSqlite = sqliteTable('user_map_preferences', {
   showAnimations: integer('show_animations', { mode: 'boolean' }).default(false),
   showAccuracyRegions: integer('show_accuracy_regions', { mode: 'boolean' }).default(false),
   showEstimatedPositions: integer('show_estimated_positions', { mode: 'boolean' }).default(false),
+  // ATAK contact marker visibility (#3691, persisted in #4378). Default false —
+  // opt-in, unlike showWaypoints.
+  showAtakContacts: integer('show_atak_contacts', { mode: 'boolean' }).default(false),
   positionHistoryHours: integer('position_history_hours'),
   // Map age slider: hide nodes/traceroutes older than this on the map (hours).
   // NULL = follow the global maxNodeAgeHours setting. See #3322.
@@ -146,6 +149,7 @@ export const userMapPreferencesPostgres = pgTable('user_map_preferences', {
   showAnimations: pgBoolean('show_animations').default(false),
   showAccuracyRegions: pgBoolean('show_accuracy_regions').default(false),
   showEstimatedPositions: pgBoolean('show_estimated_positions').default(false),
+  showAtakContacts: pgBoolean('show_atak_contacts').default(false),
   positionHistoryHours: pgInteger('position_history_hours'),
   mapMaxAgeHours: pgInteger('map_max_age_hours'),
   positionHistoryPointsOnly: pgBoolean('position_history_points_only').default(false),
@@ -398,6 +402,7 @@ export const userMapPreferencesMysql = mysqlTable('user_map_preferences', {
   showAnimations: myBoolean('show_animations').default(false),
   showAccuracyRegions: myBoolean('show_accuracy_regions').default(false),
   showEstimatedPositions: myBoolean('show_estimated_positions').default(false),
+  showAtakContacts: myBoolean('show_atak_contacts').default(false),
   positionHistoryHours: myInt('position_history_hours'),
   mapMaxAgeHours: myInt('map_max_age_hours'),
   positionHistoryPointsOnly: myBoolean('position_history_points_only').default(false),

@@ -4882,6 +4882,7 @@ class DatabaseService {
     showAnimations?: boolean;
     showAccuracyRegions?: boolean;
     showEstimatedPositions?: boolean;
+    showAtakContacts?: boolean;
     positionHistoryHours?: number | null;
     mapMaxAgeHours?: number | null;
     positionHistoryPointsOnly?: boolean;
