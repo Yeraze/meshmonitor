@@ -5,6 +5,7 @@
  * metadata only; the engine validates the resulting graph server-side. Field
  * `kind` maps to an input renderer in AutomationBuilder.
  */
+import { HOP_COUNT_EMOJIS, HOP_EMOJI_MAX } from '../../utils/hopEmoji';
 
 export type FieldKind = 'text' | 'number' | 'textarea' | 'select' | 'checkbox' | 'variable' | 'emoji' | 'fieldselect' | 'sourceMulti' | 'sendSourceMulti' | 'channelMulti' | 'geofence' | 'scriptselect' | 'regionSelect';
 
@@ -23,6 +24,21 @@ export interface FieldDef {
   advanced?: boolean;
   /** This `text`/`textarea` field accepts `{{ }}` tokens → highlight + typo-check. */
   tokens?: boolean;
+  /**
+   * Render this field only when a sibling param matches. Omitted = always shown.
+   * Declarative (not a predicate function) so the catalog stays serialisable data.
+   */
+  showIf?: { field: string; equals?: unknown; notEquals?: unknown };
+}
+
+/** Should this field render, given the block's current params? Pure — unit-tested without React. */
+export function fieldVisible(field: FieldDef, params: Record<string, unknown>): boolean {
+  const c = field.showIf;
+  if (!c) return true;
+  const v = params[c.field];
+  if ('equals' in c && v !== c.equals) return false;
+  if ('notEquals' in c && v === c.notEquals) return false;
+  return true;
 }
 
 export interface BlockDef {
@@ -308,8 +324,20 @@ export const ACTIONS: BlockDef[] = [
     type: 'action.tapback',
     label: 'Send a tapback (reaction)',
     description: 'React to the triggering message.',
+    // #4340: protocol/content emoji (the glyphs actually sent over the mesh), not UI
+    // iconography — UiIcon does not apply. Glyphs are interpolated from the shared
+    // table so they cannot drift.
     fields: [
-      { name: 'emoji', label: 'Emoji', kind: 'emoji', placeholder: '👍' },
+      {
+        // 'fixed' | 'hopCount' — see TapbackEmojiMode in src/types/automation.ts.
+        name: 'emojiMode', label: 'Emoji source', kind: 'select',
+        options: [
+          { value: 'fixed', label: 'A fixed emoji' },
+          { value: 'hopCount', label: `The message's hop count (${HOP_COUNT_EMOJIS[0]} direct, ${HOP_COUNT_EMOJIS[1]}–${HOP_COUNT_EMOJIS[HOP_EMOJI_MAX]})` },
+        ],
+        help: `Hop count reacts with ${HOP_COUNT_EMOJIS[0]} for a direct (0-hop) message and ${HOP_COUNT_EMOJIS[1]}–${HOP_COUNT_EMOJIS[HOP_EMOJI_MAX]} above, clamping at ${HOP_COUNT_EMOJIS[HOP_EMOJI_MAX]} — the same table Auto-Acknowledge uses. Triggers with no hop information (Schedule, System) record a skipped no-op.`,
+      },
+      { name: 'emoji', label: 'Emoji', kind: 'emoji', placeholder: '👍', showIf: { field: 'emojiMode', notEquals: 'hopCount' } },
       { name: 'sourceIds', label: 'Send via sources', kind: 'sendSourceMulti', help: 'Which radios send the reaction (MeshCore sources are skipped — tapbacks are Meshtastic-only). Leave none to use the source that triggered the automation — but a source IS required for source-less triggers like System events and Schedules.' },
     ],
   },
