@@ -10,8 +10,9 @@ import type { DeviceInfo } from '../types/device';
 
 function makeStripNode(nodeNum: number, overrides: Partial<StripNode> = {}): StripNode {
   return {
-    id: `0-0-${nodeNum}`,
+    id: `spine-0-${nodeNum}`,
     nodeNum,
+    lane: 'spine',
     row: 0,
     col: 0,
     legs: ['forward'],

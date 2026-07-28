@@ -109,8 +109,11 @@ describe('TracerouteStrip', () => {
     expect(screen.getAllByText('MID')).toHaveLength(1);
   });
 
-  it('places a divergent return-only node on the branch sub-row (row 1)', () => {
+  it('places a divergent return-only node on the branch sub-row (row 2 under the spine model)', () => {
     // F = A(100)->B(110)->C(120)->D(200); R = D->E(130)->A (spec case 10).
+    // Under the spine model (post-#4392) B/C are forward-exclusive and raise
+    // above the spine too, so this is now a three-row graph: forward(B,C)=0,
+    // spine(A,D)=1, return(E)=2 — not the old two-row (main=0/branch=1) shape.
     const input: TracerouteStripInput = {
       fromNodeNum: 100,
       toNodeNum: 200,
@@ -130,7 +133,7 @@ describe('TracerouteStrip', () => {
     render(<TracerouteStrip graph={graph} meta={meta} />);
 
     const branchNode = graph.nodes.find((n) => n.nodeNum === 130);
-    expect(branchNode?.row).toBe(1);
+    expect(branchNode?.row).toBe(2);
 
     const rowZeroDiv = nodeDivFor('A');
     const branchDiv = nodeDivFor('E');
