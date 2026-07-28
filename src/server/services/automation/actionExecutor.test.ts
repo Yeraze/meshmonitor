@@ -764,6 +764,83 @@ describe('executeAction', () => {
     expect(calls[0].args).toMatchObject({ sourceId: 'srcB', channel: 3 });
   });
 
+  // ── maxAttempts (#4340 Phase 3, WP3 §3.4) ───────────────────────────────
+  describe('sendMessage: maxAttempts forwarding', () => {
+    it('no maxAttempts param ⇒ the call shape has no maxAttempts key at all (unchanged behavior contract)', async () => {
+      const { calls, deps } = recorder();
+      await executeAction(
+        node('action.sendMessage', { text: 'hi', to: '{{ trigger.from }}' }),
+        ctx({ from: 5, channel: 1, isDM: true }),
+        deps,
+      );
+      expect(calls[0].args).not.toHaveProperty('maxAttempts');
+    });
+
+    it('maxAttempts: 2 forwards 2', async () => {
+      const { calls, deps } = recorder();
+      await executeAction(
+        node('action.sendMessage', { text: 'hi', to: '{{ trigger.from }}', maxAttempts: 2 }),
+        ctx({ from: 5, channel: 1, isDM: true }),
+        deps,
+      );
+      expect(calls[0].args.maxAttempts).toBe(2);
+    });
+
+    it("maxAttempts: '3' (string) forwards 3", async () => {
+      const { calls, deps } = recorder();
+      await executeAction(
+        node('action.sendMessage', { text: 'hi', to: '{{ trigger.from }}', maxAttempts: '3' }),
+        ctx({ from: 5, channel: 1, isDM: true }),
+        deps,
+      );
+      expect(calls[0].args.maxAttempts).toBe(3);
+    });
+
+    it('maxAttempts: 9 is clamped to 3 by parseSendMaxAttempts', async () => {
+      const { calls, deps } = recorder();
+      await executeAction(
+        node('action.sendMessage', { text: 'hi', to: '{{ trigger.from }}', maxAttempts: 9 }),
+        ctx({ from: 5, channel: 1, isDM: true }),
+        deps,
+      );
+      expect(calls[0].args.maxAttempts).toBe(3);
+    });
+
+    it("maxAttempts: '' (blank) forwards nothing — no maxAttempts key", async () => {
+      const { calls, deps } = recorder();
+      await executeAction(
+        node('action.sendMessage', { text: 'hi', to: '{{ trigger.from }}', maxAttempts: '' }),
+        ctx({ from: 5, channel: 1, isDM: true }),
+        deps,
+      );
+      expect(calls[0].args).not.toHaveProperty('maxAttempts');
+    });
+
+    it('is forwarded on the channel-multi (source×channel matrix) path too', async () => {
+      const { calls, deps } = recorder();
+      await executeAction(
+        node('action.sendMessage', { text: 'hi', sourceIds: ['A', 'B'], channels: [{ name: 'gauntlet', protocol: 'meshtastic' }], maxAttempts: 2 }),
+        ctxWithChannels({
+          A: [{ id: 2, name: 'gauntlet', role: 2 }],
+          B: [{ id: 5, name: 'gauntlet', role: 2 }],
+        }, { A: 'meshtastic', B: 'meshtastic' }),
+        deps,
+      );
+      expect(calls).toHaveLength(2);
+      expect(calls.every((c) => c.args.maxAttempts === 2)).toBe(true);
+    });
+
+    it('action.tapback never receives maxAttempts, even when params carry one (§9.2)', async () => {
+      const { calls, deps } = recorder();
+      await executeAction(
+        node('action.tapback', { emoji: '👍', maxAttempts: 3 }),
+        ctx({ from: 5, channel: 3, packetId: 99, isDM: true }),
+        deps,
+      );
+      expect(calls[0].args).not.toHaveProperty('maxAttempts');
+    });
+  });
+
   it('nothing: is a no-op that calls no deps', async () => {
     const { calls, deps } = recorder();
     await expect(executeAction(node('action.nothing', {}), ctx({ from: 5 }), deps)).resolves.toBeUndefined();

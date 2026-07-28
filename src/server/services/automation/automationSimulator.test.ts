@@ -236,6 +236,33 @@ describe('simulateAutomation', () => {
     expect(r.actions[0].resolvedParams).toMatchObject({ skipped: true, reason: expect.stringMatching(/no hop count/) });
   });
 
+  // #4340 Phase 3, WP3: drift guard. automationSimulator.ts (the SOURCE file) is
+  // NOT edited for this feature — recordingDeps().sendMessage already spreads
+  // its received argument object (`{ action: 'sendMessage', ...a }`), so a new
+  // ActionDeps.sendMessage field reaches the dry-run for free. This test pins
+  // that so a future refactor of recordingDeps can't silently drop it.
+  it('maxAttempts (#4340 Phase 3): dry-run surfaces it via the recordingDeps spread with no simulator source change', async () => {
+    const graph: AutomationGraph = {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: {} },
+        { id: 'a', type: 'action.sendMessage', params: { text: 'pong', to: '{{ trigger.from }}', maxAttempts: 2 } },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    };
+    const r = await simulateAutomation({
+      graph, varsRepo,
+      event: { kind: 'message', text: 'ping', from: 111, packetId: 1 },
+    });
+    expect(r.status).toBe('completed');
+    expect(r.actions).toHaveLength(1);
+    expect((r.actions[0].resolvedParams as any).maxAttempts).toBe(2);
+    // Dry-run performs no real send: the recorded result carries no queue
+    // artifact (messageId/queued) — proof no messageQueue was reached.
+    expect((r.actions[0].resolvedParams as any).queued).toBeUndefined();
+    expect((r.actions[0].resolvedParams as any).messageId).toBeUndefined();
+  });
+
   it('runScript: dry-run records the action without spawning a process', async () => {
     const graph: AutomationGraph = {
       version: 1,
