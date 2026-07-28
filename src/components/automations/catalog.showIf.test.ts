@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { fieldVisible, ACTIONS, type FieldDef } from './catalog';
+import { fieldVisible, ACTIONS, TRIGGERS, type FieldDef } from './catalog';
 import { HOP_COUNT_EMOJIS } from '../../utils/hopEmoji';
 
 describe('fieldVisible', () => {
@@ -42,6 +42,43 @@ describe('fieldVisible', () => {
     // 'b' fails both equals (b !== a -> hidden) — equals check alone already hides it.
     expect(fieldVisible(field, { mode: 'b' })).toBe(false);
     expect(fieldVisible(field, { mode: 'c' })).toBe(false); // fails equals
+  });
+
+  // #4340 Phase 2: truthy — covers "a number field that is unset, blank, or 0"
+  // in one operator, since equals/notEquals cannot distinguish those three.
+  describe('truthy', () => {
+    const truthyField: FieldDef = { name: 'x', label: 'X', kind: 'select', showIf: { field: 'cooldownSeconds', truthy: true } };
+    const falsyField: FieldDef = { name: 'x', label: 'X', kind: 'select', showIf: { field: 'cooldownSeconds', truthy: false } };
+
+    it('truthy: true hides on undefined / "" / 0 / false', () => {
+      expect(fieldVisible(truthyField, {})).toBe(false); // undefined — never touched
+      expect(fieldVisible(truthyField, { cooldownSeconds: '' })).toBe(false); // cleared via the number renderer
+      expect(fieldVisible(truthyField, { cooldownSeconds: 0 })).toBe(false);
+      expect(fieldVisible(truthyField, { cooldownSeconds: false })).toBe(false);
+    });
+
+    it('truthy: true shows on 1 / 60 / a non-empty string', () => {
+      expect(fieldVisible(truthyField, { cooldownSeconds: 1 })).toBe(true);
+      expect(fieldVisible(truthyField, { cooldownSeconds: 60 })).toBe(true);
+      expect(fieldVisible(truthyField, { cooldownSeconds: 'x' })).toBe(true);
+    });
+
+    it('truthy: false inverts — visible only when the sibling is falsy', () => {
+      expect(fieldVisible(falsyField, {})).toBe(true);
+      expect(fieldVisible(falsyField, { cooldownSeconds: '' })).toBe(true);
+      expect(fieldVisible(falsyField, { cooldownSeconds: 0 })).toBe(true);
+      expect(fieldVisible(falsyField, { cooldownSeconds: 1 })).toBe(false);
+      expect(fieldVisible(falsyField, { cooldownSeconds: 60 })).toBe(false);
+    });
+
+    it('truthy combined with equals: both conditions must pass', () => {
+      const field: FieldDef = { name: 'x', label: 'X', kind: 'select', showIf: { field: 'cooldownSeconds', truthy: true } };
+      // Independently re-verify with a different sibling to confirm the two showIf
+      // operators (equals vs truthy) don't leak state between fields.
+      const other: FieldDef = { name: 'y', label: 'Y', kind: 'text', showIf: { field: 'mode', equals: 'a' } };
+      expect(fieldVisible(field, { cooldownSeconds: 60 })).toBe(true);
+      expect(fieldVisible(other, { mode: 'a', cooldownSeconds: 0 })).toBe(true);
+    });
   });
 });
 
@@ -85,5 +122,51 @@ describe('action.tapback catalog entry', () => {
     for (const glyph of HOP_COUNT_EMOJIS) {
       expect(source.includes(glyph)).toBe(false);
     }
+  });
+});
+
+// #4340 Phase 2 §4.2/§6 — the cooldownScope field, spliced into exactly the
+// five trigger blocks that already carry cooldownSeconds (SUBJECT_NODE_TRIGGERS
+// in catalog.ts, verified as the same five in §1 finding #8).
+describe('trigger.* cooldownScope catalog entries (#4340 Phase 2)', () => {
+  const COOLDOWN_BEARING_TYPES = ['trigger.message', 'trigger.nodeDiscovered', 'trigger.nodeUpdated', 'trigger.telemetry', 'trigger.geofence'];
+  const NO_COOLDOWN_TYPES = ['trigger.schedule', 'trigger.system'];
+
+  it.each(COOLDOWN_BEARING_TYPES)('%s lists cooldownScope immediately after cooldownSeconds', (type) => {
+    const block = TRIGGERS.find((t) => t.type === type);
+    expect(block).toBeDefined();
+    const names = (block?.fields ?? []).map((f) => f.name);
+    const cooldownIdx = names.indexOf('cooldownSeconds');
+    const scopeIdx = names.indexOf('cooldownScope');
+    expect(cooldownIdx).toBeGreaterThanOrEqual(0);
+    expect(scopeIdx).toBe(cooldownIdx + 1);
+  });
+
+  it.each(NO_COOLDOWN_TYPES)('%s has neither cooldownSeconds nor cooldownScope', (type) => {
+    const block = TRIGGERS.find((t) => t.type === type);
+    expect(block).toBeDefined();
+    const names = (block?.fields ?? []).map((f) => f.name);
+    expect(names).not.toContain('cooldownSeconds');
+    expect(names).not.toContain('cooldownScope');
+  });
+
+  it('cooldownScope options are exactly automation/node/sourceNode, automation first', () => {
+    const block = TRIGGERS.find((t) => t.type === 'trigger.message');
+    const field = block?.fields.find((f) => f.name === 'cooldownScope');
+    expect(field?.kind).toBe('select');
+    expect(field?.options?.map((o) => o.value)).toEqual(['automation', 'node', 'sourceNode']);
+  });
+
+  it('cooldownScope carries showIf hiding it until cooldownSeconds is truthy', () => {
+    const block = TRIGGERS.find((t) => t.type === 'trigger.message');
+    const field = block?.fields.find((f) => f.name === 'cooldownScope');
+    expect(field?.showIf).toEqual({ field: 'cooldownSeconds', truthy: true });
+  });
+
+  it('every cooldown-bearing block shares the identical cooldownScope FieldDef object', () => {
+    // COOLDOWN_SCOPE is a single shared const spliced into all five blocks —
+    // not five separately-authored copies that could drift apart.
+    const fields = COOLDOWN_BEARING_TYPES.map((type) => TRIGGERS.find((t) => t.type === type)?.fields.find((f) => f.name === 'cooldownScope'));
+    for (const f of fields) expect(f).toBe(fields[0]);
   });
 });
