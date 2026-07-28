@@ -122,10 +122,64 @@
   text-transform: uppercase;
 }
 
-/* Hide on mobile devices */
+/*
+ * Mobile: full-width bottom sheet (#4380).
+ *
+ * This block used to be `.tileset-selector-wrapper { display: none }`, which
+ * hid the panel outright while the Features-panel "Show Tile Selection"
+ * checkbox stayed visible and toggleable — the control looked broken because
+ * it drove something CSS had already removed. TilesetSelector now renders a
+ * non-draggable sheet at this breakpoint instead (see the `isMobile` branch in
+ * TilesetSelector.tsx), so the panel is positioned here rather than hidden.
+ *
+ * `.draggable-overlay` keeps its own mobile `display: none` in
+ * DraggableOverlay.css — untouched, since the mobile sheet no longer renders
+ * through DraggableOverlay and the map legends still rely on that rule.
+ */
 @media (max-width: 768px) {
-  .tileset-selector-wrapper {
-    display: none;
+  .tileset-selector-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1200;
+    width: 100%;
+    /* Clear of the home indicator / gesture bar on notched devices. */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background-color: var(--ctp-base);
+    border-top: 1px solid var(--ctp-surface1);
+    box-shadow: 0 -2px 12px rgb(0 0 0 / 35%);
+  }
+
+  .tileset-selector-sheet .tileset-selector {
+    width: 100%;
+    max-width: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /* The header is the sheet's handle: tapping the chevron expands/collapses. */
+  .tileset-selector-sheet .tileset-header {
+    padding: 12px 16px;
+    cursor: default;
+  }
+
+  .tileset-selector-sheet .tileset-collapse-btn {
+    /* Comfortable touch target — the desktop button is mouse-sized. */
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Cap the list so the sheet never swallows the whole map on a short screen. */
+  .tileset-selector-sheet .tileset-buttons {
+    max-height: 45vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tileset-selector-sheet .tileset-button {
+    min-height: 44px;
   }
 }
 
