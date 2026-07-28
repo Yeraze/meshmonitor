@@ -13,6 +13,7 @@ import {
   BROADCAST_ADDR,
   type TracerouteStripInput,
   type TracerouteStripGraph,
+  type StripLayoutOptions,
 } from './tracerouteStrip';
 
 // Reusable "real" node numbers — small distinct integers that are never
@@ -422,7 +423,7 @@ describe('layoutTracerouteStrip', () => {
     const layout = layoutTracerouteStrip(graph);
     expect(graph.columns).toBe(2);
     expect(layout.width).toBe(2 * 64); // columns * colWidth
-    expect(layout.height).toBe(44 + 1 * 56 + 26); // topBand + rows*rowHeight + bottomBand
+    expect(layout.height).toBe(44 + 1 * 56 + 44); // topBand + rows*rowHeight + bottomBand
 
     const [n0, n1] = graph.nodes;
     expect(layout.centers.get(n0.id)).toEqual({ x: 32, y: 60 }); // col0: 0*64+32, 44+0*56+16
@@ -472,12 +473,104 @@ describe('layoutTracerouteStrip', () => {
       route: '[]',
       routeBack: null,
     });
-    const compactOpts = { colWidth: 48, rowHeight: 44, glyphSize: 24, topBand: 34, bottomBand: 20 };
+    // Mirrors the real COMPACT_LAYOUT in TracerouteStrip.tsx — topBand/
+    // bottomBand are exactly the minimum the SNR-label-clearance geometry
+    // requires for this glyphSize/nameHeight (see the "SNR label collision
+    // avoidance" describe block below), not arbitrary round numbers.
+    const compactOpts = { colWidth: 48, rowHeight: 44, glyphSize: 24, nameHeight: 11, topBand: 40, bottomBand: 40 };
     const layout = layoutTracerouteStrip(graph, compactOpts);
     expect(layout.width).toBe(2 * 48);
-    expect(layout.height).toBe(34 + 1 * 44 + 20);
+    expect(layout.height).toBe(40 + 1 * 44 + 40);
     const [n0, n1] = graph.nodes;
-    expect(layout.centers.get(n0.id)).toEqual({ x: 24, y: 34 + 12 }); // col0: 0*48+24, 34+0*44+12
-    expect(layout.centers.get(n1.id)).toEqual({ x: 72, y: 46 }); // col1: 48+24
+    expect(layout.centers.get(n0.id)).toEqual({ x: 24, y: 40 + 12 }); // col0: 0*48+24, 40+0*44+12
+    expect(layout.centers.get(n1.id)).toEqual({ x: 72, y: 52 }); // col1: 48+24
+  });
+});
+
+describe('layoutTracerouteStrip — SNR label collision avoidance (#4381 follow-up)', () => {
+  // A live-deployment check (not a unit test — jsdom has no layout engine)
+  // found both SNR labels overlapping node content: `.node`'s CSS centers
+  // the glyph AND the short name together as one flex column on a node's
+  // `center` point, so a node's real footprint is `glyphSize + gap +
+  // nameHeight` tall, not just `glyphSize`. These constants mirror
+  // `tracerouteStrip.ts`'s internal `NODE_NAME_GAP`/`LABEL_HALF_HEIGHT` so the
+  // assertions below recompute the same geometry contract independently
+  // (from the public `StripLayoutOptions`, not by importing the private
+  // constants) rather than restating the implementation.
+  const NODE_NAME_GAP = 2; // matches `.node { gap: 2px }` in TracerouteStrip.module.css
+  const LABEL_HALF_HEIGHT = 8; // matches tracerouteStrip.ts's LABEL_HALF_HEIGHT
+
+  function directGraphWithBothLabels() {
+    // Both legs present with real (non-null, non-sentinel) SNR so both a
+    // forward (above) and a return (below) label actually render.
+    return buildTracerouteStripGraph({
+      fromNodeNum: FROM,
+      toNodeNum: TO,
+      route: '[]',
+      snrTowards: '[20]',
+      routeBack: '[]',
+      snrBack: '[-40]',
+    });
+  }
+
+  function expectLabelsClearNodeFootprint(opts: Partial<StripLayoutOptions> & { glyphSize: number; nameHeight: number }) {
+    const graph = directGraphWithBothLabels();
+    const layout = layoutTracerouteStrip(graph, opts);
+    const fwdEdge = graph.edges.find((e) => e.leg === 'forward')!;
+    const retEdge = graph.edges.find((e) => e.leg === 'return')!;
+    const centerY = layout.centers.get(graph.nodes[0].id)!.y;
+    const fwdAnchor = layout.labelAnchors.get(fwdEdge.id)!;
+    const retAnchor = layout.labelAnchors.get(retEdge.id)!;
+
+    // The rendered `.node` box (glyph + gap + short name) is centered on
+    // `centerY` as ONE unit, so it extends `nodeHalf` on either side — the
+    // glyph starts at the box's top edge, the name ends at its bottom edge.
+    // (NOT `centerY -/+ glyphSize/2`: that would double-count part of the
+    // name/gap on top of the glyph's own half-height.)
+    const nodeHalf = (opts.glyphSize + NODE_NAME_GAP + opts.nameHeight) / 2;
+    const glyphTop = centerY - nodeHalf;
+    const nameBottom = centerY + nodeHalf;
+
+    // Forward label's bottom edge must stay above (numerically less than)
+    // the glyph's top edge.
+    expect(fwdAnchor.y + LABEL_HALF_HEIGHT).toBeLessThan(glyphTop);
+    // Return label's top edge must stay below (numerically greater than)
+    // the short name's bottom edge.
+    expect(retAnchor.y - LABEL_HALF_HEIGHT).toBeGreaterThan(nameBottom);
+  }
+
+  it('guards the default (non-compact) layout', () => {
+    expectLabelsClearNodeFootprint({
+      colWidth: 64,
+      rowHeight: 56,
+      glyphSize: 32,
+      nameHeight: 14,
+      topBand: 44,
+      bottomBand: 44,
+    });
+  });
+
+  it('guards the compact layout — the exact config that overlapped in live deployment', () => {
+    expectLabelsClearNodeFootprint({
+      colWidth: 48,
+      rowHeight: 44,
+      glyphSize: 24,
+      nameHeight: 11,
+      topBand: 40,
+      bottomBand: 40,
+    });
+  });
+
+  it('bumps an under-sized custom topBand/bottomBand up to the safe minimum instead of overlapping', () => {
+    // A caller passing bands too small for its glyphSize/nameHeight must not
+    // reintroduce the overlap: layoutTracerouteStrip enforces a floor.
+    expectLabelsClearNodeFootprint({
+      colWidth: 64,
+      rowHeight: 56,
+      glyphSize: 32,
+      nameHeight: 14,
+      topBand: 1,
+      bottomBand: 1,
+    });
   });
 });

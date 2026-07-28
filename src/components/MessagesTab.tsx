@@ -1961,11 +1961,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     return (
                       <div className="traceroute-info" style={{ marginTop: '1rem' }}>
                         {stripGraph && stripMeta && !stripGraph.isEmpty ? (
-                          <TracerouteStrip
-                            graph={stripGraph}
-                            meta={stripMeta}
-                            compact={!isMessagesNodeListCollapsed}
-                          />
+                          // No `compact` prop (#4381 follow-up): whether the
+                          // node list is collapsed does not track the
+                          // traceroute panel's actual rendered width — a live
+                          // check found `compact` still active at ~1440px of
+                          // available panel width, marooning small glyphs in
+                          // a mostly-empty box. The spec deliberately avoids
+                          // DOM measurement, so rather than invent a new
+                          // (also-wrong) width heuristic, always render at
+                          // default size and let `.scroller` absorb genuinely
+                          // narrow panels via horizontal scroll (verified: no
+                          // page-level overflow at a real narrow width).
+                          <TracerouteStrip graph={stripGraph} meta={stripMeta} />
                         ) : (
                           <div className="traceroute-route">
                             {t('messages.traceroute_no_response', 'No response received')}

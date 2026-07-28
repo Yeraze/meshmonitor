@@ -50,13 +50,19 @@ export interface TracerouteStripProps {
   compact?: boolean;
 }
 
-/** Layout numbers for the narrow (split-view) presentation — spec §4.4. */
+/** Layout numbers for the narrow (split-view) presentation — spec §4.4.
+ *  `topBand`/`bottomBand` are sized (via `layoutTracerouteStrip`'s internal
+ *  `minBand`) to clear a compact node's full glyph+name footprint plus an
+ *  SNR label — see the "SNR-label collision avoidance" section of
+ *  `tracerouteStrip.ts` (#4381 follow-up: a live-deployment check caught both
+ *  labels overlapping node content, which no unit test could see). */
 const COMPACT_LAYOUT: Partial<StripLayoutOptions> = {
   colWidth: 48,
   rowHeight: 44,
   glyphSize: 24,
-  topBand: 34,
-  bottomBand: 20,
+  nameHeight: 11,
+  topBand: 40,
+  bottomBand: 40,
 };
 
 const DEFAULT_GLYPH_SIZE = 32;

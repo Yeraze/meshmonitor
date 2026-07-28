@@ -473,6 +473,15 @@ export interface StripLayoutOptions {
   rowHeight: number;
   /** Glyph edge length in px. */
   glyphSize: number;
+  /** Height reserved for the short-name line rendered below each glyph, px.
+   *  Needed because the DOM centers the glyph AND the short name TOGETHER on
+   *  a node's `center` point (one flex column via `transform: translate(-50%,
+   *  -50%)`) — a node's real on-screen footprint is `glyphSize + gap +
+   *  nameHeight` tall, not just `glyphSize`. See `labelOffset()` below: this
+   *  is what an SNR label must clear on both sides (#4381 follow-up — the
+   *  original fixed +/-14px offset put labels inside the glyph/name because
+   *  it only ever accounted for `glyphSize`). */
+  nameHeight: number;
   /** Height reserved above row 0 for the forward SNR lane + tooltips, px. */
   topBand: number;
   /** Height reserved below the last row for the return SNR lane, px. */
@@ -483,8 +492,9 @@ const DEFAULT_LAYOUT_OPTIONS: StripLayoutOptions = {
   colWidth: 64,
   rowHeight: 56,
   glyphSize: 32,
+  nameHeight: 14,
   topBand: 44,
-  bottomBand: 26,
+  bottomBand: 44,
 };
 
 export interface StripPoint {
@@ -511,11 +521,58 @@ function pullToward(from: StripPoint, to: StripPoint, dist: number): StripPoint 
   return { x: from.x + (dx / d) * dist, y: from.y + (dy / d) * dist };
 }
 
+// ---------------------------------------------------------------------------
+// SNR-label collision avoidance (#4381 follow-up, caught in live deployment —
+// no unit test can see real DOM layout, so this shipped once with a flat
+// +/-14px offset that only accounted for `glyphSize`. `.node`'s CSS centers
+// the glyph AND the short name together as one flex column via `transform:
+// translate(-50%, -50%)` on `centers.get(node.id)`, so a node's real
+// on-screen footprint extends `nodeHalfHeight()` on EITHER side of that
+// point — through the glyph above, through the short name below — not just
+// `glyphSize / 2`. Getting this wrong put the forward label inside the glyph
+// and the return label on top of the short name text.
+// ---------------------------------------------------------------------------
+
+/** Mirrors the `gap: 2px` in TracerouteStrip.module.css's `.node` rule —
+ *  duplicated here for the same reason `pullIn`'s `+3` below duplicates glyph
+ *  geometry: this module has no access to the CSS it's laid out for. */
+const NODE_NAME_GAP = 2;
+/** Half the rendered height of a single-line SNR label (~0.7rem/0.6rem text)
+ *  plus a fixed breathing-room margin between the label's edge and the
+ *  node's edge. jsdom can't measure real font metrics, so these are
+ *  deliberately generous — a few unused px beats a real overlap. */
+const LABEL_HALF_HEIGHT = 8;
+const LABEL_CLEARANCE = 4;
+
+/** Half of a node's total on-screen height: glyph + gap + short name. */
+function nodeHalfHeight(o: StripLayoutOptions): number {
+  return (o.glyphSize + NODE_NAME_GAP + o.nameHeight) / 2;
+}
+
+/** Distance from a node's center to an SNR label's center (above OR below —
+ *  symmetric, since the glyph above and the short name below both sit
+ *  `nodeHalfHeight` from center), guaranteeing the label's far edge clears
+ *  the node's near edge by at least `LABEL_CLEARANCE`. */
+function labelOffset(o: StripLayoutOptions): number {
+  return nodeHalfHeight(o) + LABEL_HALF_HEIGHT + LABEL_CLEARANCE;
+}
+
+/** Minimum topBand/bottomBand that keeps a label's OWN far edge inside the
+ *  canvas once it sits `labelOffset` away from the outermost row's center. */
+function minBand(o: StripLayoutOptions): number {
+  return labelOffset(o) + LABEL_HALF_HEIGHT;
+}
+
 export function layoutTracerouteStrip(
   graph: TracerouteStripGraph,
   opts?: Partial<StripLayoutOptions>,
 ): StripLayout {
   const o: StripLayoutOptions = { ...DEFAULT_LAYOUT_OPTIONS, ...opts };
+  // Defensive floor: guarantee the label-clearance invariant even if a caller
+  // passes custom bands too small for its glyphSize/nameHeight.
+  const topBand = Math.max(o.topBand, minBand(o));
+  const bottomBand = Math.max(o.bottomBand, minBand(o));
+  const offset = labelOffset(o);
 
   const centers = new Map<string, StripPoint>();
   let maxRow = 0;
@@ -523,12 +580,12 @@ export function layoutTracerouteStrip(
     maxRow = Math.max(maxRow, n.row);
     centers.set(n.id, {
       x: n.col * o.colWidth + o.colWidth / 2,
-      y: o.topBand + n.row * o.rowHeight + o.glyphSize / 2,
+      y: topBand + n.row * o.rowHeight + o.glyphSize / 2,
     });
   }
 
   const width = graph.columns * o.colWidth;
-  const height = o.topBand + (maxRow + 1) * o.rowHeight + o.bottomBand;
+  const height = topBand + (maxRow + 1) * o.rowHeight + bottomBand;
 
   const nodeById = new Map(graph.nodes.map((n) => [n.id, n] as const));
   const edgePaths = new Map<string, StripPoint[]>();
@@ -559,8 +616,8 @@ export function layoutTracerouteStrip(
     const last = path[path.length - 1];
     const midX = (first.x + last.x) / 2;
     const midY = (first.y + last.y) / 2;
-    const offset = e.leg === 'forward' ? -14 : 14;
-    labelAnchors.set(e.id, { x: midX, y: midY + offset });
+    const signedOffset = e.leg === 'forward' ? -offset : offset;
+    labelAnchors.set(e.id, { x: midX, y: midY + signedOffset });
   }
 
   return { width, height, centers, edgePaths, labelAnchors };
