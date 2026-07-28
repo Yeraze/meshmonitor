@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useRef, useState, ReactNode, type RefObject } from 'react';
 import { useMapAnalysisConfig } from '../../hooks/useMapAnalysisConfig';
 import type { LinkEndpoint, LinkVerdict } from '../../utils/linkProfile';
 
@@ -73,7 +73,33 @@ type CtxShape = ReturnType<typeof useMapAnalysisConfig> & {
    */
   hoverPoint: { lat: number; lng: number } | null;
   setHoverPoint: (p: { lat: number; lng: number } | null) => void;
+  /**
+   * Live camera state of the mounted map, republished on every `moveend` by
+   * `MapViewStateController` (2D) / `Base3DMap`'s `onViewChange` (3D), and
+   * read once at mount by whichever branch takes over (#4371 A).
+   *
+   * A **ref**, not state, on purpose: a pan fires `moveend` continuously, and
+   * re-rendering every context consumer (all map layers) on each one would be
+   * a real cost for a value nothing renders from. `null` until a map has
+   * mounted and reported, in which case the caller falls back to the Default
+   * Map Center.
+   */
+  mapViewRef: RefObject<MapViewState | null>;
 };
+
+/**
+ * Live camera state of whichever map surface is currently mounted (#4371 A).
+ * Shared between the 2D (Leaflet) and 3D (MapLibre) branches so switching
+ * view modes keeps the view the user is looking at instead of snapping back
+ * to the Default Map Center. `pitch`/`bearing` are 3D-only and carried
+ * through a 3D→2D→3D round-trip untouched (Leaflet has no equivalent).
+ */
+export interface MapViewState {
+  center: [number, number];
+  zoom: number;
+  pitch?: number;
+  bearing?: number;
+}
 
 const Ctx = createContext<CtxShape | null>(null);
 
@@ -87,6 +113,7 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
   const [linkEndpoints, setLinkEndpoints] = useState<LinkEndpoint[]>([]);
   const [linkVerdict, setLinkVerdict] = useState<LinkVerdict | null>(null);
   const [hoverPoint, setHoverPoint] = useState<{ lat: number; lng: number } | null>(null);
+  const mapViewRef = useRef<MapViewState | null>(null);
   return (
     <Ctx.Provider
       value={{
@@ -107,6 +134,7 @@ export function MapAnalysisProvider({ children }: { children: ReactNode }) {
         setLinkVerdict,
         hoverPoint,
         setHoverPoint,
+        mapViewRef,
       }}
     >
       {children}

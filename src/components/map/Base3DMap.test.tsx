@@ -52,6 +52,14 @@ const { FakeMap, FakeNavigationControl, FakeAttributionControl } = vi.hoisted(()
       this.removeCalled = true;
     });
 
+    // Camera getters, read by the #4371 `onViewChange` reporter. Mutable so a
+    // test can move the camera before firing moveend.
+    camera = { lat: 40.0, lng: -105.0, zoom: 12, pitch: 60, bearing: 0 };
+    getCenter = vi.fn(() => ({ lat: this.camera.lat, lng: this.camera.lng }));
+    getZoom = vi.fn(() => this.camera.zoom);
+    getPitch = vi.fn(() => this.camera.pitch);
+    getBearing = vi.fn(() => this.camera.bearing);
+
     constructor(options: any) {
       if (FakeMap.throwOnConstruct) {
         throw new Error('Failed to initialize WebGL');
@@ -71,6 +79,10 @@ const { FakeMap, FakeNavigationControl, FakeAttributionControl } = vi.hoisted(()
 
     triggerLoad() {
       this.handlers.load?.();
+    }
+
+    triggerMoveEnd() {
+      this.handlers.moveend?.();
     }
   }
 
@@ -573,6 +585,119 @@ describe('Base3DMap', () => {
         <Base3DMap center={[40.0, -105.0]} zoom={12} basemap={basemap} terrainTileUrl={terrainTileUrl} nodes={nodes} />,
       );
       expect(screen.queryByTestId('base-3d-map-exaggeration')).toBeNull();
+    });
+  });
+
+  // #4371: view-state reporting + map handle, the plumbing MapAnalysis needs
+  // to carry the camera across a 2D↔3D switch and to drive Follow in 3D.
+  describe('camera reporting + map handle (#4371)', () => {
+    it('defaults pitch to 60 and bearing to 0 when not supplied', () => {
+      render(
+        <Base3DMap center={[40.0, -105.0]} zoom={12} basemap={basemap} terrainTileUrl={terrainTileUrl} nodes={nodes} />,
+      );
+      expect(currentFakeMap().options.pitch).toBe(60);
+      expect(currentFakeMap().options.bearing).toBe(0);
+    });
+
+    it('constructs with the supplied pitch/bearing (carried over from a previous 3D session)', () => {
+      render(
+        <Base3DMap
+          center={[40.0, -105.0]}
+          zoom={12}
+          pitch={35}
+          bearing={210}
+          basemap={basemap}
+          terrainTileUrl={terrainTileUrl}
+          nodes={nodes}
+        />,
+      );
+      expect(currentFakeMap().options.pitch).toBe(35);
+      expect(currentFakeMap().options.bearing).toBe(210);
+    });
+
+    it('reports the camera on moveend, with center back in [lat, lng] order', () => {
+      const onViewChange = vi.fn();
+      render(
+        <Base3DMap
+          center={[40.0, -105.0]}
+          zoom={12}
+          basemap={basemap}
+          terrainTileUrl={terrainTileUrl}
+          nodes={nodes}
+          onViewChange={onViewChange}
+        />,
+      );
+      const map = currentFakeMap();
+      map.camera = { lat: 12.5, lng: -71.25, zoom: 8.5, pitch: 42, bearing: 300 };
+      act(() => {
+        map.triggerMoveEnd();
+      });
+
+      expect(onViewChange).toHaveBeenCalledWith({
+        center: [12.5, -71.25],
+        zoom: 8.5,
+        pitch: 42,
+        bearing: 300,
+      });
+    });
+
+    it('reports moves that happen before load (the moveend listener is registered at construction)', () => {
+      const onViewChange = vi.fn();
+      render(
+        <Base3DMap
+          center={[40.0, -105.0]}
+          zoom={12}
+          basemap={basemap}
+          terrainTileUrl={terrainTileUrl}
+          nodes={nodes}
+          onViewChange={onViewChange}
+        />,
+      );
+      act(() => {
+        currentFakeMap().triggerMoveEnd(); // no triggerLoad() first
+      });
+      expect(onViewChange).toHaveBeenCalledTimes(1);
+    });
+
+    it('hands the map out on load and takes it back (null) on unmount', () => {
+      const onMapReady = vi.fn();
+      const { unmount } = render(
+        <Base3DMap
+          center={[40.0, -105.0]}
+          zoom={12}
+          basemap={basemap}
+          terrainTileUrl={terrainTileUrl}
+          nodes={nodes}
+          onMapReady={onMapReady}
+        />,
+      );
+      const map = currentFakeMap();
+      // Not before load — consumers must not drive a map with no style yet.
+      expect(onMapReady).not.toHaveBeenCalled();
+
+      act(() => {
+        map.triggerLoad();
+      });
+      expect(onMapReady).toHaveBeenCalledWith(map);
+
+      unmount();
+      expect(onMapReady).toHaveBeenLastCalledWith(null);
+    });
+
+    it('does not hand out a map that never loaded (WebGL unavailable)', () => {
+      getContextSpy.mockReturnValue(null);
+      const onMapReady = vi.fn();
+      render(
+        <Base3DMap
+          center={[40.0, -105.0]}
+          zoom={12}
+          basemap={basemap}
+          terrainTileUrl={terrainTileUrl}
+          nodes={nodes}
+          onMapReady={onMapReady}
+        />,
+      );
+      expect(onMapReady).not.toHaveBeenCalled();
     });
   });
 });
