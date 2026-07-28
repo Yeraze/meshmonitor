@@ -20,9 +20,32 @@ export interface TriggerContext {
   sourceId: string | null;
   /** Subject node for node/sourceNode variable scope binding (sender / telemetry / updated node). */
   subjectNodeNum: number | null;
+  /**
+   * Protocol-agnostic subject identity, for cooldown scoping (#4340 Phase 2).
+   *
+   * `undefined` (the default, and what every Meshtastic builder leaves it as)
+   * means "derive it from subjectNodeNum". Set EXPLICITLY only where the
+   * subject has an identity that is not a Meshtastic node number — today that
+   * is only MeshCore, whose senders are pubkey strings. An explicit `null`
+   * means "this event has no stable per-subject identity at all".
+   *
+   * Deliberately NOT reused for variable scoping or node hydration: both call
+   * getNode(sourceId, nodeNum) / buildScopeKey with a NUMBER and must keep
+   * doing so. This field is cooldown-only.
+   */
+  subjectNodeKey?: string | null;
   timestamp: number;
   /** `trigger.*` values, keyed WITHOUT the `trigger.` prefix. */
   fields: Record<string, unknown>;
+}
+
+/**
+ * The subject's cooldown identity, or null when the event has none.
+ * Explicit `subjectNodeKey` wins; otherwise derive from `subjectNodeNum`.
+ */
+export function subjectKeyOf(ctx: TriggerContext): string | null {
+  if (ctx.subjectNodeKey !== undefined) return ctx.subjectNodeKey;
+  return ctx.subjectNodeNum == null ? null : String(ctx.subjectNodeNum);
 }
 
 /** Derived hop count: hopStart − hopLimit when both present (0 ⇒ direct/zero-hop). */
@@ -189,6 +212,15 @@ export function buildMeshCoreMessageContext(
     sourceId,
     // No Meshtastic-style numeric node → no node.* hydration for MeshCore messages.
     subjectNodeNum: null,
+    // #4340 Phase 2: MeshCore has no node numbers, so per-node cooldown keys off
+    // the sender pubkey instead — the same identity meshcoreManager's own auto-ack
+    // cooldown uses (meshcoreManager.ts:6909). A DM/room post carries the real
+    // sender key. A CHANNEL post does not: `fromPublicKey` is the synthetic
+    // `channel-<idx>` slot key SHARED by every sender on that channel (see
+    // parseMeshCoreChannelIdx above), so keying by it would look per-node while
+    // actually being per-channel. Null there, which degrades to the automation-wide
+    // key rather than lying.
+    subjectNodeKey: isChannel ? null : (msg.fromPublicKey ?? null),
     timestamp,
     fields,
   };
