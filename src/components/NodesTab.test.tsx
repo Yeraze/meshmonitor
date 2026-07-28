@@ -180,6 +180,89 @@ describe('NodesTab', () => {
     });
   });
 
+  // #4379 — NodesTab renders under leaflet + a stack of contexts, so the node
+  // row can't be mounted here. These assertions read the source instead, which
+  // is enough to pin the two structural promises the issue extracted: the
+  // interactive controls are separated from the inert status icons, and the
+  // route to Node Details exists on EVERY row rather than only unmessageable
+  // ones.
+  describe('node row separates status indicators from actions (#4379)', () => {
+    const src = readFileSync(resolve('src/components/NodesTab.tsx'), 'utf8');
+
+    const strip = src.slice(
+      src.indexOf('<div className="node-actions">'),
+      src.indexOf('<div className="node-short">'),
+    );
+    const actionsAt = strip.indexOf('nodeRowStyles.actions');
+    const indicatorGroup = strip.slice(strip.indexOf('nodeRowStyles.indicators'), actionsAt);
+    const actionGroup = strip.slice(actionsAt);
+
+    it('puts the unmessageable badge among the inert indicators, with no props', () => {
+      // Self-closing with no props is the assertion that matters: an
+      // `onOpenDetails` prop reappearing means the badge became a control
+      // again, which is exactly what #4379 asked to undo.
+      expect(indicatorGroup).toContain('<NodeUnmessageableBadge />');
+      expect(actionGroup).not.toContain('NodeUnmessageableBadge');
+    });
+
+    it('puts the details button in the action group, away from the icon strip', () => {
+      expect(actionGroup).toContain('<NodeDetailsButton');
+      expect(indicatorGroup).not.toContain('NodeDetailsButton');
+    });
+
+    it('offers Node Details on every node, not just unmessageable ones', () => {
+      const detailsAt = actionGroup.indexOf('<NodeDetailsButton');
+      const guard = actionGroup.slice(actionGroup.lastIndexOf('{', detailsAt), detailsAt);
+
+      // #4333's affordance only existed on unmessageable rows. The issue asks
+      // for it "consistently in the node list", so messageability must not
+      // appear in this guard at all.
+      expect(guard).not.toMatch(/isUnmessagable/);
+      // It stays permission-gated because Node Details still lives inside the
+      // Messages tab — an ungated button would strand users on a tab they
+      // cannot see.
+      expect(guard).toMatch(/hasPermission\('messages', 'read'\)/);
+    });
+
+    it('no longer ships a separate Send-DM button beside the details button', () => {
+      // The DM button sat immediately next to NodeDetailsButton and navigated to
+      // the same place. #4379 folded them into one control.
+      expect(actionGroup).not.toContain("t('nodes.send_dm')");
+      expect(src).not.toContain('handleDMClick');
+    });
+
+    it('keeps #4325 compose-focus alive through the merged handler', () => {
+      // openDmForCompose sets pendingComposeFocus, which MessagesTab consumes to
+      // focus the compose box. The removed DM button was its ONLY caller, so if
+      // this branch goes away the entire chain — MessagingContext's
+      // pendingComposeFocus/clearComposeFocus and MessagesTab's focus effect —
+      // becomes unreachable dead code.
+      const handler = src.slice(
+        src.indexOf('const handleNodeDetailsClick'),
+        src.indexOf('const handleCollapseNodeList'),
+      );
+      expect(handler).toContain('openDmForCompose(nodeId)');
+      // Unmessageable nodes have no composer to focus, so they must NOT take
+      // the compose path.
+      expect(handler).toMatch(/if \(node\.isUnmessagable\)\s*\{\s*setSelectedDMNode\(nodeId\)/);
+    });
+
+    it('routes row double-click to details as a second path, like MeshCore', () => {
+      // Single-click is already taken (select + center the map), so the row's
+      // double-click is the free slot — MeshCoreNodesView does the same.
+      expect(src).toMatch(/onDoubleClick=\{hasPermission\('messages', 'read'\) \? handleNodeDetailsClick\(node\)/);
+    });
+
+    it('draws a divider between the two groups, but only when both are present', () => {
+      const css = readFileSync(resolve('src/components/NodeRowActions.module.css'), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+
+      // `:not(:empty)` is load-bearing: a node with zero status indicators
+      // would otherwise render a stray leading rule.
+      expect(css).toMatch(/\.indicators:not\(:empty\)\s*\+\s*\.actions\s*\{[^}]*border-left/);
+    });
+  });
+
   describe('Helper Functions', () => {
     describe('isToday', () => {
       it('should return true for today\'s date', () => {

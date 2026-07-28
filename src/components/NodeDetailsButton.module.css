@@ -1,0 +1,39 @@
+/* NodeDetailsButton (issue #4379). CSS module — do not add these rules to the
+ * global sheets (CLAUDE.md CSS containment rule). */
+
+/* Deliberately NOT the `.dm-icon` blue-chip look. "Send a direct message" is
+ * the primary action on a node row and keeps the filled accent; navigating to
+ * details is secondary, so it gets a quieter outlined chip. What it must not
+ * be is a bare glyph — the border and surface fill are the whole point of
+ * #4379, since the icon-only affordance it replaces was indistinguishable
+ * from the inert status indicators beside it. */
+.button {
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-md);
+  color: var(--ctp-subtext1);
+  padding: 0.25rem 0.5rem;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.button:hover {
+  background: var(--ctp-surface1);
+  border-color: var(--ctp-blue);
+  color: var(--ctp-text);
+  transform: scale(1.1);
+}
+
+.button:active {
+  transform: scale(0.95);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--ctp-blue);
+  outline-offset: 1px;
+}
