@@ -13,9 +13,11 @@
  *
  * See docs/internal/dev-notes/TRACEROUTE_VISUAL_STRIP_SPEC.md §4.3/§4.4.
  */
-import { useId, useMemo } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { NodeTypeCategory } from '../../utils/nodeTypeCategory';
+import type { DateFormat, TimeFormat } from '../../contexts/SettingsContext';
 import { getHopColor } from '../../utils/roleGlyphSvg';
 import {
   layoutTracerouteStrip,
@@ -23,6 +25,9 @@ import {
   type StripLane,
   type TracerouteStripGraph,
 } from '../../utils/tracerouteStrip';
+import { NodeCard } from '../map/popups/NodeCard';
+import { IdentityItems, SignalItems, PositionItem, LastHeardFooter } from '../map/popups/sections';
+import type { NodeCardModel } from '../map/popups/nodeCardModel';
 import { NodeGlyph } from './NodeGlyph';
 import styles from './TracerouteStrip.module.css';
 
@@ -39,12 +44,40 @@ export interface TracerouteStripNodeMeta {
   /** Effective hops; 999 = unknown (grey). */
   hops: number;
   unmessagable: boolean;
+  /** View-model for the hover popup — the same card the Map page renders.
+   *  Built by `buildStripNodeMeta`, which is the layer that holds the
+   *  `DeviceInfo`; this component stays a pure function of plain data. */
+  card: NodeCardModel;
+  /** Reported coordinates, when the node has a position fix. */
+  pos?: { lat: number; lng: number };
 }
 
 export interface TracerouteStripProps {
   graph: TracerouteStripGraph;
   /** nodeNum -> metadata. A missing entry renders the unknown placeholder. */
   meta: Map<number, TracerouteStripNodeMeta>;
+  timeFormat: TimeFormat;
+  dateFormat: DateFormat;
+  distanceUnit?: 'km' | 'mi' | 'nm';
+}
+
+/** Gap between the glyph and the popup, and the minimum margin kept between
+ *  the popup and every viewport edge. */
+const POPUP_GAP = 8;
+
+interface HoverState {
+  /** StripNode id — identifies the exact glyph, not just the nodeNum (the
+   *  same node can occupy several lanes). */
+  id: string;
+  nodeNum: number;
+  isPlaceholder: boolean;
+  fallbackId: string;
+  anchor: HTMLElement;
+}
+
+interface PopupPosition {
+  left: number;
+  top: number;
 }
 
 const DEFAULT_GLYPH_SIZE = 32;
@@ -70,14 +103,164 @@ function laneClassFor(lane: StripLane): string {
   }
 }
 
-export function TracerouteStrip({ graph, meta }: TracerouteStripProps) {
+export function TracerouteStrip({
+  graph,
+  meta,
+  timeFormat,
+  dateFormat,
+  distanceUnit = 'km',
+}: TracerouteStripProps) {
   const { t } = useTranslation();
   const uid = useId();
 
   const layout = useMemo(() => layoutTracerouteStrip(graph), [graph]);
 
+  const [hover, setHover] = useState<HoverState | null>(null);
+  const [popupPos, setPopupPos] = useState<PopupPosition | null>(null);
+  const popupRef = useRef<HTMLDivElement | null>(null);
+
+  const hide = useCallback(() => {
+    setHover(null);
+    setPopupPos(null);
+  }, []);
+
+  const show = useCallback(
+    (id: string, nodeNum: number, isPlaceholder: boolean, fallbackId: string, anchor: HTMLElement) => {
+      setPopupPos(null); // re-measure for the new anchor before showing
+      setHover({ id, nodeNum, isPlaceholder, fallbackId, anchor });
+    },
+    [],
+  );
+
+  /**
+   * Place the popup against the anchor glyph, in viewport coordinates.
+   *
+   * Prefer above; flip below when there isn't room. The popup is portalled to
+   * `document.body` because `.node` carries a `transform`, which would
+   * otherwise make it the containing block for a `position: fixed` child and
+   * trap the popup inside `.scroller`'s `overflow: hidden`.
+   *
+   * Measures the rendered popup rather than assuming its size — the card's
+   * height varies with how many fields a node has.
+   */
+  const reposition = useCallback(() => {
+    const anchor = hover?.anchor;
+    const popup = popupRef.current;
+    if (!anchor || !popup) return;
+
+    const a = anchor.getBoundingClientRect();
+    const width = popup.offsetWidth;
+    const height = popup.offsetHeight;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    // The anchor can be scrolled out of view while the popup is open (hover,
+    // then scroll the panel). Anchoring to something off-screen would drag the
+    // popup off with it, so drop it instead.
+    if (a.bottom < 0 || a.top > vh || a.right < 0 || a.left > vw) {
+      hide();
+      return;
+    }
+
+    // Prefer above the glyph; flip below when it doesn't fit. If neither side
+    // fits (very short viewport, very tall card) the popup is clamped into
+    // view and may overlap the anchor — being readable beats being correctly
+    // placed but off-screen.
+    let top = a.top - POPUP_GAP - height;
+    if (top < POPUP_GAP) {
+      top = a.bottom + POPUP_GAP;
+      if (top + height > vh - POPUP_GAP) {
+        top = Math.max(POPUP_GAP, vh - POPUP_GAP - height);
+      }
+    }
+
+    const left = Math.max(
+      POPUP_GAP,
+      Math.min(a.left + a.width / 2 - width / 2, vw - POPUP_GAP - width),
+    );
+
+    setPopupPos((prev) =>
+      prev && prev.left === left && prev.top === top ? prev : { left, top },
+    );
+  }, [hover, hide]);
+
+  // Position after the popup has rendered (so it can be measured), before paint.
+  useLayoutEffect(() => {
+    if (!hover) return;
+    reposition();
+  }, [hover, reposition]);
+
+  // The strip sits inside `.nodes-main-content`, which scrolls — so the anchor
+  // moves without the window scrolling. `capture: true` catches scroll on any
+  // ancestor, not just the window.
+  useEffect(() => {
+    if (!hover) return;
+    const onMove = () => reposition();
+    window.addEventListener('scroll', onMove, true);
+    window.addEventListener('resize', onMove);
+    return () => {
+      window.removeEventListener('scroll', onMove, true);
+      window.removeEventListener('resize', onMove);
+    };
+  }, [hover, reposition]);
+
   const glyphSize = DEFAULT_GLYPH_SIZE;
   const arrowId = `${uid}-head`;
+
+  /**
+   * The hover popup body — the same card the Map page renders, minus the
+   * action buttons (the popup is non-interactive) and minus the traceroute
+   * tab (redundant inside a traceroute strip). Composed from the shared
+   * popup family rather than re-implemented.
+   *
+   * A hop we never resolved (`BROADCAST_ADDR`, or a node absent from `meta`)
+   * has no card model, so it falls back to a minimal card carrying just the
+   * padded hex id — same information the old inline tooltip showed.
+   */
+  const hoverCard = useMemo(() => {
+    if (!hover) return null;
+    const hovered = hover.isPlaceholder ? undefined : meta.get(hover.nodeNum);
+
+    if (!hovered) {
+      return (
+        <NodeCard
+          model={{ longName: t('messages.traceroute_unknown_node', 'Unknown') }}
+          sections={
+            <div className="node-popup-grid">
+              <IdentityItems model={{ longName: '', nodeId: hover.fallbackId }} />
+            </div>
+          }
+        />
+      );
+    }
+
+    return (
+      <NodeCard
+        model={hovered.card}
+        sections={
+          <>
+            <div className="node-popup-grid">
+              <IdentityItems model={hovered.card} />
+              <SignalItems
+                model={hovered.card}
+                showAltitude
+                showPluggedIn
+                snrDecimals={1}
+                distanceUnit={distanceUnit}
+              />
+              {hovered.pos && <PositionItem position={hovered.pos} />}
+            </div>
+            <LastHeardFooter
+              lastHeard={hovered.card.lastHeard}
+              mode="absolute"
+              timeFormat={timeFormat}
+              dateFormat={dateFormat}
+            />
+          </>
+        }
+      />
+    );
+  }, [hover, meta, distanceUnit, timeFormat, dateFormat, t]);
 
   const stripLabel = t('messages.traceroute_strip_label', 'Traceroute path');
   const forwardLegCaption = t('messages.traceroute_leg_forward', 'Forward');
@@ -194,8 +377,14 @@ export function TracerouteStrip({ graph, meta }: TracerouteStripProps) {
               className={cx(styles.node, laneClassFor(n.lane))}
               style={{ left: center.x, top: center.y }}
               tabIndex={0}
-              aria-describedby={tipId}
+              aria-describedby={hover?.id === n.id ? tipId : undefined}
               aria-label={accessibleName}
+              onMouseEnter={(e) =>
+                show(n.id, n.nodeNum, isPlaceholder, nodeId, e.currentTarget)
+              }
+              onMouseLeave={hide}
+              onFocus={(e) => show(n.id, n.nodeNum, isPlaceholder, nodeId, e.currentTarget)}
+              onBlur={hide}
             >
               <NodeGlyph
                 category={category}
@@ -205,21 +394,24 @@ export function TracerouteStrip({ graph, meta }: TracerouteStripProps) {
                 unknown={isPlaceholder}
               />
               <span className={styles.shortName}>{shortName}</span>
-              {/* Always in the DOM (opacity: 0, not display: none) so
-                  aria-describedby resolves for assistive tech (spec §4.3). */}
-              <span id={tipId} role="tooltip" className={styles.tooltip}>
-                {!isPlaceholder && (
-                  <>
-                    <span className={styles.tipLong}>{longName ?? shortName}</span>
-                    {roleLabel && <span className={styles.tipRole}>{roleLabel}</span>}
-                  </>
-                )}
-                <span className={styles.tipId}>{nodeId}</span>
-              </span>
             </div>
           );
         })}
       </div>
+
+      {hover &&
+        createPortal(
+          <div
+            ref={popupRef}
+            id={`${uid}-tip-${hover.id}`}
+            role="tooltip"
+            className={cx(styles.hoverPopup, popupPos && styles.hoverPopupReady)}
+            style={{ left: popupPos?.left ?? 0, top: popupPos?.top ?? 0 }}
+          >
+            {hoverCard}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { TracerouteStrip, type TracerouteStripNodeMeta } from './TracerouteStrip';
 import { buildTracerouteStripGraph, type TracerouteStripInput } from '../../utils/tracerouteStrip';
 
@@ -38,6 +38,10 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+/** Display formats the strip forwards to `LastHeardFooter`. Spread into every
+ *  render so the tests don't restate them 12 times. */
+const FMT = { timeFormat: '24' as const, dateFormat: 'YYYY-MM-DD' as const };
+
 function makeMeta(opts: {
   nodeNum: number;
   shortName: string;
@@ -45,16 +49,36 @@ function makeMeta(opts: {
   roleLabel?: string | null;
   hops?: number;
   unmessagable?: boolean;
+  hwModelName?: string;
+  snr?: number;
+  battery?: number;
+  lastHeard?: number;
+  pos?: { lat: number; lng: number };
 }): TracerouteStripNodeMeta {
+  const nodeId = `!${opts.nodeNum.toString(16).padStart(8, '0')}`;
   return {
     nodeNum: opts.nodeNum,
     shortName: opts.shortName,
     longName: opts.longName ?? null,
     roleLabel: opts.roleLabel ?? null,
-    nodeId: `!${opts.nodeNum.toString(16).padStart(8, '0')}`,
+    nodeId,
     category: 'mtClient',
     hops: opts.hops ?? 1,
     unmessagable: opts.unmessagable ?? false,
+    card: {
+      longName: opts.longName ?? opts.shortName,
+      shortName: opts.shortName,
+      nodeId,
+      nodeNum: opts.nodeNum,
+      roleName: opts.roleLabel ?? undefined,
+      hwModelName: opts.hwModelName,
+      hops: opts.hops ?? 1,
+      snr: opts.snr,
+      battery: opts.battery,
+      lastHeard: opts.lastHeard,
+      position: opts.pos,
+    },
+    pos: opts.pos,
   };
 }
 
@@ -80,7 +104,7 @@ describe('TracerouteStrip', () => {
       [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
     ]);
 
-    const { container } = render(<TracerouteStrip graph={graph} meta={meta} />);
+    const { container } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
     expect(graph.nodes).toHaveLength(3);
     expect(container.querySelectorAll('[tabindex="0"]')).toHaveLength(3);
   });
@@ -101,7 +125,7 @@ describe('TracerouteStrip', () => {
       [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
     ]);
 
-    const { container } = render(<TracerouteStrip graph={graph} meta={meta} />);
+    const { container } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
     // Full overlap: exactly 3 nodes total, all on row 0.
     expect(graph.nodes).toHaveLength(3);
     expect(graph.nodes.every((n) => n.row === 0)).toBe(true);
@@ -130,7 +154,7 @@ describe('TracerouteStrip', () => {
       [130, makeMeta({ nodeNum: 130, shortName: 'E', longName: 'Node E' })],
     ]);
 
-    render(<TracerouteStrip graph={graph} meta={meta} />);
+    render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
 
     const branchNode = graph.nodes.find((n) => n.nodeNum === 130);
     expect(branchNode?.row).toBe(2);
@@ -157,7 +181,7 @@ describe('TracerouteStrip', () => {
       [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
     ]);
 
-    render(<TracerouteStrip graph={graph} meta={meta} />);
+    render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
 
     const forwardLabel = screen.getByText('5.0 dB').closest('span');
     const returnLabel = screen.getByText('-10.0 dB').closest('span');
@@ -183,7 +207,7 @@ describe('TracerouteStrip', () => {
       [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
     ]);
 
-    render(<TracerouteStrip graph={graph} meta={meta} />);
+    render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
 
     const chip = screen.getByText('?');
     expect(chip).toHaveAttribute(
@@ -215,7 +239,7 @@ describe('TracerouteStrip', () => {
       [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
     ]);
 
-    const { container } = render(<TracerouteStrip graph={graph} meta={meta} />);
+    const { container } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
     // Exactly one SNR label rendered (the unknown-sentinel one) — the null
     // edge contributes NO element, not an empty one.
     const labelSpans = container.querySelectorAll('span[style*="left"]');
@@ -237,8 +261,8 @@ describe('TracerouteStrip', () => {
 
     render(
       <>
-        <TracerouteStrip graph={graph} meta={meta} />
-        <TracerouteStrip graph={graph} meta={meta} />
+        <TracerouteStrip graph={graph} meta={meta} {...FMT} />
+        <TracerouteStrip graph={graph} meta={meta} {...FMT} />
       </>,
     );
 
@@ -265,7 +289,7 @@ describe('TracerouteStrip', () => {
       [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node', roleLabel: 'Router' })],
     ]);
 
-    render(<TracerouteStrip graph={graph} meta={meta} />);
+    render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
 
     const div = nodeDivFor('FRM');
     expect(div).toHaveAttribute('tabindex', '0');
@@ -290,7 +314,7 @@ describe('TracerouteStrip', () => {
       [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
     ]);
 
-    render(<TracerouteStrip graph={graph} meta={meta} />);
+    render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
 
     const div = nodeDivFor('FRM');
     const label = div.getAttribute('aria-label') ?? '';
@@ -299,30 +323,106 @@ describe('TracerouteStrip', () => {
     expect(label).not.toMatch(/,\s*,/);
   });
 
-  it('keeps the tooltip in the DOM (never display:none) and wires it via aria-describedby', () => {
-    const input: TracerouteStripInput = {
+  it('portals the hover popup to document.body, outside the clipping scroller', () => {
+    // The popup MUST NOT live under `.node` — that element carries a
+    // `transform`, which would make it the containing block for a fixed-
+    // position child and re-trap the popup inside `.scroller`'s
+    // `overflow: hidden`. Escaping that clipping is the whole point.
+    const graph = buildTracerouteStripGraph({
       fromNodeNum: 100,
       toNodeNum: 200,
       route: '[]',
       routeBack: null,
-    };
-    const graph = buildTracerouteStripGraph(input);
+    });
     const meta = new Map<number, TracerouteStripNodeMeta>([
       [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node', roleLabel: 'Client' })],
       [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
     ]);
 
-    render(<TracerouteStrip graph={graph} meta={meta} />);
+    const { container } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+
+    // Nothing rendered until hovered.
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
 
     const div = nodeDivFor('FRM');
+    fireEvent.mouseEnter(div);
+
+    const popup = document.querySelector('[role="tooltip"]');
+    expect(popup).not.toBeNull();
+    // Portalled: present in the document but NOT inside the strip's own tree.
+    expect(container.contains(popup)).toBe(false);
+    expect(popup!.closest('[role="group"]')).toBeNull();
+
+    fireEvent.mouseLeave(div);
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  });
+
+  it('wires aria-describedby to the portalled popup only while it is shown', () => {
+    const graph = buildTracerouteStripGraph({
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: '[]',
+      routeBack: null,
+    });
+    const meta = new Map<number, TracerouteStripNodeMeta>([
+      [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node', roleLabel: 'Client' })],
+      [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+    ]);
+
+    render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+    const div = nodeDivFor('FRM');
+
+    // No dangling reference to a popup that isn't rendered.
+    expect(div.getAttribute('aria-describedby')).toBeNull();
+
+    // Keyboard focus opens it too, not just the mouse.
+    fireEvent.focus(div);
     const tipId = div.getAttribute('aria-describedby');
     expect(tipId).toBeTruthy();
-    const tooltip = document.getElementById(tipId!);
-    expect(tooltip).not.toBeNull();
-    expect(tooltip).toHaveAttribute('role', 'tooltip');
-    expect(tooltip!.style.display).not.toBe('none');
-    expect(tooltip!.textContent).toContain('From Node');
-    expect(tooltip!.textContent).toContain('Client');
+    const popup = document.getElementById(tipId!);
+    expect(popup).not.toBeNull();
+    expect(popup!.getAttribute('role')).toBe('tooltip');
+
+    fireEvent.blur(div);
+    expect(div.getAttribute('aria-describedby')).toBeNull();
+  });
+
+  it('shows the Map-style card fields (role, hardware, hops, SNR, battery, position)', () => {
+    const graph = buildTracerouteStripGraph({
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: '[]',
+      routeBack: null,
+    });
+    const meta = new Map<number, TracerouteStripNodeMeta>([
+      [
+        100,
+        makeMeta({
+          nodeNum: 100,
+          shortName: 'FRM',
+          longName: 'From Node',
+          roleLabel: 'Client (Base)',
+          hwModelName: 'Station G2',
+          hops: 2,
+          snr: 7.25,
+          battery: 64,
+          pos: { lat: 26.30307, lng: -80.21952 },
+        }),
+      ],
+      [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+    ]);
+
+    render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+    fireEvent.mouseEnter(nodeDivFor('FRM'));
+
+    const popup = document.querySelector('[role="tooltip"]') as HTMLElement;
+    const text = popup.textContent ?? '';
+    expect(text).toContain('From Node');
+    expect(text).toContain('Client (Base)');
+    expect(text).toContain('Station G2');
+    expect(text).toContain('7.3'); // SNR, one decimal
+    expect(text).toContain('64');
+    expect(text).toContain('26.30307');
   });
 
   it('spine model (WP-C): a forward-exclusive node renders above the spine and a return-exclusive node below it', () => {
@@ -354,7 +454,7 @@ describe('TracerouteStrip', () => {
       [BOCA, makeMeta({ nodeNum: BOCA, shortName: 'Boca', longName: 'Node Boca' })],
     ]);
 
-    const { unmount } = render(<TracerouteStrip graph={forwardGraph} meta={forwardMeta} />);
+    const { unmount } = render(<TracerouteStrip graph={forwardGraph} meta={forwardMeta} {...FMT} />);
 
     const csNode = forwardGraph.nodes.find((n) => n.nodeNum === CS)!;
     const yrzeNode = forwardGraph.nodes.find((n) => n.nodeNum === YRZE)!;
@@ -396,7 +496,7 @@ describe('TracerouteStrip', () => {
       [X, makeMeta({ nodeNum: X, shortName: 'XX', longName: 'Node XX' })],
     ]);
 
-    render(<TracerouteStrip graph={bothGraph} meta={bothMeta} />);
+    render(<TracerouteStrip graph={bothGraph} meta={bothMeta} {...FMT} />);
 
     const bNode = bothGraph.nodes.find((n) => n.nodeNum === B)!;
     const aNode = bothGraph.nodes.find((n) => n.nodeNum === A)!;
@@ -431,11 +531,170 @@ describe('TracerouteStrip', () => {
       [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
     ]);
 
-    render(<TracerouteStrip graph={graph} meta={meta} />);
+    render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
 
     const div = nodeDivFor('Unknown');
-    const tipId = div.getAttribute('aria-describedby');
-    const tooltip = document.getElementById(tipId!);
-    expect(tooltip!.textContent).toBe('!000000c8'); // 200 in padded hex
+    fireEvent.mouseEnter(div);
+
+    const popup = document.querySelector('[role="tooltip"]') as HTMLElement;
+    expect(popup).not.toBeNull();
+    // A hop nobody identified has no card model — it must still render
+    // without crashing, carrying the one fact we do have.
+    expect(popup.textContent).toContain('!000000c8'); // 200 in padded hex
+  });
+
+  it('repositions below the anchor when there is no room above it', () => {
+    // jsdom has no layout, so drive the geometry explicitly: a glyph near the
+    // top of the viewport cannot fit a popup above it, which is exactly the
+    // clipping case that motivated this change.
+    const graph = buildTracerouteStripGraph({
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: '[]',
+      routeBack: null,
+    });
+    const meta = new Map<number, TracerouteStripNodeMeta>([
+      [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+      [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+    ]);
+
+    render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+    const div = nodeDivFor('FRM');
+
+    // Anchor sits 4px from the top — no room for a 100px popup above it.
+    vi.spyOn(div, 'getBoundingClientRect').mockReturnValue({
+      top: 4, bottom: 40, left: 500, right: 532, width: 32, height: 36, x: 500, y: 4,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    fireEvent.mouseEnter(div);
+    const popup = document.querySelector('[role="tooltip"]') as HTMLElement;
+    Object.defineProperty(popup, 'offsetWidth', { value: 240, configurable: true });
+    Object.defineProperty(popup, 'offsetHeight', { value: 100, configurable: true });
+    fireEvent.scroll(window); // force a reposition with the measurements in place
+
+    // Flipped below the anchor's bottom edge, not negative-top above it.
+    expect(parseFloat(popup.style.top)).toBeGreaterThanOrEqual(40);
+  });
+
+  it('clamps horizontally so the popup never overflows the viewport edge', () => {
+    const graph = buildTracerouteStripGraph({
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: '[]',
+      routeBack: null,
+    });
+    const meta = new Map<number, TracerouteStripNodeMeta>([
+      [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+      [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+    ]);
+
+    render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+    const div = nodeDivFor('FRM');
+
+    // Anchor hard against the left edge — a centred popup would go negative.
+    vi.spyOn(div, 'getBoundingClientRect').mockReturnValue({
+      top: 400, bottom: 436, left: 2, right: 34, width: 32, height: 36, x: 2, y: 400,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    fireEvent.mouseEnter(div);
+    const popup = document.querySelector('[role="tooltip"]') as HTMLElement;
+    Object.defineProperty(popup, 'offsetWidth', { value: 240, configurable: true });
+    Object.defineProperty(popup, 'offsetHeight', { value: 100, configurable: true });
+    fireEvent.scroll(window);
+
+    expect(parseFloat(popup.style.left)).toBeGreaterThanOrEqual(0);
+  });
+
+  it('clamps against the RIGHT viewport edge too, not just the left', () => {
+    const graph = buildTracerouteStripGraph({
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: '[]',
+      routeBack: null,
+    });
+    const meta = new Map<number, TracerouteStripNodeMeta>([
+      [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+      [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+    ]);
+
+    render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+    const div = nodeDivFor('FRM');
+
+    // Anchor hard against the right edge — a centred popup would overflow.
+    const vw = window.innerWidth;
+    vi.spyOn(div, 'getBoundingClientRect').mockReturnValue({
+      top: 400, bottom: 436, left: vw - 34, right: vw - 2, width: 32, height: 36,
+      x: vw - 34, y: 400, toJSON: () => ({}),
+    } as DOMRect);
+
+    fireEvent.mouseEnter(div);
+    const popup = document.querySelector('[role="tooltip"]') as HTMLElement;
+    Object.defineProperty(popup, 'offsetWidth', { value: 240, configurable: true });
+    Object.defineProperty(popup, 'offsetHeight', { value: 100, configurable: true });
+    fireEvent.scroll(window);
+
+    const left = parseFloat(popup.style.left);
+    expect(left + 240).toBeLessThanOrEqual(vw);
+  });
+
+  it('hides when the anchor scrolls out of view rather than following it off-screen', () => {
+    const graph = buildTracerouteStripGraph({
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: '[]',
+      routeBack: null,
+    });
+    const meta = new Map<number, TracerouteStripNodeMeta>([
+      [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+      [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+    ]);
+
+    render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+    const div = nodeDivFor('FRM');
+
+    fireEvent.mouseEnter(div);
+    expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+
+    // Simulate the panel scrolling the glyph entirely above the viewport.
+    vi.spyOn(div, 'getBoundingClientRect').mockReturnValue({
+      top: -320, bottom: -273, left: 500, right: 532, width: 32, height: 47,
+      x: 500, y: -320, toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent.scroll(window);
+
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    expect(div.getAttribute('aria-describedby')).toBeNull();
+  });
+
+  it('removes its scroll/resize listeners when the popup hides', () => {
+    const graph = buildTracerouteStripGraph({
+      fromNodeNum: 100,
+      toNodeNum: 200,
+      route: '[]',
+      routeBack: null,
+    });
+    const meta = new Map<number, TracerouteStripNodeMeta>([
+      [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+      [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+    ]);
+
+    const addSpy = vi.spyOn(window, 'addEventListener');
+    const removeSpy = vi.spyOn(window, 'removeEventListener');
+
+    render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+    const div = nodeDivFor('FRM');
+
+    fireEvent.mouseEnter(div);
+    const addedScroll = addSpy.mock.calls.filter((c) => String(c[0]) === 'scroll').length;
+    expect(addedScroll).toBeGreaterThan(0);
+
+    fireEvent.mouseLeave(div);
+    const removedScroll = removeSpy.mock.calls.filter((c) => String(c[0]) === 'scroll').length;
+    expect(removedScroll).toBe(addedScroll);
+
+    addSpy.mockRestore();
+    removeSpy.mockRestore();
   });
 });

@@ -14,6 +14,7 @@ import type { TracerouteStripNodeMeta } from '../components/traceroute/Tracerout
 import { getEffectiveHops } from './nodeHops';
 import { getNodeTypeCategory } from './nodeTypeCategory';
 import { getRoleName } from './nodeHelpers';
+import { toNodeCardModel } from '../components/map/popups/nodeCardModel';
 
 /** Structural subset of a traceroute row — the same shape `getEffectiveHops`
  *  needs for its `'traceroute'` calculation mode. */
@@ -70,6 +71,16 @@ export function buildStripNodeMeta(
     const hops = getEffectiveHops(node, opts.hopsCalculation, opts.traceroutes, opts.currentNodeNum);
     const unmessagable = !!node.isUnmessagable;
 
+    // The hover popup renders the same card the Map page shows, so build its
+    // view-model here rather than in the component: this adapter is the only
+    // layer that holds a `DeviceInfo`, and keeping the conversion here is what
+    // lets `TracerouteStrip` stay a pure function of plain data.
+    const pos =
+      node.position?.latitude != null && node.position?.longitude != null
+        ? { lat: node.position.latitude, lng: node.position.longitude }
+        : undefined;
+    const card = toNodeCardModel(node, 'meshtastic', { effectiveHops: hops, pos });
+
     meta.set(nodeNum, {
       nodeNum,
       shortName,
@@ -79,6 +90,8 @@ export function buildStripNodeMeta(
       category,
       hops,
       unmessagable,
+      card,
+      pos,
     });
   }
 
