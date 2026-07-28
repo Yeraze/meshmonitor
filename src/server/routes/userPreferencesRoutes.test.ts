@@ -69,4 +69,59 @@ describe('userPreferencesRoutes', () => {
       expect(res.status).toBe(400);
     });
   });
+
+  /**
+   * #4378: the route destructures an explicit field list, so a preference the
+   * client sends but the list omits is dropped with a `{ success: true }` reply
+   * — no error surfaces, and the next GET returns the old value. That is
+   * exactly how "Show ATAK Contacts" behaved from #3691 until this fix, so the
+   * regression has to assert the round-trip, not just the 200.
+   */
+  describe('showAtakContacts round-trip (#4378)', () => {
+    it('persists showAtakContacts=true across a save/load cycle', async () => {
+      const agent = await harness.loginAs(harness.limited);
+
+      const post = await agent.post('/map-preferences').send({ showAtakContacts: true });
+      expect(post.status).toBe(200);
+
+      const get = await agent.get('/map-preferences');
+      expect(get.status).toBe(200);
+      expect(get.body.preferences).toMatchObject({ showAtakContacts: true });
+    });
+
+    it('persists showAtakContacts=false without falling back to the default', async () => {
+      const agent = await harness.loginAs(harness.limited);
+
+      await agent.post('/map-preferences').send({ showAtakContacts: true });
+      await agent.post('/map-preferences').send({ showAtakContacts: false });
+
+      const get = await agent.get('/map-preferences');
+      expect(get.body.preferences).toMatchObject({ showAtakContacts: false });
+    });
+
+    it('leaves showAtakContacts untouched when a save omits it', async () => {
+      const agent = await harness.loginAs(harness.limited);
+
+      await agent.post('/map-preferences').send({ showAtakContacts: true });
+      await agent.post('/map-preferences').send({ showPaths: true });
+
+      const get = await agent.get('/map-preferences');
+      expect(get.body.preferences).toMatchObject({ showAtakContacts: true, showPaths: true });
+    });
+
+    it('400s on a non-boolean showAtakContacts', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      const res = await agent.post('/map-preferences').send({ showAtakContacts: 'yes' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('defaults to false for a user who never saved it', async () => {
+      const agent = await harness.loginAs(harness.limited);
+      await agent.post('/map-preferences').send({ showPaths: true });
+
+      const get = await agent.get('/map-preferences');
+      expect(get.body.preferences.showAtakContacts).toBe(false);
+    });
+  });
 });
