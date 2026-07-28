@@ -21,7 +21,9 @@ import {
   getMessageDateSeparator,
   shouldShowDateSeparator,
 } from '../utils/datetime';
-import { formatTracerouteRoute } from '../utils/traceroute';
+import { buildTracerouteStripGraph } from '../utils/tracerouteStrip';
+import { buildStripNodeMeta } from '../utils/tracerouteStripMeta';
+import { TracerouteStrip } from './traceroute/TracerouteStrip';
 import { getMessageSortTime } from '../utils/messageSort';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
 import { isDeviceDbWarningMitigatable } from '../utils/deviceDbWarning';
@@ -732,6 +734,24 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
       color: DISTRIBUTION_COLORS[i % DISTRIBUTION_COLORS.length],
     }));
   }, [nodePacketDistribution]);
+
+  // Traceroute visual strip (#4381 WP4): the traceroute box renders inside a
+  // JSX IIFE below, which cannot host a hook, so the graph+meta build is
+  // hoisted here to component scope. `recentTrace` itself is intentionally
+  // NOT memoized (it wasn't before this change either — the old inline block
+  // called `getRecentTraceroute(selectedDMNode)` fresh on every render); only
+  // the pure graph/meta derivation is memoized off it.
+  const recentTrace = selectedDMNode ? getRecentTraceroute(selectedDMNode) : null;
+  const tracerouteStrip = useMemo(() => {
+    if (!recentTrace) return null;
+    const stripGraph = buildTracerouteStripGraph(recentTrace);
+    const stripMeta = buildStripNodeMeta(stripGraph, nodes, {
+      hopsCalculation: nodeHopsCalculation,
+      traceroutes,
+      currentNodeNum,
+    });
+    return { stripGraph, stripMeta };
+  }, [recentTrace, nodes, nodeHopsCalculation, traceroutes, currentNodeNum]);
 
   // Permission check
   if (!hasPermission('messages', 'read')) {
@@ -1917,7 +1937,9 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             {/* Traceroute Display */}
               {hasPermission('traceroute', 'write') &&
                 (() => {
-                  const recentTrace = getRecentTraceroute(selectedDMNode);
+                  // recentTrace/tracerouteStrip are computed at component scope
+                  // (#4381 WP4) — this IIFE cannot host a hook, so the
+                  // graph/meta build for the visual strip lives above.
                   if (recentTrace) {
                     // Clamp at 0: a node with a wrong/ahead clock can stamp a
                     // traceroute in the future, which would otherwise render as a
@@ -1933,30 +1955,27 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                     const isPending = noData && age < 1; // Less than 1 minute old
                     const isFailed = noData && !isPending;
 
+                    const stripGraph = tracerouteStrip?.stripGraph;
+                    const stripMeta = tracerouteStrip?.stripMeta;
+
                     return (
                       <div className="traceroute-info" style={{ marginTop: '1rem' }}>
-                        <div className="traceroute-route">
-                          <strong>{t('messages.traceroute_forward')}</strong>{' '}
-                          {formatTracerouteRoute(
-                            recentTrace.route,
-                            recentTrace.snrTowards,
-                            recentTrace.fromNodeNum,
-                            recentTrace.toNodeNum,
-                            nodes,
-                            distanceUnit
-                          )}
-                        </div>
-                        <div className="traceroute-route">
-                          <strong>{t('messages.traceroute_return')}</strong>{' '}
-                          {formatTracerouteRoute(
-                            recentTrace.routeBack,
-                            recentTrace.snrBack,
-                            recentTrace.toNodeNum,
-                            recentTrace.fromNodeNum,
-                            nodes,
-                            distanceUnit
-                          )}
-                        </div>
+                        {stripGraph && stripMeta && !stripGraph.isEmpty ? (
+                          <TracerouteStrip
+                            graph={stripGraph}
+                            meta={stripMeta}
+                            compact={!isMessagesNodeListCollapsed}
+                          />
+                        ) : (
+                          <div className="traceroute-route">
+                            {t('messages.traceroute_no_response', 'No response received')}
+                          </div>
+                        )}
+                        {stripGraph && !stripGraph.isEmpty && !stripGraph.hasReturn && (
+                          <div className="traceroute-route">
+                            {t('messages.traceroute_no_return_path', 'No return path data')}
+                          </div>
+                        )}
                         <div className="traceroute-age">
                           {t('messages.last_traced', { time: ageStr })}
                           {isPending && (
