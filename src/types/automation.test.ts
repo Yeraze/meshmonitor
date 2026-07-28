@@ -99,6 +99,28 @@ describe('validateAutomationGraph', () => {
     expect(validateAutomationGraph(withReboot({ targetNodeNum: 1.5 })).valid).toBe(false);
   });
 
+  // ── action.tapback emojiMode (#4340) ────────────────────────────────────
+  it('action.tapback: emojiMode validates when present, and absence still validates', () => {
+    const withTapback = (params: Record<string, unknown>): AutomationGraph => ({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: {} },
+        { id: 'a', type: 'action.tapback', params },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    // absent → valid (pre-4.14 stored automations keep validating)
+    expect(validateAutomationGraph(withTapback({})).valid).toBe(true);
+    expect(validateAutomationGraph(withTapback({ emoji: '👍' })).valid).toBe(true);
+    // valid modes
+    expect(validateAutomationGraph(withTapback({ emojiMode: 'fixed' })).valid).toBe(true);
+    expect(validateAutomationGraph(withTapback({ emojiMode: 'hopCount' })).valid).toBe(true);
+    // invalid mode → error
+    const bad = validateAutomationGraph(withTapback({ emojiMode: 'random' }));
+    expect(bad.valid).toBe(false);
+    expect(bad.errors.join(' ')).toMatch(/emojiMode ∈ \{fixed,hopCount\}/);
+  });
+
   it('rejects non-object config', () => {
     expect(validateAutomationGraph(null).valid).toBe(false);
     expect(validateAutomationGraph(42).errors[0]).toMatch(/must be an object/);
