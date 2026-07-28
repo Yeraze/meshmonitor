@@ -15,7 +15,7 @@ import { BaseMap } from '../map/BaseMap';
 import { Base3DMap, type Node3DFeature, type Line3DFeature, type Map3DViewState } from '../map/Base3DMap';
 import { TilesetSelector } from '../TilesetSelector';
 import { resolve3DBasemap, buildTerrainTileUrl } from '../../config/basemap3d';
-import { useTerrainCapabilities } from '../../hooks/useTerrainCapabilities';
+import { useEffectiveViewMode } from './useEffectiveViewMode';
 import { appBasename } from '../../init';
 import { resolveNodeAltitude } from './nodePositionUtil';
 import { use3DNeighborLines } from './use3DNeighborLines';
@@ -123,20 +123,14 @@ export default function MapAnalysisCanvas() {
   const zoom = liveView?.zoom ?? defaultMapCenterZoom ?? FALLBACK_ZOOM;
 
   // #3826 Phase 2 WP-D: 3D branch (spec §3.10) + force-2D guard (spec §3.11).
-  // A persisted `viewMode:'3d'` must never strand the user once capabilities
-  // resolve unavailable (elevation disabled, or a JSON elevation source with
-  // no DEM tiles): once the capabilities fetch settles unavailable, correct
-  // the *persisted* config back to `'2d'` (effect) and use a
-  // still-loading-safe `effectiveViewMode` for *this* render so a
-  // legitimately-available 3D view doesn't flash to 2D while the
-  // capabilities fetch is still in flight.
-  const terrainCaps = useTerrainCapabilities();
-  const capsUnavailable = !terrainCaps.isLoading && !(terrainCaps.enabled && terrainCaps.terrainTiles);
-  const forced2d = config.viewMode === '3d' && capsUnavailable;
+  // The derivation lives in `useEffectiveViewMode` so the toolbar's layer
+  // gating describes the same surface this branch renders (#4371); the
+  // correcting write-back to the persisted config stays here, in the one
+  // component that owns the branch.
+  const { effectiveViewMode, forced2d } = useEffectiveViewMode();
   useEffect(() => {
     if (forced2d) setViewMode('2d');
   }, [forced2d, setViewMode]);
-  const effectiveViewMode = forced2d ? '2d' : config.viewMode;
 
   // Same shared `useAnalysisNodes()` data the 2D markers layer/picker use
   // (see `analysisNodes` above), mapped to the shape `Base3DMap` expects.
@@ -235,6 +229,13 @@ export default function MapAnalysisCanvas() {
         <TilesetSelector selectedTilesetId={mapTileset} onTilesetChange={setMapTileset} />
         <Follow3DController map={map3D} />
         <FollowResumeButton />
+        {/* `TimeSliderControl` and `MapLegend` are intentionally 2D-only, and
+            stay that way here: both are documented non-goals of the #3826 3D
+            epic (the persisted time-slider WINDOW is still honored by the 3D
+            data hooks, so 2D↔3D never changes which links show — you just
+            can't drag the handles from the 3D canvas). Their absence is
+            asserted in MapAnalysisCanvas.test.tsx so an accidental add is
+            caught rather than silently shipping a half-wired control. */}
         {basemap3D.usedFallback && (
           <div className="map-analysis-3d-fallback-note">
             Showing default basemap in 3D — the selected map style is vector-only

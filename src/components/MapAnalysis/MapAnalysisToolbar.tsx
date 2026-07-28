@@ -17,6 +17,7 @@ import { useMapAnalysisCtx } from './MapAnalysisContext';
 import { useOwnNodePositions } from '../../hooks/useOwnNodePositions';
 import { useElevationEnabled } from '../../hooks/useElevationEnabled';
 import { useTerrainCapabilities } from '../../hooks/useTerrainCapabilities';
+import { useEffectiveViewMode } from './useEffectiveViewMode';
 import { LayerKey } from '../../hooks/useMapAnalysisConfig';
 import {
   usePositions,
@@ -106,7 +107,12 @@ export default function MapAnalysisToolbar() {
   }, [analysisNodes]);
 
   // #4371 C: which toggles are inert because the 3D canvas can't draw them.
-  const in3D = config.viewMode === '3d';
+  // Keyed on the EFFECTIVE view mode, not raw `config.viewMode`: when a
+  // persisted `'3d'` is force-corrected to 2D (capabilities unavailable), the
+  // canvas falls back immediately while the config write-back lands a render
+  // later — reading the raw value greyed out the 2D-only toggles while a 2D
+  // map was on screen.
+  const in3D = useEffectiveViewMode().effectiveViewMode === '3d';
   const twoDOnly = (key: LayerKey) => in3D && !THREE_D_CAPABLE_LAYERS.has(key);
   const twoDOnlyTitle = (label: string) => `${label} — 2D view only`;
 

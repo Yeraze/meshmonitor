@@ -242,6 +242,26 @@ describe('MapAnalysisToolbar', () => {
       }
     });
 
+    it('re-enables the 2D-only toggles when a persisted 3d is force-corrected to 2D', () => {
+      // Capabilities resolved unavailable ⇒ MapAnalysisCanvas renders the 2D
+      // map immediately, and writes viewMode:'2d' back a render later. Keying
+      // the gating on raw config.viewMode greyed these out over a 2D map for
+      // that window; both now read the same effective view mode.
+      terrainCapabilities = { enabled: false, terrainTiles: false, isLoading: false };
+      localStorage.setItem('mapAnalysis.config.v1', JSON.stringify({ version: 1, viewMode: '3d' }));
+      render(<MapAnalysisToolbar />, { wrapper });
+      expect(screen.getByRole('button', { name: /^heatmap$/i })).not.toBeDisabled();
+    });
+
+    it('still gates while capabilities are loading (3D is what is on screen)', () => {
+      // Mid-flight the canvas keeps rendering 3D, so the toggles must stay
+      // disabled — flipping them on and back would flicker.
+      terrainCapabilities = { enabled: false, terrainTiles: false, isLoading: true };
+      localStorage.setItem('mapAnalysis.config.v1', JSON.stringify({ version: 1, viewMode: '3d' }));
+      render(<MapAnalysisToolbar />, { wrapper });
+      expect(screen.getByRole('button', { name: /^heatmap$/i })).toBeDisabled();
+    });
+
     it('keeps a 2D-only layer’s persisted state untouched while in 3D', () => {
       localStorage.setItem(
         'mapAnalysis.config.v1',

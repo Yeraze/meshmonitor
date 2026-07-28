@@ -329,6 +329,15 @@ function ViewSeeder({ view }: { view: MapViewState }) {
   return null;
 }
 
+/** Puts follow into its paused state so FollowResumeButton actually renders. */
+function PauseFollow() {
+  const { setFollowPaused } = useMapAnalysisCtx();
+  React.useEffect(() => {
+    setFollowPaused(true);
+  }, [setFollowPaused]);
+  return null;
+}
+
 describe('MapAnalysisCanvas', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -643,10 +652,28 @@ describe('MapAnalysisCanvas', () => {
 
     // #4371 B: Follow/Auto-zoom works in 3D.
     describe('follow plumbing (#4371 B)', () => {
-      it('mounts Follow3DController and the Resume affordance in the 3D branch', () => {
+      it('mounts Follow3DController in the 3D branch', () => {
         persist3d();
         render(<MapAnalysisCanvas />, { wrapper });
         expect(screen.getByTestId('follow-3d-controller')).toBeInTheDocument();
+      });
+
+      it('mounts the Resume-follow affordance in the 3D branch, so a paused follow is recoverable', () => {
+        // FollowResumeButton self-hides unless a mode is on AND paused; drive
+        // it into its visible state rather than asserting the component's mere
+        // presence, which would pass even if it could never show.
+        localStorage.setItem(
+          'mapAnalysis.config.v1',
+          JSON.stringify({ version: 1, viewMode: '3d', followMode: true }),
+        );
+        render(
+          <>
+            <PauseFollow />
+            <MapAnalysisCanvas />
+          </>,
+          { wrapper },
+        );
+        expect(screen.getByRole('button', { name: /resume follow/i })).toBeInTheDocument();
       });
 
       it('hands Follow3DController the map instance once Base3DMap reports it ready', () => {
@@ -662,6 +689,32 @@ describe('MapAnalysisCanvas', () => {
       it('does NOT mount the 3D follow controller in the 2D branch', () => {
         render(<MapAnalysisCanvas />, { wrapper });
         expect(screen.queryByTestId('follow-3d-controller')).toBeNull();
+      });
+    });
+
+    // The time-slider UI and legend are documented 2D-only non-goals of the
+    // #3826 3D epic. Pin their absence so an accidental add is caught rather
+    // than shipping a control the 3D canvas can't wire up.
+    describe('2D-only overlays stay out of the 3D branch', () => {
+      it('renders the time slider and legend in 2D', () => {
+        localStorage.setItem(
+          'mapAnalysis.config.v1',
+          JSON.stringify({ version: 1, timeSlider: { enabled: true } }),
+        );
+        const { container } = render(<MapAnalysisCanvas />, { wrapper });
+        expect(screen.getByTestId('time-slider')).toBeInTheDocument();
+        expect(container.querySelector('.map-analysis-legend')).not.toBeNull();
+      });
+
+      it('omits both from 3D, even with the time slider enabled', () => {
+        localStorage.setItem(
+          'mapAnalysis.config.v1',
+          JSON.stringify({ version: 1, viewMode: '3d', timeSlider: { enabled: true } }),
+        );
+        const { container } = render(<MapAnalysisCanvas />, { wrapper });
+        expect(screen.getByTestId('base-3d-map')).toBeInTheDocument();
+        expect(screen.queryByTestId('time-slider')).toBeNull();
+        expect(container.querySelector('.map-analysis-legend')).toBeNull();
       });
     });
 
