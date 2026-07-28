@@ -59,7 +59,7 @@ export function averageNonSentinelSnr(samples: Array<{ snr: number }> | undefine
 // Reserved/broadcast node-number filtering
 // ---------------------------------------------------------------------------
 
-const BROADCAST_ADDR = 4294967295;
+export const BROADCAST_ADDR = 4294967295;
 
 /**
  * True for a real, renderable node number — false for firmware reserved or
@@ -259,7 +259,7 @@ export interface DecomposeTracerouteOptions {
  *  filtering only applies to the former. Node filtering happens in
  *  `buildLegSegments`, where it can stay index-aligned with the paired SNR
  *  sample instead of shifting it. */
-function parseHopArray(json: string | null | undefined): number[] {
+export function parseHopArray(json: string | null | undefined): number[] {
   if (!json || json === 'null' || json === '') return [];
   try {
     const parsed = JSON.parse(json);
@@ -271,7 +271,7 @@ function parseHopArray(json: string | null | undefined): number[] {
 
 /** True when `route` carries actual (possibly empty-array) route data, as
  *  opposed to being entirely absent/failed. */
-function hasRouteData(route: string | null | undefined): boolean {
+export function hasRouteData(route: string | null | undefined): boolean {
   return route != null && route !== 'null' && route !== '';
 }
 
