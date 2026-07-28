@@ -531,6 +531,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                 onShareContact={actions.shareContact}
                 onSetOutPath={actions.setContactOutPath}
                 onTracePath={actions.traceContactPath}
+                onPingZeroHop={actions.pingContactZeroHop}
                 onDiscoverPath={actions.discoverContactPath}
                 onRemoveContact={actions.removeContact}
                 onExportContact={actions.exportContact}

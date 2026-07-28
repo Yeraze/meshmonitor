@@ -273,4 +273,127 @@ describe('MeshCoreContactDetailPanel', () => {
 
     confirmSpy.mockRestore();
   });
+
+  describe('zero-hop ping (#4393)', () => {
+    const PING_LABEL = 'Ping (0 hop)';
+
+    it('offers Ping even when no route is cached (unlike Trace Path)', () => {
+      // pathLen null == unknown route: Trace Path is hidden, Ping is not,
+      // because a ping builds its own one-hop path from the contact key.
+      const contact: MeshCoreContact = { publicKey: PK, advType: 2, pathLen: null };
+      render(
+        <MeshCoreContactDetailPanel
+          contact={contact}
+          publicKey={PK}
+          onTracePath={vi.fn()}
+          onPingZeroHop={vi.fn().mockResolvedValue({ ok: false, error: 'x' })}
+          canWriteNodes
+          isCompanion
+        />,
+      );
+      expect(screen.getByRole('button', { name: PING_LABEL })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Trace Path' })).toBeNull();
+    });
+
+    it('hides Ping without nodes:write', () => {
+      const contact: MeshCoreContact = { publicKey: PK, advType: 2 };
+      render(
+        <MeshCoreContactDetailPanel
+          contact={contact}
+          publicKey={PK}
+          onPingZeroHop={vi.fn()}
+          canWriteNodes={false}
+          isCompanion
+        />,
+      );
+      expect(screen.queryByRole('button', { name: PING_LABEL })).toBeNull();
+    });
+
+    it('hides Ping on a non-Companion source', () => {
+      const contact: MeshCoreContact = { publicKey: PK, advType: 2 };
+      render(
+        <MeshCoreContactDetailPanel
+          contact={contact}
+          publicKey={PK}
+          onPingZeroHop={vi.fn()}
+          canWriteNodes
+          isCompanion={false}
+        />,
+      );
+      expect(screen.queryByRole('button', { name: PING_LABEL })).toBeNull();
+    });
+
+    it('renders RTT and both SNR readings on a successful ping', async () => {
+      const contact: MeshCoreContact = { publicKey: PK, advType: 2 };
+      const onPingZeroHop = vi.fn().mockResolvedValue({
+        ok: true,
+        hopHash: 'aa',
+        rttMs: 812,
+        snrToTarget: 10,
+        snrFromTarget: -3.5,
+      });
+
+      render(
+        <MeshCoreContactDetailPanel
+          contact={contact}
+          publicKey={PK}
+          onPingZeroHop={onPingZeroHop}
+          canWriteNodes
+          isCompanion
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: PING_LABEL }));
+
+      await waitFor(() => {
+        const status = screen.getByRole('status').textContent ?? '';
+        expect(status).toContain('Direct — in range');
+        expect(status).toContain('812 ms');
+        expect(status).toContain('10.00 dB');
+        expect(status).toContain('-3.50 dB');
+      });
+      expect(onPingZeroHop).toHaveBeenCalledWith(PK);
+    });
+
+    it('shows the server reason verbatim when the node does not answer', async () => {
+      const contact: MeshCoreContact = { publicKey: PK, advType: 2 };
+      const error = 'No reply — the node is not in direct radio range (or does not repeat traces).';
+      render(
+        <MeshCoreContactDetailPanel
+          contact={contact}
+          publicKey={PK}
+          onPingZeroHop={vi.fn().mockResolvedValue({ ok: false, error })}
+          canWriteNodes
+          isCompanion
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: PING_LABEL }));
+
+      await waitFor(() => expect(screen.getByRole('status').textContent).toBe(error));
+    });
+
+    it('omits the outbound SNR when the node reported none', async () => {
+      const contact: MeshCoreContact = { publicKey: PK, advType: 2 };
+      render(
+        <MeshCoreContactDetailPanel
+          contact={contact}
+          publicKey={PK}
+          onPingZeroHop={vi.fn().mockResolvedValue({
+            ok: true, hopHash: 'aa', rttMs: 90, snrToTarget: null, snrFromTarget: 4,
+          })}
+          canWriteNodes
+          isCompanion
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: PING_LABEL }));
+
+      await waitFor(() => {
+        const status = screen.getByRole('status').textContent ?? '';
+        expect(status).toContain('4.00 dB');
+        expect(status).not.toContain('SNR at node');
+      });
+    });
+  });
 });

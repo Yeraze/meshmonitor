@@ -35,6 +35,24 @@ export interface TracePathResult {
   lastSnr: number;
 }
 
+/**
+ * Outcome of a zero-hop ping (#4393). On success the SNR pair tells you how
+ * each end heard the other; on failure `error` is the server's actionable
+ * reason (out of range, not a Companion, disconnected, unknown contact).
+ */
+export type ZeroHopPingResult =
+  | {
+      ok: true;
+      /** Path hash byte used — the first byte of the target public key, hex. */
+      hopHash: string;
+      rttMs: number;
+      /** SNR the target measured on our frame; null if the node omitted it. */
+      snrToTarget: number | null;
+      /** SNR our radio measured on the returning frame. */
+      snrFromTarget: number;
+    }
+  | { ok: false; error: string };
+
 export interface MeshCoreNode {
   publicKey: string;
   name: string;
@@ -138,6 +156,10 @@ export interface MeshCoreActions {
   /** Send a trace-path diagnostic along the contact's cached forwarding
    *  route and return per-hop SNR data. Resolves `null` on failure. */
   traceContactPath: (publicKey: string) => Promise<TracePathResult | null>;
+  /** Zero-hop ping (#4393) — trace along a synthetic one-hop path built from
+   *  the target's own key hash, bypassing any cached route. A reply proves the
+   *  node is in direct RF range. Requires nodes:write. */
+  pingContactZeroHop: (publicKey: string) => Promise<ZeroHopPingResult>;
   /** Flood a path-discovery request to the contact. The device sends a
    *  lightweight telemetry request via flood; when the contact replies,
    *  the PATH return mechanism establishes the forwarding route. The path
@@ -1214,6 +1236,28 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  const pingContactZeroHop = useCallback(async (publicKey: string): Promise<ZeroHopPingResult> => {
+    try {
+      const response = await csrfFetch(
+        `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/ping`,
+        { method: 'POST' },
+      );
+      const data = await response.json();
+      if (!data.success) {
+        return { ok: false, error: data.error || 'Ping failed' };
+      }
+      return {
+        ok: true,
+        hopHash: data.data.hopHash,
+        rttMs: data.data.rttMs,
+        snrToTarget: data.data.snrToTarget ?? null,
+        snrFromTarget: data.data.snrFromTarget,
+      };
+    } catch (_err) {
+      return { ok: false, error: 'Ping failed' };
+    }
+  }, [mcPrefix, csrfFetch]);
+
   const removeContact = useCallback(async (publicKey: string): Promise<boolean> => {
     try {
       const response = await csrfFetch(
@@ -1761,6 +1805,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       shareContact,
       setContactOutPath,
       traceContactPath,
+      pingContactZeroHop,
       removeContact,
       setNodeFavorite,
       exportContact,
