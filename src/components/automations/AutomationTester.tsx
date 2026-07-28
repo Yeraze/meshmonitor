@@ -95,6 +95,10 @@ export default function AutomationTester({ getConfig, variables, sources }: Prop
     const numFact = (k: string) => { if (facts[k] !== undefined && facts[k] !== '') out[k] = Number(facts[k]); };
     numFact('batteryLevel'); numFact('voltage'); numFact('role'); numFact('hopsAway');
     numFact('channelUtilization'); numFact('airUtilTx'); numFact('snr'); numFact('altitude');
+    // #4340 Phase 3: isNodeComplete() (src/utils/nodeHelpers.ts) requires an
+    // hwModel, so a synthetic node.completeness dry-run reads 'incomplete'
+    // without this — a confusing false negative for an otherwise-complete node.
+    numFact('hwModel');
     if (facts.longName) out.longName = facts.longName;
     if (facts.shortName) out.shortName = facts.shortName;
     if (facts.latitude) out.latitude = Number(facts.latitude);
@@ -165,6 +169,7 @@ export default function AutomationTester({ getConfig, variables, sources }: Prop
             <Field label="Altitude" value={facts.altitude} onChange={(v) => setFact('altitude', v)} type="number" />
             <Field label="Long name" value={facts.longName} onChange={(v) => setFact('longName', v)} />
             <Field label="Short name" value={facts.shortName} onChange={(v) => setFact('shortName', v)} />
+            <Field label="HW model (#)" value={facts.hwModel} onChange={(v) => setFact('hwModel', v)} type="number" />
             <Field label="Latitude" value={facts.latitude} onChange={(v) => setFact('latitude', v)} type="number" />
             <Field label="Longitude" value={facts.longitude} onChange={(v) => setFact('longitude', v)} type="number" />
           </div>
@@ -261,7 +266,10 @@ function ActionView({ a }: { a: SimResult['actions'][number] }) {
   let headline: string = a.type.replace('action.', '');
   let sent: ReactNode = null;
   if (a.type === 'action.sendMessage') {
-    headline = `Send message → ${p.destination != null ? `DM to node ${p.destination}` : `channel ${p.channel ?? 0}`}`;
+    // #4340 Phase 3: maxAttempts (action.sendMessage's DM resend cap, see
+    // catalog.ts) only applies to a DM — proof the param crossed the deps
+    // boundary (§5.3 of the phase 3 spec).
+    headline = `Send message → ${p.destination != null ? `DM to node ${p.destination}${p.maxAttempts ? ` (up to ${p.maxAttempts} attempts)` : ''}` : `channel ${p.channel ?? 0}`}`;
     sent = <div className="ae-test-sent">{String(p.text ?? '')}</div>;
   } else if (a.type === 'action.tapback') {
     // emojiMode=hopCount with no hop info on the trigger records a skip (#4340)

@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { fieldVisible, ACTIONS, TRIGGERS, type FieldDef } from './catalog';
+import { fieldVisible, ACTIONS, TRIGGERS, numericFields, stringFields, STRING_OP_OPTIONS, type FieldDef } from './catalog';
 import { HOP_COUNT_EMOJIS } from '../../utils/hopEmoji';
 
 describe('fieldVisible', () => {
@@ -168,5 +168,57 @@ describe('trigger.* cooldownScope catalog entries (#4340 Phase 2)', () => {
     // not five separately-authored copies that could drift apart.
     const fields = COOLDOWN_BEARING_TYPES.map((type) => TRIGGERS.find((t) => t.type === type)?.fields.find((f) => f.name === 'cooldownScope'));
     for (const f of fields) expect(f).toBe(fields[0]);
+  });
+});
+
+// #4340 Phase 3 §5/§6 WP4 — Auto-Ack parity catalog additions: the isDM/viaMqtt
+// numeric fields, the node.completeness string field, the in/notIn string
+// operators, and the maxAttempts field on action.sendMessage.
+describe('Auto-Ack parity catalog additions (#4340 Phase 3)', () => {
+  const flatten = (groups: ReturnType<typeof numericFields>) => groups.flatMap((g) => g.options);
+
+  it('EVENT_NUMERIC for trigger.message includes isDM and viaMqtt', () => {
+    const values = flatten(numericFields('trigger.message')).map((o) => o.value);
+    expect(values).toContain('isDM');
+    expect(values).toContain('viaMqtt');
+  });
+
+  it('NODE_STRING includes node.completeness', () => {
+    const values = flatten(stringFields('trigger.message')).map((o) => o.value);
+    expect(values).toContain('node.completeness');
+  });
+
+  it('STRING_OP_OPTIONS is exported and includes in / notIn', () => {
+    const values = STRING_OP_OPTIONS.map((o) => o.value);
+    expect(values).toContain('in');
+    expect(values).toContain('notIn');
+  });
+
+  describe('action.sendMessage maxAttempts field', () => {
+    const sendMessage = ACTIONS.find((a) => a.type === 'action.sendMessage');
+    const maxAttemptsField = sendMessage?.fields.find((f) => f.name === 'maxAttempts');
+
+    it('exists as an advanced number field', () => {
+      expect(maxAttemptsField).toBeDefined();
+      expect(maxAttemptsField?.kind).toBe('number');
+      expect(maxAttemptsField?.advanced).toBe(true);
+    });
+
+    it('carries showIf exactly { field: "to", truthy: true } — reuses Phase 2\'s operator, no new one', () => {
+      expect(maxAttemptsField?.showIf).toEqual({ field: 'to', truthy: true });
+    });
+
+    it('is hidden until "to" is set (unset / blank / 0)', () => {
+      expect(maxAttemptsField).toBeDefined();
+      expect(fieldVisible(maxAttemptsField as FieldDef, {})).toBe(false);
+      expect(fieldVisible(maxAttemptsField as FieldDef, { to: '' })).toBe(false);
+      expect(fieldVisible(maxAttemptsField as FieldDef, { to: 0 })).toBe(false);
+    });
+
+    it('is visible once "to" is set to a token or a node number', () => {
+      expect(maxAttemptsField).toBeDefined();
+      expect(fieldVisible(maxAttemptsField as FieldDef, { to: '{{ trigger.from }}' })).toBe(true);
+      expect(fieldVisible(maxAttemptsField as FieldDef, { to: 123 })).toBe(true);
+    });
   });
 });

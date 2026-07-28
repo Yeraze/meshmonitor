@@ -183,6 +183,11 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
   'trigger.message': [
     { value: 'hops', label: 'Hop count' }, { value: 'from', label: 'Sender node #' },
     { value: 'channel', label: 'Channel #' }, { value: 'snr', label: 'SNR' }, { value: 'rssi', label: 'RSSI' },
+    // #4340 Phase 3: booleans compared as 1/0 (the engine's asNumber() coerces
+    // them). Needed to express Auto-Acknowledge's {Channel,Direct} ×
+    // {ZeroHop,MultiHop} matrix, where ZeroHop means hops == 0 AND NOT viaMqtt.
+    { value: 'isDM', label: 'Is a direct message (1 = yes, 0 = channel)' },
+    { value: 'viaMqtt', label: 'Arrived via MQTT (1 = yes, 0 = RF)' },
   ],
   'trigger.telemetry': [{ value: 'value', label: 'Reading value' }, { value: 'nodeNum', label: 'Node #' }],
   'trigger.nodeUpdated': [{ value: 'nodeNum', label: 'Node #' }],
@@ -214,6 +219,9 @@ const NODE_NUMERIC: FieldOpt[] = [
 const NODE_STRING: FieldOpt[] = [
   { value: 'node.longName', label: 'Long name' }, { value: 'node.shortName', label: 'Short name' },
   { value: 'node.nodeId', label: 'Node id' }, { value: 'node.roleName', label: 'Role name (e.g. ROUTER)' },
+  // #4340 Phase 3 — see NODE_COMPLETENESS in engineContext.ts. Three states, so
+  // "complete or not yet known" is expressible with the `is one of` operator.
+  { value: 'node.completeness', label: 'Node info completeness (complete / incomplete / unknown)' },
 ];
 // Latest telemetry of a metric for the subject node.
 const TELEMETRY_FIELDS: FieldOpt[] = [
@@ -248,10 +256,17 @@ const NUMERIC_OP_OPTIONS = [
   { value: '>', label: '> greater than' }, { value: '<', label: '< less than' },
   { value: '>=', label: '≥ at least' }, { value: '<=', label: '≤ at most' },
 ];
-const STRING_OP_OPTIONS = [
+// Exported (one word) so autoAckParity.test.ts (#4340 Phase 3, WP5) can
+// cross-check these labels/values against conditionEvaluator.ts's stringCompare.
+export const STRING_OP_OPTIONS = [
   { value: 'contains', label: 'contains' }, { value: 'eq', label: 'equals' },
   { value: 'startsWith', label: 'starts with' }, { value: 'endsWith', label: 'ends with' },
   { value: 'regex', label: 'matches regex' }, { value: 'notContains', label: "doesn't contain" },
+  // #4340 Phase 3: membership in a comma/whitespace-separated list, mirroring
+  // Auto-Acknowledge's own autoAckIgnoredNodes parser (meshtasticManager.ts,
+  // separators + case-insensitivity) — see conditionEvaluator.ts's `in`/`notIn`.
+  { value: 'in', label: 'is one of (comma list)' },
+  { value: 'notIn', label: "isn't one of (comma list)" },
 ];
 
 // ─── Conditions (IF) ─────────────────────────────────────────────────────────
@@ -381,6 +396,14 @@ export const ACTIONS: BlockDef[] = [
       { name: 'channels', label: 'On channels', kind: 'channelMulti', help: 'Channels to post to, unified by name + key across your sources (the correct local slot is resolved per source). Leave none to use the triggering channel.' },
       { name: 'to', label: 'DM to node #', kind: 'text', tokens: true, placeholder: 'blank = channel; {{ trigger.from }} replies to sender', advanced: true },
       { name: 'replyToTrigger', label: 'Reply to the triggering message', kind: 'checkbox', advanced: true, help: 'Meshtastic: threads the reply as a tapback. MeshCore has no tapback, so instead it auto-prepends the @[sender]: mention (using {{ trigger.senderLabel }} — sender name, else channel name, else id) to your text, so you don’t have to write it yourself. An existing @[…] mention in your text = no change.' },
+      {
+        name: 'maxAttempts', label: 'DM resend attempts', kind: 'number', advanced: true,
+        placeholder: '1', // 1–3; mirrors SEND_MAX_ATTEMPTS_* in src/types/automation.ts.
+        // Only meaningful for a DM — the queue hardcodes 1 attempt for channel
+        // sends. Reuses Phase 2's showIf.truthy so an unset/blank/0 `to` hides it.
+        showIf: { field: 'to', truthy: true },
+        help: 'Resend this DM (1–3) until the recipient ACKs it — the same retry Auto-Acknowledge uses. Leave blank for a single send. Setting it routes the DM through the source’s outgoing queue, which also spaces sends 30 seconds apart. Meshtastic DMs only: ignored for channel messages and MeshCore.',
+      },
       {
         name: 'scopeMode', label: 'MeshCore scope', kind: 'select', advanced: true,
         options: [
