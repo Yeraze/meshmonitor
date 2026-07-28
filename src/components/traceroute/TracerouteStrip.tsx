@@ -20,6 +20,7 @@ import { getHopColor } from '../../utils/roleGlyphSvg';
 import {
   layoutTracerouteStrip,
   paddedHexId,
+  type StripLane,
   type TracerouteStripGraph,
 } from '../../utils/tracerouteStrip';
 import { NodeGlyph } from './NodeGlyph';
@@ -50,6 +51,23 @@ const DEFAULT_GLYPH_SIZE = 32;
 
 function cx(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(' ');
+}
+
+/** Maps a StripNode's semantic band to its CSS lane hook (spec §4.3/§4.4).
+ * Deliberately empty rules today — an assertable class name and a home for
+ * any future visual differentiation, not a styling switch. Do not branch
+ * component logic on lane; if a raised/dropped node ever needs to look
+ * different, that is a CSS rule against these hooks, not a code path here. */
+function laneClassFor(lane: StripLane): string {
+  switch (lane) {
+    case 'forward':
+      return styles.laneForward;
+    case 'return':
+      return styles.laneReturn;
+    case 'spine':
+    default:
+      return styles.laneSpine;
+  }
 }
 
 export function TracerouteStrip({ graph, meta }: TracerouteStripProps) {
@@ -173,7 +191,7 @@ export function TracerouteStrip({ graph, meta }: TracerouteStripProps) {
           return (
             <div
               key={n.id}
-              className={styles.node}
+              className={cx(styles.node, laneClassFor(n.lane))}
               style={{ left: center.x, top: center.y }}
               tabIndex={0}
               aria-describedby={tipId}

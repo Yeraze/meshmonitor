@@ -61,6 +61,18 @@
   border-radius: 4px;
 }
 
+/* Lane identity hooks (spec §3.4/§4.3/§4.4). Deliberately empty — the
+ * vertical position already comes from the pure layout module (`top`), and
+ * every lane must keep the SAME glyph treatment as the spine so a raised or
+ * dropped node still reads as a real hop. These exist as an assertable class
+ * name (see TracerouteStrip.test.tsx's spine-model DOM regression test) and
+ * as the place any future visual differentiation belongs. */
+.laneForward,
+.laneSpine,
+.laneReturn {
+  /* intentionally empty */
+}
+
 .shortName {
   font-size: 0.7rem;
   color: var(--ctp-subtext1);

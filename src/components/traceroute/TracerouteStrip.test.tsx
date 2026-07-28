@@ -325,6 +325,99 @@ describe('TracerouteStrip', () => {
     expect(tooltip!.textContent).toContain('Client');
   });
 
+  it('spine model (WP-C): a forward-exclusive node renders above the spine and a return-exclusive node below it', () => {
+    // The §3.4.0 BOCA G2 live-mesh fixture, used verbatim (also covered in
+    // tracerouteStrip.test.ts case 23): CS and TRPK are forward-exclusive and
+    // must raise ABOVE the Yble/Yrze/Boca spine — the DOM-level regression
+    // test for the bug that motivated the spine rewrite (the old algorithm
+    // put the whole forward leg on row 0 and drew the return edge
+    // BOCA G2 -> Yrze underneath CS/TRPK as though it traversed them).
+    const YBLE = 2001;
+    const YRZE = 2002;
+    const CS = 2003;
+    const TRPK = 2004;
+    const BOCA = 2005;
+    const forwardInput: TracerouteStripInput = {
+      fromNodeNum: YBLE,
+      toNodeNum: BOCA,
+      route: JSON.stringify([YRZE, CS, TRPK]),
+      snrTowards: JSON.stringify([42, -45, 29, 15]),
+      routeBack: JSON.stringify([YRZE]),
+      snrBack: JSON.stringify([37, 44]),
+    };
+    const forwardGraph = buildTracerouteStripGraph(forwardInput);
+    const forwardMeta = new Map<number, TracerouteStripNodeMeta>([
+      [YBLE, makeMeta({ nodeNum: YBLE, shortName: 'Yble', longName: 'Node Yble' })],
+      [YRZE, makeMeta({ nodeNum: YRZE, shortName: 'Yrze', longName: 'Node Yrze' })],
+      [CS, makeMeta({ nodeNum: CS, shortName: 'CS', longName: 'CS (SW SECTOR) V4' })],
+      [TRPK, makeMeta({ nodeNum: TRPK, shortName: 'TRPK', longName: 'TRPK G2' })],
+      [BOCA, makeMeta({ nodeNum: BOCA, shortName: 'Boca', longName: 'Node Boca' })],
+    ]);
+
+    const { unmount } = render(<TracerouteStrip graph={forwardGraph} meta={forwardMeta} />);
+
+    const csNode = forwardGraph.nodes.find((n) => n.nodeNum === CS)!;
+    const yrzeNode = forwardGraph.nodes.find((n) => n.nodeNum === YRZE)!;
+    expect(csNode.lane).toBe('forward');
+    expect(yrzeNode.lane).toBe('spine');
+
+    const csDiv = nodeDivFor('CS');
+    const yrzeDiv = nodeDivFor('Yrze');
+    const csTop = parseFloat(csDiv.style.top);
+    const yrzeTop = parseFloat(yrzeDiv.style.top);
+    expect(Number.isNaN(csTop)).toBe(false);
+    expect(Number.isNaN(yrzeTop)).toBe(false);
+    // "Raised above" means a SMALLER top (y grows downward).
+    expect(csTop).toBeLessThan(yrzeTop);
+
+    unmount();
+
+    // Mirror fixture for the return-exclusive half: F = A->B->C (B raised),
+    // R = C->X->A (X dropped) — spec §3.7 case 25 ("simultaneous
+    // divergence"). Confirms the drop direction independently of the raise
+    // direction just asserted above.
+    const A = 3001;
+    const B = 3002;
+    const C = 3003;
+    const X = 3004;
+    const bothInput: TracerouteStripInput = {
+      fromNodeNum: A,
+      toNodeNum: C,
+      route: JSON.stringify([B]),
+      snrTowards: JSON.stringify([5, 7]),
+      routeBack: JSON.stringify([X]),
+      snrBack: JSON.stringify([3, 4]),
+    };
+    const bothGraph = buildTracerouteStripGraph(bothInput);
+    const bothMeta = new Map<number, TracerouteStripNodeMeta>([
+      [A, makeMeta({ nodeNum: A, shortName: 'AA', longName: 'Node AA' })],
+      [B, makeMeta({ nodeNum: B, shortName: 'BB', longName: 'Node BB' })],
+      [C, makeMeta({ nodeNum: C, shortName: 'CC', longName: 'Node CC' })],
+      [X, makeMeta({ nodeNum: X, shortName: 'XX', longName: 'Node XX' })],
+    ]);
+
+    render(<TracerouteStrip graph={bothGraph} meta={bothMeta} />);
+
+    const bNode = bothGraph.nodes.find((n) => n.nodeNum === B)!;
+    const aNode = bothGraph.nodes.find((n) => n.nodeNum === A)!;
+    const xNode = bothGraph.nodes.find((n) => n.nodeNum === X)!;
+    expect(bNode.lane).toBe('forward');
+    expect(aNode.lane).toBe('spine');
+    expect(xNode.lane).toBe('return');
+
+    const bDiv = nodeDivFor('BB');
+    const aDiv = nodeDivFor('AA');
+    const xDiv = nodeDivFor('XX');
+    const bTop = parseFloat(bDiv.style.top);
+    const aTop = parseFloat(aDiv.style.top);
+    const xTop = parseFloat(xDiv.style.top);
+
+    // forward-exclusive (B) above the spine (A): smaller top.
+    expect(bTop).toBeLessThan(aTop);
+    // return-exclusive (X) below the spine (A): larger top.
+    expect(xTop).toBeGreaterThan(aTop);
+  });
+
   it('renders the unknown placeholder (and only the padded hex id in its tooltip) for a node missing from meta', () => {
     const input: TracerouteStripInput = {
       fromNodeNum: 100,
