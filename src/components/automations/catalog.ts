@@ -28,7 +28,14 @@ export interface FieldDef {
    * Render this field only when a sibling param matches. Omitted = always shown.
    * Declarative (not a predicate function) so the catalog stays serialisable data.
    */
-  showIf?: { field: string; equals?: unknown; notEquals?: unknown };
+  showIf?: {
+    field: string;
+    equals?: unknown;
+    notEquals?: unknown;
+    /** Visible only when the sibling param is truthy (`true`) / falsy (`false`).
+     *  Covers "a number field that is unset, blank, or 0" in one operator (#4340 Phase 2). */
+    truthy?: boolean;
+  };
 }
 
 /** Should this field render, given the block's current params? Pure — unit-tested without React. */
@@ -38,6 +45,9 @@ export function fieldVisible(field: FieldDef, params: Record<string, unknown>): 
   const v = params[c.field];
   if ('equals' in c && v !== c.equals) return false;
   if ('notEquals' in c && v === c.notEquals) return false;
+  // Boolean(v) covers undefined / '' / 0 / false uniformly. Known, harmless
+  // wart: the string '0' is truthy — it only shows an extra select.
+  if (c.truthy !== undefined && Boolean(v) !== c.truthy) return false;
   return true;
 }
 
@@ -51,6 +61,23 @@ export interface BlockDef {
 const COOLDOWN: FieldDef = {
   name: 'cooldownSeconds', label: 'Cooldown (seconds)', kind: 'number', advanced: true,
   placeholder: '0', help: 'Minimum seconds between firings — an anti-spam throttle. 0 = no limit.',
+};
+
+const COOLDOWN_SCOPE: FieldDef = {
+  name: 'cooldownScope', label: 'Cooldown applies to', kind: 'select', advanced: true,
+  // Values mirror CooldownScope in src/types/automation.ts. Kept as literals so
+  // this frontend catalog keeps its zero dependency on the server-side types
+  // module (the same call Phase 1 made for action.tapback's emojiMode).
+  // 'automation' MUST be first: defaultParams() seeds a select's first option,
+  // so a newly added trigger block gets the pre-4.14 behaviour.
+  options: [
+    { value: 'automation', label: 'The whole automation (one shared timer)' },
+    { value: 'node', label: 'Each node separately' },
+    { value: 'sourceNode', label: 'Each node, per source' },
+  ],
+  // Only meaningful once a cooldown is actually set.
+  showIf: { field: 'cooldownSeconds', truthy: true },
+  help: 'The whole automation: one timer for the rule — on a busy channel, answering one node suppresses the answer to the next. Each node separately: every sending/subject node gets its own timer, which is what you want for a range-test responder. Each node, per source: the same node heard via two sources cools down independently. Triggers with no subject node (Schedule, System, MeshCore channel messages) fall back to one shared timer.',
 };
 
 // ─── Triggers (WHEN) ─────────────────────────────────────────────────────────
@@ -68,19 +95,20 @@ export const TRIGGERS: BlockDef[] = [
       { name: 'channel', label: 'On channel #', kind: 'number', placeholder: 'any', advanced: true, help: 'Match by raw channel index. Note: the same channel can be a different index on different sources — use the name above for cross-source automations. Ignored when "On channels" above is set.' },
       { name: 'from', label: 'From node #', kind: 'number', placeholder: 'any', advanced: true, help: 'Only fire for messages from this node number.' },
       COOLDOWN,
+      COOLDOWN_SCOPE,
     ],
   },
   {
     type: 'trigger.nodeDiscovered',
     label: 'A new node is discovered',
     description: 'Fires the first time a node is seen. Note: new-vs-updated detection is coming in a later update — for now this behaves like “A node is updated”. Use that trigger meanwhile.',
-    fields: [COOLDOWN],
+    fields: [COOLDOWN, COOLDOWN_SCOPE],
   },
   {
     type: 'trigger.nodeUpdated',
     label: 'A node is updated',
     description: "Fires when a node's info changes (name, role, position…).",
-    fields: [COOLDOWN],
+    fields: [COOLDOWN, COOLDOWN_SCOPE],
   },
   {
     type: 'trigger.telemetry',
@@ -99,6 +127,7 @@ export const TRIGGERS: BlockDef[] = [
         ],
       },
       COOLDOWN,
+      COOLDOWN_SCOPE,
     ],
   },
   {
@@ -140,6 +169,7 @@ export const TRIGGERS: BlockDef[] = [
       },
       { name: 'shape', label: 'Region', kind: 'geofence', help: 'Draw a circle (center + radius) or a polygon on the map.' },
       COOLDOWN,
+      COOLDOWN_SCOPE,
     ],
   },
 ];
