@@ -227,6 +227,36 @@ describe('buildStripNodeMeta', () => {
     expect(meta.size).toBe(1);
   });
 
+  it('userId is node.user.id when present', () => {
+    const node = makeDevice({ nodeNum: 100, user: { id: '!00000064', longName: 'Alice' } });
+    const graph = makeGraph([makeStripNode(100)]);
+
+    const meta = buildStripNodeMeta(graph, [node], {
+      hopsCalculation: 'nodeinfo',
+      traceroutes: [],
+      currentNodeNum: null,
+    });
+
+    expect(meta.get(100)!.userId).toBe('!00000064');
+  });
+
+  it('userId is undefined when the node has no user.id, while nodeId still falls back to the padded hex', () => {
+    // The two fields must not be conflated — a synthesised nodeId is never a
+    // valid userId (spec §3): feeding it to setSelectedDMNode would open an
+    // empty details panel.
+    const node = makeDevice({ nodeNum: 100, user: { id: '' } });
+    const graph = makeGraph([makeStripNode(100)]);
+
+    const meta = buildStripNodeMeta(graph, [node], {
+      hopsCalculation: 'nodeinfo',
+      traceroutes: [],
+      currentNodeNum: null,
+    });
+
+    expect(meta.get(100)!.userId).toBeUndefined();
+    expect(meta.get(100)!.nodeId).toBe('!00000064');
+  });
+
   it('does not perform an O(n²) find over the nodes array (perf smoke guard)', () => {
     // 1,000 nodes, only 3 of which appear in the graph. A naive
     // `nodes.find(n => n.nodeNum === hop.nodeNum)` per hop is O(n*m) and

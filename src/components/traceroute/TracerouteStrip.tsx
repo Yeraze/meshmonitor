@@ -19,15 +19,18 @@ import { useTranslation } from 'react-i18next';
 import type { NodeTypeCategory } from '../../utils/nodeTypeCategory';
 import type { DateFormat, TimeFormat } from '../../contexts/SettingsContext';
 import { getHopColor } from '../../utils/roleGlyphSvg';
+import { calculateDistance, formatDistance } from '../../utils/distance';
 import {
   layoutTracerouteStrip,
   paddedHexId,
+  type StripEdge,
   type StripLane,
   type TracerouteStripGraph,
 } from '../../utils/tracerouteStrip';
 import { NodeCard } from '../map/popups/NodeCard';
-import { IdentityItems, SignalItems, PositionItem, LastHeardFooter } from '../map/popups/sections';
+import { IdentityItems, SignalItems, PositionItem, LastHeardFooter, NodeActions } from '../map/popups/sections';
 import type { NodeCardModel } from '../map/popups/nodeCardModel';
+import { UiIcon } from '../icons';
 import { NodeGlyph } from './NodeGlyph';
 import styles from './TracerouteStrip.module.css';
 
@@ -50,6 +53,10 @@ export interface TracerouteStripNodeMeta {
   card: NodeCardModel;
   /** Reported coordinates, when the node has a position fix. */
   pos?: { lat: number; lng: number };
+  /** `node.user.id` when the node has a real user record, else undefined.
+   *  Distinct from `nodeId`, which falls back to `paddedHexId`. Gates the
+   *  "More Details" action: only a real user id can select a conversation. */
+  userId?: string;
 }
 
 export interface TracerouteStripProps {
@@ -59,13 +66,24 @@ export interface TracerouteStripProps {
   timeFormat: TimeFormat;
   dateFormat: DateFormat;
   distanceUnit?: 'km' | 'mi' | 'nm';
+  /** Load this node into the Node Details panel. When omitted (or when the
+   *  hovered hop has no `meta.userId`) the popup renders no action button.
+   *  Kept as a narrow callback so the strip stays a pure function of plain
+   *  data — it never learns about MessagingContext, tabs, or DeviceInfo. */
+  onOpenNodeDetails?: (nodeUserId: string) => void;
 }
 
 /** Gap between the glyph and the popup, and the minimum margin kept between
  *  the popup and every viewport edge. */
 const POPUP_GAP = 8;
 
-interface HoverState {
+/** How long the popup survives after the pointer leaves the glyph, so the
+ *  pointer can cross the POPUP_GAP into the card. Pointer only — blur,
+ *  scroll-out and unmount still hide immediately. */
+export const HOVER_LINGER_MS = 180;
+
+interface HoverNodeTarget {
+  kind: 'node';
   /** StripNode id — identifies the exact glyph, not just the nodeNum (the
    *  same node can occupy several lanes). */
   id: string;
@@ -74,6 +92,19 @@ interface HoverState {
   fallbackId: string;
   anchor: HTMLElement;
 }
+
+/** WP2: the edge-tooltip counterpart to `HoverNodeTarget`. */
+interface HoverEdgeTarget {
+  kind: 'edge';
+  /** StripEdge id (`${leg}:${fromId}>${toId}`). */
+  id: string;
+  edge: StripEdge;
+  anchor: SVGPolylineElement;
+}
+
+/** One target, two kinds — keeps exactly one popup open at a time by
+ *  construction (spec §4.2). */
+type HoverTarget = HoverNodeTarget | HoverEdgeTarget;
 
 interface PopupPosition {
   left: number;
@@ -109,27 +140,75 @@ export function TracerouteStrip({
   timeFormat,
   dateFormat,
   distanceUnit = 'km',
+  onOpenNodeDetails,
 }: TracerouteStripProps) {
   const { t } = useTranslation();
   const uid = useId();
 
   const layout = useMemo(() => layoutTracerouteStrip(graph), [graph]);
 
-  const [hover, setHover] = useState<HoverState | null>(null);
+  const [hover, setHover] = useState<HoverTarget | null>(null);
   const [popupPos, setPopupPos] = useState<PopupPosition | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const hide = useCallback(() => {
+  const clearHideTimer = useCallback(() => {
+    if (hideTimer.current !== null) {
+      clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+  }, []);
+
+  /** Immediate — keyboard blur, anchor scrolled out of view, action taken. */
+  const hideNow = useCallback(() => {
+    clearHideTimer();
     setHover(null);
     setPopupPos(null);
-  }, []);
+  }, [clearHideTimer]);
+
+  /** Pointer-leave — deferred, so travel into the popup can cancel it. */
+  const scheduleHide = useCallback(() => {
+    clearHideTimer();
+    hideTimer.current = setTimeout(() => {
+      hideTimer.current = null;
+      setHover(null);
+      setPopupPos(null);
+    }, HOVER_LINGER_MS);
+  }, [clearHideTimer]);
+
+  // Clear any pending hide on unmount — nothing left to set state on.
+  useEffect(() => clearHideTimer, [clearHideTimer]);
 
   const show = useCallback(
     (id: string, nodeNum: number, isPlaceholder: boolean, fallbackId: string, anchor: HTMLElement) => {
+      clearHideTimer(); // re-entering the same glyph or a neighbour cancels a pending hide
       setPopupPos(null); // re-measure for the new anchor before showing
-      setHover({ id, nodeNum, isPlaceholder, fallbackId, anchor });
+      setHover({ kind: 'node', id, nodeNum, isPlaceholder, fallbackId, anchor });
     },
-    [],
+    [clearHideTimer],
+  );
+
+  /** WP2: same shape as `show`, for an edge hit target. */
+  const showEdge = useCallback(
+    (e: StripEdge, anchor: SVGPolylineElement) => {
+      clearHideTimer();
+      setPopupPos(null);
+      setHover({ kind: 'edge', id: e.id, edge: e, anchor });
+    },
+    [clearHideTimer],
+  );
+
+  /** Touch path: a tap on an already-open hit target closes it; a tap on any
+   *  other (or no) target opens it. */
+  const toggleEdge = useCallback(
+    (e: StripEdge, anchor: SVGPolylineElement) => {
+      if (hover?.id === e.id) {
+        hideNow();
+      } else {
+        showEdge(e, anchor);
+      }
+    },
+    [hover, hideNow, showEdge],
   );
 
   /**
@@ -158,7 +237,7 @@ export function TracerouteStrip({
     // then scroll the panel). Anchoring to something off-screen would drag the
     // popup off with it, so drop it instead.
     if (a.bottom < 0 || a.top > vh || a.right < 0 || a.left > vw) {
-      hide();
+      hideNow();
       return;
     }
 
@@ -182,7 +261,7 @@ export function TracerouteStrip({
     setPopupPos((prev) =>
       prev && prev.left === left && prev.top === top ? prev : { left, top },
     );
-  }, [hover, hide]);
+  }, [hover, hideNow]);
 
   // Position after the popup has rendered (so it can be measured), before paint.
   useLayoutEffect(() => {
@@ -204,21 +283,37 @@ export function TracerouteStrip({
     };
   }, [hover, reposition]);
 
+  // Touch has no hover-out to dismiss on, so a tap outside the open target
+  // (and outside the popup itself) closes it — mirrors the scroll/resize
+  // effect above: mounted only while something is open.
+  useEffect(() => {
+    if (!hover) return;
+    const onDown = (ev: PointerEvent) => {
+      const target = ev.target as Element | null;
+      if (target?.closest?.(`.${styles.edgeHit}`)) return; // handled by onClick
+      if (popupRef.current?.contains(target as Node)) return; // clicking inside the card
+      hideNow();
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [hover, hideNow]);
+
   const glyphSize = DEFAULT_GLYPH_SIZE;
   const arrowId = `${uid}-head`;
 
   /**
    * The hover popup body — the same card the Map page renders, minus the
-   * action buttons (the popup is non-interactive) and minus the traceroute
-   * tab (redundant inside a traceroute strip). Composed from the shared
-   * popup family rather than re-implemented.
+   * traceroute tab (redundant inside a traceroute strip) and minus every
+   * action button except `more-details` (the only one that makes sense from
+   * inside a traceroute hop — reused via `NodeActions`, never hand-rolled).
+   * Composed from the shared popup family rather than re-implemented.
    *
    * A hop we never resolved (`BROADCAST_ADDR`, or a node absent from `meta`)
    * has no card model, so it falls back to a minimal card carrying just the
    * padded hex id — same information the old inline tooltip showed.
    */
   const hoverCard = useMemo(() => {
-    if (!hover) return null;
+    if (!hover || hover.kind !== 'node') return null;
     const hovered = hover.isPlaceholder ? undefined : meta.get(hover.nodeNum);
 
     if (!hovered) {
@@ -256,27 +351,151 @@ export function TracerouteStrip({
               timeFormat={timeFormat}
               dateFormat={dateFormat}
             />
+            {onOpenNodeDetails && hovered.userId && (
+              <NodeActions
+                actions={[{
+                  kind: 'more-details',
+                  onClick: () => {
+                    const userId = hovered.userId!;
+                    // Dismiss FIRST: selecting a different node re-renders the
+                    // strip for that node's traceroute, which unmounts the
+                    // anchor glyph this popup is positioned against. A
+                    // surviving popup would be anchored to a detached element.
+                    hideNow();
+                    onOpenNodeDetails(userId);
+                  },
+                }]}
+              />
+            )}
           </>
         }
       />
     );
-  }, [hover, meta, distanceUnit, timeFormat, dateFormat, t]);
+  }, [hover, meta, distanceUnit, timeFormat, dateFormat, t, onOpenNodeDetails, hideNow]);
 
   const stripLabel = t('messages.traceroute_strip_label', 'Traceroute path');
   const forwardLegCaption = t('messages.traceroute_leg_forward', 'Forward');
   const returnLegCaption = t('messages.traceroute_leg_return', 'Return');
   const unknownNodeLabel = t('messages.traceroute_unknown_node', 'Unknown');
 
+  /** StripNode.id -> StripNode, so an edge's endpoints resolve to nodeNums
+   *  (WP2). */
+  const nodeById = useMemo(
+    () => new Map(graph.nodes.map((n) => [n.id, n] as const)),
+    [graph],
+  );
+
+  /** Same name shape the glyph shows: "Long Name (SHRT)", or the short name
+   *  alone, or the unknown placeholder + padded hex for an unresolved hop —
+   *  mirrors the `isPlaceholder`/`nodeMeta` pattern the glyph loop below
+   *  already uses, so the two stay in lockstep. */
+  const displayNameForNodeId = useCallback(
+    (stripNodeId: string): string => {
+      const node = nodeById.get(stripNodeId);
+      if (!node) return unknownNodeLabel;
+      const isPlaceholder = node.isUnknown || !meta.has(node.nodeNum);
+      const nodeMeta = isPlaceholder ? undefined : meta.get(node.nodeNum);
+      if (!nodeMeta) {
+        return `${unknownNodeLabel} ${paddedHexId(node.nodeNum)}`;
+      }
+      return nodeMeta.longName ? `${nodeMeta.longName} (${nodeMeta.shortName})` : nodeMeta.shortName;
+    },
+    [nodeById, meta, unknownNodeLabel],
+  );
+
+  /** km between two endpoints, or null when either lacks a position fix. */
+  const edgeDistanceKm = useCallback(
+    (e: StripEdge): number | null => {
+      const from = meta.get(nodeById.get(e.fromId)?.nodeNum ?? -1)?.pos;
+      const to = meta.get(nodeById.get(e.toId)?.nodeNum ?? -1)?.pos;
+      if (!from || !to) return null;
+      return calculateDistance(from.lat, from.lng, to.lat, to.lng);
+    },
+    [meta, nodeById],
+  );
+
+  // `formatDistance` accepts only 'km' | 'mi'; 'nm' falls back to metric —
+  // the same coercion src/utils/traceroute.tsx and sections.tsx already make.
+  const formatUnit: 'km' | 'mi' = distanceUnit === 'mi' ? 'mi' : 'km';
+
+  // Identical formatting to the existing SNR labels (snrDecimals = 1).
+  const edgeSnrText = (e: StripEdge): string | null =>
+    e.snrUnknown
+      ? t(
+          'messages.traceroute_snr_unknown',
+          'Unknown SNR (MQTT-bridged hop, decrypt failure, or old firmware)',
+        )
+      : e.snr !== null
+        ? t('messages.traceroute_hop_snr', '{{snr}} dB', { snr: e.snr.toFixed(1) })
+        : null;
+
+  /** The hit target's aria-label: direction, endpoints, distance and SNR,
+   *  joined via the existing separator and skipping any absent fragment —
+   *  same "no dangling comma" rule the glyph's accessibleName follows. */
+  const edgeSummary = (e: StripEdge): string => {
+    const direction = e.leg === 'forward' ? forwardLegCaption : returnLegCaption;
+    const endpoints = t('messages.traceroute_edge_endpoints', '{{from}} → {{to}}', {
+      from: displayNameForNodeId(e.fromId),
+      to: displayNameForNodeId(e.toId),
+    });
+    const km = edgeDistanceKm(e);
+    const distance = km !== null ? formatDistance(km, formatUnit, 1) : null;
+    const snr = edgeSnrText(e);
+    return [direction, endpoints, distance, snr]
+      .filter((part): part is string => !!part)
+      .join(t('messages.traceroute_node_label_separator', ', '));
+  };
+
+  /** Edge tooltip body (WP2) — plain JSX reusing the `.node-popup-*` classes
+   *  rather than `NodeCard`: an edge has no node model to render. Distance
+   *  and SNR rows are omitted entirely when absent, matching the existing
+   *  SNR-label convention and keeping the DOM assertable. */
+  const renderEdgeTooltip = (e: StripEdge) => {
+    const directionCaption = e.leg === 'forward' ? forwardLegCaption : returnLegCaption;
+    const from = displayNameForNodeId(e.fromId);
+    const to = displayNameForNodeId(e.toId);
+    const km = edgeDistanceKm(e);
+    const snrText = edgeSnrText(e);
+    return (
+      <div className="node-popup">
+        <div className="node-popup-content">
+          <div className="node-popup-grid">
+            <div className="node-popup-item node-popup-item-full">
+              <span className="node-popup-icon"><UiIcon name="route" /></span>
+              <span className={styles.srOnly}>{t('messages.traceroute_edge_direction_label', 'Direction')}: </span>
+              <span className="node-popup-value">{directionCaption}</span>
+            </div>
+            <div className="node-popup-item node-popup-item-full">
+              <span className="node-popup-icon"><UiIcon name="link" /></span>
+              <span className={styles.srOnly}>{t('messages.traceroute_edge_endpoints_label', 'Endpoints')}: </span>
+              <span className="node-popup-value">
+                {t('messages.traceroute_edge_endpoints', '{{from}} → {{to}}', { from, to })}
+              </span>
+            </div>
+            {km !== null && (
+              <div className="node-popup-item node-popup-item-full">
+                <span className="node-popup-icon"><UiIcon name="ruler" /></span>
+                <span className={styles.srOnly}>{t('messages.traceroute_edge_distance_label', 'Distance')}: </span>
+                <span className="node-popup-value">{formatDistance(km, formatUnit, 1)}</span>
+              </div>
+            )}
+            {snrText && (
+              <div className="node-popup-item node-popup-item-full">
+                <span className="node-popup-icon"><UiIcon name="radioSignal" /></span>
+                <span className={styles.srOnly}>{t('messages.traceroute_edge_snr_label', 'Signal')}: </span>
+                <span className="node-popup-value">{snrText}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={styles.scroller} role="group" aria-label={stripLabel}>
       <div className={styles.canvas} style={{ width: layout.width, height: layout.height }}>
-        <svg
-          className={styles.edges}
-          width={layout.width}
-          height={layout.height}
-          aria-hidden="true"
-          focusable="false"
-        >
+        <svg className={styles.edges} width={layout.width} height={layout.height}>
           <defs>
             {/* One marker def, shared by both legs — direction is carried by
                 arrow orientation, not by a second color (see module banner
@@ -293,19 +512,57 @@ export function TracerouteStrip({
               <path className={styles.arrowHead} d="M 0 0 L 10 5 L 0 10 Z" />
             </marker>
           </defs>
-          {graph.edges.map((e) => {
-            const path = layout.edgePaths.get(e.id);
-            if (!path) return null;
-            const points = path.map((p) => `${p.x},${p.y}`).join(' ');
-            return (
-              <polyline
-                key={e.id}
-                className={e.leg === 'forward' ? styles.forwardEdge : styles.returnEdge}
-                points={points}
-                markerEnd={`url(#${arrowId})`}
-              />
-            );
-          })}
+
+          {/* Visible geometry — decorative; every fact it encodes is also
+              carried by the node aria-labels, the SNR labels, and the
+              per-edge hit targets below. */}
+          <g aria-hidden="true">
+            {graph.edges.map((e) => {
+              const path = layout.edgePaths.get(e.id);
+              if (!path) return null;
+              const points = path.map((p) => `${p.x},${p.y}`).join(' ');
+              return (
+                <polyline
+                  key={e.id}
+                  className={e.leg === 'forward' ? styles.forwardEdge : styles.returnEdge}
+                  points={points}
+                  markerEnd={`url(#${arrowId})`}
+                />
+              );
+            })}
+          </g>
+
+          {/* Interactive hit targets: an invisible, widened copy of each edge
+              path, drawn last so it sits above the visible stroke. `.edges`
+              keeps `pointer-events: none`; a descendant re-enabling its own
+              `pointer-events` is hit-tested normally, so only these lines
+              are (WP2). */}
+          <g>
+            {graph.edges.map((e) => {
+              const path = layout.edgePaths.get(e.id);
+              if (!path) return null;
+              const tipId = `${uid}-tip-${e.id}`;
+              return (
+                <polyline
+                  key={`hit-${e.id}`}
+                  className={styles.edgeHit}
+                  points={path.map((p) => `${p.x},${p.y}`).join(' ')}
+                  role="img"
+                  tabIndex={0}
+                  aria-label={edgeSummary(e)}
+                  aria-describedby={hover?.id === e.id ? tipId : undefined}
+                  onMouseEnter={(ev) => showEdge(e, ev.currentTarget)}
+                  onMouseLeave={scheduleHide}
+                  onFocus={(ev) => showEdge(e, ev.currentTarget)}
+                  onBlur={hideNow}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    toggleEdge(e, ev.currentTarget);
+                  }}
+                />
+              );
+            })}
+          </g>
         </svg>
 
         {graph.edges.map((e) => {
@@ -371,20 +628,41 @@ export function TracerouteStrip({
 
           const tipId = `${uid}-tip-${n.id}`;
 
+          // Keyboard reaches the action from the anchor, not by tabbing into
+          // the portal (the popup is portalled to `document.body`, at the
+          // very end of document order — see the module banner). `Enter`/
+          // `Space` on a focused glyph fires the same callback the button
+          // fires; `role="button"` is set only when that path is actually
+          // available, so assistive tech doesn't advertise a no-op control.
+          const userId = nodeMeta?.userId;
+          const canOpenDetails = !!onOpenNodeDetails && !!userId;
+
           return (
             <div
               key={n.id}
               className={cx(styles.node, laneClassFor(n.lane))}
               style={{ left: center.x, top: center.y }}
               tabIndex={0}
+              role={canOpenDetails ? 'button' : undefined}
               aria-describedby={hover?.id === n.id ? tipId : undefined}
               aria-label={accessibleName}
               onMouseEnter={(e) =>
                 show(n.id, n.nodeNum, isPlaceholder, nodeId, e.currentTarget)
               }
-              onMouseLeave={hide}
+              onMouseLeave={scheduleHide}
               onFocus={(e) => show(n.id, n.nodeNum, isPlaceholder, nodeId, e.currentTarget)}
-              onBlur={hide}
+              onBlur={hideNow}
+              onKeyDown={
+                canOpenDetails
+                  ? (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        hideNow();
+                        onOpenNodeDetails!(userId!);
+                      }
+                    }
+                  : undefined
+              }
             >
               <NodeGlyph
                 category={category}
@@ -405,10 +683,16 @@ export function TracerouteStrip({
             ref={popupRef}
             id={`${uid}-tip-${hover.id}`}
             role="tooltip"
-            className={cx(styles.hoverPopup, popupPos && styles.hoverPopupReady)}
+            className={cx(
+              styles.hoverPopup,
+              popupPos && styles.hoverPopupReady,
+              hover.kind === 'edge' && styles.hoverPopupEdge,
+            )}
             style={{ left: popupPos?.left ?? 0, top: popupPos?.top ?? 0 }}
+            onMouseEnter={clearHideTimer}
+            onMouseLeave={scheduleHide}
           >
-            {hoverCard}
+            {hover.kind === 'node' ? hoverCard : renderEdgeTooltip(hover.edge)}
           </div>,
           document.body,
         )}

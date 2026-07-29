@@ -128,9 +128,10 @@
 .hoverPopup {
   position: fixed;
   z-index: 10002; /* matches NodePopup's chat overlay */
-  /* Non-interactive by design: the popup is a preview, not a surface to
-   * click into, so it never steals the pointer from the glyph beneath it. */
-  pointer-events: none;
+  /* Interactive since #TRS-phase1: the card carries a "More Details" button,
+   * so the pointer must be able to travel into it. HOVER_LINGER_MS in the
+   * component is what makes crossing the POPUP_GAP possible. */
+  pointer-events: auto;
   /* Hidden until measured and placed, so the first paint can't flash at the
    * provisional 0,0 position. */
   opacity: 0;
@@ -139,6 +140,39 @@
 
 .hoverPopupReady {
   opacity: 1;
+}
+
+/* Marks the edge variant of the hover popup (#TRS-phase1 WP2): no button
+ * lives inside one, just direction/endpoints/distance/SNR content — a pure
+ * content/role hook, not a pointer-events switch. `.hoverPopup`'s
+ * `pointer-events: auto` already covers both variants (the linger-cancel on
+ * mouseenter needs it either way), so this class carries no declarations of
+ * its own. */
+.hoverPopupEdge {
+  /* intentionally empty */
+}
+
+/* Invisible, widened copy of each edge path (WP2). `.edges` keeps
+ * `pointer-events: none`; a descendant that sets its own `pointer-events` is
+ * still hit-tested, so ONLY these lines are interactive — the visible
+ * strokes and the arrowheads stay inert. */
+.edgeHit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: stroke;
+  cursor: help;
+}
+
+.edgeHit:focus-visible {
+  /* Paints the edge itself blue rather than an outline box around the
+   * segment's bounding rect, which for a diagonal edge would be a large,
+   * misleading rectangle. */
+  stroke: var(--ctp-blue);
+  stroke-width: 3;
+  outline: none;
 }
 
 /* Visually-hidden lane caption ("Forward"/"Return") announced ahead of each

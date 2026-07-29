@@ -293,8 +293,8 @@ When information is unavailable, the block displays "N/A" for that metric. This 
 When the selected node has traceroute data, the Node Details block draws the forward and return paths as a strip of node icons instead of two lines of text.
 
 - Each node in the path renders as a role icon — a tower for a repeater, and similar icons for sensors, room servers, and companion devices — colored by hop count. Hop count follows your [Node Hops Calculation](/features/link-quality#node-hops-calculation) setting, the same one that colors the node list and map markers. A node marked unmessagable (it can't receive direct messages) keeps its usual corner badge.
-- Each node's short name sits underneath its icon. Hover it, or tab to it with the keyboard, to see its long name, role, and node ID.
-- Arrows connect the nodes and show which way each path runs. The forward path's SNR values sit above the row; the return path's sit below, and its line is dashed.
+- Each node's short name sits underneath its icon. Hover it, or tab to it with the keyboard, to see its long name, role, and node ID. The card also carries a **More Details** button that loads that node into the Node Details panel — with the keyboard, press Enter or Space on the node itself. Unknown hops offer no button.
+- Arrows connect the nodes and show which way each path runs. The forward path's SNR values sit above the row; the return path's sit below, and its line is dashed. Hover or tap a link to see its direction, both endpoints, the distance between them (in your configured distance unit, shown only when both ends have a position), and the hop's SNR.
 - A hop no relay identified itself for shows as a neutral "Unknown" placeholder rather than being skipped, so the path length stays visible. An SNR value the firmware didn't record shows as "?".
 
 **Reading the overlap**: a node that both the forward and return paths pass through is drawn only once. That single icon is where the two paths meet.
