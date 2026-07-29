@@ -145,6 +145,7 @@ import { migration as addAtakContactsMigration, runMigration127Postgres, runMigr
 import { migration as mqttOkToMqttViolationsMigration, runMigration128Postgres, runMigration128Mysql } from '../server/migrations/128_mqtt_oktomqtt_violations.js';
 import { migration as addShowAtakContactsMigration, runMigration129Postgres, runMigration129Mysql } from '../server/migrations/129_add_show_atak_contacts_to_map_prefs.js';
 import { migration as addWaypointChannelMigration, runMigration130Postgres, runMigration130Mysql } from '../server/migrations/130_add_waypoint_channel.js';
+import { migration as seedPerSourceNodeDisplayMigration, runMigration131Postgres, runMigration131Mysql } from '../server/migrations/131_seed_per_source_node_display.js';
 
 // ============================================================================
 // Registry
@@ -2069,4 +2070,22 @@ registry.register({
   sqlite: (db) => addWaypointChannelMigration.up(db),
   postgres: (client) => runMigration130Postgres(client),
   mysql: (pool) => runMigration130Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 131: seed the per-source Node Display settings (#4412). Copies the
+// current global value (or the documented default) into `source:{id}:{key}` for
+// every existing source and all ten Node Display keys, so Phase 2's per-source
+// reads — which deliberately have no global fallback (#2839) — do not silently
+// fall back to hardcoded defaults on upgrade. Insert-if-absent: never clobbers a
+// value a user already set per-source.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 131,
+  name: 'seed_per_source_node_display',
+  settingsKey: 'migration_131_seed_per_source_node_display',
+  sqlite: (db) => seedPerSourceNodeDisplayMigration.up(db),
+  postgres: (client) => runMigration131Postgres(client),
+  mysql: (pool) => runMigration131Mysql(pool),
 });

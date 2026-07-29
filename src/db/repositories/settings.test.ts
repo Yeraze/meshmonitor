@@ -122,8 +122,16 @@ function runSettingsTests(getBackend: () => TestBackend) {
     await repo.setSetting('b', '2');
     await repo.setSetting('c', '3');
 
+    // Subset assertion, not exact-equality: the SQLite backend builds its
+    // fixture from the real migration registry (createTestDb()), and a
+    // migration is free to legitimately seed real settings rows (e.g.
+    // migration 131 seeding per-source Node Display defaults for whatever
+    // source(s) exist — #4412). This test's contract is "getAllSettings
+    // returns what was set", not "the table starts empty".
     const all = await repo.getAllSettings();
-    expect(all).toEqual({ a: '1', b: '2', c: '3' });
+    expect(all.a).toBe('1');
+    expect(all.b).toBe('2');
+    expect(all.c).toBe('3');
   });
 
   it('deleteSetting - removes a specific setting', async () => {
@@ -230,6 +238,62 @@ function runSettingsTests(getBackend: () => TestBackend) {
     await repo.setSetting('bad', 'not-json');
     expect(await repo.getSettingAsJson('bad')).toBeNull();
     expect(await repo.getSettingAsJson('bad', defaultVal)).toEqual(defaultVal);
+  });
+
+  it('deleteSourceSettings - removes only the target source prefix', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.setSetting('maxNodeAgeHours', '24');
+    await repo.setSourceSetting('source-a', 'maxNodeAgeHours', '48');
+    await repo.setSourceSetting('source-a', 'hideIncompleteNodes', '1');
+    await repo.setSourceSetting('source-b', 'maxNodeAgeHours', '12');
+
+    await repo.deleteSourceSettings('source-a');
+
+    // Target source's namespace is gone.
+    expect(await repo.getSourceSettings('source-a')).toEqual({});
+
+    // A sibling source's namespace survives.
+    expect(await repo.getSourceSettings('source-b')).toEqual({ maxNodeAgeHours: '12' });
+
+    // The un-namespaced global row survives.
+    expect(await repo.getSetting('maxNodeAgeHours')).toBe('24');
+  });
+
+  it('deleteSourceSettings - no-op on an unknown sourceId', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.setSourceSetting('source-a', 'maxNodeAgeHours', '48');
+
+    await expect(repo.deleteSourceSettings('does-not-exist')).resolves.toBeUndefined();
+
+    expect(await repo.getSourceSettings('source-a')).toEqual({ maxNodeAgeHours: '48' });
+  });
+
+  it('deleteSourceSettings - a sourceId containing a LIKE wildcard does not over-match a lookalike namespace', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // 'source_a' (underscore) is a single-char LIKE wildcard that would match
+    // 'sourceXa' unless escaped. Set up a lookalike sibling namespace that must survive.
+    await repo.setSourceSetting('source_a', 'maxNodeAgeHours', '48');
+    await repo.setSourceSetting('sourceXa', 'maxNodeAgeHours', '12');
+
+    await repo.deleteSourceSettings('source_a');
+
+    expect(await repo.getSourceSettings('source_a')).toEqual({});
+    expect(await repo.getSourceSettings('sourceXa')).toEqual({ maxNodeAgeHours: '12' });
   });
 
   it('deleteAllSettings - removes all settings', async () => {

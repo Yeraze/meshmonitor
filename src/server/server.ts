@@ -864,8 +864,12 @@ setSettingsCallbacks({
     const mgr = resolveSourceManager(sourceId);
     mgr.setRemoteAdminScannerInterval(interval);
   },
-  setLocalStatsInterval: (interval) =>
-    (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).setLocalStatsInterval(interval),
+  setLocalStatsInterval: (interval, sourceId) => {
+    const mgr = sourceId
+      ? sourceManagerRegistry.getManager(sourceId)
+      : (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager);
+    if (mgr && isMeshtasticManager(mgr)) mgr.setLocalStatsInterval(interval);
+  },
   setKeyRepairSettings: (settings) =>
     (getPrimaryMeshtasticManager(sourceManagerRegistry) ?? fallbackManager).setKeyRepairSettings(settings),
   restartInactiveNodeService: (threshold, check, cooldown) =>

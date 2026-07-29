@@ -3197,6 +3197,23 @@ class DatabaseService {
     }
   }
 
+  /**
+   * Delete every `source:{id}:*` settings row and evict the matching sync-cache
+   * entries. Called when a source is deleted (sourceRoutes DELETE /:id) so the
+   * namespace does not outlive the source.
+   *
+   * The cache is PG/MySQL-only (see settingsCache) but evicting unconditionally
+   * is harmless on SQLite, where the map is never populated.
+   */
+  async deleteSourceSettingsAsync(sourceId: string): Promise<void> {
+    if (!this.settingsRepo) return;
+    await this.settingsRepo.deleteSourceSettings(sourceId);
+    const prefix = `source:${sourceId}:`;
+    for (const key of [...this.settingsCache.keys()]) {
+      if (key.startsWith(prefix)) this.settingsCache.delete(key);
+    }
+  }
+
 
 
   // ============ ASYNC NOTIFICATION PREFERENCES METHODS ============
