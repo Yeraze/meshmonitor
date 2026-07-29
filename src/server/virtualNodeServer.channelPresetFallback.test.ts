@@ -136,6 +136,22 @@ describe('VirtualNodeServer.sendChannelsFromDb() — issue #4037 preset-name fal
     );
   });
 
+  it('swallows getSetting errors and leaves the name undefined', async () => {
+    getAllChannelsMock.mockResolvedValue([emptySlot0]);
+    getSettingMock.mockRejectedValue(new Error('DB unavailable'));
+
+    const manager = makeFakeManager('src-1', null);
+    const vn = new VirtualNodeServer({ port: 0, meshtasticManager: manager });
+    attachFakeClient(vn, 'client-1');
+
+    const result = await (vn as any).sendChannelsFromDb('client-1');
+
+    expect(result).toEqual({ sent: 1, disconnected: false });
+    expect(meshtasticProtobufService.createChannel).toHaveBeenCalledWith(
+      expect.objectContaining({ settings: expect.objectContaining({ name: undefined }) })
+    );
+  });
+
   it('does not crash on a non-numeric persisted preset value and leaves the name undefined', async () => {
     getAllChannelsMock.mockResolvedValue([emptySlot0]);
     getSettingMock.mockResolvedValue('garbage');
