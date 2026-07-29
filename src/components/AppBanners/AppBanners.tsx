@@ -14,6 +14,12 @@ export const DISMISSED_UPDATE_VERSION_KEY = 'meshmonitor_dismissed_update_versio
 
 interface AppBannersProps {
   isTxDisabled: boolean;
+  /**
+   * Radio TX is off but UDP Broadcast relays sends through a LAN peer (#4394).
+   * Mutually exclusive with `isTxDisabled` — sends work, so the banner says so
+   * rather than claiming the device cannot send.
+   */
+  isUdpRelay?: boolean;
   configIssues: ConfigIssue[];
   updateAvailable: boolean;
   latestVersion: string;
@@ -31,6 +37,7 @@ function readDismissedVersion(): string | null {
 
 export const AppBanners: React.FC<AppBannersProps> = ({
   isTxDisabled,
+  isUdpRelay = false,
   configIssues,
   updateAvailable,
   latestVersion,
@@ -91,22 +98,28 @@ export const AppBanners: React.FC<AppBannersProps> = ({
     }
   };
 
+  // At most one TX banner shows: either sends are blocked, or the radio is off
+  // but UDP Broadcast relays them (#4394). Both occupy the same slot, so the
+  // offsets below count them as one.
+  const showTxBanner = isTxDisabled || isUdpRelay;
+
   return (
     <>
-      {/* TX Disabled Warning Banner */}
-      {isTxDisabled && (
+      {/* TX Disabled / UDP-relay Warning Banner */}
+      {showTxBanner && (
         <div
           className="warning-banner"
           style={{ top: 'var(--header-height)' }}
         >
-          <UiIcon name="alert" /> {t('banners.tx_disabled')}
+          <UiIcon name="alert" />{' '}
+          {isTxDisabled ? t('banners.tx_disabled') : t('banners.tx_disabled_udp_relay')}
         </div>
       )}
 
       {/* Configuration Issue Warning Banners */}
       {configIssues.map((issue, index) => {
         // Calculate how many banners are above this one
-        const bannersAbove = [isTxDisabled].filter(Boolean).length + index;
+        const bannersAbove = [showTxBanner].filter(Boolean).length + index;
         const topOffset =
           bannersAbove === 0
             ? 'var(--header-height)'
@@ -131,7 +144,7 @@ export const AppBanners: React.FC<AppBannersProps> = ({
       {showUpdateBanner &&
         (() => {
           // Calculate total warning banners above the update banner
-          const warningBannersCount = [isTxDisabled].filter(Boolean).length + configIssues.length;
+          const warningBannersCount = [showTxBanner].filter(Boolean).length + configIssues.length;
           const topOffset =
             warningBannersCount === 0
               ? 'var(--header-height)'

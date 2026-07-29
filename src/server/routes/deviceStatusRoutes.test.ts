@@ -5,6 +5,7 @@ import express from 'express';
 const mockManager = vi.hoisted(() => ({
   getDeviceConfig: vi.fn(),
   getSecurityKeys: vi.fn(),
+  isUdpBroadcastRelayEnabled: vi.fn(() => false),
 }));
 
 vi.mock('../utils/resolveSourceManager.js', () => ({
@@ -25,17 +26,33 @@ app.use('/', deviceStatusRoutes);
 beforeEach(() => vi.clearAllMocks());
 
 describe('GET /device/tx-status', () => {
+  beforeEach(() => mockManager.isUdpBroadcastRelayEnabled.mockReturnValue(false));
+
   it('reports txEnabled true by default', async () => {
     mockManager.getDeviceConfig.mockResolvedValue({ lora: {} });
     const res = await request(app).get('/device/tx-status');
     expect(res.status).toBe(200);
     expect(res.body.txEnabled).toBe(true);
+    expect(res.body.canTransmit).toBe(true);
   });
 
   it('reports txEnabled false when explicitly disabled', async () => {
     mockManager.getDeviceConfig.mockResolvedValue({ lora: { txEnabled: false } });
     const res = await request(app).get('/device/tx-status');
     expect(res.body.txEnabled).toBe(false);
+    expect(res.body.udpRelayEnabled).toBe(false);
+    expect(res.body.canTransmit).toBe(false);
+  });
+
+  // #4394: firmware still UDP-broadcasts a TX-disabled node's outgoing packets,
+  // and a LAN peer relays them onto the mesh — so sends are NOT futile.
+  it('reports canTransmit true when TX is off but UDP Broadcast relays', async () => {
+    mockManager.getDeviceConfig.mockResolvedValue({ lora: { txEnabled: false } });
+    mockManager.isUdpBroadcastRelayEnabled.mockReturnValue(true);
+    const res = await request(app).get('/device/tx-status');
+    expect(res.body.txEnabled).toBe(false);
+    expect(res.body.udpRelayEnabled).toBe(true);
+    expect(res.body.canTransmit).toBe(true);
   });
 });
 

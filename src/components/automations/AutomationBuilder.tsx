@@ -16,7 +16,16 @@ import type { GeofenceShape } from '../auto-responder/types';
 import { UiIcon } from '../icons';
 
 export interface VariableOption { name: string; type: string; }
-export interface SourceOption { id: string; name: string; type?: string; enabled?: boolean; txEnabled?: boolean; }
+export interface SourceOption {
+  id: string;
+  name: string;
+  type?: string;
+  enabled?: boolean;
+  /** Raw radio TX flag. */
+  txEnabled?: boolean;
+  /** `txEnabled || udpRelayEnabled` — the real "can this source send?" answer (#4394). */
+  canTransmit?: boolean;
+}
 export interface UnifiedChannelOption {
   name: string; protocol?: string; encryption?: string;
   sources?: Array<{ sourceId: string; sourceName?: string; slot: number }>;
@@ -166,7 +175,10 @@ function FieldInput({ field, value, onChange, variables, sources, channels, scri
                 <input type="checkbox" checked={sel.includes(s.id)} onChange={(e) =>
                   onChange(e.target.checked ? [...sel, s.id] : sel.filter((x) => x !== s.id))} />
                 {' '}{s.name}{badge ? <span className="ae-chip">{badge}</span> : null}
-                {s.txEnabled === false && (
+                {/* Prefer canTransmit: a TX-disabled radio with UDP Broadcast on
+                    still delivers, so it must not be flagged (#4394). Older
+                    servers omit the field — fall back to the raw radio flag. */}
+                {(s.canTransmit ?? s.txEnabled) === false && (
                   <span className="ae-tx-warn" title={txWarning}>
                     <UiIcon name="alert" size={14} /> {txWarning}
                   </span>

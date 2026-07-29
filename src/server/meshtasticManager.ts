@@ -60,7 +60,7 @@ import { migrateAutomationChannels } from './utils/automationChannelMigration.js
 import { detectChannelMoves } from './utils/channelMoveDetection.js';
 import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } from './utils/spoofDetection.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled } from './constants/meshtastic.js';
 import { normalizeChannelRole } from './constants/channelRole.js';
 import { createRequire } from 'module';
 import { validateCron, scheduleCron, type CronJob } from './utils/cronScheduler.js';
@@ -2246,7 +2246,7 @@ class MeshtasticManager implements ISourceManager {
     const executeTraceroute = async () => {
       // TX-disabled radios cannot send OTA traceroutes; skip quietly and let the
       // interval keep running so a later TX re-enable resumes automatically (#4294).
-      if (!this.isTxEnabled()) {
+      if (!this.canTransmit()) {
         logger.debug('🗺️ Auto-traceroute: Skipping - TX disabled on this source');
         return;
       }
@@ -2408,7 +2408,7 @@ class MeshtasticManager implements ISourceManager {
     const executeRemoteLocalStats = async () => {
       // TX-disabled radios cannot send remote telemetry requests; skip quietly and
       // let the interval keep running so a later TX re-enable resumes automatically (#4294).
-      if (!this.isTxEnabled()) {
+      if (!this.canTransmit()) {
         logger.debug('📊 Remote LocalStats: Skipping - TX disabled on this source');
         return;
       }
@@ -2680,7 +2680,7 @@ class MeshtasticManager implements ISourceManager {
     this.remoteAdminScannerInterval = setInterval(async () => {
       // TX-disabled radios cannot send remote admin packets; skip quietly and let
       // the interval keep running so a later TX re-enable resumes automatically (#4294).
-      if (!this.isTxEnabled()) {
+      if (!this.canTransmit()) {
         logger.debug('🔑 Remote admin scanner: Skipping - TX disabled on this source');
         return;
       }
@@ -2924,7 +2924,7 @@ class MeshtasticManager implements ISourceManager {
 
     // TX-disabled radios cannot send NodeInfo exchanges; skip quietly and let the
     // interval keep running so a later TX re-enable resumes automatically (#4294).
-    if (!this.isTxEnabled()) {
+    if (!this.canTransmit()) {
       logger.debug('🔐 Key repair: Skipping - TX disabled on this source');
       return;
     }
@@ -3322,7 +3322,7 @@ class MeshtasticManager implements ISourceManager {
         logger.debug(`⏱️ Timer "${trigger.name}" triggered (cron: ${trigger.cronExpression})`);
         // TX-disabled radios cannot send the timer's mesh output; skip quietly and
         // let the cron job keep running so a later TX re-enable resumes automatically (#4294).
-        if (!this.isTxEnabled()) {
+        if (!this.canTransmit()) {
           logger.debug(`⏱️ Timer "${trigger.name}": Skipping - TX disabled on this source`);
           return;
         }
@@ -4319,13 +4319,18 @@ class MeshtasticManager implements ISourceManager {
           // Block-scoped (no-case-declarations): this `case` clause has no
           // braces of its own, so `const` here needs an explicit block.
           {
-            const prevTxEnabled = this.actualDeviceConfig?.lora?.txEnabled !== false;
+            // Log against canTransmit(), not the raw radio flag: a TX-disabled
+            // node with UDP Broadcast on still reaches the mesh via a LAN peer,
+            // so the autonomous senders keep running (#4394).
+            const prevCanTransmit = this.canTransmit();
             this.actualDeviceConfig = { ...this.actualDeviceConfig, ...parsed.data };
-            const nextTxEnabled = this.actualDeviceConfig?.lora?.txEnabled !== false;
-            if (prevTxEnabled !== nextTxEnabled) {
-              logger.info(nextTxEnabled
+            const nextCanTransmit = this.canTransmit();
+            if (prevCanTransmit !== nextCanTransmit) {
+              logger.info(nextCanTransmit
                 ? `📡 [${this.sourceId}] TX re-enabled — autonomous senders resume`
                 : `🚫 [${this.sourceId}] TX disabled — pausing autonomous senders (node is now receive-only)`);
+            } else if (nextCanTransmit && !this.isTxEnabled()) {
+              logger.debug(`📡 [${this.sourceId}] Radio TX is disabled but UDP Broadcast is on — sends relay via the local network`);
             }
           }
           logger.debug('📊 Merged actualDeviceConfig now has keys:', Object.keys(this.actualDeviceConfig));
@@ -9001,12 +9006,46 @@ class MeshtasticManager implements ISourceManager {
 
 
   /**
-   * Current transmit state for THIS source, read from the in-memory device config.
-   * Defaults to true when config hasn't arrived yet (fail-open: don't block sends
-   * before we know the radio's state). No DB access — safe to call per packet.
+   * Current RADIO transmit state for THIS source, read from the in-memory device
+   * config. Defaults to true when config hasn't arrived yet (fail-open: don't
+   * block sends before we know the radio's state). No DB access — safe to call
+   * per packet.
+   *
+   * This is the raw `lora.txEnabled` truth and nothing else — config
+   * import/export and backup paths depend on it to preserve the device's own
+   * setting (#4294). Use `canTransmit()` to decide whether a send is futile.
    */
   isTxEnabled(): boolean {
     return this.actualDeviceConfig?.lora?.txEnabled !== false;
+  }
+
+  /**
+   * True when this node relays its outgoing packets over local-LAN UDP broadcast
+   * (`network.enabledProtocols & UDP_BROADCAST`), read from the in-memory device
+   * config. Defaults to false when the config hasn't arrived (proto3 omits a 0
+   * bit field, so "unknown" and "off" are indistinguishable — treat as off).
+   *
+   * Firmware `Router::send()` calls `udpHandler->onSend(p)` gated only on this
+   * flag, with no `tx_enabled` check, so a TX-disabled node's packets still hit
+   * the LAN and a peer with a working radio can relay them onto the mesh (#4394).
+   */
+  isUdpBroadcastRelayEnabled(): boolean {
+    return isUdpBroadcastEnabled(this.actualDeviceConfig?.network?.enabledProtocols);
+  }
+
+  /**
+   * Whether a send from THIS source has any path onto the mesh (#4394).
+   *
+   * Truth table:
+   *   tx on,  udp off → true   (normal radio TX)
+   *   tx on,  udp on  → true
+   *   tx off, udp on  → true   (RF is dead, but a LAN peer relays for us)
+   *   tx off, udp off → false  (receive-only; sends are futile → TX_DISABLED)
+   *
+   * This — not `isTxEnabled()` — is the guard every transmit primitive uses.
+   */
+  canTransmit(): boolean {
+    return this.isTxEnabled() || this.isUdpBroadcastRelayEnabled();
   }
 
   // Configuration retrieval methods
@@ -9031,7 +9070,7 @@ class MeshtasticManager implements ISourceManager {
       throw new Error('Not connected to Meshtastic node');
     }
 
-    if (!this.isTxEnabled()) {
+    if (!this.canTransmit()) {
       throw new TxDisabledError();
     }
 
@@ -9213,7 +9252,7 @@ class MeshtasticManager implements ISourceManager {
       throw new Error('Not connected to Meshtastic node');
     }
 
-    if (!this.isTxEnabled()) {
+    if (!this.canTransmit()) {
       throw new TxDisabledError();
     }
 
@@ -9265,7 +9304,7 @@ class MeshtasticManager implements ISourceManager {
       throw new Error('Not connected to Meshtastic node');
     }
 
-    if (!this.isTxEnabled()) {
+    if (!this.canTransmit()) {
       throw new TxDisabledError();
     }
 
@@ -9344,7 +9383,7 @@ class MeshtasticManager implements ISourceManager {
       throw new Error('Not connected to Meshtastic node');
     }
 
-    if (!this.isTxEnabled()) {
+    if (!this.canTransmit()) {
       throw new TxDisabledError();
     }
 
@@ -9417,7 +9456,7 @@ class MeshtasticManager implements ISourceManager {
       throw new Error('Not connected to Meshtastic node');
     }
 
-    if (!this.isTxEnabled()) {
+    if (!this.canTransmit()) {
       throw new TxDisabledError();
     }
 
@@ -9648,7 +9687,7 @@ class MeshtasticManager implements ISourceManager {
       throw new Error('Not connected to Meshtastic node');
     }
 
-    if (!this.isTxEnabled()) {
+    if (!this.canTransmit()) {
       throw new TxDisabledError();
     }
 
@@ -10015,7 +10054,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // TX-disabled radios cannot send the ack reply; skip quietly (#4294).
-      if (!this.isTxEnabled()) {
+      if (!this.canTransmit()) {
         logger.debug('⏭️ Skipping auto-acknowledge - TX disabled on this source');
         return;
       }
@@ -10342,7 +10381,7 @@ class MeshtasticManager implements ISourceManager {
 
     // TX-disabled radios cannot send ping replies; skip quietly rather than
     // letting sendTextMessage throw TxDisabledError partway through (#4294).
-    if (!this.isTxEnabled()) {
+    if (!this.canTransmit()) {
       logger.debug('⏭️  Auto-ping command received but TX is disabled on this source');
       return false;
     }
@@ -10450,7 +10489,7 @@ class MeshtasticManager implements ISourceManager {
   private async sendNextAutoPing(session: AutoPingSession): Promise<void> {
     // TX-disabled radios cannot send pings; skip this tick quietly and leave the
     // session's interval running so it resumes automatically on TX re-enable (#4294).
-    if (!this.isTxEnabled()) {
+    if (!this.canTransmit()) {
       return;
     }
 
@@ -10761,7 +10800,7 @@ class MeshtasticManager implements ISourceManager {
       }
 
       // TX-disabled radios cannot send the auto-responder reply; skip quietly (#4294).
-      if (!this.isTxEnabled()) {
+      if (!this.canTransmit()) {
         logger.debug('⏭️ Skipping auto-responder - TX disabled on this source');
         return;
       }

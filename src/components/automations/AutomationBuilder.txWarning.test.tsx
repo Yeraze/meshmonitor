@@ -47,6 +47,8 @@ const sources: SourceOption[] = [
   { id: 'src-tx-off', name: 'Receive Only Node', type: 'meshtastic_tcp', enabled: true, txEnabled: false },
   { id: 'src-tx-on', name: 'Normal Node', type: 'meshtastic_tcp', enabled: true, txEnabled: true },
   { id: 'src-tx-unknown', name: 'Unknown TX Node', type: 'meshtastic_tcp', enabled: true },
+  // #4394: radio TX off, but UDP Broadcast relays through a LAN peer — sends work.
+  { id: 'src-udp-relay', name: 'Udp Relay Node', type: 'meshtastic_tcp', enabled: true, txEnabled: false, canTransmit: true },
 ];
 
 function renderBuilder(sourceIds: string[] = []) {
@@ -98,6 +100,13 @@ describe('AutomationBuilder — TX-disabled advisory badge (#4294 P3)', () => {
     renderBuilder();
 
     expect(document.querySelectorAll('.ae-tx-warn')).toHaveLength(1);
+  });
+
+  it('does not show the badge when the radio is TX-disabled but canTransmit is true (UDP relay, #4394)', () => {
+    renderBuilder();
+
+    const row = rowFor('Udp Relay Node');
+    expect(row.querySelector('.ae-tx-warn')).toBeNull();
   });
 
   it('keeps the checkbox enabled and toggleable for a TX-disabled source that is selected — advisory, not a hard block', () => {

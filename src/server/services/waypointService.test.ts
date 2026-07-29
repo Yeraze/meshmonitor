@@ -313,7 +313,7 @@ describe('rebroadcastTick', () => {
     it('does NOT stamp lastBroadcastAt or call broadcastWaypoint when the source manager reports TX disabled', async () => {
       mockFindOldestEligible.mockResolvedValueOnce(eligibleRow());
       const broadcastWaypoint = vi.fn().mockResolvedValue(42);
-      mockGetManager.mockReturnValueOnce({ broadcastWaypoint, isTxEnabled: () => false });
+      mockGetManager.mockReturnValueOnce({ broadcastWaypoint, canTransmit: () => false });
 
       const result = await waypointService.rebroadcastTick();
 
@@ -326,7 +326,7 @@ describe('rebroadcastTick', () => {
       const row = eligibleRow();
       mockFindOldestEligible.mockResolvedValueOnce(row);
       const broadcastWaypoint = vi.fn().mockResolvedValue(42);
-      mockGetManager.mockReturnValueOnce({ broadcastWaypoint, isTxEnabled: () => true });
+      mockGetManager.mockReturnValueOnce({ broadcastWaypoint, canTransmit: () => true });
       mockMarkRebroadcasted.mockResolvedValueOnce(true);
       mockGet.mockResolvedValueOnce({ ...row, lastBroadcastAt: 1234 });
 
@@ -336,7 +336,27 @@ describe('rebroadcastTick', () => {
       expect(result).not.toBeNull();
     });
 
-    it('broadcasts normally when the manager has no isTxEnabled (e.g. a MeshCore manager, never gated)', async () => {
+    // #4394: radio TX off but UDP Broadcast on — canTransmit() is true, so the
+    // waypoint still goes out (relayed by a LAN peer).
+    it('broadcasts when the radio is TX-disabled but canTransmit() is true (UDP relay)', async () => {
+      const row = eligibleRow();
+      mockFindOldestEligible.mockResolvedValueOnce(row);
+      const broadcastWaypoint = vi.fn().mockResolvedValue(42);
+      mockGetManager.mockReturnValueOnce({
+        broadcastWaypoint,
+        isTxEnabled: () => false,
+        canTransmit: () => true,
+      });
+      mockMarkRebroadcasted.mockResolvedValueOnce(true);
+      mockGet.mockResolvedValueOnce({ ...row, lastBroadcastAt: 1234 });
+
+      const result = await waypointService.rebroadcastTick();
+
+      expect(broadcastWaypoint).toHaveBeenCalledOnce();
+      expect(result).not.toBeNull();
+    });
+
+    it('broadcasts normally when the manager has no canTransmit (e.g. a MeshCore manager, never gated)', async () => {
       const row = eligibleRow();
       mockFindOldestEligible.mockResolvedValueOnce(row);
       const broadcastWaypoint = vi.fn().mockResolvedValue(42);

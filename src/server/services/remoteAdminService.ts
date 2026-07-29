@@ -61,7 +61,9 @@ export class RemoteAdminService {
    * docs/internal/dev-notes/TX_DISABLED_PHASE1_SPEC.md §4.
    */
   private assertTxForRemoteTarget(isLocalNode: boolean): void {
-    if (!isLocalNode && !this.mgr.isTxEnabled()) {
+    // canTransmit(), not isTxEnabled(): with UDP Broadcast on, a LAN peer relays
+    // our admin packets onto the mesh even with the radio TX-disabled (#4394).
+    if (!isLocalNode && !this.mgr.canTransmit()) {
       throw new TxDisabledError('Remote admin requires transmit; TX is disabled on this source');
     }
   }

@@ -105,6 +105,7 @@
 
   "banners.default_password_warning": "Security Warning: The admin account is using the default password. Please change it immediately in the Users tab.",
   "banners.tx_disabled": "Transmit Disabled: Your device cannot send messages. TX is currently disabled in the LoRa configuration. Enable it via the Meshtastic app or re-import your configuration.",
+  "banners.tx_disabled_udp_relay": "Radio Transmit Disabled: This device does not transmit over LoRa itself. UDP Broadcast is on, so sends go out over the local network and another node there relays them to the mesh.",
   "banners.config_error": "Configuration Error",
   "banners.learn_more": "Learn more",
   "banners.update_available": "Update available: v{{version}}",

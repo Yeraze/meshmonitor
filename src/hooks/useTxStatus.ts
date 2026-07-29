@@ -12,8 +12,20 @@ import { useQuery } from '@tanstack/react-query';
  * TX Status response from the backend
  */
 export interface TxStatusData {
-  /** Whether TX is enabled on the device */
+  /** Whether the radio itself is TX-enabled (`lora.txEnabled`) */
   txEnabled: boolean;
+  /**
+   * Whether the device broadcasts its outgoing packets over local-LAN UDP
+   * (`network.enabledProtocols & UDP_BROADCAST`). A TX-disabled node with this
+   * on still reaches the mesh, because a LAN peer relays for it (#4394).
+   * Absent on older servers.
+   */
+  udpRelayEnabled?: boolean;
+  /**
+   * Whether sends have any path onto the mesh (`txEnabled || udpRelayEnabled`).
+   * Absent on older servers — callers fall back to `txEnabled`.
+   */
+  canTransmit?: boolean;
 }
 
 /**
@@ -85,9 +97,21 @@ export function useTxStatus({
     retry: 1,
   });
 
+  const data = query.data;
+  // A source with the radio TX-disabled but UDP Broadcast on can still put
+  // packets on the mesh through a LAN peer, so it must NOT be send-gated (#4394).
+  // `canTransmit` is absent on older servers — fall back to the radio flag.
+  const canTransmit = data ? (data.canTransmit ?? data.txEnabled) : true;
+
   return {
     ...query,
-    /** Whether TX is disabled (inverse of txEnabled for convenience) */
-    isTxDisabled: query.data ? !query.data.txEnabled : false,
+    /** Whether sends are blocked entirely (no radio TX and no UDP relay path) */
+    isTxDisabled: data ? !canTransmit : false,
+    /**
+     * Whether the radio is TX-disabled but UDP Broadcast relays sends anyway.
+     * Sends are allowed; the UI should say "relayed via UDP broadcast", not
+     * "cannot send".
+     */
+    isUdpRelay: data ? data.txEnabled === false && data.udpRelayEnabled === true : false,
   };
 }
