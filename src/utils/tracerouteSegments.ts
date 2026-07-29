@@ -275,6 +275,41 @@ export function hasRouteData(route: string | null | undefined): boolean {
   return route != null && route !== 'null' && route !== '';
 }
 
+// ---------------------------------------------------------------------------
+// Participation predicate (traceroute participation picker, epic phase 2)
+// ---------------------------------------------------------------------------
+
+/** How a node took part in a traceroute. `null` = it did not. */
+export type TracerouteParticipation = 'endpoint' | 'hop';
+
+/** Structural subset of a traceroute row needed to test participation. */
+export interface TracerouteParticipationInput {
+  fromNodeNum: number | string;
+  toNodeNum: number | string;
+  route?: string | null;
+  routeBack?: string | null;
+}
+
+/**
+ * Classify how `nodeNum` took part in one traceroute row.
+ *
+ * Endpoint match wins over hop match: a node that is both the origin and a
+ * relay in its own routeBack is an endpoint, which is what the label should say.
+ *
+ * `fromNodeNum`/`toNodeNum` are coerced with `Number()` because PostgreSQL and
+ * MySQL hand BIGINT columns back as strings (CLAUDE.md, Multi-Database).
+ * `parseHopArray` already `Number()`-coerces every array element.
+ */
+export function tracerouteParticipationKind(
+  row: TracerouteParticipationInput,
+  nodeNum: number,
+): TracerouteParticipation | null {
+  if (Number(row.fromNodeNum) === nodeNum || Number(row.toNodeNum) === nodeNum) return 'endpoint';
+  if (parseHopArray(row.route).includes(nodeNum)) return 'hop';
+  if (parseHopArray(row.routeBack).includes(nodeNum)) return 'hop';
+  return null;
+}
+
 /** One raw hop paired with the SNR observed arriving at it, before any
  *  node-validity filtering — keeping the pairing lets a hop be dropped
  *  without shifting its neighbors' SNR samples out of alignment. */
