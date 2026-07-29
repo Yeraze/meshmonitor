@@ -405,6 +405,23 @@ interface PendingTelemetryRequest {
   retryTimers: Array<ReturnType<typeof setTimeout>>;
 }
 
+/**
+ * Bounds for `autoAckCooldowns` (#4399). It was previously never evicted at
+ * all — it got away with that because it is per-manager (per-source) and
+ * bounded in practice by one radio's NodeDB, but it has no upper bound in
+ * code, and an MQTT-fed source can see far more distinct nodes.
+ *
+ * Shape copied from the Automation Engine's cooldown-key trim
+ * (automationEngineService.ts COOLDOWN_KEYS_MAX/TRIM_TO, #4396): an exact
+ * expiry pass first, since an auto-ack cooldown entry older than the current
+ * `autoAckCooldownSeconds` window can never suppress anything again — deleting
+ * it is provably behaviour-neutral — with a high-water trim only as a backstop
+ * for the pathological case of more than TRIM_TO distinct nodes acking inside
+ * a single window.
+ */
+const AUTO_ACK_COOLDOWNS_MAX = 4096;
+const AUTO_ACK_COOLDOWNS_TRIM_TO = 2048;
+
 class MeshtasticManager implements ISourceManager {
   public sourceId: string;
   private sourceConfigOverride: { host?: string; port?: number; heartbeatIntervalSeconds?: number; mqttLink?: MeshtasticMqttLink; passiveMode?: boolean; passiveResyncStaleMs?: number } | null = null;
@@ -822,7 +839,7 @@ class MeshtasticManager implements ISourceManager {
   private favoritesSupportCache: { version: string; result: boolean } | null = null;
   private cachedAutoAckRegex: { pattern: string; regex: RegExp } | null = null;  // Cached compiled regex
 
-  private autoAckCooldowns: Map<number, number> = new Map(); // nodeNum -> lastResponseTimestamp
+  private autoAckCooldowns: Map<number, number> = new Map(); // nodeNum -> lastResponseTimestamp; bounded, see pruneAutoAckCooldowns (#4399)
   private autoAckProcessedPackets: Set<number> = new Set(); // packetIds already auto-acked (dedup guard)
   private autoResponderCooldowns: Map<string, number> = new Map(); // "triggerIndex:nodeNum" -> lastResponseTimestamp
   private autoResponderProcessedPackets: Set<number> = new Set(); // packetIds already auto-responded (dedup guard)
@@ -10304,9 +10321,38 @@ class MeshtasticManager implements ISourceManager {
 
       // Record cooldown timestamp after successful response
       this.autoAckCooldowns.set(fromNum, Date.now());
+      if (this.autoAckCooldowns.size > AUTO_ACK_COOLDOWNS_MAX) {
+        this.pruneAutoAckCooldowns(cooldownSeconds, Date.now());
+      }
     } catch (error) {
       logger.error('❌ Error in auto-acknowledge:', error);
     }
+  }
+
+  /**
+   * Bound `autoAckCooldowns`' growth (#4399). Mirrors the Automation Engine's
+   * cooldown-key trim (automationEngineService.ts pruneCooldownKeys, #4396):
+   * an exact-expiry pass first (an entry older than the current cooldown
+   * window can never suppress anything again, so deleting it is
+   * behaviour-neutral), then a high-water trim of the oldest survivors as a
+   * backstop only. `cooldownSeconds` is the CURRENT per-source setting — the
+   * same value `checkAutoAcknowledge` compares future messages against — so
+   * "expired under the current window" is exactly the right test.
+   */
+  private pruneAutoAckCooldowns(cooldownSeconds: number, now: number): void {
+    const windowMs = cooldownSeconds * 1000;
+    for (const [nodeNum, ts] of this.autoAckCooldowns) {
+      if (now - ts >= windowMs) this.autoAckCooldowns.delete(nodeNum);
+    }
+    if (this.autoAckCooldowns.size <= AUTO_ACK_COOLDOWNS_TRIM_TO) return;
+    // Backstop: more than TRIM_TO distinct nodes acked inside one window.
+    // Drop the oldest — they expire soonest — accepting that those few nodes
+    // may be eligible to ack again slightly early rather than growing without
+    // bound.
+    const byAge = [...this.autoAckCooldowns.entries()].sort((a, b) => a[1] - b[1]);
+    const dropCount = byAge.length - AUTO_ACK_COOLDOWNS_TRIM_TO;
+    for (let i = 0; i < dropCount; i++) this.autoAckCooldowns.delete(byAge[i][0]);
+    logger.debug(`[AutoAck] cooldown map trimmed to ${this.autoAckCooldowns.size} node(s) (source ${this.sourceId})`);
   }
 
   /**
