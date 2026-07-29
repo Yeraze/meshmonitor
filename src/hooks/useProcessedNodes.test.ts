@@ -5,9 +5,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createElement } from 'react';
+import { createElement, type ReactNode } from 'react';
 import {
   useProcessedNodes,
   sortNodes,
@@ -34,6 +34,51 @@ vi.mock('../contexts/UIContext', () => ({
 
 vi.mock('../contexts/SettingsContext', () => ({
   useSettings: () => mockUseSettingsReturn(),
+}));
+
+// Supporting mocks for the ONE integration-shaped test below (#4412 Phase 3
+// R2), which unmocks '../contexts/SettingsContext' to mount the REAL
+// SettingsProvider (so the source-scoped fetch is genuinely exercised
+// instead of assumed). SettingsContext.tsx pulls in these modules
+// transitively; none of them are exercised by any other test in this file,
+// so mocking them here is inert everywhere else. Mirrors the harness in
+// src/contexts/SettingsContext.test.tsx, adjusted for this file's relative
+// paths.
+vi.mock('../contexts/CsrfContext', () => ({
+  useCsrf: () => ({
+    token: 'test-csrf-token',
+    getToken: () => 'test-csrf-token',
+    fetchToken: vi.fn().mockResolvedValue('test-csrf-token'),
+  }),
+}));
+vi.mock('../services/api', () => ({
+  default: {
+    getBaseUrl: vi.fn().mockResolvedValue(''),
+    getConfig: vi.fn().mockResolvedValue({}),
+  },
+}));
+vi.mock('../utils/logger', () => ({
+  logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+}));
+vi.mock('../config/i18n', () => ({
+  default: { changeLanguage: vi.fn().mockResolvedValue(undefined), language: 'en' },
+}));
+vi.mock('../config/tilesets', () => ({
+  DEFAULT_TILESET_ID: 'osm',
+  type: 'TilesetId',
+}));
+vi.mock('../config/overlayColors', () => ({
+  getSchemeForTileset: vi.fn().mockReturnValue('default'),
+  getOverlayColors: vi.fn().mockReturnValue({ primary: '#ff0000', secondary: '#00ff00' }),
+}));
+vi.mock('../components/EmojiPickerModal/EmojiPickerModal', () => ({
+  DEFAULT_TAPBACK_EMOJIS: ['👍', '❤️', '😂'],
+}));
+vi.mock('../utils/themeValidation', () => ({
+  OPTIONAL_THEME_COLORS: [],
+}));
+vi.mock('../utils/temperature', () => ({
+  type: 'TemperatureUnit',
 }));
 
 // Helper to create a wrapper with QueryClient
@@ -456,6 +501,94 @@ describe('useProcessedNodes', () => {
 
       expect(result.current.processedNodes).toHaveLength(1);
       expect(result.current.processedNodes[0].user?.longName).toBe('Delta Node');
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // #4412 Phase 3 R2 — the suites above mock '../contexts/SettingsContext'
+  // wholesale with a fixed maxNodeAgeHours literal, so they pass identically
+  // whether SettingsContext is genuinely source-scoped or completely broken
+  // — the source-scoping question is unaskable through them. This test
+  // unmocks SettingsContext and mounts the REAL SourceProvider ->
+  // SettingsProvider chain, with the fetch mock returning a different
+  // maxNodeAgeHours per `?sourceId=`, so the plumbing is actually exercised
+  // end to end rather than assumed.
+  // ---------------------------------------------------------------------
+  describe('cross-source integration (real SettingsContext)', () => {
+    afterEach(() => {
+      // Restore the file-wide mock for every other test in this file —
+      // vi.doUnmock only affects imports that happen after it runs, but
+      // hygiene here avoids any later test accidentally picking up the
+      // unmocked module via a fresh dynamic import.
+      vi.doMock('../contexts/SettingsContext', () => ({
+        useSettings: () => mockUseSettingsReturn(),
+      }));
+    });
+
+    it('mounted under two different SourceProviders, resolves a different maxNodeAgeHours per source and filters accordingly', async () => {
+      vi.doUnmock('../contexts/SettingsContext');
+      vi.resetModules();
+
+      const fetchMock = vi.fn((url: string) => {
+        if (typeof url === 'string' && url.includes('sourceId=source-permissive')) {
+          return Promise.resolve({ ok: true, json: async () => ({ maxNodeAgeHours: '72' }) });
+        }
+        if (typeof url === 'string' && url.includes('sourceId=source-strict')) {
+          return Promise.resolve({ ok: true, json: async () => ({ maxNodeAgeHours: '6' }) });
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      const { SourceProvider } = await import('../contexts/SourceContext');
+      const { SettingsProvider } = await import('../contexts/SettingsContext');
+      const { useProcessedNodes: freshUseProcessedNodes } = await import('./useProcessedNodes');
+
+      // 48h-old node: inside a 72h window, outside a 6h window.
+      const boundaryNode = {
+        nodeNum: 99999,
+        user: { id: '!boundary999', longName: 'Boundary Node', shortName: 'BND' },
+        lastHeard: now - 60 * 60 * 48,
+        isFavorite: false,
+      } as DeviceInfo;
+      mockUseNodesReturn.mockReturnValue({ nodes: [boundaryNode], isLoading: false, error: null });
+      mockUseTelemetryNodesReturn.mockReturnValue({
+        nodesWithTelemetry: new Set(),
+        nodesWithWeather: new Set(),
+        nodesWithPKC: new Set(),
+        isLoading: false,
+      });
+      mockUseUIReturn.mockReturnValue({ nodeFilter: '' });
+
+      const wrapperFor = (sourceId: string) => {
+        const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+        return function Wrapper({ children }: { children: ReactNode }) {
+          return createElement(
+            QueryClientProvider,
+            { client: queryClient },
+            createElement(SourceProvider, { sourceId }, createElement(SettingsProvider, null, children)),
+          );
+        };
+      };
+
+      const permissive = renderHook(() => freshUseProcessedNodes(), {
+        wrapper: wrapperFor('source-permissive'),
+      });
+      await waitFor(() => {
+        expect(permissive.result.current.processedNodes).toHaveLength(1);
+      });
+
+      const strict = renderHook(() => freshUseProcessedNodes(), {
+        wrapper: wrapperFor('source-strict'),
+      });
+      await waitFor(() => {
+        expect(strict.result.current.totalNodes).toBe(1);
+      });
+      // The two SourceProviders resolved genuinely different maxNodeAgeHours
+      // values through the real SettingsContext fetch, and the hook's age
+      // filter reflects the difference: same node, different result.
+      expect(strict.result.current.processedNodes).toHaveLength(0);
+      expect(permissive.result.current.processedNodes).not.toEqual(strict.result.current.processedNodes);
     });
   });
 });

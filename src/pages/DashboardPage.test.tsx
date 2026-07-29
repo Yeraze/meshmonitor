@@ -18,6 +18,20 @@ vi.mock('react-router-dom', async () => {
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
+// Spy on the props DashboardMap actually receives (#4412 Phase 3 WP5) — this
+// is what proves DashboardPage resolves maxNodeAgeHours via the cross-source
+// hook rather than a hardcoded default. DashboardPage sits outside any
+// SourceProvider, so a naive per-source scoping of useSettings() would
+// silently fall back to 24 with no error and no other failing test — see
+// D3 in PER_SOURCE_NODE_DISPLAY_PHASE3_SPEC.md.
+const dashboardMapMocks = vi.hoisted(() => ({
+  spy: vi.fn(),
+}));
+
+vi.mock('../hooks/useNodeDisplaySettings', () => ({
+  useMaxNodeAgeHoursAcross: vi.fn(() => 24),
+}));
+
 vi.mock('../hooks/useDashboardData', () => ({
   useDashboardSources: vi.fn(() => ({
     data: [{ id: 'src-1', name: 'Test Source', type: 'meshtastic_tcp', enabled: true }],
@@ -96,7 +110,10 @@ vi.mock('../components/Dashboard/DashboardSidebar', () => ({
 }));
 
 vi.mock('../components/Dashboard/DashboardMap', () => ({
-  default: () => <div data-testid="dashboard-map" />,
+  default: (props: Record<string, unknown>) => {
+    dashboardMapMocks.spy(props);
+    return <div data-testid="dashboard-map" />;
+  },
 }));
 
 vi.mock('../components/LoginModal', () => ({
@@ -185,6 +202,32 @@ describe('DashboardPage', () => {
   it('renders the map', () => {
     renderPage();
     expect(screen.getByTestId('dashboard-map')).toBeInTheDocument();
+  });
+
+  // -------------------------------------------------------------------------
+  // #4412 Phase 3 (D3) — DashboardPage renders outside any SourceProvider,
+  // so it cannot read a single source's maxNodeAgeHours from useSettings().
+  // It must resolve the value via useMaxNodeAgeHoursAcross(sourceIds) (the
+  // most-permissive rule) instead. Named, non-droppable acceptance criterion
+  // per PER_SOURCE_NODE_DISPLAY_PHASE3_SPEC.md §4.10/§9.5 — a regression here
+  // would silently take a configured 72/168 down to the hardcoded 24 with no
+  // error and no other failing test.
+  // -------------------------------------------------------------------------
+  it('passes the cross-source maxNodeAgeHours (D3) to DashboardMap, not the hardcoded default', async () => {
+    const { useMaxNodeAgeHoursAcross } = await import('../hooks/useNodeDisplaySettings');
+    vi.mocked(useMaxNodeAgeHoursAcross).mockReturnValue(168);
+
+    renderPage();
+
+    expect(useMaxNodeAgeHoursAcross).toHaveBeenCalledWith(['src-1']);
+    expect(dashboardMapMocks.spy).toHaveBeenCalledWith(
+      expect.objectContaining({ maxNodeAgeHours: 168 }),
+    );
+
+    // mockClear (via beforeEach's clearAllMocks) does not undo mockReturnValue
+    // — restore the default explicitly so this override can't leak into
+    // later tests in this file.
+    vi.mocked(useMaxNodeAgeHoursAcross).mockReturnValue(24);
   });
 
   it('shows "Sign In" button when not authenticated', () => {
