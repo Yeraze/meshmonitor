@@ -14,7 +14,25 @@ import databaseService from '../../../services/database.js';
 import { sourceManagerRegistry } from '../../sourceManagerRegistry.js';
 import { appriseNotificationService } from '../appriseNotificationService.js';
 import { runScript as runUserScript } from '../../utils/scriptRunner.js';
+import { logger } from '../../../utils/logger.js';
 import type { ActionDeps } from './actionExecutor.js';
+
+/**
+ * A Meshtastic manager's per-source outgoing queue (meshtasticManager.ts:1107,
+ * `public readonly`). The ONLY thing in the app that retries a DM until it is
+ * ACKed — the same path Auto-Acknowledge's reply takes (meshtasticManager.ts:
+ * 10248). Duck-typed like every other capability check in this file; never
+ * `instanceof` (CLAUDE.md).
+ */
+interface QueuedSendManager {
+  messageQueue?: {
+    enqueue(
+      text: string, destination: number, replyId?: number,
+      onSuccess?: () => void, onFailure?: (reason: string) => void,
+      channel?: number, maxAttemptsOverride?: number, emoji?: number,
+    ): string;
+  };
+}
 
 interface MeshSendManager {
   sendTextMessage(text: string, channel?: number, destination?: number, replyId?: number, emoji?: number): Promise<number>;
@@ -72,6 +90,7 @@ async function sendTextVia(
   replyId?: number,
   emoji = 0,
   scopeOverride?: string | null,
+  maxAttempts?: number,
 ): Promise<unknown> {
   if (!sourceId) throw new Error('automation action requires a target source');
   const raw = resolveManager(sourceId) as
@@ -79,6 +98,29 @@ async function sendTextVia(
   if (raw && typeof raw.sendTextMessage === 'function') {
     // Meshtastic has no scope/region concept — scopeOverride is dropped.
     const dest = typeof destination === 'number' ? destination : undefined;
+    // #4340 Phase 3. Opt-in ONLY: absent maxAttempts, a channel send, or a
+    // MeshCore source all take the unchanged direct path below.
+    //   * Channel sends are excluded because the queue hardcodes maxAttempts=1
+    //     for them (messageQueueService.ts:112) — the parameter would buy
+    //     nothing while silently imposing the queue's 30s inter-send throttle
+    //     on every channel automation that set it.
+    //   * The queue is fire-and-forget: it returns a queue id synchronously, so
+    //     this returns a descriptive object instead of a packet id, and a
+    //     TX-disabled throw surfaces later in the queue's onFailure rather than
+    //     through actionExecutor's pushOrSkipTxDisabled. Both are exactly how
+    //     Auto-Acknowledge itself behaves — that IS the parity.
+    const q = (raw as QueuedSendManager).messageQueue;
+    if (maxAttempts != null && dest != null && typeof q?.enqueue === 'function') {
+      const id = q.enqueue(
+        text, dest, replyId,
+        () => logger.debug(`[Automation] queued DM to !${dest.toString(16).padStart(8, '0')} delivered`),
+        (reason: string) => logger.warn(`[Automation] queued DM to !${dest.toString(16).padStart(8, '0')} failed: ${reason}`),
+        undefined,             // channel: undefined ⇒ this is a DM
+        maxAttempts,
+        emoji || undefined,
+      );
+      return { queued: true, messageId: id, maxAttempts };
+    }
     return raw.sendTextMessage(text, channel, dest, replyId, emoji);
   }
   if (raw && typeof raw.sendMessage === 'function') {
@@ -104,8 +146,8 @@ async function sendTextVia(
 
 export function createMeshActionDeps(): ActionDeps {
   return {
-    async sendMessage({ sourceId, text, channel, destination, replyId, scopeOverride }) {
-      return sendTextVia(sourceId, text, channel ?? 0, destination, replyId, 0, scopeOverride);
+    async sendMessage({ sourceId, text, channel, destination, replyId, scopeOverride, maxAttempts }) {
+      return sendTextVia(sourceId, text, channel ?? 0, destination, replyId, 0, scopeOverride, maxAttempts);
     },
 
     async sendTapback({ sourceId, emoji, channel, destination, replyId }) {

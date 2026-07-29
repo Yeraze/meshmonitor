@@ -42,6 +42,19 @@ function stringCompare(op: string, a: string, b: string): boolean {
     case 'regex':
       // RE2 (linear-time) — immune to ReDoS from user-supplied patterns.
       try { return compileUserRegex(b).test(a); } catch { return false; }
+    // #4340 Phase 3: membership in a literal list. Separators and casing mirror
+    // Auto-Acknowledge's own autoAckIgnoredNodes parser (meshtasticManager.ts:
+    // 10040-10043) — comma OR whitespace, case-insensitive — so a converted
+    // ignore list pastes across verbatim. Deliberately generic: no node-id
+    // normalisation happens here (the converter emits canonical !xxxxxxxx
+    // tokens, which is exactly the shape trigger.fromId carries).
+    // An EMPTY list makes `in` never match and `notIn` always match — which is
+    // the correct reading of "an unset ignore list ignores nobody".
+    case 'in':
+    case 'notIn': {
+      const hit = bl.split(/[\s,]+/).filter(Boolean).includes(al);
+      return op === 'in' ? hit : !hit;
+    }
     default: return false;
   }
 }

@@ -168,8 +168,8 @@ different set — this is how If / ElseIf / Else is built.
 | Condition | What it checks |
 | --- | --- |
 | **Always (no filtering)** | A pass-through that always matches — use it when a rule should act unconditionally |
-| **Number comparison** | A numeric field (`==`, `!=`, `>`, `<`, `>=`, `<=`). Fields come from the event (e.g. hop count, SNR/RSSI), the hydrated **node** record (battery, hops away, role, position, age, …), or the node's **latest telemetry**. The value can be a literal or `{{ var.name }}` |
-| **Text comparison** | A string field (`contains`, `equals`, `starts with`, `ends with`, `matches regex`, `doesn't contain`) over message text, node name/role, etc. |
+| **Number comparison** | A numeric field (`==`, `!=`, `>`, `<`, `>=`, `<=`). Fields come from the event (e.g. hop count, SNR/RSSI, **is a direct message**, **arrived via MQTT**), the hydrated **node** record (battery, hops away, role, position, age, …), or the node's **latest telemetry**. The value can be a literal or `{{ var.name }}` |
+| **Text comparison** | A string field (`contains`, `equals`, `starts with`, `ends with`, `matches regex`, `doesn't contain`, `is one of`, `isn't one of`) over message text, node name/role, node info completeness, etc. |
 | **Source is one of…** | The **Source filter** — restricts the workflow to a chosen subset of sources (the "global but scopeable" knob). Leave empty to allow any source |
 | **Distance from a point** | The subject node is within / farther than *N* km of a reference lat/lon |
 | **Variable check** | Compares a [user-defined variable](#variables) against a literal or another value; with no operator it tests "is set / flag raised?" |
@@ -177,6 +177,59 @@ different set — this is how If / ElseIf / Else is built.
 
 A missing or undefined field never throws — numeric/string comparisons against it simply evaluate
 **false**.
+
+### `isDM` / `viaMqtt` — booleans as `1`/`0`
+
+The message trigger's **Number comparison** field picker offers **Is a direct message** (`isDM`) and
+**Arrived via MQTT** (`viaMqtt`) alongside hop count, SNR, and RSSI. Both resolve as a number —
+`1` for true, `0` for false — because a boolean value compared with `condition.numeric` is coerced
+the same way (`true → 1`, `false → 0`). Compare with `== 1` / `== 0` rather than a boolean literal:
+
+- `isDM == 1` — the message is a direct message; `isDM == 0` — it's a channel/broadcast post.
+- `viaMqtt == 1` — it arrived over an MQTT bridge; `viaMqtt == 0` — it arrived over RF.
+
+Together, `hops == 0` **and** `viaMqtt == 0` is "zero-hop, heard directly" — the same "ZeroHop"
+definition Auto-Acknowledge uses for its own {Channel,Direct} × {ZeroHop,MultiHop} matrix. A packet
+with no hop information at all resolves `hops` to `undefined`, so a *branch* on `hops > 0` (true/false
+ports) is the reliable way to route ZeroHop vs. MultiHop — two independent `== 0` / `> 0` conditions
+would both evaluate false for a hopless packet and match neither branch.
+
+### `node.completeness` — three states, not a boolean
+
+**Node** field **Node info completeness** (`node.completeness`) resolves to one of three strings:
+
+| Value | Meaning |
+| --- | --- |
+| `complete` | The subject node's row exists and has a real long/short name and a hardware model from NODEINFO. |
+| `incomplete` | The row exists, but NODEINFO hasn't arrived yet (e.g. a default `Node !xxxxxxxx` name). |
+| `unknown` | There is **no** row for the subject at all — or the trigger has no subject node in the first place (Schedule / System triggers). |
+
+The third state is the point: a boolean `isComplete` field can't distinguish "the node is known but
+incomplete" from "nothing is known about this node yet" — both would read as falsy. Auto-Acknowledge's
+own skip-incomplete-nodes behavior only skips a sender when its node row **exists and is incomplete**;
+an unrecognized/unknown sender is never skipped. Reproduce that with a **Text comparison** on
+`node.completeness`, operator **is one of**, value `complete, unknown` — matching everything except
+a confirmed-incomplete node.
+
+### `is one of` / `isn't one of`
+
+The **Text comparison** condition's operator list includes **is one of** (`in`) and **isn't one of**
+(`notIn`) alongside `contains`/`equals`/etc. — membership in a literal, comma- or whitespace-separated
+list, typed directly into the **Value** field (e.g. `complete, unknown` or `!aabbccdd, !11223344`).
+
+- **Separators** — split on any run of commas and/or whitespace (`a,b`, `a, b`, `a  b`, and
+  `a,\nb` all produce the same two-item list).
+- **Case-insensitive** — both the list and the field value are lowercased before comparing, so
+  `ROUTER` matches a list entry of `router`.
+- **Exact-token matching, not substring** — `!aabbccdd` is **not** considered "one of"
+  `!aabbccddee`; each list entry must match the whole field value, the same way a node-id ignore
+  list is meant to work.
+- **Empty value** — an empty/blank list makes `is one of` always **false** and `isn't one of` always
+  **true** — the correct reading of "an unset ignore list ignores nobody."
+
+A common use is a per-source-ignore-list condition — **Text comparison** on **Sender node id**
+(`fromId`), operator **isn't one of**, value the node ids to ignore (`!xxxxxxxx`, comma- or
+whitespace-separated) — which continues the rule only for senders **not** on that list.
 
 ### FINALLY combine modes
 
@@ -243,6 +296,23 @@ Sends text to a channel or as a DM, with full `{{ }}` token interpolation in the
   message's scope** (reply on the same region it arrived on), **Unscoped (flood, no region)**, or
   **A specific region…** — the latter reveals a **Region** picker (token-aware). See
   [Regions / Scopes](/features/meshcore#regions-scopes).
+- **DM resend attempts** *(advanced; hidden until **DM to node #** is set)* — resend this DM up to
+  **1–3** times until the recipient ACKs it, the same retry Auto-Acknowledge's own reply uses. Leave
+  blank for a single, direct send — today's behavior for every automation created before this field
+  existed.
+  - **Meshtastic DMs only.** It is ignored for a channel/broadcast send (the queue hardcodes a single
+    attempt there) and for a MeshCore send (MeshCore has no equivalent queue).
+  - **Setting it opts the send into the source's outgoing message queue**, which also **spaces
+    consecutive sends 30 seconds apart** — the same throttle every other queued DM on that source
+    (auto-responder, welcome, mailbox) already runs under. A busy automation that sets this on every
+    fire will send noticeably slower than one that doesn't.
+  - **The run-log shape changes too.** An unset (single-send) DM records the outcome immediately —
+    including a `TX_DISABLED` skip when the source has transmit disabled. A **queued** DM (this field
+    set) is fire-and-forget: the action returns a queue id right away, and if the source has TX
+    disabled, that surfaces later as a logged warning from the queue's own failure handler — **not**
+    as a `TX_DISABLED` skip entry on the run. This mirrors Auto-Acknowledge's own queued-reply
+    behavior exactly; it just means a TX-disabled source shows the action as *queued*, not
+    *skipped*, so don't be surprised if the run log looks like it sent when transmit was actually off.
 
 The overall send is a **source × channel matrix**: each selected source posts to the matching local
 slot of each selected channel.

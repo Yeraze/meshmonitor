@@ -133,6 +133,78 @@ describe('createMeshActionDeps — MeshCore source resolved from sourceManagerRe
   });
 });
 
+// #4340 Phase 3, WP3 §3.5: maxAttempts routes a Meshtastic DM through the
+// manager's MessageQueueService instead of the direct sendTextMessage call.
+describe('createMeshActionDeps sendMessage — maxAttempts through the queue (#4340 Phase 3)', () => {
+  beforeEach(() => { getManager.mockReset(); });
+
+  it('no maxAttempts ⇒ sendTextMessage is called, enqueue is not', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    const enqueue = vi.fn().mockReturnValue('q1');
+    getManager.mockReturnValue({ sendTextMessage, messageQueue: { enqueue } });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mt', text: 'hi', channel: 0, destination: 777 });
+
+    expect(sendTextMessage).toHaveBeenCalledWith('hi', 0, 777, undefined, 0);
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('maxAttempts + numeric destination ⇒ enqueue is called with the documented arg order, sendTextMessage is not', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    const enqueue = vi.fn().mockReturnValue('q42');
+    getManager.mockReturnValue({ sendTextMessage, messageQueue: { enqueue } });
+    const deps = createMeshActionDeps();
+
+    const result = await deps.sendMessage({ sourceId: 'mt', text: 'pong', channel: 0, destination: 777, replyId: 5, maxAttempts: 3 });
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    const args = enqueue.mock.calls[0];
+    expect(args[0]).toBe('pong');       // text
+    expect(args[1]).toBe(777);          // destination
+    expect(args[2]).toBe(5);            // replyId
+    expect(typeof args[3]).toBe('function'); // onSuccess
+    expect(typeof args[4]).toBe('function'); // onFailure
+    expect(args[5]).toBeUndefined();    // channel: undefined ⇒ a DM
+    expect(args[6]).toBe(3);            // maxAttemptsOverride
+    expect(args[7]).toBeUndefined();    // emoji (0 || undefined)
+    expect(sendTextMessage).not.toHaveBeenCalled();
+    expect(result).toEqual({ queued: true, messageId: 'q42', maxAttempts: 3 });
+  });
+
+  it('maxAttempts set but no destination (a channel send) ⇒ sendTextMessage, not enqueue', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    const enqueue = vi.fn().mockReturnValue('q1');
+    getManager.mockReturnValue({ sendTextMessage, messageQueue: { enqueue } });
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mt', text: 'hi', channel: 2, maxAttempts: 3 });
+
+    expect(sendTextMessage).toHaveBeenCalledWith('hi', 2, undefined, undefined, 0);
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('a manager with no messageQueue degrades gracefully to sendTextMessage', async () => {
+    const sendTextMessage = vi.fn().mockResolvedValue(1);
+    getManager.mockReturnValue({ sendTextMessage }); // no messageQueue at all
+    const deps = createMeshActionDeps();
+
+    await deps.sendMessage({ sourceId: 'mt', text: 'hi', channel: 0, destination: 777, maxAttempts: 3 });
+
+    expect(sendTextMessage).toHaveBeenCalledWith('hi', 0, 777, undefined, 0);
+  });
+
+  it('a MeshCore manager (only sendMessage) ignores maxAttempts, no throw', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(true);
+    getManager.mockReturnValue({ sendMessage }); // MeshCore-shaped, no messageQueue/sendTextMessage
+    const deps = createMeshActionDeps();
+
+    await expect(deps.sendMessage({ sourceId: 'mc', text: 'hi', channel: 0, destination: '3745442c10a1', maxAttempts: 3 }))
+      .resolves.toBe(true);
+    expect(sendMessage).toHaveBeenCalledWith('hi', '3745442c10a1', 0, undefined, true);
+  });
+});
+
 describe('createMeshActionDeps requestData — node operations (#3835)', () => {
   beforeEach(() => { getManager.mockReset(); });
 

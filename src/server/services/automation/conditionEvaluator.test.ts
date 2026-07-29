@@ -191,6 +191,76 @@ describe('evaluateCondition', () => {
     expect(await evaluateCondition(n, ctx({}))).toBe(false);                                 // Meshtastic
   });
 
+  it('string: in / notIn membership (#4340 Phase 3)', async () => {
+    const inList = (value: string) => node('condition.string', { field: 'fromId', op: 'in', value });
+    const notInList = (value: string) => node('condition.string', { field: 'fromId', op: 'notIn', value });
+
+    // comma list
+    expect(await evaluateCondition(inList('!aabbccdd,!11223344'), ctx({ fromId: '!aabbccdd' }))).toBe(true);
+    expect(await evaluateCondition(inList('!aabbccdd,!11223344'), ctx({ fromId: '!deadbeef' }))).toBe(false);
+    // whitespace list
+    expect(await evaluateCondition(inList('!aabbccdd !11223344'), ctx({ fromId: '!11223344' }))).toBe(true);
+    // mixed separators
+    expect(await evaluateCondition(inList('!aabbccdd, !11223344  !99887766'), ctx({ fromId: '!99887766' }))).toBe(true);
+
+    // case-insensitive on both sides
+    expect(await evaluateCondition(inList('!AABBCCDD'), ctx({ fromId: '!aabbccdd' }))).toBe(true);
+    expect(await evaluateCondition(notInList('!AABBCCDD'), ctx({ fromId: '!aabbccdd' }))).toBe(false);
+
+    // exact-token match, not substring
+    expect(await evaluateCondition(inList('!aabbccddee'), ctx({ fromId: '!aabbccdd' }))).toBe(false);
+    expect(await evaluateCondition(inList('!aabbccdd'), ctx({ fromId: '!aabbccddee' }))).toBe(false);
+
+    // empty value: `in` never matches, `notIn` always matches — unset ignore list ignores nobody
+    expect(await evaluateCondition(inList(''), ctx({ fromId: '!aabbccdd' }))).toBe(false);
+    expect(await evaluateCondition(notInList(''), ctx({ fromId: '!aabbccdd' }))).toBe(true);
+
+    // left operand missing: `in` false, `notIn` true
+    expect(await evaluateCondition(inList('!aabbccdd'), ctx({}))).toBe(false);
+    expect(await evaluateCondition(notInList('!aabbccdd'), ctx({}))).toBe(true);
+
+    // notIn as an AutoAck ignore-list reproduction: excluded sender is filtered, others pass
+    expect(await evaluateCondition(notInList('!aabbccdd, !11223344'), ctx({ fromId: '!aabbccdd' }))).toBe(false);
+    expect(await evaluateCondition(notInList('!aabbccdd, !11223344'), ctx({ fromId: '!deadbeef' }))).toBe(true);
+  });
+
+  it('string: every pre-existing op still behaves unchanged alongside the new in/notIn cases', async () => {
+    expect(await evaluateCondition(node('condition.string', { field: 'text', op: 'eq', value: 'ping' }), ctx({ text: 'ping' }))).toBe(true);
+    expect(await evaluateCondition(node('condition.string', { field: 'text', op: 'neq', value: 'ping' }), ctx({ text: 'pong' }))).toBe(true);
+    expect(await evaluateCondition(node('condition.string', { field: 'text', op: 'startsWith', value: 'PI' }), ctx({ text: 'ping' }))).toBe(true);
+    expect(await evaluateCondition(node('condition.string', { field: 'text', op: 'endsWith', value: 'NG' }), ctx({ text: 'ping' }))).toBe(true);
+    expect(await evaluateCondition(node('condition.string', { field: 'text', op: 'notContains', value: 'xyz' }), ctx({ text: 'ping' }))).toBe(true);
+  });
+
+  it('node.completeness: `in complete, unknown` reproduces AutoAck\'s skip-incomplete gate (#4340 Phase 3)', async () => {
+    const gate = node('condition.string', { field: 'node.completeness', op: 'in', value: 'complete, unknown' });
+    // complete row → passes
+    expect(await evaluateCondition(gate, ctx({}, { node: { nodeNum: 111, longName: 'Base Station', shortName: 'BASE', hwModel: 9 } }))).toBe(true);
+    // no row at all (unknown) → passes — AutoAck does NOT skip an unknown sender
+    expect(await evaluateCondition(gate, ctx({}, { node: null }))).toBe(true);
+    // incomplete row → fails — AutoAck DOES skip an incomplete sender
+    expect(await evaluateCondition(gate, ctx({}, { node: { nodeNum: 111, longName: 'Node !aabbccdd' } }))).toBe(false);
+  });
+
+  it('numeric: isDM / viaMqtt compared as 1/0, including the undefined→NaN→both-false case', async () => {
+    const isDmTrue = node('condition.numeric', { field: 'isDM', op: '==', value: 1 });
+    const isDmFalse = node('condition.numeric', { field: 'isDM', op: '==', value: 0 });
+    expect(await evaluateCondition(isDmTrue, ctx({ isDM: true }))).toBe(true);
+    expect(await evaluateCondition(isDmFalse, ctx({ isDM: true }))).toBe(false);
+    expect(await evaluateCondition(isDmTrue, ctx({ isDM: false }))).toBe(false);
+    expect(await evaluateCondition(isDmFalse, ctx({ isDM: false }))).toBe(true);
+    // undefined (field absent) → NaN → both comparisons false, per §9.9's documented behaviour
+    expect(await evaluateCondition(isDmTrue, ctx({}))).toBe(false);
+    expect(await evaluateCondition(isDmFalse, ctx({}))).toBe(false);
+
+    const viaMqttTrue = node('condition.numeric', { field: 'viaMqtt', op: '==', value: 1 });
+    const viaMqttFalse = node('condition.numeric', { field: 'viaMqtt', op: '==', value: 0 });
+    expect(await evaluateCondition(viaMqttTrue, ctx({ viaMqtt: true }))).toBe(true);
+    expect(await evaluateCondition(viaMqttFalse, ctx({ viaMqtt: false }))).toBe(true);
+    expect(await evaluateCondition(viaMqttTrue, ctx({}))).toBe(false);
+    expect(await evaluateCondition(viaMqttFalse, ctx({}))).toBe(false);
+  });
+
   it('logical: AND / OR / NOT over sub-conditions', async () => {
     const t = { type: 'condition.numeric', params: { field: 'v', op: '==', value: 1 } };
     const f = { type: 'condition.numeric', params: { field: 'v', op: '==', value: 9 } };
