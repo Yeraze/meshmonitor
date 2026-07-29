@@ -602,6 +602,7 @@ const apiRouter = express.Router();
 // Import route handlers
 import authRoutes from './routes/authRoutes.js';
 import automationRoutes from './routes/automationRoutes.js';
+import autoAckConverterRoutes from './routes/autoAckConverterRoutes.js';
 import { startAutomationEngine } from './services/automation/automationEngineSingleton.js';
 import userRoutes from './routes/userRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
@@ -821,6 +822,9 @@ apiRouter.use('/system/backup', systemBackupRouter);
 apiRouter.use('/push', pushRouter);
 apiRouter.use('/apprise', appriseRouter);
 apiRouter.use('/connection', connectionRoutes);
+// Mounted immediately before '/automations' so its '/:id' route cannot swallow
+// '/automations/convert/*' (#4340 Phase 4 WP3).
+apiRouter.use('/automations/convert', autoAckConverterRoutes);
 apiRouter.use('/automations', automationRoutes);
 // Mounted at '/' because these routers contain mixed top-level paths
 // (e.g. /traceroute, /telemetry/:nodeId, /device/tx-status, /virtual-node/status).
