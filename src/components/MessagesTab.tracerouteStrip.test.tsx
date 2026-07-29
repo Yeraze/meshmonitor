@@ -22,7 +22,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MessagesTab from './MessagesTab';
 import type { MeshMessage } from '../types/message';
@@ -330,5 +330,39 @@ describe('MessagesTab traceroute visual strip wiring (#4381 WP4)', () => {
 
     expect(stripGroup()).toBeNull();
     expect(noResponseText()?.textContent).toBe('No response received');
+  });
+
+  it('wires onOpenNodeDetails: hovering a hop and clicking "More Details" calls setSelectedDMNode with that node\'s user.id', () => {
+    // #TRS-phase1 WP1 §8.5 case 26. dmNode (TO_NUM) is the only entry in
+    // `nodes`, so it's the only hop the strip can resolve a real userId for
+    // — hovering it and clicking the action must reach setSelectedDMNode.
+    const setSelectedDMNode = vi.fn();
+    renderTab(makeProps({ getRecentTraceroute: () => ROUTED_TRACE, setSelectedDMNode }));
+
+    const box = tracerouteInfoBox() as HTMLElement;
+    const glyph = within(box).getByText('DEST').closest('[tabindex]') as HTMLElement;
+    expect(glyph).not.toBeNull();
+    fireEvent.mouseEnter(glyph);
+
+    const button = screen.getByRole('button', { name: /More Details/ });
+    fireEvent.click(button);
+
+    expect(setSelectedDMNode).toHaveBeenCalledWith(DM_NODE_ID);
+  });
+
+  it('the strip-driven details load calls setSelectedDMNode ONLY — no accompanying setActiveTab (locks in decision §0.3)', () => {
+    // MessagesTab has no `setActiveTab` prop or UIContext dependency at all
+    // (unlike NodesTab's `handlePopupDMClick`) — the strip only ever renders
+    // on the Messages tab, so there is nothing to switch to. A single call
+    // is therefore the complete side-effect surface of the callback.
+    const setSelectedDMNode = vi.fn();
+    renderTab(makeProps({ getRecentTraceroute: () => ROUTED_TRACE, setSelectedDMNode }));
+
+    const box = tracerouteInfoBox() as HTMLElement;
+    const glyph = within(box).getByText('DEST').closest('[tabindex]') as HTMLElement;
+    fireEvent.mouseEnter(glyph);
+    fireEvent.click(screen.getByRole('button', { name: /More Details/ }));
+
+    expect(setSelectedDMNode).toHaveBeenCalledTimes(1);
   });
 });

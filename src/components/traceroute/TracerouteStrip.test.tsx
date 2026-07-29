@@ -1,10 +1,15 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { TracerouteStrip, type TracerouteStripNodeMeta } from './TracerouteStrip';
 import { buildTracerouteStripGraph, type TracerouteStripInput } from '../../utils/tracerouteStrip';
+
+/** Mirrors the private `HOVER_LINGER_MS` constant in `TracerouteStrip.tsx`
+ *  (not exported — the component doesn't need to expose it). Keep in sync
+ *  if that value ever changes. */
+const HOVER_LINGER_MS = 180;
 
 // The global setup.ts mock for react-i18next ignores the `defaultValue`
 // argument entirely (it only interpolates `{{token}}` placeholders into the
@@ -54,6 +59,9 @@ function makeMeta(opts: {
   battery?: number;
   lastHeard?: number;
   pos?: { lat: number; lng: number };
+  /** Omitted by default — matches the real adapter, which leaves `userId`
+   *  undefined for any node without a real `node.user.id`. */
+  userId?: string;
 }): TracerouteStripNodeMeta {
   const nodeId = `!${opts.nodeNum.toString(16).padStart(8, '0')}`;
   return {
@@ -79,6 +87,7 @@ function makeMeta(opts: {
       position: opts.pos,
     },
     pos: opts.pos,
+    userId: opts.userId,
   };
 }
 
@@ -90,6 +99,12 @@ function nodeDivFor(text: string): HTMLElement {
 }
 
 describe('TracerouteStrip', () => {
+  // Several cases below switch to fake timers to drive HOVER_LINGER_MS.
+  // Always restore real timers afterward so unrelated tests aren't affected.
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('renders one node element per graph node (forward-only, 3 hops)', () => {
     const input: TracerouteStripInput = {
       fromNodeNum: 100,
@@ -353,7 +368,15 @@ describe('TracerouteStrip', () => {
     expect(container.contains(popup)).toBe(false);
     expect(popup!.closest('[role="group"]')).toBeNull();
 
+    // mouse-leave defers the hide by HOVER_LINGER_MS (so the pointer can
+    // travel across the gap into the popup) rather than hiding synchronously
+    // — see the dedicated linger-mechanics cases below for the travel-in
+    // behavior itself.
+    vi.useFakeTimers();
     fireEvent.mouseLeave(div);
+    act(() => {
+      vi.advanceTimersByTime(HOVER_LINGER_MS);
+    });
     expect(document.querySelector('[role="tooltip"]')).toBeNull();
   });
 
@@ -690,11 +713,258 @@ describe('TracerouteStrip', () => {
     const addedScroll = addSpy.mock.calls.filter((c) => String(c[0]) === 'scroll').length;
     expect(addedScroll).toBeGreaterThan(0);
 
+    // The scroll/resize effect only tears down once `hover` actually
+    // becomes null, which — for a pointer-leave — happens after the linger
+    // delay, not synchronously.
+    vi.useFakeTimers();
     fireEvent.mouseLeave(div);
+    act(() => {
+      vi.advanceTimersByTime(HOVER_LINGER_MS);
+    });
     const removedScroll = removeSpy.mock.calls.filter((c) => String(c[0]) === 'scroll').length;
     expect(removedScroll).toBe(addedScroll);
 
     addSpy.mockRestore();
     removeSpy.mockRestore();
+  });
+
+  describe('interactivity (#TRS-phase1 WP1)', () => {
+    it('the popup survives the linger window and only hides once HOVER_LINGER_MS has fully elapsed', () => {
+      const graph = buildTracerouteStripGraph({
+        fromNodeNum: 100, toNodeNum: 200, route: '[]', routeBack: null,
+      });
+      const meta = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+        [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+      ]);
+
+      render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+      const div = nodeDivFor('FRM');
+
+      vi.useFakeTimers();
+      fireEvent.mouseEnter(div);
+      fireEvent.mouseLeave(div);
+
+      act(() => {
+        vi.advanceTimersByTime(HOVER_LINGER_MS - 1);
+      });
+      expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    });
+
+    it('moving the pointer from the glyph into the popup cancels the pending hide', () => {
+      const graph = buildTracerouteStripGraph({
+        fromNodeNum: 100, toNodeNum: 200, route: '[]', routeBack: null,
+      });
+      const meta = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+        [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+      ]);
+
+      render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+      const div = nodeDivFor('FRM');
+
+      vi.useFakeTimers();
+      fireEvent.mouseEnter(div);
+      fireEvent.mouseLeave(div);
+
+      const popup = document.querySelector('[role="tooltip"]') as HTMLElement;
+      expect(popup).not.toBeNull();
+      fireEvent.mouseEnter(popup);
+
+      // Well past the linger window — travel into the popup must have
+      // cancelled the scheduled hide, not merely delayed it.
+      act(() => {
+        vi.advanceTimersByTime(HOVER_LINGER_MS * 5);
+      });
+      expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+
+      fireEvent.mouseLeave(popup);
+      act(() => {
+        vi.advanceTimersByTime(HOVER_LINGER_MS);
+      });
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    });
+
+    it('the popup carries the interactive .hoverPopup class hook (pointer-events: auto per the module CSS)', () => {
+      const graph = buildTracerouteStripGraph({
+        fromNodeNum: 100, toNodeNum: 200, route: '[]', routeBack: null,
+      });
+      const meta = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+        [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+      ]);
+
+      render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+      fireEvent.mouseEnter(nodeDivFor('FRM'));
+
+      const popup = document.querySelector('[role="tooltip"]') as HTMLElement;
+      // jsdom doesn't compute CSS module rules, so this asserts the class
+      // hook is applied — the real pointer-events check is case (2) above,
+      // which proves the popup is actually hoverable.
+      expect(popup.className).toMatch(/hoverPopup/);
+    });
+
+    it('renders the "More Details" button for a resolved node with a userId', () => {
+      const graph = buildTracerouteStripGraph({
+        fromNodeNum: 100, toNodeNum: 200, route: '[]', routeBack: null,
+      });
+      const meta = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node', userId: '!00000064' })],
+        [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+      ]);
+
+      render(<TracerouteStrip graph={graph} meta={meta} {...FMT} onOpenNodeDetails={() => {}} />);
+      fireEvent.mouseEnter(nodeDivFor('FRM'));
+
+      expect(screen.getByRole('button', { name: /More Details/ })).not.toBeNull();
+    });
+
+    it('omits the button when onOpenNodeDetails is not passed', () => {
+      const graph = buildTracerouteStripGraph({
+        fromNodeNum: 100, toNodeNum: 200, route: '[]', routeBack: null,
+      });
+      const meta = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node', userId: '!00000064' })],
+        [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+      ]);
+
+      render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+      fireEvent.mouseEnter(nodeDivFor('FRM'));
+
+      expect(screen.queryByRole('button', { name: /More Details/ })).toBeNull();
+    });
+
+    it('omits the button for an unknown/placeholder hop', () => {
+      const input: TracerouteStripInput = {
+        fromNodeNum: 100, toNodeNum: 200, route: '[]', routeBack: null,
+      };
+      const graph = buildTracerouteStripGraph(input);
+      // 200 deliberately absent from meta — the existing "unknown hop" fixture.
+      const meta = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node', userId: '!00000064' })],
+      ]);
+
+      render(<TracerouteStrip graph={graph} meta={meta} {...FMT} onOpenNodeDetails={() => {}} />);
+      fireEvent.mouseEnter(nodeDivFor('Unknown'));
+
+      expect(screen.queryByRole('button', { name: /More Details/ })).toBeNull();
+    });
+
+    it('omits the button when the resolved node has no userId (guards the exact bug the field exists to prevent)', () => {
+      const graph = buildTracerouteStripGraph({
+        fromNodeNum: 100, toNodeNum: 200, route: '[]', routeBack: null,
+      });
+      // userId deliberately omitted -> undefined via makeMeta's default,
+      // even though the node otherwise resolves fully.
+      const meta = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+        [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+      ]);
+
+      render(<TracerouteStrip graph={graph} meta={meta} {...FMT} onOpenNodeDetails={() => {}} />);
+      fireEvent.mouseEnter(nodeDivFor('FRM'));
+
+      expect(screen.queryByRole('button', { name: /More Details/ })).toBeNull();
+    });
+
+    it('clicking "More Details" calls onOpenNodeDetails with the userId and dismisses the popup', () => {
+      const graph = buildTracerouteStripGraph({
+        fromNodeNum: 100, toNodeNum: 200, route: '[]', routeBack: null,
+      });
+      const meta = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node', userId: '!00000064' })],
+        [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+      ]);
+      const onOpenNodeDetails = vi.fn();
+
+      render(<TracerouteStrip graph={graph} meta={meta} {...FMT} onOpenNodeDetails={onOpenNodeDetails} />);
+      fireEvent.mouseEnter(nodeDivFor('FRM'));
+      fireEvent.click(screen.getByRole('button', { name: /More Details/ }));
+
+      expect(onOpenNodeDetails).toHaveBeenCalledWith('!00000064');
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    });
+
+    it('Enter and Space on a focused glyph with an available action fire onOpenNodeDetails', () => {
+      const graph = buildTracerouteStripGraph({
+        fromNodeNum: 100, toNodeNum: 200, route: '[]', routeBack: null,
+      });
+      const meta = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node', userId: '!00000064' })],
+        [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+      ]);
+      const onOpenNodeDetails = vi.fn();
+
+      render(<TracerouteStrip graph={graph} meta={meta} {...FMT} onOpenNodeDetails={onOpenNodeDetails} />);
+      const div = nodeDivFor('FRM');
+
+      fireEvent.keyDown(div, { key: 'Enter' });
+      expect(onOpenNodeDetails).toHaveBeenCalledWith('!00000064');
+
+      onOpenNodeDetails.mockClear();
+      fireEvent.keyDown(div, { key: ' ' });
+      expect(onOpenNodeDetails).toHaveBeenCalledWith('!00000064');
+    });
+
+    it('role="button" is set on the glyph only when the action is actually available', () => {
+      const input: TracerouteStripInput = {
+        fromNodeNum: 100, toNodeNum: 200, route: JSON.stringify([110]), routeBack: null,
+      };
+      const graph = buildTracerouteStripGraph(input);
+      const meta = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node', userId: '!00000064' })],
+        // 110 deliberately absent from meta -> placeholder/unknown hop.
+        [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })], // no userId
+      ]);
+
+      const { unmount } = render(
+        <TracerouteStrip graph={graph} meta={meta} {...FMT} onOpenNodeDetails={() => {}} />,
+      );
+      expect(nodeDivFor('FRM').getAttribute('role')).toBe('button'); // userId + callback + resolved
+      expect(nodeDivFor('Unknown').getAttribute('role')).toBeNull(); // placeholder hop
+      expect(nodeDivFor('TGT').getAttribute('role')).toBeNull(); // resolved but no userId
+      unmount();
+
+      // And when the callback prop itself is absent, even a userId-bearing
+      // node gets no role — there is nothing for it to announce.
+      const meta2 = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node', userId: '!00000064' })],
+        [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+      ]);
+      const graph2 = buildTracerouteStripGraph({
+        fromNodeNum: 100, toNodeNum: 200, route: '[]', routeBack: null,
+      });
+      render(<TracerouteStrip graph={graph2} meta={meta2} {...FMT} />);
+      expect(nodeDivFor('FRM').getAttribute('role')).toBeNull();
+    });
+
+    it('unmounting while a hide is pending does not throw', () => {
+      const graph = buildTracerouteStripGraph({
+        fromNodeNum: 100, toNodeNum: 200, route: '[]', routeBack: null,
+      });
+      const meta = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+        [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+      ]);
+
+      const { unmount } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+      const div = nodeDivFor('FRM');
+
+      vi.useFakeTimers();
+      fireEvent.mouseEnter(div);
+      fireEvent.mouseLeave(div);
+
+      expect(() => {
+        unmount();
+        act(() => {
+          vi.advanceTimersByTime(HOVER_LINGER_MS);
+        });
+      }).not.toThrow();
+    });
   });
 });
