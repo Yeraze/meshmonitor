@@ -350,7 +350,15 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       }
     }
 
-    // Validate inactive node notification settings
+    // Validate inactive node notification settings.
+    //
+    // Note the intentional asymmetry: these ranges are validated for BOTH the
+    // per-source and global paths, but the restartInactiveNodeService side-effect
+    // fires only on the global path — the per-source branch returns before it.
+    // That is correct today because inactiveNodeNotificationService is a single
+    // global singleton with no per-source restart callback. Phase 2 of #4412
+    // restructures it to one timer resolving config per source; when it does,
+    // the per-source branch needs its own restart hook here.
     if ('inactiveNodeThresholdHours' in filteredSettings) {
       const threshold = parseInt(filteredSettings.inactiveNodeThresholdHours, 10);
       if (isNaN(threshold) || threshold < 1 || threshold > 720) {
@@ -772,6 +780,10 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
         'autoDeleteByDistanceAction',
       ];
       if (distanceDeleteKeys.some((key) => key in filteredSettings)) {
+        // Deliberately a post-write read, not a pre-write check: setSourceSettings()
+        // above has already persisted this payload, so this reflects the value the
+        // caller just saved — and falls back to the stored one when the payload
+        // changed a sibling key without touching the enabled flag.
         const enabled = await databaseService.settings.getSettingForSource(sourceId, 'autoDeleteByDistanceEnabled');
         if (enabled === 'true') {
           callbacks.restartAutoDeleteByDistanceService?.(sourceId);
