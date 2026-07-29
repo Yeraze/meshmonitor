@@ -26,6 +26,9 @@ vi.mock('../../services/database.js', () => ({
     },
     settings: {
       getSetting: vi.fn(),
+      // #4412 Phase 2: maxNodeAgeHours is per-source now, resolved via
+      // getSettingForSource() instead of the global getSetting().
+      getSettingForSource: vi.fn(),
     },
     checkPermissionAsync: vi.fn(),
     findUserByIdAsync: vi.fn(),
@@ -114,6 +117,7 @@ describe('GET /:id/neighbor-info', () => {
     mockDb.getUserPermissionSetAsync.mockResolvedValue({ resources: {}, isAdmin: true });
     mockDb.checkPermissionAsync.mockResolvedValue(true);
     mockDb.settings.getSetting.mockResolvedValue(null); // default 24h
+    mockDb.settings.getSettingForSource.mockResolvedValue(null); // default 24h
   });
 
   it('returns 404 when source does not exist', async () => {
@@ -342,7 +346,7 @@ describe('GET /:id/neighbor-info', () => {
 
     mockDb.sources.getSource.mockResolvedValue(MOCK_SOURCE);
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([ni]);
-    mockDb.settings.getSetting.mockResolvedValue('1'); // 1-hour window
+    mockDb.settings.getSettingForSource.mockResolvedValue('1'); // 1-hour window
     // Endpoint nodes are fresh — the report is stale relative to the 1-hour window.
     mockDb.nodes.getNodesByNums.mockImplementation(async (nums: number[]) =>
       new Map(nums.map(n => [n, makeNode(n)]))
