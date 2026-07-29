@@ -1,0 +1,85 @@
+/* TracerouteCopyLinks. CSS module — scoped to this component per CLAUDE.md's
+ * CSS containment rule. `src/styles/nodes.css` is frozen and NOT touched:
+ * this nests inside the existing `.traceroute-info` box there, which
+ * supplies the surrounding card chrome.
+ */
+
+.row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.35rem;
+}
+
+/* Text links by request — no button chrome, just colored/underlined text. */
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--ctp-blue);
+  cursor: pointer;
+}
+
+.link:hover,
+.link:focus-visible {
+  text-decoration: underline;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--ctp-blue);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.confirm {
+  font-size: 0.75rem;
+  color: var(--ctp-green);
+  font-weight: 600;
+}
+
+.fallbackHint {
+  margin: 0 0 0.6rem;
+  color: var(--ctp-subtext0);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.fallbackTextarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100px;
+  resize: vertical;
+  padding: 0.5rem;
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-sm);
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.fallbackActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
+.fallbackClose {
+  padding: 6px 14px;
+  border: 1px solid var(--ctp-surface2);
+  border-radius: var(--radius-sm);
+  background: var(--ctp-surface0);
+  color: var(--ctp-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.fallbackClose:hover {
+  border-color: var(--ctp-blue);
+  color: var(--ctp-blue);
+}

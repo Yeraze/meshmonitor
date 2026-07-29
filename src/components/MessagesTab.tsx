@@ -24,6 +24,7 @@ import {
 import { buildTracerouteStripGraph, type TracerouteStripInput } from '../utils/tracerouteStrip';
 import { buildStripNodeMeta } from '../utils/tracerouteStripMeta';
 import { TracerouteStrip } from './traceroute/TracerouteStrip';
+import { TracerouteCopyLinks } from './traceroute/TracerouteCopyLinks';
 import { TracerouteParticipationPicker } from './traceroute/TracerouteParticipationPicker';
 import { useNodeTraceroutes } from '../hooks/useNodeTraceroutes';
 import { getMessageSortTime } from '../utils/messageSort';
@@ -2076,6 +2077,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             {t('messages.traceroute_no_return_path', 'No return path data')}
                           </div>
                         )}
+                        <TracerouteCopyLinks
+                          route={displayedTrace.route}
+                          routeBack={displayedTrace.routeBack}
+                          snrTowards={displayedTrace.snrTowards}
+                          snrBack={displayedTrace.snrBack}
+                          fromNodeNum={Number(displayedTrace.fromNodeNum)}
+                          toNodeNum={Number(displayedTrace.toNodeNum)}
+                          nodes={nodes}
+                        />
                         <div className="traceroute-age">
                           {t('messages.last_traced', { time: ageStr })}
                           {isPending && (
