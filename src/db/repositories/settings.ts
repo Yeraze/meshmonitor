@@ -4,7 +4,7 @@
  * Handles all settings-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -233,17 +233,30 @@ export class SettingsRepository extends BaseRepository {
   }
 
   /**
-   * Delete all per-source settings for a source
+   * Delete all per-source settings for a source. Single statement — the previous
+   * implementation read every settings key into memory and issued one DELETE per
+   * match, which is the per-row round-trip pattern that made migration 030 a
+   * startup hazard (#4233).
+   *
+   * `_` and `%` are LIKE wildcards; source ids are UUIDs today, but escape
+   * defensively so a future non-UUID id cannot over-match a sibling namespace.
+   *
+   * The ESCAPE literal's backslash count is dialect-dependent (verified
+   * empirically, not just by inspection): MySQL's default backslash-escape
+   * mode means a single-quoted string needs TWO literal backslash characters
+   * to represent ONE escape character, and errors ("syntax error near ''\''")
+   * on a single-backslash literal. SQLite and PostgreSQL (standard_conforming_strings,
+   * the default) treat backslash as an ordinary character in a '...' string, so
+   * ONE literal backslash there already IS the one-character escape sequence —
+   * a two-backslash literal fails there ("ESCAPE expression must be a single character").
    */
   async deleteSourceSettings(sourceId: string): Promise<void> {
-    const prefix = this.sourcePrefix(sourceId);
     const { settings } = this.tables;
-    const rows = await this.db.select({ key: settings.key }).from(settings);
-    for (const row of rows) {
-      if ((row as any).key.startsWith(prefix)) {
-        await this.db.delete(settings).where(eq(settings.key, (row as any).key));
-      }
-    }
+    const pattern = this.sourcePrefix(sourceId).replace(/([\\%_])/g, '\\$1') + '%';
+    const query = this.isMySQL()
+      ? sql`${settings.key} LIKE ${pattern} ESCAPE '\\\\'`
+      : sql`${settings.key} LIKE ${pattern} ESCAPE '\\'`;
+    await this.db.delete(settings).where(query);
   }
 
   // ─── Synchronous SQLite variants ────────────────────────────────────────
