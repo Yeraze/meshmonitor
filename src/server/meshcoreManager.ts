@@ -3857,9 +3857,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
       const d = response.data ?? {};
       const snrs: number[] = d.pathSnrs ?? [];
+      // Per-hop SNRs travel the wire as int8 of (SNR*4) but reach us as
+      // UNSIGNED bytes: meshcore.js decodes lastSnr with readInt8()/4 yet
+      // pathSnrs with a plain readBytes(), and the native backend passes those
+      // straight through. Sign-extend before scaling, or a -6 dB hop reads
+      // back as +62.5 dB. (lastSnr below is already signed and scaled.)
       const hops = snrs.map((raw: number, i: number) => ({
         index: i,
-        snr: raw / 4,
+        snr: ((raw << 24) >> 24) / 4,
       }));
       const lastSnr: number = d.lastSnr ?? 0;
       logger.debug(`[MeshCore] Trace path to ${publicKey.substring(0, 16)}…: ${hops.length} hops, lastSnr=${lastSnr}`);
