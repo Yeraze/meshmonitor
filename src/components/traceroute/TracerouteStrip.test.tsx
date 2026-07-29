@@ -5,6 +5,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { TracerouteStrip, type TracerouteStripNodeMeta } from './TracerouteStrip';
 import { buildTracerouteStripGraph, type TracerouteStripInput } from '../../utils/tracerouteStrip';
+import { calculateDistance, formatDistance } from '../../utils/distance';
 
 /** Mirrors the private `HOVER_LINGER_MS` constant in `TracerouteStrip.tsx`
  *  (not exported — the component doesn't need to expose it). Keep in sync
@@ -98,6 +99,18 @@ function nodeDivFor(text: string): HTMLElement {
   return node as HTMLElement;
 }
 
+/** WP2: locates an edge's invisible `.edgeHit` polyline by the leg caption
+ *  that always leads its `aria-label` (`edgeSummary`'s first, always-present
+ *  fragment). */
+function hitTargetFor(container: HTMLElement, leg: 'forward' | 'return'): HTMLElement {
+  const caption = leg === 'forward' ? 'Forward' : 'Return';
+  const el = Array.from(container.querySelectorAll('polyline[role="img"]')).find((p) =>
+    (p.getAttribute('aria-label') ?? '').startsWith(caption),
+  );
+  if (!el) throw new Error(`no ${leg} hit target found`);
+  return el as HTMLElement;
+}
+
 describe('TracerouteStrip', () => {
   // Several cases below switch to fake timers to drive HOVER_LINGER_MS.
   // Always restore real timers afterward so unrelated tests aren't affected.
@@ -121,7 +134,7 @@ describe('TracerouteStrip', () => {
 
     const { container } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
     expect(graph.nodes).toHaveLength(3);
-    expect(container.querySelectorAll('[tabindex="0"]')).toHaveLength(3);
+    expect(container.querySelectorAll('div[tabindex="0"]')).toHaveLength(3);
   });
 
   it('dedups a node shared by both legs to a single element', () => {
@@ -144,7 +157,7 @@ describe('TracerouteStrip', () => {
     // Full overlap: exactly 3 nodes total, all on row 0.
     expect(graph.nodes).toHaveLength(3);
     expect(graph.nodes.every((n) => n.row === 0)).toBe(true);
-    expect(container.querySelectorAll('[tabindex="0"]')).toHaveLength(3);
+    expect(container.querySelectorAll('div[tabindex="0"]')).toHaveLength(3);
     expect(screen.getAllByText('MID')).toHaveLength(1);
   });
 
@@ -965,6 +978,285 @@ describe('TracerouteStrip', () => {
           vi.advanceTimersByTime(HOVER_LINGER_MS);
         });
       }).not.toThrow();
+    });
+  });
+
+  describe('edge tooltips (#TRS-phase1 WP2)', () => {
+    /** Forward + return direct edges between two named nodes, with a real
+     *  (non-sentinel) SNR sample on each leg so both SNR rows render.
+     *  Mirrors the existing "renders forward SNR labels..." fixture. */
+    function buildEdgeFixture(opts: {
+      pos100?: { lat: number; lng: number };
+      pos200?: { lat: number; lng: number };
+    } = {}) {
+      const input: TracerouteStripInput = {
+        fromNodeNum: 100,
+        toNodeNum: 200,
+        route: '[]',
+        snrTowards: '[20]', // -> 5.0 dB on the forward edge
+        routeBack: '[]',
+        snrBack: '[-40]', // -> -10.0 dB on the return edge
+      };
+      const graph = buildTracerouteStripGraph(input);
+      const meta = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node', pos: opts.pos100 })],
+        [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node', pos: opts.pos200 })],
+      ]);
+      return { graph, meta };
+    }
+
+    it('renders one .edgeHit hit target per edge, matching the visible polyline points, with the visible group aria-hidden', () => {
+      const { graph, meta } = buildEdgeFixture();
+      const { container } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+
+      const svg = container.querySelector('svg')!;
+      expect(svg.hasAttribute('aria-hidden')).toBe(false);
+      expect(svg.hasAttribute('focusable')).toBe(false);
+
+      const groups = svg.querySelectorAll(':scope > g');
+      expect(groups).toHaveLength(2);
+      expect(groups[0].getAttribute('aria-hidden')).toBe('true');
+      expect(groups[1].hasAttribute('aria-hidden')).toBe(false);
+
+      const visiblePolylines = Array.from(groups[0].querySelectorAll('polyline'));
+      const hitPolylines = Array.from(groups[1].querySelectorAll('polyline'));
+      expect(visiblePolylines).toHaveLength(graph.edges.length);
+      expect(hitPolylines).toHaveLength(graph.edges.length);
+      visiblePolylines.forEach((vp, i) => {
+        expect(hitPolylines[i].getAttribute('points')).toBe(vp.getAttribute('points'));
+        expect(hitPolylines[i].getAttribute('role')).toBe('img');
+        expect(hitPolylines[i].getAttribute('tabindex')).toBe('0');
+      });
+    });
+
+    it('shows direction, endpoints, formatted distance and SNR when both endpoints have a position fix', () => {
+      const pos100 = { lat: 26.30307, lng: -80.21952 };
+      const pos200 = { lat: 26.31307, lng: -80.22952 };
+      const { graph, meta } = buildEdgeFixture({ pos100, pos200 });
+      const { container } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+
+      fireEvent.mouseEnter(hitTargetFor(container, 'forward'));
+
+      const popup = document.querySelector('[role="tooltip"]') as HTMLElement;
+      expect(popup).not.toBeNull();
+      const text = popup.textContent ?? '';
+      expect(text).toContain('Forward');
+      expect(text).toContain('From Node (FRM) → Target Node (TGT)');
+      const km = calculateDistance(pos100.lat, pos100.lng, pos200.lat, pos200.lng);
+      expect(text).toContain(formatDistance(km, 'km', 1));
+      expect(text).toContain('5.0 dB');
+    });
+
+    it('omits the distance row when either endpoint lacks a position fix, while direction/endpoints/SNR still render', () => {
+      const { graph, meta } = buildEdgeFixture({ pos100: { lat: 1, lng: 2 } }); // pos200 absent
+      const { container } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+
+      fireEvent.mouseEnter(hitTargetFor(container, 'forward'));
+
+      const popup = document.querySelector('[role="tooltip"]') as HTMLElement;
+      const text = popup.textContent ?? '';
+      expect(text).toContain('Forward');
+      expect(text).toContain('From Node (FRM) → Target Node (TGT)');
+      expect(text).toContain('5.0 dB');
+      expect(screen.queryByText('Distance:')).toBeNull();
+    });
+
+    it('honours distanceUnit, switching between km and mi for the same fixture', () => {
+      const pos100 = { lat: 26.30307, lng: -80.21952 };
+      const pos200 = { lat: 26.31307, lng: -80.22952 };
+      const km = calculateDistance(pos100.lat, pos100.lng, pos200.lat, pos200.lng);
+      const { graph, meta } = buildEdgeFixture({ pos100, pos200 });
+
+      const { container: kmContainer, unmount } = render(
+        <TracerouteStrip graph={graph} meta={meta} {...FMT} distanceUnit="km" />,
+      );
+      fireEvent.mouseEnter(hitTargetFor(kmContainer, 'forward'));
+      const kmText = (document.querySelector('[role="tooltip"]') as HTMLElement).textContent ?? '';
+      unmount();
+
+      const { container: miContainer } = render(
+        <TracerouteStrip graph={graph} meta={meta} {...FMT} distanceUnit="mi" />,
+      );
+      fireEvent.mouseEnter(hitTargetFor(miContainer, 'forward'));
+      const miText = (document.querySelector('[role="tooltip"]') as HTMLElement).textContent ?? '';
+
+      expect(kmText).toContain(formatDistance(km, 'km', 1));
+      expect(miText).toContain(formatDistance(km, 'mi', 1));
+      expect(kmText).not.toBe(miText);
+    });
+
+    it("coerces distanceUnit='nm' to km, since formatDistance has no 'nm' branch", () => {
+      const pos100 = { lat: 26.30307, lng: -80.21952 };
+      const pos200 = { lat: 26.31307, lng: -80.22952 };
+      const { graph, meta } = buildEdgeFixture({ pos100, pos200 });
+
+      const { container: kmContainer, unmount } = render(
+        <TracerouteStrip graph={graph} meta={meta} {...FMT} distanceUnit="km" />,
+      );
+      fireEvent.mouseEnter(hitTargetFor(kmContainer, 'forward'));
+      const kmText = (document.querySelector('[role="tooltip"]') as HTMLElement).textContent ?? '';
+      unmount();
+
+      const { container: nmContainer } = render(
+        <TracerouteStrip graph={graph} meta={meta} {...FMT} distanceUnit="nm" />,
+      );
+      fireEvent.mouseEnter(hitTargetFor(nmContainer, 'forward'));
+      const nmText = (document.querySelector('[role="tooltip"]') as HTMLElement).textContent ?? '';
+
+      expect(nmText).toBe(kmText);
+    });
+
+    it('shows "Return" for a return-leg edge tooltip and "Forward" for a forward-leg one', () => {
+      const { graph, meta } = buildEdgeFixture();
+      const { container } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+
+      fireEvent.mouseEnter(hitTargetFor(container, 'forward'));
+      expect((document.querySelector('[role="tooltip"]') as HTMLElement).textContent).toContain('Forward');
+
+      fireEvent.mouseEnter(hitTargetFor(container, 'return'));
+      expect((document.querySelector('[role="tooltip"]') as HTMLElement).textContent).toContain('Return');
+    });
+
+    it('shows the unknown-SNR text for a snrUnknown edge; omits the SNR row entirely when snr is null and not unknown', () => {
+      const unknownInput: TracerouteStripInput = {
+        fromNodeNum: 100,
+        toNodeNum: 200,
+        route: '[]',
+        snrTowards: JSON.stringify([-128]), // INT8_MIN sentinel
+        routeBack: null,
+      };
+      const unknownGraph = buildTracerouteStripGraph(unknownInput);
+      const unknownMeta = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+        [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+      ]);
+      const { container: c1, unmount: unmountC1 } = render(
+        <TracerouteStrip graph={unknownGraph} meta={unknownMeta} {...FMT} />,
+      );
+      fireEvent.mouseEnter(hitTargetFor(c1, 'forward'));
+      const unknownText = (document.querySelector('[role="tooltip"]') as HTMLElement).textContent ?? '';
+      expect(unknownText).toContain('Unknown SNR (MQTT-bridged hop, decrypt failure, or old firmware)');
+      unmountC1(); // otherwise its still-open popup (with a "Signal:" row) survives into the c2 assertions below
+
+      // Second edge here has NO SNR sample at all (snr: null, snrUnknown: false).
+      const missingInput: TracerouteStripInput = {
+        fromNodeNum: 100,
+        toNodeNum: 200,
+        route: JSON.stringify([110]),
+        snrTowards: JSON.stringify([-128]), // consumed by the first edge only
+        routeBack: null,
+      };
+      const missingGraph = buildTracerouteStripGraph(missingInput);
+      const secondEdge = missingGraph.edges.find((e) => e.toId.includes('-200'));
+      expect(secondEdge).toBeDefined();
+      expect(secondEdge!.snr).toBeNull();
+      expect(secondEdge!.snrUnknown).toBe(false);
+      const missingMeta = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+        [110, makeMeta({ nodeNum: 110, shortName: 'MID', longName: 'Middle Node' })],
+        [200, makeMeta({ nodeNum: 200, shortName: 'TGT', longName: 'Target Node' })],
+      ]);
+      const { container: c2 } = render(<TracerouteStrip graph={missingGraph} meta={missingMeta} {...FMT} />);
+      const secondHit = Array.from(c2.querySelectorAll('polyline[role="img"]')).find((p) =>
+        (p.getAttribute('aria-label') ?? '').includes('Middle Node (MID) → Target Node (TGT)'),
+      ) as HTMLElement | undefined;
+      expect(secondHit).toBeDefined();
+      fireEvent.mouseEnter(secondHit!);
+      expect(screen.queryByText('Signal:')).toBeNull();
+    });
+
+    it('falls back to the unknown placeholder + padded hex for an endpoint missing from meta', () => {
+      const input: TracerouteStripInput = {
+        fromNodeNum: 100,
+        toNodeNum: 200,
+        route: '[]',
+        routeBack: null,
+      };
+      const graph = buildTracerouteStripGraph(input);
+      // 200 deliberately absent from meta.
+      const meta = new Map<number, TracerouteStripNodeMeta>([
+        [100, makeMeta({ nodeNum: 100, shortName: 'FRM', longName: 'From Node' })],
+      ]);
+      const { container } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+
+      const hit = container.querySelector('polyline[role="img"]') as HTMLElement;
+      fireEvent.mouseEnter(hit);
+      const text = (document.querySelector('[role="tooltip"]') as HTMLElement).textContent ?? '';
+      expect(text).toContain('!000000c8'); // 200 in padded hex
+      expect(text).toContain('Unknown');
+    });
+
+    it('each hit target has tabIndex=0, role="img", and an aria-label without a dangling separator when distance is absent', () => {
+      const { graph, meta } = buildEdgeFixture(); // no pos on either node -> distance absent
+      const { container } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+
+      const hit = hitTargetFor(container, 'forward');
+      expect(hit.getAttribute('tabindex')).toBe('0');
+      expect(hit.getAttribute('role')).toBe('img');
+      const label = hit.getAttribute('aria-label') ?? '';
+      expect(label).toContain('Forward');
+      expect(label).toContain('From Node (FRM) → Target Node (TGT)');
+      expect(label).toContain('5.0 dB');
+      expect(label).not.toMatch(/,\s*,/);
+      expect(label.trim().endsWith(',')).toBe(false);
+    });
+
+    it('focus opens the tooltip immediately and blur closes it immediately (no linger on the keyboard path)', () => {
+      const { graph, meta } = buildEdgeFixture();
+      const { container } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+      const hit = hitTargetFor(container, 'forward');
+
+      expect(hit.getAttribute('aria-describedby')).toBeNull();
+      fireEvent.focus(hit);
+      const tipId = hit.getAttribute('aria-describedby');
+      expect(tipId).toBeTruthy();
+      expect(document.getElementById(tipId!)).not.toBeNull();
+
+      fireEvent.blur(hit);
+      expect(hit.getAttribute('aria-describedby')).toBeNull();
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    });
+
+    it('click toggles the tooltip open then closed on the same hit target (touch path)', () => {
+      const { graph, meta } = buildEdgeFixture();
+      const { container } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+      const hit = hitTargetFor(container, 'forward');
+
+      fireEvent.click(hit);
+      expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+
+      fireEvent.click(hit);
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    });
+
+    it('a pointerdown outside the hit target and the popup dismisses an open edge tooltip', () => {
+      const { graph, meta } = buildEdgeFixture();
+      const { container } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+      const hit = hitTargetFor(container, 'forward');
+
+      fireEvent.click(hit);
+      expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+
+      // Raw dispatchEvent (unlike fireEvent) isn't act()-aware, so the
+      // resulting setHover(null) needs an explicit act() to flush before the
+      // assertion below reads the DOM.
+      const EventCtor = typeof PointerEvent !== 'undefined' ? PointerEvent : MouseEvent;
+      act(() => {
+        document.body.dispatchEvent(new EventCtor('pointerdown', { bubbles: true, cancelable: true }));
+      });
+
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    });
+
+    it('only one popup is shown at a time: hovering a hit target after a glyph replaces the popup, not adds a second one', () => {
+      const { graph, meta } = buildEdgeFixture();
+      const { container } = render(<TracerouteStrip graph={graph} meta={meta} {...FMT} />);
+
+      fireEvent.mouseEnter(nodeDivFor('FRM'));
+      expect(document.querySelectorAll('[role="tooltip"]')).toHaveLength(1);
+
+      fireEvent.mouseEnter(hitTargetFor(container, 'forward'));
+      expect(document.querySelectorAll('[role="tooltip"]')).toHaveLength(1);
     });
   });
 });

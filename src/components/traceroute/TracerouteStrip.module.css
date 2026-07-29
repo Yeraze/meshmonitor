@@ -142,6 +142,39 @@
   opacity: 1;
 }
 
+/* Edge tooltips (#TRS-phase1 WP2) are descriptions, never surfaces to click
+ * into — no button lives inside one. `pointer-events: auto` stays on so the
+ * linger-cancel (mouseenter on the popup itself) keeps working on desktop;
+ * this is a content/role hook (no button, `role="tooltip"` semantics), not a
+ * pointer-events switch. The tooltip sits POPUP_GAP above/below its own hit
+ * target, so it never overlaps the polyline underneath it. */
+.hoverPopupInert {
+  pointer-events: auto;
+}
+
+/* Invisible, widened copy of each edge path (WP2). `.edges` keeps
+ * `pointer-events: none`; a descendant that sets its own `pointer-events` is
+ * still hit-tested, so ONLY these lines are interactive — the visible
+ * strokes and the arrowheads stay inert. */
+.edgeHit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: stroke;
+  cursor: help;
+}
+
+.edgeHit:focus-visible {
+  /* Paints the edge itself blue rather than an outline box around the
+   * segment's bounding rect, which for a diagonal edge would be a large,
+   * misleading rectangle. */
+  stroke: var(--ctp-blue);
+  stroke-width: 3;
+  outline: none;
+}
+
 /* Visually-hidden lane caption ("Forward"/"Return") announced ahead of each
  * SNR label's value, for screen-reader users who can't rely on vertical
  * position to distinguish the two lanes. Standard clip-based sr-only
