@@ -33,6 +33,15 @@ import GeoJsonLayerManager from './GeoJsonLayerManager';
 import MapStyleManager from './MapStyleManager';
 import { useDashboardSources } from '../hooks/useDashboardData';
 import { DEFAULT_TERRARIUM_URL } from '../types/elevation';
+import { useSourceQuery } from '../hooks/useSourceQuery';
+import { useSource } from '../contexts/SourceContext';
+import {
+  NODE_DISPLAY_SETTING_KEYS,
+  NODE_DISPLAY_NUMERIC_DEFAULTS,
+  NODE_DISPLAY_STRING_DEFAULTS,
+  parseNodeDisplayNumber,
+  parseNodeDisplayBoolean,
+} from '../constants/nodeDisplayDefaults';
 
 type DistanceUnit = 'km' | 'mi';
 type PositionHistoryLineStyle = 'linear' | 'spline';
@@ -93,6 +102,12 @@ interface SettingsDraft {
   noIndexEnabled: boolean;
   meshcoreChannelRetryEnabled: boolean;
   hideIncompleteNodes: boolean;
+  // Dimming trio (#4412 Phase 3 WP4) — moved onto the draft from their own
+  // ad-hoc initialNodeDimmingSettings dirty-tracker; see nodeDimmingChanged's
+  // deletion below.
+  nodeDimmingEnabled: boolean;
+  nodeDimmingStartHours: number;
+  nodeDimmingMinOpacity: number;
   solarMonitoringEnabled: boolean;
   solarMonitoringLatitude: number;
   solarMonitoringLongitude: number;
@@ -338,6 +353,17 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // #4412 Phase 3: showIncompleteNodes moved from UIContext to SettingsContext
   // (per-source, like the rest of the Node Display group).
   const { showIncompleteNodes, setHideIncompleteNodes } = useSettings();
+  // #4412 Phase 3 WP4: scopes the Node Display GET/POST to the active source.
+  // '' in mode="global" (GlobalSettingsPage renders outside a SourceProvider).
+  const sourceQuery = useSourceQuery();
+  // #4412 Phase 3 WP4(e): localStatsIntervalMinutes and nodeHopsCalculation
+  // have no MeshCore equivalent (both are Meshtastic-specific node-age
+  // signals), so they're hidden — not disabled — on MeshCore sources. This
+  // branch is unreachable today (SettingsTab never mounts under a MeshCore
+  // route — see the JSX below for the full citation); Phase 4 adds the
+  // mount point that exercises it live.
+  const { sourceType } = useSource();
+  const isMeshCoreSource = sourceType === 'meshcore';
 
   // Single draft reducer replacing the 49 `local*` mirrors (Task 5.3). Lazy-initialized once from
   // the current context/props values; category-C fields (no context/prop home) start at their
@@ -376,6 +402,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     noIndexEnabled,
     meshcoreChannelRetryEnabled,
     hideIncompleteNodes: !showIncompleteNodes,
+    nodeDimmingEnabled,
+    nodeDimmingStartHours,
+    nodeDimmingMinOpacity,
     solarMonitoringEnabled,
     solarMonitoringLatitude,
     solarMonitoringLongitude,
@@ -385,7 +414,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     packetLogMaxCount: 1000,
     packetLogMaxAgeHours: 24,
     homoglyphEnabled: false,
-    localStatsIntervalMinutes: 15,
+    localStatsIntervalMinutes: NODE_DISPLAY_NUMERIC_DEFAULTS.localStatsIntervalMinutes,
     meshcoreCliTimeoutSeconds: 15,
     analyticsProvider: 'none',
     analyticsConfig: {},
@@ -407,7 +436,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // buildBaseline/baseline below). Populated by the server-fetch effect.
   const [initialPacketMonitorSettings, setInitialPacketMonitorSettings] = useState({ enabled: false, maxCount: 1000, maxAgeHours: 24 });
   const [initialHomoglyphEnabled, setInitialHomoglyphEnabled] = useState(false);
-  const [initialLocalStatsIntervalMinutes, setInitialLocalStatsIntervalMinutes] = useState(15);
+  const [initialLocalStatsIntervalMinutes, setInitialLocalStatsIntervalMinutes] = useState<number>(NODE_DISPLAY_NUMERIC_DEFAULTS.localStatsIntervalMinutes);
   // MeshCore CLI console reply-timeout (seconds), issue #4027. Local-only server-backed setting
   // (no SettingsContext prop), mirroring localStats above.
   const [initialMeshcoreCliTimeoutSeconds, setInitialMeshcoreCliTimeoutSeconds] = useState(15);
@@ -423,15 +452,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // global singleton, no context/prop home, default OFF / port 8088.
   const [initialCotFeedEnabled, setInitialCotFeedEnabled] = useState(false);
   const [initialCotFeedPort, setInitialCotFeedPort] = useState(8088);
-  // nodeDimming* lives in SettingsContext directly (not a draft mirror — its JSX binds straight to
-  // context state), but is still dirty-tracked/saved/reset alongside the draft (see
-  // nodeDimmingChanged / handleSave / resetChanges below).
-  const [initialNodeDimmingSettings, setInitialNodeDimmingSettings] = useState({
-    enabled: nodeDimmingEnabled,
-    startHours: nodeDimmingStartHours,
-    minOpacity: nodeDimmingMinOpacity,
-  });
-
   // Transient/derived UI state — stays as plain useState (not draft fields, see §1.3 of the Task
   // 5.3 spec).
   const [isFetchingSolarEstimates, setIsFetchingSolarEstimates] = useState(false);
@@ -479,12 +499,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   useEffect(() => {
     const fetchServerSettings = async () => {
       try {
-        const settings = await apiService.get<Record<string, string>>('/api/settings');
+        // #4412 Phase 3 WP4(a): scoped in mode="source" (sourceQuery carries
+        // ?sourceId=), unscoped in mode="global" — matches useSourceQuery()'s
+        // '' return outside a SourceProvider exactly, so no separate `mode`
+        // branch is needed here.
+        const settings = await apiService.get<Record<string, string>>(`/api/settings${sourceQuery}`);
         {
           const enabled = settings.packet_log_enabled === '1';
           const maxCount = parseInt(settings.packet_log_max_count || '1000', 10);
           const maxAgeHours = parseInt(settings.packet_log_max_age_hours || '24', 10);
-          const hideIncomplete = settings.hideIncompleteNodes === '1';
+          const hideIncomplete = parseNodeDisplayBoolean('hideIncompleteNodes', settings.hideIncompleteNodes);
 
           updateField('packetLogEnabled', enabled);
           updateField('packetLogMaxCount', maxCount);
@@ -517,7 +541,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           updateField('meshcoreChannelRetryEnabled', meshcoreChannelRetryOn);
 
           // Load LocalStats interval setting
-          const statsInterval = parseInt(settings.localStatsIntervalMinutes || '15', 10);
+          const statsInterval = parseNodeDisplayNumber('localStatsIntervalMinutes', settings.localStatsIntervalMinutes);
           updateField('localStatsIntervalMinutes', statsInterval);
           setInitialLocalStatsIntervalMinutes(statsInterval);
 
@@ -527,15 +551,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           updateField('meshcoreCliTimeoutSeconds', cliTimeout);
           setInitialMeshcoreCliTimeoutSeconds(cliTimeout);
 
-          // Load node dimming initial values from server
-          const dimmingEnabled = settings.nodeDimmingEnabled === '1' || settings.nodeDimmingEnabled === 'true';
-          const dimmingStartHours = parseFloat(settings.nodeDimmingStartHours) || nodeDimmingStartHours;
-          const dimmingMinOpacity = parseFloat(settings.nodeDimmingMinOpacity) || nodeDimmingMinOpacity;
-          setInitialNodeDimmingSettings({
-            enabled: dimmingEnabled,
-            startHours: dimmingStartHours,
-            minOpacity: dimmingMinOpacity,
-          });
+          // Load node dimming initial values from server (#4412 Phase 3 WP4(c):
+          // the trio now lands on the draft via updateField, like every other
+          // Node Display field, instead of its own initialNodeDimmingSettings
+          // dirty-tracker).
+          updateField('nodeDimmingEnabled', parseNodeDisplayBoolean('nodeDimmingEnabled', settings.nodeDimmingEnabled));
+          updateField('nodeDimmingStartHours', parseNodeDisplayNumber('nodeDimmingStartHours', settings.nodeDimmingStartHours));
+          updateField('nodeDimmingMinOpacity', parseNodeDisplayNumber('nodeDimmingMinOpacity', settings.nodeDimmingMinOpacity));
 
           // Load analytics settings
           if (settings.analyticsProvider) {
@@ -584,11 +606,16 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       }
     };
     void fetchServerSettings();
-    // nodeDimmingStartHours/MinOpacity are only read as a one-time fallback default inside the
-    // async callback (parseFloat(...) || nodeDimmingStartHours), matching pre-5.3 behavior; listing
-    // them would re-run this mount-time fetch on every dimming edit.
+    // #4412 Phase 3 WP4: sourceQuery added so switching sources re-fetches this
+    // source's server-stored settings (packet monitor, homoglyph, dimming trio,
+    // etc). The dimming trio no longer reads its own state as a fallback
+    // default (parseNodeDisplayNumber/-Boolean replace the old
+    // `parseFloat(...) || nodeDimmingStartHours` pattern), so this effect has
+    // no remaining unlisted-but-read reactive value; the disable below is kept
+    // only because it predates this change and this run's `lint:ci` pass is
+    // the arbiter of whether it's still load-bearing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseUrl, setHideIncompleteNodes, updateField]);
+  }, [baseUrl, sourceQuery, setHideIncompleteNodes, updateField]);
 
   // Baseline: a memoized snapshot of the current context/props/initial* values, in SettingsDraft
   // shape. Replaces the old ~35-dep "update local state when props change" effect body — this
@@ -639,6 +666,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       // checkbox says "Hide" while the context uses "show" semantics. Do the inversion here so the
       // draft-vs-baseline diff stays a plain shallow-equal.
       hideIncompleteNodes: !showIncompleteNodes,
+      // Dimming trio (#4412 Phase 3 WP4c) — now ordinary Category B fields,
+      // read straight from SettingsContext like nodeHopsCalculation above.
+      nodeDimmingEnabled,
+      nodeDimmingStartHours,
+      nodeDimmingMinOpacity,
       solarMonitoringEnabled,
       solarMonitoringLatitude,
       solarMonitoringLongitude,
@@ -664,6 +696,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom,
       defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
+      nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialMeshcoreCliTimeoutSeconds,
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialElevationEnabled, initialElevationSourceUrl,
@@ -720,6 +753,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         noIndexEnabled,
         meshcoreChannelRetryEnabled,
         hideIncompleteNodes: !showIncompleteNodes,
+        nodeDimmingEnabled,
+        nodeDimmingStartHours,
+        nodeDimmingMinOpacity,
         solarMonitoringEnabled,
         solarMonitoringLatitude,
         solarMonitoringLongitude,
@@ -733,6 +769,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom,
       defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
+      nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination]);
 
   // Default solar monitoring lat/long to device position if still at 0
@@ -747,27 +784,18 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     }
   }, [currentNodeId, nodes, solarMonitoringLatitude, solarMonitoringLongitude, updateField]);
 
-  // nodeDimming* isn't a draft field (its JSX binds straight to SettingsContext state — see
-  // §1.2 of the Task 5.3 spec), so it needs its own small dirty-check folded into hasChanges.
-  const nodeDimmingChanged = useMemo(() =>
-    nodeDimmingEnabled !== initialNodeDimmingSettings.enabled ||
-    nodeDimmingStartHours !== initialNodeDimmingSettings.startHours ||
-    nodeDimmingMinOpacity !== initialNodeDimmingSettings.minOpacity,
-  [nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, initialNodeDimmingSettings]);
-
   // Derived dirty flag — replaces the old ~57-dep change-detection effect + its own `hasChanges`
-  // useState. hasChanges is now purely a function of (draft, baseline, nodeDimmingChanged).
-  const hasChanges = useMemo(() => !settingsDraftEqual(draft, baseline) || nodeDimmingChanged, [draft, baseline, nodeDimmingChanged]);
+  // useState. hasChanges is now purely a function of (draft, baseline); the dimming trio's own
+  // nodeDimmingChanged tracker is gone now that the trio is an ordinary draft field (#4412 Phase 3
+  // WP4c) covered by settingsDraftEqual like every other field.
+  const hasChanges = useMemo(() => !settingsDraftEqual(draft, baseline), [draft, baseline]);
 
   // Reset local state to current saved values (for SaveBar dismiss). Replaces the old ~35-dep
-  // resetChanges useCallback — re-seeding the draft from `baseline` covers every draft field in
-  // one dispatch; nodeDimming* (not a draft field) still needs its own three setter calls.
+  // resetChanges useCallback — re-seeding the draft from `baseline` covers every draft field
+  // (including the dimming trio now) in one dispatch.
   const resetChanges = useCallback(() => {
     dispatch({ type: 'reseed', next: baseline });
-    setNodeDimmingEnabled(initialNodeDimmingSettings.enabled);
-    setNodeDimmingStartHours(initialNodeDimmingSettings.startHours);
-    setNodeDimmingMinOpacity(initialNodeDimmingSettings.minOpacity);
-  }, [baseline, initialNodeDimmingSettings, setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity]);
+  }, [baseline]);
 
   // Category-A prop callbacks (from App.tsx) are latched through a ref kept fresh every render, so
   // `applyDraft` below stays referentially stable even if App.tsx doesn't memoize them. Category-B
@@ -833,6 +861,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setNoIndexEnabled(d.noIndexEnabled);
     setMeshcoreChannelRetryEnabled(d.meshcoreChannelRetryEnabled);
     setHideIncompleteNodes(d.hideIncompleteNodes);
+    setNodeDimmingEnabled(d.nodeDimmingEnabled);
+    setNodeDimmingStartHours(d.nodeDimmingStartHours);
+    setNodeDimmingMinOpacity(d.nodeDimmingMinOpacity);
 
     // Update initial* snapshots for category-C fields after successful save
     setInitialPacketMonitorSettings({ enabled: d.packetLogEnabled, maxCount: d.packetLogMaxCount, maxAgeHours: d.packetLogMaxAgeHours });
@@ -849,7 +880,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   }, [setNeighborInfoMinZoom, setDefaultMapCenterLat, setDefaultMapCenterLon, setDefaultMapCenterZoom,
       setMapCenterTargetZoom, setDefaultLandingPage, setAppearanceMode, setDarkTheme, setLightTheme,
       setNodeHopsCalculation, setPreferredDashboardSortOption, setLinkPreviewsEnabled, setDiscardInvalidPositions,
-      setNoIndexEnabled, setMeshcoreChannelRetryEnabled, setHideIncompleteNodes]);
+      setNoIndexEnabled, setMeshcoreChannelRetryEnabled, setHideIncompleteNodes,
+      setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -905,9 +937,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         localStatsIntervalMinutes: draft.localStatsIntervalMinutes.toString(),
         meshcoreCliTimeoutSeconds: draft.meshcoreCliTimeoutSeconds.toString(),
         nodeHopsCalculation: draft.nodeHopsCalculation,
-        nodeDimmingEnabled: nodeDimmingEnabled ? '1' : '0',
-        nodeDimmingStartHours: nodeDimmingStartHours.toString(),
-        nodeDimmingMinOpacity: nodeDimmingMinOpacity.toString(),
+        nodeDimmingEnabled: draft.nodeDimmingEnabled ? '1' : '0',
+        nodeDimmingStartHours: draft.nodeDimmingStartHours.toString(),
+        nodeDimmingMinOpacity: draft.nodeDimmingMinOpacity.toString(),
         analyticsProvider: draft.analyticsProvider,
         analyticsConfig: JSON.stringify(draft.analyticsConfig),
         appriseApiServerUrl: draft.appriseApiServerUrl.trim(),
@@ -917,20 +949,50 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         cotFeedPort: String(draft.cotFeedPort),
       };
 
-      // Save to server
-      await csrfFetch(`${baseUrl}/api/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
-      });
+      // Node Display keys are per-source (#4412 Phase 3); everything else keeps
+      // today's unscoped global behaviour. Partition — never a second literal, the
+      // single `const settings = {…}` block above is source-extracted by
+      // server.settings-persistence.test.ts (which also statically executes this
+      // partition to assert it routes exactly the ten NODE_DISPLAY_SETTING_KEYS).
+      const nodeDisplayBody: Record<string, unknown> = {};
+      const globalBody: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(settings)) {
+        if ((NODE_DISPLAY_SETTING_KEYS as readonly string[]).includes(k)) {
+          nodeDisplayBody[k] = v;
+        } else {
+          globalBody[k] = v;
+        }
+      }
+
+      if (sourceQuery) {
+        // Sequential awaits (not Promise.all): if the global POST fails, the
+        // scoped one must not fire — matches today's all-or-nothing-on-throw
+        // behaviour (the catch below shows settings.save_failed and skips
+        // applyDraft). A failure of the SECOND POST here leaves the global
+        // half already applied server-side; that's accepted and surfaced by
+        // the error toast rather than rolled back.
+        await csrfFetch(`${baseUrl}/api/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(globalBody),
+        });
+        await csrfFetch(`${baseUrl}/api/settings${sourceQuery}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(nodeDisplayBody),
+        });
+      } else {
+        // mode="global" (or no SourceProvider): byte-identical to the
+        // pre-split single unscoped POST.
+        await csrfFetch(`${baseUrl}/api/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(settings)
+        });
+      }
 
       // Fan out to parent/context state and update category-C snapshots
       applyDraft(draft);
-      setInitialNodeDimmingSettings({
-        enabled: nodeDimmingEnabled,
-        startHours: nodeDimmingStartHours,
-        minOpacity: nodeDimmingMinOpacity,
-      });
 
       showToast(t('settings.saved_success'), 'success');
     } catch (error) {
@@ -939,7 +1001,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [draft, applyDraft, nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity, csrfFetch, baseUrl, showToast, t]);
+  }, [draft, applyDraft, sourceQuery, csrfFetch, baseUrl, showToast, t]);
 
   // Register with SaveBar
   useSaveBar({
@@ -1087,7 +1149,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       });
 
       // Set draft state to defaults
-      updateField('maxNodeAgeHours', 24);
+      updateField('maxNodeAgeHours', NODE_DISPLAY_NUMERIC_DEFAULTS.maxNodeAgeHours);
       updateField('temperatureUnit', 'C');
       updateField('distanceUnit', 'km');
       updateField('positionHistoryLineStyle', 'spline');
@@ -1103,7 +1165,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       updateField('appearanceMode', 'system');
       updateField('darkTheme', 'mocha');
       updateField('lightTheme', 'latte');
-      updateField('nodeHopsCalculation', 'nodeinfo');
+      updateField('nodeHopsCalculation', NODE_DISPLAY_STRING_DEFAULTS.nodeHopsCalculation);
       updateField('preferredDashboardSortOption', 'custom');
       updateField('packetLogEnabled', false);
       updateField('packetLogMaxCount', 1000);
@@ -1118,7 +1180,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       updateField('meshcoreChannelRetryEnabled', false);
 
       // Update parent component with defaults
-      onMaxNodeAgeChange(24);
+      onMaxNodeAgeChange(NODE_DISPLAY_NUMERIC_DEFAULTS.maxNodeAgeHours);
       onTemperatureUnitChange('C');
       onDistanceUnitChange('km');
       onPositionHistoryLineStyleChange('spline');
@@ -1133,7 +1195,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       setAppearanceMode('system');
       setDarkTheme('mocha');
       setLightTheme('latte');
-      setNodeHopsCalculation('nodeinfo');
+      setNodeHopsCalculation(NODE_DISPLAY_STRING_DEFAULTS.nodeHopsCalculation);
       setPreferredDashboardSortOption('custom');
       onSolarMonitoringEnabledChange(false);
       onSolarMonitoringLatitudeChange(0);
@@ -1934,37 +1996,49 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               className="setting-input"
             />
           </div>
-          <div className="setting-item">
-            <label htmlFor="localStatsIntervalMinutes">
-              {t('settings.local_stats_interval_label')}
-              <span className="setting-description">{t('settings.local_stats_interval_description')}</span>
-            </label>
-            <input
-              id="localStatsIntervalMinutes"
-              type="number"
-              min="0"
-              max="60"
-              value={draft.localStatsIntervalMinutes}
-              onChange={(e) => updateField('localStatsIntervalMinutes', parseInt(e.target.value))}
-              className="setting-input"
-            />
-          </div>
-          <div className="setting-item">
-            <label htmlFor="nodeHopsCalculation">
-              {t('settings.node_hops_calculation')}
-              <span className="setting-description">{t('settings.node_hops_calculation_description')}</span>
-            </label>
-            <select
-              id="nodeHopsCalculation"
-              value={draft.nodeHopsCalculation}
-              onChange={(e) => updateField('nodeHopsCalculation', e.target.value as NodeHopsCalculation)}
-              className="setting-input"
-            >
-              <option value="nodeinfo">{t('settings.node_hops_nodeinfo')}</option>
-              <option value="traceroute">{t('settings.node_hops_traceroute')}</option>
-              <option value="messages">{t('settings.node_hops_messages')}</option>
-            </select>
-          </div>
+          {/* #4412 Phase 3 WP4(e): localStatsIntervalMinutes and nodeHopsCalculation are
+              Meshtastic-specific node-age signals with no MeshCore equivalent, so they're
+              hidden — not disabled — on MeshCore sources. Unreachable today: SettingsTab
+              never mounts under a MeshCore route (GlobalSettingsPage.tsx and App.tsx's
+              /settings route are the only two mount sites, and MeshCore sources render
+              MeshCorePage instead). Phase 4 adds the mount point that exercises this live;
+              this branch's only coverage until then is
+              SettingsTab.nodeDisplay.perSource.test.tsx. */}
+          {!isMeshCoreSource && (
+            <>
+              <div className="setting-item">
+                <label htmlFor="localStatsIntervalMinutes">
+                  {t('settings.local_stats_interval_label')}
+                  <span className="setting-description">{t('settings.local_stats_interval_description')}</span>
+                </label>
+                <input
+                  id="localStatsIntervalMinutes"
+                  type="number"
+                  min="0"
+                  max="60"
+                  value={draft.localStatsIntervalMinutes}
+                  onChange={(e) => updateField('localStatsIntervalMinutes', parseInt(e.target.value))}
+                  className="setting-input"
+                />
+              </div>
+              <div className="setting-item">
+                <label htmlFor="nodeHopsCalculation">
+                  {t('settings.node_hops_calculation')}
+                  <span className="setting-description">{t('settings.node_hops_calculation_description')}</span>
+                </label>
+                <select
+                  id="nodeHopsCalculation"
+                  value={draft.nodeHopsCalculation}
+                  onChange={(e) => updateField('nodeHopsCalculation', e.target.value as NodeHopsCalculation)}
+                  className="setting-input"
+                >
+                  <option value="nodeinfo">{t('settings.node_hops_nodeinfo')}</option>
+                  <option value="traceroute">{t('settings.node_hops_traceroute')}</option>
+                  <option value="messages">{t('settings.node_hops_messages')}</option>
+                </select>
+              </div>
+            </>
+          )}
           <div className="setting-item" style={{ marginTop: '1rem' }}>
             <label>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
@@ -1984,8 +2058,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
-                  checked={nodeDimmingEnabled}
-                  onChange={(e) => setNodeDimmingEnabled(e.target.checked)}
+                  checked={draft.nodeDimmingEnabled}
+                  onChange={(e) => updateField('nodeDimmingEnabled', e.target.checked)}
                   style={{ cursor: 'pointer' }}
                 />
                 {t('settings.node_dimming_enabled')}
@@ -1993,7 +2067,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               <span className="setting-description">{t('settings.node_dimming_description')}</span>
             </label>
           </div>
-          {nodeDimmingEnabled && (
+          {draft.nodeDimmingEnabled && (
             <>
               <div className="setting-item">
                 <label htmlFor="nodeDimmingStartHours">
@@ -2006,8 +2080,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   min="0.5"
                   max="24"
                   step="0.5"
-                  value={nodeDimmingStartHours}
-                  onChange={(e) => setNodeDimmingStartHours(Math.min(24, Math.max(0.5, parseFloat(e.target.value) || 1)))}
+                  value={draft.nodeDimmingStartHours}
+                  onChange={(e) => updateField('nodeDimmingStartHours', Math.min(24, Math.max(0.5, parseFloat(e.target.value) || 1)))}
                   className="setting-input"
                 />
               </div>
@@ -2022,8 +2096,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                   min="0.1"
                   max="0.9"
                   step="0.1"
-                  value={nodeDimmingMinOpacity}
-                  onChange={(e) => setNodeDimmingMinOpacity(Math.min(0.9, Math.max(0.1, parseFloat(e.target.value) || 0.3)))}
+                  value={draft.nodeDimmingMinOpacity}
+                  onChange={(e) => updateField('nodeDimmingMinOpacity', Math.min(0.9, Math.max(0.1, parseFloat(e.target.value) || 0.3)))}
                   className="setting-input"
                 />
               </div>
