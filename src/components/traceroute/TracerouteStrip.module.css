@@ -142,14 +142,14 @@
   opacity: 1;
 }
 
-/* Edge tooltips (#TRS-phase1 WP2) are descriptions, never surfaces to click
- * into — no button lives inside one. `pointer-events: auto` stays on so the
- * linger-cancel (mouseenter on the popup itself) keeps working on desktop;
- * this is a content/role hook (no button, `role="tooltip"` semantics), not a
- * pointer-events switch. The tooltip sits POPUP_GAP above/below its own hit
- * target, so it never overlaps the polyline underneath it. */
-.hoverPopupInert {
-  pointer-events: auto;
+/* Marks the edge variant of the hover popup (#TRS-phase1 WP2): no button
+ * lives inside one, just direction/endpoints/distance/SNR content — a pure
+ * content/role hook, not a pointer-events switch. `.hoverPopup`'s
+ * `pointer-events: auto` already covers both variants (the linger-cancel on
+ * mouseenter needs it either way), so this class carries no declarations of
+ * its own. */
+.hoverPopupEdge {
+  /* intentionally empty */
 }
 
 /* Invisible, widened copy of each edge path (WP2). `.edges` keeps

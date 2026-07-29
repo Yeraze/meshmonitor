@@ -80,7 +80,7 @@ const POPUP_GAP = 8;
 /** How long the popup survives after the pointer leaves the glyph, so the
  *  pointer can cross the POPUP_GAP into the card. Pointer only — blur,
  *  scroll-out and unmount still hide immediately. */
-const HOVER_LINGER_MS = 180;
+export const HOVER_LINGER_MS = 180;
 
 interface HoverNodeTarget {
   kind: 'node';
@@ -686,7 +686,7 @@ export function TracerouteStrip({
             className={cx(
               styles.hoverPopup,
               popupPos && styles.hoverPopupReady,
-              hover.kind === 'edge' && styles.hoverPopupInert,
+              hover.kind === 'edge' && styles.hoverPopupEdge,
             )}
             style={{ left: popupPos?.left ?? 0, top: popupPos?.top ?? 0 }}
             onMouseEnter={clearHideTimer}

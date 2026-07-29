@@ -3,14 +3,9 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { TracerouteStrip, type TracerouteStripNodeMeta } from './TracerouteStrip';
+import { TracerouteStrip, HOVER_LINGER_MS, type TracerouteStripNodeMeta } from './TracerouteStrip';
 import { buildTracerouteStripGraph, type TracerouteStripInput } from '../../utils/tracerouteStrip';
 import { calculateDistance, formatDistance } from '../../utils/distance';
-
-/** Mirrors the private `HOVER_LINGER_MS` constant in `TracerouteStrip.tsx`
- *  (not exported — the component doesn't need to expose it). Keep in sync
- *  if that value ever changes. */
-const HOVER_LINGER_MS = 180;
 
 // The global setup.ts mock for react-i18next ignores the `defaultValue`
 // argument entirely (it only interpolates `{{token}}` placeholders into the
