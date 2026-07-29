@@ -280,6 +280,8 @@ export const VALID_SETTINGS_KEYS = [
   'meshcoreAutoAckCooldownSeconds',
   'meshcoreAutoAckPreSendDelaySeconds',
   'meshcoreAutoAckTestMessages',
+  // Per-sender ignore list for the MeshCore auto-responder (#4391)
+  'meshcoreAutoAckIgnoredNodes',
   // MeshCore auto-announce
   'meshcoreAutoAnnounceEnabled',
   'meshcoreAutoAnnounceIntervalHours',
@@ -450,6 +452,8 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreAutoAckCooldownSeconds',
   'meshcoreAutoAckPreSendDelaySeconds',
   'meshcoreAutoAckTestMessages',
+  // Per-sender ignore list for the MeshCore auto-responder (#4391)
+  'meshcoreAutoAckIgnoredNodes',
   // MeshCore auto-announce
   'meshcoreAutoAnnounceEnabled',
   'meshcoreAutoAnnounceIntervalHours',

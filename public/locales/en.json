@@ -5022,5 +5022,7 @@
   "meshcore.automation.pathfinding.filter.snr_min_label": "Min SNR (dB)",
   "meshcore.automation.pathfinding.filter.signal_note": "Leave a threshold at its floor value to ignore it.",
   "meshcore.automation.pathfinding.filter.preview_count": "{{count}} contacts will be targeted",
-  "meshcore.automation.pathfinding.filter.no_match": "No contacts match the current filters"
+  "meshcore.automation.pathfinding.filter.no_match": "No contacts match the current filters",
+  "meshcore.automation.autoack.node_ignore_list": "Sender Ignore List",
+  "meshcore.automation.autoack.node_ignore_list_description": "Never auto-acknowledge these senders — use it to break a bot echo loop. One entry per line, or comma-separated. An entry is either a public key (full key or any leading prefix, with or without a leading \"!\") or a contact/sender name. Names are matched ignoring case and extra spaces, and are the only way to exclude a channel sender, because MeshCore channel packets carry no sender key."
 }

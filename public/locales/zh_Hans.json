@@ -4625,5 +4625,7 @@
     "meshcore.automation.pathfinding.filter.signal_note": "",
     "settings.map_center_target_zoom_label": "",
     "meshcore.automation.pathfinding.filter.title": "",
-    "meshcore.automation.pathfinding.filter.master_toggle": ""
+    "meshcore.automation.pathfinding.filter.master_toggle": "",
+    "meshcore.automation.autoack.node_ignore_list": "",
+    "meshcore.automation.autoack.node_ignore_list_description": ""
 }
