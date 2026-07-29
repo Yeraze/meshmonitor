@@ -516,65 +516,80 @@ export function buildAutoAckAutomations(input: AutoAckConverterInput): AutoAckCo
 
   if (channelRules.length > 0) {
     const channelIndices = parseChannelIndices(settings.channelsRaw);
-    const byNameLower = new Map<string, { name: string; indices: number[] }>();
-    for (const idx of channelIndices) {
-      const row = channels.find((c) => c.index === idx);
-      if (!row) {
-        notConvertible.push({ key: `channel-${idx}-missing`, label: `Channel #${idx}`, detail: `No channel row found at index ${idx} for this source; dropped from the allowlist.` });
-        continue;
-      }
-      if (!isConfiguredChannel(row)) {
-        notConvertible.push({ key: `channel-${idx}-disabled`, label: `Channel #${idx}`, detail: `Index ${idx} is a Disabled slot (role 0), not a real channel; dropped from the allowlist.` });
-        continue;
-      }
-      const name = row.name.trim();
-      if (!name) {
-        notConvertible.push({
-          key: `channel-${idx}-unnamed`,
-          label: `Channel #${idx}`,
-          detail: `Index ${idx} has a blank name. messageFilterChannelNames() drops blank names, and if every entry is blank the whole filter falls away and the automation would answer on every channel — so this index is dropped rather than emitted as an empty name.`,
-        });
-        continue;
-      }
-      const lower = name.toLowerCase();
-      const existing = byNameLower.get(lower);
-      if (existing) existing.indices.push(idx);
-      else byNameLower.set(lower, { name, indices: [idx] });
-    }
 
-    const channelsOut: Array<{ name: string; protocol: 'meshtastic' }> = [];
-    for (const { name, indices } of byNameLower.values()) {
-      channelsOut.push({ name, protocol: 'meshtastic' });
-      if (indices.length > 1) {
-        approximated.push({
-          key: 'channel-name-collision',
-          label: 'Duplicate channel names',
-          detail: `Indices ${indices.join(', ')} all resolve to the name "${name}"; the converted rule answers on all of them.`,
-        });
-      }
-    }
-
-    if (channelIndices.length > 0 && channelsOut.length === 0) {
-      blocking = 'CHANNEL_ALLOWLIST_UNCONVERTIBLE';
+    // CORRECTION (spec §4.2, found during WP2 implementation, orchestrator-verified):
+    // an EMPTY allowlist means Auto-Acknowledge never acked ANY channel message
+    // (meshtasticManager.ts's enabledChannelsSet.has(channelIndex) gate rejects every
+    // index when the set is empty) — it is the OPPOSITE of "no channel restriction".
+    // Emitting a Channel automation with no `channels` filter here would silently widen
+    // dead behaviour into "answer on every channel", spamming the mesh. So an empty
+    // allowlist means "no channel automation at all", not "match any channel" — distinct
+    // from CHANNEL_ALLOWLIST_UNCONVERTIBLE below, which means the user listed channels but
+    // none resolved (a config they must fix, not a valid no-op).
+    if (channelIndices.length === 0) {
+      notConvertible.push({
+        key: 'channel-allowlist-empty',
+        label: 'Channel allowlist',
+        detail: "Auto-Acknowledge's channel allowlist was empty, so it never acknowledged channel messages — only the Direct cells were live. No channel automation was created.",
+      });
     } else {
-      if (channelsOut.length > 0) {
+      const byNameLower = new Map<string, { name: string; indices: number[] }>();
+      for (const idx of channelIndices) {
+        const row = channels.find((c) => c.index === idx);
+        if (!row) {
+          notConvertible.push({ key: `channel-${idx}-missing`, label: `Channel #${idx}`, detail: `No channel row found at index ${idx} for this source; dropped from the allowlist.` });
+          continue;
+        }
+        if (!isConfiguredChannel(row)) {
+          notConvertible.push({ key: `channel-${idx}-disabled`, label: `Channel #${idx}`, detail: `Index ${idx} is a Disabled slot (role 0), not a real channel; dropped from the allowlist.` });
+          continue;
+        }
+        const name = row.name.trim();
+        if (!name) {
+          notConvertible.push({
+            key: `channel-${idx}-unnamed`,
+            label: `Channel #${idx}`,
+            detail: `Index ${idx} has a blank name. messageFilterChannelNames() drops blank names, and if every entry is blank the whole filter falls away and the automation would answer on every channel — so this index is dropped rather than emitted as an empty name.`,
+          });
+          continue;
+        }
+        const lower = name.toLowerCase();
+        const existing = byNameLower.get(lower);
+        if (existing) existing.indices.push(idx);
+        else byNameLower.set(lower, { name, indices: [idx] });
+      }
+
+      const channelsOut: Array<{ name: string; protocol: 'meshtastic' }> = [];
+      for (const { name, indices } of byNameLower.values()) {
+        channelsOut.push({ name, protocol: 'meshtastic' });
+        if (indices.length > 1) {
+          approximated.push({
+            key: 'channel-name-collision',
+            label: 'Duplicate channel names',
+            detail: `Indices ${indices.join(', ')} all resolve to the name "${name}"; the converted rule answers on all of them.`,
+          });
+        }
+      }
+
+      if (channelsOut.length === 0) {
+        blocking = 'CHANNEL_ALLOWLIST_UNCONVERTIBLE';
+      } else {
         converted.push({
           key: 'autoAckChannels',
           label: 'Channel allowlist',
           detail: `Resolved to: ${channelsOut.map((c) => c.name).join(', ')}.`,
         });
+        const triggerParams: Record<string, unknown> = { regex, cooldownSeconds, cooldownScope: 'node', channels: channelsOut };
+        const form: WorkflowForm = { trigger: { type: 'trigger.message', params: triggerParams }, rules: channelRules, combine: null };
+        automations.push({
+          key: 'channel',
+          name: '', // filled in below, once we know whether this is the only automation
+          description: buildDescription(sourceId, 'channel', channelCellLabels, now),
+          enabled: settings.enabled,
+          form,
+          config: compile(form),
+        });
       }
-      const triggerParams: Record<string, unknown> = { regex, cooldownSeconds, cooldownScope: 'node' };
-      if (channelsOut.length > 0) triggerParams.channels = channelsOut;
-      const form: WorkflowForm = { trigger: { type: 'trigger.message', params: triggerParams }, rules: channelRules, combine: null };
-      automations.push({
-        key: 'channel',
-        name: '', // filled in below, once we know whether this is the only automation
-        description: buildDescription(sourceId, 'channel', channelCellLabels, now),
-        enabled: settings.enabled,
-        form,
-        config: compile(form),
-      });
     }
   }
 
@@ -596,6 +611,15 @@ export function buildAutoAckAutomations(input: AutoAckConverterInput): AutoAckCo
     a.name = automations.length === 1
       ? `Auto-Ack — ${sourceName}`
       : `Auto-Ack — ${sourceName} (${a.key === 'channel' ? 'Channels' : 'Direct messages'})`;
+  }
+
+  // An empty channel allowlist can leave `automations` empty even though `channelRules`
+  // was non-empty (the Channel column had no live cells because of a config the user
+  // never actually enabled — see the CORRECTION above). Distinct from
+  // CHANNEL_ALLOWLIST_UNCONVERTIBLE (a config the user must fix): only fall back to the
+  // generic NO_CELLS_ENABLED when nothing more specific is already blocking.
+  if (automations.length === 0 && !blocking) {
+    blocking = 'NO_CELLS_ENABLED';
   }
 
   return { automations, report: { converted, approximated, notConvertible, dropped }, blocking };

@@ -63,6 +63,18 @@ function baseInput(overrides: Partial<AutoAckConverterInput> = {}): AutoAckConve
   };
 }
 
+/**
+ * A valid, resolvable channel allowlist (index 0 → "gauntlet"). Tests that enable a
+ * Channel-type cell but aren't specifically exercising channel-allowlist resolution
+ * (§4.2) need this — since the CORRECTION to §4.2, an EMPTY `autoAckChannels` means
+ * "no channel automation at all" (AutoAck never acked on an empty allowlist), not
+ * "no restriction". Most non-channel-specific tests below use a Direct cell instead,
+ * which has no allowlist dependency at all; this fixture is for the few that
+ * specifically need a live Channel automation.
+ */
+const VALID_CHANNEL_ALLOWLIST = { channelsRaw: '0' };
+const VALID_CHANNEL_ROWS = [{ index: 0, name: 'gauntlet', role: 1 }];
+
 // ─── (a) ─────────────────────────────────────────────────────────────────────
 
 describe('buildAutoAckAutomations', () => {
@@ -79,7 +91,14 @@ describe('buildAutoAckAutomations', () => {
     { cell: 'directZeroHop' as const, isDM: '1', zeroHop: '1' },
     { cell: 'directMultiHop' as const, isDM: '1', zeroHop: '0' },
   ])('(b) cell $cell alone produces one automation, one rule, correct isDM/zeroHop, correct actions', ({ cell, isDM, zeroHop }) => {
-    const input = baseInput({ settings: baseSettings({ rawMatrixAndLegacy: matrixWith(cell, { reply: true }) }) });
+    const isChannelCell = cell.startsWith('channel');
+    const input = baseInput({
+      settings: baseSettings({
+        ...(isChannelCell ? VALID_CHANNEL_ALLOWLIST : {}),
+        rawMatrixAndLegacy: matrixWith(cell, { reply: true }),
+      }),
+      channels: isChannelCell ? VALID_CHANNEL_ROWS : [],
+    });
     const result = buildAutoAckAutomations(input);
     expect(result.blocking).toBeUndefined();
     expect(result.automations).toHaveLength(1);
@@ -125,27 +144,27 @@ describe('buildAutoAckAutomations', () => {
 
   // ─── (e) ───────────────────────────────────────────────────────────────────
   it('(e) blank autoAckRegex emits the Auto-Acknowledge default', () => {
-    const input = baseInput({ settings: baseSettings({ regex: undefined, rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }) }) });
+    const input = baseInput({ settings: baseSettings({ regex: undefined, rawMatrixAndLegacy: matrixWith('directZeroHop', { reply: true }) }) });
     const result = buildAutoAckAutomations(input);
     expect(result.automations[0].form.trigger.params.regex).toBe('^(test|ping)');
   });
 
   it('(e) a non-blank autoAckRegex is emitted verbatim', () => {
-    const input = baseInput({ settings: baseSettings({ regex: '^weather', rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }) }) });
+    const input = baseInput({ settings: baseSettings({ regex: '^weather', rawMatrixAndLegacy: matrixWith('directZeroHop', { reply: true }) }) });
     const result = buildAutoAckAutomations(input);
     expect(result.automations[0].form.trigger.params.regex).toBe('^weather');
   });
 
   // ─── (f) ───────────────────────────────────────────────────────────────────
   it('(f) blank autoAckCooldownSeconds emits 60 with cooldownScope node', () => {
-    const input = baseInput({ settings: baseSettings({ rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }) }) });
+    const input = baseInput({ settings: baseSettings({ rawMatrixAndLegacy: matrixWith('directZeroHop', { reply: true }) }) });
     const result = buildAutoAckAutomations(input);
     expect(result.automations[0].form.trigger.params.cooldownSeconds).toBe(60);
     expect(result.automations[0].form.trigger.params.cooldownScope).toBe('node');
   });
 
   it('(f) a set autoAckCooldownSeconds is emitted as-is', () => {
-    const input = baseInput({ settings: baseSettings({ cooldownSecondsRaw: '120', rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }) }) });
+    const input = baseInput({ settings: baseSettings({ cooldownSecondsRaw: '120', rawMatrixAndLegacy: matrixWith('directZeroHop', { reply: true }) }) });
     const result = buildAutoAckAutomations(input);
     expect(result.automations[0].form.trigger.params.cooldownSeconds).toBe(120);
   });
@@ -194,12 +213,69 @@ describe('buildAutoAckAutomations', () => {
     expect(result.automations.find((a) => a.key === 'channel')).toBeUndefined();
   });
 
+  // ─── (g)/(h) correction: an EMPTY allowlist ≠ "no channels configured but none resolved" ──
+  // §4.2 correction (orchestrator, 2026-07-28): AutoAck never acks on an empty allowlist
+  // (meshtasticManager.ts's enabledChannelsSet.has(channelIndex) gate rejects everything when
+  // the set is empty), so an empty `autoAckChannels` must NOT produce a Channel automation with
+  // no `channels` filter (that would answer on every channel — the opposite of dead behaviour).
+  it('an empty allowlist with all four cells on produces a Direct-only automation plus a notConvertible report entry', () => {
+    const fullMatrix: AutoAckMatrix = {
+      channelZeroHop: { reply: true, tapback: true, replyDm: false },
+      channelMultiHop: { reply: true, tapback: false, replyDm: false },
+      directZeroHop: { reply: true, tapback: true, replyDm: false },
+      directMultiHop: { reply: true, tapback: false, replyDm: false },
+    };
+    const input = baseInput({ settings: baseSettings({ rawMatrixAndLegacy: matrixToSettings(fullMatrix) }) }); // channelsRaw left undefined
+    const result = buildAutoAckAutomations(input);
+    expect(result.blocking).toBeUndefined();
+    expect(result.automations).toHaveLength(1);
+    expect(result.automations[0].key).toBe('direct');
+    expect(result.automations[0].name).toBe('Auto-Ack — Home Base'); // only automation ⇒ no "(Direct messages)" suffix
+    const entry = result.report.notConvertible.find((e) => e.key === 'channel-allowlist-empty');
+    expect(entry).toBeDefined();
+    expect(entry!.detail).toContain('never acknowledged channel messages');
+  });
+
+  it('an empty allowlist with only Channel cells on produces zero automations and blocks with NO_CELLS_ENABLED', () => {
+    const input = baseInput({
+      settings: baseSettings({ rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true, tapback: true }) }),
+      // channelsRaw left undefined — the allowlist is empty
+    });
+    const result = buildAutoAckAutomations(input);
+    expect(result.automations).toEqual([]);
+    expect(result.blocking).toBe('NO_CELLS_ENABLED');
+    expect(result.report.notConvertible.some((e) => e.key === 'channel-allowlist-empty')).toBe(true);
+  });
+
+  it('CHANNEL_ALLOWLIST_UNCONVERTIBLE (listed but unresolvable) stays distinct from an empty allowlist', () => {
+    // Same cell config as the empty-allowlist case above, but this time the user DID list
+    // channels — they just don't resolve. This must block with the "must fix" reason, not the
+    // generic NO_CELLS_ENABLED, and must NOT carry the channel-allowlist-empty entry.
+    const input = baseInput({
+      settings: baseSettings({
+        channelsRaw: '9', // listed, but...
+        rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true, tapback: true }),
+      }),
+      channels: [], // ...index 9 doesn't exist for this source
+    });
+    const result = buildAutoAckAutomations(input);
+    expect(result.blocking).toBe('CHANNEL_ALLOWLIST_UNCONVERTIBLE');
+    expect(result.blocking).not.toBe('NO_CELLS_ENABLED');
+    expect(result.report.notConvertible.some((e) => e.key === 'channel-allowlist-empty')).toBe(false);
+    expect(result.report.notConvertible.some((e) => e.key === 'channel-9-missing')).toBe(true);
+  });
+
   // ─── (i) ───────────────────────────────────────────────────────────────────
   it('(i) to/replyToTrigger match resolveAutoAckReplyRouting() for every cell × replyDm combination', () => {
     for (const cellMeta of AUTOACK_CELLS) {
       for (const replyDm of [false, true]) {
+        const isChannelCell = cellMeta.type === 'channel';
         const input = baseInput({
-          settings: baseSettings({ rawMatrixAndLegacy: matrixWith(cellMeta.id, { reply: true, replyDm }) }),
+          settings: baseSettings({
+            ...(isChannelCell ? VALID_CHANNEL_ALLOWLIST : {}),
+            rawMatrixAndLegacy: matrixWith(cellMeta.id, { reply: true, replyDm }),
+          }),
+          channels: isChannelCell ? VALID_CHANNEL_ROWS : [],
         });
         const result = buildAutoAckAutomations(input);
         const rule = result.automations[0].form.rules[0];
@@ -221,7 +297,7 @@ describe('buildAutoAckAutomations', () => {
     const input = baseInput({
       settings: baseSettings({
         ignoredNodesRaw: '!DEADBEEF, deadbee1 nothexatall',
-        rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }),
+        rawMatrixAndLegacy: matrixWith('directZeroHop', { reply: true }),
       }),
     });
     const result = buildAutoAckAutomations(input);
@@ -232,7 +308,7 @@ describe('buildAutoAckAutomations', () => {
   });
 
   it('(j) an empty ignore list omits the fromId condition entirely', () => {
-    const input = baseInput({ settings: baseSettings({ rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }) }) });
+    const input = baseInput({ settings: baseSettings({ rawMatrixAndLegacy: matrixWith('directZeroHop', { reply: true }) }) });
     const result = buildAutoAckAutomations(input);
     const rule = result.automations[0].form.rules[0];
     expect(rule.conditions.some((c) => c.type === 'condition.string')).toBe(false);
@@ -241,14 +317,14 @@ describe('buildAutoAckAutomations', () => {
   // ─── (k) ───────────────────────────────────────────────────────────────────
   it('(k) skipIncompleteNodes adds a node.completeness "in" condition; off omits it', () => {
     const on = buildAutoAckAutomations(baseInput({
-      settings: baseSettings({ skipIncompleteNodes: true, rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }) }),
+      settings: baseSettings({ skipIncompleteNodes: true, rawMatrixAndLegacy: matrixWith('directZeroHop', { reply: true }) }),
     }));
     const onRule = on.automations[0].form.rules[0];
     const s2 = onRule.conditions.find((c) => c.type === 'condition.string' && c.params.field === 'node.completeness');
     expect(s2?.params).toEqual({ field: 'node.completeness', op: 'in', value: 'complete, unknown' });
 
     const off = buildAutoAckAutomations(baseInput({
-      settings: baseSettings({ rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }) }),
+      settings: baseSettings({ rawMatrixAndLegacy: matrixWith('directZeroHop', { reply: true }) }),
     }));
     const offRule = off.automations[0].form.rules[0];
     expect(offRule.conditions.some((c) => c.type === 'condition.string' && c.params.field === 'node.completeness')).toBe(false);
@@ -256,7 +332,7 @@ describe('buildAutoAckAutomations', () => {
 
   // ─── (l) ───────────────────────────────────────────────────────────────────
   it('(l) pre-send delay 0 emits no action.delay; 45 emits it first in every rule', () => {
-    const matrix = matrixWith('channelZeroHop', { reply: true, tapback: true });
+    const matrix = matrixWith('directZeroHop', { reply: true, tapback: true });
 
     const zero = buildAutoAckAutomations(baseInput({ settings: baseSettings({ rawMatrixAndLegacy: matrix }) }));
     expect(zero.automations[0].form.rules[0].actions.map((a) => a.type)).not.toContain('action.delay');
@@ -272,7 +348,7 @@ describe('buildAutoAckAutomations', () => {
   it('(m) translates every §4.5 token, leaving unmapped tokens verbatim', () => {
     const template = '{NUMBER_HOPS} {HOPS} {NODE_ID} {LONG_NAME} {SNR} {RSSI} {CHANNEL} {DATE} {TIME} {SHORT_NAME} {IP}';
     const input = baseInput({
-      settings: baseSettings({ message: template, rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }) }),
+      settings: baseSettings({ message: template, rawMatrixAndLegacy: matrixWith('directZeroHop', { reply: true }) }),
     });
     const result = buildAutoAckAutomations(input);
     const send = result.automations[0].form.rules[0].actions.find((a) => a.type === 'action.sendMessage')!;
@@ -305,7 +381,7 @@ describe('buildAutoAckAutomations', () => {
       settings: baseSettings({
         message: 'standard {NODE_ID}',
         messageDirect: undefined,
-        rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }),
+        rawMatrixAndLegacy: matrixWith('directZeroHop', { reply: true }),
       }),
     });
     const result = buildAutoAckAutomations(input);
@@ -321,7 +397,11 @@ describe('buildAutoAckAutomations', () => {
       directMultiHop: { reply: false, tapback: false, replyDm: false },
     };
     const input = baseInput({
-      settings: baseSettings({ message: 'standard', messageDirect: 'direct-only', rawMatrixAndLegacy: matrixToSettings(matrix) }),
+      settings: baseSettings({
+        ...VALID_CHANNEL_ALLOWLIST,
+        message: 'standard', messageDirect: 'direct-only', rawMatrixAndLegacy: matrixToSettings(matrix),
+      }),
+      channels: VALID_CHANNEL_ROWS,
     });
     const result = buildAutoAckAutomations(input);
     const chan = result.automations.find((a) => a.key === 'channel')!;
