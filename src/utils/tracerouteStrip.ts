@@ -626,9 +626,11 @@ export interface StripLayout {
   height: number;
   /** StripNode.id -> glyph CENTER, in the container's coordinate space. */
   centers: Map<string, StripPoint>;
-  /** Per-edge polyline through 2 or 3 points, already offset off the glyph
+  /** Per-edge polyline through 2+ points, already offset off the glyph
    *  edges so the arrowhead lands on the rim, not under the icon, and
-   *  translated into its leg's lane. */
+   *  translated into its leg's lane. Base shape is 2 points (same-row) or 3
+   *  (row-crossing dog-leg); extra bend points appear where the path had to
+   *  route around an unrelated node's glyph (#4428). */
   edgePaths: Map<string, StripPoint[]>;
   /** Where each edge's SNR label anchors (§3.5.1). */
   labelAnchors: Map<string, StripPoint>;
@@ -740,6 +742,199 @@ function canonicalPerpendicular(a: StripPoint, b: StripPoint): StripPoint {
   return { x: uy, y: -ux }; // 90° rotation; canonical dx>=0 => y<=0 ("up")
 }
 
+// ---------------------------------------------------------------------------
+// Edge/label glyph collision avoidance (#4428). The straight/dog-leg paths
+// above only consider an edge's OWN two endpoints, so an edge spanning
+// non-adjacent columns (or a dog-leg whose elbow lands near a glyph) used to
+// render straight through unrelated nodes, and the SNR label — whose X was
+// the raw endpoint midpoint — could sit exactly on the glyph/bend it should
+// avoid. `routeAroundGlyphs` bends the path around every other node's
+// clearance circle; `pickLabelX` then samples the label X from the FINAL
+// routed path. Both are pure, bounded, and deterministic — same graph in,
+// same geometry out.
+// ---------------------------------------------------------------------------
+
+/** Rim margin between a glyph's edge and where an edge line starts/ends —
+ *  the historical inline `+3` in `pullIn`, named because `edgeClearance`
+ *  reuses it (#4428). */
+const EDGE_RIM_MARGIN = 3;
+
+/** How far past a clearance circle a detour bend is placed. A bend exactly
+ *  ON the circle's rim would let its two adjacent segments graze back
+ *  inside; the same breathing room LABEL_CLEARANCE gives labels is enough
+ *  slack here. */
+const BEND_MARGIN = LABEL_CLEARANCE;
+
+/** Bounded pass counts that make the routing loops total. Realistic grid
+ *  layouts resolve in one pass; the caps only matter for pathological
+ *  custom options. */
+const VERTEX_PUSH_PASSES = 4;
+
+/** Numeric slack for "already clear" comparisons. */
+const GEOM_EPS = 1e-6;
+
+/** Radius around an UNRELATED node's center that no edge segment may enter
+ *  (#4428): the same rim the edge's own endpoints respect (`pullIn` =
+ *  glyphSize/2 + EDGE_RIM_MARGIN) plus one LANE_OFFSET, so both legs'
+ *  lane-translated parallels still clear the glyph by the full rim margin. */
+function edgeClearance(o: StripLayoutOptions): number {
+  return o.glyphSize / 2 + EDGE_RIM_MARGIN + LANE_OFFSET;
+}
+
+function dist(a: StripPoint, b: StripPoint): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+/** Closest point to `c` on the segment `a`->`b`, plus its parameter t∈[0,1]. */
+function closestPointOnSegment(
+  a: StripPoint,
+  b: StripPoint,
+  c: StripPoint,
+): { point: StripPoint; t: number } {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const len2 = abx * abx + aby * aby;
+  if (len2 < GEOM_EPS) return { point: { x: a.x, y: a.y }, t: 0 };
+  const t = Math.max(0, Math.min(1, ((c.x - a.x) * abx + (c.y - a.y) * aby) / len2));
+  return { point: { x: a.x + t * abx, y: a.y + t * aby }, t };
+}
+
+/**
+ * Bend an (already lane-translated) polyline around every obstacle's
+ * clearance circle. Two phases, both deterministic and bounded:
+ *
+ * 1. Interior vertices (the dog-leg elbow) inside a circle are pushed
+ *    radially out past it — radially, so the vertex leaves on the side the
+ *    path already favors; a vertex exactly ON a center falls back to
+ *    `laneDir` (the leg's own lane-offset direction), which is what keeps
+ *    forward detours above and return detours below.
+ * 2. The segments are walked in order; wherever one cuts a circle, a bend is
+ *    inserted just past the rim at the deepest point (same radial /
+ *    `laneDir` side rule), and the shortened segment is re-checked before
+ *    advancing. A segment whose own endpoint sits inside a circle is left
+ *    alone — bending cannot fix it, and after phase 1 only a rim endpoint of
+ *    a pathologically tight custom layout can hit that.
+ *
+ * The result is still a plain polyline (the strip renders `<polyline>`),
+ * just with 0+ extra bend points.
+ */
+function routeAroundGlyphs(
+  path: StripPoint[],
+  obstacles: StripPoint[],
+  clearance: number,
+  laneDir: StripPoint,
+): StripPoint[] {
+  if (obstacles.length === 0) return path;
+  const detour = clearance + BEND_MARGIN;
+  const pts = path.slice();
+
+  // Phase 1: push interior vertices out of every clearance circle.
+  for (let pass = 0; pass < VERTEX_PUSH_PASSES; pass++) {
+    let moved = false;
+    for (let i = 1; i < pts.length - 1; i++) {
+      for (const c of obstacles) {
+        const d = dist(pts[i], c);
+        if (d >= clearance - GEOM_EPS) continue;
+        const dir = d > GEOM_EPS
+          ? { x: (pts[i].x - c.x) / d, y: (pts[i].y - c.y) / d }
+          : laneDir;
+        pts[i] = { x: c.x + dir.x * detour, y: c.y + dir.y * detour };
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+
+  // Phase 2: insert bends where a segment cuts a clearance circle.
+  const maxBends = 2 * obstacles.length + 4;
+  let inserted = 0;
+  let i = 0;
+  while (i < pts.length - 1) {
+    const p = pts[i];
+    const q = pts[i + 1];
+    let best: { w: StripPoint; t: number } | null = null;
+    if (inserted < maxBends) {
+      for (const c of obstacles) {
+        if (dist(p, c) < clearance - GEOM_EPS || dist(q, c) < clearance - GEOM_EPS) continue;
+        const { point: f, t } = closestPointOnSegment(p, q, c);
+        const d = dist(f, c);
+        if (d >= clearance - GEOM_EPS) continue;
+        const dir = d > GEOM_EPS
+          ? { x: (f.x - c.x) / d, y: (f.y - c.y) / d }
+          : laneDir;
+        const w = { x: c.x + dir.x * detour, y: c.y + dir.y * detour };
+        // A bend coinciding with an endpoint can't make progress — skip it.
+        if (dist(w, p) < GEOM_EPS || dist(w, q) < GEOM_EPS) continue;
+        // Deepest-first would also work; earliest-along-the-segment keeps
+        // the left-to-right walk orderly. Ties keep the first obstacle in
+        // node order — deterministic either way.
+        if (!best || t < best.t) best = { w, t };
+      }
+    }
+    if (best) {
+      pts.splice(i + 1, 0, best.w);
+      inserted++;
+      // Re-check p -> bend before advancing.
+    } else {
+      i++;
+    }
+  }
+  return pts;
+}
+
+/** Approximate a rendered SNR label by a circle around its anchor: half its
+ *  height plus the same breathing room the vertical rule uses. Width is NOT
+ *  modeled — the C1 row-band rule (`labelOffset`) already keeps anchors
+ *  vertically clear of every node footprint; this radius only guards the
+ *  horizontal pick/nudge in `pickLabelX`. */
+function labelClearRadius(o: StripLayoutOptions): number {
+  return o.glyphSize / 2 + LABEL_HALF_HEIGHT + LABEL_CLEARANCE;
+}
+
+/**
+ * #4428: choose the label's X from the FINAL routed path. Candidates are the
+ * path's segment midpoints, longest segment first (ties -> the earlier
+ * segment, so the pick is deterministic); the first whose anchor point
+ * clears every glyph circle wins. If none clears (only reachable with tiny
+ * custom layouts), fall back to the longest segment's midpoint and push it
+ * horizontally clear of each offender in turn — horizontal ONLY, so the
+ * forward-above/return-below lane semantics and the C1 row-band invariant
+ * survive untouched.
+ */
+function pickLabelX(
+  path: StripPoint[],
+  anchorY: number,
+  glyphCenters: StripPoint[],
+  radius: number,
+): number {
+  const candidates: { x: number; len: number; idx: number }[] = [];
+  for (let i = 0; i < path.length - 1; i++) {
+    candidates.push({
+      x: (path[i].x + path[i + 1].x) / 2,
+      len: dist(path[i], path[i + 1]),
+      idx: i,
+    });
+  }
+  candidates.sort((a, b) => b.len - a.len || a.idx - b.idx);
+  const clears = (x: number): boolean =>
+    glyphCenters.every((c) => dist({ x, y: anchorY }, c) >= radius - GEOM_EPS);
+  for (const cand of candidates) {
+    if (clears(cand.x)) return cand.x;
+  }
+  let x = candidates[0].x;
+  for (let pass = 0; pass <= glyphCenters.length; pass++) {
+    const offender = glyphCenters.find(
+      (c) => dist({ x, y: anchorY }, c) < radius - GEOM_EPS,
+    );
+    if (!offender) break;
+    const dy = anchorY - offender.y;
+    const reach = Math.sqrt(Math.max(0, radius * radius - dy * dy));
+    // Push just past the offender's circle, away from it (ties push right).
+    x = offender.x + (x >= offender.x ? 1 : -1) * (reach + LABEL_CLEARANCE);
+  }
+  return x;
+}
+
 export function layoutTracerouteStrip(
   graph: TracerouteStripGraph,
   opts?: Partial<StripLayoutOptions>,
@@ -769,7 +964,10 @@ export function layoutTracerouteStrip(
   const nodeById = new Map(graph.nodes.map((n) => [n.id, n] as const));
   const edgePaths = new Map<string, StripPoint[]>();
   const labelAnchors = new Map<string, StripPoint>();
-  const pullIn = o.glyphSize / 2 + 3;
+  const pullIn = o.glyphSize / 2 + EDGE_RIM_MARGIN;
+  const clearance = edgeClearance(o);
+  const labelRadius = labelClearRadius(o);
+  const allGlyphCenters = graph.nodes.map((n) => centers.get(n.id)!);
 
   for (const e of graph.edges) {
     const c0 = centers.get(e.fromId);
@@ -803,21 +1001,35 @@ export function layoutTracerouteStrip(
     const laneDy = perpUp.y * LANE_OFFSET * laneSign;
     path = path.map((p) => ({ x: p.x + laneDx, y: p.y + laneDy }));
 
+    // #4428: bend the lane-translated path around every OTHER node's
+    // clearance circle — an edge spanning non-adjacent columns (or a dog-leg
+    // grazing a glyph) must not render through nodes it doesn't terminate at.
+    const obstacles: StripPoint[] = [];
+    for (const n of graph.nodes) {
+      if (n.id === e.fromId || n.id === e.toId) continue;
+      obstacles.push(centers.get(n.id)!);
+    }
+    const laneDir = { x: perpUp.x * laneSign, y: perpUp.y * laneSign };
+    path = routeAroundGlyphs(path, obstacles, clearance, laneDir);
+
     edgePaths.set(e.id, path);
 
     // §3.5.1: the label's Y anchors off ROW CENTERS, not the (lane-offset-
     // translated) path — otherwise, with three possible rows, a flat +/-
     // offset from the path can land inside the wrong lane's node footprint.
-    // X still comes from the translated path, which is what keeps a purely
-    // vertical chord's two legs horizontally separated.
-    const first = path[0];
-    const last = path[path.length - 1];
-    const midX = (first.x + last.x) / 2;
+    // That row-band rule is also what guarantees C1 (|anchor.y - center.y|
+    // >= labelOffset for EVERY node), so #4428 never moves a label
+    // vertically. X samples the FINAL routed path via `pickLabelX` — before
+    // #4428 it was the raw endpoint midpoint, which could sit exactly on a
+    // detour bend or on the column of the glyph the path just routed around.
+    // For an un-detoured same-row edge the longest (only) segment's midpoint
+    // IS the endpoint midpoint, so plain strips are pixel-identical.
     const laneYSign = e.leg === 'forward' ? -1 : 1; // forward=up, return=down
     const anchorY = sameRow
       ? c0.y + laneYSign * offset // same-row: offset off this row's center
       : (c0.y + c1.y) / 2; // crossing: middle of the inter-row gap
-    labelAnchors.set(e.id, { x: midX, y: anchorY });
+    const anchorX = pickLabelX(path, anchorY, allGlyphCenters, labelRadius);
+    labelAnchors.set(e.id, { x: anchorX, y: anchorY });
   }
 
   return { width, height, centers, edgePaths, labelAnchors };
