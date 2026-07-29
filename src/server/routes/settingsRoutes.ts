@@ -24,6 +24,7 @@ import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
 import { positionEstimationScheduler } from '../services/positionEstimationScheduler.js';
 import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
+import { NODE_DISPLAY_RANGES } from '../../constants/nodeDisplayDefaults.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
 
@@ -127,7 +128,10 @@ export interface SettingsCallbacks {
     autoPurge: boolean;
     immediatePurge: boolean;
   }) => void;
-  restartInactiveNodeService?: (threshold: number, check: number, cooldown: number) => void;
+  // Per-source (#4412 Phase 2): the service resolves threshold/interval/cooldown
+  // per source on each tick, so a save only needs to invalidate that source's
+  // next-run timestamp. A null/omitted sourceId invalidates every source.
+  rescheduleInactiveNodeService?: (sourceId?: string | null) => void;
   stopInactiveNodeService?: () => void;
   restartLowBatteryService?: (check: number, cooldown: number) => void;
   stopLowBatteryService?: () => void;
@@ -159,6 +163,15 @@ let callbacks: SettingsCallbacks = {};
 export function setSettingsCallbacks(cb: SettingsCallbacks): void {
   callbacks = cb;
 }
+
+// #4412 Phase 2: the three inactiveNodeNotificationService config keys.
+// Hoisted to module scope so both the per-source and global save paths reuse
+// the same list instead of each declaring their own copy.
+const INACTIVE_NODE_KEYS = [
+  'inactiveNodeThresholdHours',
+  'inactiveNodeCheckIntervalMinutes',
+  'inactiveNodeCooldownHours',
+] as const;
 
 /**
  * Audit-log a settings write. Called from BOTH the per-source branch and the
@@ -344,41 +357,47 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
     // consumer's `Date.now() - h*3600e3` window silently inverted.
     if ('maxNodeAgeHours' in filteredSettings) {
       const hours = parseInt(filteredSettings.maxNodeAgeHours, 10);
-      if (isNaN(hours) || hours < 1 || hours > 168) {
+      const R = NODE_DISPLAY_RANGES.maxNodeAgeHours!;
+      if (isNaN(hours) || hours < R.min || hours > R.max) {
         return fail(res, 400, 'INVALID_MAX_NODE_AGE_HOURS',
-          'maxNodeAgeHours must be between 1 and 168 hours');
+          `maxNodeAgeHours must be between ${R.min} and ${R.max} hours`);
       }
     }
 
-    // Validate inactive node notification settings.
+    // Validate inactive node notification settings. Bounds are sourced from
+    // NODE_DISPLAY_RANGES so this validation can never disagree with the
+    // clamp inside getInactiveNodeConfig() (#4412 Phase 2). Status codes and
+    // message strings are kept in their pre-existing bare-`{error}` form —
+    // tests pin them, and converting to fail() is a separate opportunistic
+    // change.
     //
-    // Note the intentional asymmetry: these ranges are validated for BOTH the
-    // per-source and global paths, but the restartInactiveNodeService side-effect
-    // fires only on the global path — the per-source branch returns before it.
-    // That is correct today because inactiveNodeNotificationService is a single
-    // global singleton with no per-source restart callback. Phase 2 of #4412
-    // restructures it to one timer resolving config per source; when it does,
-    // the per-source branch needs its own restart hook here.
+    // #4412 Phase 2: inactiveNodeNotificationService now resolves
+    // threshold/interval/cooldown per source on every tick, so BOTH the
+    // per-source and global save paths fire a reschedule side-effect — see
+    // the per-source branch below and the global branch further down.
     if ('inactiveNodeThresholdHours' in filteredSettings) {
       const threshold = parseInt(filteredSettings.inactiveNodeThresholdHours, 10);
-      if (isNaN(threshold) || threshold < 1 || threshold > 720) {
-        return res.status(400).json({ error: 'inactiveNodeThresholdHours must be between 1 and 720 hours' });
+      const R = NODE_DISPLAY_RANGES.inactiveNodeThresholdHours!;
+      if (isNaN(threshold) || threshold < R.min || threshold > R.max) {
+        return res.status(400).json({ error: `inactiveNodeThresholdHours must be between ${R.min} and ${R.max} hours` });
       }
     }
 
     if ('inactiveNodeCheckIntervalMinutes' in filteredSettings) {
       const interval = parseInt(filteredSettings.inactiveNodeCheckIntervalMinutes, 10);
-      if (isNaN(interval) || interval < 1 || interval > 1440) {
+      const R = NODE_DISPLAY_RANGES.inactiveNodeCheckIntervalMinutes!;
+      if (isNaN(interval) || interval < R.min || interval > R.max) {
         return res
           .status(400)
-          .json({ error: 'inactiveNodeCheckIntervalMinutes must be between 1 and 1440 minutes' });
+          .json({ error: `inactiveNodeCheckIntervalMinutes must be between ${R.min} and ${R.max} minutes` });
       }
     }
 
     if ('inactiveNodeCooldownHours' in filteredSettings) {
       const cooldown = parseInt(filteredSettings.inactiveNodeCooldownHours, 10);
-      if (isNaN(cooldown) || cooldown < 1 || cooldown > 720) {
-        return res.status(400).json({ error: 'inactiveNodeCooldownHours must be between 1 and 720 hours' });
+      const R = NODE_DISPLAY_RANGES.inactiveNodeCooldownHours!;
+      if (isNaN(cooldown) || cooldown < R.min || cooldown > R.max) {
+        return res.status(400).json({ error: `inactiveNodeCooldownHours must be between ${R.min} and ${R.max} hours` });
       }
     }
 
@@ -794,6 +813,14 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
         }
       }
 
+      // #4412 Phase 2: the inactive-node service reads threshold/interval/cooldown
+      // per source on each tick, so a scoped save only needs to invalidate THIS
+      // source's next-run timestamp. No global restart, no other source affected.
+      if (INACTIVE_NODE_KEYS.some((key) => key in filteredSettings)) {
+        callbacks.rescheduleInactiveNodeService?.(sourceId);
+        logger.debug(`✅ Inactive node check rescheduled (source: ${sourceId})`);
+      }
+
       await auditSettingsWrite(req, currentSettings, filteredSettings, sourceId);
       return ok(res, { ignoredKeys });
     }
@@ -923,42 +950,11 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       logger.debug('✅ Auto key repair settings updated');
     }
 
-    const inactiveNodeSettings = [
-      'inactiveNodeThresholdHours',
-      'inactiveNodeCheckIntervalMinutes',
-      'inactiveNodeCooldownHours',
-    ];
-    const inactiveNodeSettingsChanged = inactiveNodeSettings.some((key) => key in filteredSettings);
-    if (inactiveNodeSettingsChanged) {
-      const dbThreshold = await databaseService.settings.getSetting('inactiveNodeThresholdHours');
-      const dbCheckInterval = await databaseService.settings.getSetting('inactiveNodeCheckIntervalMinutes');
-      const dbCooldown = await databaseService.settings.getSetting('inactiveNodeCooldownHours');
-      const threshold = parseInt(
-        filteredSettings.inactiveNodeThresholdHours ||
-          dbThreshold ||
-          '24',
-        10
-      );
-      const checkInterval = parseInt(
-        filteredSettings.inactiveNodeCheckIntervalMinutes ||
-          dbCheckInterval ||
-          '60',
-        10
-      );
-      const cooldown = parseInt(
-        filteredSettings.inactiveNodeCooldownHours ||
-          dbCooldown ||
-          '24',
-        10
-      );
-
-      if (!isNaN(threshold) && threshold > 0 && !isNaN(checkInterval) && checkInterval > 0 && !isNaN(cooldown) && cooldown > 0) {
-        callbacks.stopInactiveNodeService?.();
-        callbacks.restartInactiveNodeService?.(threshold, checkInterval, cooldown);
-        logger.debug(
-          `✅ Inactive node notification service restarted (threshold: ${threshold}h, check: ${checkInterval}min, cooldown: ${cooldown}h)`
-        );
-      }
+    if (INACTIVE_NODE_KEYS.some((key) => key in filteredSettings)) {
+      // These keys are per-source now; a global write still has to invalidate
+      // every source's cached next-run so the change is picked up.
+      callbacks.rescheduleInactiveNodeService?.(null);
+      logger.debug('✅ Inactive node check rescheduled for all sources');
     }
 
     const lowBatterySettings = [

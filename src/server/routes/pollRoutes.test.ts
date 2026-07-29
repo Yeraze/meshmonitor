@@ -8,7 +8,7 @@
  * harness — no prior test exercised this handler directly (server.poll.test.ts
  * hand-rolls a duplicate mini-app that never imports pollRoutes.ts).
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import pollRoutes from './pollRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 
@@ -68,5 +68,34 @@ describe('pollRoutes — GET /poll', () => {
       configuring: false,
       userDisconnected: false,
     });
+  });
+
+  it('#4412 Phase 2: derives the recent-traceroutes limit from the per-source maxNodeAgeHours', async () => {
+    // No explicit ?limit=, so the handler must fall through to computing a
+    // default limit from tracerouteIntervalMinutes * maxNodeAgeHours. Source A
+    // is configured with a 1h window (clamps to the 100-row floor); Source B
+    // with a 168h window (yields a much larger derived limit). Both sources
+    // sharing the same tiny window would mean the per-source read regressed
+    // back to a single global value.
+    await harness.db.settings.setSourceSettings(harness.sourceA, { maxNodeAgeHours: '1' });
+    await harness.db.settings.setSourceSettings(harness.sourceB, { maxNodeAgeHours: '168' });
+
+    const getAllTraceroutesSpy = vi
+      .spyOn(harness.db.traceroutes, 'getAllTraceroutes')
+      .mockResolvedValue([]);
+
+    const agent = await harness.loginAs(harness.admin);
+    await agent.get('/poll').query({ sourceId: harness.sourceA });
+    await agent.get('/poll').query({ sourceId: harness.sourceB });
+
+    const limitsBySourceId = new Map(
+      getAllTraceroutesSpy.mock.calls.map(([limit, sourceId]) => [sourceId, limit])
+    );
+
+    expect(limitsBySourceId.get(harness.sourceA)).toBe(100); // floor
+    expect(limitsBySourceId.get(harness.sourceB)).toBe(2218); // ceil(12 * 168 * 1.1)
+    expect(limitsBySourceId.get(harness.sourceA)).not.toBe(limitsBySourceId.get(harness.sourceB));
+
+    getAllTraceroutesSpy.mockRestore();
   });
 });

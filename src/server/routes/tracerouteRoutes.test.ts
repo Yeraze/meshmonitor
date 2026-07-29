@@ -8,6 +8,7 @@ vi.mock('../../services/database.js', () => ({
   default: {
     settings: {
       getSetting: vi.fn(),
+      getSettingForSource: vi.fn(),
     },
     traceroutes: {
       getAllTraceroutes: vi.fn(),
@@ -31,6 +32,7 @@ describe('GET /recent', () => {
 
   it('returns traceroutes with hop counts', async () => {
     (databaseService.settings.getSetting as any).mockResolvedValue(null);
+    (databaseService.settings.getSettingForSource as any).mockResolvedValue(null);
     const now = Date.now();
     const traceroute = { id: 1, timestamp: now, route: JSON.stringify(['a', 'b']) };
     (databaseService.traceroutes.getAllTraceroutes as any).mockResolvedValue([traceroute]);
@@ -44,6 +46,7 @@ describe('GET /recent', () => {
 
   it('sets hopCount=999 for invalid route JSON', async () => {
     (databaseService.settings.getSetting as any).mockResolvedValue(null);
+    (databaseService.settings.getSettingForSource as any).mockResolvedValue(null);
     const now = Date.now();
     const traceroute = { id: 1, timestamp: now, route: 'not-json' };
     (databaseService.traceroutes.getAllTraceroutes as any).mockResolvedValue([traceroute]);
@@ -56,6 +59,7 @@ describe('GET /recent', () => {
 
   it('uses explicit limit param when provided', async () => {
     (databaseService.settings.getSetting as any).mockResolvedValue(null);
+    (databaseService.settings.getSettingForSource as any).mockResolvedValue(null);
     (databaseService.traceroutes.getAllTraceroutes as any).mockResolvedValue([]);
 
     await request(app).get('/recent?limit=42');
@@ -65,6 +69,7 @@ describe('GET /recent', () => {
 
   it('filters traceroutes older than the hours window', async () => {
     (databaseService.settings.getSetting as any).mockResolvedValue(null);
+    (databaseService.settings.getSettingForSource as any).mockResolvedValue(null);
     const now = Date.now();
     const old = { id: 1, timestamp: now - 48 * 60 * 60 * 1000, route: null };
     const fresh = { id: 2, timestamp: now, route: null };
@@ -83,6 +88,38 @@ describe('GET /recent', () => {
     const res = await request(app).get('/recent');
 
     expect(res.status).toBe(500);
+  });
+
+  it('derives limit from the per-source maxNodeAgeHours when ?sourceId= is given (#4412 Phase 2)', async () => {
+    // #4412 Phase 2: maxNodeAgeHours is per-source. tracerouteIntervalMinutes
+    // (via getSetting) stays global; maxNodeAgeHours (via getSettingForSource)
+    // must be scoped to the requested source, not the un-namespaced global row.
+    (databaseService.settings.getSetting as any).mockResolvedValue('5'); // tracerouteIntervalMinutes
+    (databaseService.settings.getSettingForSource as any).mockImplementation(
+      (sourceId: string | null, key: string) => {
+        if (key === 'maxNodeAgeHours' && sourceId === 'src1') return Promise.resolve('168');
+        return Promise.resolve(null);
+      }
+    );
+    (databaseService.traceroutes.getAllTraceroutes as any).mockResolvedValue([]);
+
+    await request(app).get('/recent?sourceId=src1');
+
+    // traceroutesPerHour(12) * maxNodeAgeHours(168) * 1.1 = 2217.6 -> ceil 2218
+    expect(databaseService.traceroutes.getAllTraceroutes).toHaveBeenCalledWith(2218, 'src1');
+    expect(databaseService.settings.getSettingForSource).toHaveBeenCalledWith('src1', 'maxNodeAgeHours');
+  });
+
+  it('reads the un-namespaced global maxNodeAgeHours when no ?sourceId= is given', async () => {
+    (databaseService.settings.getSetting as any).mockResolvedValue('5');
+    (databaseService.settings.getSettingForSource as any).mockResolvedValue('48');
+    (databaseService.traceroutes.getAllTraceroutes as any).mockResolvedValue([]);
+
+    await request(app).get('/recent');
+
+    expect(databaseService.settings.getSettingForSource).toHaveBeenCalledWith(null, 'maxNodeAgeHours');
+    // traceroutesPerHour(12) * maxNodeAgeHours(48) * 1.1 = 633.6 -> ceil 634
+    expect(databaseService.traceroutes.getAllTraceroutes).toHaveBeenCalledWith(634, ALL_SOURCES);
   });
 });
 

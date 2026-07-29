@@ -296,6 +296,126 @@ function runSettingsTests(getBackend: () => TestBackend) {
     expect(await repo.getSourceSettings('sourceXa')).toEqual({ maxNodeAgeHours: '12' });
   });
 
+  it('getSettingForSources - batched multi-source hit/miss for one key', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.setSourceSetting('source-a', 'maxNodeAgeHours', '48');
+    await repo.setSourceSetting('source-b', 'maxNodeAgeHours', '168');
+    // source-c has no override; a sibling key on source-c must not bleed in.
+    await repo.setSourceSetting('source-c', 'hideIncompleteNodes', '1');
+    // The un-namespaced global row must not be picked up for any source.
+    await repo.setSetting('maxNodeAgeHours', '999');
+
+    const result = await repo.getSettingForSources(
+      ['source-a', 'source-b', 'source-c'],
+      'maxNodeAgeHours',
+    );
+
+    expect(result.get('source-a')).toBe('48');
+    expect(result.get('source-b')).toBe('168');
+    expect(result.has('source-c')).toBe(false);
+    expect(result.size).toBe(2);
+  });
+
+  it('getSettingForSources - empty input returns an empty Map without querying', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    const result = await repo.getSettingForSources([], 'maxNodeAgeHours');
+    expect(result.size).toBe(0);
+  });
+
+  it('getSettingForSources - dedupes a sourceId requested more than once', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.setSourceSetting('source-a', 'maxNodeAgeHours', '48');
+
+    const result = await repo.getSettingForSources(
+      ['source-a', 'source-a', 'source-a'],
+      'maxNodeAgeHours',
+    );
+
+    expect(result.size).toBe(1);
+    expect(result.get('source-a')).toBe('48');
+  });
+
+  it('getSettingForSources - no cross-namespace bleed between different keys', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.setSourceSetting('source-a', 'maxNodeAgeHours', '48');
+    await repo.setSourceSetting('source-a', 'inactiveNodeThresholdHours', '72');
+
+    const result = await repo.getSettingForSources(['source-a'], 'maxNodeAgeHours');
+
+    expect(result.get('source-a')).toBe('48');
+    expect(result.size).toBe(1);
+  });
+
+  it('getSettingForSources - issues exactly one SELECT for the whole batch, not one per source', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.setSourceSetting('source-a', 'maxNodeAgeHours', '48');
+    await repo.setSourceSetting('source-b', 'maxNodeAgeHours', '168');
+    await repo.setSourceSetting('source-c', 'maxNodeAgeHours', '24');
+
+    // Monkey-patching the protected drizzle handle to count round trips (no-explicit-any is off in *.test.ts).
+    const dbHandle = (repo as any).db;
+    const realSelect = dbHandle.select.bind(dbHandle);
+    let selectCalls = 0;
+    dbHandle.select = (...args: unknown[]) => {
+      selectCalls += 1;
+      return realSelect(...args);
+    };
+
+    try {
+      await repo.getSettingForSources(['source-a', 'source-b', 'source-c'], 'maxNodeAgeHours');
+      expect(selectCalls).toBe(1);
+    } finally {
+      dbHandle.select = realSelect;
+    }
+  });
+
+  it('getSettingForSources - a sourceId containing a colon is resolved by reverse map, not string-split', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // A colon inside the id would corrupt a naive `key.split(':')` resolution
+    // (`source:a:b:maxNodeAgeHours` is ambiguous by string-splitting alone).
+    // The reverse-map implementation resolves by exact prefixed-key match, so
+    // this must round-trip correctly regardless.
+    const weirdId = 'weird:id:with:colons';
+    await repo.setSourceSetting(weirdId, 'maxNodeAgeHours', '99');
+    await repo.setSourceSetting('plain-id', 'maxNodeAgeHours', '11');
+
+    const result = await repo.getSettingForSources([weirdId, 'plain-id'], 'maxNodeAgeHours');
+
+    expect(result.get(weirdId)).toBe('99');
+    expect(result.get('plain-id')).toBe('11');
+    expect(result.size).toBe(2);
+  });
+
   it('deleteAllSettings - removes all settings', async () => {
     const backend = getBackend();
     if (!backend.available) {

@@ -23,7 +23,9 @@ vi.mock('../../services/database.js', () => ({
     traceroutes: { getAllTraceroutes: vi.fn() },
     neighbors: { getAllNeighborInfo: vi.fn() },
     channels: { getAllChannels: vi.fn() },
-    settings: { getSetting: vi.fn() },
+    // #4412 Phase 2: maxNodeAgeHours is per-source now, resolved via
+    // getSettingForSource() instead of the global getSetting().
+    settings: { getSetting: vi.fn(), getSettingForSource: vi.fn() },
     checkPermissionAsync: vi.fn(),
     findUserByIdAsync: vi.fn(),
     findUserByUsernameAsync: vi.fn(),
@@ -79,6 +81,7 @@ describe('GET /:id/dashboard — bundled source datasets', () => {
     mockDb.neighbors.getAllNeighborInfo.mockResolvedValue([]);
     mockDb.channels.getAllChannels.mockResolvedValue([{ id: 0, name: 'Primary', role: 1 }]);
     mockDb.settings.getSetting.mockResolvedValue(null);
+    mockDb.settings.getSettingForSource.mockResolvedValue(null);
   });
 
   it('404s for an unknown source', async () => {

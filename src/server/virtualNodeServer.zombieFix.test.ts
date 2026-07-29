@@ -24,9 +24,13 @@ import type { Mock } from 'vitest';
 // Module mocks — set up BEFORE the import of virtualNodeServer.js
 // ────────────────────────────────────────────────────────────────────────────
 
-const { getActiveNodesMock, getSettingMock } = vi.hoisted(() => ({
+// #4412 Phase 2: maxNodeAgeHours is resolved per-source via
+// databaseService.settings.getSettingForSource, not the old global
+// databaseService.getSettingAsync. getSettingForSourceMock is keyed on
+// (sourceId, key) so per-source cases can differ from the default.
+const { getActiveNodesMock, getSettingForSourceMock } = vi.hoisted(() => ({
   getActiveNodesMock: vi.fn().mockResolvedValue([]),
-  getSettingMock: vi.fn().mockResolvedValue('24'),
+  getSettingForSourceMock: vi.fn().mockResolvedValue('24'),
 }));
 
 vi.mock('../services/database.js', () => {
@@ -35,7 +39,9 @@ vi.mock('../services/database.js', () => {
       getActiveNodes: getActiveNodesMock,
       setNodeFavorite: vi.fn().mockResolvedValue(undefined),
     },
-    getSettingAsync: getSettingMock,
+    settings: {
+      getSettingForSource: getSettingForSourceMock,
+    },
     waitForReady: vi.fn().mockResolvedValue(undefined),
   };
   return { default: shared, databaseService: shared };
@@ -136,10 +142,10 @@ function attachFakeClient(vn: VirtualNodeServer, clientId: string = 'client-1') 
 describe('VirtualNodeServer.sendNodeInfosFromDb — issue #2602 zombie filtering', () => {
   beforeEach(() => {
     getActiveNodesMock.mockReset();
-    getSettingMock.mockReset();
+    getSettingForSourceMock.mockReset();
     createNodeInfoMock.mockReset();
     createNodeInfoMock.mockResolvedValue(new Uint8Array([10, 20, 30]));
-    getSettingMock.mockResolvedValue('24');
+    getSettingForSourceMock.mockResolvedValue('24');
   });
 
   it('skips the broadcast pseudo-node !ffffffff', async () => {
@@ -206,7 +212,7 @@ describe('VirtualNodeServer.sendNodeInfosFromDb — issue #2602 zombie filtering
 
   it('queries getActiveNodes scoped to the manager sourceId', async () => {
     getActiveNodesMock.mockResolvedValue([]);
-    getSettingMock.mockResolvedValue('48'); // 48 hours → 2 days
+    getSettingForSourceMock.mockResolvedValue('48'); // 48 hours → 2 days
 
     const vn = new VirtualNodeServer({
       port: 4503,
@@ -220,11 +226,13 @@ describe('VirtualNodeServer.sendNodeInfosFromDb — issue #2602 zombie filtering
     const [days, sourceId] = getActiveNodesMock.mock.calls[0];
     expect(days).toBeCloseTo(2);
     expect(sourceId).toBe('src-multi-A');
+    // maxNodeAgeHours must be read for THIS manager's source, not globally.
+    expect(getSettingForSourceMock).toHaveBeenCalledWith('src-multi-A', 'maxNodeAgeHours');
   });
 
   it('falls back to default 24h when maxNodeAgeHours setting is unset', async () => {
     getActiveNodesMock.mockResolvedValue([]);
-    getSettingMock.mockResolvedValue(null);
+    getSettingForSourceMock.mockResolvedValue(null);
 
     const vn = new VirtualNodeServer({
       port: 4503,
@@ -237,6 +245,32 @@ describe('VirtualNodeServer.sendNodeInfosFromDb — issue #2602 zombie filtering
     const [days] = getActiveNodesMock.mock.calls[0];
     // 24h / 24 == 1 day
     expect(days).toBeCloseTo(1);
+  });
+
+  it('#4412 Phase 2: two sources with different maxNodeAgeHours resolve to different windows', async () => {
+    getActiveNodesMock.mockResolvedValue([]);
+    getSettingForSourceMock.mockImplementation((sourceId: string | null, key: string) => {
+      if (key !== 'maxNodeAgeHours') return Promise.resolve(null);
+      if (sourceId === 'src-a') return Promise.resolve('1');
+      if (sourceId === 'src-b') return Promise.resolve('168');
+      return Promise.resolve(null);
+    });
+
+    const vnA = new VirtualNodeServer({ port: 4503, meshtasticManager: makeFakeManager('src-a') });
+    attachFakeClient(vnA);
+    await (vnA as any).sendNodeInfosFromDb('client-1');
+    const [daysA] = getActiveNodesMock.mock.calls[0];
+
+    getActiveNodesMock.mockClear();
+
+    const vnB = new VirtualNodeServer({ port: 4504, meshtasticManager: makeFakeManager('src-b') });
+    attachFakeClient(vnB);
+    await (vnB as any).sendNodeInfosFromDb('client-1');
+    const [daysB] = getActiveNodesMock.mock.calls[0];
+
+    expect(daysA).toBeCloseTo(1 / 24);
+    expect(daysB).toBeCloseTo(7);
+    expect(daysA).not.toBe(daysB);
   });
 });
 
