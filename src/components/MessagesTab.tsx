@@ -21,9 +21,11 @@ import {
   getMessageDateSeparator,
   shouldShowDateSeparator,
 } from '../utils/datetime';
-import { buildTracerouteStripGraph } from '../utils/tracerouteStrip';
+import { buildTracerouteStripGraph, type TracerouteStripInput } from '../utils/tracerouteStrip';
 import { buildStripNodeMeta } from '../utils/tracerouteStripMeta';
 import { TracerouteStrip } from './traceroute/TracerouteStrip';
+import { TracerouteParticipationPicker } from './traceroute/TracerouteParticipationPicker';
+import { useNodeTraceroutes } from '../hooks/useNodeTraceroutes';
 import { getMessageSortTime } from '../utils/messageSort';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
 import { isDeviceDbWarningMitigatable } from '../utils/deviceDbWarning';
@@ -54,7 +56,7 @@ import RelayNodeModal from './RelayNodeModal';
 import TelemetryRequestModal, { TelemetryType } from './TelemetryRequestModal';
 import { CopyNodeInfoModal } from './CopyNodeInfoModal';
 import { useToast } from './ToastContainer';
-import apiService from '../services/api';
+import apiService, { type TracerouteParticipationEntry } from '../services/api';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSource } from '../contexts/SourceContext';
 import { computeMessagesReadOnlyState } from './messagesReadOnlyState';
@@ -78,6 +80,16 @@ interface TracerouteData {
   fromNodeNum: number;
   toNodeNum: number;
 }
+
+/**
+ * The row the traceroute box actually renders (epic phase 2, WP2): either
+ * the poll's `TracerouteData` (no `id`, non-null `route`/`routeBack`) or a
+ * `TracerouteParticipationEntry` from the picker (has `id`, nullable
+ * `route`/`routeBack`). Widens the local union rather than editing
+ * `TracerouteData` itself. Structurally satisfies `TracerouteStripInput` —
+ * no adapter needed to feed `buildTracerouteStripGraph`.
+ */
+type DisplayedTraceroute = TracerouteStripInput & { id?: number; timestamp: number };
 
 // Memoized distance display component to avoid recalculating on every render
 const DistanceDisplay = React.memo<{
@@ -742,16 +754,63 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   // called `getRecentTraceroute(selectedDMNode)` fresh on every render); only
   // the pure graph/meta derivation is memoized off it.
   const recentTrace = selectedDMNode ? getRecentTraceroute(selectedDMNode) : null;
+
+  // Traceroute participation picker (Traceroute Strip Interactivity epic,
+  // phase 2, WP2) — lets the user choose, among the stored traceroutes this
+  // node took part in (as an endpoint or an intermediate hop), which one the
+  // strip displays instead of always the newest poll row. This is the only
+  // way an MQTT source (no origin node, so no own `recentTrace`) can show
+  // the strip at all.
+  //
+  // `pickerNodeNum` is parsed directly from the hex id — unlike
+  // `selectedNodeNum` above, which requires the node to already be present
+  // in `nodes` — so it still resolves for a node not yet in the live list.
+  const pickerNodeNum = selectedDMNode ? parseNodeId(selectedDMNode) : null;
+  const { data: participationEntries, refetch: refetchParticipation } =
+    useNodeTraceroutes(pickerNodeNum, { enabled: !!selectedDMNode });
+  const entries: TracerouteParticipationEntry[] = participationEntries ?? [];
+  const [pickedTracerouteId, setPickedTracerouteId] = useState<number | null>(null);
+
+  // Rule 2 — the manual pick resets whenever the conversation partner changes.
+  useEffect(() => { setPickedTracerouteId(null); }, [selectedDMNode]);
+
+  // Rule 3 — the poll sees a new/updated traceroute first; clear any manual
+  // pick so the user looking at a node they just traced sees the result, and
+  // pull the picker list forward so the new row becomes selectable.
+  useEffect(() => {
+    if (recentTrace?.timestamp == null) return;
+    setPickedTracerouteId(null);
+    void refetchParticipation();
+  }, [recentTrace?.timestamp, refetchParticipation]);
+
+  // Rule 1 — which row the strip shows: an explicit pick wins; otherwise the
+  // newest of (`recentTrace`, `entries[0]`) by timestamp. Not "entries[0]
+  // always": between firing a traceroute and the next participation
+  // refetch, the poll row (`recentTrace`) is the newer one, and it is what
+  // carries the pending/failed badge. Comparing timestamps keeps the shipped
+  // TCP behaviour byte-identical while letting the picker supply the row on
+  // MQTT, where `recentTrace` is always null (no origin node). A picked id
+  // that disappears from a refetched list falls back to `newestAvailable` by
+  // construction.
+  const pickedEntry: TracerouteParticipationEntry | null = pickedTracerouteId != null
+    ? entries.find(e => e.id === pickedTracerouteId) ?? null
+    : null;
+  const newestAvailable: DisplayedTraceroute | null =
+    !recentTrace ? entries[0] ?? null
+    : !entries[0] ? recentTrace
+    : entries[0].timestamp >= recentTrace.timestamp ? entries[0] : recentTrace;
+  const displayedTrace: DisplayedTraceroute | null = pickedEntry ?? newestAvailable;
+
   const tracerouteStrip = useMemo(() => {
-    if (!recentTrace) return null;
-    const stripGraph = buildTracerouteStripGraph(recentTrace);
+    if (!displayedTrace) return null;
+    const stripGraph = buildTracerouteStripGraph(displayedTrace);
     const stripMeta = buildStripNodeMeta(stripGraph, nodes, {
       hopsCalculation: nodeHopsCalculation,
       traceroutes,
       currentNodeNum,
     });
     return { stripGraph, stripMeta };
-  }, [recentTrace, nodes, nodeHopsCalculation, traceroutes, currentNodeNum]);
+  }, [displayedTrace, nodes, nodeHopsCalculation, traceroutes, currentNodeNum]);
 
   /** Load a hop from the traceroute strip into the Node Details panel.
    *  No `setActiveTab`: the strip only ever renders on the Messages tab, so
@@ -1943,22 +2002,37 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
             )}
 
             {/* Traceroute Display */}
-              {hasPermission('traceroute', 'write') &&
+              {/* Read gate: the box is a DISPLAY. `write` still gates the
+                  request button (below / the channel split-button) and is
+                  unchanged there. `|| write` keeps a write-without-read user
+                  exactly where they were before this change (epic phase 2,
+                  WP2, non-regressive per TRS_PHASE2_SPEC.md §6.4). */}
+              {(hasPermission('traceroute', 'read') || hasPermission('traceroute', 'write')) &&
                 (() => {
-                  // recentTrace/tracerouteStrip are computed at component scope
-                  // (#4381 WP4) — this IIFE cannot host a hook, so the
+                  // displayedTrace/tracerouteStrip are computed at component
+                  // scope (#4381 WP4; displayedTrace selection added epic
+                  // phase 2 WP2) — this IIFE cannot host a hook, so the
                   // graph/meta build for the visual strip lives above.
-                  if (recentTrace) {
+                  //
+                  // Rule 7: the box renders whenever there is a row to show,
+                  // whether it came from the poll (`recentTrace`) or from the
+                  // participation picker — this is what unlocks the strip on
+                  // an MQTT source, which has no `recentTrace` at all.
+                  if (displayedTrace) {
+                    // Rule 4: age/badges read the displayed row, not
+                    // `recentTrace`, so a picked historical row reads
+                    // correctly ("last traced 3d ago … (Failed)" describes
+                    // *that* traceroute).
                     // Clamp at 0: a node with a wrong/ahead clock can stamp a
                     // traceroute in the future, which would otherwise render as a
                     // negative "-1676m ago" (#2768). The data write-path now caps
                     // this at server time too; this guards any pre-fix rows.
-                    const age = Math.max(0, Math.floor((Date.now() - recentTrace.timestamp) / (1000 * 60)));
+                    const age = Math.max(0, Math.floor((Date.now() - displayedTrace.timestamp) / (1000 * 60)));
                     const ageStr = age < 60 ? `${age}m ago` : `${Math.floor(age / 60)}h ago`;
 
                     // Check if traceroute failed (both directions have no valid data)
-                    const forwardFailed = !recentTrace.route || recentTrace.route === 'null';
-                    const returnFailed = !recentTrace.routeBack || recentTrace.routeBack === 'null';
+                    const forwardFailed = !displayedTrace.route || displayedTrace.route === 'null';
+                    const returnFailed = !displayedTrace.routeBack || displayedTrace.routeBack === 'null';
                     const noData = forwardFailed && returnFailed;
                     const isPending = noData && age < 1; // Less than 1 minute old
                     const isFailed = noData && !isPending;
@@ -1968,6 +2042,18 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
 
                     return (
                       <div className="traceroute-info" style={{ marginTop: '1rem' }}>
+                        <TracerouteParticipationPicker
+                          entries={entries}
+                          // Both branches of DisplayedTraceroute carry an
+                          // optional `id`: a TracerouteParticipationEntry
+                          // always has one, the poll's TracerouteData never
+                          // does — so this alone distinguishes them.
+                          selectedId={displayedTrace.id ?? null}
+                          onSelect={setPickedTracerouteId}
+                          nodes={nodes}
+                          timeFormat={timeFormat}
+                          dateFormat={dateFormat}
+                        />
                         {stripGraph && stripMeta && !stripGraph.isEmpty ? (
                           // Always renders at default size (#4381 follow-up):
                           // narrow panels are handled by `.scroller`'s

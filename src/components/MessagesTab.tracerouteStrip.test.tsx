@@ -68,6 +68,16 @@ vi.mock('./ToastContainer', async (importOriginal) => ({
 
 vi.mock('../hooks/useCsrfFetch', () => ({ useCsrfFetch: () => vi.fn() }));
 
+// The participation picker (epic phase 2, WP2) is exercised by its own test
+// files (TracerouteParticipationPicker.test.tsx, MessagesTab.tracerouteParticipation.test.tsx).
+// This file only needs the strip's pre-existing wiring to stay byte-identical,
+// so stub the hook to a deterministic empty list — this also keeps it from
+// making a real network call (`useNodeTraceroutes` -> `useResolvedSourceId`
+// -> `fetch('/api/sources')`) under jsdom.
+vi.mock('../hooks/useNodeTraceroutes', () => ({
+  useNodeTraceroutes: () => ({ data: [], isLoading: false, error: null, refetch: vi.fn() }),
+}));
+
 vi.mock('@tanstack/react-query', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useQueryClient: () => ({}),
@@ -292,14 +302,42 @@ describe('MessagesTab traceroute visual strip wiring (#4381 WP4)', () => {
     expect(noResponseText()).toBeNull();
   });
 
-  it('renders nothing when traceroute:write permission is denied', () => {
+  // Epic phase 2, WP2: the section gate widened from `write`-only to
+  // `read || write` (TRS_PHASE2_SPEC.md §6.4) — a write-without-read user
+  // must still see the box (asserted below), so denying write alone no
+  // longer hides it. Denying BOTH is now the only way to hide it.
+  it('renders nothing when neither traceroute:read nor traceroute:write permission is granted', () => {
     renderTab(makeProps({
       getRecentTraceroute: () => ROUTED_TRACE,
-      hasPermission: (resource: string, action: string) =>
-        !(resource === 'traceroute' && action === 'write'),
+      hasPermission: (resource: string) => resource !== 'traceroute',
     }));
 
     expect(tracerouteInfoBox()).toBeNull();
+  });
+
+  it('still renders when only traceroute:read (not write) is granted (§6.4 read gate)', () => {
+    renderTab(makeProps({
+      getRecentTraceroute: () => ROUTED_TRACE,
+      // messages:read must stay granted — MessagesTab bails out to the
+      // "no-permission-message" screen entirely without it (line ~824),
+      // which is orthogonal to the traceroute gate under test here.
+      hasPermission: (resource: string, action: string) =>
+        (resource === 'messages' && action === 'read') ||
+        (resource === 'traceroute' && action === 'read'),
+    }));
+
+    expect(tracerouteInfoBox()).not.toBeNull();
+  });
+
+  it('still renders when only traceroute:write (not read) is granted — non-regression', () => {
+    renderTab(makeProps({
+      getRecentTraceroute: () => ROUTED_TRACE,
+      hasPermission: (resource: string, action: string) =>
+        (resource === 'messages' && action === 'read') ||
+        (resource === 'traceroute' && action === 'write'),
+    }));
+
+    expect(tracerouteInfoBox()).not.toBeNull();
   });
 
   it('still renders the "last traced X ago" age line', () => {
