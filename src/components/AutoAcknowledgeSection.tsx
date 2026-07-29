@@ -327,6 +327,19 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
     onSave: handleSaveForSaveBar,
     onDismiss: resetChanges
   });
+
+  // Convert-to-Automation button state (#4340 Phase 4 WP4, #4420). `sourceType`
+  // is `null` outside a SourceProvider (legacy/single-source views) — that
+  // intentionally falls through to "not MeshCore" so the button stays enabled
+  // there, matching pre-#4420 behavior for those views.
+  const isMeshCoreSource = sourceType === 'meshcore';
+  const isConvertDisabled = hasChanges || isMeshCoreSource;
+  const convertDisabledReason = isMeshCoreSource
+    ? t('automation.auto_ack.convert_meshtastic_only', 'Convert to an Automation is only available for Meshtastic sources.')
+    : hasChanges
+      ? 'Save your changes first — converting now would use the last saved configuration, not your unsaved edits.'
+      : undefined;
+
   return (
     <>
       <div className="automation-section-header" style={{
@@ -368,40 +381,29 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             Also disabled for MeshCore sources — the converter targets Meshtastic's
             Direct/Multi-hop Auto-Ack split; MeshCore's flat Auto-Ack template is out
             of scope for the epic and the server 400s SOURCE_NOT_MESHTASTIC (#4420). */}
-        {(() => {
-          const isMeshCore = sourceType === 'meshcore';
-          const disabledReason = isMeshCore
-            ? 'Convert to an Automation is only available for Meshtastic sources.'
-            : hasChanges
-              ? 'Save your changes first — converting now would use the last saved configuration, not your unsaved edits.'
-              : undefined;
-          const isDisabled = hasChanges || isMeshCore;
-          return (
-            <button
-              type="button"
-              onClick={() => setIsConvertDialogOpen(true)}
-              disabled={isDisabled}
-              title={disabledReason}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                padding: '0.4rem 0.85rem',
-                borderRadius: '6px',
-                background: 'var(--ctp-surface2)',
-                color: isDisabled ? 'var(--ctp-subtext0)' : 'var(--ctp-text)',
-                border: '1px solid var(--ctp-surface2)',
-                cursor: isDisabled ? 'not-allowed' : 'pointer',
-                opacity: isDisabled ? 0.6 : 1,
-                fontSize: '0.85rem',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              <UiIcon name="bot" size={16} />
-              Convert to an Automation…
-            </button>
-          );
-        })()}
+        <button
+          type="button"
+          onClick={() => setIsConvertDialogOpen(true)}
+          disabled={isConvertDisabled}
+          title={convertDisabledReason}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            padding: '0.4rem 0.85rem',
+            borderRadius: '6px',
+            background: 'var(--ctp-surface2)',
+            color: isConvertDisabled ? 'var(--ctp-subtext0)' : 'var(--ctp-text)',
+            border: '1px solid var(--ctp-surface2)',
+            cursor: isConvertDisabled ? 'not-allowed' : 'pointer',
+            opacity: isConvertDisabled ? 0.6 : 1,
+            fontSize: '0.85rem',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          <UiIcon name="bot" size={16} />
+          Convert to an Automation…
+        </button>
       </div>
 
       <AutoAckConvertDialog

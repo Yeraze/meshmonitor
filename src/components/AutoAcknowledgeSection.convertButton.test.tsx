@@ -104,6 +104,19 @@ describe('AutoAcknowledgeSection — Convert to an Automation button', () => {
 
     const button = screen.getByRole('button', { name: /Convert to an Automation/ });
     expect(button).toBeDisabled();
+    expect(button).toHaveAttribute(
+      'title',
+      'Save your changes first — converting now would use the last saved configuration, not your unsaved edits.',
+    );
+  });
+
+  it('leaves the button enabled when sourceType is null (no SourceProvider)', () => {
+    mockUseSource.mockReturnValue({ sourceId: 'source-1', sourceName: 'Test Source', sourceType: null });
+    render(<AutoAcknowledgeSection {...defaultProps} />);
+
+    const button = screen.getByRole('button', { name: /Convert to an Automation/ });
+    expect(button).not.toBeDisabled();
+    expect(button).not.toHaveAttribute('title');
   });
 
   it('disables the button for a MeshCore source, even with no unsaved changes (#4420)', () => {
@@ -113,6 +126,9 @@ describe('AutoAcknowledgeSection — Convert to an Automation button', () => {
     const button = screen.getByRole('button', { name: /Convert to an Automation/ });
     expect(button).toBeInTheDocument();
     expect(button).toBeDisabled();
-    expect(button).toHaveAttribute('title', 'Convert to an Automation is only available for Meshtastic sources.');
+    // The global react-i18next mock (src/test/setup.ts) returns the key verbatim,
+    // ignoring the t()-call's fallback default — so this asserts the i18n key,
+    // not the rendered English copy.
+    expect(button).toHaveAttribute('title', 'automation.auto_ack.convert_meshtastic_only');
   });
 });
