@@ -8,6 +8,10 @@
  * - Inactive node detection threshold
  * - #4020: split-row merge (eligibility/monitored-nodes resolved across ALL
  *   of a user's (userId, sourceId) rows, not just one)
+ * - #4412 Phase 2 WP4: one scheduler tick, per-source config resolved via
+ *   getInactiveNodeConfig()/getSettingForSource() instead of instance fields
+ *   captured at start() time. See inactiveNodeNotificationService.perSource.test.ts
+ *   for the two-source cadence proof.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -22,8 +26,9 @@ const mockCheckPermissionAsync = vi.fn();
 const mockGetUserPermissionSetAsync = vi.fn();
 const mockGetUserPreferenceRows = vi.fn();
 const mockGetAllPreferenceUserIds = vi.fn();
-
 const mockGetSource = vi.fn();
+const mockGetSettingForSource = vi.fn();
+
 vi.mock('../../services/database.js', () => ({
   default: {
     notifications: {
@@ -39,6 +44,9 @@ vi.mock('../../services/database.js', () => ({
     },
     sources: {
       getSource: mockGetSource,
+    },
+    settings: {
+      getSettingForSource: mockGetSettingForSource,
     },
     findUserByIdAsync: mockFindUserByIdAsync,
     findUserByUsernameAsync: mockFindUserByUsernameAsync,
@@ -93,6 +101,27 @@ function makeRow(overrides: Partial<{
   };
 }
 
+/**
+ * Drives the mocked `getSettingForSource` used by getInactiveNodeConfig().
+ * Every source resolves the SAME threshold/checkInterval/cooldown unless a
+ * test overrides it — mirrors the pre-restructure defaults (24h / 60min / 24h).
+ */
+function setInactiveNodeConfig(overrides: { threshold?: number; checkInterval?: number; cooldown?: number } = {}) {
+  const { threshold = 24, checkInterval = 60, cooldown = 24 } = overrides;
+  mockGetSettingForSource.mockImplementation(async (_sourceId: string | null | undefined, key: string) => {
+    switch (key) {
+      case 'inactiveNodeThresholdHours':
+        return String(threshold);
+      case 'inactiveNodeCheckIntervalMinutes':
+        return String(checkInterval);
+      case 'inactiveNodeCooldownHours':
+        return String(cooldown);
+      default:
+        return null;
+    }
+  });
+}
+
 describe('InactiveNodeNotificationService', () => {
   let service: any;
 
@@ -108,14 +137,14 @@ describe('InactiveNodeNotificationService', () => {
     mockGetUserPreferenceRows.mockResolvedValue([]);
     mockGetAllPreferenceUserIds.mockResolvedValue([]);
     mockBroadcastToPreferenceUsers.mockResolvedValue({ sent: 1, failed: 0, filtered: 0 });
+    setInactiveNodeConfig();
 
     const module = await import('./inactiveNodeNotificationService.js');
     service = module.inactiveNodeNotificationService;
 
-    // Reset internal state
+    // Reset internal state (stop() clears tickTimer/initialTimeout/running/nextRunAt).
+    service.stop();
     service.lastNotifiedNodes = new Map();
-    service.currentThresholdHours = 24;
-    service.currentCooldownHours = 24;
     service.hourlyLog.reset();
   });
 
@@ -124,11 +153,11 @@ describe('InactiveNodeNotificationService', () => {
     vi.useRealTimers();
   });
 
-  describe('checkInactiveNodes', () => {
+  describe('tick (scheduler pass)', () => {
     it('should skip when no users have notifications enabled', async () => {
       mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([]);
 
-      await service.checkInactiveNodes();
+      await service.tick();
 
       expect(mockGetUsersWithInactiveNodeNotifications).toHaveBeenCalled();
       expect(mockGetInactiveMonitoredNodesAsync).not.toHaveBeenCalled();
@@ -139,7 +168,7 @@ describe('InactiveNodeNotificationService', () => {
         makeRow({ monitoredNodes: null }),
       ]);
 
-      await service.checkInactiveNodes();
+      await service.tick();
 
       expect(mockGetInactiveMonitoredNodesAsync).not.toHaveBeenCalled();
       expect(mockBroadcastToPreferenceUsers).not.toHaveBeenCalled();
@@ -150,7 +179,7 @@ describe('InactiveNodeNotificationService', () => {
         makeRow({ monitoredNodes: '[]' }),
       ]);
 
-      await service.checkInactiveNodes();
+      await service.tick();
 
       expect(mockGetInactiveMonitoredNodesAsync).not.toHaveBeenCalled();
     });
@@ -162,7 +191,7 @@ describe('InactiveNodeNotificationService', () => {
       ]);
       mockGetInactiveMonitoredNodesAsync.mockResolvedValue([]);
 
-      await service.checkInactiveNodes();
+      await service.tick();
 
       expect(mockGetInactiveMonitoredNodesAsync).toHaveBeenCalledWith(
         monitoredNodes,
@@ -182,7 +211,7 @@ describe('InactiveNodeNotificationService', () => {
         { nodeNum: 2864434397, nodeId: '!aabbccdd', longName: 'Test Node', shortName: 'TN', lastHeard: lastHeardSeconds },
       ]);
 
-      await service.checkInactiveNodes();
+      await service.tick();
 
       expect(mockBroadcastToPreferenceUsers).toHaveBeenCalledWith(
         'notifyOnInactiveNode',
@@ -205,13 +234,17 @@ describe('InactiveNodeNotificationService', () => {
         { nodeNum: 2864434397, nodeId: '!aabbccdd', longName: 'Test Node', shortName: 'TN', lastHeard: lastHeardSeconds },
       ]);
 
-      // First check — should send
-      await service.checkInactiveNodes();
+      // First tick — should send
+      await service.tick();
       expect(mockBroadcastToPreferenceUsers).toHaveBeenCalledTimes(1);
 
-      // Second check immediately — should be cooled down
+      // Second tick immediately — the source's own checkIntervalMinutes (60)
+      // would normally make it not-due yet; force it due via reschedule()
+      // (its own public API) so this test isolates cooldown behaviour from
+      // scheduling cadence (that's inactiveNodeNotificationService.perSource.test.ts).
       mockBroadcastToPreferenceUsers.mockClear();
-      await service.checkInactiveNodes();
+      service.reschedule();
+      await service.tick();
       expect(mockBroadcastToPreferenceUsers).not.toHaveBeenCalled();
     });
 
@@ -220,7 +253,7 @@ describe('InactiveNodeNotificationService', () => {
         makeRow({ monitoredNodes: 'not valid json' }),
       ]);
 
-      await service.checkInactiveNodes();
+      await service.tick();
 
       // Should not crash, should not query for nodes
       expect(mockGetInactiveMonitoredNodesAsync).not.toHaveBeenCalled();
@@ -232,13 +265,13 @@ describe('InactiveNodeNotificationService', () => {
       ]);
       mockGetInactiveMonitoredNodesAsync.mockResolvedValue([]);
 
-      await service.checkInactiveNodes();
+      await service.tick();
 
       expect(mockBroadcastToPreferenceUsers).not.toHaveBeenCalled();
     });
 
-    it('should use threshold hours for cutoff calculation', async () => {
-      service.currentThresholdHours = 12; // 12 hour threshold
+    it('should use this source\'s threshold hours for cutoff calculation', async () => {
+      setInactiveNodeConfig({ threshold: 12 });
       const now = Date.now();
       const expectedCutoff = Math.floor(now / 1000) - 12 * 3600;
 
@@ -247,7 +280,7 @@ describe('InactiveNodeNotificationService', () => {
       ]);
       mockGetInactiveMonitoredNodesAsync.mockResolvedValue([]);
 
-      await service.checkInactiveNodes();
+      await service.tick();
 
       expect(mockGetInactiveMonitoredNodesAsync).toHaveBeenCalledWith(
         ['!aabbccdd'],
@@ -270,7 +303,7 @@ describe('InactiveNodeNotificationService', () => {
         { nodeNum: 2864434397, nodeId: '!aabbccdd', longName: 'Test Node', shortName: 'TN', lastHeard: lastHeardSeconds },
       ]);
 
-      await service.checkInactiveNodes();
+      await service.tick();
 
       // Prior to #4020, the gate query returned only one arbitrary row, so
       // either the flag or the monitored-nodes data was missing and the
@@ -289,14 +322,14 @@ describe('InactiveNodeNotificationService', () => {
       ]);
       mockGetInactiveMonitoredNodesAsync.mockResolvedValue([]);
 
-      await service.checkInactiveNodes();
+      await service.tick();
 
       const call = mockGetInactiveMonitoredNodesAsync.mock.calls[0];
       expect(call[0].sort()).toEqual(['!11223344', '!aabbccdd']);
     });
   });
 
-  describe('checkInactiveNodes (MeshCore source)', () => {
+  describe('tick (MeshCore source)', () => {
     // pubkey.substring(0,12) → 'aabbccddeeff'; monitored id is mc:<sourceId>:<pubkey12>
     const PUBKEY = 'aabbccddeeff00112233445566778899';
     const MC_NODE_ID = 'mc:mc1:aabbccddeeff';
@@ -309,7 +342,7 @@ describe('InactiveNodeNotificationService', () => {
     });
 
     it('queries getInactiveMeshcoreNodes with a millisecond cutoff (lastHeard is ms)', async () => {
-      service.currentThresholdHours = 12;
+      setInactiveNodeConfig({ threshold: 12 });
       const now = Date.now();
       const expectedCutoffMs = now - 12 * 60 * 60 * 1000;
 
@@ -318,7 +351,7 @@ describe('InactiveNodeNotificationService', () => {
       ]);
       mockGetInactiveMeshcoreNodes.mockResolvedValue([]);
 
-      await service.checkInactiveNodes();
+      await service.tick();
 
       // Meshtastic query must NOT be used for a MeshCore source
       expect(mockGetInactiveMonitoredNodesAsync).not.toHaveBeenCalled();
@@ -336,7 +369,7 @@ describe('InactiveNodeNotificationService', () => {
         { publicKey: PUBKEY, name: 'MC Node', batteryMv: 3500, lastHeard: lastHeardMs },
       ]);
 
-      await service.checkInactiveNodes();
+      await service.tick();
 
       expect(mockBroadcastToPreferenceUsers).toHaveBeenCalledWith(
         'notifyOnInactiveNode',
@@ -358,19 +391,113 @@ describe('InactiveNodeNotificationService', () => {
         { publicKey: PUBKEY, name: 'MC Node', batteryMv: 3500, lastHeard: now - 48 * 60 * 60 * 1000 },
       ]);
 
-      await service.checkInactiveNodes();
+      await service.tick();
 
       expect(mockBroadcastToPreferenceUsers).not.toHaveBeenCalled();
     });
   });
 
-  describe('start/stop', () => {
-    it('should start and stop cleanly', () => {
-      service.start(24, 60, 24);
+  describe('start / stop / getStatus', () => {
+    it('sets running=true synchronously in start(), before the warm-up timer fires', () => {
+      // Regression guard (#4412 Phase 2): getStatus() used to derive `running`
+      // from the interval handle, which doesn't exist until t+60s — that would
+      // incorrectly report `false` for the first minute after start().
+      service.start();
       expect(service.getStatus().running).toBe(true);
+    });
 
+    it('stop() clears running, both timers, and nextRunAt', async () => {
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([]);
+
+      service.start();
+      service.nextRunAt.set('src1', Date.now() + 999_999);
       service.stop();
+
       expect(service.getStatus().running).toBe(false);
+      expect(service.nextRunAt.size).toBe(0);
+
+      // No pending timers survive the stop — advancing well past both the
+      // warm-up delay and a tick interval fires nothing.
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(mockGetUsersWithInactiveNodeNotifications).not.toHaveBeenCalled();
+    });
+
+    it('calling start() twice warns and does not schedule a second timer pair', async () => {
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([]);
+
+      service.start();
+      service.start();
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(mockGetUsersWithInactiveNodeNotifications).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('reschedule', () => {
+    it('reschedule(sourceId) invalidates only that source\'s nextRunAt', () => {
+      const now = Date.now();
+      service.nextRunAt.set('srcA', now + 999_999);
+      service.nextRunAt.set('srcB', now + 999_999);
+
+      service.reschedule('srcA');
+
+      expect(service.nextRunAt.has('srcA')).toBe(false);
+      expect(service.nextRunAt.has('srcB')).toBe(true);
+    });
+
+    it('reschedule() with no argument invalidates every source', () => {
+      const now = Date.now();
+      service.nextRunAt.set('srcA', now + 999_999);
+      service.nextRunAt.set('srcB', now + 999_999);
+
+      service.reschedule();
+
+      expect(service.nextRunAt.size).toBe(0);
+    });
+  });
+
+  describe('tick scheduling edge cases', () => {
+    it('no eligible users does not advance nextRunAt — the source is retried on the very next tick', async () => {
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([]);
+
+      await service.tick();
+      expect(mockGetUsersWithInactiveNodeNotifications).toHaveBeenCalledTimes(1);
+      expect(service.nextRunAt.has('src1')).toBe(false);
+
+      await service.tick();
+      expect(mockGetUsersWithInactiveNodeNotifications).toHaveBeenCalledTimes(2);
+    });
+
+    it('a throwing source does not abort the tick for other sources, and does not hot-loop', async () => {
+      mockGetAllManagers.mockReturnValue([
+        { sourceId: 'srcA', sourceType: 'meshtastic_tcp' },
+        { sourceId: 'srcB', sourceType: 'meshtastic_tcp' },
+      ]);
+      const lastHeardSeconds = Math.floor(Date.now() / 1000) - 48 * 3600;
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([
+        makeRow({ monitoredNodes: '["!aabbccdd"]' }),
+      ]);
+      mockGetInactiveMonitoredNodesAsync.mockImplementation(async (_ids: string[], _cutoff: number, sourceId: string) => {
+        if (sourceId === 'srcA') throw new Error('boom');
+        return [{ nodeNum: 2864434397, nodeId: '!aabbccdd', longName: 'Test Node', shortName: 'TN', lastHeard: lastHeardSeconds }];
+      });
+
+      await service.tick();
+
+      // srcB was processed and notified despite srcA throwing.
+      expect(mockBroadcastToPreferenceUsers).toHaveBeenCalledTimes(1);
+      expect(mockBroadcastToPreferenceUsers).toHaveBeenCalledWith(
+        'notifyOnInactiveNode',
+        expect.objectContaining({ sourceId: 'srcB' }),
+        1
+      );
+
+      // srcA's nextRunAt was still advanced (set BEFORE the throwing work),
+      // so it is exactly as "not due" as the well-behaved srcB on the very
+      // next tick — proving the throw did not leave it hot-looping.
+      mockGetInactiveMonitoredNodesAsync.mockClear();
+      await service.tick();
+      expect(mockGetInactiveMonitoredNodesAsync).not.toHaveBeenCalled();
     });
   });
 });
