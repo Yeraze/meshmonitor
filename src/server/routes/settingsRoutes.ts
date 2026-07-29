@@ -18,7 +18,8 @@ import { parseDiscardInvalidPositions } from '../../utils/positionIngestConfig.j
 import { parseNoIndexEnabled } from '../../utils/robotsConfig.js';
 import { securityDigestService } from '../services/securityDigestService.js';
 import { invalidatePkiDmGlobalCache } from '../services/sourcePkiKeyStore.js';
-import { VALID_SETTINGS_KEYS, stripSecretSettings } from '../constants/settings.js';
+import { VALID_SETTINGS_KEYS, GLOBAL_ONLY_SETTINGS_KEYS, stripSecretSettings } from '../constants/settings.js';
+import { ok, fail } from '../utils/apiResponse.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
 import { positionEstimationScheduler } from '../services/positionEstimationScheduler.js';
@@ -118,7 +119,7 @@ export interface SettingsCallbacks {
   refreshTileHostnameCache?: () => void | Promise<void>;
   setTracerouteInterval?: (interval: number) => void;
   setRemoteAdminScannerInterval?: (interval: number, sourceId?: string | null) => void;
-  setLocalStatsInterval?: (interval: number) => void;
+  setLocalStatsInterval?: (interval: number, sourceId?: string | null) => void;
   setKeyRepairSettings?: (settings: {
     enabled: boolean;
     intervalMinutes: number;
@@ -157,6 +158,49 @@ let callbacks: SettingsCallbacks = {};
 
 export function setSettingsCallbacks(cb: SettingsCallbacks): void {
   callbacks = cb;
+}
+
+/**
+ * Audit-log a settings write. Called from BOTH the per-source branch and the
+ * global branch, so per-source changes stop being invisible (epic #4412 bug #6).
+ *
+ * `currentSettings` is the pre-write snapshot from getAllSettings(), which
+ * includes `source:{id}:{key}` rows — so the per-source before-value needs no
+ * extra query.
+ *
+ * The explicit allowlist check is retained so static analyzers can see that
+ * `key` cannot be an attacker-controlled property name like `__proto__`.
+ */
+async function auditSettingsWrite(
+  req: Request,
+  currentSettings: Record<string, string>,
+  filteredSettings: Record<string, string>,
+  sourceId: string | null,
+): Promise<void> {
+  const validKeySet = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
+  const changed: Record<string, { before: string | undefined; after: string }> = {};
+  const prefix = sourceId ? `source:${sourceId}:` : '';
+  for (const key of Object.keys(filteredSettings)) {
+    if (!validKeySet.has(key)) continue;
+    const before = currentSettings[`${prefix}${key}`];
+    if (before !== filteredSettings[key]) {
+      Object.defineProperty(changed, key, {
+        value: { before, after: filteredSettings[key] },
+        enumerable: true, writable: true, configurable: true,
+      });
+    }
+  }
+  if (Object.keys(changed).length === 0) return;
+
+  void databaseService.auditLogAsync(
+    req.user!.id,
+    'settings_updated',
+    'settings',
+    JSON.stringify({ sourceId, keys: Object.keys(changed) }),
+    req.ip || null,
+    JSON.stringify(Object.fromEntries(Object.entries(changed).map(([k, v]) => [k, v.before]))),
+    JSON.stringify(Object.fromEntries(Object.entries(changed).map(([k, v]) => [k, v.after]))),
+  );
 }
 
 // ─── Router ──────────────────────────────────────────────────────────────
@@ -201,7 +245,7 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
 
 // POST /settings — save settings
 // ?sourceId=<id>  → save as per-source settings (skips global side-effects)
-router.post('/', requirePermission('settings', 'write'), async (req: Request, res: Response) => {
+router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' }), async (req: Request, res: Response) => {
   try {
     const settings = req.body;
     const sourceId = typeof req.query.sourceId === 'string' ? req.query.sourceId : null;
@@ -210,12 +254,27 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
     const currentSettings = await databaseService.settings.getAllSettings();
 
     // Validate settings
+    //
+    // Deny-list, not allow-list (see PER_SOURCE_NODE_DISPLAY_PHASE1_SPEC.md §2.2).
+    // A global-only key we failed to enumerate writes one junk row nobody reads;
+    // a per-source key wrongly excluded from an allow-list would silently stop
+    // persisting. The global path is byte-identical to today (sourceId is null,
+    // so the deny branch is unreachable and ignoredKeys stays empty).
     const filteredSettings: Record<string, string> = {};
-
+    const ignoredKeys: string[] = [];
     for (const key of VALID_SETTINGS_KEYS) {
-      if (key in settings) {
-        filteredSettings[key] = String(settings[key]);
+      if (!(key in settings)) continue;
+      if (sourceId && GLOBAL_ONLY_SETTINGS_KEYS.has(key)) {
+        ignoredKeys.push(key);
+        continue;
       }
+      filteredSettings[key] = String(settings[key]);
+    }
+    if (ignoredKeys.length > 0) {
+      logger.warn(
+        `POST /api/settings?sourceId=${sourceId}: dropped ${ignoredKeys.length} global-only ` +
+        `key(s), meaningless in a source namespace: ${ignoredKeys.join(', ')}`
+      );
     }
 
     // Validate autoAckRegex pattern.
@@ -276,6 +335,18 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
         return res.status(400).json({
           error: error instanceof Error ? error.message : 'Invalid node ignore list format',
         });
+      }
+    }
+
+    // Range-validate the node-age window (client input is min=1 max=168 —
+    // SettingsTab.tsx:1882-1884). Prior to this there was no server-side check
+    // at all, so an API client could store 0 or a negative value and every
+    // consumer's `Date.now() - h*3600e3` window silently inverted.
+    if ('maxNodeAgeHours' in filteredSettings) {
+      const hours = parseInt(filteredSettings.maxNodeAgeHours, 10);
+      if (isNaN(hours) || hours < 1 || hours > 168) {
+        return fail(res, 400, 'INVALID_MAX_NODE_AGE_HOURS',
+          'maxNodeAgeHours must be between 1 and 168 hours');
       }
     }
 
@@ -679,6 +750,16 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
         callbacks.setAutomationAirtimeCutoffSource?.(filteredSettings.automationAirtimeCutoffSource, sourceId);
       }
 
+      // #4412: localStatsIntervalMinutes is read per-source by
+      // applyManagerSettings.ts:42, but this branch never told the source's own
+      // manager about a change — so a scoped save only took effect on reconnect.
+      if ('localStatsIntervalMinutes' in filteredSettings) {
+        const interval = parseInt(filteredSettings.localStatsIntervalMinutes, 10);
+        if (!isNaN(interval) && interval >= 0 && interval <= 60) {
+          callbacks.setLocalStatsInterval?.(interval, sourceId);
+        }
+      }
+
       // Auto-delete-by-distance is per-source (#3901): restart this source's
       // own scheduler so a settings change takes effect without waiting for the
       // source to reconnect. The scheduler reads enabled/interval itself.
@@ -701,7 +782,8 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
         }
       }
 
-      return res.json({ success: true });
+      await auditSettingsWrite(req, currentSettings, filteredSettings, sourceId);
+      return ok(res, { ignoredKeys });
     }
 
     await databaseService.settings.setSettings(filteredSettings);
@@ -934,33 +1016,7 @@ router.post('/', requirePermission('settings', 'write'), async (req: Request, re
     // via its manager lifecycle + the per-source branch above.
 
     // Audit log with before/after values.
-    // Allowlist check is explicit here so static analyzers can see that
-    // `key` cannot be an attacker-controlled property name like `__proto__`.
-    const validKeySet = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
-    const changedSettings: Record<string, { before: string | undefined; after: string }> = {};
-    Object.keys(filteredSettings).forEach((key) => {
-      if (!validKeySet.has(key)) return;
-      if (currentSettings[key] !== filteredSettings[key]) {
-        Object.defineProperty(changedSettings, key, {
-          value: { before: currentSettings[key], after: filteredSettings[key] },
-          enumerable: true,
-          writable: true,
-          configurable: true,
-        });
-      }
-    });
-
-    if (Object.keys(changedSettings).length > 0) {
-      void databaseService.auditLogAsync(
-        req.user!.id,
-        'settings_updated',
-        'settings',
-        JSON.stringify({ keys: Object.keys(changedSettings) }),
-        req.ip || null,
-        JSON.stringify(Object.fromEntries(Object.entries(changedSettings).map(([k, v]) => [k, v.before]))),
-        JSON.stringify(Object.fromEntries(Object.entries(changedSettings).map(([k, v]) => [k, v.after])))
-      );
-    }
+    await auditSettingsWrite(req, currentSettings, filteredSettings, null);
 
     // Reschedule security digest if any digest setting changed
     if (Object.keys(filteredSettings).some(k => k.startsWith('securityDigest'))) {
