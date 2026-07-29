@@ -37,11 +37,15 @@ Scope:
   positions come from the existing per-node `meta.pos`.
 
 Exit criteria:
-- [ ] Popup button loads the node in the details panel; unknown hops don't offer it
-- [ ] Link tooltips show direction, endpoints, distance (unit-correct, only with positions), SNR
-- [ ] Tests extended (`TracerouteStrip.test.tsx` + utils tests); full suite green
-- [ ] Browser-validated in the dev container
+- [x] Popup button loads the node in the details panel; unknown hops don't offer it
+- [x] Link tooltips show direction, endpoints, distance (unit-correct, only with positions), SNR
+- [x] Tests extended (`TracerouteStrip.test.tsx` + utils tests); full suite green (12,453 passed)
+- [x] Browser-validated in the dev container (2026-07-29: edge tooltip hit-testing via elementFromPoint, linger + More Details click loads node, keyboard Enter path, mi unit respected)
 - [ ] PR merged
+
+Phase 1 notes: button label is "More Details" (the popup family's shipped `ACTION_META` label), not
+literal "Node Details" — consistency with every other node popup won over the epic's working title.
+Keyboard path: Enter/Space fires on the glyph itself (`role="button"`); the portal is not tab-reachable.
 
 - [ ] **Phase 1 complete**
 
