@@ -12,7 +12,15 @@ router.get('/device/tx-status', optionalAuth(), async (req: Request, res: Respon
     const txManager = resolveSourceManager(txSourceId);
     const deviceConfig = await txManager.getDeviceConfig();
     const txEnabled = deviceConfig?.lora?.txEnabled !== false; // Default to true if undefined
-    res.json({ txEnabled });
+    // UDP-broadcast relay (#4394): with `network.enabledProtocols & UDP_BROADCAST`
+    // set, firmware still emits outgoing packets onto the LAN even when the radio
+    // is TX-disabled, and a peer there relays them onto the mesh. Such a source can
+    // send, so the UI gates on `canTransmit`, not on `txEnabled` alone. Managers
+    // without the method (non-Meshtastic) report no relay.
+    const udpRelayEnabled = typeof txManager.isUdpBroadcastRelayEnabled === 'function'
+      ? txManager.isUdpBroadcastRelayEnabled()
+      : false;
+    res.json({ txEnabled, udpRelayEnabled, canTransmit: txEnabled || udpRelayEnabled });
   } catch (error) {
     logger.error('Error getting TX status:', error);
     res.status(500).json({ error: 'Failed to get TX status' });

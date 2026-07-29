@@ -75,10 +75,11 @@ export class AutoAnnounceService {
       label: `Meshtastic:${sourceId}`,
       mode,
       onTick: () => {
-        logger.debug(`📢 Announce tick triggered (connected: ${this.mgr.isDeviceConnected()}, txEnabled: ${this.mgr.isTxEnabled()})`);
+        logger.debug(`📢 Announce tick triggered (connected: ${this.mgr.isDeviceConnected()}, canTransmit: ${this.mgr.canTransmit()})`);
         // TX-disabled radios cannot broadcast announcements; skip quietly and let
         // the scheduler keep running so a later TX re-enable resumes automatically (#4294).
-        if (this.mgr.isDeviceConnected() && this.mgr.isTxEnabled()) {
+        // UDP Broadcast counts as a transmit path — a LAN peer relays for us (#4394).
+        if (this.mgr.isDeviceConnected() && this.mgr.canTransmit()) {
           return this.sendAutoAnnouncement(true).catch((error: Error) => {
             logger.error('❌ Error in auto-announce:', error);
           });

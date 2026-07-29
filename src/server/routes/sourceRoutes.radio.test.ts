@@ -73,7 +73,43 @@ describe('GET /api/sources — radio summary (#4111 P3 WP-1)', () => {
       regionName: 'US',
       modemPreset: 0,
       txEnabled: true,
+      udpRelayEnabled: false,
+      canTransmit: true,
     });
+  });
+
+  // #4394: firmware UDP-broadcasts outgoing packets whenever
+  // `network.enabledProtocols & UDP_BROADCAST` is set, with no tx_enabled check,
+  // so a LAN peer relays them. Such a source can send even with the radio off.
+  it('reports canTransmit: true when TX is off but UDP Broadcast relays (#4394)', async () => {
+    mockGetManager.mockImplementation((sourceId: string) => {
+      if (sourceId !== harness.sourceA) return null;
+      return {
+        sourceType: 'meshtastic_tcp',
+        isUdpBroadcastRelayEnabled: () => true,
+        getCurrentConfig: () => ({
+          deviceConfig: {
+            lora: {
+              region: 1,
+              channelNum: 21,
+              overrideFrequency: 0,
+              frequencyOffset: 0,
+              bandwidth: 250,
+              modemPreset: 0,
+              txEnabled: false,
+            },
+          },
+        }),
+      };
+    });
+
+    const agent = await harness.loginAs(null);
+    const res = await agent.get('/');
+
+    const a = res.body.find((s: { id: string }) => s.id === harness.sourceA);
+    expect(a.radio.txEnabled).toBe(false);
+    expect(a.radio.udpRelayEnabled).toBe(true);
+    expect(a.radio.canTransmit).toBe(true);
   });
 
   it('reflects txEnabled: false on the meshtastic summary when the source is receive-only (#4294 P3)', async () => {
@@ -102,6 +138,7 @@ describe('GET /api/sources — radio summary (#4111 P3 WP-1)', () => {
 
     const a = res.body.find((s: { id: string }) => s.id === harness.sourceA);
     expect(a.radio.txEnabled).toBe(false);
+    expect(a.radio.canTransmit).toBe(false);
   });
 
   it('fails open to txEnabled: true when the field is absent from lora config (#4294 P3)', async () => {
