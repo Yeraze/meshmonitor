@@ -755,7 +755,25 @@ export class VirtualNodeServer extends EventEmitter {
     // channel entries (otherwise uplink_enabled defaults to false and every
     // packet is dropped).
     const deviceConfig = this.config.meshtasticManager.getActualDeviceConfig?.();
-    const presetFallback = getPrimaryChannelNameFallback(deviceConfig?.lora?.modemPreset);
+    let presetFallback = getPrimaryChannelNameFallback(deviceConfig?.lora?.modemPreset);
+
+    // getActualDeviceConfig() is in-memory only: handleDisconnected() nulls it
+    // on every physical-node disconnect until the device re-sends LoRa config
+    // on reconnect. A client requesting config during that window would
+    // otherwise get slot 0 with no name at all, which the Meshtastic app
+    // renders as the placeholder "Channel 0" (#4037). Fall back to the durable
+    // per-source `lora.preset.<sourceId>` setting written by
+    // persistModemPreset() (same fallback channelRoutes.ts, unifiedRoutes.ts,
+    // and sourceDashboardData.ts already use).
+    if (!presetFallback) {
+      try {
+        const raw = await databaseService.settings.getSetting(`lora.preset.${sourceId}`);
+        const n = raw != null ? Number(raw) : NaN;
+        if (Number.isFinite(n)) presetFallback = getPrimaryChannelNameFallback(n);
+      } catch (err) {
+        logger.debug(`Virtual node: Failed to load persisted modem preset for source ${sourceId}:`, err);
+      }
+    }
 
     let sent = 0;
     for (const ch of dbChannels) {
