@@ -1230,11 +1230,24 @@ describe('MqttBridgeManager', () => {
       .spyOn(channelDecryptionService, 'tryDecrypt')
       .mockResolvedValue({ success: false, error: 'no matching key (test)' });
 
-    const publishesByClient: Array<{ clientId: string | null; topic: string }> = [];
-    upstream.aedes.on('publish', (packet, client) => {
+    // Capture payload alongside topic/clientId (not just topic — #4400) so the
+    // assertion below can be specific to the packet under test rather than to
+    // "anything landed on this topic". `upstream` (and therefore this topic
+    // string) is reused verbatim by several ok_to_mqtt tests in this file; a
+    // topic-only check is fail-open-flaky by construction (a stray same-topic
+    // publish from anywhere would pass) — exactly backwards for a fail-closed
+    // assertion. The listener is explicitly removed in `finally` too, so it
+    // can't observe activity beyond this test's own aedes instance's lifetime.
+    const publishesByClient: Array<{ clientId: string | null; topic: string; payload: Buffer }> = [];
+    const onUpstreamPublish: Parameters<typeof upstream.aedes.on>[1] = (packet, client) => {
       if (!client) return;
-      publishesByClient.push({ clientId: client.id, topic: packet.topic });
-    });
+      publishesByClient.push({
+        clientId: client.id,
+        topic: packet.topic,
+        payload: Buffer.isBuffer(packet.payload) ? packet.payload : Buffer.from(packet.payload),
+      });
+    };
+    upstream.aedes.on('publish', onUpstreamPublish);
 
     bridge = new MqttBridgeManager('encrypted-unknown-drop-bridge', 'EncUnknownDrop', {
       brokerSourceId: 'local-broker',
@@ -1271,16 +1284,25 @@ describe('MqttBridgeManager', () => {
     });
     if (!envelopeBytes) throw new Error('encode failed');
 
+    const publishedBytes = Buffer.from(envelopeBytes);
+
     try {
-      localClient.publish('msh/CA/ON/PTBO', Buffer.from(envelopeBytes));
+      localClient.publish('msh/CA/ON/PTBO', publishedBytes);
 
       await new Promise((r) => setTimeout(r, 500));
 
       // 'unknown' (decrypt failed) must be fail-closed: not republished, drop
       // counter incremented — the same policy as an explicit bit-0-unset packet.
-      expect(publishesByClient.some((p) => p.topic === 'msh/CA/ON/PTBO')).toBe(false);
+      // Match on the exact packet under test (topic + payload), not just the
+      // topic string — see the recorder comment above (#4400).
+      expect(
+        publishesByClient.some(
+          (p) => p.topic === 'msh/CA/ON/PTBO' && p.payload.equals(publishedBytes),
+        ),
+      ).toBe(false);
       expect(bridge.getStatus().uplinkOkToMqttDrops).toBeGreaterThanOrEqual(1);
     } finally {
+      upstream.aedes.off('publish', onUpstreamPublish);
       await new Promise<void>((r) => localClient.end(true, {}, () => r()));
       tryDecryptSpy.mockRestore();
     }
