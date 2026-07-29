@@ -162,8 +162,25 @@ class InactiveNodeNotificationService {
       if (rows.length === 0) {
         this.hourlyLog.log('no-users', 'info', '✅ No users have inactive node notifications enabled');
         await this.logZeroEligibleDiagnostic();
-        // Nothing was actually checked — do not advance nextRunAt for the due
-        // sources, so they remain due (and get retried) on the next tick.
+
+        // "No users have notifications enabled" is a GLOBAL condition, not a
+        // per-source one — unlike a per-source failure (handled below, inside
+        // the per-source try/catch), retrying 60s sooner cannot make it true
+        // any faster. Advance every due source's nextRunAt by its own
+        // configured interval anyway, exactly as if there had been users but
+        // zero eligible nodes — otherwise this (the DEFAULT state on a fresh
+        // install) pins every due source permanently due and turns this
+        // query — plus logZeroEligibleDiagnostic()'s own queries — into a
+        // per-60s poll forever instead of running at each source's own
+        // cadence (review fix: same failure class as #4399/#4413).
+        for (const manager of due) {
+          try {
+            const cfg = await getInactiveNodeConfig(databaseService.settings, manager.sourceId);
+            this.nextRunAt.set(manager.sourceId, now + cfg.checkIntervalMinutes * 60_000);
+          } catch (error) {
+            logger.error(`❌ Error resolving inactive-node config for source ${manager.sourceId}:`, error);
+          }
+        }
         return;
       }
 

@@ -457,15 +457,38 @@ describe('InactiveNodeNotificationService', () => {
   });
 
   describe('tick scheduling edge cases', () => {
-    it('no eligible users does not advance nextRunAt — the source is retried on the very next tick', async () => {
+    it('no eligible users still advances nextRunAt by this source\'s configured interval', async () => {
+      // Review fix: "no users have notifications enabled" is a GLOBAL
+      // condition, not per-source — unlike a per-source failure, retrying 60s
+      // sooner cannot make it true any faster. Leaving nextRunAt unset here
+      // (the original WP4 behaviour) pinned every due source permanently due,
+      // turning an hourly query into a per-60s one forever — the DEFAULT
+      // state on a fresh install. See the dedicated cadence proof below.
       mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([]);
 
       await service.tick();
       expect(mockGetUsersWithInactiveNodeNotifications).toHaveBeenCalledTimes(1);
-      expect(service.nextRunAt.has('src1')).toBe(false);
+      expect(service.nextRunAt.get('src1')).toBe(Date.now() + 60 * 60_000); // default checkInterval=60min
 
+      // Not immediately due again — it was scheduled like a normal pass.
       await service.tick();
-      expect(mockGetUsersWithInactiveNodeNotifications).toHaveBeenCalledTimes(2);
+      expect(mockGetUsersWithInactiveNodeNotifications).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not re-issue the users query (or the zero-eligible diagnostic) on every 60s tick when nobody has notifications enabled', async () => {
+      mockGetUsersWithInactiveNodeNotifications.mockResolvedValue([]);
+      mockGetAllPreferenceUserIds.mockResolvedValue([42]);
+      mockGetUserPreferenceRows.mockResolvedValue([]); // logZeroEligiblePrefRows no-ops per user with zero rows
+
+      service.start();
+
+      // Warm-up tick (t=60s) + several more 60s ticks. src1's default
+      // checkIntervalMinutes=60 means it should only actually run ONCE in
+      // this window, not once per 60s tick.
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+      expect(mockGetUsersWithInactiveNodeNotifications).toHaveBeenCalledTimes(1);
+      expect(mockGetAllPreferenceUserIds).toHaveBeenCalledTimes(1);
     });
 
     it('a throwing source does not abort the tick for other sources, and does not hot-loop', async () => {
