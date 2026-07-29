@@ -200,17 +200,110 @@ describe('buildAutoAckAutomations', () => {
   });
 
   // ─── (h) ───────────────────────────────────────────────────────────────────
-  it('(h) every allowlisted channel unconvertible blocks with CHANNEL_ALLOWLIST_UNCONVERTIBLE', () => {
+  // Since §4.2a: a SINGLE unnamed survivor now converts via `channel: <index>` (branch 3
+  // below) — so "unconvertible" now requires either zero survivors, or MULTIPLE survivors
+  // that are all unnamed (branch 4 — no single index or name list can express "any of these").
+  it('(h) multiple unnamed surviving channels block with CHANNEL_ALLOWLIST_UNCONVERTIBLE', () => {
     const input = baseInput({
       settings: baseSettings({
-        channelsRaw: '1,2',
+        channelsRaw: '1,2,3',
         rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }),
       }),
-      channels: [{ index: 2, name: '', role: 1 }], // index 1 missing; index 2 blank name
+      // index 1 missing; index 2 and 3 both survive (configured) but both unnamed
+      channels: [{ index: 2, name: '', role: 1 }, { index: 3, name: '   ', role: 1 }],
     });
     const result = buildAutoAckAutomations(input);
     expect(result.blocking).toBe('CHANNEL_ALLOWLIST_UNCONVERTIBLE');
     expect(result.automations.find((a) => a.key === 'channel')).toBeUndefined();
+    expect(result.report.notConvertible.some((e) => e.key === 'channel-2-unnamed')).toBe(true);
+    expect(result.report.notConvertible.some((e) => e.key === 'channel-3-unnamed')).toBe(true);
+  });
+
+  // ─── §4.2a ───────────────────────────────────────────────────────────────────
+  // The four branches of the CORRECTED §4.2a channel-resolution rule, plus the
+  // `channels`/`channel` mutual-exclusion invariant.
+  describe('§4.2a: unnamed-channel fallback', () => {
+    it('branch 1: missing rows and disabled (role 0) slots still drop with their existing entries', () => {
+      const input = baseInput({
+        settings: baseSettings({
+          channelsRaw: '1,2',
+          rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }),
+        }),
+        channels: [{ index: 2, name: 'Disabled', role: 0 }], // index 1 missing; index 2 role 0
+      });
+      const result = buildAutoAckAutomations(input);
+      expect(result.blocking).toBe('CHANNEL_ALLOWLIST_UNCONVERTIBLE'); // nothing survives
+      expect(result.report.notConvertible.some((e) => e.key === 'channel-1-missing')).toBe(true);
+      expect(result.report.notConvertible.some((e) => e.key === 'channel-2-disabled')).toBe(true);
+    });
+
+    it('branch 2: at least one named survivor emits `channels`; an unnamed survivor is dropped as a narrowing, not a widening', () => {
+      const input = baseInput({
+        settings: baseSettings({
+          channelsRaw: '0,1',
+          rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }),
+        }),
+        channels: [{ index: 0, name: '', role: 1 }, { index: 1, name: 'meshmonitor', role: 2 }],
+      });
+      const result = buildAutoAckAutomations(input);
+      expect(result.blocking).toBeUndefined();
+      const chan = result.automations.find((a) => a.key === 'channel')!;
+      expect(chan.form.trigger.params.channels).toEqual([{ name: 'meshmonitor', protocol: 'meshtastic' }]);
+      expect(chan.form.trigger.params.channel).toBeUndefined();
+      expect(result.report.notConvertible.some((e) => e.key === 'channel-0-unnamed' && e.detail.includes('NARROWS'))).toBe(true);
+    });
+
+    it('branch 3 (makes the DEFAULT config convertible): exactly one unnamed survivor falls back to `channel: <index>`', () => {
+      // Meshtastic's primary (index 0, role 1) normally has a blank name — the #4340
+      // reporter's own scenario and the default install.
+      const input = baseInput({
+        settings: baseSettings({
+          channelsRaw: '0',
+          rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }),
+        }),
+        channels: [{ index: 0, name: '', role: 1 }],
+      });
+      const result = buildAutoAckAutomations(input);
+      expect(result.blocking).toBeUndefined();
+      const chan = result.automations.find((a) => a.key === 'channel')!;
+      expect(chan.form.trigger.params.channel).toBe(0);
+      expect(chan.form.trigger.params.channels).toBeUndefined();
+      expect(result.report.approximated.some((e) => e.key === 'channel-0-by-index' && e.detail.includes('per-radio'))).toBe(true);
+    });
+
+    it('branch 4: multiple unnamed survivors block with CHANNEL_ALLOWLIST_UNCONVERTIBLE (covered above, (h))', () => {
+      // Redundant with (h) above by design — kept here so the four branches read as a set.
+      const input = baseInput({
+        settings: baseSettings({
+          channelsRaw: '0,4',
+          rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }),
+        }),
+        channels: [{ index: 0, name: '', role: 1 }, { index: 4, name: '', role: 1 }],
+      });
+      const result = buildAutoAckAutomations(input);
+      expect(result.blocking).toBe('CHANNEL_ALLOWLIST_UNCONVERTIBLE');
+    });
+
+    it('`channels` and `channel` are never both present on the same trigger, across every branch', () => {
+      const fixtures: AutoAckConverterInput[] = [
+        baseInput({
+          settings: baseSettings({ channelsRaw: '0,1', rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }) }),
+          channels: [{ index: 0, name: '', role: 1 }, { index: 1, name: 'meshmonitor', role: 2 }],
+        }),
+        baseInput({
+          settings: baseSettings({ channelsRaw: '0', rawMatrixAndLegacy: matrixWith('channelZeroHop', { reply: true }) }),
+          channels: [{ index: 0, name: '', role: 1 }],
+        }),
+      ];
+      for (const input of fixtures) {
+        const result = buildAutoAckAutomations(input);
+        const chan = result.automations.find((a) => a.key === 'channel');
+        if (!chan) continue;
+        const hasChannels = chan.form.trigger.params.channels !== undefined;
+        const hasChannel = chan.form.trigger.params.channel !== undefined;
+        expect(hasChannels && hasChannel, 'channels and channel must never both be set').toBe(false);
+      }
+    });
   });
 
   // ─── (g)/(h) correction: an EMPTY allowlist ≠ "no channels configured but none resolved" ──

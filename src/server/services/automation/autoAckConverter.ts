@@ -533,7 +533,16 @@ export function buildAutoAckAutomations(input: AutoAckConverterInput): AutoAckCo
         detail: "Auto-Acknowledge's channel allowlist was empty, so it never acknowledged channel messages — only the Direct cells were live. No channel automation was created.",
       });
     } else {
+      // §4.2a CORRECTION 2 (orchestrator, found via browser validation): Meshtastic's
+      // primary channel (index 0, role 1) normally has a BLANK name. A config that acks
+      // on the primary — the default setup, and the #4340 reporter's own scenario — must
+      // not resolve to CHANNEL_ALLOWLIST_UNCONVERTIBLE just because index 0 has no name;
+      // that would make the converter unable to convert the default configuration. The
+      // escape hatch is the trigger's own `channel` param ("On channel #", a single raw
+      // index, catalog.ts:95) — but `channels` (name-based) takes precedence over it at
+      // runtime (triggerContext.ts), so the two must NEVER both be emitted.
       const byNameLower = new Map<string, { name: string; indices: number[] }>();
+      const survivingUnnamed: number[] = [];
       for (const idx of channelIndices) {
         const row = channels.find((c) => c.index === idx);
         if (!row) {
@@ -545,14 +554,7 @@ export function buildAutoAckAutomations(input: AutoAckConverterInput): AutoAckCo
           continue;
         }
         const name = row.name.trim();
-        if (!name) {
-          notConvertible.push({
-            key: `channel-${idx}-unnamed`,
-            label: `Channel #${idx}`,
-            detail: `Index ${idx} has a blank name. messageFilterChannelNames() drops blank names, and if every entry is blank the whole filter falls away and the automation would answer on every channel — so this index is dropped rather than emitted as an empty name.`,
-          });
-          continue;
-        }
+        if (!name) { survivingUnnamed.push(idx); continue; }
         const lower = name.toLowerCase();
         const existing = byNameLower.get(lower);
         if (existing) existing.indices.push(idx);
@@ -571,15 +573,51 @@ export function buildAutoAckAutomations(input: AutoAckConverterInput): AutoAckCo
         }
       }
 
-      if (channelsOut.length === 0) {
-        blocking = 'CHANNEL_ALLOWLIST_UNCONVERTIBLE';
-      } else {
+      let triggerParams: Record<string, unknown> | undefined;
+
+      if (channelsOut.length > 0) {
+        // Branch 2: at least one surviving channel has a usable name. Any surviving but
+        // UNNAMED index is dropped — narrowing (never widening) behaviour, since it can't
+        // be added to a name-based allowlist alongside the named one(s).
+        for (const idx of survivingUnnamed) {
+          notConvertible.push({
+            key: `channel-${idx}-unnamed`,
+            label: `Channel #${idx}`,
+            detail: `Index ${idx} has a blank name, so it can't be added to the name-based allowlist alongside the named channel(s) above. Dropped — this NARROWS behaviour (the automation will not answer on #${idx}); it never widens.`,
+          });
+        }
         converted.push({
           key: 'autoAckChannels',
           label: 'Channel allowlist',
           detail: `Resolved to: ${channelsOut.map((c) => c.name).join(', ')}.`,
         });
-        const triggerParams: Record<string, unknown> = { regex, cooldownSeconds, cooldownScope: 'node', channels: channelsOut };
+        triggerParams = { regex, cooldownSeconds, cooldownScope: 'node', channels: channelsOut };
+      } else if (survivingUnnamed.length === 1) {
+        // Branch 3 — the one that makes the default primary-channel config convertible:
+        // exactly one survivor and it's unnamed → fall back to the trigger's raw index
+        // filter (`channel`) instead of the name-based one (`channels`). Never both.
+        const idx = survivingUnnamed[0];
+        approximated.push({
+          key: `channel-${idx}-by-index`,
+          label: `Channel #${idx}`,
+          detail: `Channel #${idx} has no name, so the automation matches it by index instead. Index-based matching is per-radio — if you later add this automation to another source, check the channel order there.`,
+        });
+        triggerParams = { regex, cooldownSeconds, cooldownScope: 'node', channel: idx };
+      } else {
+        // Branch 4: nothing survived, or multiple survivors and ALL are unnamed. `channel`
+        // takes only one index and `channels` would override it, so this genuinely can't
+        // be expressed.
+        for (const idx of survivingUnnamed) {
+          notConvertible.push({
+            key: `channel-${idx}-unnamed`,
+            label: `Channel #${idx}`,
+            detail: `Index ${idx} has a blank name, and more than one unnamed channel survived — there is no single index or name that can express "any of these": the trigger's channel filter takes either one raw index or a list of names, never a list of raw indices. Dropped.`,
+          });
+        }
+        blocking = 'CHANNEL_ALLOWLIST_UNCONVERTIBLE';
+      }
+
+      if (triggerParams) {
         const form: WorkflowForm = { trigger: { type: 'trigger.message', params: triggerParams }, rules: channelRules, combine: null };
         automations.push({
           key: 'channel',

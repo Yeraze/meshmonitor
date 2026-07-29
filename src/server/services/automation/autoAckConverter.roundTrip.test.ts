@@ -203,6 +203,19 @@ const FIXTURES: Array<{ name: string; input: AutoAckConverterInput }> = [
       }),
     },
   },
+  {
+    // §4.2a branch 3 — the default Meshtastic config: primary channel (index 0, role 1)
+    // has a blank name, so the trigger must fall back to `channel` (kind: 'number',
+    // catalog.ts:95) instead of `channels`. Round-trips this param specifically.
+    name: '1 channel cell, unnamed primary channel → falls back to `channel: 0` (kind: number)',
+    input: {
+      sourceId: 's9', sourceName: 'Source Nine', channels: [{ index: 0, name: '', role: 1 }], now: new Date('2026-01-09'),
+      settings: settings({
+        channelsRaw: '0',
+        rawMatrixAndLegacy: matrixToSettings(matrix({ channelZeroHop: { reply: true, tapback: true, replyDm: false } })),
+      }),
+    },
+  },
 ];
 
 describe('buildAutoAckAutomations round-trip (phase exit criterion)', () => {
@@ -226,5 +239,18 @@ describe('buildAutoAckAutomations round-trip (phase exit criterion)', () => {
 
       checkFormAgainstCatalog(form);
     }
+  });
+
+  it('the §4.2a-branch-3 `channel` (kind: number) param survives decompile() with its value intact', () => {
+    const fixture = FIXTURES.find((f) => f.name.includes('falls back to `channel: 0`'))!;
+    const result = buildAutoAckAutomations(fixture.input);
+    const chan = result.automations.find((a) => a.key === 'channel')!;
+    expect(chan.form.trigger.params.channel).toBe(0);
+    expect(chan.form.trigger.params.channels).toBeUndefined();
+
+    const decompiled = decompile(chan.config);
+    expect(decompiled, 'decompile() returned null for the channel-by-index fixture').not.toBeNull();
+    expect(decompiled!.trigger.params.channel).toBe(0);
+    expect(decompiled!.trigger.params.channels).toBeUndefined();
   });
 });
