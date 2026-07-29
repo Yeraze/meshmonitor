@@ -143,7 +143,7 @@ router.get(
 
       // Same channel gate GET /api/sources/:id/traceroutes applies (#3092) — a
       // traceroute on a channel the caller can't view must not surface here.
-      const visible = await maskTraceroutesByChannel(rows, (req as any).user ?? null, sourceId);
+      const visible = await maskTraceroutesByChannel(rows, req.user ?? null, sourceId);
 
       const entries = visible.map(tr => ({
         id: Number(tr.id),
