@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { AutomationsRepository } from '../../../db/repositories/automations.js';
 import { AutomationVariablesRepository } from '../../../db/repositories/automationVariables.js';
@@ -785,6 +785,116 @@ describe('AutomationEngineService', () => {
     expect(await engine.checkGeofences(9, 'default')).toBe(1); // enter
     expect(await engine.checkGeofences(9, 'default')).toBe(0); // still inside → no re-fire
     expect(calls.filter((c) => c.fn === 'notify')).toHaveLength(1);
+  });
+
+  // ─── geofenceState bounds (#4399) ──────────────────────────────────────────
+
+  it('(geofence load-prune) disabling then re-enabling drops the stale baseline', async () => {
+    const { calls, deps } = recorder();
+    const a = await createEnabled('geo-reload', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.geofence', params: { event: 'enter', lat: 0, lon: 0, radiusKm: 5 } },
+        { id: 'n', type: 'action.notify', params: { body: 'entered' } },
+      ],
+      edges: [{ from: 't', to: 'n' }],
+    });
+    const pos = { lat: 1, lon: 0 }; // outside
+    const geoData = { getNode: async () => ({ nodeNum: 42, latitude: pos.lat, longitude: pos.lon }), getTelemetry: async () => null };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: geoData, now: () => clock });
+    await engine.load();
+
+    expect(await engine.checkGeofences(42, 'default')).toBe(0); // baseline (outside)
+    pos.lat = 0.01; // move inside — would fire on the next check if the baseline survives
+
+    await autos.setEnabled(a.id, false);
+    await engine.load(); // automation drops out of the index → its geofence state is pruned, like lastFired
+    await autos.setEnabled(a.id, true);
+    await engine.load(); // re-enabled with a clean slate
+
+    // With the stale baseline dropped, this reads as a fresh first sighting
+    // (already inside) rather than an outside→inside transition — it does NOT fire.
+    expect(await engine.checkGeofences(42, 'default')).toBe(0);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('(geofence load) reloading a still-enabled automation preserves its baseline', async () => {
+    const { calls, deps } = recorder();
+    await createEnabled('geo-reload-live', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.geofence', params: { event: 'enter', lat: 0, lon: 0, radiusKm: 5 } },
+        { id: 'n', type: 'action.notify', params: { body: 'entered' } },
+      ],
+      edges: [{ from: 't', to: 'n' }],
+    });
+    const pos = { lat: 1, lon: 0 }; // outside
+    const geoData = { getNode: async () => ({ nodeNum: 43, latitude: pos.lat, longitude: pos.lon }), getTelemetry: async () => null };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: geoData, now: () => clock });
+    await engine.load();
+
+    expect(await engine.checkGeofences(43, 'default')).toBe(0); // baseline (outside)
+    await engine.load(); // reload; the automation never left the index
+
+    pos.lat = 0.01; // move inside
+    expect(await engine.checkGeofences(43, 'default')).toBe(1); // enter fires — baseline survived the reload
+    expect(calls).toHaveLength(1);
+  });
+
+  it('(geofence eviction) a recently-touched baseline survives driving the per-automation node set past its bound; a stale one is dropped and logged', async () => {
+    const { deps } = recorder();
+    await createEnabled('geo-evict', {
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.geofence', params: { event: 'enter', lat: 0, lon: 0, radiusKm: 5 } },
+        { id: 'n', type: 'action.notify', params: { body: 'entered' } },
+      ],
+      edges: [{ from: 't', to: 'n' }],
+    });
+    const OUTSIDE = 1;
+    const INSIDE = 0.01;
+    const positions = new Map<number, number>();
+    const geoData = {
+      getNode: async (_sourceId: string | null, nodeNum: number) =>
+        ({ nodeNum, latitude: positions.get(nodeNum) ?? OUTSIDE, longitude: 0 }),
+      getTelemetry: async () => null,
+    };
+    const engine = new AutomationEngineService({ automationsRepo: autos, varResolver: resolver, deps, data: geoData, now: () => clock });
+    await engine.load();
+
+    const loggerModule = await import('../../../utils/logger.js');
+    const warnSpy = vi.spyOn(loggerModule.logger, 'warn');
+
+    // OLD is touched once, before anything else — it will be the least-recently
+    // touched entry once the flood below pushes the per-automation node set past
+    // GEOFENCE_STATE_MAX (4096), so it must be the one evicted.
+    const OLD_NUM = 500_000;
+    expect(await engine.checkGeofences(OLD_NUM, 'default')).toBe(0); // baseline (outside)
+
+    // Drive > GEOFENCE_STATE_MAX (4096) distinct nodes through, one per ms, all
+    // establishing an outside baseline. RECENT_NUM (the last one touched) must
+    // survive any trim pass — it is always the newest entry at the time it lands.
+    let RECENT_NUM = OLD_NUM;
+    for (let i = 0; i < 4200; i++) {
+      clock += 1;
+      RECENT_NUM = 1_000_000 + i;
+      expect(await engine.checkGeofences(RECENT_NUM, 'default')).toBe(0); // baseline
+    }
+
+    // The eviction warning fired at least once, naming the trade-off.
+    expect(warnSpy).toHaveBeenCalled();
+    expect(warnSpy.mock.calls.some((c) => String(c[0]).includes('geofence state trimmed'))).toBe(true);
+
+    // OLD was evicted: its baseline is gone, so moving it inside now reads as a
+    // fresh first sighting (not a transition) — the documented, accepted miss.
+    clock += 1;
+    positions.set(OLD_NUM, INSIDE);
+    expect(await engine.checkGeofences(OLD_NUM, 'default')).toBe(0);
+
+    // RECENT survived: moving it inside is correctly recognised as outside→inside.
+    clock += 1;
+    positions.set(RECENT_NUM, INSIDE);
+    expect(await engine.checkGeofences(RECENT_NUM, 'default')).toBe(1);
   });
 
   // ─── schedule (cron) ───────────────────────────────────────────────────────
