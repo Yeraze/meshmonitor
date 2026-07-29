@@ -148,14 +148,13 @@ export function useSourceView(params: UseSourceViewParams) {
   const { nodes } = useNodes();
   const queryClient = useQueryClient();
   const { selectedDMNode, setSelectedDMNode } = useMessaging();
-  const { maxNodeAgeHours, distanceUnit } = useSettings();
+  const { maxNodeAgeHours, distanceUnit, showIncompleteNodes } = useSettings();
   const {
     activeTab,
     nodesNodeFilter,
     sortField,
     sortDirection,
     setTracerouteLoading,
-    showIncompleteNodes,
   } = useUI();
   const {
     showPaths,
@@ -632,7 +631,8 @@ export function useSourceView(params: UseSourceViewParams) {
 
   // Effective map age cap for traceroute/route-segment visibility (#3322):
   // the Map Features age slider, clamped to [1, maxNodeAgeHours]. null =
-  // follow the global setting, so default behavior is unchanged.
+  // follow the source's setting (per-source since #4412 Phase 3), so default
+  // behavior is unchanged.
   const effectiveMapMaxAge = effectiveMapMaxAgeHours(mapMaxAgeHours, maxNodeAgeHours);
 
   // Create stable digests of nodes and traceroutes that only change when relevant data changes

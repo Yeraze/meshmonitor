@@ -460,7 +460,6 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     setNodesNodeFilter,
     securityFilter,
     channelFilter,
-    showIncompleteNodes,
     sortField,
     setSortField,
     sortDirection,
@@ -488,6 +487,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
     nodeDimmingMinOpacity,
     maxNodeAgeHours,
     nodeHopsCalculation,
+    // #4412 Phase 3: moved here from UIContext with the rest of the
+    // per-source Node Display group.
+    showIncompleteNodes,
     neighborInfoMinZoom,
     overlayColors,
     defaultMapCenterLat,

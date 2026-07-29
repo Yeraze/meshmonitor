@@ -305,6 +305,9 @@ function App() {
     setSolarMonitoringAzimuth,
     setSolarMonitoringDeclination,
     overlayColors: schemeColors,
+    // showIncompleteNodes moved here from UIContext (#4412 Phase 3 WP3) —
+    // still needed to pass down to MessagesTab below.
+    showIncompleteNodes,
   } = useSettings();
 
   // isChannelMuted/isDMMuted moved into useMessagingView (#3962 5.4 PR7) —
@@ -546,8 +549,6 @@ function App() {
     setNodePopup,
     showNodeFilterPopup,
     setShowNodeFilterPopup,
-    showIncompleteNodes,
-    setShowIncompleteNodes,
   } = useUI();
 
   // When the user clicks a source row in the Unified map's node popup, we
@@ -969,36 +970,11 @@ function App() {
           const settings = await settingsResponse.json();
 
           // Apply server settings if they exist, otherwise use localStorage/defaults
-          if (settings.maxNodeAgeHours) {
-            const value = parseInt(settings.maxNodeAgeHours);
-            setMaxNodeAgeHours(value);
-            localStorage.setItem('maxNodeAgeHours', value.toString());
-          }
-
-          if (settings.inactiveNodeThresholdHours) {
-            const value = parseInt(settings.inactiveNodeThresholdHours);
-            if (!isNaN(value) && value > 0) {
-              setInactiveNodeThresholdHours(value);
-              localStorage.setItem('inactiveNodeThresholdHours', value.toString());
-            }
-          }
-
-          if (settings.inactiveNodeCheckIntervalMinutes) {
-            const value = parseInt(settings.inactiveNodeCheckIntervalMinutes);
-            if (!isNaN(value) && value > 0) {
-              setInactiveNodeCheckIntervalMinutes(value);
-              localStorage.setItem('inactiveNodeCheckIntervalMinutes', value.toString());
-            }
-          }
-
-          if (settings.inactiveNodeCooldownHours) {
-            const value = parseInt(settings.inactiveNodeCooldownHours);
-            if (!isNaN(value) && value > 0) {
-              setInactiveNodeCooldownHours(value);
-              localStorage.setItem('inactiveNodeCooldownHours', value.toString());
-            }
-          }
-
+          // maxNodeAgeHours / the inactive-node trio / hideIncompleteNodes are no
+          // longer loaded here — they are Node Display settings and SettingsContext
+          // is their sole owner (#4412 Phase 3 WP3, D4). This loader used to write
+          // the same states from an unscoped fetch, racing SettingsContext's scoped
+          // one and occasionally reverting a per-source value on reload/source switch.
           if (settings.temperatureUnit) {
             setTemperatureUnit(settings.temperatureUnit as TemperatureUnit);
             localStorage.setItem('temperatureUnit', settings.temperatureUnit);
@@ -1224,13 +1200,6 @@ function App() {
             }
           }
 
-          // Hide incomplete nodes setting
-          if (settings.hideIncompleteNodes !== undefined) {
-            logger.debug(`📋 Loading hideIncompleteNodes setting: ${settings.hideIncompleteNodes}`);
-            setShowIncompleteNodes(settings.hideIncompleteNodes !== '1');
-          } else {
-            logger.debug('📋 hideIncompleteNodes setting not found in database');
-          }
         }
 
         // Check connection status

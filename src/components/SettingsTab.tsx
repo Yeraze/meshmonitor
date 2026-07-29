@@ -22,7 +22,6 @@ import { CustomThemeManagement } from './CustomThemeManagement';
 import { CustomTilesetManager } from './CustomTilesetManager';
 import { getEffectiveTileset, type Theme, type AppearanceMode, type NodeHopsCalculation, useSettings } from '../contexts/SettingsContext';
 import { type SortOption as DashboardSortOption } from './Dashboard/types';
-import { useUI } from '../contexts/UIContext';
 import { LanguageSelector } from './LanguageSelector';
 import SectionNav from './SectionNav';
 import PositionEstimationSection from './PositionEstimationSection';
@@ -336,7 +335,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setLightTheme,
   } = useSettings();
   const { data: availableSources = [] } = useDashboardSources();
-  const { showIncompleteNodes, setShowIncompleteNodes } = useUI();
+  // #4412 Phase 3: showIncompleteNodes moved from UIContext to SettingsContext
+  // (per-source, like the rest of the Node Display group).
+  const { showIncompleteNodes, setHideIncompleteNodes } = useSettings();
 
   // Single draft reducer replacing the 49 `local*` mirrors (Task 5.3). Lazy-initialized once from
   // the current context/props values; category-C fields (no context/prop home) start at their
@@ -492,7 +493,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
 
           // Load hide incomplete nodes setting
           updateField('hideIncompleteNodes', hideIncomplete);
-          setShowIncompleteNodes(!hideIncomplete);
+          setHideIncompleteNodes(hideIncomplete);
 
           // Load homoglyph optimization setting
           const homoglyphOn = settings.homoglyphEnabled === 'true';
@@ -587,7 +588,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     // async callback (parseFloat(...) || nodeDimmingStartHours), matching pre-5.3 behavior; listing
     // them would re-run this mount-time fetch on every dimming edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseUrl, setShowIncompleteNodes, updateField]);
+  }, [baseUrl, setHideIncompleteNodes, updateField]);
 
   // Baseline: a memoized snapshot of the current context/props/initial* values, in SettingsDraft
   // shape. Replaces the old ~35-dep "update local state when props change" effect body — this
@@ -831,7 +832,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setDiscardInvalidPositions(d.discardInvalidPositions);
     setNoIndexEnabled(d.noIndexEnabled);
     setMeshcoreChannelRetryEnabled(d.meshcoreChannelRetryEnabled);
-    setShowIncompleteNodes(!d.hideIncompleteNodes);
+    setHideIncompleteNodes(d.hideIncompleteNodes);
 
     // Update initial* snapshots for category-C fields after successful save
     setInitialPacketMonitorSettings({ enabled: d.packetLogEnabled, maxCount: d.packetLogMaxCount, maxAgeHours: d.packetLogMaxAgeHours });
@@ -848,7 +849,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   }, [setNeighborInfoMinZoom, setDefaultMapCenterLat, setDefaultMapCenterLon, setDefaultMapCenterZoom,
       setMapCenterTargetZoom, setDefaultLandingPage, setAppearanceMode, setDarkTheme, setLightTheme,
       setNodeHopsCalculation, setPreferredDashboardSortOption, setLinkPreviewsEnabled, setDiscardInvalidPositions,
-      setNoIndexEnabled, setMeshcoreChannelRetryEnabled, setShowIncompleteNodes]);
+      setNoIndexEnabled, setMeshcoreChannelRetryEnabled, setHideIncompleteNodes]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
