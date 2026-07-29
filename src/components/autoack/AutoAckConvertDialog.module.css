@@ -1,0 +1,251 @@
+/* Auto-Acknowledge → Automation converter dialog (#4340 Phase 4 WP4). CSS
+ * module — do not add these rules to the global sheets (CLAUDE.md CSS
+ * containment rule). */
+
+.dialog {
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem 0;
+  color: var(--ctp-subtext0);
+}
+
+.spinner {
+  animation: spin 1.2s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.errorBanner,
+.blockingBanner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: 6px;
+  background: rgba(243, 139, 168, 0.1);
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-text);
+}
+
+.existingBanner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: 6px;
+  background: rgba(249, 226, 175, 0.12);
+  border: 1px solid var(--ctp-yellow);
+}
+
+.twoAutomationsNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin: 0 0 1rem;
+  border-radius: 6px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface2);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--ctp-subtext1);
+}
+
+.automationCards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.automationCard {
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface2);
+}
+
+.automationCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.automationCardName {
+  font-weight: bold;
+}
+
+.disabledPill {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--ctp-surface2);
+  color: var(--ctp-subtext0);
+}
+
+.ruleList {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--ctp-subtext1);
+}
+
+.reportSection {
+  margin-bottom: 1.25rem;
+}
+
+.reportSectionTitle {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.reportGroup {
+  margin-bottom: 0.85rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: 6px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface2);
+}
+
+.reportGroupWarning {
+  background: rgba(250, 179, 135, 0.1);
+  border-color: var(--ctp-peach);
+}
+
+.reportGroupTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.reportEmpty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--ctp-subtext0);
+}
+
+.reportList {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.reportEntry {
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.reportEntryKey {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: var(--ctp-subtext0);
+  margin-right: 0.4rem;
+}
+
+.reportEntryLabel {
+  font-weight: bold;
+  margin-right: 0.4rem;
+}
+
+.reportEntryDetail {
+  color: var(--ctp-subtext1);
+}
+
+.optionsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
+  border-radius: 8px;
+  background: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface2);
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.checkboxRow input {
+  width: auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.helperText {
+  margin: 0.1rem 0 0 1.6rem;
+  font-size: 0.8rem;
+  color: var(--ctp-subtext0);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.primaryButton,
+.secondaryButton {
+  padding: 0.5rem 1.1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.primaryButton {
+  background: var(--ctp-blue);
+  color: var(--ctp-base);
+  border: 1px solid var(--ctp-blue);
+}
+
+.primaryButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.secondaryButton {
+  background: transparent;
+  color: var(--ctp-text);
+  border: 1px solid var(--ctp-surface2);
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.resultBanner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  background: rgba(166, 227, 161, 0.12);
+  border: 1px solid var(--ctp-green);
+  margin-bottom: 0.5rem;
+}
