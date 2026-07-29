@@ -759,6 +759,15 @@ export class MqttBridgeManager extends EventEmitter implements ISourceManager {
       }
     }
 
+    // Re-check after the await above: evaluateOkToMqtt can await a real
+    // decrypt call, and `stop()` may run concurrently (bridge removed or
+    // reconfigured mid-flight — #4400 investigation). If it did, `this.client`
+    // is now null; dereferencing it below threw an unhandled rejection that,
+    // via the global process safety net (processSafetyNet.ts), crashed the
+    // whole server. Drop cleanly instead — the bridge is gone, there is
+    // nothing to publish to.
+    if (!this.client) return;
+
     // Apply uplink topic rewrite (#3166) — uplinkFilter ran on the original
     // topic; only the wire-level publish gets the rewrite. Echo recorded
     // under the post-rewrite topic so the downlink direction can suppress
