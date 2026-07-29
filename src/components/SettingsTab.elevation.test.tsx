@@ -365,6 +365,12 @@ describe('SettingsTab — Elevation / Terrain section (#4111 Phase 3 WP-3)', () 
       '/api/settings',
       expect.objectContaining({ method: 'POST' })
     );
+    // #4412 Phase 3 WP4: mode="global" renders outside a SourceProvider, so
+    // useSourceQuery() returns '' and handleSave's split-save collapses to a
+    // single unscoped POST — the same shape as before the split. A bug that
+    // always fires two POSTs (the second a no-op duplicate against the
+    // global row) would otherwise ship silently.
+    expect(csrfFetchMock).toHaveBeenCalledTimes(1);
     const [, options] = csrfFetchMock.mock.calls[csrfFetchMock.mock.calls.length - 1];
     const body = JSON.parse((options as RequestInit).body as string);
     expect(body.elevationEnabled).toBe('false'); // toggled off from the loaded 'true'
