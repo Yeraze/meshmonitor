@@ -26,7 +26,7 @@ import {
   type TracerouteStripGraph,
 } from '../../utils/tracerouteStrip';
 import { NodeCard } from '../map/popups/NodeCard';
-import { IdentityItems, SignalItems, PositionItem, LastHeardFooter } from '../map/popups/sections';
+import { IdentityItems, SignalItems, PositionItem, LastHeardFooter, NodeActions } from '../map/popups/sections';
 import type { NodeCardModel } from '../map/popups/nodeCardModel';
 import { NodeGlyph } from './NodeGlyph';
 import styles from './TracerouteStrip.module.css';
@@ -50,6 +50,10 @@ export interface TracerouteStripNodeMeta {
   card: NodeCardModel;
   /** Reported coordinates, when the node has a position fix. */
   pos?: { lat: number; lng: number };
+  /** `node.user.id` when the node has a real user record, else undefined.
+   *  Distinct from `nodeId`, which falls back to `paddedHexId`. Gates the
+   *  "More Details" action: only a real user id can select a conversation. */
+  userId?: string;
 }
 
 export interface TracerouteStripProps {
@@ -59,13 +63,24 @@ export interface TracerouteStripProps {
   timeFormat: TimeFormat;
   dateFormat: DateFormat;
   distanceUnit?: 'km' | 'mi' | 'nm';
+  /** Load this node into the Node Details panel. When omitted (or when the
+   *  hovered hop has no `meta.userId`) the popup renders no action button.
+   *  Kept as a narrow callback so the strip stays a pure function of plain
+   *  data — it never learns about MessagingContext, tabs, or DeviceInfo. */
+  onOpenNodeDetails?: (nodeUserId: string) => void;
 }
 
 /** Gap between the glyph and the popup, and the minimum margin kept between
  *  the popup and every viewport edge. */
 const POPUP_GAP = 8;
 
-interface HoverState {
+/** How long the popup survives after the pointer leaves the glyph, so the
+ *  pointer can cross the POPUP_GAP into the card. Pointer only — blur,
+ *  scroll-out and unmount still hide immediately. */
+const HOVER_LINGER_MS = 180;
+
+interface HoverNodeTarget {
+  kind: 'node';
   /** StripNode id — identifies the exact glyph, not just the nodeNum (the
    *  same node can occupy several lanes). */
   id: string;
@@ -74,6 +89,10 @@ interface HoverState {
   fallbackId: string;
   anchor: HTMLElement;
 }
+
+/** WP1 ships only the `'node'` variant; WP2 adds `HoverEdgeTarget` to this
+ *  union for the edge tooltip. */
+type HoverTarget = HoverNodeTarget;
 
 interface PopupPosition {
   left: number;
@@ -109,27 +128,52 @@ export function TracerouteStrip({
   timeFormat,
   dateFormat,
   distanceUnit = 'km',
+  onOpenNodeDetails,
 }: TracerouteStripProps) {
   const { t } = useTranslation();
   const uid = useId();
 
   const layout = useMemo(() => layoutTracerouteStrip(graph), [graph]);
 
-  const [hover, setHover] = useState<HoverState | null>(null);
+  const [hover, setHover] = useState<HoverTarget | null>(null);
   const [popupPos, setPopupPos] = useState<PopupPosition | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const hide = useCallback(() => {
+  const clearHideTimer = useCallback(() => {
+    if (hideTimer.current !== null) {
+      clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+  }, []);
+
+  /** Immediate — keyboard blur, anchor scrolled out of view, action taken. */
+  const hideNow = useCallback(() => {
+    clearHideTimer();
     setHover(null);
     setPopupPos(null);
-  }, []);
+  }, [clearHideTimer]);
+
+  /** Pointer-leave — deferred, so travel into the popup can cancel it. */
+  const scheduleHide = useCallback(() => {
+    clearHideTimer();
+    hideTimer.current = setTimeout(() => {
+      hideTimer.current = null;
+      setHover(null);
+      setPopupPos(null);
+    }, HOVER_LINGER_MS);
+  }, [clearHideTimer]);
+
+  // Clear any pending hide on unmount — nothing left to set state on.
+  useEffect(() => clearHideTimer, [clearHideTimer]);
 
   const show = useCallback(
     (id: string, nodeNum: number, isPlaceholder: boolean, fallbackId: string, anchor: HTMLElement) => {
+      clearHideTimer(); // re-entering the same glyph or a neighbour cancels a pending hide
       setPopupPos(null); // re-measure for the new anchor before showing
-      setHover({ id, nodeNum, isPlaceholder, fallbackId, anchor });
+      setHover({ kind: 'node', id, nodeNum, isPlaceholder, fallbackId, anchor });
     },
-    [],
+    [clearHideTimer],
   );
 
   /**
@@ -158,7 +202,7 @@ export function TracerouteStrip({
     // then scroll the panel). Anchoring to something off-screen would drag the
     // popup off with it, so drop it instead.
     if (a.bottom < 0 || a.top > vh || a.right < 0 || a.left > vw) {
-      hide();
+      hideNow();
       return;
     }
 
@@ -182,7 +226,7 @@ export function TracerouteStrip({
     setPopupPos((prev) =>
       prev && prev.left === left && prev.top === top ? prev : { left, top },
     );
-  }, [hover, hide]);
+  }, [hover, hideNow]);
 
   // Position after the popup has rendered (so it can be measured), before paint.
   useLayoutEffect(() => {
@@ -209,9 +253,10 @@ export function TracerouteStrip({
 
   /**
    * The hover popup body — the same card the Map page renders, minus the
-   * action buttons (the popup is non-interactive) and minus the traceroute
-   * tab (redundant inside a traceroute strip). Composed from the shared
-   * popup family rather than re-implemented.
+   * traceroute tab (redundant inside a traceroute strip) and minus every
+   * action button except `more-details` (the only one that makes sense from
+   * inside a traceroute hop — reused via `NodeActions`, never hand-rolled).
+   * Composed from the shared popup family rather than re-implemented.
    *
    * A hop we never resolved (`BROADCAST_ADDR`, or a node absent from `meta`)
    * has no card model, so it falls back to a minimal card carrying just the
@@ -256,11 +301,27 @@ export function TracerouteStrip({
               timeFormat={timeFormat}
               dateFormat={dateFormat}
             />
+            {onOpenNodeDetails && hovered.userId && (
+              <NodeActions
+                actions={[{
+                  kind: 'more-details',
+                  onClick: () => {
+                    const userId = hovered.userId!;
+                    // Dismiss FIRST: selecting a different node re-renders the
+                    // strip for that node's traceroute, which unmounts the
+                    // anchor glyph this popup is positioned against. A
+                    // surviving popup would be anchored to a detached element.
+                    hideNow();
+                    onOpenNodeDetails(userId);
+                  },
+                }]}
+              />
+            )}
           </>
         }
       />
     );
-  }, [hover, meta, distanceUnit, timeFormat, dateFormat, t]);
+  }, [hover, meta, distanceUnit, timeFormat, dateFormat, t, onOpenNodeDetails, hideNow]);
 
   const stripLabel = t('messages.traceroute_strip_label', 'Traceroute path');
   const forwardLegCaption = t('messages.traceroute_leg_forward', 'Forward');
@@ -371,20 +432,41 @@ export function TracerouteStrip({
 
           const tipId = `${uid}-tip-${n.id}`;
 
+          // Keyboard reaches the action from the anchor, not by tabbing into
+          // the portal (the popup is portalled to `document.body`, at the
+          // very end of document order — see the module banner). `Enter`/
+          // `Space` on a focused glyph fires the same callback the button
+          // fires; `role="button"` is set only when that path is actually
+          // available, so assistive tech doesn't advertise a no-op control.
+          const userId = nodeMeta?.userId;
+          const canOpenDetails = !!onOpenNodeDetails && !!userId;
+
           return (
             <div
               key={n.id}
               className={cx(styles.node, laneClassFor(n.lane))}
               style={{ left: center.x, top: center.y }}
               tabIndex={0}
+              role={canOpenDetails ? 'button' : undefined}
               aria-describedby={hover?.id === n.id ? tipId : undefined}
               aria-label={accessibleName}
               onMouseEnter={(e) =>
                 show(n.id, n.nodeNum, isPlaceholder, nodeId, e.currentTarget)
               }
-              onMouseLeave={hide}
+              onMouseLeave={scheduleHide}
               onFocus={(e) => show(n.id, n.nodeNum, isPlaceholder, nodeId, e.currentTarget)}
-              onBlur={hide}
+              onBlur={hideNow}
+              onKeyDown={
+                canOpenDetails
+                  ? (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        hideNow();
+                        onOpenNodeDetails!(userId!);
+                      }
+                    }
+                  : undefined
+              }
             >
               <NodeGlyph
                 category={category}
@@ -407,6 +489,8 @@ export function TracerouteStrip({
             role="tooltip"
             className={cx(styles.hoverPopup, popupPos && styles.hoverPopupReady)}
             style={{ left: popupPos?.left ?? 0, top: popupPos?.top ?? 0 }}
+            onMouseEnter={clearHideTimer}
+            onMouseLeave={scheduleHide}
           >
             {hoverCard}
           </div>,

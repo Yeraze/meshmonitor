@@ -128,9 +128,10 @@
 .hoverPopup {
   position: fixed;
   z-index: 10002; /* matches NodePopup's chat overlay */
-  /* Non-interactive by design: the popup is a preview, not a surface to
-   * click into, so it never steals the pointer from the glyph beneath it. */
-  pointer-events: none;
+  /* Interactive since #TRS-phase1: the card carries a "More Details" button,
+   * so the pointer must be able to travel into it. HOVER_LINGER_MS in the
+   * component is what makes crossing the POPUP_GAP possible. */
+  pointer-events: auto;
   /* Hidden until measured and placed, so the first paint can't flash at the
    * provisional 0,0 position. */
   opacity: 0;
