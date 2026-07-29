@@ -1,7 +1,7 @@
 # Epic — Auto-Acknowledge on the Automation Engine
 
 **Issue:** #4340 (per-channel Auto-Acknowledge message body)
-**Status:** Phase 1 in progress
+**Status:** Complete — all four phases shipped (2026-07-28)
 **Owner:** orchestrated via `/epic`
 
 ## Goal
@@ -113,7 +113,7 @@ key `lastFired` by the composite; make the trace message name the node.
 - Every Auto-Acknowledge setting has an expressible engine equivalent, listed
   explicitly in this doc at phase close.
 
-### Phase 4 — AutoAck → Automation converter — [ ] not started
+### Phase 4 — AutoAck → Automation converter — [x] complete
 
 Backend graph builder (minimal rules), a preview + create route, and a button
 in `AutoAcknowledgeSection` showing a conversion report plus the
@@ -303,16 +303,16 @@ Every key in `VALID_SETTINGS_KEYS` beginning `autoAck` — 33 of them (`src/serv
 | 19 | `autoAckCooldownSeconds` | yes | `trigger.message` `cooldownSeconds` + `cooldownScope: 'node'` | **exists** (Phase 2) ⁶ |
 | 20 | `autoAckPreSendDelaySeconds` | yes | `action.delay` before the first send in the chain | **exists** ⁷ |
 | 21 | `autoAckMaxAttempts` | yes | `action.sendMessage` param `maxAttempts` | **Phase 3 adds** ⁸ |
-| 22 | `autoAckChannelZeroHopReplyEnabled` | yes | Cell rule emits `action.sendMessage`; cell = `isDM == 0` ∧ `hops == 0` ∧ `viaMqtt == 0` | **exists + Phase 3 adds `isDM`/`viaMqtt` to the picker** ⁹ |
+| 22 | `autoAckChannelZeroHopReplyEnabled` | yes | Cell rule emits `action.sendMessage`; cell = `isDM == 0` ∧ `zeroHop == 1` (the derived ZeroHop field — see note 9) | **exists + Phase 3 adds `isDM`/`viaMqtt` to the picker** ⁹ |
 | 23 | `autoAckChannelZeroHopTapbackEnabled` | yes | Same cell → `action.tapback` `emojiMode: 'hopCount'` | **exists** (Phase 1) |
 | 24 | `autoAckChannelZeroHopReplyDmEnabled` | yes | That cell's `action.sendMessage` gets `to: {{ trigger.from }}` | **exists** |
-| 25 | `autoAckChannelMultiHopReplyEnabled` | yes | Cell = `isDM == 0` ∧ ¬(`hops == 0` ∧ `viaMqtt == 0`) → `action.sendMessage` | **exists + picker** ⁹ |
+| 25 | `autoAckChannelMultiHopReplyEnabled` | yes | Cell = `isDM == 0` ∧ `zeroHop == 0` (the derived field's MultiHop reading — see note 9) → `action.sendMessage` | **exists + picker** ⁹ |
 | 26 | `autoAckChannelMultiHopTapbackEnabled` | yes | Same cell → `action.tapback` `emojiMode: 'hopCount'` | **exists** |
 | 27 | `autoAckChannelMultiHopReplyDmEnabled` | yes | `to: {{ trigger.from }}` on that cell's send | **exists** |
-| 28 | `autoAckDirectZeroHopReplyEnabled` | yes | Cell = `isDM == 1` ∧ `hops == 0` ∧ `viaMqtt == 0` → `action.sendMessage` | **exists + picker** ⁹ |
+| 28 | `autoAckDirectZeroHopReplyEnabled` | yes | Cell = `isDM == 1` ∧ `zeroHop == 1` (the derived ZeroHop field — see note 9) → `action.sendMessage` | **exists + picker** ⁹ |
 | 29 | `autoAckDirectZeroHopTapbackEnabled` | yes | Same cell → `action.tapback` `emojiMode: 'hopCount'` | **exists** |
 | 30 | `autoAckDirectZeroHopReplyDmEnabled` | yes | No-op for Direct cells (a DM reply is inherently a DM); converter emits `to: {{ trigger.from }}` regardless | **exists** |
-| 31 | `autoAckDirectMultiHopReplyEnabled` | yes | Cell = `isDM == 1` ∧ ¬ZeroHop → `action.sendMessage` | **exists + picker** ⁹ |
+| 31 | `autoAckDirectMultiHopReplyEnabled` | yes | Cell = `isDM == 1` ∧ `zeroHop == 0` (the derived field's MultiHop reading — see note 9) → `action.sendMessage` | **exists + picker** ⁹ |
 | 32 | `autoAckDirectMultiHopTapbackEnabled` | yes | Same cell → `action.tapback` `emojiMode: 'hopCount'` | **exists** |
 | 33 | `autoAckDirectMultiHopReplyDmEnabled` | yes | No-op for Direct cells | **exists** |
 
@@ -326,7 +326,7 @@ Every key in `VALID_SETTINGS_KEYS` beginning `autoAck` — 33 of them (`src/serv
 6. AutoAck's default is **60s** when unset (`:10092`); the engine's is **0**. The converter must emit `60` explicitly. `cooldownScope: 'node'` is mandatory — AutoAck's map is keyed by `fromNum` (`:10094`).
 7. Two semantic differences: AutoAck's delay is a non-blocking `setTimeout` (`:10172-10178`) while `action.delay` blocks its own run and caps at `AUTOMATION_DELAY_MAX_SECONDS = 300`; and AutoAck applies the same delay independently to the tapback and the reply, so a converted linear chain needs the `action.delay` once, before the first send.
 8. **Read this row carefully.** `checkAutoAcknowledge` never reads `autoAckMaxAttempts`. `MessageQueueService.resolveDmMaxAttempts()` reads it per-source and applies it to **every queued DM** on that source (auto-responder, welcome, mailbox, auto-ack reply). It therefore affects the AutoAck **reply, and only when that reply is a DM**: the AutoAck **tapback** hardcodes `1` ("tapbacks are best-effort, don't retry", `:10207`) and **channel** sends hardcode `1` (`messageQueueService.ts:112`). Consequently `maxAttempts` goes on `action.sendMessage` **only** — see spec §9.2. The setting also keeps governing the source's other queued DMs after conversion, so disabling AutoAck does not retire it.
-9. `isDM` and `viaMqtt` already resolve at runtime (`triggerContext.ts:113,120` + `asNumber()` boolean coercion) but were **not** offered by the builder's field picker, and `fieldselect` is a plain `<select>` (`AutomationBuilder.tsx:89-99`) — a converter-written value would render blank and be overwritten on the first edit. Phase 3 adds both options so a converted automation is **editable**, not merely runnable. `viaMqtt` is load-bearing: `isZeroHop = hopsTraveled === 0 && !viaMqtt` (`AUTOACK_2X2_PLAN.md`, `:10141`).
+9. `isDM` and `viaMqtt` already resolve at runtime (`triggerContext.ts:113,120` + `asNumber()` boolean coercion) but were **not** offered by the builder's field picker, and `fieldselect` is a plain `<select>` (`AutomationBuilder.tsx:89-99`) — a converter-written value would render blank and be overwritten on the first edit. Phase 3 adds both options so a converted automation is **editable**, not merely runnable. `viaMqtt` is load-bearing: `isZeroHop = hopsTraveled === 0 && !viaMqtt` (`AUTOACK_2X2_PLAN.md`, `:10141`). **Phase 4 adds a third field, `zeroHop`** (1 = arrived direct over RF with 0 hops; 0 = relayed or via MQTT), computed via `autoAckIsZeroHop()` on the floored hop count (`triggerContext.ts`). It exists because the mechanism this note originally implied — a *branch* on a single `condition.numeric hops > 0` node's true/false ports — makes `decompile()` return `null` for the resulting graph (`compile.ts:128`), which forces the automation into the raw-JSON editor on first open; `zeroHop` is a flat, `NaN`-safe field with identical behaviour and no such penalty. The four ZeroHop/MultiHop cell rows above (22/25/28/31) are built from `isDM` + `zeroHop` in the shipped converter, not from `hops`/`viaMqtt` directly. See the Phase 4 close below and `docs/internal/dev-notes/AUTOACK_CONVERTER_PHASE4_SPEC.md` §3.1/§9.1.
 
 **Adjacent behaviour not in the table** (not `autoAck*` keys, recorded so Phase 4 does not rediscover them): the per-packet dedup guard (`:9967-9978`) has no engine analogue and needs none; the TX-disabled skip (`:10001`) is already mirrored by `pushOrSkipTxDisabled`; the airtime cutoff (`isAutomationAirtimeGated`, `automationAirtimeCutoff*`) is shared infrastructure both paths already honour; the local-node skip (`:10065-10070`) is already covered by the engine's self-drop (`getLocalNodeNum`, #3914). **MeshCore auto-ack is a separate `meshcoreAutoAck*` namespace** (`meshcoreManager.ts:6873-6925`) and is out of scope for this table.
 
@@ -396,3 +396,143 @@ Every key in `VALID_SETTINGS_KEYS` beginning `autoAck` — 33 of them (`src/serv
      false; AutoAck instead floors it to `0` and treats it as ZeroHop. The converter must route
      ZeroHop/MultiHop off a single `condition.numeric hops > 0` node's true/false ports, not two
      separate `== 0` / `> 0` conditions, or a hopless packet matches neither branch.
+     **Superseded in Phase 4 — see below.** The port-branch mechanism this obligation prescribed
+     turned out to be incompatible with a separate hard requirement (a converted automation must be
+     editable in the visual builder). Left here unedited, rather than silently rewritten, so this
+     document is an honest record of how the plan actually changed between phases.
+
+### Phase 4 close (2026-07-28)
+
+**Delivered:** `src/server/services/automation/autoAckConverter.ts` (pure graph builder, `compile()`
+the only emitter), `autoAckConverterService.ts` (settings/channel resolution), two routes
+(`POST /api/automations/convert/preview`, `POST /api/automations/convert/create`) in
+`autoAckConverterRoutes.ts`, the `zeroHop` trigger field (`triggerContext.ts`, `catalog.ts`,
+`SubstitutionsHelp.tsx`), and the **Convert to an Automation…** button + `AutoAckConvertDialog` in
+`AutoAcknowledgeSection.tsx`. Full design: `docs/internal/dev-notes/AUTOACK_CONVERTER_PHASE4_SPEC.md`.
+
+- **Obligation 4's prescribed mechanism (Phase 3 note 4 / item 4 above) is incompatible with the
+  round-trip requirement, and the fix is a new derived field, `zeroHop`.** Phase 3 called for
+  routing ZeroHop/MultiHop off a single `condition.numeric hops > 0` node's true/false **ports**.
+  Phase 4 independently requires that a converted automation open in the visual builder, not the
+  raw-JSON fallback. `compile.ts:128` makes `decompile()` return `null` for **any** ported edge, and
+  `AutomationsPage.tsx` opens the JSON editor whenever `decompile()` returns `null` — the two
+  requirements cannot both be met by a ported graph. There is also no port-free expression using
+  only post-Phase-3 blocks: `hops` is `undefined` → `NaN` for a hopless packet, and `numericCompare`
+  returns `false` for non-finite operands, so `== 0` and `> 0` are **both** false regardless of which
+  one is meant to catch the hopless case. The resolution: `zeroHop`, a new numeric trigger field
+  (`triggerContext.ts`, computed via AutoAck's own `autoAckIsZeroHop()` on the same floored hop count
+  AutoAck itself uses), added the same way Phase 3 added `node.completeness` — one line in the
+  context builder, one catalog entry, zero evaluator change. It satisfies obligation 4's
+  **behaviour** exactly while keeping the flat AND-chain shape `decompile()` supports. Orchestrator
+  sign-off 2026-07-28 (spec §3.1/§9.1). The four cell rows in the parity table above (22/25/28/31)
+  were updated to describe `isDM` + `zeroHop`, not `isDM` + `hops` + `viaMqtt`, to match what the
+  shipped converter actually emits.
+- **Epic decision 7 ("one automation per source") is not always achievable, and shipping two is an
+  approved, forced deviation.** `messageMatchesFilter()` applies a trigger's `channels` filter to
+  **every** message, DMs included, but Auto-Acknowledge's channel allowlist gates channel messages
+  **only** — a DM bypasses it entirely. A single shared trigger would therefore silently gate the
+  Direct cells by channel name, a regression invisible until a DM on an unlisted channel slot goes
+  unanswered. Phase 1 hit the identical root cause when it designed the #4340 recipe and also shipped
+  the two-automation form. The spirit of decision 7 — a readable graph, only the enabled cells
+  represented — is preserved: only-Channel or only-Direct configurations still produce exactly one
+  automation, and the preview dialog always states up front how many automations it is about to
+  create and why. Orchestrator sign-off 2026-07-28 (spec §9.2).
+- **The empty-allowlist inversion — the single most valuable catch of the phase.** The original plan
+  (spec §4.2, pre-correction) would have emitted a Channel automation with **no** `channels` filter
+  whenever `autoAckChannels` was empty, on the theory that "no allowlist" means "no restriction."
+  It's the opposite: `meshtasticManager.ts` parses a blank `autoAckChannels` to `[]`, and the runtime
+  gate (`if (!enabledChannelsSet.has(channelIndex)) return;`) rejects **every** channel index against
+  an empty set — so an empty allowlist means Auto-Acknowledge **never** acknowledges a channel
+  message, not that it acknowledges all of them. Emitting an unfiltered Channel automation for that
+  case would have been the exact inverse of the source behaviour: a config that silently never fired
+  would convert into one that answers on every channel on the mesh. Caught by the implementer during
+  WP2 while writing the pure builder against literal test fixtures (not from live traffic), corrected
+  mid-phase, and verified against the runtime gate's source line before shipping. The shipped
+  behaviour: an empty allowlist emits **no** Channel automation at all (with a `notConvertible` report
+  entry explaining why), distinct from `CHANNEL_ALLOWLIST_UNCONVERTIBLE` (the user listed channels
+  but none resolved — a config they must fix, not a valid no-op).
+- **Three fidelity gaps were reported rather than silently absorbed:**
+  1. **The Direct reply template doesn't follow the cell boundary.** `meshtasticManager.ts` selects
+     the *Direct*-vs-standard reply **text** on the raw `hopsTraveled === 0` value, not on the same
+     `viaMqtt`-aware ZeroHop test its own cell toggles use. So an MQTT-relayed, 0-hop message can be
+     routed to the **MultiHop** cell for enable/disable purposes while still getting the **Direct**
+     message's wording. No engine expression reproduces that split inside one rule. The converter
+     picks `messageDirect` on the ZeroHop rules and `message` on the MultiHop rules — i.e. it follows
+     `zeroHop`, not raw `hopsTraveled` — so it faithfully reproduces AutoAck's cell-toggle behaviour
+     but not this one text-selection edge case. **Correction to spec §9.3 as written:** the spec text
+     says the converter "emits an `approximated` entry naming the exact case." The shipped converter
+     does **not** — there is no per-run report entry for this, because it isn't tied to a single
+     settings key the way every other report row is; it's a standing characteristic of the
+     conversion, documented in `docs/features/automation-engine.md` prose instead of the in-dialog
+     report. Recorded here so this document doesn't silently repeat the spec's inaccurate claim.
+  2. **A blank-named channel is genuinely inexpressible.** `messageFilterChannelNames()` drops
+     entries whose `name` is empty, and if *every* entry drops, `messageMatchesFilter` falls through
+     to **no channel constraint at all**. Meshtastic's primary slot commonly has an empty name. The
+     converter drops that index with a loud `notConvertible` report entry, and refuses to emit a
+     Channel automation whose whole allowlist dropped this way (`CHANNEL_ALLOWLIST_UNCONVERTIBLE`)
+     rather than silently widening the trigger to every channel.
+  3. **`autoAckMaxAttempts` is never emitted**, confirmed again at conversion time (Phase 3 close
+     already found this): it is `MessageQueueService.resolveDmMaxAttempts()`'s per-source queue
+     setting, never read by `checkAutoAcknowledge` itself. Emitting it onto `action.sendMessage` would
+     not be parity (AutoAck's own tapback and channel sends hardcode `1` attempt) and would change
+     TX-disabled run-log behaviour (a queued send records *queued*, not *skipped*). It gets a
+     `notConvertible` report entry explaining that the setting survives conversion unchanged and keeps
+     governing the source's other automated DMs. The engine's own `maxAttempts` field (Phase 3) is
+     available on the converted automation's **Send a message** action if the user wants the same
+     capability there — the converter just doesn't infer it.
+- **Up to two automations, `zeroHop`, and the converter itself add no new `ConditionType`,
+  `ActionType`, block, table, or migration.** `compile()`/`decompile()` are unchanged; the converter
+  is a consumer, not an editor, of the builder's existing form→graph pipeline (spec §8).
+
+## Epic close (2026-07-28)
+
+All four phases shipped. Issue #4340 (per-channel Auto-Acknowledge message body) was closed in
+Phase 1, and the epic then went further — making the Automation Engine a genuine superset of
+Auto-Acknowledge, ending in a converter that turns an existing config into an editable automation
+without hand-transcription.
+
+**What shipped, end to end:**
+
+- **Phase 1 — hop-count tapback + `{{ trigger.hopEmoji }}`.** `action.tapback` gained
+  `emojiMode: 'fixed' | 'hopCount'` (absent = `fixed`, so every existing automation is unchanged);
+  the same hop→emoji table (`*️⃣`, `1️⃣`–`7️⃣`, clamped) is shared between Auto-Acknowledge and the
+  engine so they can never drift apart. Closed #4340 with the two-automation per-channel recipe now
+  documented in `docs/features/automation-engine.md`.
+- **Phase 2 — per-node cooldown scope.** `cooldownScope: 'automation' | 'node' | 'sourceNode'` on
+  the trigger, so two senders on one busy channel cool down independently instead of the whole
+  automation going quiet after the first reply. Absent behaves exactly as before.
+- **Phase 3 — fidelity conditions.** A computed `node.completeness` field (`complete` / `incomplete`
+  / `unknown` — the tri-state Auto-Acknowledge's own skip-incomplete-nodes check needs), generic
+  `in`/`notIn` string operators (covers the ignore-list case and others for free), `isDM`/`viaMqtt`
+  added to the builder's numeric field picker (they resolved at runtime since Phase 1 but weren't
+  selectable — a converter-written value would have rendered blank and been clobbered on first
+  edit), and an optional `maxAttempts` (1–3) on `action.sendMessage` that opts a Meshtastic DM into
+  the source's outgoing queue, the same retry Auto-Acknowledge's own reply uses. Closed with the
+  33-row parity table (§2 of `AUTOACK_PARITY_PHASE3_SPEC.md`, mechanically enforced by
+  `autoAckParity.test.ts`) proving every `autoAck*` setting has either an engine equivalent or a
+  documented, honest reason it doesn't.
+- **Phase 4 — the converter.** A pure graph builder (`autoAckConverter.ts`) that reads a source's
+  resolved Auto-Acknowledge settings and produces up to two ready-to-edit automations via
+  `compile()` — never hand-assembled graphs — plus a four-bucket conversion report
+  (converted/approximated/notConvertible/dropped) pinned against the parity table by test. A new
+  derived `zeroHop` field made the four ZeroHop/MultiHop cells expressible as a flat AND-chain
+  without the condition-port branching that would have broken builder round-tripping. A
+  **Convert to an Automation…** button opens a preview-then-confirm dialog with a
+  checked-by-default "turn off Auto-Acknowledge for this source" option that touches only
+  `autoAckEnabled`, so the original configuration is always one checkbox away from coming back.
+
+**What the epic did *not* do**, by design, and remains true at close: MeshCore's
+`meshcoreAutoAck*` namespace was never touched (no Direct/MultiHop split on that protocol to
+convert); `deriveHops()` was never guarded to floor negative/undefined hop counts (Phase 1
+recorded why — it would silently change every existing `condition.numeric` comparison on `hops`);
+and Auto-Acknowledge itself (`checkAutoAcknowledge`, `AutoAcknowledgeSection`'s own settings UI,
+`meshtasticManager.ts`) is provably unchanged by every phase — the engine grew a superset around
+it, rather than the legacy feature being rewritten or retired. Two smaller follow-ups were
+identified but not filed as issues as of this close: `geofenceState` and
+`meshtasticManager.autoAckCooldowns` share the unbounded-growth shape Phase 2 fixed for the
+engine's own cooldown map, and neither has been touched.
+
+**Documentation:** `docs/features/automation-engine.md` (conditions, actions, the #4340 recipe, and
+the converter section), `docs/features/automation.md` (Auto Acknowledge section now points at the
+converter), this epic doc, and `docs/internal/dev-notes/AUTOACK_PARITY_PHASE3_SPEC.md` (the parity
+table, kept in three agreeing copies: this doc, the spec, and `autoAckParity.test.ts`).
