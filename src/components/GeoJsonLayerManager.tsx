@@ -147,6 +147,20 @@ const GeoJsonLayerManager: React.FC = () => {
                 <span style={{ fontSize: '0.85em' }}>Public</span>
               </label>
 
+              {/* Click popup opt-out (issue #4344) — off by default, so layers
+                  keep the popup they have today. */}
+              <label
+                style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                title="Suppress the popup that opens when you click this layer's features, so map clicks (such as creating a Waypoint) pass through. The hover tooltip still shows the feature name."
+              >
+                <input
+                  type="checkbox"
+                  checked={layer.disablePopup ?? false}
+                  onChange={(e) => updateLayer(layer.id, { disablePopup: e.target.checked })}
+                />
+                <span style={{ fontSize: '0.85em' }}>Disable click popup</span>
+              </label>
+
               {/* Color */}
               <label style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <span style={{ fontSize: '0.85em' }}>Color</span>

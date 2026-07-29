@@ -34,6 +34,16 @@ export interface GeoJsonLayer {
    * Default false — public exposure is per-layer opt-in (issue #3407).
    */
   publiclyVisible: boolean;
+  /**
+   * When true, the layer's features do NOT bind a click popup. The hover
+   * tooltip is unaffected. Default false — popups stay on, matching the
+   * behaviour every layer had before issue #4344.
+   *
+   * Why it exists: a popup-bound overlay swallows map clicks, so operators who
+   * want click-to-create-Waypoint over an overlay area can opt that layer out
+   * while others keep the popup.
+   */
+  disablePopup: boolean;
   style: LayerStyle;
   createdAt: number;
   updatedAt: number;
@@ -105,8 +115,11 @@ export class GeoJsonService {
       const manifest = JSON.parse(raw) as GeoJsonManifest;
       // Backfill publiclyVisible for layers created before #3407 — default to
       // false so pre-existing layers stay private until explicitly opted in.
+      // Backfill disablePopup for layers created before #4344 — default false
+      // so existing overlays keep their click popup.
       for (const layer of manifest.layers ?? []) {
         if (layer.publiclyVisible === undefined) layer.publiclyVisible = false;
+        if (layer.disablePopup === undefined) layer.disablePopup = false;
       }
       return manifest;
     } catch (err) {
@@ -194,6 +207,7 @@ export class GeoJsonService {
       filename,
       visible: true,
       publiclyVisible: false,
+      disablePopup: false,
       style: {
         color,
         opacity: 0.7,
@@ -247,7 +261,9 @@ export class GeoJsonService {
 
   updateLayer(
     id: string,
-    updates: Partial<Pick<GeoJsonLayer, 'name' | 'visible' | 'publiclyVisible' | 'style'>>
+    updates: Partial<
+      Pick<GeoJsonLayer, 'name' | 'visible' | 'publiclyVisible' | 'disablePopup' | 'style'>
+    >
   ): GeoJsonLayer {
     const manifest = this.loadManifest();
     const index = manifest.layers.findIndex(l => l.id === id);
@@ -261,6 +277,7 @@ export class GeoJsonService {
     if (updates.name !== undefined) layer.name = updates.name;
     if (updates.visible !== undefined) layer.visible = updates.visible;
     if (updates.publiclyVisible !== undefined) layer.publiclyVisible = updates.publiclyVisible;
+    if (updates.disablePopup !== undefined) layer.disablePopup = updates.disablePopup;
     if (updates.style !== undefined) layer.style = { ...layer.style, ...updates.style };
     layer.updatedAt = Date.now();
 
@@ -322,6 +339,7 @@ export class GeoJsonService {
         filename: newFilename,
         visible: true,
         publiclyVisible: false,
+        disablePopup: false,
         style: {
           color: DEFAULT_COLOR_PALETTE[colorIndex],
           opacity: 0.7,
