@@ -3,6 +3,7 @@ import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
+import { getMaxNodeAgeHours } from '../services/nodeDisplaySettings.js';
 
 const router = Router();
 
@@ -11,18 +12,19 @@ router.get('/recent', async (req: Request, res: Response) => {
     const hoursParam = req.query.hours ? parseInt(req.query.hours as string) : 24;
     const cutoffTime = Date.now() - hoursParam * 60 * 60 * 1000;
 
+    const recentSourceId = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
+
     let limit: number;
     if (req.query.limit) {
       limit = parseInt(req.query.limit as string);
     } else {
       const tracerouteIntervalMinutes = parseInt(await databaseService.settings.getSetting('tracerouteIntervalMinutes') || '5');
-      const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
+      const maxNodeAgeHours = await getMaxNodeAgeHours(databaseService.settings, recentSourceId ?? null);
       const traceroutesPerHour = tracerouteIntervalMinutes > 0 ? 60 / tracerouteIntervalMinutes : 12;
       limit = Math.ceil(traceroutesPerHour * maxNodeAgeHours * 1.1);
       limit = Math.max(limit, 100);
     }
 
-    const recentSourceId = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
     const allTraceroutes = await databaseService.traceroutes.getAllTraceroutes(limit, recentSourceId ?? ALL_SOURCES); // intentional cross-source when sourceId omitted
 
     const recentTraceroutes = allTraceroutes.filter(tr => tr.timestamp >= cutoffTime);

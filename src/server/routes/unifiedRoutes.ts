@@ -18,7 +18,8 @@ import {
   getUserReadableVirtualChannelIds,
   canReadVirtualChannel,
 } from '../utils/virtualChannelPermissions.js';
-import { buildSourceDashboard, getMaxNodeAgeHours } from '../services/sourceDashboardData.js';
+import { buildSourceDashboard } from '../services/sourceDashboardData.js';
+import { getMaxNodeAgeHoursForSources } from '../services/nodeDisplaySettings.js';
 import { canonicalMessageTime, plausibleRxTime } from '../utils/messageTime.js';
 import type { DbChannelDatabase, DbPacketLog } from '../../db/types.js';
 import type { DbMeshCorePacket } from '../../db/repositories/meshcore.js';
@@ -1293,10 +1294,16 @@ router.get('/dashboard', async (req: Request, res: Response) => {
       ? new Set(sourcesParam.split(',').map((s) => s.trim()).filter(Boolean))
       : null;
     const selected = requested ? allSources.filter((s) => requested.has(s.id)) : allSources;
-    // maxNodeAgeHours is a global setting — fetch it once and pass it into every
-    // source's neighbor-info build instead of re-querying it per source.
-    const maxNodeAgeHours = await getMaxNodeAgeHours();
-    const bundles = await Promise.all(selected.map((s) => buildSourceDashboard(s, user, { maxNodeAgeHours })));
+    // maxNodeAgeHours is per-source (#4412 Phase 2). ONE batched `key IN (...)`
+    // read for the whole selection, not one query per source and NOT
+    // getSourceSettings() (full-table scan per source, #4419).
+    const ageBySource = await getMaxNodeAgeHoursForSources(
+      databaseService.settings,
+      selected.map((s) => s.id),
+    );
+    const bundles = await Promise.all(
+      selected.map((s) => buildSourceDashboard(s, user, { maxNodeAgeHours: ageBySource.get(s.id) })),
+    );
     res.json(bundles);
   } catch (error) {
     logger.error('Error fetching unified dashboard data:', error);

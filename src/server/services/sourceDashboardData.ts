@@ -31,18 +31,13 @@ import {
 } from '../utils/nodeEnhancer.js';
 import { modemPresetChannelName, TransportMechanism } from '../constants/meshtastic.js';
 import { transformChannel } from '../utils/channelView.js';
+import { getMaxNodeAgeHours } from './nodeDisplaySettings.js';
 import type { ResourceType } from '../../types/permission.js';
 import type { User } from '../../types/auth.js';
 
 type SourceRow = { id: string; name: string; type: string };
 // The request user (null when anonymous), as attached by optionalAuth/requirePermission.
 type ReqUser = User | null;
-
-/** Resolve the global `maxNodeAgeHours` setting (default 24). */
-export async function getMaxNodeAgeHours(): Promise<number> {
-  const raw = await databaseService.settings.getSetting('maxNodeAgeHours');
-  return raw ? (parseInt(raw, 10) || 24) : 24;
-}
 
 /** Nodes for a source, channel-filtered and position-masked (mirrors GET /:id/nodes). */
 export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promise<unknown[]> {
@@ -222,10 +217,9 @@ export async function buildSourceTraceroutes(
 /**
  * Enriched neighbor-info for a source, channel-gated (mirrors GET /:id/neighbor-info).
  *
- * `maxNodeAgeHours` is a GLOBAL setting; pass it in to avoid re-querying it once
- * per source when fanning out across many sources (the unified dashboard route
- * fetches it once). When omitted, it's fetched here so single-source callers
- * stay self-contained.
+ * `maxNodeAgeHours` is PER-SOURCE as of #4412 Phase 2. The parameter exists
+ * only so the unified fan-out can batch the lookup (one query for all sources)
+ * instead of one per source; when omitted it is resolved for THIS source.
  */
 export async function buildSourceNeighborInfo(
   source: SourceRow,
@@ -234,7 +228,7 @@ export async function buildSourceNeighborInfo(
 ): Promise<unknown[]> {
   const neighborInfo = await databaseService.neighbors.getAllNeighborInfo(source.id);
 
-  const resolvedMaxAge = maxNodeAgeHours ?? await getMaxNodeAgeHours();
+  const resolvedMaxAge = maxNodeAgeHours ?? await getMaxNodeAgeHours(databaseService.settings, source.id);
   const cutoffTime = Math.floor(Date.now() / 1000) - resolvedMaxAge * 60 * 60;
 
   const linkKeys = new Set(neighborInfo.map(ni => `${ni.nodeNum}-${ni.neighborNodeNum}`));

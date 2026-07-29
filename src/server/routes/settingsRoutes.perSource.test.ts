@@ -22,8 +22,8 @@
  * is downstream and out of WP2's file ownership to fix.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import settingsRoutes from './settingsRoutes.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import settingsRoutes, { setSettingsCallbacks } from './settingsRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 
 describe('POST /api/settings — per-source permission scoping (#4412 WP2 §6.3)', () => {
@@ -158,5 +158,36 @@ describe('POST /api/settings — per-source permission scoping (#4412 WP2 §6.3)
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('BAD_REQUEST');
+  });
+
+  // 7. #4412 Phase 2 WP4: inactiveNodeNotificationService now resolves its
+  // config per source on each tick, so a scoped save must invalidate ONLY
+  // that source's cached next-run — never sourceB's, and never a global
+  // (null) reschedule.
+  describe('rescheduleInactiveNodeService side-effect (#4412 Phase 2 WP4)', () => {
+    const rescheduleSpy = vi.fn();
+
+    beforeEach(() => {
+      setSettingsCallbacks({ rescheduleInactiveNodeService: rescheduleSpy });
+      rescheduleSpy.mockClear();
+    });
+
+    afterEach(() => {
+      setSettingsCallbacks({});
+    });
+
+    it('a scoped save of an inactive-node key reschedules sourceA only', async () => {
+      const agent = await harness.loginAs(harness.admin);
+
+      const res = await agent
+        .post(`/api/settings?sourceId=${harness.sourceA}`)
+        .send({ inactiveNodeThresholdHours: '48' });
+
+      expect(res.status).toBe(200);
+      expect(rescheduleSpy).toHaveBeenCalledTimes(1);
+      expect(rescheduleSpy).toHaveBeenCalledWith(harness.sourceA);
+      expect(rescheduleSpy).not.toHaveBeenCalledWith(harness.sourceB);
+      expect(rescheduleSpy).not.toHaveBeenCalledWith(null);
+    });
   });
 });

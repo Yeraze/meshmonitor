@@ -149,4 +149,30 @@ describe('applyManagerSettings — per-source scheduler bootstrap', () => {
     expect(mgr.setTracerouteInterval).toHaveBeenCalledWith(15);
     expect(mgr.setLocalStatsInterval).toHaveBeenCalledWith(5);
   });
+
+  // #4412 Phase 2: localStatsIntervalMinutes now routes through the shared
+  // getLocalStatsIntervalMinutes accessor (nodeDisplaySettings.ts), which
+  // ALWAYS calls setLocalStatsInterval — clamping a missing/invalid stored
+  // value to the hardcoded default (15) instead of skipping the call
+  // outright. See the equivalence proof in applyManagerSettings.ts: the
+  // class-field default was already 15, so this is behavior-preserving.
+  it('#4412 Phase 2: calls setLocalStatsInterval(15) when no value is stored at all', async () => {
+    const db = makeDbStub({});
+    const mgr = makeManagerStub();
+
+    await applyManagerSettings(mgr, 'SRC-A', db);
+
+    expect(mgr.setLocalStatsInterval).toHaveBeenCalledTimes(1);
+    expect(mgr.setLocalStatsInterval).toHaveBeenCalledWith(15);
+  });
+
+  it('#4412 Phase 2: an out-of-range stored localStatsIntervalMinutes resolves to the default (15) instead of being skipped', async () => {
+    const db = makeDbStub({ 'source:SRC-A:localStatsIntervalMinutes': '999' });
+    const mgr = makeManagerStub();
+
+    await applyManagerSettings(mgr, 'SRC-A', db);
+
+    expect(mgr.setLocalStatsInterval).toHaveBeenCalledTimes(1);
+    expect(mgr.setLocalStatsInterval).toHaveBeenCalledWith(15);
+  });
 });

@@ -104,7 +104,7 @@ exactly the gap #4412 reports.
 
 ## Phases
 
-### [ ] Phase 1 — Per-source settings foundation & guardrails
+### [x] Phase 1 — Per-source settings foundation & guardrails — **MERGED** (PR #4417, `356002e0`)
 
 No user-visible change. Makes the per-source settings mechanism trustworthy and
 seeds the data.
@@ -125,7 +125,7 @@ seeds the data.
 the allowlist enforcement and the permission scoping; no behavior change visible
 in the app.
 
-### [ ] Phase 2 — Backend reads go per-source
+### [x] Phase 2 — Backend reads go per-source — **COMPLETE** (PR pending)
 
 **Work:**
 - Convert every backend read of the 10 keys to `getSettingForSource(sourceId, key)`:
@@ -241,6 +241,39 @@ Option 2 is the smallest change and matches what an admin would predict. Raise a
 Phase 2 boundary.
 
 ## Deviations log
+
+### Phase 2
+- **Defaults live in two modules, not one.** `src/constants/nodeDisplayDefaults.ts` holds
+  the values (isomorphic, zero imports) so Phase 3 can consume the same runtime values on
+  the frontend — `src/server/constants/settings.ts` was rejected because the frontend
+  imports only `type` from `src/server/**`. The accessor
+  (`src/server/services/nodeDisplaySettings.ts`) uses reader injection copying the
+  `ManagerSettingsDb` pattern; it must **not** import `databaseService`, which would cycle.
+- **`getSettingForSources(ids, key)` added** — one indexed `IN()` lookup. Converting the
+  `unifiedRoutes` dashboard fan-out (one read broadcast to every source) would otherwise
+  have become an N+1 on a hot path. Deliberately not built on `getSourceSettings`, which is
+  a full-table scan (#4419).
+- **Two tests were pinning bugs rather than catching them**, both deleted/rewritten:
+  - `server.neighbor-info-position.test.ts` re-implemented the neighbor-info route body
+    inside the test, *including* the dead `'maxNodeAge'` key. It passed while the route was
+    broken. Deleted; real-router coverage now lives in `neighborInfoRoutes.test.ts`
+    (harness-based) and `nodeEnhancer.position-override.test.ts`.
+  - `inactiveNodeNotificationService.test.ts` asserted "no eligible users does not advance
+    nextRunAt — the source is retried on the very next tick", which pinned the regression
+    below as intended behavior.
+- **Regression found in review and fixed** (`707a6d87`): the restructured scheduler's
+  zero-users branch left every due source permanently due, turning an hourly query into a
+  per-60s poll — and zero-users is the DEFAULT state on a fresh install. Same failure class
+  as #4399/#4413. The whole suite passed with the bug present; nothing tested cadence. Fixed
+  by advancing `nextRunAt` per source in that branch, plus a fake-timer test asserting one
+  query across five ticks.
+- **Three `database.ts` methods were reading the global value despite already having
+  `sourceId` threaded through from every caller** (`getNodeNeedingTracerouteAsync`,
+  `getNodesNeedingRemoteLocalStatsAsync`, `getNodeNeedingRemoteAdminCheckAsync`). The
+  plumbing existed and was unused.
+- **Open question resolved by the user:** sources created after migration 131 get the
+  hardcoded defaults. No seeding in the source-creation path. This is why centralizing the
+  defaults mattered — otherwise `24` would have scattered across a dozen read sites.
 
 ### Phase 1
 - `deleteSourceSettings` needed a **dialect-dependent `ESCAPE` literal**: MySQL's default

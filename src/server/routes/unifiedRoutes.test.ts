@@ -42,6 +42,11 @@ vi.mock('../../services/database.js', () => ({
     },
     settings: {
       getSetting: vi.fn().mockResolvedValue(null),
+      // #4412 Phase 2: the /dashboard fan-out now resolves maxNodeAgeHours
+      // per-source via one batched getSettingForSources() call instead of a
+      // single global getSetting(). Empty map here == every source falls
+      // back to the hardcoded default, matching the old getSetting(null) behavior.
+      getSettingForSources: vi.fn().mockResolvedValue(new Map()),
     },
     checkPermissionAsync: vi.fn(),
     findUserByIdAsync: vi.fn(),
@@ -1258,6 +1263,7 @@ describe('GET /unified/dashboard — bundled cross-source datasets (#3735)', () 
     mockDb.neighbors = { getAllNeighborInfo: vi.fn().mockResolvedValue([]) };
     mockDb.channels.getAllChannels.mockResolvedValue([{ id: 0, name: 'Primary', role: 1 }]);
     mockDb.settings.getSetting.mockResolvedValue(null);
+    mockDb.settings.getSettingForSources.mockResolvedValue(new Map());
     mockSourceRegistry.getManager.mockReturnValue(null);
   });
 

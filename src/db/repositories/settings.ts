@@ -4,7 +4,7 @@
  * Handles all settings-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -203,6 +203,45 @@ export class SettingsRepository extends BaseRepository {
       return await this.getSetting(`${this.sourcePrefix(sourceId)}${key}`);
     }
     return await this.getSetting(key);
+  }
+
+  /**
+   * Batched per-source read of ONE key across MANY sources: a single indexed
+   * `key IN (...)` lookup. Deliberately NOT getSourceSettings(), which calls
+   * getAllSettings() — a full-table scan (#4419) — once per source.
+   *
+   * Returns a Map keyed by sourceId. Ids with no stored row are simply absent;
+   * there is no fallback to the global row (#2839/#2840) — callers that want a
+   * default for missing ids (e.g. getMaxNodeAgeHoursForSources) fill it
+   * themselves.
+   *
+   * Resolution is via a reverse map from the prefixed key back to the
+   * original sourceId, never by string-splitting the returned key — a
+   * sourceId containing `:` would corrupt a split.
+   */
+  async getSettingForSources(sourceIds: string[], key: string): Promise<Map<string, string>> {
+    const result = new Map<string, string>();
+    if (sourceIds.length === 0) return result;
+
+    const uniqueIds = [...new Set(sourceIds)];
+    const prefixedToSourceId = new Map<string, string>();
+    for (const id of uniqueIds) {
+      prefixedToSourceId.set(`${this.sourcePrefix(id)}${key}`, id);
+    }
+
+    const { settings } = this.tables;
+    const rows = await this.db
+      .select({ key: settings.key, value: settings.value })
+      .from(settings)
+      .where(inArray(settings.key, [...prefixedToSourceId.keys()]));
+
+    for (const row of rows as Array<{ key: string; value: string }>) {
+      const sourceId = prefixedToSourceId.get(row.key);
+      if (sourceId !== undefined) {
+        result.set(sourceId, row.value);
+      }
+    }
+    return result;
   }
 
   /**

@@ -19,6 +19,7 @@ import {
   GLOBAL_ONLY_SETTINGS_KEYS,
   PER_SOURCE_KEYS_NOT_POSTABLE,
 } from './settings.js';
+import { NODE_DISPLAY_SETTING_KEYS } from '../../constants/nodeDisplayDefaults.js';
 
 describe('per-source settings key allowlist invariants', () => {
   it('every per-source key is either POST-able or a documented exemption', () => {
@@ -89,26 +90,31 @@ describe('per-source settings key allowlist invariants', () => {
 
   // §4.2 companion assertion 5: pins the whole point of WP1 by literal name
   // so a future refactor cannot quietly un-scope the Node Display group.
+  //
+  // As of WP1 (#4412 Phase 2) the canonical list lives in
+  // `src/constants/nodeDisplayDefaults.ts` (`NODE_DISPLAY_SETTING_KEYS`) —
+  // imported here rather than re-declared, so this test cross-checks that
+  // module against the allowlist instead of drifting from it.
   it('all ten Node Display keys are per-source-postable (in both sets, in neither deny-list)', () => {
-    const nodeDisplayKeys = [
-      'maxNodeAgeHours',
-      'inactiveNodeThresholdHours',
-      'inactiveNodeCheckIntervalMinutes',
-      'inactiveNodeCooldownHours',
-      'localStatsIntervalMinutes',
-      'nodeHopsCalculation',
-      'hideIncompleteNodes',
-      'nodeDimmingEnabled',
-      'nodeDimmingStartHours',
-      'nodeDimmingMinOpacity',
-    ];
     const valid = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
     const perSource = new Set<string>(PER_SOURCE_SETTINGS_KEYS as readonly string[]);
-    for (const key of nodeDisplayKeys) {
+    for (const key of NODE_DISPLAY_SETTING_KEYS) {
       expect(perSource.has(key)).toBe(true);
       expect(valid.has(key)).toBe(true);
       expect(GLOBAL_ONLY_SETTINGS_KEYS.has(key)).toBe(false);
       expect(PER_SOURCE_KEYS_NOT_POSTABLE.has(key)).toBe(false);
+    }
+  });
+
+  // WP1 acceptance: NODE_DISPLAY_SETTING_KEYS (src/constants/nodeDisplayDefaults.ts)
+  // must have exactly ten entries and agree exactly with the allowlist above —
+  // no fewer (a key silently dropped from the shared defaults module) and no
+  // more (a key added there without also being added to PER_SOURCE_SETTINGS_KEYS).
+  it('NODE_DISPLAY_SETTING_KEYS has exactly ten entries, all per-source-postable', () => {
+    expect(NODE_DISPLAY_SETTING_KEYS.length).toBe(10);
+    const perSource = new Set<string>(PER_SOURCE_SETTINGS_KEYS as readonly string[]);
+    for (const key of NODE_DISPLAY_SETTING_KEYS) {
+      expect(perSource.has(key)).toBe(true);
     }
   });
 

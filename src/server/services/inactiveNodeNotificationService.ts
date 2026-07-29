@@ -4,6 +4,7 @@ import { notificationService } from './notificationService.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { HourlyLogLimiter } from '../utils/hourlyLogLimiter.js';
 import { parseMonitoredUnion, countMonitoredNodes, formatSourceIdForLog, logZeroEligiblePrefRows } from '../utils/notificationCheckHelpers.js';
+import { getInactiveNodeConfig } from './nodeDisplaySettings.js';
 
 interface InactiveNodeCheck {
   nodeId: string;
@@ -37,87 +38,128 @@ interface InactiveNodePrefRow {
  * row true, monitored nodes = union across rows.
  *
  * Split-row fix: https://github.com/Yeraze/meshmonitor/issues/4020
+ *
+ * #4412 Phase 2 WP4: restructured from one timer-per-restart-call (threshold/
+ * interval/cooldown captured as instance fields at start() time) to a single
+ * scheduler tick that resolves each registered source's own threshold/
+ * interval/cooldown from `getInactiveNodeConfig()` on every pass. A
+ * per-source `nextRunAt` map makes each source honour its own check
+ * interval without needing a timer per source (timer-per-source was
+ * explicitly rejected — lifecycle coupling + cleanup failure modes).
  */
 class InactiveNodeNotificationService {
-  private checkInterval: NodeJS.Timeout | null = null;
-  private initialCheckTimeout: NodeJS.Timeout | null = null;
+  private tickTimer: NodeJS.Timeout | null = null;
+  private initialTimeout: NodeJS.Timeout | null = null;
+  private running = false;
+  /** sourceId -> epoch ms of next eligible run for that source. */
+  private nextRunAt: Map<string, number> = new Map();
   private lastNotifiedNodes: Map<string, number> = new Map(); // "userId:sourceId:nodeId" -> last notification timestamp
-  private currentThresholdHours: number = 24;
-  private currentCooldownHours: number = 24;
-  private readonly DEFAULT_CHECK_INTERVAL_MINUTES = 60; // Check every hour
-  private readonly DEFAULT_INACTIVE_THRESHOLD_HOURS = 24; // 24 hours of inactivity
-  private readonly DEFAULT_NOTIFICATION_COOLDOWN_HOURS = 24; // Don't notify about same node more than once per 24 hours
   // Diagnostics: at most once per key per hour — see HourlyLogLimiter/#4020.
   private readonly hourlyLog = new HourlyLogLimiter();
 
+  private static readonly TICK_INTERVAL_MS = 60_000; // 1 min == the minimum legal check interval
+  private static readonly INITIAL_DELAY_MS = 60_000; // preserves the historical 1-min warm-up
+
   /**
-   * Start the inactive node monitoring service
+   * Start the single scheduler tick. Threshold/interval/cooldown are no
+   * longer instance state — each tick resolves them per source via
+   * `getInactiveNodeConfig()`.
    */
-  public start(
-    inactiveThresholdHours: number = this.DEFAULT_INACTIVE_THRESHOLD_HOURS,
-    checkIntervalMinutes: number = this.DEFAULT_CHECK_INTERVAL_MINUTES,
-    cooldownHours: number = this.DEFAULT_NOTIFICATION_COOLDOWN_HOURS
-  ): void {
-    if (this.checkInterval) {
+  public start(): void {
+    if (this.running) {
       logger.warn('⚠️  Inactive node notification service is already running');
       return;
     }
 
-    this.currentThresholdHours = inactiveThresholdHours;
-    this.currentCooldownHours = cooldownHours;
+    this.running = true;
+    logger.info('🔔 Starting inactive node notification service (per-source config, resolved per tick)');
 
-    logger.info(
-      `🔔 Starting inactive node notification service (checking every ${checkIntervalMinutes} minutes, threshold: ${inactiveThresholdHours} hours, cooldown: ${cooldownHours} hours)`
-    );
-
-    // Run initial check after a short delay
-    // Capture parameters in closure to ensure correct values are used even if service is restarted
-    this.initialCheckTimeout = setTimeout(() => {
-      void this.checkInactiveNodes();
-      this.initialCheckTimeout = null; // Clear reference after execution
-    }, 60000); // Wait 1 minute before first check
-
-    // Schedule periodic checks
-    this.checkInterval = setInterval(() => {
-      void this.checkInactiveNodes();
-    }, checkIntervalMinutes * 60 * 1000);
+    // Run an initial check after a short warm-up delay, then install the
+    // recurring tick timer. Only one `setInterval` exists regardless of how
+    // many sources are registered — due-ness is resolved per source inside
+    // each tick via `nextRunAt`.
+    this.initialTimeout = setTimeout(() => {
+      this.initialTimeout = null;
+      void this.tick();
+      this.tickTimer = setInterval(() => {
+        void this.tick();
+      }, InactiveNodeNotificationService.TICK_INTERVAL_MS);
+    }, InactiveNodeNotificationService.INITIAL_DELAY_MS);
   }
 
   /**
    * Stop the inactive node monitoring service
    */
   public stop(): void {
-    if (this.checkInterval) {
-      clearInterval(this.checkInterval);
-      this.checkInterval = null;
+    if (this.tickTimer) {
+      clearInterval(this.tickTimer);
+      this.tickTimer = null;
     }
 
-    // Clear the initial check timeout if it hasn't fired yet
-    if (this.initialCheckTimeout) {
-      clearTimeout(this.initialCheckTimeout);
-      this.initialCheckTimeout = null;
+    if (this.initialTimeout) {
+      clearTimeout(this.initialTimeout);
+      this.initialTimeout = null;
     }
 
-    if (this.checkInterval === null && this.initialCheckTimeout === null) {
-      logger.info('⏹️  Inactive node notification service stopped');
+    this.running = false;
+    // A restart is a clean slate — every source becomes immediately due again.
+    this.nextRunAt.clear();
+
+    logger.info('⏹️  Inactive node notification service stopped');
+  }
+
+  /**
+   * Force a source (or all sources, when null/omitted) to re-read its config
+   * and run on the next tick. Does not tear down or recreate any timer, so a
+   * reschedule can never leak or double-schedule one — the failure mode the
+   * old stop()+start() restart pair had.
+   */
+  public reschedule(sourceId?: string | null): void {
+    if (sourceId) {
+      this.nextRunAt.delete(sourceId);
+      logger.debug(`🔔 Inactive-node check rescheduled for source ${sourceId}`);
+    } else {
+      this.nextRunAt.clear();
+      logger.debug('🔔 Inactive-node check rescheduled for all sources');
     }
   }
 
   /**
-   * Check for inactive nodes and send notifications
-   * Only checks nodes that are in each user's monitored list
-   * Captures current parameter values at the start to ensure consistency throughout the check,
-   * even if the service is restarted with new parameters while this check is running.
+   * One scheduler pass. Ordering is load-bearing:
+   *  1. Resolve registered managers; prune `nextRunAt` of any id no longer
+   *     registered (unbounded-map discipline, same class as PR #4413's
+   *     geofenceState/autoAckCooldowns bound).
+   *  2. Compute due-ness BEFORE the users query, and bail out before it when
+   *     nothing is due — otherwise the 60s tick would turn the (typically
+   *     hourly) getUsersWithInactiveNodeNotifications() query into a
+   *     per-minute query regardless of any source's configured interval.
+   *  3. Per due source, set `nextRunAt` BEFORE doing the work, so a throw
+   *     mid-source can't hot-loop that source every 60s.
    */
-  private async checkInactiveNodes(): Promise<void> {
+  private async tick(): Promise<void> {
     try {
-      // Capture current parameter values at the start of the check to ensure consistency
-      // throughout the entire check cycle, even if the service is restarted mid-check
-      const thresholdHours = this.currentThresholdHours;
-      const cooldownHours = this.currentCooldownHours;
+      const managers = sourceManagerRegistry.getAllManagers();
+
+      // Prune from the SAME `managers` slice that `due` is derived from below,
+      // so the two can't disagree. A source deregistered after this snapshot
+      // still gets one final pass this tick and is pruned on the next one —
+      // deregistration and this tick share the JS event loop, so there is no
+      // true race, only this ordering dependency. Do not re-read the registry
+      // between here and the `due` filter.
+      const activeIds = new Set(managers.map((m) => m.sourceId));
+      for (const id of this.nextRunAt.keys()) {
+        if (!activeIds.has(id)) this.nextRunAt.delete(id);
+      }
+
+      if (managers.length === 0) {
+        logger.debug('No source managers registered — skipping inactive node check');
+        return;
+      }
 
       const now = Date.now();
-      const cutoffSeconds = Math.floor(now / 1000) - thresholdHours * 60 * 60;
+
+      const due = managers.filter((m) => (this.nextRunAt.get(m.sourceId) ?? 0) <= now);
+      if (due.length === 0) return;
 
       // Get all preference rows for users who have inactive-node notifications
       // enabled on at least one (userId, sourceId) row (#4020 — see class doc).
@@ -126,29 +168,26 @@ class InactiveNodeNotificationService {
       if (rows.length === 0) {
         this.hourlyLog.log('no-users', 'info', '✅ No users have inactive node notifications enabled');
         await this.logZeroEligibleDiagnostic();
-        return;
-      }
 
-      // Phase C: iterate every active source and run the inactivity check per source.
-      // All source types (meshtastic, MeshCore, MQTT) are now in the unified
-      // sourceManagerRegistry, so a single getAllManagers() covers every source.
-      const managers = sourceManagerRegistry.getAllManagers();
-      if (managers.length === 0) {
-        logger.debug('No source managers registered — skipping inactive node check');
-        return;
-      }
-
-      // Resolve sourceName once per source per scan
-      const sourceNames = new Map<string, string>();
-      for (const manager of managers) {
-        let sourceName: string = manager.sourceId;
-        try {
-          const source = await databaseService.sources.getSource(manager.sourceId);
-          if (source?.name) sourceName = source.name;
-        } catch (err) {
-          logger.debug(`Could not resolve source name for ${manager.sourceId}:`, err);
+        // "No users have notifications enabled" is a GLOBAL condition, not a
+        // per-source one — unlike a per-source failure (handled below, inside
+        // the per-source try/catch), retrying 60s sooner cannot make it true
+        // any faster. Advance every due source's nextRunAt by its own
+        // configured interval anyway, exactly as if there had been users but
+        // zero eligible nodes — otherwise this (the DEFAULT state on a fresh
+        // install) pins every due source permanently due and turns this
+        // query — plus logZeroEligibleDiagnostic()'s own queries — into a
+        // per-60s poll forever instead of running at each source's own
+        // cadence (review fix: same failure class as #4399/#4413).
+        for (const manager of due) {
+          try {
+            const cfg = await getInactiveNodeConfig(databaseService.settings, manager.sourceId);
+            this.nextRunAt.set(manager.sourceId, now + cfg.checkIntervalMinutes * 60_000);
+          } catch (error) {
+            logger.error(`❌ Error resolving inactive-node config for source ${manager.sourceId}:`, error);
+          }
         }
-        sourceNames.set(manager.sourceId, sourceName);
+        return;
       }
 
       // Group rows by userId (rows already ordered userId, sourceId ASC by the repository)
@@ -162,69 +201,96 @@ class InactiveNodeNotificationService {
         }
       }
 
-      logger.debug(`🔍 Checking inactive nodes for ${rowsByUser.size} user(s) (${rows.length} preference row(s))`);
-
+      // Rule A: monitored-node union across all of a user's rows (dedup).
+      // Computed once per tick, hoisted out of the (now outer) source loop.
+      const monitoredUnionByUser = new Map<number, string[]>();
       for (const [userId, userRows] of rowsByUser.entries()) {
-        // Rule A: monitored-node union across all of this user's rows (dedup).
-        const monitoredUnion = parseMonitoredUnion(userId, userRows);
-        if (monitoredUnion.length === 0) {
-          this.hourlyLog.log(
-            `empty-monitored:${userId}`,
-            'info',
-            `⚠️ [inactive-node] user=${userId} has no monitored nodes across any row — skipping. rows: ${this.formatRowsSummary(userRows)}`
-          );
-          continue;
-        }
+        monitoredUnionByUser.set(userId, parseMonitoredUnion(userId, userRows));
+      }
 
-        // Process each source for this user (scoped to this source)
-        for (const manager of managers) {
-          const sourceId = manager.sourceId;
-          const sourceName = sourceNames.get(sourceId) ?? sourceId;
+      logger.debug(
+        `🔍 Checking inactive nodes for ${rowsByUser.size} user(s) (${rows.length} preference row(s)) across ${due.length} due source(s)`
+      );
 
-          // Phase C: permission check — skip user if they lack nodes:read on this source
+      // Source-outer / user-inner: per-source due-ness (checked above) forces
+      // this inversion from the historical user-outer / source-inner loop.
+      for (const manager of due) {
+        const sourceId = manager.sourceId;
+        try {
+          const cfg = await getInactiveNodeConfig(databaseService.settings, sourceId);
+          // Set BEFORE doing any work for this source — a throw below must
+          // not cause this source to be retried every 60s.
+          this.nextRunAt.set(sourceId, now + cfg.checkIntervalMinutes * 60_000);
+
+          let sourceName: string = sourceId;
           try {
-            const allowed = await databaseService.checkPermissionAsync(userId, 'nodes', 'read', sourceId);
-            if (!allowed) {
-              this.hourlyLog.log(
-                `perm:${userId}:${sourceId}`,
-                'info',
-                `🔒 [inactive-node] user=${userId} lacks nodes:read on source ${sourceId} — skipping`
-              );
-              continue;
-            }
+            const source = await databaseService.sources.getSource(sourceId);
+            if (source?.name) sourceName = source.name;
           } catch (err) {
-            logger.error(`Permission check failed for user ${userId} on source ${sourceId}:`, err);
-            continue;
+            logger.debug(`Could not resolve source name for ${sourceId}:`, err);
           }
 
-          // MeshCore nodes live in a separate table and report lastHeard in
-          // milliseconds; Meshtastic nodes report seconds. Collect a
-          // protocol-appropriate, already-formatted list of inactive alerts.
-          const alerts = manager.sourceType === 'meshcore'
-            ? await this.collectMeshCoreInactiveAlerts(monitoredUnion, sourceId, thresholdHours, now)
-            : await this.collectMeshtasticInactiveAlerts(monitoredUnion, sourceId, cutoffSeconds, now);
+          const cutoffSeconds = Math.floor(now / 1000) - cfg.thresholdHours * 60 * 60;
+          const cooldownMs = cfg.cooldownHours * 60 * 60 * 1000;
 
-          if (alerts.length === 0) continue;
-
-          logger.debug(`🔍 Found ${alerts.length} inactive monitored node(s) for user ${userId} on source ${sourceId}`);
-
-          for (const alert of alerts) {
-            // Source-scoped cooldown key prevents collisions across sources
-            const notificationKey = `${userId}:${sourceId}:${alert.nodeId}`;
-            const lastNotification = this.lastNotifiedNodes.get(notificationKey);
-            const cooldownMs = cooldownHours * 60 * 60 * 1000;
-
-            if (lastNotification && now - lastNotification < cooldownMs) {
-              logger.debug(
-                `⏭️  Skipping notification for user ${userId}, node ${alert.nodeId} on ${sourceId} (already notified recently)`
+          for (const [userId, userRows] of rowsByUser.entries()) {
+            const monitoredUnion = monitoredUnionByUser.get(userId) ?? [];
+            if (monitoredUnion.length === 0) {
+              this.hourlyLog.log(
+                `empty-monitored:${userId}`,
+                'info',
+                `⚠️ [inactive-node] user=${userId} has no monitored nodes across any row — skipping. rows: ${this.formatRowsSummary(userRows)}`
               );
               continue;
             }
 
-            await this.sendInactiveNodeNotification(userId, { ...alert, sourceId, sourceName });
+            // Permission check — skip user if they lack nodes:read on this source
+            try {
+              const allowed = await databaseService.checkPermissionAsync(userId, 'nodes', 'read', sourceId);
+              if (!allowed) {
+                this.hourlyLog.log(
+                  `perm:${userId}:${sourceId}`,
+                  'info',
+                  `🔒 [inactive-node] user=${userId} lacks nodes:read on source ${sourceId} — skipping`
+                );
+                continue;
+              }
+            } catch (err) {
+              logger.error(`Permission check failed for user ${userId} on source ${sourceId}:`, err);
+              continue;
+            }
 
-            this.lastNotifiedNodes.set(notificationKey, now);
+            // MeshCore nodes live in a separate table and report lastHeard in
+            // milliseconds; Meshtastic nodes report seconds. Collect a
+            // protocol-appropriate, already-formatted list of inactive alerts.
+            const alerts = manager.sourceType === 'meshcore'
+              ? await this.collectMeshCoreInactiveAlerts(monitoredUnion, sourceId, cfg.thresholdHours, now)
+              : await this.collectMeshtasticInactiveAlerts(monitoredUnion, sourceId, cutoffSeconds, now);
+
+            if (alerts.length === 0) continue;
+
+            logger.debug(`🔍 Found ${alerts.length} inactive monitored node(s) for user ${userId} on source ${sourceId}`);
+
+            for (const alert of alerts) {
+              // Source-scoped cooldown key prevents collisions across sources
+              const notificationKey = `${userId}:${sourceId}:${alert.nodeId}`;
+              const lastNotification = this.lastNotifiedNodes.get(notificationKey);
+
+              if (lastNotification && now - lastNotification < cooldownMs) {
+                logger.debug(
+                  `⏭️  Skipping notification for user ${userId}, node ${alert.nodeId} on ${sourceId} (already notified recently)`
+                );
+                continue;
+              }
+
+              await this.sendInactiveNodeNotification(userId, { ...alert, sourceId, sourceName });
+
+              this.lastNotifiedNodes.set(notificationKey, now);
+            }
           }
+        } catch (error) {
+          // One bad source must not abort the tick for the others.
+          logger.error(`❌ Error checking inactive nodes for source ${sourceId}:`, error);
         }
       }
 
@@ -377,11 +443,14 @@ class InactiveNodeNotificationService {
   }
 
   /**
-   * Get service status
+   * Get service status. `running` is explicit instance state (set in start(),
+   * cleared in stop()) rather than derived from the interval handle — the
+   * warm-up delay means `tickTimer` doesn't exist until t+60s, so deriving
+   * `running` from it would incorrectly report `false` during that window.
    */
-  public getStatus(): { running: boolean; lastCheck?: number } {
+  public getStatus(): { running: boolean } {
     return {
-      running: this.checkInterval !== null,
+      running: this.running,
     };
   }
 }
