@@ -1133,6 +1133,46 @@ export class VirtualNodeServer extends EventEmitter {
   }
 
   /**
+   * Send a message to a single "proxy delegate" client instead of all clients.
+   *
+   * Used for FromRadio.mqttClientProxyMessage frames (#4037 follow-up): the
+   * device asks its client to publish the payload to the MQTT broker. A
+   * physical node only ever has one BLE client, so firmware assumes exactly
+   * one proxy. Broadcasting the frame to every connected app would make each
+   * of them publish the same envelope — duplicate publishes on the broker.
+   * Mirror the physical-node behavior by delegating to the most recently
+   * connected client with a live, writable socket (newest wins).
+   */
+  public async broadcastToProxyDelegate(data: Uint8Array): Promise<void> {
+    let delegateId: string | null = null;
+    let delegateConnectedAt = 0;
+    for (const [clientId, client] of this.clients.entries()) {
+      if (client.socket.destroyed || !client.socket.writable) {
+        continue;
+      }
+      if (!delegateId || client.connectedAt.getTime() > delegateConnectedAt) {
+        delegateId = clientId;
+        delegateConnectedAt = client.connectedAt.getTime();
+      }
+    }
+
+    if (!delegateId) {
+      logger.debug('Virtual node: No writable client available as MQTT proxy delegate, dropping frame');
+      return;
+    }
+
+    logger.debug(`Virtual node: Sending MQTT proxy frame to delegate ${delegateId} (newest of ${this.clients.size} clients)`);
+    try {
+      await this.sendToClient(delegateId, data);
+    } catch (error) {
+      // sendToClient rejects on write error; swallow it so this method stays
+      // self-contained like broadcastToClients — a failed delegate write must
+      // never throw into the packet-processing path.
+      logger.error(`Virtual node: Failed to send proxy frame to ${delegateId}:`, (error as Error).message);
+    }
+  }
+
+  /**
    * Create a framed message (4-byte header + payload)
    */
   private createFrame(data: Uint8Array): Buffer {

@@ -4173,8 +4173,30 @@ class MeshtasticManager implements ISourceManager {
         const virtualNodeServer = this.virtualNodeServer;
         if (virtualNodeServer) {
           try {
-            await virtualNodeServer.broadcastToClients(data);
-            logger.debug(`📡 Broadcasted ${parsed?.type || 'unparsed'} to virtual node clients (${data.length} bytes)`);
+            if (parsed?.type === 'mqttClientProxyMessage') {
+              // - 'mqttClientProxyMessage': the device is asking its client to publish this
+              //   envelope to the MQTT broker (mqtt.proxy_to_client_enabled). Two consumers
+              //   can act on the SAME frame (#4037 follow-up): when an mqttLink is active,
+              //   handleDeviceMqttProxyMessage() below publishes it to the linked broker, so
+              //   relaying the frame to VN clients would make every connected app publish it
+              //   AGAIN — duplicate publishes on the broker. Even without an mqttLink,
+              //   broadcasting to ALL clients makes each app proxy independently (N duplicate
+              //   publishes). A physical node never has this problem because BLE is
+              //   single-client, so mirror that: drop the frame when the link handles it,
+              //   otherwise relay it to a single delegate (the newest connected client).
+              //   Accepted tradeoff: handleDeviceMqttProxyMessage() can still no-op with
+              //   the link attached (empty topic/data, or echo suppression) — the frame is
+              //   then intentionally dropped by both paths (echo = must not republish;
+              //   malformed = firmware bug).
+              if (this.mqttLinkBroker) {
+                logger.debug(`📡 [${this.sourceId}] mqttClientProxyMessage handled by mqttLink — not relayed to virtual node clients (#4037)`);
+              } else {
+                await virtualNodeServer.broadcastToProxyDelegate(data);
+              }
+            } else {
+              await virtualNodeServer.broadcastToClients(data);
+              logger.debug(`📡 Broadcasted ${parsed?.type || 'unparsed'} to virtual node clients (${data.length} bytes)`);
+            }
           } catch (error) {
             logger.error('Virtual node: Failed to broadcast message to clients:', error);
           }
