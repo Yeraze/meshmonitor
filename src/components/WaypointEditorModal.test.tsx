@@ -44,6 +44,8 @@ describe('WaypointEditorModal — create mode', () => {
       expire: null,
       locked_to: null,
       virtual: false,
+      // #4341: no explicit pick => slot 0, the channel waypoints always used.
+      channel: 0,
       rebroadcast_interval_s: null,
     });
   });
@@ -77,6 +79,76 @@ describe('WaypointEditorModal — create mode', () => {
   });
 });
 
+describe('WaypointEditorModal — broadcast channel (#4341)', () => {
+  const CHANNELS = [
+    { id: 0, name: '' },
+    { id: 1, name: 'gauntlet' },
+    { id: 2, name: 'admin' },
+    // Channel-Database virtual channel — must never be offered.
+    { id: 101, name: 'mqtt-virtual' },
+  ];
+
+  it('renders one option per device channel slot and hides virtual channels', () => {
+    const { getByLabelText } = renderModal({ channels: CHANNELS });
+    const select = getByLabelText('Broadcast channel') as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['0', '1', '2']);
+    expect(select.options[0]!.textContent).toMatch(/Primary/);
+    expect(select.options[1]!.textContent).toMatch(/gauntlet/);
+  });
+
+  it('puts the selected channel into the saved payload', async () => {
+    const { onSave, getByText, getByLabelText } = renderModal({
+      channels: CHANNELS,
+      defaultCoords: { lat: 1, lon: 2 },
+    });
+
+    fireEvent.change(getByLabelText('Broadcast channel'), { target: { value: '2' } });
+    fireEvent.click(getByText(/Create/));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].channel).toBe(2);
+  });
+
+  it('falls back to a Primary-only picker when the source reports no channels', () => {
+    const { getByLabelText } = renderModal();
+    const select = getByLabelText('Broadcast channel') as HTMLSelectElement;
+    expect(select.disabled).toBe(true);
+    expect(select.value).toBe('0');
+  });
+
+  it('disables the picker for a virtual (never transmitted) waypoint', () => {
+    const { getByText, getByLabelText } = renderModal({ channels: CHANNELS });
+    fireEvent.click(getByText(/Virtual \(do not broadcast\)/));
+    expect((getByLabelText('Broadcast channel') as HTMLSelectElement).disabled).toBe(true);
+  });
+
+  it('pre-selects the stored channel in edit mode', () => {
+    const { getByLabelText } = renderModal({
+      channels: CHANNELS,
+      initial: {
+        sourceId: 's1', waypointId: 7, ownerNodeNum: 1, latitude: 10, longitude: 20,
+        expireAt: null, lockedTo: null, name: 'Existing', description: '',
+        iconCodepoint: null, iconEmoji: '📍', isVirtual: false, channel: 2,
+        rebroadcastIntervalS: null, lastBroadcastAt: null, firstSeenAt: 0, lastUpdatedAt: 0,
+      },
+    });
+    expect((getByLabelText('Broadcast channel') as HTMLSelectElement).value).toBe('2');
+  });
+
+  it('shows slot 0 for a waypoint stored before the column existed', () => {
+    const { getByLabelText } = renderModal({
+      channels: CHANNELS,
+      initial: {
+        sourceId: 's1', waypointId: 7, ownerNodeNum: 1, latitude: 10, longitude: 20,
+        expireAt: null, lockedTo: null, name: 'Legacy', description: '',
+        iconCodepoint: null, iconEmoji: '📍', isVirtual: false, channel: null,
+        rebroadcastIntervalS: null, lastBroadcastAt: null, firstSeenAt: 0, lastUpdatedAt: 0,
+      },
+    });
+    expect((getByLabelText('Broadcast channel') as HTMLSelectElement).value).toBe('0');
+  });
+});
+
 describe('WaypointEditorModal — edit mode', () => {
   it('pre-fills fields from `initial` and shows Save (not Create)', async () => {
     const { getByText, container } = renderModal({
@@ -93,6 +165,7 @@ describe('WaypointEditorModal — edit mode', () => {
         iconCodepoint: 0x1f3d5,
         iconEmoji: '🏕️',
         isVirtual: false,
+        channel: null,
         rebroadcastIntervalS: null,
         lastBroadcastAt: null,
         firstSeenAt: 0,
