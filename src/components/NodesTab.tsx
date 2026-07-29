@@ -22,7 +22,7 @@ import { getTilesetById } from '../config/tilesets';
 import { getEffectiveHops, getMapHoverTooltipMeta } from '../utils/nodeHops';
 import { buildNodeExportRows, nodesToCsv, nodesToHtml, downloadTextFile } from '../utils/nodeExport';
 import { useMapContext } from '../contexts/MapContext';
-import { useTelemetryNodes, useDeviceConfig, useNodes, setNodeFieldInCache } from '../hooks/useServerData';
+import { useTelemetryNodes, useDeviceConfig, useNodes, useChannels, setNodeFieldInCache } from '../hooks/useServerData';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUI } from '../contexts/UIContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -541,6 +541,9 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
 
   // ----- Waypoint authoring state -----
   const canWriteWaypoints = hasPermission('waypoints', 'write');
+  // Channels come from the poll cache, which is already keyed on the active
+  // source — so the picker only ever offers the waypoint's own source (#4341).
+  const { channels: sourceChannels } = useChannels();
   const waypointMutations = useWaypoints(currentSourceId);
   const [waypointEditorOpen, setWaypointEditorOpen] = useState(false);
   const [waypointEditorInitial, setWaypointEditorInitial] = useState<Waypoint | null>(null);
@@ -2914,6 +2917,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
       <WaypointEditorModal
         isOpen={waypointEditorOpen}
         initial={waypointEditorInitial}
+        channels={sourceChannels}
         defaultCoords={waypointDefaultCoords}
         selfNodeNum={localNodeNum ?? null}
         onClose={() => setWaypointEditorOpen(false)}

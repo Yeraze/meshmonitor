@@ -132,7 +132,19 @@ describe('MeshtasticManager — Waypoint wiring', () => {
     await (mgr as any).processWaypointMessage(meshPacket, decoded);
 
     expect(upsertFromMeshMock).toHaveBeenCalledTimes(1);
-    expect(upsertFromMeshMock).toHaveBeenCalledWith('src-1', 555, decoded);
+    // #4341: the packet carried no `channel`, so the service is told "unknown"
+    // and leaves any stored channel alone.
+    expect(upsertFromMeshMock).toHaveBeenCalledWith('src-1', 555, decoded, undefined);
+  });
+
+  // #4341 — an inbound waypoint remembers the slot it arrived on so an edit or
+  // a scheduled rebroadcast goes back out on the same channel.
+  it('processWaypointMessage forwards the packet channel to waypointService', async () => {
+    const mgr = makeManager();
+    const decoded = { id: 99, latitude_i: 1, longitude_i: 2, expire: 0 };
+    await (mgr as any).processWaypointMessage({ from: BigInt(555), channel: 3 }, decoded);
+
+    expect(upsertFromMeshMock).toHaveBeenCalledWith('src-1', 555, decoded, 3);
   });
 
   it('broadcastWaypoint encodes and sends a WAYPOINT_APP packet via the transport', async () => {

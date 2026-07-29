@@ -8321,7 +8321,11 @@ class MeshtasticManager implements ISourceManager {
   private async processWaypointMessage(meshPacket: any, decoded: any): Promise<void> {
     try {
       const fromNum = Number(meshPacket.from ?? 0);
-      await waypointService.upsertFromMesh(this.sourceId, fromNum, decoded);
+      // Record the slot the waypoint arrived on so an edit or a scheduled
+      // rebroadcast goes back out on the same channel (#4341).
+      const rawChannel = meshPacket.channel;
+      const channel = rawChannel === undefined || rawChannel === null ? undefined : Number(rawChannel);
+      await waypointService.upsertFromMesh(this.sourceId, fromNum, decoded, channel);
     } catch (error) {
       logger.error('Error processing waypoint message:', error);
     }

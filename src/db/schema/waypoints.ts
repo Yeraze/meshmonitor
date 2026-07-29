@@ -48,6 +48,8 @@ export const waypointsSqlite = sqliteTable('waypoints', {
   iconCodepoint: integer('icon_codepoint'),
   iconEmoji: text('icon_emoji'),
   isVirtual: integer('is_virtual').notNull().default(0),
+  /** Device channel slot the waypoint is broadcast on. NULL = slot 0 (#4341). */
+  channel: integer('channel'),
   rebroadcastIntervalS: integer('rebroadcast_interval_s'),
   lastBroadcastAt: integer('last_broadcast_at'),
   firstSeenAt: integer('first_seen_at').notNull(),
@@ -73,6 +75,8 @@ export const waypointsPostgres = pgTable('waypoints', {
   iconCodepoint: pgInteger('icon_codepoint'),
   iconEmoji: pgText('icon_emoji'),
   isVirtual: pgInteger('is_virtual').notNull().default(0),
+  /** Device channel slot the waypoint is broadcast on. NULL = slot 0 (#4341). */
+  channel: pgInteger('channel'),
   rebroadcastIntervalS: pgInteger('rebroadcast_interval_s'),
   lastBroadcastAt: pgBigint('last_broadcast_at', { mode: 'number' }),
   firstSeenAt: pgBigint('first_seen_at', { mode: 'number' }).notNull(),
@@ -98,6 +102,8 @@ export const waypointsMysql = mysqlTable('waypoints', {
   iconCodepoint: myInt('icon_codepoint'),
   iconEmoji: myVarchar('icon_emoji', { length: 16 }),
   isVirtual: myInt('is_virtual').notNull().default(0),
+  /** Device channel slot the waypoint is broadcast on. NULL = slot 0 (#4341). */
+  channel: myInt('channel'),
   rebroadcastIntervalS: myInt('rebroadcast_interval_s'),
   lastBroadcastAt: myBigint('last_broadcast_at', { mode: 'number' }),
   firstSeenAt: myBigint('first_seen_at', { mode: 'number' }).notNull(),

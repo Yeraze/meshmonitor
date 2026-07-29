@@ -21,6 +21,8 @@ export interface Waypoint {
   iconCodepoint: number | null;
   iconEmoji: string | null;
   isVirtual: boolean;
+  /** Device channel slot the waypoint is broadcast on. `null` = slot 0 (#4341). */
+  channel: number | null;
   rebroadcastIntervalS: number | null;
   lastBroadcastAt: number | null;
   firstSeenAt: number;
@@ -40,6 +42,7 @@ export interface WaypointUpsertInput {
   iconCodepoint?: number | null;
   iconEmoji?: string | null;
   isVirtual?: boolean;
+  channel?: number | null;
   rebroadcastIntervalS?: number | null;
   lastBroadcastAt?: number | null;
 }
@@ -63,6 +66,7 @@ function deserializeRow(row: any): Waypoint {
     iconCodepoint: row.iconCodepoint == null ? null : Number(row.iconCodepoint),
     iconEmoji: row.iconEmoji ?? null,
     isVirtual: Boolean(row.isVirtual),
+    channel: row.channel == null ? null : Number(row.channel),
     rebroadcastIntervalS: row.rebroadcastIntervalS == null ? null : Number(row.rebroadcastIntervalS),
     lastBroadcastAt: row.lastBroadcastAt == null ? null : Number(row.lastBroadcastAt),
     firstSeenAt: Number(row.firstSeenAt),
@@ -101,6 +105,7 @@ export class WaypointsRepository extends BaseRepository {
         input.iconCodepoint === undefined ? existing?.iconCodepoint ?? null : input.iconCodepoint,
       iconEmoji: input.iconEmoji === undefined ? existing?.iconEmoji ?? null : input.iconEmoji,
       isVirtual: (input.isVirtual ?? existing?.isVirtual ?? false) ? 1 : 0,
+      channel: input.channel === undefined ? existing?.channel ?? null : input.channel,
       rebroadcastIntervalS:
         input.rebroadcastIntervalS === undefined
           ? existing?.rebroadcastIntervalS ?? null
