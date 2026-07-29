@@ -81,14 +81,41 @@ interface LoadedAutomation {
  * only a backstop for the pathological case of >TRIM_TO distinct subjects firing
  * inside a single cooldown window.
  *
- * Deliberately NOT modelled on meshtasticManager's autoAckCooldowns
- * (Map<nodeNum, ms>, :825) — that map is never evicted at all. It gets away with
- * it because it is per-manager and bounded in practice by one radio's NodeDB;
- * the engine's is per (automation × node) across EVERY source including MQTT
- * firehoses, so the same choice would be a real leak here.
+ * Was NOT modelled on meshtasticManager's autoAckCooldowns (Map<nodeNum, ms>,
+ * :825): that map went unevicted for a long time and got away with it because
+ * it is per-manager and bounded in practice by one radio's NodeDB, whereas the
+ * engine's map is per (automation × node) across EVERY source including MQTT
+ * firehoses, so the same laxness would be a real leak here. (#4399 has since
+ * bounded autoAckCooldowns too, with this same exact-expiry-then-trim shape.)
  */
 const COOLDOWN_KEYS_MAX = 4096;
 const COOLDOWN_KEYS_TRIM_TO = 2048;
+
+/**
+ * Per-automation geofence-state bounds (#4399). Unlike a cooldown timestamp,
+ * a geofenceState entry's boolean IS the enter/exit baseline — deleting it is
+ * NOT behaviour-neutral. The next check reads as "first sighting", sets a
+ * fresh baseline, and does not fire, so a real `enter`/`exit` transition can
+ * be silently missed on the evicted node. There is no exact-expiry test here
+ * the way there is for cooldowns (§ above): every entry is "live" in the
+ * sense that we can't prove it will never matter again.
+ *
+ * Decision (#4399): cap per automation and evict the least-recently-TOUCHED
+ * node, logging what was dropped — same high-water shape as
+ * COOLDOWN_KEYS_MAX/TRIM_TO, but with no exact-expiry pass first, since none
+ * exists. "Least recently touched" means the node hasn't had a position
+ * update routed through checkGeofences in the longest time, i.e. it is the
+ * node LEAST likely to be actively crossing the fence right now — so an
+ * evicted node re-establishing its baseline (and missing one transition) is a
+ * rare, low-value miss, not a routine one. Leaving per-node growth completely
+ * unbounded was rejected: an MQTT-fed mesh can accumulate one permanent entry
+ * per node a geofence automation has EVER seen, which is exactly the leak
+ * this issue is about. Deleted/disabled automations are still pruned
+ * separately and exactly (see `load()`) — that part IS safe, the same way the
+ * cooldown map's load()-time prune is.
+ */
+const GEOFENCE_STATE_MAX = 4096;
+const GEOFENCE_STATE_TRIM_TO = 2048;
 
 /** Compact result of evaluating one automation — persisted run-log shape is unchanged;
  *  this is the subset the live trace ("view logs") streams to the browser. */
@@ -148,8 +175,8 @@ export class AutomationEngineService {
   private index = new Map<TriggerType, LoadedAutomation[]>();
   /** automationId → cooldown key → last fired ms. Inner key shape: cooldownKeyFor(). */
   private lastFired = new Map<string, Map<string, number>>();
-  /** `${automationId}:${nodeNum}` → was the node inside the geofence last check. */
-  private geofenceState = new Map<string, boolean>();
+  /** automationId → nodeNum → { inside: was the node in the geofence at last check; ts: when last checked (eviction, #4399) }. */
+  private geofenceState = new Map<string, Map<number, { inside: boolean; ts: number }>>();
   /** automationId → live cron job, for `trigger.schedule` automations. */
   private cronJobs = new Map<string, { stop: () => void }>();
 
@@ -205,6 +232,11 @@ export class AutomationEngineService {
     const liveIds = new Set<string>();
     for (const list of index.values()) for (const a of list) liveIds.add(a.id);
     for (const id of this.lastFired.keys()) if (!liveIds.has(id)) this.lastFired.delete(id);
+    // Same prune for geofence baselines (#4399): a deleted/disabled automation's
+    // entries are unreachable (checkGeofences only iterates `this.index`), so
+    // dropping them is unobservable — unlike evicting a *live* automation's
+    // per-node entries, which is the risky case GEOFENCE_STATE_MAX guards.
+    for (const id of this.geofenceState.keys()) if (!liveIds.has(id)) this.geofenceState.delete(id);
     this.rescheduleCron();
     logger.info(`[AutomationEngine] loaded ${rows.length} enabled automation(s)`);
   }
@@ -335,6 +367,38 @@ export class AutomationEngineService {
     const byAge = [...inner.entries()].sort((x, y) => x[1] - y[1]);
     for (let i = 0; i < byAge.length - COOLDOWN_KEYS_TRIM_TO; i++) inner.delete(byAge[i][0]);
     logger.debug(`[AutomationEngine] "${a.name}" cooldown keys trimmed to ${inner.size} (scope=${a.cooldownScope})`);
+  }
+
+  /** Prior inside/outside geofence state for (automation, node), or undefined on first sighting. */
+  private getGeofenceBaseline(a: LoadedAutomation, nodeNum: number): boolean | undefined {
+    return this.geofenceState.get(a.id)?.get(nodeNum)?.inside;
+  }
+
+  /** Stamp the new inside/outside baseline, touching its last-checked time and bounding the per-automation node set. */
+  private setGeofenceBaseline(a: LoadedAutomation, nodeNum: number, inside: boolean, now: number): void {
+    let inner = this.geofenceState.get(a.id);
+    if (!inner) { inner = new Map(); this.geofenceState.set(a.id, inner); }
+    inner.set(nodeNum, { inside, ts: now });
+    if (inner.size > GEOFENCE_STATE_MAX) this.pruneGeofenceState(a, inner);
+  }
+
+  private pruneGeofenceState(a: LoadedAutomation, inner: Map<number, { inside: boolean; ts: number }>): void {
+    if (inner.size <= GEOFENCE_STATE_TRIM_TO) return;
+    // No exact-expiry pass is possible here — see GEOFENCE_STATE_MAX's doc
+    // comment for why. Drop the least-recently-touched nodes down to the trim
+    // target; their next position update re-establishes a baseline instead of
+    // firing on that first check.
+    const byAge = [...inner.entries()].sort((x, y) => x[1].ts - y[1].ts);
+    const dropCount = byAge.length - GEOFENCE_STATE_TRIM_TO;
+    const dropped: number[] = [];
+    for (let i = 0; i < dropCount; i++) {
+      dropped.push(byAge[i][0]);
+      inner.delete(byAge[i][0]);
+    }
+    logger.warn(
+      `[AutomationEngine] "${a.name}" geofence state trimmed to ${inner.size} node(s); ${dropCount} dropped ` +
+      `(their next check re-baselines instead of firing): ${dropped.slice(0, 20).join(', ')}${dropped.length > 20 ? ', …' : ''}`,
+    );
   }
 
   /**
@@ -594,9 +658,8 @@ export class AutomationEngineService {
       // centroid) so {{ trigger.distanceKm }} stays meaningful for both shapes.
       const center = geofenceCenter(shape);
       const distanceKm = haversineKm(node.latitude, node.longitude, center.lat, center.lng);
-      const key = `${a.id}:${nodeNum}`;
-      const prev = this.geofenceState.get(key);
-      this.geofenceState.set(key, inside);
+      const prev = this.getGeofenceBaseline(a, nodeNum);
+      this.setGeofenceBaseline(a, nodeNum, inside, now);
 
       const traced = automationTraceBus.activeCount() > 0 && automationTraceBus.isTracing(a.id, now);
       const geoCtx = buildGeofenceContext(nodeNum, mode, node.latitude, node.longitude, distanceKm, sourceId, now);
