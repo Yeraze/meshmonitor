@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from './ToastContainer';
 import { useCsrfFetch } from '../hooks/useCsrfFetch';
 import { useSourceQuery } from '../hooks/useSourceQuery';
+import { useSource } from '../contexts/SourceContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatTime, formatDate } from '../utils/datetime';
 import { Channel } from '../types/device';
@@ -79,6 +80,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
 }) => {
   const { t } = useTranslation();
   const { timeFormat, dateFormat } = useSettings();
+  const { sourceType } = useSource();
   const csrfFetch = useCsrfFetch();
   const sourceQuery = useSourceQuery();
   const { showToast } = useToast();
@@ -362,30 +364,44 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
         </h2>
         {/* #4340 Phase 4 WP4 — one-way door into the Automation Engine. Disabled while
             there are unsaved edits: converting now would convert the *saved* config,
-            not what's on screen, and silently discard the user's in-progress changes. */}
-        <button
-          type="button"
-          onClick={() => setIsConvertDialogOpen(true)}
-          disabled={hasChanges}
-          title={hasChanges ? 'Save your changes first — converting now would use the last saved configuration, not your unsaved edits.' : undefined}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.4rem',
-            padding: '0.4rem 0.85rem',
-            borderRadius: '6px',
-            background: 'var(--ctp-surface2)',
-            color: hasChanges ? 'var(--ctp-subtext0)' : 'var(--ctp-text)',
-            border: '1px solid var(--ctp-surface2)',
-            cursor: hasChanges ? 'not-allowed' : 'pointer',
-            opacity: hasChanges ? 0.6 : 1,
-            fontSize: '0.85rem',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          <UiIcon name="bot" size={16} />
-          Convert to an Automation…
-        </button>
+            not what's on screen, and silently discard the user's in-progress changes.
+            Also disabled for MeshCore sources — the converter targets Meshtastic's
+            Direct/Multi-hop Auto-Ack split; MeshCore's flat Auto-Ack template is out
+            of scope for the epic and the server 400s SOURCE_NOT_MESHTASTIC (#4420). */}
+        {(() => {
+          const isMeshCore = sourceType === 'meshcore';
+          const disabledReason = isMeshCore
+            ? 'Convert to an Automation is only available for Meshtastic sources.'
+            : hasChanges
+              ? 'Save your changes first — converting now would use the last saved configuration, not your unsaved edits.'
+              : undefined;
+          const isDisabled = hasChanges || isMeshCore;
+          return (
+            <button
+              type="button"
+              onClick={() => setIsConvertDialogOpen(true)}
+              disabled={isDisabled}
+              title={disabledReason}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.4rem 0.85rem',
+                borderRadius: '6px',
+                background: 'var(--ctp-surface2)',
+                color: isDisabled ? 'var(--ctp-subtext0)' : 'var(--ctp-text)',
+                border: '1px solid var(--ctp-surface2)',
+                cursor: isDisabled ? 'not-allowed' : 'pointer',
+                opacity: isDisabled ? 0.6 : 1,
+                fontSize: '0.85rem',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <UiIcon name="bot" size={16} />
+              Convert to an Automation…
+            </button>
+          );
+        })()}
       </div>
 
       <AutoAckConvertDialog
