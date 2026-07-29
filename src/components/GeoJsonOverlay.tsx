@@ -101,12 +101,18 @@ const GeoJsonOverlay: React.FC<GeoJsonOverlayProps> = ({
               const label = labelKey ? props[labelKey] as string : undefined;
 
               if (label) {
-                // Build popup with all non-empty string properties
-                const popupLines = Object.entries(props)
-                  .filter(([, v]) => v && typeof v === 'string' && String(v).length < 200)
-                  .slice(0, 10)
-                  .map(([k, v]) => `<b>${k}:</b> ${v}`);
-                leafletLayer.bindPopup(popupLines.join('<br/>'));
+                // Click popup is per-layer opt-out (issue #4344). Skipping the
+                // bind leaves the feature click-through, so map click handlers
+                // (e.g. create Waypoint) still fire over the overlay. The hover
+                // tooltip below is deliberately unaffected either way.
+                if (!layer.disablePopup) {
+                  // Build popup with all non-empty string properties
+                  const popupLines = Object.entries(props)
+                    .filter(([, v]) => v && typeof v === 'string' && String(v).length < 200)
+                    .slice(0, 10)
+                    .map(([k, v]) => `<b>${k}:</b> ${v}`);
+                  leafletLayer.bindPopup(popupLines.join('<br/>'));
+                }
                 leafletLayer.bindTooltip(label, { permanent: false, sticky: true });
               }
             }}

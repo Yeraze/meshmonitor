@@ -9,6 +9,7 @@ import express from 'express';
 import { GeoJsonService, LayerStyle } from '../services/geojsonService.js';
 import { logger } from '../../utils/logger.js';
 import { requirePermission, optionalAuth } from '../auth/authMiddleware.js';
+import { fail } from '../utils/apiResponse.js';
 
 /** True when the request is unauthenticated (the optionalAuth anonymous fallback). */
 function isAnonymousRequest(req: Request): boolean {
@@ -91,21 +92,31 @@ export function createGeoJsonRouter(service: GeoJsonService): Router {
 
   /**
    * PUT /api/geojson/layers/:id
-   * Update layer metadata (name, visible, style)
+   * Update layer metadata (name, visible, publiclyVisible, disablePopup, style).
+   *
+   * Success stays a bare layer object (no `ok()` envelope): the manager UI reads
+   * `await response.json()` as the layer directly, and ApiService does not unwrap
+   * `data`. Error paths use the shared `fail()` helper, which is always safe.
    */
   router.put('/layers/:id', requirePermission('settings', 'write'), express.json(), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const updates = req.body as { name?: string; visible?: boolean; publiclyVisible?: boolean; style?: LayerStyle };
+      const updates = req.body as {
+        name?: string;
+        visible?: boolean;
+        publiclyVisible?: boolean;
+        disablePopup?: boolean;
+        style?: LayerStyle;
+      };
       const layer = service.updateLayer(id, updates);
       return res.json(layer);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('[GeoJsonRoutes] Error updating layer:', error);
       if (message.toLowerCase().includes('not found')) {
-        return res.status(404).json({ error: message });
+        return fail(res, 404, 'GEOJSON_LAYER_NOT_FOUND', message);
       }
-      return res.status(500).json({ error: message });
+      return fail(res, 500, 'GEOJSON_LAYER_UPDATE_FAILED', message);
     }
   });
 
