@@ -1,6 +1,6 @@
 # Traceroute Strip Interactivity & Picker — Epic Plan
 
-**Status:** Phase 1 in progress
+**Status:** Phase 2 in review (Phase 1 merged as PR #4424)
 **Requested:** 2026-07-29
 **Builds on:** the traceroute visual node strip (#4381 / PRs #4392, #4397) mounted in the
 Node Details area of `MessagesTab`.
@@ -62,10 +62,15 @@ Scope:
 - Meshtastic request-flow badges (pending/failed) keep working for the newest/own-request case.
 
 Exit criteria:
-- [ ] Endpoint returns participation-matched traceroutes, per-source scoped (+ `*.perSource.test.ts`)
-- [ ] Dropdown on all sources; MQTT source shows and renders picks; default newest
-- [ ] Tests extended; full suite green; browser-validated on an MQTT source
+- [x] Endpoint returns participation-matched traceroutes, per-source scoped (+ `*.perSource.test.ts`)
+- [x] Dropdown on all sources; MQTT source shows and renders picks; default newest
+- [x] Tests extended; full suite green; browser-validated on an MQTT source (2026-07-29: Florida MQTT node !04c5b85c — 100 capped entries, pick swaps strip 2→7 glyphs, Phase 1 edge tooltips work on picked rows; Sandbox TCP regression clean incl. "relayed" labels)
 - [ ] PR merged
+
+Phase 2 notes: sourceId is REQUIRED on the participation endpoint (fails closed, no ALL_SOURCES).
+Display rule = explicit pick, else newest-of-both (poll row vs entries[0]) so the TCP request-flow
+badges stay byte-identical. `routePositions` stripped from the API projection; channel masking
+(#3092) applied. Box gate widened write → read||write; the request button still needs write.
 
 - [ ] **Phase 2 complete**
 

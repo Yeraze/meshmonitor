@@ -1,0 +1,36 @@
+/* TracerouteParticipationPicker (Traceroute Strip Interactivity epic, phase
+ * 2). CSS module — scoped to this component per CLAUDE.md's CSS containment
+ * rule. `src/styles/nodes.css` / `messages.css` are frozen and NOT touched:
+ * this nests inside the existing `.traceroute-info` box, which supplies the
+ * surrounding card chrome.
+ *
+ * Layout only — no color literals. All colors reference the existing
+ * `--ctp-*` custom properties shared across the app.
+ */
+
+.row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  margin-bottom: 0.5rem;
+}
+
+.label {
+  font-size: 0.75rem;
+  color: var(--ctp-subtext0);
+  white-space: nowrap;
+}
+
+.select {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: var(--ctp-text);
+  background-color: var(--ctp-surface0);
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 4px;
+  padding: 0.15rem 0.35rem;
+}

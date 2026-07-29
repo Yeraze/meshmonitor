@@ -37,6 +37,31 @@ export interface MeshtasticContactUrl {
 }
 
 /**
+ * One traceroute a node took part in — as an endpoint or an intermediate hop.
+ * Backs `GET /api/traceroutes/participation/:nodeNum` (epic phase 2 traceroute
+ * picker). Structurally satisfies `TracerouteStripInput` — no adapter needed
+ * to feed `buildTracerouteStripGraph`.
+ *
+ * Deliberately omits `routePositions` — the server projection strips it
+ * (#3092 hop-position leak surface); the strip renders live positions instead.
+ */
+export interface TracerouteParticipationEntry {
+  id: number;
+  timestamp: number;
+  fromNodeNum: number;
+  toNodeNum: number;
+  fromNodeId: string;
+  toNodeId: string;
+  route: string | null;
+  routeBack: string | null;
+  snrTowards: string | null;
+  snrBack: string | null;
+  channel: number | null;
+  participation: 'endpoint' | 'hop';
+  hopCount: number | null;
+}
+
+/**
  * Error thrown by ApiService.request when the server returns a non-OK response.
  * Callers can distinguish by `status` (e.g. 429 for rate limit) and `code`
  * (machine-readable identifier from the server body) to pick a UX-appropriate
@@ -870,6 +895,25 @@ class ApiService {
       `/api/telemetry/${encodeURIComponent(validatedNodeId ?? nodeId)}/signal-trend${qs}`,
     );
     return body.data;
+  }
+
+  /**
+   * Traceroutes a node took part in (endpoint or intermediate hop) on ONE source.
+   * Backs the Node Details traceroute picker. Unwraps the `{success,data}`
+   * envelope here because `request()` deliberately does not (CLAUDE.md).
+   */
+  async getTracerouteParticipation(
+    nodeNum: number,
+    sourceId: string,
+    opts: { hours?: number; limit?: number } = {},
+  ): Promise<TracerouteParticipationEntry[]> {
+    const params = new URLSearchParams({ sourceId });
+    if (opts.hours != null) params.set('hours', String(opts.hours));
+    if (opts.limit != null) params.set('limit', String(opts.limit));
+    const body = await this.get<{ success: boolean; data: { entries: TracerouteParticipationEntry[] } }>(
+      `/api/traceroutes/participation/${nodeNum}?${params.toString()}`,
+    );
+    return body.data?.entries ?? [];
   }
 
   /** Generate a source-scoped Meshtastic SharedContact URL for a node. */

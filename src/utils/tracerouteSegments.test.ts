@@ -12,6 +12,7 @@ import {
   buildLiveNodePositionMap,
   hasReturnPath,
   decomposeTraceroute,
+  tracerouteParticipationKind,
   type TracerouteDecomposeInput,
 } from './tracerouteSegments';
 
@@ -458,5 +459,73 @@ describe('buildLiveNodePositionMap (review F9)', () => {
     const items = [{ id: 1, lat: 0.0032768, lng: 0.0032768 }];
     const map = buildLiveNodePositionMap(items, (i) => ({ nodeNum: i.id, lat: i.lat, lng: i.lng }));
     expect(map.has(1)).toBe(false);
+  });
+});
+
+describe('tracerouteParticipationKind (traceroute participation picker, phase 2 §3)', () => {
+  it('matches an endpoint via fromNodeNum', () => {
+    const row = { fromNodeNum: 111, toNodeNum: 222, route: null, routeBack: null };
+    expect(tracerouteParticipationKind(row, 111)).toBe('endpoint');
+  });
+
+  it('matches an endpoint via toNodeNum', () => {
+    const row = { fromNodeNum: 111, toNodeNum: 222, route: null, routeBack: null };
+    expect(tracerouteParticipationKind(row, 222)).toBe('endpoint');
+  });
+
+  it('matches both directions independently', () => {
+    const row = { fromNodeNum: 111, toNodeNum: 222, route: null, routeBack: null };
+    expect(tracerouteParticipationKind(row, 111)).toBe('endpoint');
+    expect(tracerouteParticipationKind(row, 222)).toBe('endpoint');
+  });
+
+  it('matches a hop inside route', () => {
+    const row = { fromNodeNum: 111, toNodeNum: 222, route: '[333,444]', routeBack: null };
+    expect(tracerouteParticipationKind(row, 333)).toBe('hop');
+    expect(tracerouteParticipationKind(row, 444)).toBe('hop');
+  });
+
+  it('matches a hop inside routeBack', () => {
+    const row = { fromNodeNum: 111, toNodeNum: 222, route: null, routeBack: '[555]' };
+    expect(tracerouteParticipationKind(row, 555)).toBe('hop');
+  });
+
+  it('endpoint match wins over a hop match in routeBack (self-relay)', () => {
+    // Node 111 is the origin AND appears as a relay in its own routeBack.
+    const row = { fromNodeNum: 111, toNodeNum: 222, route: null, routeBack: '[333,111]' };
+    expect(tracerouteParticipationKind(row, 111)).toBe('endpoint');
+  });
+
+  it('returns null for a non-participant', () => {
+    const row = { fromNodeNum: 111, toNodeNum: 222, route: '[333]', routeBack: '[444]' };
+    expect(tracerouteParticipationKind(row, 999)).toBeNull();
+  });
+
+  it('matches string-typed fromNodeNum/toNodeNum (PG/MySQL BIGINT-as-string shape)', () => {
+    const row = { fromNodeNum: '111', toNodeNum: '222', route: null, routeBack: null };
+    expect(tracerouteParticipationKind(row, 111)).toBe('endpoint');
+    expect(tracerouteParticipationKind(row, 222)).toBe('endpoint');
+  });
+
+  it('does not throw on malformed route/routeBack JSON and does not match', () => {
+    const notJson = { fromNodeNum: 111, toNodeNum: 222, route: 'not-json', routeBack: 'not-json' };
+    expect(() => tracerouteParticipationKind(notJson, 333)).not.toThrow();
+    expect(tracerouteParticipationKind(notJson, 333)).toBeNull();
+
+    const nullString = { fromNodeNum: 111, toNodeNum: 222, route: 'null', routeBack: 'null' };
+    expect(tracerouteParticipationKind(nullString, 333)).toBeNull();
+
+    const nullValue = { fromNodeNum: 111, toNodeNum: 222, route: null, routeBack: null };
+    expect(tracerouteParticipationKind(nullValue, 333)).toBeNull();
+
+    const emptyString = { fromNodeNum: 111, toNodeNum: 222, route: '', routeBack: '' };
+    expect(tracerouteParticipationKind(emptyString, 333)).toBeNull();
+  });
+
+  it('does not match a hop value that is a substring of the queried node number (LIKE-regression guard)', () => {
+    // Querying 1234 against a route containing 12345 must NOT match — a
+    // naive LIKE '%1234%' implementation would have shipped this bug.
+    const row = { fromNodeNum: 1, toNodeNum: 2, route: '[12345]', routeBack: null };
+    expect(tracerouteParticipationKind(row, 1234)).toBeNull();
   });
 });

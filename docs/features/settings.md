@@ -301,7 +301,9 @@ When the selected node has traceroute data, the Node Details block draws the for
 
 **Reading a branch**: Meshtastic's flood routing doesn't guarantee the return trip takes the same path as the forward one. When it doesn't, the node(s) that only the return path visits drop to a branch row below the main one, with the return arrow routed through them.
 
-The strip scrolls horizontally on narrow screens and uses a smaller size in the split-view side panel. It still needs the `traceroute` write permission, and the "last traced X ago" line and pending/failed badges are unchanged.
+**Choosing which traceroute to show**: when the node took part in more than one stored traceroute over the last 7 days — as an endpoint or as a relay hop (marked "relayed") — a dropdown above the strip lists them by date, endpoints, and hop count. It defaults to the newest. This is also what brings the strip to MQTT sources: they have no node of their own to run traceroutes from, so the strip draws from traceroutes the selected node took part in anywhere on that source's mesh.
+
+The strip scrolls horizontally on narrow screens and uses a smaller size in the split-view side panel. Viewing it needs the `traceroute` read (or write) permission; requesting a new traceroute still needs write. The "last traced X ago" line and pending/failed badges describe whichever traceroute is displayed.
 
 ::: tip
 This is separate from the Dashboard's [Traceroute Widget](/features/settings#traceroute-widget), which still shows the route as plain text.
