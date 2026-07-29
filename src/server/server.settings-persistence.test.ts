@@ -274,9 +274,10 @@ function extractSettingsTabPartition(): { nodeDisplayBody: Record<string, unknow
     .replace(/:\s*Record<string,\s*unknown>/g, '')
     .replace(/\s+as\s+readonly string\[\]/g, '');
 
-  // eslint-disable-next-line no-new-func -- statically executes the ACTUAL
-  // extracted production source text (not a re-implementation of it) against
-  // the real NODE_DISPLAY_SETTING_KEYS import; see the function doc comment.
+  // Statically executes the ACTUAL extracted production source text (not a
+  // re-implementation of it) against the real NODE_DISPLAY_SETTING_KEYS
+  // import; see the function doc comment. `no-new-func` isn't enabled for
+  // this test file (verified via lint:ci), so no disable directive is needed.
   const runPartition = new Function(
     'settings',
     'NODE_DISPLAY_SETTING_KEYS',

@@ -608,13 +608,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     void fetchServerSettings();
     // #4412 Phase 3 WP4: sourceQuery added so switching sources re-fetches this
     // source's server-stored settings (packet monitor, homoglyph, dimming trio,
-    // etc). The dimming trio no longer reads its own state as a fallback
-    // default (parseNodeDisplayNumber/-Boolean replace the old
-    // `parseFloat(...) || nodeDimmingStartHours` pattern), so this effect has
-    // no remaining unlisted-but-read reactive value; the disable below is kept
-    // only because it predates this change and this run's `lint:ci` pass is
-    // the arbiter of whether it's still load-bearing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // etc). The previous eslint-disable-next-line here existed because the
+    // dimming trio read its own state as a fallback default
+    // (`parseFloat(...) || nodeDimmingStartHours`) — an unlisted-but-read
+    // reactive value. That's gone now that parseNodeDisplayNumber/-Boolean
+    // replace the fallback pattern, so this effect has no remaining
+    // undeclared dependency; `lint:ci` confirms the disable is no longer
+    // needed (verified empirically, not just by inspection — see PR notes).
   }, [baseUrl, sourceQuery, setHideIncompleteNodes, updateField]);
 
   // Baseline: a memoized snapshot of the current context/props/initial* values, in SettingsDraft
