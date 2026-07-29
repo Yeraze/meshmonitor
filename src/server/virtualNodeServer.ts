@@ -8,6 +8,7 @@ import { MeshtasticManager } from './meshtasticManager.js';
 import databaseService from '../services/database.js';
 import { getEffectiveDbNodePosition } from './utils/nodeEnhancer.js';
 import { MODEM_PRESET_CHANNEL_NAMES } from '../utils/loraFrequency.js';
+import { getMaxNodeAgeHours } from './services/nodeDisplaySettings.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
@@ -821,7 +822,7 @@ export class VirtualNodeServer extends EventEmitter {
    */
   private async sendNodeInfosFromDb(clientId: string): Promise<{ sent: number; disconnected: boolean }> {
     const sourceId = this.config.meshtasticManager.sourceId;
-    const maxNodeAgeHours = parseInt(await databaseService.getSettingAsync('maxNodeAgeHours') || '24');
+    const maxNodeAgeHours = await getMaxNodeAgeHours(databaseService.settings, sourceId);
     const maxNodeAgeDays = maxNodeAgeHours / 24;
     const allNodes = await databaseService.nodes.getActiveNodes(maxNodeAgeDays, sourceId);
     let sent = 0;

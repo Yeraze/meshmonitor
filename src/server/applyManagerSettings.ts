@@ -14,6 +14,7 @@
  * NOT duplicate that work.
  */
 import type { MeshtasticManager } from './meshtasticManager.js';
+import { getLocalStatsIntervalMinutes } from './services/nodeDisplaySettings.js';
 
 /**
  * Structural subset of DatabaseService that applyManagerSettings needs.
@@ -39,11 +40,12 @@ export async function applyManagerSettings(
     if (!isNaN(n) && n >= 0 && n <= 60) manager.setTracerouteInterval(n);
   }
 
-  const lsInterval = await db.settings.getSettingForSource(sourceId, 'localStatsIntervalMinutes');
-  if (lsInterval !== null) {
-    const n = parseInt(lsInterval, 10);
-    if (!isNaN(n) && n >= 0 && n <= 60) manager.setLocalStatsInterval(n);
-  }
+  // #4412 Phase 2: localStatsIntervalMinutes is one of the ten Node Display
+  // keys — resolved via the shared per-source accessor so an unset/invalid
+  // stored value clamps to the same default (15) as every other reader,
+  // instead of silently skipping the call and relying on the class-field
+  // default to happen to match.
+  manager.setLocalStatsInterval(await getLocalStatsIntervalMinutes(db.settings, sourceId));
 
   // Remote LocalStats automation interval (issue #3398). Higher ceiling (1440)
   // than the gateway LocalStats poll since remote polling is intentionally slower.

@@ -609,6 +609,69 @@ describe('settingsRoutes', () => {
     });
   });
 
+  // #4412 Phase 2: inactiveNodeNotificationService resolves threshold/interval/
+  // cooldown per source on every tick, so a save only needs to invalidate the
+  // affected source's (or every source's, for a global save) cached next-run
+  // timestamp — restartInactiveNodeService/stopInactiveNodeService are gone.
+  describe('POST /api/settings — rescheduleInactiveNodeService callback (#4412 Phase 2)', () => {
+    const rescheduleSpy = vi.fn();
+
+    beforeEach(() => {
+      setSettingsCallbacks({ rescheduleInactiveNodeService: rescheduleSpy });
+      rescheduleSpy.mockClear();
+    });
+
+    afterAll(() => {
+      setSettingsCallbacks({});
+    });
+
+    it('global save of an inactive-node key reschedules every source (null)', async () => {
+      const app = createApp(adminUser);
+
+      const res = await request(app)
+        .post('/api/settings')
+        .send({ inactiveNodeThresholdHours: '48' });
+
+      expect(res.status).toBe(200);
+      expect(rescheduleSpy).toHaveBeenCalledTimes(1);
+      expect(rescheduleSpy).toHaveBeenCalledWith(null);
+    });
+
+    it('global save with no inactive-node key does not reschedule', async () => {
+      const app = createApp(adminUser);
+
+      const res = await request(app)
+        .post('/api/settings')
+        .send({ meshName: 'Somewhere' });
+
+      expect(res.status).toBe(200);
+      expect(rescheduleSpy).not.toHaveBeenCalled();
+    });
+
+    it('scoped save of an inactive-node key reschedules only that source', async () => {
+      const app = createApp(adminUser);
+
+      const res = await request(app)
+        .post('/api/settings?sourceId=mqtt-broker-1')
+        .send({ inactiveNodeCheckIntervalMinutes: '30' });
+
+      expect(res.status).toBe(200);
+      expect(rescheduleSpy).toHaveBeenCalledTimes(1);
+      expect(rescheduleSpy).toHaveBeenCalledWith('mqtt-broker-1');
+    });
+
+    it('scoped save with no inactive-node key does not reschedule', async () => {
+      const app = createApp(adminUser);
+
+      const res = await request(app)
+        .post('/api/settings?sourceId=mqtt-broker-1')
+        .send({ hideIncompleteNodes: '1' });
+
+      expect(res.status).toBe(200);
+      expect(rescheduleSpy).not.toHaveBeenCalled();
+    });
+  });
+
   describe('POST /api/settings — per-source auto-delete-by-distance (#3901)', () => {
     const restartSpy = vi.fn();
     const stopSpy = vi.fn();
@@ -973,13 +1036,16 @@ describe('settingsRoutes', () => {
     });
 
     // AC7: the per-source branch must not fire global-only side-effect callbacks.
-    it('per-source write fires no global side-effect callback', async () => {
+    // inactiveNodeThresholdHours is EXCLUDED from that claim as of #4412 Phase 2:
+    // the service now resolves its config per source, so a scoped save legitimately
+    // fires rescheduleInactiveNodeService(sourceId) — scoped, not global.
+    it('per-source write fires no global-only side-effect callback', async () => {
       const restartCotFeedSpy = vi.fn();
-      const restartInactiveNodeSpy = vi.fn();
+      const rescheduleInactiveNodeSpy = vi.fn();
       const setKeyRepairSpy = vi.fn();
       setSettingsCallbacks({
         restartCotFeed: restartCotFeedSpy,
-        restartInactiveNodeService: restartInactiveNodeSpy,
+        rescheduleInactiveNodeService: rescheduleInactiveNodeSpy,
         setKeyRepairSettings: setKeyRepairSpy,
       });
 
@@ -994,8 +1060,9 @@ describe('settingsRoutes', () => {
         .expect(200);
 
       expect(restartCotFeedSpy).not.toHaveBeenCalled();
-      expect(restartInactiveNodeSpy).not.toHaveBeenCalled();
       expect(setKeyRepairSpy).not.toHaveBeenCalled();
+      expect(rescheduleInactiveNodeSpy).toHaveBeenCalledTimes(1);
+      expect(rescheduleInactiveNodeSpy).toHaveBeenCalledWith('mqtt-broker-1');
 
       setSettingsCallbacks({});
     });

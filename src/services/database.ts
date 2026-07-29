@@ -18,6 +18,7 @@ import {
 import { validateThemeDefinition as validateTheme } from '../utils/themeValidation.js';
 import { isSourceyResource } from '../types/permission.js';
 import { computeAveragingIntervalMinutes } from '../utils/telemetryAveraging.js';
+import { getMaxNodeAgeHours } from '../server/services/nodeDisplaySettings.js';
 // Drizzle ORM imports for dual-database support
 import { drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3';
 import * as drizzleSchema from '../db/schema/index.js';
@@ -2028,7 +2029,7 @@ class DatabaseService {
     const filterCfg = await this.getTracerouteFilterSettingsAsync(sourceId);
 
     // Get maxNodeAgeHours setting to filter only active nodes.
-    const maxNodeAgeHours = parseInt(this.getSetting('maxNodeAgeHours') || '24');
+    const maxNodeAgeHours = await getMaxNodeAgeHours(this.settings, sourceId ?? null);
 
     return selectNodeNeedingTraceroute(localNodeNum, sourceId, {
       filterCfg,
@@ -2146,7 +2147,7 @@ class DatabaseService {
 
       // Candidate base: active nodes for this source. maxNodeAgeHours bounds how
       // far back "active" reaches so we never poll long-dead nodes.
-      const maxNodeAgeHours = parseInt(this.getSetting('maxNodeAgeHours') || '24');
+      const maxNodeAgeHours = await getMaxNodeAgeHours(this.settings, sourceId ?? null);
       const sinceDays = Math.max(1, Math.ceil(maxNodeAgeHours / 24));
       let nodes = (await this.nodesRepo!.getActiveNodes(sinceDays, sourceId)) as unknown as DbNode[];
 
@@ -2208,7 +2209,7 @@ class DatabaseService {
     try {
       // Get maxNodeAgeHours setting to filter only active nodes
       // lastHeard is stored in SECONDS (Unix timestamp)
-      const maxNodeAgeHours = parseInt(this.getSetting('maxNodeAgeHours') || '24');
+      const maxNodeAgeHours = await getMaxNodeAgeHours(this.settings, sourceId ?? null);
       const activeNodeCutoffSeconds = Math.floor(Date.now() / 1000) - (maxNodeAgeHours * 60 * 60);
 
       // Get expiration hours (default 168 = 1 week)

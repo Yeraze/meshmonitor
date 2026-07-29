@@ -4,6 +4,7 @@ import { requireSourceId } from '../utils/requireSourceId.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
+import { getMaxNodeAgeHours } from '../services/nodeDisplaySettings.js';
 
 const router = Router();
 
@@ -12,8 +13,13 @@ router.get('/', requirePermission('info', 'read'), async (req: Request, res: Res
     const neighborInfoSourceId = req.query.sourceId as string | undefined;
     const neighborInfo = await databaseService.getLatestNeighborInfoPerNodeScopedAsync(neighborInfoSourceId);
 
-    const maxNodeAgeStr = await databaseService.settings.getSetting('maxNodeAge');
-    const maxNodeAgeHours = maxNodeAgeStr ? parseInt(maxNodeAgeStr, 10) : 24;
+    // `'maxNodeAge'` is not in VALID_SETTINGS_KEYS, so this always read null and
+    // silently pinned the window at the hardcoded 24h fallback regardless of the
+    // configured `maxNodeAgeHours` (#4412 Phase 2 bug 1). Now per-source.
+    const maxNodeAgeHours = await getMaxNodeAgeHours(
+      databaseService.settings,
+      neighborInfoSourceId ?? null,
+    );
     const cutoffTime = Math.floor(Date.now() / 1000) - maxNodeAgeHours * 60 * 60;
 
     const linkKeys = new Set(neighborInfo.map(ni => `${ni.nodeNum}-${ni.neighborNodeNum}`));

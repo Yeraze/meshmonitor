@@ -18,6 +18,7 @@ import { logger } from '../utils/logger.js';
 import { transportColumnForPacket } from '../utils/nodeTransport.js';
 import { getEnvironmentConfig } from './config/environment.js';
 import { notificationService } from './services/notificationService.js';
+import { getMaxNodeAgeHours } from './services/nodeDisplaySettings.js';
 import { deadDropService, nodeIdHex } from './services/deadDropService.js';
 import { serverEventNotificationService } from './services/serverEventNotificationService.js';
 import packetLogService from './services/packetLogService.js';
@@ -731,7 +732,7 @@ class MeshtasticManager implements ISourceManager {
   private localStatsInterval: NodeJS.Timeout | null = null;
   private timeOffsetSamples: number[] = [];
   private timeOffsetInterval: NodeJS.Timeout | null = null;
-  private localStatsIntervalMinutes: number = 15;  // Default 5 minutes
+  private localStatsIntervalMinutes: number = 15;  // Default 15 minutes
   private timerCronJobs: Map<string, CronJob> = new Map();
   private geofenceNodeState: Map<string, Set<number>> = new Map(); // geofenceId -> set of nodeNums currently inside
   private geofenceWhileInsideTimers: Map<string, NodeJS.Timeout> = new Map(); // geofenceId -> interval timer
@@ -3223,7 +3224,7 @@ class MeshtasticManager implements ISourceManager {
     }
 
     try {
-      const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
+      const maxNodeAgeHours = await getMaxNodeAgeHours(databaseService.settings, this.sourceId);
       const maxNodeAgeDays = maxNodeAgeHours / 24;
       // Scope to this source so systemNodeCount telemetry reflects only nodes visible
       // to this manager, not a cross-source union.

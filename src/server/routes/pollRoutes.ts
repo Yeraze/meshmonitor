@@ -27,6 +27,7 @@ import { PortNum } from '../constants/meshtastic.js';
 import { transformDbMessageToMeshMessage } from '../utils/transformDbMessage.js';
 import { resolveSourceConnectionConfig } from '../utils/resolveSourceConnectionConfig.js';
 import { getEnvironmentConfig } from '../config/environment.js';
+import { getMaxNodeAgeHours } from '../services/nodeDisplaySettings.js';
 
 const env = getEnvironmentConfig();
 const BASE_URL = env.baseUrl;
@@ -435,7 +436,7 @@ router.get('/poll', optionalAuth(), async (req, res) => {
 
       // Calculate dynamic default limit based on settings
       const tracerouteIntervalMinutes = parseInt(await databaseService.settings.getSetting('tracerouteIntervalMinutes') || '5');
-      const maxNodeAgeHours = parseInt(await databaseService.settings.getSetting('maxNodeAgeHours') || '24');
+      const maxNodeAgeHours = await getMaxNodeAgeHours(databaseService.settings, pollSourceId ?? null);
       const traceroutesPerHour = tracerouteIntervalMinutes > 0 ? 60 / tracerouteIntervalMinutes : 12;
       let limit = Math.ceil(traceroutesPerHour * maxNodeAgeHours * 1.1);
       limit = Math.max(limit, 100);
