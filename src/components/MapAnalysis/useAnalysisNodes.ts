@@ -82,10 +82,10 @@ export function useAnalysisNodes(): AnalysisNode[] {
   // several Map Analysis components, and every consumer (and every
   // consumer's tests) would have had to wrap SettingsProvider. A TanStack
   // query hook has no such requirement; this file already calls two
-  // (useDashboardSources, useDashboardUnifiedData). activeWindowConfig.ts
-  // (the non-context mirror this used to read) was deleted rather than
-  // source-keyed (D2): it had exactly one reader (here) and one writer
-  // (SettingsContext), and a keyed registry would be stale for any source
+  // (useDashboardSources, useDashboardUnifiedData). The non-context mirror
+  // module this used to read was deleted rather than made source-keyed (D2):
+  // it had exactly one reader (here) and one writer (SettingsContext), and a
+  // keyed registry would be stale for any source
   // whose provider hasn't mounted this page-load — Map Analysis is often the
   // first page loaded. D3's most-permissive rule ("never hide a node that a
   // source-scoped view would show") is the only single-value answer that
