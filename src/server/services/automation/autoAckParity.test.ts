@@ -160,7 +160,7 @@ const AUTOACK_PARITY: Record<string, ParityRow> = {
   // value rendered blank and was clobbered on first edit — see spec §9 finding 4).
   autoAckChannelZeroHopReplyEnabled: {
     perSource: true, status: 'phase3',
-    engine: ['type:action.sendMessage', 'field:isDM', 'field:viaMqtt', 'field:hops', 'op:=='],
+    engine: ['type:action.sendMessage', 'field:isDM', 'field:viaMqtt', 'field:hops', 'field:zeroHop', 'op:=='],
   },
   // 23 — same cell → action.tapback emojiMode:'hopCount'.
   autoAckChannelZeroHopTapbackEnabled: {
@@ -177,7 +177,7 @@ const AUTOACK_PARITY: Record<string, ParityRow> = {
   // with no hop info (undefined → NaN) still lands in ZeroHop, matching AutoAck.
   autoAckChannelMultiHopReplyEnabled: {
     perSource: true, status: 'phase3',
-    engine: ['type:action.sendMessage', 'field:isDM', 'field:viaMqtt', 'field:hops', 'op:=='],
+    engine: ['type:action.sendMessage', 'field:isDM', 'field:viaMqtt', 'field:hops', 'field:zeroHop', 'op:=='],
   },
   autoAckChannelMultiHopTapbackEnabled: {
     perSource: true, status: 'exists',
@@ -190,7 +190,7 @@ const AUTOACK_PARITY: Record<string, ParityRow> = {
   // 28 — cell = isDM==1 AND hops==0 AND viaMqtt==0.
   autoAckDirectZeroHopReplyEnabled: {
     perSource: true, status: 'phase3',
-    engine: ['type:action.sendMessage', 'field:isDM', 'field:viaMqtt', 'field:hops', 'op:=='],
+    engine: ['type:action.sendMessage', 'field:isDM', 'field:viaMqtt', 'field:hops', 'field:zeroHop', 'op:=='],
   },
   autoAckDirectZeroHopTapbackEnabled: {
     perSource: true, status: 'exists',
@@ -204,7 +204,7 @@ const AUTOACK_PARITY: Record<string, ParityRow> = {
   },
   autoAckDirectMultiHopReplyEnabled: {
     perSource: true, status: 'phase3',
-    engine: ['type:action.sendMessage', 'field:isDM', 'field:viaMqtt', 'field:hops', 'op:=='],
+    engine: ['type:action.sendMessage', 'field:isDM', 'field:viaMqtt', 'field:hops', 'field:zeroHop', 'op:=='],
   },
   autoAckDirectMultiHopTapbackEnabled: {
     perSource: true, status: 'exists',

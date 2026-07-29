@@ -188,6 +188,11 @@ const EVENT_NUMERIC: Record<string, FieldOpt[]> = {
     // {ZeroHop,MultiHop} matrix, where ZeroHop means hops == 0 AND NOT viaMqtt.
     { value: 'isDM', label: 'Is a direct message (1 = yes, 0 = channel)' },
     { value: 'viaMqtt', label: 'Arrived via MQTT (1 = yes, 0 = RF)' },
+    // #4340 Phase 4: derived, total (never NaN) form of the ZeroHop half of the
+    // matrix above — computed via Auto-Acknowledge's own autoAckIsZeroHop() on
+    // its own floored hop count, so a hopless packet (no hopStart) reads 1, not
+    // NaN. See triggerContext.ts buildMessageContext for the derivation.
+    { value: 'zeroHop', label: 'Direct RF, 0 hops (1 = yes; 0 = relayed or via MQTT)' },
   ],
   'trigger.telemetry': [{ value: 'value', label: 'Reading value' }, { value: 'nodeNum', label: 'Node #' }],
   'trigger.nodeUpdated': [{ value: 'nodeNum', label: 'Node #' }],

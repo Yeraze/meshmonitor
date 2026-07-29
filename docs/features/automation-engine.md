@@ -168,7 +168,7 @@ different set — this is how If / ElseIf / Else is built.
 | Condition | What it checks |
 | --- | --- |
 | **Always (no filtering)** | A pass-through that always matches — use it when a rule should act unconditionally |
-| **Number comparison** | A numeric field (`==`, `!=`, `>`, `<`, `>=`, `<=`). Fields come from the event (e.g. hop count, SNR/RSSI, **is a direct message**, **arrived via MQTT**), the hydrated **node** record (battery, hops away, role, position, age, …), or the node's **latest telemetry**. The value can be a literal or `{{ var.name }}` |
+| **Number comparison** | A numeric field (`==`, `!=`, `>`, `<`, `>=`, `<=`). Fields come from the event (e.g. hop count, SNR/RSSI, **is a direct message**, **arrived via MQTT**, **direct RF / 0 hops**), the hydrated **node** record (battery, hops away, role, position, age, …), or the node's **latest telemetry**. The value can be a literal or `{{ var.name }}` |
 | **Text comparison** | A string field (`contains`, `equals`, `starts with`, `ends with`, `matches regex`, `doesn't contain`, `is one of`, `isn't one of`) over message text, node name/role, node info completeness, etc. |
 | **Source is one of…** | The **Source filter** — restricts the workflow to a chosen subset of sources (the "global but scopeable" knob). Leave empty to allow any source |
 | **Distance from a point** | The subject node is within / farther than *N* km of a reference lat/lon |
@@ -178,21 +178,29 @@ different set — this is how If / ElseIf / Else is built.
 A missing or undefined field never throws — numeric/string comparisons against it simply evaluate
 **false**.
 
-### `isDM` / `viaMqtt` — booleans as `1`/`0`
+### `isDM` / `viaMqtt` / `zeroHop` — booleans as `1`/`0`
 
-The message trigger's **Number comparison** field picker offers **Is a direct message** (`isDM`) and
-**Arrived via MQTT** (`viaMqtt`) alongside hop count, SNR, and RSSI. Both resolve as a number —
-`1` for true, `0` for false — because a boolean value compared with `condition.numeric` is coerced
-the same way (`true → 1`, `false → 0`). Compare with `== 1` / `== 0` rather than a boolean literal:
+The message trigger's **Number comparison** field picker offers **Is a direct message** (`isDM`),
+**Arrived via MQTT** (`viaMqtt`), and **Direct RF, 0 hops** (`zeroHop`) alongside hop count, SNR,
+and RSSI. All three resolve as a number — `1` for true, `0` for false — because a boolean value
+compared with `condition.numeric` is coerced the same way (`true → 1`, `false → 0`). Compare with
+`== 1` / `== 0` rather than a boolean literal:
 
 - `isDM == 1` — the message is a direct message; `isDM == 0` — it's a channel/broadcast post.
 - `viaMqtt == 1` — it arrived over an MQTT bridge; `viaMqtt == 0` — it arrived over RF.
+- `zeroHop == 1` — it arrived direct over RF with 0 hops; `zeroHop == 0` — it was relayed (1+
+  hops) or arrived via MQTT.
 
-Together, `hops == 0` **and** `viaMqtt == 0` is "zero-hop, heard directly" — the same "ZeroHop"
-definition Auto-Acknowledge uses for its own {Channel,Direct} × {ZeroHop,MultiHop} matrix. A packet
-with no hop information at all resolves `hops` to `undefined`, so a *branch* on `hops > 0` (true/false
-ports) is the reliable way to route ZeroHop vs. MultiHop — two independent `== 0` / `> 0` conditions
-would both evaluate false for a hopless packet and match neither branch.
+`zeroHop` is a precomputed convenience for the same "zero-hop, heard directly" test — `hops == 0`
+**and** `viaMqtt == 0` — that Auto-Acknowledge uses to define "ZeroHop" for its own
+{Channel,Direct} × {ZeroHop,MultiHop} response matrix, collapsed into one field. Prefer it over
+hand-rolling the two-condition version, and especially over branching a single `hops > 0` node on
+its true/false ports: a packet with no hop information at all resolves `hops` to `undefined`, so
+both `hops == 0` and `hops > 0` evaluate **false** and neither branch of a `hops`-based split ever
+matches it, while `zeroHop` is always a clean `1` or `0`. A `hops > 0` *branch* also can't be
+reopened in the visual builder once saved — a graph containing a routed condition port round-trips
+back as raw JSON instead of populated fields — so `zeroHop` is both the more faithful and the more
+editable choice.
 
 ### `node.completeness` — three states, not a boolean
 
@@ -482,6 +490,88 @@ adding a second configuration axis to it, by moving the per-channel branching in
 Engine feature built for exactly that. Two short automations — one per channel — replace the
 would-be per-channel Auto-Acknowledge field, and the hop-count tapback carries the "how many hops
 did that take" signal for free, in its own packet, regardless of which text (if any) accompanies it.
+
+## Converting Auto-Acknowledge to an automation
+
+The legacy [Auto Acknowledge](/features/automation#auto-acknowledge) feature predates the engine and
+keeps working unchanged. A **Convert to an Automation…** button in its settings section (Info tab →
+**Auto Acknowledge**) turns an existing per-source configuration into one or two editable
+automations, so you can move to the engine without re-typing anything. The button is disabled with
+a tooltip while you have unsaved Auto Acknowledge edits — converting always uses the last **saved**
+configuration.
+
+### What the dialog shows
+
+Opening the dialog builds a preview; nothing is written until you confirm:
+
+- **One card per automation that will be created**, with its rules rendered as plain-English
+  `IF … THEN …` statements.
+- A **conversion report** in four groups — **Not convertible** (always shown, even when empty),
+  **Converted**, **Approximated**, and **Deprecated (nothing to convert)** — one entry per
+  Auto-Acknowledge setting or template token, naming exactly what it became or why it didn't
+  convert.
+- An **existing-conversion banner**, if this source was already converted before, with a **Replace
+  them** checkbox to update those automations in place instead of creating duplicates.
+- Two checkboxes: **Enable the new automation now** (pre-checked to match whether Auto
+  Acknowledge itself is currently enabled) and **Turn off Auto-Acknowledge for this source**,
+  checked by default.
+
+### Up to two automations, not always one
+
+Most configurations convert to a single automation. You get **two** — named `… (Channels)` and
+`… (Direct messages)` — only when the Channel and Direct halves of the response matrix both have at
+least one cell with **Message** or **Tapback** enabled. This isn't a style choice: an automation's
+channel filter also applies to direct messages, but Auto-Acknowledge's channel allowlist only ever
+gated **channel** replies, never DMs. Sharing one automation would silently start filtering your
+Direct replies by channel too — a behaviour change, not a faithful conversion. The dialog always
+states up front how many automations it's about to create and why.
+
+### Your Auto-Acknowledge settings are kept
+
+Checking **"Turn off Auto-Acknowledge for this source"** flips only the feature's own on/off
+switch (`autoAckEnabled`) — every other Auto-Acknowledge setting (the regex, message templates,
+channel allowlist, ignore list, cooldown, delay, …) is left exactly as configured. If the converted
+automation doesn't match what you wanted, re-enable Auto-Acknowledge and you get your original
+behavior back with nothing to reconfigure.
+
+### What doesn't convert
+
+A few settings have no automation equivalent, and are named individually in the **Not convertible**
+group rather than silently dropped:
+
+- **`autoAckTestMessages`** — a UI-only scratchpad for pasting sample text; no server code reads
+  it. Use the engine's own [Test panel](#testing-dry-run) instead.
+- **`autoAckMaxAttempts`** — this is a per-source *queue* setting
+  (`MessageQueueService.resolveDmMaxAttempts()`), not something Auto-Acknowledge itself reads. It
+  keeps governing this source's other automated DMs after conversion regardless of whether you
+  convert. If you want the same resend behavior on the converted automation, add it yourself via
+  **Send a message**'s [**DM resend attempts**](#send-a-message) field — the converter doesn't
+  infer it.
+- An **empty channel allowlist**. An empty Auto-Acknowledge allowlist means the feature never
+  acknowledged *any* channel message — not "every channel" — so the converter creates no Channel
+  automation for it rather than one that would newly answer on every channel.
+- A channel with a **blank name**, or an allowlist where every listed channel is
+  missing/disabled/blank — the report names the index, and that index (or the whole Channel
+  automation, if none resolve) is dropped rather than emitted as an unfiltered, mesh-wide trigger.
+- A handful of message template tokens with no engine equivalent (`{SHORT_NAME}`, `{RABBIT_HOPS}`,
+  `{LAST_HOP}`, `{TRANSPORT}`, `{VERSION}`, `{DURATION}`, `{FEATURES}`, `{NODECOUNT}`,
+  `{DIRECTCOUNT}`, `{IP}`, `{PORT}`) — left verbatim in the converted message text so you can see
+  and fix them.
+
+Some conversions are **approximated** rather than exact, and are called out as such in the report:
+`{HOPS}`/`{NUMBER_HOPS}` becomes `{{ trigger.hops }}`, which — unlike Auto-Acknowledge's own hop
+count — is unfloored, so a hopless packet renders blank instead of `0`; `{SNR}`/`{RSSI}` render
+blank instead of Auto-Acknowledge's literal `N/A` when unavailable; `{DATE}`/`{TIME}` become
+`{{ NOW }}`, which is *send* time in a fixed format rather than *receive* time in your preferred
+format; and a pre-send delay becomes one blocking `action.delay` before the first send, rather than
+Auto-Acknowledge's own non-blocking timer applied independently to the tapback and the reply.
+
+One further gap isn't itemized in the report because it isn't tied to any one setting: Auto
+Acknowledge itself selects the *Direct* vs. standard reply template on the raw "0 hops travelled"
+value, not on the same `viaMqtt`-aware ZeroHop test its own toggles use — so an MQTT-relayed,
+0-hop message can be routed to the *MultiHop* cell for enable/disable purposes while still getting
+the *Direct* message's wording. The converter reproduces this quirk faithfully (it also keys the
+message-text choice off `zeroHop`), rather than "fixing" it into a behavior change.
 
 ## Variables
 

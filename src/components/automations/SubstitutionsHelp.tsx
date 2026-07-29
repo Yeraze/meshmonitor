@@ -30,6 +30,7 @@ export const TRIGGER_TOKENS: Record<string, Array<[string, string]>> = {
     ['isBroadcast', 'true if broadcast (alias of isChannel)'],
     ['wantAck', 'Sender requested an ack'], ['replyId', 'Replied-to packet id'],
     ['emoji', 'Tapback/reaction emoji flag'], ['viaMqtt', 'true if it arrived via MQTT'],
+    ['zeroHop', '1 when the message arrived over RF with 0 hops; 0 when relayed or received via MQTT'],
     ['decryptedBy', 'Channel/key that decrypted it'], ['protocol', 'meshtastic or meshcore'],
     ['scopeName', 'Region/scope name (MeshCore)'],
     ['scopeCode', 'Region/scope code — 0 = unscoped (MeshCore)'], ['scoped', 'true if sent with a region (MeshCore)'],

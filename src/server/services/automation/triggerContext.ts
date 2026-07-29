@@ -11,6 +11,7 @@ import type { MeshCoreMessage } from '../../meshcoreManager.js';
 import type { TriggerType } from '../../../types/automation.js';
 import { compileUserRegex } from '../../../utils/safeRegex.js';
 import { hopCountEmoji } from '../../../utils/hopEmoji.js';
+import { autoAckIsZeroHop } from '../../utils/autoAckDecision.js';
 
 /** Meshtastic broadcast address (0xFFFFFFFF); also defined inline in the manager. */
 export const BROADCAST_ADDR = 0xffffffff;
@@ -111,6 +112,12 @@ export function buildMessageContext(
     hopEmoji: hopCountEmoji(hops),
     hopStart: msg.hopStart,
     hopLimit: msg.hopLimit,
+    // #4340 Phase 4. AutoAck floors a missing/malformed hop count to 0 and treats it
+    // as ZeroHop (meshtasticManager.ts:10170-10178). `hops` above deliberately keeps
+    // deriveHops' raw value (undefined / possibly negative) — see the Phase 1 note.
+    // `zeroHop` is the AutoAck-faithful, TOTAL 1/0 form: it is never NaN, so a rule
+    // can branch on it inside a flat AND-chain instead of needing condition ports.
+    zeroHop: autoAckIsZeroHop(typeof hops === 'number' && hops > 0 ? hops : 0, msg.viaMqtt) ? 1 : 0,
     isDM,
     isChannel: isBroadcast,
     isBroadcast,
@@ -195,6 +202,9 @@ export function buildMeshCoreMessageContext(
     // #4340: same shared table as the Meshtastic context; MeshCore has no
     // tapback concept, but the token is usable in action.sendMessage bodies.
     hopEmoji: hopCountEmoji(hops),
+    // #4340 Phase 4: same derivation as buildMessageContext. MeshCore messages
+    // carry no viaMqtt concept — `undefined` reads as not-MQTT, never NaN.
+    zeroHop: autoAckIsZeroHop(typeof hops === 'number' && hops > 0 ? hops : 0, undefined) ? 1 : 0,
     snr: msg.snr,
     rssi: msg.rssi,
     // MeshCore scope/region (#3833). `scopeCode` 0 = explicitly unscoped, null/

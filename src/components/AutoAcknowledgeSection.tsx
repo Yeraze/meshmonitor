@@ -15,6 +15,7 @@ import {
 } from '../utils/autoAckMatrix';
 import { hasRE2IncompatibleConstructs } from '../utils/autoAckRegex';
 import { UiIcon } from './icons';
+import AutoAckConvertDialog from './autoack/AutoAckConvertDialog';
 
 interface AutoAcknowledgeSectionProps {
   enabled: boolean;
@@ -95,6 +96,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [testMessages, setTestMessages] = useState(testMessagesProp || 'test\nTest message\nping\nPING\nHello world\nTESTING 123');
+  const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const textareaDirectRef = useRef<HTMLTextAreaElement>(null);
 
@@ -328,6 +330,7 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
       <div className="automation-section-header" style={{
         display: 'flex',
         alignItems: 'center',
+        justifyContent: 'space-between',
         marginBottom: '1.5rem',
         padding: '1rem 1.25rem',
         background: 'var(--ctp-surface1)',
@@ -357,7 +360,40 @@ const AutoAcknowledgeSection: React.FC<AutoAcknowledgeSectionProps> = ({
             <UiIcon name="help" />
           </a>
         </h2>
+        {/* #4340 Phase 4 WP4 — one-way door into the Automation Engine. Disabled while
+            there are unsaved edits: converting now would convert the *saved* config,
+            not what's on screen, and silently discard the user's in-progress changes. */}
+        <button
+          type="button"
+          onClick={() => setIsConvertDialogOpen(true)}
+          disabled={hasChanges}
+          title={hasChanges ? 'Save your changes first — converting now would use the last saved configuration, not your unsaved edits.' : undefined}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            padding: '0.4rem 0.85rem',
+            borderRadius: '6px',
+            background: 'var(--ctp-surface2)',
+            color: hasChanges ? 'var(--ctp-subtext0)' : 'var(--ctp-text)',
+            border: '1px solid var(--ctp-surface2)',
+            cursor: hasChanges ? 'not-allowed' : 'pointer',
+            opacity: hasChanges ? 0.6 : 1,
+            fontSize: '0.85rem',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          <UiIcon name="bot" size={16} />
+          Convert to an Automation…
+        </button>
       </div>
+
+      <AutoAckConvertDialog
+        isOpen={isConvertDialogOpen}
+        onClose={() => setIsConvertDialogOpen(false)}
+        baseUrl={baseUrl}
+        onEnabledChange={onEnabledChange}
+      />
 
       <div className="settings-section" style={{ opacity: localEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: '1.5', marginLeft: '1.75rem' }}>

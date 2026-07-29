@@ -130,6 +130,20 @@ When enabled, auto-ack responses are sent as direct messages (DMs) to the sender
 
 **Related**: See [Hide Incomplete Nodes](/features/settings#hide-incomplete-nodes) for UI filtering.
 
+### Converting to an Automation
+
+A **Convert to an Automation…** button in this section turns your current Auto Acknowledge
+configuration into one or two editable [Automation Engine](/features/automation-engine) workflows —
+useful if you want per-channel wording (see the engine doc's [range-test ack
+recipe](/features/automation-engine#recipe-per-channel-range-test-acks-issue-4340)), a hop-count
+tapback with independent text, or any other condition/action the engine offers but Auto Acknowledge
+doesn't. The dialog previews exactly what will be created and reports what did, didn't, or only
+approximately converted before anything is written; a checked-by-default option turns off Auto
+Acknowledge for this source afterward without touching any of its other settings. See [Converting
+Auto-Acknowledge to an
+automation](/features/automation-engine#converting-auto-acknowledge-to-an-automation) for the full
+walkthrough.
+
 ### Side Effects
 
 - Generates additional mesh traffic for each matched message
