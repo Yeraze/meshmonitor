@@ -190,4 +190,49 @@ describe('POST /api/settings — per-source permission scoping (#4412 WP2 §6.3)
       expect(rescheduleSpy).not.toHaveBeenCalledWith(null);
     });
   });
+
+  // 8. #4412 Phase 3 WP1 (D5): GET /api/settings?sourceId= must NOT back-fill
+  // the ten Node Display keys from the global row. `harness.sourceA` /
+  // `sourceB` are freshly created per-test (deleteSource + createSource, see
+  // routeTestApp.ts) — they never go through migration 131's seed, so they
+  // are exactly the "source created after migration 131" case D5 protects.
+  describe('GET /api/settings — Node Display global back-fill exclusion (#4412 Phase 3 WP1 D5)', () => {
+    afterEach(async () => {
+      await harness.db.settings.deleteSetting('distanceUnit').catch(() => {});
+    });
+
+    it('a source with no seeded Node Display rows omits those keys instead of inheriting the global value', async () => {
+      await harness.db.settings.setSetting('maxNodeAgeHours', '99');
+      await harness.db.settings.setSetting('distanceUnit', 'imperial');
+      const agent = await harness.loginAs(harness.admin);
+
+      const res = await agent.get(`/api/settings?sourceId=${harness.sourceA}`);
+
+      expect(res.status).toBe(200);
+      // Node Display key: absent, not back-filled from the global '99'.
+      expect(Object.prototype.hasOwnProperty.call(res.body, 'maxNodeAgeHours')).toBe(false);
+      // Non-Node-Display global key: still back-filled as before.
+      expect(res.body.distanceUnit).toBe('imperial');
+    });
+
+    it('once a per-source Node Display row exists, it wins over the global row', async () => {
+      await harness.db.settings.setSetting('maxNodeAgeHours', '99');
+      const agent = await harness.loginAs(harness.admin);
+
+      await agent.post(`/api/settings?sourceId=${harness.sourceA}`).send({ maxNodeAgeHours: '48' }).expect(200);
+
+      const res = await agent.get(`/api/settings?sourceId=${harness.sourceA}`);
+      expect(res.status).toBe(200);
+      expect(res.body.maxNodeAgeHours).toBe('48');
+    });
+
+    it('the unscoped GET is unaffected and still returns the global Node Display value', async () => {
+      await harness.db.settings.setSetting('maxNodeAgeHours', '99');
+      const agent = await harness.loginAs(harness.admin);
+
+      const res = await agent.get('/api/settings');
+      expect(res.status).toBe(200);
+      expect(res.body.maxNodeAgeHours).toBe('99');
+    });
+  });
 });

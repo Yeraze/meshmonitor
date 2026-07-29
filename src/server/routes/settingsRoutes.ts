@@ -24,7 +24,7 @@ import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
 import { positionEstimationScheduler } from '../services/positionEstimationScheduler.js';
 import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
-import { NODE_DISPLAY_RANGES } from '../../constants/nodeDisplayDefaults.js';
+import { NODE_DISPLAY_RANGES, NODE_DISPLAY_SETTING_KEYS } from '../../constants/nodeDisplayDefaults.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
 
@@ -234,10 +234,20 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
     const globalSettings = await databaseService.settings.getAllSettings();
 
     if (sourceId) {
-      // Strip source: prefixed keys from global (they are internal implementation detail)
+      // Strip source: prefixed keys from global (they are internal implementation detail).
+      //
+      // #4412 Phase 3 (D5): the ten Node Display keys have no runtime global
+      // fallback on the read path (getSettingForSource lost it in #2839/#2840), so
+      // back-filling them here would show a value the backend will never use — a
+      // source created after migration 131 has no seeded per-source row, and would
+      // otherwise display the legacy global value while behaving as the hardcoded
+      // default. Exclude them from the global back-fill; they end up present only
+      // when the per-source row exists.
       const cleaned: Record<string, string> = {};
       for (const [k, v] of Object.entries(globalSettings)) {
-        if (!k.startsWith('source:')) cleaned[k] = v;
+        if (k.startsWith('source:')) continue;
+        if ((NODE_DISPLAY_SETTING_KEYS as readonly string[]).includes(k)) continue;
+        cleaned[k] = v;
       }
       const sourceSettings = await databaseService.settings.getSourceSettings(sourceId);
       const merged = { ...cleaned, ...sourceSettings };
