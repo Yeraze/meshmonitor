@@ -140,6 +140,12 @@ class InactiveNodeNotificationService {
     try {
       const managers = sourceManagerRegistry.getAllManagers();
 
+      // Prune from the SAME `managers` slice that `due` is derived from below,
+      // so the two can't disagree. A source deregistered after this snapshot
+      // still gets one final pass this tick and is pruned on the next one —
+      // deregistration and this tick share the JS event loop, so there is no
+      // true race, only this ordering dependency. Do not re-read the registry
+      // between here and the `due` filter.
       const activeIds = new Set(managers.map((m) => m.sourceId));
       for (const id of this.nextRunAt.keys()) {
         if (!activeIds.has(id)) this.nextRunAt.delete(id);
