@@ -14,6 +14,7 @@ import { type TriggerContext, resolveTriggerPath, subjectKeyOf } from './trigger
 import type { VariableResolver, VarContext } from './variableResolver.js';
 import { interpolate, extractPaths, type InterpolationValue } from './interpolate.js';
 import type { CooldownScope } from '../../../types/automation.js';
+import { isNodeComplete } from '../../../utils/nodeHelpers.js';
 
 /** Subset of a node record used for condition fields. */
 export interface NodeFacts {
@@ -84,6 +85,25 @@ export const ROLE_NAMES = [
   'CLIENT', 'CLIENT_MUTE', 'ROUTER', 'ROUTER_CLIENT', 'REPEATER', 'TRACKER',
   'SENSOR', 'TAK', 'CLIENT_HIDDEN', 'LOST_AND_FOUND', 'TAK_TRACKER', 'ROUTER_LATE',
 ];
+
+/**
+ * The three states of `node.completeness` (#4340 Phase 3).
+ *
+ *  - 'complete'    the subject node's row exists and isNodeComplete() passes
+ *                  (real longName, a shortName, and an hwModel from NODEINFO).
+ *  - 'incomplete'  the row exists but NODEINFO has not arrived.
+ *  - 'unknown'     there is NO row for the subject, or the event has no subject
+ *                  node at all (Schedule / System / MeshCore).
+ *
+ * The third state is the point. Auto-Acknowledge skips a sender only when the
+ * row EXISTS and is incomplete (`if (fromNode && !isNodeComplete(fromNode))`,
+ * meshtasticManager.ts:10084) — an unknown sender is NOT skipped. A boolean
+ * field cannot express that: a missing row and an incomplete row both resolve
+ * to a falsy/undefined value. So the AutoAck rule is
+ * `node.completeness in (complete, unknown)`.
+ */
+export const NODE_COMPLETENESS = ['complete', 'incomplete', 'unknown'] as const;
+export type NodeCompleteness = (typeof NODE_COMPLETENESS)[number];
 
 export function varContextFromTrigger(trigger: TriggerContext): VarContext {
   return { sourceId: trigger.sourceId, nodeNum: trigger.subjectNodeNum };
@@ -210,8 +230,13 @@ export async function resolveFieldValue(ctx: EngineEvalContext, field: string): 
 
   if (field.startsWith('node.')) {
     const node = await getSubjectNode(ctx);
-    if (!node) return undefined;
     const prop = field.slice('node.'.length);
+    // #4340 Phase 3: resolved BEFORE the `!node` guard below, because "there is no
+    // node row" is a meaningful VALUE here ('unknown'), not a missing field.
+    if (prop === 'completeness') {
+      return node ? (isNodeComplete(node) ? 'complete' : 'incomplete') : 'unknown';
+    }
+    if (!node) return undefined;
     if (prop === 'ageMinutes') {
       if (node.lastHeard == null) return undefined;
       const lastMs = node.lastHeard > 1e12 ? node.lastHeard : node.lastHeard * 1000; // tolerate s or ms

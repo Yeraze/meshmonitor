@@ -104,7 +104,7 @@ key `lastFired` by the composite; make the trace message name the node.
 - Absent `cooldownScope` behaves exactly as today (`automation`).
 - Trace output distinguishes which key was cooling down.
 
-### Phase 3 — Fidelity conditions — [ ] not started
+### Phase 3 — Fidelity conditions — [x] complete
 
 `condition.nodeComplete`, a node-in-list condition covering ignore lists, and a
 `maxAttempts` param on the send/tapback actions.
@@ -269,3 +269,130 @@ _(updated at each phase close)_
   deleting an entry there is *not* behaviour-neutral, since it resets the enter/exit dwell baseline
   for that node, so it needs its own design decision rather than a copy-paste of `pruneCooldownKeys`.
   Both need a follow-up issue; neither has one yet as of this close.
+
+### Phase 3 close (2026-07-28)
+
+**The parity mapping table** (pasted verbatim from
+`docs/internal/dev-notes/AUTOACK_PARITY_PHASE3_SPEC.md` §2 — the phase's exit criterion. It is
+mechanically enforced by `src/server/services/automation/autoAckParity.test.ts`, which fails if a
+row here is removed while its key is still in `VALID_SETTINGS_KEYS`, or if a new `autoAck*` key is
+added without a corresponding row):
+
+Every key in `VALID_SETTINGS_KEYS` beginning `autoAck` — 33 of them (`src/server/constants/settings.ts:20-60`). "Per-source?" is membership in `PER_SOURCE_SETTINGS_KEYS` (`:338-370`).
+
+| # | Setting | Per-source? | Engine equivalent | Status |
+|---|---|---|---|---|
+| 1 | `autoAckEnabled` | yes | The automation's own `enabled` column + `condition.sourceFilter` bound to that source | **exists** |
+| 2 | `autoAckRegex` | yes | `trigger.message` param `regex` | **exists** ¹ |
+| 3 | `autoAckMessage` | yes | `action.sendMessage` param `text` | **exists** ² |
+| 4 | `autoAckMessageDirect` | yes | A second `action.sendMessage` on the ZeroHop branch | **exists** ² |
+| 5 | `autoAckChannels` | yes | `trigger.message` param `channels` (unified, by name) | **exists** ³ |
+| 6 | `autoAckDirectMessages` | yes | — *(deprecated; migration 093 folds it into the Direct\* cells)* | **n/a — deprecated** |
+| 7 | `autoAckUseDM` | yes | — *(deprecated; folded into the `*ReplyDmEnabled` cells)* | **n/a — deprecated** |
+| 8 | `autoAckSkipIncompleteNodes` | yes | `condition.string` · field `node.completeness` · op `in` · value `complete, unknown` | **Phase 3 adds** (field + operators) ⁴ |
+| 9 | `autoAckIgnoredNodes` | yes | `condition.string` · field `fromId` · op `notIn` · value = the list verbatim | **Phase 3 adds** (operators) ⁵ |
+| 10 | `autoAckTapbackEnabled` | **no** (global-only) | — *(deprecated)* | **n/a — deprecated** |
+| 11 | `autoAckReplyEnabled` | **no** (global-only) | — *(deprecated)* | **n/a — deprecated** |
+| 12 | `autoAckDirectEnabled` | yes | — *(deprecated)* | **n/a — deprecated** |
+| 13 | `autoAckDirectTapbackEnabled` | yes | — *(deprecated)* | **n/a — deprecated** |
+| 14 | `autoAckDirectReplyEnabled` | yes | — *(deprecated)* | **n/a — deprecated** |
+| 15 | `autoAckMultihopEnabled` | yes | — *(deprecated)* | **n/a — deprecated** |
+| 16 | `autoAckMultihopTapbackEnabled` | yes | — *(deprecated)* | **n/a — deprecated** |
+| 17 | `autoAckMultihopReplyEnabled` | yes | — *(deprecated)* | **n/a — deprecated** |
+| 18 | `autoAckTestMessages` | **no** (global) | **Not convertible, and does not need to be.** No server code reads it — it is a UI scratchpad on `AutoAcknowledgeSection.tsx` for pasting sample text. Its engine analogue is the Test panel (`AutomationTester.tsx`), a mechanism, not a setting. | **not convertible (by design)** |
+| 19 | `autoAckCooldownSeconds` | yes | `trigger.message` `cooldownSeconds` + `cooldownScope: 'node'` | **exists** (Phase 2) ⁶ |
+| 20 | `autoAckPreSendDelaySeconds` | yes | `action.delay` before the first send in the chain | **exists** ⁷ |
+| 21 | `autoAckMaxAttempts` | yes | `action.sendMessage` param `maxAttempts` | **Phase 3 adds** ⁸ |
+| 22 | `autoAckChannelZeroHopReplyEnabled` | yes | Cell rule emits `action.sendMessage`; cell = `isDM == 0` ∧ `hops == 0` ∧ `viaMqtt == 0` | **exists + Phase 3 adds `isDM`/`viaMqtt` to the picker** ⁹ |
+| 23 | `autoAckChannelZeroHopTapbackEnabled` | yes | Same cell → `action.tapback` `emojiMode: 'hopCount'` | **exists** (Phase 1) |
+| 24 | `autoAckChannelZeroHopReplyDmEnabled` | yes | That cell's `action.sendMessage` gets `to: {{ trigger.from }}` | **exists** |
+| 25 | `autoAckChannelMultiHopReplyEnabled` | yes | Cell = `isDM == 0` ∧ ¬(`hops == 0` ∧ `viaMqtt == 0`) → `action.sendMessage` | **exists + picker** ⁹ |
+| 26 | `autoAckChannelMultiHopTapbackEnabled` | yes | Same cell → `action.tapback` `emojiMode: 'hopCount'` | **exists** |
+| 27 | `autoAckChannelMultiHopReplyDmEnabled` | yes | `to: {{ trigger.from }}` on that cell's send | **exists** |
+| 28 | `autoAckDirectZeroHopReplyEnabled` | yes | Cell = `isDM == 1` ∧ `hops == 0` ∧ `viaMqtt == 0` → `action.sendMessage` | **exists + picker** ⁹ |
+| 29 | `autoAckDirectZeroHopTapbackEnabled` | yes | Same cell → `action.tapback` `emojiMode: 'hopCount'` | **exists** |
+| 30 | `autoAckDirectZeroHopReplyDmEnabled` | yes | No-op for Direct cells (a DM reply is inherently a DM); converter emits `to: {{ trigger.from }}` regardless | **exists** |
+| 31 | `autoAckDirectMultiHopReplyEnabled` | yes | Cell = `isDM == 1` ∧ ¬ZeroHop → `action.sendMessage` | **exists + picker** ⁹ |
+| 32 | `autoAckDirectMultiHopTapbackEnabled` | yes | Same cell → `action.tapback` `emojiMode: 'hopCount'` | **exists** |
+| 33 | `autoAckDirectMultiHopReplyDmEnabled` | yes | No-op for Direct cells | **exists** |
+
+**Notes (each is a Phase 4 converter obligation, not a Phase 3 gap):**
+
+1. AutoAck defaults to `^(test|ping)` when the setting is blank (`meshtasticManager.ts:10102`); the engine's blank `regex` means **match anything**. The converter must emit the literal default.
+2. Token dialects differ: AutoAck uses `{NUMBER_HOPS}`/`{TIME}`/`{NODE_NAME}`; the engine uses `{{ trigger.hops }}`/`{{ NOW }}`/`{{ trigger.fromName }}`. Translation is Phase 4 work. `{{ trigger.hopEmoji }}` (Phase 1) has no AutoAck equivalent — a superset, not a gap.
+3. AutoAck stores channel **indices**; `trigger.message.channels` is unified **by name**. The converter resolves index→name per source. A source with two same-named channels is a converter edge case, not an engine one.
+4. Tri-state is required for fidelity: AutoAck skips only when the node row **exists and is incomplete** (`if (fromNode && !isNodeComplete(fromNode))`, `:10084`). `complete, unknown` reproduces that exactly. See spec §9.1.
+5. `in`/`notIn` split on `/[\s,]+/` and compare case-insensitively — the same separators and casing as AutoAck's own parser (`:10040-10043`). The converter normalises each entry to canonical `!xxxxxxxx` (AutoAck accepts a bare 8-hex token; `trigger.fromId` always carries the `!`). An **empty** value makes `notIn` always true, matching an unset ignore list — but the converter should simply omit the condition.
+6. AutoAck's default is **60s** when unset (`:10092`); the engine's is **0**. The converter must emit `60` explicitly. `cooldownScope: 'node'` is mandatory — AutoAck's map is keyed by `fromNum` (`:10094`).
+7. Two semantic differences: AutoAck's delay is a non-blocking `setTimeout` (`:10172-10178`) while `action.delay` blocks its own run and caps at `AUTOMATION_DELAY_MAX_SECONDS = 300`; and AutoAck applies the same delay independently to the tapback and the reply, so a converted linear chain needs the `action.delay` once, before the first send.
+8. **Read this row carefully.** `checkAutoAcknowledge` never reads `autoAckMaxAttempts`. `MessageQueueService.resolveDmMaxAttempts()` reads it per-source and applies it to **every queued DM** on that source (auto-responder, welcome, mailbox, auto-ack reply). It therefore affects the AutoAck **reply, and only when that reply is a DM**: the AutoAck **tapback** hardcodes `1` ("tapbacks are best-effort, don't retry", `:10207`) and **channel** sends hardcode `1` (`messageQueueService.ts:112`). Consequently `maxAttempts` goes on `action.sendMessage` **only** — see spec §9.2. The setting also keeps governing the source's other queued DMs after conversion, so disabling AutoAck does not retire it.
+9. `isDM` and `viaMqtt` already resolve at runtime (`triggerContext.ts:113,120` + `asNumber()` boolean coercion) but were **not** offered by the builder's field picker, and `fieldselect` is a plain `<select>` (`AutomationBuilder.tsx:89-99`) — a converter-written value would render blank and be overwritten on the first edit. Phase 3 adds both options so a converted automation is **editable**, not merely runnable. `viaMqtt` is load-bearing: `isZeroHop = hopsTraveled === 0 && !viaMqtt` (`AUTOACK_2X2_PLAN.md`, `:10141`).
+
+**Adjacent behaviour not in the table** (not `autoAck*` keys, recorded so Phase 4 does not rediscover them): the per-packet dedup guard (`:9967-9978`) has no engine analogue and needs none; the TX-disabled skip (`:10001`) is already mirrored by `pushOrSkipTxDisabled`; the airtime cutoff (`isAutomationAirtimeGated`, `automationAirtimeCutoff*`) is shared infrastructure both paths already honour; the local-node skip (`:10065-10070`) is already covered by the engine's self-drop (`getLocalNodeNum`, #3914). **MeshCore auto-ack is a separate `meshcoreAutoAck*` namespace** (`meshcoreManager.ts:6873-6925`) and is out of scope for this table.
+
+**Decisions and findings recorded at close (spec §7 WP5 / §9):**
+
+- **No new `ConditionType`, no new node-in-list block.** The two "new conditions" the epic
+  originally named (`condition.nodeComplete`, a node-in-list condition) shipped instead as a
+  computed `node.completeness` field on the existing `node.*` mechanism, plus generic `in`/`notIn`
+  operators on `condition.string`. The tri-state argument is decisive, not just a reuse call: AutoAck
+  skips a sender only when its node row **exists and is incomplete**
+  (`if (fromNode && !isNodeComplete(fromNode))`, `meshtasticManager.ts:10084`), so a faithful
+  conversion needs three states — a boolean field collapses "row missing" and "row incomplete" into
+  the same falsy value, and `condition.numeric`'s `NaN` handling would make *both* `== 1` and `== 0`
+  read false for an unknown sender, so neither "complete" nor "not complete" could be expressed for
+  it. `node.completeness in (complete, unknown)` is the correct, and only, faithful expression.
+- **`in`/`notIn` is deliberately generic, not a node-list-only block.** A single-purpose
+  `condition.nodeInList` would cover only the ignore-list case; the generic string operator covers it
+  *and* every other string field (node names, `roleName`, `channelName`, `telemetryType`, system
+  `event`) for the same implementation cost — a `default:` branch inside the existing `stringCompare`
+  switch, no new `ConditionType`.
+- **`autoAckMaxAttempts` is a queue setting, not an Auto-Ack setting — the load-bearing discovery of
+  this phase.** `checkAutoAcknowledge` never reads it. It is
+  `MessageQueueService.resolveDmMaxAttempts()`, applied to **every** queued DM on the source
+  (auto-responder, welcome, mailbox, and the AutoAck reply — but only when that reply is a DM;
+  AutoAck's own tapback and channel sends both hardcode `1` attempt). This means `maxAttempts` on
+  `action.sendMessage` was **not required for converter fidelity** — Phase 3 could have shipped
+  without it and row 21 would simply read *not convertible — it is a per-source queue setting that
+  survives conversion and keeps governing the source's other automated DMs*. The user was shown that
+  trade-off explicitly and chose to ship `maxAttempts` anyway, as a capability in its own right, not
+  a parity gap-filler.
+- **`ActionDeps.sendMessage` grew an optional field, and `automationSimulator.ts` needed no edit.**
+  Wiring `maxAttempts` through to `MessageQueueService.enqueue()` required
+  `ActionDeps.sendMessage`'s argument object to gain an optional `maxAttempts` key
+  (`actionExecutor.ts`) and a new duck-typed `messageQueue` capability check in `meshActionDeps.ts`.
+  The dry-run simulator did **not** need a matching code change: `recordingDeps().sendMessage`
+  already spreads its whole argument object (`{ action: 'sendMessage', ...a }`), so the new field
+  reaches the Test panel automatically — pinned by a drift-guard test in
+  `automationSimulator.test.ts` so a future refactor of `recordingDeps` can't silently drop it.
+- **The `isDM`/`viaMqtt` picker gap was real, not hypothetical.** Both fields already resolved at
+  runtime (`triggerContext.ts`, `asNumber()`'s boolean coercion), but were absent from the builder's
+  field picker. Because `fieldselect` renders a plain `<select>`
+  (`AutomationBuilder.tsx:89-99`), a converter-written `condition.numeric` on `isDM` would have shown
+  **blank** in the builder and been **silently overwritten the moment a user opened it to look** —
+  breaking a converted automation on first touch, not on save. Phase 3 adds both options purely as
+  catalog entries (zero engine change) so a converted automation is editable, not just runnable.
+- **The queued-send path is a documented behavioral divergence, not a bug.** When `maxAttempts` is
+  set, the send becomes fire-and-forget through the source's outgoing queue: it returns a queue id
+  rather than a packet id, and a TX-disabled source doesn't produce `pushOrSkipTxDisabled`'s
+  `{skipped, reason:'TX_DISABLED'}` run-log entry — instead the queue's own `onFailure` handler logs
+  a warning some time later. This exactly mirrors how Auto-Acknowledge's own reply already behaves,
+  which is the parity being bought, but it means a TX-disabled source now records the action as
+  *queued* rather than *skipped*. Documented in `docs/features/automation-engine.md` under
+  **Send a message** so an operator isn't surprised by the run log.
+- **Four Phase 4 converter obligations, carried forward from spec §2's footnotes:**
+  1. **Regex default** — AutoAck's blank `autoAckRegex` means `^(test|ping)`
+     (`meshtasticManager.ts:10102`); the engine's blank `regex` means match-anything. The converter
+     must emit the literal default rather than an empty string.
+  2. **Cooldown default** — AutoAck's unset cooldown is **60s** (`:10092`); the engine's unset
+     cooldown is **0** (no throttle). The converter must emit `60` explicitly, with
+     `cooldownScope: 'node'` (AutoAck's map is keyed by `fromNum`).
+  3. **Channel index → name** — AutoAck stores channel **indices**; `trigger.message.channels` is
+     unified **by name** across sources. The converter must resolve index→name per source at
+     conversion time; two same-named channels on one source is a converter edge case to handle
+     explicitly.
+  4. **`hops > 0` as a branch, not two independent conditions** — a packet with no
+     `hopStart`/`hopLimit` yields `hops === undefined` → `NaN`, so `== 0` and `> 0` are **both**
+     false; AutoAck instead floors it to `0` and treats it as ZeroHop. The converter must route
+     ZeroHop/MultiHop off a single `condition.numeric hops > 0` node's true/false ports, not two
+     separate `== 0` / `> 0` conditions, or a hopless packet matches neither branch.

@@ -3,6 +3,9 @@ import {
   validateAutomationGraph,
   categoryOf,
   parseCooldownScope,
+  parseSendMaxAttempts,
+  SEND_MAX_ATTEMPTS_MIN,
+  SEND_MAX_ATTEMPTS_MAX,
   AUTOMATION_CONFIG_VERSION,
   type AutomationGraph,
 } from './automation.js';
@@ -160,6 +163,36 @@ describe('validateAutomationGraph', () => {
     expect(bad.errors.join(' ')).toMatch(/trigger\.telemetry .* requires params\.cooldownScope ∈ \{automation,node,sourceNode\}/);
   });
 
+  // ── action.sendMessage maxAttempts (#4340 Phase 3) ──────────────────────
+  it('action.sendMessage: maxAttempts validates when present, and absence still validates', () => {
+    const withSendMessage = (params: Record<string, unknown>): AutomationGraph => ({
+      version: 1,
+      nodes: [
+        { id: 't', type: 'trigger.message', params: {} },
+        { id: 'a', type: 'action.sendMessage', params },
+      ],
+      edges: [{ from: 't', to: 'a' }],
+    });
+    // absent → valid (pre-Phase-3 stored automations, and any automation that
+    // never sets maxAttempts, keep validating byte-identically to today)
+    expect(validateAutomationGraph(withSendMessage({ text: 'pong' })).valid).toBe(true);
+    // a graph with only `text` still validates — the new case must not require
+    // anything (regression per §6).
+    expect(validateAutomationGraph(withSendMessage({})).valid).toBe(true);
+    // blank string → valid (treated as absent)
+    expect(validateAutomationGraph(withSendMessage({ text: 'pong', maxAttempts: '' })).valid).toBe(true);
+    // in-range values → valid
+    expect(validateAutomationGraph(withSendMessage({ text: 'pong', maxAttempts: 1 })).valid).toBe(true);
+    expect(validateAutomationGraph(withSendMessage({ text: 'pong', maxAttempts: 2 })).valid).toBe(true);
+    expect(validateAutomationGraph(withSendMessage({ text: 'pong', maxAttempts: 3 })).valid).toBe(true);
+    // out-of-range / non-integer / non-numeric → error, with the ∈ [1, 3] message
+    for (const bad of [0, 4, 'x', 2.5]) {
+      const r = validateAutomationGraph(withSendMessage({ text: 'pong', maxAttempts: bad }));
+      expect(r.valid).toBe(false);
+      expect(r.errors.join(' ')).toMatch(/requires params\.maxAttempts ∈ \[1, 3\]/);
+    }
+  });
+
   it('rejects non-object config', () => {
     expect(validateAutomationGraph(null).valid).toBe(false);
     expect(validateAutomationGraph(42).errors[0]).toMatch(/must be an object/);
@@ -302,5 +335,35 @@ describe('parseCooldownScope', () => {
     expect(parseCooldownScope('')).toBe('automation');
     expect(parseCooldownScope('bogus')).toBe('automation');
     expect(parseCooldownScope(0)).toBe('automation');
+  });
+});
+
+describe('parseSendMaxAttempts', () => {
+  it('bounds are 1 and 3 (#4340 Phase 3)', () => {
+    expect(SEND_MAX_ATTEMPTS_MIN).toBe(1);
+    expect(SEND_MAX_ATTEMPTS_MAX).toBe(3);
+  });
+
+  it('round-trips each in-range integer value', () => {
+    expect(parseSendMaxAttempts(1)).toBe(1);
+    expect(parseSendMaxAttempts(2)).toBe(2);
+    expect(parseSendMaxAttempts(3)).toBe(3);
+  });
+
+  it('coerces a numeric string', () => {
+    expect(parseSendMaxAttempts('2')).toBe(2);
+  });
+
+  it('returns undefined for absent/blank/unparseable values', () => {
+    expect(parseSendMaxAttempts(undefined)).toBeUndefined();
+    expect(parseSendMaxAttempts(null)).toBeUndefined();
+    expect(parseSendMaxAttempts('')).toBeUndefined();
+    expect(parseSendMaxAttempts('x')).toBeUndefined();
+    expect(parseSendMaxAttempts(1.5)).toBeUndefined();
+  });
+
+  it('clamps out-of-range values instead of rejecting them (lenient at runtime)', () => {
+    expect(parseSendMaxAttempts(0)).toBe(1);
+    expect(parseSendMaxAttempts(9)).toBe(3);
   });
 });

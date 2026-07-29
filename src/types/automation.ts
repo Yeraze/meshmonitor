@@ -151,6 +151,33 @@ export function parseCooldownScope(raw: unknown): CooldownScope {
 }
 
 /**
+ * App-level DM resend cap for `action.sendMessage` (#4340 Phase 3).
+ *
+ * Mirrors MessageQueueService's own bound (src/server/messageQueueService.ts:
+ * 75-85, `Math.min(3, Math.max(1, …))`, #4266) — an unbounded value would let an
+ * automation be abused as a repeat-broadcast mechanism. The duplication is
+ * deliberate: this module must stay dependency-free (the frontend imports it),
+ * and the queue's clamp is load-bearing for #4266 and must not be refactored
+ * from here. autoAckParity.test.ts pins the two to the same numbers.
+ */
+export const SEND_MAX_ATTEMPTS_MIN = 1;
+export const SEND_MAX_ATTEMPTS_MAX = 3;
+
+/**
+ * Coerce a stored `params.maxAttempts` to an integer in [1,3], or `undefined`
+ * for absent / blank / unparseable — `undefined` means "one direct send", the
+ * pre-4.14 behaviour every stored automation depends on. Lenient at RUNTIME
+ * while validateAutomationGraph rejects an out-of-range value at SAVE time —
+ * the same split Phase 1 used for emojiMode and Phase 2 for cooldownScope.
+ */
+export function parseSendMaxAttempts(raw: unknown): number | undefined {
+  if (raw == null || raw === '') return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n)) return undefined;
+  return Math.min(SEND_MAX_ATTEMPTS_MAX, Math.max(SEND_MAX_ATTEMPTS_MIN, n));
+}
+
+/**
  * Match modes for `condition.meshcoreScope` (#3914). A MeshCore text message
  * carries a region "scope" (`scopeCode` 0 = unscoped, >0 = a region; `scopeName`
  * = the resolved region). This condition matches:
@@ -443,6 +470,16 @@ export function validateAutomationGraph(input: unknown): ValidationResult {
           }
           break;
         }
+        case 'action.sendMessage':
+          // Optional. Absent/blank = one direct send — every pre-existing stored
+          // automation must keep validating and behaving exactly as before.
+          if (p.maxAttempts != null && p.maxAttempts !== '') {
+            const attempts = Number(p.maxAttempts);
+            if (!Number.isInteger(attempts) || attempts < SEND_MAX_ATTEMPTS_MIN || attempts > SEND_MAX_ATTEMPTS_MAX) {
+              errors.push(`action.sendMessage "${n.id}" requires params.maxAttempts ∈ [${SEND_MAX_ATTEMPTS_MIN}, ${SEND_MAX_ATTEMPTS_MAX}]`);
+            }
+          }
+          break;
         default:
           break;
       }
