@@ -3,6 +3,10 @@ import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
+import { ok, fail } from '../utils/apiResponse.js';
+import { maskTraceroutesByChannel } from '../utils/nodeEnhancer.js';
+import { TRACEROUTE_DISPLAY_HOURS } from '../../utils/nodeHelpers.js';
+import { hasRouteData, parseHopArray } from '../../utils/tracerouteSegments.js';
 
 const router = Router();
 
@@ -94,5 +98,78 @@ router.get('/history/:fromNodeNum/:toNodeNum', requirePermission('traceroute', '
     res.status(500).json({ error: 'Failed to fetch traceroute history' });
   }
 });
+
+// GET /api/traceroutes/participation/:nodeNum?sourceId=…&hours=168&limit=100
+//
+// Every stored traceroute on ONE source that this node took part in — as an
+// endpoint or as an intermediate hop. Backs the Node Details traceroute picker
+// (epic phase 2), which is the only way an MQTT source (no origin node, so no
+// own-request traceroute) can render the strip at all.
+//
+// sourceId is REQUIRED: the picker is per-source by definition, and a silent
+// ALL_SOURCES fallback would mix another source's rows for the same nodeNum.
+router.get(
+  '/participation/:nodeNum',
+  requirePermission('traceroute', 'read', { sourceIdFrom: 'query' }),
+  async (req: Request, res: Response) => {
+    try {
+      const sourceId = typeof req.query.sourceId === 'string' ? req.query.sourceId.trim() : '';
+      if (!sourceId) {
+        return fail(res, 400, 'MISSING_SOURCE_ID', 'sourceId query parameter is required');
+      }
+
+      const nodeNum = Number.parseInt(req.params.nodeNum, 10);
+      if (!Number.isFinite(nodeNum) || nodeNum < 0 || nodeNum > 0xffffffff) {
+        return fail(res, 400, 'INVALID_NODE_NUM', 'nodeNum must be between 0 and 4294967295');
+      }
+
+      const hours = req.query.hours
+        ? Number.parseInt(req.query.hours as string, 10)
+        : TRACEROUTE_DISPLAY_HOURS;
+      if (!Number.isFinite(hours) || hours < 1 || hours > 24 * 90) {
+        return fail(res, 400, 'INVALID_HOURS', 'hours must be between 1 and 2160');
+      }
+
+      const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 100;
+      if (!Number.isFinite(limit) || limit < 1 || limit > 200) {
+        return fail(res, 400, 'INVALID_LIMIT', 'limit must be between 1 and 200');
+      }
+
+      const rows = await databaseService.traceroutes.getTraceroutesInvolvingNode(nodeNum, {
+        sourceId,
+        sinceTimestamp: Date.now() - hours * 60 * 60 * 1000,
+        limit,
+      });
+
+      // Same channel gate GET /api/sources/:id/traceroutes applies (#3092) — a
+      // traceroute on a channel the caller can't view must not surface here.
+      const visible = await maskTraceroutesByChannel(rows, (req as any).user ?? null, sourceId);
+
+      const entries = visible.map(tr => ({
+        id: Number(tr.id),
+        timestamp: tr.timestamp,
+        fromNodeNum: Number(tr.fromNodeNum),
+        toNodeNum: Number(tr.toNodeNum),
+        fromNodeId: tr.fromNodeId,
+        toNodeId: tr.toNodeId,
+        route: tr.route ?? null,
+        routeBack: tr.routeBack ?? null,
+        snrTowards: tr.snrTowards ?? null,
+        snrBack: tr.snrBack ?? null,
+        channel: tr.channel ?? null,
+        participation: tr.participation,
+        // null (not the 999 sentinel the map/dashboard paths use) when the
+        // forward route is absent or unparseable: a label wants honest absence,
+        // and 999 would render as "999 hops".
+        hopCount: hasRouteData(tr.route) ? parseHopArray(tr.route).length : null,
+      }));
+
+      return ok(res, { nodeNum, sourceId, entries });
+    } catch (error) {
+      logger.error('Error fetching traceroute participation:', error);
+      return fail(res, 500, 'TRACEROUTE_PARTICIPATION_FAILED', 'Failed to fetch traceroute participation');
+    }
+  },
+);
 
 export default router;
