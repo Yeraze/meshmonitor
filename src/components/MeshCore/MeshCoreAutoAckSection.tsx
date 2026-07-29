@@ -22,6 +22,8 @@ interface AutoAckSettings {
   /** Pre-send delay (seconds) before the ack reply is sent (#3876). */
   preSendDelaySeconds: number;
   testMessages: string;
+  /** Per-sender ignore list — key prefixes and/or contact names (#4391). */
+  ignoredNodes: string;
   /** MeshCore scope/region for the ack reply (#3833). */
   scopeMode: ScopeMode;
   scopeName: string;
@@ -46,6 +48,7 @@ const DEFAULTS: AutoAckSettings = {
   cooldownSeconds: 0,
   preSendDelaySeconds: 0,
   testMessages: DEFAULT_TEST_MESSAGES,
+  ignoredNodes: '',
   scopeMode: 'inherit',
   scopeName: '',
 };
@@ -113,6 +116,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
           cooldownSeconds: typeof json.data.cooldownSeconds === 'number' ? json.data.cooldownSeconds : 0,
           preSendDelaySeconds: typeof json.data.preSendDelaySeconds === 'number' ? json.data.preSendDelaySeconds : 0,
           testMessages: json.data.testMessages || DEFAULT_TEST_MESSAGES,
+          ignoredNodes: typeof json.data.ignoredNodes === 'string' ? json.data.ignoredNodes : '',
           scopeMode: (json.data.scopeMode as ScopeMode) || 'inherit',
           scopeName: json.data.scopeName || '',
         };
@@ -164,6 +168,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
       settings.cooldownSeconds !== initial.cooldownSeconds ||
       settings.preSendDelaySeconds !== initial.preSendDelaySeconds ||
       settings.testMessages !== initial.testMessages ||
+      settings.ignoredNodes !== initial.ignoredNodes ||
       settings.scopeMode !== initial.scopeMode ||
       settings.scopeName !== initial.scopeName ||
       channelsChanged,
@@ -193,6 +198,7 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
             cooldownSeconds: settings.cooldownSeconds,
             preSendDelaySeconds: settings.preSendDelaySeconds,
             testMessages: settings.testMessages,
+            ignoredNodes: settings.ignoredNodes,
             scopeMode: settings.scopeMode,
             scopeName: settings.scopeName,
           }),
@@ -440,6 +446,29 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
               {t('meshcore.automation.autoack.presend_delay_help', 'seconds (0 = send immediately, max 120)')}
             </span>
           </div>
+        </div>
+
+        {/* Per-sender ignore list (#4391) */}
+        <div className="setting-item" style={{ marginTop: '1.5rem' }}>
+          <label htmlFor="meshcoreAutoAckIgnoredNodes">
+            {t('meshcore.automation.autoack.node_ignore_list', 'Sender Ignore List')}
+            <span className="setting-description">
+              {t(
+                'meshcore.automation.autoack.node_ignore_list_description',
+                'Never auto-acknowledge these senders — use it to break a bot echo loop. One entry per line, or comma-separated. An entry is either a public key (full key or any leading prefix, with or without a leading "!") or a contact/sender name. Names are matched ignoring case and extra spaces, and are the only way to exclude a channel sender, because MeshCore channel packets carry no sender key.',
+              )}
+            </span>
+          </label>
+          <textarea
+            id="meshcoreAutoAckIgnoredNodes"
+            value={settings.ignoredNodes}
+            onChange={(e) => update('ignoredNodes', e.target.value)}
+            placeholder={'a1b2c3d4e5f6\nEcho Bot'}
+            disabled={disabled || !canWrite}
+            className="setting-input"
+            rows={3}
+            style={{ fontFamily: 'monospace', resize: 'vertical', minHeight: '70px' }}
+          />
         </div>
 
         {/* MeshCore scope/region for the ack reply (#3833) */}
