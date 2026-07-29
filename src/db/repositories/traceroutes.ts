@@ -7,6 +7,7 @@
 import { eq, and, desc, lt, or, isNull, gte, notInArray, count } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase, SourceScope } from './base.js';
 import { DatabaseType, DbTraceroute, DbRouteSegment } from '../types.js';
+import { tracerouteParticipationKind, type TracerouteParticipation } from '../../utils/tracerouteSegments.js';
 
 /**
  * Repository for traceroute operations
@@ -163,6 +164,52 @@ export class TraceroutesRepository extends BaseRepository {
       .limit(limit);
 
     return this.normalizeBigInts(result) as DbTraceroute[];
+  }
+
+  /**
+   * Every traceroute on `sourceId` that `nodeNum` took part in — as an endpoint
+   * OR as an intermediate hop in `route`/`routeBack` — newest first.
+   *
+   * Hop membership lives inside a JSON string column. There is no
+   * database-agnostic SQL for that (LIKE-matching JSON text is wrong across
+   * three backends and would match substrings of other node numbers), and raw
+   * SQL is banned outside migrations. So this does ONE bounded, ordered,
+   * source-scoped scan through the query builder and filters in JS.
+   *
+   * `scanLimit` bounds memory. Because the scan is newest-first, exceeding it
+   * can only drop OLDER participations — never the ones the picker shows.
+   */
+  async getTraceroutesInvolvingNode(
+    nodeNum: number,
+    opts: {
+      sourceId: SourceScope;
+      sinceTimestamp: number;
+      limit?: number;
+      scanLimit?: number;
+    },
+  ): Promise<Array<DbTraceroute & { participation: TracerouteParticipation }>> {
+    const { traceroutes } = this.tables;
+    const limit = opts.limit ?? 100;
+    const scanLimit = opts.scanLimit ?? 2000;
+
+    const rows = await this.db
+      .select()
+      .from(traceroutes)
+      .where(and(
+        gte(traceroutes.timestamp, opts.sinceTimestamp),
+        this.withSourceScope(traceroutes, opts.sourceId),
+      ))
+      .orderBy(desc(traceroutes.timestamp))
+      .limit(scanLimit);
+
+    const normalized = this.normalizeBigInts(rows) as DbTraceroute[];
+    const matched: Array<DbTraceroute & { participation: TracerouteParticipation }> = [];
+    for (const row of normalized) {
+      const participation = tracerouteParticipationKind(row, nodeNum);
+      if (participation) matched.push({ ...row, participation });
+      if (matched.length >= limit) break;
+    }
+    return matched;
   }
 
   /**
