@@ -22,6 +22,7 @@ import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import meshcorePositionHistoryService from '../services/meshcorePositionHistoryService.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
 import { managerFor, isValidPublicKey, auditMeshcoreEvent, parseHexPathChain } from './meshcoreRouteShared.js';
+import { ok, fail } from '../utils/apiResponse.js';
 
 const router = Router({ mergeParams: true });
 
@@ -324,6 +325,56 @@ router.post(
     } catch (error) {
       logger.error('[API] Error tracing contact path:', error);
       res.status(500).json({ success: false, error: 'Failed to trace path' });
+    }
+  },
+);
+
+/**
+ * POST /api/sources/:id/meshcore/contacts/:publicKey/ping
+ *
+ * Zero-hop ping (issue #4393) — the "Ping [zero hops]" action from the MeshCore
+ * phone app. Sends a TRACE along a synthetic one-hop path (the target's own
+ * public-key hash byte), bypassing any cached multi-hop out_path. A reply means
+ * the node answered us with no intermediate repeater, i.e. it is in direct RF
+ * range; a timeout means it is not (or does not repeat traces — see the manager
+ * docstring; plain Companion firmware never forwards a trace).
+ *
+ * Requires nodes:write like the other transmitting actions.
+ *
+ * 200 → { success: true, data: { hopHash, rttMs, snrToTarget, snrFromTarget } }
+ * 409 → guard failure (not a Companion / disconnected / unknown contact)
+ * 504 → no reply (not in direct range)
+ */
+router.post(
+  '/contacts/:publicKey/ping',
+  meshcoreDeviceLimiter,
+  requireAuth(),
+  requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  async (req: Request, res: Response) => {
+    try {
+      const publicKey = req.params.publicKey;
+      if (!isValidPublicKey(publicKey)) {
+        return fail(res, 400, 'INVALID_PUBLIC_KEY', 'Invalid public key — must be 64-char hex');
+      }
+      const result = await managerFor(req, res).pingContactZeroHop(publicKey);
+      if (!result.ok) {
+        const status = result.reason === 'no-reply' ? 504 : 409;
+        const code =
+          result.reason === 'no-reply' ? 'MESHCORE_PING_NO_REPLY'
+          : result.reason === 'not-companion' ? 'MESHCORE_PING_NOT_COMPANION'
+          : result.reason === 'disconnected' ? 'MESHCORE_PING_DISCONNECTED'
+          : 'MESHCORE_PING_UNKNOWN_CONTACT';
+        return fail(res, status, code, result.error, { reason: result.reason });
+      }
+      return ok(res, {
+        hopHash: result.hopHash,
+        rttMs: result.rttMs,
+        snrToTarget: result.snrToTarget,
+        snrFromTarget: result.snrFromTarget,
+      });
+    } catch (error) {
+      logger.error('[API] Error pinging contact (zero hop):', error);
+      return fail(res, 500, 'MESHCORE_PING_FAILED', 'Failed to ping contact');
     }
   },
 );

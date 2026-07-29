@@ -13,7 +13,7 @@ import { formatRelativeTime } from '../../utils/datetime';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSource } from '../../contexts/SourceContext';
 import { MeshCoreRemoteConsole } from './MeshCoreRemoteConsole';
-import type { MeshCoreActions, TracePathResult } from './hooks/useMeshCore';
+import type { MeshCoreActions, TracePathResult, ZeroHopPingResult } from './hooks/useMeshCore';
 import api from '../../services/api';
 import '../NodeDetailsBlock.css';
 import { UiIcon } from '../icons';
@@ -46,6 +46,9 @@ interface MeshCoreContactDetailPanelProps {
   /** Send a trace-path diagnostic along the contact's cached path and
    *  return per-hop SNR data. Unset hides the Trace Path button. */
   onTracePath?: (publicKey: string) => Promise<TracePathResult | null>;
+  /** Zero-hop ping (#4393) — trace along a synthetic one-hop path so a reply
+   *  proves the node is in direct RF range. Unset hides the Ping button. */
+  onPingZeroHop?: (publicKey: string) => Promise<ZeroHopPingResult>;
   /** Flood a path-discovery request to learn the forwarding route. The
    *  path update arrives asynchronously. Unset hides the button. */
   onDiscoverPath?: (publicKey: string) => Promise<boolean>;
@@ -97,6 +100,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   onSetOutPath,
   repeaters,
   onTracePath,
+  onPingZeroHop,
   onDiscoverPath,
   onRemoveContact,
   onExportContact,
@@ -123,6 +127,10 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const [traceResult, setTraceResult] = useState<TracePathResult | null>(null);
   const [traceError, setTraceError] = useState<string | null>(null);
   const [discovering, setDiscovering] = useState(false);
+
+  // Zero-hop ping state (#4393)
+  const [pinging, setPinging] = useState(false);
+  const [pingResult, setPingResult] = useState<ZeroHopPingResult | null>(null);
 
   // Remove contact state
   const [removing, setRemoving] = useState(false);
@@ -233,6 +241,11 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   );
   const canShowTraceButton =
     !!onTracePath && canWriteNodes && isCompanion && pathKnown && pathLen! > 0;
+  // Ping needs no cached path (that is the point — it builds a synthetic
+  // one-hop path from the contact's own key hash), so unlike Trace Path it is
+  // offered whether or not an out_path is known.
+  const canShowPingButton =
+    !!onPingZeroHop && canWriteNodes && isCompanion;
   const canShowDiscoverButton =
     !!onDiscoverPath && canWriteNodes && isCompanion;
   const canShowRemoveButton =
@@ -258,6 +271,17 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
       }
     } finally {
       setTracing(false);
+    }
+  };
+
+  const handlePingZeroHop = async () => {
+    if (!onPingZeroHop || pinging) return;
+    setPinging(true);
+    setPingResult(null);
+    try {
+      setPingResult(await onPingZeroHop(publicKey));
+    } finally {
+      setPinging(false);
     }
   };
 
@@ -545,8 +569,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
               available because the device retransmits the stored advert
               regardless of route state. Rendered in one card so the
               actions stay grouped at the bottom of the grid. */}
-          {(canShowResetButton || canShowShareButton || canShowEditButton || canShowTraceButton || canShowDiscoverButton || canShowRemoveButton || canShowExportButton || canShowNeighboursButton) &&
-            (canShowShareButton || canShowEditButton || canShowTraceButton || canShowDiscoverButton || canShowRemoveButton || canShowExportButton || canShowNeighboursButton || pathKnown) && (
+          {(canShowResetButton || canShowShareButton || canShowEditButton || canShowTraceButton || canShowPingButton || canShowDiscoverButton || canShowRemoveButton || canShowExportButton || canShowNeighboursButton) &&
+            (canShowShareButton || canShowEditButton || canShowTraceButton || canShowPingButton || canShowDiscoverButton || canShowRemoveButton || canShowExportButton || canShowNeighboursButton || pathKnown) && (
             <div className="node-detail-card node-detail-card-2col">
               <div className="node-detail-label">
                 {t('meshcore.contact_details.actions_label', 'Actions')}
@@ -599,6 +623,25 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     {tracing
                       ? t('meshcore.contact_details.trace_path_running', 'Tracing…')
                       : t('meshcore.contact_details.trace_path_button', 'Trace Path')}
+                  </button>
+                )}
+                {canShowPingButton && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handlePingZeroHop}
+                    disabled={pinging}
+                    title={t(
+                      'meshcore.contact_details.ping_zero_hop_hint',
+                      'Send a zero-hop trace. A reply means this node is in direct radio range (repeaters and room servers only — companions do not repeat traces).',
+                    )}
+                    aria-label={t('meshcore.contact_details.ping_zero_hop_button', 'Ping (0 hop)')}
+                  >
+                    <UiIcon name="radioSignal" size={14} />
+                    {' '}
+                    {pinging
+                      ? t('meshcore.contact_details.ping_zero_hop_running', 'Pinging…')
+                      : t('meshcore.contact_details.ping_zero_hop_button', 'Ping (0 hop)')}
                   </button>
                 )}
                 {canShowDiscoverButton && (
@@ -675,6 +718,42 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                 )}
                 {traceError && (
                   <span style={{ color: 'var(--ctp-red)' }} role="alert">{traceError}</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Zero-hop ping result (#4393). A reply proves a direct RF link;
+              a failure is reported verbatim from the server so "out of range"
+              reads differently from "not a Companion". */}
+          {pingResult && (
+            <div className="node-detail-card node-detail-card-2col">
+              <div className="node-detail-label">
+                {t('meshcore.contact_details.ping_zero_hop_results', 'Zero-Hop Ping')}
+              </div>
+              <div className="node-detail-value" role="status">
+                {pingResult.ok ? (
+                  <span style={{ color: 'var(--ctp-green)' }}>
+                    {t('meshcore.contact_details.ping_zero_hop_direct', 'Direct — in range')}
+                    {' · '}
+                    {t('meshcore.contact_details.ping_zero_hop_rtt', 'RTT')} {pingResult.rttMs} ms
+                    {pingResult.snrToTarget !== null && (
+                      <>
+                        {' · '}
+                        {t('meshcore.contact_details.ping_zero_hop_snr_out', 'SNR at node')}{' '}
+                        <span className={getSignalClass(pingResult.snrToTarget)}>
+                          {pingResult.snrToTarget.toFixed(2)} dB
+                        </span>
+                      </>
+                    )}
+                    {' · '}
+                    {t('meshcore.contact_details.ping_zero_hop_snr_in', 'SNR here')}{' '}
+                    <span className={getSignalClass(pingResult.snrFromTarget)}>
+                      {pingResult.snrFromTarget.toFixed(2)} dB
+                    </span>
+                  </span>
+                ) : (
+                  <span style={{ color: 'var(--ctp-red)' }}>{pingResult.error}</span>
                 )}
               </div>
             </div>
