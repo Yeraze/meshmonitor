@@ -798,7 +798,13 @@ describe('SettingsProvider', () => {
     expect(contextValue.preferredSortDirection).toBe('asc');
   });
 
-  it('should update localStorage when setMaxNodeAgeHours is called', async () => {
+  it('updates state but writes no bare localStorage key when setMaxNodeAgeHours is called outside a SourceProvider (#4412 Phase 3 / D1)', async () => {
+    // Node Display keys are per-source; outside a SourceProvider there is no
+    // source to namespace the mirror under, so the setter must NOT fall back
+    // to the legacy bare key. A resurfaced bare key is exactly the
+    // cross-source leak the namespaced mirror (nodeDisplayStorage.ts) exists
+    // to prevent — see SettingsContext.test.tsx's "per-source Node Display"
+    // describe block below for the namespaced-write counterpart.
     const { SettingsProvider, useSettings } = await import('./SettingsContext');
 
     let contextValue: any;
@@ -824,7 +830,8 @@ describe('SettingsProvider', () => {
       contextValue.setMaxNodeAgeHours(48);
     });
 
-    expect(localStorage.getItem('maxNodeAgeHours')).toBe('48');
+    expect(contextValue.maxNodeAgeHours).toBe(48);
+    expect(localStorage.getItem('maxNodeAgeHours')).toBeNull();
   });
 
   it('should update localStorage when setDistanceUnit is called', async () => {
@@ -1310,7 +1317,12 @@ describe('SettingsProvider', () => {
     expect(contextValue.nodeHopsCalculation).toBe('nodeinfo');
   });
 
-  it('should initialize from localStorage nodeHopsCalculation', async () => {
+  it('ignores the legacy bare nodeHopsCalculation key outside a SourceProvider (#4412 Phase 3 / D1)', async () => {
+    // Pre-Phase-3 this bare key seeded the initializer directly. Node Display
+    // keys are namespaced per-source now (nodeDisplayStorage.ts); a bare key
+    // must never resurface as a value. See the "per-source Node Display"
+    // describe block below for the namespaced-seed counterpart (inside a
+    // SourceProvider).
     localStorage.setItem('nodeHopsCalculation', 'traceroute');
     const { SettingsProvider, useSettings } = await import('./SettingsContext');
 
@@ -1333,7 +1345,7 @@ describe('SettingsProvider', () => {
       expect(screen.getByTestId('consumer')).toBeDefined();
     });
 
-    expect(contextValue.nodeHopsCalculation).toBe('traceroute');
+    expect(contextValue.nodeHopsCalculation).toBe('nodeinfo');
   });
 
   it('should provide overlayScheme derived from mapTileset', async () => {
@@ -1523,6 +1535,336 @@ describe('SettingsProvider', () => {
     });
 
     expect(contextValue.tapbackEmojis).toEqual(newEmojis);
+  });
+});
+
+// #4412 Phase 3 WP2 (R1 rewrite): SettingsProvider becomes source-aware (D1).
+// These are the assertions called out as missing by the phase's test audit —
+// without them, source B could render source A's last-saved Node Display
+// values (via either the fetch or the localStorage mirror) and the whole
+// suite would stay green.
+describe('SettingsProvider per-source Node Display (#4412 Phase 3)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockSystemIsDark = true;
+    installMatchMediaMock();
+    mockFetch.mockReset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  // Serves different settings per `?sourceId=`, so tests can tell scoped
+  // fetches apart and prove per-source isolation. Falls back to `{}` for an
+  // unlisted source, matching D5's "no seeded row -> keys absent" behavior.
+  const createPerSourceFetchMock = (bySource: Record<string, Record<string, string>>) => {
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/api/settings')) {
+        const match = /[?&]sourceId=([^&]+)/.exec(url);
+        const key = match ? decodeURIComponent(match[1]) : '__global__';
+        return Promise.resolve({
+          ok: true,
+          json: async () => bySource[key] ?? {},
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+  };
+
+  it('fetches /api/settings?sourceId=A when rendered inside a SourceProvider', async () => {
+    createPerSourceFetchMock({ A: { maxNodeAgeHours: '168' } });
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+    const { SourceProvider } = await import('./SourceContext');
+
+    let contextValue: any;
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    await act(async () => {
+      render(
+        <SourceProvider sourceId="A">
+          <SettingsProvider>
+            <Consumer />
+          </SettingsProvider>
+        </SourceProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(contextValue.isLoading).toBe(false);
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/settings?sourceId=A'),
+      expect.anything(),
+    );
+    expect(contextValue.maxNodeAgeHours).toBe(168);
+  });
+
+  it('refetches and re-seeds the Node Display states when sourceId changes A -> B (D1)', async () => {
+    createPerSourceFetchMock({
+      A: { maxNodeAgeHours: '168' },
+      B: { maxNodeAgeHours: '1' },
+    });
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+    const { SourceProvider } = await import('./SourceContext');
+
+    let contextValue: any;
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    let rerenderFn: (ui: React.ReactElement) => void = () => {};
+    await act(async () => {
+      const utils = render(
+        <SourceProvider sourceId="A">
+          <SettingsProvider>
+            <Consumer />
+          </SettingsProvider>
+        </SourceProvider>
+      );
+      rerenderFn = utils.rerender;
+    });
+
+    await waitFor(() => {
+      expect(contextValue.maxNodeAgeHours).toBe(168);
+    });
+
+    await act(async () => {
+      rerenderFn(
+        <SourceProvider sourceId="B">
+          <SettingsProvider>
+            <Consumer />
+          </SettingsProvider>
+        </SourceProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(contextValue.maxNodeAgeHours).toBe(1);
+    });
+  });
+
+  it('synchronously re-seeds from the new source\'s local mirror BEFORE the fetch resolves (D1)', async () => {
+    // Pre-seed each source's namespaced mirror directly (bypassing the
+    // network), so the synchronous re-seed at the top of the load effect —
+    // required precisely because a sourceId change doesn't remount the
+    // provider — has something to read.
+    const { writeNodeDisplayLocal } = await import('../utils/nodeDisplayStorage');
+    writeNodeDisplayLocal('A', 'maxNodeAgeHours', '168');
+    writeNodeDisplayLocal('B', 'maxNodeAgeHours', '1');
+
+    // A fetch mock that never resolves: any value observed on `contextValue`
+    // must have come from the synchronous re-seed, not the network response.
+    mockFetch.mockImplementation(() => new Promise(() => {}));
+
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+    const { SourceProvider } = await import('./SourceContext');
+
+    let contextValue: any;
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    let rerenderFn: (ui: React.ReactElement) => void = () => {};
+    act(() => {
+      const utils = render(
+        <SourceProvider sourceId="A">
+          <SettingsProvider>
+            <Consumer />
+          </SettingsProvider>
+        </SourceProvider>
+      );
+      rerenderFn = utils.rerender;
+    });
+
+    expect(contextValue.maxNodeAgeHours).toBe(168);
+
+    act(() => {
+      rerenderFn(
+        <SourceProvider sourceId="B">
+          <SettingsProvider>
+            <Consumer />
+          </SettingsProvider>
+        </SourceProvider>
+      );
+    });
+
+    // The B fetch is also still pending (the mock never resolves), yet the
+    // state already reflects B's mirrored value.
+    expect(contextValue.maxNodeAgeHours).toBe(1);
+  });
+
+  it('seeds from nodeDisplay:{sourceId}:maxNodeAgeHours, not the bare key, and a value under source A is invisible under source B', async () => {
+    createPerSourceFetchMock({}); // neither source has a seeded server-side row (D5)
+    const { writeNodeDisplayLocal } = await import('../utils/nodeDisplayStorage');
+    localStorage.setItem('maxNodeAgeHours', '999'); // legacy bare key -- must be ignored entirely
+    writeNodeDisplayLocal('A', 'maxNodeAgeHours', '168');
+    // No local value seeded under B.
+
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+    const { SourceProvider } = await import('./SourceContext');
+
+    const renderUnderSource = async (sourceId: string) => {
+      let contextValue: any;
+      const Consumer = () => {
+        contextValue = useSettings();
+        return <div data-testid="consumer">loaded</div>;
+      };
+      await act(async () => {
+        render(
+          <SourceProvider sourceId={sourceId}>
+            <SettingsProvider>
+              <Consumer />
+            </SettingsProvider>
+          </SourceProvider>
+        );
+      });
+      await waitFor(() => {
+        expect(contextValue.isLoading).toBe(false);
+      });
+      return contextValue;
+    };
+
+    const a = await renderUnderSource('A');
+    expect(a.maxNodeAgeHours).toBe(168);
+
+    const b = await renderUnderSource('B');
+    expect(b.maxNodeAgeHours).toBe(24); // default -- source A's value must not leak
+  });
+
+  it('writes the namespaced nodeDisplay:{sourceId}:maxNodeAgeHours key (never the bare key) when setMaxNodeAgeHours is called inside a SourceProvider', async () => {
+    createPerSourceFetchMock({});
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+    const { SourceProvider } = await import('./SourceContext');
+    const { readNodeDisplayLocal } = await import('../utils/nodeDisplayStorage');
+
+    let contextValue: any;
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    await act(async () => {
+      render(
+        <SourceProvider sourceId="A">
+          <SettingsProvider>
+            <Consumer />
+          </SettingsProvider>
+        </SourceProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(contextValue.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      contextValue.setMaxNodeAgeHours(48);
+    });
+
+    expect(contextValue.maxNodeAgeHours).toBe(48);
+    expect(readNodeDisplayLocal('A', 'maxNodeAgeHours')).toBe('48');
+    expect(localStorage.getItem('maxNodeAgeHours')).toBeNull();
+  });
+
+  it('equals the hardcoded Node Display defaults outside a SourceProvider, ignoring legacy-global response values (D1)', async () => {
+    // Even though the server response below carries values for every Node
+    // Display key (as a legacy global row would), none may apply when
+    // sourceId is null -- there is no source to own them.
+    createFetchMock({
+      maxNodeAgeHours: '999',
+      inactiveNodeThresholdHours: '999',
+      inactiveNodeCheckIntervalMinutes: '999',
+      inactiveNodeCooldownHours: '999',
+      nodeDimmingEnabled: 'true',
+      nodeDimmingStartHours: '9',
+      nodeDimmingMinOpacity: '0.9',
+      nodeHopsCalculation: 'traceroute',
+      hideIncompleteNodes: '1',
+    });
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+    const {
+      NODE_DISPLAY_NUMERIC_DEFAULTS,
+      NODE_DISPLAY_BOOLEAN_DEFAULTS,
+      NODE_DISPLAY_STRING_DEFAULTS,
+    } = await import('../constants/nodeDisplayDefaults');
+
+    let contextValue: any;
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    await act(async () => {
+      render(
+        <SettingsProvider>
+          <Consumer />
+        </SettingsProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(contextValue.isLoading).toBe(false);
+    });
+
+    expect(contextValue.maxNodeAgeHours).toBe(NODE_DISPLAY_NUMERIC_DEFAULTS.maxNodeAgeHours);
+    expect(contextValue.inactiveNodeThresholdHours).toBe(NODE_DISPLAY_NUMERIC_DEFAULTS.inactiveNodeThresholdHours);
+    expect(contextValue.inactiveNodeCheckIntervalMinutes).toBe(NODE_DISPLAY_NUMERIC_DEFAULTS.inactiveNodeCheckIntervalMinutes);
+    expect(contextValue.inactiveNodeCooldownHours).toBe(NODE_DISPLAY_NUMERIC_DEFAULTS.inactiveNodeCooldownHours);
+    expect(contextValue.nodeDimmingEnabled).toBe(NODE_DISPLAY_BOOLEAN_DEFAULTS.nodeDimmingEnabled);
+    expect(contextValue.nodeDimmingStartHours).toBe(NODE_DISPLAY_NUMERIC_DEFAULTS.nodeDimmingStartHours);
+    expect(contextValue.nodeDimmingMinOpacity).toBe(NODE_DISPLAY_NUMERIC_DEFAULTS.nodeDimmingMinOpacity);
+    expect(contextValue.nodeHopsCalculation).toBe(NODE_DISPLAY_STRING_DEFAULTS.nodeHopsCalculation);
+    expect(contextValue.hideIncompleteNodes).toBe(NODE_DISPLAY_BOOLEAN_DEFAULTS.hideIncompleteNodes);
+
+    for (const key of [
+      'maxNodeAgeHours', 'inactiveNodeThresholdHours', 'inactiveNodeCheckIntervalMinutes',
+      'inactiveNodeCooldownHours', 'nodeDimmingEnabled', 'nodeDimmingStartHours',
+      'nodeDimmingMinOpacity', 'nodeHopsCalculation', 'hideIncompleteNodes',
+    ]) {
+      expect(localStorage.getItem(key)).toBeNull();
+    }
+  });
+
+  it('exposes hideIncompleteNodes / setHideIncompleteNodes / derived showIncompleteNodes on the context value', async () => {
+    createFetchMock({});
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+
+    let contextValue: any;
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    await act(async () => {
+      render(
+        <SettingsProvider>
+          <Consumer />
+        </SettingsProvider>
+      );
+    });
+
+    await waitFor(() => {
+      expect(contextValue.isLoading).toBe(false);
+    });
+
+    expect(contextValue.hideIncompleteNodes).toBe(false);
+    expect(contextValue.showIncompleteNodes).toBe(true);
+    expect(typeof contextValue.setHideIncompleteNodes).toBe('function');
+
+    await act(async () => {
+      contextValue.setHideIncompleteNodes(true);
+    });
+
+    expect(contextValue.hideIncompleteNodes).toBe(true);
+    expect(contextValue.showIncompleteNodes).toBe(false);
   });
 });
 

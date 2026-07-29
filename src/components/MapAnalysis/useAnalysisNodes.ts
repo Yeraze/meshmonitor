@@ -8,7 +8,7 @@ import { resolveNodeLatLng, type MaybePositionedNode } from './nodePositionUtil'
 import { nodeMatchesSearch } from './nodeSearch';
 import { getNodeTypeCategory } from '../../utils/nodeTypeCategory';
 import { nodePassesTransportFilter, transportCutoffSec } from '../../utils/nodeTransport';
-import { getActiveWindowHours } from '../../utils/activeWindowConfig';
+import { useMaxNodeAgeHoursAcross } from '../../hooks/useNodeDisplaySettings';
 import { unifiedNodeKey } from '../../utils/nodeIdentity';
 import { applyPrecisionCellOffsets } from '../../utils/precisionOffset';
 import type { NodeSourceRef } from '../Dashboard/DashboardNodePopup';
@@ -75,12 +75,23 @@ export function useAnalysisNodes(): AnalysisNode[] {
   // per-node `sources` array used by the multi-source filter below and by the
   // popup's "Seen by N sources" list.
   const { nodes } = useDashboardUnifiedData(sources, sourceIds.length > 0);
-  // #4240: transport classification decays against the user's active window,
-  // same as every other map surface. Read from the non-context mirror rather
-  // than SettingsContext — this is a data hook feeding several Map Analysis
-  // components, and depending on a UI provider here would force every consumer
-  // (and every consumer's tests) to wrap SettingsProvider.
-  const transportCutoff = transportCutoffSec(getActiveWindowHours());
+  // #4240/#4412 Phase 3 (D2/D3): transport classification decays against the
+  // most-permissive maxNodeAgeHours across every source in view, same as
+  // every other map surface. The original #4240 objection was to depending
+  // on a UI provider (SettingsContext) here — this is a data hook feeding
+  // several Map Analysis components, and every consumer (and every
+  // consumer's tests) would have had to wrap SettingsProvider. A TanStack
+  // query hook has no such requirement; this file already calls two
+  // (useDashboardSources, useDashboardUnifiedData). activeWindowConfig.ts
+  // (the non-context mirror this used to read) was deleted rather than
+  // source-keyed (D2): it had exactly one reader (here) and one writer
+  // (SettingsContext), and a keyed registry would be stale for any source
+  // whose provider hasn't mounted this page-load — Map Analysis is often the
+  // first page loaded. D3's most-permissive rule ("never hide a node that a
+  // source-scoped view would show") is the only single-value answer that
+  // cannot lose data when merging nodes from N sources onto one map.
+  const activeWindowHours = useMaxNodeAgeHoursAcross(sourceIds);
+  const transportCutoff = transportCutoffSec(activeWindowHours);
 
   return useMemo(() => {
     const visible = ((nodes ?? []) as NodeRecord[])
@@ -137,6 +148,9 @@ export function useAnalysisNodes(): AnalysisNode[] {
     )
       .map(({ item: node, latLng }) => ({ node, latLng, key: unifiedNodeKey(node) }))
       .filter((entry): entry is AnalysisNode => entry.key !== null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- #4240 transportCutoff is a fresh clock read each render; listing it would recompute this memo every render. `nodes` changes on the 15s poll, which re-runs this with a current cutoff.
-  }, [nodes, nodeFilter, config.nodeTypes, config.transports, config.sources]);
+    // #4412 Phase 3: transportCutoff now derives from the useMaxNodeAgeHoursAcross
+    // TanStack query hook rather than a plain mutable-variable read, so it is a
+    // real reactive dependency (its value changes when a source's setting loads
+    // or changes) — safe and correct to list, unlike the old #4240 mirror read.
+  }, [nodes, nodeFilter, config.nodeTypes, config.transports, config.sources, transportCutoff]);
 }

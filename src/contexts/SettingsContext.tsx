@@ -12,9 +12,26 @@ import i18n from '../config/i18n';
 import { type TapbackEmoji, DEFAULT_TAPBACK_EMOJIS } from '../components/EmojiPickerModal/EmojiPickerModal';
 import { DEFAULT_TARGET_ZOOM } from '../utils/mapZoomAnimation';
 import { setDiscardInvalidPositionsDisplay } from '../utils/positionDisplayConfig';
-import { setActiveWindowHours } from '../utils/activeWindowConfig';
 import { IconStyleProvider, type IconStyle } from './IconStyleContext';
+import { useSource } from './SourceContext';
+import {
+  NODE_DISPLAY_STRING_DEFAULTS,
+  parseNodeDisplayNumber,
+  parseNodeDisplayBoolean,
+} from '../constants/nodeDisplayDefaults';
+import {
+  readNodeDisplayLocal,
+  writeNodeDisplayLocal,
+  purgeLegacyNodeDisplayLocal,
+} from '../utils/nodeDisplayStorage';
 import type { MapStyle } from '../server/services/mapStyleService.js';
+
+// #4412 Phase 3 (WP2): one-time purge of the legacy un-namespaced Node
+// Display localStorage keys, so a stale global value from before the
+// per-source split can never resurface under any source. Idempotent; module
+// scope means it runs once per page load rather than once per provider
+// mount (SettingsProvider mounts at up to 8 places).
+purgeLegacyNodeDisplayLocal();
 
 export type { IconStyle } from './IconStyleContext';
 
@@ -149,6 +166,10 @@ interface SettingsContextType {
   nodeDimmingStartHours: number;
   nodeDimmingMinOpacity: number;
   nodeHopsCalculation: NodeHopsCalculation;
+  /** Stored form (#4412 Phase 3): true hides incomplete nodes. */
+  hideIncompleteNodes: boolean;
+  /** Derived `!hideIncompleteNodes`, read-only — moved here from UIContext (#4412 Phase 3). */
+  showIncompleteNodes: boolean;
   tapbackEmojis: TapbackEmoji[];
   temporaryTileset: TilesetId | null;
   setTemporaryTileset: (tilesetId: TilesetId | null) => void;
@@ -210,6 +231,7 @@ interface SettingsContextType {
   setNodeDimmingStartHours: (hours: number) => void;
   setNodeDimmingMinOpacity: (opacity: number) => void;
   setNodeHopsCalculation: (calculation: NodeHopsCalculation) => void;
+  setHideIncompleteNodes: (hide: boolean) => void;
   setTapbackEmojis: (emojis: TapbackEmoji[]) => Promise<void>;
 }
 
@@ -329,34 +351,36 @@ const getInitialThemePreferences = (): ThemePreferences => {
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, baseUrl: baseUrlProp }) => {
   const baseUrl = baseUrlProp ?? detectBaseUrlFromLocation();
   const { getToken: getCsrfToken } = useCsrf();
+  // #4412 Phase 3 (D1): source-aware, not source-keyed — copies the
+  // AutomationContext precedent. `sourceId` is null outside a SourceProvider
+  // (7 of 8 mount sites are the single-source case).
+  const { sourceId } = useSource();
   const [isLoading, setIsLoading] = useState(true);
   const [initialThemePreferences] = useState<ThemePreferences>(() => getInitialThemePreferences());
   const [initialMapTilesets] = useState<MapTilesetPreferences>(() => getInitialMapTilesets());
   const [systemIsDark, setSystemIsDark] = useState<boolean>(() => prefersDarkMode());
 
-  const [maxNodeAgeHours, setMaxNodeAgeHoursState] = useState<number>(() => {
-    const saved = localStorage.getItem('maxNodeAgeHours');
-    const initial = saved ? parseInt(saved) : 24;
-    // #4240: seed the non-context mirror at boot so transport decay uses the
-    // user's window from the first render, not the module default.
-    setActiveWindowHours(initial);
-    return initial;
-  });
+  // The ten Node Display keys (#4412 Phase 3) read through the namespaced
+  // `nodeDisplay:{sourceId}:{key}` mirror — never the bare legacy keys — and
+  // fall through to the hardcoded defaults when unset or sourceId is null
+  // (no runtime global fallback). `localStatsIntervalMinutes` is the one key
+  // of the ten with no SettingsContext state: it lives entirely in
+  // SettingsTab's draft (WP4).
+  const [maxNodeAgeHours, setMaxNodeAgeHoursState] = useState<number>(() =>
+    parseNodeDisplayNumber('maxNodeAgeHours', readNodeDisplayLocal(sourceId, 'maxNodeAgeHours')),
+  );
 
-  const [inactiveNodeThresholdHours, setInactiveNodeThresholdHoursState] = useState<number>(() => {
-    const saved = localStorage.getItem('inactiveNodeThresholdHours');
-    return saved ? parseInt(saved) : 24;
-  });
+  const [inactiveNodeThresholdHours, setInactiveNodeThresholdHoursState] = useState<number>(() =>
+    parseNodeDisplayNumber('inactiveNodeThresholdHours', readNodeDisplayLocal(sourceId, 'inactiveNodeThresholdHours')),
+  );
 
-  const [inactiveNodeCheckIntervalMinutes, setInactiveNodeCheckIntervalMinutesState] = useState<number>(() => {
-    const saved = localStorage.getItem('inactiveNodeCheckIntervalMinutes');
-    return saved ? parseInt(saved) : 60;
-  });
+  const [inactiveNodeCheckIntervalMinutes, setInactiveNodeCheckIntervalMinutesState] = useState<number>(() =>
+    parseNodeDisplayNumber('inactiveNodeCheckIntervalMinutes', readNodeDisplayLocal(sourceId, 'inactiveNodeCheckIntervalMinutes')),
+  );
 
-  const [inactiveNodeCooldownHours, setInactiveNodeCooldownHoursState] = useState<number>(() => {
-    const saved = localStorage.getItem('inactiveNodeCooldownHours');
-    return saved ? parseInt(saved) : 24;
-  });
+  const [inactiveNodeCooldownHours, setInactiveNodeCooldownHoursState] = useState<number>(() =>
+    parseNodeDisplayNumber('inactiveNodeCooldownHours', readNodeDisplayLocal(sourceId, 'inactiveNodeCooldownHours')),
+  );
 
   const [tracerouteIntervalMinutes, setTracerouteIntervalMinutesState] = useState<number>(() => {
     const saved = localStorage.getItem('tracerouteIntervalMinutes');
@@ -523,26 +547,32 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   // loadServerSettings.
   const [meshcoreChannelRetryEnabled, setMeshcoreChannelRetryEnabledState] = useState<boolean>(false);
 
-  // Node dimming settings - localStorage only
-  const [nodeDimmingEnabled, setNodeDimmingEnabledState] = useState<boolean>(() => {
-    const saved = localStorage.getItem('nodeDimmingEnabled');
-    return saved === 'true';
-  });
+  // Node dimming settings (#4412 Phase 3: per-source, namespaced localStorage mirror only)
+  const [nodeDimmingEnabled, setNodeDimmingEnabledState] = useState<boolean>(() =>
+    parseNodeDisplayBoolean('nodeDimmingEnabled', readNodeDisplayLocal(sourceId, 'nodeDimmingEnabled')),
+  );
 
-  const [nodeDimmingStartHours, setNodeDimmingStartHoursState] = useState<number>(() => {
-    const saved = localStorage.getItem('nodeDimmingStartHours');
-    return saved ? parseFloat(saved) : 1;
-  });
+  const [nodeDimmingStartHours, setNodeDimmingStartHoursState] = useState<number>(() =>
+    parseNodeDisplayNumber('nodeDimmingStartHours', readNodeDisplayLocal(sourceId, 'nodeDimmingStartHours')),
+  );
 
-  const [nodeDimmingMinOpacity, setNodeDimmingMinOpacityState] = useState<number>(() => {
-    const saved = localStorage.getItem('nodeDimmingMinOpacity');
-    return saved ? parseFloat(saved) : 0.3;
-  });
+  const [nodeDimmingMinOpacity, setNodeDimmingMinOpacityState] = useState<number>(() =>
+    parseNodeDisplayNumber('nodeDimmingMinOpacity', readNodeDisplayLocal(sourceId, 'nodeDimmingMinOpacity')),
+  );
 
   const [nodeHopsCalculation, setNodeHopsCalculationState] = useState<NodeHopsCalculation>(() => {
-    const saved = localStorage.getItem('nodeHopsCalculation');
-    return (saved === 'traceroute' || saved === 'messages') ? saved : 'nodeinfo';
+    const saved = readNodeDisplayLocal(sourceId, 'nodeHopsCalculation');
+    return (saved === 'traceroute' || saved === 'messages')
+      ? saved
+      : NODE_DISPLAY_STRING_DEFAULTS.nodeHopsCalculation as NodeHopsCalculation;
   });
+
+  // hideIncompleteNodes moved here from UIContext's showIncompleteNodes
+  // (#4412 Phase 3) — it is one of the ten Node Display keys and therefore
+  // per-source. Stored form: true hides incomplete nodes.
+  const [hideIncompleteNodes, setHideIncompleteNodesState] = useState<boolean>(() =>
+    parseNodeDisplayBoolean('hideIncompleteNodes', readNodeDisplayLocal(sourceId, 'hideIncompleteNodes')),
+  );
 
   const [temporaryTileset, setTemporaryTileset] = useState<TilesetId | null>(null);
 
@@ -579,24 +609,23 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const setMaxNodeAgeHours = React.useCallback((value: number) => {
     setMaxNodeAgeHoursState(value);
-    localStorage.setItem('maxNodeAgeHours', value.toString());
-    setActiveWindowHours(value); // #4240: keep the transport-decay mirror in sync
-  }, []);
+    writeNodeDisplayLocal(sourceId, 'maxNodeAgeHours', value.toString());
+  }, [sourceId]);
 
   const setInactiveNodeThresholdHours = React.useCallback((value: number) => {
     setInactiveNodeThresholdHoursState(value);
-    localStorage.setItem('inactiveNodeThresholdHours', value.toString());
-  }, []);
+    writeNodeDisplayLocal(sourceId, 'inactiveNodeThresholdHours', value.toString());
+  }, [sourceId]);
 
   const setInactiveNodeCheckIntervalMinutes = React.useCallback((value: number) => {
     setInactiveNodeCheckIntervalMinutesState(value);
-    localStorage.setItem('inactiveNodeCheckIntervalMinutes', value.toString());
-  }, []);
+    writeNodeDisplayLocal(sourceId, 'inactiveNodeCheckIntervalMinutes', value.toString());
+  }, [sourceId]);
 
   const setInactiveNodeCooldownHours = React.useCallback((value: number) => {
     setInactiveNodeCooldownHoursState(value);
-    localStorage.setItem('inactiveNodeCooldownHours', value.toString());
-  }, []);
+    writeNodeDisplayLocal(sourceId, 'inactiveNodeCooldownHours', value.toString());
+  }, [sourceId]);
 
   const setTracerouteIntervalMinutes = React.useCallback(async (value: number) => {
     setTracerouteIntervalMinutesState(value);
@@ -1000,23 +1029,28 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
 
   const setNodeDimmingEnabled = React.useCallback((enabled: boolean) => {
     setNodeDimmingEnabledState(enabled);
-    localStorage.setItem('nodeDimmingEnabled', enabled.toString());
-  }, []);
+    writeNodeDisplayLocal(sourceId, 'nodeDimmingEnabled', enabled.toString());
+  }, [sourceId]);
 
   const setNodeDimmingStartHours = React.useCallback((hours: number) => {
     setNodeDimmingStartHoursState(hours);
-    localStorage.setItem('nodeDimmingStartHours', hours.toString());
-  }, []);
+    writeNodeDisplayLocal(sourceId, 'nodeDimmingStartHours', hours.toString());
+  }, [sourceId]);
 
   const setNodeDimmingMinOpacity = React.useCallback((opacity: number) => {
     setNodeDimmingMinOpacityState(opacity);
-    localStorage.setItem('nodeDimmingMinOpacity', opacity.toString());
-  }, []);
+    writeNodeDisplayLocal(sourceId, 'nodeDimmingMinOpacity', opacity.toString());
+  }, [sourceId]);
 
   const setNodeHopsCalculation = React.useCallback((calculation: NodeHopsCalculation) => {
     setNodeHopsCalculationState(calculation);
-    localStorage.setItem('nodeHopsCalculation', calculation);
-  }, []);
+    writeNodeDisplayLocal(sourceId, 'nodeHopsCalculation', calculation);
+  }, [sourceId]);
+
+  const setHideIncompleteNodes = React.useCallback((hide: boolean) => {
+    setHideIncompleteNodesState(hide);
+    writeNodeDisplayLocal(sourceId, 'hideIncompleteNodes', hide.toString());
+  }, [sourceId]);
 
   /**
    * Set tapback emojis and save to database
@@ -1336,12 +1370,41 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     }
   }, [baseUrl, getCsrfToken]);
 
-  // Load settings from server on mount
+  // Load settings from server on mount, and re-run on sourceId change (#4412
+  // Phase 3 / D1 — copies AutomationContext's precedent). SettingsProvider is
+  // not always inside a Router, so the sourceId query string is built inline
+  // rather than via useSourceQuery(), which is component-only.
   React.useEffect(() => {
+    const sourceQuery = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+
+    // #4412 Phase 3 (D1): synchronously re-seed the nine Node Display states
+    // this context owns for the NEW sourceId, before the fetch below
+    // resolves. Without this, a sourceId change that doesn't remount the
+    // provider leaves the previous source's values on screen until the
+    // network round-trip lands. `readNodeDisplayLocal` returns null (→ the
+    // hardcoded default) both when sourceId is null and when nothing has
+    // been saved locally for it yet.
+    setMaxNodeAgeHoursState(parseNodeDisplayNumber('maxNodeAgeHours', readNodeDisplayLocal(sourceId, 'maxNodeAgeHours')));
+    setInactiveNodeThresholdHoursState(parseNodeDisplayNumber('inactiveNodeThresholdHours', readNodeDisplayLocal(sourceId, 'inactiveNodeThresholdHours')));
+    setInactiveNodeCheckIntervalMinutesState(parseNodeDisplayNumber('inactiveNodeCheckIntervalMinutes', readNodeDisplayLocal(sourceId, 'inactiveNodeCheckIntervalMinutes')));
+    setInactiveNodeCooldownHoursState(parseNodeDisplayNumber('inactiveNodeCooldownHours', readNodeDisplayLocal(sourceId, 'inactiveNodeCooldownHours')));
+    setNodeDimmingEnabledState(parseNodeDisplayBoolean('nodeDimmingEnabled', readNodeDisplayLocal(sourceId, 'nodeDimmingEnabled')));
+    setNodeDimmingStartHoursState(parseNodeDisplayNumber('nodeDimmingStartHours', readNodeDisplayLocal(sourceId, 'nodeDimmingStartHours')));
+    setNodeDimmingMinOpacityState(parseNodeDisplayNumber('nodeDimmingMinOpacity', readNodeDisplayLocal(sourceId, 'nodeDimmingMinOpacity')));
+    setHideIncompleteNodesState(parseNodeDisplayBoolean('hideIncompleteNodes', readNodeDisplayLocal(sourceId, 'hideIncompleteNodes')));
+    {
+      const savedHops = readNodeDisplayLocal(sourceId, 'nodeHopsCalculation');
+      setNodeHopsCalculationState(
+        (savedHops === 'traceroute' || savedHops === 'messages')
+          ? savedHops
+          : NODE_DISPLAY_STRING_DEFAULTS.nodeHopsCalculation as NodeHopsCalculation,
+      );
+    }
+
     const loadServerSettings = async () => {
       try {
         logger.debug('🔄 Loading settings from server...');
-        const response = await fetch(`${baseUrl}/api/settings`, {
+        const response = await fetch(`${baseUrl}/api/settings${sourceQuery}`, {
           credentials: 'include'
         });
 
@@ -1349,37 +1412,70 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
           const settings = await response.json();
           logger.debug('📥 Received settings from server:', settings);
 
-          // Update state with server settings (server takes precedence over localStorage)
-          if (settings.maxNodeAgeHours) {
-            const value = parseInt(settings.maxNodeAgeHours);
-            if (!isNaN(value)) {
+          // The nine Node Display keys this context owns are per-source
+          // (#4412 Phase 3 / D1). When sourceId is null the synchronous
+          // re-seed above already applied the hardcoded defaults; skip
+          // applying anything from the (unscoped, legacy-global) response so
+          // that value can never leak in. D5 (settingsRoutes.ts) means a
+          // scoped response for a source with no seeded row simply omits
+          // these keys, which the `!== undefined` guards below already
+          // handle correctly.
+          if (sourceId) {
+            if (settings.maxNodeAgeHours !== undefined) {
+              const value = parseNodeDisplayNumber('maxNodeAgeHours', settings.maxNodeAgeHours);
               setMaxNodeAgeHoursState(value);
-              localStorage.setItem('maxNodeAgeHours', value.toString());
-              setActiveWindowHours(value); // #4240: server value wins for decay too
+              writeNodeDisplayLocal(sourceId, 'maxNodeAgeHours', value.toString());
             }
-          }
 
-          if (settings.inactiveNodeThresholdHours) {
-            const value = parseInt(settings.inactiveNodeThresholdHours);
-            if (!isNaN(value) && value > 0) {
+            if (settings.inactiveNodeThresholdHours !== undefined) {
+              const value = parseNodeDisplayNumber('inactiveNodeThresholdHours', settings.inactiveNodeThresholdHours);
               setInactiveNodeThresholdHoursState(value);
-              localStorage.setItem('inactiveNodeThresholdHours', value.toString());
+              writeNodeDisplayLocal(sourceId, 'inactiveNodeThresholdHours', value.toString());
             }
-          }
 
-          if (settings.inactiveNodeCheckIntervalMinutes) {
-            const value = parseInt(settings.inactiveNodeCheckIntervalMinutes);
-            if (!isNaN(value) && value > 0) {
+            if (settings.inactiveNodeCheckIntervalMinutes !== undefined) {
+              const value = parseNodeDisplayNumber('inactiveNodeCheckIntervalMinutes', settings.inactiveNodeCheckIntervalMinutes);
               setInactiveNodeCheckIntervalMinutesState(value);
-              localStorage.setItem('inactiveNodeCheckIntervalMinutes', value.toString());
+              writeNodeDisplayLocal(sourceId, 'inactiveNodeCheckIntervalMinutes', value.toString());
             }
-          }
 
-          if (settings.inactiveNodeCooldownHours) {
-            const value = parseInt(settings.inactiveNodeCooldownHours);
-            if (!isNaN(value) && value > 0) {
+            if (settings.inactiveNodeCooldownHours !== undefined) {
+              const value = parseNodeDisplayNumber('inactiveNodeCooldownHours', settings.inactiveNodeCooldownHours);
               setInactiveNodeCooldownHoursState(value);
-              localStorage.setItem('inactiveNodeCooldownHours', value.toString());
+              writeNodeDisplayLocal(sourceId, 'inactiveNodeCooldownHours', value.toString());
+            }
+
+            if (settings.nodeHopsCalculation !== undefined) {
+              const valid: NodeHopsCalculation[] = ['nodeinfo', 'traceroute', 'messages'];
+              const value = valid.includes(settings.nodeHopsCalculation as NodeHopsCalculation)
+                ? settings.nodeHopsCalculation as NodeHopsCalculation
+                : NODE_DISPLAY_STRING_DEFAULTS.nodeHopsCalculation as NodeHopsCalculation;
+              setNodeHopsCalculationState(value);
+              writeNodeDisplayLocal(sourceId, 'nodeHopsCalculation', value);
+            }
+
+            if (settings.hideIncompleteNodes !== undefined) {
+              const value = parseNodeDisplayBoolean('hideIncompleteNodes', settings.hideIncompleteNodes);
+              setHideIncompleteNodesState(value);
+              writeNodeDisplayLocal(sourceId, 'hideIncompleteNodes', value.toString());
+            }
+
+            if (settings.nodeDimmingEnabled !== undefined) {
+              const value = parseNodeDisplayBoolean('nodeDimmingEnabled', settings.nodeDimmingEnabled);
+              setNodeDimmingEnabledState(value);
+              writeNodeDisplayLocal(sourceId, 'nodeDimmingEnabled', value.toString());
+            }
+
+            if (settings.nodeDimmingStartHours !== undefined) {
+              const value = parseNodeDisplayNumber('nodeDimmingStartHours', settings.nodeDimmingStartHours);
+              setNodeDimmingStartHoursState(value);
+              writeNodeDisplayLocal(sourceId, 'nodeDimmingStartHours', value.toString());
+            }
+
+            if (settings.nodeDimmingMinOpacity !== undefined) {
+              const value = parseNodeDisplayNumber('nodeDimmingMinOpacity', settings.nodeDimmingMinOpacity);
+              setNodeDimmingMinOpacityState(value);
+              writeNodeDisplayLocal(sourceId, 'nodeDimmingMinOpacity', value.toString());
             }
           }
 
@@ -1662,35 +1758,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
-          if (settings.nodeHopsCalculation) {
-            const valid: NodeHopsCalculation[] = ['nodeinfo', 'traceroute', 'messages'];
-            if (valid.includes(settings.nodeHopsCalculation as NodeHopsCalculation)) {
-              setNodeHopsCalculationState(settings.nodeHopsCalculation as NodeHopsCalculation);
-              localStorage.setItem('nodeHopsCalculation', settings.nodeHopsCalculation);
-            }
-          }
-
-          if (settings.nodeDimmingEnabled !== undefined) {
-            const enabled = settings.nodeDimmingEnabled === '1' || settings.nodeDimmingEnabled === 'true';
-            setNodeDimmingEnabledState(enabled);
-            localStorage.setItem('nodeDimmingEnabled', enabled.toString());
-          }
-
-          if (settings.nodeDimmingStartHours !== undefined) {
-            const value = parseFloat(settings.nodeDimmingStartHours);
-            if (!isNaN(value) && value > 0) {
-              setNodeDimmingStartHoursState(value);
-              localStorage.setItem('nodeDimmingStartHours', value.toString());
-            }
-          }
-
-          if (settings.nodeDimmingMinOpacity !== undefined) {
-            const value = parseFloat(settings.nodeDimmingMinOpacity);
-            if (!isNaN(value) && value >= 0 && value <= 1) {
-              setNodeDimmingMinOpacityState(value);
-              localStorage.setItem('nodeDimmingMinOpacity', value.toString());
-            }
-          }
+          // nodeHopsCalculation / nodeDimming* / hideIncompleteNodes are
+          // applied above, inside the `if (sourceId)` block (#4412 Phase 3).
 
           logger.debug('✅ Settings loaded from server and applied to state');
 
@@ -1732,7 +1801,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     };
 
     void loadServerSettings();
-  }, [baseUrl]);
+  }, [baseUrl, sourceId]);
 
   // Load custom themes on mount
   React.useEffect(() => {
@@ -1844,6 +1913,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     nodeDimmingStartHours,
     nodeDimmingMinOpacity,
     nodeHopsCalculation,
+    hideIncompleteNodes,
+    showIncompleteNodes: !hideIncompleteNodes,
     tapbackEmojis,
     temporaryTileset,
     setTemporaryTileset,
@@ -1905,6 +1976,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setNodeDimmingStartHours,
     setNodeDimmingMinOpacity,
     setNodeHopsCalculation,
+    setHideIncompleteNodes,
     setTapbackEmojis,
   }), [
     maxNodeAgeHours,
@@ -1964,6 +2036,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     nodeDimmingStartHours,
     nodeDimmingMinOpacity,
     nodeHopsCalculation,
+    hideIncompleteNodes,
     tapbackEmojis,
     temporaryTileset,
     setTemporaryTileset,
@@ -2025,6 +2098,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setNodeDimmingStartHours,
     setNodeDimmingMinOpacity,
     setNodeHopsCalculation,
+    setHideIncompleteNodes,
     setTapbackEmojis,
   ]);
 

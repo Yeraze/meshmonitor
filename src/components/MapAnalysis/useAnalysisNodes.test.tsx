@@ -59,10 +59,21 @@ const MOCK_NODES = [
 ];
 
 const mockUseDashboardUnifiedData = vi.fn();
+const mockUseMaxNodeAgeHoursAcross = vi.fn();
 
 vi.mock('../../hooks/useDashboardData', () => ({
   useDashboardSources: () => ({ data: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] }),
   useDashboardUnifiedData: (...args: unknown[]) => mockUseDashboardUnifiedData(...args),
+}));
+
+// #4412 Phase 3 (WP2): useAnalysisNodes now reads its transport-decay cutoff
+// from useMaxNodeAgeHoursAcross (a TanStack query hook) instead of the
+// deleted activeWindowConfig.ts non-context mirror. Mocked here rather than
+// wrapped in a real QueryClientProvider, matching the useDashboardData mock
+// already in this file — this suite is about the marker/filter predicate,
+// not the cross-source query plumbing (that's useNodeDisplaySettings.test.ts).
+vi.mock('../../hooks/useNodeDisplaySettings', () => ({
+  useMaxNodeAgeHoursAcross: (...args: unknown[]) => mockUseMaxNodeAgeHoursAcross(...args),
 }));
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -73,6 +84,9 @@ describe('useAnalysisNodes', () => {
   beforeEach(() => {
     localStorage.clear();
     mockUseDashboardUnifiedData.mockReturnValue({ nodes: MOCK_NODES });
+    // Matches the old activeWindowConfig.ts default (DEFAULT_MAX_NODE_AGE_HOURS)
+    // and NODE_DISPLAY_NUMERIC_DEFAULTS.maxNodeAgeHours — both are 24.
+    mockUseMaxNodeAgeHoursAcross.mockReturnValue(24);
   });
 
   it('returns only positioned+visible nodes with mt:/mc: keys', () => {
