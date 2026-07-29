@@ -489,6 +489,7 @@
   "messages.traceroute_no_response": "No response received",
   "messages.traceroute_no_return_path": "No return path data",
   "messages.traceroute_picker_label": "Traceroute",
+  "messages.traceroute_picker_latest": "Latest",
   "messages.traceroute_picker_aria": "Choose which traceroute to display",
   "messages.traceroute_picker_hops_one": "{{count}} hop",
   "messages.traceroute_picker_hops_other": "{{count}} hops",

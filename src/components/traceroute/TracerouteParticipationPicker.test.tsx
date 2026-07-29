@@ -300,13 +300,16 @@ describe('TracerouteParticipationPicker', () => {
       ),
     ).not.toThrow();
 
-    // No option carries value="" (the component never synthesizes a
-    // placeholder), so native <select> semantics fall back to the first
-    // rendered option rather than a truly blank selection — this is a
-    // browser default, not a component bug, and happens to line up with
-    // "newest first" ordering. The assertion that matters here is the one
-    // above: the null transition must not throw.
+    // selectedId: null means the displayed row came from the poll, not the
+    // picker (it has no entry id). The component synthesizes a hidden
+    // "Latest" placeholder for exactly this state — without it, native
+    // <select> semantics would display the FIRST option's label, implying a
+    // selection that was never made (PR #4427 review).
     select = container.querySelector('select') as HTMLSelectElement;
-    expect(select.value).toBe('42');
+    expect(select.value).toBe('');
+    const placeholder = select.querySelector('option[value=""]') as HTMLOptionElement;
+    expect(placeholder).not.toBeNull();
+    expect(placeholder.hidden).toBe(true);
+    expect(placeholder.textContent).toBe('Latest');
   });
 });

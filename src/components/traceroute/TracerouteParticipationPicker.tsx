@@ -86,6 +86,15 @@ export function TracerouteParticipationPicker({
         value={selectedId != null ? String(selectedId) : ''}
         onChange={e => onSelect(Number(e.target.value))}
       >
+        {/* Placeholder for the value="" state (the displayed row came from the
+            poll, not the picker — it has no entry id). Without it a native
+            <select> silently displays the FIRST option's label, implying a
+            selection that was never made. Hidden so it can't be re-chosen. */}
+        {selectedId == null && (
+          <option value="" hidden>
+            {t('messages.traceroute_picker_latest', 'Latest')}
+          </option>
+        )}
         {entries.map(entry => (
           <option key={entry.id} value={entry.id}>
             {buildOptionLabel(entry, nodes, { timeFormat, dateFormat, t })}

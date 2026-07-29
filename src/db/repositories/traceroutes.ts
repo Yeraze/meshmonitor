@@ -182,7 +182,10 @@ export class TraceroutesRepository extends BaseRepository {
   async getTraceroutesInvolvingNode(
     nodeNum: number,
     opts: {
-      sourceId: SourceScope;
+      /** Narrowed to `string` (not `SourceScope`): the participation picker is
+       *  per-source by definition, so an `ALL_SOURCES` caller is a bug this
+       *  signature makes unrepresentable. */
+      sourceId: string;
       sinceTimestamp: number;
       limit?: number;
       scanLimit?: number;
