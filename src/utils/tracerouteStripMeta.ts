@@ -67,6 +67,13 @@ export function buildStripNodeMeta(
     const longName = node.user?.longName?.trim() || null;
     const roleLabel = getRoleName(node.user?.role);
     const nodeId = node.user?.id || paddedHexId(nodeNum);
+    // Display id vs. actionable id. `nodeId` falls back to a synthesised hex
+    // string so the card always shows something; `userId` is present ONLY when
+    // the node really has a user record, because it is what
+    // `setSelectedDMNode` keys the details panel off
+    // (MessagesTab: `nodes.find(n => n.user?.id === selectedDMNode)`).
+    // A synthesised id there opens an empty panel.
+    const userId = node.user?.id || undefined;
     const category = getNodeTypeCategory(node);
     const hops = getEffectiveHops(node, opts.hopsCalculation, opts.traceroutes, opts.currentNodeNum);
     const unmessagable = !!node.isUnmessagable;
@@ -87,6 +94,7 @@ export function buildStripNodeMeta(
       longName,
       roleLabel,
       nodeId,
+      userId,
       category,
       hops,
       unmessagable,

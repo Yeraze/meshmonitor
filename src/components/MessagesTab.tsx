@@ -753,6 +753,14 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     return { stripGraph, stripMeta };
   }, [recentTrace, nodes, nodeHopsCalculation, traceroutes, currentNodeNum]);
 
+  /** Load a hop from the traceroute strip into the Node Details panel.
+   *  No `setActiveTab`: the strip only ever renders on the Messages tab, so
+   *  the destination is already on screen. Mirrors NodesTab's
+   *  `handlePopupDMClick` (NodesTab.tsx:1152) minus the tab switch. */
+  const handleStripNodeDetails = useCallback((nodeUserId: string) => {
+    setSelectedDMNode(nodeUserId);
+  }, [setSelectedDMNode]);
+
   // Permission check
   if (!hasPermission('messages', 'read')) {
     return (
@@ -1970,6 +1978,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             timeFormat={timeFormat}
                             dateFormat={dateFormat}
                             distanceUnit={distanceUnit}
+                            onOpenNodeDetails={handleStripNodeDetails}
                           />
                         ) : (
                           <div className="traceroute-route">
