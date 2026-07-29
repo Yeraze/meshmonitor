@@ -766,9 +766,10 @@ export interface StripLayout {
   height: number;
   /** StripNode.id -> glyph CENTER, in the container's coordinate space. */
   centers: Map<string, StripPoint>;
-  /** Per-edge polyline through 2 or 3 points, already offset off the glyph
-   *  edges so the arrowhead lands on the rim, not under the icon, and
-   *  translated into its leg's lane. */
+  /** Per-edge polyline through 2+ points, already offset off the glyph
+   *  edges so the arrowhead lands on the rim, not under the icon,
+   *  translated into its leg's lane, and routed around unrelated glyphs
+   *  (#4428). */
   edgePaths: Map<string, StripPoint[]>;
   /** Where each edge's SNR label anchors (§3.5.1). */
   labelAnchors: Map<string, StripPoint>;
@@ -812,14 +813,26 @@ occupied, `rowCount = 2`, `columns = 5` →
 `width = 320`, `height = 44 + 2*76 + 44 = 240`. Spine sits at
 `y = 44 + 1*76 + 16 = 136`; the raised `CS`/`TRPK` at `y = 60`.
 
-**Edge paths (unchanged).**
+**Edge paths.**
 * Same-row edge → straight segment between the two centers, both ends pulled in
-  by `glyphSize / 2 + 3` along the segment.
+  by `glyphSize / 2 + EDGE_RIM_MARGIN` (= `+3`) along the segment.
 * Row-crossing edge → 3-point polyline: start rim, elbow at
   `{ x: (x0+x1)/2, y: max(y0,y1) }`, end rim. Straight dog-legs, not beziers —
   easier to read at this pitch and trivially assertable.
 * Then the whole path (2 or 3 points) is translated by
   `canonicalPerpendicular(c0, c1) * LANE_OFFSET * (leg === 'forward' ? +1 : -1)`.
+* **Glyph routing (#4428).** The translated path is then bent around every
+  OTHER node's clearance circle, radius
+  `edgeClearance = glyphSize/2 + EDGE_RIM_MARGIN + LANE_OFFSET` — an edge
+  spanning non-adjacent columns, or a dog-leg grazing a glyph, must not render
+  through nodes it doesn't terminate at. Two bounded, deterministic phases in
+  `routeAroundGlyphs`: (1) an elbow inside a circle is pushed radially out
+  past it; (2) any segment still cutting a circle gets a bend inserted just
+  past the rim (`+ BEND_MARGIN`) at its deepest point. Both phases push
+  radially — the side the lane-translated path already favors — falling back
+  to the leg's lane direction when degenerate, so forward detours stay above
+  and return detours below. Result stays a plain `<polyline>`; paths are
+  therefore **2+ points**, not just 2 or 3.
 
 **`LANE_OFFSET = 5` and `canonicalPerpendicular` are preserved exactly as they
 are.** They exist because the forward and return legs routinely traverse the
@@ -833,7 +846,15 @@ column on different rows) is only reachable from hand-built fixtures and has a
 dedicated test; keep it.
 
 **Label anchors:** §3.5.1. Note the anchor `y` is now derived from row centers,
-so it is independent of `LANE_OFFSET`; the anchor `x` still comes from the
+so it is independent of `LANE_OFFSET` — that row-band rule is also what makes
+the C1 invariant hold, so #4428 never moves a label vertically. The anchor `x`
+(#4428) samples the FINAL routed path: the midpoint of the longest segment
+whose midpoint clears every glyph circle by
+`labelClearRadius = glyphSize/2 + LABEL_HALF_HEIGHT + LABEL_CLEARANCE`
+(ties → the earlier segment; deterministic), with a horizontal-only nudge as a
+last resort. For an un-detoured same-row edge this IS the old endpoint
+midpoint, so plain strips are pixel-identical; on a detoured edge it moves the
+label off the bend and off the avoided glyph's column. X still comes from the
 translated path, which is what separates the two legs' labels on a vertical
 chord.
 
