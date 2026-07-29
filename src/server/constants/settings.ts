@@ -472,6 +472,19 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreTimerTriggers',
   // MeshCore default region/scope (#3667) — per source (per node)
   'meshcoreDefaultScope',
+  // Node Display (#4412 / per-source node display epic). All ten keys in the
+  // Settings → Node Display section are per-source as of Phase 1; Phase 2 converts
+  // the server reads to getSettingForSource(). `localStatsIntervalMinutes` is
+  // already listed under "Misc per-source" below — do not duplicate it.
+  'maxNodeAgeHours',
+  'inactiveNodeThresholdHours',
+  'inactiveNodeCheckIntervalMinutes',
+  'inactiveNodeCooldownHours',
+  'nodeHopsCalculation',
+  'hideIncompleteNodes',
+  'nodeDimmingEnabled',
+  'nodeDimmingStartHours',
+  'nodeDimmingMinOpacity',
   // Misc per-source
   'externalUrl',
   'geofenceTriggers',
@@ -529,6 +542,94 @@ export const PER_SOURCE_SETTINGS_KEYS = [
 ] as const;
 
 export type PerSourceSettingKey = typeof PER_SOURCE_SETTINGS_KEYS[number];
+
+/**
+ * Settings that are meaningless inside a `source:{id}:` namespace. Dropped (and
+ * reported as `ignoredKeys`) by POST /api/settings?sourceId= so a global-only key
+ * cannot be written where nothing will ever read it.
+ *
+ * DENY-LIST, deliberately (see PER_SOURCE_NODE_DISPLAY_PHASE1_SPEC §2.2): the
+ * per-source filter is VALID_SETTINGS_KEYS minus this set. A key that belongs here
+ * but is missing costs one junk row nobody reads; an over-eager entry silently
+ * stops a user setting from persisting. The asymmetry is why this is a deny-list.
+ *
+ * TWO TESTS BOTH MUST PASS BEFORE ADDING A KEY:
+ *   1. No server code reads it per-source — grep for getSettingForSource /
+ *      getSettingForSourceSync / getSourceSettings with that key.
+ *   2. No frontend code POSTs it to /api/settings with a ?sourceId= query — grep
+ *      src/components, src/pages, src/hooks, src/contexts. This is the test that
+ *      catches the Dashboard/useFavorites class of key (#4412 Phase 1 audit).
+ * If you cannot satisfy BOTH, leave the key out. Omission is safe; a wrong entry
+ * is silent data loss.
+ */
+export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
+  // Documented "global" in this file's own inline comments:
+  'pkiDmDecryptionGloballyEnabled',         // :82 master switch, gates every source
+  'position_estimation_enabled',            // :141 global batch job (#3271)
+  'position_estimation_frequency_hours',    // :141
+  'position_estimation_lookback_hours',     // :141
+  'position_estimation_max_uncertainty_km', // :145
+  'linkPreviewsEnabled',                    // :175 global privacy toggle (#3416)
+  'discardInvalidPositions',                // :178 global ingest gate
+  'noIndexEnabled',                         // :184 global robots gate (#4202)
+  'meshcoreChannelRetryEnabled',            // :189 global opt-in (#3979)
+  'meshcoreCliTimeoutSeconds',              // :195 global CLI reply timeout (#4027)
+  'elevationEnabled',                       // :305 "Global (not per-source)" (#4111)
+  'elevationSourceUrl',                     // :305, also SECRET_SETTINGS_KEYS
+  // Global singletons driven only by the global POST branch:
+  'cotFeedEnabled',                         // settingsRoutes.ts:900-911 — "global singleton"
+  'cotFeedPort',                            // "
+  'customTilesets',                         // :725-728 refreshTileHostnameCache (global CSP cache)
+  'analyticsProvider',                      // :730-733 invalidateHtmlCache (global HTML)
+  'analyticsConfig',                        // "
+  'appriseApiServerUrl',                    // :632-647 "(global; #3012)"
+]);
+
+/**
+ * PER_SOURCE_SETTINGS_KEYS entries that intentionally are NOT in
+ * VALID_SETTINGS_KEYS, because they are written exclusively by a dedicated route
+ * or by the server itself — never through POST /api/settings.
+ *
+ * This set exists so `settings.allowlist.test.ts` can assert EXACT equality
+ * rather than a vacuous subset check: adding a per-source key that is missing
+ * from VALID_SETTINGS_KEYS fails the build unless you consciously classify it
+ * here, and a key that later gains a POST path fails until it is removed.
+ *
+ * Each entry MUST carry a comment naming the route/service that writes it.
+ */
+export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
+  // ── Written by a dedicated route ────────────────────────────────────────
+  // POST /api/settings/timesync → databaseService.setTimeSyncFilterSettingsAsync
+  // (settingsRoutes.ts:1554; setters at services/database.ts:4699,4707)
+  'autoTimeSyncEnabled',
+  'autoTimeSyncIntervalMinutes',
+  // POST /api/settings/traceroute-nodes → setTracerouteFilterSettingsAsync
+  // (settingsRoutes.ts:1321; setters at services/database.ts:2358-2571, 2665)
+  'tracerouteNodeFilterEnabled',
+  'tracerouteFilterChannels',
+  'tracerouteFilterRoles',
+  'tracerouteFilterHwModels',
+  'tracerouteFilterNameRegex',
+  'tracerouteFilterNodesEnabled',
+  'tracerouteFilterChannelsEnabled',
+  'tracerouteFilterRolesEnabled',
+  'tracerouteFilterHwModelsEnabled',
+  'tracerouteFilterRegexEnabled',
+  'tracerouteExpirationHours',
+  'tracerouteSortByHops',
+  // ── Server-managed bookkeeping, never user-set ──────────────────────────
+  'autoFavoriteNodes',      // favoritesService.ts:301,342,419; nodesRoutes.ts:443,569
+  'lastAnnouncementTime',   // announceRoutes.ts:15,17; autoAnnounceService.ts:242,244
+  'localNodeNum',           // meshtasticManager.ts:4688,4748
+  // ── KNOWN ORPHAN — not legitimized by being listed here ─────────────────
+  // externalUrl is READ at securityDigestService.ts:332 and written NOWHERE in
+  // the repo. It is in this set because it is in fact absent from
+  // VALID_SETTINGS_KEYS, not because that absence is correct. Either the write
+  // path was never built or the read is dead. Tracked in §8.7; needs its own
+  // issue. Do NOT "fix" it by adding it to VALID_SETTINGS_KEYS — that creates a
+  // new user-writable setting, which is a feature, not a Phase 1 cleanup.
+  'externalUrl',
+]);
 
 /**
  * Settings keys whose values are secret and must never be returned to

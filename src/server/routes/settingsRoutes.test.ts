@@ -812,6 +812,195 @@ describe('settingsRoutes', () => {
     });
   });
 
+  // WP2 (#4412 Phase 1) — route hardening: deny-list key filter, permission
+  // scoping, audit restructure, maxNodeAgeHours validation, and the
+  // localStatsIntervalMinutes per-source handler. Test rows a–g from
+  // PER_SOURCE_NODE_DISPLAY_PHASE1_SPEC.md §6.2.
+  describe('POST /api/settings — WP2 per-source route hardening (#4412 §6.2 a-g)', () => {
+    // (a) maxNodeAgeHours range validation (§3.5)
+    describe('(a) maxNodeAgeHours range validation', () => {
+      it.each([0, 169, 'abc', ''])('rejects %s with 400 INVALID_MAX_NODE_AGE_HOURS', async (value) => {
+        const app = createApp(adminUser);
+        const res = await request(app)
+          .post('/api/settings')
+          .send({ maxNodeAgeHours: value as any })
+          .expect(400);
+
+        expect(res.body.code).toBe('INVALID_MAX_NODE_AGE_HOURS');
+        expect(databaseService.settings.setSettings).not.toHaveBeenCalled();
+      });
+
+      it.each([1, 24, 168])('accepts %s with 200', async (value) => {
+        const app = createApp(adminUser);
+        await request(app)
+          .post('/api/settings')
+          .send({ maxNodeAgeHours: String(value) })
+          .expect(200);
+      });
+    });
+
+    // (b) a global-only key is dropped (never 400) under ?sourceId= and
+    // reported in ignoredKeys (§2.3).
+    it('(b) drops a global-only key under ?sourceId= and reports it in ignoredKeys', async () => {
+      const app = createApp(adminUser);
+      const res = await request(app)
+        .post('/api/settings?sourceId=mqtt-broker-1')
+        .send({ cotFeedEnabled: '1' })
+        .expect(200);
+
+      expect(databaseService.settings.setSourceSettings).toHaveBeenCalledTimes(1);
+      const [calledSourceId, calledSettings] = (databaseService.settings.setSourceSettings as any).mock.calls[0];
+      expect(calledSourceId).toBe('mqtt-broker-1');
+      expect(calledSettings).not.toHaveProperty('cotFeedEnabled');
+      expect(res.body.data.ignoredKeys).toContain('cotFeedEnabled');
+    });
+
+    // (c) the per-source branch now audits (§3.4) — it used to return before
+    // reaching the audit block at all.
+    it('(c) audits a per-source write with sourceId inside details', async () => {
+      const app = createApp(adminUser);
+      await request(app)
+        .post('/api/settings?sourceId=mqtt-broker-1')
+        .send({ hideIncompleteNodes: '1' })
+        .expect(200);
+
+      expect(databaseService.auditLogAsync).toHaveBeenCalledTimes(1);
+      const call = (databaseService.auditLogAsync as any).mock.calls[0];
+      expect(call[1]).toBe('settings_updated');
+      expect(call[2]).toBe('settings');
+      const details = JSON.parse(call[3]);
+      expect(details.sourceId).toBe('mqtt-broker-1');
+      expect(details.keys).toContain('hideIncompleteNodes');
+    });
+
+    // (d) regression pin for the §2.1 audit — every one of the ten keys that
+    // are legitimately source-scoped but never read by server code must still
+    // reach setSourceSettings, with an empty ignoredKeys.
+    it('(d) all ten §2.1 client-only per-source keys reach setSourceSettings with empty ignoredKeys', async () => {
+      const app = createApp(adminUser);
+      const body: Record<string, string> = {
+        telemetryFavorites: '["a"]',
+        telemetryCustomOrder: '["b"]',
+        dashboardWidgets: '[]',
+        dashboardSolarVisibility: '1',
+        autoKeyManagementIntervalMinutes: '5',
+        autoKeyManagementMaxExchanges: '3',
+        autoKeyManagementAutoPurge: 'true',
+        autoKeyManagementImmediatePurge: 'false',
+        remoteAdminScannerExpirationHours: '24',
+        autoAckTestMessages: 'hi',
+      };
+
+      const res = await request(app)
+        .post('/api/settings?sourceId=mqtt-broker-1')
+        .send(body)
+        .expect(200);
+
+      const [, calledSettings] = (databaseService.settings.setSourceSettings as any).mock.calls[0];
+      for (const [key, value] of Object.entries(body)) {
+        expect(calledSettings[key]).toBe(value);
+      }
+      expect(res.body.data.ignoredKeys).toEqual([]);
+    });
+
+    // (e) the polarity pin: a valid key in NEITHER PER_SOURCE_SETTINGS_KEYS nor
+    // GLOBAL_ONLY_SETTINGS_KEYS must still be written per-source. Fails if
+    // anyone re-inverts the filter into an allow-list (§2.2).
+    it('(e) a valid key in neither constant list is still written per-source (default-allow polarity pin)', async () => {
+      const app = createApp(adminUser);
+      const res = await request(app)
+        .post('/api/settings?sourceId=mqtt-broker-1')
+        .send({ temperatureUnit: 'celsius' })
+        .expect(200);
+
+      const [, calledSettings] = (databaseService.settings.setSourceSettings as any).mock.calls[0];
+      expect(calledSettings.temperatureUnit).toBe('celsius');
+      expect(res.body.data.ignoredKeys).toEqual([]);
+    });
+
+    // (f) the global (unscoped) POST path is byte-identical to before WP2.
+    it('(f) global POST response shape and setSettings payload are unchanged', async () => {
+      const app = createApp(adminUser);
+      const res = await request(app)
+        .post('/api/settings')
+        .send({ hideIncompleteNodes: '1' })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.settings).toEqual(expect.objectContaining({ hideIncompleteNodes: '1' }));
+      expect(res.body.data).toBeUndefined();
+      expect(res.body.ignoredKeys).toBeUndefined();
+      expect(databaseService.settings.setSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ hideIncompleteNodes: '1' })
+      );
+    });
+
+    // (g) §3.5b: localStatsIntervalMinutes now has a per-source handler; the
+    // global handler's behavior (resolves the primary manager) is untouched.
+    describe('(g) setLocalStatsInterval sourceId plumbing (§3.5b)', () => {
+      const setLocalStatsSpy = vi.fn();
+
+      beforeEach(() => {
+        setSettingsCallbacks({ setLocalStatsInterval: setLocalStatsSpy });
+        setLocalStatsSpy.mockClear();
+      });
+
+      afterAll(() => {
+        setSettingsCallbacks({});
+      });
+
+      it('global save resolves the primary manager exactly as before (no sourceId arg)', async () => {
+        const app = createApp(adminUser);
+        await request(app)
+          .post('/api/settings')
+          .send({ localStatsIntervalMinutes: '20' })
+          .expect(200);
+
+        expect(setLocalStatsSpy).toHaveBeenCalledTimes(1);
+        expect(setLocalStatsSpy.mock.calls[0]).toEqual([20]);
+      });
+
+      it('scoped save passes the sourceId through to the callback', async () => {
+        const app = createApp(adminUser);
+        await request(app)
+          .post('/api/settings?sourceId=mqtt-broker-1')
+          .send({ localStatsIntervalMinutes: '20' })
+          .expect(200);
+
+        expect(setLocalStatsSpy).toHaveBeenCalledTimes(1);
+        expect(setLocalStatsSpy.mock.calls[0]).toEqual([20, 'mqtt-broker-1']);
+      });
+    });
+
+    // AC7: the per-source branch must not fire global-only side-effect callbacks.
+    it('per-source write fires no global side-effect callback', async () => {
+      const restartCotFeedSpy = vi.fn();
+      const restartInactiveNodeSpy = vi.fn();
+      const setKeyRepairSpy = vi.fn();
+      setSettingsCallbacks({
+        restartCotFeed: restartCotFeedSpy,
+        restartInactiveNodeService: restartInactiveNodeSpy,
+        setKeyRepairSettings: setKeyRepairSpy,
+      });
+
+      const app = createApp(adminUser);
+      await request(app)
+        .post('/api/settings?sourceId=mqtt-broker-1')
+        .send({
+          hideIncompleteNodes: '1',
+          inactiveNodeThresholdHours: '48',
+          autoKeyManagementEnabled: 'true',
+        })
+        .expect(200);
+
+      expect(restartCotFeedSpy).not.toHaveBeenCalled();
+      expect(restartInactiveNodeSpy).not.toHaveBeenCalled();
+      expect(setKeyRepairSpy).not.toHaveBeenCalled();
+
+      setSettingsCallbacks({});
+    });
+  });
+
   describe('DELETE /api/settings', () => {
     it('should reset settings to defaults', async () => {
       const app = createApp(adminUser);

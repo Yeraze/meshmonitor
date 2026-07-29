@@ -907,6 +907,17 @@ router.delete('/:id', requirePermission('sources', 'write'), async (req: Request
       logger.warn(`Failed to purge nodes for deleted source ${req.params.id}:`, purgeError);
     }
 
+    // #4412: deleteSource only removes the `sources` row. Every
+    // `source:{id}:{key}` settings row would otherwise be orphaned forever with
+    // no UI path left to reach it — and a namespace whose values could be
+    // resurrected by a future source that reused the id. Best-effort, matching
+    // the node purge above: a cleanup failure must not fail the delete.
+    try {
+      await databaseService.deleteSourceSettingsAsync(req.params.id);
+    } catch (settingsError) {
+      logger.warn(`Failed to purge settings for deleted source ${req.params.id}:`, settingsError);
+    }
+
     res.json({ success: true });
   } catch (error) {
     logger.error('Error deleting source:', error);
