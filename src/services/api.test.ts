@@ -810,6 +810,47 @@ describe('ApiService BASE_URL Support', () => {
       expect(mockFetch).toHaveBeenCalledWith('/api/traceroutes/history/111/222?limit=20');
     });
 
+    it('getTracerouteParticipation should hit the participation endpoint with the encoded query string and unwrap data.entries', async () => {
+      const entries = [
+        {
+          id: 1,
+          timestamp: 1000,
+          fromNodeNum: 111,
+          toNodeNum: 222,
+          fromNodeId: '!0000006f',
+          toNodeId: '!000000de',
+          route: null,
+          routeBack: null,
+          snrTowards: null,
+          snrBack: null,
+          channel: null,
+          participation: 'endpoint' as const,
+          hopCount: null,
+        },
+      ];
+      mockFetch.mockResolvedValue(createMockResponse({ success: true, data: { entries } }));
+
+      const result = await apiService.getTracerouteParticipation(111, 'source-a', { hours: 48, limit: 10 });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/traceroutes/participation/111?sourceId=source-a&hours=48&limit=10',
+        expect.objectContaining({ credentials: 'include' })
+      );
+      expect(result).toEqual(entries);
+    });
+
+    it('getTracerouteParticipation should return [] when the body has no data', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true }));
+
+      const result = await apiService.getTracerouteParticipation(111, 'source-a');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/traceroutes/participation/111?sourceId=source-a',
+        expect.objectContaining({ credentials: 'include' })
+      );
+      expect(result).toEqual([]);
+    });
+
     it('updateTracerouteInterval should POST interval setting', async () => {
       mockFetch.mockResolvedValue(createMockResponse({ success: true }));
 
