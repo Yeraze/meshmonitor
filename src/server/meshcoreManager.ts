@@ -181,6 +181,34 @@ export interface ShareContactResult {
 }
 
 /**
+ * Result of {@link MeshCoreManager.pingContactZeroHop} (issue #4393).
+ *
+ * A zero-hop ping is a TRACE (companion command `SendTracePath`, opcode 36)
+ * whose path is the single 1-byte hash of the target's public key. Only a node
+ * in DIRECT radio range that forwards packets can answer it, so a reply proves
+ * direct reachability and a timeout means "not directly reachable".
+ *
+ * `snrToTarget` is the SNR the *target* measured on our outbound frame;
+ * `snrFromTarget` is the SNR our own radio measured on the returning frame.
+ * `rttMs` is measured host-side around the companion command, so it includes
+ * the USB/TCP link latency as well as airtime — treat it as approximate.
+ */
+export type ZeroHopPingResult =
+  | {
+      ok: true;
+      /** Path hash byte used (first byte of the target public key), hex. */
+      hopHash: string;
+      rttMs: number;
+      snrToTarget: number | null;
+      snrFromTarget: number;
+    }
+  | {
+      ok: false;
+      reason: 'not-companion' | 'disconnected' | 'unknown-contact' | 'no-reply';
+      error: string;
+    };
+
+/**
  * Result of {@link MeshCoreManager.syncDeviceTime}. `reason` distinguishes the
  * pre-flight guard failures (which the route reports as a 409) from an actual
  * device/command failure (`command-failed`, reported as a 502 with `error`).
@@ -3877,6 +3905,102 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     } catch (error) {
       logger.error('[MeshCore] tracePathRaw threw:', error);
       return null;
+    }
+  }
+
+  /**
+   * Zero-hop ping ("Ping [zero hops]" in the MeshCore phone app) — issue #4393.
+   *
+   * Sends a TRACE packet (companion command `SendTracePath`, opcode 36, via the
+   * `trace_path` bridge command) whose path is a single 1-byte hop hash: the
+   * first byte of the target's public key. The firmware's TRACE handler
+   * (`Mesh::onRecvPacket`, MeshCore `src/Mesh.cpp`) only forwards the frame when
+   *   - it arrives route-direct (zero hops so far), AND
+   *   - the node's own identity hash matches the next path byte, AND
+   *   - `allowPacketForward()` is true.
+   * So a reply proves the target heard us with NO intermediate repeater: exactly
+   * the "is this node in direct RF range?" test the requester asked for.
+   *
+   * Caveat (documented, not worked around): `allowPacketForward()` is false on
+   * plain Companion firmware, so only repeaters / room servers (and any node
+   * with transport enabled) can answer a trace. Pinging a companion contact
+   * times out even when it is in range.
+   *
+   * Unlike {@link traceContactPath} this deliberately ignores the contact's
+   * cached `out_path` — the whole point is to bypass the learned multi-hop route
+   * and test the direct link.
+   */
+  async pingContactZeroHop(publicKey: string): Promise<ZeroHopPingResult> {
+    if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
+      return {
+        ok: false,
+        reason: 'not-companion',
+        error: 'Zero-hop ping requires MeshCore Companion firmware.',
+      };
+    }
+    if (!this.connected) {
+      return { ok: false, reason: 'disconnected', error: 'Source is disconnected.' };
+    }
+    if (!/^[0-9a-fA-F]{64}$/.test(publicKey)) {
+      return { ok: false, reason: 'unknown-contact', error: 'Invalid public key.' };
+    }
+    const contact = this.contacts.get(publicKey);
+    if (!contact) {
+      return {
+        ok: false,
+        reason: 'unknown-contact',
+        error: 'Contact is not known to this source.',
+      };
+    }
+
+    // MeshCore path hashes are the leading byte(s) of the node's public key
+    // (`Identity::isHashMatch`). meshcore.js sends SendTracePath with flags=0,
+    // i.e. path hash size 1 (firmware reads the hash width from flags & 0x03),
+    // so a zero-hop path is exactly one byte.
+    const hopByte = parseInt(publicKey.slice(0, 2), 16);
+    const path = Uint8Array.from([hopByte]);
+    const hopHash = publicKey.slice(0, 2).toLowerCase();
+
+    const startedAt = Date.now();
+    try {
+      // extra_timeout gives the firmware's estimated direct-path timeout a
+      // little margin; the bridge ceiling is only a backstop for a device that
+      // never answers the command at all.
+      const response = await this.sendBridgeCommand(
+        'trace_path',
+        { path, extra_timeout: 3000 },
+        30_000,
+      );
+      if (!response.success) {
+        logger.debug(
+          `[MeshCore:${this.sourceId}] zero-hop ping to ${hopHash} got no reply: ${response.error}`,
+        );
+        return {
+          ok: false,
+          reason: 'no-reply',
+          error: 'No reply — the node is not in direct radio range (or does not repeat traces).',
+        };
+      }
+      this.recordMeshTx();
+      const rttMs = Date.now() - startedAt;
+      const d = response.data ?? {};
+      const rawSnrs: number[] = Array.isArray(d.pathSnrs) ? (d.pathSnrs as number[]) : [];
+      // Trace SNRs travel the wire as int8 of (SNR*4) but reach us as unsigned
+      // bytes, so sign-extend before scaling or -6 dB reads back as +62.5 dB.
+      const snrToTarget = rawSnrs.length > 0 ? ((rawSnrs[0] << 24) >> 24) / 4 : null;
+      const snrFromTarget = typeof d.lastSnr === 'number' ? d.lastSnr : 0;
+      logger.debug(
+        `[MeshCore:${this.sourceId}] zero-hop ping ${hopHash} ok: rtt=${rttMs}ms ` +
+          `snrToTarget=${snrToTarget ?? 'n/a'} snrFromTarget=${snrFromTarget}`,
+      );
+      return { ok: true, hopHash, rttMs, snrToTarget, snrFromTarget };
+    } catch (error) {
+      logger.error('[MeshCore] pingContactZeroHop threw:', error);
+      return {
+        ok: false,
+        reason: 'no-reply',
+        error: 'No reply — the node is not in direct radio range (or does not repeat traces).',
+      };
     }
   }
 
