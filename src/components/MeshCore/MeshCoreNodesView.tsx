@@ -6,6 +6,9 @@ import { MeshCoreMap } from './MeshCoreMap';
 import { meshcoreRoleIconName, meshcoreRoleLabelKey, meshcoreRoleLabel } from './meshcoreRole';
 import { useToast } from '../ToastContainer';
 import { useSettings } from '../../contexts/SettingsContext';
+import { useSource } from '../../contexts/SourceContext';
+import { useNodeDisplaySettings } from '../../hooks/useNodeDisplaySettings';
+import { meshcoreAgeCutoffMs, isWithinMeshcoreAge, meshcoreLastHeardMs } from '../../utils/meshcoreAge';
 import { formatTimeOrDate } from '../../utils/datetime';
 import { UiIcon } from '../icons';
 
@@ -85,7 +88,7 @@ function mergeNodesAndContacts(
         : existing.name;
       existing.rssi = existing.rssi ?? c.rssi;
       existing.snr = existing.snr ?? c.snr;
-      existing.lastHeard = existing.lastHeard ?? c.lastSeen;
+      existing.lastHeard = existing.lastHeard ?? meshcoreLastHeardMs(c) ?? undefined;
       existing.hasPosition = existing.hasPosition || hasPos;
       existing.advType = existing.advType ?? c.advType;
     } else {
@@ -95,7 +98,7 @@ function mergeNodesAndContacts(
         advType: c.advType,
         rssi: c.rssi,
         snr: c.snr,
-        lastHeard: c.lastSeen,
+        lastHeard: meshcoreLastHeardMs(c) ?? undefined,
         hasPosition: hasPos,
         isFavorite: false,
       });
@@ -135,6 +138,8 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { timeFormat, dateFormat } = useSettings();
+  const { sourceId } = useSource();
+  const { maxNodeAgeHours } = useNodeDisplaySettings(sourceId);
   const [favoriteBusy, setFavoriteBusy] = useState<string | null>(null);
 
   const handleToggleFavorite = useCallback(async (publicKey: string, next: boolean) => {
@@ -268,9 +273,23 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   }, [onDiscoverNodes, discovering, showToast, t]);
 
   const merged = useMemo(() => mergeNodesAndContacts(nodes, contacts), [nodes, contacts]);
+
+  /** Favorites and the operator's own node are never hidden by the age cutoff
+   *  (parity with useProcessedNodes.ts:194 + #4412 Phase 4 spec §2 D6). */
+  const isAgeExempt = useCallback((r: MergedRow): boolean =>
+    r.isFavorite || r.name.includes('(local)'), []);
+
+  const aged = useMemo(() => {
+    // Date.now() is read inside the memo, so the cutoff refreshes on every
+    // nodes/contacts poll (`merged` changes) rather than freezing at mount —
+    // the same property useProcessedNodes relies on.
+    const cutoffMs = meshcoreAgeCutoffMs(maxNodeAgeHours);
+    return merged.filter(r => isAgeExempt(r) || isWithinMeshcoreAge(r, cutoffMs));
+  }, [merged, maxNodeAgeHours, isAgeExempt]);
+
   const sorted = useMemo(
-    () => sortRows(merged, sortField, sortDirection),
-    [merged, sortField, sortDirection],
+    () => sortRows(aged, sortField, sortDirection),
+    [aged, sortField, sortDirection],
   );
   const rows = useMemo(() => {
     if (!searchQuery.trim()) return sorted;
@@ -278,6 +297,15 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     return sorted.filter(r =>
       r.name.toLowerCase().includes(q) || r.publicKey.toLowerCase().includes(q));
   }, [sorted, searchQuery]);
+
+  /** The map gets the same age-filtered set as the list (#4412 Phase 4 §3.4d)
+   *  — a local contact with no matching `MeshCoreNode` row is also kept, so
+   *  the map's centering / polar-grid origin never loses the local node. */
+  const visibleKeys = useMemo(() => new Set(aged.map(r => r.publicKey)), [aged]);
+  const visibleContacts = useMemo(
+    () => contacts.filter(c => visibleKeys.has(c.publicKey) || c.advName?.includes('(local)')),
+    [contacts, visibleKeys],
+  );
 
   const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';
   const selectedRow = rows.find(r => r.publicKey === selected);
@@ -497,7 +525,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
           </div>
         )}
         <MeshCoreMap
-          contacts={contacts}
+          contacts={visibleContacts}
           selectedPublicKey={selected}
           onNavigateToDm={onNavigateToDm}
           isLoading={mapIsLoading}
