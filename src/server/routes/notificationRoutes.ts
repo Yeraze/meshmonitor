@@ -3,7 +3,7 @@ import { optionalAuth, requireAuth, requirePermission, requireAdmin } from '../a
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { pushNotificationService } from '../services/pushNotificationService.js';
-import { appriseNotificationService } from '../services/appriseNotificationService.js';
+import { appriseNotificationService, resolveAppriseServerUrl } from '../services/appriseNotificationService.js';
 import { fallbackManager } from '../meshtasticManager.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { getPrimaryMeshtasticManager } from '../sourceManagerTypes.js';
@@ -376,8 +376,16 @@ appriseRouter.get('/status', requireAdmin(), async (_req: Request, res: Response
     const isAvailable = appriseNotificationService.isAvailable();
     res.json({
       available: isAvailable,
+      // `apprise_enabled` is read here per-source-less/global even though it is
+      // written per-source everywhere else — a real inconsistency, but this
+      // endpoint is unscoped (no sourceId) and "enabled across N sources" is a
+      // product question, not a cleanup. Left as-is; see #4442 spec discussion.
       enabled: await databaseService.settings.getSetting('apprise_enabled') === 'true',
-      url: await databaseService.settings.getSetting('apprise_url') || 'http://localhost:8000',
+      // Was: `getSetting('apprise_url') || 'http://localhost:8000'` — a key with
+      // no global writer anywhere (only read per-source), so this always fell
+      // through to the literal and ignored appriseApiServerUrl/APPRISE_URL. Now
+      // reports the same endpoint a real send would actually use (#4442).
+      url: await resolveAppriseServerUrl(databaseService.settings, null),
     });
   } catch (error: any) {
     logger.error('Error getting Apprise status:', error);

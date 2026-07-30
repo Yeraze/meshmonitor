@@ -20,6 +20,60 @@ interface AppriseConfig {
   enabled: boolean;
 }
 
+/**
+ * Minimal settings surface the resolver needs. Deliberately structural, NOT the
+ * DatabaseService singleton: securityDigestService holds an INJECTED
+ * databaseService (`this.databaseService`), and importing the singleton here
+ * would bypass it and make the per-source tests assert nothing.
+ */
+export interface AppriseSettingsReader {
+  getSetting(key: string): Promise<string | null | undefined>;
+  getSettingForSource(sourceId: string, key: string): Promise<string | null | undefined>;
+}
+
+function nonEmpty(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Resolve the Apprise **API server** base URL. Precedence (#3012):
+ *   1. per-source `apprise_url`   (skipped when sourceId is null)
+ *   2. global   `appriseApiServerUrl`
+ *   3. process.env.APPRISE_URL
+ *   4. http://localhost:8000      (bundled in the Docker image)
+ * Whitespace-only values are treated as unset.
+ *
+ * This is the single implementation of the chain — `resolveAppriseConfig`
+ * below, `securityDigestService`, and any route needing the API server's own
+ * base URL must call this rather than re-deriving it (#4442).
+ */
+export async function resolveAppriseServerUrl(
+  settings: AppriseSettingsReader,
+  sourceId: string | null,
+): Promise<string> {
+  const perSourceUrl = sourceId ? nonEmpty(await settings.getSettingForSource(sourceId, 'apprise_url')) : null;
+  if (perSourceUrl) return perSourceUrl;
+
+  const globalUrl = nonEmpty(await settings.getSetting('appriseApiServerUrl'));
+  if (globalUrl) return globalUrl;
+
+  const envUrl = nonEmpty(process.env.APPRISE_URL);
+  if (envUrl) return envUrl;
+
+  return 'http://localhost:8000';
+}
+
+/** Trailing-slash-safe `/notify` endpoint builder. `http://h:8000/` must not yield `//notify`. */
+export function appriseNotifyEndpoint(baseUrl: string): string {
+  let end = baseUrl.length;
+  while (end > 0 && baseUrl.charCodeAt(end - 1) === 47 /* '/' */) {
+    end--;
+  }
+  return `${baseUrl.slice(0, end)}/notify`;
+}
+
 class AppriseNotificationService {
   private initialized = false;
   private initPromise: Promise<void> | null = null;
@@ -73,18 +127,8 @@ class AppriseNotificationService {
    */
   private async resolveAppriseConfig(sourceId: string): Promise<AppriseConfig | null> {
     try {
-      const perSourceUrl = await databaseService.settings.getSettingForSource(sourceId, 'apprise_url');
       const enabledSetting = await databaseService.settings.getSettingForSource(sourceId, 'apprise_enabled');
-      const globalUrl = await databaseService.settings.getSetting('appriseApiServerUrl');
-      const url =
-        perSourceUrl ||
-        globalUrl ||
-        process.env.APPRISE_URL ||
-        'http://localhost:8000';
-      if (!url) {
-        logger.debug(`ℹ️ No apprise_url configured for source ${sourceId} (and no APPRISE_URL env)`);
-        return null;
-      }
+      const url = await resolveAppriseServerUrl(databaseService.settings, sourceId);
       // Default to enabled unless explicitly 'false'
       const enabled = enabledSetting !== 'false';
       return { url, enabled };
@@ -211,7 +255,7 @@ class AppriseNotificationService {
 
     try {
       // Apprise API supports sending to specific URLs via the 'urls' parameter
-      const response = await fetch(`${config.url}/notify`, {
+      const response = await fetch(appriseNotifyEndpoint(config.url), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -278,7 +322,7 @@ class AppriseNotificationService {
     try {
       const reqBody: Record<string, unknown> = { title: payload.title, body: payload.body, type };
       if (cleanUrls.length > 0) reqBody.urls = cleanUrls;
-      const response = await fetch(`${config.url}/notify`, {
+      const response = await fetch(appriseNotifyEndpoint(config.url), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(reqBody),

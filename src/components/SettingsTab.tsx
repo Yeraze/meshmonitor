@@ -123,6 +123,7 @@ interface SettingsDraft {
   analyticsProvider: string;
   analyticsConfig: Record<string, string>;
   appriseApiServerUrl: string;
+  externalUrl: string;
   elevationEnabled: boolean;
   elevationSourceUrl: string;
   // ATAK/CoT Phase 3 (issue #3691): global singleton plaintext TCP CoT feed
@@ -414,6 +415,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     analyticsProvider: 'none',
     analyticsConfig: {},
     appriseApiServerUrl: '',
+    externalUrl: '',
     elevationEnabled: false,
     elevationSourceUrl: '',
     cotFeedEnabled: false,
@@ -438,6 +440,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   const [initialAnalyticsProvider, setInitialAnalyticsProvider] = useState<string>('none');
   const [initialAnalyticsConfig, setInitialAnalyticsConfig] = useState<string>('{}');
   const [initialAppriseApiServerUrl, setInitialAppriseApiServerUrl] = useState<string>('');
+  // External URL (#4437). Same pattern as Apprise API Server above: global,
+  // admin-only, server-backed, no SettingsContext prop home.
+  const [initialExternalUrl, setInitialExternalUrl] = useState<string>('');
   // Elevation / Terrain source settings (#4111 Phase 3 WP-3). Mirrors the Apprise API Server
   // pattern above: initial snapshot for dirty-tracking, admins receive the unmasked
   // `elevationSourceUrl` (stripSecretSettings returns the full map to admins).
@@ -573,6 +578,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           updateField('appriseApiServerUrl', appriseApiServerUrl);
           setInitialAppriseApiServerUrl(appriseApiServerUrl);
 
+          // Load External URL (#4437)
+          const externalUrl = typeof settings.externalUrl === 'string'
+            ? settings.externalUrl
+            : '';
+          updateField('externalUrl', externalUrl);
+          setInitialExternalUrl(externalUrl);
+
           // Load Elevation/Terrain source settings (#4111 P3). Defaults to
           // enabled unless the server explicitly stored 'false' — mirrors
           // useElevationEnabled()'s semantics. Admins receive the unmasked
@@ -680,6 +692,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       analyticsProvider: initialAnalyticsProvider,
       analyticsConfig: parsedAnalyticsConfig,
       appriseApiServerUrl: initialAppriseApiServerUrl,
+      externalUrl: initialExternalUrl,
       elevationEnabled: initialElevationEnabled,
       elevationSourceUrl: initialElevationSourceUrl,
       cotFeedEnabled: initialCotFeedEnabled,
@@ -694,7 +707,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
       initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialMeshcoreCliTimeoutSeconds,
-      initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialElevationEnabled, initialElevationSourceUrl,
+      initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialExternalUrl, initialElevationEnabled, initialElevationSourceUrl,
       initialCotFeedEnabled, initialCotFeedPort]);
 
   // Re-seed the draft's category-A/B fields whenever the upstream props/context values change.
@@ -868,6 +881,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialAnalyticsProvider(d.analyticsProvider);
     setInitialAnalyticsConfig(JSON.stringify(d.analyticsConfig));
     setInitialAppriseApiServerUrl(d.appriseApiServerUrl.trim());
+    setInitialExternalUrl(d.externalUrl.trim());
     setInitialElevationEnabled(d.elevationEnabled);
     setInitialElevationSourceUrl(d.elevationSourceUrl.trim());
     setInitialCotFeedEnabled(d.cotFeedEnabled);
@@ -938,6 +952,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         analyticsProvider: draft.analyticsProvider,
         analyticsConfig: JSON.stringify(draft.analyticsConfig),
         appriseApiServerUrl: draft.appriseApiServerUrl.trim(),
+        externalUrl: draft.externalUrl.trim(),
         elevationEnabled: draft.elevationEnabled ? 'true' : 'false',
         elevationSourceUrl: draft.elevationSourceUrl.trim(),
         cotFeedEnabled: draft.cotFeedEnabled ? '1' : '0',
@@ -2360,6 +2375,24 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 </p>
               )}
             </div>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="externalUrl">
+              {t('settings.external_url_label', 'External URL')}
+              <span className="setting-description">
+                {t('settings.external_url_description', 'The absolute address this MeshMonitor is reachable at, used for links in notifications (e.g. the "View details" link in security digests). Include your base path if you run under one, e.g. https://mesh.example.com/meshmonitor. Leave empty to omit the link.')}
+              </span>
+            </label>
+            <input
+              id="externalUrl"
+              type="url"
+              value={draft.externalUrl}
+              onChange={(e) => updateField('externalUrl', e.target.value)}
+              placeholder="https://mesh.example.com"
+              className="setting-input"
+              autoComplete="off"
+              spellCheck={false}
+            />
           </div>
         </div>}
 

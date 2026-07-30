@@ -6,6 +6,7 @@
 
 import * as client from 'openid-client';
 import { User } from '../../types/auth.js';
+import { DEFAULT_NEW_USER_RESOURCES } from '../../types/permission.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { getEnvironmentConfig } from '../config/environment.js';
@@ -326,9 +327,11 @@ export async function handleOIDCCallback(
           const reason = groupRole.adminGroupsConfigured ? 'admin group membership' : 'first-OIDC-login bootstrap';
           logger.warn(`🔐 OIDC admin granted to '${user!.username}' (${reason})`);
         } else {
-          // Grant default permissions
-          const defaultResources = ['dashboard', 'nodes', 'messages', 'settings', 'info', 'traceroute'];
-          for (const resource of defaultResources) {
+          // Grant default permissions. Global-scope resources only — see
+          // DEFAULT_NEW_USER_RESOURCES (#4448). The admin-bootstrap list above
+          // is left as-is: admins short-circuit checkPermissionAsync, so its
+          // per-source rows are decorative rather than misleading.
+          for (const resource of DEFAULT_NEW_USER_RESOURCES) {
             await databaseService.auth.createPermission({
               userId,
               resource,

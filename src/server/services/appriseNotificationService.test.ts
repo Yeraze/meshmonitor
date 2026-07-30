@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } fr
 import type Database from 'better-sqlite3';
 import { createTestDb } from '../test-helpers/testDb.js';
 import databaseService from '../../services/database.js';
+import { resolveAppriseServerUrl, appriseNotifyEndpoint, type AppriseSettingsReader } from './appriseNotificationService.js';
 
 // Mock the database service
 vi.mock('../../services/database.js', () => ({
@@ -47,11 +48,47 @@ describe('AppriseNotificationService', () => {
   });
 
   describe('Configuration & Initialization', () => {
-    it('should initialize with default Apprise URL', () => {
-      const defaultUrl = 'http://localhost:8000';
-      const url = databaseService.getSetting('apprise_url') || defaultUrl;
+    // These four cases used to re-implement the resolver inline
+    // (`databaseService.getSetting('apprise_url') || defaultUrl`) and assert
+    // against that copy — structurally incapable of catching a regression in
+    // the real chain (#4442's root cause was exactly this kind of drift).
+    // Rewritten to call the exported `resolveAppriseServerUrl` directly.
+    function reader(values: { appriseUrl?: string | null; appriseApiServerUrl?: string | null }): AppriseSettingsReader {
+      return {
+        getSettingForSource: vi.fn(async (_sourceId: string, key: string) =>
+          key === 'apprise_url' ? (values.appriseUrl ?? null) : null
+        ),
+        getSetting: vi.fn(async (key: string) =>
+          key === 'appriseApiServerUrl' ? (values.appriseApiServerUrl ?? null) : null
+        ),
+      };
+    }
 
-      expect(url).toBe(defaultUrl);
+    afterEach(() => {
+      delete process.env.APPRISE_URL;
+    });
+
+    it('resolves to the bundled http://localhost:8000 default when nothing is configured', async () => {
+      const url = await resolveAppriseServerUrl(reader({}), 'src-1');
+      expect(url).toBe('http://localhost:8000');
+    });
+
+    it('prefers the global appriseApiServerUrl setting over the bundled default', async () => {
+      const url = await resolveAppriseServerUrl(reader({ appriseApiServerUrl: 'http://apprise-api:8000' }), 'src-1');
+      expect(url).toBe('http://apprise-api:8000');
+    });
+
+    it('prefers the per-source apprise_url setting over the global one', async () => {
+      const url = await resolveAppriseServerUrl(
+        reader({ appriseApiServerUrl: 'http://global:8000', appriseUrl: 'http://per-source:9000' }),
+        'src-1'
+      );
+      expect(url).toBe('http://per-source:9000');
+    });
+
+    it('builds the /notify endpoint, stripping a trailing slash so it never yields "//notify"', () => {
+      expect(appriseNotifyEndpoint('http://x:8000')).toBe('http://x:8000/notify');
+      expect(appriseNotifyEndpoint('http://x:8000/')).toBe('http://x:8000/notify');
     });
 
     it('should initialize with enabled state from settings', () => {

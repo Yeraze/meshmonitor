@@ -3,8 +3,51 @@ import {
   deriveHashtagSecretHex,
   formatMeshCoreChannelName,
   isHashtagChannelName,
+  LOCAL_NODE_OFFSET,
+  mapContactsToNodes,
   sha256PureJS,
+  type MeshCoreContact,
 } from './meshcoreHelpers';
+
+describe('mapContactsToNodes (#4438 — isLocal flag, not the "(local)" naming convention)', () => {
+  it('offsets the local node when isLocal is true', () => {
+    const contacts: MeshCoreContact[] = [
+      { publicKey: 'a'.repeat(64), advName: 'MyNode (local)', isLocal: true, latitude: 10, longitude: 20 },
+    ];
+    const [node] = mapContactsToNodes(contacts);
+    expect(node.latitude).toBeCloseTo(10 + LOCAL_NODE_OFFSET);
+    expect(node.longitude).toBeCloseTo(20 + LOCAL_NODE_OFFSET);
+  });
+
+  it('T-C4 negative control: a non-local contact named "(local)" is NOT offset', () => {
+    // A stranger whose device name happens to contain "(local)" must not be
+    // treated as the local node — this is the exact bug #4438 exists to fix.
+    // Before the fix, mapContactsToNodes matched on the advName substring
+    // and this assertion failed.
+    const contacts: MeshCoreContact[] = [
+      { publicKey: 'b'.repeat(64), advName: 'Imposter (local)', isLocal: false, latitude: 10, longitude: 20 },
+    ];
+    const [node] = mapContactsToNodes(contacts);
+    expect(node.latitude).toBe(10);
+    expect(node.longitude).toBe(20);
+  });
+
+  it('does not offset a contact with no isLocal field at all', () => {
+    const contacts: MeshCoreContact[] = [
+      { publicKey: 'c'.repeat(64), advName: 'Plain Node', latitude: 5, longitude: 6 },
+    ];
+    const [node] = mapContactsToNodes(contacts);
+    expect(node.latitude).toBe(5);
+    expect(node.longitude).toBe(6);
+  });
+
+  it('filters out contacts with no coordinates', () => {
+    const contacts: MeshCoreContact[] = [
+      { publicKey: 'd'.repeat(64), advName: 'NoPosition' },
+    ];
+    expect(mapContactsToNodes(contacts)).toEqual([]);
+  });
+});
 
 describe('isHashtagChannelName', () => {
   it('is true for names starting with #', () => {

@@ -6,6 +6,7 @@
 
 import { randomInt } from 'node:crypto';
 import { User } from '../../types/auth.js';
+import { DEFAULT_NEW_USER_RESOURCES } from '../../types/permission.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 
@@ -80,9 +81,10 @@ export async function createLocalUser(
     });
     const user = await databaseService.findUserByIdAsync(userId) as User;
 
-    // Grant default permissions
-    const defaultResources = ['dashboard', 'nodes', 'messages', 'settings', 'info', 'traceroute'];
-    for (const resource of defaultResources) {
+    // Grant default permissions. Global-scope resources only — see
+    // DEFAULT_NEW_USER_RESOURCES (#4448). Per-source resources seeded here
+    // write rows that authorize nothing.
+    for (const resource of DEFAULT_NEW_USER_RESOURCES) {
       await databaseService.auth.createPermission({
         userId,
         resource,

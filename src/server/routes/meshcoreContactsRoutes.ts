@@ -23,6 +23,7 @@ import meshcorePositionHistoryService from '../services/meshcorePositionHistoryS
 import { isBogusPosition } from '../../utils/nullIsland.js';
 import { managerFor, isValidPublicKey, auditMeshcoreEvent, parseHexPathChain } from './meshcoreRouteShared.js';
 import { ok, fail } from '../utils/apiResponse.js';
+import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
 
 const router = Router({ mergeParams: true });
 
@@ -101,19 +102,9 @@ router.get('/contacts', optionalAuth(), requirePermission('nodes', 'read', { sou
     const localNode = manager.getLocalNode();
 
     // Include local node in contacts list if it has coordinates
-    const allContacts = [...contacts];
+    const allContacts: MeshCoreContactResponse[] = withoutLocalFlag(contacts);
     if (localNode && localNode.latitude && localNode.longitude) {
-      allContacts.unshift({
-        publicKey: localNode.publicKey,
-        advName: `${localNode.name} (local)`,
-        name: localNode.name,
-        latitude: localNode.latitude,
-        longitude: localNode.longitude,
-        advType: localNode.advType,
-        rssi: undefined,
-        snr: undefined,
-        lastSeen: Date.now(),
-      });
+      allContacts.unshift(buildLocalContactRow(localNode));
     }
 
     res.json({
@@ -131,14 +122,31 @@ router.get('/contacts', optionalAuth(), requirePermission('nodes', 'read', { sou
  * POST /api/meshcore/contacts/refresh
  * Refresh contacts from device
  * Requires authentication - triggers device communication
+ *
+ * Must return the SAME shape as GET /contacts — including the synthetic
+ * local-node row (#4449). Before this fix, this route returned the raw
+ * device contact map with no local row, while the frontend treats the
+ * response as a wholesale replacement (`useMeshCore.refreshContacts`), so
+ * clicking "Refresh Contacts" dropped the operator's own node from the
+ * contacts list, the node list, and the local-node ref map — and with it,
+ * the local node's exemption from age filtering — until the next snapshot
+ * fetch silently restored it.
  */
 router.post('/contacts/refresh', meshcoreDeviceLimiter, requireAuth(), requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const contacts = await managerFor(req, res).refreshContacts();
+    const manager = managerFor(req, res);
+    const contacts = await manager.refreshContacts();
+    const localNode = manager.getLocalNode();
+
+    const allContacts: MeshCoreContactResponse[] = withoutLocalFlag(Array.from(contacts.values()));
+    if (localNode && localNode.latitude && localNode.longitude) {
+      allContacts.unshift(buildLocalContactRow(localNode));
+    }
+
     res.json({
       success: true,
-      data: Array.from(contacts.values()),
-      count: contacts.size,
+      data: allContacts,
+      count: allContacts.length,
     });
   } catch (error) {
     logger.error('[API] Error refreshing contacts:', error);

@@ -32,9 +32,19 @@ vi.mock('../services/pushNotificationService.js', () => ({
   pushNotificationService: mockPush,
 }));
 
-vi.mock('../services/appriseNotificationService.js', () => ({
-  appriseNotificationService: mockApprise,
-}));
+// Keep the real `resolveAppriseServerUrl`/`appriseNotifyEndpoint` exports (pure
+// functions, no I/O) so this suite exercises the actual resolver rather than a
+// re-implementation of it — only the stateful `appriseNotificationService`
+// singleton is replaced with a mock. Its own dependencies (database.js,
+// meshtasticManager.js, sourceManagerRegistry.js, sourceManagerTypes.js) are
+// already mocked below by absolute path, so loading the real module here is safe.
+vi.mock('../services/appriseNotificationService.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/appriseNotificationService.js')>();
+  return {
+    ...actual,
+    appriseNotificationService: mockApprise,
+  };
+});
 
 vi.mock('../utils/notificationFiltering.js', () => mockNotif);
 
@@ -230,14 +240,48 @@ describe('notificationRoutes - apprise', () => {
 
   it('GET /apprise/status returns availability and settings', async () => {
     mockApprise.isAvailable.mockReturnValue(true);
-    (databaseService.settings.getSetting as any)
-      .mockResolvedValueOnce('true') // apprise_enabled
-      .mockResolvedValueOnce('http://x:8000'); // apprise_url
+    (databaseService.settings.getSetting as any).mockImplementation(async (key: string) => {
+      if (key === 'apprise_enabled') return 'true';
+      if (key === 'appriseApiServerUrl') return 'http://x:8000';
+      return null;
+    });
 
     const res = await request(app).get('/apprise/status');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ available: true, enabled: true, url: 'http://x:8000' });
+  });
+
+  it('GET /apprise/status reports the endpoint a real send would actually use (#4442) — not the fictional apprise_url key', async () => {
+    // `apprise_url` has no global writer anywhere in the repo (it is written
+    // only per-source, via getSettingForSource) — this test pins that the
+    // endpoint resolves through appriseApiServerUrl, ignoring a stray global
+    // `apprise_url` row.
+    mockApprise.isAvailable.mockReturnValue(true);
+    (databaseService.settings.getSetting as any).mockImplementation(async (key: string) => {
+      if (key === 'apprise_url') return 'http://should-be-ignored:9999';
+      if (key === 'appriseApiServerUrl') return 'http://real-server.example.com';
+      return null;
+    });
+
+    const res = await request(app).get('/apprise/status');
+
+    expect(res.status).toBe(200);
+    expect(res.body.url).toBe('http://real-server.example.com');
+  });
+
+  it('GET /apprise/status falls back to the bundled localhost default when nothing is configured', async () => {
+    mockApprise.isAvailable.mockReturnValue(true);
+    (databaseService.settings.getSetting as any).mockResolvedValue(null);
+    const previousEnv = process.env.APPRISE_URL;
+    delete process.env.APPRISE_URL;
+
+    const res = await request(app).get('/apprise/status');
+
+    expect(res.status).toBe(200);
+    expect(res.body.url).toBe('http://localhost:8000');
+
+    if (previousEnv !== undefined) process.env.APPRISE_URL = previousEnv;
   });
 
   it('POST /apprise/test rejects missing sourceId', async () => {
