@@ -8,6 +8,13 @@ import { MemoryRouter } from 'react-router-dom';
 import MapAnalysisToolbar from './MapAnalysisToolbar';
 import { MapAnalysisProvider } from './MapAnalysisContext';
 
+// #4447: the Back to Sources button must navigate with `showList` state.
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return { ...actual, useNavigate: () => mockNavigate };
+});
+
 vi.mock('../../hooks/useDashboardData', () => ({
   useDashboardSources: () => ({ data: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] }),
   // The Polar Grid toggle resolves own-node positions via these hooks (#3971).
@@ -49,6 +56,7 @@ const wrapper = ({ children }: { children: React.ReactNode }) => {
 describe('MapAnalysisToolbar', () => {
   beforeEach(() => {
     localStorage.clear();
+    mockNavigate.mockClear();
     elevationEnabled = true;
     unifiedNodes = [];
     terrainCapabilities = { enabled: true, terrainTiles: true, isLoading: false };
@@ -276,6 +284,16 @@ describe('MapAnalysisToolbar', () => {
       const btn = screen.getByRole('button', { name: /^heatmap$/i });
       expect(btn).toBeDisabled();
       expect(btn).toHaveClass('active');
+    });
+  });
+
+  describe('Back to Sources button (#4447)', () => {
+    it('navigates with showList so the dashboard does not bounce to the default landing page', () => {
+      render(<MapAnalysisToolbar />, { wrapper });
+      fireEvent.click(screen.getByRole('button', { name: /back to sources/i }));
+      // Without the flag, DashboardPage's default-landing-page effect redirects
+      // straight back out of the dashboard the user just asked for.
+      expect(mockNavigate).toHaveBeenCalledWith('/', { state: { showList: true } });
     });
   });
 });
