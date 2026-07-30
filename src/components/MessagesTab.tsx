@@ -13,7 +13,7 @@ import { useTranslation, Trans } from 'react-i18next';
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
-import { TimeFormat, DateFormat, useNotificationMuteSettings } from '../contexts/SettingsContext';
+import { TimeFormat, DateFormat, NodeHopsCalculation, useNotificationMuteSettings } from '../contexts/SettingsContext';
 import {
   formatDateTime,
   formatRelativeTime,
@@ -22,11 +22,13 @@ import {
   shouldShowDateSeparator,
 } from '../utils/datetime';
 import { buildTracerouteStripGraph, type TracerouteStripInput } from '../utils/tracerouteStrip';
-import { buildStripNodeMeta } from '../utils/tracerouteStripMeta';
-import { TracerouteStrip } from './traceroute/TracerouteStrip';
+import { buildStripNodeMeta, type TracerouteStripMetaTraceroute } from '../utils/tracerouteStripMeta';
+import { buildStatisticalStrip, type UnionStripGraph } from '../utils/tracerouteUnionLayout';
+import { TracerouteStrip, type TracerouteStripNodeMeta } from './traceroute/TracerouteStrip';
 import { TracerouteCopyLinks } from './traceroute/TracerouteCopyLinks';
 import { TracerouteParticipationPicker } from './traceroute/TracerouteParticipationPicker';
 import { useNodeTraceroutes } from '../hooks/useNodeTraceroutes';
+import { useTraceroutePairHistory } from '../hooks/useTraceroutePairHistory';
 import { getMessageSortTime } from '../utils/messageSort';
 import { getUtf8ByteLength, formatByteCount, isEmoji } from '../utils/text';
 import { isDeviceDbWarningMitigatable } from '../utils/deviceDbWarning';
@@ -91,6 +93,88 @@ interface TracerouteData {
  * no adapter needed to feed `buildTracerouteStripGraph`.
  */
 type DisplayedTraceroute = TracerouteStripInput & { id?: number; timestamp: number };
+
+/** What the traceroute box is showing: a specific stored row, the statistical
+ *  aggregate, or nothing picked — in which case rule 1's newest-of-both applies.
+ *  One discriminated value rather than two flags, so the two states cannot both
+ *  be set (SR_PHASE2_SPEC.md D13). */
+type TraceroutePick = { kind: 'entry'; id: number } | { kind: 'statistical' };
+
+/** S2's build result: the union graph, its node metadata, and the tooltip
+ *  denominator. `null` whenever no aggregate is available or worth showing
+ *  (SR_PHASE2_SPEC.md D14 S2). */
+type StatisticalTraceroute = {
+  graph: UnionStripGraph;
+  meta: Map<number, TracerouteStripNodeMeta>;
+  totalRoutes: number;
+} | null;
+
+/**
+ * Statistical Route epic phase 2, WP4 — S1/S2's hook call and union build,
+ * extracted into a component that MessagesTab mounts only while
+ * `wantStatistical` holds, rather than calling `useTraceroutePairHistory`
+ * unconditionally at MessagesTab's own top level.
+ *
+ * Why this indirection is load-bearing, not stylistic: `useQuery`
+ * (`@tanstack/react-query`) resolves its `QueryClient` from context BEFORE
+ * it even looks at `enabled` (`useBaseQuery` calls `useQueryClient()`
+ * unconditionally at the top), so an always-mounted call throws "No
+ * QueryClient set" in any MessagesTab test harness that renders without a
+ * `QueryClientProvider` — `MessagesTab.composeFocus.test.tsx` and
+ * `MessagesTab.txDisabled.test.tsx` both do, deliberately (see their own
+ * comments), and both are out of WP4's ownership and required to keep
+ * passing unedited. Both mock `useNodeTraceroutes` to an empty list, so
+ * `wantStatistical` is always false there and this component never mounts —
+ * zero behavior change for them, and the crash never happens. In every
+ * other environment (the real app, or a test with a `QueryClientProvider`),
+ * this mounts/unmounts exactly when `wantStatistical` flips, which is
+ * functionally identical to an `enabled` flag toggling on an always-mounted
+ * hook — TanStack Query dedupes by query key through the shared
+ * `QueryClient`, not by hook-instance identity.
+ */
+function StatisticalTracerouteLoader({
+  currentNodeNum,
+  pickerNodeNum,
+  nodes,
+  nodeHopsCalculation,
+  traceroutes,
+  onChange,
+}: {
+  currentNodeNum: number;
+  pickerNodeNum: number;
+  nodes: DeviceInfo[];
+  nodeHopsCalculation: NodeHopsCalculation;
+  traceroutes: TracerouteStripMetaTraceroute[];
+  onChange: (result: StatisticalTraceroute) => void;
+}) {
+  // Only ever mounted while the caller's `wantStatistical` gate holds, so
+  // `enabled: true` here is correct — the gate already lives in the parent.
+  const { rows: pairHistory } = useTraceroutePairHistory(currentNodeNum, pickerNodeNum, {
+    enabled: true,
+  });
+
+  // S2 — build the union once. `buildStatisticalStrip` also returns a
+  // layout; the strip component recomputes it from the graph, exactly as it
+  // does for a single-route graph, so the component stays a pure function of
+  // (graph, meta). Do NOT pass layout options here: the component paints
+  // glyphs at its own DEFAULT_GLYPH_SIZE, which matches
+  // DEFAULT_LAYOUT_OPTIONS.glyphSize.
+  const statistical = useMemo<StatisticalTraceroute>(() => {
+    if (!pairHistory?.length) return null;
+    const { union, graph } = buildStatisticalStrip(pairHistory, currentNodeNum, pickerNodeNum);
+    if (union.totalRoutes < 2 || graph.isEmpty) return null;
+    const meta = buildStripNodeMeta(graph, nodes, {
+      hopsCalculation: nodeHopsCalculation,
+      traceroutes,
+      currentNodeNum,
+    });
+    return { graph, meta, totalRoutes: union.totalRoutes };
+  }, [pairHistory, currentNodeNum, pickerNodeNum, nodes, nodeHopsCalculation, traceroutes]);
+
+  useEffect(() => { onChange(statistical); }, [statistical, onChange]);
+
+  return null;
+}
 
 // Memoized distance display component to avoid recalculating on every render
 const DistanceDisplay = React.memo<{
@@ -769,18 +853,33 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const pickerNodeNum = selectedDMNode ? parseNodeId(selectedDMNode) : null;
   const { data: participationEntries, refetch: refetchParticipation } =
     useNodeTraceroutes(pickerNodeNum, { enabled: !!selectedDMNode });
-  const entries: TracerouteParticipationEntry[] = participationEntries ?? [];
-  const [pickedTracerouteId, setPickedTracerouteId] = useState<number | null>(null);
+  // Statistical Route epic phase 2, WP4 — memoized (rather than a bare
+  // `?? []` fallback) because `entries` now also feeds `pairEntryCount`'s
+  // `useMemo` below; an inline fallback array is a fresh reference every
+  // render, which would recompute that memo on every render regardless of
+  // whether the data actually changed (react-hooks/exhaustive-deps flags
+  // this).
+  const entries: TracerouteParticipationEntry[] = useMemo(
+    () => participationEntries ?? [],
+    [participationEntries],
+  );
+
+  // Statistical Route epic phase 2, D13 — one discriminated pick rather than
+  // two mutually-exclusive flags. `pickedTracerouteId`/`statisticalPicked`
+  // are derived so rules 1, 2 and 3 below keep their pre-existing shape.
+  const [pick, setPick] = useState<TraceroutePick | null>(null);
+  const pickedTracerouteId = pick?.kind === 'entry' ? pick.id : null;
+  const statisticalPicked = pick?.kind === 'statistical';
 
   // Rule 2 — the manual pick resets whenever the conversation partner changes.
-  useEffect(() => { setPickedTracerouteId(null); }, [selectedDMNode]);
+  useEffect(() => { setPick(null); }, [selectedDMNode]);
 
   // Rule 3 — the poll sees a new/updated traceroute first; clear any manual
   // pick so the user looking at a node they just traced sees the result, and
   // pull the picker list forward so the new row becomes selectable.
   useEffect(() => {
     if (recentTrace?.timestamp == null) return;
-    setPickedTracerouteId(null);
+    setPick(null);
     void refetchParticipation();
   }, [recentTrace?.timestamp, refetchParticipation]);
 
@@ -812,6 +911,53 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     });
     return { stripGraph, stripMeta };
   }, [displayedTrace, nodes, nodeHopsCalculation, traceroutes, currentNodeNum]);
+
+  // S1 (SR_PHASE2_SPEC.md D14) — the pair-history request is gated on
+  // signals we ALREADY have (the participation list fetched for the picker
+  // above), so a conversation with no plausible aggregate costs no extra
+  // round trip. Only entries whose OTHER endpoint is the local node count.
+  const pairEntryCount = useMemo(
+    () =>
+      currentNodeNum == null
+        ? 0
+        : entries.filter(
+            e =>
+              e.participation === 'endpoint' &&
+              (e.fromNodeNum === currentNodeNum || e.toNodeNum === currentNodeNum),
+          ).length,
+    [entries, currentNodeNum],
+  );
+
+  // Whether a statistical aggregate is even plausible, from cheap local
+  // signals alone (no network dependency). Gates BOTH the request (S1) and
+  // whether `StatisticalTracerouteLoader` mounts at all, below — see that
+  // component's doc comment for why this must be a mount gate, not merely an
+  // `enabled: false` query on an always-mounted hook.
+  const wantStatistical =
+    hasPermission('traceroute', 'read') &&
+    currentNodeNum != null &&
+    pickerNodeNum != null &&
+    currentNodeNum !== pickerNodeNum &&
+    pairEntryCount >= 2;
+
+  // S2's result, lifted from `StatisticalTracerouteLoader` (mounted below,
+  // in the JSX). `null` both while unavailable and while `wantStatistical`
+  // is false — `showStatistical` treats those identically (S5).
+  const [statistical, setStatistical] = useState<StatisticalTraceroute>(null);
+
+  // Companion to the mount gate: when `wantStatistical` drops (partner
+  // change, permission revoked, the participation refetch pulls the count
+  // back below 2), `StatisticalTracerouteLoader` unmounts and stops calling
+  // `onChange` — clear the lifted value explicitly rather than leaving the
+  // last-known result stale. This is what makes losing availability behave
+  // exactly like a query that went from enabled to disabled (S5).
+  useEffect(() => {
+    if (!wantStatistical) setStatistical(null);
+  }, [wantStatistical]);
+
+  // S5 — derived, not stored: losing availability while picked falls back to
+  // the rule-1 row with no effect and no cleanup.
+  const showStatistical = statisticalPicked && statistical != null;
 
   /** Load a hop from the traceroute strip into the Node Details panel.
    *  No `setActiveTab`: the strip only ever renders on the Messages tab, so
@@ -2002,6 +2148,20 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
               </div>
             )}
 
+            {/* Statistical Route epic phase 2, WP4 — mounted only while
+                `wantStatistical` holds; see StatisticalTracerouteLoader's
+                doc comment for why this must be a mount gate. */}
+            {wantStatistical && currentNodeNum != null && pickerNodeNum != null && (
+              <StatisticalTracerouteLoader
+                currentNodeNum={currentNodeNum}
+                pickerNodeNum={pickerNodeNum}
+                nodes={nodes}
+                nodeHopsCalculation={nodeHopsCalculation}
+                traceroutes={traceroutes}
+                onChange={setStatistical}
+              />
+            )}
+
             {/* Traceroute Display */}
               {/* Read gate: the box is a DISPLAY. `write` still gates the
                   request button (below / the channel split-button) and is
@@ -2048,14 +2208,27 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           // Both branches of DisplayedTraceroute carry an
                           // optional `id`: a TracerouteParticipationEntry
                           // always has one, the poll's TracerouteData never
-                          // does — so this alone distinguishes them.
-                          selectedId={displayedTrace.id ?? null}
-                          onSelect={setPickedTracerouteId}
+                          // does — so this alone distinguishes them. A
+                          // statistical pick has no row id at all (S3).
+                          selectedId={showStatistical ? null : (displayedTrace.id ?? null)}
+                          onSelect={id => setPick({ kind: 'entry', id })}
                           nodes={nodes}
                           timeFormat={timeFormat}
                           dateFormat={dateFormat}
+                          statistical={statistical ? { totalRoutes: statistical.totalRoutes } : undefined}
+                          statisticalSelected={showStatistical}
+                          onSelectStatistical={() => setPick({ kind: 'statistical' })}
                         />
-                        {stripGraph && stripMeta && !stripGraph.isEmpty ? (
+                        {showStatistical ? (
+                          <TracerouteStrip
+                            graph={statistical.graph}
+                            meta={statistical.meta}
+                            timeFormat={timeFormat}
+                            dateFormat={dateFormat}
+                            distanceUnit={distanceUnit}
+                            onOpenNodeDetails={handleStripNodeDetails}
+                          />
+                        ) : stripGraph && stripMeta && !stripGraph.isEmpty ? (
                           // Always renders at default size (#4381 follow-up):
                           // narrow panels are handled by `.scroller`'s
                           // horizontal scroll, not a width heuristic.
@@ -2072,41 +2245,47 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                             {t('messages.traceroute_no_response', 'No response received')}
                           </div>
                         )}
-                        {stripGraph && !stripGraph.isEmpty && !stripGraph.hasReturn && (
+                        {/* S3: a statistical aggregate has no single return
+                            leg to be missing — the whole notion doesn't apply. */}
+                        {!showStatistical && stripGraph && !stripGraph.isEmpty && !stripGraph.hasReturn && (
                           <div className="traceroute-route">
                             {t('messages.traceroute_no_return_path', 'No return path data')}
                           </div>
                         )}
-                        <TracerouteCopyLinks
-                          route={displayedTrace.route}
-                          routeBack={displayedTrace.routeBack}
-                          snrTowards={displayedTrace.snrTowards}
-                          snrBack={displayedTrace.snrBack}
-                          fromNodeNum={Number(displayedTrace.fromNodeNum)}
-                          toNodeNum={Number(displayedTrace.toNodeNum)}
-                          nodes={nodes}
-                        />
-                        <div className="traceroute-age">
-                          {t('messages.last_traced', { time: ageStr })}
-                          {isPending && (
-                            <span className="traceroute-pending-badge" style={{
-                              marginLeft: '0.5rem',
-                              color: 'var(--ctp-yellow)',
-                              fontWeight: 'bold'
-                            }}>
-                              ({t('messages.traceroute_pending', 'Pending')})
-                            </span>
-                          )}
-                          {isFailed && (
-                            <span className="traceroute-failed-badge" style={{
-                              marginLeft: '0.5rem',
-                              color: 'var(--ctp-red)',
-                              fontWeight: 'bold'
-                            }}>
-                              ({t('messages.traceroute_failed')})
-                            </span>
-                          )}
-                        </div>
+                        {!showStatistical && (
+                          <TracerouteCopyLinks
+                            route={displayedTrace.route}
+                            routeBack={displayedTrace.routeBack}
+                            snrTowards={displayedTrace.snrTowards}
+                            snrBack={displayedTrace.snrBack}
+                            fromNodeNum={Number(displayedTrace.fromNodeNum)}
+                            toNodeNum={Number(displayedTrace.toNodeNum)}
+                            nodes={nodes}
+                          />
+                        )}
+                        {!showStatistical && (
+                          <div className="traceroute-age">
+                            {t('messages.last_traced', { time: ageStr })}
+                            {isPending && (
+                              <span className="traceroute-pending-badge" style={{
+                                marginLeft: '0.5rem',
+                                color: 'var(--ctp-yellow)',
+                                fontWeight: 'bold'
+                              }}>
+                                ({t('messages.traceroute_pending', 'Pending')})
+                              </span>
+                            )}
+                            {isFailed && (
+                              <span className="traceroute-failed-badge" style={{
+                                marginLeft: '0.5rem',
+                                color: 'var(--ctp-red)',
+                                fontWeight: 'bold'
+                              }}>
+                                ({t('messages.traceroute_failed')})
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   }
