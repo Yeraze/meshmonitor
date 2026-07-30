@@ -43,7 +43,7 @@ relays are the most frequent and reliable on the path.
 ## Phases
 
 ### Phase 1 — Aggregation core + union-graph layout engine
-- [ ] Complete
+- [x] Complete (2026-07-30)
 
 Pure utilities, no visible product change:
 - Aggregation: given `DbTraceroute[]` pair history + the two endpoint nodeNums,
@@ -59,6 +59,22 @@ Pure utilities, no visible product change:
 
 **Exit criteria:** typecheck + full suite green; pure modules exported and tested;
 no UI/behavior change shipped; spec decisions recorded in this doc.
+
+**Phase 1 record (2026-07-30):**
+- Shipped `src/utils/tracerouteAggregate.ts` (counting model, 44 tests) and
+  `src/utils/tracerouteUnionLayout.ts` (cells+pixels, 30 tests);
+  `tracerouteStrip.ts` got export-only changes (+6 tests) so both layouts share
+  one set of geometry helpers. Full design: `SR_PHASE1_SPEC.md` decisions D1–D11.
+- Key decisions: anon hops merge by hop depth (`u:<depth>`); once-per-traceroute
+  counting so shares stay in (0,1]; lower-median column assignment with endpoints
+  pinned; alternating row offsets make the dominant path a straight line; edges
+  branch on column (not row) to avoid the vertical-chord divide-by-zero; opacity
+  floor `MIN_STAT_OPACITY = 0.28`; `UnionStripGraph` extends the strip types with
+  `mode: 'statistical'`.
+- Phase 2 seam: `buildStatisticalStrip(rows, localNodeNum, peerNodeNum, opts?)`.
+- Deviation from spec §5: work packages ran sequentially (WP1→WP2→WP3) instead of
+  WP1∥WP2, so WP2 imported `filterHops` directly and the tolerated temporary
+  hop-filter duplication never existed.
 
 ### Phase 2 — UI integration
 - [ ] Complete
