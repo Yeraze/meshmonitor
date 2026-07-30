@@ -15,6 +15,8 @@ import {
   type TracerouteStripGraph,
   type StripLayoutOptions,
   type StripLane,
+  type StripLeg,
+  type StripPoint,
 } from './tracerouteStrip';
 
 // Reusable "real" node numbers — small distinct integers that are never
@@ -1233,5 +1235,209 @@ describe('layoutTracerouteStrip — per-leg edge lanes (#4381 follow-up #2)', ()
     expect(fwdPath[0].x).not.toBeCloseTo(retPath[0].x, 1);
     expect(fwdPath.every((p) => p.x > colCenterX)).toBe(true);
     expect(retPath.every((p) => p.x < colCenterX)).toBe(true);
+  });
+});
+
+describe('layoutTracerouteStrip — edge/label glyph collision avoidance (#4428)', () => {
+  // Constants recomputed from the public StripLayoutOptions rather than
+  // importing the privates, same pattern as the C1 block above.
+  const NODE_NAME_GAP = 2;
+  const LABEL_HALF_HEIGHT = 8;
+  const LABEL_CLEARANCE = 4;
+  const EDGE_RIM_MARGIN = 3; // matches tracerouteStrip.ts's EDGE_RIM_MARGIN (the pullIn `+3`)
+  const LANE_OFFSET = 5; // matches tracerouteStrip.ts's LANE_OFFSET
+
+  /** Mirrors tracerouteStrip.ts's edgeClearance(): the radius around an
+   *  UNRELATED node's center no edge segment may enter. */
+  const edgeClearance = (glyphSize: number) => glyphSize / 2 + EDGE_RIM_MARGIN + LANE_OFFSET;
+  /** Mirrors tracerouteStrip.ts's labelClearRadius(). */
+  const labelClearRadius = (glyphSize: number) => glyphSize / 2 + LABEL_HALF_HEIGHT + LABEL_CLEARANCE;
+
+  /** Distance from point `p` to the segment `a`->`b`. */
+  function distPointToSegment(p: StripPoint, a: StripPoint, b: StripPoint): number {
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const len2 = abx * abx + aby * aby;
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2));
+    return Math.hypot(p.x - (a.x + t * abx), p.y - (a.y + t * aby));
+  }
+
+  /** Asserts every segment of `path` clears `center` by at least `radius`. */
+  function expectPathClears(path: StripPoint[], center: StripPoint, radius: number): void {
+    for (let i = 0; i < path.length - 1; i++) {
+      expect(distPointToSegment(center, path[i], path[i + 1])).toBeGreaterThanOrEqual(radius - 1e-6);
+    }
+  }
+
+  /** Hand-built (same precedent as the dx===0 test above): a same-row edge
+   *  spanning non-adjacent columns with an UNRELATED node in the intermediate
+   *  column — before #4428 the straight pull-back line ran right through it. */
+  function sameRowSpanGraph(leg: StripLeg): TracerouteStripGraph {
+    return {
+      nodes: [
+        { id: 'n0', nodeNum: A, lane: 'spine', row: 0, col: 0, legs: [leg], shared: false, isUnknown: false },
+        { id: 'mid', nodeNum: B, lane: 'spine', row: 0, col: 1, legs: [leg], shared: false, isUnknown: false },
+        { id: 'n2', nodeNum: C, lane: 'spine', row: 0, col: 2, legs: [leg], shared: false, isUnknown: false },
+      ],
+      edges: [{ id: 'long', leg, fromId: 'n0', toId: 'n2', snr: 5, snrUnknown: false }],
+      columns: 3,
+      hasForward: leg === 'forward',
+      hasReturn: leg === 'return',
+      isEmpty: false,
+    };
+  }
+
+  /** Hand-built: a row-crossing dog-leg whose elbow `{(x0+x1)/2, max(y0,y1)}`
+   *  lands exactly ON an unrelated node's center (row 1, col 1) — before
+   *  #4428 the dog-leg's two segments met inside that glyph. */
+  function dogLegThroughGlyphGraph(): TracerouteStripGraph {
+    return {
+      nodes: [
+        { id: 'n0', nodeNum: A, lane: 'forward', row: 0, col: 0, legs: ['forward'], shared: false, isUnknown: false },
+        { id: 'obs', nodeNum: B, lane: 'spine', row: 1, col: 1, legs: ['forward'], shared: false, isUnknown: false },
+        { id: 'n2', nodeNum: C, lane: 'spine', row: 1, col: 2, legs: ['forward'], shared: false, isUnknown: false },
+      ],
+      edges: [{ id: 'cross', leg: 'forward', fromId: 'n0', toId: 'n2', snr: 5, snrUnknown: false }],
+      columns: 3,
+      hasForward: true,
+      hasReturn: false,
+      isEmpty: false,
+    };
+  }
+
+  const DEFAULTS = { colWidth: 64, rowHeight: 76, glyphSize: 32, nameHeight: 14, topBand: 44, bottomBand: 44 };
+
+  it('(a) routes a same-row edge spanning non-adjacent columns around the intermediate glyph', () => {
+    const graph = sameRowSpanGraph('forward');
+    const layout = layoutTracerouteStrip(graph, DEFAULTS);
+    const path = layout.edgePaths.get('long')!;
+    const obstacle = layout.centers.get('mid')!; // (96, 60)
+    const rowY = layout.centers.get('n0')!.y; // 60
+
+    // Before #4428 this was the 2-point straight line (51,55)->(141,55),
+    // passing 5px from the obstacle's center — now it bends around it.
+    expect(path.length).toBeGreaterThan(2);
+    expectPathClears(path, obstacle, edgeClearance(DEFAULTS.glyphSize));
+
+    // The endpoints are untouched: still the lane-translated rim points.
+    expect(path[0]).toEqual({ x: 32 + DEFAULTS.glyphSize / 2 + EDGE_RIM_MARGIN, y: rowY - LANE_OFFSET });
+    expect(path[path.length - 1]).toEqual({ x: 160 - DEFAULTS.glyphSize / 2 - EDGE_RIM_MARGIN, y: rowY - LANE_OFFSET });
+
+    // The detour stays on the forward leg's side of the row (above) — it
+    // never dips into the return lane.
+    for (const p of path) expect(p.y).toBeLessThanOrEqual(rowY - LANE_OFFSET + 1e-6);
+  });
+
+  it('(a2) routes the same span for the RETURN leg on the opposite side (below), keeping the legs visually separated', () => {
+    const graph = sameRowSpanGraph('return');
+    const layout = layoutTracerouteStrip(graph, DEFAULTS);
+    const path = layout.edgePaths.get('long')!;
+    const obstacle = layout.centers.get('mid')!;
+    const rowY = layout.centers.get('n0')!.y;
+
+    expect(path.length).toBeGreaterThan(2);
+    expectPathClears(path, obstacle, edgeClearance(DEFAULTS.glyphSize));
+    for (const p of path) expect(p.y).toBeGreaterThanOrEqual(rowY + LANE_OFFSET - 1e-6);
+  });
+
+  it('(b) relocates a cross-row dog-leg elbow that lands on an unrelated glyph, clearing it', () => {
+    const graph = dogLegThroughGlyphGraph();
+    const layout = layoutTracerouteStrip(graph, DEFAULTS);
+    const path = layout.edgePaths.get('cross')!;
+    const obstacle = layout.centers.get('obs')!; // (96, 136) == the raw elbow
+
+    // Still a single-elbow dog-leg — the elbow MOVED, it didn't multiply.
+    expect(path).toHaveLength(3);
+    expectPathClears(path, obstacle, edgeClearance(DEFAULTS.glyphSize));
+    // The elbow itself sits outside the clearance circle.
+    expect(Math.hypot(path[1].x - obstacle.x, path[1].y - obstacle.y))
+      .toBeGreaterThanOrEqual(edgeClearance(DEFAULTS.glyphSize) - 1e-6);
+  });
+
+  it('(c) anchors the label off the detour bump and clear of every glyph circle, keeping lane semantics', () => {
+    const graph = sameRowSpanGraph('forward');
+    const layout = layoutTracerouteStrip(graph, DEFAULTS);
+    const anchor = layout.labelAnchors.get('long')!;
+    const rowY = layout.centers.get('n0')!.y;
+
+    // Lane semantics intact: the forward label still anchors labelOffset
+    // above its own row (the C1 row-band rule — Y is unchanged by #4428).
+    const labelOffset = (DEFAULTS.glyphSize + NODE_NAME_GAP + DEFAULTS.nameHeight) / 2 + LABEL_HALF_HEIGHT + LABEL_CLEARANCE;
+    expect(anchor.y).toBeCloseTo(rowY - labelOffset, 5);
+
+    // Before #4428, X was the raw endpoint midpoint = 96 — the obstacle's
+    // exact column, directly on top of the inserted detour bend. Now it
+    // samples the longest clear segment (tie -> the earlier one, so it lands
+    // left of the bump).
+    expect(anchor.x).toBeLessThan(96);
+
+    // And the anchor clears every glyph circle by the label margin.
+    for (const n of graph.nodes) {
+      const c = layout.centers.get(n.id)!;
+      expect(Math.hypot(anchor.x - c.x, anchor.y - c.y))
+        .toBeGreaterThanOrEqual(labelClearRadius(DEFAULTS.glyphSize) - 1e-6);
+    }
+  });
+
+  it('leaves an unobstructed strip pixel-identical: 2-point line, label X at the endpoint midpoint', () => {
+    // Direct 2-node graph — nothing to route around, so #4428 must be a
+    // no-op: no extra bends, and the label X equals the pre-#4428 midpoint.
+    const graph = buildTracerouteStripGraph({
+      fromNodeNum: FROM,
+      toNodeNum: TO,
+      route: '[]',
+      snrTowards: '[20]',
+      routeBack: '[]',
+      snrBack: '[-40]',
+    });
+    const layout = layoutTracerouteStrip(graph);
+    for (const e of graph.edges) {
+      const path = layout.edgePaths.get(e.id)!;
+      expect(path).toHaveLength(2);
+      expect(layout.labelAnchors.get(e.id)!.x).toBeCloseTo((path[0].x + path[1].x) / 2, 5);
+    }
+  });
+
+  it('is deterministic — the same graph yields the identical routed layout on every call', () => {
+    const first = layoutTracerouteStrip(sameRowSpanGraph('forward'), DEFAULTS);
+    const second = layoutTracerouteStrip(sameRowSpanGraph('forward'), DEFAULTS);
+    expect(second).toEqual(first);
+  });
+
+  it('edge-clearance sweep: every edge segment clears every non-endpoint glyph across real §3.7 fixtures and the #4428 repros', () => {
+    const graphs: TracerouteStripGraph[] = [
+      buildTracerouteStripGraph({
+        fromNodeNum: A, toNodeNum: D, route: JSON.stringify([B, C]), routeBack: JSON.stringify([E]),
+        snrTowards: JSON.stringify([10, 20, 30]), snrBack: JSON.stringify([1, 2]),
+      }),
+      buildTracerouteStripGraph({
+        fromNodeNum: 3001, toNodeNum: 3005,
+        route: JSON.stringify([3002, 3003, 3004]),
+        snrTowards: JSON.stringify([42, -45, 29, 15]),
+        routeBack: JSON.stringify([3002]),
+        snrBack: JSON.stringify([37, 44]),
+      }),
+      buildTracerouteStripGraph({
+        fromNodeNum: FROM, toNodeNum: TO,
+        route: JSON.stringify([BROADCAST_ADDR, 3145]),
+        routeBack: JSON.stringify([3145, BROADCAST_ADDR]),
+        snrTowards: JSON.stringify([1, 2, 3]),
+        snrBack: JSON.stringify([4, 5, 6]),
+      }),
+      sameRowSpanGraph('forward'),
+      sameRowSpanGraph('return'),
+      dogLegThroughGlyphGraph(),
+    ];
+    const clearance = edgeClearance(DEFAULTS.glyphSize);
+    for (const graph of graphs) {
+      const layout = layoutTracerouteStrip(graph, DEFAULTS);
+      for (const e of graph.edges) {
+        const path = layout.edgePaths.get(e.id)!;
+        for (const n of graph.nodes) {
+          if (n.id === e.fromId || n.id === e.toId) continue;
+          expectPathClears(path, layout.centers.get(n.id)!, clearance);
+        }
+      }
+    }
   });
 });
