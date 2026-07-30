@@ -35,6 +35,11 @@ describe('securityDigestService — per-source dispatch', () => {
     const fakeDb: any = {
       settings: {
         getSettingForSource: vi.fn(async (sid: string, key: string) => {
+          // NOTE: `externalUrl` below is a mock fixture value only — there is NO
+          // production write path for this key anywhere in the repo (#4437). This
+          // suite's actual subject is per-source dispatch, which is fine and
+          // unaffected either way; don't read this fixture as evidence a writer
+          // exists.
           const overrides: Record<string, Record<string, string>> = {
             'src-A': {
               securityDigestAppriseUrl: 'discord://a',

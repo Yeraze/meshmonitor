@@ -6,8 +6,9 @@
  * `getSettingForSource` is removed.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
+import { readFileSync } from 'fs';
 import Database from 'better-sqlite3';
-import { migration } from './050_promote_globals_to_default_source.js';
+import { migration, PROMOTED_SETTING_KEYS } from './050_promote_globals_to_default_source.js';
 
 function createSchema(db: Database.Database) {
   db.exec(`
@@ -172,5 +173,29 @@ describe('Migration 050 — promote globals to default source', () => {
     expect(sources).toHaveLength(1);
     const id = sources[0].id;
     expect(getSetting(db, `source:${id}:autoResponderEnabled`)).toBe('true');
+  });
+
+  it('the promoted key list is frozen — 050 does not import the live constants array (#4419)', () => {
+    // This is the ONLY test that can catch the drift bug: every other test in this
+    // file uses keys present in both the 87-key (authoring-time) and 170-key
+    // (current) PER_SOURCE_SETTINGS_KEYS lists, so the suite is structurally blind
+    // to whether 050 iterates a live import or a frozen snapshot. See
+    // PER_SOURCE_NODE_DISPLAY_PHASE5_SPEC.md §4.6.
+    const src = readFileSync(new URL('./050_promote_globals_to_default_source.ts', import.meta.url), 'utf8');
+    expect(src).not.toMatch(/PER_SOURCE_SETTINGS_KEYS/);
+    expect(src).not.toMatch(/from ['"]\.\.\/constants\/settings\.js['"]/);
+  });
+
+  it('PROMOTED_SETTING_KEYS is the 170-key 4.13.3 snapshot', () => {
+    // Deliberately NOT asserted against PER_SOURCE_SETTINGS_KEYS — that would
+    // re-couple the two and defeat the entire fix. The magic number 170 is the
+    // point: it must never move as the live array grows.
+    expect(PROMOTED_SETTING_KEYS).toHaveLength(170);
+    expect(new Set(PROMOTED_SETTING_KEYS).size).toBe(170);
+
+    // Era sentinels: one from each generation of the live array.
+    expect(PROMOTED_SETTING_KEYS).toContain('autoResponderEnabled'); // original 050 list
+    expect(PROMOTED_SETTING_KEYS).toContain('meshcoreAutoAckEnabled'); // 4.9-era addition
+    expect(PROMOTED_SETTING_KEYS).toContain('maxNodeAgeHours'); // this epic's Phase 1 addition
   });
 });

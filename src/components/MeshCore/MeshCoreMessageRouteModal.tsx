@@ -105,6 +105,9 @@ const MeshCoreMessageRouteModal: React.FC<Props> = ({ message, fromLabel, contac
     const senderPos = contactPosition(senderContact);
     if (senderPos) points.push({ label: fromLabel, lat: senderPos.lat, lon: senderPos.lon, kind: 'endpoint' });
     points.push(...hopPoints);
+    // NOTE: `(local)` is a server-side naming convention (meshcoreContactsRoutes.ts:108,
+    // meshcoreDeviceRoutes.ts:181), not a protocol field — a user-chosen name containing
+    // "(local)" matches here too. Tracked for an explicit isLocal flag in #4438.
     const localContact = contacts.find((c) => c.advName?.includes('(local)'));
     const localPos = contactPosition(localContact);
     if (localPos) {

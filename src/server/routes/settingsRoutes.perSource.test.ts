@@ -25,6 +25,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import settingsRoutes, { setSettingsCallbacks } from './settingsRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
+import databaseService from '../../services/database.js';
 
 describe('POST /api/settings — per-source permission scoping (#4412 WP2 §6.3)', () => {
   let harness: RouteTestHarness;
@@ -90,6 +91,13 @@ describe('POST /api/settings — per-source permission scoping (#4412 WP2 §6.3)
 
     // Intended (epic) behavior would be 403 here. Actual current behavior is
     // 200 — see the root-cause comment above the test.
+    //
+    // TODO(#4416): when the two SOURCEY_RESOURCES lists are reconciled, BOTH
+    // assertions below flip to 403 and this test should be renamed off
+    // "KNOWN GAP". Do NOT make them pass by weakening the grant setup — a 403
+    // here is the entire point of that fix. #4416 also carries the migration
+    // that re-grants existing sourceId=NULL rows; without it every non-admin
+    // user loses settings access the moment the classification flips.
     const resB = await agent
       .post(`/api/settings?sourceId=${harness.sourceB}`)
       .send({ maxNodeAgeHours: '48' });
@@ -234,5 +242,155 @@ describe('POST /api/settings — per-source permission scoping (#4412 WP2 §6.3)
       expect(res.status).toBe(200);
       expect(res.body.maxNodeAgeHours).toBe('99');
     });
+  });
+});
+
+// #4419(a): POST /api/settings compared the auto-ack change-detection guard against
+// `currentSettings.<bareKey>` (the GLOBAL row) even on a scoped (?sourceId=) write.
+// getAllSettings() returns both namespaces in one snapshot, so the correct comparison
+// costs no extra query — it just has to read `source:{id}:<key>` instead of `<key>`.
+// See src/server/routes/settingsRoutes.ts's `scopedSettingKey()` helper and
+// PER_SOURCE_NODE_DISPLAY_PHASE5_SPEC.md §2.
+describe('POST /api/settings — autoAck change-detection is scope-correct (#4419a)', () => {
+  let harness: RouteTestHarness;
+
+  beforeEach(async () => {
+    harness = await createRouteTestApp({
+      mount: (app) => app.use('/api/settings', settingsRoutes),
+    });
+  });
+
+  afterEach(async () => {
+    await harness.db.settings.deleteSourceSettings(harness.sourceA).catch(() => {});
+    await harness.db.settings.deleteSourceSettings(harness.sourceB).catch(() => {});
+    await harness.db.settings.deleteSetting('autoAckRegex').catch(() => {});
+    await harness.db.settings.deleteSetting('autoAckEnabled').catch(() => {});
+    await harness.db.settings.deleteSetting('autoAckMessage').catch(() => {});
+    await harness.cleanup();
+  });
+
+  it('a scoped re-save of the source\'s own bad regex is allowed while auto-ack is off (the #3806 unstick, per source)', async () => {
+    // Source A already has a lookaround pattern on file (persisted before RE2
+    // validation existed) and auto-ack disabled. The GLOBAL row holds a
+    // DIFFERENT pattern — this is the case the defect gets wrong: reading the
+    // global row makes an unchanged per-source save look changed.
+    await harness.db.settings.setSourceSetting(harness.sourceA, 'autoAckRegex', 'foo(?=bar)');
+    await harness.db.settings.setSourceSetting(harness.sourceA, 'autoAckEnabled', 'false');
+    await harness.db.settings.setSetting('autoAckRegex', 'plain');
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent
+      .post(`/api/settings?sourceId=${harness.sourceA}`)
+      .send({ autoAckRegex: 'foo(?=bar)', autoAckEnabled: 'false' });
+
+    // Fails with the defect present: currentSettings.autoAckRegex resolves to the
+    // global 'plain', which differs from the posted pattern, so regexChanged is
+    // (wrongly) true and RE2 rejects the lookaround pattern with a 400 — the
+    // exact #3806 failure the guard exists to prevent, reintroduced per-source.
+    expect(res.status).toBe(200);
+  });
+
+  it('a scoped change to a NEW bad regex is rejected even when it equals the global row', async () => {
+    // Global row already holds the lookaround pattern; source A's own stored
+    // pattern is different ('plain'). The defect compares against the GLOBAL
+    // row, sees no change, and skips validation — saving a new bad pattern
+    // unvalidated.
+    await harness.db.settings.setSetting('autoAckRegex', 'foo(?=bar)');
+    await harness.db.settings.setSourceSetting(harness.sourceA, 'autoAckRegex', 'plain');
+    await harness.db.settings.setSourceSetting(harness.sourceA, 'autoAckEnabled', 'false');
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent
+      .post(`/api/settings?sourceId=${harness.sourceA}`)
+      .send({ autoAckRegex: 'foo(?=bar)', autoAckEnabled: 'false' });
+
+    // Fails with the defect present: currentSettings.autoAckRegex (global) already
+    // equals the posted pattern, so regexChanged is (wrongly) false and the new
+    // bad pattern is saved unvalidated (200) instead of rejected (400).
+    expect(res.status).toBe(400);
+  });
+
+  it('willBeEnabled reads this source\'s own flag, not the global one', async () => {
+    // Both the global row and source A's row already hold the SAME (invalid)
+    // pattern as the one being posted, so regexChanged is false either way —
+    // this isolates the test to the willBeEnabled half of the guard. Auto-ack
+    // is globally enabled but OFF for source A; only the per-source flag
+    // should be consulted, since the posted body doesn't include
+    // autoAckEnabled at all.
+    await harness.db.settings.setSetting('autoAckEnabled', 'true');
+    await harness.db.settings.setSetting('autoAckRegex', 'foo(?=bar)');
+    await harness.db.settings.setSourceSetting(harness.sourceA, 'autoAckEnabled', 'false');
+    await harness.db.settings.setSourceSetting(harness.sourceA, 'autoAckRegex', 'foo(?=bar)');
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent
+      .post(`/api/settings?sourceId=${harness.sourceA}`)
+      .send({ autoAckRegex: 'foo(?=bar)' });
+
+    // Fails with the defect present: currentSettings.autoAckEnabled (global) is
+    // 'true', so willBeEnabled is (wrongly) true, forcing validation of the
+    // (unchanged, but invalid) pattern -> 400.
+    expect(res.status).toBe(200);
+  });
+
+  it("sourceA's regex state does not affect a sourceB save", async () => {
+    // Seed a bad pattern on source A only. Posting the SAME pattern to source B
+    // (which has no stored override at all) must still be rejected — B has no
+    // prior value to "unstick" against, so this pins that the new per-source
+    // lookup does not leak A's state into B's comparison.
+    await harness.db.settings.setSourceSetting(harness.sourceA, 'autoAckRegex', 'foo(?=bar)');
+    await harness.db.settings.setSourceSetting(harness.sourceA, 'autoAckEnabled', 'false');
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent
+      .post(`/api/settings?sourceId=${harness.sourceB}`)
+      .send({ autoAckRegex: 'foo(?=bar)', autoAckEnabled: 'false' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('the unscoped POST still compares against the global row (no regression)', async () => {
+    // Pins the identity-function property of scopedSettingKey: with sourceId
+    // null it must behave exactly as before. A DIFFERENT per-source override on
+    // source A must have zero influence on the global comparison.
+    await harness.db.settings.setSetting('autoAckRegex', 'foo(?=bar)');
+    await harness.db.settings.setSetting('autoAckEnabled', 'false');
+    await harness.db.settings.setSourceSetting(harness.sourceA, 'autoAckRegex', 'a-totally-different-pattern');
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent
+      .post('/api/settings')
+      .send({ autoAckRegex: 'foo(?=bar)', autoAckEnabled: 'false' });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('the audit row records the per-source before-value', async () => {
+    // Guards the auditSettingsWrite refactor (prefix -> scopedSettingKey): the
+    // emitted audit event must still carry the SOURCE's prior value as
+    // `before`, not the global row's. auditLogAsync currently discards
+    // valueBefore/valueAfter before they reach the DB (see the "Note" in
+    // DatabaseService.auditLogAsync), so this asserts on the call arguments
+    // via a spy rather than reading a persisted row back.
+    await harness.db.settings.setSourceSetting(harness.sourceA, 'autoAckMessage', 'old source message');
+    await harness.db.settings.setSetting('autoAckMessage', 'old global message');
+
+    const spy = vi.spyOn(databaseService, 'auditLogAsync');
+    try {
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent
+        .post(`/api/settings?sourceId=${harness.sourceA}`)
+        .send({ autoAckMessage: 'new source message' });
+      expect(res.status).toBe(200);
+
+      const call = spy.mock.calls.find((args) => args[2] === 'settings');
+      expect(call).toBeDefined();
+      const [, , , details, , valueBefore, valueAfter] = call!;
+      expect(JSON.parse(details as string).sourceId).toBe(harness.sourceA);
+      expect(JSON.parse(valueBefore as string).autoAckMessage).toBe('old source message');
+      expect(JSON.parse(valueAfter as string).autoAckMessage).toBe('new source message');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
