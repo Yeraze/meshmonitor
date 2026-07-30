@@ -66,6 +66,13 @@ interface NeighborEdge {
 }
 
 interface MeshCoreMapProps {
+  /**
+   * Contacts to render. Already age-filtered by the caller
+   * (MeshCoreNodesView applies the per-source `maxNodeAgeHours` with the
+   * favorite / local-node exemptions before passing them down — #4412 Phase 4
+   * §3.4). This component does NOT filter by age; a future second caller must
+   * filter upstream too.
+   */
   contacts: MeshCoreContact[];
   selectedPublicKey: string | null;
   localNodePosition?: { lat: number; lng: number } | null;

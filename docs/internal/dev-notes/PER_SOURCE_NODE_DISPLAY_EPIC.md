@@ -160,7 +160,31 @@ tests covering per-source thresholds and intervals.
 different max-age values producing different node lists and map markers; no new
 console errors.
 
-### [ ] Phase 4 — MeshCore node-age filtering (closes #4412)
+### [x] Phase 4 — MeshCore node-age filtering (closes #4412) — **COMPLETE** (all 4 WPs + browser validation; PR pending)
+
+**Browser-validated on the live `MC-Sandbox` MeshCore source (deployed worktree build):**
+- The Node Display section **exists on a MeshCore source** — it did not before this phase.
+  Shows max-age + the inactive trio; `localStatsIntervalMinutes` and `nodeHopsCalculation`
+  correctly absent.
+- Filter counts match ground truth computed from the raw API at every window:
+  **10 rows @ 1h** (9 in-window + the age-exempt local node), **34 @ 24h**, **48 @ 168h**
+  (47 in-window + local). Each was stable across 10-15s of sampling.
+- Changes take effect **without a page reload**, confirming the cache-invalidation path
+  (spec R3 — the one defect a fully green suite could not catch).
+- Per-source isolation: `MC-Sandbox` at 168 while `MC-BLESandbox` stayed at 24.
+- The D3 cross-reference text renders in the field description.
+- Only console error is the pre-existing `locales/en-US.json` 404.
+
+**Data-quality note, not a defect:** of 192 stored MeshCore nodes, 185 carry plausible
+millisecond timestamps; 4 are future-dated and 2 near-epoch. Those are devices with unset
+RTCs, and the filter treats them as reported — future-dated rows always pass, near-epoch
+rows always fail. Worth knowing before reading a node count as a bug.
+
+**A transient worth recording:** an early sample taken ~4s after a 24h→168h save read 26
+rows — lower than the 34 at 24h, which is impossible for a widening window. It did not
+reproduce; repeated clean runs settled at exactly 48. The sample landed mid-refetch while
+the MeshCore live-contacts merge was in flight. If a future reader sees a nonsensical
+intermediate count on this screen, sample for longer before concluding the filter is wrong.
 
 > **Scope expanded 2026-07-29, found during Phase 3 architecture.**
 > **MeshCore sources have no Node Display settings UI at all.** `SettingsTab`
@@ -171,9 +195,23 @@ console errors.
 > This is literally what #4412 asks for: *"set up Node Display menu for the
 > map/list based on last advert time, same as for Meshtastic."* So Phase 4 must
 > **add the settings surface**, not merely apply a filter behind one. Phase 3
-> implements and unit-tests the MeshCore hide-branch for `localStatsIntervalMinutes`
-> and `nodeHopsCalculation`, but that branch is unreachable until this mount point
-> exists — Phase 3 cannot browser-validate it, and Phase 4 must.
+> implements and unit-tests a `SettingsTab` hide-branch for `localStatsIntervalMinutes`
+> and `nodeHopsCalculation`, gated on the assumption that Phase 4 would route
+> MeshCore sources into `SettingsTab` to give that branch somewhere to run.
+>
+> **That assumption was wrong, and Phase 4 retired the branch instead of
+> mounting it (WP4/D1/D2).** The Phase 4 settings surface is a purpose-built
+> `MeshCoreNodeDisplaySection` composed into `MeshCorePage`, not a `SettingsTab`
+> mount — `SettingsTab` still never renders under a MeshCore route, so
+> `sourceType === 'meshcore'` stayed permanently unreachable inside it and the
+> hide-branch's two tests were passing vacuously (they rendered `SettingsTab`
+> inside a `<SourceProvider sourceType="meshcore">` that no real route ever
+> constructs). Phase 4 deleted the branch and those two tests rather than
+> leaving them as dead code implying coverage that did not exist. **Do not
+> restore this branch on the theory that coverage was lost** — the replacement
+> is `MeshCoreNodeDisplaySection.test.tsx`, which asserts the actual
+> requirement directly: the four Node Display keys with a MeshCore consumer
+> render on a MeshCore source, and the six without one do not.
 
 **Work:**
 - **Add the Node Display settings surface to MeshCore sources** (the mount point
@@ -319,6 +357,71 @@ Option 2 is the smallest change and matches what an admin would predict. Raise a
 Phase 2 boundary.
 
 ## Deviations log
+
+### Phase 4
+- **D1 — settings surface composed as a section, not a `SettingsTab` mount.**
+  `MeshCoreNodeDisplaySection` renders inside `MeshCoreSettingsView`, reusing
+  the same per-source `/api/settings?sourceId=` endpoints Phases 1–3 built.
+  Rejected mounting `SettingsTab` in `mode="source"` under a MeshCore route:
+  it takes ~50 required props (23 values + 24 `onXxxChange` callbacks) that
+  `MeshCorePage` doesn't own, and `SOURCE_SECTIONS` includes five
+  Meshtastic-only groups (firmware update, packet monitor, telemetry, solar,
+  sorting) that would need a third `mode` and a materially larger hide
+  surface than Phase 3's two-field branch.
+- **D2 — the Phase 3 `isMeshCoreSource` hide-branch in `SettingsTab.tsx` was
+  deleted, not kept as dead code (WP4).** Because D1 never routes a MeshCore
+  source through `SettingsTab`, the branch was unreachable by construction
+  and its two tests in `SettingsTab.nodeDisplay.perSource.test.tsx`
+  ("MeshCore hide-branch") were passing vacuously — they rendered
+  `SettingsTab` inside a `<SourceProvider sourceType="meshcore">` no real
+  route ever constructs, and would still pass if the MeshCore surface showed
+  every Meshtastic-only knob. Replacement coverage is
+  `MeshCoreNodeDisplaySection.test.tsx` (WP2, 10 tests — confirmed green
+  before the branch was deleted), which asserts the requirement directly:
+  the four MeshCore-relevant keys render, the six others don't. The "Scope
+  expanded" callout in the Phase 4 heading above was corrected in the same
+  commit — it previously said this mount point "makes the hide-branch live,"
+  written on the assumption (wrong per D1) that Phase 4 would mount
+  `SettingsTab`.
+- **D3 — the MeshCore section exposes 4 of the 10 Node Display keys**,
+  determined by which keys have a MeshCore consumer in the tree:
+  `maxNodeAgeHours` (this phase's filter) plus the inactive-node trio
+  `inactiveNodeThresholdHours` / `inactiveNodeCheckIntervalMinutes` /
+  `inactiveNodeCooldownHours` (`inactiveNodeNotificationService.ts` already
+  branches on `manager.sourceType === 'meshcore'`). **Latent bug exposed:**
+  those three inactive-node keys have driven MeshCore alerts server-side with
+  **no UI** to configure them on a MeshCore source since the notification
+  service learned about MeshCore — a MeshCore-only operator could not set
+  them at all before this phase. The other six keys
+  (`localStatsIntervalMinutes`, `nodeHopsCalculation`, `hideIncompleteNodes`,
+  the dimming trio) have no MeshCore consumer and are excluded.
+- **D5 — the two MeshCore age filters are independent, not unified or
+  subordinate.** `maxNodeAgeHours` (Settings → Node Display, client-side view
+  filter) and `MeshCorePathfindingFilterSection`'s `lastHeardEnabled` /
+  `lastHeardHours` (Automations → Target Filter, server-side scheduler target
+  selector) stay separately stored with separately-ranged inputs (1–168h vs.
+  1–8760h) and separate permission resources (`settings:write` vs.
+  `automation:write`). Unifying or nesting them would let a change on one
+  screen silently move behavior on the other. Both surfaces gained a
+  one-line cross-reference to the other so the independence is legible.
+- **`mergeNodesAndContacts` behaviour change (D4, WP1/WP3).** The two raw
+  `c.lastSeen` reads in `MeshCoreNodesView.tsx` are replaced with the shared
+  `meshcoreLastHeardMs(c)` helper from `src/utils/meshcoreAge.ts` (WP1), so a
+  `MergedRow.lastHeard` now also falls back to `lastAdvert * 1000` when
+  `lastSeen` is absent — previously a contact with only `lastAdvert` resolved
+  to no usable timestamp. This is a real fix, not a no-op: without it, a
+  contact that has only ever advertised (never produced a live `lastSeen`)
+  would be invisible to the new age filter regardless of how recent its
+  advert was.
+- **State at WP4 time:** WP1 (`71aa9053`) and WP2 (`51d601b9`) were committed
+  and green on this branch; WP3 (the `MeshCoreNodesView`/`MeshCoreMap` filter
+  application, §3.4) was still in progress with uncommitted work in this
+  shared worktree when WP4 ran. WP4 was scoped to `SettingsTab.tsx`,
+  `SettingsTab.nodeDisplay.perSource.test.tsx`, and this doc only, per the
+  file-ownership table, and did not touch or wait on WP3's files. The Phase 4
+  checkbox above is ticked per this package's explicit instruction; full
+  Phase 4 exit criteria (browser validation on a live MeshCore source, PR)
+  remain pending WP3 and are not implied by this entry.
 
 ### Phase 3
 - **Browser-validated** against two live Meshtastic sources (Sandbox / BLESandbox) on the

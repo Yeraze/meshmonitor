@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useSaveBar } from '../../hooks/useSaveBar';
+import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../../utils/meshcoreAge';
 
 interface MeshCorePathfindingFilterSectionProps {
   baseUrl: string;
@@ -292,24 +293,16 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
    * change to its branch structure/semantics should update this preview (and
    * vice versa) in the same PR.
    *
-   * CRITICAL unit note (verified against the manager's contact-write sites):
-   * `lastSeen` is epoch **milliseconds**, `lastAdvert` is epoch **seconds**.
-   * Both are normalized to a millisecond cutoff before comparison — using
-   * the naive "both are seconds" assumption would make this preview
-   * disagree with what the scheduler actually targets.
+   * Unit normalization (lastSeen ms / lastAdvert s) is delegated to
+   * `src/utils/meshcoreAge.ts` — see that module for the authoritative note.
    */
   const matchingContacts = useMemo(() => {
     if (!settings.enabled) return contacts;
 
     let pool = contacts;
     if (settings.lastHeardEnabled) {
-      const cutoffMs = Date.now() - settings.lastHeardHours * 3600 * 1000;
-      pool = pool.filter(c => {
-        const seenMs = c.lastSeen != null
-          ? c.lastSeen
-          : (c.lastAdvert != null ? c.lastAdvert * 1000 : null);
-        return seenMs != null && seenMs >= cutoffMs;
-      });
+      const cutoffMs = meshcoreAgeCutoffMs(settings.lastHeardHours);
+      pool = pool.filter(c => isWithinMeshcoreAge(c, cutoffMs));
     }
     if (settings.hopsEnabled) {
       pool = pool.filter(c => {
@@ -557,6 +550,12 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
                 {t('meshcore.automation.pathfinding.filter.last_heard_enable', 'Limit by last heard')}
               </label>
             </div>
+            <span className="setting-description" style={{ display: 'block', marginBottom: '0.25rem' }}>
+              {t(
+                'meshcore.automation.pathfinding.filter.last_heard_description',
+                'Applies only to Auto-Pathfinding targeting. It is separate from the Nodes list / map age filter in Settings → Node Display.',
+              )}
+            </span>
             <label htmlFor="pfFilterLastHeardHours" style={{ display: 'block', fontSize: '0.8rem', color: 'var(--ctp-subtext0)', marginBottom: '0.25rem' }}>
               {t('meshcore.automation.pathfinding.filter.last_heard_label', 'Heard within (hours)')}
             </label>
