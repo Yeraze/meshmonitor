@@ -15,7 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, relative, sep } from 'path';
-import { SOURCEY_RESOURCES, isSourceyResource, type ResourceType } from './permission';
+import { SOURCEY_RESOURCES, isSourceyResource, DEFAULT_NEW_USER_RESOURCES, type ResourceType } from './permission';
 
 describe('SOURCEY_RESOURCES canonical list (#4416)', () => {
   // Pinned exact contents per PER_SOURCE_NODE_DISPLAY_PHASE6_SPEC.md §2.1.
@@ -150,5 +150,51 @@ describe('SOURCEY_RESOURCES canonical list (#4416)', () => {
 
       expect(violations).toHaveLength(0);
     });
+  });
+});
+
+describe('DEFAULT_NEW_USER_RESOURCES are granted at a scope that authorizes (#4448)', () => {
+  /**
+   * The provisioning paths (localAuth, the authMiddleware JIT path, oidcAuth)
+   * write these grants with `sourceId = NULL`. The sourcey branch of
+   * `checkPermissionAsync` reads only `bySource` and ignores NULL-scoped rows,
+   * so a per-source resource seeded here produces a row that is written,
+   * displayed in the admin UI as granted, and authorizes nothing.
+   *
+   * That is exactly what shipped: the list read
+   * `['dashboard','nodes','messages','settings','info','traceroute']`, four of
+   * which are sourcey. This assertion is the one that would have caught it.
+   */
+  it('contains no sourcey resource', () => {
+    const inert = DEFAULT_NEW_USER_RESOURCES.filter((r) => isSourceyResource(r));
+    expect(
+      inert,
+      'These default grants are written at global scope but are per-source, so they ' +
+      `authorize nothing: ${inert.join(', ')}. Either drop them from ` +
+      'DEFAULT_NEW_USER_RESOURCES, or grant them per-source at provisioning time — ' +
+      'the latter is a product decision, see #4448.'
+    ).toEqual([]);
+  });
+
+  it('is non-empty — a user provisioned with zero grants cannot use the app', () => {
+    expect(DEFAULT_NEW_USER_RESOURCES.length).toBeGreaterThan(0);
+  });
+
+  it('no provisioning path re-declares its own default list', () => {
+    // Three hardcoded copies is how this drifted out of sync with
+    // SOURCEY_RESOURCES in the first place. Keep exactly one definition.
+    const PROVISIONING_FILES = [
+      'src/server/auth/localAuth.ts',
+      'src/server/auth/authMiddleware.ts',
+      'src/server/auth/oidcAuth.ts',
+    ];
+    const offenders = PROVISIONING_FILES.filter((f) =>
+      /const\s+defaultResources\s*=/.test(readFileSync(join(process.cwd(), f), 'utf8'))
+    );
+    expect(
+      offenders,
+      'These files declare their own defaultResources list instead of importing ' +
+      `DEFAULT_NEW_USER_RESOURCES: ${offenders.join(', ')}`
+    ).toEqual([]);
   });
 });

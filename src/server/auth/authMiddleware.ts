@@ -5,7 +5,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { ResourceType, PermissionAction } from '../../types/permission.js';
+import { ResourceType, PermissionAction, DEFAULT_NEW_USER_RESOURCES } from '../../types/permission.js';
 import { User } from '../../types/auth.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
@@ -65,9 +65,9 @@ export function optionalAuth() {
                 lastLoginAt: Date.now()
               });
 
-              // Grant default permissions (same as OIDC)
-              const defaultResources = ['dashboard', 'nodes', 'messages', 'settings', 'info', 'traceroute'];
-              for (const resource of defaultResources) {
+              // Grant default permissions (same as OIDC). Global-scope
+              // resources only — see DEFAULT_NEW_USER_RESOURCES (#4448).
+              for (const resource of DEFAULT_NEW_USER_RESOURCES) {
                 await databaseService.auth.createPermission({
                   userId,
                   resource,
