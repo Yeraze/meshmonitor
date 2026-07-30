@@ -16,8 +16,15 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+// Captures every prop MeshCoreMap is rendered with, so the per-source age
+// filter suite (#4412 Phase 4 WP3) can assert on the `contacts` it receives
+// without the map needing to filter anything itself (spec §3.4 / §3.11).
+const meshCoreMapProps = vi.fn();
 vi.mock('./MeshCoreMap', () => ({
-  MeshCoreMap: () => <div data-testid="mc-map" />,
+  MeshCoreMap: (props: Record<string, unknown>) => {
+    meshCoreMapProps(props);
+    return <div data-testid="mc-map" />;
+  },
 }));
 
 const showToast = vi.fn();
@@ -29,6 +36,19 @@ vi.mock('../../contexts/SettingsContext', () => ({
   useSettings: () => ({ timeFormat: '24', dateFormat: 'MM/DD/YYYY' }),
 }));
 
+// `useSource()` resolves to a real MeshCore SourceProvider in the app
+// (main.tsx). Standalone here, so a fixed sourceId is enough — the age
+// filter behaviour itself is driven entirely by the mocked
+// useNodeDisplaySettings below (spec §3.4b).
+vi.mock('../../contexts/SourceContext', () => ({
+  useSource: () => ({ sourceId: 'test-source', sourceName: 'Test Source', sourceType: 'meshcore' }),
+}));
+
+const mockUseNodeDisplaySettings = vi.fn();
+vi.mock('../../hooks/useNodeDisplaySettings', () => ({
+  useNodeDisplaySettings: (...args: unknown[]) => mockUseNodeDisplaySettings(...args),
+}));
+
 import { MeshCoreNodesView } from './MeshCoreNodesView';
 import type { MeshCoreNode } from './hooks/useMeshCore';
 import type { MeshCoreContact } from '../../utils/meshcoreHelpers';
@@ -37,10 +57,18 @@ const PK_A = 'a'.repeat(64);
 const PK_B = 'b'.repeat(64);
 const PK_C = 'c'.repeat(64);
 
+// Rebased onto Date.now()-relative milliseconds (#4412 Phase 4 WP3) — the
+// original fixtures used `lastHeard: 1000/2000/3000` (epoch 1970), which
+// falls outside any real age cutoff. Relative order/spacing is preserved
+// (alpha most recent, Charlie oldest) so every sort/selection assertion
+// below is unchanged.
+const NOW = Date.now();
+const HOUR_MS = 60 * 60 * 1000;
+
 const nodes: MeshCoreNode[] = [
-  { publicKey: PK_A, name: 'Charlie', advType: 1, lastHeard: 1000 },
-  { publicKey: PK_B, name: 'alpha', advType: 1, lastHeard: 3000 },
-  { publicKey: PK_C, name: 'Bravo', advType: 1, lastHeard: 2000 },
+  { publicKey: PK_A, name: 'Charlie', advType: 1, lastHeard: NOW - 3 * HOUR_MS },
+  { publicKey: PK_B, name: 'alpha', advType: 1, lastHeard: NOW - 1 * HOUR_MS },
+  { publicKey: PK_C, name: 'Bravo', advType: 1, lastHeard: NOW - 2 * HOUR_MS },
 ];
 
 const contacts: MeshCoreContact[] = [];
@@ -51,6 +79,14 @@ function listedNames(): string[] {
   const rows = Array.from(document.querySelectorAll('.mc-node-row .mc-node-row-name'));
   return rows.map((el) => el.querySelector('.mc-node-row-display-name')?.textContent || '');
 }
+
+// Default 24h cutoff for every describe below — the rebased fixtures above
+// are all within 3 hours, so they survive it. The per-source age filter
+// suite overrides this per-test where it needs a different cutoff.
+beforeEach(() => {
+  mockUseNodeDisplaySettings.mockReset().mockReturnValue({ maxNodeAgeHours: 24 });
+  meshCoreMapProps.mockClear();
+});
 
 describe('MeshCoreNodesView — sort controls', () => {
   it('defaults to sorting by last heard, descending (most recent first)', () => {
@@ -236,5 +272,133 @@ describe('MeshCoreNodesView — list collapse toggle (mobile map access)', () =>
     expect(document.querySelector('.meshcore-two-pane.mobile-show-content')).not.toBeNull();
     // ...rather than the desktop thin-bar collapsed state.
     expect(document.querySelector('.meshcore-list-pane.collapsed')).toBeNull();
+  });
+});
+
+describe('MeshCoreNodesView — per-source age filter (#4412 Phase 4)', () => {
+  const PK_RECENT = 'd'.repeat(64);
+  const PK_OLD = 'e'.repeat(64);
+  const PK_FAVORITE_OLD = 'f'.repeat(64);
+  const PK_LOCAL = '1'.repeat(63) + '2';
+  const PK_NO_TIMESTAMP_NODE = '3'.repeat(64);
+  const PK_NO_TIMESTAMP_CONTACT = '4'.repeat(64);
+  const PK_ADVERT_ONLY = '5'.repeat(64);
+
+  it('lists a node within the cutoff and excludes one outside it', () => {
+    const testNodes: MeshCoreNode[] = [
+      { publicKey: PK_RECENT, name: 'Recent', advType: 1, lastHeard: NOW - 2 * HOUR_MS },
+      { publicKey: PK_OLD, name: 'Old', advType: 1, lastHeard: NOW - 72 * HOUR_MS },
+    ];
+    render(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
+    expect(listedNames()).toEqual(['Recent']);
+  });
+
+  it('bypasses the cutoff for a favorite, still pinned to the top', () => {
+    const testNodes: MeshCoreNode[] = [
+      { publicKey: PK_RECENT, name: 'Recent', advType: 1, lastHeard: NOW - 2 * HOUR_MS },
+      {
+        publicKey: PK_FAVORITE_OLD,
+        name: 'FavoriteOld',
+        advType: 1,
+        lastHeard: NOW - 72 * HOUR_MS,
+        isFavorite: true,
+      },
+    ];
+    render(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
+    expect(listedNames()).toEqual(['FavoriteOld', 'Recent']);
+  });
+
+  it('bypasses the cutoff for the local node', () => {
+    const testContacts: MeshCoreContact[] = [
+      { publicKey: PK_LOCAL, advName: 'MyNode (local)', lastSeen: NOW - 72 * HOUR_MS },
+    ];
+    render(<MeshCoreNodesView nodes={[]} contacts={testContacts} />);
+    expect(listedNames()).toEqual(['MyNode (local)']);
+  });
+
+  it('excludes rows with no resolvable timestamp', () => {
+    const testNodes: MeshCoreNode[] = [
+      { publicKey: PK_NO_TIMESTAMP_NODE, name: 'NoTimeNode', advType: 1 },
+    ];
+    const testContacts: MeshCoreContact[] = [
+      { publicKey: PK_NO_TIMESTAMP_CONTACT, advName: 'NoTimeContact' },
+    ];
+    render(<MeshCoreNodesView nodes={testNodes} contacts={testContacts} />);
+    expect(listedNames()).toEqual([]);
+  });
+
+  it('resolves a lastAdvert-only contact (seconds) and applies the cutoff correctly', () => {
+    const testContacts: MeshCoreContact[] = [
+      {
+        publicKey: PK_ADVERT_ONLY,
+        advName: 'AdvertOnly',
+        lastAdvert: Math.floor((NOW - 2 * HOUR_MS) / 1000),
+      },
+    ];
+    render(<MeshCoreNodesView nodes={[]} contacts={testContacts} />);
+    expect(listedNames()).toEqual(['AdvertOnly']);
+  });
+
+  it('does not misinterpret a millisecond lastHeard as seconds (unit regression guard)', () => {
+    // If this value were ever divided/treated as seconds it would resolve to
+    // a date in 1970 and be excluded by the 24h cutoff below.
+    const testNodes: MeshCoreNode[] = [
+      { publicKey: PK_RECENT, name: 'Recent', advType: 1, lastHeard: NOW - 2 * HOUR_MS },
+    ];
+    render(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
+    expect(listedNames()).toEqual(['Recent']);
+  });
+
+  it('passes the same age-filtered set down to the map', () => {
+    const testNodes: MeshCoreNode[] = [
+      { publicKey: PK_RECENT, name: 'Recent', advType: 1, lastHeard: NOW - 2 * HOUR_MS },
+      {
+        publicKey: PK_FAVORITE_OLD,
+        name: 'FavoriteOld',
+        advType: 1,
+        lastHeard: NOW - 72 * HOUR_MS,
+        isFavorite: true,
+      },
+      { publicKey: PK_OLD, name: 'Old', advType: 1, lastHeard: NOW - 72 * HOUR_MS },
+    ];
+    const testContacts: MeshCoreContact[] = [
+      { publicKey: PK_RECENT, lastSeen: NOW - 2 * HOUR_MS },
+      { publicKey: PK_FAVORITE_OLD, lastSeen: NOW - 72 * HOUR_MS },
+      { publicKey: PK_OLD, lastSeen: NOW - 72 * HOUR_MS },
+    ];
+    render(<MeshCoreNodesView nodes={testNodes} contacts={testContacts} />);
+    expect(meshCoreMapProps).toHaveBeenCalled();
+    const lastCall = meshCoreMapProps.mock.calls[meshCoreMapProps.mock.calls.length - 1][0] as {
+      contacts: MeshCoreContact[];
+    };
+    const mapKeys = lastCall.contacts.map((c) => c.publicKey);
+    expect(mapKeys).toContain(PK_RECENT);
+    expect(mapKeys).toContain(PK_FAVORITE_OLD);
+    expect(mapKeys).not.toContain(PK_OLD);
+  });
+
+  it('re-lists a previously aged-out node when maxNodeAgeHours grows from 24 to 168', () => {
+    const testNodes: MeshCoreNode[] = [
+      { publicKey: PK_OLD, name: 'Old', advType: 1, lastHeard: NOW - 72 * HOUR_MS },
+    ];
+    mockUseNodeDisplaySettings.mockReturnValue({ maxNodeAgeHours: 24 });
+    const { rerender } = render(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
+    expect(listedNames()).toEqual([]);
+
+    mockUseNodeDisplaySettings.mockReturnValue({ maxNodeAgeHours: 168 });
+    rerender(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
+    expect(listedNames()).toEqual(['Old']);
+  });
+
+  it('search narrows within the age-filtered set (age -> sort -> search order)', () => {
+    const testNodes: MeshCoreNode[] = [
+      { publicKey: PK_RECENT, name: 'Recent', advType: 1, lastHeard: NOW - 2 * HOUR_MS },
+      // Matches the same search text but was already aged out — proves the
+      // filter runs before search, not after.
+      { publicKey: PK_OLD, name: 'RecentButOld', advType: 1, lastHeard: NOW - 72 * HOUR_MS },
+    ];
+    render(<MeshCoreNodesView nodes={testNodes} contacts={[]} />);
+    fireEvent.change(screen.getByPlaceholderText('Search nodes…'), { target: { value: 'Recent' } });
+    expect(listedNames()).toEqual(['Recent']);
   });
 });
