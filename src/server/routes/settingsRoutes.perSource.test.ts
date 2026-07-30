@@ -91,6 +91,13 @@ describe('POST /api/settings — per-source permission scoping (#4412 WP2 §6.3)
 
     // Intended (epic) behavior would be 403 here. Actual current behavior is
     // 200 — see the root-cause comment above the test.
+    //
+    // TODO(#4416): when the two SOURCEY_RESOURCES lists are reconciled, BOTH
+    // assertions below flip to 403 and this test should be renamed off
+    // "KNOWN GAP". Do NOT make them pass by weakening the grant setup — a 403
+    // here is the entire point of that fix. #4416 also carries the migration
+    // that re-grants existing sourceId=NULL rows; without it every non-admin
+    // user loses settings access the moment the classification flips.
     const resB = await agent
       .post(`/api/settings?sourceId=${harness.sourceB}`)
       .send({ maxNodeAgeHours: '48' });
