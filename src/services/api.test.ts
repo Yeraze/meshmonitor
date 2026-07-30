@@ -810,6 +810,22 @@ describe('ApiService BASE_URL Support', () => {
       expect(mockFetch).toHaveBeenCalledWith('/api/traceroutes/history/111/222?limit=20');
     });
 
+    it('getTracerouteHistory should include sourceId in the query string when provided (SR_PHASE2_SPEC.md D17)', async () => {
+      mockFetch.mockResolvedValue(createMockResponse([]));
+
+      await apiService.getTracerouteHistory(111, 222, 200, 'src-a');
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/traceroutes/history/111/222?limit=200&sourceId=src-a');
+    });
+
+    it('getTracerouteHistory should omit sourceId from the query string when not provided (pinned existing behavior)', async () => {
+      mockFetch.mockResolvedValue(createMockResponse([]));
+
+      await apiService.getTracerouteHistory(111, 222, 200);
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/traceroutes/history/111/222?limit=200');
+    });
+
     it('getTracerouteParticipation should hit the participation endpoint with the encoded query string and unwrap data.entries', async () => {
       const entries = [
         {
