@@ -66,6 +66,14 @@ vi.mock('../hooks/useNodeTraceroutes', () => ({
   useNodeTraceroutes: () => ({ data: [], isLoading: false, error: null, refetch: vi.fn() }),
 }));
 
+// Statistical Route epic phase 2, WP4: the traceroute box now also calls
+// useTraceroutePairHistory unconditionally (with an `enabled` flag) — same
+// "no QueryClientProvider in this file" problem as useNodeTraceroutes above,
+// same fix.
+vi.mock('../hooks/useTraceroutePairHistory', () => ({
+  useTraceroutePairHistory: () => ({ rows: undefined, isLoading: false, error: null }),
+}));
+
 vi.mock('@tanstack/react-query', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useQueryClient: () => ({}),

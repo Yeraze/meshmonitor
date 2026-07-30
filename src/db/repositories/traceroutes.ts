@@ -178,6 +178,11 @@ export class TraceroutesRepository extends BaseRepository {
    *
    * `scanLimit` bounds memory. Because the scan is newest-first, exceeding it
    * can only drop OLDER participations — never the ones the picker shows.
+   *
+   * `sinceTimestamp` is optional: when omitted, no time filter is applied and
+   * the bounded newest-first `scanLimit` scan alone limits the work (picker
+   * parity with the Traceroute History dialog — issue-referenced amendment,
+   * see SR_PHASE2_SPEC.md D14/S1).
    */
   async getTraceroutesInvolvingNode(
     nodeNum: number,
@@ -186,7 +191,7 @@ export class TraceroutesRepository extends BaseRepository {
        *  per-source by definition, so an `ALL_SOURCES` caller is a bug this
        *  signature makes unrepresentable. */
       sourceId: string;
-      sinceTimestamp: number;
+      sinceTimestamp?: number;
       limit?: number;
       scanLimit?: number;
     },
@@ -195,13 +200,15 @@ export class TraceroutesRepository extends BaseRepository {
     const limit = opts.limit ?? 100;
     const scanLimit = opts.scanLimit ?? 2000;
 
+    const conditions = [this.withSourceScope(traceroutes, opts.sourceId)];
+    if (opts.sinceTimestamp !== undefined) {
+      conditions.push(gte(traceroutes.timestamp, opts.sinceTimestamp));
+    }
+
     const rows = await this.db
       .select()
       .from(traceroutes)
-      .where(and(
-        gte(traceroutes.timestamp, opts.sinceTimestamp),
-        this.withSourceScope(traceroutes, opts.sourceId),
-      ))
+      .where(and(...conditions))
       .orderBy(desc(traceroutes.timestamp))
       .limit(scanLimit);
 

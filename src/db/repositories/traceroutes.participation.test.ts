@@ -110,6 +110,19 @@ describe('TraceroutesRepository.getTraceroutesInvolvingNode (phase 2 §4/§8.2)'
     expect(result[0].timestamp).toBe(now);
   });
 
+  it('sinceTimestamp omitted applies no time filter (picker/History-dialog parity amendment)', async () => {
+    const now = Date.now();
+    // Well outside the old 7-day (168h) default window.
+    const veryOld = now - 30 * 24 * 60 * 60 * 1000;
+    await repo.insertTraceroute(
+      makeTraceroute({ fromNodeNum: 111, toNodeNum: 222, timestamp: veryOld }),
+      'src-a',
+    );
+    const result = await repo.getTraceroutesInvolvingNode(111, { sourceId: 'src-a' });
+    expect(result).toHaveLength(1);
+    expect(result[0].timestamp).toBe(veryOld);
+  });
+
   it('orders results newest-first', async () => {
     const now = Date.now();
     await repo.insertTraceroute(

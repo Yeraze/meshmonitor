@@ -27,6 +27,11 @@ import { formatDateTime } from '../../utils/datetime';
 import { UiIcon } from '../icons';
 import styles from './TracerouteParticipationPicker.module.css';
 
+/** The `<select>` value for the statistical aggregate. A string, because a
+ *  `<select>` value is a string and every entry option is a numeric id — the two
+ *  spaces cannot collide. */
+export const STATISTICAL_OPTION_VALUE = 'statistical';
+
 export interface TracerouteParticipationPickerProps {
   entries: TracerouteParticipationEntry[];
   /** id of the row currently in the strip; `null` while it comes from the poll row. */
@@ -35,6 +40,11 @@ export interface TracerouteParticipationPickerProps {
   nodes: DeviceInfo[];
   timeFormat: TimeFormat;
   dateFormat: DateFormat;
+  /** Present when the pair has an aggregate worth offering (>= 2 routes,
+   *  SR_PHASE2_SPEC.md D14/S2). Absent leaves this component exactly as it was. */
+  statistical?: { totalRoutes: number };
+  statisticalSelected?: boolean;
+  onSelectStatistical?: () => void;
 }
 
 /**
@@ -67,11 +77,15 @@ export function TracerouteParticipationPicker({
   nodes,
   timeFormat,
   dateFormat,
+  statistical,
+  statisticalSelected,
+  onSelectStatistical,
 }: TracerouteParticipationPickerProps) {
   const { t } = useTranslation();
   const selectId = useId();
 
-  if (entries.length < 2) return null;
+  const optionCount = entries.length + (statistical ? 1 : 0);
+  if (optionCount < 2) return null;
 
   return (
     <div className={styles.row}>
@@ -83,16 +97,31 @@ export function TracerouteParticipationPicker({
         id={selectId}
         className={styles.select}
         aria-label={t('messages.traceroute_picker_aria', 'Choose which traceroute to display')}
-        value={selectedId != null ? String(selectedId) : ''}
-        onChange={e => onSelect(Number(e.target.value))}
+        value={
+          statisticalSelected
+            ? STATISTICAL_OPTION_VALUE
+            : selectedId != null ? String(selectedId) : ''
+        }
+        onChange={e => {
+          if (e.target.value === STATISTICAL_OPTION_VALUE) onSelectStatistical?.();
+          else onSelect(Number(e.target.value));
+        }}
       >
         {/* Placeholder for the value="" state (the displayed row came from the
             poll, not the picker — it has no entry id). Without it a native
             <select> silently displays the FIRST option's label, implying a
             selection that was never made. Hidden so it can't be re-chosen. */}
-        {selectedId == null && (
+        {selectedId == null && !statisticalSelected && (
           <option value="" hidden>
             {t('messages.traceroute_picker_latest', 'Latest')}
+          </option>
+        )}
+        {/* Statistical option renders first — it summarises every dated entry
+            below it, so it belongs at the top of the list (SR_PHASE2_SPEC.md
+            D18). This leaves the entries' newest-first order untouched. */}
+        {statistical && (
+          <option value={STATISTICAL_OPTION_VALUE}>
+            {t('messages.traceroute_picker_statistical', { count: statistical.totalRoutes })}
           </option>
         )}
         {entries.map(entry => (
