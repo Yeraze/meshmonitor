@@ -10,6 +10,7 @@
  *   - position_estimation_enabled         (default true)
  *   - position_estimation_frequency_hours (default 6)
  *   - position_estimation_lookback_hours  (default 168 = 7 days)
+ *   - position_estimation_max_uncertainty_km (default 2; 0 = no limit)
  *
  * On first boot after migration 082 (no prior run recorded) it runs once
  * immediately to backfill estimates from stored history.
@@ -22,9 +23,35 @@ const LAST_RUN_KEY = 'position_estimation_last_run';
 
 export const DEFAULT_FREQUENCY_HOURS = 6;
 export const DEFAULT_LOOKBACK_HOURS = 168; // 7 days
-// 0 = no limit (store every solvable estimate). Opt-in: the operator sets a
-// km ceiling to drop low-confidence estimates that draw huge map circles.
-export const DEFAULT_MAX_UNCERTAINTY_KM = 0;
+/**
+ * Ceiling on a solved estimate's uncertainty radius, in km. Estimates above it
+ * are not stored, and any existing row for that node is deleted (see
+ * `recomputeAll`'s `rejectedNodeNums`), so changing this self-heals on the next
+ * scheduled run.
+ *
+ * **2 km, chosen to exclude single-anchor solves (#4450).** With one
+ * observation the weighted centroid is *mathematically identical* to that one
+ * anchor's coordinates: `solveNodePosition` returns the anchor's exact lat/lon
+ * with `DEFAULT_SINGLE_ANCHOR_KM` (5 km) uncertainty, which says nothing more
+ * than "somewhere within radio range of that anchor". Because the
+ * locally-connected node is itself an anchor, any node whose only observation
+ * named it produced an estimate at *exactly the local node's coordinates* —
+ * rendered as an ordinary pin, indistinguishable from a real GPS fix. That is
+ * the phantom marker reported in #4450.
+ *
+ * This previously defaulted to 0 (no limit), so those estimates were stored by
+ * default. Any threshold below 5 excludes the single-anchor class exactly,
+ * since that case always lands on 5.0 km; 2 km additionally drops genuinely
+ * loose multi-anchor solves while keeping tight ones.
+ *
+ * **0 still means "no limit"** — an operator who explicitly sets 0 keeps the
+ * previous behavior. Only an unset value picks up this default.
+ *
+ * Surfacing uncertainty in the UI, so a trilaterated guess is visually distinct
+ * from a GPS fix, is tracked separately in #4432; this default is the
+ * conservative floor until that lands.
+ */
+export const DEFAULT_MAX_UNCERTAINTY_KM = 2;
 const MIN_FREQUENCY_HOURS = 0.5;
 const MIN_LOOKBACK_HOURS = 1;
 const CHECK_INTERVAL_MS = 60_000;

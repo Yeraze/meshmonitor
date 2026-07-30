@@ -25,6 +25,7 @@ import {
   type TracerouteForEstimation,
   type NeighborForEstimation,
 } from './positionEstimationService.js';
+import { DEFAULT_MAX_UNCERTAINTY_KM } from './positionEstimationScheduler.js';
 
 const NOW = 1_700_000_000_000;
 
@@ -336,6 +337,28 @@ describe('positionEstimationService.recomputeAll', () => {
       // Nothing stored for the over-threshold node...
       expect(mockDb.upsertEstimatedPositionsAsync.mock.calls[0][0]).toHaveLength(0);
       // ...and its existing estimate (if any) is cleared.
+      expect(mockDb.deleteEstimatedPositionsByNodeNumsAsync.mock.calls[0][0]).toContain(5);
+    });
+
+    it('rejects the single-anchor estimate at the SHIPPED default (#4450)', async () => {
+      // The regression that mattered: the threshold machinery above always
+      // worked, but DEFAULT_MAX_UNCERTAINTY_KM was 0 ("no limit"), so a stock
+      // install stored single-anchor solves. Those sit at the anchor's exact
+      // coordinates — and since the locally-connected node is itself an anchor,
+      // that is the phantom pin on top of your own node reported in #4450.
+      //
+      // Asserted against the real exported default rather than a literal, so
+      // this fails if it is ever raised back above the 5 km single-anchor radius.
+      singleAnchorSetup();
+      const result = await positionEstimationService.recomputeAll({
+        lookbackMs: 7 * 24 * 60 * 60 * 1000,
+        maxUncertaintyKm: DEFAULT_MAX_UNCERTAINTY_KM,
+      });
+      expect(result.estimatedNodeCount).toBe(0);
+      expect(result.rejectedNodeCount).toBe(1);
+      expect(mockDb.upsertEstimatedPositionsAsync.mock.calls[0][0]).toHaveLength(0);
+      // The stale row is cleared too, so existing installs self-heal on the
+      // next scheduled run rather than needing a manual purge.
       expect(mockDb.deleteEstimatedPositionsByNodeNumsAsync.mock.calls[0][0]).toContain(5);
     });
 
