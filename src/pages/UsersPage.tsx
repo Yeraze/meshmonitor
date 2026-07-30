@@ -17,7 +17,7 @@ function UsersPageInner() {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '1rem' }}>
       <button
-        onClick={() => navigate('/')}
+        onClick={() => navigate('/', { state: { showList: true } })}
         style={{
           background: 'none',
           border: 'none',
