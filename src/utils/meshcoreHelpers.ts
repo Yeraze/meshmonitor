@@ -33,6 +33,9 @@ export function mapContactsToNodes(contacts: MeshCoreContact[]): MeshCoreMapNode
     .filter(c => c.publicKey && typeof c.latitude === 'number' && isFinite(c.latitude)
       && typeof c.longitude === 'number' && isFinite(c.longitude))
     .map(c => {
+      // NOTE: `(local)` is a server-side naming convention (meshcoreContactsRoutes.ts:108,
+      // meshcoreDeviceRoutes.ts:181), not a protocol field — a user-chosen name containing
+      // "(local)" matches here too. Tracked for an explicit isLocal flag in #4438.
       const isLocalNode = c.advName?.includes('(local)');
       return {
         publicKey: String(c.publicKey),
