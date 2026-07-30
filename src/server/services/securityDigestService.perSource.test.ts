@@ -53,7 +53,16 @@ describe('securityDigestService — per-source dispatch', () => {
             },
           };
           return overrides[sid]?.[key] ?? null;
-        })
+        }),
+        // WP1 (#4442): sendDigestForSource now resolves the Apprise API server
+        // URL via resolveAppriseServerUrl(this.databaseService.settings, sourceId),
+        // which calls settings.getSetting('appriseApiServerUrl') as part of the
+        // shared resolution chain. Mocked here (unset -> falls through to the
+        // bundled localhost default) purely so the double satisfies the
+        // AppriseSettingsReader shape; this suite's subject remains per-source
+        // dispatch, not endpoint resolution — see securityDigestService.appriseEndpoint.test.ts
+        // for that.
+        getSetting: vi.fn().mockResolvedValue(null),
       },
       sources: {
         getSource: vi.fn(async (sid: string) => ({ id: sid, name: `Source ${sid}` }))

@@ -1,6 +1,7 @@
 import { logger } from '../../utils/logger.js';
 import { scheduleCron } from '../utils/cronScheduler.js';
 import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { resolveAppriseServerUrl, appriseNotifyEndpoint } from './appriseNotificationService.js';
 import type { Cron as CronJob } from 'croner';
 
 interface SecurityIssuesData {
@@ -411,7 +412,11 @@ class SecurityDigestService {
       // which mesh it came from when they run several.
       const body = `[${sourceName}]\n${rawBody}`;
 
-      const response = await fetch('http://localhost:8000/notify', {
+      // Reuse the same Apprise API server resolution chain as every other
+      // dispatch path (setting → appriseApiServerUrl → APPRISE_URL → bundled
+      // localhost default) instead of hardcoding the endpoint — #4442.
+      const appriseServerUrl = await resolveAppriseServerUrl(this.databaseService.settings, sourceId);
+      const response = await fetch(appriseNotifyEndpoint(appriseServerUrl), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
