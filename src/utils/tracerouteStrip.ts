@@ -765,9 +765,23 @@ const EDGE_RIM_MARGIN = 3;
  *  slack here. */
 const BEND_MARGIN = LABEL_CLEARANCE;
 
-/** Bounded pass counts that make the routing loops total. Realistic grid
- *  layouts resolve in one pass; the caps only matter for pathological
- *  custom options. */
+/** Passes of phase 1 (interior-vertex push-out) in `routeAroundGlyphs`.
+ *
+ *  Why ONE pass suffices for geometry the builder + floored options produce:
+ *  a pushed vertex lands exactly `detour` from the offending node's center,
+ *  so it can only fall inside a SECOND node's circle when the two centers
+ *  sit closer than `clearance + detour` (24 + 28 = 52px at defaults). Grid
+ *  centers are at least min(colWidth, rowHeight) apart — 64px columns and
+ *  the 72px `minRowHeight` floor at defaults — so a pushed vertex can never
+ *  enter another circle, and the second pass verifies quiescence and breaks.
+ *  The remaining passes only absorb push chains under custom options that
+ *  pack columns tighter than `clearance + detour`.
+ *
+ *  If the cap is exhausted anyway (unreachable from produced geometry), a
+ *  vertex stays inside some circle; phase 2 deliberately skips segments
+ *  whose endpoint sits in-circle, so that one elbow renders on the glyph —
+ *  the pre-#4428 appearance for that edge — and the loop still terminates.
+ *  Degraded looks, never a hang or crash. */
 const VERTEX_PUSH_PASSES = 4;
 
 /** Numeric slack for "already clear" comparisons. */
@@ -846,6 +860,32 @@ function routeAroundGlyphs(
   }
 
   // Phase 2: insert bends where a segment cuts a clearance circle.
+  //
+  // Why 2N+4 cannot be hit by geometry the strip actually produces. First,
+  // termination never depends on the cap: every loop iteration either
+  // inserts a bend (counted against the cap) or advances `i`, and `pts`
+  // grows only by insertions — so the walk always ends. The cap only bounds
+  // how many bends we are willing to spend. Per obstacle, a bend is inserted
+  // only for a segment whose BOTH endpoints lie outside that obstacle's
+  // clearance circle (in-circle endpoints are skipped above). Such a chord
+  // with both endpoints at distance >= `detour` and central wrap angle θ has
+  // minimum distance >= detour·cos(θ/2), so it still cuts the circle only
+  // when θ > 2·acos(clearance/detour) — about 62° at defaults (24/28).
+  // Inserting the bend at the deepest point splits the wrap roughly in half,
+  // so one bend resolves any wrap up to ~124°, and even the absolute worst
+  // case — a near-diameter crossing, θ -> 180°, which the builder's grid
+  // cannot produce because every path is a lane-offset row line or a
+  // rim-pulled dog-leg — resolves after two splits, i.e. 3 bends. Produced
+  // paths cut shallowly (the lane offset is 5px against a 24px radius) and
+  // take exactly 1 bend per cut obstacle; 2 per obstacle plus 4 spare is
+  // therefore beyond anything reachable (the #4428 tests sweep every §3.7
+  // fixture plus the repro graphs and never exceed 1 per obstacle).
+  //
+  // If the cap were exhausted anyway (conceivable only with extreme custom
+  // StripLayoutOptions, e.g. colWidth far below glyphSize so circles swallow
+  // whole segments), `best` stays null, the walk runs to the end, and the
+  // remaining cuts simply render through the glyph — the pre-#4428 look for
+  // that edge, never an infinite loop or a crash.
   const maxBends = 2 * obstacles.length + 4;
   let inserted = 0;
   let i = 0;
