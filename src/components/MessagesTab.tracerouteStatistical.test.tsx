@@ -23,20 +23,20 @@
  * `vi.hoisted` mock functions instead of the fixed empty-list stub that
  * file uses.
  *
- * IMPORTANT — why `useTraceroutePairHistory` is asserted as "not called"
- * rather than "called with `enabled: false`" for the gate-closed cases:
- * `MessagesTab.tsx` mounts the hook's caller (`StatisticalTracerouteLoader`)
- * conditionally, rather than calling the hook unconditionally with an
- * `enabled` flag. That is a deliberate WP4 deviation from the spec's literal
- * pseudocode (SR_PHASE2_SPEC.md §3.7 S1) — TanStack Query's `useQuery`
- * resolves its `QueryClient` from context before it even looks at
- * `enabled` (`useBaseQuery` calls `useQueryClient()` unconditionally), so an
- * always-mounted call throws "No QueryClient set" in
- * `MessagesTab.composeFocus.test.tsx` and `MessagesTab.txDisabled.test.tsx`,
- * both of which render `MessagesTab` with no `QueryClientProvider` and are
- * out of WP4's ownership. Gating the mount instead of the flag keeps those
- * two files passing unedited while producing the identical observable
- * outcome the spec cares about: no request fires when the gate is closed.
+ * `MessagesTab.tsx` implements SR_PHASE2_SPEC.md §3.7 S1 literally:
+ * `useTraceroutePairHistory` is called unconditionally at MessagesTab's top
+ * level with an `enabled` flag (`hasPermission('traceroute', 'read') &&
+ * currentNodeNum != null && pickerNodeNum != null && currentNodeNum !==
+ * pickerNodeNum && pairEntryCount >= 2`). The gate-closed cases below
+ * therefore assert the mock was called WITH `enabled: false`, not that it
+ * was never called. `MessagesTab.composeFocus.test.tsx` and
+ * `MessagesTab.txDisabled.test.tsx` (both render `MessagesTab` with no
+ * `QueryClientProvider`, and are out of WP4's file ownership) needed the
+ * same one-line `vi.mock('../hooks/useTraceroutePairHistory', ...)` stub
+ * they already carry for `useNodeTraceroutes`, for the identical reason:
+ * TanStack Query's `useQuery` resolves its `QueryClient` from context before
+ * it even looks at `enabled`, so an always-mounted, unmocked call throws "No
+ * QueryClient set" there regardless of the flag's value.
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
@@ -80,12 +80,15 @@ vi.mock('../contexts/SettingsContext', async (importOriginal) => ({
 // from a new arrow-function call each render: the real `MapContext` provider
 // memoizes its context value (a `useMemo` over every field it exposes), so
 // `traceroutes` keeps the same reference across re-renders that don't change
-// traceroute data. `StatisticalTracerouteLoader` (MessagesTab.tsx) depends on
-// `traceroutes` in a `useMemo` whose result feeds a `useState` setter via an
-// effect — an unstable mock reference there recomputes every render and
-// re-fires the effect every render, an infinite loop this file hit in
-// development. A per-call fresh object would still be wrong even without that
-// downstream effect, since it doesn't match the real provider's contract.
+// traceroute data — this mock should match that contract regardless of what
+// consumes it. (History note: an earlier WP4 draft fed `traceroutes` through
+// a `useMemo` into a `useState` setter via an effect in a since-reverted
+// `StatisticalTracerouteLoader` component, where the unstable reference this
+// mock used to return caused a genuine infinite render loop. WP4 now matches
+// the spec's literal design — a plain top-level `useMemo`, no effect, no
+// setState — so that failure mode no longer exists; this mock is kept
+// stable anyway because it's the more accurate stand-in for the real
+// provider, not because anything downstream still requires it.)
 const mapContextValue = { traceroutes: [] as unknown[], neighborInfo: [] as unknown[], setNeighborInfo: () => {} };
 vi.mock('../contexts/MapContext', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -368,7 +371,7 @@ beforeEach(() => {
 
 describe('MessagesTab statistical traceroute wiring (Statistical Route epic, phase 2, WP4)', () => {
   describe('fetch gate (S1)', () => {
-    it('does not call useTraceroutePairHistory with fewer than 2 matching endpoint entries', () => {
+    it('calls useTraceroutePairHistory with enabled: false with fewer than 2 matching endpoint entries', () => {
       mockUseNodeTraceroutes.mockReturnValue({
         data: [mkEntry({ id: 1 })],
         isLoading: false,
@@ -377,7 +380,11 @@ describe('MessagesTab statistical traceroute wiring (Statistical Route epic, pha
       });
       renderTab(makeProps());
 
-      expect(mockUseTraceroutePairHistory).not.toHaveBeenCalled();
+      expect(mockUseTraceroutePairHistory).toHaveBeenCalledWith(
+        CURRENT_NUM,
+        PICKER_NUM,
+        expect.objectContaining({ enabled: false }),
+      );
     });
 
     it('calls useTraceroutePairHistory with the local and peer node numbers once 2+ matching endpoint entries exist', () => {
@@ -412,7 +419,11 @@ describe('MessagesTab statistical traceroute wiring (Statistical Route epic, pha
       });
       renderTab(makeProps());
 
-      expect(mockUseTraceroutePairHistory).not.toHaveBeenCalled();
+      expect(mockUseTraceroutePairHistory).toHaveBeenCalledWith(
+        CURRENT_NUM,
+        PICKER_NUM,
+        expect.objectContaining({ enabled: false }),
+      );
     });
 
     it('does not count participation:"hop" entries toward the gate', () => {
@@ -424,7 +435,11 @@ describe('MessagesTab statistical traceroute wiring (Statistical Route epic, pha
       });
       renderTab(makeProps());
 
-      expect(mockUseTraceroutePairHistory).not.toHaveBeenCalled();
+      expect(mockUseTraceroutePairHistory).toHaveBeenCalledWith(
+        CURRENT_NUM,
+        PICKER_NUM,
+        expect.objectContaining({ enabled: false }),
+      );
     });
 
     it('does not fetch when currentNodeNum is null (the MQTT shape)', () => {
@@ -436,7 +451,11 @@ describe('MessagesTab statistical traceroute wiring (Statistical Route epic, pha
       });
       renderTab(makeProps({ currentNodeId: '' }));
 
-      expect(mockUseTraceroutePairHistory).not.toHaveBeenCalled();
+      expect(mockUseTraceroutePairHistory).toHaveBeenCalledWith(
+        null,
+        PICKER_NUM,
+        expect.objectContaining({ enabled: false }),
+      );
       expect(statisticalOption()).toBeNull();
     });
 
@@ -453,7 +472,11 @@ describe('MessagesTab statistical traceroute wiring (Statistical Route epic, pha
           (resource === 'traceroute' && action === 'write'),
       }));
 
-      expect(mockUseTraceroutePairHistory).not.toHaveBeenCalled();
+      expect(mockUseTraceroutePairHistory).toHaveBeenCalledWith(
+        CURRENT_NUM,
+        PICKER_NUM,
+        expect.objectContaining({ enabled: false }),
+      );
     });
   });
 

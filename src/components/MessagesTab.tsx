@@ -13,7 +13,7 @@ import { useTranslation, Trans } from 'react-i18next';
 import { DeviceInfo, Channel } from '../types/device';
 import { MeshMessage } from '../types/message';
 import { ResourceType } from '../types/permission';
-import { TimeFormat, DateFormat, NodeHopsCalculation, useNotificationMuteSettings } from '../contexts/SettingsContext';
+import { TimeFormat, DateFormat, useNotificationMuteSettings } from '../contexts/SettingsContext';
 import {
   formatDateTime,
   formatRelativeTime,
@@ -22,7 +22,7 @@ import {
   shouldShowDateSeparator,
 } from '../utils/datetime';
 import { buildTracerouteStripGraph, type TracerouteStripInput } from '../utils/tracerouteStrip';
-import { buildStripNodeMeta, type TracerouteStripMetaTraceroute } from '../utils/tracerouteStripMeta';
+import { buildStripNodeMeta } from '../utils/tracerouteStripMeta';
 import { buildStatisticalStrip, type UnionStripGraph } from '../utils/tracerouteUnionLayout';
 import { TracerouteStrip, type TracerouteStripNodeMeta } from './traceroute/TracerouteStrip';
 import { TracerouteCopyLinks } from './traceroute/TracerouteCopyLinks';
@@ -108,73 +108,6 @@ type StatisticalTraceroute = {
   meta: Map<number, TracerouteStripNodeMeta>;
   totalRoutes: number;
 } | null;
-
-/**
- * Statistical Route epic phase 2, WP4 — S1/S2's hook call and union build,
- * extracted into a component that MessagesTab mounts only while
- * `wantStatistical` holds, rather than calling `useTraceroutePairHistory`
- * unconditionally at MessagesTab's own top level.
- *
- * Why this indirection is load-bearing, not stylistic: `useQuery`
- * (`@tanstack/react-query`) resolves its `QueryClient` from context BEFORE
- * it even looks at `enabled` (`useBaseQuery` calls `useQueryClient()`
- * unconditionally at the top), so an always-mounted call throws "No
- * QueryClient set" in any MessagesTab test harness that renders without a
- * `QueryClientProvider` — `MessagesTab.composeFocus.test.tsx` and
- * `MessagesTab.txDisabled.test.tsx` both do, deliberately (see their own
- * comments), and both are out of WP4's ownership and required to keep
- * passing unedited. Both mock `useNodeTraceroutes` to an empty list, so
- * `wantStatistical` is always false there and this component never mounts —
- * zero behavior change for them, and the crash never happens. In every
- * other environment (the real app, or a test with a `QueryClientProvider`),
- * this mounts/unmounts exactly when `wantStatistical` flips, which is
- * functionally identical to an `enabled` flag toggling on an always-mounted
- * hook — TanStack Query dedupes by query key through the shared
- * `QueryClient`, not by hook-instance identity.
- */
-function StatisticalTracerouteLoader({
-  currentNodeNum,
-  pickerNodeNum,
-  nodes,
-  nodeHopsCalculation,
-  traceroutes,
-  onChange,
-}: {
-  currentNodeNum: number;
-  pickerNodeNum: number;
-  nodes: DeviceInfo[];
-  nodeHopsCalculation: NodeHopsCalculation;
-  traceroutes: TracerouteStripMetaTraceroute[];
-  onChange: (result: StatisticalTraceroute) => void;
-}) {
-  // Only ever mounted while the caller's `wantStatistical` gate holds, so
-  // `enabled: true` here is correct — the gate already lives in the parent.
-  const { rows: pairHistory } = useTraceroutePairHistory(currentNodeNum, pickerNodeNum, {
-    enabled: true,
-  });
-
-  // S2 — build the union once. `buildStatisticalStrip` also returns a
-  // layout; the strip component recomputes it from the graph, exactly as it
-  // does for a single-route graph, so the component stays a pure function of
-  // (graph, meta). Do NOT pass layout options here: the component paints
-  // glyphs at its own DEFAULT_GLYPH_SIZE, which matches
-  // DEFAULT_LAYOUT_OPTIONS.glyphSize.
-  const statistical = useMemo<StatisticalTraceroute>(() => {
-    if (!pairHistory?.length) return null;
-    const { union, graph } = buildStatisticalStrip(pairHistory, currentNodeNum, pickerNodeNum);
-    if (union.totalRoutes < 2 || graph.isEmpty) return null;
-    const meta = buildStripNodeMeta(graph, nodes, {
-      hopsCalculation: nodeHopsCalculation,
-      traceroutes,
-      currentNodeNum,
-    });
-    return { graph, meta, totalRoutes: union.totalRoutes };
-  }, [pairHistory, currentNodeNum, pickerNodeNum, nodes, nodeHopsCalculation, traceroutes]);
-
-  useEffect(() => { onChange(statistical); }, [statistical, onChange]);
-
-  return null;
-}
 
 // Memoized distance display component to avoid recalculating on every render
 const DistanceDisplay = React.memo<{
@@ -928,32 +861,32 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     [entries, currentNodeNum],
   );
 
-  // Whether a statistical aggregate is even plausible, from cheap local
-  // signals alone (no network dependency). Gates BOTH the request (S1) and
-  // whether `StatisticalTracerouteLoader` mounts at all, below — see that
-  // component's doc comment for why this must be a mount gate, not merely an
-  // `enabled: false` query on an always-mounted hook.
-  const wantStatistical =
-    hasPermission('traceroute', 'read') &&
-    currentNodeNum != null &&
-    pickerNodeNum != null &&
-    currentNodeNum !== pickerNodeNum &&
-    pairEntryCount >= 2;
+  const { rows: pairHistory } = useTraceroutePairHistory(currentNodeNum, pickerNodeNum, {
+    enabled:
+      hasPermission('traceroute', 'read') &&
+      currentNodeNum != null &&
+      pickerNodeNum != null &&
+      currentNodeNum !== pickerNodeNum &&
+      pairEntryCount >= 2,
+  });
 
-  // S2's result, lifted from `StatisticalTracerouteLoader` (mounted below,
-  // in the JSX). `null` both while unavailable and while `wantStatistical`
-  // is false — `showStatistical` treats those identically (S5).
-  const [statistical, setStatistical] = useState<StatisticalTraceroute>(null);
-
-  // Companion to the mount gate: when `wantStatistical` drops (partner
-  // change, permission revoked, the participation refetch pulls the count
-  // back below 2), `StatisticalTracerouteLoader` unmounts and stops calling
-  // `onChange` — clear the lifted value explicitly rather than leaving the
-  // last-known result stale. This is what makes losing availability behave
-  // exactly like a query that went from enabled to disabled (S5).
-  useEffect(() => {
-    if (!wantStatistical) setStatistical(null);
-  }, [wantStatistical]);
+  // S2 — build the union once. `buildStatisticalStrip` also returns a
+  // layout; the strip component recomputes it from the graph, exactly as it
+  // does for a single-route graph, so the component stays a pure function of
+  // (graph, meta). Do NOT pass layout options here: the component paints
+  // glyphs at its own DEFAULT_GLYPH_SIZE, which matches
+  // DEFAULT_LAYOUT_OPTIONS.glyphSize.
+  const statistical = useMemo<StatisticalTraceroute>(() => {
+    if (currentNodeNum == null || pickerNodeNum == null || !pairHistory?.length) return null;
+    const { union, graph } = buildStatisticalStrip(pairHistory, currentNodeNum, pickerNodeNum);
+    if (union.totalRoutes < 2 || graph.isEmpty) return null;
+    const meta = buildStripNodeMeta(graph, nodes, {
+      hopsCalculation: nodeHopsCalculation,
+      traceroutes,
+      currentNodeNum,
+    });
+    return { graph, meta, totalRoutes: union.totalRoutes };
+  }, [pairHistory, currentNodeNum, pickerNodeNum, nodes, nodeHopsCalculation, traceroutes]);
 
   // S5 — derived, not stored: losing availability while picked falls back to
   // the rule-1 row with no effect and no cleanup.
@@ -2146,20 +2079,6 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                   </div>
                 )}
               </div>
-            )}
-
-            {/* Statistical Route epic phase 2, WP4 — mounted only while
-                `wantStatistical` holds; see StatisticalTracerouteLoader's
-                doc comment for why this must be a mount gate. */}
-            {wantStatistical && currentNodeNum != null && pickerNodeNum != null && (
-              <StatisticalTracerouteLoader
-                currentNodeNum={currentNodeNum}
-                pickerNodeNum={pickerNodeNum}
-                nodes={nodes}
-                nodeHopsCalculation={nodeHopsCalculation}
-                traceroutes={traceroutes}
-                onChange={setStatistical}
-              />
             )}
 
             {/* Traceroute Display */}
