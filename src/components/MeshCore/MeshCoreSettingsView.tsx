@@ -4,6 +4,7 @@ import { ConnectionStatus, MeshCoreActions, SavedRegion } from './hooks/useMeshC
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { UiIcon } from '../icons';
+import { MeshCoreNodeDisplaySection } from './MeshCoreNodeDisplaySection';
 
 // MeshCoreDeviceType.COMPANION — active discovery is companion-only.
 const DEVICE_TYPE_COMPANION = 1;
@@ -12,12 +13,18 @@ interface MeshCoreSettingsViewProps {
   status: ConnectionStatus | null;
   loading: boolean;
   actions: MeshCoreActions;
+  /** App base URL (appBasename) — passed through to MeshCoreNodeDisplaySection (#4412 Phase 4 WP2). */
+  baseUrl: string;
+  /** Source UUID — passed through to MeshCoreNodeDisplaySection (#4412 Phase 4 WP2). */
+  sourceId: string;
 }
 
 export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   status,
   loading,
   actions,
+  baseUrl,
+  sourceId,
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
@@ -251,6 +258,8 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
           </button>
         </div>
       </div>
+
+      <MeshCoreNodeDisplaySection baseUrl={baseUrl} sourceId={sourceId} />
 
       {isCompanion && (
         <div className="form-section">
