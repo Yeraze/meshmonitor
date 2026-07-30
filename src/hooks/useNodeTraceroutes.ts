@@ -5,7 +5,7 @@
  *
  * One-shot query (the `useLinkQuality` shape), NOT the poll cache: the poll
  * ships a global 24h list keyed off /api/traceroutes/recent, while the
- * picker needs a 7-day, node-scoped, participation-matched list that no poll
+ * picker needs a node-scoped, participation-matched list that no poll
  * payload carries.
  *
  * `useResolvedSourceId()` rather than `useSource()`: MessagesTab can mount
@@ -17,6 +17,12 @@ import { useQuery } from '@tanstack/react-query';
 import apiService, { type TracerouteParticipationEntry } from '../services/api';
 import { useResolvedSourceId } from './useResolvedSourceId';
 
+// Amendment (post-validation, direct user request, SR_PHASE2_SPEC.md D14/S1):
+// the picker's window now matches the Traceroute History dialog — the node's
+// 50 most recent stored traceroutes, no time window. `hours` is left unset so
+// the server applies no time filter.
+const PARTICIPATION_LIMIT = 50;
+
 export function useNodeTraceroutes(
   nodeNum: number | null,
   opts: { enabled?: boolean } = {},
@@ -24,7 +30,7 @@ export function useNodeTraceroutes(
   const sourceId = useResolvedSourceId();
   return useQuery<TracerouteParticipationEntry[]>({
     queryKey: ['tracerouteParticipation', sourceId, nodeNum],
-    queryFn: () => apiService.getTracerouteParticipation(nodeNum!, sourceId!),
+    queryFn: () => apiService.getTracerouteParticipation(nodeNum!, sourceId!, { limit: PARTICIPATION_LIMIT }),
     // sourceId/nodeNum are required by the endpoint — defer until both resolve.
     enabled: (opts.enabled ?? true) && nodeNum != null && !!sourceId,
     staleTime: 60_000,

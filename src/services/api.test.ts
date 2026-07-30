@@ -802,12 +802,39 @@ describe('ApiService BASE_URL Support', () => {
       expect(mockFetch).toHaveBeenCalledWith('/api/route-segments/longest-active');
     });
 
-    it('getTracerouteHistory should call history endpoint with params', async () => {
-      mockFetch.mockResolvedValue(createMockResponse({ traceroutes: [] }));
+    it('getTracerouteHistory should call history endpoint with params and return the bare array unwrapped', async () => {
+      const traceroutes = [{ id: 1 }];
+      mockFetch.mockResolvedValue(createMockResponse(traceroutes));
 
-      await apiService.getTracerouteHistory(111, 222, 20);
+      const result = await apiService.getTracerouteHistory(111, 222, 20);
 
-      expect(mockFetch).toHaveBeenCalledWith('/api/traceroutes/history/111/222?limit=20');
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/traceroutes/history/111/222?limit=20',
+        expect.objectContaining({ credentials: 'include' })
+      );
+      expect(result).toEqual(traceroutes);
+    });
+
+    it('getTracerouteHistory should include sourceId in the query string when provided (SR_PHASE2_SPEC.md D17)', async () => {
+      mockFetch.mockResolvedValue(createMockResponse([]));
+
+      await apiService.getTracerouteHistory(111, 222, 200, 'src-a');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/traceroutes/history/111/222?limit=200&sourceId=src-a',
+        expect.objectContaining({ credentials: 'include' })
+      );
+    });
+
+    it('getTracerouteHistory should omit sourceId from the query string when not provided (pinned existing behavior)', async () => {
+      mockFetch.mockResolvedValue(createMockResponse([]));
+
+      await apiService.getTracerouteHistory(111, 222, 200);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/traceroutes/history/111/222?limit=200',
+        expect.objectContaining({ credentials: 'include' })
+      );
     });
 
     it('getTracerouteParticipation should hit the participation endpoint with the encoded query string and unwrap data.entries', async () => {
@@ -837,6 +864,20 @@ describe('ApiService BASE_URL Support', () => {
         expect.objectContaining({ credentials: 'include' })
       );
       expect(result).toEqual(entries);
+    });
+
+    it('getTracerouteParticipation should omit hours and send limit=50 for the picker call shape (History-dialog parity amendment)', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true, data: { entries: [] } }));
+
+      // Mirrors useNodeTraceroutes's PARTICIPATION_LIMIT call: no `hours`, so
+      // the server applies no time window; limit=50 matches the Traceroute
+      // History dialog.
+      await apiService.getTracerouteParticipation(111, 'source-a', { limit: 50 });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/traceroutes/participation/111?sourceId=source-a&limit=50',
+        expect.objectContaining({ credentials: 'include' })
+      );
     });
 
     it('getTracerouteParticipation should return [] when the body has no data', async () => {

@@ -62,6 +62,56 @@ export interface TracerouteParticipationEntry {
 }
 
 /**
+ * One row from `GET /api/traceroutes/history/:from/:to`. The handler spreads the
+ * raw DB row and adds `hopCount` — it is NOT the participation projection, so it
+ * carries every stored column. Only the fields consumers actually read are named
+ * here; the index signature keeps the extra columns representable without `any`.
+ */
+export interface TracerouteHistoryEntry {
+  id: number;
+  timestamp: number;
+  fromNodeNum: number;
+  toNodeNum: number;
+  /**
+   * `traceroutes.fromNodeId`/`toNodeId` are `NOT NULL` columns (see
+   * `src/db/schema/traceroutes.ts`), so unlike the spec sketch's optional
+   * marking these are required — matching `TracerouteParticipationEntry`'s
+   * typing of the same underlying columns and what `TracerouteHistoryModal`'s
+   * `DbTraceroute`-derived state requires. See discrepancy log below.
+   */
+  fromNodeId: string;
+  toNodeId: string;
+  /**
+   * The `traceroutes.route`/`routeBack`/`snrTowards`/`snrBack` columns are
+   * nullable at the DB level, and the spec sketch typed these `string | null`
+   * accordingly. But `TracerouteHistoryModal.tsx` (not owned by WP1, must
+   * compile unedited) assigns this type into `TracerouteWithHops`, which
+   * extends the pre-existing `DbTraceroute` — itself typed with these fields
+   * as non-nullable `string`. Matching that (already-imperfect) contract here
+   * is what keeps the modal compiling; `toAggregateRows()` below still
+   * defensively normalizes with `?? null` since the runtime value can be
+   * `null` regardless of what this static type claims.
+   */
+  route: string;
+  routeBack: string;
+  snrTowards: string;
+  snrBack: string;
+  channel?: number | null;
+  hopCount: number;
+  /**
+   * Real, non-nullable DB column (`traceroutes.createdAt`) — the handler
+   * spreads the whole row (§D17), so this is always present on the wire even
+   * though the spec sketch's named-field list omitted it. Named explicitly
+   * (rather than left to the index signature) because `TracerouteHistoryModal`
+   * assigns this type into `TracerouteWithHops` (`DbTraceroute & { hopCount }`),
+   * which requires `createdAt: number` — an index-signature `unknown` is not
+   * assignable to that. See SR_PHASE2_SPEC.md discrepancy log (§3.2/WP1).
+   */
+  createdAt: number;
+  [key: string]: unknown;
+}
+
+/**
  * Error thrown by ApiService.request when the server returns a non-OK response.
  * Callers can distinguish by `status` (e.g. 429 for rate limit) and `code`
  * (machine-readable identifier from the server body) to pick a UX-appropriate
@@ -842,16 +892,25 @@ class ApiService {
     return response.json();
   }
 
-  async getTracerouteHistory(fromNodeNum: number, toNodeNum: number, limit: number = 50, sourceId?: string | null) {
-    await this.ensureBaseUrl();
+  /**
+   * Traceroute history between two specific nodes. The endpoint returns a
+   * bare array (no `{success,data}` envelope), so `request()`'s pass-through
+   * behavior (CLAUDE.md) is exactly what's needed here — no unwrapping.
+   */
+  async getTracerouteHistory(
+    fromNodeNum: number,
+    toNodeNum: number,
+    limit: number = 50,
+    sourceId?: string | null,
+  ): Promise<TracerouteHistoryEntry[]> {
     // Scope to the active source so a single-source view (e.g. the radio/TCP
     // source) does not mix in traceroutes recorded by other sources — MQTT
     // broker/bridge sources record many flood-relayed copies of the same reply
     // (see backend traceroute history handler).
     const sourceQuery = sourceId ? `&sourceId=${encodeURIComponent(sourceId)}` : '';
-    const response = await fetch(`${this.baseUrl}/api/traceroutes/history/${fromNodeNum}/${toNodeNum}?limit=${limit}${sourceQuery}`);
-    if (!response.ok) throw new Error('Failed to fetch traceroute history');
-    return response.json();
+    return this.get<TracerouteHistoryEntry[]>(
+      `/api/traceroutes/history/${fromNodeNum}/${toNodeNum}?limit=${limit}${sourceQuery}`,
+    );
   }
 
   async getBaseUrl(): Promise<string> {

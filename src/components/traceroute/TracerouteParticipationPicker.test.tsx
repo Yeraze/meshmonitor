@@ -9,7 +9,11 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import type { TFunction } from 'i18next';
 import enLocale from '../../../public/locales/en.json';
-import { TracerouteParticipationPicker, buildOptionLabel } from './TracerouteParticipationPicker';
+import {
+  TracerouteParticipationPicker,
+  buildOptionLabel,
+  STATISTICAL_OPTION_VALUE,
+} from './TracerouteParticipationPicker';
 import type { TracerouteParticipationEntry } from '../../services/api';
 import type { DeviceInfo } from '../../types/device';
 
@@ -311,5 +315,186 @@ describe('TracerouteParticipationPicker', () => {
     expect(placeholder).not.toBeNull();
     expect(placeholder.hidden).toBe(true);
     expect(placeholder.textContent).toBe('Latest');
+  });
+});
+
+// -----------------------------------------------------------------------
+// statistical option (Statistical Route epic, phase 2, WP3) —
+// docs/internal/dev-notes/SR_PHASE2_SPEC.md §3.6/§4.3/D18.
+// -----------------------------------------------------------------------
+
+describe('statistical option', () => {
+  it('with statistical absent, every existing behavior holds, including "1 entry renders nothing"', () => {
+    const { container: zero } = render(
+      <TracerouteParticipationPicker
+        entries={[]}
+        selectedId={null}
+        onSelect={() => {}}
+        nodes={nodes}
+        timeFormat="24"
+        dateFormat="YYYY-MM-DD"
+      />,
+    );
+    expect(zero).toBeEmptyDOMElement();
+
+    const { container: one } = render(
+      <TracerouteParticipationPicker
+        entries={[makeEntry({ id: 1 })]}
+        selectedId={1}
+        onSelect={() => {}}
+        nodes={nodes}
+        timeFormat="24"
+        dateFormat="YYYY-MM-DD"
+      />,
+    );
+    expect(one).toBeEmptyDOMElement();
+  });
+
+  it('1 entry + statistical renders the picker with 2 options', () => {
+    const { container } = render(
+      <TracerouteParticipationPicker
+        entries={[makeEntry({ id: 1 })]}
+        selectedId={1}
+        onSelect={() => {}}
+        nodes={nodes}
+        timeFormat="24"
+        dateFormat="YYYY-MM-DD"
+        statistical={{ totalRoutes: 5 }}
+      />,
+    );
+    const select = container.querySelector('select') as HTMLSelectElement;
+    expect(select).not.toBeNull();
+    const options = Array.from(select.querySelectorAll('option'));
+    expect(options).toHaveLength(2);
+  });
+
+  it('0 entries + statistical still renders nothing — one option is not a choice', () => {
+    const { container } = render(
+      <TracerouteParticipationPicker
+        entries={[]}
+        selectedId={null}
+        onSelect={() => {}}
+        nodes={nodes}
+        timeFormat="24"
+        dateFormat="YYYY-MM-DD"
+        statistical={{ totalRoutes: 5 }}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('the statistical option renders first, above the dated entries', () => {
+    const entries = [
+      makeEntry({ id: 3, timestamp: 3000 }),
+      makeEntry({ id: 2, timestamp: 2000 }),
+    ];
+    const { container } = render(
+      <TracerouteParticipationPicker
+        entries={entries}
+        selectedId={3}
+        onSelect={() => {}}
+        nodes={nodes}
+        timeFormat="24"
+        dateFormat="YYYY-MM-DD"
+        statistical={{ totalRoutes: 5 }}
+      />,
+    );
+    const select = container.querySelector('select') as HTMLSelectElement;
+    const options = Array.from(select.querySelectorAll('option'));
+    expect(options.map(o => o.value)).toEqual([STATISTICAL_OPTION_VALUE, '3', '2']);
+  });
+
+  it('the label reads "Statistical (12 routes)"; totalRoutes: 1 reads "(1 route)"', () => {
+    const entries = [makeEntry({ id: 3 }), makeEntry({ id: 2 })];
+    const { container: plural } = render(
+      <TracerouteParticipationPicker
+        entries={entries}
+        selectedId={3}
+        onSelect={() => {}}
+        nodes={nodes}
+        timeFormat="24"
+        dateFormat="YYYY-MM-DD"
+        statistical={{ totalRoutes: 12 }}
+      />,
+    );
+    const pluralOption = plural.querySelector(`option[value="${STATISTICAL_OPTION_VALUE}"]`);
+    expect(pluralOption?.textContent).toBe('Statistical (12 routes)');
+
+    const { container: singular } = render(
+      <TracerouteParticipationPicker
+        entries={entries}
+        selectedId={3}
+        onSelect={() => {}}
+        nodes={nodes}
+        timeFormat="24"
+        dateFormat="YYYY-MM-DD"
+        statistical={{ totalRoutes: 1 }}
+      />,
+    );
+    const singularOption = singular.querySelector(`option[value="${STATISTICAL_OPTION_VALUE}"]`);
+    expect(singularOption?.textContent).toBe('Statistical (1 route)');
+  });
+
+  it('choosing the statistical option calls onSelectStatistical and not onSelect', () => {
+    const entries = [makeEntry({ id: 3 }), makeEntry({ id: 2 })];
+    const onSelect = vi.fn();
+    const onSelectStatistical = vi.fn();
+    const { container } = render(
+      <TracerouteParticipationPicker
+        entries={entries}
+        selectedId={3}
+        onSelect={onSelect}
+        nodes={nodes}
+        timeFormat="24"
+        dateFormat="YYYY-MM-DD"
+        statistical={{ totalRoutes: 5 }}
+        onSelectStatistical={onSelectStatistical}
+      />,
+    );
+    const select = container.querySelector('select') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: STATISTICAL_OPTION_VALUE } });
+    expect(onSelectStatistical).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('choosing a dated entry calls onSelect with the numeric id and not onSelectStatistical', () => {
+    const entries = [makeEntry({ id: 3 }), makeEntry({ id: 2 })];
+    const onSelect = vi.fn();
+    const onSelectStatistical = vi.fn();
+    const { container } = render(
+      <TracerouteParticipationPicker
+        entries={entries}
+        selectedId={3}
+        onSelect={onSelect}
+        nodes={nodes}
+        timeFormat="24"
+        dateFormat="YYYY-MM-DD"
+        statistical={{ totalRoutes: 5 }}
+        onSelectStatistical={onSelectStatistical}
+      />,
+    );
+    const select = container.querySelector('select') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: '2' } });
+    expect(onSelect).toHaveBeenCalledWith(2);
+    expect(onSelectStatistical).not.toHaveBeenCalled();
+  });
+
+  it('statisticalSelected makes the select show the statistical option, and the hidden "Latest" placeholder does not appear', () => {
+    const entries = [makeEntry({ id: 3 }), makeEntry({ id: 2 })];
+    const { container } = render(
+      <TracerouteParticipationPicker
+        entries={entries}
+        selectedId={null}
+        onSelect={() => {}}
+        nodes={nodes}
+        timeFormat="24"
+        dateFormat="YYYY-MM-DD"
+        statistical={{ totalRoutes: 5 }}
+        statisticalSelected
+      />,
+    );
+    const select = container.querySelector('select') as HTMLSelectElement;
+    expect(select.value).toBe(STATISTICAL_OPTION_VALUE);
+    expect(select.querySelector('option[value=""]')).toBeNull();
   });
 });
