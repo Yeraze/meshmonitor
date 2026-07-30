@@ -5,7 +5,6 @@ import { ALL_SOURCES } from '../../db/repositories/index.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { maskTraceroutesByChannel } from '../utils/nodeEnhancer.js';
-import { TRACEROUTE_DISPLAY_HOURS } from '../../utils/nodeHelpers.js';
 import { hasRouteData, parseHopArray } from '../../utils/tracerouteSegments.js';
 import { getMaxNodeAgeHours } from '../services/nodeDisplaySettings.js';
 
@@ -110,6 +109,11 @@ router.get('/history/:fromNodeNum/:toNodeNum', requirePermission('traceroute', '
 //
 // sourceId is REQUIRED: the picker is per-source by definition, and a silent
 // ALL_SOURCES fallback would mix another source's rows for the same nodeNum.
+//
+// `hours` is OPTIONAL (amendment, SR_PHASE2_SPEC.md D14/S1): omitted entirely
+// by the picker so it lists the node's most recent stored traceroutes with no
+// time window — parity with the Traceroute History dialog, per direct user
+// request. When present, `hours` still validates and windows exactly as before.
 router.get(
   '/participation/:nodeNum',
   requirePermission('traceroute', 'read', { sourceIdFrom: 'query' }),
@@ -125,11 +129,17 @@ router.get(
         return fail(res, 400, 'INVALID_NODE_NUM', 'nodeNum must be between 0 and 4294967295');
       }
 
-      const hours = req.query.hours
-        ? Number.parseInt(req.query.hours as string, 10)
-        : TRACEROUTE_DISPLAY_HOURS;
-      if (!Number.isFinite(hours) || hours < 1 || hours > 24 * 90) {
-        return fail(res, 400, 'INVALID_HOURS', 'hours must be between 1 and 2160');
+      // `hours` is optional (amendment, SR_PHASE2_SPEC.md D14/S1): when absent,
+      // the picker gets the node's most recent stored traceroutes with no time
+      // window, matching the Traceroute History dialog. When present, the
+      // existing window validation applies unchanged.
+      let sinceTimestamp: number | undefined;
+      if (req.query.hours !== undefined) {
+        const hours = Number.parseInt(req.query.hours as string, 10);
+        if (!Number.isFinite(hours) || hours < 1 || hours > 24 * 90) {
+          return fail(res, 400, 'INVALID_HOURS', 'hours must be between 1 and 2160');
+        }
+        sinceTimestamp = Date.now() - hours * 60 * 60 * 1000;
       }
 
       const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 100;
@@ -139,7 +149,7 @@ router.get(
 
       const rows = await databaseService.traceroutes.getTraceroutesInvolvingNode(nodeNum, {
         sourceId,
-        sinceTimestamp: Date.now() - hours * 60 * 60 * 1000,
+        sinceTimestamp,
         limit,
       });
 

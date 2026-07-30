@@ -122,6 +122,29 @@ describe('GET /api/traceroutes/participation/:nodeNum', () => {
     expect(res.body.code).toBe('INVALID_LIMIT');
   });
 
+  it('hours omitted: no time window — a traceroute far older than 7 days still appears (History-dialog parity amendment)', async () => {
+    const veryOld = Date.now() - 30 * 24 * 60 * 60 * 1000; // 30 days ago
+    await seedTraceroute(harness, harness.sourceA, { fromNodeNum: 111, toNodeNum: 222, timestamp: veryOld });
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/participation/111').query({ sourceId: harness.sourceA });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.entries).toHaveLength(1);
+    expect(res.body.data.entries[0].timestamp).toBe(veryOld);
+  });
+
+  it('hours explicitly provided still windows out an old row', async () => {
+    const veryOld = Date.now() - 30 * 24 * 60 * 60 * 1000; // 30 days ago
+    await seedTraceroute(harness, harness.sourceA, { fromNodeNum: 111, toNodeNum: 222, timestamp: veryOld });
+
+    const agent = await harness.loginAs(harness.admin);
+    const res = await agent.get('/participation/111').query({ sourceId: harness.sourceA, hours: '168' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.entries).toHaveLength(0);
+  });
+
   it('400 INVALID_HOURS below the minimum', async () => {
     const agent = await harness.loginAs(harness.admin);
     const res = await agent.get('/participation/111').query({ sourceId: harness.sourceA, hours: '0' });

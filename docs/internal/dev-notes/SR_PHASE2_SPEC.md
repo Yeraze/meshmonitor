@@ -180,6 +180,13 @@ conversation with both a local and peer node (rather than only for conversations
 already look promising) — bounded by the hook's `staleTime: 60_000` / `gcTime: 300_000`,
 so re-opening the same conversation within a minute costs nothing further.
 
+**Amendment, 2026-07-30 (direct user request, post-validation).** The participation
+endpoint's `hours` window is now optional: when the picker's caller omits it (the only
+caller, `useNodeTraceroutes`), the server applies no time filter and returns the node's
+50 most recent stored traceroutes, newest-first — parity with the Traceroute History
+dialog. This does not change S1 itself (S1 never read the participation list), but it
+narrows the S6 "old history hides the box" boundary below — see the S6 amendment.
+
 ---
 
 **Why the original design (below) was replaced.** The first cut of S1 tried to avoid
@@ -284,6 +291,17 @@ session, which is a narrow intersection, and the box's existence is already cond
 on having *something* to show — a bare statistical-only affordance with no row underneath
 it would be a scope increase (a new render path, not just a wider guard) left to a
 follow-up if it proves to matter in practice.
+
+**Amendment, 2026-07-30 (direct user request, post-validation).** The picker's
+participation window is no longer 7 days — it is unbounded, capped only at the node's
+50 most recent stored traceroutes (parity with the Traceroute History dialog; see the
+S1 amendment above). "Older than 7 days" can no longer empty the participation list for
+a still-active node, so the boundary this note accepted shrinks: the box now fails to
+render only when the node has **zero** stored participation rows at all, or when a
+pair's traceroutes have all aged out of that node's newest-50 window because 50 *other*,
+newer traceroutes (to other peers) crowded them out. Both are narrower and rarer than
+the original 7-day cutoff. Still accepted, not fixed, for the same reason: a
+statistical-only affordance with no row underneath it is a scope increase.
 
 ### D15 — Tooltip and popup content
 

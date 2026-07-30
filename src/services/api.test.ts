@@ -855,6 +855,20 @@ describe('ApiService BASE_URL Support', () => {
       expect(result).toEqual(entries);
     });
 
+    it('getTracerouteParticipation should omit hours and send limit=50 for the picker call shape (History-dialog parity amendment)', async () => {
+      mockFetch.mockResolvedValue(createMockResponse({ success: true, data: { entries: [] } }));
+
+      // Mirrors useNodeTraceroutes's PARTICIPATION_LIMIT call: no `hours`, so
+      // the server applies no time window; limit=50 matches the Traceroute
+      // History dialog.
+      await apiService.getTracerouteParticipation(111, 'source-a', { limit: 50 });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/traceroutes/participation/111?sourceId=source-a&limit=50',
+        expect.objectContaining({ credentials: 'include' })
+      );
+    });
+
     it('getTracerouteParticipation should return [] when the body has no data', async () => {
       mockFetch.mockResolvedValue(createMockResponse({ success: true }));
 
