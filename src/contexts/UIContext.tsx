@@ -21,8 +21,6 @@ interface UIContextType {
   setSecurityFilter: React.Dispatch<React.SetStateAction<'all' | 'flaggedOnly' | 'hideFlagged'>>;
   channelFilter: number | 'all';
   setChannelFilter: React.Dispatch<React.SetStateAction<number | 'all'>>;
-  showIncompleteNodes: boolean;
-  setShowIncompleteNodes: React.Dispatch<React.SetStateAction<boolean>>;
   dmFilter: 'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra';
   setDmFilter: React.Dispatch<React.SetStateAction<'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra'>>;
   sortField: SortField;
@@ -96,9 +94,6 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
   const [messagesNodeFilter, setMessagesNodeFilter] = useState<string>('');
   const [securityFilter, setSecurityFilter] = useState<'all' | 'flaggedOnly' | 'hideFlagged'>('all');
   const [channelFilter, setChannelFilter] = useState<number | 'all'>('all');
-  // Default to showing incomplete nodes (true), but can be toggled to hide them
-  // On secure channels (custom PSK), users may want to hide incomplete nodes
-  const [showIncompleteNodes, setShowIncompleteNodes] = useState<boolean>(true);
   const [dmFilter, setDmFilter] = useState<'all' | 'unread' | 'recent' | 'hops' | 'favorites' | 'withPosition' | 'noInfra'>('all');
   const [sortField, setSortField] = useState<SortField>(() => {
     const saved = localStorage.getItem('preferredSortField');
@@ -148,8 +143,6 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
     setSecurityFilter,
     channelFilter,
     setChannelFilter,
-    showIncompleteNodes,
-    setShowIncompleteNodes,
     dmFilter,
     setDmFilter,
     sortField,
@@ -180,7 +173,6 @@ export const UIProvider: React.FC<UIProviderProps> = ({ children }) => {
     messagesNodeFilter, setMessagesNodeFilter,
     securityFilter, setSecurityFilter,
     channelFilter, setChannelFilter,
-    showIncompleteNodes, setShowIncompleteNodes,
     dmFilter, setDmFilter,
     sortField, setSortField,
     sortDirection, setSortDirection,
