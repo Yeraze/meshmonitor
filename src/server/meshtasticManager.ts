@@ -7101,10 +7101,7 @@ class MeshtasticManager implements ISourceManager {
         // Use server time for lastHeard — rxTime from the device clock is unreliable.
         // Replay guard (see replayGuard.ts): omit lastHeard for replayed/retained
         // frames so a stale NodeInfo can't resurrect an offline node.
-        lastHeard: resolveLastHeardSec(
-          meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
-          Date.now(),
-        ),
+        lastHeard: this.lastHeardFor(meshPacket),
       };
 
       // Capture public key if present
