@@ -11,12 +11,21 @@ import {
   buildStripGraphFromLegs,
   layoutTracerouteStrip,
   BROADCAST_ADDR,
+  filterHops,
+  DEFAULT_LAYOUT_OPTIONS,
+  minBand,
+  minRowHeight,
+  labelOffset,
+  edgeClearance,
+  labelClearRadius,
+  routeAroundGlyphs,
   type TracerouteStripInput,
   type TracerouteStripGraph,
   type StripLayoutOptions,
   type StripLane,
   type StripLeg,
   type StripPoint,
+  type RawHop,
 } from './tracerouteStrip';
 
 // Reusable "real" node numbers — small distinct integers that are never
@@ -1439,5 +1448,99 @@ describe('layoutTracerouteStrip — edge/label glyph collision avoidance (#4428)
         }
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Statistical Route epic, Phase 1, WP1 (docs/internal/dev-notes/
+// SR_PHASE1_SPEC.md §3.1/§4.1): tracerouteStrip.ts's private geometry and
+// hop-filter internals are now exported `@internal` for tracerouteUnionLayout
+// .ts / tracerouteAggregate.ts to reuse. This block asserts those exports
+// behave exactly as the (still-private, still-tested-above) implementation
+// always has — export-only, no logic changes. The 50 pre-existing cases above
+// remain the real behavioral coverage for this module.
+// ---------------------------------------------------------------------------
+describe('exported internals (statistical route Phase 1)', () => {
+  it('filterHops keeps both endpoints even when their node numbers are reserved', () => {
+    const hops: RawHop[] = [
+      { nodeNum: 2, snr: undefined }, // reserved endpoint
+      { nodeNum: 100, snr: 5 },
+      { nodeNum: 3, snr: 6 }, // reserved endpoint
+    ];
+    const result = filterHops(hops);
+    expect(result).toEqual([
+      { nodeNum: 2, snr: undefined, isUnknown: false },
+      { nodeNum: 100, snr: 5, isUnknown: false },
+      { nodeNum: 3, snr: 6, isUnknown: false },
+    ]);
+  });
+
+  it('filterHops keeps BROADCAST_ADDR intermediates and flags isUnknown', () => {
+    const hops: RawHop[] = [
+      { nodeNum: 100, snr: undefined },
+      { nodeNum: BROADCAST_ADDR, snr: 7 },
+      { nodeNum: 200, snr: 8 },
+    ];
+    const result = filterHops(hops);
+    expect(result).toEqual([
+      { nodeNum: 100, snr: undefined, isUnknown: false },
+      { nodeNum: BROADCAST_ADDR, snr: 7, isUnknown: true },
+      { nodeNum: 200, snr: 8, isUnknown: false },
+    ]);
+  });
+
+  it("filterHops drops invalid intermediates and does not re-index survivors' SNR samples", () => {
+    const hops: RawHop[] = [
+      { nodeNum: 100, snr: undefined },
+      { nodeNum: 2, snr: 11 }, // reserved, intermediate -> dropped
+      { nodeNum: 150, snr: 22 },
+      { nodeNum: 200, snr: 33 },
+    ];
+    const result = filterHops(hops);
+    // The dropped hop's snr (11) disappears with it; the survivor keeps its
+    // OWN paired snr (22) rather than inheriting/shifting into the gap.
+    expect(result).toEqual([
+      { nodeNum: 100, snr: undefined, isUnknown: false },
+      { nodeNum: 150, snr: 22, isUnknown: false },
+      { nodeNum: 200, snr: 33, isUnknown: false },
+    ]);
+  });
+
+  it('filterHops accepts a RawHop with snr omitted', () => {
+    const hops: RawHop[] = [
+      { nodeNum: 100 },
+      { nodeNum: 150 },
+      { nodeNum: 200 },
+    ];
+    const result = filterHops(hops);
+    expect(result).toEqual([
+      { nodeNum: 100, snr: undefined, isUnknown: false },
+      { nodeNum: 150, snr: undefined, isUnknown: false },
+      { nodeNum: 200, snr: undefined, isUnknown: false },
+    ]);
+  });
+
+  it('minBand/minRowHeight/labelOffset/edgeClearance/labelClearRadius return the documented values for DEFAULT_LAYOUT_OPTIONS', () => {
+    // nodeHalfHeight = (glyphSize + NODE_NAME_GAP + nameHeight) / 2
+    //                = (32 + 2 + 14) / 2 = 24
+    // labelOffset     = nodeHalfHeight + LABEL_HALF_HEIGHT + LABEL_CLEARANCE
+    //                = 24 + 8 + 4 = 36
+    expect(labelOffset(DEFAULT_LAYOUT_OPTIONS)).toBe(36);
+    // minBand = labelOffset + LABEL_HALF_HEIGHT = 36 + 8 = 44
+    expect(minBand(DEFAULT_LAYOUT_OPTIONS)).toBe(44);
+    // minRowHeight = 2 * labelOffset = 72
+    expect(minRowHeight(DEFAULT_LAYOUT_OPTIONS)).toBe(72);
+    // edgeClearance = glyphSize / 2 + EDGE_RIM_MARGIN + LANE_OFFSET
+    //               = 16 + 3 + 5 = 24
+    expect(edgeClearance(DEFAULT_LAYOUT_OPTIONS)).toBe(24);
+    // labelClearRadius = glyphSize / 2 + LABEL_HALF_HEIGHT + LABEL_CLEARANCE
+    //                  = 16 + 8 + 4 = 28
+    expect(labelClearRadius(DEFAULT_LAYOUT_OPTIONS)).toBe(28);
+  });
+
+  it('routeAroundGlyphs returns the input path unchanged when obstacles is empty', () => {
+    const path: StripPoint[] = [{ x: 0, y: 0 }, { x: 10, y: 10 }];
+    const result = routeAroundGlyphs(path, [], edgeClearance(DEFAULT_LAYOUT_OPTIONS), { x: 0, y: -1 });
+    expect(result).toEqual(path);
   });
 });
