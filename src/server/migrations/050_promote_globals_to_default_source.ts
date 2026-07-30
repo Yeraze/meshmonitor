@@ -31,7 +31,6 @@
  */
 import type { Database } from 'better-sqlite3';
 import { logger } from '../../utils/logger.js';
-import { PER_SOURCE_SETTINGS_KEYS } from '../constants/settings.js';
 import {
   ensureDefaultSourceIdSqlite,
   ensureDefaultSourceIdPostgres,
@@ -39,6 +38,200 @@ import {
 } from './_legacyDefaultSource.js';
 
 const LABEL = 'Migration 050';
+
+/**
+ * The per-source settings keys this migration promotes, FROZEN as of 4.13.3.
+ *
+ * Deliberately NOT sourced from the live per-source-settings constants array in
+ * `constants/settings.ts` (contrast the original 050, and compare migration 131's
+ * NODE_DISPLAY_SEED): a migration is a statement about a point in
+ * time, and fresh installs replay every migration (#3962 deleted createTables), so an
+ * imported array runs against whatever it contains *today*, not what it contained when
+ * this migration shipped. That drift was live — the array grew 87 -> 170 keys between 050
+ * shipping and this freeze (#4419).
+ *
+ * This snapshot is the 170-key list as of the freeze, NOT the 87-key list 050 originally
+ * ran with. That choice is deliberate: a snapshot of today changes nothing for anyone at
+ * freeze time, whereas reverting to the 87-key list would stop promoting nine long-standing
+ * globals (maxNodeAgeHours and the node-dimming / inactive-node group) for every future
+ * v3.x upgrader. See PER_SOURCE_NODE_DISPLAY_PHASE5_SPEC.md §4.2 for the full analysis.
+ *
+ * DO NOT append to this list when a new setting becomes per-source. This list is history.
+ * A key that becomes per-source AFTER this freeze needs its own seed/promote migration —
+ * that is what migration 131 is, and it is the pattern to copy.
+ */
+export const PROMOTED_SETTING_KEYS: readonly string[] = [
+  'autoAckChannels',
+  'autoAckCooldownSeconds',
+  'autoAckPreSendDelaySeconds',
+  'autoAckMaxAttempts',
+  'autoAckDirectEnabled',
+  'autoAckDirectMessages',
+  'autoAckDirectReplyEnabled',
+  'autoAckDirectTapbackEnabled',
+  'autoAckEnabled',
+  'autoAckIgnoredNodes',
+  'autoAckMessage',
+  'autoAckMessageDirect',
+  'autoAckMultihopEnabled',
+  'autoAckMultihopReplyEnabled',
+  'autoAckMultihopTapbackEnabled',
+  'autoAckRegex',
+  'autoAckSkipIncompleteNodes',
+  'autoAckUseDM',
+  'autoAckChannelZeroHopReplyEnabled',
+  'autoAckChannelZeroHopTapbackEnabled',
+  'autoAckChannelZeroHopReplyDmEnabled',
+  'autoAckChannelMultiHopReplyEnabled',
+  'autoAckChannelMultiHopTapbackEnabled',
+  'autoAckChannelMultiHopReplyDmEnabled',
+  'autoAckDirectZeroHopReplyEnabled',
+  'autoAckDirectZeroHopTapbackEnabled',
+  'autoAckDirectZeroHopReplyDmEnabled',
+  'autoAckDirectMultiHopReplyEnabled',
+  'autoAckDirectMultiHopTapbackEnabled',
+  'autoAckDirectMultiHopReplyDmEnabled',
+  'automationAirtimeCutoffThreshold',
+  'automationAirtimeCutoffSource',
+  'autoAnnounceChannelIndexes',
+  'autoAnnounceEnabled',
+  'autoAnnounceIntervalHours',
+  'autoAnnounceMessage',
+  'autoAnnounceNodeInfoChannels',
+  'autoAnnounceNodeInfoDelaySeconds',
+  'autoAnnounceNodeInfoEnabled',
+  'autoAnnounceOnStart',
+  'autoAnnounceSchedule',
+  'autoAnnounceUseSchedule',
+  'autoDeleteByDistanceAction',
+  'autoDeleteByDistanceEnabled',
+  'autoDeleteByDistanceIntervalHours',
+  'autoDeleteByDistanceLat',
+  'autoDeleteByDistanceLon',
+  'autoDeleteByDistanceThresholdKm',
+  'autoFavoriteEnabled',
+  'autoFavoriteNodes',
+  'autoFavoriteStaleHours',
+  'autoHeapManagementEnabled',
+  'autoHeapManagementThresholdBytes',
+  'autoKeyManagementEnabled',
+  'autoPingEnabled',
+  'autoPingIntervalSeconds',
+  'autoPingMaxPings',
+  'autoPingTimeoutSeconds',
+  'autoResponderEnabled',
+  'autoResponderSkipIncompleteNodes',
+  'autoResponderTriggers',
+  'autoTimeSyncEnabled',
+  'autoTimeSyncIntervalMinutes',
+  'autoWelcomeEnabled',
+  'autoWelcomeMaxHops',
+  'autoWelcomeMessage',
+  'autoWelcomeTarget',
+  'autoWelcomeWaitForName',
+  'autoWelcomeDelay',
+  'pkiDmDecryptionEnabled',
+  'meshcoreAutoPathfindingEnabled',
+  'meshcoreAutoPathfindingPathDiscoveryEnabled',
+  'meshcoreAutoPathfindingNeighborsEnabled',
+  'meshcoreAutoPathfindingIntervalMinutes',
+  'meshcoreAutoPathfindingRepeatHours',
+  'meshcorePathfindingFilterEnabled',
+  'meshcorePathfindingFilterContactsEnabled',
+  'meshcorePathfindingFilterRegexEnabled',
+  'meshcorePathfindingFilterNameRegex',
+  'meshcorePathfindingFilterLastHeardEnabled',
+  'meshcorePathfindingFilterLastHeardHours',
+  'meshcorePathfindingFilterHopsEnabled',
+  'meshcorePathfindingFilterHopsMin',
+  'meshcorePathfindingFilterHopsMax',
+  'meshcorePathfindingFilterSignalEnabled',
+  'meshcorePathfindingFilterRssiMin',
+  'meshcorePathfindingFilterSnrMin',
+  'meshcoreRespondToDiscovery',
+  'meshcoreAutoAckEnabled',
+  'meshcoreAutoAckRegex',
+  'meshcoreAutoAckMessage',
+  'meshcoreAutoAckChannels',
+  'meshcoreAutoAckDirectMessages',
+  'meshcoreAutoAckUseDM',
+  'meshcoreAutoAckCooldownSeconds',
+  'meshcoreAutoAckPreSendDelaySeconds',
+  'meshcoreAutoAckTestMessages',
+  'meshcoreAutoAckIgnoredNodes',
+  'meshcoreAutoAnnounceEnabled',
+  'meshcoreAutoAnnounceIntervalHours',
+  'meshcoreAutoAnnounceMessage',
+  'meshcoreAutoAnnounceChannelIndexes',
+  'meshcoreAutoAnnounceOnStart',
+  'meshcoreAutoAnnounceUseSchedule',
+  'meshcoreAutoAnnounceSchedule',
+  'meshcoreAutoAnnounceAdvertEnabled',
+  'meshcoreAutoAnnounceAdvertDelaySeconds',
+  'meshcoreAutoAnnounceLastRunAt',
+  'meshcoreAutoResponderEnabled',
+  'meshcoreAutoResponderTriggers',
+  'meshcoreTimerTriggers',
+  'meshcoreDefaultScope',
+  'maxNodeAgeHours',
+  'inactiveNodeThresholdHours',
+  'inactiveNodeCheckIntervalMinutes',
+  'inactiveNodeCooldownHours',
+  'nodeHopsCalculation',
+  'hideIncompleteNodes',
+  'nodeDimmingEnabled',
+  'nodeDimmingStartHours',
+  'nodeDimmingMinOpacity',
+  'externalUrl',
+  'geofenceTriggers',
+  'lastAnnouncementTime',
+  'localNodeNum',
+  'localStatsIntervalMinutes',
+  'timerTriggers',
+  'remoteAdminScannerIntervalMinutes',
+  'remoteAdminScheduleEnabled',
+  'remoteAdminScheduleEnd',
+  'remoteAdminScheduleStart',
+  'securityDigestAppriseUrl',
+  'securityDigestFormat',
+  'securityDigestReportType',
+  'securityDigestSuppressEmpty',
+  'tracerouteIntervalMinutes',
+  'tracerouteScheduleEnabled',
+  'tracerouteScheduleEnd',
+  'tracerouteScheduleStart',
+  'tracerouteNodeFilterEnabled',
+  'tracerouteFilterChannels',
+  'tracerouteFilterRoles',
+  'tracerouteFilterHwModels',
+  'tracerouteFilterNameRegex',
+  'tracerouteFilterNodesEnabled',
+  'tracerouteFilterChannelsEnabled',
+  'tracerouteFilterRolesEnabled',
+  'tracerouteFilterHwModelsEnabled',
+  'tracerouteFilterRegexEnabled',
+  'tracerouteExpirationHours',
+  'tracerouteSortByHops',
+  'tracerouteFilterLastHeardEnabled',
+  'tracerouteFilterLastHeardHours',
+  'tracerouteFilterHopsEnabled',
+  'tracerouteFilterHopsMin',
+  'tracerouteFilterHopsMax',
+  'remoteLocalStatsIntervalMinutes',
+  'remoteLocalStatsScheduleEnabled',
+  'remoteLocalStatsScheduleStart',
+  'remoteLocalStatsScheduleEnd',
+  'remoteLocalStatsFilterEnabled',
+  'remoteLocalStatsFilterNodes',
+  'remoteLocalStatsFilterNodesEnabled',
+  'remoteLocalStatsFilterRoles',
+  'remoteLocalStatsFilterRolesEnabled',
+  'remoteLocalStatsFilterFavoriteEnabled',
+  'remoteLocalStatsFilterNameRegex',
+  'remoteLocalStatsFilterRegexEnabled',
+  'remoteLocalStatsFilterLastHeardEnabled',
+  'remoteLocalStatsFilterLastHeardHours',
+];
 
 function now(): number {
   return Date.now();
@@ -65,7 +258,7 @@ export const migration = {
       );
       const readGlobal = db.prepare(`SELECT value FROM settings WHERE key = ?`);
 
-      for (const key of PER_SOURCE_SETTINGS_KEYS) {
+      for (const key of PROMOTED_SETTING_KEYS) {
         const globalRow = readGlobal.get(key) as { value: string } | undefined;
         if (!globalRow) continue;
 
@@ -126,7 +319,7 @@ export async function runMigration050Postgres(client: any): Promise<void> {
     let promoted = 0;
     const ts = now();
 
-    for (const key of PER_SOURCE_SETTINGS_KEYS) {
+    for (const key of PROMOTED_SETTING_KEYS) {
       const globalRes = await client.query(
         `SELECT value FROM settings WHERE key = $1`,
         [key],
@@ -199,7 +392,7 @@ export async function runMigration050Mysql(pool: any): Promise<void> {
     let promoted = 0;
     const ts = now();
 
-    for (const key of PER_SOURCE_SETTINGS_KEYS) {
+    for (const key of PROMOTED_SETTING_KEYS) {
       const [globalRows] = await conn.query(
         `SELECT value FROM settings WHERE \`key\` = ?`,
         [key],
