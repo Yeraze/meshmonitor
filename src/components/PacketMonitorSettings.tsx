@@ -20,8 +20,13 @@ const PacketMonitorSettings: React.FC<PacketMonitorSettingsProps> = ({
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
 
-  // Can only configure if user has settings:write permission
-  const canWrite = hasPermission('settings', 'write');
+  // Can only configure if user has settings:write permission.
+  // 'settings' is sourcey (Phase 6 #4416). This panel edits packetLogEnabled/
+  // MaxCount/MaxAgeHours, which are not in PER_SOURCE_SETTINGS_KEYS — SettingsTab
+  // always routes them into the unscoped globalBody POST (no sourceId query),
+  // even inside a per-source context — so anySource mirrors the endpoint it
+  // actually saves through.
+  const canWrite = hasPermission('settings', 'write', { anySource: true });
 
   return (
     <div className="packet-monitor-settings-container">

@@ -82,7 +82,14 @@ export const MqttPacketMonitorView: React.FC<MqttPacketMonitorViewProps> = ({ ba
   const { hasPermission } = useAuth();
   const { nodes } = useNodes();
 
-  const canWriteSettings = hasPermission('settings', 'write');
+  // 'settings' is sourcey (Phase 6 #4416). Deviates from the PHASE6 spec §5.3
+  // table's suggested `{ sourceId }` default: verified that saveSettings()
+  // below POSTs `mqtt_packet_log_enabled` to /api/settings with no sourceId
+  // query param, and the backend reads it via a plain getSettingAsync()
+  // (mqttPacketLogService.ts) — it is a genuinely global, not per-source,
+  // setting, and this component never calls useSource() (sourceId arrives
+  // as a prop). anySource mirrors the unscoped write it actually gates.
+  const canWriteSettings = hasPermission('settings', 'write', { anySource: true });
   const canClear = hasPermission('packetmonitor', 'write');
 
   const prefix = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/mqtt/packets`;

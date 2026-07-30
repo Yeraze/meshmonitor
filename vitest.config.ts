@@ -37,6 +37,13 @@ const SHARED_DB_TESTS = [
   'src/db/repositories/settings.test.ts',
   'src/db/repositories/solarEstimates.test.ts',
   'src/db/repositories/traceroutes.test.ts',
+  // Migration 132's container half (#4416 WP2) drops/recreates `users`,
+  // `permissions`, AND `sources` against the shared PG/MySQL test DB —
+  // overlapping auth.test.ts (`users`, `permissions`) and channels.test.ts
+  // (`sources`). Confirmed empirically: running it concurrently with
+  // auth.test.ts's DROP TABLE ordering intermittently raises
+  // ER_FK_CANNOT_DROP_PARENT on MySQL.
+  'src/server/migrations/132_fan_out_settings_permissions.pgmysql.test.ts',
 ];
 
 const COMMON_EXCLUDE = [

@@ -117,7 +117,11 @@ describe('geojsonRoutes — disablePopup flag (#4344)', () => {
 
   it('allows the toggle once settings:write is granted', async () => {
     const layer = service.addLayer('granted.geojson', VALID_GEOJSON);
-    await harness.grant(harness.limited.id, 'settings', 'write');
+    // 'settings' is a sourcey resource (#4416); this route's settings:write
+    // gate is unscoped (no sourceIdFrom), so a single-source grant is enough
+    // to authorize it via checkPermissionAsync's union branch — granting on
+    // every source would pass without exercising that branch.
+    await harness.grant(harness.limited.id, 'settings', 'write', harness.sourceA);
     const agent = await harness.loginAs(harness.limited);
 
     const res = await agent

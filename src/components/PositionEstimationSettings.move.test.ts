@@ -43,7 +43,15 @@ describe('Position Estimation lives in global Settings (issue #3271)', () => {
   });
 
   it('gates the section on settings:write (not the automation resource)', () => {
-    expect(settingsTabSrc).toContain("hasPermission('settings', 'write')");
+    // Phase 6 (#4416) made 'settings' a sourcey resource. This call site
+    // guards a tab hosting both global and per-source panels with a single
+    // flag, so it passes { anySource: true } — the mirror of the mostly-
+    // unscoped settings routes' union check (PHASE6 spec §5.3). The literal
+    // match is updated to the new call shape, not loosened: it still fails
+    // if the gate reverts to the bare `hasPermission('settings', 'write')`
+    // two-arg form (which would hard-return false for every non-admin) or
+    // to the unrelated `automation` resource this test was written to rule out.
+    expect(settingsTabSrc).toContain("hasPermission('settings', 'write', { anySource: true })");
     // The render block is gated by the computed permission flag.
     expect(settingsTabSrc).toContain("show('settings-position-estimation') && canWriteSettings");
   });

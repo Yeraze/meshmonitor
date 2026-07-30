@@ -450,7 +450,11 @@ const TelemetryGraphs: React.FC<TelemetryGraphsProps> = React.memo(
     const { showToast } = useToast();
     const { solarMonitoringEnabled, timeFormat } = useSettings();
     const { hasPermission } = useAuth();
-    const canEditSettings = hasPermission('settings', 'write');
+    // 'settings' is sourcey (Phase 6 #4416). This only toggles a local
+    // chart/gauge display mode — it never calls a settings API — so
+    // anySource is the closest mirror of "holds settings:write somewhere",
+    // matching the general unscoped gate used elsewhere in this component tree.
+    const canEditSettings = hasPermission('settings', 'write', { anySource: true });
     const { sourceId } = useSource();
     const [openMenu, setOpenMenu] = useState<string | null>(null);
     const [menuPosition, setMenuPosition] = useState<{

@@ -184,7 +184,11 @@ describe('elevationRoutes', () => {
     });
 
     it('user granted settings:write returns 200', async () => {
-      await harness.grant(harness.limited.id, 'settings', 'write');
+      // 'settings' is a sourcey resource (#4416); this route's settings:write
+      // gate is unscoped (no sourceIdFrom), so a single-source grant is
+      // enough to authorize it via checkPermissionAsync's union branch —
+      // granting on every source would pass without exercising that branch.
+      await harness.grant(harness.limited.id, 'settings', 'write', harness.sourceA);
       const agent = await harness.loginAs(harness.limited);
       const res = await agent.post('/elevation/test').send({ url: 'https://example.com/{z}/{x}/{y}.png' });
 
