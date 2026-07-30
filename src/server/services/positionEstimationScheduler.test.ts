@@ -18,6 +18,7 @@ import {
   positionEstimationScheduler,
   DEFAULT_FREQUENCY_HOURS,
   DEFAULT_LOOKBACK_HOURS,
+  DEFAULT_MAX_UNCERTAINTY_KM,
 } from './positionEstimationScheduler.js';
 
 const HOUR = 60 * 60 * 1000;
@@ -64,7 +65,26 @@ describe('positionEstimationScheduler.runNow', () => {
     });
   });
 
-  it('passes maxUncertaintyKm: 0 (no limit) when the setting is unset', async () => {
+  it('defaults maxUncertaintyKm below the single-anchor radius when unset (#4450)', async () => {
+    // Was 0 (no limit), which stored single-anchor solves. Those land at exactly
+    // DEFAULT_SINGLE_ANCHOR_KM (5 km) on the anchor's own coordinates, which is
+    // the phantom pin on top of the connected node reported in #4450.
+    await positionEstimationScheduler.runNow();
+    expect(mockService.positionEstimationService.recomputeAll).toHaveBeenCalledWith({
+      lookbackMs: DEFAULT_LOOKBACK_HOURS * HOUR,
+      maxUncertaintyKm: DEFAULT_MAX_UNCERTAINTY_KM,
+    });
+    // Pin the relationship rather than the literal: any default >= 5 would let
+    // the single-anchor class straight back in.
+    expect(DEFAULT_MAX_UNCERTAINTY_KM).toBeGreaterThan(0);
+    expect(DEFAULT_MAX_UNCERTAINTY_KM).toBeLessThan(5);
+  });
+
+  it('still treats an explicitly configured 0 as "no limit" (#4450 opt-out)', async () => {
+    mockDb.settings.getSetting.mockImplementation(async (key: string) => {
+      if (key === 'position_estimation_max_uncertainty_km') return '0';
+      return null;
+    });
     await positionEstimationScheduler.runNow();
     expect(mockService.positionEstimationService.recomputeAll).toHaveBeenCalledWith({
       lookbackMs: DEFAULT_LOOKBACK_HOURS * HOUR,
