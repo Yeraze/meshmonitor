@@ -487,7 +487,12 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'nodeDimmingStartHours',
   'nodeDimmingMinOpacity',
   // Misc per-source
-  'externalUrl',
+  // NOTE: `externalUrl` was listed here until #4437. It never had a per-source
+  // reader, and now has an explicitly global one (`securityDigestService.ts`
+  // reads it via `getSetting`). It lives in GLOBAL_ONLY_SETTINGS_KEYS instead,
+  // so a per-source POST is dropped with a warning rather than stored where
+  // nothing will ever read it. Migration 050's frozen copy still lists it —
+  // that list is deliberately frozen history and must not be edited (#4419).
   'geofenceTriggers',
   'lastAnnouncementTime',
   'localNodeNum',
@@ -564,6 +569,10 @@ export type PerSourceSettingKey = typeof PER_SOURCE_SETTINGS_KEYS[number];
  * is silent data loss.
  */
 export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
+  // One origin per install, read via getSetting by securityDigestService (#4437).
+  // getSettingForSource does NOT fall back to the global row (removed in
+  // #2839/#2840), so a per-source value here would be stored and never read.
+  'externalUrl',
   // Documented "global" in this file's own inline comments:
   'pkiDmDecryptionGloballyEnabled',         // :82 master switch, gates every source
   'position_estimation_enabled',            // :141 global batch job (#3271)
