@@ -786,16 +786,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   const pickerNodeNum = selectedDMNode ? parseNodeId(selectedDMNode) : null;
   const { data: participationEntries, refetch: refetchParticipation } =
     useNodeTraceroutes(pickerNodeNum, { enabled: !!selectedDMNode });
-  // Statistical Route epic phase 2, WP4 — memoized (rather than a bare
-  // `?? []` fallback) because `entries` now also feeds `pairEntryCount`'s
-  // `useMemo` below; an inline fallback array is a fresh reference every
-  // render, which would recompute that memo on every render regardless of
-  // whether the data actually changed (react-hooks/exhaustive-deps flags
-  // this).
-  const entries: TracerouteParticipationEntry[] = useMemo(
-    () => participationEntries ?? [],
-    [participationEntries],
-  );
+  const entries: TracerouteParticipationEntry[] = participationEntries ?? [];
 
   // Statistical Route epic phase 2, D13 — one discriminated pick rather than
   // two mutually-exclusive flags. `pickedTracerouteId`/`statisticalPicked`
@@ -845,29 +836,27 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
     return { stripGraph, stripMeta };
   }, [displayedTrace, nodes, nodeHopsCalculation, traceroutes, currentNodeNum]);
 
-  // S1 (SR_PHASE2_SPEC.md D14) — the pair-history request is gated on
-  // signals we ALREADY have (the participation list fetched for the picker
-  // above), so a conversation with no plausible aggregate costs no extra
-  // round trip. Only entries whose OTHER endpoint is the local node count.
-  const pairEntryCount = useMemo(
-    () =>
-      currentNodeNum == null
-        ? 0
-        : entries.filter(
-            e =>
-              e.participation === 'endpoint' &&
-              (e.fromNodeNum === currentNodeNum || e.toNodeNum === currentNodeNum),
-          ).length,
-    [entries, currentNodeNum],
-  );
-
+  // S1 (SR_PHASE2_SPEC.md D14, amended) — gated on cheap VALIDITY signals
+  // only: permission, both node numbers resolved, and a real (non-self)
+  // pair. The original design also required >= 2 participation-list
+  // ("endpoint") entries, on the theory that the picker's already-fetched
+  // 7-day list is a cheap, sound proxy for "an aggregate is plausible" —
+  // live validation on the dev rig disproved that: a real pair
+  // (1129874776 <-> 2732916556) had 25 stored traceroutes with route data,
+  // but every one was 35-83 days old, so the 7-day participation window
+  // showed only 3 'hop' entries and the count-based gate stayed at 0
+  // forever. The epic's binding decision is "all stored pair history, no
+  // time filter" (SR_PHASE2_SPEC.md §0); a precondition keyed to a
+  // *windowed* list directly contradicts that for exactly the kind of
+  // long-lived pair the feature exists for. Cost of dropping it: one GET
+  // per opened DM conversation (with both a local and peer node), which the
+  // hook's staleTime (60s) / gcTime (5min) already bound.
   const { rows: pairHistory } = useTraceroutePairHistory(currentNodeNum, pickerNodeNum, {
     enabled:
       hasPermission('traceroute', 'read') &&
       currentNodeNum != null &&
       pickerNodeNum != null &&
-      currentNodeNum !== pickerNodeNum &&
-      pairEntryCount >= 2,
+      currentNodeNum !== pickerNodeNum,
   });
 
   // S2 — build the union once. `buildStatisticalStrip` also returns a

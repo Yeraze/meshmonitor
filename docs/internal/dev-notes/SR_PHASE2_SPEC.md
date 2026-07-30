@@ -160,12 +160,35 @@ calls become `setPick(null)`, and the picker's `onSelect` becomes
 Rules 1–7 come from `TRS_PHASE2_SPEC.md §6.4` and live at `MessagesTab.tsx:769-814,
 2011-2114`. Phase 2 adds six, and states for each which existing rule it touches.
 
-**S1 — when the pair history is fetched.** The hook is enabled only when every cheap
-local precondition holds:
+**S1 — when the pair history is fetched (AMENDED — supersedes the original design below
+the line).** The hook is enabled on cheap VALIDITY signals only, with no participation-
+count precondition:
 
 ```ts
+const statisticalFetchEnabled =
+  hasPermission('traceroute', 'read') &&
+  currentNodeNum != null &&
+  pickerNodeNum != null &&
+  currentNodeNum !== pickerNodeNum;
+```
+
+`currentNodeNum` is `null` on an MQTT source (no origin node), so statistical mode is
+Meshtastic-TCP-shaped by construction. That matches the epic: the aggregate is defined
+over the local↔peer pair, and without a local node there is no pair. Cost of dropping
+the count precondition: one `GET /api/traceroutes/history/:from/:to` per opened DM
+conversation with both a local and peer node (rather than only for conversations that
+already look promising) — bounded by the hook's `staleTime: 60_000` / `gcTime: 300_000`,
+so re-opening the same conversation within a minute costs nothing further.
+
+---
+
+**Why the original design (below) was replaced.** The first cut of S1 tried to avoid
+that per-conversation request by reusing a signal already in hand — the participation
+picker's own list, fetched on every conversation open regardless:
+
+```ts
+// SUPERSEDED — kept for the historical record, do not reintroduce.
 const canReadTraceroute = hasPermission('traceroute', 'read');
-// Endpoint rows already in the picker list whose OTHER endpoint is the local node.
 const pairEntryCount = entries.filter(e =>
   e.participation === 'endpoint' &&
   (e.fromNodeNum === currentNodeNum || e.toNodeNum === currentNodeNum)
@@ -179,24 +202,21 @@ const statisticalFetchEnabled =
   pairEntryCount >= 2;
 ```
 
-Why this gate, and why it is the honest answer to "do not fetch history for every
-conversation open": the participation list is **already fetched** for the picker on
-every conversation open (`MessagesTab.tsx:770-772`). Counting its endpoint rows costs
-nothing and is a sound necessary condition — a pair with ≥ 2 aggregatable routes in the
-window almost always shows ≥ 2 endpoint entries. So the extra request fires only for
-conversations that plausibly have an aggregate, which in a normal mesh is a small
-minority of them.
-
-Two consequences to accept, not to fix in Phase 2:
-
-- The participation list spans `TRACEROUTE_DISPLAY_HOURS` = 7 days
-  (`src/utils/nodeHelpers.ts:16`, applied at `tracerouteRoutes.ts:128-133`), while the
-  history is unwindowed. A pair whose only traceroutes are all older than 7 days will
-  not offer the statistical option. That is a deliberate trade: one saved request per
-  conversation open against an aggregate nobody has looked at in a week.
-- `currentNodeNum` is `null` on an MQTT source (no origin node), so statistical mode is
-  Meshtastic-TCP-shaped by construction. That matches the epic: the aggregate is defined
-  over the local↔peer pair, and without a local node there is no pair.
+The reasoning was: counting the picker list's endpoint rows is free, and "a pair with
+≥ 2 aggregatable routes almost always shows ≥ 2 endpoint entries in the window" sounded
+like a sound necessary condition. Live browser validation on the dev rig falsified that
+assumption. The participation list spans `TRACEROUTE_DISPLAY_HOURS` = 7 days
+(`src/utils/nodeHelpers.ts:16`, applied at `tracerouteRoutes.ts:128-133`), while the
+history endpoint is deliberately unwindowed (epic binding decision, §0: "all stored
+pair history, no time filter"). On the Sandbox source, the pair local `1129874776` ↔
+peer `2732916556` had **25 stored traceroutes with route data — all 35–83 days old**.
+Every one fell outside the 7-day participation window, so the list showed only 3
+`'hop'`-participation entries (0 matching `'endpoint'` rows), `pairEntryCount` was
+permanently 0, and the statistical option could never appear for exactly this pair —
+a long-lived, well-observed pair, which is the case the feature exists for. A
+precondition keyed to a *windowed* proxy list directly contradicts an *unwindowed*
+feature; it wasn't a tuning problem, it was the wrong signal. See D14/S1 above for the
+replacement.
 
 **S2 — when the option is offered.** Build the union once, memoized:
 
@@ -238,21 +258,32 @@ first one.
 timestamp, `:781-785`) both clear the pick. With D13 they become `setPick(null)`, so
 they clear a statistical pick for free. No new effect, no new dependency.
 
-Rule 3's `void refetchParticipation()` stays as-is. The pair-history query is not
-refetched there: it is already gated on `pairEntryCount`, which the participation
-refetch updates, and its 60s `staleTime` means a genuinely new pair route lands within
-a minute at worst.
+Rule 3's `void refetchParticipation()` stays as-is; it has no bearing on the pair-history
+query since S1 (amended) no longer reads the participation list at all. The pair-history
+query is not explicitly refetched there either — its own 60s `staleTime` means a
+genuinely new pair route lands within a minute at worst.
 
 **S5 — losing availability while picked.** `showStatistical` is derived, not stored, so
-if `statistical` becomes `null` (history refetch drops below 2, permission revoked, the
-query is disabled) the box silently falls back to rule 1's `displayedTrace` and the
-normal strip. No effect, no cleanup, no flash of an empty aggregate.
+if `statistical` becomes `null` (the union's `totalRoutes` drops below 2, permission
+revoked, the query is disabled) the box silently falls back to rule 1's `displayedTrace`
+and the normal strip. No effect, no cleanup, no flash of an empty aggregate.
 
-**S6 — rule 7 stays unchanged.** The box still renders on `if (displayedTrace)`
-(`MessagesTab.tsx:2022`). S1 requires `pairEntryCount >= 2`, which requires
-`entries.length >= 2`, which makes `displayedTrace` non-null by rule 1. So statistical
-availability implies the guard already passes. Stated as an invariant rather than
-defended with a wider guard.
+**S6 — rule 7 stays unchanged (invariant note AMENDED).** The box still renders on
+`if (displayedTrace)` (`MessagesTab.tsx:2022`). Under the original S1, statistical
+availability implied `pairEntryCount >= 2`, which implied `entries.length >= 2`, which
+made `displayedTrace` non-null by rule 1 — the guard was provably already satisfied
+whenever the option could appear. Amended S1 has no participation-list precondition, so
+that implication no longer holds: `statistical` can become available (`union.totalRoutes
+>= 2`) purely from pair history, with zero picker entries and, on MQTT, no poll row
+either. In that combination `displayedTrace` is `null`, rule 7's guard fails, the box
+does not render at all, and the statistical option — however available in principle —
+has nowhere to surface. This is accepted, not fixed, in Phase 2: it only arises when
+every stored traceroute for a pair is older than the picker's 7-day window (the
+scenario live validation surfaced) AND no traceroute has been freshly polled this
+session, which is a narrow intersection, and the box's existence is already conditioned
+on having *something* to show — a bare statistical-only affordance with no row underneath
+it would be a scope increase (a new render path, not just a wider guard) left to a
+follow-up if it proves to matter in practice.
 
 ### D15 — Tooltip and popup content
 
@@ -858,28 +889,16 @@ but reads identically.
 **S1/S2** (new, after the strip memo at line 814):
 
 ```ts
-// S1 — the pair-history request is gated on signals we ALREADY have, so a
-// conversation with no plausible aggregate costs no extra round trip. See
-// SR_PHASE2_SPEC.md D14.
-const pairEntryCount = useMemo(
-  () =>
-    currentNodeNum == null
-      ? 0
-      : entries.filter(
-          e =>
-            e.participation === 'endpoint' &&
-            (e.fromNodeNum === currentNodeNum || e.toNodeNum === currentNodeNum),
-        ).length,
-  [entries, currentNodeNum],
-);
-
+// S1 (AMENDED — see D14/S1) — gated on cheap VALIDITY signals only: no
+// participation-count precondition. Live rig validation showed a real,
+// long-lived pair (25 stored routes, all 35-83 days old) never satisfying
+// a count-based gate keyed to the picker's 7-day participation window.
 const { rows: pairHistory } = useTraceroutePairHistory(currentNodeNum, pickerNodeNum, {
   enabled:
     hasPermission('traceroute', 'read') &&
     currentNodeNum != null &&
     pickerNodeNum != null &&
-    currentNodeNum !== pickerNodeNum &&
-    pairEntryCount >= 2,
+    currentNodeNum !== pickerNodeNum,
 });
 
 // S2 — build the union once. `buildStatisticalStrip` also returns a layout; the
@@ -1064,15 +1083,14 @@ Mock block copied from `MessagesTab.tracerouteStrip.test.tsx:31-130`, with
 `useNodeTraceroutes` returning fixture entries and `useTraceroutePairHistory` mocked
 per case.
 
-*Fetch gate (S1)*
-- fewer than 2 matching endpoint entries → `useTraceroutePairHistory` is called with
-  `enabled: false`
-- 2+ matching endpoint entries → `enabled: true`, with `currentNodeNum` and the picker
-  node number
-- entries whose other endpoint is a third node do not count toward the gate
-- `participation: 'hop'` entries do not count toward the gate
+*Fetch gate (S1, amended — validity-only, no participation-count precondition)*
+- a valid pair (both node numbers resolved, distinct, `traceroute:read` granted) →
+  `useTraceroutePairHistory` is called with `enabled: true`, with `currentNodeNum` and
+  the picker node number — asserted with **zero** participation entries, to prove the
+  count precondition is gone
 - `currentNodeNum` null (the MQTT shape) → `enabled: false` and no statistical option
 - `traceroute:write` without `traceroute:read` → `enabled: false`
+- a self-pair (`currentNodeNum === pickerNodeNum`) → `enabled: false`
 
 *Option availability (S2)*
 - history yielding `totalRoutes >= 2` → the option appears, labelled with that number
@@ -1198,12 +1216,17 @@ Acceptance:
   `statisticalPicked` are derived
 - rules 1, 4 (non-statistical path), 6 and 7 keep their exact expressions; rules 2 and
   3 change only their setter call
-- S1's gate fires no history request for a conversation with fewer than 2 matching
-  endpoint entries
+- S1 (amended): the gate is validity-only — `enabled: true` fires for any valid,
+  distinct, permitted pair regardless of participation-entry count; `enabled: false`
+  for no local node (MQTT), a self-pair, or missing `traceroute:read`
 - S3 hides the age line, both badges, the no-return line and the copy links
 - S5 falls back with no effect and no crash
-- `MessagesTab.tracerouteStrip.test.tsx`, `MessagesTab.composeFocus.test.tsx` and
-  `MessagesTab.txDisabled.test.tsx` pass with no edit
+- `useTraceroutePairHistory` is called unconditionally at MessagesTab's top level (no
+  mount-gated wrapper component, no lifted state) — same house convention as the
+  pre-existing `useNodeTraceroutes` call
+- `MessagesTab.tracerouteStrip.test.tsx` passes with no edit; `MessagesTab.composeFocus.test.tsx`
+  and `MessagesTab.txDisabled.test.tsx` pass with exactly one added `vi.mock` line each
+  (mirroring their existing `useNodeTraceroutes` stub) and no other change
 - new tests pass; full suite and `lint:ci` green
 
 ### WP5 — Live validation, docs, PR
@@ -1233,7 +1256,7 @@ Acceptance:
 | The statistical branch regresses the single-route strip | No prop change, no dependency-array change, a sibling test file, and an explicit `git diff --stat` acceptance check (§4.6) |
 | The renderer reads `leg` as direction | D8 is restated at every call site that touches `leg`; §4.2 asserts no arrowheads and no direction word in any aria-label |
 | Unknown hops collapse into one | D10's `id` keying is preserved by the existing loops; §4.2 has a named two-unrecorded-hops test |
-| A history request per conversation open | S1 gates on the already-fetched participation list; §4.4 asserts `enabled: false` for the common case |
+| A history request per conversation open | **Amended, accepted rather than closed**: S1 originally gated on the already-fetched participation list to avoid this, but that gate's premise (a windowed proxy list standing in for the unwindowed history) was disproven by live validation — a real 25-route, 35-83-day-old pair never passed it. S1 now fires on every valid pair, bounded only by the hook's 60s `staleTime`/5min `gcTime`; §4.4 asserts `enabled: true` fires even with zero participation entries, and `enabled: false` still holds for the three validity failures (no local node, self-pair, no read permission) |
 | Plural sentence reads "1 of 15 route" | D15 names the denominator `count`; §4.2 asserts both the singular and plural renderings |
 | PG/MySQL BIGINT strings silently empty the aggregate | `toAggregateRows` coerces; §4.1 has a named string-input test |
 | Opacity dims the focus ring | D16 uses a custom property so `:focus-visible` can restore it; §4.2 asserts the class is present |

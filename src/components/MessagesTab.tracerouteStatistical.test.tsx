@@ -3,9 +3,9 @@
  *
  * Integration coverage for the statistical traceroute wiring in
  * `MessagesTab.tsx` (Statistical Route epic, phase 2, WP4). Proves:
- *   - S1: the pair-history request only fires when the cheap local gate
- *     holds (>= 2 participation entries whose OTHER endpoint is the local
- *     node, `traceroute:read`, distinct non-null node numbers).
+ *   - S1 (amended): the pair-history request fires whenever the cheap
+ *     VALIDITY signals hold — `traceroute:read`, both node numbers resolved,
+ *     a real (non-self) pair — with no participation-count precondition.
  *   - S2: the statistical option is offered only when the built union has
  *     `totalRoutes >= 2`, and its count is the union's count, not the
  *     number of rows fetched.
@@ -23,20 +23,30 @@
  * `vi.hoisted` mock functions instead of the fixed empty-list stub that
  * file uses.
  *
- * `MessagesTab.tsx` implements SR_PHASE2_SPEC.md §3.7 S1 literally:
+ * `MessagesTab.tsx` implements SR_PHASE2_SPEC.md §3.7 S1 (amended):
  * `useTraceroutePairHistory` is called unconditionally at MessagesTab's top
  * level with an `enabled` flag (`hasPermission('traceroute', 'read') &&
  * currentNodeNum != null && pickerNodeNum != null && currentNodeNum !==
- * pickerNodeNum && pairEntryCount >= 2`). The gate-closed cases below
- * therefore assert the mock was called WITH `enabled: false`, not that it
- * was never called. `MessagesTab.composeFocus.test.tsx` and
- * `MessagesTab.txDisabled.test.tsx` (both render `MessagesTab` with no
- * `QueryClientProvider`, and are out of WP4's file ownership) needed the
- * same one-line `vi.mock('../hooks/useTraceroutePairHistory', ...)` stub
- * they already carry for `useNodeTraceroutes`, for the identical reason:
- * TanStack Query's `useQuery` resolves its `QueryClient` from context before
- * it even looks at `enabled`, so an always-mounted, unmocked call throws "No
+ * pickerNodeNum`). The gate-closed cases below therefore assert the mock
+ * was called WITH `enabled: false`, not that it was never called.
+ * `MessagesTab.composeFocus.test.tsx` and `MessagesTab.txDisabled.test.tsx`
+ * (both render `MessagesTab` with no `QueryClientProvider`, and are out of
+ * WP4's file ownership) needed the same one-line
+ * `vi.mock('../hooks/useTraceroutePairHistory', ...)` stub they already
+ * carry for `useNodeTraceroutes`, for the identical reason: TanStack
+ * Query's `useQuery` resolves its `QueryClient` from context before it even
+ * looks at `enabled`, so an always-mounted, unmocked call throws "No
  * QueryClient set" there regardless of the flag's value.
+ *
+ * S1's original design also required >= 2 participation-list ("endpoint")
+ * entries as a cheap proxy for "an aggregate is plausible" — live
+ * validation on the dev rig disproved that: a real pair with 25 stored,
+ * route-bearing traceroutes, all 35-83 days old, showed 0 matching entries
+ * in the participation list's 7-day window, so the count-based gate never
+ * opened for exactly the long-lived pair the feature exists for. The epic's
+ * binding decision is "all stored pair history, no time filter"
+ * (SR_PHASE2_SPEC.md §0); a precondition keyed to a *windowed* list
+ * contradicted that. See SR_PHASE2_SPEC.md D14/S1 for the amendment.
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
@@ -370,26 +380,17 @@ beforeEach(() => {
 });
 
 describe('MessagesTab statistical traceroute wiring (Statistical Route epic, phase 2, WP4)', () => {
-  describe('fetch gate (S1)', () => {
-    it('calls useTraceroutePairHistory with enabled: false with fewer than 2 matching endpoint entries', () => {
+  describe('fetch gate (S1, amended)', () => {
+    // S1 dropped its participation-count precondition (live rig evidence: a
+    // real 25-route pair whose entries were all 35-83 days old showed 0
+    // matching participation-list rows within the 7-day window, so the
+    // count-based gate never opened for it). The gate is validity-only now:
+    // permission, both node numbers resolved, a real (non-self) pair. The
+    // hook fires regardless of `entries` — proven below with zero matching
+    // entries, which the old gate would have refused.
+    it('calls useTraceroutePairHistory with enabled: true for a valid pair with read permission, REGARDLESS of participation entries', () => {
       mockUseNodeTraceroutes.mockReturnValue({
-        data: [mkEntry({ id: 1 })],
-        isLoading: false,
-        error: null,
-        refetch: vi.fn(),
-      });
-      renderTab(makeProps());
-
-      expect(mockUseTraceroutePairHistory).toHaveBeenCalledWith(
-        CURRENT_NUM,
-        PICKER_NUM,
-        expect.objectContaining({ enabled: false }),
-      );
-    });
-
-    it('calls useTraceroutePairHistory with the local and peer node numbers once 2+ matching endpoint entries exist', () => {
-      mockUseNodeTraceroutes.mockReturnValue({
-        data: TWO_MATCHING_ENTRIES,
+        data: [], // zero participation entries — the old count-based gate would stay closed
         isLoading: false,
         error: null,
         refetch: vi.fn(),
@@ -401,44 +402,6 @@ describe('MessagesTab statistical traceroute wiring (Statistical Route epic, pha
         CURRENT_NUM,
         PICKER_NUM,
         expect.objectContaining({ enabled: true }),
-      );
-    });
-
-    it('does not count endpoint entries whose OTHER endpoint is a third node', () => {
-      // The picker (`pickerNodeNum`) took part in these as an endpoint, but
-      // the OTHER end is a third node, not the local node — these describe a
-      // pair that isn't (local, picker) at all, so they must not count.
-      mockUseNodeTraceroutes.mockReturnValue({
-        data: [
-          mkEntry({ id: 1, fromNodeNum: PICKER_NUM, fromNodeId: DM_NODE_ID, toNodeNum: THIRD_NUM, toNodeId: THIRD_NODE_ID }),
-          mkEntry({ id: 2, fromNodeNum: PICKER_NUM, fromNodeId: DM_NODE_ID, toNodeNum: THIRD_NUM, toNodeId: THIRD_NODE_ID }),
-        ],
-        isLoading: false,
-        error: null,
-        refetch: vi.fn(),
-      });
-      renderTab(makeProps());
-
-      expect(mockUseTraceroutePairHistory).toHaveBeenCalledWith(
-        CURRENT_NUM,
-        PICKER_NUM,
-        expect.objectContaining({ enabled: false }),
-      );
-    });
-
-    it('does not count participation:"hop" entries toward the gate', () => {
-      mockUseNodeTraceroutes.mockReturnValue({
-        data: [mkEntry({ id: 1, participation: 'hop' }), mkEntry({ id: 2, participation: 'hop' })],
-        isLoading: false,
-        error: null,
-        refetch: vi.fn(),
-      });
-      renderTab(makeProps());
-
-      expect(mockUseTraceroutePairHistory).toHaveBeenCalledWith(
-        CURRENT_NUM,
-        PICKER_NUM,
-        expect.objectContaining({ enabled: false }),
       );
     });
 
@@ -474,6 +437,23 @@ describe('MessagesTab statistical traceroute wiring (Statistical Route epic, pha
 
       expect(mockUseTraceroutePairHistory).toHaveBeenCalledWith(
         CURRENT_NUM,
+        PICKER_NUM,
+        expect.objectContaining({ enabled: false }),
+      );
+    });
+
+    it('does not fetch for a self-pair (currentNodeNum === pickerNodeNum)', () => {
+      mockUseNodeTraceroutes.mockReturnValue({
+        data: TWO_MATCHING_ENTRIES,
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+      // The "conversation" is with the local node itself.
+      renderTab(makeProps({ currentNodeId: DM_NODE_ID }));
+
+      expect(mockUseTraceroutePairHistory).toHaveBeenCalledWith(
+        PICKER_NUM,
         PICKER_NUM,
         expect.objectContaining({ enabled: false }),
       );
