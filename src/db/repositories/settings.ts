@@ -4,7 +4,7 @@
  * Handles all settings-related database operations.
  * Supports SQLite, PostgreSQL, and MySQL through Drizzle ORM.
  */
-import { eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray, sql, SQL } from 'drizzle-orm';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
 
@@ -173,16 +173,58 @@ export class SettingsRepository extends BaseRepository {
   }
 
   /**
-   * Get all settings for a specific source (returns bare keys without prefix)
+   * Predicate matching every row in one source's `source:{id}:` namespace.
+   *
+   * Extracted so the wildcard escaping and the dialect-dependent ESCAPE literal are
+   * stated exactly once, and so the read (getSourceSettings) and the write
+   * (deleteSourceSettings) can never disagree about what "this source's namespace" means.
+   *
+   * `_` and `%` are LIKE wildcards; source ids are UUIDs today, but escape defensively so
+   * a future non-UUID id cannot over-match a sibling namespace.
+   *
+   * The ESCAPE literal's backslash count is dialect-dependent (verified empirically against
+   * live containers in #4412 Phase 1, not by inspection): MySQL's default backslash-escape
+   * mode means a single-quoted string needs TWO literal backslash characters to represent
+   * ONE escape character, and errors ("syntax error near ''\''") on a single-backslash
+   * literal. SQLite and PostgreSQL (standard_conforming_strings, the default) treat
+   * backslash as an ordinary character in a '...' string, so ONE literal backslash there
+   * already IS the one-character escape sequence — a two-backslash literal fails there
+   * ("ESCAPE expression must be a single character").
+   */
+  private sourceNamespaceMatch(sourceId: string): SQL {
+    const { settings } = this.tables;
+    const pattern = this.sourcePrefix(sourceId).replace(/([\\%_])/g, '\\$1') + '%';
+    return this.isMySQL()
+      ? sql`${settings.key} LIKE ${pattern} ESCAPE '\\\\'`
+      : sql`${settings.key} LIKE ${pattern} ESCAPE '\\'`;
+  }
+
+  /**
+   * Get all settings for one source, keyed by BARE key (prefix stripped).
+   *
+   * One prefix-scoped query. The previous implementation called getAllSettings() and
+   * filtered in JS — O(total settings) per call, and migration 131 grew that table as
+   * (keys x sources) (#4419).
+   *
+   * Rows are written with Object.defineProperty, not `result[k] = v`: setSourceSettings'
+   * key filter (/^[A-Za-z0-9_.-]+$/) permits the literal name `__proto__`, so a stored row
+   * `source:{id}:__proto__` would otherwise reach a prototype-pollution sink on the read
+   * path. defineProperty creates an own data property and never invokes the setter.
    */
   async getSourceSettings(sourceId: string): Promise<Record<string, string>> {
+    const { settings } = this.tables;
     const prefix = this.sourcePrefix(sourceId);
-    const all = await this.getAllSettings();
+    const rows = await this.db
+      .select({ key: settings.key, value: settings.value })
+      .from(settings)
+      .where(this.sourceNamespaceMatch(sourceId));
+
     const result: Record<string, string> = {};
-    for (const [k, v] of Object.entries(all)) {
-      if (k.startsWith(prefix)) {
-        result[k.slice(prefix.length)] = v;
-      }
+    for (const row of rows as Array<{ key: string; value: string }>) {
+      if (!row.key.startsWith(prefix)) continue;
+      Object.defineProperty(result, row.key.slice(prefix.length), {
+        value: row.value, enumerable: true, writable: true, configurable: true,
+      });
     }
     return result;
   }
@@ -277,25 +319,12 @@ export class SettingsRepository extends BaseRepository {
    * match, which is the per-row round-trip pattern that made migration 030 a
    * startup hazard (#4233).
    *
-   * `_` and `%` are LIKE wildcards; source ids are UUIDs today, but escape
-   * defensively so a future non-UUID id cannot over-match a sibling namespace.
-   *
-   * The ESCAPE literal's backslash count is dialect-dependent (verified
-   * empirically, not just by inspection): MySQL's default backslash-escape
-   * mode means a single-quoted string needs TWO literal backslash characters
-   * to represent ONE escape character, and errors ("syntax error near ''\''")
-   * on a single-backslash literal. SQLite and PostgreSQL (standard_conforming_strings,
-   * the default) treat backslash as an ordinary character in a '...' string, so
-   * ONE literal backslash there already IS the one-character escape sequence —
-   * a two-backslash literal fails there ("ESCAPE expression must be a single character").
+   * The namespace match (including the dialect-dependent ESCAPE literal) lives in
+   * `sourceNamespaceMatch` so the read (getSourceSettings) and this delete can never
+   * disagree about what "this source's namespace" means.
    */
   async deleteSourceSettings(sourceId: string): Promise<void> {
-    const { settings } = this.tables;
-    const pattern = this.sourcePrefix(sourceId).replace(/([\\%_])/g, '\\$1') + '%';
-    const query = this.isMySQL()
-      ? sql`${settings.key} LIKE ${pattern} ESCAPE '\\\\'`
-      : sql`${settings.key} LIKE ${pattern} ESCAPE '\\'`;
-    await this.db.delete(settings).where(query);
+    await this.db.delete(this.tables.settings).where(this.sourceNamespaceMatch(sourceId));
   }
 
   // ─── Synchronous SQLite variants ────────────────────────────────────────

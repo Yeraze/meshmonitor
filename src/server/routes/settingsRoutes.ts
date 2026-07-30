@@ -174,6 +174,20 @@ const INACTIVE_NODE_KEYS = [
 ] as const;
 
 /**
+ * The `settings` row key that holds the current value of `key` for this write's scope:
+ * `source:{id}:{key}` for a scoped POST, the bare key for a global one.
+ *
+ * `currentSettings` is one `getAllSettings()` snapshot containing BOTH namespaces, so
+ * scoped change-detection costs no extra query — that is the whole point (#4419).
+ * Any pre-write comparison inside `POST /` that can run with a non-null `sourceId` MUST
+ * go through this; reading `currentSettings.<bareKey>` directly compares a per-source
+ * save against the global row.
+ */
+function scopedSettingKey(key: string, sourceId: string | null): string {
+  return sourceId ? `source:${sourceId}:${key}` : key;
+}
+
+/**
  * Audit-log a settings write. Called from BOTH the per-source branch and the
  * global branch, so per-source changes stop being invisible (epic #4412 bug #6).
  *
@@ -192,10 +206,9 @@ async function auditSettingsWrite(
 ): Promise<void> {
   const validKeySet = new Set<string>(VALID_SETTINGS_KEYS as readonly string[]);
   const changed: Record<string, { before: string | undefined; after: string }> = {};
-  const prefix = sourceId ? `source:${sourceId}:` : '';
   for (const key of Object.keys(filteredSettings)) {
     if (!validKeySet.has(key)) continue;
-    const before = currentSettings[`${prefix}${key}`];
+    const before = currentSettings[scopedSettingKey(key, sourceId)];
     if (before !== filteredSettings[key]) {
       // `Object.defineProperty` (not `changed[key] = ...`) is deliberate, not
       // stylistic: it's how the code proved to static analysis / CodeQL that
@@ -326,8 +339,8 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       const willBeEnabled =
         'autoAckEnabled' in filteredSettings
           ? filteredSettings.autoAckEnabled === 'true'
-          : currentSettings.autoAckEnabled === 'true';
-      const regexChanged = pattern !== (currentSettings.autoAckRegex ?? '');
+          : currentSettings[scopedSettingKey('autoAckEnabled', sourceId)] === 'true';
+      const regexChanged = pattern !== (currentSettings[scopedSettingKey('autoAckRegex', sourceId)] ?? '');
 
       if (willBeEnabled || regexChanged) {
         if (pattern.length > 100) {
@@ -883,6 +896,8 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
     }
 
     if ('autoWelcomeEnabled' in filteredSettings) {
+      // Global-branch only: the `if (sourceId)` branch above returns at :842, so
+      // `currentSettings[...]` here is always the un-prefixed global row by construction (#4419).
       const wasEnabled = currentSettings['autoWelcomeEnabled'] === 'true';
       const nowEnabled = filteredSettings['autoWelcomeEnabled'] === 'true';
       if (!wasEnabled && nowEnabled) {

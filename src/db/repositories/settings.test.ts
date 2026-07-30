@@ -296,6 +296,114 @@ function runSettingsTests(getBackend: () => TestBackend) {
     expect(await repo.getSourceSettings('sourceXa')).toEqual({ maxNodeAgeHours: '12' });
   });
 
+  it('getSourceSettings - returns this source\'s rows with the prefix stripped', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.setSourceSetting('source-a', 'maxNodeAgeHours', '48');
+    await repo.setSourceSetting('source-a', 'hideIncompleteNodes', '1');
+    await repo.setSourceSetting('source-b', 'maxNodeAgeHours', '12');
+    await repo.setSetting('maxNodeAgeHours', '24');
+
+    const result = await repo.getSourceSettings('source-a');
+
+    expect(result).toEqual({ maxNodeAgeHours: '48', hideIncompleteNodes: '1' });
+  });
+
+  it('getSourceSettings - excludes the un-namespaced global rows', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.setSetting('maxNodeAgeHours', '24');
+
+    const result = await repo.getSourceSettings('source-a');
+
+    expect(result).toEqual({});
+  });
+
+  it('getSourceSettings - a sourceId containing a LIKE wildcard does not over-match a lookalike namespace', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // 'source_a' (underscore) is a single-char LIKE wildcard that would match
+    // 'sourceXa' unless escaped. Mirrors the deleteSourceSettings test above —
+    // this is the test that would catch a wrong ESCAPE literal on MySQL.
+    await repo.setSourceSetting('source_a', 'maxNodeAgeHours', '48');
+    await repo.setSourceSetting('sourceXa', 'maxNodeAgeHours', '12');
+
+    expect(await repo.getSourceSettings('source_a')).toEqual({ maxNodeAgeHours: '48' });
+  });
+
+  it('getSourceSettings - issues exactly one SELECT and does not read the whole table', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    // Three sibling sources so a correctly-scoped query returns only A's rows,
+    // not the whole table. Counting db.select() calls alone is insufficient:
+    // the old getAllSettings()-then-JS-filter body also issues exactly one
+    // select() (from inside getAllSettings), so that count is 1 either way.
+    // The real distinguishing signal is whether getAllSettings() itself gets
+    // called at all — the scoped implementation never calls it.
+    await repo.setSourceSetting('source-a', 'maxNodeAgeHours', '48');
+    await repo.setSourceSetting('source-b', 'maxNodeAgeHours', '168');
+    await repo.setSourceSetting('source-c', 'maxNodeAgeHours', '24');
+
+    // Monkey-patching the protected drizzle handle to count round trips (no-explicit-any is off in *.test.ts).
+    const dbHandle = (repo as any).db;
+    const realSelect = dbHandle.select.bind(dbHandle);
+    let selectCalls = 0;
+    dbHandle.select = (...args: unknown[]) => {
+      selectCalls += 1;
+      return realSelect(...args);
+    };
+
+    const realGetAllSettings = repo.getAllSettings.bind(repo);
+    let getAllSettingsCalls = 0;
+    (repo as any).getAllSettings = (...args: unknown[]) => {
+      getAllSettingsCalls += 1;
+      return realGetAllSettings(...(args as []));
+    };
+
+    try {
+      const result = await repo.getSourceSettings('source-a');
+      expect(selectCalls).toBe(1);
+      expect(getAllSettingsCalls).toBe(0);
+      expect(result).toEqual({ maxNodeAgeHours: '48' });
+    } finally {
+      dbHandle.select = realSelect;
+      (repo as any).getAllSettings = realGetAllSettings;
+    }
+  });
+
+  it('getSourceSettings - a stored __proto__ key does not pollute the prototype', async () => {
+    const backend = getBackend();
+    if (!backend.available) {
+      console.log(`⚠ Skipped: ${backend.skipReason}`);
+      return;
+    }
+
+    await repo.setSourceSetting('source-a', '__proto__', 'pwned');
+
+    const result = await repo.getSourceSettings('source-a');
+
+    expect((({}) as any).polluted).toBeUndefined();
+    expect(Object.getPrototypeOf({})).toBe(Object.prototype);
+    expect(Object.prototype.hasOwnProperty.call(result, '__proto__')).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(result, '__proto__')?.value).toBe('pwned');
+  });
+
   it('getSettingForSources - batched multi-source hit/miss for one key', async () => {
     const backend = getBackend();
     if (!backend.available) {

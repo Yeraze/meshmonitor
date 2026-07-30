@@ -54,6 +54,18 @@ function nodeId(nodeNum: number): string {
   return `!${nodeNum.toString(16).padStart(8, '0')}`;
 }
 
+/**
+ * The digest's "View details" line. Omitted entirely when no absolute external URL is
+ * configured, because `${''}/security` renders as a dead relative path in an Apprise
+ * message. `externalUrl` currently has NO writer anywhere in the repo (#4419 / #4437);
+ * whether it should become a user-configurable setting is a product decision, not a
+ * cleanup. Until then this keeps the broken line out of every digest.
+ */
+function detailsLink(baseUrl: string, markdown: boolean): string | null {
+  if (!baseUrl) return null;
+  return markdown ? `[View details](${baseUrl}/security)` : `View details: ${baseUrl}/security`;
+}
+
 export function formatDigestSummary(
   issues: SecurityIssuesData,
   baseUrl: string,
@@ -77,16 +89,16 @@ export function formatDigestSummary(
         '',
         '> No security issues detected.',
         '',
-        `[View details](${baseUrl}/security)`,
-      ].join('\n');
+        detailsLink(baseUrl, true),
+      ].filter((l): l is string => l !== null).join('\n');
     }
     return [
       `MeshMonitor Security Digest — ${date}`,
       '',
       'No security issues detected.',
       '',
-      `View details: ${baseUrl}/security`,
-    ].join('\n');
+      detailsLink(baseUrl, false),
+    ].filter((l): l is string => l !== null).join('\n');
   }
 
   if (md) {
@@ -102,8 +114,8 @@ export function formatDigestSummary(
       `| Excessive Packets | ${issues.excessivePacketsCount} |`,
       `| Time Offset | ${issues.timeOffsetCount} |`,
       '',
-      `[View details](${baseUrl}/security)`,
-    ].join('\n');
+      detailsLink(baseUrl, true),
+    ].filter((l): l is string => l !== null).join('\n');
   }
 
   return [
@@ -116,8 +128,8 @@ export function formatDigestSummary(
     `  Excessive Packets: ${issues.excessivePacketsCount} node${issues.excessivePacketsCount !== 1 ? 's' : ''}`,
     `  Time Offset:      ${issues.timeOffsetCount} node${issues.timeOffsetCount !== 1 ? 's' : ''}`,
     '',
-    `View details: ${baseUrl}/security`,
-  ].join('\n');
+    detailsLink(baseUrl, false),
+  ].filter((l): l is string => l !== null).join('\n');
 }
 
 export function formatDigestDetailed(
@@ -143,16 +155,16 @@ export function formatDigestDetailed(
         '',
         '> No security issues detected.',
         '',
-        `[View details](${baseUrl}/security)`,
-      ].join('\n');
+        detailsLink(baseUrl, true),
+      ].filter((l): l is string => l !== null).join('\n');
     }
     return [
       `MeshMonitor Security Digest — ${date}`,
       '',
       'No security issues detected.',
       '',
-      `View details: ${baseUrl}/security`,
-    ].join('\n');
+      detailsLink(baseUrl, false),
+    ].filter((l): l is string => l !== null).join('\n');
   }
 
   const lines: string[] = [];
@@ -252,7 +264,8 @@ export function formatDigestDetailed(
     }
   }
 
-  lines.push('', md ? `[View details](${baseUrl}/security)` : `View details: ${baseUrl}/security`);
+  const link = detailsLink(baseUrl, md);
+  if (link !== null) lines.push('', link);
   return lines.join('\n');
 }
 

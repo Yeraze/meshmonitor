@@ -229,7 +229,7 @@ intermediate count on this screen, sample for longer before concluding the filte
 showing the age filter taking effect on both the node list and the map; #4412
 closable.
 
-### [ ] Phase 5 — Close the follow-up defects this epic uncovered
+### [x] Phase 5 — Close the follow-up defects this epic uncovered — **COMPLETE** (PR pending)
 
 Added 2026-07-29 at the user's direction: the issues filed along the way get
 addressed, not left orphaned. All four are pre-existing and independent of
@@ -357,6 +357,62 @@ Option 2 is the smallest change and matches what an admin would predict. Raise a
 Phase 2 boundary.
 
 ## Deviations log
+
+### Phase 5
+- **Migration 050 frozen at today's 170-key snapshot, not the 87-key authoring-time list.**
+  Measured against `aae251a6` (the commit that added 050) and independently re-verified:
+  **87 keys then, 170 now, strict superset, 0 removed, 83 added** — and this epic's nine
+  Node Display keys are all among the added. Today's snapshot is the only *zero-delta*
+  option; freezing at 87 would be subtractive, silently ending promotion of those nine for
+  every future v3.x upgrader. A cleanup phase must not change upgrade semantics. The list is
+  now a frozen literal with a comment explaining why, so nobody re-imports the live array.
+- **050's PG/MySQL round-trip loops (~170 each) were deliberately NOT fixed** — the #4233
+  anti-pattern, but it runs once per database under the ledger. The new tests assert
+  behavior only, never round-trip counts, so a future batching fix won't break them.
+- **`externalUrl` was a live user-facing bug, not just an orphan.** Nothing writes it, so
+  `baseUrl` is always `''` — meaning *every Apprise security digest ever sent contained a
+  dead relative link*, `View details: /security`. Fixed by omitting the line when `baseUrl`
+  is empty; a writer is a product decision (filed as **#4437**), not a cleanup.
+- **The `isLocal` flag was deferred, deliberately** (filed as **#4438**). Measured at 7
+  production files, a `MeshCoreContact` type change, and an API response-shape change. The
+  hard part is proving the flag is set on *every* producer — miss one and the local node
+  silently vanishes from the list, which is worse than the bug it fixes. Phase 5 added the
+  four missing `NOTE:` pointers Phase 4 left unmarked.
+
+**Test-quality findings — the sharpest set in the epic. 19 of 27 existing tests in these
+areas would have stayed green with their defect fully present:**
+- All 8 migration-050 tests use keys present in *both* the 87- and 170-key lists, so the
+  suite is **structurally incapable** of observing that the input set varies. Only a
+  source-text drift guard can catch it.
+- `getSourceSettings` had **zero tests as a subject** — it appeared only as an incidental
+  oracle inside `deleteSourceSettings` tests. It is the function Phase 5 rewrote.
+- Migration 050 had **no PostgreSQL or MySQL coverage at all**, despite shipping
+  hand-written implementations for both. Phase 5 added its first.
+- `securityDigestService.perSource.test.ts` seeded `externalUrl: 'https://a.example'` — **a
+  value no production write path can produce.** That fixture is precisely how the orphan
+  stayed hidden.
+- The four `#3806` regex tests are global-path-only; with `prefix=''` the buggy and fixed
+  code are byte-identical, so they were blind rather than bug-pinning.
+
+**Two spec-level test flaws caught *before* shipping, because every new test had to
+demonstrate its own failure first:**
+- WP2: the spec's proof that `getSourceSettings` is prefix-scoped (count `db.select()`
+  calls, expect 1) **would not have caught the regression** — `getAllSettings()` also issues
+  exactly one `select()`, and its JS-filtered result is functionally correct. Strengthened
+  to spy on `getAllSettings` and assert it is never called.
+- WP1: the spec's seeding for one test would have failed RE2 validation under *both* buggy
+  and fixed code, passing for the wrong reason. Corrected to isolate the actual flip.
+
+This is the first phase where the mutation-check requirement caught bad tests at design
+time rather than review time. Keep it.
+
+**Known gap, not fixed here:** `DatabaseService.auditLogAsync` (`src/services/database.ts:4491-4493`)
+accepts `valueBefore`/`valueAfter` and explicitly `void`s them — the schema has no columns.
+So Phase 1's `auditSettingsWrite` computes a full before/after diff for every settings
+change and discards it. The `details` field still records *which* keys changed, so the audit
+trail is not empty, but the diff computation is dead weight — including the
+`Object.defineProperty` two reviewers questioned, which exists solely to build a discarded
+value. Pre-existing; needs a schema migration to resolve.
 
 ### Phase 4
 - **D1 — settings surface composed as a section, not a `SettingsTab` mount.**

@@ -57,6 +57,39 @@ describe('securityDigestService', () => {
       const result = formatDigestSummary(issues, baseUrl, false);
       expect(result).toContain('No security issues');
     });
+
+    it('a digest with no externalUrl configured contains no dangling "/security" link', () => {
+      const issues = {
+        total: 5,
+        lowEntropyCount: 1,
+        duplicateKeyCount: 3,
+        excessivePacketsCount: 1,
+        timeOffsetCount: 0,
+        nodes: [],
+        topBroadcasters: [],
+      };
+
+      // baseUrl === '' is what production sends today — `externalUrl` has no writer
+      // (#4437). This must not render a dead relative "/security" link.
+      const result = formatDigestSummary(issues, '');
+      expect(result).not.toMatch(/View details/);
+      expect(result).not.toContain('/security');
+    });
+
+    it('a digest with externalUrl configured emits an absolute link', () => {
+      const issues = {
+        total: 5,
+        lowEntropyCount: 1,
+        duplicateKeyCount: 3,
+        excessivePacketsCount: 1,
+        timeOffsetCount: 0,
+        nodes: [],
+        topBroadcasters: [],
+      };
+
+      const result = formatDigestSummary(issues, 'https://mesh.example');
+      expect(result).toContain('View details: https://mesh.example/security');
+    });
   });
 
   describe('formatDigestDetailed', () => {
