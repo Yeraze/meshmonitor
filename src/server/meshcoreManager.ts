@@ -922,6 +922,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private autoPathfindingTimer: NodeJS.Timeout | null = null;
   private autoPathfindingJitterTimeout: NodeJS.Timeout | null = null;
   private autoPathfindingLastRunAt: number = 0;
+  // Bumped by every stopAutoPathfinding() call (including the one at the top
+  // of startAutoPathfinding()). Lets a concurrent/overlapping start() call
+  // detect it has been superseded before it installs a timer — see #4434.
+  private autoPathfindingGeneration: number = 0;
 
   // Auto-announce scheduler state. announceScheduler holds the recurring
   // trigger (cron or interval) via the shared CronOrIntervalScheduler
@@ -6124,6 +6128,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
   async startAutoPathfinding(): Promise<void> {
     this.stopAutoPathfinding();
+    const myGeneration = this.autoPathfindingGeneration;
 
     const enabledRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoPathfindingEnabled');
     if (enabledRaw !== 'true') {
@@ -6228,7 +6233,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: run complete`);
     };
 
+    if (myGeneration !== this.autoPathfindingGeneration) {
+      // A newer startAutoPathfinding() call (or a stopAutoPathfinding()) ran
+      // while we were awaiting settings above — don't install a timer this
+      // stale call no longer owns (#4434: overlapping starts previously
+      // stacked orphaned setInterval handles no future stop() could reach).
+      logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: start superseded, aborting`);
+      return;
+    }
+
     this.autoPathfindingJitterTimeout = setTimeout(() => {
+      if (myGeneration !== this.autoPathfindingGeneration) return;
       this.autoPathfindingJitterTimeout = null;
       executeRun().catch(err => logger.error('[MeshCore] Auto-pathfinding scheduler error:', err));
       this.autoPathfindingTimer = setInterval(executeRun, repeatMs);
@@ -6236,6 +6251,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   stopAutoPathfinding(): void {
+    this.autoPathfindingGeneration++;
     if (this.autoPathfindingJitterTimeout) {
       clearTimeout(this.autoPathfindingJitterTimeout);
       this.autoPathfindingJitterTimeout = null;
