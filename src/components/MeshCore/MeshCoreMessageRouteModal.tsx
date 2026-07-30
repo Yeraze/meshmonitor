@@ -86,8 +86,9 @@ const MeshCoreMessageRouteModal: React.FC<Props> = ({ message, fromLabel, contac
   // Geospatial flow line: shown only when EVERY relay hop resolved to a
   // positioned contact (a partial line would misrepresent the path). The
   // sender (matched by pubkey prefix — channel senders have synthetic
-  // 'channel-*' keys and never match) and the local node (advName carries
-  // "(local)") are prepended/appended opportunistically when positioned.
+  // 'channel-*' keys and never match) and the local node (matched via
+  // `isLocal`, #4438) are prepended/appended opportunistically when
+  // positioned.
   const flowPoints = useMemo((): FlowPoint[] | null => {
     if (rows.length === 0) return null;
     const hopPoints: FlowPoint[] = [];
@@ -105,10 +106,7 @@ const MeshCoreMessageRouteModal: React.FC<Props> = ({ message, fromLabel, contac
     const senderPos = contactPosition(senderContact);
     if (senderPos) points.push({ label: fromLabel, lat: senderPos.lat, lon: senderPos.lon, kind: 'endpoint' });
     points.push(...hopPoints);
-    // NOTE: `(local)` is a server-side naming convention (meshcoreContactsRoutes.ts:108,
-    // meshcoreDeviceRoutes.ts:181), not a protocol field — a user-chosen name containing
-    // "(local)" matches here too. Tracked for an explicit isLocal flag in #4438.
-    const localContact = contacts.find((c) => c.advName?.includes('(local)'));
+    const localContact = contacts.find((c) => c.isLocal === true);
     const localPos = contactPosition(localContact);
     if (localPos) {
       points.push({

@@ -35,11 +35,17 @@ describe('securityDigestService — per-source dispatch', () => {
     const fakeDb: any = {
       settings: {
         getSettingForSource: vi.fn(async (sid: string, key: string) => {
-          // NOTE: `externalUrl` below is a mock fixture value only — there is NO
-          // production write path for this key anywhere in the repo (#4437). This
-          // suite's actual subject is per-source dispatch, which is fine and
-          // unaffected either way; don't read this fixture as evidence a writer
-          // exists.
+          // NOTE: `externalUrl` below is a mock fixture value only, and is
+          // deliberately UNREACHABLE in production: #4437 (WP2) gave `externalUrl`
+          // a writer, but it is a GLOBAL-only setting — sendDigestForSource reads
+          // it via plain `getSetting('externalUrl')`, not `getSettingForSource`,
+          // specifically because getSettingForSource does NOT fall back to the
+          // global key for a truthy sourceId (see settings.ts's
+          // getSettingForSource docstring, #2839/#2840). So these per-source
+          // `externalUrl` overrides are never consulted by the code under test —
+          // they exist only because this fixture predates that finding. This
+          // suite's actual subject is per-source dispatch, which is unaffected
+          // either way.
           const overrides: Record<string, Record<string, string>> = {
             'src-A': {
               securityDigestAppriseUrl: 'discord://a',
@@ -53,7 +59,16 @@ describe('securityDigestService — per-source dispatch', () => {
             },
           };
           return overrides[sid]?.[key] ?? null;
-        })
+        }),
+        // WP1 (#4442): sendDigestForSource now resolves the Apprise API server
+        // URL via resolveAppriseServerUrl(this.databaseService.settings, sourceId),
+        // which calls settings.getSetting('appriseApiServerUrl') as part of the
+        // shared resolution chain. Mocked here (unset -> falls through to the
+        // bundled localhost default) purely so the double satisfies the
+        // AppriseSettingsReader shape; this suite's subject remains per-source
+        // dispatch, not endpoint resolution — see securityDigestService.appriseEndpoint.test.ts
+        // for that.
+        getSetting: vi.fn().mockResolvedValue(null),
       },
       sources: {
         getSource: vi.fn(async (sid: string) => ({ id: sid, name: `Source ${sid}` }))

@@ -247,6 +247,7 @@ export const VALID_SETTINGS_KEYS = [
   'remoteLocalStatsFilterLastHeardHours',
   'defaultLandingPage',
   'appriseApiServerUrl',
+  'externalUrl',
   // MeshCore auto-pathfinding
   'meshcoreAutoPathfindingEnabled',
   'meshcoreAutoPathfindingPathDiscoveryEnabled',
@@ -486,7 +487,12 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'nodeDimmingStartHours',
   'nodeDimmingMinOpacity',
   // Misc per-source
-  'externalUrl',
+  // NOTE: `externalUrl` was listed here until #4437. It never had a per-source
+  // reader, and now has an explicitly global one (`securityDigestService.ts`
+  // reads it via `getSetting`). It lives in GLOBAL_ONLY_SETTINGS_KEYS instead,
+  // so a per-source POST is dropped with a warning rather than stored where
+  // nothing will ever read it. Migration 050's frozen copy still lists it —
+  // that list is deliberately frozen history and must not be edited (#4419).
   'geofenceTriggers',
   'lastAnnouncementTime',
   'localNodeNum',
@@ -563,6 +569,10 @@ export type PerSourceSettingKey = typeof PER_SOURCE_SETTINGS_KEYS[number];
  * is silent data loss.
  */
 export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
+  // One origin per install, read via getSetting by securityDigestService (#4437).
+  // getSettingForSource does NOT fall back to the global row (removed in
+  // #2839/#2840), so a per-source value here would be stored and never read.
+  'externalUrl',
   // Documented "global" in this file's own inline comments:
   'pkiDmDecryptionGloballyEnabled',         // :82 master switch, gates every source
   'position_estimation_enabled',            // :141 global batch job (#3271)
@@ -621,17 +631,6 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'autoFavoriteNodes',      // favoritesService.ts:301,342,419; nodesRoutes.ts:443,569
   'lastAnnouncementTime',   // announceRoutes.ts:15,17; autoAnnounceService.ts:242,244
   'localNodeNum',           // meshtasticManager.ts:4688,4748
-  // ── KNOWN ORPHAN — not legitimized by being listed here ─────────────────
-  // externalUrl is READ at securityDigestService.ts (detailsLink()) and written
-  // NOWHERE in the repo. It is in this set because it is in fact absent from
-  // VALID_SETTINGS_KEYS, not because that absence is correct. Either the write
-  // path was never built or the read is dead. Phase 5 WP4 suppressed the dead
-  // "/security" link this produced (securityDigestService.ts) rather than wiring
-  // a writer; the product question of whether to add a writer or drop the
-  // feature is tracked in #4437. Do NOT "fix" it by adding it to
-  // VALID_SETTINGS_KEYS — that creates a new user-writable setting, which is a
-  // feature, not a cleanup.
-  'externalUrl',
 ]);
 
 /**

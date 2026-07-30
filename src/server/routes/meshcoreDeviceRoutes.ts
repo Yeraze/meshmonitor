@@ -14,6 +14,7 @@ import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddle
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import { managerFor, isValidConnectionParams } from './meshcoreRouteShared.js';
 import databaseService from '../../services/database.js';
+import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
 
 const router = Router({ mergeParams: true });
 
@@ -173,20 +174,11 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
     const messages = canReadMessages ? manager.getRecentMessages(50) : [];
     const seqCursor = messages.length > 0 ? Math.max(...messages.map(m => m.timestamp)) : 0;
 
-    // Mirror the contacts-with-localNode logic from GET /contacts
-    const allContacts = [...contacts];
+    // Shares the local-row construction site with GET /contacts and
+    // POST /contacts/refresh (#4438 / #4449) — see meshcoreLocalContactRow.ts.
+    const allContacts: MeshCoreContactResponse[] = withoutLocalFlag(contacts);
     if (localNode && localNode.latitude && localNode.longitude) {
-      allContacts.unshift({
-        publicKey: localNode.publicKey,
-        advName: `${localNode.name} (local)`,
-        name: localNode.name,
-        latitude: localNode.latitude,
-        longitude: localNode.longitude,
-        advType: localNode.advType,
-        rssi: undefined,
-        snr: undefined,
-        lastSeen: Date.now(),
-      });
+      allContacts.unshift(buildLocalContactRow(localNode));
     }
 
     res.json({

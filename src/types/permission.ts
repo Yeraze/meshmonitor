@@ -94,6 +94,33 @@ export function isSourceyResource(resource: ResourceType): boolean {
 }
 
 /**
+ * Resources granted to a newly provisioned non-admin user, written at GLOBAL
+ * scope (`sourceId = NULL`) by the local, JIT and OIDC provisioning paths.
+ *
+ * **Every entry here must be absent from `SOURCEY_RESOURCES`.** The sourcey
+ * branch of `checkPermissionAsync` reads only `bySource` and ignores
+ * `sourceId = NULL` rows, so a per-source resource seeded here produces a row
+ * that is written, visible in the admin UI, and authorizes nothing.
+ *
+ * That is exactly what this list used to do (issue #4448). It previously read
+ * `['dashboard','nodes','messages','settings','info','traceroute']`, of which
+ * four — `nodes`, `messages`, `traceroute`, and (after #4416) `settings` — are
+ * per-source. New users got a working dashboard and info and nothing else,
+ * while the admin UI displayed all six as granted, which is why it went
+ * unnoticed. Dropping them changes **no** effective access; it stops writing
+ * misleading rows.
+ *
+ * Per-source access is granted explicitly by an admin, matching the decision
+ * that a newly created *source* also starts with no grants.
+ *
+ * `permission.sourcey.test.ts` asserts the disjointness above, so adding a
+ * sourcey resource here fails the build rather than silently doing nothing.
+ */
+export const DEFAULT_NEW_USER_RESOURCES: readonly ResourceType[] = [
+  'dashboard', 'info',
+] as const;
+
+/**
  * Response shape for the split permission model: non-sourcey grants live in
  * `global`; per-source grants are keyed by sourceId in `bySource`. Replaces
  * the old OR-merged single map that leaked grants across sources.

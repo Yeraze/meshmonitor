@@ -170,10 +170,12 @@ describe('MeshCoreMessageRouteModal', () => {
     });
 
     it('prepends the sender and appends the local node when they have positions', () => {
+      // The `(local)` suffix stays as display text (#4438); the modal keys
+      // off `isLocal`, not this fixture's advName string.
       const withEndpoints: MeshCoreContact[] = [
         ...positioned,
         { publicKey: 'deadbeefcafe' + 'e'.repeat(52), advType: 1, advName: 'Sender Node', latitude: 30.0, longitude: -90.1 },
-        { publicKey: '99' + 'f'.repeat(62), advType: 1, advName: 'Base (local)', latitude: 30.0, longitude: -89.8 },
+        { publicKey: '99' + 'f'.repeat(62), advType: 1, advName: 'Base (local)', isLocal: true, latitude: 30.0, longitude: -89.8 },
       ];
       render(
         <MeshCoreMessageRouteModal
@@ -187,6 +189,29 @@ describe('MeshCoreMessageRouteModal', () => {
       expect(labels[0]).toBe('Sender');
       expect(labels[labels.length - 1]).toBe('You');
       expect(labels).toHaveLength(4);
+    });
+
+    it('T-C4 negative control: a positioned contact named "(local)" without isLocal is NOT treated as the local node', () => {
+      // Same fixture as above, but `isLocal` is false — this is the exact
+      // bug #4438 exists to fix. Before the fix, the modal matched on the
+      // advName substring and this contact was appended as "You" too.
+      const withEndpoints: MeshCoreContact[] = [
+        ...positioned,
+        { publicKey: 'deadbeefcafe' + 'e'.repeat(52), advType: 1, advName: 'Sender Node', latitude: 30.0, longitude: -90.1 },
+        { publicKey: '99' + 'f'.repeat(62), advType: 1, advName: 'Imposter (local)', isLocal: false, latitude: 30.0, longitude: -89.8 },
+      ];
+      render(
+        <MeshCoreMessageRouteModal
+          message={msg()}
+          fromLabel="Sender"
+          contacts={withEndpoints}
+          onClose={() => {}}
+        />,
+      );
+      const labels = screen.getAllByTestId('flow-label').map((el) => el.textContent);
+      expect(labels).not.toContain('You');
+      // Sender + 2 hops only — no local endpoint appended.
+      expect(labels).toHaveLength(3);
     });
 
     it('shows no map when any hop lacks a position', () => {
