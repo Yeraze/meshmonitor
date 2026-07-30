@@ -283,6 +283,7 @@ describe('MeshCoreNodesView — per-source age filter (#4412 Phase 4)', () => {
   const PK_NO_TIMESTAMP_NODE = '3'.repeat(64);
   const PK_NO_TIMESTAMP_CONTACT = '4'.repeat(64);
   const PK_ADVERT_ONLY = '5'.repeat(64);
+  const PK_ZERO_LAST_HEARD = '6'.repeat(64);
 
   it('lists a node within the cutoff and excludes one outside it', () => {
     const testNodes: MeshCoreNode[] = [
@@ -325,6 +326,21 @@ describe('MeshCoreNodesView — per-source age filter (#4412 Phase 4)', () => {
     ];
     render(<MeshCoreNodesView nodes={testNodes} contacts={testContacts} />);
     expect(listedNames()).toEqual([]);
+  });
+
+  it('falls through a `lastHeard: 0` DB row to the contact\'s lastSeen (merge gap regression, #4433 review)', () => {
+    // A node row persisted with `lastHeard: 0` must NOT be treated as "known
+    // and stale" by the merge — `0` means "unknown" (matching
+    // meshcoreLastHeardMs), so it should fall through to the contact's own
+    // lastSeen, which here is recent enough to survive the cutoff.
+    const testNodes: MeshCoreNode[] = [
+      { publicKey: PK_ZERO_LAST_HEARD, name: 'ZeroLastHeard', advType: 1, lastHeard: 0 },
+    ];
+    const testContacts: MeshCoreContact[] = [
+      { publicKey: PK_ZERO_LAST_HEARD, lastSeen: NOW - 2 * HOUR_MS },
+    ];
+    render(<MeshCoreNodesView nodes={testNodes} contacts={testContacts} />);
+    expect(listedNames()).toEqual(['ZeroLastHeard']);
   });
 
   it('resolves a lastAdvert-only contact (seconds) and applies the cutoff correctly', () => {

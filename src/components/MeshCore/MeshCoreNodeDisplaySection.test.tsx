@@ -223,6 +223,29 @@ describe('MeshCoreNodeDisplaySection', () => {
     }
   });
 
+  it('(6b) clearing a field does not produce NaN in the saved payload (#4433 review)', async () => {
+    renderSection(makeQueryClient());
+    await waitForHydration();
+
+    const input = document.getElementById('maxNodeAge') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '' } });
+
+    // The draft falls back to the last-known-good value rather than NaN, so
+    // the input never renders the literal string "NaN"...
+    expect(input.value).toBe('48');
+
+    await saveBarCapture.current!.onSave();
+
+    // ...and the saved payload carries that same numeric string, not "NaN".
+    await waitFor(() => expect(csrfFetchMock).toHaveBeenCalled());
+    const [, opts] = csrfFetchMock.mock.calls[0];
+    const body = JSON.parse(opts.body);
+    expect(body.maxNodeAgeHours).toBe('48');
+    for (const v of Object.values(body)) {
+      expect(v).not.toBe('NaN');
+    }
+  });
+
   it('(7) MANDATORY: a successful save invalidates the shared node-display query cache', async () => {
     const queryClient = makeQueryClient();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');

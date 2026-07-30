@@ -95,7 +95,11 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
   }, [draft, initial]);
 
   const update = (key: typeof MESHCORE_NODE_DISPLAY_KEYS[number], value: number) => {
-    setDraft((prev) => ({ ...prev, [key]: value }));
+    // Clearing a number input yields `parseInt(...) === NaN` — fall back to
+    // the current draft value rather than letting NaN reach state, where it
+    // would render as the literal string "NaN" and serialize the same way
+    // in the save POST body (#4433 review).
+    setDraft((prev) => ({ ...prev, [key]: Number.isNaN(value) ? prev[key] : value }));
   };
 
   const handleSave = useCallback(async () => {
@@ -110,7 +114,7 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
       });
       if (!res.ok) {
         if (res.status === 403) {
-          showToast(t('automation.insufficient_permissions', 'Insufficient permissions'), 'error');
+          showToast(t('settings.node_display.insufficient_permissions', 'Insufficient permissions'), 'error');
           return;
         }
         throw new Error(`Server returned ${res.status}`);
@@ -123,10 +127,10 @@ export const MeshCoreNodeDisplaySection: React.FC<MeshCoreNodeDisplaySectionProp
       await queryClient.invalidateQueries({ queryKey: nodeDisplaySettingsQueryKey(sourceId) });
       setInitial(draft);
       setHasChanges(false);
-      showToast(t('automation.settings_saved', 'Settings saved'), 'success');
+      showToast(t('settings.node_display.settings_saved', 'Settings saved'), 'success');
     } catch (err) {
       console.error('Failed to save MeshCore Node Display settings:', err);
-      showToast(t('automation.settings_save_failed', 'Failed to save settings'), 'error');
+      showToast(t('settings.node_display.settings_save_failed', 'Failed to save settings'), 'error');
     } finally {
       setIsSaving(false);
     }

@@ -88,7 +88,12 @@ function mergeNodesAndContacts(
         : existing.name;
       existing.rssi = existing.rssi ?? c.rssi;
       existing.snr = existing.snr ?? c.snr;
-      existing.lastHeard = existing.lastHeard ?? meshcoreLastHeardMs(c) ?? undefined;
+      // `0` means "unknown" here too (matches meshcoreLastHeardMs's own
+      // treatment of `0` as absent) — a DB row with `lastHeard: 0` must still
+      // fall through to the contact's lastSeen/lastAdvert, or a node with a
+      // valid recent contact timestamp gets wrongly excluded by the age
+      // filter (#4433 review).
+      existing.lastHeard = (existing.lastHeard || null) ?? meshcoreLastHeardMs(c) ?? undefined;
       existing.hasPosition = existing.hasPosition || hasPos;
       existing.advType = existing.advType ?? c.advType;
     } else {
@@ -275,7 +280,16 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   const merged = useMemo(() => mergeNodesAndContacts(nodes, contacts), [nodes, contacts]);
 
   /** Favorites and the operator's own node are never hidden by the age cutoff
-   *  (parity with useProcessedNodes.ts:194 + #4412 Phase 4 spec §2 D6). */
+   *  (parity with useProcessedNodes.ts:194 + #4412 Phase 4 spec §2 D6).
+   *
+   *  NOTE: matching `(local)` in the name is a convention, not a protocol
+   *  guarantee — the server appends it in `meshcoreDeviceRoutes.ts` /
+   *  `meshcoreContactsRoutes.ts` (`advName: \`${localNode.name} (local)\``),
+   *  and `MeshCoreMap` / `MeshCoreMessageRouteModal` match it the same way.
+   *  A user who names their own device something containing `(local)` would
+   *  be silently exempted from age filtering. An explicit `isLocal` flag
+   *  would be the robust fix, but it spans server routes and three other
+   *  components — out of scope here. */
   const isAgeExempt = useCallback((r: MergedRow): boolean =>
     r.isFavorite || r.name.includes('(local)'), []);
 
@@ -300,7 +314,11 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
 
   /** The map gets the same age-filtered set as the list (#4412 Phase 4 §3.4d)
    *  — a local contact with no matching `MeshCoreNode` row is also kept, so
-   *  the map's centering / polar-grid origin never loses the local node. */
+   *  the map's centering / polar-grid origin never loses the local node.
+   *
+   *  NOTE: same `(local)` naming convention as `isAgeExempt` above — see that
+   *  comment for the server-side origin and the caveat about user-chosen
+   *  names. */
   const visibleKeys = useMemo(() => new Set(aged.map(r => r.publicKey)), [aged]);
   const visibleContacts = useMemo(
     () => contacts.filter(c => visibleKeys.has(c.publicKey) || c.advName?.includes('(local)')),
