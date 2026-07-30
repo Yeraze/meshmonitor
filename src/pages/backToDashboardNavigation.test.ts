@@ -43,9 +43,12 @@ const read = (rel: string) => readFileSync(resolve(srcRoot, rel), 'utf8');
  *  no second argument, i.e. no state. */
 const BARE_ROOT_NAVIGATE = /navigate\(\s*['"`]\/['"`]\s*\)/;
 
-/** A hard navigation to the app root. Cannot carry router state, so it always
- *  triggers the redirect. */
-const HARD_ROOT_NAVIGATION = /(?:window\.)?location\.(?:href|assign|replace)\s*[=(]\s*[`'"]?\$\{appBasename\}\//;
+/** Any hard navigation, however it spells the destination. A full page load
+ *  cannot carry router state, so it always triggers the redirect — the exact
+ *  shape of the URL expression is beside the point, which is why this matches
+ *  the assignment rather than the string (`${appBasename}/`, `appBasename +
+ *  '/'`, a hardcoded '/meshmonitor/', …). */
+const HARD_ROOT_NAVIGATION = /(?:window\.)?location\.(?:href\s*=|assign\s*\(|replace\s*\()/;
 
 describe('back-to-dashboard navigation (#4447)', () => {
   it.each(BACK_TO_DASHBOARD_SOURCES)('%s passes showList when navigating to the dashboard', (rel) => {
