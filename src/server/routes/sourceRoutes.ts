@@ -493,6 +493,26 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       createdBy: req.user?.id,
     });
 
+    // Reconcile 'settings' grants onto the new source (WP7, #4416). Migration
+    // 132 fanned out existing global `settings` grants to every source that
+    // existed at migration time; a source created afterwards got none, so a
+    // non-admin silently loses settings access on it until an admin grants it
+    // manually. This closes that gap at the point a new source appears.
+    // Deliberately placed before the manager-start block below so a slow or
+    // failing manager start can never skip it. Non-fatal: a failure here must
+    // not block source creation.
+    //
+    // NOTE: new-user creation still seeds a *global* 'settings' grant (along
+    // with 'nodes'/'messages'/'traceroute') that is inert under this same
+    // sourcey permission model — a related but materially larger problem
+    // (multiple hardcoded default-resource lists incl. the OIDC JIT path),
+    // tracked separately as #4448 and deliberately out of scope here.
+    try {
+      await databaseService.auth.fanOutGlobalGrantsToSource('settings', source.id);
+    } catch (err) {
+      logger.warn(`Could not reconcile settings grants for new source ${source.id}:`, err);
+    }
+
     // Start manager if source is enabled and autoConnect is not explicitly false.
     // autoConnect=false means the source is registered but won't start monitoring
     // until a user explicitly clicks Connect (issue #2773).
