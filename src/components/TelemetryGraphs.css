@@ -6,6 +6,20 @@
   border-radius: var(--radius-lg);
 }
 
+/*
+ * DM conversation view (#4426): match the 12px horizontal inset the
+ * unmessageable banner and node-info sections use inside
+ * .dm-conversation-panel. Longhand left/right only, so the vertical
+ * padding still comes from the base rule above (20px) and its mobile
+ * override below (10px). The higher specificity here wins over both
+ * shorthand rules for the horizontal axis regardless of source order,
+ * which sidesteps the mobile-cascade ordering trap (#3532).
+ */
+.dm-conversation-panel .telemetry-graphs {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
 .telemetry-graphs-header {
   display: flex;
   flex-wrap: wrap;
