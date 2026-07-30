@@ -637,7 +637,12 @@ router.delete('/nodes/:nodeNum/position-history', requireMessagesWrite, async (r
       return res.status(400).json({ error: 'Bad request', message: 'sourceId is required' });
     }
 
-    const deletedCount = await databaseService.telemetry.purgePositionHistory(nodeNum, sourceId);
+    const deletedTelemetryCount = await databaseService.telemetry.purgePositionHistory(nodeNum, sourceId);
+    // The global position estimate (issue #3271) lives outside per-source telemetry —
+    // a node with zero real telemetry can still carry a stale estimate, which the
+    // purge above would otherwise silently leave behind (#4450).
+    const deletedEstimateCount = await databaseService.deleteEstimatedPositionsByNodeNumsAsync([nodeNum]);
+    const deletedCount = deletedTelemetryCount + deletedEstimateCount;
 
     logger.info(`🗑️ User ${user?.username || 'anonymous'} purged ${deletedCount} position history records for node ${nodeNum} (source=${sourceId})`);
 
