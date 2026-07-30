@@ -221,7 +221,12 @@ describe('autoAckConverterRoutes', () => {
 
     await harness.grant(harness.limited.id, 'automations', 'write');
     await harness.grant(harness.limited.id, 'automation', 'write', harness.sourceA);
-    await harness.grant(harness.limited.id, 'settings', 'write');
+    // 'settings' is a sourcey resource (#4416); this route's settings:write
+    // check (autoAckConverterRoutes.ts:164) is unscoped (no sourceId passed
+    // to checkPermissionAsync), so a single-source grant is enough to
+    // authorize it via checkPermissionAsync's union branch — granting on
+    // every source would pass without exercising that branch.
+    await harness.grant(harness.limited.id, 'settings', 'write', harness.sourceA);
 
     const agent = await harness.loginAs(harness.limited);
     const res = await agent

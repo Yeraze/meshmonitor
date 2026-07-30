@@ -1,8 +1,8 @@
 /**
  * POST /api/settings — per-source permission scoping and isolation (#4412
- * Phase 1 WP2, spec §6.3).
+ * Phase 1 WP2, spec §6.3; classification fixed by Phase 6 #4416).
  *
- * Converted to the real-middleware harness (createRouteTestApp) per CLAUDE.md
+ * Uses the real-middleware harness (createRouteTestApp) per CLAUDE.md
  * ("New or changed route tests MUST use the harness"). Exercises the real
  * `checkPermissionAsync` against real permission rows, rather than a
  * hand-rolled mock lambda that could pass while the real per-source scoping
@@ -10,16 +10,11 @@
  * broken — see src/server/test-helpers/routeTestApp.ts and
  * src/server/routes/sourceRoutes.permissions.test.ts (the canonical template).
  *
- * IMPORTANT — this harness surfaced a pre-existing DB-layer gap (very likely
- * the epic's "bug #4"): `checkPermissionAsync` classifies 'settings' as a
- * NON-sourcey resource (it reads `src/types/permission.ts`'s
- * `SOURCEY_RESOURCES`, which omits 'settings', rather than the newer/complete
- * list at `src/server/constants/permissions.ts`). The practical effect: a
- * settings:write grant scoped to one source currently authorizes writes to
- * every source and to the global (unscoped) endpoint too. See the detailed
- * comment on the "KNOWN GAP" test below. WP2's own route change (§3.3,
- * passing `scopedSourceId` into `checkPermissionAsync`) is correct; the gap
- * is downstream and out of WP2's file ownership to fix.
+ * 'settings' is a sourcey resource (`src/types/permission.ts`'s
+ * `SOURCEY_RESOURCES`, PER_SOURCE_NODE_DISPLAY_PHASE6_SPEC.md §2): a
+ * settings:write grant scoped to one source authorizes writes on that source
+ * only, never on a different source. See the test below for the exact-match
+ * vs. union-branch behavior this produces.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -43,44 +38,26 @@ describe('POST /api/settings — per-source permission scoping (#4412 WP2 §6.3)
     await harness.cleanup();
   });
 
-  // ── DEVIATION FROM THE SPEC'S NAIVE EXPECTATION — recorded per §6.3 item 3's
-  // own instruction ("if source-scoped grants are designed to imply the
-  // global scope, assert the actual designed behavior and record it ...
-  // rather than forcing this expectation").
+  // 'settings' is a sourcey resource (src/types/permission.ts's
+  // SOURCEY_RESOURCES, PHASE6 spec §2), so checkPermissionAsync takes the
+  // exact-match branch when a sourceId is given: a grant scoped to sourceA
+  // authorizes sourceA only, and is rejected on sourceB (403).
   //
-  // ROOT CAUSE (verified empirically, not assumed): `checkPermissionAsync`
-  // (src/services/database.ts:4372) classifies "sourcey" resources via
-  // `isSourceyResource()` imported from **src/types/permission.ts**, whose
-  // own `SOURCEY_RESOURCES` list does NOT include 'settings' (it only has
-  // channel_0-7, messages, nodes, nodes_private, traceroute, packetmonitor,
-  // configuration, connection, automation, waypoints, remote_admin). A
-  // DIFFERENT, newer `SOURCEY_RESOURCES` set exists at
-  // src/server/constants/permissions.ts and DOES include 'settings' (added
-  // in commit eabca8a5) — but its accompanying `isResourceSourcey()` export
-  // is dead code, never imported anywhere. The two lists drifted apart and
-  // nothing reconciles them.
-  //
-  // CONSEQUENCE: `requirePermission('settings', 'write', { sourceIdFrom:
-  // 'query' })` correctly resolves `scopedSourceId` and passes it into
-  // `checkPermissionAsync(user.id, 'settings', 'write', scopedSourceId)` —
-  // WP2's route-level change (§3.3) is correct and does exactly what the
-  // spec asked. But because `checkPermissionAsync` treats 'settings' as a
-  // NON-sourcey resource, it takes the bottom branch of the function, which
-  // authorizes on ANY row for that resource regardless of the row's own
-  // `sourceId` AND regardless of the `sourceId` being checked — so a grant
-  // scoped to sourceA also authorizes writes to sourceB, and to the
-  // unscoped global endpoint. This is a pre-existing DB-layer gap (the
-  // exact-match/union branches for genuinely-sourcey resources, a few lines
-  // above in the same function, are never reached for 'settings') — it is
-  // NOT introduced by WP2 and cannot be fixed from files in WP2's ownership
-  // (src/server/routes/settingsRoutes.ts + its tests + 4 lines of
-  // server.ts). The fix belongs in src/types/permission.ts's
-  // `SOURCEY_RESOURCES` (add 'settings', and ideally 'dashboard', 'info',
-  // 'audit', 'security' to match constants/permissions.ts, or delete the
-  // duplicate list entirely and import the constants/permissions.ts one).
-  // Flagged prominently in the WP2 report as a blocking follow-up — this is
-  // very likely "epic bug #4" itself, still open after WP2.
-  it('KNOWN GAP: a sourceA-scoped grant currently also authorizes sourceB and the global write (checkPermissionAsync classifies "settings" as non-sourcey — see comment above)', async () => {
+  // The unscoped global write is different. settingsRoutes.ts:291 declares
+  // `sourceIdFrom: 'query'`, so an unscoped POST has no scopedSourceId and
+  // checkPermissionAsync takes the sourcey UNION branch instead — "holds
+  // settings:write on at least one source" authorizes it, same as the other
+  // 34 unscoped settings:write gates in the app (map styles, geojson layers,
+  // scripts, system restart, ...), none of which have a single source to
+  // name. This is the settled ruling in PHASE6 spec §11: 200 here is
+  // deliberate, not a residual leak. §11's decisive point is that 403 would
+  // create a state no admin can grant their way out of — migration 132
+  // deletes the sourceId=NULL settings rows, so after this phase a "global
+  // settings grant" no longer exists as a concept for any control in the
+  // product to create; refusing the unscoped write would leave a user
+  // holding settings:write on a source with no way to save global settings
+  // at all.
+  it('a sourceA-scoped settings:write grant is rejected on sourceB and honored on the unscoped global write (#4416, PHASE6 spec §11)', async () => {
     await harness.grant(harness.limited.id, 'settings', 'write', harness.sourceA);
     const agent = await harness.loginAs(harness.limited);
 
@@ -89,20 +66,14 @@ describe('POST /api/settings — per-source permission scoping (#4412 WP2 §6.3)
       .send({ maxNodeAgeHours: '48' });
     expect(resA.status).toBe(200);
 
-    // Intended (epic) behavior would be 403 here. Actual current behavior is
-    // 200 — see the root-cause comment above the test.
-    //
-    // TODO(#4416): when the two SOURCEY_RESOURCES lists are reconciled, BOTH
-    // assertions below flip to 403 and this test should be renamed off
-    // "KNOWN GAP". Do NOT make them pass by weakening the grant setup — a 403
-    // here is the entire point of that fix. #4416 also carries the migration
-    // that re-grants existing sourceId=NULL rows; without it every non-admin
-    // user loses settings access the moment the classification flips.
+    // The actual fix: a sourceA grant no longer authorizes sourceB.
     const resB = await agent
       .post(`/api/settings?sourceId=${harness.sourceB}`)
       .send({ maxNodeAgeHours: '48' });
-    expect(resB.status).toBe(200);
+    expect(resB.status).toBe(403);
 
+    // Settled per §11 — see the comment above the test. Not a leak: the
+    // unscoped endpoint takes the union branch by design.
     const resGlobal = await agent.post('/api/settings').send({ maxNodeAgeHours: '48' });
     expect(resGlobal.status).toBe(200);
   });

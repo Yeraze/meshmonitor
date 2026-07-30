@@ -1,5 +1,16 @@
 /**
  * Settings Routes Unit Tests
+ *
+ * NOTE (PHASE6 spec §6.4, #4416): this suite mocks `checkPermissionAsync`
+ * directly (see the `vi.mock('../../services/database.js', ...)` below), so
+ * it cannot detect any defect in how 'settings' is classified as sourcey vs.
+ * global — the mock IS the thing under test here, not the real per-source
+ * scoping logic. It legitimately covers handler logic (validation, callbacks,
+ * envelope shape) but carries no authz coverage. For real per-source
+ * settings:write scoping/isolation coverage against the actual
+ * checkPermissionAsync, see `settingsRoutes.perSource.test.ts`
+ * (createRouteTestApp-based). Not converted to the harness here — CLAUDE.md:
+ * legacy tests convert opportunistically, not as a mass rewrite.
  */
 
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
