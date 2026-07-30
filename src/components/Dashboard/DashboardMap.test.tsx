@@ -6,6 +6,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import DashboardMap from './DashboardMap';
 import { darkOverlayColors } from '../../config/overlayColors';
+// D3's most-permissive cross-source rule (#4412 Phase 3): DashboardMap itself
+// takes maxNodeAgeHours as a plain prop (unchanged by Phase 3), but the value
+// DashboardPage feeds it is `maxAcross(...)` over every source in view. Using
+// the real exported helper here — rather than a disconnected literal — ties
+// these tests to the actual rule instead of a number that happens to match it.
+import { maxAcross } from '../../hooks/useNodeDisplaySettings';
+import { NODE_DISPLAY_NUMERIC_DEFAULTS } from '../../constants/nodeDisplayDefaults';
 
 // Shared, mutable mocks for the map instance and settings so individual tests
 // can assert fitBounds behavior and toggle the Default Map Center (issue #4125).
@@ -299,7 +306,7 @@ const defaultProps = {
   customTilesets: [],
   defaultCenter: { lat: 35.0, lng: -80.0 },
   sourceId: null,
-  maxNodeAgeHours: 24,
+  maxNodeAgeHours: NODE_DISPLAY_NUMERIC_DEFAULTS.maxNodeAgeHours,
 };
 
 // ---------------------------------------------------------------------------
@@ -548,9 +555,14 @@ describe('DashboardMap', () => {
   });
 
   it('does not render markers for stale (inactive) nodes outside the maxNodeAgeHours window', () => {
+    // Single source in view: D3's max-across rule over one value is a no-op,
+    // but driving the prop through the real `maxAcross` helper — rather than
+    // a disconnected literal — ties this test to the actual rule.
+    const maxNodeAgeHours = maxAcross([NODE_DISPLAY_NUMERIC_DEFAULTS.maxNodeAgeHours]);
     render(
       <DashboardMap
         {...defaultProps}
+        maxNodeAgeHours={maxNodeAgeHours}
         nodes={[nodeWithPosition, staleNodeWithPosition]}
       />,
     );
@@ -559,14 +571,49 @@ describe('DashboardMap', () => {
   });
 
   it('renders markers for stale nodes that are favorites (favorites bypass age filter)', () => {
+    const maxNodeAgeHours = maxAcross([NODE_DISPLAY_NUMERIC_DEFAULTS.maxNodeAgeHours]);
     render(
       <DashboardMap
         {...defaultProps}
+        maxNodeAgeHours={maxNodeAgeHours}
         nodes={[staleFavoriteNodeWithPosition]}
       />,
     );
     const markers = screen.getAllByTestId('map-marker');
     expect(markers.length).toBe(1);
+  });
+
+  // --- D3 most-permissive rule (#4412 Phase 3) --------------------------------
+  //
+  // DashboardMap merges nodes from every source into one view, so it cannot
+  // use a single source's maxNodeAgeHours. DashboardPage instead feeds it
+  // `maxAcross(...)` over every source's window (D3: "never hide a node a
+  // source-scoped view would show"). These two tests exercise that rule at
+  // the DashboardMap boundary directly.
+
+  it('D3: with sources A=6h and B=72h in view, a node last heard 48h ago still renders', () => {
+    const maxNodeAgeHours = maxAcross([6, 72]);
+    render(
+      <DashboardMap
+        {...defaultProps}
+        maxNodeAgeHours={maxNodeAgeHours}
+        nodes={[staleNodeWithPosition]}
+      />,
+    );
+    const markers = screen.getAllByTestId('map-marker');
+    expect(markers.length).toBe(1);
+  });
+
+  it('D3 inverse: with every source at 6h, a node last heard 48h ago does not render', () => {
+    const maxNodeAgeHours = maxAcross([6, 6]);
+    render(
+      <DashboardMap
+        {...defaultProps}
+        maxNodeAgeHours={maxNodeAgeHours}
+        nodes={[staleNodeWithPosition]}
+      />,
+    );
+    expect(screen.queryAllByTestId('map-marker')).toHaveLength(0);
   });
 
   // --- MeshCore neighbor links ------------------------------------------------

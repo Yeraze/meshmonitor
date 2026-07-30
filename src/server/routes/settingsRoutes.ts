@@ -24,7 +24,7 @@ import { resolveSourceManager } from '../utils/resolveSourceManager.js';
 import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
 import { positionEstimationScheduler } from '../services/positionEstimationScheduler.js';
 import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
-import { NODE_DISPLAY_RANGES } from '../../constants/nodeDisplayDefaults.js';
+import { NODE_DISPLAY_RANGES, NODE_DISPLAY_SETTING_KEYS } from '../../constants/nodeDisplayDefaults.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
 
@@ -197,6 +197,13 @@ async function auditSettingsWrite(
     if (!validKeySet.has(key)) continue;
     const before = currentSettings[`${prefix}${key}`];
     if (before !== filteredSettings[key]) {
+      // `Object.defineProperty` (not `changed[key] = ...`) is deliberate, not
+      // stylistic: it's how the code proved to static analysis / CodeQL that
+      // `key` — checked against `validKeySet` above, but still a
+      // request-derived string — can't trigger prototype pollution via a
+      // plain-assignment sink. Preserved verbatim from the pre-extraction
+      // code (Phase 1); swapping it for `changed[key] = ...` risks reopening
+      // that finding even though `key` is allowlisted here.
       Object.defineProperty(changed, key, {
         value: { before, after: filteredSettings[key] },
         enumerable: true, writable: true, configurable: true,
@@ -234,10 +241,20 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
     const globalSettings = await databaseService.settings.getAllSettings();
 
     if (sourceId) {
-      // Strip source: prefixed keys from global (they are internal implementation detail)
+      // Strip source: prefixed keys from global (they are internal implementation detail).
+      //
+      // #4412 Phase 3 (D5): the ten Node Display keys have no runtime global
+      // fallback on the read path (getSettingForSource lost it in #2839/#2840), so
+      // back-filling them here would show a value the backend will never use — a
+      // source created after migration 131 has no seeded per-source row, and would
+      // otherwise display the legacy global value while behaving as the hardcoded
+      // default. Exclude them from the global back-fill; they end up present only
+      // when the per-source row exists.
       const cleaned: Record<string, string> = {};
       for (const [k, v] of Object.entries(globalSettings)) {
-        if (!k.startsWith('source:')) cleaned[k] = v;
+        if (k.startsWith('source:')) continue;
+        if ((NODE_DISPLAY_SETTING_KEYS as readonly string[]).includes(k)) continue;
+        cleaned[k] = v;
       }
       const sourceSettings = await databaseService.settings.getSourceSettings(sourceId);
       const merged = { ...cleaned, ...sourceSettings };
@@ -252,7 +269,7 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
     }
   } catch (error) {
     logger.error('Error fetching settings:', error);
-    res.status(500).json({ error: 'Failed to fetch settings' });
+    fail(res, 500, 'SETTINGS_FETCH_FAILED', 'Failed to fetch settings');
   }
 });
 

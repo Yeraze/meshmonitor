@@ -2,8 +2,9 @@
  * Resolve the effective "maximum age" (in hours) used to filter the map.
  *
  * The Map Features age slider (`mapMaxAgeHours`) is `null` when the user hasn't
- * moved it — the map then follows the global `maxNodeAgeHours` setting (the
- * slider's default position). A concrete value is clamped to
+ * moved it — the map then follows the source's `maxNodeAgeHours` setting
+ * (per-source since #4412 Phase 3; the slider's default position). A concrete
+ * value is clamped to
  * `[1, settingsMaxAgeHours]` so it can never exceed the configured maximum
  * (e.g. after the operator lowers the setting below a previously-saved value).
  *

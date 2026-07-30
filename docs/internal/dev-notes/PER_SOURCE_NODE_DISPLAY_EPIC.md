@@ -141,7 +141,7 @@ in the app.
 with different `maxNodeAgeHours` get different node sets; inactive-node service
 tests covering per-source thresholds and intervals.
 
-### [ ] Phase 3 — Frontend per-source state & UI
+### [x] Phase 3 — Frontend per-source state & UI — **COMPLETE** (PR pending)
 
 **Work:**
 - `SettingsTab` `mode="source"`: load with `?sourceId`; split the save so Node
@@ -162,7 +162,24 @@ console errors.
 
 ### [ ] Phase 4 — MeshCore node-age filtering (closes #4412)
 
+> **Scope expanded 2026-07-29, found during Phase 3 architecture.**
+> **MeshCore sources have no Node Display settings UI at all.** `SettingsTab`
+> mounts in exactly two places — `GlobalSettingsPage.tsx:89` (`mode="global"`)
+> and `App.tsx:3640` (`mode="source"`, the *Meshtastic* source route). A MeshCore
+> source renders `MeshCorePage`, which never renders `SettingsTab`.
+>
+> This is literally what #4412 asks for: *"set up Node Display menu for the
+> map/list based on last advert time, same as for Meshtastic."* So Phase 4 must
+> **add the settings surface**, not merely apply a filter behind one. Phase 3
+> implements and unit-tests the MeshCore hide-branch for `localStatsIntervalMinutes`
+> and `nodeHopsCalculation`, but that branch is unreachable until this mount point
+> exists — Phase 3 cannot browser-validate it, and Phase 4 must.
+
 **Work:**
+- **Add the Node Display settings surface to MeshCore sources** (the mount point
+  above). Decide whether to reuse `SettingsTab` in `mode="source"` or to compose
+  the section into `MeshCorePage`, and justify against the existing MeshCore
+  section components.
 - Apply the per-source `maxNodeAgeHours` to `MeshCoreNodesView.tsx` and
   `MeshCoreMap.tsx` using a shared ms/s normalization helper.
 - Favorites bypass at parity with Meshtastic (`useProcessedNodes` semantics).
@@ -173,6 +190,67 @@ console errors.
 **Exit criteria:** full suite green; browser validation on a MeshCore source
 showing the age filter taking effect on both the node list and the map; #4412
 closable.
+
+### [ ] Phase 5 — Close the follow-up defects this epic uncovered
+
+Added 2026-07-29 at the user's direction: the issues filed along the way get
+addressed, not left orphaned. All four are pre-existing and independent of
+Phases 1-4 — verified that none of them becomes reachable *through* this epic's
+changes, which is why they were not folded into earlier phases.
+
+**Work:**
+- **#4419 (a)** — `settingsRoutes.ts:312-313` compares a per-source save against
+  the *global* current value (`currentSettings` holds bare, un-prefixed keys).
+  Affects `autoAckEnabled` / `autoAckRegex` — both already per-source — so
+  change-detection is wrong in both directions when a source overrides the
+  global. Copy the prefixed-lookup pattern from `auditSettingsWrite`, which
+  already does this correctly. Audit for any other `currentSettings.<key>` read
+  reachable from the per-source branch.
+- **#4419 (b)** — `getSourceSettings` is an O(total settings) full-table scan
+  (`getAllSettings()` + JS filter). Migration 131 made the table grow as
+  keys × sources. Replace with a prefix-scoped query. **Reuse the dialect
+  branching from `deleteSourceSettings`** — MySQL's default backslash-escape mode
+  needs two literal backslashes in the `ESCAPE` literal where SQLite and
+  PostgreSQL need exactly one.
+- **Migration 050 replay bug** — it imports `PER_SOURCE_SETTINGS_KEYS`, so fresh
+  installs (which replay every migration) run it against whatever that array
+  holds *today*, not what it held when 050 was written. Phase 1's migration 131
+  froze its own list to avoid this; 050 needs the same treatment. Note the
+  array has already grown by 9 keys this epic, so the drift is live.
+- **`externalUrl` orphan** — read by `securityDigestService.ts:332`, written
+  nowhere. Decide: wire up a writer, or delete the read. **Do not** "fix" it by
+  adding the key to `VALID_SETTINGS_KEYS` — that silently creates a new
+  user-writable setting, which is a product decision, not a cleanup.
+
+**Exit criteria:** full suite green across all three backends; a `*.perSource.test.ts`
+proving the change-detection fix; a test proving `getSourceSettings` issues one
+scoped query rather than reading the whole table; #4419 closable.
+
+### [ ] Phase 6 — Reconcile the two `SOURCEY_RESOURCES` lists (#4416)
+
+**Breaking change — needs a user decision before implementation starts.**
+
+See "Blocked: bug #4" below for the full analysis. Summary: `src/types/permission.ts`
+(the live list) omits `settings`, `dashboard`, `info`, `audit`, and `security`;
+`src/server/constants/permissions.ts` includes them but its helper is dead code.
+So `checkPermissionAsync` discards the `sourceId` for all five, and a
+source-A-scoped grant authorizes source-B writes.
+
+**Decisions required from the user first:**
+1. Which of the five resources should genuinely be per-source? (`settings` is the
+   one this epic cares about; the other four are collateral.)
+2. Existing grants are stored `sourceId = NULL`. For any resource that becomes
+   sourcey, the migration must re-grant per source or **every non-admin user
+   loses access to it**. Confirm that migration strategy is acceptable.
+
+**Work (after those decisions):** delete one of the two lists so they cannot drift
+again; migration re-granting existing `sourceId = NULL` rows; `userRoutes.ts`
+PUT validation; `UsersTab.tsx` grouping (sourcey and global grants render in
+different sections).
+
+**Exit criteria:** full suite green; a test proving a source-A-scoped
+`settings:write` grant is rejected on source B; an upgrade test proving existing
+grants survive the migration; #4416 closable.
 
 ---
 
@@ -241,6 +319,49 @@ Option 2 is the smallest change and matches what an admin would predict. Raise a
 Phase 2 boundary.
 
 ## Deviations log
+
+### Phase 3
+- **Browser-validated** against two live Meshtastic sources (Sandbox / BLESandbox) on the
+  deployed worktree build. Evidence:
+  - `POST /api/settings?sourceId=A {maxNodeAgeHours:72}` and `…?sourceId=B {…:2}` →
+    reads back A=72, B=2, **global still 24**. No leak to sibling or global.
+  - Narrowing A to 1h took its rendered node list from **262 rows → 99**; B, untouched at
+    its own value, was unaffected.
+  - localStorage is namespaced `nodeDisplay:{sourceId}:{key}` (9 keys per source), and the
+    legacy bare `maxNodeAgeHours` key reads **null** — the live confirmation of the
+    assertion WP2 rewrote its two `SettingsContext` tests to make.
+  - All 10 settings render on the per-source Settings page with that source's own values.
+  - Only console error is a pre-existing 404 for `locales/en-US.json` (i18n probing a
+    region locale before falling back to `en.json`). Unrelated.
+- **`activeWindowConfig.ts` was deleted, not source-keyed** (D2). One reader, one writer; a
+  keyed registry would be stale for any source whose provider had not mounted this
+  page-load, and Map Analysis is often the first page loaded.
+- **`App.tsx` had a second settings loader** duplicating `SettingsContext.loadServerSettings`
+  — both wrote the same four states, last-writer-wins, and App's `[]` deps meant a stale
+  mount-time value could win *after* a source switch. Deleted; `SettingsContext` is sole owner.
+- **Removing `showIncompleteNodes` from `UIContext` was not self-contained.** Three
+  consumers (`NodeFilterPopup`, `NodesTab`, `SettingsTab`) still read it and the build
+  broke. Two belong to later work packages — the file-ownership table prevents *concurrent*
+  edits but does not make a context-field removal atomic. Worth remembering when planning a
+  phase around shared state.
+- **Canonical setter only.** `hideIncompleteNodes` is the stored key, `showIncompleteNodes`
+  a derived read, `setHideIncompleteNodes` the only setter. No inverted alias was added —
+  one piece of state with two opposite-polarity setters is a bug waiting to happen.
+- **A fourth bug-pinning test found and removed.** `database.extended.test.ts` re-implemented
+  the *pre-Phase-2 global read* (`parseInt(getSetting('maxNodeAgeHours') || '24')`) and
+  asserted against its own copy. Replacement: `database.maxNodeAge.perSource.test.ts`.
+- **`server.settings-persistence.test.ts` now executes the real partition source.** The
+  `const settings = {…}` literal survives the save split intact, so dropping a key from the
+  *scoped* POST would have passed silently. Rather than re-implement the partition in the
+  test (the exact mistake behind the other four), it extracts and runs the production source
+  against `NODE_DISPLAY_SETTING_KEYS`, asserting by count **and** name; a regex miss throws a
+  named diagnostic. Mutation-tested: dropping one key fails all three assertions.
+- **`SettingsTab.elevation.test.tsx`'s `useSettings` mock had to become stable** — the same
+  constraint its `useUI` mock already documents, inherited because the setter changed
+  contexts. A fresh `vi.fn()` per render re-runs the settings-load effect and clobbers
+  in-test edits.
+- **Parallel full-suite runs corrupt the shared MySQL test schema.** An agent's concurrent
+  vitest invocations produced spurious failures in files it never touched. Run one at a time.
 
 ### Phase 2
 - **Defaults live in two modules, not one.** `src/constants/nodeDisplayDefaults.ts` holds

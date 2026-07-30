@@ -1,6 +1,9 @@
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useUI } from '../contexts/UIContext';
+// #4412 Phase 3: showIncompleteNodes moved from UIContext to SettingsContext,
+// where it is per-source like the rest of the Node Display group.
+import { useSettings } from '../contexts/SettingsContext';
 import { useChannels } from '../hooks/useServerData';
 import { UiIcon } from './icons';
 
@@ -19,13 +22,12 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
     setSecurityFilter,
     channelFilter,
     setChannelFilter,
-    showIncompleteNodes,
-    setShowIncompleteNodes,
     showIgnoredNodes,
     setShowIgnoredNodes,
     filterRemoteAdminOnly,
     setFilterRemoteAdminOnly,
   } = useUI();
+  const { showIncompleteNodes, setHideIncompleteNodes } = useSettings();
   const { channels } = useChannels();
 
   // Get unique channel numbers from available channels
@@ -47,7 +49,7 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
   useEffect(() => {
     if (channelFilter !== 'all' && isSecureChannel(channelFilter)) {
       // Automatically hide incomplete nodes on secure channels
-      setShowIncompleteNodes(false);
+      setHideIncompleteNodes(true);
     }
   }, [channelFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -107,7 +109,7 @@ export const NodeFilterPopup: React.FC<NodeFilterPopupProps> = ({ isOpen, onClos
               <input
                 type="checkbox"
                 checked={!showIncompleteNodes}
-                onChange={(e) => setShowIncompleteNodes(!e.target.checked)}
+                onChange={(e) => setHideIncompleteNodes(e.target.checked)}
               />
               <span>{t('node_filter.hide_incomplete')}</span>
             </label>

@@ -21,6 +21,7 @@ import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { VALID_SETTINGS_KEYS } from './constants/settings.js';
+import { NODE_DISPLAY_SETTING_KEYS } from '../constants/nodeDisplayDefaults.js';
 
 // ─── Database mock ────────────────────────────────────────────────────────
 // In-memory store that mimics setSetting / getAllSettings round-trip
@@ -228,6 +229,65 @@ function extractSettingsTabSends(): string[] {
   }
 
   return keys;
+}
+
+/**
+ * Extract SettingsTab.tsx's scoped-POST partition — the `nodeDisplayBody` /
+ * `globalBody` split added in #4412 Phase 3 (WP4b) — and statically execute
+ * the extracted source text against the REAL `NODE_DISPLAY_SETTING_KEYS`
+ * import and a synthetic `settings` object built from every key
+ * `extractSettingsTabSends()` finds.
+ *
+ * This runs the production partition code, not a re-implementation of it: a
+ * developer who quietly drops a Node Display key from the scoped body (or
+ * routes an extra key into it) fails this test even though the untouched
+ * `const settings = { ... }` literal still satisfies every other assertion
+ * in this file. See §2.2 R6 of PER_SOURCE_NODE_DISPLAY_PHASE3_SPEC.md — this
+ * is the single highest-value assertion in that phase.
+ */
+function extractSettingsTabPartition(): { nodeDisplayBody: Record<string, unknown>; globalBody: Record<string, unknown> } {
+  const source = readFileSync(
+    resolve(SRC_ROOT, 'components/SettingsTab.tsx'),
+    'utf-8'
+  );
+
+  const partitionMatch = source.match(
+    /const nodeDisplayBody[\s\S]*?(?=\n\s*if \(sourceQuery)/
+  );
+  if (!partitionMatch) {
+    throw new Error(
+      'Could not find the nodeDisplayBody/globalBody partition in SettingsTab.tsx handleSave. ' +
+      'Has the split-save pattern changed? Update this regex (see #4412 Phase 3 WP4b).'
+    );
+  }
+
+  const settingsFixture: Record<string, string> = {};
+  for (const key of SETTINGS_TAB_SENDS) {
+    settingsFixture[key] = `fixture-${key}`;
+  }
+
+  // `new Function` runs plain JS, not TypeScript — strip the (fixed, known)
+  // type annotations this specific block carries so the extracted text
+  // parses. This is textual stripping only; it does not alter the runtime
+  // logic (control flow, operators, identifiers) of the extracted code.
+  const runnableJs = partitionMatch[0]
+    .replace(/:\s*Record<string,\s*unknown>/g, '')
+    .replace(/\s+as\s+readonly string\[\]/g, '');
+
+  // Statically executes the ACTUAL extracted production source text (not a
+  // re-implementation of it) against the real NODE_DISPLAY_SETTING_KEYS
+  // import; see the function doc comment. `no-new-func` isn't enabled for
+  // this test file (verified via lint:ci), so no disable directive is needed.
+  const runPartition = new Function(
+    'settings',
+    'NODE_DISPLAY_SETTING_KEYS',
+    `${runnableJs}\nreturn { nodeDisplayBody, globalBody };`
+  ) as (settings: Record<string, string>, keys: readonly string[]) => {
+    nodeDisplayBody: Record<string, unknown>;
+    globalBody: Record<string, unknown>;
+  };
+
+  return runPartition(settingsFixture, NODE_DISPLAY_SETTING_KEYS);
 }
 
 /**
@@ -441,6 +501,39 @@ describe('Settings Persistence', () => {
       // If this fails, a setting is being sent to the server but never
       // loaded back — exactly the bug from issue #2048
       expect(keysNotLoaded).toEqual([]);
+    });
+  });
+
+  describe('Scoped-POST partition (#4412 Phase 3 WP4b, R6)', () => {
+    // Executes the ACTUAL nodeDisplayBody/globalBody split extracted from
+    // SettingsTab.tsx's handleSave (see extractSettingsTabPartition above),
+    // not a re-implementation of it. Order of importance per the spec: (1)
+    // is the non-negotiable assertion — every one of the ten
+    // NODE_DISPLAY_SETTING_KEYS entries lands in the scoped body, by COUNT
+    // AND NAME against the constant itself, so this cannot degrade into a
+    // subset check or drift from the constant.
+    it('(1) every NODE_DISPLAY_SETTING_KEYS entry — and only those — lands in the scoped nodeDisplayBody', () => {
+      const { nodeDisplayBody } = extractSettingsTabPartition();
+      expect(Object.keys(nodeDisplayBody).sort()).toEqual([...NODE_DISPLAY_SETTING_KEYS].sort());
+    });
+
+    it('(2) none of the ten NODE_DISPLAY_SETTING_KEYS entries land in the unscoped globalBody', () => {
+      const { globalBody } = extractSettingsTabPartition();
+      for (const key of NODE_DISPLAY_SETTING_KEYS) {
+        expect(globalBody).not.toHaveProperty(key);
+      }
+    });
+
+    it('(3) every other key SettingsTab sends lands in the unscoped globalBody', () => {
+      const { globalBody } = extractSettingsTabPartition();
+      const nonNodeDisplayKeys = SETTINGS_TAB_SENDS.filter(
+        (key) => !(NODE_DISPLAY_SETTING_KEYS as readonly string[]).includes(key)
+      );
+      for (const key of nonNodeDisplayKeys) {
+        expect(globalBody).toHaveProperty(key);
+      }
+      // And nothing extra leaked in — globalBody's key count matches exactly.
+      expect(Object.keys(globalBody).sort()).toEqual([...nonNodeDisplayKeys].sort());
     });
   });
 

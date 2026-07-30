@@ -115,9 +115,14 @@ vi.mock('../config/tilesets', () => ({
   getAllTilesets: () => [],
 }));
 
-vi.mock('../contexts/SettingsContext', () => ({
-  getEffectiveTileset: () => 'osm',
-  useSettings: () => ({
+vi.mock('../contexts/SettingsContext', () => {
+  // Must be a STABLE object, for the same reason the UIContext mock above is:
+  // setHideIncompleteNodes sits in the settings-load effect's dependency array,
+  // and a fresh vi.fn() per render re-runs that effect on every render — each
+  // re-fetch then clobbers in-test edits with the server values.
+  // (#4412 Phase 3 moved showIncompleteNodes/its setter from UIContext to here,
+  // which is how this mock inherited that constraint.)
+  const settings = {
     customThemes: [],
     customTilesets: [],
     enableAudioNotifications: false,
@@ -154,8 +159,15 @@ vi.mock('../contexts/SettingsContext', () => ({
     setDarkTheme: vi.fn(),
     lightTheme: 'catppuccin-latte',
     setLightTheme: vi.fn(),
-  }),
-}));
+    hideIncompleteNodes: false,
+    showIncompleteNodes: true,
+    setHideIncompleteNodes: vi.fn(),
+  };
+  return {
+    getEffectiveTileset: () => 'osm',
+    useSettings: () => settings,
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Child sections unrelated to the elevation UI under test. `mode="global"`
@@ -353,6 +365,12 @@ describe('SettingsTab — Elevation / Terrain section (#4111 Phase 3 WP-3)', () 
       '/api/settings',
       expect.objectContaining({ method: 'POST' })
     );
+    // #4412 Phase 3 WP4: mode="global" renders outside a SourceProvider, so
+    // useSourceQuery() returns '' and handleSave's split-save collapses to a
+    // single unscoped POST — the same shape as before the split. A bug that
+    // always fires two POSTs (the second a no-op duplicate against the
+    // global row) would otherwise ship silently.
+    expect(csrfFetchMock).toHaveBeenCalledTimes(1);
     const [, options] = csrfFetchMock.mock.calls[csrfFetchMock.mock.calls.length - 1];
     const body = JSON.parse((options as RequestInit).body as string);
     expect(body.elevationEnabled).toBe('false'); // toggled off from the loaded 'true'

@@ -149,6 +149,26 @@ describe('DatabaseService - maxNodeAgeHours is per-source (#4412 Phase 2 WP3)', 
     expect(nodesB.map((n) => n.nodeNum)).toEqual([REMOTE_NODE_NUM_B]);
   });
 
+  it('getNodeNeedingTracerouteAsync resolves maxNodeAgeHours per source', async () => {
+    // Both nodes were last heard 3 days ago — inside a 168h (7 day) window,
+    // outside a 1h window. Neither has a `lastTracerouteRequest`, so both are
+    // otherwise eligible (Category 1: no traceroute exists, never requested).
+    const threeDaysAgoSeconds = Math.floor(Date.now() / 1000) - 3 * 24 * 60 * 60;
+    insertNode(dbService.db, REMOTE_NODE_NUM_A, '!0000006f', SOURCE_A, { lastHeard: threeDaysAgoSeconds });
+    insertNode(dbService.db, REMOTE_NODE_NUM_B, '!000000de', SOURCE_B, { lastHeard: threeDaysAgoSeconds });
+
+    await dbService.settings.setSourceSettings(SOURCE_A, { maxNodeAgeHours: '1' });
+    await dbService.settings.setSourceSettings(SOURCE_B, { maxNodeAgeHours: '168' });
+
+    const nodeA = await dbService.getNodeNeedingTracerouteAsync(LOCAL_NODE_NUM, SOURCE_A);
+    const nodeB = await dbService.getNodeNeedingTracerouteAsync(LOCAL_NODE_NUM, SOURCE_B);
+
+    // Source A's 1h window excludes a node last heard 3 days ago.
+    expect(nodeA).toBeNull();
+    // Source B's 168h window includes it.
+    expect(nodeB?.nodeNum).toBe(REMOTE_NODE_NUM_B);
+  });
+
   it('sourceId omitted reads the un-namespaced global row (back-compat, no fallback to a neighbour source)', async () => {
     // This is the same `getMaxNodeAgeHours` helper all three converted
     // database.ts sites now call with `sourceId ?? null`. A source-scoped

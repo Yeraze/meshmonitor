@@ -121,14 +121,18 @@ describe('useSourceView', () => {
     mockUseNodes.mockReturnValue({ nodes, isLoading: false, error: null });
     mockUseQueryClient.mockReturnValue({});
     mockUseMessaging.mockReturnValue({ selectedDMNode: null, setSelectedDMNode });
-    mockUseSettings.mockReturnValue({ maxNodeAgeHours: 24, distanceUnit: 'metric' });
+    // showIncompleteNodes now comes from useSettings() (SettingsContext), not
+    // useUI() — it moved out of UIContext entirely (#4412 Phase 3 WP3). The
+    // useUI() mock deliberately does NOT supply this key: if a read site were
+    // missed and still called useUI() for it, that site would see `undefined`
+    // here and the affected test would fail instead of silently passing.
+    mockUseSettings.mockReturnValue({ maxNodeAgeHours: 24, distanceUnit: 'metric', showIncompleteNodes: true });
     mockUseUI.mockReturnValue({
       activeTab: 'nodes',
       nodesNodeFilter: '',
       sortField: 'longName',
       sortDirection: 'asc',
       setTracerouteLoading,
-      showIncompleteNodes: true,
     });
     mockUseMapContext.mockReturnValue({
       showPaths: false,
@@ -187,7 +191,6 @@ describe('useSourceView', () => {
         sortField: 'longName',
         sortDirection: 'asc',
         setTracerouteLoading,
-        showIncompleteNodes: true,
       });
 
       const { result: onNodesTab } = renderHook(() => useSourceView(baseParams()));
@@ -199,7 +202,6 @@ describe('useSourceView', () => {
         sortField: 'longName',
         sortDirection: 'asc',
         setTracerouteLoading,
-        showIncompleteNodes: true,
       });
       const { result: onMessagesTab } = renderHook(() => useSourceView(baseParams()));
       // messagesNodeFilter is separate — nodesNodeFilter text search is skipped off the nodes tab
@@ -248,6 +250,32 @@ describe('useSourceView', () => {
       const passedParams = mockUseTraceroutePaths.mock.calls[0][0];
       expect(passedParams.visibleNodeNums.has(100)).toBe(true);
       expect(passedParams.visibleNodeNums.has(200)).toBe(false);
+    });
+
+    it('excludes incomplete nodes from visibleNodeNums using showIncompleteNodes from useSettings(), not useUI() (#4412 Phase 3 WP3)', () => {
+      const complete = makeNode({
+        nodeNum: 100,
+        position: { latitude: 40, longitude: -75 } as any,
+        user: { id: '!64', longName: 'Alpha', shortName: 'ALFA', hwModel: 1 } as any,
+      });
+      const incomplete = makeNode({
+        nodeNum: 200,
+        position: { latitude: 41, longitude: -76 } as any,
+        user: { id: '!c8', longName: 'Node !0000c8', shortName: '00C8' },
+      });
+      mockUseNodes.mockReturnValue({ nodes: [complete, incomplete], isLoading: false, error: null });
+
+      // useUI() (see beforeEach) supplies no showIncompleteNodes key at all —
+      // proves the hook isn't still reading it from there.
+      mockUseSettings.mockReturnValue({ maxNodeAgeHours: 24, distanceUnit: 'metric', showIncompleteNodes: false });
+      const { result: hidden } = renderHook(() => useSourceView(baseParams()));
+      expect(hidden.current.visibleNodeNums.has(100)).toBe(true);
+      expect(hidden.current.visibleNodeNums.has(200)).toBe(false);
+
+      mockUseSettings.mockReturnValue({ maxNodeAgeHours: 24, distanceUnit: 'metric', showIncompleteNodes: true });
+      const { result: shown } = renderHook(() => useSourceView(baseParams()));
+      expect(shown.current.visibleNodeNums.has(100)).toBe(true);
+      expect(shown.current.visibleNodeNums.has(200)).toBe(true);
     });
   });
 

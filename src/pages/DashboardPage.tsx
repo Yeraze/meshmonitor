@@ -22,6 +22,7 @@ import {
   UNIFIED_SOURCE_ID,
 } from '../hooks/useDashboardData';
 import { useMeshCoreNeighbors } from '../hooks/useMapAnalysisData';
+import { useMaxNodeAgeHoursAcross } from '../hooks/useNodeDisplaySettings';
 import type { DashboardSource } from '../hooks/useDashboardData';
 import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import DashboardMap from '../components/Dashboard/DashboardMap';
@@ -53,7 +54,7 @@ function DashboardInner() {
   const { t } = useTranslation();
   const { authStatus } = useAuth();
   const queryClient = useQueryClient();
-  const { mapTileset, customTilesets, defaultMapCenterLat, defaultMapCenterLon, maxNodeAgeHours, defaultLandingPage } = useSettings();
+  const { mapTileset, customTilesets, defaultMapCenterLat, defaultMapCenterLon, defaultLandingPage } = useSettings();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -198,6 +199,15 @@ function DashboardInner() {
   // ----- data -----
   const { data: sources = [], isSuccess } = useDashboardSources();
   const sourceIds = sources.map((s) => s.id);
+
+  // DashboardPage renders outside any SourceProvider, so there is no single
+  // "current source" to read maxNodeAgeHours from. Per D3 (#4412 Phase 3),
+  // cross-source surfaces use the most-permissive rule — the max across every
+  // source in view — so a source configured with a large window never has its
+  // nodes hidden by a smaller window on another source. Without this, this
+  // page would silently fall back to the hardcoded default (24h) since it
+  // sits outside SettingsContext's per-source scoping.
+  const maxNodeAgeHours = useMaxNodeAgeHoursAcross(sourceIds);
 
   // Apply admin-configured default landing page (issue #2917, expanded
   // for issue #3183 to allow cross-source unified pages). When the user
