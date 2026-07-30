@@ -20,6 +20,16 @@ export interface MeshCoreContact {
   /** Comma-separated hex chain of hop hashes, e.g. "a3,7f,02". `null` /
    *  undefined = OUT_PATH_UNKNOWN. */
   outPath?: string | null;
+  /**
+   * Whether this row is the synthetic contact representing the operator's
+   * own node (#4438). Required on the server wire type — see
+   * `src/server/routes/meshcoreLocalContactRow.ts` — but kept OPTIONAL here:
+   * making it required would force churn across ~15 hand-built test
+   * fixtures and a `{ publicKey }` partial (`useMeshCore.ts`) for no added
+   * safety, since the wire type already guarantees every real response sets
+   * it. `undefined` reads as falsy = "not local", the safe default.
+   */
+  isLocal?: boolean;
 }
 
 /**
@@ -33,10 +43,7 @@ export function mapContactsToNodes(contacts: MeshCoreContact[]): MeshCoreMapNode
     .filter(c => c.publicKey && typeof c.latitude === 'number' && isFinite(c.latitude)
       && typeof c.longitude === 'number' && isFinite(c.longitude))
     .map(c => {
-      // NOTE: `(local)` is a server-side naming convention (meshcoreContactsRoutes.ts:108,
-      // meshcoreDeviceRoutes.ts:181), not a protocol field — a user-chosen name containing
-      // "(local)" matches here too. Tracked for an explicit isLocal flag in #4438.
-      const isLocalNode = c.advName?.includes('(local)');
+      const isLocalNode = c.isLocal === true;
       return {
         publicKey: String(c.publicKey),
         name: c.advName || c.name || 'Unknown',

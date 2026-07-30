@@ -55,6 +55,9 @@ interface MergedRow {
   lastHeard?: number;
   hasPosition: boolean;
   isFavorite: boolean;
+  /** Propagated from the contact's `isLocal` flag (#4438) — `MeshCoreNode`
+   *  entries never carry it, only the synthetic local contact row does. */
+  isLocal: boolean;
 }
 
 type SortField = 'name' | 'lastHeard';
@@ -76,6 +79,10 @@ function mergeNodesAndContacts(
       lastHeard: n.lastHeard,
       hasPosition: false,
       isFavorite: n.isFavorite ?? false,
+      // `MeshCoreNode` never carries `isLocal` — only the synthetic local
+      // contact row does (#4438). Filled in below when a matching contact
+      // merges in.
+      isLocal: false,
     });
   }
   for (const c of contacts) {
@@ -96,6 +103,7 @@ function mergeNodesAndContacts(
       existing.lastHeard = (existing.lastHeard || null) ?? meshcoreLastHeardMs(c) ?? undefined;
       existing.hasPosition = existing.hasPosition || hasPos;
       existing.advType = existing.advType ?? c.advType;
+      existing.isLocal = existing.isLocal || c.isLocal === true;
     } else {
       byKey.set(c.publicKey, {
         publicKey: c.publicKey,
@@ -106,6 +114,7 @@ function mergeNodesAndContacts(
         lastHeard: meshcoreLastHeardMs(c) ?? undefined,
         hasPosition: hasPos,
         isFavorite: false,
+        isLocal: c.isLocal === true,
       });
     }
   }
@@ -280,18 +289,12 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   const merged = useMemo(() => mergeNodesAndContacts(nodes, contacts), [nodes, contacts]);
 
   /** Favorites and the operator's own node are never hidden by the age cutoff
-   *  (parity with useProcessedNodes.ts:194 + #4412 Phase 4 spec §2 D6).
-   *
-   *  NOTE: matching `(local)` in the name is a convention, not a protocol
-   *  guarantee — the server appends it in `meshcoreDeviceRoutes.ts` /
-   *  `meshcoreContactsRoutes.ts` (`advName: \`${localNode.name} (local)\``),
-   *  and `MeshCoreMap` / `MeshCoreMessageRouteModal` match it the same way.
-   *  A user who names their own device something containing `(local)` would
-   *  be silently exempted from age filtering. An explicit `isLocal` flag
-   *  would be the robust fix, but it spans server routes and three other
-   *  components — out of scope here. */
+   *  (parity with useProcessedNodes.ts:194 + #4412 Phase 4 spec §2 D6). Uses
+   *  the `isLocal` flag (#4438), not a name/advName substring match — the
+   *  `(local)` suffix stays as display text, but is no longer the predicate,
+   *  so a stranger who names their device `Foo (local)` is not exempted. */
   const isAgeExempt = useCallback((r: MergedRow): boolean =>
-    r.isFavorite || r.name.includes('(local)'), []);
+    r.isFavorite || r.isLocal, []);
 
   const aged = useMemo(() => {
     // Date.now() is read inside the memo, so the cutoff refreshes on every
@@ -315,13 +318,10 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   /** The map gets the same age-filtered set as the list (#4412 Phase 4 §3.4d)
    *  — a local contact with no matching `MeshCoreNode` row is also kept, so
    *  the map's centering / polar-grid origin never loses the local node.
-   *
-   *  NOTE: same `(local)` naming convention as `isAgeExempt` above — see that
-   *  comment for the server-side origin and the caveat about user-chosen
-   *  names. */
+   *  Uses `isLocal` (#4438), not the `(local)` naming convention. */
   const visibleKeys = useMemo(() => new Set(aged.map(r => r.publicKey)), [aged]);
   const visibleContacts = useMemo(
-    () => contacts.filter(c => visibleKeys.has(c.publicKey) || c.advName?.includes('(local)')),
+    () => contacts.filter(c => visibleKeys.has(c.publicKey) || c.isLocal === true),
     [contacts, visibleKeys],
   );
 

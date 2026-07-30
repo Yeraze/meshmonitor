@@ -309,12 +309,27 @@ describe('MeshCoreNodesView — per-source age filter (#4412 Phase 4)', () => {
     expect(listedNames()).toEqual(['FavoriteOld', 'Recent']);
   });
 
-  it('bypasses the cutoff for the local node', () => {
+  it('bypasses the cutoff for the local node (isLocal flag, not the "(local)" name)', () => {
+    // The `(local)` suffix stays as display text (#4438) — the exemption
+    // itself is driven by `isLocal: true`, asserted separately from the
+    // rendered string by the negative control below.
     const testContacts: MeshCoreContact[] = [
-      { publicKey: PK_LOCAL, advName: 'MyNode (local)', lastSeen: NOW - 72 * HOUR_MS },
+      { publicKey: PK_LOCAL, advName: 'MyNode (local)', isLocal: true, lastSeen: NOW - 72 * HOUR_MS },
     ];
     render(<MeshCoreNodesView nodes={[]} contacts={testContacts} />);
     expect(listedNames()).toEqual(['MyNode (local)']);
+  });
+
+  it('T-C4 negative control: a stranger named "(local)" without isLocal is NOT exempt from the cutoff', () => {
+    // This is the exact bug #4438 exists to fix: a user-chosen device name
+    // containing "(local)" must not be silently treated as the operator's
+    // own node. Before the fix, `isAgeExempt` matched on this substring and
+    // this contact bypassed the cutoff.
+    const testContacts: MeshCoreContact[] = [
+      { publicKey: PK_LOCAL, advName: 'Imposter (local)', isLocal: false, lastSeen: NOW - 72 * HOUR_MS },
+    ];
+    render(<MeshCoreNodesView nodes={[]} contacts={testContacts} />);
+    expect(listedNames()).toEqual([]);
   });
 
   it('excludes rows with no resolvable timestamp', () => {

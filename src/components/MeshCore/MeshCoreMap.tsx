@@ -326,10 +326,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
     if (localNodePosition?.lat != null && localNodePosition?.lng != null) {
       return [localNodePosition.lat, localNodePosition.lng];
     }
-    // NOTE: `(local)` is a server-side naming convention (meshcoreContactsRoutes.ts:108,
-    // meshcoreDeviceRoutes.ts:181), not a protocol field — a user-chosen name containing
-    // "(local)" matches here too. Tracked for an explicit isLocal flag in #4438.
-    const local = positioned.find(c => c.advName?.includes('(local)'));
+    const local = positioned.find(c => c.isLocal === true);
     if (local) return [local.latitude!, local.longitude!];
     return null;
   }, [localNodePosition, positioned]);
@@ -343,10 +340,7 @@ export const MeshCoreMap: React.FC<MeshCoreMapProps> = ({ contacts, selectedPubl
   const pathSegments = useMemo(() => {
     if (!showPaths || !localPos) return [];
     return positioned
-      // NOTE: `(local)` is a server-side naming convention (meshcoreContactsRoutes.ts:108,
-      // meshcoreDeviceRoutes.ts:181), not a protocol field — a user-chosen name containing
-      // "(local)" matches here too. Tracked for an explicit isLocal flag in #4438.
-      .filter(c => !c.advName?.includes('(local)') && typeof c.pathLen === 'number')
+      .filter(c => c.isLocal !== true && typeof c.pathLen === 'number')
       .map(c => ({
         key: c.publicKey,
         from: localPos,

@@ -88,6 +88,13 @@ export interface MeshCoreContactPayload {
   longitude?: number;
   lastAdvert?: number;
   pathLen?: number;
+  /** Shape parity with the server's `MeshCoreContactResponse` (#4438). The
+   *  server never actually sets this on a push event — it only exists on
+   *  the synthetic local-node row, which is device-contact traffic only
+   *  and is never itself re-emitted as a push. `useMeshCore` re-stamps
+   *  `isLocal` client-side from `localNodeRef` so the flag survives a push
+   *  merge regardless. */
+  isLocal?: boolean;
 }
 
 export interface MeshCoreNodePayload {
