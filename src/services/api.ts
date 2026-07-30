@@ -892,21 +892,25 @@ class ApiService {
     return response.json();
   }
 
+  /**
+   * Traceroute history between two specific nodes. The endpoint returns a
+   * bare array (no `{success,data}` envelope), so `request()`'s pass-through
+   * behavior (CLAUDE.md) is exactly what's needed here — no unwrapping.
+   */
   async getTracerouteHistory(
     fromNodeNum: number,
     toNodeNum: number,
     limit: number = 50,
     sourceId?: string | null,
   ): Promise<TracerouteHistoryEntry[]> {
-    await this.ensureBaseUrl();
     // Scope to the active source so a single-source view (e.g. the radio/TCP
     // source) does not mix in traceroutes recorded by other sources — MQTT
     // broker/bridge sources record many flood-relayed copies of the same reply
     // (see backend traceroute history handler).
     const sourceQuery = sourceId ? `&sourceId=${encodeURIComponent(sourceId)}` : '';
-    const response = await fetch(`${this.baseUrl}/api/traceroutes/history/${fromNodeNum}/${toNodeNum}?limit=${limit}${sourceQuery}`);
-    if (!response.ok) throw new Error('Failed to fetch traceroute history');
-    return response.json();
+    return this.get<TracerouteHistoryEntry[]>(
+      `/api/traceroutes/history/${fromNodeNum}/${toNodeNum}?limit=${limit}${sourceQuery}`,
+    );
   }
 
   async getBaseUrl(): Promise<string> {

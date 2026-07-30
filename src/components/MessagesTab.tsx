@@ -791,6 +791,10 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
   // Statistical Route epic phase 2, D13 — one discriminated pick rather than
   // two mutually-exclusive flags. `pickedTracerouteId`/`statisticalPicked`
   // are derived so rules 1, 2 and 3 below keep their pre-existing shape.
+  // S5 asymmetry (intentional): a statistical pick is NOT cleared when
+  // eligibility is lost — only a partner change (rule 2) or a new poll row
+  // (rule 3) clears it — so if eligibility returns while still picked, the
+  // statistical view resumes without any user action.
   const [pick, setPick] = useState<TraceroutePick | null>(null);
   const pickedTracerouteId = pick?.kind === 'entry' ? pick.id : null;
   const statisticalPicked = pick?.kind === 'statistical';
@@ -2127,7 +2131,7 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                           statisticalSelected={showStatistical}
                           onSelectStatistical={() => setPick({ kind: 'statistical' })}
                         />
-                        {showStatistical ? (
+                        {showStatistical && statistical ? (
                           <TracerouteStrip
                             graph={statistical.graph}
                             meta={statistical.meta}

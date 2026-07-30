@@ -179,6 +179,8 @@ describe('useTraceroutePairHistory', () => {
     });
 
     it('normalizes absent route/routeBack/snrBack to null', () => {
+      // snrTowards is intentionally absent here: AggregateTracerouteRow
+      // doesn't consume it — the aggregate only reads route/routeBack/snrBack.
       const rows = toAggregateRows([
         makeRow({
           route: undefined as unknown as string,
