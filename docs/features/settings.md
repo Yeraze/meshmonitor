@@ -303,6 +303,8 @@ When the selected node has traceroute data, the Node Details block draws the for
 
 **Choosing which traceroute to show**: when the node took part in more than one stored traceroute over the last 7 days — as an endpoint or as a relay hop (marked "relayed") — a dropdown above the strip lists them by date, endpoints, and hop count. It defaults to the newest. This is also what brings the strip to MQTT sources: they have no node of their own to run traceroutes from, so the strip draws from traceroutes the selected node took part in anywhere on that source's mesh.
 
+**Statistical route**: on a Meshtastic TCP source, the dropdown gains a **Statistical (N routes)** entry when two or more stored traceroutes exist between your node and the selected node — all stored history for the pair, not just the last 7 days. It merges every route into one diagram: each node and link fades by how often it appeared, so the relays your traffic actually depends on stand out at full strength while one-off detours fade back. Hover any node or link to see the exact count — "Seen in 12 of 16 routes (75%)". The aggregate makes no direction claim, so there are no arrows, no SNR values, and no copy links; pick any dated entry to get the single-route view back. Rare hops never fade below a floor, so they stay visible and hoverable.
+
 The strip scrolls horizontally on narrow screens and uses a smaller size in the split-view side panel. Viewing it needs the `traceroute` read (or write) permission; requesting a new traceroute still needs write. The "last traced X ago" line and pending/failed badges describe whichever traceroute is displayed.
 
 ::: tip

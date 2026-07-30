@@ -77,7 +77,7 @@ no UI/behavior change shipped; spec decisions recorded in this doc.
   hop-filter duplication never existed.
 
 ### Phase 2 — UI integration
-- [ ] Complete
+- [x] Complete (2026-07-30)
 
 - `TracerouteParticipationPicker`: add a "Statistical (N routes)" option, shown only
   when the pair history has ≥ 2 aggregatable routes.
@@ -97,6 +97,35 @@ no UI/behavior change shipped; spec decisions recorded in this doc.
 **Exit criteria:** all Phase-2 UI behaviors verified in the live app; full suite +
 lint:ci green; docs updated; PR merged.
 
+**Phase 2 record (2026-07-30):**
+- Shipped per `SR_PHASE2_SPEC.md` (D12–D18): `useTraceroutePairHistory` hook +
+  `TracerouteHistoryEntry` type (WP1), strip statistical render mode + CSS +
+  i18n (WP2), picker `Statistical (N routes)` option (WP3), MessagesTab wiring
+  with the discriminated `TraceroutePick` state and rules S1–S6 (WP4).
+- Live-validated on the dev rig: option on real pairs (25 and 16 routes),
+  opacity grading exact to `statOpacity()` (100%→1.0, 63%→0.73, 31%→0.505,
+  6%→0.325), node popup = NodeCard + Occurrence row, edge tooltip = endpoints ↔
+  + distance + seen-in with no direction/SNR, copy links/age/badges hidden,
+  pick reset on partner change, no new console errors.
+- Follow-ups logged, not fixed here: (1) `/history/:from/:to` does not
+  channel-mask (pre-existing, shared with TracerouteHistoryModal); (2) a pair
+  with stored history but zero traceroute activity in the participation window
+  and no poll row renders no Node Details traceroute box at all (rule 7), so
+  the statistical option is unreachable there — widening the box's render
+  guard is a product decision for a future issue.
+
 ## Deviations log
 
-(none yet)
+- 2026-07-30 (Phase 2, WP4): first implementation worked around the
+  provider-less MessagesTab test harnesses with a mount-gated loader
+  component; rejected in review for the house convention — top-level hook +
+  a one-line `vi.mock` in the two provider-less test files (same as their
+  existing `useNodeTraceroutes` mocks). S5 stayed purely derived.
+- 2026-07-30 (Phase 2, S1 amendment): the spec's fetch gate required ≥ 2
+  endpoint entries in the 7-day participation list. Live validation showed
+  the rig's richest pairs (25 and 16 stored routes) were all 35–83 days old —
+  the gate made the feature unreachable exactly where it mattered, and
+  contradicted the binding "all stored pair history" interview decision. Gate
+  reduced to validity-only (permission + valid distinct pair); spec D14/S1
+  rewritten with the evidence.
+- Phase 1 WPs ran sequentially (recorded under Phase 1).
