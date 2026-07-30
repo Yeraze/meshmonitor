@@ -32,7 +32,8 @@
 }
 
 .forwardEdge,
-.returnEdge {
+.returnEdge,
+.statEdge {
   fill: none;
   stroke: var(--ctp-pink);
   stroke-width: 2;
@@ -41,6 +42,13 @@
 /* Return leg is differentiated by dash pattern + label lane, not by hue. */
 .returnEdge {
   stroke-dasharray: 4 3;
+}
+
+/* Statistical mode (SR_PHASE2_SPEC.md D16): one neutral lane — solid, no dash,
+ * no arrowhead. Occurrence share arrives as `--stat-opacity`, already floored at
+ * MIN_STAT_OPACITY by `statOpacity()`; this file never computes it. */
+.statEdge {
+  stroke-opacity: var(--stat-opacity, 1);
 }
 
 .arrowHead {
@@ -61,6 +69,18 @@
   outline: 2px solid var(--ctp-blue);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* The wrapper dims as a unit, glyph and short name together, so a rare hop reads
+ * faint end to end. A custom property rather than an inline `opacity` precisely
+ * so the focus rule below can win — a hardcoded inline value could not be
+ * overridden, and a 0.28 focus ring is not a focus ring. */
+.statNode {
+  opacity: var(--stat-opacity, 1);
+}
+
+.statNode:focus-visible {
+  opacity: 1;
 }
 
 /* Lane identity hooks (spec §3.4/§4.3/§4.4). Deliberately empty — the

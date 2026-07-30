@@ -13,7 +13,16 @@
  *
  * See docs/internal/dev-notes/TRACEROUTE_VISUAL_STRIP_SPEC.md §4.3/§4.4.
  */
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { NodeTypeCategory } from '../../utils/nodeTypeCategory';
@@ -27,6 +36,13 @@ import {
   type StripLane,
   type TracerouteStripGraph,
 } from '../../utils/tracerouteStrip';
+import {
+  isUnionStripGraph,
+  layoutTracerouteUnion,
+  type UnionStripEdge,
+  type UnionStripGraph,
+  type UnionStripNode,
+} from '../../utils/tracerouteUnionLayout';
 import { NodeCard } from '../map/popups/NodeCard';
 import { IdentityItems, SignalItems, PositionItem, LastHeardFooter, NodeActions } from '../map/popups/sections';
 import type { NodeCardModel } from '../map/popups/nodeCardModel';
@@ -117,6 +133,13 @@ function cx(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(' ');
 }
 
+/** React's `CSSProperties` has no index signature for custom properties, so
+ *  setting one needs a narrow cast. Kept in one place rather than at three call
+ *  sites. Precedent: DashboardSidebar.tsx:505. */
+function statStyle(opacity: number, base: CSSProperties): CSSProperties {
+  return { ...base, '--stat-opacity': opacity } as CSSProperties;
+}
+
 /** Maps a StripNode's semantic band to its CSS lane hook (spec §4.3/§4.4).
  * Deliberately empty rules today — an assertable class name and a home for
  * any future visual differentiation, not a styling switch. Do not branch
@@ -145,7 +168,14 @@ export function TracerouteStrip({
   const { t } = useTranslation();
   const uid = useId();
 
-  const layout = useMemo(() => layoutTracerouteStrip(graph), [graph]);
+  // D12: the discriminant is `graph.mode`, never `leg`. Null on the single-route
+  // path, which then behaves exactly as before this change.
+  const statGraph: UnionStripGraph | null = isUnionStripGraph(graph) ? graph : null;
+
+  const layout = useMemo(
+    () => (isUnionStripGraph(graph) ? layoutTracerouteUnion(graph) : layoutTracerouteStrip(graph)),
+    [graph],
+  );
 
   const [hover, setHover] = useState<HoverTarget | null>(null);
   const [popupPos, setPopupPos] = useState<PopupPosition | null>(null);
@@ -301,6 +331,15 @@ export function TracerouteStrip({
   const glyphSize = DEFAULT_GLYPH_SIZE;
   const arrowId = `${uid}-head`;
 
+  /** StripNode.id -> StripNode, so an edge's endpoints resolve to nodeNums
+   *  (WP2), and so `hoverCard` can look a hovered statistical node's
+   *  count/opacity up BY ID (D10) — declared ahead of `hoverCard` because it
+   *  is one of that memo's dependencies. */
+  const nodeById = useMemo(
+    () => new Map(graph.nodes.map((n) => [n.id, n] as const)),
+    [graph],
+  );
+
   /**
    * The hover popup body — the same card the Map page renders, minus the
    * traceroute tab (redundant inside a traceroute strip) and minus every
@@ -311,12 +350,59 @@ export function TracerouteStrip({
    * A hop we never resolved (`BROADCAST_ADDR`, or a node absent from `meta`)
    * has no card model, so it falls back to a minimal card carrying just the
    * padded hex id — same information the old inline tooltip showed.
+   *
+   * Statistical mode (D15) appends/replaces content with a "seen in N of M
+   * routes" row; every new string is an inline `t()` call (matching this
+   * memo's existing style, e.g. the `traceroute_unknown_node` call just
+   * below) rather than a reference to an outer helper, so the only new
+   * dependencies this memo needs are `statGraph` and `nodeById` — the count
+   * lookup is BY `hover.id`, never by `nodeNum` (D10), since several unknown
+   * hops share one `nodeNum` (`BROADCAST_ADDR`).
    */
   const hoverCard = useMemo(() => {
     if (!hover || hover.kind !== 'node') return null;
     const hovered = hover.isPlaceholder ? undefined : meta.get(hover.nodeNum);
+    const statNode =
+      statGraph && statGraph.totalRoutes > 0 ? (nodeById.get(hover.id) as UnionStripNode | undefined) : undefined;
+    const seenInRow = statGraph && statNode ? (
+      <div className="node-popup-item node-popup-item-full">
+        <span className="node-popup-icon"><UiIcon name="telemetry" /></span>
+        <span className={styles.srOnly}>{t('messages.traceroute_stat_seen_in_label', 'Occurrence')}: </span>
+        <span className="node-popup-value">
+          {t('messages.traceroute_stat_seen_in', {
+            seen: statNode.count,
+            count: statGraph.totalRoutes,
+            percent: Math.round((statNode.count / statGraph.totalRoutes) * 100),
+          })}
+        </span>
+      </div>
+    ) : null;
 
     if (!hovered) {
+      if (statGraph) {
+        // D15: unrecorded statistical hops are positional — "Unrecorded
+        // hop", a description line, and the seen-in row. No hex id
+        // (`paddedHexId(BROADCAST_ADDR)` is the same `!ffffffff` for every
+        // one of them) and no `IdentityItems` (there is no honest id to show).
+        return (
+          <NodeCard
+            model={{ longName: t('messages.traceroute_stat_unrecorded_hop', 'Unrecorded hop') }}
+            sections={
+              <div className="node-popup-grid">
+                <div className="node-popup-item node-popup-item-full">
+                  <span className="node-popup-value">
+                    {t(
+                      'messages.traceroute_stat_unrecorded_hop_desc',
+                      'The traceroute did not record which node relayed here.',
+                    )}
+                  </span>
+                </div>
+                {seenInRow}
+              </div>
+            }
+          />
+        );
+      }
       return (
         <NodeCard
           model={{ longName: t('messages.traceroute_unknown_node', 'Unknown') }}
@@ -344,6 +430,7 @@ export function TracerouteStrip({
                 distanceUnit={distanceUnit}
               />
               {hovered.pos && <PositionItem position={hovered.pos} />}
+              {seenInRow}
             </div>
             <LastHeardFooter
               lastHeard={hovered.card.lastHeard}
@@ -371,19 +458,44 @@ export function TracerouteStrip({
         }
       />
     );
-  }, [hover, meta, distanceUnit, timeFormat, dateFormat, t, onOpenNodeDetails, hideNow]);
+  }, [hover, meta, distanceUnit, timeFormat, dateFormat, t, onOpenNodeDetails, hideNow, statGraph, nodeById]);
 
   const stripLabel = t('messages.traceroute_strip_label', 'Traceroute path');
   const forwardLegCaption = t('messages.traceroute_leg_forward', 'Forward');
   const returnLegCaption = t('messages.traceroute_leg_return', 'Return');
   const unknownNodeLabel = t('messages.traceroute_unknown_node', 'Unknown');
+  const unrecordedHopLabel = t('messages.traceroute_stat_unrecorded_hop', 'Unrecorded hop');
 
-  /** StripNode.id -> StripNode, so an edge's endpoints resolve to nodeNums
-   *  (WP2). */
-  const nodeById = useMemo(
-    () => new Map(graph.nodes.map((n) => [n.id, n] as const)),
-    [graph],
-  );
+  /** "Seen in 12 of 15 routes (80%)". The DENOMINATOR is passed as `count`,
+   *  because i18next picks the plural form from `count` and the plural noun here
+   *  is "routes" (the total), not the numerator. Plain function (not
+   *  useCallback) — every call site is either plain render code or (in
+   *  `hoverCard`) inlined directly, so it never needs to appear in a
+   *  dependency array. */
+  const seenInText = (count: number): string | null => {
+    if (!statGraph) return null;
+    const total = statGraph.totalRoutes;
+    if (total <= 0) return null;
+    return t('messages.traceroute_stat_seen_in', {
+      seen: count,
+      count: total,
+      percent: Math.round((count / total) * 100),
+    });
+  };
+
+  /** The `.node-popup-item` row both tooltips append. Reuses the global popup
+   *  classes the edge tooltip already uses — no new markup shape. */
+  const renderSeenInRow = (count: number) => {
+    const text = seenInText(count);
+    if (!text) return null;
+    return (
+      <div className="node-popup-item node-popup-item-full">
+        <span className="node-popup-icon"><UiIcon name="telemetry" /></span>
+        <span className={styles.srOnly}>{t('messages.traceroute_stat_seen_in_label', 'Occurrence')}: </span>
+        <span className="node-popup-value">{text}</span>
+      </div>
+    );
+  };
 
   /** Same name shape the glyph shows: "Long Name (SHRT)", or the short name
    *  alone, or the unknown placeholder + padded hex for an unresolved hop —
@@ -396,11 +508,14 @@ export function TracerouteStrip({
       const isPlaceholder = node.isUnknown || !meta.has(node.nodeNum);
       const nodeMeta = isPlaceholder ? undefined : meta.get(node.nodeNum);
       if (!nodeMeta) {
-        return `${unknownNodeLabel} ${paddedHexId(node.nodeNum)}`;
+        // D4: every unknown statistical hop shares `nodeNum === BROADCAST_ADDR`,
+        // so the hex id is the same meaningless `!ffffffff` for all of them —
+        // a positional "Unrecorded hop" beats a shared, fake-looking id.
+        return statGraph ? unrecordedHopLabel : `${unknownNodeLabel} ${paddedHexId(node.nodeNum)}`;
       }
       return nodeMeta.longName ? `${nodeMeta.longName} (${nodeMeta.shortName})` : nodeMeta.shortName;
     },
-    [nodeById, meta, unknownNodeLabel],
+    [nodeById, meta, unknownNodeLabel, statGraph, unrecordedHopLabel],
   );
 
   /** km between two endpoints, or null when either lacks a position fix. */
@@ -431,17 +546,31 @@ export function TracerouteStrip({
 
   /** The hit target's aria-label: direction, endpoints, distance and SNR,
    *  joined via the existing separator and skipping any absent fragment —
-   *  same "no dangling comma" rule the glyph's accessibleName follows. */
+   *  same "no dangling comma" rule the glyph's accessibleName follows.
+   *  Statistical mode (D8/D15) drops direction and SNR and adds the seen-in
+   *  fragment; the join/filter/separator tail is shared, not copied. */
   const edgeSummary = (e: StripEdge): string => {
-    const direction = e.leg === 'forward' ? forwardLegCaption : returnLegCaption;
-    const endpoints = t('messages.traceroute_edge_endpoints', '{{from}} → {{to}}', {
-      from: displayNameForNodeId(e.fromId),
-      to: displayNameForNodeId(e.toId),
-    });
     const km = edgeDistanceKm(e);
     const distance = km !== null ? formatDistance(km, formatUnit, 1) : null;
-    const snr = edgeSnrText(e);
-    return [direction, endpoints, distance, snr]
+    const parts: Array<string | null> = statGraph
+      ? [
+          t('messages.traceroute_stat_edge_endpoints', '{{from}} ↔ {{to}}', {
+            from: displayNameForNodeId(e.fromId),
+            to: displayNameForNodeId(e.toId),
+          }),
+          distance,
+          seenInText((e as UnionStripEdge).count),
+        ]
+      : [
+          e.leg === 'forward' ? forwardLegCaption : returnLegCaption,
+          t('messages.traceroute_edge_endpoints', '{{from}} → {{to}}', {
+            from: displayNameForNodeId(e.fromId),
+            to: displayNameForNodeId(e.toId),
+          }),
+          distance,
+          edgeSnrText(e),
+        ];
+    return parts
       .filter((part): part is string => !!part)
       .join(t('messages.traceroute_node_label_separator', ', '));
   };
@@ -451,10 +580,39 @@ export function TracerouteStrip({
    *  and SNR rows are omitted entirely when absent, matching the existing
    *  SNR-label convention and keeping the DOM assertable. */
   const renderEdgeTooltip = (e: StripEdge) => {
-    const directionCaption = e.leg === 'forward' ? forwardLegCaption : returnLegCaption;
     const from = displayNameForNodeId(e.fromId);
     const to = displayNameForNodeId(e.toId);
     const km = edgeDistanceKm(e);
+
+    if (statGraph) {
+      // D8/D15: no direction row, no SNR row — an aggregate edge makes no
+      // direction claim. Endpoints use the `↔` key, not `→`.
+      return (
+        <div className="node-popup">
+          <div className="node-popup-content">
+            <div className="node-popup-grid">
+              <div className="node-popup-item node-popup-item-full">
+                <span className="node-popup-icon"><UiIcon name="link" /></span>
+                <span className={styles.srOnly}>{t('messages.traceroute_edge_endpoints_label', 'Endpoints')}: </span>
+                <span className="node-popup-value">
+                  {t('messages.traceroute_stat_edge_endpoints', '{{from}} ↔ {{to}}', { from, to })}
+                </span>
+              </div>
+              {km !== null && (
+                <div className="node-popup-item node-popup-item-full">
+                  <span className="node-popup-icon"><UiIcon name="ruler" /></span>
+                  <span className={styles.srOnly}>{t('messages.traceroute_edge_distance_label', 'Distance')}: </span>
+                  <span className="node-popup-value">{formatDistance(km, formatUnit, 1)}</span>
+                </div>
+              )}
+              {renderSeenInRow((e as UnionStripEdge).count)}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const directionCaption = e.leg === 'forward' ? forwardLegCaption : returnLegCaption;
     const snrText = edgeSnrText(e);
     return (
       <div className="node-popup">
@@ -493,7 +651,11 @@ export function TracerouteStrip({
   };
 
   return (
-    <div className={styles.scroller} role="group" aria-label={stripLabel}>
+    <div
+      className={styles.scroller}
+      role="group"
+      aria-label={statGraph ? t('messages.traceroute_stat_strip_label', 'Statistical traceroute paths') : stripLabel}
+    >
       <div className={styles.canvas} style={{ width: layout.width, height: layout.height }}>
         <svg className={styles.edges} width={layout.width} height={layout.height}>
           <defs>
@@ -521,12 +683,16 @@ export function TracerouteStrip({
               const path = layout.edgePaths.get(e.id);
               if (!path) return null;
               const points = path.map((p) => `${p.x},${p.y}`).join(' ');
+              const stat = statGraph ? (e as UnionStripEdge) : null;
               return (
                 <polyline
                   key={e.id}
-                  className={e.leg === 'forward' ? styles.forwardEdge : styles.returnEdge}
+                  className={stat ? styles.statEdge : e.leg === 'forward' ? styles.forwardEdge : styles.returnEdge}
                   points={points}
-                  markerEnd={`url(#${arrowId})`}
+                  // D8: no arrowhead in statistical mode — the edge makes no
+                  // direction claim.
+                  markerEnd={stat ? undefined : `url(#${arrowId})`}
+                  style={stat ? statStyle(stat.opacity, {}) : undefined}
                 />
               );
             })}
@@ -566,6 +732,10 @@ export function TracerouteStrip({
         </svg>
 
         {graph.edges.map((e) => {
+          // D8: no SNR labels in statistical mode. Union edges already carry
+          // `snr: null, snrUnknown: false`, so this is belt-and-braces — but
+          // the rule is "branch on mode", not "trust the data".
+          if (statGraph) return null;
           // An edge with no SNR sample and no unknown-sentinel flag renders
           // NO label element at all (not an empty span) — keeps the DOM
           // assertable (spec §4.3).
@@ -619,10 +789,20 @@ export function TracerouteStrip({
           const unmessagable = !!nodeMeta?.unmessagable;
 
           const displayName = longName ? `${longName} (${shortName})` : shortName;
+
+          const statNode = statGraph ? (n as UnionStripNode) : null;
+          const seenIn = statNode ? seenInText(statNode.count) : null;
+
           // Join only the present segments — a null roleLabel (very common:
           // an unlearned role, or the unknown-hop placeholder) must not leave
-          // a dangling ", ," in the accessible name.
-          const accessibleName = [displayName, roleLabel, nodeId]
+          // a dangling ", ," in the accessible name. Unknown statistical hops
+          // are positional (D4): "Unrecorded hop", never a name and never the
+          // shared !ffffffff placeholder id.
+          const accessibleName = (
+            statNode && isPlaceholder
+              ? [unrecordedHopLabel, seenIn]
+              : [displayName, roleLabel, nodeId, seenIn]
+          )
             .filter((part): part is string => !!part)
             .join(t('messages.traceroute_node_label_separator', ', '));
 
@@ -640,8 +820,12 @@ export function TracerouteStrip({
           return (
             <div
               key={n.id}
-              className={cx(styles.node, laneClassFor(n.lane))}
-              style={{ left: center.x, top: center.y }}
+              className={cx(styles.node, laneClassFor(n.lane), statNode && styles.statNode)}
+              style={
+                statNode
+                  ? statStyle(statNode.opacity, { left: center.x, top: center.y })
+                  : { left: center.x, top: center.y }
+              }
               tabIndex={0}
               role={canOpenDetails ? 'button' : undefined}
               aria-describedby={hover?.id === n.id ? tipId : undefined}

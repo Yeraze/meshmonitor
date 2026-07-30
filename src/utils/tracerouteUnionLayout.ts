@@ -130,6 +130,17 @@ export interface UnionStripGraph extends TracerouteStripGraph {
   edges: UnionStripEdge[];
 }
 
+/**
+ * Narrow a strip graph to the statistical union (D10/D12). `TracerouteStripGraph`
+ * has no `mode` field, so the property read needs a structural cast — the same
+ * shape the source-manager predicates use (`src/server/sourceManagerTypes.ts`).
+ * Renderers MUST narrow through this, never through `leg` (D8) and never through
+ * `instanceof` or `any`.
+ */
+export function isUnionStripGraph(graph: TracerouteStripGraph): graph is UnionStripGraph {
+  return (graph as { mode?: unknown }).mode === 'statistical';
+}
+
 // ---------------------------------------------------------------------------
 // Column/row assignment (D5/D6)
 // ---------------------------------------------------------------------------
