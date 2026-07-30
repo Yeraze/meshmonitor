@@ -44,6 +44,12 @@
  * keyed on `lane`, not `row`, because `row` is derived/dense and would
  * otherwise make ids unstable as lane occupancy changes; `layout.centers`
  * keys off `id`, so that stability matters.
+ *
+ * This module is also the geometry and hop-filter home for the statistical
+ * union layout (Statistical Route epic, Phase 1): several internals below
+ * are exported `@internal` for `tracerouteUnionLayout.ts` /
+ * `tracerouteAggregate.ts` to reuse verbatim, so the two layouts cannot
+ * drift apart on shared arithmetic.
  */
 
 import {
@@ -149,8 +155,9 @@ export interface TracerouteStripInput {
 
 /** One post-filter hop: a real node number to render, paired with its own
  *  arrival SNR sample (raw, dB x4; undefined = no sample) and whether it is
- *  the BROADCAST_ADDR placeholder. */
-interface InternalLegHop {
+ *  the BROADCAST_ADDR placeholder.
+ *  @internal exported for tracerouteUnionLayout.ts / tracerouteAggregate.ts. */
+export interface InternalLegHop {
   nodeNum: number;
   snr: number | undefined;
   isUnknown: boolean;
@@ -162,10 +169,13 @@ interface InternalLegInput {
   hops: InternalLegHop[];
 }
 
-/** One raw hop, paired with its arrival SNR, before validity filtering. */
-interface RawHop {
+/** One raw hop, paired with its arrival SNR, before validity filtering.
+ *  `snr` widened to optional so `tracerouteAggregate.ts` can pass
+ *  `{ nodeNum }` without a meaningless `snr: undefined`.
+ *  @internal exported for tracerouteUnionLayout.ts / tracerouteAggregate.ts. */
+export interface RawHop {
   nodeNum: number;
-  snr: number | undefined;
+  snr?: number;
 }
 
 /**
@@ -173,8 +183,9 @@ interface RawHop {
  * Index 0 and the last index are endpoints (`fromNodeNum`/`toNodeNum`) and
  * are never filtered, even if they happen to be invalid/reserved values —
  * they are real device node numbers, not raw route placeholders.
+ * @internal exported for tracerouteUnionLayout.ts / tracerouteAggregate.ts.
  */
-function filterHops(hops: RawHop[]): InternalLegHop[] {
+export function filterHops(hops: RawHop[]): InternalLegHop[] {
   const result: InternalLegHop[] = [];
   const lastIndex = hops.length - 1;
   for (let i = 0; i < hops.length; i++) {
@@ -607,7 +618,8 @@ export interface StripLayoutOptions {
   bottomBand: number;
 }
 
-const DEFAULT_LAYOUT_OPTIONS: StripLayoutOptions = {
+/** @internal exported for tracerouteUnionLayout.ts / tracerouteAggregate.ts. */
+export const DEFAULT_LAYOUT_OPTIONS: StripLayoutOptions = {
   colWidth: 64,
   rowHeight: 76, // was 56 before the spine model — see §3.5.2 C3.
   glyphSize: 32,
@@ -636,7 +648,8 @@ export interface StripLayout {
   labelAnchors: Map<string, StripPoint>;
 }
 
-function pullToward(from: StripPoint, to: StripPoint, dist: number): StripPoint {
+/** @internal exported for tracerouteUnionLayout.ts / tracerouteAggregate.ts. */
+export function pullToward(from: StripPoint, to: StripPoint, dist: number): StripPoint {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const d = Math.hypot(dx, dy) || 1;
@@ -675,13 +688,15 @@ function nodeHalfHeight(o: StripLayoutOptions): number {
  *  symmetric, since the glyph above and the short name below both sit
  *  `nodeHalfHeight` from center), guaranteeing the label's far edge clears
  *  the node's near edge by at least `LABEL_CLEARANCE`. */
-function labelOffset(o: StripLayoutOptions): number {
+/** @internal exported for tracerouteUnionLayout.ts / tracerouteAggregate.ts. */
+export function labelOffset(o: StripLayoutOptions): number {
   return nodeHalfHeight(o) + LABEL_HALF_HEIGHT + LABEL_CLEARANCE;
 }
 
 /** Minimum topBand/bottomBand that keeps a label's OWN far edge inside the
- *  canvas once it sits `labelOffset` away from the outermost row's center. */
-function minBand(o: StripLayoutOptions): number {
+ *  canvas once it sits `labelOffset` away from the outermost row's center.
+ *  @internal exported for tracerouteUnionLayout.ts / tracerouteAggregate.ts. */
+export function minBand(o: StripLayoutOptions): number {
   return labelOffset(o) + LABEL_HALF_HEIGHT;
 }
 
@@ -690,8 +705,9 @@ function minBand(o: StripLayoutOptions): number {
  *  margin (`rowHeight - labelOffset >= labelOffset`); a crossing edge's
  *  label sits at the gap midpoint, `rowHeight / 2` from each endpoint row,
  *  which needs the same floor. Below this floor a forward label on the
- *  spine row could land inside the raised row above it. */
-function minRowHeight(o: StripLayoutOptions): number {
+ *  spine row could land inside the raised row above it.
+ *  @internal exported for tracerouteUnionLayout.ts / tracerouteAggregate.ts. */
+export function minRowHeight(o: StripLayoutOptions): number {
   return 2 * labelOffset(o);
 }
 
@@ -728,8 +744,9 @@ const LANE_OFFSET = 5;
  * `labelOffset`'s sign already follows). "Up" is defined as `y <= 0`: for a
  * same-row (horizontal) chord this is straight up the screen, matching the
  * forward-label-above / return-label-below convention already in place.
+ * @internal exported for tracerouteUnionLayout.ts / tracerouteAggregate.ts.
  */
-function canonicalPerpendicular(a: StripPoint, b: StripPoint): StripPoint {
+export function canonicalPerpendicular(a: StripPoint, b: StripPoint): StripPoint {
   let dx = b.x - a.x;
   let dy = b.y - a.y;
   if (dx < 0 || (dx === 0 && dy < 0)) {
@@ -756,8 +773,9 @@ function canonicalPerpendicular(a: StripPoint, b: StripPoint): StripPoint {
 
 /** Rim margin between a glyph's edge and where an edge line starts/ends —
  *  the historical inline `+3` in `pullIn`, named because `edgeClearance`
- *  reuses it (#4428). */
-const EDGE_RIM_MARGIN = 3;
+ *  reuses it (#4428).
+ *  @internal exported for tracerouteUnionLayout.ts / tracerouteAggregate.ts. */
+export const EDGE_RIM_MARGIN = 3;
 
 /** How far past a clearance circle a detour bend is placed. A bend exactly
  *  ON the circle's rim would let its two adjacent segments graze back
@@ -784,14 +802,16 @@ const BEND_MARGIN = LABEL_CLEARANCE;
  *  Degraded looks, never a hang or crash. */
 const VERTEX_PUSH_PASSES = 4;
 
-/** Numeric slack for "already clear" comparisons. */
-const GEOM_EPS = 1e-6;
+/** Numeric slack for "already clear" comparisons.
+ *  @internal exported for tracerouteUnionLayout.ts / tracerouteAggregate.ts. */
+export const GEOM_EPS = 1e-6;
 
 /** Radius around an UNRELATED node's center that no edge segment may enter
  *  (#4428): the same rim the edge's own endpoints respect (`pullIn` =
  *  glyphSize/2 + EDGE_RIM_MARGIN) plus one LANE_OFFSET, so both legs'
- *  lane-translated parallels still clear the glyph by the full rim margin. */
-function edgeClearance(o: StripLayoutOptions): number {
+ *  lane-translated parallels still clear the glyph by the full rim margin.
+ *  @internal exported for tracerouteUnionLayout.ts / tracerouteAggregate.ts. */
+export function edgeClearance(o: StripLayoutOptions): number {
   return o.glyphSize / 2 + EDGE_RIM_MARGIN + LANE_OFFSET;
 }
 
@@ -831,8 +851,9 @@ function closestPointOnSegment(
  *
  * The result is still a plain polyline (the strip renders `<polyline>`),
  * just with 0+ extra bend points.
+ * @internal exported for tracerouteUnionLayout.ts / tracerouteAggregate.ts.
  */
-function routeAroundGlyphs(
+export function routeAroundGlyphs(
   path: StripPoint[],
   obstacles: StripPoint[],
   clearance: number,
@@ -927,7 +948,8 @@ function routeAroundGlyphs(
  *  modeled — the C1 row-band rule (`labelOffset`) already keeps anchors
  *  vertically clear of every node footprint; this radius only guards the
  *  horizontal pick/nudge in `pickLabelX`. */
-function labelClearRadius(o: StripLayoutOptions): number {
+/** @internal exported for tracerouteUnionLayout.ts / tracerouteAggregate.ts. */
+export function labelClearRadius(o: StripLayoutOptions): number {
   return o.glyphSize / 2 + LABEL_HALF_HEIGHT + LABEL_CLEARANCE;
 }
 
@@ -940,8 +962,9 @@ function labelClearRadius(o: StripLayoutOptions): number {
  * horizontally clear of each offender in turn — horizontal ONLY, so the
  * forward-above/return-below lane semantics and the C1 row-band invariant
  * survive untouched.
+ * @internal exported for tracerouteUnionLayout.ts / tracerouteAggregate.ts.
  */
-function pickLabelX(
+export function pickLabelX(
   path: StripPoint[],
   anchorY: number,
   glyphCenters: StripPoint[],
