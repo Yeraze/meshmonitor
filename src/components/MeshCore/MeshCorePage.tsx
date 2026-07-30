@@ -199,11 +199,18 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
             </div>
           )}
           {view === 'settings' && (
-            <MeshCoreSettingsView
-              status={status}
-              loading={loading}
-              actions={actions}
-            />
+            <SaveBarProvider>
+              <SaveBarGroup id="meshcore-settings">
+                <MeshCoreSettingsView
+                  status={status}
+                  loading={loading}
+                  actions={actions}
+                  baseUrl={baseUrl}
+                  sourceId={sourceId}
+                />
+              </SaveBarGroup>
+              <SaveBar />
+            </SaveBarProvider>
           )}
         </div>
       </div>

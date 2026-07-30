@@ -10,6 +10,7 @@ import {
   useMaxNodeAgeHoursAcross,
   parseNodeDisplaySettings,
   maxAcross,
+  nodeDisplaySettingsQueryKey,
 } from './useNodeDisplaySettings';
 import apiService from '../services/api';
 import {
@@ -124,6 +125,16 @@ describe('useNodeDisplaySettings', () => {
     const { result } = renderHook(() => useNodeDisplaySettings('source-a'), { wrapper });
     await waitFor(() => expect(result.current.maxNodeAgeHours).toBe(72));
     expect(result.current.nodeDimmingEnabled).toBe(true);
+  });
+});
+
+describe('nodeDisplaySettingsQueryKey', () => {
+  it('is exported and returns the shared cache key shape (#4412 Phase 4 WP2)', () => {
+    // Pinned because MeshCoreNodeDisplaySection invalidates this exact key
+    // after a save — a shape drift here would silently break that
+    // invalidation without any test noticing on the hook side.
+    expect(nodeDisplaySettingsQueryKey('source-a')).toEqual(['settings', 'node-display', 'source-a']);
+    expect(nodeDisplaySettingsQueryKey(null)).toEqual(['settings', 'node-display', null]);
   });
 });
 

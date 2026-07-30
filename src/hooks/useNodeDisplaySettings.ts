@@ -88,7 +88,12 @@ export function parseNodeDisplaySettings(
   };
 }
 
-function nodeDisplaySettingsQueryKey(sourceId: string | null) {
+/**
+ * Exported (#4412 Phase 4 WP2) so `MeshCoreNodeDisplaySection` can invalidate
+ * the exact cache entry it shares with the Nodes list and map after a save,
+ * without duplicating the key literal at the call site.
+ */
+export function nodeDisplaySettingsQueryKey(sourceId: string | null) {
   return ['settings', 'node-display', sourceId] as const;
 }
 
