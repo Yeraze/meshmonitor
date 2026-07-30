@@ -179,7 +179,7 @@ export default function MapAnalysisToolbar() {
       <button
         type="button"
         className="map-analysis-back icon-only"
-        onClick={() => navigate('/')}
+        onClick={() => navigate('/', { state: { showList: true } })}
         title="Back to Sources"
         aria-label="Back to Sources"
       >

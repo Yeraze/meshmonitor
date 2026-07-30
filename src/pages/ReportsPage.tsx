@@ -25,7 +25,7 @@ export default function ReportsPage() {
             <button
               type="button"
               className="reports-header__back"
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/', { state: { showList: true } })}
             >
               <UiIcon name="back" size={16} /> {t('common.back', 'Dashboard')}
             </button>
