@@ -49,6 +49,7 @@ const mockUser = {
 };
 
 const TEST_SOURCE_ID = 'src-a';
+const TEST_SOURCE_ID_B = 'src-b';
 
 const mockAuthStatus = {
   authenticated: true,
@@ -59,6 +60,10 @@ const mockAuthStatus = {
       [TEST_SOURCE_ID]: {
         nodes: { read: true, write: false },
         messages: { read: true, write: true },
+        // 'settings' became sourcey in Phase 6 (#4416) — granted on
+        // TEST_SOURCE_ID only, deliberately not on TEST_SOURCE_ID_B, so the
+        // {anySource}/{sourceId} cases below can distinguish union vs. exact.
+        settings: { read: true, write: true },
       },
     },
   },
@@ -231,6 +236,57 @@ describe('hasPermission', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.hasPermission('unknown_resource' as any, 'read')).toBe(false);
+  });
+
+  // ─── 'settings' sourcey call-site scoping (Phase 6, #4416, WP5) ────────────
+  //
+  // 'settings' became a sourcey resource in WP1. These pin the trap the risk
+  // register (PHASE6 spec R2) calls out: an unscoped `hasPermission('settings',
+  // 'write')` call hard-returns false for every non-admin, which would silently
+  // remove the entire Settings UI. The fixture grants 'settings' on
+  // TEST_SOURCE_ID only (never TEST_SOURCE_ID_B), so these cases distinguish
+  // the exact-match branch from the anySource union branch.
+
+  it("'settings' with no opts and only a bySource[A] grant returns false", async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.hasPermission('settings', 'read')).toBe(false);
+  });
+
+  it("'settings' with { anySource: true } returns true", async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.hasPermission('settings', 'read', { anySource: true })).toBe(true);
+  });
+
+  it("'settings' with { sourceId: A } returns true, { sourceId: B } returns false", async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.hasPermission('settings', 'read', { sourceId: TEST_SOURCE_ID })).toBe(true);
+    expect(result.current.hasPermission('settings', 'read', { sourceId: TEST_SOURCE_ID_B })).toBe(false);
+  });
+
+  it("'settings' returns true for admin regardless of opts", async () => {
+    const adminStatus = {
+      ...mockAuthStatus,
+      user: { ...mockUser, isAdmin: true },
+      permissions: { global: {}, bySource: {} },
+    };
+    mockApi.get.mockImplementation((url: string) => {
+      if (url === '/api/auth/status') return Promise.resolve(adminStatus);
+      if (url.includes('channel-database-permissions')) return Promise.resolve({ data: [] });
+      return Promise.resolve({});
+    });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.hasPermission('settings', 'read')).toBe(true);
+    expect(result.current.hasPermission('settings', 'write', { anySource: true })).toBe(true);
+    expect(result.current.hasPermission('settings', 'write', { sourceId: TEST_SOURCE_ID_B })).toBe(true);
   });
 });
 

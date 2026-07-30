@@ -841,10 +841,13 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
 
       {/* Shared footer (issue #4436) — same link set as the per-source
           sidebar. Settings is gated by settings:read (admin short-circuit
-          lives inside hasPermission), no longer by the legacy isAdmin prop. */}
+          lives inside hasPermission), no longer by the legacy isAdmin prop.
+          'settings' is sourcey (Phase 6 #4416); this is the cross-source
+          Dashboard, which has no single source in context, so anySource is
+          the mirror of the server's union check for the unscoped routes. */}
       <SidebarFooter
         isAdmin={isAdmin}
-        canReadSettings={hasPermission('settings', 'read')}
+        canReadSettings={hasPermission('settings', 'read', { anySource: true })}
         onUsersClick={() => navigate('/users')}
         onSettingsClick={() => navigate('/settings')}
         onNewsClick={onNewsClick}

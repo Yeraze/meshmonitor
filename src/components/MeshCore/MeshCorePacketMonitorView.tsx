@@ -61,7 +61,15 @@ export const MeshCorePacketMonitorView: React.FC<MeshCorePacketMonitorViewProps>
   const socket = wsState.socket;
   const { hasPermission } = useAuth();
 
-  const canWriteSettings = hasPermission('settings', 'write');
+  // 'settings' is sourcey (Phase 6 #4416). Deviates from the PHASE6 spec §5.3
+  // table's suggested `{ sourceId }` default: verified that saveSettings()
+  // below POSTs `meshcore_packet_log_enabled` to /api/settings with no
+  // sourceId query param, and the backend reads it via a plain
+  // getSettingAsync() (meshcorePacketLogService.ts) — it is a genuinely
+  // global, not per-source, setting, and this component never calls
+  // useSource() (sourceId arrives as a prop). anySource mirrors the
+  // unscoped write it actually gates.
+  const canWriteSettings = hasPermission('settings', 'write', { anySource: true });
   const canClear = hasPermission('packetmonitor', 'write');
 
   const [packets, setPackets] = useState<Packet[]>([]);
