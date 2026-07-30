@@ -16,7 +16,6 @@ import {
 } from '../schema/auth.js';
 import { BaseRepository, DrizzleDatabase } from './base.js';
 import { DatabaseType } from '../types.js';
-import { computeEffectiveGrants, computeFanOutInserts, pairKey, type RawGrantRow } from '../../server/services/settingsGrantFanout.js';
 
 const TOKEN_PREFIX = 'mm_v1_';
 const TOKEN_LENGTH = 32; // characters after prefix
@@ -398,96 +397,6 @@ export class AuthRepository extends BaseRepository {
    */
   private isSourceIdNull(permissions: any) {
     return isNull(permissions.sourceId);
-  }
-
-  /**
-   * Reconcile a resource's global grants onto a single newly-created source
-   * (WP7, #4416 / EPIC_FOLLOWUP_FIXES_SPEC.md §5).
-   *
-   * Migration 132 fanned out `settings` grants to every source that existed
-   * at migration time, then deleted the now-inert `sourceId IS NULL` rows.
-   * It deliberately left the NULL rows in place when zero sources existed at
-   * migration time (see `132_fan_out_settings_permissions.ts`). Either way, a
-   * source created afterwards gets no per-source row for a resource whose
-   * grants were already fanned out — this method is the same computation run
-   * again, scoped to just the one new source, so it is a no-op everywhere
-   * except that leftover-NULL-rows case.
-   *
-   * Reuses `computeEffectiveGrants` / `computeFanOutInserts` / `pairKey` from
-   * `settingsGrantFanout.ts` verbatim — this method performs zero new
-   * computation, only the I/O the pure module deliberately excludes. The
-   * `resource` string is NOT defaulted or imported from a shared list here;
-   * per the shared module's contract, every caller supplies its own literal
-   * at its own call site (see that file's header comment).
-   *
-   * Idempotent: a redundant call (e.g. two sources created concurrently,
-   * both reading the same NULL rows) inserts nothing further because
-   * `existingPairs` already reflects the first call's rows, and repeating
-   * the NULL-row delete when there are none left is a no-op.
-   *
-   * Returns the number of per-source permission rows inserted.
-   */
-  async fanOutGlobalGrantsToSource(resource: string, sourceId: string): Promise<number> {
-    const { permissions } = this.tables;
-
-    const rawRows = this.normalizeBigInts(
-      await this.db.select().from(permissions).where(eq(permissions.resource, resource))
-    ) as DbPermission[];
-
-    if (rawRows.length === 0) return 0;
-
-    const rows: RawGrantRow[] = rawRows.map((r) => ({
-      userId: r.userId,
-      sourceId: r.sourceId ?? null,
-      canViewOnMap: !!r.canViewOnMap,
-      canRead: !!r.canRead,
-      canWrite: !!r.canWrite,
-      canDelete: !!r.canDelete,
-      grantedAt: r.grantedAt ?? null,
-      grantedBy: r.grantedBy ?? null,
-    }));
-
-    const now = Date.now();
-    const effective = computeEffectiveGrants(rows, now);
-
-    // A brand-new source cannot already have a per-source row for it in the
-    // overwhelmingly common case, but a concurrent double-create could — so
-    // this is built from the actual rows read above rather than assumed empty.
-    const existingPairs = new Set<string>();
-    for (const r of rows) {
-      if (r.sourceId === sourceId) existingPairs.add(pairKey(r.userId, sourceId));
-    }
-
-    const inserts = computeFanOutInserts(effective, [sourceId], existingPairs);
-
-    for (const ins of inserts) {
-      await this.createPermission({
-        userId: ins.userId,
-        resource,
-        canViewOnMap: ins.canViewOnMap,
-        canRead: ins.canRead,
-        canWrite: ins.canWrite,
-        canDelete: ins.canDelete,
-        grantedAt: ins.grantedAt,
-        grantedBy: ins.grantedBy,
-        sourceId,
-      });
-    }
-
-    // The NULL-scoped rows are inert under the sourcey permission model the
-    // moment at least one source exists (this call proves one does). Clean
-    // them up the same way migration 132 does — delete-last, after the
-    // inserts have landed, so a crash mid-way leaves the NULL rows intact
-    // and this method safely re-runnable on the next source creation.
-    const nullRows = await this.db
-      .select({ id: permissions.id })
-      .from(permissions)
-      .where(and(eq(permissions.resource, resource), this.isSourceIdNull(permissions)));
-    for (const row of nullRows) {
-      await this.db.delete(permissions).where(eq(permissions.id, row.id));
-    }
-
-    return inserts.length;
   }
 
   // ============ API TOKENS ============
