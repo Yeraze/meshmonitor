@@ -6669,7 +6669,7 @@ class MeshtasticManager implements ISourceManager {
             nodeNum: fromNum,
             nodeId: fromNodeId,
             isStoreForwardServer: true,
-            lastHeard: Date.now() / 1000,
+            lastHeard: this.lastHeardFor(meshPacket),
             updatedAt: Date.now(),
           }, this.sourceId);
           break;
@@ -6698,6 +6698,21 @@ class MeshtasticManager implements ISourceManager {
     } catch (error) {
       logger.error('❌ Error processing Store & Forward message:', error);
     }
+  }
+
+  /**
+   * Resolve `lastHeard` for a packet-derived node upsert, applying the replay
+   * guard (see replayGuard.ts) so a stale/replayed frame — e.g. firmware 2.8's
+   * PhoneAPI replaying cached NodeDB position/telemetry with an old `rx_time`,
+   * or a retained MQTT frame — can't advance a node's `lastHeard` past its
+   * true last-contact time (issue #4192/#4445). Every packet-derived
+   * `lastHeard` stamp outside the generic upsert path should go through this.
+   */
+  private lastHeardFor(meshPacket: { rxTime?: unknown }): number | undefined {
+    return resolveLastHeardSec(
+      meshPacket.rxTime != null ? Number(meshPacket.rxTime) : undefined,
+      Date.now(),
+    );
   }
 
   /**
@@ -6953,7 +6968,7 @@ class MeshtasticManager implements ISourceManager {
           const technicalData: any = {
             nodeNum: fromNum,
             nodeId: nodeId,
-            lastHeard: Date.now() / 1000,
+            lastHeard: this.lastHeardFor(meshPacket),
           };
           // -128 is the firmware "no SNR" sentinel; accept 0 dB (issue #3590).
           if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
@@ -6970,8 +6985,9 @@ class MeshtasticManager implements ISourceManager {
             latitude: coords.latitude,
             longitude: coords.longitude,
             altitude: position.altitude,
-            // Cap lastHeard at current time to prevent stale timestamps from node clock issues
-            lastHeard: Date.now() / 1000,
+            // Replay guard (see replayGuard.ts): omit lastHeard for replayed/retained
+            // frames so a stale position can't resurrect an offline node (#4192/#4445).
+            lastHeard: this.lastHeardFor(meshPacket),
             positionChannel: channelIndex,
             positionPrecisionBits: precisionBits,
             positionGpsAccuracy: gpsAccuracy,
@@ -7319,8 +7335,9 @@ class MeshtasticManager implements ISourceManager {
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
-        // Cap lastHeard at current time to prevent stale timestamps from node clock issues
-        lastHeard: Date.now() / 1000
+        // Replay guard (see replayGuard.ts): omit lastHeard for replayed/retained
+        // frames so stale telemetry can't resurrect an offline node (#4192/#4445).
+        lastHeard: this.lastHeardFor(meshPacket)
       };
 
       // Only include SNR/RSSI if they have valid values
@@ -7479,8 +7496,9 @@ class MeshtasticManager implements ISourceManager {
       const nodeData: any = {
         nodeNum: fromNum,
         nodeId: nodeId,
-        // Cap lastHeard at current time to prevent stale timestamps from node clock issues
-        lastHeard: Date.now() / 1000
+        // Replay guard (see replayGuard.ts): omit lastHeard for replayed/retained
+        // frames so stale paxcounter data can't resurrect an offline node (#4192/#4445).
+        lastHeard: this.lastHeardFor(meshPacket)
       };
 
       // Only include SNR/RSSI if they have valid values
