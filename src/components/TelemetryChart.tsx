@@ -28,7 +28,7 @@ import { useWidgetMode } from '../hooks/useWidgetMode';
 import { useWidgetRange } from '../hooks/useWidgetRange';
 import { useSource } from '../contexts/SourceContext';
 import { getLatestValue } from '../utils/telemetry';
-import { unitScale } from '../utils/telemetryFormat';
+import { unitScale, formatDuration, isUptimeType } from '../utils/telemetryFormat';
 import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
 import { UiIcon } from './icons';
@@ -481,6 +481,10 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
 
     const nodeName = formatNodeName(node, favorite.nodeId);
     const isTemperature = isTemperatureType(favorite.telemetryType);
+    // Uptime-in-seconds metrics (uptimeSeconds, hostUptimeSeconds,
+    // paxcounterUptime, mc_*_uptime_secs) display as humanized durations
+    // instead of raw seconds (#3261).
+    const isUptime = isUptimeType(favorite.telemetryType);
     const color = getColor(favorite.telemetryType);
     const label = isPaxcounterCombined ? 'Paxcounter' : getTranslatedLabel(favorite.telemetryType);
 
@@ -569,7 +573,13 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
       0
     );
     const valueScale = isTemperature ? null : unitScale(baseUnit, seriesMaxAbs);
-    const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : (valueScale ? valueScale.unit : baseUnit);
+    // Humanized durations carry their own units ("3d 4h"), so drop the
+    // stored "s" unit for uptime metrics — mirrors UnifiedTelemetryPage.
+    const unit = isTemperature
+      ? getTemperatureUnit(temperatureUnit)
+      : isUptime
+        ? ''
+        : (valueScale ? valueScale.unit : baseUnit);
 
     // For combined paxcounter chart, merge BLE data
     if (isPaxcounterCombined) {
@@ -618,6 +628,10 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
         : v / (valueScale ? valueScale.factor : 1);
     const handleRangeChange = (r: { min: number; max: number }) =>
       setRange({ min: toStored(r.min), max: toStored(r.max) });
+
+    // Display formatter for uptime metrics: humanize seconds in the gauge,
+    // the numeric label, the Y-axis ticks and the tooltip (#3261).
+    const uptimeFormatter = isUptime ? formatDuration : undefined;
 
     return (
       <div ref={setNodeRef} style={style} className="dashboard-chart-container">
@@ -685,6 +699,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
               timestamp={latest.timestamp}
               nodeId={favorite.nodeId}
               onRangeChange={handleRangeChange}
+              formatValue={uptimeFormatter}
             />
           ) : (
             <div className="dashboard-no-data">{t('dashboard.no_chart_data')}</div>
@@ -696,6 +711,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
               unit={unit}
               color={color}
               timestamp={latest.timestamp}
+              formatValue={uptimeFormatter}
             />
           ) : (
             <div className="dashboard-no-data">{t('dashboard.no_chart_data')}</div>
@@ -711,7 +727,12 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
                 tick={{ fontSize: 12 }}
                 tickFormatter={timestamp => formatChartAxisTimestamp(timestamp, globalTimeRange, timeFormat)}
               />
-              <YAxis yAxisId="left" tick={{ fontSize: 12 }} domain={['auto', 'auto']} />
+              <YAxis
+                yAxisId="left"
+                tick={{ fontSize: 12 }}
+                domain={['auto', 'auto']}
+                tickFormatter={uptimeFormatter ? (v: number) => uptimeFormatter(v) : undefined}
+              />
               <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} domain={['auto', 'auto']} hide={true} />
               <Tooltip
                 contentStyle={{
@@ -721,6 +742,15 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
                   color: '#cdd6f4',
                 }}
                 labelStyle={{ color: '#cdd6f4' }}
+                formatter={
+                  uptimeFormatter
+                    ? (value, name) =>
+                        // Leave the solar overlay (watt-hours) untouched.
+                        name === 'solarEstimate' || typeof value !== 'number'
+                          ? value
+                          : uptimeFormatter(value)
+                    : undefined
+                }
                 labelFormatter={value => {
                   const date = new Date(value);
                   return date.toLocaleString([], {
