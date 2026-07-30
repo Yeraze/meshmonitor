@@ -10,6 +10,7 @@ import { createLocalUser, resetUserPassword, setUserPassword } from '../auth/loc
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { PermissionSet, isSourceyResource, ResourceType } from '../../types/permission.js';
+import { fail } from '../utils/apiResponse.js';
 const router = Router();
 
 // All routes require admin
@@ -367,6 +368,14 @@ router.get('/:id/permissions', async (req: Request, res: Response) => {
     // Merge the user's global (non-sourcey) grants on top of their per-source
     // grants so the admin UI can edit both in one form. The PUT handler routes
     // each resource back to the correct scope.
+    //
+    // `settings` is sourcey (#4416 — see PER_SOURCE_NODE_DISPLAY_PHASE6_SPEC.md
+    // §2, §4.1): it is stored under `bySource`, not `global`, so an unscoped
+    // GET (no ?sourceId=) omits it entirely rather than merging a global row.
+    // A scoped GET picks it up via `perSource` above along with the rest of
+    // that source's sourcey grants. No filtering logic below needed to change
+    // for this — `isSourceyResource('settings')` is now true, so the loop
+    // correctly stops re-merging it as a global.
     const { global, bySource } = await databaseService.getUserPermissionSetsBySourceAsync(userId);
     const perSource = sourceId ? (bySource[sourceId] ?? {}) : {};
     const permissions: PermissionSet = { ...perSource };
@@ -396,9 +405,7 @@ router.put('/:id/permissions', async (req: Request, res: Response) => {
     const { permissions, sourceId } = req.body as { permissions: PermissionSet; sourceId?: string | null };
 
     if (!permissions || typeof permissions !== 'object') {
-      return res.status(400).json({
-        error: 'Invalid permissions format'
-      });
+      return fail(res, 400, 'INVALID_PERMISSIONS', 'Invalid permissions format');
     }
 
     // Validate permissions: write implies read for channel permissions
@@ -411,21 +418,37 @@ router.put('/:id/permissions', async (req: Request, res: Response) => {
     }
 
     // Split the incoming map by resource type:
-    //   - sourcey resources (channels, messages, nodes, etc.) → require sourceId,
+    //   - sourcey resources (channels, messages, nodes, settings, etc. — see
+    //     SOURCEY_RESOURCES in src/types/permission.ts) → require sourceId,
     //     stored with that sourceId.
     //   - non-sourcey resources (dashboard, audit, security, themes, sources,
-    //     settings, info, meshcore) → stored globally with sourceId = NULL,
-    //     regardless of whatever sourceId the admin UI had in scope.
+    //     info, meshcore) → stored globally with sourceId = NULL, regardless
+    //     of whatever sourceId the admin UI had in scope.
+    //
+    // `settings` moved from the second bucket to the first in #4416 (see
+    // PER_SOURCE_NODE_DISPLAY_PHASE6_SPEC.md §4.2) — a settings grant now
+    // requires a sourceId, same as any other sourcey resource. This comment
+    // used to name `settings` as a non-sourcey example; that staleness is
+    // exactly what let the two permission lists drift undetected, so don't
+    // let it happen again — check `isSourceyResource()` / SOURCEY_RESOURCES
+    // itself rather than re-deriving the list here.
     const sourceyEntries = Object.entries(permissions).filter(([r]) => isSourceyResource(r as ResourceType));
     const globalEntries = Object.entries(permissions).filter(([r]) => !isSourceyResource(r as ResourceType));
 
     if (sourceyEntries.length > 0 && !sourceId) {
-      return res.status(400).json({
-        error: 'sourceId is required when updating per-source permissions'
-      });
+      return fail(res, 400, 'MISSING_SOURCE_ID', 'sourceId is required when updating per-source permissions');
     }
 
-    // Replace the per-source scope if we're touching sourcey resources
+    // Replace the per-source scope if we're touching sourcey resources.
+    //
+    // NOTE (destructive replace, §4.3): this deletes ALL rows for
+    // (userId, sourceId) and recreates only what `sourceyEntries` contains.
+    // A PUT that carries a sourceId but omits `settings` silently revokes
+    // that user's settings grant on that source. This is pre-existing
+    // behavior (already true for nodes/messages/channels before #4416) and
+    // UsersTab always sends the full key set, so it does not regress the
+    // admin UI — but it is a real hazard for any other caller of this
+    // endpoint. Pinned by userRoutes.permissions.perSource.test.ts.
     if (sourceId) {
       await databaseService.auth.deletePermissionsForUserByScope(userId, sourceId);
       for (const [resource, perms] of sourceyEntries) {

@@ -4,6 +4,16 @@
  * Regression test for the bug where connection, traceroute, and audit permissions
  * were not being saved because they were missing from the hardcoded list in
  * handleUpdatePermissions()
+ *
+ * AUDIT NOTE (#4416, PER_SOURCE_NODE_DISPLAY_PHASE6_SPEC.md §6.4 WP4): this
+ * file never imports `UsersTab` — it re-implements the filter/save logic
+ * over a hardcoded literal `expectedResources` array below and asserts
+ * against its own re-implementation. It passes identically whether
+ * `settings` is sourcey or not and cannot observe the Global-Resources-vs-
+ * per-source-grid grouping at all. Kept as-is (it still legitimately pins
+ * the "don't hardcode a resource subset in handleUpdatePermissions" bug it
+ * was written for); real coverage for the settings-is-sourcey grouping is
+ * `UsersTab.sourceyGrouping.test.tsx`, which renders the actual component.
  */
 
 import { describe, it, expect } from 'vitest';

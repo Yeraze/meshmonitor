@@ -2,6 +2,24 @@
  * User Management Routes Integration Tests
  *
  * Tests admin-only user management endpoints and permission boundaries
+ *
+ * AUDIT NOTE (#4416, PER_SOURCE_NODE_DISPLAY_PHASE6_SPEC.md §6.4 WP3): this
+ * suite is BLIND to the settings-is-sourcey classification. Its DatabaseService
+ * mock hand-rolls `getUserPermissionSetsBySourceAsync` to always return
+ * `bySource: {}` (see the mock block below), and `checkPermissionAsync`
+ * delegates to `PermissionTestHelper.check()`, which takes no sourceId at all.
+ * Neither can distinguish "settings stored globally" from "settings stored
+ * per-source" — the mock re-implements a shape that predates the split, so a
+ * regression in the real `isSourceyResource`/split logic would pass here
+ * unnoticed. The existing PUT/GET `/permissions` tests below never reference
+ * `settings` and always pass an explicit `sourceId` when they touch any
+ * sourcey resource, so they exercise none of the new 400/omission behavior
+ * either. Do NOT extend this file to cover the sourcey split — real coverage
+ * against the actual `isSourceyResource` branch and the live
+ * `getUserPermissionSetsBySourceAsync` lives in
+ * `userRoutes.permissions.perSource.test.ts` (uses `createRouteTestApp()`).
+ * Kept as-is; it still legitimately covers the non-permission user-management
+ * endpoints and the basic 200/400/403/404 shape of the permissions routes.
  */
 
 import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
