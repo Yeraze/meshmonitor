@@ -10,6 +10,7 @@ import {
   type PathHop,
 } from '../../utils/meshcorePath';
 import { formatRelativeTime } from '../../utils/datetime';
+import { meshcoreLastHeardMs } from '../../utils/meshcoreAge';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useSource } from '../../contexts/SourceContext';
 import { MeshCoreRemoteConsole } from './MeshCoreRemoteConsole';
@@ -900,10 +901,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                 {t('meshcore.contact_details.last_advert', 'Last Advert')}
               </div>
               <div className="node-detail-value">
-                {formatTimestamp(
-                  // lastAdvert is delivered in seconds; convert to ms.
-                  lastAdvert < 1e12 ? lastAdvert * 1000 : lastAdvert,
-                )}
+                {formatTimestamp(meshcoreLastHeardMs({ lastAdvert }) ?? undefined)}
               </div>
             </div>
           )}

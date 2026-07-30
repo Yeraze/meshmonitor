@@ -42,6 +42,7 @@ import { decodeMeshCorePacket } from '../utils/meshcorePacketDecode.js';
 import { MESHCORE_SECRET_BYTES } from '../utils/meshcoreHelpers.js';
 import { parsePathHops, pathHashBytesOf, resolveRouteNames } from '../utils/meshcorePath.js';
 import { tryDecodeGroupTextPayload } from './utils/meshcoreGroupEcho.js';
+import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../utils/meshcoreAge.js';
 
 // Dynamic imports for optional serialport dependency
 // These are loaded only when MeshCore is enabled to avoid requiring native build tools
@@ -436,13 +437,8 @@ export const MC_PF_SNR_FLOOR = -100;
  * Exported at module scope (no manager instance needed) so it is unit
  * testable without device IO.
  *
- * Unit note (verified against this file's contact-write sites, NOT as
- * asserted by the original spec draft): `lastSeen` is epoch
- * **milliseconds** — every write site sets it via `Date.now()` or an
- * advert-derived `advertMs` (`refreshContacts()` ~L2584-2597). `lastAdvert`
- * is epoch **seconds**, taken verbatim from the firmware's `last_advert`
- * field. The two are normalized to a common millisecond cutoff below before
- * comparison.
+ * Unit normalization (lastSeen ms / lastAdvert s) is delegated to
+ * `../utils/meshcoreAge.js` — see that module for the authoritative note.
  */
 export function filterPathfindingContacts(
   contacts: MeshCoreContact[],
@@ -454,14 +450,8 @@ export function filterPathfindingContacts(
   // ---- AND pre-filters ----
   let pool = contacts;
   if (cfg.lastHeardEnabled) {
-    const cutoffMs = nowMs - cfg.lastHeardHours * 3600 * 1000;
-    pool = pool.filter(c => {
-      // Prefer lastSeen (already ms); fall back to lastAdvert (seconds -> ms).
-      const seenMs = c.lastSeen != null
-        ? c.lastSeen
-        : (c.lastAdvert != null ? c.lastAdvert * 1000 : null);
-      return seenMs != null && seenMs >= cutoffMs;
-    });
+    const cutoffMs = meshcoreAgeCutoffMs(cfg.lastHeardHours, nowMs);
+    pool = pool.filter(c => isWithinMeshcoreAge(c, cutoffMs));
   }
   if (cfg.hopsEnabled) {
     pool = pool.filter(c => {
