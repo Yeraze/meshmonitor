@@ -62,15 +62,29 @@ export type PermissionSet = Partial<{
 }>;
 
 /**
- * Resources whose permissions are scoped per-source. Matches the SOURCEY_RESOURCES
- * set used by migration 033. Grants on these resources always carry a sourceId.
+ * Resources whose permissions are scoped per-source. This is the single
+ * canonical definition of that classification — see
+ * `docs/internal/dev-notes/PER_SOURCE_NODE_DISPLAY_PHASE6_SPEC.md` §2.2 for the
+ * repo-scanning drift guard (`src/types/permission.sourcey.test.ts`) that keeps
+ * a second competing list from being reintroduced (issue #4416). Grants on
+ * these resources always carry a sourceId.
+ *
+ * Adding an entry here is a BREAKING CHANGE: it flips a resource from globally
+ * authorized to per-source authorized, which silently drops every existing
+ * global grant for that resource unless a fan-out migration first copies each
+ * grant onto every source (see spec §3; migration 132 fanned out `settings`
+ * when it was added here). Do not add an entry without a matching migration.
+ *
+ * `dashboard`, `info`, `audit`, and `security` are deliberately NOT included —
+ * see spec §1.3 (they are cross-source nav gates, or their underlying data has
+ * no `sourceId` column). This is a decision, not an oversight.
  */
 export const SOURCEY_RESOURCES: readonly ResourceType[] = [
   'channel_0', 'channel_1', 'channel_2', 'channel_3',
   'channel_4', 'channel_5', 'channel_6', 'channel_7',
   'messages', 'nodes', 'nodes_private', 'traceroute',
   'packetmonitor', 'configuration', 'connection', 'automation',
-  'waypoints', 'remote_admin',
+  'waypoints', 'remote_admin', 'settings',
 ] as const;
 
 const SOURCEY_RESOURCE_SET = new Set<ResourceType>(SOURCEY_RESOURCES);

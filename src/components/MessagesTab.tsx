@@ -192,7 +192,11 @@ export interface MessagesTabProps {
   baseUrl: string;
 
   // Permission check
-  hasPermission: (resource: ResourceType, action: 'read' | 'write') => boolean;
+  hasPermission: (
+    resource: ResourceType,
+    action: 'read' | 'write',
+    opts?: { sourceId?: string | null; anySource?: boolean }
+  ) => boolean;
 
   // Handlers
   handleSendDirectMessage: (destinationNodeId: string) => Promise<void>;
@@ -1428,8 +1432,15 @@ const MessagesTab: React.FC<MessagesTabProps> = ({
                         )}
 
                         {/* Admin Scan — sends an admin probe packet to the
-                            remote node. No-op in the MQTT-bridge mirror. */}
-                        {!actionsReadOnly && hasPermission('settings', 'write') && (
+                            remote node. No-op in the MQTT-bridge mirror.
+                            'settings' is sourcey (Phase 6 #4416). Verified
+                            POST /nodes/:nodeNum/scan-remote-admin declares
+                            requirePermission('settings','write') with no
+                            sourceIdFrom — the sourceId query param it does
+                            send only picks the scan target, it is not used
+                            for the permission check — so this stays an
+                            unscoped gate. */}
+                        {!actionsReadOnly && hasPermission('settings', 'write', { anySource: true }) && (
                           <button
                             className="actions-menu-item"
                             onClick={() => {

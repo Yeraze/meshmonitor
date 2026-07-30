@@ -264,9 +264,24 @@ changes, which is why they were not folded into earlier phases.
 proving the change-detection fix; a test proving `getSourceSettings` issues one
 scoped query rather than reading the whole table; #4419 closable.
 
-### [ ] Phase 6 — Reconcile the two `SOURCEY_RESOURCES` lists (#4416)
+### [x] Phase 6 — Reconcile the two `SOURCEY_RESOURCES` lists (#4416) — **COMPLETE** (PR pending)
 
-**Breaking change — needs a user decision before implementation starts.**
+**Browser-validated end to end** on the deployed build, as a **non-admin** user holding a
+`settings` grant on exactly one source (admin short-circuits every permission check, so
+testing as admin would have proved nothing):
+
+| Request | Result |
+|---|---|
+| `POST /api/settings?sourceId=<granted>` | **200** — access retained where granted |
+| `POST /api/settings?sourceId=<other>` | **403** — ✅ the bug, fixed (was 200) |
+| `POST /api/settings` (unscoped) | **200** — matches the §11 ruling |
+
+The Settings nav entry rendered and `/settings` loaded with all sections — the failure mode
+WP5 exists to prevent. Migration 132 logged on startup:
+`1 user(s) have effective settings access out of 1 with a settings row` →
+`wrote up to 7 row(s) for 7 source(s), removed global settings rows`.
+
+**Breaking change — user decisions were taken before implementation started.**
 
 See "Blocked: bug #4" below for the full analysis. Summary: `src/types/permission.ts`
 (the live list) omits `settings`, `dashboard`, `info`, `audit`, and `security`;
@@ -357,6 +372,59 @@ Option 2 is the smallest change and matches what an admin would predict. Raise a
 Phase 2 boundary.
 
 ## Deviations log
+
+### Phase 6
+- **`src/types/permission.ts` survived; `src/server/constants/permissions.ts` was deleted.**
+  The surviving list is the one actually wired up, is importable from both server and
+  frontend, and is typed `ResourceType[]` — the deleted one was `Set<string>`, which is
+  *why* the drift was invisible to the type system. Deleting it touched zero live imports.
+  Net change to the surviving list: exactly one entry, `'settings'`.
+- **`dashboard`, `info`, `audit`, `security` remain non-sourcey** — the user scoped this to
+  `settings` only. They are still divergent from what the deleted list claimed. This was a
+  decision, not an oversight; a drift-guard test now prevents a second list reappearing.
+- **RULING (§11): the unscoped `POST /api/settings` returns 200**, not 403, for a user
+  holding `settings:write` on one source. The route declares `sourceIdFrom: 'query'`, so
+  unscoped calls hit the union branch. The decisive argument: migration 132 **deletes the
+  global rows**, so 403 would create a state no admin can grant their way out of — a
+  functional regression with no remedy in the UI. Choosing 403 would mean inventing a
+  global-settings-grant concept, i.e. a second breaking change and a second migration.
+- **Migration 132 fans out ALL settings rows, not only `sourceId = NULL` ones.** Forced by
+  the completeness requirement: today's effective answer is the OR across every settings row
+  regardless of scope, so a user whose only row is scoped to source A has write everywhere
+  right now. Fanning out only NULL rows would have silently revoked that.
+- **The migration's BEFORE oracle deliberately re-implements the pre-flip branch.** One
+  binary cannot run both classifications, so this is a genuine exception to the rule this
+  epic enforced six times. It carries a comment saying it is frozen, models the pre-flip
+  branch on purpose, and must NEVER be synced with `checkPermissionAsync` — syncing it turns
+  the deliverable into a test comparing the new behavior against itself.
+
+**Findings that were in neither #4416 nor this doc before Phase 6 started:**
+- **11 of 12 `hasPermission('settings', …)` call sites passed no `sourceId`,** and
+  `AuthContext.tsx:274` hard-returns `false` for a sourcey resource without one. Flipping
+  the classification would have silently stripped the Settings nav, the tab route, and every
+  settings control from every non-admin — while the backend still authorized them. This is
+  the way the phase would have shipped broken.
+- **`Sidebar` and `MessagesTab` receive `hasPermission` as a prop typed with only two
+  arguments**, so adding the third was a TS2554 arity error. Those narrower prop types would
+  have silently blocked scoping at the two most visible surfaces.
+- **`userRoutes.ts:416-417` named `settings` as global in prose.** Re-enumerating list
+  members in comments is how the two lists diverged in the first place; rewritten to
+  reference `isSourceyResource()`.
+- **New-user creation still seeds a global `settings` row.** Observed during validation: a
+  freshly created non-admin had `global.settings.read = true` alongside the per-source grant.
+  Inert under the sourcey branch (which reads only `bySource`), so harmless today — but it
+  means user creation writes a row for a resource that is no longer global. Same family as
+  the WP7 source-creation gap.
+- **`getSourceSettings`-style asymmetry in `userRoutes`:** GET reads `sourceId` from the
+  query (`:366`), PUT reads it from the body (`:405`). Consistent with what `UsersTab` sends,
+  so not a bug — but it costs a reader a detour, and it cost this validation one 400.
+
+**Test-quality:** three suites would still pass with the defect present and were annotated
+rather than converted — `settingsRoutes.test.ts` (mocks `checkPermissionAsync` wholesale),
+`UsersTab.permission-save.test.ts` (never imports the component; asserts a hardcoded array),
+`userRoutes.test.ts` (its mock hardcodes `bySource: {}`). Every new test demonstrated its own
+failure first; WP2's required control produced a **crash** rather than a mismatch, which is
+stronger evidence than asked for.
 
 ### Phase 5
 - **Migration 050 frozen at today's 170-key snapshot, not the 87-key authoring-time list.**

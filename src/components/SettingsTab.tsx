@@ -305,7 +305,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // (status → settings:read, save/run-now → settings:write), so gate its UI on
   // the same permission rather than the per-source `automation` resource it
   // used to live under. isAdmin short-circuits inside hasPermission.
-  const canWriteSettings = hasPermission('settings', 'write');
+  // 'settings' is sourcey (Phase 6 #4416). This tab hosts both global and
+  // per-source panels behind one gate; per-panel scoping is out of scope for
+  // this phase (see PER_SOURCE_NODE_DISPLAY_PHASE6_SPEC.md §5.3) — anySource
+  // mirrors the union check the mostly-unscoped settings routes use.
+  const canWriteSettings = hasPermission('settings', 'write', { anySource: true });
   const {
     customThemes,
     customTilesets,

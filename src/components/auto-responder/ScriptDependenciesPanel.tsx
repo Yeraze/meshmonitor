@@ -45,7 +45,10 @@ const ScriptDependenciesPanel: React.FC = () => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { hasPermission } = useAuth();
-  const canInstall = hasPermission('settings', 'write');
+  // 'settings' is sourcey (Phase 6 #4416). POST /api/scripts/dependencies/install
+  // declares requirePermission('settings','write') with no sourceIdFrom — one
+  // script directory, install-wide — so anySource mirrors the server's union check.
+  const canInstall = hasPermission('settings', 'write', { anySource: true });
 
   const [status, setStatus] = useState<DependencyStatus | null>(null);
   const [installing, setInstalling] = useState(false);

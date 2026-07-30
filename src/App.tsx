@@ -656,7 +656,11 @@ function App() {
       info: () => hasPermission('info', 'read'),
       messages: () => hasPermission('messages', 'read'),
       channels: hasAnyChannelPermission,
-      settings: () => hasPermission('settings', 'read'),
+      // 'settings' is a sourcey resource (Phase 6 #4416). This tab gate is
+      // cross-source (no single sourceId in view here), and 34 of the 36
+      // settings routes it protects are unscoped, so { anySource: true }
+      // mirrors checkPermissionAsync's union branch for the same routes.
+      settings: () => hasPermission('settings', 'read', { anySource: true }),
       automation: () => !isMqttBridge && hasPermission('automation', 'read'),
       configuration: () => !isMqttBridge && hasPermission('configuration', 'read'),
       'mqtt-config': () => isMqttBridge && hasPermission('sources', 'read'),

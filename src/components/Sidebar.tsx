@@ -14,7 +14,11 @@ interface UnreadCountsData {
 interface SidebarProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
-  hasPermission: (resource: ResourceType, action: 'read' | 'write') => boolean;
+  hasPermission: (
+    resource: ResourceType,
+    action: 'read' | 'write',
+    opts?: { sourceId?: string | null; anySource?: boolean }
+  ) => boolean;
   isAdmin: boolean;
   isAuthenticated: boolean;
   unreadCounts: { [key: number]: number };
@@ -234,7 +238,10 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         <SectionHeader title={t('nav.section_configuration')} />
         <div className="sidebar-section">
-          {hasPermission('settings', 'read') && (
+          {/* 'settings' is sourcey (Phase 6 #4416); this nav link guards the
+              whole Settings tab, most of whose routes are unscoped, so
+              anySource mirrors the server's union check. */}
+          {hasPermission('settings', 'read', { anySource: true }) && (
             <NavItem id="settings" label={t('nav.settings')} icon={icon('settings')} />
           )}
           {!mqttReadOnly && hasPermission('automation', 'read') && (
@@ -281,7 +288,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           the main-nav entries above. */}
       <SidebarFooter
         isAdmin={isAdmin}
-        canReadSettings={hasPermission('settings', 'read')}
+        canReadSettings={hasPermission('settings', 'read', { anySource: true })}
         onUsersClick={() => setActiveTab('users')}
         onSettingsClick={() => setActiveTab('settings')}
         onNewsClick={onNewsClick}
