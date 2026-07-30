@@ -11,6 +11,12 @@ interface TelemetryGaugeProps {
   nodeId: string;
   onRangeChange: (range: WidgetRange) => void;
   canEditRange?: boolean;
+  /**
+   * Optional display formatter for the value and min/max labels (e.g.
+   * formatDuration for uptime-in-seconds metrics, #3261). The range inputs
+   * keep raw numbers so editing still works.
+   */
+  formatValue?: (value: number) => string;
 }
 
 const SWEEP_DEG = 200;
@@ -40,6 +46,7 @@ const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({
   timestamp,
   onRangeChange,
   canEditRange = false,
+  formatValue,
 }) => {
   const cx = 100;
   const cy = 90;
@@ -58,6 +65,14 @@ const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({
   const date = new Date(timestamp);
   const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+  const displayValue = formatValue
+    ? formatValue(value)
+    : Number.isInteger(value)
+      ? String(value)
+      : value.toFixed(1);
+  const displayMin = formatValue ? formatValue(min) : String(min);
+  const displayMax = formatValue ? formatValue(max) : String(max);
+
   const handleMinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = parseFloat(e.target.value);
     if (!isNaN(v)) onRangeChange({ min: v, max });
@@ -70,7 +85,7 @@ const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({
 
   return (
     <div className="telemetry-gauge">
-      <svg viewBox="0 0 200 160" width="100%" aria-label={`Gauge: ${value} ${unit}`}>
+      <svg viewBox="0 0 200 160" width="100%" aria-label={`Gauge: ${displayValue}${unit ? ` ${unit}` : ''}`}>
         {/* Background arc */}
         <path d={bgPath} fill="none" stroke="var(--ctp-surface0)" strokeWidth={14} strokeLinecap="round" />
         {/* Value arc */}
@@ -85,7 +100,7 @@ const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({
           fontSize="9"
           fill="var(--ctp-subtext0)"
         >
-          {min}
+          {displayMin}
         </text>
         {/* Max label */}
         <text
@@ -95,11 +110,11 @@ const TelemetryGauge: React.FC<TelemetryGaugeProps> = ({
           fontSize="9"
           fill="var(--ctp-subtext0)"
         >
-          {max}
+          {displayMax}
         </text>
         {/* Value */}
         <text x={cx} y={cy + 4} textAnchor="middle" fontSize="26" fontWeight="bold" fill="var(--ctp-text)">
-          {Number.isInteger(value) ? value : value.toFixed(1)}
+          {displayValue}
         </text>
         {/* Unit */}
         <text x={cx} y={cy + 18} textAnchor="middle" fontSize="11" fill="var(--ctp-subtext0)">
