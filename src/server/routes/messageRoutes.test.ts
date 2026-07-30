@@ -556,6 +556,21 @@ describe('Message Deletion Routes', () => {
       expect(response.body).toHaveProperty('deletedCount', 18);
       expect(response.body).toHaveProperty('message', 'Node position history purged successfully');
       expect(mockTelemetryRepo.purgePositionHistory).toHaveBeenCalledWith(123456, 'source-a');
+      expect((databaseService as any).deleteEstimatedPositionsByNodeNumsAsync).toHaveBeenCalledWith([123456]);
+    });
+
+    it('should sum telemetry and estimate deletions into a single deletedCount (#4450)', async () => {
+      const app = createApp({ id: 1, username: 'admin', isAdmin: true });
+      mockTelemetryRepo.purgePositionHistory.mockResolvedValue(18);
+      (databaseService as any).deleteEstimatedPositionsByNodeNumsAsync = vi.fn().mockResolvedValue(2);
+      vi.spyOn(databaseService, 'auditLogAsync').mockResolvedValue(undefined);
+
+      const response = await request(app)
+        .delete('/api/messages/nodes/123456/position-history')
+        .send({ sourceId: 'source-a' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('deletedCount', 20);
     });
 
     it('should scope purge to the provided sourceId', async () => {
