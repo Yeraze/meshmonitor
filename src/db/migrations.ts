@@ -146,6 +146,7 @@ import { migration as mqttOkToMqttViolationsMigration, runMigration128Postgres, 
 import { migration as addShowAtakContactsMigration, runMigration129Postgres, runMigration129Mysql } from '../server/migrations/129_add_show_atak_contacts_to_map_prefs.js';
 import { migration as addWaypointChannelMigration, runMigration130Postgres, runMigration130Mysql } from '../server/migrations/130_add_waypoint_channel.js';
 import { migration as seedPerSourceNodeDisplayMigration, runMigration131Postgres, runMigration131Mysql } from '../server/migrations/131_seed_per_source_node_display.js';
+import { migration as fanOutSettingsPermissionsMigration, runMigration132Postgres, runMigration132Mysql } from '../server/migrations/132_fan_out_settings_permissions.js';
 
 // ============================================================================
 // Registry
@@ -2088,4 +2089,24 @@ registry.register({
   sqlite: (db) => seedPerSourceNodeDisplayMigration.up(db),
   postgres: (client) => runMigration131Postgres(client),
   mysql: (pool) => runMigration131Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 132: fan out `settings` permission grants across every source
+// (#4416). WP1 added 'settings' to SOURCEY_RESOURCES, which makes every
+// existing sourceId=NULL settings grant instantly inert (checkPermissionAsync's
+// sourcey branch requires an exact sourceId match). This migration converts
+// each user's EFFECTIVE settings access — the OR across every settings row
+// they have, regardless of that row's own scope — into an equivalent
+// per-source row on every source that exists today, then removes the
+// now-inert global rows. See PER_SOURCE_NODE_DISPLAY_PHASE6_SPEC.md §3.
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 132,
+  name: 'fan_out_settings_permissions',
+  settingsKey: 'migration_132_fan_out_settings_permissions',
+  sqlite: (db) => fanOutSettingsPermissionsMigration.up(db),
+  postgres: (client) => runMigration132Postgres(client),
+  mysql: (pool) => runMigration132Mysql(pool),
 });
