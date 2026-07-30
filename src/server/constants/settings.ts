@@ -247,6 +247,7 @@ export const VALID_SETTINGS_KEYS = [
   'remoteLocalStatsFilterLastHeardHours',
   'defaultLandingPage',
   'appriseApiServerUrl',
+  'externalUrl',
   // MeshCore auto-pathfinding
   'meshcoreAutoPathfindingEnabled',
   'meshcoreAutoPathfindingPathDiscoveryEnabled',
@@ -621,17 +622,6 @@ export const PER_SOURCE_KEYS_NOT_POSTABLE = new Set<string>([
   'autoFavoriteNodes',      // favoritesService.ts:301,342,419; nodesRoutes.ts:443,569
   'lastAnnouncementTime',   // announceRoutes.ts:15,17; autoAnnounceService.ts:242,244
   'localNodeNum',           // meshtasticManager.ts:4688,4748
-  // ── KNOWN ORPHAN — not legitimized by being listed here ─────────────────
-  // externalUrl is READ at securityDigestService.ts (detailsLink()) and written
-  // NOWHERE in the repo. It is in this set because it is in fact absent from
-  // VALID_SETTINGS_KEYS, not because that absence is correct. Either the write
-  // path was never built or the read is dead. Phase 5 WP4 suppressed the dead
-  // "/security" link this produced (securityDigestService.ts) rather than wiring
-  // a writer; the product question of whether to add a writer or drop the
-  // feature is tracked in #4437. Do NOT "fix" it by adding it to
-  // VALID_SETTINGS_KEYS — that creates a new user-writable setting, which is a
-  // feature, not a cleanup.
-  'externalUrl',
 ]);
 
 /**

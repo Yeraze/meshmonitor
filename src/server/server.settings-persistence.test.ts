@@ -172,6 +172,7 @@ function validTestValue(key: string, suffix = ''): string {
     autoDeleteByDistanceLat: '40.7128',
     autoDeleteByDistanceLon: '-74.006',
     appriseApiServerUrl: 'http://apprise.example.com:8000',
+    externalUrl: 'https://mesh.example.com',
   };
 
   if (key in VALID_VALUES) {
@@ -480,6 +481,9 @@ describe('Settings Persistence', () => {
         // Apprise API server URL (#3012) — loaded directly by SettingsTab,
         // not surfaced via SettingsContext (admin-only field, no global hook).
         'appriseApiServerUrl',
+        // External URL (#4437) — loaded directly by SettingsTab, same pattern
+        // as appriseApiServerUrl above (admin-only field, no global hook).
+        'externalUrl',
         // Elevation/Terrain source settings (#4111 Phase 3 WP-3) — loaded
         // directly by SettingsTab (admin-only field, no global hook), same
         // as appriseApiServerUrl above. `elevationEnabled` is also read

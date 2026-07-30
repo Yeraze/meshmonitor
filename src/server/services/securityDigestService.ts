@@ -58,9 +58,9 @@ function nodeId(nodeNum: number): string {
 /**
  * The digest's "View details" line. Omitted entirely when no absolute external URL is
  * configured, because `${''}/security` renders as a dead relative path in an Apprise
- * message. `externalUrl` currently has NO writer anywhere in the repo (#4419 / #4437);
- * whether it should become a user-configurable setting is a product decision, not a
- * cleanup. Until then this keeps the broken line out of every digest.
+ * message. `externalUrl` is a global, admin-configurable setting (#4437) that defaults
+ * to unset — an install that has never set it keeps getting no link, unchanged from
+ * before #4437.
  */
 function detailsLink(baseUrl: string, markdown: boolean): string | null {
   if (!baseUrl) return null;
@@ -343,7 +343,16 @@ class SecurityDigestService {
     const suppressEmptyRaw = await this.databaseService.settings.getSettingForSource(sourceId, 'securityDigestSuppressEmpty');
     const suppressEmpty = suppressEmptyRaw !== 'false';
     const format = ((await this.databaseService.settings.getSettingForSource(sourceId, 'securityDigestFormat')) || 'text') as DigestFormat;
-    const baseUrl = (await this.databaseService.settings.getSettingForSource(sourceId, 'externalUrl')) || '';
+    // externalUrl is a GLOBAL-only setting (#4437) — one origin per install, not
+    // one per source (see settingsRoutes.ts's validation comment). Deliberately
+    // `getSetting`, NOT `getSettingForSource`: the latter, when passed a truthy
+    // sourceId, reads ONLY the `source:<id>:externalUrl` row and does NOT fall
+    // back to the global key (that per-source-miss fallback was removed from
+    // getSettingForSource for #2839/#2840 — see settings.ts's own docstring).
+    // Since externalUrl has no per-source writer, getSettingForSource(sourceId, …)
+    // here would always read null and silently break the "View details" link
+    // for every source. `getSetting` reads the global row directly.
+    const baseUrl = (await this.databaseService.settings.getSetting('externalUrl')) || '';
 
     // Resolve source name for the title/body prefix
     let sourceName = sourceId;

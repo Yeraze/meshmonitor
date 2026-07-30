@@ -1604,6 +1604,8 @@
     "settings.apprise_server_description": "MeshMonitor przekazuje powiadomienia Apprise przez serwer Apprise API, który rozsyła je do adresów usług powiadomień skonfigurowanych osobno dla każdego użytkownika (Discord, poczta elektroniczna itd.). Poniżej zmień adres serwera, jeśli działa on poza dołączonym kontenerem.",
     "settings.apprise_server_url_label": "Adres URL serwera Apprise API",
     "settings.apprise_server_url_description": "Pozostaw puste, jeśli działa serwer Apprise API dołączony do MeshMonitor (domyślnie w instalacjach Docker).",
+  "settings.external_url_label": "External URL",
+  "settings.external_url_description": "The absolute address this MeshMonitor is reachable at, used for links in notifications (e.g. the \"View details\" link in security digests). Include your base path if you run under one, e.g. https://mesh.example.com/meshmonitor. Leave empty to omit the link.",
     "settings.apprise_server_test": "Sprawdź połączenie",
     "settings.apprise_server_testing": "Testowanie…",
     "settings.apprise_server_test_success": "Połączono ({{latency}} ms)",

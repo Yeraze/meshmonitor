@@ -25,6 +25,7 @@ import { validateFilterNameRegexOnSave } from '../utils/filterNameRegex.js';
 import { positionEstimationScheduler } from '../services/positionEstimationScheduler.js';
 import { autoDeleteByDistanceService } from '../services/autoDeleteByDistanceService.js';
 import { NODE_DISPLAY_RANGES, NODE_DISPLAY_SETTING_KEYS } from '../../constants/nodeDisplayDefaults.js';
+import { resolveAppriseServerUrl } from '../services/appriseNotificationService.js';
 
 // ─── Tile URL validation ─────────────────────────────────────────────────
 
@@ -774,6 +775,33 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       filteredSettings.appriseApiServerUrl = raw;
     }
 
+    // External URL (#4437). The absolute origin this MeshMonitor install is
+    // reachable at, used to build the "View details" link in security digests
+    // (securityDigestService.ts detailsLink()). Empty string clears it, which
+    // keeps detailsLink() returning null exactly as it does today when unset.
+    if ('externalUrl' in filteredSettings) {
+      let raw = filteredSettings.externalUrl.trim();
+      if (raw.length > 0) {
+        let parsed: URL;
+        try {
+          parsed = new URL(raw);
+        } catch {
+          return res.status(400).json({ error: 'externalUrl must be a valid http(s) URL' });
+        }
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          return res.status(400).json({ error: 'externalUrl must use http:// or https://' });
+        }
+        // Strip ALL trailing slashes — detailsLink() emits `${baseUrl}/security`
+        // verbatim, so a trailing slash here would double up to `//security`.
+        let end = raw.length;
+        while (end > 0 && raw.charCodeAt(end - 1) === 47 /* '/' */) {
+          end--;
+        }
+        raw = raw.slice(0, end);
+      }
+      filteredSettings.externalUrl = raw;
+    }
+
     // Save to database
     if (sourceId) {
       // Per-source: store with source: prefix
@@ -1127,15 +1155,9 @@ router.post('/test-apprise', requirePermission('settings', 'write'), async (req:
   try {
     const requestUrl = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
 
-    let target: string;
-    if (requestUrl.length > 0) {
-      target = requestUrl;
-    } else {
-      const saved = await databaseService.settings.getSetting('appriseApiServerUrl');
-      target = (saved && saved.trim().length > 0)
-        ? saved.trim()
-        : (process.env.APPRISE_URL || 'http://localhost:8000');
-    }
+    const target = requestUrl.length > 0
+      ? requestUrl
+      : await resolveAppriseServerUrl(databaseService.settings, null);
 
     const validation = validateAppriseProbeUrl(target);
     if (!validation.ok || !validation.probeUrl) {
