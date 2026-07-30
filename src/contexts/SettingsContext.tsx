@@ -366,6 +366,24 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   // (no runtime global fallback). `localStatsIntervalMinutes` is the one key
   // of the ten with no SettingsContext state: it lives entirely in
   // SettingsTab's draft (WP4).
+  //
+  // These `useState(() => readNodeDisplayLocal(sourceId, key))` initializers
+  // are lazy — they run exactly once per SettingsProvider instance, on that
+  // instance's first render, and never again. For the primary app they are
+  // only correct because `src/main.tsx` mounts `<App key={sourceId} />`
+  // (inside `SourceApp()`): changing sourceId changes the `key`, which forces
+  // React to unmount the old provider tree and mount a fresh one, so each
+  // instance's lazy initializer only ever sees the sourceId it was born
+  // with. If that `key` prop were ever removed or altered, a source switch
+  // would leave this component instance's state holding the PREVIOUS
+  // source's values until the re-seed effect below (deps `[baseUrl,
+  // sourceId]`, #4412 Phase 3 / D1) catches up on the next render — that
+  // effect is what actually keeps the other SettingsProvider mount sites
+  // (DashboardPage, ReportsPage, MapAnalysisPage, etc. — the ones that don't
+  // sit behind an `App key={sourceId}` remount boundary) correct today.
+  // See SettingsContext.test.tsx's "picks up source B's locally-mirrored
+  // values on a fresh mount" test, which pins this via an explicit
+  // unmount+remount rather than the D1 effect.
   const [maxNodeAgeHours, setMaxNodeAgeHoursState] = useState<number>(() =>
     parseNodeDisplayNumber('maxNodeAgeHours', readNodeDisplayLocal(sourceId, 'maxNodeAgeHours')),
   );

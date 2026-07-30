@@ -63,8 +63,11 @@ vi.mock('../contexts/AuthContext', () => ({
   }),
 }));
 
+const { showToastMock } = vi.hoisted(() => ({
+  showToastMock: vi.fn(),
+}));
 vi.mock('./ToastContainer', () => ({
-  useToast: () => ({ showToast: vi.fn() }),
+  useToast: () => ({ showToast: showToastMock }),
 }));
 
 const { csrfFetchMock } = vi.hoisted(() => ({
@@ -254,6 +257,7 @@ beforeEach(() => {
   capturedSettingsGetUrls = [];
   csrfFetchMock.mockClear();
   csrfFetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+  showToastMock.mockClear();
   saveBarCapture.current = null;
   installFetchMock();
 });
@@ -347,6 +351,59 @@ describe('SettingsTab — split save (#4412 Phase 3 WP4b)', () => {
       expect(body).toHaveProperty(key);
     }
     expect(body).toHaveProperty('temperatureUnit');
+  });
+
+  // Pins the partial-write failure mode documented on handleSave's `if
+  // (sourceQuery)` branch: the two POSTs are sequential awaits, so a global
+  // POST success followed by a scoped POST failure leaves the global half
+  // already committed server-side with no rollback. The code's only
+  // observable reaction is the generic catch — an error toast and skipping
+  // applyDraft — it does not distinguish "both POSTs failed" from "only the
+  // second one did".
+  it('when the global POST succeeds but the scoped Node Display POST rejects, shows the save-failed toast and does not apply the draft (no rollback of the already-committed global half)', async () => {
+    serverSettings = { localStatsIntervalMinutes: '45' };
+    render(
+      <SourceProvider sourceId="source-a" sourceType="meshtastic_tcp">
+        <SettingsTab {...baseProps} mode="source" />
+      </SourceProvider>
+    );
+
+    await waitFor(() => {
+      const input = document.getElementById('localStatsIntervalMinutes') as HTMLInputElement;
+      expect(input.value).toBe('45');
+    });
+    await waitFor(() => expect(saveBarCapture.current!.hasChanges).toBe(false));
+
+    // Dirty the draft so a post-failure "hasChanges is still true" assertion
+    // actually proves applyDraft never ran, rather than trivially holding
+    // because nothing was edited.
+    const section = document.getElementById('settings-node-display')!;
+    const checkbox = within(section)
+      .getByText('settings.node_dimming_enabled')
+      .closest('label')!
+      .querySelector('input[type="checkbox"]') as HTMLInputElement;
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(saveBarCapture.current!.hasChanges).toBe(true));
+
+    csrfFetchMock.mockReset();
+    csrfFetchMock.mockImplementationOnce(async () => ({ ok: true, json: async () => ({}) })); // global POST
+    csrfFetchMock.mockImplementationOnce(async () => { throw new Error('network error'); }); // scoped POST
+
+    await saveBarCapture.current!.onSave();
+
+    // Both POSTs were attempted (the global one committed before the scoped
+    // one threw) — this is the "already applied server-side" half of the
+    // partial-write comment.
+    expect(csrfFetchMock).toHaveBeenCalledTimes(2);
+
+    // The generic catch fires: save_failed toast, no success toast.
+    expect(showToastMock).toHaveBeenCalledWith('settings.save_failed', 'error');
+    expect(showToastMock).not.toHaveBeenCalledWith('settings.saved_success', 'success');
+
+    // applyDraft never ran (it's only reached after both awaits succeed), so
+    // the edited checkbox is still an unsaved change — the SaveBar stays
+    // dirty rather than clearing as it would on a successful save.
+    expect(saveBarCapture.current!.hasChanges).toBe(true);
   });
 });
 

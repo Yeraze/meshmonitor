@@ -197,6 +197,13 @@ async function auditSettingsWrite(
     if (!validKeySet.has(key)) continue;
     const before = currentSettings[`${prefix}${key}`];
     if (before !== filteredSettings[key]) {
+      // `Object.defineProperty` (not `changed[key] = ...`) is deliberate, not
+      // stylistic: it's how the code proved to static analysis / CodeQL that
+      // `key` — checked against `validKeySet` above, but still a
+      // request-derived string — can't trigger prototype pollution via a
+      // plain-assignment sink. Preserved verbatim from the pre-extraction
+      // code (Phase 1); swapping it for `changed[key] = ...` risks reopening
+      // that finding even though `key` is allowlisted here.
       Object.defineProperty(changed, key, {
         value: { before, after: filteredSettings[key] },
         enumerable: true, writable: true, configurable: true,
@@ -262,7 +269,7 @@ router.get('/', optionalAuth(), async (req: Request, res: Response) => {
     }
   } catch (error) {
     logger.error('Error fetching settings:', error);
-    res.status(500).json({ error: 'Failed to fetch settings' });
+    fail(res, 500, 'SETTINGS_FETCH_FAILED', 'Failed to fetch settings');
   }
 });
 

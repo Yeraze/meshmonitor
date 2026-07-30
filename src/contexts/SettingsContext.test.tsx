@@ -1650,6 +1650,61 @@ describe('SettingsProvider per-source Node Display (#4412 Phase 3)', () => {
     });
   });
 
+  // Pins the OTHER correctness mechanism for the lazy `useState(() =>
+  // readNodeDisplayLocal(...))` initializers: main.tsx's `<App
+  // key={sourceId} />` (see SettingsContext.tsx's comment at these
+  // initializers). That remount is a full unmount + fresh mount, not a prop
+  // update on a persisting instance — unlike the `rerender(...)` used by the
+  // D1 tests above/below, which exercises the re-seed *effect* instead. Uses
+  // a never-resolving fetch so only the lazy initializer (not the D1 effect,
+  // which never gets a chance to fire before the assertion) can be
+  // responsible for the observed value.
+  it("picks up source B's locally-mirrored values on a fresh mount, simulating the main.tsx key={sourceId} remount", async () => {
+    const { writeNodeDisplayLocal } = await import('../utils/nodeDisplayStorage');
+    writeNodeDisplayLocal('A', 'maxNodeAgeHours', '168');
+    writeNodeDisplayLocal('B', 'maxNodeAgeHours', '1');
+    mockFetch.mockImplementation(() => new Promise(() => {}));
+
+    const { SettingsProvider, useSettings } = await import('./SettingsContext');
+    const { SourceProvider } = await import('./SourceContext');
+
+    let contextValue: any;
+    const Consumer = () => {
+      contextValue = useSettings();
+      return <div data-testid="consumer">loaded</div>;
+    };
+
+    let unmountFn: () => void = () => {};
+    act(() => {
+      const utils = render(
+        <SourceProvider sourceId="A">
+          <SettingsProvider>
+            <Consumer />
+          </SettingsProvider>
+        </SourceProvider>
+      );
+      unmountFn = utils.unmount;
+    });
+    expect(contextValue.maxNodeAgeHours).toBe(168);
+
+    // Full unmount, then a brand-new render — the remount main.tsx's
+    // `key={sourceId}` produces on a source switch, as opposed to React
+    // updating props on the same provider instance.
+    unmountFn();
+
+    act(() => {
+      render(
+        <SourceProvider sourceId="B">
+          <SettingsProvider>
+            <Consumer />
+          </SettingsProvider>
+        </SourceProvider>
+      );
+    });
+
+    expect(contextValue.maxNodeAgeHours).toBe(1);
+  });
+
   it('synchronously re-seeds from the new source\'s local mirror BEFORE the fetch resolves (D1)', async () => {
     // Pre-seed each source's namespaced mirror directly (bypassing the
     // network), so the synchronous re-seed at the top of the load effect —

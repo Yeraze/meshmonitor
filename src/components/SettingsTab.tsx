@@ -983,7 +983,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         });
       } else {
         // mode="global" (or no SourceProvider): byte-identical to the
-        // pre-split single unscoped POST.
+        // pre-split single unscoped POST. The ten Node Display keys ride
+        // along in `settings` here — that's intentional, not an oversight:
+        // `sourceQuery` is empty precisely when useSourceQuery() has no
+        // current source (no SourceProvider in the tree), so there is no
+        // sourceId to scope those keys to. They land as plain global rows,
+        // which is the same place they lived before Phase 3 split the save
+        // path, and is harmless because the read path (settingsRoutes.ts GET,
+        // #4412 Phase 3 D5) only ever back-fills Node Display keys from a
+        // per-source row, never from this global fallback.
         await csrfFetch(`${baseUrl}/api/settings`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
