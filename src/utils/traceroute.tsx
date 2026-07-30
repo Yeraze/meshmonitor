@@ -1,6 +1,7 @@
 import React from 'react';
 import { DeviceInfo } from '../types/device';
 import { calculateDistance, formatDistance } from './distance';
+import { isUnknownSnr } from './tracerouteSegments';
 
 /**
  * INT8_MIN (-128) is the firmware sentinel for an unknown-SNR hop.
@@ -257,5 +258,94 @@ export function formatTracerouteRoute(
   } catch (error) {
     console.error('Error formatting traceroute:', error);
     return 'Error parsing route';
+  }
+}
+
+/**
+ * Plain-text rendering of one traceroute leg, for clipboard export (Copy
+ * Forward/Return/Both links, node-details traceroute box).
+ *
+ * Mirrors `formatTracerouteRoute`'s data semantics — same `[fromNum, ...route,
+ * toNum]` path build, same BROADCAST_ADDR→"Unknown" handling, same #3622
+ * empty-array guard — but renders plain strings (no React, no highlighting,
+ * no distance suffix) and reports SNR via the canonical
+ * `isUnknownSnr`/`UNKNOWN_SNR_SENTINEL` sentinel (`tracerouteSegments.ts`)
+ * instead of the raw INT8_MIN check.
+ *
+ * SNR is paired with the hop being ARRIVED AT (never the leg's start), by
+ * index, before invalid/reserved hops are filtered out — this keeps a
+ * surviving hop's own sample attached even when a neighboring hop is
+ * dropped, matching `tracerouteSegments.ts`'s `buildLegSegments`.
+ *
+ * @returns `"Name (2.5 dB) → Name2 (? dB) → Name3"`, or `null` when the leg
+ *   has no usable data (no response yet, malformed data, or the #3622
+ *   both-empty case).
+ */
+export function formatTracerouteText(
+  route: string | null,
+  snr: string | null,
+  fromNum: number,
+  toNum: number,
+  nodes: DeviceInfo[],
+): string | null {
+  // Handle pending/null routes (failed or not-yet-recorded traceroute)
+  if (!route || route === 'null') {
+    return null;
+  }
+
+  try {
+    const rawRouteArray = JSON.parse(route);
+    if (!Array.isArray(rawRouteArray)) return null;
+    const parsedSnr = snr ? JSON.parse(snr) : [];
+    const snrRaw: number[] = Array.isArray(parsedSnr) ? parsedSnr : [];
+
+    // #3622 empty-array guard: an empty route AND empty snr means this leg
+    // has not been recorded yet — don't synthesize a fictitious direct hop.
+    if (rawRouteArray.length === 0 && snrRaw.length === 0) {
+      return null;
+    }
+
+    // BROADCAST_ADDR (0xffffffff) is intentionally NOT filtered — the
+    // firmware uses it as a placeholder for relay-role hops that refused to
+    // self-identify. It is rendered as "Unknown" below.
+    const BROADCAST_ADDR = 4294967295;
+    const isValidRouteNode = (nodeNum: number): boolean => {
+      if (nodeNum <= 3) return false; // Reserved
+      if (nodeNum === 255) return false; // 0xff reserved
+      if (nodeNum === 65535) return false; // 0xffff invalid placeholder
+      return true;
+    };
+
+    // Pair each raw route entry with its own arrival SNR BEFORE filtering,
+    // then drop invalid/reserved hops.
+    const intermediates: { nodeNum: number; snr: number | undefined }[] = (rawRouteArray as number[])
+      .map((nodeNum, idx) => ({
+        nodeNum,
+        snr: idx < snrRaw.length ? snrRaw[idx] : undefined,
+      }))
+      .filter(h => isValidRouteNode(h.nodeNum));
+
+    // The final hop's (toNum's) arrival SNR is the one extra entry beyond
+    // the route array, when present.
+    const endSnr = snrRaw.length > rawRouteArray.length ? snrRaw[rawRouteArray.length] : undefined;
+
+    const fullPath: { nodeNum: number; snr: number | undefined }[] = [
+      { nodeNum: fromNum, snr: undefined },
+      ...intermediates,
+      { nodeNum: toNum, snr: endSnr },
+    ];
+
+    return fullPath
+      .map(({ nodeNum, snr: rawSnrValue }) => {
+        const name = nodeNum === BROADCAST_ADDR ? 'Unknown' : formatNodeName(nodeNum, nodes);
+        if (rawSnrValue === undefined) return name;
+        const scaledSnr = rawSnrValue / 4;
+        if (isUnknownSnr(scaledSnr)) return `${name} (? dB)`;
+        return `${name} (${scaledSnr.toFixed(1)} dB)`;
+      })
+      .join(' → ');
+  } catch (error) {
+    console.error('Error formatting traceroute text:', error);
+    return null;
   }
 }
