@@ -34,7 +34,6 @@ import MapStyleManager from './MapStyleManager';
 import { useDashboardSources } from '../hooks/useDashboardData';
 import { DEFAULT_TERRARIUM_URL } from '../types/elevation';
 import { useSourceQuery } from '../hooks/useSourceQuery';
-import { useSource } from '../contexts/SourceContext';
 import {
   NODE_DISPLAY_SETTING_KEYS,
   NODE_DISPLAY_NUMERIC_DEFAULTS,
@@ -356,14 +355,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // #4412 Phase 3 WP4: scopes the Node Display GET/POST to the active source.
   // '' in mode="global" (GlobalSettingsPage renders outside a SourceProvider).
   const sourceQuery = useSourceQuery();
-  // #4412 Phase 3 WP4(e): localStatsIntervalMinutes and nodeHopsCalculation
-  // have no MeshCore equivalent (both are Meshtastic-specific node-age
-  // signals), so they're hidden — not disabled — on MeshCore sources. This
-  // branch is unreachable today (SettingsTab never mounts under a MeshCore
-  // route — see the JSX below for the full citation); Phase 4 adds the
-  // mount point that exercises it live.
-  const { sourceType } = useSource();
-  const isMeshCoreSource = sourceType === 'meshcore';
 
   // Single draft reducer replacing the 49 `local*` mirrors (Task 5.3). Lazy-initialized once from
   // the current context/props values; category-C fields (no context/prop home) start at their
@@ -2004,49 +1995,43 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               className="setting-input"
             />
           </div>
-          {/* #4412 Phase 3 WP4(e): localStatsIntervalMinutes and nodeHopsCalculation are
-              Meshtastic-specific node-age signals with no MeshCore equivalent, so they're
-              hidden — not disabled — on MeshCore sources. Unreachable today: SettingsTab
-              never mounts under a MeshCore route (GlobalSettingsPage.tsx and App.tsx's
-              /settings route are the only two mount sites, and MeshCore sources render
-              MeshCorePage instead). Phase 4 adds the mount point that exercises this live;
-              this branch's only coverage until then is
-              SettingsTab.nodeDisplay.perSource.test.tsx. */}
-          {!isMeshCoreSource && (
-            <>
-              <div className="setting-item">
-                <label htmlFor="localStatsIntervalMinutes">
-                  {t('settings.local_stats_interval_label')}
-                  <span className="setting-description">{t('settings.local_stats_interval_description')}</span>
-                </label>
-                <input
-                  id="localStatsIntervalMinutes"
-                  type="number"
-                  min="0"
-                  max="60"
-                  value={draft.localStatsIntervalMinutes}
-                  onChange={(e) => updateField('localStatsIntervalMinutes', parseInt(e.target.value))}
-                  className="setting-input"
-                />
-              </div>
-              <div className="setting-item">
-                <label htmlFor="nodeHopsCalculation">
-                  {t('settings.node_hops_calculation')}
-                  <span className="setting-description">{t('settings.node_hops_calculation_description')}</span>
-                </label>
-                <select
-                  id="nodeHopsCalculation"
-                  value={draft.nodeHopsCalculation}
-                  onChange={(e) => updateField('nodeHopsCalculation', e.target.value as NodeHopsCalculation)}
-                  className="setting-input"
-                >
-                  <option value="nodeinfo">{t('settings.node_hops_nodeinfo')}</option>
-                  <option value="traceroute">{t('settings.node_hops_traceroute')}</option>
-                  <option value="messages">{t('settings.node_hops_messages')}</option>
-                </select>
-              </div>
-            </>
-          )}
+          {/* #4412 Phase 4 WP4: localStatsIntervalMinutes and nodeHopsCalculation are
+              Meshtastic-specific node-age signals with no MeshCore equivalent. SettingsTab
+              never mounts under a MeshCore route (see D1/D2 in
+              docs/internal/dev-notes/PER_SOURCE_NODE_DISPLAY_PHASE4_SPEC.md), so MeshCore
+              sources get their Node Display settings from MeshCoreNodeDisplaySection
+              instead — these two fields render unconditionally here. */}
+          <div className="setting-item">
+            <label htmlFor="localStatsIntervalMinutes">
+              {t('settings.local_stats_interval_label')}
+              <span className="setting-description">{t('settings.local_stats_interval_description')}</span>
+            </label>
+            <input
+              id="localStatsIntervalMinutes"
+              type="number"
+              min="0"
+              max="60"
+              value={draft.localStatsIntervalMinutes}
+              onChange={(e) => updateField('localStatsIntervalMinutes', parseInt(e.target.value))}
+              className="setting-input"
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="nodeHopsCalculation">
+              {t('settings.node_hops_calculation')}
+              <span className="setting-description">{t('settings.node_hops_calculation_description')}</span>
+            </label>
+            <select
+              id="nodeHopsCalculation"
+              value={draft.nodeHopsCalculation}
+              onChange={(e) => updateField('nodeHopsCalculation', e.target.value as NodeHopsCalculation)}
+              className="setting-input"
+            >
+              <option value="nodeinfo">{t('settings.node_hops_nodeinfo')}</option>
+              <option value="traceroute">{t('settings.node_hops_traceroute')}</option>
+              <option value="messages">{t('settings.node_hops_messages')}</option>
+            </select>
+          </div>
           <div className="setting-item" style={{ marginTop: '1rem' }}>
             <label>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>

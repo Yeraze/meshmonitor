@@ -21,11 +21,14 @@
  *  3. mode="global" issues one POST with all keys (byte-identical shape to
  *     pre-split behaviour).
  *  4. Editing a dimming input marks the SaveBar dirty; saving clears it.
- *  5. sourceType="meshcore" hides localStatsIntervalMinutes and
- *     nodeHopsCalculation; sourceType="meshtastic_tcp" shows them. This is
- *     the MeshCore hide-branch's ONLY exercise (§4.4(e) / §6 "not
- *     browser-validatable in this phase" — SettingsTab never mounts under a
- *     MeshCore route until Phase 4).
+ *
+ * #4412 Phase 4 WP4: the former item 5 here (`sourceType="meshcore"` hides
+ * localStatsIntervalMinutes/nodeHopsCalculation) was removed along with the
+ * SettingsTab branch it exercised. SettingsTab never mounts under a MeshCore
+ * route (see D1/D2 in docs/internal/dev-notes/PER_SOURCE_NODE_DISPLAY_PHASE4_SPEC.md),
+ * so the branch was dead code and its test passed vacuously. MeshCore's Node
+ * Display settings now live in MeshCoreNodeDisplaySection, covered by
+ * MeshCoreNodeDisplaySection.test.tsx.
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -427,35 +430,5 @@ describe('SettingsTab — dimming trio dirty-tracking (#4412 Phase 3 WP4c)', () 
 
     await saveBarCapture.current!.onSave();
     await waitFor(() => expect(saveBarCapture.current!.hasChanges).toBe(false));
-  });
-});
-
-describe('SettingsTab — MeshCore hide-branch (#4412 Phase 3 WP4e)', () => {
-  it('hides localStatsIntervalMinutes and nodeHopsCalculation for sourceType="meshcore"', async () => {
-    render(
-      <SourceProvider sourceId="source-mc" sourceType="meshcore">
-        <SettingsTab {...baseProps} mode="source" />
-      </SourceProvider>
-    );
-
-    await waitFor(() => expect(saveBarCapture.current).not.toBeNull());
-    expect(document.getElementById('localStatsIntervalMinutes')).not.toBeInTheDocument();
-    expect(document.getElementById('nodeHopsCalculation')).not.toBeInTheDocument();
-    // The rest of the Node Display section still renders.
-    expect(document.getElementById('settings-node-display')).toBeInTheDocument();
-  });
-
-  it('shows localStatsIntervalMinutes and nodeHopsCalculation for sourceType="meshtastic_tcp"', async () => {
-    render(
-      <SourceProvider sourceId="source-mt" sourceType="meshtastic_tcp">
-        <SettingsTab {...baseProps} mode="source" />
-      </SourceProvider>
-    );
-
-    await waitFor(() => expect(saveBarCapture.current).not.toBeNull());
-    await waitFor(() => {
-      expect(document.getElementById('localStatsIntervalMinutes')).toBeInTheDocument();
-      expect(document.getElementById('nodeHopsCalculation')).toBeInTheDocument();
-    });
   });
 });
