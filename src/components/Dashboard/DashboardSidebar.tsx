@@ -22,11 +22,11 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { version } from '../../../package.json';
 import type { DashboardSource, SourceStatus, UnifiedStatus } from '../../hooks/useDashboardData';
 import { UNIFIED_SOURCE_ID } from '../../hooks/useDashboardData';
 import { useAuth } from '../../contexts/AuthContext';
-import { BrandIcon, UiIcon } from '../icons';
+import { UiIcon } from '../icons';
+import SidebarFooter from '../SidebarFooter';
 import styles from './DashboardSidebar.module.css';
 
 // Every sidebar navigation link renders an icon before its label (issue #4395).
@@ -839,55 +839,16 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({
         )}
       </div>
 
-      <div className="dashboard-sidebar-footer">
-        <span className="dashboard-sidebar-version">v{version}</span>
-        <div className="dashboard-sidebar-footer-icons">
-          {isAdmin && (
-            <>
-              <button
-                className="dashboard-sidebar-footer-btn"
-                title={t('source.sidebar.users')}
-                onClick={() => navigate('/users')}
-              >
-                <UiIcon name="users" size={18} />
-              </button>
-              <button
-                className="dashboard-sidebar-footer-btn"
-                title={t('source.sidebar.settings')}
-                onClick={() => navigate('/settings')}
-              >
-                <UiIcon name="settings" size={18} />
-              </button>
-            </>
-          )}
-          <button
-            className="dashboard-sidebar-footer-btn"
-            title={t('source.sidebar.news')}
-            onClick={onNewsClick}
-            disabled={!onNewsClick}
-          >
-            <UiIcon name="news" size={18} />
-          </button>
-          <a
-            className="dashboard-sidebar-footer-btn"
-            href="https://github.com/Yeraze/meshmonitor"
-            target="_blank"
-            rel="noopener noreferrer"
-            title={t('source.sidebar.github')}
-          >
-            <BrandIcon brand="github" size={18} />
-          </a>
-          <a
-            className="dashboard-sidebar-footer-btn"
-            href="https://meshmonitor.org"
-            target="_blank"
-            rel="noopener noreferrer"
-            title={t('source.sidebar.website')}
-          >
-            <UiIcon name="link" size={18} />
-          </a>
-        </div>
-      </div>
+      {/* Shared footer (issue #4436) — same link set as the per-source
+          sidebar. Settings is gated by settings:read (admin short-circuit
+          lives inside hasPermission), no longer by the legacy isAdmin prop. */}
+      <SidebarFooter
+        isAdmin={isAdmin}
+        canReadSettings={hasPermission('settings', 'read')}
+        onUsersClick={() => navigate('/users')}
+        onSettingsClick={() => navigate('/settings')}
+        onNewsClick={onNewsClick}
+      />
     </aside>
     {/* Resize handle — a flex sibling between the sidebar and the map so it's
         unaffected by the sidebar's own vertical scroll. Hidden on mobile (the

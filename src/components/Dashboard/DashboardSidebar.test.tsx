@@ -515,4 +515,48 @@ describe('DashboardSidebar', () => {
       expect(window.localStorage.getItem(WIDTH_KEY)).toBe('300');
     });
   });
+
+  describe('shared footer (#4436)', () => {
+    it('renders the Discord invite link in a new tab', () => {
+      renderSidebar();
+      const discord = screen.getByTitle('source.sidebar.discord');
+      expect(discord).toHaveAttribute('href', 'https://discord.gg/JVR3VBETQE');
+      expect(discord).toHaveAttribute('target', '_blank');
+    });
+
+    it('renders News, GitHub, and Website links', () => {
+      renderSidebar();
+      expect(screen.getByTitle('source.sidebar.news')).toBeInTheDocument();
+      expect(screen.getByTitle('source.sidebar.github')).toHaveAttribute(
+        'href',
+        'https://github.com/Yeraze/meshmonitor',
+      );
+      expect(screen.getByTitle('source.sidebar.website')).toHaveAttribute(
+        'href',
+        'https://meshmonitor.org',
+      );
+    });
+
+    it('hides Users for non-admin viewers and shows it for admins', () => {
+      const { unmount } = renderSidebar({ isAdmin: false });
+      expect(screen.queryByTitle('source.sidebar.users')).toBeNull();
+      unmount();
+      renderSidebar({ isAdmin: true });
+      expect(screen.getByTitle('source.sidebar.users')).toBeInTheDocument();
+    });
+
+    it('shows Settings for a non-admin viewer with settings:read', () => {
+      // Default mock grants every permission; the viewer is not an admin.
+      renderSidebar({ isAdmin: false });
+      expect(screen.getByTitle('source.sidebar.settings')).toBeInTheDocument();
+    });
+
+    it('hides Settings when the viewer lacks settings:read', () => {
+      hasPermissionMock.mockImplementation(
+        (resource: string) => resource !== 'settings',
+      );
+      renderSidebar({ isAdmin: false });
+      expect(screen.queryByTitle('source.sidebar.settings')).toBeNull();
+    });
+  });
 });

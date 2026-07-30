@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import './Sidebar.css';
 import { TabType } from '../types/ui';
 import { ResourceType } from '../types/permission';
-import packageJson from '../../package.json';
-import { BrandIcon, UiIcon, type UiIconName } from './icons';
+import { UiIcon, type UiIconName } from './icons';
+import SidebarFooter from './SidebarFooter';
 
 interface UnreadCountsData {
   channels?: {[channelId: number]: number};
@@ -276,49 +276,19 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
       </nav>
 
-      <div className="sidebar-footer">
-        {!isCollapsed && (
-          <>
-            <span className="version-text">v{packageJson.version}</span>
-            <button
-              className="news-link"
-              onClick={onNewsClick}
-              title={t('news.view_news')}
-            >
-              <UiIcon name="news" size={20} />
-            </button>
-            <a
-              href="https://github.com/Yeraze/meshmonitor"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="github-link"
-              title={t('common.view_on_github')}
-            >
-              <BrandIcon brand="github" size={20} />
-            </a>
-          </>
-        )}
-        {isCollapsed && (
-          <>
-            <button
-              className="news-link"
-              onClick={onNewsClick}
-              title={t('news.view_news')}
-            >
-              <UiIcon name="news" size={20} />
-            </button>
-            <a
-              href="https://github.com/Yeraze/meshmonitor"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="github-link"
-              title={t('common.view_on_github')}
-            >
-              <BrandIcon brand="github" size={20} />
-            </a>
-          </>
-        )}
-      </div>
+      {/* Shared footer (issue #4436) — same link set as the unified
+          dashboard sidebar. Users/Settings clicks switch tabs here, matching
+          the main-nav entries above. */}
+      <SidebarFooter
+        isAdmin={isAdmin}
+        canReadSettings={hasPermission('settings', 'read')}
+        onUsersClick={() => setActiveTab('users')}
+        onSettingsClick={() => setActiveTab('settings')}
+        onNewsClick={onNewsClick}
+        hideVersion={isCollapsed}
+        pinToBottom
+        hideOnCompactLandscape
+      />
 
       <div className="sidebar-controls">
         {!isCollapsed && (
