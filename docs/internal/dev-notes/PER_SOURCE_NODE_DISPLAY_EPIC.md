@@ -160,7 +160,31 @@ tests covering per-source thresholds and intervals.
 different max-age values producing different node lists and map markers; no new
 console errors.
 
-### [x] Phase 4 — MeshCore node-age filtering (closes #4412) — **WP1/WP2/WP4 COMPLETE** (WP3 in progress; browser validation and PR pending)
+### [x] Phase 4 — MeshCore node-age filtering (closes #4412) — **COMPLETE** (all 4 WPs + browser validation; PR pending)
+
+**Browser-validated on the live `MC-Sandbox` MeshCore source (deployed worktree build):**
+- The Node Display section **exists on a MeshCore source** — it did not before this phase.
+  Shows max-age + the inactive trio; `localStatsIntervalMinutes` and `nodeHopsCalculation`
+  correctly absent.
+- Filter counts match ground truth computed from the raw API at every window:
+  **10 rows @ 1h** (9 in-window + the age-exempt local node), **34 @ 24h**, **48 @ 168h**
+  (47 in-window + local). Each was stable across 10-15s of sampling.
+- Changes take effect **without a page reload**, confirming the cache-invalidation path
+  (spec R3 — the one defect a fully green suite could not catch).
+- Per-source isolation: `MC-Sandbox` at 168 while `MC-BLESandbox` stayed at 24.
+- The D3 cross-reference text renders in the field description.
+- Only console error is the pre-existing `locales/en-US.json` 404.
+
+**Data-quality note, not a defect:** of 192 stored MeshCore nodes, 185 carry plausible
+millisecond timestamps; 4 are future-dated and 2 near-epoch. Those are devices with unset
+RTCs, and the filter treats them as reported — future-dated rows always pass, near-epoch
+rows always fail. Worth knowing before reading a node count as a bug.
+
+**A transient worth recording:** an early sample taken ~4s after a 24h→168h save read 26
+rows — lower than the 34 at 24h, which is impossible for a widening window. It did not
+reproduce; repeated clean runs settled at exactly 48. The sample landed mid-refetch while
+the MeshCore live-contacts merge was in flight. If a future reader sees a nonsensical
+intermediate count on this screen, sample for longer before concluding the filter is wrong.
 
 > **Scope expanded 2026-07-29, found during Phase 3 architecture.**
 > **MeshCore sources have no Node Display settings UI at all.** `SettingsTab`
