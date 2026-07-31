@@ -2966,7 +2966,7 @@
   "node_details.position_source_gps": "GPS",
   "node_details.position_source_gps_tooltip": "Position reported by the device.",
   "node_details.position_source_estimated": "Estimated",
-  "node_details.position_source_estimated_tooltip": "Estimated from traceroute and neighbour observations. This node has never reported a GPS position.",
+  "node_details.position_source_estimated_tooltip": "Estimated from traceroute and neighbor observations. This node has never reported a GPS position.",
   "node_details.position_source_override": "Override",
   "node_details.position_source_override_tooltip": "Manually set position. Not reported by the device.",
   "node_details.elevation": "Elevation",

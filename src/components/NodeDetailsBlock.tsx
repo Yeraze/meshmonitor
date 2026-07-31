@@ -170,7 +170,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
           label: t('node_details.position_source_estimated', 'Estimated'),
           tooltip: t(
             'node_details.position_source_estimated_tooltip',
-            'Estimated from traceroute and neighbour observations. This node has never reported a GPS position.',
+            'Estimated from traceroute and neighbor observations. This node has never reported a GPS position.',
           ),
           accuracy: formatUncertaintyRadius(
             node.positionEstimateUncertaintyKm != null
