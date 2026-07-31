@@ -764,6 +764,27 @@ describe('MeshCoreRepository — sourceId stamping', () => {
       const rows = await repo.getChannelMessages(1, 2, 'src-a');
       expect(rows.map(r => r.id)).toEqual(['c1-4', 'c1-3']);
     });
+
+    // #4460 — infinite-scroll pagination for the MeshCore channel view.
+    it('honors offset to page further back into history', async () => {
+      for (let i = 0; i < 5; i++) {
+        await insert(`c1-${i}`, { fromPublicKey: 'channel-1', timestamp: 500 + i }, 'src-a');
+      }
+      const firstPage = await repo.getChannelMessages(1, 2, 'src-a', 0);
+      expect(firstPage.map(r => r.id)).toEqual(['c1-4', 'c1-3']);
+      const secondPage = await repo.getChannelMessages(1, 2, 'src-a', 2);
+      expect(secondPage.map(r => r.id)).toEqual(['c1-2', 'c1-1']);
+      const thirdPage = await repo.getChannelMessages(1, 2, 'src-a', 4);
+      expect(thirdPage.map(r => r.id)).toEqual(['c1-0']);
+    });
+
+    it('defaults offset to 0 when omitted', async () => {
+      for (let i = 0; i < 3; i++) {
+        await insert(`c1-${i}`, { fromPublicKey: 'channel-1', timestamp: 600 + i }, 'src-a');
+      }
+      const rows = await repo.getChannelMessages(1, 2, 'src-a');
+      expect(rows.map(r => r.id)).toEqual(['c1-2', 'c1-1']);
+    });
   });
 
   describe('getChannelMessageCounts', () => {

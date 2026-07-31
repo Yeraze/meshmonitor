@@ -227,6 +227,183 @@ describe('MeshCoreMessageStream entry scroll (#3810)', () => {
   });
 });
 
+describe('MeshCoreMessageStream load older (#4460)', () => {
+  let scrollHeightValue = 0;
+
+  beforeEach(() => {
+    // Run rAF callbacks synchronously so the scroll-restore effect commits
+    // during the test instead of on a later animation frame.
+    vi.stubGlobal('requestAnimationFrame', (cb: (time: number) => void) => {
+      cb(0);
+      return 0;
+    });
+    scrollHeightValue = 300;
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get() { return scrollHeightValue; },
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get() { return 200; },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  });
+
+  const twoMessages = () => [
+    msg('b', 2000, 'second'),
+    msg('c', 3000, 'third'),
+  ];
+
+  it('calls onLoadOlder when scrolled near the top and an older page exists', () => {
+    const onLoadOlder = vi.fn();
+    const { container } = render(
+      <MeshCoreMessageStream
+        messages={twoMessages()}
+        conversationKey="channel-0"
+        onSend={async () => true}
+        onLoadOlder={onLoadOlder}
+        hasMoreOlder
+      />,
+    );
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    list.scrollTop = 10;
+    fireEvent.scroll(list);
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call onLoadOlder when there is no older page', () => {
+    const onLoadOlder = vi.fn();
+    const { container } = render(
+      <MeshCoreMessageStream
+        messages={twoMessages()}
+        conversationKey="channel-0"
+        onSend={async () => true}
+        onLoadOlder={onLoadOlder}
+        hasMoreOlder={false}
+      />,
+    );
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    list.scrollTop = 10;
+    fireEvent.scroll(list);
+    expect(onLoadOlder).not.toHaveBeenCalled();
+  });
+
+  it('does not call onLoadOlder while a load is already in flight', () => {
+    const onLoadOlder = vi.fn();
+    const { container } = render(
+      <MeshCoreMessageStream
+        messages={twoMessages()}
+        conversationKey="channel-0"
+        onSend={async () => true}
+        onLoadOlder={onLoadOlder}
+        hasMoreOlder
+        loadingOlder
+      />,
+    );
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    list.scrollTop = 10;
+    fireEvent.scroll(list);
+    expect(onLoadOlder).not.toHaveBeenCalled();
+  });
+
+  it('does not call onLoadOlder when not scrolled near the top', () => {
+    const onLoadOlder = vi.fn();
+    const { container } = render(
+      <MeshCoreMessageStream
+        messages={twoMessages()}
+        conversationKey="channel-0"
+        onSend={async () => true}
+        onLoadOlder={onLoadOlder}
+        hasMoreOlder
+      />,
+    );
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    list.scrollTop = 150;
+    fireEvent.scroll(list);
+    expect(onLoadOlder).not.toHaveBeenCalled();
+  });
+
+  it('restores the viewport to the same content once older messages are prepended', () => {
+    const onLoadOlder = vi.fn();
+    const { container, rerender } = render(
+      <MeshCoreMessageStream
+        messages={twoMessages()}
+        conversationKey="channel-0"
+        onSend={async () => true}
+        onLoadOlder={onLoadOlder}
+        hasMoreOlder
+        loadingOlder={false}
+      />,
+    );
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    list.scrollTop = 10;
+    fireEvent.scroll(list);
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+
+    // Simulate the fetch resolving: the parent prepends an older message
+    // (growing scrollHeight by 80px of new content) and flips loadingOlder
+    // back to false.
+    scrollHeightValue = 380;
+    rerender(
+      <MeshCoreMessageStream
+        messages={[msg('a', 1000, 'first'), ...twoMessages()]}
+        conversationKey="channel-0"
+        onSend={async () => true}
+        onLoadOlder={onLoadOlder}
+        hasMoreOlder={false}
+        loadingOlder={false}
+      />,
+    );
+
+    // newScrollTop = scrollHeightAfter(380) - scrollHeightBefore(300) + scrollTopBefore(10)
+    expect(list.scrollTop).toBe(90);
+  });
+
+  it('discards a pending restore when the conversation changes mid-load', () => {
+    const onLoadOlder = vi.fn();
+    const { container, rerender } = render(
+      <MeshCoreMessageStream
+        messages={twoMessages()}
+        conversationKey="channel-0"
+        onSend={async () => true}
+        onLoadOlder={onLoadOlder}
+        hasMoreOlder
+        loadingOlder={false}
+      />,
+    );
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    list.scrollTop = 10;
+    fireEvent.scroll(list);
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+
+    // The operator switches channels before that load settles. The parent
+    // resets its load-older state on a channel switch, so the request never
+    // resolves back into this component — the captured metrics are now stale.
+    scrollHeightValue = 380;
+    rerender(
+      <MeshCoreMessageStream
+        messages={[msg('x', 5000, 'other channel'), msg('y', 6000, 'other channel 2')]}
+        conversationKey="channel-1"
+        onSend={async () => true}
+        onLoadOlder={onLoadOlder}
+        hasMoreOlder={false}
+        loadingOlder={false}
+      />,
+    );
+
+    // The new conversation must land at the bottom via the entry scroll (380),
+    // NOT at 380 - 300 + 10 = 90, which is what channel-0's abandoned snapshot
+    // would produce if the restore ref survived the conversation change.
+    expect(list.scrollTop).toBe(380);
+    expect(list.scrollTop).not.toBe(90);
+  });
+});
+
 describe('MeshCoreMessageStream focus restore (#3823)', () => {
   it('returns focus to the input after a send resolves', async () => {
     // Controllable send so we can observe the disabled→enabled transition.

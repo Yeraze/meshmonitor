@@ -55,6 +55,10 @@ router.get('/messages', optionalAuth(), requirePermission('messages', 'read', { 
  * Per-channel message backlog. Unlike /messages (a global recent-tail shared by
  * every channel and DM), this returns just channel :idx's history — so a busy
  * channel can't push another channel's messages out of the visible window.
+ *
+ * Supports `offset` for infinite-scroll pagination (load-older-on-scroll-to-top,
+ * #4460), mirroring the Meshtastic `/api/messages/channel/:channel` endpoint.
+ * `hasMore` in the response tells the client whether an older page exists.
  */
 router.get('/messages/channel/:idx', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
@@ -68,11 +72,27 @@ router.get('/messages/channel/:idx', optionalAuth(), requirePermission('messages
     } else if (limit > VALIDATION.MAX_MESSAGE_LIMIT) {
       limit = VALIDATION.MAX_MESSAGE_LIMIT;
     }
-    const messages = await managerFor(req, res).getChannelMessages(idx, limit);
+    let offset = parseInt(req.query.offset as string || '0', 10);
+    if (isNaN(offset) || offset < 0) {
+      offset = 0;
+    } else if (offset > VALIDATION.MAX_MESSAGE_OFFSET) {
+      offset = VALIDATION.MAX_MESSAGE_OFFSET;
+    }
+    // The manager already reverses the DB's newest-first rows to oldest-first
+    // (see MeshCoreManager.getChannelMessages), so `page` here is ascending.
+    // Fetch limit+1 to detect whether an older page exists without a
+    // separate COUNT query.
+    const page = await managerFor(req, res).getChannelMessages(idx, limit + 1, offset);
+    const hasMore = page.length > limit;
+    // The extra lookahead row is the oldest one in this ascending array —
+    // i.e. index 0 — so drop it to send exactly `limit` messages, still
+    // oldest-first, to the client.
+    const messages = hasMore ? page.slice(1) : page;
     res.json({
       success: true,
       data: messages,
       count: messages.length,
+      hasMore,
     });
   } catch (error) {
     logger.error('[API] Error getting channel messages:', error);

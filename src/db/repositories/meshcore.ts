@@ -848,11 +848,15 @@ export class MeshCoreRepository extends BaseRepository {
    * Unlike {@link getRecentMessages} (a single global tail slice shared by every
    * channel and DM), this returns each channel's own backlog independently, so a
    * busy channel can't evict another channel's history from the visible window.
+   *
+   * `offset` paginates further into the channel's history (newest-first, so
+   * offset 0 is the most recent page) for infinite-scroll load-older support.
    */
   async getChannelMessages(
     channelIdx: number,
     limit: number = 100,
     sourceId?: string,
+    offset: number = 0,
   ): Promise<DbMeshCoreMessage[]> {
     const { meshcoreMessages } = this.tables;
     const result = await this.db
@@ -860,7 +864,8 @@ export class MeshCoreRepository extends BaseRepository {
       .from(meshcoreMessages)
       .where(this.channelWhereClause(channelIdx, sourceId))
       .orderBy(desc(meshcoreMessages.timestamp))
-      .limit(limit);
+      .limit(limit)
+      .offset(offset);
     return this.normalizeBigInts(result) as unknown as DbMeshCoreMessage[];
   }
 
