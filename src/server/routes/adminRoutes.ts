@@ -879,6 +879,7 @@ router.post('/get-device-metadata', requireAdmin(), async (req, res) => {
             hasWifi: localNodeInfo.hasWifi ?? false,
             hasBluetooth: localNodeInfo.hasBluetooth ?? false,
             hasEthernet: localNodeInfo.hasEthernet ?? false,
+            hasXeddsa: localNodeInfo.hasXeddsa ?? false,
             isBridged: gdmManager.isLocalNodeBridged(),
             canShutdown: false,
             hasRemoteHardware: false,

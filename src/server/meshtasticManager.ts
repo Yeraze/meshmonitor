@@ -797,6 +797,9 @@ class MeshtasticManager implements ISourceManager {
     hasWifi?: boolean;
     hasEthernet?: boolean;
     hasBluetooth?: boolean;
+    // #3923: firmware 2.8 build capability — XEdDSA signature verification
+    // compiled in. Distinguishes "cannot sign" from "did not sign this packet".
+    hasXeddsa?: boolean;
     // #3684: User capability flags from the local node's NodeInfo, surfaced to the
     // frontend Config tab via getCurrentConfig().localNodeInfo.
     isUnmessagable?: boolean;
@@ -4850,7 +4853,7 @@ class MeshtasticManager implements ISourceManager {
     // Note: Local node's public key is extracted from security config when received
   }
 
-  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number; firmwareVersion?: string; rebootCount?: number; isLocked?: boolean; hasWifi?: boolean; hasEthernet?: boolean; hasBluetooth?: boolean } | null {
+  getLocalNodeInfo(): { nodeNum: number; nodeId: string; longName: string; shortName: string; hwModel?: number; firmwareVersion?: string; rebootCount?: number; isLocked?: boolean; hasWifi?: boolean; hasEthernet?: boolean; hasBluetooth?: boolean; hasXeddsa?: boolean } | null {
     return this.localNodeInfo;
   }
 
@@ -5288,6 +5291,9 @@ class MeshtasticManager implements ISourceManager {
       this.localNodeInfo.hasWifi = metadata.hasWifi === true;
       this.localNodeInfo.hasEthernet = metadata.hasEthernet === true;
       this.localNodeInfo.hasBluetooth = metadata.hasBluetooth === true;
+      // Firmware 2.8 build capability, surfaced alongside the transport flags so
+      // the local node reports it the same way a remote node does (#3923).
+      this.localNodeInfo.hasXeddsa = metadata.hasXeddsa === true;
       if (this.isLocalNodeBridged()) {
         logger.debug('🌉 Connected node reports no native WiFi/Ethernet — treating as a bridged node (OTA firmware update disabled)');
       }
@@ -11556,8 +11562,11 @@ class MeshtasticManager implements ISourceManager {
       scriptEnv.HOPS = String(context.hopsTraveled);
       scriptEnv.IS_DIRECT = String(context.isDirectMessage);
     }
-    if (message.rxSnr !== undefined) scriptEnv.SNR = String(message.rxSnr);
-    if (message.rxRssi !== undefined) scriptEnv.RSSI = String(message.rxRssi);
+    // Guard null as well as undefined: an absent rx_rssi decodes to null under
+    // firmware 2.8's explicit presence, and String(null) would hand scripts the
+    // literal string "null" — truthy and non-empty — instead of omitting the var.
+    if (message.rxSnr !== undefined && message.rxSnr !== null) scriptEnv.SNR = String(message.rxSnr);
+    if (message.rxRssi !== undefined && message.rxRssi !== null) scriptEnv.RSSI = String(message.rxRssi);
     scriptEnv.CHANNEL = String(message.channel);
     scriptEnv.VIA_MQTT = String(message.viaMqtt);
 
