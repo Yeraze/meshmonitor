@@ -34,6 +34,7 @@
  *   stop: clear the renewal timer and disconnect, and stay stopped until an
  *   operator-driven config change / reconnect.
  */
+import { createRequire } from 'module';
 import { MqttBrokerClient, type MqttBrokerClientOptions } from '../transports/mqttBrokerClient.js';
 import { logger } from '../../utils/logger.js';
 import type { OtaPacketEvent } from '../meshcoreVirtualNodeServer.js';
@@ -50,7 +51,8 @@ import {
   type ObserverTokenResult,
 } from './meshcoreObserverToken.js';
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports -- CJS interop for package.json, same pattern as newsService.ts / healthRoutes.ts.
+// createRequire interop for package.json, same pattern as newsService.ts.
+const require = createRequire(import.meta.url);
 const appVersion: string = require('../../../package.json').version;
 
 /** Re-check the token's remaining life once an hour. */
