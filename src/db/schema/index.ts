@@ -62,6 +62,9 @@ export * from './autoFavoriteTargets.js';
 // Per-source PKI private keys for server-side DM decryption (issue #3441)
 export * from './sourcePkiKeys.js';
 
+// Per-source MeshCore Analyzer Observer signing keys (epic #4457)
+export * from './meshcoreObserverKeys.js';
+
 // Dead Drop / Mailbox — async per-source message store
 export * from './deadDrop.js';
 

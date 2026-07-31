@@ -147,6 +147,7 @@ import { migration as addShowAtakContactsMigration, runMigration129Postgres, run
 import { migration as addWaypointChannelMigration, runMigration130Postgres, runMigration130Mysql } from '../server/migrations/130_add_waypoint_channel.js';
 import { migration as seedPerSourceNodeDisplayMigration, runMigration131Postgres, runMigration131Mysql } from '../server/migrations/131_seed_per_source_node_display.js';
 import { migration as fanOutSettingsPermissionsMigration, runMigration132Postgres, runMigration132Mysql } from '../server/migrations/132_fan_out_settings_permissions.js';
+import { migration as addMeshCoreObserverKeysMigration, runMigration133Postgres, runMigration133Mysql } from '../server/migrations/133_add_meshcore_observer_keys.js';
 
 // ============================================================================
 // Registry
@@ -2109,4 +2110,20 @@ registry.register({
   sqlite: (db) => fanOutSettingsPermissionsMigration.up(db),
   postgres: (client) => runMigration132Postgres(client),
   mysql: (pool) => runMigration132Mysql(pool),
+});
+
+// ---------------------------------------------------------------------------
+// Migration 133: create `meshcore_observer_keys` (epic #4457, Phase 1 WP1).
+// One row per MeshCore source holding that source's companion Ed25519 (orlp
+// format) signing key, encrypted at rest. Powers the MeshCore Analyzer
+// Observer MQTT output's auth-token minting (Phase 2/3 consumer).
+// ---------------------------------------------------------------------------
+
+registry.register({
+  number: 133,
+  name: 'add_meshcore_observer_keys',
+  settingsKey: 'migration_133_add_meshcore_observer_keys',
+  sqlite: (db) => addMeshCoreObserverKeysMigration.up(db),
+  postgres: (client) => runMigration133Postgres(client),
+  mysql: (pool) => runMigration133Mysql(pool),
 });

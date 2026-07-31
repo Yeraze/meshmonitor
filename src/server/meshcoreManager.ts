@@ -32,6 +32,11 @@ import {
   MeshCoreVirtualNodeServer,
   type MeshCoreVirtualNodeConfig,
 } from './meshcoreVirtualNodeServer.js';
+// Type-only import — meshcoreConfig.ts imports MeshCoreConfig (below) from this
+// file at runtime, so this side of the edge must stay `import type` to avoid a
+// circular runtime dependency. Same pattern already used for
+// MeshCoreVirtualNodeConfig above (that cycle runs the other direction).
+import type { MeshCoreObserverConfig } from './meshcoreConfig.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { notificationService } from './services/notificationService.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
@@ -342,6 +347,9 @@ export interface MeshCoreConfig {
   // MeshCore mobile app can connect through MeshMonitor over WiFi (issue #3535).
   // See docs/internal/dev-notes/MESHCORE_VIRTUAL_NODE_DESIGN.md.
   virtualNode?: MeshCoreVirtualNodeConfig;
+
+  /** Analyzer Observer MQTT output (#4457). Consumed by the Phase 2 publisher. */
+  observer?: MeshCoreObserverConfig;
 }
 
 export type MeshCoreConnectionState =

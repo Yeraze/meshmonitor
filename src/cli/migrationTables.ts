@@ -83,6 +83,11 @@ export const TABLE_ORDER = [
   'auto_favorite_assignments',
   // 3441: per-source encrypted X25519 private key for PKI DM decryption
   'source_pki_keys',
+  // 4457: per-source encrypted Ed25519 (orlp) signing key for the MeshCore
+  // Analyzer Observer MQTT output. Same shape as source_pki_keys immediately
+  // above (one row per source, no FK, sourceId is the PK) — placed right
+  // after it for the same reason.
+  'meshcore_observer_keys',
   // per-source async message store (Dead Drop / Mailbox)
   'dead_drop_messages',
   // 3653: global Automation Engine tables. No sourceId / no FK to users; the

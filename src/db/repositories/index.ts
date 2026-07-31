@@ -81,6 +81,8 @@ export { AutoFavoriteTargetsRepository } from './autoFavoriteTargets.js';
 export type { AutoFavoriteTargetInput } from './autoFavoriteTargets.js';
 export { SourcePkiKeysRepository } from './sourcePkiKeys.js';
 export type { DbSourcePkiKey } from './sourcePkiKeys.js';
+export { MeshCoreObserverKeysRepository } from './meshcoreObserverKeys.js';
+export type { DbMeshCoreObserverKey } from './meshcoreObserverKeys.js';
 export { DeadDropRepository } from './deadDrop.js';
 export type { DeadDropMessageInput } from './deadDrop.js';
 export { MqttPacketLogRepository } from './mqttPacketLog.js';

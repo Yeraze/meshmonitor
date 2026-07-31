@@ -153,6 +153,9 @@ import {
   sourcePkiKeysSqlite, sourcePkiKeysPostgres, sourcePkiKeysMysql,
 } from './schema/sourcePkiKeys.js';
 import {
+  meshcoreObserverKeysSqlite, meshcoreObserverKeysPostgres, meshcoreObserverKeysMysql,
+} from './schema/meshcoreObserverKeys.js';
+import {
   deadDropMessagesSqlite, deadDropMessagesPostgres, deadDropMessagesMysql,
 } from './schema/deadDrop.js';
 
@@ -261,6 +264,10 @@ export interface ActiveSchema {
   // Per-source PKI private keys for DM decryption (issue #3441)
   sourcePkiKeys: any;
 
+  // Per-source MeshCore Analyzer Observer signing keys (epic #4457)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- #4457 matches the existing ActiveSchema per-dialect table pattern; typing burn-down is #3962 Phase 6
+  meshcoreObserverKeys: any;
+
   // Dead Drop / Mailbox — async per-source message store
   deadDropMessages: any;
 
@@ -332,6 +339,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteTargets: autoFavoriteTargetsSqlite,
     autoFavoriteAssignments: autoFavoriteAssignmentsSqlite,
     sourcePkiKeys: sourcePkiKeysSqlite,
+    meshcoreObserverKeys: meshcoreObserverKeysSqlite,
     deadDropMessages: deadDropMessagesSqlite,
     atakContacts: atakContactsSqlite,
   },
@@ -391,6 +399,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteTargets: autoFavoriteTargetsPostgres,
     autoFavoriteAssignments: autoFavoriteAssignmentsPostgres,
     sourcePkiKeys: sourcePkiKeysPostgres,
+    meshcoreObserverKeys: meshcoreObserverKeysPostgres,
     deadDropMessages: deadDropMessagesPostgres,
     atakContacts: atakContactsPostgres,
   },
@@ -450,6 +459,7 @@ const SCHEMA_MAP: Record<DatabaseType, ActiveSchema> = {
     autoFavoriteTargets: autoFavoriteTargetsMysql,
     autoFavoriteAssignments: autoFavoriteAssignmentsMysql,
     sourcePkiKeys: sourcePkiKeysMysql,
+    meshcoreObserverKeys: meshcoreObserverKeysMysql,
     deadDropMessages: deadDropMessagesMysql,
     atakContacts: atakContactsMysql,
   },
