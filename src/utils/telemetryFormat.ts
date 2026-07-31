@@ -104,3 +104,51 @@ export function formatDuration(seconds: number): string {
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
 }
+
+/** How one telemetry series should be scaled and labelled for display. */
+export interface TelemetryDisplay {
+  /** True when the series is an uptime in seconds. */
+  isUptime: boolean;
+  /** Multiply a stored value by this to get the displayed value. */
+  factor: number;
+  /** Unit for titles/gauges. Empty for uptime — "3d 4h" carries its own. */
+  unit: string;
+  /**
+   * Formatter for gauge readouts, numeric labels, axis ticks and tooltips.
+   * Undefined when the raw number is already the right thing to show.
+   */
+  formatValue?: (value: number) => string;
+}
+
+/**
+ * Resolve the display scale for a whole telemetry series (#3261).
+ *
+ * Both chart surfaces — the Dashboard widget (`TelemetryChart`) and the
+ * per-node graphs (`TelemetryGraphs`) — call this so they cannot drift apart:
+ * the Dashboard fix originally shipped alone and left the per-node graphs
+ * rendering "Device Uptime (s)" with raw seconds.
+ *
+ * One factor is chosen for the entire series (from its largest magnitude) so
+ * every point, the axis, the gauge range and the numeric readout share one
+ * prefix. Temperature is *not* handled here — it has its own C/F conversion
+ * in the callers.
+ *
+ * @param type       telemetry type key (e.g. `uptimeSeconds`, `mc_current`)
+ * @param values     the series values; nulls and non-finite entries ignored
+ * @param storedUnit the unit the values are stored in (e.g. `A`, `W`, `s`)
+ */
+export function telemetryDisplayScale(
+  type: string,
+  values: Array<number | null | undefined>,
+  storedUnit: string
+): TelemetryDisplay {
+  if (isUptimeType(type)) {
+    return { isUptime: true, factor: 1, unit: '', formatValue: formatDuration };
+  }
+  const seriesMaxAbs = values.reduce<number>(
+    (max, v) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(max, Math.abs(v)) : max),
+    0
+  );
+  const scale = unitScale(storedUnit, seriesMaxAbs);
+  return { isUptime: false, factor: scale.factor, unit: scale.unit };
+}

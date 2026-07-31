@@ -31,6 +31,12 @@ export interface SidebarFooterProps {
   onNewsClick?: () => void;
   /** Hides the version line (per-source sidebar collapsed state). */
   hideVersion?: boolean;
+  /**
+   * Packs the icons for a narrow rail (the 60px collapsed per-source sidebar).
+   * Without it the six icons wrap one per line and the footer grows to roughly
+   * a third of the sidebar's height (#4436).
+   */
+  narrowIcons?: boolean;
   /** Pins the footer to the bottom of a flex-column sidebar. */
   pinToBottom?: boolean;
   /** Hides the footer on short landscape screens (per-source sidebar). */
@@ -44,6 +50,7 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
   onSettingsClick,
   onNewsClick,
   hideVersion = false,
+  narrowIcons = false,
   pinToBottom = false,
   hideOnCompactLandscape = false,
 }) => {
@@ -51,6 +58,7 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
 
   const footerClass = [
     styles.footer,
+    narrowIcons ? styles.narrow : '',
     pinToBottom ? styles.pinToBottom : '',
     hideOnCompactLandscape ? styles.hideOnCompactLandscape : '',
   ]

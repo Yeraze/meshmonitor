@@ -88,6 +88,17 @@ describe('SidebarFooter', () => {
     expect(baseProps.onSettingsClick).toHaveBeenCalledTimes(1);
   });
 
+  it('applies the narrow-rail layout only when narrowIcons is set', () => {
+    // The collapsed per-source rail is 60px wide; without this the six icons
+    // wrap one per line and the footer overruns the sidebar (#4436).
+    const { container, unmount } = render(<SidebarFooter {...baseProps} narrowIcons />);
+    expect(container.firstElementChild?.className).toMatch(/narrow/);
+    unmount();
+
+    const plain = render(<SidebarFooter {...baseProps} />);
+    expect(plain.container.firstElementChild?.className).not.toMatch(/narrow/);
+  });
+
   it('fires the News click handler and disables the button when absent', () => {
     const { unmount } = render(<SidebarFooter {...baseProps} />);
     fireEvent.click(screen.getByTitle('source.sidebar.news'));

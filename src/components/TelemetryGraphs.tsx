@@ -16,6 +16,7 @@ import { useWidgetMode } from '../hooks/useWidgetMode';
 import { useWidgetRange } from '../hooks/useWidgetRange';
 import { useSource } from '../contexts/SourceContext';
 import { getLatestValue } from '../utils/telemetry';
+import { telemetryDisplayScale } from '../utils/telemetryFormat';
 import TelemetryGauge from './TelemetryGauge';
 import TelemetryNumericLabel from './TelemetryNumericLabel';
 import { getTelemetryLabel } from './TelemetryChart';
@@ -197,7 +198,10 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
 
   const isTemperature = isTemperatureType(type);
   const chartData = prepareChartData(data, isTemperature, globalMinTime);
-  const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : data[0]?.unit || '';
+  // Humanize uptime and auto-scale current/power the same way the Dashboard
+  // widget does (#3261). Temperature keeps its own C/F handling below.
+  const display = telemetryDisplayScale(type, data.map(d => d.value), data[0]?.unit || '');
+  const unit = isTemperature ? getTemperatureUnit(temperatureUnit) : display.unit;
   const label = isPaxcounterCombined ? 'Paxcounter' : getTelemetryLabel(type);
   const color = getColor(type);
 
@@ -227,13 +231,20 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
 
   const latest = getLatestValue(data);
 
+  // Apply the display scale to the plotted series. The solar overlay lives on
+  // its own axis (watt-hours) and is left untouched.
+  const scaledChartData = !isTemperature && display.factor !== 1
+    ? chartData.map(d => ({ ...d, value: d.value == null ? d.value : d.value * display.factor }))
+    : chartData;
+
   // Gauge/numeric modes display a single raw value, so convert it (and the
-  // gauge range) to the selected unit. Ranges persist in Celsius, so edits
-  // made while displaying Fahrenheit are converted back before saving.
+  // gauge range) to the selected unit. Ranges persist in base units (Celsius
+  // for temperature, the stored A/W for current/power), so edits made in the
+  // displayed unit are converted back before saving.
   const toDisplayTemp = (v: number) =>
-    isTemperature ? formatTemperature(v, 'C', temperatureUnit) : v;
+    isTemperature ? formatTemperature(v, 'C', temperatureUnit) : v * display.factor;
   const toStoredTemp = (v: number) =>
-    isTemperature ? formatTemperature(v, temperatureUnit, 'C') : v;
+    isTemperature ? formatTemperature(v, temperatureUnit, 'C') : v / display.factor;
   const handleRangeChange = (r: { min: number; max: number }) =>
     setRange({ min: toStoredTemp(r.min), max: toStoredTemp(r.max) });
 
@@ -326,6 +337,7 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
             nodeId={nodeId}
             onRangeChange={handleRangeChange}
             canEditRange={canEditSettings}
+            formatValue={display.formatValue}
           />
         ) : (
           <div className="telemetry-no-data">{t('telemetry.no_data')}</div>
@@ -337,13 +349,14 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
             unit={unit}
             color={color}
             timestamp={latest.timestamp}
+            formatValue={display.formatValue}
           />
         ) : (
           <div className="telemetry-no-data">{t('telemetry.no_data')}</div>
         )
       ) : (
         <ResponsiveContainer width="100%" height={200}>
-          <ComposedChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+          <ComposedChart data={scaledChartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#ccc" />
             <XAxis
               dataKey="timestamp"
@@ -357,7 +370,12 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
               tick={{ fontSize: 12 }}
               domain={['auto', 'auto']}
               allowDecimals={!INTEGER_TELEMETRY_TYPES.has(type)}
-              tickFormatter={INTEGER_TELEMETRY_TYPES.has(type) ? (v: number) => Math.round(v).toString() : undefined}
+              tickFormatter={
+                display.formatValue ??
+                (INTEGER_TELEMETRY_TYPES.has(type)
+                  ? (v: number) => Math.round(v).toString()
+                  : undefined)
+              }
             />
             <YAxis
               yAxisId="right"
@@ -374,6 +392,15 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
                 color: chartColors.text,
               }}
               labelStyle={{ color: chartColors.text }}
+              formatter={
+                display.formatValue
+                  ? (value, name) =>
+                      // Leave the solar overlay (watt-hours) untouched.
+                      name === 'solarEstimate' || typeof value !== 'number'
+                        ? value
+                        : display.formatValue!(value)
+                  : undefined
+              }
               labelFormatter={value => {
                 const date = new Date(value);
                 return date.toLocaleString([], {

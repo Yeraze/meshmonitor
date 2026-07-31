@@ -283,20 +283,11 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
       </nav>
 
-      {/* Shared footer (issue #4436) — same link set as the unified
-          dashboard sidebar. Users/Settings clicks switch tabs here, matching
-          the main-nav entries above. */}
-      <SidebarFooter
-        isAdmin={isAdmin}
-        canReadSettings={hasPermission('settings', 'read', { anySource: true })}
-        onUsersClick={() => setActiveTab('users')}
-        onSettingsClick={() => setActiveTab('settings')}
-        onNewsClick={onNewsClick}
-        hideVersion={isCollapsed}
-        pinToBottom
-        hideOnCompactLandscape
-      />
-
+      {/* Pin/collapse controls sit in normal flow directly above the footer.
+          They used to be absolutely positioned at a hardcoded `bottom: 70px`,
+          which assumed the old three-item footer; the shared SidebarFooter
+          (#4436) is taller — and much taller in the 60px collapsed rail, where
+          its six icons wrap — so the controls landed on top of it. */}
       <div className="sidebar-controls">
         {!isCollapsed && (
           <button
@@ -315,6 +306,22 @@ const Sidebar: React.FC<SidebarProps> = ({
           <UiIcon name={isCollapsed ? 'forward' : 'back'} size={18} />
         </button>
       </div>
+
+      {/* Shared footer (issue #4436) — same link set as the unified
+          dashboard sidebar. Users/Settings clicks switch tabs here, matching
+          the main-nav entries above. `narrowIcons` packs the icon row into the
+          collapsed rail instead of letting it wrap one-icon-per-line. */}
+      <SidebarFooter
+        isAdmin={isAdmin}
+        canReadSettings={hasPermission('settings', 'read', { anySource: true })}
+        onUsersClick={() => setActiveTab('users')}
+        onSettingsClick={() => setActiveTab('settings')}
+        onNewsClick={onNewsClick}
+        hideVersion={isCollapsed}
+        narrowIcons={isCollapsed}
+        pinToBottom
+        hideOnCompactLandscape
+      />
     </aside>
   );
 };
