@@ -34,6 +34,15 @@
 # Tunables (env vars):
 #   WATCH_CI_INTERVAL   poll interval in seconds (default 60)
 #   WATCH_CI_LIMIT      number of recent runs to inspect (default 20)
+#   WATCH_CI_RETRIES    attempts per GitHub API call before giving up (default 3)
+#   WATCH_CI_BACKOFF    base seconds between retries, multiplied by attempt
+#                       number for linear backoff (default 5)
+#
+# Transient API errors are retried rather than fatal. A single TLS handshake
+# timeout or DNS blip used to kill a 25-minute watch with exit 2; now only
+# WATCH_CI_RETRIES *consecutive* failures do. Retry notices go to stderr, so
+# the stdout contract (exactly one terminal line) is unchanged for -q consumers
+# — but a failing call is never silent.
 
 set -euo pipefail
 
@@ -46,13 +55,39 @@ fi
 TARGET="${1:?Usage: watch-ci.sh [-q] <PR_NUMBER|BRANCH_NAME>}"
 INTERVAL="${WATCH_CI_INTERVAL:-60}"
 LIMIT="${WATCH_CI_LIMIT:-20}"
+RETRIES="${WATCH_CI_RETRIES:-3}"
+BACKOFF="${WATCH_CI_BACKOFF:-5}"
 
 log() { $QUIET || echo "$@"; }
+
+# Run a gh command, retrying transient failures with linear backoff. Prints the
+# command's stdout on success (empty output is a valid success). On the final
+# failure, reports the last error to stderr and returns 1.
+#
+# Progress and error notices go to STDERR deliberately: this runs inside a
+# command substitution, so anything on stdout would be captured as data — and a
+# retry that logged to stdout would silently corrupt the caller's results.
+retry_api() {
+  local attempt=1 out
+  while :; do
+    if out=$("$@" 2>&1); then
+      printf '%s' "$out"
+      return 0
+    fi
+    if [ "$attempt" -ge "$RETRIES" ]; then
+      echo "✗ API call failed after $RETRIES attempts: $out" >&2
+      return 1
+    fi
+    echo "[$(date '+%H:%M:%S')] transient API error (attempt $attempt/$RETRIES), retrying in $((attempt * BACKOFF))s: $out" >&2
+    sleep "$((attempt * BACKOFF))"
+    attempt=$((attempt + 1))
+  done
+}
 
 PR_NUMBER=""
 if [[ "$TARGET" =~ ^[0-9]+$ ]]; then
   PR_NUMBER="$TARGET"
-  if ! BRANCH=$(gh pr view "$TARGET" --json headRefName -q .headRefName 2>/dev/null); then
+  if ! BRANCH=$(retry_api gh pr view "$TARGET" --json headRefName -q .headRefName); then
     echo "✗ Could not resolve PR #$TARGET" >&2
     exit 2
   fi
@@ -138,10 +173,13 @@ while true; do
 
   # Only consider runs whose headSha matches the current tip. (gh run list has
   # no commit filter, so filter in jq. HEAD_SHA is a hex OID — safe to splice.)
-  if ! RESULTS=$(gh run list --branch "$BRANCH" --limit "$LIMIT" \
+  # Retried rather than fatal-on-first-error: over a 25-minute watch a single
+  # network blip is expected, and losing the whole watch to it is what pushes
+  # callers into hand-rolling their own (worse) pollers.
+  if ! RESULTS=$(retry_api gh run list --branch "$BRANCH" --limit "$LIMIT" \
                    --json name,conclusion,status,headSha \
-                   -q ".[] | select(.headSha == \"$HEAD_SHA\") | \"\(.name)|\(.status)|\(.conclusion)\"" 2>&1); then
-    echo "✗ gh run list failed: $RESULTS" >&2
+                   -q ".[] | select(.headSha == \"$HEAD_SHA\") | \"\(.name)|\(.status)|\(.conclusion)\""); then
+    echo "✗ gh run list failed after $RETRIES attempts — giving up on $BRANCH" >&2
     exit 2
   fi
 
