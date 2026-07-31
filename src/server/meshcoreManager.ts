@@ -41,7 +41,12 @@ import {
 // file at runtime, so this side of the edge must stay `import type` to avoid a
 // circular runtime dependency. Same pattern already used for
 // MeshCoreVirtualNodeConfig above (that cycle runs the other direction).
-import type { MeshCoreObserverConfig } from './meshcoreConfig.js';
+// reconfigureObserver() (#4457 Phase 2, WP6) needs the `observerConfigFromSource`
+// *function* from that same module for normalization parity with the boot path;
+// a static value import of it here would make the cycle real (meshcoreConfig.ts
+// already imports the MeshCoreManager class by value), so it is resolved with a
+// dynamic import() at call time instead — see reconfigureObserver() below.
+import type { MeshCoreObserverConfig, MeshCoreSourceConfig } from './meshcoreConfig.js';
 import meshcorePacketLogService from './services/meshcorePacketLogService.js';
 import { notificationService } from './services/notificationService.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
@@ -1369,6 +1374,31 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   /** Analyzer Observer status, or undefined when the observer isn't running for this source. */
   getObserverStatus(): MeshCoreObserverStatus | undefined {
     return this.observerPublisher?.getStatus();
+  }
+
+  /**
+   * Hot-swap the Analyzer Observer sub-config without bouncing the companion
+   * device connection (#4457 Phase 2, WP6). Mirrors reconfigureVirtualNode on
+   * MeshtasticManager: stop the current publisher, re-derive the normalized
+   * runtime config, and restart only if the source is currently connected.
+   *
+   * Re-runs `observerConfigFromSource` (rather than trusting the caller's raw
+   * block) so the hot-swap path normalizes identically to the boot path — URL
+   * normalization, IATA uppercase, audience trim, and the incomplete-block →
+   * undefined rule all apply here exactly as they do in
+   * `meshcoreConfigFromSource`. Passing the raw block through unnormalized
+   * would let an incomplete config start a publisher the boot path would have
+   * refused.
+   */
+  async reconfigureObserver(observer: MeshCoreObserverConfig | undefined): Promise<void> {
+    await this.stopObserver();
+    if (this.config) {
+      const { observerConfigFromSource } = await import('./meshcoreConfig.js');
+      this.config.observer = observerConfigFromSource({ observer } as MeshCoreSourceConfig);
+    }
+    if (this.connected) {
+      await this.startObserver();
+    }
   }
 
   /**

@@ -126,6 +126,31 @@ export class SourceManagerRegistry extends EventEmitter {
     }
   }
 
+  /**
+   * Hot-swap the Analyzer Observer configuration of a MeshCore manager
+   * (#4457 Phase 2, WP6) without restarting its upstream device connection.
+   * Returns true if a swap happened, false if the manager does not exist or
+   * does not support observer reconfiguration. Duck-typed (never
+   * `instanceof`) so this stays manager-type-agnostic — same shape as
+   * reconfigureVirtualNode above.
+   */
+  async reconfigureObserver(sourceId: string, cfg: Record<string, unknown> | undefined): Promise<boolean> {
+    const manager = this.managers.get(sourceId) as unknown as
+      | { reconfigureObserver?: (cfg: Record<string, unknown> | undefined) => Promise<void> }
+      | undefined;
+    if (!manager || typeof manager.reconfigureObserver !== 'function') {
+      return false;
+    }
+    try {
+      await manager.reconfigureObserver(cfg);
+      logger.info(`Hot-swapped Analyzer Observer config for source ${sourceId}`);
+      return true;
+    } catch (error) {
+      logger.error(`Failed to reconfigure Analyzer Observer for source ${sourceId}:`, error);
+      throw error;
+    }
+  }
+
   getAllManagers(): ISourceManager[] {
     return Array.from(this.managers.values());
   }
