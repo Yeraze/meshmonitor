@@ -33,6 +33,16 @@
 #   WATCH_RELEASE_INTERVAL   poll interval in seconds (default 60)
 #   WATCH_RELEASE_LIMIT      number of recent release-event runs to inspect
 #                            (default 10)
+#   WATCH_RELEASE_RETRIES    attempts per GitHub API call before giving up
+#                            (default 3)
+#   WATCH_RELEASE_BACKOFF    base seconds between retries, multiplied by attempt
+#                            number for linear backoff (default 5)
+#
+# Transient API errors are retried rather than fatal. A single TLS handshake
+# timeout killed a v4.13.3-rc3 release watch outright with exit 2; now only
+# WATCH_RELEASE_RETRIES *consecutive* failures do. Retry notices go to stderr,
+# so the stdout contract is unchanged for -q consumers — but a failing call is
+# never silent.
 
 set -euo pipefail
 
@@ -45,8 +55,34 @@ fi
 TAG="${1:-}"
 INTERVAL="${WATCH_RELEASE_INTERVAL:-60}"
 LIMIT="${WATCH_RELEASE_LIMIT:-10}"
+RETRIES="${WATCH_RELEASE_RETRIES:-3}"
+BACKOFF="${WATCH_RELEASE_BACKOFF:-5}"
 
 log() { $QUIET || echo "$@"; }
+
+# Run a gh command, retrying transient failures with linear backoff. Prints the
+# command's stdout on success (empty output is a valid success). On the final
+# failure, reports the last error to stderr and returns 1.
+#
+# Progress and error notices go to STDERR deliberately: this runs inside a
+# command substitution, so anything on stdout would be captured as data — and a
+# retry that logged to stdout would silently corrupt the caller's results.
+retry_api() {
+  local attempt=1 out
+  while :; do
+    if out=$("$@" 2>&1); then
+      printf '%s' "$out"
+      return 0
+    fi
+    if [ "$attempt" -ge "$RETRIES" ]; then
+      echo "✗ API call failed after $RETRIES attempts: $out" >&2
+      return 1
+    fi
+    echo "[$(date '+%H:%M:%S')] transient API error (attempt $attempt/$RETRIES), retrying in $((attempt * BACKOFF))s: $out" >&2
+    sleep "$((attempt * BACKOFF))"
+    attempt=$((attempt + 1))
+  done
+}
 
 if [ -n "$TAG" ]; then
   log "Watching release workflows for tag: $TAG"
@@ -71,10 +107,13 @@ last_summary=""
 while true; do
   TIMESTAMP=$(date '+%H:%M:%S')
 
-  if ! RESULTS=$(gh run list --limit "$LIMIT" --event release \
+  # Retried rather than fatal-on-first-error: release builds (multi-arch Docker,
+  # Desktop, LXC) run long enough that a single network blip is expected, and
+  # losing the watch to it is what pushes callers into hand-rolling their own.
+  if ! RESULTS=$(retry_api gh run list --limit "$LIMIT" --event release \
                    --json databaseId,name,conclusion,status,createdAt \
-                   -q '.[] | "\(.databaseId)|\(.name)|\(.status)|\(.conclusion)"' 2>&1); then
-    echo "✗ gh run list failed: $RESULTS" >&2
+                   -q '.[] | "\(.databaseId)|\(.name)|\(.status)|\(.conclusion)"'); then
+    echo "✗ gh run list failed after $RETRIES attempts — giving up" >&2
     exit 2
   fi
 
