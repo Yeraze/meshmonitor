@@ -196,7 +196,7 @@ describe('validateObserverConfig', () => {
       expect(err).toBeNull();
     });
 
-    it('rejects an explicit tcp:// scheme (passes normalizeBrokerUrl unchanged, then fails the protocol allow-list)', () => {
+    it('rejects an explicit tcp:// scheme (caught by the pre-normalization scheme allow-list)', () => {
       const err = validateObserverConfig('meshcore', {
         observer: { ...VALID_OBSERVER, brokerUrl: 'tcp://broker.example.com' },
       });
@@ -205,6 +205,53 @@ describe('validateObserverConfig', () => {
         error: 'observer.brokerUrl must be a ws/wss/mqtt/mqtts URL',
         code: 'INVALID_BROKER_URL',
       });
+    });
+
+    it('rejects an explicit tls:// scheme (caught by the pre-normalization scheme allow-list)', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: { ...VALID_OBSERVER, brokerUrl: 'tls://broker.example.com' },
+      });
+      expect(err?.code).toBe('INVALID_BROKER_URL');
+    });
+
+    // Regression guard for the WP2 review follow-up (#4457): normalizeBrokerUrl
+    // (shared with the Phase 2 MQTT client — must not be modified here) only
+    // recognizes mqtt/mqtts/ws/wss/tcp/tls as an explicit passthrough scheme.
+    // Before this fix, an explicit foreign scheme like http:// or https://
+    // fell through its "bare host" branch and got silently prefixed with
+    // mqtt://, laundering a bad scheme into an apparently-valid mqtt:// URL
+    // (e.g. "http://broker.example" normalized to "mqtt://http://broker.example",
+    // hostname "http" — a footgun the Phase 3 UI would have inherited).
+    // validateObserverConfig now rejects any explicit "scheme://" prefix that
+    // isn't ws/wss/mqtt/mqtts BEFORE calling normalizeBrokerUrl at all.
+    it('rejects an explicit http:// scheme instead of silently laundering it into mqtt://', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: { ...VALID_OBSERVER, brokerUrl: 'http://broker.example' },
+      });
+      expect(err).toEqual({
+        status: 400,
+        error: 'observer.brokerUrl must be a ws/wss/mqtt/mqtts URL',
+        code: 'INVALID_BROKER_URL',
+      });
+    });
+
+    it('rejects an explicit https:// scheme instead of silently laundering it into mqtt://', () => {
+      const err = validateObserverConfig('meshcore', {
+        observer: { ...VALID_OBSERVER, brokerUrl: 'https://broker.example' },
+      });
+      expect(err?.code).toBe('INVALID_BROKER_URL');
+    });
+
+    it('rejects an explicit scheme case-insensitively (MQTT:// uppercase is still allowed, HTTP:// is still rejected)', () => {
+      expect(
+        validateObserverConfig('meshcore', {
+          observer: { ...VALID_OBSERVER, brokerUrl: 'MQTT://broker.example.com:1883' },
+        }),
+      ).toBeNull();
+      const err = validateObserverConfig('meshcore', {
+        observer: { ...VALID_OBSERVER, brokerUrl: 'HTTP://broker.example' },
+      });
+      expect(err?.code).toBe('INVALID_BROKER_URL');
     });
 
     it('rejects a value that fails URL parsing after normalization (non-numeric port)', () => {
@@ -221,15 +268,13 @@ describe('validateObserverConfig', () => {
       expect(err?.code).toBe('INVALID_BROKER_URL');
     });
 
-    // Documented quirk, not a WP2 regression: normalizeBrokerUrl (reused
-    // as-is per spec §1.10 — not owned by this work package) only recognizes
-    // mqtt/mqtts/ws/wss/tcp/tls as explicit passthrough schemes. Any other
-    // bare word (or an explicit foreign scheme like http://) falls through to
-    // its "bare host" branch and gets prefixed with mqtt://, so it parses as a
-    // syntactically valid (if semantically nonsensical) mqtt:// hostname. This
-    // is pre-existing behavior in the shared, reused utility — recorded here
-    // rather than silently left untested.
-    it('treats a bare unscoped word as a literal (if nonsensical) mqtt hostname — known normalizeBrokerUrl passthrough quirk', () => {
+    // Bare-host input (no "://" at all) is unaffected by the scheme-allow-list
+    // fix above and still passes through to normalizeBrokerUrl unchanged: a
+    // syntactically valid (if semantically nonsensical) literal hostname is
+    // still accepted, since MQTT brokers commonly have single-word hostnames
+    // on private networks (e.g. "mosquitto"). Only an explicit disallowed
+    // scheme is rejected now, not a schemeless bare word.
+    it('still treats a bare unscoped word (no "://") as a literal mqtt hostname', () => {
       const err = validateObserverConfig('meshcore', {
         observer: { ...VALID_OBSERVER, brokerUrl: 'garbage' },
       });

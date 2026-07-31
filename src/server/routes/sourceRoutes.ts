@@ -115,6 +115,21 @@ export function validateObserverConfig(
   if (typeof brokerUrl !== 'string' || brokerUrl.length === 0) {
     return { status: 400, error: 'observer.brokerUrl must be a non-empty string', code: 'INVALID_PARAMETER' };
   }
+  // Reject an explicit disallowed scheme BEFORE normalization. normalizeBrokerUrl
+  // (shared with the Phase 2 MQTT client — must not be modified here) only
+  // recognizes mqtt/mqtts/ws/wss/tcp/tls as an explicit passthrough scheme; any
+  // other explicit scheme (http://, https://, ftp://, ...) falls through its
+  // "bare host" branch and gets silently prefixed with mqtt://, laundering a bad
+  // scheme into an apparently-valid URL (e.g. "http://broker.example" would
+  // otherwise normalize to a parseable "mqtt://http://broker.example" whose
+  // hostname is "http"). Catch it here on the raw input instead.
+  const schemeSepIdx = brokerUrl.indexOf('://');
+  if (schemeSepIdx !== -1) {
+    const scheme = brokerUrl.slice(0, schemeSepIdx).toLowerCase();
+    if (!['ws', 'wss', 'mqtt', 'mqtts'].includes(scheme)) {
+      return { status: 400, error: 'observer.brokerUrl must be a ws/wss/mqtt/mqtts URL', code: 'INVALID_BROKER_URL' };
+    }
+  }
   let parsed: URL;
   try {
     parsed = new URL(normalizeBrokerUrl(brokerUrl));
