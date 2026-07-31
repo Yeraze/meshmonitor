@@ -115,6 +115,11 @@ export function precisionBitsToAccuracyMeters(bits: number): number {
  * Sub-kilometre values render in metres/feet rather than a useless `±0.09 km`;
  * the unit argument only selects the metric or imperial ladder.
  *
+ * Deliberately distinct from {@link formatPrecisionAccuracy}, which prefixes `~`:
+ * this returns a hard bound ("the true position is within this radius"), whereas
+ * `~` denotes a fuzzy approximation. Do not unify the two on the grounds that
+ * they share a rounding ladder — the prefixes carry different claims.
+ *
  * @param meters Radius in metres. Non-finite or non-positive input yields null.
  * @param unit 'km' for metric (m/km) or 'mi' for imperial (ft/mi)
  * @returns e.g. "±85 m", "±1.2 km", "±280 ft", "±0.8 mi" — or null if unknown

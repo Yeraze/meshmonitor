@@ -116,6 +116,18 @@ describe('NodeDetailsBlock position source pill (#4432)', () => {
     expect(screen.queryByText(/^±/)).not.toBeInTheDocument();
   });
 
+  // A degenerate 0 km estimate must render nothing, not "±0 m" — the latter
+  // would read as a claim of perfect accuracy on a trilaterated guess.
+  it('shows Estimated with no radius for a degenerate 0 km uncertainty', () => {
+    render(
+      <NodeDetailsBlock
+        node={withPosition({ positionIsEstimated: true, positionEstimateUncertaintyKm: 0 })}
+      />,
+    );
+    expect(screen.getByText('Estimated')).toBeInTheDocument();
+    expect(screen.queryByText(/^±/)).not.toBeInTheDocument();
+  });
+
   // An override wins outright in enhanceNodeForClient, so it must never be
   // labelled estimated even if a stale estimate flag rides along.
   it('labels a manually placed position Override, with no error bar', () => {
