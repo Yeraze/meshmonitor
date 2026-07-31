@@ -21,6 +21,19 @@ export interface Source {
   createdBy: number | null;
 }
 
+/**
+ * True for the two MQTT source types.
+ *
+ * An MQTT source is a firehose with no origin node of its own, which changes
+ * what some per-node views can meaningfully show — see the traceroute
+ * participation picker in `tracerouteRoutes.ts`. Accepts `undefined`/`null` so
+ * a caller can pass a lookup that missed without a separate guard; an unknown
+ * type is not MQTT.
+ */
+export function isMqttSourceType(type: Source['type'] | undefined | null): boolean {
+  return type === 'mqtt_broker' || type === 'mqtt_bridge';
+}
+
 export interface CreateSourceInput {
   id: string;
   name: string;
