@@ -1,6 +1,6 @@
 # MeshCore Analyzer Observer MQTT Output — Epic Plan (#4457)
 
-**Status:** Phase 1 in progress
+**Status:** Phase 1 complete (PR pending) — Phase 2 next
 **Issue:** #4457 — publish packets heard by a MeshCore Companion source to a MeshCore Analyzer-compatible MQTT broker, so the node counts as an observer without a second app fighting over the serial port.
 **Scope guard:** observation-only. MeshMonitor publishes; it never subscribes to or injects broker traffic into the mesh. The broker's admin-only `serial/commands` remote-serial feature is out of scope.
 
@@ -39,11 +39,11 @@ Upstream issue michaelhart/meshcore-mqtt-broker#9 has no reply. We built the con
 ## Phases
 
 ### Phase 1 — Backend foundation: config + signing key + auth token
-- [ ] `observer` block in `MeshCoreSourceConfig`: `enabled`, `brokerUrl`, `iataCode`, `tokenAudience` (+ sane defaults); validation in `sourceRoutes`; secret fields added to `stripSourceSecrets`.
-- [ ] Encrypted signing-key storage (credential-store pattern; new column + migration on all 3 backends, idempotent).
-- [ ] Routes: import key from device (`exportPrivateKey()`), manual paste, clear, key-status; `requirePermission` source-scoped; response envelope helpers.
-- [ ] Token generation via `@michaelhart/meshcore-decoder` `createAuthToken`; add dep.
-- [ ] Tests incl. per-source isolation; token round-trips against the decoder's own `verifyAuthToken`.
+- [x] `observer` block in `MeshCoreSourceConfig`: `enabled`, `brokerUrl`, `iataCode`, `tokenAudience` (+ sane defaults); validation in `sourceRoutes`; secret fields added to `stripSourceSecrets`.
+- [x] Encrypted signing-key storage (credential-store pattern; new column + migration on all 3 backends, idempotent).
+- [x] Routes: import key from device (`exportPrivateKey()`), manual paste, clear, key-status; `requirePermission` source-scoped; response envelope helpers.
+- [x] Token generation via `@michaelhart/meshcore-decoder` `createAuthToken`; add dep.
+- [x] Tests incl. per-source isolation; token round-trips against the decoder's own `verifyAuthToken`.
 - **Exit:** config + key round-trip through the API with secrets redacted; full suite green; merged PR.
 
 ### Phase 2 — Observer publisher service
@@ -60,4 +60,14 @@ Upstream issue michaelhart/meshcore-mqtt-broker#9 has no reply. We built the con
 
 ## Deviations / notes
 
-- (record per phase)
+### Phase 1
+
+- **Public-key derivation.** The orlp public key is DERIVED via `Utils.derivePublicKey`, never read from bytes 32..64 of the private key — the epic's original assumption was wrong. A named regression test guards this (spec §2.2).
+- **Signing key storage.** Keys live in a new `meshcore_observer_keys` table (migration 133), not a `sources` column, not `meshcore_nodes`, not a reused `source_pki_keys` row — see spec §3.1 for the reasoning. New KDF info strings `meshcore-observer-key-aead-v1` / `-fingerprint-v1` key-separate this store from the credential store.
+- **Restart hook.** Phase 1 reuses the existing blanket MeshCore config-change restart. Phase 2 follow-up: a targeted `observerChanged` branch plus `manager.reconfigureObserver()` so toggling the observer stops bouncing the radio link.
+- **Broker URL validation** rejects explicit foreign schemes (`http`, `https`, `tcp`, `tls`) before `normalizeBrokerUrl` runs, because `normalizeBrokerUrl` silently `mqtt://`-prefixes unknown schemes. A bare `host[:port]` still normalizes as intended.
+- **Decoder library quirk.** The orlp validity check in `@michaelhart/meshcore-decoder` only requires private-key byte 31's top bit clear (weaker than full clamping), so a random 64-byte "invalid key" test fixture is ~50% flaky. Use the deterministic invalid fixture `'00'.repeat(31) + 'ff' + '00'.repeat(32)` instead. Also note `verifyAuthToken` checks `exp` against the real wall clock.
+- **Spec gap found by the full suite.** New schema tables must be registered in `src/cli/migrationTables.ts` `TABLE_ORDER` (the `migrate-db` CLI census). Done, placed after `source_pki_keys`.
+- **Route-test harness gap.** `harness.grant()` collides with the `permissions` table's `UNIQUE(user_id, resource, sourceId)` index when granting read then write separately. Tests needing both use a local `grantReadWrite()` helper that writes one row with both flags set.
+- **Known gap (accepted).** A `meshcore_observer_keys` row orphans on source delete, same as `source_pki_keys` today. Cascade cleanup is deferred to its own change.
+- **Phase 2 seam.** `mintObserverTokenForSource()` is intentionally unrouted — Phase 2's publisher is its first consumer.
