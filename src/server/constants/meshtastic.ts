@@ -367,6 +367,44 @@ export const MIN_TRACEROUTE_INTERVAL_MS = 30 * 1000;
 export const MAX_MESSAGE_BYTES = 200;
 
 /**
+ * Protocol max for `hop_limit` — it is a 3-bit field (`HOP_MAX` in firmware).
+ */
+export const MAX_HOP_LIMIT = 7;
+
+/**
+ * Fallback hop limit for packets we build before the device's LoRa config has
+ * arrived. Matches the firmware default (`config.lora.hop_limit` = 3).
+ *
+ * Prefer the node's own configured value when it is known — see
+ * {@link resolveHopLimit} and `MeshtasticManager.getConfiguredHopLimit()`.
+ */
+export const DEFAULT_HOP_LIMIT = 3;
+
+/**
+ * Normalize a hop limit read from device config into a value safe to put on the
+ * wire, falling back to {@link DEFAULT_HOP_LIMIT} when it is unknown or invalid.
+ *
+ * An explicit `0` is passed through — firmware honors a configured 0 for its own
+ * packets (`Router::send` → `Default::getConfiguredOrDefaultHopLimit`, which
+ * returns `config.lora.hop_limit` as-is below `HOP_MAX`).
+ *
+ * Caveat: a device that IS configured to 0 does not reach us as `0`. Proto3
+ * omits zero scalars, so protobuf.js decodes the field to `null` and it is
+ * indistinguishable from "config hasn't arrived" — both take the default of 3
+ * here. That ambiguity is unavoidable on the wire and self-correcting in
+ * practice: firmware rewrites an inbound `hop_limit == 0` on a `want_ack`
+ * packet from the phone API back to the node's own configured value
+ * (`Router.cpp`), so nothing we send at 0 escapes at the wrong depth.
+ */
+export function resolveHopLimit(configured: number | undefined | null): number {
+  if (typeof configured !== 'number' || !Number.isInteger(configured)) {
+    return DEFAULT_HOP_LIMIT;
+  }
+  if (configured < 0) return DEFAULT_HOP_LIMIT;
+  return Math.min(configured, MAX_HOP_LIMIT);
+}
+
+/**
  * Maximum valid Meshtastic node number.
  *
  * `nodeNum` is a 32-bit unsigned integer in the Meshtastic protocol — values

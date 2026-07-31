@@ -21,6 +21,7 @@ import type { Source } from '../db/repositories/sources.js';
 import { loadAllNodesAsDeviceInfo } from './utils/dbNodeMapper.js';
 import type { DeviceInfo } from './meshtasticManager.js';
 import { DistanceDeleteScheduler } from './services/distanceDeleteScheduler.js';
+import { MAX_HOP_LIMIT } from './constants/meshtastic.js';
 import { logger } from '../utils/logger.js';
 
 export interface MqttBrokerSourceConfig {
@@ -61,8 +62,12 @@ export interface MqttBrokerSourceConfig {
   downlinkHopLimitOverride?: number;
 }
 
-/** Protocol max for `hop_limit` — it is a 3-bit field (`HOP_MAX` in firmware). */
-export const MAX_HOP_LIMIT = 7;
+/**
+ * Protocol max for `hop_limit`. Re-exported from `constants/meshtastic.ts`,
+ * which is the canonical home; kept here so existing importers (sourceRoutes)
+ * keep working.
+ */
+export { MAX_HOP_LIMIT };
 
 /**
  * Resolve the effective downlink hop-limit override for a broker config, or

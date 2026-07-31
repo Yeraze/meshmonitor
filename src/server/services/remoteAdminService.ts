@@ -104,7 +104,7 @@ export class RemoteAdminService {
       });
       const encoded = AdminMessage.encode(adminMsg).finish();
 
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.mgr.getLocalNodeInfo()!.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.mgr.getLocalNodeInfo()!.nodeNum, this.mgr.getConfiguredHopLimit());
 
       await this.mgr.sendLocalAdminPacket(adminPacket);
       logger.debug(`🔑 Requested session passkey from remote node ${destinationNodeNum} (via getDeviceMetadataRequest)`);
@@ -270,7 +270,7 @@ export class RemoteAdminService {
       }
 
       // Send the request
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.mgr.getLocalNodeInfo()!.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.mgr.getLocalNodeInfo()!.nodeNum, this.mgr.getConfiguredHopLimit());
       await this.mgr.sendLocalAdminPacket(adminPacket);
       logger.debug(`📡 Requested ${isModuleConfig ? 'module' : 'device'} config type ${configType} from remote node ${destinationNodeNum}`);
 
@@ -388,7 +388,7 @@ export class RemoteAdminService {
       }
 
       // Send the request
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.mgr.getLocalNodeInfo()!.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.mgr.getLocalNodeInfo()!.nodeNum, this.mgr.getConfiguredHopLimit());
       await this.mgr.sendLocalAdminPacket(adminPacket);
       logger.debug(`📡 Requested channel ${channelIndex} from remote node ${destinationNodeNum}`);
 
@@ -481,7 +481,7 @@ export class RemoteAdminService {
       this.mgr.getRemoteNodeOwnersMap().delete(destinationNodeNum);
 
       // Send the request
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.mgr.getLocalNodeInfo()!.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.mgr.getLocalNodeInfo()!.nodeNum, this.mgr.getConfiguredHopLimit());
       await this.mgr.sendLocalAdminPacket(adminPacket);
       logger.debug(`📡 Requested owner info from remote node ${destinationNodeNum}`);
 
@@ -561,7 +561,7 @@ export class RemoteAdminService {
       this.mgr.getRemoteNodeDeviceMetadataMap().delete(destinationNodeNum);
 
       // Send the request
-      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.mgr.getLocalNodeInfo()!.nodeNum);
+      const adminPacket = protobufService.createAdminPacket(encoded, destinationNodeNum, this.mgr.getLocalNodeInfo()!.nodeNum, this.mgr.getConfiguredHopLimit());
       await this.mgr.sendLocalAdminPacket(adminPacket);
       logger.debug(`📡 Requested device metadata from remote node ${destinationNodeNum}`);
 
@@ -639,7 +639,7 @@ export class RemoteAdminService {
       const encoded = AdminMessage.encode(adminMsg).finish();
 
       const targetNodeNum = isLocalNode ? localNodeNum : destinationNodeNum;
-      const adminPacket = protobufService.createAdminPacket(encoded, targetNodeNum, localNodeNum);
+      const adminPacket = protobufService.createAdminPacket(encoded, targetNodeNum, localNodeNum, this.mgr.getConfiguredHopLimit());
       await this.mgr.sendLocalAdminPacket(adminPacket);
 
       logger.info(`🔄 Sent reboot command to node ${targetNodeNum} (reboot in ${seconds} seconds)`);
@@ -701,7 +701,7 @@ export class RemoteAdminService {
       const encoded = AdminMessage.encode(adminMsg).finish();
 
       const targetNodeNum = isLocalNode ? localNodeNum : destinationNodeNum;
-      const adminPacket = protobufService.createAdminPacket(encoded, targetNodeNum, localNodeNum);
+      const adminPacket = protobufService.createAdminPacket(encoded, targetNodeNum, localNodeNum, this.mgr.getConfiguredHopLimit());
       await this.mgr.sendLocalAdminPacket(adminPacket);
 
       logger.debug(`🕐 Sent set time command to node ${targetNodeNum} (time: ${currentTime} / ${new Date(currentTime * 1000).toISOString()})`);
