@@ -5744,12 +5744,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * gets its own history independent of the shared in-memory pool and the
    * global recent-tail that {@link getRecentMessages} serves. Returns
    * oldest-first to match the ordering the message stream expects.
+   *
+   * `offset` pages further back into history (for infinite-scroll load-older).
    */
-  async getChannelMessages(channelIdx: number, limit: number = 100): Promise<MeshCoreMessage[]> {
+  async getChannelMessages(channelIdx: number, limit: number = 100, offset: number = 0): Promise<MeshCoreMessage[]> {
     const stored = await databaseService.meshcore.getChannelMessages(
       channelIdx,
       limit,
       this.sourceId,
+      offset,
     );
     // Enrich outgoing channel messages with their heard-by repeater set (#3700)
     // in one batched query.

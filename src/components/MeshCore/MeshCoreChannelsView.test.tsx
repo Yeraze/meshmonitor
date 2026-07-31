@@ -394,6 +394,103 @@ describe('MeshCoreChannelsView — per-channel backlog fetch (#3442)', () => {
   });
 });
 
+describe('MeshCoreChannelsView — infinite scroll pagination (#4460)', () => {
+  // Routes the per-channel-messages endpoint to a different page depending on
+  // whether the request carries an offset, so a scroll-to-top can be observed
+  // fetching (and prepending) the older page.
+  function pagedFetch(page0: MeshCoreMessage[], olderPage: MeshCoreMessage[]) {
+    return vi.fn((url: string) => {
+      if (url.includes('/api/channels/all')) {
+        return Promise.resolve(jsonResponse([{ id: 0, name: 'Public' }]));
+      }
+      if (url.includes('/messages/channel-counts')) {
+        return Promise.resolve(jsonResponse({ success: true, counts: {} }));
+      }
+      if (url.includes('/messages/channel/0')) {
+        const offsetMatch = /[?&]offset=(\d+)/.exec(url);
+        const offset = offsetMatch ? Number(offsetMatch[1]) : 0;
+        return offset > 0
+          ? Promise.resolve(jsonResponse({ success: true, data: olderPage, hasMore: false }))
+          : Promise.resolve(jsonResponse({ success: true, data: page0, hasMore: true }));
+      }
+      return Promise.resolve(jsonResponse({ success: true, data: [] }));
+    });
+  }
+
+  it('fetches and prepends an older page when scrolled to the top of the channel', async () => {
+    csrfFetchMock.mockImplementation(pagedFetch(
+      [{ id: 'p0', fromPublicKey: 'channel-0', text: 'recent message', timestamp: 200 }],
+      [{ id: 'p-old', fromPublicKey: 'channel-0', text: 'much older message', timestamp: 100 }],
+    ));
+
+    const { container } = render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('recent message')).toBeTruthy());
+    expect(screen.queryByText('much older message')).toBeNull();
+
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    fireEvent.scroll(list);
+
+    await waitFor(() => expect(screen.getByText('much older message')).toBeTruthy());
+    // Still there — the older page is prepended, not swapped in.
+    expect(screen.getByText('recent message')).toBeTruthy();
+
+    const hitOlderPage = csrfFetchMock.mock.calls.some(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('/meshcore/messages/channel/0') && (c[0] as string).includes('offset=1'),
+    );
+    expect(hitOlderPage).toBe(true);
+  });
+
+  it('does not request an older page once hasMore is false', async () => {
+    csrfFetchMock.mockImplementation((url: string) => {
+      if (url.includes('/api/channels/all')) {
+        return Promise.resolve(jsonResponse([{ id: 0, name: 'Public' }]));
+      }
+      if (url.includes('/messages/channel-counts')) {
+        return Promise.resolve(jsonResponse({ success: true, counts: {} }));
+      }
+      if (url.includes('/messages/channel/0')) {
+        return Promise.resolve(jsonResponse({
+          success: true,
+          data: [{ id: 'p0', fromPublicKey: 'channel-0', text: 'only message', timestamp: 200 }],
+          hasMore: false,
+        }));
+      }
+      return Promise.resolve(jsonResponse({ success: true, data: [] }));
+    });
+
+    const { container } = render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('only message')).toBeTruthy());
+    const callCountBeforeScroll = csrfFetchMock.mock.calls.length;
+
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    fireEvent.scroll(list);
+
+    // No new request should follow — hasMore was false, so there's nothing to page into.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(csrfFetchMock.mock.calls.length).toBe(callCountBeforeScroll);
+  });
+});
+
 describe('MeshCoreChannelsView — sending', () => {
   it('passes the active channel idx to actions.sendMessage', async () => {
     csrfFetchMock.mockImplementation((url: string) => {

@@ -76,6 +76,9 @@ export const VALIDATION = {
   MAX_NAME_LENGTH: 32,
   /** Maximum message history limit */
   MAX_MESSAGE_LIMIT: 1000,
+  /** Maximum pagination offset for message history (mirrors the Meshtastic
+   *  /api/messages/channel offset cap) */
+  MAX_MESSAGE_OFFSET: 50000,
   /** Radio frequency range (MHz) */
   FREQ_MIN: 137.0,
   FREQ_MAX: 1020.0,
