@@ -102,22 +102,36 @@ export async function mintObserverToken(
 }
 
 /**
+ * Discriminated result for {@link mintObserverTokenForSourceDetailed}. Lets
+ * the Phase 2 publisher distinguish *why* minting didn't produce a token —
+ * `mintObserverTokenForSource`'s flat `null` collapses all of these into one
+ * case, which is fine for Phase 1 but not enough for the publisher's
+ * `lastError` surface (spec §3.3/§6).
+ */
+export type ObserverTokenResult =
+  | { kind: 'ok'; token: ObserverToken }
+  /** Source missing, not `meshcore`, or the `observer` config block absent/incomplete. */
+  | { kind: 'not_configured' }
+  /** No row in `meshcore_observer_keys` for this source. */
+  | { kind: 'no_key' }
+  /** Stored envelope was encrypted under a different `SESSION_SECRET`. */
+  | { kind: 'key_rotated' }
+  /** `mintObserverToken` threw (WASM/derive/sign failure). `message` is the
+   *  sanitized library text — callers must log it at `debug` only and never
+   *  surface it directly to a user (module header logging discipline). */
+  | { kind: 'mint_failed'; message: string };
+
+/**
  * Mint a token for a configured source: loads the stored signing key, reads
  * `observer.tokenAudience` from the source's saved config, derives the
- * public key, and signs.
+ * public key, and signs. Unlike {@link mintObserverTokenForSource}, the
+ * failure reason is distinguishable — see {@link ObserverTokenResult}.
  *
- * Returns null when: no key is stored, the stored envelope is rotated
- * (SESSION_SECRET changed), the source is not `meshcore`, or the `observer`
- * config block is absent/incomplete (mirrors `observerConfigFromSource`'s
- * own definition of "incomplete" — missing `brokerUrl`/`iataCode`/
- * `tokenAudience`, or not enabled).
- *
- * Not exposed via any route in Phase 1 — this exists so Phase 2's publisher
- * has a tested seam.
+ * Not exposed via any route — this is the publisher's (Phase 2) seam.
  */
-export async function mintObserverTokenForSource(sourceId: string): Promise<ObserverToken | null> {
+export async function mintObserverTokenForSourceDetailed(sourceId: string): Promise<ObserverTokenResult> {
   const source = await databaseService.sources.getSource(sourceId);
-  if (!source || source.type !== 'meshcore') return null;
+  if (!source || source.type !== 'meshcore') return { kind: 'not_configured' };
 
   const cfg = (source.config ?? {}) as MeshCoreSourceConfig;
   const observer = observerConfigFromSource(cfg);
@@ -125,16 +139,35 @@ export async function mintObserverTokenForSource(sourceId: string): Promise<Obse
   // iataCode/tokenAudience are all present (see its own definition of
   // "incomplete"), but its declared type still marks tokenAudience optional —
   // narrow explicitly so this stays type-safe if that contract ever loosens.
-  if (!observer || !observer.tokenAudience) return null;
+  if (!observer || !observer.tokenAudience) return { kind: 'not_configured' };
 
   const keyResult = await getMeshCoreObserverKeyStore().load(sourceId);
-  if (keyResult.kind !== 'ok') return null;
+  if (keyResult.kind === 'none') return { kind: 'no_key' };
+  if (keyResult.kind === 'key_rotated') return { kind: 'key_rotated' };
 
   try {
-    return await mintObserverToken(keyResult.privateKeyHex, observer.tokenAudience);
+    const token = await mintObserverToken(keyResult.privateKeyHex, observer.tokenAudience);
+    return { kind: 'ok', token };
   } catch (err) {
-    // Never let a thrown error carry key material into the log.
-    logger.warn(`[ObserverToken:${sourceId}] failed to mint token: ${(err as Error).message}`);
-    return null;
+    // Never let a thrown error carry key material into the log at anything
+    // above debug — the message itself is the sanitized text from
+    // `mintObserverToken`'s own catch, but treat it as sensitive regardless.
+    const message = (err as Error).message;
+    logger.debug(`[ObserverToken:${sourceId}] failed to mint token: ${message}`);
+    return { kind: 'mint_failed', message };
   }
+}
+
+/**
+ * Mint a token for a configured source, collapsed to Phase 1's flat
+ * `ObserverToken | null` contract. Thin wrapper over
+ * {@link mintObserverTokenForSourceDetailed} — kept so Phase 1 callers and
+ * tests are unaffected by the WP3 refinement.
+ *
+ * Not exposed via any route in Phase 1 — this exists so Phase 2's publisher
+ * has a tested seam.
+ */
+export async function mintObserverTokenForSource(sourceId: string): Promise<ObserverToken | null> {
+  const r = await mintObserverTokenForSourceDetailed(sourceId);
+  return r.kind === 'ok' ? r.token : null;
 }
