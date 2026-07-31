@@ -3,6 +3,7 @@ import type { DeviceInfo } from '../meshtasticManager.js';
 import type { User } from '../../types/auth.js';
 import type { ResourceType, PermissionSet } from '../../types/permission.js';
 import databaseService from '../../services/database.js';
+import { isBogusPosition } from '../../utils/nullIsland.js';
 import { CHANNEL_DB_OFFSET } from '../constants/meshtastic.js';
 
 /**
@@ -114,7 +115,20 @@ export async function enhanceNodeForClient(
   }
 
   // Priority 2: Use regular GPS position if available (already set in node.position)
-  if (node.position?.latitude && node.position?.longitude) {
+  //
+  // Presence check, not truthiness: a latitude or longitude of exactly 0 is a
+  // real coordinate (the equator / the prime meridian), and the old truthy test
+  // treated such a node as unpositioned, overwriting its genuine fix with an
+  // estimate (#4432 follow-up).
+  //
+  // Null Island — where BOTH are ~0 — is explicitly rejected rather than left to
+  // upstream filtering. It is already filtered at ingest and by migration 107,
+  // but making the gate independently correct matters: a bare presence check
+  // would accept a stray (0, 0) and render it as a GPS fix, which is worse than
+  // the behaviour this change replaces. Falling through lets an estimate take
+  // over, correctly labelled.
+  const pos = node.position;
+  if (pos?.latitude != null && pos?.longitude != null && !isBogusPosition(pos.latitude, pos.longitude)) {
     return enhancedNode;
   }
 
