@@ -1,6 +1,6 @@
 # MeshCore Analyzer Observer MQTT Output — Epic Plan (#4457)
 
-**Status:** Phase 2 complete (PR pending) — Phase 3 (UI + docs) next
+**Status:** Phase 3 in progress — WP4 (user docs) complete; WP0-WP3 (i18n, hook, modal fieldset, config-view section) and WP5 (verification, browser validation, PR) tracked separately per `MESHCORE_OBSERVER_PHASE3_SPEC.md` §12
 **Issue:** #4457 — publish packets heard by a MeshCore Companion source to a MeshCore Analyzer-compatible MQTT broker, so the node counts as an observer without a second app fighting over the serial port.
 **Scope guard:** observation-only. MeshMonitor publishes; it never subscribes to or injects broker traffic into the mesh. The broker's admin-only `serial/commands` remote-serial feature is out of scope.
 
