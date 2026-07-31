@@ -103,23 +103,22 @@ registerRoute(
 // PUSH NOTIFICATION HANDLERS
 // ==========================================
 
-// Navigation data interface for notification clicks
-interface NotificationNavigationData {
-  type: 'channel' | 'dm';
-  channelId?: number;
-  messageId?: string;
-  senderNodeId?: string;
-}
+// Navigation data + deep-link URL construction (shared with the app and tests)
+import { buildNotificationUrl, type NotificationNavigationData } from './utils/notificationUrl';
 
 // Handle push events (background notifications)
 self.addEventListener('push', event => {
   console.log('[Service Worker] Push received:', event);
 
+  // Resolve against the registration scope, not the origin root — a
+  // root-absolute '/logo.png' 404s under a BASE_URL sub-path deployment.
+  const defaultIcon = new URL('logo.png', self.registration.scope).href;
+
   let notificationData = {
     title: 'MeshMonitor',
     body: 'You have a new notification',
-    icon: '/logo.png',
-    badge: '/logo.png',
+    icon: defaultIcon,
+    badge: defaultIcon,
     tag: undefined as string | undefined, // Will be set uniquely per notification
     data: undefined as NotificationNavigationData | undefined, // Navigation data for click handling
   };
@@ -195,16 +194,11 @@ self.addEventListener('notificationclick', event => {
         }
       }
 
-      // If app is not open, open it with navigation data in URL hash
+      // If app is not open, cold-launch it directly on the target route
       if (self.clients.openWindow) {
-        let url = self.registration.scope;
-        if (navigationData) {
-          // Encode navigation data in URL hash for the app to read on load
-          const params = new URLSearchParams();
-          params.set('notificationNav', JSON.stringify(navigationData));
-          url = `${self.registration.scope}#${params.toString()}`;
-        }
-        return self.clients.openWindow(url);
+        return self.clients.openWindow(
+          buildNotificationUrl(self.registration.scope, navigationData)
+        );
       }
     })
   );

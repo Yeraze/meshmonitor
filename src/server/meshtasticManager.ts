@@ -10031,15 +10031,20 @@ class MeshtasticManager implements ISourceManager {
         body = messageText.length > 100 ? messageText.substring(0, 97) + '...' : messageText;
       }
 
-      // Build navigation data for push notification click handling
+      // Build navigation data for push notification click handling.
+      // `sourceId` is required for the cold-launch deep link: the service
+      // worker builds a `/source/<sourceId>/<tab>` route from it, because the
+      // app root renders DashboardPage and never reads navigation data (#4463).
       const navigationData = isDirectMessage
         ? {
             type: 'dm' as const,
+            sourceId: this.sourceId,
             messageId: message.id,
             senderNodeId: fromNode?.nodeId || message.fromNodeId,
           }
         : {
             type: 'channel' as const,
+            sourceId: this.sourceId,
             channelId: message.channel,
             messageId: message.id,
           };
