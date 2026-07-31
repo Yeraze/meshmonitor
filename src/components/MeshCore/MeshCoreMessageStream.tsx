@@ -199,6 +199,18 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   const pendingOlderRestoreRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
   const lastLoadOlderAtRef = useRef(0);
 
+  // Drop any load-older snapshot when the conversation changes. Without this, a
+  // load-older triggered in one conversation and abandoned by switching away
+  // (the parent resets `loadingOlder`, so the request never settles here) leaves
+  // stale metrics in the ref. The restore effect below would then fire on the
+  // NEW conversation's first message change and scroll it to a position derived
+  // from the old conversation's height — beating the entry scroll, since both
+  // use requestAnimationFrame and the restore is registered later.
+  // Declared before that effect so it clears the ref first on a key change.
+  useEffect(() => {
+    pendingOlderRestoreRef.current = null;
+  }, [conversationKey]);
+
   const handleScroll = useCallback(() => {
     const container = listRef.current;
     if (!container) return;

@@ -363,6 +363,45 @@ describe('MeshCoreMessageStream load older (#4460)', () => {
     // newScrollTop = scrollHeightAfter(380) - scrollHeightBefore(300) + scrollTopBefore(10)
     expect(list.scrollTop).toBe(90);
   });
+
+  it('discards a pending restore when the conversation changes mid-load', () => {
+    const onLoadOlder = vi.fn();
+    const { container, rerender } = render(
+      <MeshCoreMessageStream
+        messages={twoMessages()}
+        conversationKey="channel-0"
+        onSend={async () => true}
+        onLoadOlder={onLoadOlder}
+        hasMoreOlder
+        loadingOlder={false}
+      />,
+    );
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    list.scrollTop = 10;
+    fireEvent.scroll(list);
+    expect(onLoadOlder).toHaveBeenCalledTimes(1);
+
+    // The operator switches channels before that load settles. The parent
+    // resets its load-older state on a channel switch, so the request never
+    // resolves back into this component — the captured metrics are now stale.
+    scrollHeightValue = 380;
+    rerender(
+      <MeshCoreMessageStream
+        messages={[msg('x', 5000, 'other channel'), msg('y', 6000, 'other channel 2')]}
+        conversationKey="channel-1"
+        onSend={async () => true}
+        onLoadOlder={onLoadOlder}
+        hasMoreOlder={false}
+        loadingOlder={false}
+      />,
+    );
+
+    // The new conversation must land at the bottom via the entry scroll (380),
+    // NOT at 380 - 300 + 10 = 90, which is what channel-0's abandoned snapshot
+    // would produce if the restore ref survived the conversation change.
+    expect(list.scrollTop).toBe(380);
+    expect(list.scrollTop).not.toBe(90);
+  });
 });
 
 describe('MeshCoreMessageStream focus restore (#3823)', () => {
