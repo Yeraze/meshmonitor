@@ -1116,7 +1116,13 @@ router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) =>
       : false);
 
     if (!canReadNodes) {
-      return res.json(status);
+      // Analyzer Observer status (#4457 Phase 2, D-10) can leak the broker
+      // hostname via lastError — strip it for anonymous / non-nodes:read
+      // callers. Every other field on `status` is unaffected. See
+      // MESHCORE_OBSERVER_PHASE2_SPEC.md §4.1 — this route intentionally
+      // stays a bare `res.json(...)`, not the ok()/fail() envelope.
+      const { observer: _observer, ...publicStatus } = status as Record<string, unknown>;
+      return res.json(publicStatus);
     }
 
     // Cheap COUNT(*) queries — never throw on empty source.

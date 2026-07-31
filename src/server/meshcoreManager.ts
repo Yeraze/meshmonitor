@@ -31,7 +31,12 @@ import {
 import {
   MeshCoreVirtualNodeServer,
   type MeshCoreVirtualNodeConfig,
+  type OtaPacketEvent,
 } from './meshcoreVirtualNodeServer.js';
+import {
+  MeshCoreObserverPublisher,
+  type MeshCoreObserverStatus,
+} from './services/meshcoreObserverPublisher.js';
 // Type-only import — meshcoreConfig.ts imports MeshCoreConfig (below) from this
 // file at runtime, so this side of the edge must stay `import type` to avoid a
 // circular runtime dependency. Same pattern already used for
@@ -352,6 +357,17 @@ export interface MeshCoreConfig {
   observer?: MeshCoreObserverConfig;
 }
 
+/**
+ * MeshCoreManager.getStatus() return type. Extends the base SourceStatus with
+ * an optional `observer` sub-object (#4457 Phase 2 WP5) — present only when an
+ * Analyzer Observer publisher is constructed for this source. Conditionally
+ * spread in getStatus() so the JSON is byte-identical for every source
+ * without an observer (no new key appears for existing consumers).
+ */
+export interface MeshCoreSourceStatus extends SourceStatus {
+  observer?: MeshCoreObserverStatus;
+}
+
 export type MeshCoreConnectionState =
   | 'disconnected'
   | 'connecting'
@@ -403,6 +419,23 @@ export interface MeshCoreNode {
   firmwareBuild?: string;
   model?: string;
   ver?: string;
+}
+
+/**
+ * Analyzer Observer (#4457 Phase 2) `radio` status field: `freq,bw,sf,cr` when
+ * every one of the four is a known number, else undefined. Module-local (not
+ * exported) — only startObserver() needs it.
+ */
+function formatRadioInfo(node: MeshCoreNode | null): string | undefined {
+  if (
+    typeof node?.radioFreq !== 'number' ||
+    typeof node?.radioBw !== 'number' ||
+    typeof node?.radioSf !== 'number' ||
+    typeof node?.radioCr !== 'number'
+  ) {
+    return undefined;
+  }
+  return `${node.radioFreq},${node.radioBw},${node.radioSf},${node.radioCr}`;
 }
 
 export interface MeshCoreContact {
@@ -719,6 +752,19 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // Companion: native JS backend (meshcore.js). sendBridgeCommand delegates here.
   private nativeBackend: MeshCoreNativeBackend | null = null;
   private virtualNodeServer: MeshCoreVirtualNodeServer | null = null;
+
+  // Analyzer Observer publisher (#4457 Phase 2). Companion-only — see
+  // startObserver()'s !nativeBackend guard.
+  private observerPublisher: MeshCoreObserverPublisher | null = null;
+  /**
+   * Bound arrow-property listener registered on 'ota_packet' in startObserver()
+   * and removed in stopObserver() — same shape as the Virtual Node bridge's
+   * onManagerOtaPacket (meshcoreVirtualNodeServer.ts). Kept as a stable
+   * reference so on()/off() target the exact same function.
+   */
+  private readonly onObserverOtaPacket = (data: OtaPacketEvent): void => {
+    this.observerPublisher?.handleOtaPacket(data);
+  };
 
   // Heartbeat / auto-reconnect state (native-backend only).
   private connectionState: MeshCoreConnectionState = 'disconnected';
@@ -1172,6 +1218,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       // is known — the server synthesizes SelfInfo from it. Non-fatal on error.
       await this.startVirtualNodeServer();
 
+      // Start the Analyzer Observer publisher (opt-in, Companion only, #4457
+      // Phase 2). Non-fatal on error — a broker that's down must never block
+      // the device link.
+      await this.startObserver();
+
       // Start auto-pathfinding scheduler if configured for this source.
       this.startAutoPathfinding().catch(err =>
         logger.warn(`[MeshCore:${this.sourceId}] Failed to start auto-pathfinding: ${(err as Error).message}`),
@@ -1270,6 +1321,57 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   }
 
   /**
+   * Start the Analyzer Observer publisher (#4457 Phase 2) if this source has
+   * it enabled. Companion-only — the repeater/serial backend never emits
+   * 'ota_packet', so a publisher on that backend would sit idle forever.
+   * Idempotent and non-fatal: a broker that is down (or misconfigured) must
+   * never block the device link. Mirrors startVirtualNodeServer()'s shape.
+   */
+  private async startObserver(): Promise<void> {
+    const obs = this.config?.observer;
+    if (!obs?.enabled || this.observerPublisher) return;
+    if (!this.nativeBackend) return; // repeater/serial never emits ota_packet
+
+    try {
+      this.observerPublisher = new MeshCoreObserverPublisher({
+        sourceId: this.sourceId,
+        config: obs,
+        device: () => ({
+          origin: this.localNode?.name || this.sourceName || 'MeshMonitor',
+          model: this.localNode?.model,
+          firmwareVersion: this.localNode?.ver
+            ? `v${this.localNode.ver}${this.localNode.firmwareBuild ? ` (Build: ${this.localNode.firmwareBuild})` : ''}`
+            : undefined,
+          radio: formatRadioInfo(this.localNode),
+        }),
+      });
+      this.on('ota_packet', this.onObserverOtaPacket);
+      await this.observerPublisher.start();
+    } catch (err) {
+      logger.error(`[MeshCore:${this.sourceId}] Failed to start Analyzer Observer: ${(err as Error).message}`);
+      this.off('ota_packet', this.onObserverOtaPacket);
+      this.observerPublisher = null;
+    }
+  }
+
+  /** Stop the Analyzer Observer publisher if running. Safe to call when not started. */
+  private async stopObserver(): Promise<void> {
+    if (!this.observerPublisher) return;
+    this.off('ota_packet', this.onObserverOtaPacket);
+    try {
+      await this.observerPublisher.stop();
+    } catch (err) {
+      logger.debug(`[MeshCore:${this.sourceId}] Observer stop threw: ${(err as Error).message}`);
+    }
+    this.observerPublisher = null;
+  }
+
+  /** Analyzer Observer status, or undefined when the observer isn't running for this source. */
+  getObserverStatus(): MeshCoreObserverStatus | undefined {
+    return this.observerPublisher?.getStatus();
+  }
+
+  /**
    * Disconnect from the device
    */
   async disconnect(): Promise<void> {
@@ -1308,6 +1410,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // Stop auto-announce + timer-trigger schedulers.
     this.stopAutoAnnounce();
     this.stopTimerTriggers();
+
+    // Stop the Analyzer Observer publisher before the Virtual Node server /
+    // native backend go away (#4457 Phase 2) — mirrors the VN server's own
+    // teardown-ordering rationale below.
+    await this.stopObserver();
 
     // Stop the Virtual Node server (if running) before tearing down the link
     // and clearing localNode — it reads localNode to answer AppStart.
@@ -5601,12 +5708,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * (e.g. the /status route). When omitted, the stored this.sourceName is used so
    * aggregate getAllStatuses() calls return a meaningful name.
    */
-  getStatus(sourceName?: string): SourceStatus {
+  getStatus(sourceName?: string): MeshCoreSourceStatus {
+    const observer = this.observerPublisher?.getStatus();
     return {
       sourceId: this.sourceId,
       sourceName: sourceName ?? this.sourceName,
       sourceType: 'meshcore',
       connected: this.connected,
+      ...(observer ? { observer } : {}),
     };
   }
 
@@ -6034,6 +6143,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     this.connected = false;
     this.connectionState = 'disconnected';
     this.stopHeartbeat();
+    await this.stopObserver();
     await this.stopVirtualNodeServer();
     // Release the dead backend. Without this `nativeBackend` keeps pointing at a
     // closed connection, so sendBridgeCommand()'s `!nativeBackend` guard never
@@ -6061,6 +6171,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // native backend's own 'disconnected' event so it doesn't re-enter the
     // unexpected-drop path. connect() clears the flag when the reconnect lands.
     this.intentionalTeardown = true;
+
+    // Stop the Analyzer Observer publisher first (#4457 Phase 2) — same
+    // rationale as the VN server below: it shouldn't keep publishing (or hold
+    // a socket open) once the underlying transport is going away.
+    await this.stopObserver();
 
     // Stop the Virtual Node server first, same as disconnect() does. Without
     // this, the VN server keeps accepting app connections while isConnected()
