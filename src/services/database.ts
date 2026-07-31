@@ -52,6 +52,7 @@ import {
   EstimatedPositionsRepository,
   AutoFavoriteTargetsRepository,
   SourcePkiKeysRepository,
+  MeshCoreObserverKeysRepository,
   DeadDropRepository,
   AutomationsRepository,
   AutomationVariablesRepository,
@@ -490,6 +491,7 @@ class DatabaseService {
   public estimatedPositionsRepo: EstimatedPositionsRepository | null = null;
   public autoFavoriteTargetsRepo: AutoFavoriteTargetsRepository | null = null;
   public sourcePkiKeysRepo: SourcePkiKeysRepository | null = null;
+  public meshcoreObserverKeysRepo: MeshCoreObserverKeysRepository | null = null;
   public deadDropRepo: DeadDropRepository | null = null;
   public automationsRepo: AutomationsRepository | null = null;
   public automationVariablesRepo: AutomationVariablesRepository | null = null;
@@ -551,6 +553,11 @@ class DatabaseService {
   get sourcePkiKeys(): SourcePkiKeysRepository {
     if (!this.sourcePkiKeysRepo) throw new Error('Database not initialized');
     return this.sourcePkiKeysRepo;
+  }
+
+  get meshcoreObserverKeys(): MeshCoreObserverKeysRepository {
+    if (!this.meshcoreObserverKeysRepo) throw new Error('Database not initialized');
+    return this.meshcoreObserverKeysRepo;
   }
 
   get deadDrop(): DeadDropRepository {
@@ -933,6 +940,7 @@ class DatabaseService {
       this.estimatedPositionsRepo = new EstimatedPositionsRepository(drizzleDb, this.drizzleDbType);
       this.autoFavoriteTargetsRepo = new AutoFavoriteTargetsRepository(drizzleDb, this.drizzleDbType);
       this.sourcePkiKeysRepo = new SourcePkiKeysRepository(drizzleDb, this.drizzleDbType);
+      this.meshcoreObserverKeysRepo = new MeshCoreObserverKeysRepository(drizzleDb, this.drizzleDbType);
       this.deadDropRepo = new DeadDropRepository(drizzleDb, this.drizzleDbType);
       this.automationsRepo = new AutomationsRepository(drizzleDb, this.drizzleDbType);
       this.automationVariablesRepo = new AutomationVariablesRepository(drizzleDb, this.drizzleDbType);
