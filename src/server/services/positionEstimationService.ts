@@ -20,6 +20,7 @@
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
 import { calculateDistance } from '../../utils/distance.js';
+import { isBogusPosition } from '../../utils/nullIsland.js';
 import { getEffectiveDbNodePosition } from '../utils/nodeEnhancer.js';
 import type { EstimatedPositionInput } from '../../db/repositories/index.js';
 
@@ -132,6 +133,14 @@ export function solveNodePosition(observations: PositionObservation[], now: numb
 
   const latitude = wLat / wSum;
   const longitude = wLon / wSum;
+
+  // A solve that lands on Null Island is not a position (#4432 follow-up).
+  // buildObservations already drops bogus anchors, so this is the second line of
+  // defence: legitimate anchors placed symmetrically about (0, 0) can still
+  // average onto it. Returning null means "no usable estimate", which is exactly
+  // what a Gulf-of-Guinea centroid is — better than storing a row that later gets
+  // substituted onto the node as though it were a fix.
+  if (isBogusPosition(latitude, longitude)) return null;
 
   // Kish effective sample size — robust to skewed weights.
   const nEff = (wSum * wSum) / w2Sum;
@@ -248,22 +257,33 @@ export function buildObservations(
 ): Map<number, PositionObservation[]> {
   const out = new Map<number, PositionObservation[]>();
 
+  // Drop anchors that are not real positions before they can constrain anything
+  // (#4432 follow-up). A Null Island or otherwise invalid anchor drags the
+  // weighted centroid toward (0, 0) and produces an estimate in the Gulf of
+  // Guinea — which then gets substituted onto the node as if it were a fix.
+  // Filtered into a new map rather than deleting from the caller's: this
+  // function is otherwise free of side effects and callers reuse the map.
+  const usableAnchors = new Map<number, { lat: number; lon: number }>();
+  for (const [nodeNum, a] of anchors) {
+    if (!isBogusPosition(a.lat, a.lon)) usableAnchors.set(nodeNum, a);
+  }
+
   for (const tr of traceroutes) {
     const route = parseNumberArray(tr.route);
     const forwardPath = [tr.fromNodeNum, ...route, tr.toNodeNum];
-    addPathObservations(forwardPath, parseNumberArray(tr.snrTowards), tr.timestamp, anchors, out);
+    addPathObservations(forwardPath, parseNumberArray(tr.snrTowards), tr.timestamp, usableAnchors, out);
 
     const routeBack = parseNumberArray(tr.routeBack);
     if (routeBack.length > 0) {
       const returnPath = [tr.toNodeNum, ...routeBack, tr.fromNodeNum];
-      addPathObservations(returnPath, parseNumberArray(tr.snrBack), tr.timestamp, anchors, out);
+      addPathObservations(returnPath, parseNumberArray(tr.snrBack), tr.timestamp, usableAnchors, out);
     }
   }
 
   for (const nb of neighbors) {
     // NeighborInfo snr is already in dB. Either side may be the unpositioned target.
-    const nodeAnchor = anchors.get(nb.nodeNum);
-    const neighborAnchor = anchors.get(nb.neighborNodeNum);
+    const nodeAnchor = usableAnchors.get(nb.nodeNum);
+    const neighborAnchor = usableAnchors.get(nb.neighborNodeNum);
     const snrDb = nb.snr != null && Number.isFinite(nb.snr) ? nb.snr : undefined;
 
     if (neighborAnchor && !nodeAnchor) {
