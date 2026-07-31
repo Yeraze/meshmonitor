@@ -32,6 +32,22 @@
   gap: 6px;
 }
 
+/* Narrow rail (the 60px collapsed per-source sidebar): a two-column grid keeps
+   the six icons in three short rows instead of six full-width ones (#4436). */
+.narrow {
+  padding: 8px 4px;
+}
+
+.narrow .icons {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 2px;
+}
+
+.narrow .btn {
+  padding: 3px;
+}
+
 .btn {
   background: none;
   border: none;

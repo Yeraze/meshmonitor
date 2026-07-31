@@ -27,30 +27,11 @@
   width: calc(240px + env(safe-area-inset-left, 0px));
 }
 
-.sidebar-footer {
-  padding: 12px 16px;
-  border-top: 1px solid var(--ctp-surface1);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--ctp-mantle);
-  margin-top: auto;
-}
+/* The old .sidebar-footer / .version-text / .news-link rules are gone: the
+   per-source footer is the shared SidebarFooter component (#4436), which
+   carries its own CSS module. .github-link survives — LoginPage uses it. */
 
-.sidebar.collapsed .sidebar-footer {
-  justify-content: center;
-  padding: 12px 8px;
-}
-
-.version-text {
-  font-size: 12px;
-  color: var(--ctp-subtext0);
-  font-weight: 500;
-  font-family: var(--font-mono);
-}
-
-.github-link,
-.news-link {
+.github-link {
   color: var(--ctp-subtext0);
   display: flex;
   align-items: center;
@@ -59,15 +40,7 @@
   text-decoration: none;
 }
 
-.news-link {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-}
-
-.github-link:hover,
-.news-link:hover {
+.github-link:hover {
   color: var(--ctp-text);
 }
 
@@ -93,14 +66,22 @@
   transform: scale(1.05);
 }
 
+/* In normal flow directly above the footer (#4436). These used to be
+   absolutely positioned at `bottom: 70px`, a strip sized for the previous
+   three-item footer. The shared SidebarFooter is taller — much taller in the
+   60px collapsed rail, where its six icons wrap — so the controls landed on
+   top of it. Laying them out in flow removes the magic number entirely. */
 .sidebar-controls {
-  position: absolute;
-  right: 8px;
-  bottom: 70px; /* Above the footer */
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  justify-content: flex-end;
   gap: 8px;
-  z-index: 1;
+  padding: 0 8px 8px 8px;
+  flex-shrink: 0;
+}
+
+.sidebar.collapsed .sidebar-controls {
+  justify-content: center;
 }
 
 .sidebar-pin {
@@ -189,7 +170,9 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 8px 8px 120px 8px; /* Bottom padding for toggle button and footer */
+  /* The controls and footer are in-flow siblings now (#4436), so no bottom
+     strip needs reserving here — just a little breathing room. */
+  padding: 8px;
   overflow-y: auto;
   overflow-x: hidden;
   flex: 1;
@@ -324,19 +307,11 @@
     padding-bottom: max(4px, env(safe-area-inset-bottom));
   }
 
-  /* Only change: reduce nav bottom padding from 120px */
-  .sidebar-nav {
-    padding-bottom: 50px;
-  }
-
-  /* Hide footer to free up space */
-  .sidebar-footer {
-    display: none;
-  }
-
-  /* Adjust controls position since footer is hidden */
+  /* The footer hides itself here via SidebarFooter's hideOnCompactLandscape,
+     and the controls are in normal flow (#4436), so neither the old
+     nav bottom-padding reservation nor a `bottom` offset is needed. */
   .sidebar-controls {
-    bottom: 8px;
+    padding-bottom: 4px;
   }
 }
 
@@ -416,15 +391,14 @@
     gap: 1px;
   }
 
-  /* Hide footer in landscape to maximize nav space */
-  .sidebar-footer {
-    display: none !important;
-  }
-
+  /* The footer hides itself in landscape (SidebarFooter's
+     hideOnCompactLandscape) to maximize nav space, so the controls can float
+     in the freed corner rather than sit in flow (#4436). */
   .sidebar-controls {
     position: absolute;
     bottom: 4px;
     right: 4px;
+    padding: 0;
     flex-direction: row;
     gap: 4px;
   }

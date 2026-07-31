@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { unitScale, scaleMeasurement, isUptimeType, formatDuration } from './telemetryFormat';
+import {
+  unitScale,
+  scaleMeasurement,
+  isUptimeType,
+  formatDuration,
+  telemetryDisplayScale,
+} from './telemetryFormat';
 
 describe('unitScale', () => {
   it('keeps amps above 1 A in A', () => {
@@ -110,5 +116,55 @@ describe('formatDuration', () => {
 
   it('clamps negatives to zero', () => {
     expect(formatDuration(-100)).toBe('0m');
+  });
+});
+
+describe('telemetryDisplayScale', () => {
+  it('humanizes uptime and drops the redundant "s" unit', () => {
+    const d = telemetryDisplayScale('uptimeSeconds', [1543452], 's');
+    expect(d.isUptime).toBe(true);
+    expect(d.factor).toBe(1);
+    expect(d.unit).toBe('');
+    expect(d.formatValue!(1543452)).toBe('17d 20h');
+  });
+
+  it.each(['hostUptimeSeconds', 'paxcounterUptime', 'mc_uptime_secs'])(
+    'treats %s as an uptime series',
+    type => {
+      expect(telemetryDisplayScale(type, [90000], 's').isUptime).toBe(true);
+    }
+  );
+
+  it('picks one prefix for the whole series from its largest magnitude', () => {
+    // The 0.9 A peak keeps the series in mA rather than flipping per point.
+    const d = telemetryDisplayScale('mc_current', [0.02, 0.9, 0.05], 'A');
+    expect(d.factor).toBe(1000);
+    expect(d.unit).toBe('mA');
+    expect(d.formatValue).toBeUndefined();
+  });
+
+  it('keeps a series with an amp-scale peak in A', () => {
+    const d = telemetryDisplayScale('mc_current', [0.02, 2.5], 'A');
+    expect(d.factor).toBe(1);
+    expect(d.unit).toBe('A');
+  });
+
+  it('ignores nulls and non-finite entries when sizing the series', () => {
+    const d = telemetryDisplayScale('mc_power', [null, undefined, NaN, 0.012], 'W');
+    expect(d.unit).toBe('mW');
+    expect(d.factor).toBe(1000);
+  });
+
+  it('leaves non-scalable units alone', () => {
+    expect(telemetryDisplayScale('voltage', [3.7], 'V')).toEqual({
+      isUptime: false,
+      factor: 1,
+      unit: 'V',
+    });
+  });
+
+  it('handles an empty series', () => {
+    const d = telemetryDisplayScale('channelUtilization', [], '%');
+    expect(d).toEqual({ isUptime: false, factor: 1, unit: '%' });
   });
 });
