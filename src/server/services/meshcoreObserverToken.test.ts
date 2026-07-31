@@ -22,6 +22,7 @@ import {
   isValidObserverPrivateKey,
   mintObserverToken,
   mintObserverTokenForSource,
+  mintObserverTokenForSourceDetailed,
 } from './meshcoreObserverToken.js';
 import { MeshCoreObserverKeyStore, setMeshCoreObserverKeyStoreForTesting } from './meshcoreObserverKeyStore.js';
 
@@ -271,6 +272,123 @@ describe('meshcoreObserverToken', () => {
       const verified = await verifyAuthToken(result!.token, pub);
       expect(verified).not.toBeNull();
       expect(verified!.aud).toBe('my-aud');
+    });
+  });
+
+  describe('mintObserverTokenForSourceDetailed', () => {
+    beforeEach(() => {
+      sourceRows.clear();
+      observerRows.clear();
+      setMeshCoreObserverKeyStoreForTesting(null);
+    });
+
+    it("kind 'not_configured' when the source does not exist", async () => {
+      expect(await mintObserverTokenForSourceDetailed('missing')).toEqual({ kind: 'not_configured' });
+    });
+
+    it("kind 'not_configured' for a non-meshcore source", async () => {
+      sourceRows.set('src-mt', { id: 'src-mt', type: 'meshtastic_tcp', config: {} });
+      expect(await mintObserverTokenForSourceDetailed('src-mt')).toEqual({ kind: 'not_configured' });
+    });
+
+    it("kind 'not_configured' when the observer config block is absent/incomplete", async () => {
+      sourceRows.set('src-a', { id: 'src-a', type: 'meshcore', config: {} });
+      expect(await mintObserverTokenForSourceDetailed('src-a')).toEqual({ kind: 'not_configured' });
+
+      sourceRows.set('src-b', {
+        id: 'src-b',
+        type: 'meshcore',
+        config: { observer: { enabled: true, brokerUrl: 'mqtts://broker:8883' } }, // missing iataCode/tokenAudience
+      });
+      expect(await mintObserverTokenForSourceDetailed('src-b')).toEqual({ kind: 'not_configured' });
+    });
+
+    it("kind 'no_key' when no key is stored", async () => {
+      const keyStore = new MeshCoreObserverKeyStore('secret'.repeat(8), true);
+      setMeshCoreObserverKeyStoreForTesting(keyStore);
+      sourceRows.set('src-c', {
+        id: 'src-c',
+        type: 'meshcore',
+        config: {
+          observer: { enabled: true, brokerUrl: 'mqtts://broker:8883', iataCode: 'MCO', tokenAudience: 'aud' },
+        },
+      });
+      expect(await mintObserverTokenForSourceDetailed('src-c')).toEqual({ kind: 'no_key' });
+    });
+
+    it("kind 'key_rotated' when the stored envelope was encrypted under a different SESSION_SECRET", async () => {
+      const secretA = 'secretA'.repeat(8);
+      const secretB = 'secretB'.repeat(8);
+      const storeA = new MeshCoreObserverKeyStore(secretA, true);
+      setMeshCoreObserverKeyStoreForTesting(storeA);
+
+      const pub = await deriveObserverPublicKey(PRIV);
+      await storeA.store('src-d', PRIV, pub, 'manual');
+
+      const storeB = new MeshCoreObserverKeyStore(secretB, true);
+      setMeshCoreObserverKeyStoreForTesting(storeB);
+
+      sourceRows.set('src-d', {
+        id: 'src-d',
+        type: 'meshcore',
+        config: {
+          observer: { enabled: true, brokerUrl: 'mqtts://broker:8883', iataCode: 'MCO', tokenAudience: 'aud' },
+        },
+      });
+      expect(await mintObserverTokenForSourceDetailed('src-d')).toEqual({ kind: 'key_rotated' });
+    });
+
+    it("kind 'mint_failed' with the library's message when the stored key is structurally invalid", async () => {
+      const keyStore = new MeshCoreObserverKeyStore('secretF'.repeat(8), true);
+      setMeshCoreObserverKeyStoreForTesting(keyStore);
+      // Store the deterministic UNCLAMPED fixture directly — `store()` does
+      // not validate the key material, so this round-trips through `load()`
+      // as `{ kind: 'ok' }` and only fails inside `mintObserverToken`'s own
+      // `deriveObserverPublicKey` call, exercising the mint_failed path.
+      await keyStore.store('src-f', UNCLAMPED_PRIV, 'unused-public-key-placeholder', 'manual');
+
+      sourceRows.set('src-f', {
+        id: 'src-f',
+        type: 'meshcore',
+        config: {
+          observer: { enabled: true, brokerUrl: 'mqtts://broker:8883', iataCode: 'MCO', tokenAudience: 'aud' },
+        },
+      });
+
+      const result = await mintObserverTokenForSourceDetailed('src-f');
+      expect(result.kind).toBe('mint_failed');
+      if (result.kind === 'mint_failed') {
+        expect(result.message).toBe('Invalid Analyzer Observer signing key: key derivation failed');
+      }
+    });
+
+    it("kind 'ok' mints a valid token for a fully configured source with a stored key", async () => {
+      const keyStore = new MeshCoreObserverKeyStore('secretG'.repeat(8), true);
+      setMeshCoreObserverKeyStoreForTesting(keyStore);
+
+      const pub = await deriveObserverPublicKey(PRIV);
+      await keyStore.store('src-g', PRIV, pub, 'device');
+
+      sourceRows.set('src-g', {
+        id: 'src-g',
+        type: 'meshcore',
+        config: {
+          observer: { enabled: true, brokerUrl: 'mqtts://broker:8883', iataCode: 'MCO', tokenAudience: 'my-aud' },
+        },
+      });
+
+      const result = await mintObserverTokenForSourceDetailed('src-g');
+      expect(result.kind).toBe('ok');
+      if (result.kind === 'ok') {
+        expect(result.token.publicKey).toBe(pub);
+        const verified = await verifyAuthToken(result.token.token, pub);
+        expect(verified).not.toBeNull();
+        expect(verified!.aud).toBe('my-aud');
+      }
+    });
+
+    it("mintObserverTokenForSource still collapses to null for every non-'ok' kind", async () => {
+      expect(await mintObserverTokenForSource('missing')).toBeNull();
     });
   });
 });

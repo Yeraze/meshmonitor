@@ -168,6 +168,31 @@ export function validateObserverConfig(
   return null;
 }
 
+// Shallow-clone-and-strip comparison used by the MeshCore config-change branch
+// (#4457 Phase 2, WP6) to tell an Analyzer-Observer-only edit apart from any
+// other config change. Compares JSON.stringify of both objects with the named
+// keys deleted from shallow clones — cheap and order-stable for the plain JSON
+// config blobs stored on a Source row. FAIL-SAFE: if stringification throws
+// (should not happen for a parsed JSON config, but the caller must never rely
+// on that), this returns false — "not equal" — so the caller takes the always-
+// correct full-restart branch rather than risking a wrong hot-swap.
+function deepEqualIgnoring(
+  a: Record<string, unknown> | null | undefined,
+  b: Record<string, unknown> | null | undefined,
+  ignoreKeys: string[],
+): boolean {
+  const strip = (v: Record<string, unknown> | null | undefined): Record<string, unknown> => {
+    const clone = { ...(v ?? {}) };
+    for (const key of ignoreKeys) delete clone[key];
+    return clone;
+  };
+  try {
+    return JSON.stringify(strip(a)) === JSON.stringify(strip(b));
+  } catch {
+    return false;
+  }
+}
+
 // Build the right ISourceManager for a stored Source row. Used by both the
 // HTTP create path and the startup wiring in server.ts.
 export function buildMqttManagerForSource(
@@ -971,29 +996,46 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
         }
       }
     } else if (wasEnabled && isNowEnabled && source.type === 'meshcore' && newAutoConnect && config !== undefined) {
-      // MeshCore source config changed while enabled and autoConnect on —
-      // the connect config is baked in at connect-time, so any change means
-      // remove the old manager and register a fresh one with the updated config.
+      // MeshCore source config changed while enabled and autoConnect on.
       //
-      // Analyzer Observer (#4457 Phase 1, §4.2): this blanket restart is also
-      // how an `observer` config change (inside the same config blob) takes
-      // effect — deliberately reusing this existing hook rather than adding a
-      // new one, since Phase 1 ships no publisher to hot-swap into yet.
-      // Known cost: toggling the observer bounces the companion link like any
-      // other MeshCore config edit does today. Phase 2 follow-up: add a
-      // targeted `observerChanged` branch calling
-      // `manager.reconfigureObserver(...)`, mirroring the `vnChanged` branch
-      // above, once the publisher exists to reconfigure.
-      try {
-        const mcConfig = meshcoreConfigFromSource(source);
-        if (mcConfig) {
-          await sourceManagerRegistry.removeManager(source.id);
-          await ensureMeshCoreManagerStarted(source, mcConfig);
-        } else {
-          logger.warn(`MeshCore source ${source.id} updated to incomplete config`);
+      // Analyzer Observer (#4457 Phase 2, WP6): an edit that touches ONLY the
+      // `observer` sub-block hot-swaps the publisher in place via
+      // reconfigureObserver, mirroring the `vnChanged` branch above — the
+      // companion device connection stays up. Any other change (or a change
+      // that ALSO touches `observer`, or a comparison deepEqualIgnoring
+      // cannot decide) takes the existing full restart: remove the old
+      // manager and register a fresh one with the updated config. The
+      // restart branch is the always-correct status quo; the hot-swap
+      // branch is strictly an optimization on top of it.
+      const oldCfg = (existing.config as Record<string, unknown>) || {};
+      const newCfg = (source.config as Record<string, unknown>) || {};
+      const oldObs = JSON.stringify(oldCfg.observer ?? null);
+      const newObs = JSON.stringify(newCfg.observer ?? null);
+      const observerChanged = oldObs !== newObs;
+      const restOfConfigChanged = !deepEqualIgnoring(oldCfg, newCfg, ['observer']);
+
+      if (observerChanged && !restOfConfigChanged) {
+        // Hot-swap only the Analyzer Observer sub-feature.
+        try {
+          await sourceManagerRegistry.reconfigureObserver(
+            source.id,
+            newCfg.observer as Record<string, unknown> | undefined,
+          );
+        } catch (err) {
+          logger.warn(`Could not hot-swap Analyzer Observer for source ${source.id}:`, err);
         }
-      } catch (err) {
-        logger.warn(`Could not restart MeshCore manager for source ${source.id}:`, err);
+      } else {
+        try {
+          const mcConfig = meshcoreConfigFromSource(source);
+          if (mcConfig) {
+            await sourceManagerRegistry.removeManager(source.id);
+            await ensureMeshCoreManagerStarted(source, mcConfig);
+          } else {
+            logger.warn(`MeshCore source ${source.id} updated to incomplete config`);
+          }
+        } catch (err) {
+          logger.warn(`Could not restart MeshCore manager for source ${source.id}:`, err);
+        }
       }
     }
 
@@ -1116,7 +1158,13 @@ router.get('/:id/status', optionalAuth(), async (req: Request, res: Response) =>
       : false);
 
     if (!canReadNodes) {
-      return res.json(status);
+      // Analyzer Observer status (#4457 Phase 2, D-10) can leak the broker
+      // hostname via lastError — strip it for anonymous / non-nodes:read
+      // callers. Every other field on `status` is unaffected. See
+      // MESHCORE_OBSERVER_PHASE2_SPEC.md §4.1 — this route intentionally
+      // stays a bare `res.json(...)`, not the ok()/fail() envelope.
+      const { observer: _observer, ...publicStatus } = status as Record<string, unknown>;
+      return res.json(publicStatus);
     }
 
     // Cheap COUNT(*) queries — never throw on empty source.
