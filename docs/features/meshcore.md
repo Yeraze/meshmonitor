@@ -357,6 +357,14 @@ Every CLI command, login outcome, and credential mutation writes an `audit_log` 
 
 The `details` JSON captures `sourceId`, `publicKey` (where relevant), command text, reply length, and elapsed milliseconds. **The plaintext password never appears in audit details**, verified by the canary test referenced above.
 
+## Analyzer Observer
+
+::: tip Added in 4.14 (#4457)
+A Companion source can publish the packets it hears to a MeshCore Analyzer MQTT broker (FL Mesh, LetsMesh, or compatible), so your node shows up as a regional observer.
+:::
+
+It's observation-only — MeshMonitor never subscribes to the broker or transmits on your behalf. Enable it in the source's edit modal, then fetch or paste the signing key on the Configuration page. See the [MeshCore Analyzer Observer guide](/features/meshcore-analyzer-observer) for setup, a troubleshooting table, and what data leaves your network.
+
 ## Path Visualization
 
 The MeshCore map can render **route lines** between your local node and each contact, colored by hop count:

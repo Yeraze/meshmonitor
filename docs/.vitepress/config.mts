@@ -153,7 +153,8 @@ export default defineConfig({
           text: 'Protocol-Specific',
           collapsed: true,
           items: [
-            { text: 'MeshCore', link: '/features/meshcore' }
+            { text: 'MeshCore', link: '/features/meshcore' },
+            { text: 'MeshCore Analyzer Observer', link: '/features/meshcore-analyzer-observer' }
           ]
         }
       ],

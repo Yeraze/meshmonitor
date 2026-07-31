@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+- **MeshCore Analyzer Observer** — a MeshCore Companion source can now publish the packets it hears to a MeshCore Analyzer MQTT broker (FL Mesh, LetsMesh, or compatible), so your node counts as a regional observer. Authentication uses a short-lived Ed25519 token signed with the node's own signing key — imported from the connected device or pasted by hand, stored encrypted, and never returned by any API. Configure the broker URL, IATA region, and token audience per source in the Dashboard edit modal; manage the signing key and watch live connection/publish counters on the source's MeshCore → Configuration page. Enabling or editing the observer hot-swaps the publisher without bouncing the radio link. **Observation-only**: MeshMonitor never subscribes to the broker or injects broker traffic onto the mesh, and the feature is Companion-only (Repeaters can't export a signing key). See the [Analyzer Observer guide](https://meshmonitor.org/features/meshcore-analyzer-observer). (#4457)
+
 ### Changed
 - **The `:dev` Docker tag now follows stable releases too** — previously `:dev` moved only on pre-releases (RCs), so between a stable cut and the next RC the fast track sat on an image *older* than `:latest`. Users on `:dev` had to wait for the next RC to receive a stable release's fixes. Every published release, stable or pre-release, now updates `:dev`, making the fast track a superset of the stable track: `:dev` is never behind `:latest` and never moves backwards. `:latest` and the rolling `:4` / `:4.13` tags are unchanged — they still move only on stable releases.
 

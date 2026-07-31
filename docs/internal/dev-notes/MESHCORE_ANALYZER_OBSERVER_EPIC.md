@@ -1,6 +1,6 @@
 # MeshCore Analyzer Observer MQTT Output — Epic Plan (#4457)
 
-**Status:** Phase 2 complete (PR pending) — Phase 3 (UI + docs) next
+**Status:** Phase 3 complete (PR pending) — epic done once merged
 **Issue:** #4457 — publish packets heard by a MeshCore Companion source to a MeshCore Analyzer-compatible MQTT broker, so the node counts as an observer without a second app fighting over the serial port.
 **Scope guard:** observation-only. MeshMonitor publishes; it never subscribes to or injects broker traffic into the mesh. The broker's admin-only `serial/commands` remote-serial feature is out of scope.
 
@@ -53,9 +53,9 @@ Upstream issue michaelhart/meshcore-mqtt-broker#9 has no reply. We built the con
 - **Exit:** live end-to-end against local `meshcore-mqtt-broker` (Docker, `test` region): token auth accepted, packets + status seen by a subscriber; merged PR. — **Done 2026-07-31**, run against a real companion (Yeraze MC Sandbox) instead of a synthetic feed; all 10 §8 criteria passed (see deviation (j)).
 
 ### Phase 3 — Frontend UI + docs
-- [ ] Observer fieldset in the MeshCore source modal: enable, broker URL, IATA, audience, fetch-key-from-device button + paste fallback, key-stored indicator.
-- [ ] Observer status in the MeshCore config view via `useSourceStatuses` (connected / last publish / counters / last error).
-- [ ] Browser validation on the dev container; user docs; report back to #4457.
+- [x] Observer fieldset in the MeshCore source modal (enable, broker URL, IATA, audience). Note: key management moved to the Configuration view per Phase 3 spec D-1 — the modal carries a hint + cross-link instead of key buttons (the key needs a live sourceId; the modal's Save/Cancel semantics don't fit immediate-effect key ops).
+- [x] Observer status in the MeshCore config view via `useSourceStatuses` (connected / publish + drop counters / last publish / token expiry / last error), plus the full key-management section (fetch-from-device, manual paste, clear).
+- [x] Browser validation on the dev container (V1-V9); user docs shipped (`docs/features/meshcore-analyzer-observer.md`); report to #4457 with the final PR.
 - **Exit:** validated in the real UI; docs shipped; merged PR.
 
 ## Deviations / notes
@@ -86,3 +86,10 @@ Upstream issue michaelhart/meshcore-mqtt-broker#9 has no reply. We built the con
 - **(j)** E2E performed 2026-07-31 against a real companion (Yeraze MC Sandbox) and `meshcore-mqtt-broker` run from source (not a synthetic feed). All 10 §8 criteria passed: auth with correct audience; online status with retain-strip; packets with the full string-typed contract; hash independently verified; `path` present only on route D; no topic normalization; publisher never subscribes; graceful offline delivered after the flush fix; hot-swap with zero device bounce; bad audience produces a clean `lastError` and a single rejection with no reconnect storm.
 
 **Superseded checklist text (Phase 2, above):** the Phase 2 checklist item's parenthetical "(decoder lib for hash/decode/advert privacy)" is superseded by deviations (a)-(c) — hash/decode are hand-rolled, not decoder-lib calls, and no advert privacy filter exists. Its "reconnect via coordinator" wording refers only to the `MqttBrokerClient`'s own reconnect backoff, not to observer-toggle behavior, which is covered separately by the hot-swap in deviation (f); see also Phase 1's now-closed "Restart hook" note above.
+
+### Phase 3
+
+- **Browser validation (2026-07-31):** V1-V4 and V6-V9 passed live against the deployed container, real companion, and source-built broker. Highlights: the full UI chain (enable in modal → PUT → hot-swap → publisher connects → broker authenticates) verified end-to-end; anonymous callers get no `observer` status key, a 403 on the key routes, and no rendered section; no 128-hex string ever appeared in the DOM through import/paste/clear cycles; no horizontal scroll at 390×844. V5 (disconnected-source rendering) is covered by component tests; live, the equivalent keyless-running-publisher warning state was validated instead.
+- **Validation-method deviation:** scenarios were driven by scripted DOM interaction (React-native value setters + element clicks) rather than uid-based real-mouse events — the dashboard's a11y snapshots (1,300+ map nodes) made per-click snapshots impractical. Hit-test-sensitive surfaces are covered by the component test suite; network-level assertions (PUT bodies, key-route calls) anchored the scripted runs.
+- **Live finding, fixed:** the token-expiry row rendered "just now" for a +24h expiry — `formatRelativeTime` clamps future timestamps. Now rendered as an absolute local time (the ×1000 seconds→ms guard stays tested).
+- **Live finding, environmental:** the companion can stop answering `export_private_key` (native 30s timeout) after long sessions; a source disconnect/reconnect restores it instantly. The UI import path surfaces the failure and recovers cleanly; concurrent import calls serialize server-side behind the 30s device timeout.
