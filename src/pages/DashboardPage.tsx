@@ -28,6 +28,13 @@ import DashboardSidebar from '../components/Dashboard/DashboardSidebar';
 import DashboardMap from '../components/Dashboard/DashboardMap';
 import type { NodeSourceRef } from '../components/Dashboard/DashboardNodePopup';
 import { buildBridgeConfig, formFromBridgeConfig } from '../components/MQTT/mqttBridgeConfig';
+import {
+  emptyObserverForm,
+  observerFormFromConfig,
+  buildObserverConfig,
+  observerErrorMessageKey,
+  type ObserverForm,
+} from './DashboardPage.observerConfig';
 import LoginModal from '../components/LoginModal';
 import UserMenu from '../components/UserMenu';
 import { NewsPopup } from '../components/NewsPopup';
@@ -45,6 +52,18 @@ import { UiIcon } from '../components/icons';
 // endpoint validates against. Duplicated rather than imported — pages must not
 // pull from src/server.
 const MAX_HOP_LIMIT = 7;
+
+// MeshCore Analyzer Observer (#4457) fieldset — the three text fields share
+// identical markup, so they're rendered via .map() instead of copy-pasted.
+const OBSERVER_FIELDS: Array<{
+  key: 'brokerUrl' | 'iataCode' | 'tokenAudience';
+  labelKey: string; labelFallback: string; placeholder: string;
+  helpKey: string; helpFallback: string;
+}> = [
+  { key: 'brokerUrl', labelKey: 'meshcore.form.observer_broker_url', labelFallback: 'Broker URL', placeholder: 'wss://mqtt-us-v1.letsmesh.net:443', helpKey: 'meshcore.form.observer_broker_url_help', helpFallback: 'ws://, wss://, mqtt://, or mqtts://. A bare host:port is accepted and defaults to mqtt://.' },
+  { key: 'iataCode', labelKey: 'meshcore.form.observer_iata', labelFallback: 'Region (IATA)', placeholder: 'MCO', helpKey: 'meshcore.form.observer_iata_help', helpFallback: "Three-letter IATA code for your region (e.g. MCO for Central Florida), or 'test' for a local broker." },
+  { key: 'tokenAudience', labelKey: 'meshcore.form.observer_audience', labelFallback: 'Token audience', placeholder: 'meshcore-mqtt', helpKey: 'meshcore.form.observer_audience_help', helpFallback: "Must exactly match the broker's expected audience, or authentication is rejected. Ask your region's broker operator." },
+];
 
 // ---------------------------------------------------------------------------
 // DashboardInner — rendered inside SettingsProvider
@@ -142,6 +161,10 @@ function DashboardInner() {
   // Security-sensitive, so it never defaults on and is never inherited when
   // switching a form between source types.
   const [formVnAllowPkiExport, setFormVnAllowPkiExport] = useState(false);
+  // MeshCore Analyzer Observer (#4457) — publishes heard packets to a
+  // MeshCore-Analyzer MQTT broker. Key management lives on the source's
+  // MeshCore Configuration page, not here (see the fieldset hint).
+  const [formObserver, setFormObserver] = useState<ObserverForm>(emptyObserverForm());
   const [formHeartbeat, setFormHeartbeat] = useState('30'); // seconds, 0 = disabled (issue 2609)
   const [formAutoConnect, setFormAutoConnect] = useState(true); // issue #2773
   const [formPassiveMode, setFormPassiveMode] = useState(false); // issue #3122 — large/fragile TCP nodes
@@ -345,6 +368,7 @@ function DashboardInner() {
     setFormVnPort('');
     setFormVnAllowAdmin(false);
     setFormVnAllowPkiExport(false);
+    setFormObserver(emptyObserverForm());
     setFormHeartbeat('30');
     setFormAutoConnect(true);
     setFormPassiveMode(false);
@@ -450,6 +474,7 @@ function DashboardInner() {
     setFormVnPort(vn?.port != null ? String(vn.port) : '');
     setFormVnAllowAdmin(vn?.allowAdminCommands === true);
     setFormVnAllowPkiExport(vn?.allowPkiExport === true);
+    setFormObserver(observerFormFromConfig(cfg?.observer));
     setFormHeartbeat(String(cfg?.heartbeatIntervalSeconds ?? 0));
     // Default to true when unset (legacy sources pre-#2773 auto-connected).
     setFormAutoConnect(cfg?.autoConnect !== false);
@@ -606,6 +631,12 @@ function DashboardInner() {
           allowPkiExport: formVnAllowPkiExport,
         };
       }
+
+      // Analyzer Observer (#4457): client-side check for fast feedback; the
+      // server's validateObserverConfig remains the authority.
+      const observerResult = buildObserverConfig(formObserver);
+      if (observerResult.error) { setFormError(t(observerResult.error.key, observerResult.error.fallback)); return; }
+      cfg.observer = observerResult.config ?? { enabled: false, brokerUrl: '', iataCode: '', tokenAudience: '' };
     } else {
       if (!formHost.trim()) { setFormError(t('source.form.error_host_required')); return; }
       const port = parseInt(formPort, 10);
@@ -677,7 +708,9 @@ function DashboardInner() {
         }
       } catch (err) {
         if (err instanceof ApiError) {
-          setFormError((err.body as any)?.error ?? t('source.form.error_save_failed'));
+          const body = err.body as any;
+          const observerKey = observerErrorMessageKey(err.code ?? body?.code);
+          setFormError(observerKey ? t(observerKey, body?.error ?? '') : (body?.error ?? t('source.form.error_save_failed')));
           return;
         }
         throw err;
@@ -1571,6 +1604,41 @@ function DashboardInner() {
                       <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>
                         {t('meshcore.form.allow_pki_export_help', 'Let connected clients read your node\'s private key. Some tools (e.g. Remote-Terminal\'s community MQTT) require it to authenticate as your node. The virtual node port has no client authentication, so anyone who can reach it can copy your node identity. Leave off unless you need it. Requires node firmware built with ENABLE_PRIVATE_KEY_EXPORT.')}
                       </p>
+                    </>
+                  )}
+                </fieldset>
+
+                <fieldset style={{ border: '1px solid var(--ctp-surface1)', borderRadius: 6, padding: '8px 12px 12px', margin: '8px 0' }}>
+                  <legend style={{ fontSize: 12, padding: '0 6px', color: 'var(--ctp-subtext0)' }}>{t('meshcore.form.observer', 'Analyzer Observer')}</legend>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: 4 }}>
+                    <input type="checkbox" checked={formObserver.enabled} disabled={formMcDeviceType === 'repeater'} onChange={(e) => setFormObserver({ ...formObserver, enabled: e.target.checked })} />
+                    {t('meshcore.form.observer_enable', 'Publish heard packets to a MeshCore Analyzer broker')}
+                  </label>
+                  <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>{t('meshcore.form.observer_help', 'Relays every packet this Companion hears to a MeshCore Analyzer MQTT broker so your node counts as an observer. MeshMonitor only publishes — it never receives from the broker or transmits on the mesh. Companion devices only.')}</p>
+                  {formMcDeviceType === 'repeater' ? (
+                    <p role="alert" style={{ fontSize: 11, color: 'var(--ctp-yellow)', margin: '4px 0 0' }}>{t('meshcore.form.observer_repeater_note', 'The Analyzer Observer requires a Companion device — a repeater cannot export the signing key it needs.')}</p>
+                  ) : formObserver.enabled && (
+                    <>
+                      {OBSERVER_FIELDS.map((f) => (
+                        <label key={f.key} className="dashboard-form-field" style={{ marginTop: 8 }}>
+                          <span className="dashboard-form-label">{t(f.labelKey, f.labelFallback)}</span>
+                          <input className="dashboard-form-input" type="text" value={formObserver[f.key]} onChange={(e) => setFormObserver({ ...formObserver, [f.key]: e.target.value })} placeholder={f.placeholder} />
+                          <p style={{ fontSize: 11, color: 'var(--ctp-subtext0)', margin: '4px 0 0' }}>{t(f.helpKey, f.helpFallback)}</p>
+                        </label>
+                      ))}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8 }}>
+                        <span style={{ fontSize: 11, color: 'var(--ctp-subtext0)', flex: 1 }}>{t('meshcore.form.observer_key_hint', "The signing key and live publish status are on this source's MeshCore → Configuration page.")}</span>
+                        {editingSourceId && (
+                          <button
+                            type="button"
+                            style={{ flexShrink: 0, whiteSpace: 'nowrap', fontSize: 11, padding: '4px 8px', background: 'transparent', color: 'var(--ctp-blue)', border: '1px solid var(--ctp-blue)', borderRadius: 4, cursor: 'pointer' }}
+                            title={t('meshcore.form.observer_open_config', 'Open Configuration page')}
+                            onClick={() => { setShowSourceModal(false); void navigate(`/source/${editingSourceId}`); }}
+                          >
+                            {t('meshcore.form.observer_open_config', 'Configuration')} <UiIcon name="forward" size={14} />
+                          </button>
+                        )}
+                      </div>
                     </>
                   )}
                 </fieldset>

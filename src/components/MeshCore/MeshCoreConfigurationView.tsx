@@ -5,6 +5,7 @@ import { RADIO_PRESETS, findPresetId } from './radioPresets';
 import { useAuth } from '../../contexts/AuthContext';
 import { MeshCoreChannelsConfigSection } from './MeshCoreChannelsConfigSection';
 import { MeshCoreLocalConsole } from './MeshCoreLocalConsole';
+import { MeshCoreObserverSection } from './MeshCoreObserverSection';
 import { CollapsibleSection } from './CollapsibleSection';
 import { UiIcon } from '../icons';
 
@@ -529,6 +530,17 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           connected={connected}
           actions={{ sendLocalCliCommand: actions.sendLocalCliCommand }}
         />
+      )}
+
+      {/* Analyzer Observer (#4457) — signing key + live publish status. Rendered
+          while DISCONNECTED too: three of the four key routes work without a
+          manager. Companion-only, matching the server's OBSERVER_REQUIRES_COMPANION.
+          Deliberately NOT gated on connected or canWriteConfig (unlike the
+          Device Management mount below): read-only users get the status
+          display, and disconnected sources still need key management. The
+          component does its own configuration:read / configuration:write gating. */}
+      {sourceId && !COMPANION_ONLY_DEVICES.has(local?.advType ?? 1) && (
+        <MeshCoreObserverSection sourceId={sourceId} connected={connected} deviceType={local?.advType} />
       )}
 
       {/* Device Management — danger zone operations. Companion only. */}

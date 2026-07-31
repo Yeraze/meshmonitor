@@ -1,0 +1,78 @@
+/* MeshCoreObserverSection (#4457 Phase 3 WP3). CSS module — do not add these
+ * rules to the global sheets (CLAUDE.md CSS containment rule). MeshCorePage.css
+ * and src/styles/nodes.css stay frozen; this file owns layout/semantics only —
+ * buttons keep the shared global `btn-secondary` / `btn-primary` classes.
+ */
+
+.section {
+  margin-top: 0.75rem;
+}
+
+/* Two-column label/value grid for the live publish-status block. Collapses to
+ * a single column under 480px so nothing forces horizontal page scroll on
+ * narrow viewports (§10). */
+.statusGrid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 0.75rem;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 480px) {
+  .statusGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.statusLabel {
+  color: var(--ctp-subtext0);
+  font-size: 0.85em;
+}
+
+.statusValue {
+  color: var(--ctp-text);
+}
+
+.pubkey {
+  font-family: var(--font-mono, monospace);
+  word-break: break-all;
+}
+
+.warning {
+  color: var(--ctp-yellow);
+}
+
+.error {
+  color: var(--ctp-red);
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+
+.panel {
+  background: var(--ctp-surface0);
+  padding: 0.75rem;
+  border-radius: 6px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.panel input {
+  font-family: var(--font-mono, monospace);
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--ctp-subtext0);
+}
