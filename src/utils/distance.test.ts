@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateDistance, kmToMiles, formatDistance, getDistanceToNode, formatPrecisionAccuracy } from './distance';
+import { calculateDistance, kmToMiles, formatDistance, getDistanceToNode, formatPrecisionAccuracy, formatUncertaintyRadius, precisionBitsToAccuracyMeters } from './distance';
 
 describe('Distance Utilities', () => {
   describe('calculateDistance', () => {
@@ -302,6 +302,49 @@ describe('Distance Utilities', () => {
       const getMeters = (bits: number) => Math.pow(2, 32 - bits) * 1e-7 * 111320 / 2;
       expect(getMeters(10)).toBeGreaterThan(getMeters(20));
       expect(getMeters(20)).toBeGreaterThan(getMeters(30));
+    });
+  });
+
+  // #4432 — the ± radius shown next to a position's source pill.
+  describe('formatUncertaintyRadius', () => {
+    it('formats sub-kilometre radii in metres', () => {
+      expect(formatUncertaintyRadius(364, 'km')).toBe('±364 m');
+      expect(formatUncertaintyRadius(999, 'km')).toBe('±999 m');
+    });
+
+    it('formats kilometre radii, dropping the decimal past 10 km', () => {
+      expect(formatUncertaintyRadius(2400, 'km')).toBe('±2.4 km');
+      expect(formatUncertaintyRadius(23301, 'km')).toBe('±23 km');
+    });
+
+    it('formats imperial radii in feet then miles', () => {
+      expect(formatUncertaintyRadius(100, 'mi')).toBe('±328 ft');
+      expect(formatUncertaintyRadius(2400, 'mi')).toBe('±1.5 mi');
+      expect(formatUncertaintyRadius(40000, 'mi')).toBe('±25 mi');
+    });
+
+    // A missing or nonsensical radius must render nothing rather than "±0 m",
+    // which would read as a claim of perfect accuracy.
+    it('returns null for unknown or non-positive input', () => {
+      expect(formatUncertaintyRadius(null, 'km')).toBeNull();
+      expect(formatUncertaintyRadius(undefined, 'km')).toBeNull();
+      expect(formatUncertaintyRadius(0, 'km')).toBeNull();
+      expect(formatUncertaintyRadius(-5, 'km')).toBeNull();
+      expect(formatUncertaintyRadius(NaN, 'km')).toBeNull();
+      expect(formatUncertaintyRadius(Infinity, 'km')).toBeNull();
+    });
+  });
+
+  describe('precisionBitsToAccuracyMeters', () => {
+    it('halves the grid cell implied by the precision bits', () => {
+      expect(precisionBitsToAccuracyMeters(16)).toBeCloseTo(364.08, 1);
+      expect(precisionBitsToAccuracyMeters(10)).toBeCloseTo(23301.3, 0);
+    });
+
+    it('stays consistent with formatPrecisionAccuracy', () => {
+      // Both read the same underlying metres, so their rounded values agree.
+      expect(formatPrecisionAccuracy(16, 'km')).toBe('~364 m');
+      expect(formatUncertaintyRadius(precisionBitsToAccuracyMeters(16), 'km')).toBe('±364 m');
     });
   });
 });

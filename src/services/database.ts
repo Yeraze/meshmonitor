@@ -1864,11 +1864,13 @@ class DatabaseService {
    * pooled across all Meshtastic sources by positionEstimationService) — not the
    * old per-source telemetry rows. Used by the node-enhancement / display path.
    */
-  async getAllNodesEstimatedPositionsAsync(): Promise<Map<string, { latitude: number; longitude: number }>> {
+  async getAllNodesEstimatedPositionsAsync(): Promise<Map<string, { latitude: number; longitude: number; uncertaintyKm?: number | null }>> {
     const rows = await this.estimatedPositions.getAll();
-    const map = new Map<string, { latitude: number; longitude: number }>();
+    const map = new Map<string, { latitude: number; longitude: number; uncertaintyKm?: number | null }>();
     for (const row of rows) {
-      map.set(row.nodeId, { latitude: row.latitude, longitude: row.longitude });
+      // uncertaintyKm rides along so enhanceNodeForClient can surface the
+      // estimate's radius next to the position it substitutes in (#4432).
+      map.set(row.nodeId, { latitude: row.latitude, longitude: row.longitude, uncertaintyKm: row.uncertaintyKm });
     }
     return map;
   }
