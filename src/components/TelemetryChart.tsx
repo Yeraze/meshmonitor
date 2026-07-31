@@ -715,7 +715,7 @@ const TelemetryChart: React.FC<TelemetryChartProps> = React.memo(
                 yAxisId="left"
                 tick={{ fontSize: 12 }}
                 domain={['auto', 'auto']}
-                tickFormatter={uptimeFormatter ? (v: number) => uptimeFormatter(v) : undefined}
+                tickFormatter={uptimeFormatter}
               />
               <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} domain={['auto', 'auto']} hide={true} />
               <Tooltip

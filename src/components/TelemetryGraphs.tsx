@@ -371,11 +371,10 @@ const TelemetryGraphWidget: React.FC<TelemetryGraphWidgetProps> = ({
               domain={['auto', 'auto']}
               allowDecimals={!INTEGER_TELEMETRY_TYPES.has(type)}
               tickFormatter={
-                display.formatValue
-                  ? (v: number) => display.formatValue!(v)
-                  : INTEGER_TELEMETRY_TYPES.has(type)
-                    ? (v: number) => Math.round(v).toString()
-                    : undefined
+                display.formatValue ??
+                (INTEGER_TELEMETRY_TYPES.has(type)
+                  ? (v: number) => Math.round(v).toString()
+                  : undefined)
               }
             />
             <YAxis
