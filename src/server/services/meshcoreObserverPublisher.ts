@@ -196,7 +196,13 @@ export class MeshCoreObserverPublisher {
     }
 
     try {
-      await client.disconnect();
+      // flush:true — the offline publish above only resolves once mqtt.js
+      // has accepted the packet, not once it's actually on the wire. A
+      // plain forced end() (the default used elsewhere in this class, e.g.
+      // renewal/hard-stop) can close the socket before that QoS-0 packet is
+      // flushed, silently dropping the graceful-stop offline status (spec
+      // §2.4 / E2E criterion 8).
+      await client.disconnect({ flush: true });
     } catch {
       // Best-effort.
     }

@@ -387,7 +387,7 @@ describe('MeshCoreObserverPublisher', () => {
   });
 
   describe('stop()', () => {
-    it('publishes an explicit offline status before disconnecting, and is idempotent', async () => {
+    it('publishes an explicit offline status before disconnecting (flushed), and is idempotent', async () => {
       const { publisher } = makePublisher();
       const client = await startAndConnect(publisher);
       client.publish.mockClear();
@@ -400,6 +400,10 @@ describe('MeshCoreObserverPublisher', () => {
       expect(JSON.parse(payload.toString()).status).toBe('offline');
       expect(opts.retain).toBe(true);
       expect(client.end).toHaveBeenCalledTimes(1);
+      // flush:true — disconnect() must end non-forcefully so the offline
+      // publish above actually reaches the wire instead of being discarded
+      // by an immediate forced close (spec §2.4 / E2E criterion 8).
+      expect(client.end.mock.calls[0]![0]).toBe(false);
 
       const publishOrder = client.publish.mock.invocationCallOrder[0]!;
       const endOrder = client.end.mock.invocationCallOrder[0]!;

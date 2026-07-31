@@ -339,7 +339,19 @@ export class MqttBrokerClient extends EventEmitter {
     );
   }
 
-  async disconnect(): Promise<void> {
+  /**
+   * @param opts.flush When true, ends the underlying mqtt.js client
+   *   non-forcefully first (`end(false)`) so any not-yet-flushed outgoing
+   *   packet (e.g. a graceful-stop offline status publish) has a chance to
+   *   actually hit the wire before the socket closes, per
+   *   `MESHCORE_OBSERVER_PHASE2_SPEC.md` §2.4/E2E criterion 8 — `publish()`
+   *   resolving only means mqtt.js accepted the packet, not that it was
+   *   sent. Raced against a ~2s fallback that force-ends (`end(true)`) so
+   *   a wedged/unreachable socket can never hang this promise forever.
+   *   Default (omitted/false) is byte-identical to the original behavior:
+   *   an immediate forced `end(true)`.
+   */
+  async disconnect(opts?: { flush?: boolean }): Promise<void> {
     if (this.coordinator) {
       this.coordinator.unregister(this);
       this.coordinator = null;
@@ -350,9 +362,28 @@ export class MqttBrokerClient extends EventEmitter {
     }
     this.clearStableReset();
     if (!this.client) return;
-    await new Promise<void>((resolve) => {
-      this.client!.end(true, {}, () => resolve());
-    });
+    const client = this.client;
+
+    if (opts?.flush) {
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(fallback);
+          resolve();
+        };
+        const fallback = setTimeout(() => {
+          client.end(true, {}, finish);
+        }, 2000);
+        client.end(false, {}, finish);
+      });
+    } else {
+      await new Promise<void>((resolve) => {
+        client.end(true, {}, () => resolve());
+      });
+    }
+
     this.client = null;
     this.connected = false;
     this.subscriptions.clear();
