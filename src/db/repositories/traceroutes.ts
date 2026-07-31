@@ -235,6 +235,11 @@ export class TraceroutesRepository extends BaseRepository {
       // Every row matched on an endpoint column, so the kind is known without
       // re-deriving it — but go through the shared classifier anyway so the
       // two modes cannot disagree about what "endpoint" means.
+      //
+      // The `?? 'endpoint'` is unreachable in practice: the classifier returns
+      // null only when the node is neither an endpoint nor a hop, and the SQL
+      // predicate above already proved it is an endpoint. It is a defensive
+      // default for a classifier/predicate divergence, not a real case.
       return (this.normalizeBigInts(rows) as DbTraceroute[]).map(row => ({
         ...row,
         participation: tracerouteParticipationKind(row, nodeNum) ?? 'endpoint',
