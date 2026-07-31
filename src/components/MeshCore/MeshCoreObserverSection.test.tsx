@@ -186,12 +186,14 @@ describe('MeshCoreObserverSection — [A] live status block', () => {
       ],
     ]);
     render(<MeshCoreObserverSection sourceId={SOURCE_ID} connected={true} />);
-    // A correctly-converted future timestamp (diffMs strongly negative) falls
-    // into formatRelativeTime's `diffSec < 60` branch: "just now". The bug
-    // this guards against (using the raw seconds value as milliseconds)
-    // would instead resolve to an absolute date decades in the past.
-    expect(screen.getByText('just now')).toBeDefined();
-    expect(screen.queryByText(/19[0-9]{2}|200[0-9]/)).toBeNull();
+    // Rendered as an absolute local time (formatRelativeTime clamps future
+    // timestamps to "just now", which reads wrong for a +24h expiry — caught
+    // in Phase 3 browser validation). The ×1000 guard: using the raw seconds
+    // value as milliseconds would resolve to a date decades in the past.
+    const expected = new Date(futureSeconds * 1000).toLocaleString();
+    expect(screen.getByText(expected)).toBeDefined();
+    expect(screen.queryByText('just now')).toBeNull();
+    expect(screen.queryByText(/19[0-9]{2}\b/)).toBeNull();
   });
 });
 

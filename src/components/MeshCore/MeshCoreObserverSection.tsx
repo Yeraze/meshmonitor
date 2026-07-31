@@ -310,8 +310,11 @@ export const MeshCoreObserverSection: React.FC<MeshCoreObserverSectionProps> = (
           <div className={styles.statusLabel}>{t('meshcore.observer.token_expires', 'Auth token expires')}</div>
           <div className={styles.statusValue}>
             {/* tokenExpiresAt is unix SECONDS — ×1000 here only; lastPublishAt
-                above is already milliseconds and must NOT be converted. */}
-            {observer.tokenExpiresAt ? formatRelativeTime(observer.tokenExpiresAt * 1000) : '—'}
+                above is already milliseconds and must NOT be converted.
+                Rendered as an absolute local time: formatRelativeTime clamps
+                FUTURE timestamps to "just now", which reads wrong for a +24h
+                expiry (caught in Phase 3 browser validation). */}
+            {observer.tokenExpiresAt ? new Date(observer.tokenExpiresAt * 1000).toLocaleString() : '—'}
           </div>
 
           {observer.lastError && (
