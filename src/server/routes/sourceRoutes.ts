@@ -12,6 +12,7 @@ import { loRaCenterFrequencyMhz, REGION_SHORT_NAME } from '../../utils/loraFrequ
 import { MqttBrokerManager, MAX_HOP_LIMIT, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
+import observerRoutes from './sourceObserverRoutes.js';
 import { PortNum } from '../constants/meshtastic.js';
 import {
   buildSourceNodes,
@@ -1561,5 +1562,6 @@ router.post('/:id/prune-outside-roi', requirePermission('sources', 'write'), asy
 // Waypoints sub-router. Each handler runs `requirePermission('waypoints', …)`
 // scoped to the path's `:id` parameter.
 router.use('/:id/waypoints', waypointRoutes);
+router.use('/:id/observer', observerRoutes);
 
 export default router;
