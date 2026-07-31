@@ -96,9 +96,20 @@ export function observerConfigFromSource(cfg: MeshCoreSourceConfig): MeshCoreCon
   const o = cfg.observer;
   if (!o?.enabled) return undefined;
   if (!o.brokerUrl || !o.iataCode || !o.tokenAudience) return undefined;
+  // The stored URL was validated at write time, but normalize can still throw
+  // on a row written by an older version or edited out-of-band. Silently
+  // returning undefined here would disable the observer with no trace — warn
+  // so the operator can see why it never started.
+  let brokerUrl: string;
+  try {
+    brokerUrl = normalizeBrokerUrl(o.brokerUrl);
+  } catch {
+    logger.warn('[MeshCoreConfig] observer.brokerUrl failed to normalize; observer disabled for this source');
+    return undefined;
+  }
   return {
     enabled: true,
-    brokerUrl: normalizeBrokerUrl(o.brokerUrl),
+    brokerUrl,
     iataCode: o.iataCode.trim().toUpperCase(),
     tokenAudience: o.tokenAudience.trim(),
   };

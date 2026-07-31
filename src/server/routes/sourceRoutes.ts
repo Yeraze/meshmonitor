@@ -69,6 +69,9 @@ export async function validateVirtualNodeConfig(
 // Own-property names that must never appear inside an `observer` config block.
 // The signing key lives encrypted in `meshcore_observer_keys` (#4457 Phase 1);
 // it must never be client-writable through the general config path.
+// Best-effort blocklist, not a comprehensive one — the real guard is that the
+// key lives in its own table and nothing ever reads key material out of
+// `sources.config`. This check just gives a clear error for the obvious names.
 const OBSERVER_KEY_MATERIAL_FIELDS = ['privateKey', 'privateKeyHex', 'signingKey', 'key', 'secret'] as const;
 
 function observerConfigContainsKeyMaterial(observer: Record<string, unknown>): boolean {

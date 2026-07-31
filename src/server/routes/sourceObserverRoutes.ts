@@ -185,6 +185,9 @@ router.put(
 );
 
 // DELETE /api/sources/:id/observer/key — forget the stored key. Idempotent.
+// Deliberately NOT gated on `capability.canStore`: deleting a stored (and,
+// under an auto-generated SESSION_SECRET, unrecoverable) key must always be
+// possible, even when persisting a new one is not.
 router.delete(
   '/key',
   requirePermission('configuration', 'write', { sourceIdFrom: 'params.id' }),
