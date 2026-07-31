@@ -1406,6 +1406,12 @@ describe('MeshCore Routes', () => {
       expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 101, 0);
     });
 
+    it('clamps an offset above MAX_MESSAGE_OFFSET (50000)', async () => {
+      const response = await request(app).get('/api/sources/test-source/meshcore/messages/channel/1?limit=100&offset=999999');
+      expect(response.status).toBe(200);
+      expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 101, 50000);
+    });
+
     it('rejects a non-numeric channel index', async () => {
       const response = await request(app).get('/api/sources/test-source/meshcore/messages/channel/abc?limit=100');
       expect(response.status).toBe(400);
