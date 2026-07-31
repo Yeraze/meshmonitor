@@ -47,6 +47,7 @@ export const PortNum = {
   RETICULUM_TUNNEL_APP: 76,
   CAYENNE_APP: 77,
   ATAK_PLUGIN_V2: 78,
+  LORA_OTA_APP: 79, // Signed firmware updates over LoRa (firmware 2.8+)
   GROUPALARM_APP: 112,
   PRIVATE_APP: 256,
   ATAK_FORWARDER: 257,

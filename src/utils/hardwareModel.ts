@@ -147,6 +147,9 @@ export const HARDWARE_MODELS: Record<number, string> = {
   138: 'CROWPANEL_P4',
   139: 'HELTEC_MESH_TOWER_V2',
   140: 'MESHNOLOGY_W10',
+  141: 'HELTEC_RC32',
+  142: 'HELTEC_RC52',
+  143: 'HELTEC_RCC6',
   255: 'PRIVATE_HW',
 };
 
