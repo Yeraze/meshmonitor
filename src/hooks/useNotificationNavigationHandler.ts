@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useRef, type MutableRefObject } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { logger } from '../utils/logger';
 import { usePushNotificationNavigation } from './usePushNotificationNavigation';
 
@@ -48,6 +49,8 @@ export function useNotificationNavigationHandler(
   state: NavigationState
 ): void {
   const { pendingNavigation, clearPendingNavigation } = usePushNotificationNavigation();
+  const navigate = useNavigate();
+  const { sourceId: routeSourceId } = useParams<{ sourceId: string }>();
   const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null);
   
   // Use ref to persist scroll target across re-renders
@@ -69,6 +72,30 @@ export function useNotificationNavigationHandler(
   // We wait until the app is connected to ensure data is loaded
   useEffect(() => {
     if (!pendingNavigation) return;
+
+    // The route must have resolved before any of the callbacks below can do
+    // anything — `setActiveTab` is a no-op while `useParams().sourceId` is
+    // undefined (UIContext.tsx). Returning (rather than falling through to
+    // clearPendingNavigation) lets the effect retry instead of silently
+    // dropping the navigation (#4463).
+    if (!routeSourceId) {
+      logger.debug('📬 Waiting for the source route to resolve before navigating...');
+      return;
+    }
+
+    // A notification for a different source can only be handled by that
+    // source's own view. Switch routes and keep the payload pending — the
+    // effect re-runs once `routeSourceId` catches up and then falls through to
+    // the normal handling below. (Clearing here would lose it: react-router's
+    // pushState does not remount this hook, so nothing would re-read the URL.)
+    if (pendingNavigation.sourceId && pendingNavigation.sourceId !== routeSourceId) {
+      const tab = pendingNavigation.type === 'dm' ? 'messages' : 'channels';
+      logger.info(
+        `📬 Notification targets source ${pendingNavigation.sourceId}, switching from ${routeSourceId}`
+      );
+      void navigate(`/source/${encodeURIComponent(pendingNavigation.sourceId)}/${tab}`);
+      return;
+    }
 
     // Wait until we have a connection (data is loaded)
     // Allow navigation when connected or when we have channels data
@@ -118,6 +145,8 @@ export function useNotificationNavigationHandler(
     selectedChannelRef,
     connectionStatus,
     channels,
+    routeSourceId,
+    navigate,
   ]);
 
   // Scroll to specific message after navigation from push notification
