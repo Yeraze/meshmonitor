@@ -86,6 +86,38 @@ describe('MqttBrokerClient', () => {
     });
   });
 
+  describe('will + keepalive options (§3.4)', () => {
+    it('forwards `will` verbatim to mqtt.connect', () => {
+      const will = {
+        topic: 'meshcore/test/ABCDEF/status',
+        payload: Buffer.from('{"status":"offline"}'),
+        qos: 0 as const,
+        retain: true,
+      };
+      const client = new MqttBrokerClient({ url: 'mqtt://broker.test:1883', will });
+      void client.connect();
+      expect(lastConnectOptions().will).toBe(will);
+    });
+
+    it('omits `will` from connect options entirely when not supplied', () => {
+      const client = new MqttBrokerClient({ url: 'mqtt://broker.test:1883' });
+      void client.connect();
+      expect('will' in lastConnectOptions()).toBe(false);
+    });
+
+    it('defaults keepalive to 15 when not supplied', () => {
+      const client = new MqttBrokerClient({ url: 'mqtt://broker.test:1883' });
+      void client.connect();
+      expect(lastConnectOptions().keepalive).toBe(15);
+    });
+
+    it('honours a keepalive override', () => {
+      const client = new MqttBrokerClient({ url: 'mqtt://broker.test:1883', keepalive: 60 });
+      void client.connect();
+      expect(lastConnectOptions().keepalive).toBe(60);
+    });
+  });
+
   describe('MqttReconnectCoordinator backoff growth', () => {
     it('grows the shared reconnect delay geometrically while flapping (1s → 2s → 4s)', () => {
       const coord = new MqttReconnectCoordinator();

@@ -30,6 +30,10 @@ export interface MqttBrokerClientOptions {
   clientId?: string;
   clientIdPrefix?: string;
   rejectUnauthorized?: boolean;
+  /** MQTT Last Will and Testament. Forwarded verbatim to mqtt.js. */
+  will?: IClientOptions['will'];
+  /** Keepalive seconds. Defaults to 15 (Meshtastic-firmware parity). */
+  keepalive?: number;
 }
 
 export interface MqttBrokerClientMessage {
@@ -168,13 +172,17 @@ export class MqttBrokerClient extends EventEmitter {
       password: this.options.password,
       protocolVersion: 4, // MQTT 3.1.1
       clean: true,
-      keepalive: 15, // match Meshtastic firmware (PubSubClient default)
+      keepalive: this.options.keepalive ?? 15, // match Meshtastic firmware (PubSubClient default)
       reconnectPeriod: 0, // we handle reconnect ourselves
       connectTimeout: 30_000,
       rejectUnauthorized: this.options.rejectUnauthorized ?? true,
       // Cache DNS across connections/reconnects. The hostname stays on the
       // socket, so TLS SNI / cert validation is unaffected. See cachingDnsLookup.ts.
       lookup: sharedDnsLookup,
+      // Omit the `will` key entirely when unset, so the connect-options object
+      // stays byte-identical for every existing caller (D-5 / §3.4 of
+      // MESHCORE_OBSERVER_PHASE2_SPEC.md).
+      ...(this.options.will ? { will: this.options.will } : {}),
     };
     this.client = connect(url, connectOptions);
 
