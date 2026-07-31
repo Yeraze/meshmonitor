@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
-import { SourcesRepository } from './sources.js';
+import { SourcesRepository, isMqttSourceType } from './sources.js';
 import * as schema from '../schema/index.js';
 import { createTestDb } from '../../server/test-helpers/testDb.js';
 
@@ -102,5 +102,22 @@ describe('SourcesRepository', () => {
 
     const sources = await repo.getAllSources();
     expect(sources.map((s) => s.id)).toEqual(['b', 'a', 'c']);
+  });
+});
+
+describe('isMqttSourceType', () => {
+  it('is true for both MQTT source types', () => {
+    expect(isMqttSourceType('mqtt_broker')).toBe(true);
+    expect(isMqttSourceType('mqtt_bridge')).toBe(true);
+  });
+
+  it('is false for the node-backed source types', () => {
+    expect(isMqttSourceType('meshtastic_tcp')).toBe(false);
+    expect(isMqttSourceType('meshcore')).toBe(false);
+  });
+
+  it('is false for an unknown/missing type (a failed lookup is not MQTT)', () => {
+    expect(isMqttSourceType(undefined)).toBe(false);
+    expect(isMqttSourceType(null)).toBe(false);
   });
 });

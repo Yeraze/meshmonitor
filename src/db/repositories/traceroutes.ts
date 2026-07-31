@@ -168,21 +168,35 @@ export class TraceroutesRepository extends BaseRepository {
 
   /**
    * Every traceroute on `sourceId` that `nodeNum` took part in — as an endpoint
-   * OR as an intermediate hop in `route`/`routeBack` — newest first.
+   * OR (when `endpointOnly` is false) as an intermediate hop in
+   * `route`/`routeBack` — newest first.
    *
-   * Hop membership lives inside a JSON string column. There is no
-   * database-agnostic SQL for that (LIKE-matching JSON text is wrong across
-   * three backends and would match substrings of other node numbers), and raw
-   * SQL is banned outside migrations. So this does ONE bounded, ordered,
-   * source-scoped scan through the query builder and filters in JS.
+   * `endpointOnly` exists because "traceroutes this node relayed" is only
+   * meaningful for an MQTT source. An MQTT source has no origin node of its
+   * own, so relayed rows are the only way its nodes can render the strip at
+   * all. A Meshtastic/MeshCore source *does* have an origin node, and its
+   * picker should list the routes between that node and the selected one —
+   * showing routes between two other nodes that merely passed through is
+   * confusing there, and made the picker's list (38) disagree with the
+   * statistical aggregate's count (25) for the same node. The caller decides
+   * from the source's type; see `tracerouteRoutes.ts`.
    *
-   * `scanLimit` bounds memory. Because the scan is newest-first, exceeding it
-   * can only drop OLDER participations — never the ones the picker shows.
+   * The two modes take deliberately different paths:
    *
-   * `sinceTimestamp` is optional: when omitted, no time filter is applied and
-   * the bounded newest-first `scanLimit` scan alone limits the work (picker
-   * parity with the Traceroute History dialog — issue-referenced amendment,
-   * see SR_PHASE2_SPEC.md D14/S1).
+   * - `endpointOnly`: endpoint membership is two indexed columns, so it is a
+   *   plain SQL predicate with the real `limit` pushed down. No scan window,
+   *   so an old pair can never fall off the end of a busy source's history.
+   * - Full participation: hop membership lives inside a JSON string column.
+   *   There is no database-agnostic SQL for that (LIKE-matching JSON text is
+   *   wrong across three backends and would match substrings of other node
+   *   numbers), and raw SQL is banned outside migrations. So this does ONE
+   *   bounded, ordered, source-scoped scan through the query builder and
+   *   filters in JS. `scanLimit` bounds memory; because the scan is
+   *   newest-first, exceeding it can only drop OLDER participations.
+   *
+   * `sinceTimestamp` is optional: when omitted, no time filter is applied
+   * (picker parity with the Traceroute History dialog — issue-referenced
+   * amendment, see SR_PHASE2_SPEC.md D14/S1).
    */
   async getTraceroutesInvolvingNode(
     nodeNum: number,
@@ -191,6 +205,9 @@ export class TraceroutesRepository extends BaseRepository {
        *  per-source by definition, so an `ALL_SOURCES` caller is a bug this
        *  signature makes unrepresentable. */
       sourceId: string;
+      /** Restrict to rows where `nodeNum` is `fromNodeNum` or `toNodeNum`,
+       *  excluding relayed (hop) participation. */
+      endpointOnly?: boolean;
       sinceTimestamp?: number;
       limit?: number;
       scanLimit?: number;
@@ -203,6 +220,25 @@ export class TraceroutesRepository extends BaseRepository {
     const conditions = [this.withSourceScope(traceroutes, opts.sourceId)];
     if (opts.sinceTimestamp !== undefined) {
       conditions.push(gte(traceroutes.timestamp, opts.sinceTimestamp));
+    }
+
+    if (opts.endpointOnly) {
+      conditions.push(
+        or(eq(traceroutes.fromNodeNum, nodeNum), eq(traceroutes.toNodeNum, nodeNum))!,
+      );
+      const rows = await this.db
+        .select()
+        .from(traceroutes)
+        .where(and(...conditions))
+        .orderBy(desc(traceroutes.timestamp))
+        .limit(limit);
+      // Every row matched on an endpoint column, so the kind is known without
+      // re-deriving it — but go through the shared classifier anyway so the
+      // two modes cannot disagree about what "endpoint" means.
+      return (this.normalizeBigInts(rows) as DbTraceroute[]).map(row => ({
+        ...row,
+        participation: tracerouteParticipationKind(row, nodeNum) ?? 'endpoint',
+      }));
     }
 
     const rows = await this.db
