@@ -20,6 +20,7 @@ vi.mock('../auth/authMiddleware.js', () => ({
   requireAdmin: () => (req: any, _res: any, next: any) => { req.user = { id: 1, isAdmin: true }; next(); },
 }));
 
+import { ALL_SOURCES } from '../../db/repositories/index.js';
 import dataExchangeRoutes from './dataExchangeRoutes.js';
 
 const app = express();
@@ -47,6 +48,26 @@ describe('GET /stats', () => {
     });
     expect(mockDb.messages.getMessageCount).toHaveBeenCalledWith('src-1');
     expect(mockDb.getMessagesByDayAsync).toHaveBeenCalledWith(7, 'src-1');
+  });
+
+  // Regression: without an explicit sourceId every count must opt in to the
+  // cross-source sentinel. getMessagesByDayAsync used to be handed a bare
+  // undefined, which withSourceScope rejects, so the whole endpoint 500'd for any
+  // caller that did not pass sourceId (the aggregate dashboard, and any health
+  // check hitting /stats bare).
+  it('passes the ALL_SOURCES sentinel to every count when sourceId is omitted', async () => {
+    mockDb.messages.getMessageCount.mockResolvedValue(10);
+    mockDb.nodes.getNodeCount.mockResolvedValue(5);
+    mockDb.channels.getChannelCount.mockResolvedValue(3);
+    mockDb.getMessagesByDayAsync.mockResolvedValue([]);
+
+    const res = await request(app).get('/stats');
+
+    expect(res.status).toBe(200);
+    expect(mockDb.messages.getMessageCount).toHaveBeenCalledWith(ALL_SOURCES);
+    expect(mockDb.nodes.getNodeCount).toHaveBeenCalledWith(ALL_SOURCES);
+    expect(mockDb.channels.getChannelCount).toHaveBeenCalledWith(ALL_SOURCES);
+    expect(mockDb.getMessagesByDayAsync).toHaveBeenCalledWith(7, ALL_SOURCES);
   });
 
   it('returns 500 when a count throws', async () => {

@@ -14,7 +14,7 @@ router.get('/stats', requirePermission('dashboard', 'read'), async (req: Request
     const messageCount = await databaseService.messages.getMessageCount(statsSourceId ?? ALL_SOURCES);
     const nodeCount = await databaseService.nodes.getNodeCount(statsSourceId ?? ALL_SOURCES);
     const channelCount = await databaseService.channels.getChannelCount(statsSourceId ?? ALL_SOURCES);
-    const messagesByDay = await databaseService.getMessagesByDayAsync(7, statsSourceId);
+    const messagesByDay = await databaseService.getMessagesByDayAsync(7, statsSourceId ?? ALL_SOURCES);
 
     res.json({
       messageCount,

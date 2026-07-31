@@ -1699,7 +1699,7 @@ class DatabaseService {
   }
 
 
-  async getMessagesByDayAsync(days: number = 7, sourceId?: string): Promise<Array<{ date: string; count: number }>> {
+  async getMessagesByDayAsync(days: number = 7, sourceId?: SourceScope): Promise<Array<{ date: string; count: number }>> {
     if (this.messagesRepo) {
       return this.messagesRepo.getMessagesByDay(days, sourceId);
     }
