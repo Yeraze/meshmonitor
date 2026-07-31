@@ -45,6 +45,7 @@ const meshcoreManager = {
   getContacts: vi.fn().mockReturnValue([]),
   getContact: vi.fn().mockReturnValue(undefined),
   getRecentMessages: vi.fn().mockReturnValue([]),
+  getChannelMessages: vi.fn().mockResolvedValue([]),
   // Message deletion / purge (#3981)
   deleteStoredMessage: vi.fn().mockResolvedValue(true),
   purgeConversation: vi.fn().mockResolvedValue(3),
@@ -1352,6 +1353,60 @@ describe('MeshCore Routes', () => {
       expect(response.status).toBe(200);
       // Should clamp to max limit (1000) without error
       expect(meshcoreManager.getRecentMessages).toHaveBeenCalledWith(1000);
+    });
+  });
+
+  // #4460 — infinite-scroll pagination for the MeshCore channel view.
+  describe('GET /api/sources/test-source/meshcore/messages/channel/:idx', () => {
+    afterEach(() => {
+      meshcoreManager.getChannelMessages.mockReset();
+      meshcoreManager.getChannelMessages.mockResolvedValue([]);
+    });
+
+    it('requests limit+1 (oldest-first) and reports hasMore=false when the page is not full', async () => {
+      meshcoreManager.getChannelMessages.mockResolvedValueOnce([
+        { id: 'a', fromPublicKey: 'channel-1', text: 'hi', timestamp: 1 },
+        { id: 'b', fromPublicKey: 'channel-1', text: 'yo', timestamp: 2 },
+      ]);
+      const response = await request(app).get('/api/sources/test-source/meshcore/messages/channel/1?limit=100');
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 101, 0);
+      expect(response.body.hasMore).toBe(false);
+      expect(response.body.data.map((m: any) => m.id)).toEqual(['a', 'b']);
+    });
+
+    it('drops the lookahead row and reports hasMore=true when an older page exists', async () => {
+      // limit=2 → manager is asked for 3 (oldest-first); the extra oldest row
+      // ("extra") is dropped from the response but proves more history exists.
+      meshcoreManager.getChannelMessages.mockResolvedValueOnce([
+        { id: 'extra', fromPublicKey: 'channel-1', text: 'older', timestamp: 1 },
+        { id: 'a', fromPublicKey: 'channel-1', text: 'hi', timestamp: 2 },
+        { id: 'b', fromPublicKey: 'channel-1', text: 'yo', timestamp: 3 },
+      ]);
+      const response = await request(app).get('/api/sources/test-source/meshcore/messages/channel/1?limit=2');
+      expect(response.status).toBe(200);
+      expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 3, 0);
+      expect(response.body.hasMore).toBe(true);
+      expect(response.body.data.map((m: any) => m.id)).toEqual(['a', 'b']);
+    });
+
+    it('passes offset through to the manager', async () => {
+      const response = await request(app).get('/api/sources/test-source/meshcore/messages/channel/1?limit=100&offset=200');
+      expect(response.status).toBe(200);
+      expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 101, 200);
+    });
+
+    it('clamps a negative offset to 0', async () => {
+      const response = await request(app).get('/api/sources/test-source/meshcore/messages/channel/1?limit=100&offset=-5');
+      expect(response.status).toBe(200);
+      expect(meshcoreManager.getChannelMessages).toHaveBeenCalledWith(1, 101, 0);
+    });
+
+    it('rejects a non-numeric channel index', async () => {
+      const response = await request(app).get('/api/sources/test-source/meshcore/messages/channel/abc?limit=100');
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
     });
   });
 

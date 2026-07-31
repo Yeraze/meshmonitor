@@ -28,7 +28,23 @@ interface MeshCoreMessageStreamProps {
   conversationKey?: string;
   /** Maximum UTF-8 byte length for a message. Send is blocked when exceeded. */
   maxBytes?: number;
+  /** When provided together with `hasMoreOlder`, the stream requests older
+   *  history (#4460) once the user scrolls near the top, throttled to avoid
+   *  spamming the caller. The caller owns fetching/prepending and is expected
+   *  to be idempotent against overlapping calls (guard on `loadingOlder`). */
+  onLoadOlder?: () => void;
+  /** Whether an older page of history exists beyond what's currently loaded. */
+  hasMoreOlder?: boolean;
+  /** True while a load-older request is in flight. Used to gate re-triggering
+   *  and to know when it's safe to restore scroll position after older
+   *  messages are prepended. */
+  loadingOlder?: boolean;
 }
+
+/** Scroll-to-top distance (px) that triggers a load-older request. */
+const LOAD_OLDER_THRESHOLD_PX = 100;
+/** Minimum time between load-older triggers, to avoid spamming scroll events. */
+const LOAD_OLDER_THROTTLE_MS = 200;
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString();
@@ -75,6 +91,9 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   onDeleteMessage,
   conversationKey,
   maxBytes = 130,
+  onLoadOlder,
+  hasMoreOlder,
+  loadingOlder,
 }) => {
   const { t } = useTranslation();
   const [draft, setDraft] = useState('');
@@ -174,13 +193,51 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     }
   }, [messages.length]);
 
+  // Scroll metrics captured right before a load-older request fires, so the
+  // restore effect below can keep the same content under the viewport once
+  // older messages are prepended (rather than jumping the user to the top).
+  const pendingOlderRestoreRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
+  const lastLoadOlderAtRef = useRef(0);
+
   const handleScroll = useCallback(() => {
     const container = listRef.current;
     if (!container) return;
     const isNearBottom =
       container.scrollHeight - container.scrollTop - container.clientHeight < 100;
     setShowJumpToBottom(!isNearBottom);
-  }, []);
+
+    if (
+      onLoadOlder &&
+      hasMoreOlder &&
+      !loadingOlder &&
+      container.scrollTop < LOAD_OLDER_THRESHOLD_PX
+    ) {
+      const now = Date.now();
+      if (now - lastLoadOlderAtRef.current > LOAD_OLDER_THROTTLE_MS) {
+        lastLoadOlderAtRef.current = now;
+        pendingOlderRestoreRef.current = {
+          scrollHeight: container.scrollHeight,
+          scrollTop: container.scrollTop,
+        };
+        onLoadOlder();
+      }
+    }
+  }, [onLoadOlder, hasMoreOlder, loadingOlder]);
+
+  // Once a load-older request settles (loadingOlder flips back to false),
+  // restore the viewport to the same content it was showing before older
+  // messages were prepended — otherwise the prepend would visually yank the
+  // conversation down by the height of the newly-inserted rows.
+  useEffect(() => {
+    if (loadingOlder) return;
+    const container = listRef.current;
+    const pending = pendingOlderRestoreRef.current;
+    if (!container || !pending) return;
+    pendingOlderRestoreRef.current = null;
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight - pending.scrollHeight + pending.scrollTop;
+    });
+  }, [messages, loadingOlder]);
 
   const scrollToBottom = useCallback(() => {
     const container = listRef.current;
