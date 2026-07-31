@@ -87,15 +87,24 @@ function isLocalOriginTransport(transportMechanism: number | null | undefined): 
 
 /**
  * Whether a packet bears any marker proving it was received over the air rather
- * than originated locally. Conservative: a marker must be unambiguously present
- * (rx SNR/RSSI default to 0 on self-origin, so 0 is NOT treated as a marker).
+ * than originated locally. Conservative: a marker must be unambiguously present.
+ *
+ * `rx_snr` still has proto3 implicit presence, so a self-originated packet and a
+ * genuine 0 dB reception are byte-identical on the wire — 0 is NOT a marker.
+ *
+ * `rx_rssi` gained explicit presence in firmware 2.8 (`has_rx_rssi`, firmware
+ * PR #11271, protobufs `optional int32 rx_rssi = 12`). 0 dBm is a real reading
+ * on SX126x/LR11x0/LR20x0 and can even go positive on SX127x, so a *present*
+ * rx_rssi of 0 is a genuine RF marker. Absent stays absent: the decoder yields
+ * null/undefined, and pre-2.8 senders never put a 0 on the wire at all, so this
+ * is a no-op against 2.7 firmware. See issue #3548.
  */
 export function hasRfReceptionMarkers(input: SpoofDetectionInput): boolean {
   const { transportMechanism, hopStart, hopLimit, rxSnr, rxRssi, viaMqtt } = input;
 
   // Reception signal metadata — only sent to the host for RF receptions.
   if (rxSnr !== undefined && rxSnr !== null && rxSnr !== 0) return true;
-  if (rxRssi !== undefined && rxRssi !== null && rxRssi !== 0) return true;
+  if (rxRssi !== undefined && rxRssi !== null) return true;
 
   // Travelled at least one hop (originator set hop_start, relays decremented hop_limit).
   if (

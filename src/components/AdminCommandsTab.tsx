@@ -145,6 +145,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
     positionFlags: number;
     hwModel: number;
     hasRemoteHardware: boolean;
+    /** Firmware 2.8+ build capability: XEdDSA signature verification compiled in (#3923). */
+    hasXeddsa?: boolean;
   } | null>(null);
 
   // Reboot and Set Time command states
@@ -2608,7 +2610,8 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                       deviceMetadata.hasBluetooth && 'Bluetooth',
                       deviceMetadata.hasEthernet && 'Ethernet',
                       deviceMetadata.canShutdown && 'Shutdown',
-                      deviceMetadata.hasRemoteHardware && 'Remote HW'
+                      deviceMetadata.hasRemoteHardware && 'Remote HW',
+                      deviceMetadata.hasXeddsa && 'XEdDSA'
                     ].filter(Boolean).join(', ') || t('common.none', 'None')}
                   </span>
 
