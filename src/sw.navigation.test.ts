@@ -198,6 +198,25 @@ describe('Push Notification Navigation Data', () => {
       expect(decodeNav(url.href)).toEqual(data);
     });
 
+    it('does not emit a double "?" when the scope already carries a query string', () => {
+      const scopeWithQuery = 'https://mesh.example.com/meshmonitor/?proxy=1';
+
+      // Both branches: with a sourceId (real route) and without (root fallback).
+      const routed = buildNotificationUrl(scopeWithQuery, {
+        type: 'dm',
+        sourceId: 'src-a',
+        senderNodeId: '!x',
+      });
+      const fallback = buildNotificationUrl(scopeWithQuery, { type: 'channel', channelId: 1 });
+
+      expect(routed.match(/\?/g)).toHaveLength(1);
+      expect(fallback.match(/\?/g)).toHaveLength(1);
+      expect(decodeNav(routed).sourceId).toBe('src-a');
+      expect(decodeNav(fallback).channelId).toBe(1);
+      // The fallback keeps the scope's own parameters rather than clobbering them.
+      expect(new URL(fallback).searchParams.get('proxy')).toBe('1');
+    });
+
     it('returns the bare scope when there is no navigation payload', () => {
       expect(buildNotificationUrl(SCOPE)).toBe(SCOPE);
       expect(buildNotificationUrl(SCOPE, null)).toBe(SCOPE);

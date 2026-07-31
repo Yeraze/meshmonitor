@@ -44,14 +44,15 @@ export function buildNotificationUrl(
 ): string {
   if (!navigationData) return scope;
 
-  const params = new URLSearchParams();
-  params.set(NOTIFICATION_NAV_PARAM, JSON.stringify(navigationData));
-  const query = params.toString();
-
-  if (!navigationData.sourceId) {
-    return `${scope}?${query}`;
-  }
-
-  const path = `source/${encodeURIComponent(navigationData.sourceId)}/${tabForNavigation(navigationData)}`;
-  return `${scope}${path}?${query}`;
+  // Build through URL/searchParams rather than string concatenation so a scope
+  // that already carries a query string (some reverse-proxy setups) does not
+  // produce a double `?`, and so existing parameters survive.
+  const url = new URL(
+    navigationData.sourceId
+      ? `source/${encodeURIComponent(navigationData.sourceId)}/${tabForNavigation(navigationData)}`
+      : '',
+    scope
+  );
+  url.searchParams.set(NOTIFICATION_NAV_PARAM, JSON.stringify(navigationData));
+  return url.href;
 }

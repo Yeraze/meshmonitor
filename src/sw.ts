@@ -221,8 +221,10 @@ self.addEventListener('pushsubscriptionchange', event => {
           throw new Error('Missing subscription keys');
         }
 
-        // Send new subscription to backend
-        return fetch('/api/push/subscribe', {
+        // Send new subscription to backend. Resolve against the registration
+        // scope — a root-absolute '/api/...' misses the server entirely under
+        // a BASE_URL sub-path deployment, silently losing the re-subscription.
+        return fetch(new URL('api/push/subscribe', self.registration.scope).href, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
