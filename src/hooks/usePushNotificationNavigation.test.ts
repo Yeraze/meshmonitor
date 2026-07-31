@@ -257,6 +257,112 @@ describe('usePushNotificationNavigation', () => {
     });
   });
 
+  // #4463: the service worker now cold-launches the app on a real route with
+  // the payload in the query string, because the app is path-routed.
+  describe('URL query-string navigation (#4463)', () => {
+    it('reads notificationNav from the query string', async () => {
+      const navigationData: NotificationNavigationData = {
+        type: 'dm',
+        sourceId: 'src-a',
+        senderNodeId: '!node123',
+        messageId: 'msg_dm_1',
+      };
+
+      const { result } = renderHook(() => usePushNotificationNavigation());
+
+      const params = new URLSearchParams();
+      params.set('notificationNav', JSON.stringify(navigationData));
+
+      act(() => {
+        window.history.replaceState(
+          null,
+          '',
+          `/source/src-a/messages?${params.toString()}`
+        );
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+
+      await waitFor(() => {
+        expect(result.current.pendingNavigation).toEqual(navigationData);
+      });
+    });
+
+    it('strips only notificationNav, preserving the path and other query params', async () => {
+      const navigationData: NotificationNavigationData = {
+        type: 'channel',
+        sourceId: 'src-b',
+        channelId: 2,
+      };
+
+      const { result } = renderHook(() => usePushNotificationNavigation());
+
+      const params = new URLSearchParams();
+      params.set('keepMe', 'yes');
+      params.set('notificationNav', JSON.stringify(navigationData));
+
+      act(() => {
+        window.history.replaceState(
+          null,
+          '',
+          `/source/src-b/channels?${params.toString()}`
+        );
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+
+      await waitFor(() => {
+        expect(result.current.pendingNavigation).toEqual(navigationData);
+      });
+
+      // The path must survive — the router owns it, and dropping it would
+      // bounce the user off the source route we just deep-linked to.
+      expect(window.location.pathname).toBe('/source/src-b/channels');
+      expect(new URLSearchParams(window.location.search).get('keepMe')).toBe('yes');
+      expect(new URLSearchParams(window.location.search).get('notificationNav')).toBeNull();
+    });
+
+    it('preserves the sourceId field through the URL round trip', async () => {
+      const navigationData: NotificationNavigationData = {
+        type: 'channel',
+        sourceId: 'source-with-dashes-123',
+        channelId: 7,
+        messageId: 'src_1234_5678',
+      };
+
+      const { result } = renderHook(() => usePushNotificationNavigation());
+
+      const params = new URLSearchParams();
+      params.set('notificationNav', JSON.stringify(navigationData));
+
+      act(() => {
+        window.history.replaceState(null, '', `/source/x/channels?${params.toString()}`);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+
+      await waitFor(() => {
+        expect(result.current.pendingNavigation?.sourceId).toBe('source-with-dashes-123');
+      });
+    });
+
+    it('ignores a query string without notificationNav', () => {
+      window.history.replaceState(null, '', '/source/src-a/messages?other=1');
+
+      const { result } = renderHook(() => usePushNotificationNavigation());
+
+      expect(result.current.pendingNavigation).toBeNull();
+    });
+
+    it('handles invalid JSON in the query string without crashing', () => {
+      const { result } = renderHook(() => usePushNotificationNavigation());
+
+      act(() => {
+        window.history.replaceState(null, '', '/source/src-a/messages?notificationNav=nope');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+
+      expect(result.current.pendingNavigation).toBeNull();
+    });
+  });
+
   describe('clearPendingNavigation', () => {
     it('should clear pendingNavigation when called', async () => {
       const { result } = renderHook(() => usePushNotificationNavigation());

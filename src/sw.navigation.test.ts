@@ -5,14 +5,12 @@
  * these tests validate the data structures and logic patterns used.
  */
 import { describe, it, expect } from 'vitest';
-
-// Type definitions matching sw.ts
-interface NotificationNavigationData {
-  type: 'channel' | 'dm';
-  channelId?: number;
-  messageId?: string;
-  senderNodeId?: string;
-}
+// The real implementation the service worker calls — importing it (rather than
+// re-deriving the URL inline) is what lets these tests catch a regression.
+import {
+  buildNotificationUrl,
+  type NotificationNavigationData,
+} from './utils/notificationUrl';
 
 interface PushNotificationPayload {
   title: string;
@@ -108,6 +106,131 @@ describe('Push Notification Navigation Data', () => {
 
         expect(data.senderNodeId).toBe(nodeId);
       });
+    });
+  });
+
+  // Regression coverage for #4463: the service worker used to cold-launch the
+  // app at `${scope}#notificationNav=...`. The app is path-routed, so the scope
+  // root renders DashboardPage — which never mounts the navigation handler, so
+  // the deep link was silently dropped on every platform.
+  describe('buildNotificationUrl (#4463)', () => {
+    const SCOPE = 'https://mesh.example.com/meshmonitor/';
+
+    const decodeNav = (url: string): NotificationNavigationData => {
+      const parsed = new URL(url);
+      return JSON.parse(parsed.searchParams.get('notificationNav')!);
+    };
+
+    it('targets the source-scoped messages route for a DM', () => {
+      const data: NotificationNavigationData = {
+        type: 'dm',
+        sourceId: 'src-a',
+        messageId: 'dm_msg_1',
+        senderNodeId: '!sender123',
+      };
+
+      const url = new URL(buildNotificationUrl(SCOPE, data));
+
+      expect(url.pathname).toBe('/meshmonitor/source/src-a/messages');
+      expect(decodeNav(url.href)).toEqual(data);
+    });
+
+    it('targets the source-scoped channels route for a channel message', () => {
+      const data: NotificationNavigationData = {
+        type: 'channel',
+        sourceId: 'src-b',
+        channelId: 3,
+        messageId: 'msg_12345',
+      };
+
+      const url = new URL(buildNotificationUrl(SCOPE, data));
+
+      expect(url.pathname).toBe('/meshmonitor/source/src-b/channels');
+      expect(decodeNav(url.href)).toEqual(data);
+    });
+
+    it('never puts the payload in the hash — the app no longer routes on it', () => {
+      const url = new URL(
+        buildNotificationUrl(SCOPE, { type: 'dm', sourceId: 'src-a', senderNodeId: '!x' })
+      );
+
+      expect(url.hash).toBe('');
+      expect(url.searchParams.get('notificationNav')).not.toBeNull();
+    });
+
+    it('does not land on the scope root when a sourceId is present', () => {
+      const url = buildNotificationUrl(SCOPE, {
+        type: 'channel',
+        sourceId: 'src-a',
+        channelId: 0,
+      });
+
+      expect(new URL(url).pathname).not.toBe('/meshmonitor/');
+    });
+
+    it('works for a root-mounted deployment (no BASE_URL)', () => {
+      const url = new URL(
+        buildNotificationUrl('https://mesh.example.com/', {
+          type: 'dm',
+          sourceId: 'src-a',
+          senderNodeId: '!x',
+        })
+      );
+
+      expect(url.pathname).toBe('/source/src-a/messages');
+    });
+
+    it('percent-encodes a sourceId containing URL-significant characters', () => {
+      const url = new URL(
+        buildNotificationUrl(SCOPE, { type: 'dm', sourceId: 'a/b?c', senderNodeId: '!x' })
+      );
+
+      expect(url.pathname).toBe('/meshmonitor/source/a%2Fb%3Fc/messages');
+    });
+
+    it('falls back to the scope root but keeps the payload when sourceId is absent', () => {
+      // Pre-4.13.4 notifications already delivered to a device carry no sourceId.
+      const data: NotificationNavigationData = { type: 'channel', channelId: 1 };
+
+      const url = new URL(buildNotificationUrl(SCOPE, data));
+
+      expect(url.pathname).toBe('/meshmonitor/');
+      expect(decodeNav(url.href)).toEqual(data);
+    });
+
+    it('does not emit a double "?" when the scope already carries a query string', () => {
+      const scopeWithQuery = 'https://mesh.example.com/meshmonitor/?proxy=1';
+
+      // Both branches: with a sourceId (real route) and without (root fallback).
+      const routed = buildNotificationUrl(scopeWithQuery, {
+        type: 'dm',
+        sourceId: 'src-a',
+        senderNodeId: '!x',
+      });
+      const fallback = buildNotificationUrl(scopeWithQuery, { type: 'channel', channelId: 1 });
+
+      expect(routed.match(/\?/g)).toHaveLength(1);
+      expect(fallback.match(/\?/g)).toHaveLength(1);
+      expect(decodeNav(routed).sourceId).toBe('src-a');
+      expect(decodeNav(fallback).channelId).toBe(1);
+      // The fallback keeps the scope's own parameters rather than clobbering them.
+      expect(new URL(fallback).searchParams.get('proxy')).toBe('1');
+    });
+
+    it('returns the bare scope when there is no navigation payload', () => {
+      expect(buildNotificationUrl(SCOPE)).toBe(SCOPE);
+      expect(buildNotificationUrl(SCOPE, null)).toBe(SCOPE);
+    });
+
+    it('round-trips special characters in messageId', () => {
+      const data: NotificationNavigationData = {
+        type: 'channel',
+        sourceId: 'src-a',
+        channelId: 1,
+        messageId: 'msg_with_special_chars_!@#$%&=?',
+      };
+
+      expect(decodeNav(buildNotificationUrl(SCOPE, data)).messageId).toBe(data.messageId);
     });
   });
 
