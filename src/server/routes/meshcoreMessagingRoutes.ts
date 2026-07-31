@@ -78,12 +78,15 @@ router.get('/messages/channel/:idx', optionalAuth(), requirePermission('messages
     } else if (offset > VALIDATION.MAX_MESSAGE_OFFSET) {
       offset = VALIDATION.MAX_MESSAGE_OFFSET;
     }
-    // Fetch limit+1 (oldest-first) to detect whether an older page exists
-    // without a separate COUNT query.
+    // The manager already reverses the DB's newest-first rows to oldest-first
+    // (see MeshCoreManager.getChannelMessages), so `page` here is ascending.
+    // Fetch limit+1 to detect whether an older page exists without a
+    // separate COUNT query.
     const page = await managerFor(req, res).getChannelMessages(idx, limit + 1, offset);
     const hasMore = page.length > limit;
-    // The extra lookahead row is the oldest one — drop it so exactly `limit`
-    // messages (oldest-first) go to the client.
+    // The extra lookahead row is the oldest one in this ascending array —
+    // i.e. index 0 — so drop it to send exactly `limit` messages, still
+    // oldest-first, to the client.
     const messages = hasMore ? page.slice(1) : page;
     res.json({
       success: true,

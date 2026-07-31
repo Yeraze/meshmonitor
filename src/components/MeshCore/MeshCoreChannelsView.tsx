@@ -402,6 +402,10 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     setLoadingOlderHistory(false);
     void (async () => {
       try {
+        // The initial page is intentionally larger than a load-older page
+        // (200 vs. loadOlderHistory's 100 below) — worth front-loading more
+        // on first open since it's the one fetch every channel visit pays
+        // for, while later pages are opportunistic and don't need to match.
         const url = `${baseUrl}/api/sources/${encodeURIComponent(sourceId)}/meshcore/messages/channel/${idx}?limit=200`;
         const response = await csrfFetch(url);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);

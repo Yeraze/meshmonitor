@@ -1364,6 +1364,9 @@ describe('MeshCore Routes', () => {
     });
 
     it('requests limit+1 (oldest-first) and reports hasMore=false when the page is not full', async () => {
+      // The manager contract is oldest-first (it reverses the DB's DESC rows
+      // before returning); the mock below mirrors that, and the route must
+      // pass the order through unchanged.
       meshcoreManager.getChannelMessages.mockResolvedValueOnce([
         { id: 'a', fromPublicKey: 'channel-1', text: 'hi', timestamp: 1 },
         { id: 'b', fromPublicKey: 'channel-1', text: 'yo', timestamp: 2 },
