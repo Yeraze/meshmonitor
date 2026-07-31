@@ -1344,8 +1344,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         device: () => ({
           origin: this.localNode?.name || this.sourceName || 'MeshMonitor',
           model: this.localNode?.model,
+          // Some firmwares report `ver` with a leading 'v' already (live
+          // device: 'v1.15.0-dee3e26') — don't double it up.
           firmwareVersion: this.localNode?.ver
-            ? `v${this.localNode.ver}${this.localNode.firmwareBuild ? ` (Build: ${this.localNode.firmwareBuild})` : ''}`
+            ? `${this.localNode.ver.startsWith('v') ? '' : 'v'}${this.localNode.ver}${this.localNode.firmwareBuild ? ` (Build: ${this.localNode.firmwareBuild})` : ''}`
             : undefined,
           radio: formatRadioInfo(this.localNode),
         }),
