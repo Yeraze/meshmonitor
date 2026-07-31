@@ -235,6 +235,62 @@ describe('nodeEnhancer: enhanceNodeForClient', () => {
       expect(result.positionIsEstimated).toBe(false);
     });
   });
+
+  // #4432 follow-up. Priority 2 used a truthiness test (`lat && lon`), so a
+  // coordinate of exactly 0 read as "unpositioned" and a genuine fix on the
+  // equator or prime meridian was overwritten by an estimate.
+  describe('Priority 2 accepts a zero coordinate (#4432 follow-up)', () => {
+    const estimateAt = (lat: number, lon: number) => {
+      const m = new Map();
+      m.set('!00000001', { latitude: lat, longitude: lon, uncertaintyKm: 2.5 });
+      return m;
+    };
+
+    it('keeps a real equator fix instead of substituting an estimate', async () => {
+      const equator = { ...mockNode, positionOverrideEnabled: false, position: { latitude: 0, longitude: 37.5 } };
+
+      const result = await enhanceNodeForClient(equator, regularUser, estimateAt(50, 60));
+
+      expect(result.position.latitude).toBe(0);
+      expect(result.position.longitude).toBe(37.5);
+      expect(result.positionIsEstimated).toBe(false);
+    });
+
+    it('keeps a real prime-meridian fix', async () => {
+      const meridian = { ...mockNode, positionOverrideEnabled: false, position: { latitude: 51.48, longitude: 0 } };
+
+      const result = await enhanceNodeForClient(meridian, regularUser, estimateAt(50, 60));
+
+      expect(result.position.longitude).toBe(0);
+      expect(result.positionIsEstimated).toBe(false);
+    });
+
+    // The gate must stay independently correct: a bare presence check would
+    // accept a stray Null Island fix and present it as GPS, which is worse than
+    // the truthiness behaviour it replaced.
+    it('still rejects Null Island and falls through to the estimate', async () => {
+      const nullIsland = { ...mockNode, positionOverrideEnabled: false, position: { latitude: 0, longitude: 0 } };
+
+      const result = await enhanceNodeForClient(nullIsland, regularUser, estimateAt(50, 60));
+
+      expect(result.position.latitude).toBe(50);
+      expect(result.positionIsEstimated).toBe(true);
+    });
+
+    // The combined end state for the two real nodes that prompted this work.
+    // Migration 107 already nulled their bogus (0,0) fix in `nodes`; migration
+    // 134 now removes the Null Island *estimate* that was refilling it. With
+    // both gone the node is simply unpositioned — no coordinates, and nothing
+    // for the UI to mislabel as a GPS fix.
+    it('leaves the node unpositioned once both the bogus fix and estimate are gone', async () => {
+      const cleared = { ...mockNode, positionOverrideEnabled: false, position: null };
+
+      const result = await enhanceNodeForClient(cleared, regularUser, new Map());
+
+      expect(result.positionIsEstimated).toBe(false);
+      expect(result.position).toBeNull();
+    });
+  });
 });
 
 describe('nodeEnhancer: filterNodesByChannelPermission', () => {

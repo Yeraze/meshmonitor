@@ -159,6 +159,75 @@ describe('solveNodePosition', () => {
   });
 });
 
+// #4432 follow-up: a bogus anchor drags the weighted centroid to (0,0) and the
+// resulting "estimate" gets substituted onto a node as though it were a fix.
+// Two lines of defence: drop bogus anchors, and reject a solve that lands there.
+describe('Null Island rejection (#4432 follow-up)', () => {
+  it('returns null when the weighted centroid lands on Null Island', () => {
+    // Legitimate anchors placed symmetrically about (0,0) average onto it —
+    // the case anchor filtering alone cannot catch.
+    const result = solveNodePosition(
+      [
+        obs({ anchorLat: 1, anchorLon: 1, snrDb: 0 }),
+        obs({ anchorLat: -1, anchorLon: -1, snrDb: 0 }),
+      ],
+      NOW,
+    );
+    expect(result).toBeNull();
+  });
+
+  it('still solves normally when the centroid is a real position', () => {
+    const result = solveNodePosition(
+      [
+        obs({ anchorLat: 35.0, anchorLon: -80.0, snrDb: 0 }),
+        obs({ anchorLat: 35.2, anchorLon: -80.2, snrDb: 0 }),
+      ],
+      NOW,
+    );
+    expect(result).not.toBeNull();
+    expect(result!.latitude).toBeCloseTo(35.1, 5);
+  });
+
+  it('solves for a genuine equator anchor pair (only BOTH axes near 0 is bogus)', () => {
+    const result = solveNodePosition(
+      [
+        obs({ anchorLat: 0, anchorLon: 37.4, snrDb: 0 }),
+        obs({ anchorLat: 0, anchorLon: 37.6, snrDb: 0 }),
+      ],
+      NOW,
+    );
+    expect(result).not.toBeNull();
+    expect(result!.latitude).toBeCloseTo(0, 5);
+    expect(result!.longitude).toBeCloseTo(37.5, 5);
+  });
+
+  it('drops a Null Island anchor before it can constrain a neighbour', () => {
+    const anchors = new Map<number, { lat: number; lon: number }>([
+      [10, { lat: 0, lon: 0 }],        // bogus — must not anchor anything
+      [20, { lat: 35.1, lon: -80.6 }], // real
+    ]);
+    const neighbors: NeighborForEstimation[] = [
+      { nodeNum: 1, neighborNodeNum: 10, snr: 5, timestamp: NOW },
+      { nodeNum: 2, neighborNodeNum: 20, snr: 5, timestamp: NOW },
+    ];
+
+    const out = buildObservations([], neighbors, anchors);
+
+    expect(out.get(1)).toBeUndefined();
+    expect(out.get(2)).toHaveLength(1);
+    expect(out.get(2)![0].anchorLat).toBeCloseTo(35.1, 5);
+  });
+
+  it('does not mutate the caller\'s anchors map', () => {
+    const anchors = new Map<number, { lat: number; lon: number }>([[10, { lat: 0, lon: 0 }]]);
+
+    buildObservations([], [], anchors);
+
+    expect(anchors.size).toBe(1);
+    expect(anchors.get(10)).toEqual({ lat: 0, lon: 0 });
+  });
+});
+
 describe('buildObservations', () => {
   const anchors = new Map<number, { lat: number; lon: number }>([
     [100, { lat: 10, lon: 20 }],

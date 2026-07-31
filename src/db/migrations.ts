@@ -148,6 +148,7 @@ import { migration as addWaypointChannelMigration, runMigration130Postgres, runM
 import { migration as seedPerSourceNodeDisplayMigration, runMigration131Postgres, runMigration131Mysql } from '../server/migrations/131_seed_per_source_node_display.js';
 import { migration as fanOutSettingsPermissionsMigration, runMigration132Postgres, runMigration132Mysql } from '../server/migrations/132_fan_out_settings_permissions.js';
 import { migration as addMeshCoreObserverKeysMigration, runMigration133Postgres, runMigration133Mysql } from '../server/migrations/133_add_meshcore_observer_keys.js';
+import { migration as clearNullIslandEstimatesMigration, runMigration134Postgres, runMigration134Mysql } from '../server/migrations/134_clear_null_island_estimates.js';
 
 // ============================================================================
 // Registry
@@ -2126,4 +2127,13 @@ registry.register({
   sqlite: (db) => addMeshCoreObserverKeysMigration.up(db),
   postgres: (client) => runMigration133Postgres(client),
   mysql: (pool) => runMigration133Mysql(pool),
+});
+
+registry.register({
+  number: 134,
+  name: 'clear_null_island_estimates',
+  settingsKey: 'migration_134_clear_null_island_estimates',
+  sqlite: (db) => clearNullIslandEstimatesMigration.up(db),
+  postgres: (client) => runMigration134Postgres(client),
+  mysql: (pool) => runMigration134Mysql(pool),
 });
