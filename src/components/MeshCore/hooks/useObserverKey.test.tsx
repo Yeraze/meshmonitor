@@ -238,4 +238,34 @@ describe('useObserverKey', () => {
     expect(actWarning).toBe(false);
     errorSpy.mockRestore();
   });
+
+  it('recovers after a disable→enable cycle — cancelledRef resets on effect re-run (PR #4471 finding 2)', async () => {
+    csrfFetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, data: baseStatus({ stored: true, publicKey: 'AB'.repeat(32) }) }),
+    });
+
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useObserverKey('s1', { enabled }),
+      { initialProps: { enabled: true } },
+    );
+    await waitFor(() => expect(result.current.status?.stored).toBe(true));
+
+    // Disable (cleanup sets cancelledRef true), then re-enable. Without the
+    // reset at effect start, every response after this point is dropped and
+    // the hook is dead forever.
+    rerender({ enabled: false });
+    rerender({ enabled: true });
+
+    await waitFor(() => expect(result.current.status?.stored).toBe(true));
+    // A mutation after the cycle must also still land.
+    csrfFetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, data: baseStatus({ stored: false }) }),
+    });
+    await result.current.clearKey();
+    await waitFor(() => expect(result.current.status?.stored).toBe(false));
+  });
 });

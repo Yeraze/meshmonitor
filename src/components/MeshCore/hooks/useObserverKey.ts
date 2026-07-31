@@ -218,6 +218,11 @@ export function useObserverKey(
   const clearActionError = useCallback(() => setActionError(null), []);
 
   useEffect(() => {
+    // The cleanup below runs on EVERY deps change (e.g. an `enabled` flip),
+    // not just unmount — reset the flag on re-run, or the hook would suppress
+    // all state updates forever after a disable→enable cycle (PR #4471
+    // review finding 2).
+    cancelledRef.current = false;
     if (enabled) {
       void refresh();
     }
