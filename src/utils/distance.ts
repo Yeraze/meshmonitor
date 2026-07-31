@@ -95,9 +95,58 @@ export function getDistanceToNode(
 }
 
 /**
+ * Max deviation in metres implied by a Meshtastic position precision value.
+ * Meshtastic encodes positions as int32 (1 unit = 1e-7 degrees). With N precision
+ * bits, the lower (32-N) bits are zeroed, giving a grid cell of 2^(32-N) * 1e-7
+ * degrees; half that cell is the furthest the true position can be from the
+ * reported one.
+ * @param bits Precision bits (1-31). Callers should gate on {@link hasAccuracyCell}.
+ */
+export function precisionBitsToAccuracyMeters(bits: number): number {
+  const METERS_PER_DEGREE = 111111;
+  // Half the grid cell size = max deviation from true position
+  return Math.pow(2, 32 - bits) * 1e-7 * METERS_PER_DEGREE / 2;
+}
+
+/**
+ * Format an uncertainty radius as a `±N unit` string, for showing how far a
+ * displayed position may be from the true one (#4432).
+ *
+ * Sub-kilometre values render in metres/feet rather than a useless `±0.09 km`;
+ * the unit argument only selects the metric or imperial ladder.
+ *
+ * Deliberately distinct from {@link formatPrecisionAccuracy}, which prefixes `~`:
+ * this returns a hard bound ("the true position is within this radius"), whereas
+ * `~` denotes a fuzzy approximation. Do not unify the two on the grounds that
+ * they share a rounding ladder — the prefixes carry different claims.
+ *
+ * @param meters Radius in metres. Non-finite or non-positive input yields null.
+ * @param unit 'km' for metric (m/km) or 'mi' for imperial (ft/mi)
+ * @returns e.g. "±85 m", "±1.2 km", "±280 ft", "±0.8 mi" — or null if unknown
+ */
+export function formatUncertaintyRadius(
+  meters: number | null | undefined,
+  unit: 'km' | 'mi',
+): string | null {
+  if (meters == null || !Number.isFinite(meters) || meters <= 0) return null;
+
+  const FEET_PER_METER = 3.28084;
+  const FEET_PER_MILE = 5280;
+
+  if (unit === 'mi') {
+    const feet = meters * FEET_PER_METER;
+    if (feet < FEET_PER_MILE / 10) return `±${Math.round(feet)} ft`;
+    const miles = feet / FEET_PER_MILE;
+    return miles < 10 ? `±${miles.toFixed(1)} mi` : `±${Math.round(miles)} mi`;
+  }
+
+  if (meters < 1000) return `±${Math.round(meters)} m`;
+  const km = meters / 1000;
+  return km < 10 ? `±${km.toFixed(1)} km` : `±${Math.round(km)} km`;
+}
+
+/**
  * Format a human-readable accuracy estimate for a given Meshtastic position precision value.
- * Meshtastic encodes positions as int32 (1 unit = 1e-7 degrees). With N precision bits,
- * the lower (32-N) bits are zeroed, giving a grid cell of 2^(32-N) * 1e-7 degrees.
  * The accuracy shown is half the grid cell (max deviation from true position),
  * matching the values in the Meshtastic documentation.
  * @param bits Precision bits (0-32). 0 = disabled, 32 = full precision (~1 cm)
@@ -107,12 +156,10 @@ export function getDistanceToNode(
 export function formatPrecisionAccuracy(bits: number, unit: 'km' | 'mi'): string {
   if (bits <= 0) return 'Disabled';
 
-  const METERS_PER_DEGREE = 111111;
   const FEET_PER_METER = 3.28084;
   const FEET_PER_MILE = 5280;
 
-  // Half the grid cell size = max deviation from true position
-  const accuracyMeters = Math.pow(2, 32 - bits) * 1e-7 * METERS_PER_DEGREE / 2;
+  const accuracyMeters = precisionBitsToAccuracyMeters(bits);
 
   if (unit === 'mi') {
     const feet = accuracyMeters * FEET_PER_METER;

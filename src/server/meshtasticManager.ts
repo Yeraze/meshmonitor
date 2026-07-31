@@ -268,6 +268,14 @@ export interface DeviceInfo {
   altitudeOverride?: number;
   positionOverrideIsPrivate?: boolean;
   positionIsOverride?: boolean;
+  /**
+   * True when `position` holds a trilaterated estimate from the global
+   * `estimated_positions` table rather than a device-reported GPS fix (#4432).
+   * Set by enhanceNodeForClient; mutually exclusive with positionIsOverride.
+   */
+  positionIsEstimated?: boolean;
+  /** Radius of the estimate in km, when known. Only set with positionIsEstimated. */
+  positionEstimateUncertaintyKm?: number;
   hideFromMap?: boolean;
   isStoreForwardServer?: boolean;
 }

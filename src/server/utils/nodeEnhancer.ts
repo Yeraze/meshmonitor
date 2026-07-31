@@ -78,12 +78,12 @@ export function getEffectiveDbNodePosition(
 export async function enhanceNodeForClient(
   node: DeviceInfo,
   user: User | null,
-  estimatedPositions?: Map<string, { latitude: number; longitude: number }>,
+  estimatedPositions?: Map<string, { latitude: number; longitude: number; uncertaintyKm?: number | null }>,
   canViewPrivateOverride?: boolean
 ): Promise<DeviceInfo & { isMobile: boolean }> {
-  if (!node.user?.id) return { ...node, isMobile: false, positionIsOverride: false };
+  if (!node.user?.id) return { ...node, isMobile: false, positionIsOverride: false, positionIsEstimated: false };
 
-  const enhancedNode = { ...node, isMobile: node.mobile === 1, positionIsOverride: false };
+  const enhancedNode = { ...node, isMobile: node.mobile === 1, positionIsOverride: false, positionIsEstimated: false };
 
   // Priority 1: Check for position override
   const hasOverride = node.positionOverrideEnabled === true && node.latitudeOverride != null && node.longitudeOverride != null;
@@ -118,15 +118,24 @@ export async function enhanceNodeForClient(
     return enhancedNode;
   }
 
-  // Priority 3: Use estimated position if available
+  // Priority 3: Use estimated position if available.
+  //
+  // This is a trilaterated guess, not a device GPS fix, so flag it — otherwise
+  // it is indistinguishable from a real position by the time any screen reads
+  // `node.position` (#4432). Priority 1 (override) returns above, so a
+  // user-placed node can never be labelled estimated.
   const estimatedPos = estimatedPositions?.get(node.user.id);
-    
+
   if (estimatedPos) {
     enhancedNode.position = {
       latitude: estimatedPos.latitude,
       longitude: estimatedPos.longitude,
       altitude: node.position?.altitude,
     };
+    enhancedNode.positionIsEstimated = true;
+    if (estimatedPos.uncertaintyKm != null) {
+      enhancedNode.positionEstimateUncertaintyKm = estimatedPos.uncertaintyKm;
+    }
     return enhancedNode;
   }
 

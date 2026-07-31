@@ -150,6 +150,91 @@ describe('nodeEnhancer: enhanceNodeForClient', () => {
     expect(result.position.longitude).toBe(60);
     expect(result.positionIsOverride).toBe(false);
   });
+
+  // #4432: the estimate used to be copied into `position` with no marker, so a
+  // trilaterated guess was indistinguishable from a device GPS fix downstream.
+  describe('estimated-position provenance (#4432)', () => {
+    const nodeWithoutPos = { ...mockNode, position: null, positionOverrideEnabled: false };
+
+    it('flags a substituted estimate and carries its uncertainty radius', async () => {
+      const estimatedPositions = new Map();
+      estimatedPositions.set('!00000001', { latitude: 50, longitude: 60, uncertaintyKm: 2.5 });
+
+      const result = await enhanceNodeForClient(nodeWithoutPos, regularUser, estimatedPositions);
+
+      expect(result.positionIsEstimated).toBe(true);
+      expect(result.positionEstimateUncertaintyKm).toBe(2.5);
+    });
+
+    it('flags the estimate even when uncertainty is unknown', async () => {
+      const estimatedPositions = new Map();
+      estimatedPositions.set('!00000001', { latitude: 50, longitude: 60, uncertaintyKm: null });
+
+      const result = await enhanceNodeForClient(nodeWithoutPos, regularUser, estimatedPositions);
+
+      expect(result.positionIsEstimated).toBe(true);
+      expect(result.positionEstimateUncertaintyKm).toBeUndefined();
+    });
+
+    it('does NOT flag a real GPS position as estimated', async () => {
+      const estimatedPositions = new Map();
+      estimatedPositions.set('!00000001', { latitude: 50, longitude: 60, uncertaintyKm: 2.5 });
+
+      // mockNode has a real position, so priority 2 wins and the estimate is unused.
+      const result = await enhanceNodeForClient(mockNode, regularUser, estimatedPositions);
+
+      expect(result.positionIsEstimated).toBe(false);
+      expect(result.position.latitude).not.toBe(50);
+    });
+
+    it('does NOT flag a manual override as estimated (override wins outright)', async () => {
+      const overridden = {
+        ...mockNode,
+        position: null,
+        positionOverrideEnabled: true,
+        positionOverrideIsPrivate: false,
+        latitudeOverride: 10,
+        longitudeOverride: 20,
+      };
+      const estimatedPositions = new Map();
+      estimatedPositions.set('!00000001', { latitude: 50, longitude: 60, uncertaintyKm: 2.5 });
+
+      const result = await enhanceNodeForClient(overridden, regularUser, estimatedPositions);
+
+      expect(result.positionIsOverride).toBe(true);
+      expect(result.positionIsEstimated).toBe(false);
+      expect(result.position.latitude).toBe(10);
+    });
+
+    // A private override the viewer may not see falls through to the estimate.
+    // That is correct — but it must then be *labelled* estimated, or the viewer
+    // would read a trilaterated guess as the node's real reported position.
+    it('labels the fallback estimated when a private override is masked', async () => {
+      const privateOverride = {
+        ...mockNode,
+        position: null,
+        positionOverrideEnabled: true,
+        positionOverrideIsPrivate: true,
+        latitudeOverride: 10,
+        longitudeOverride: 20,
+      };
+      const estimatedPositions = new Map();
+      estimatedPositions.set('!00000001', { latitude: 50, longitude: 60, uncertaintyKm: 2.5 });
+
+      const result = await enhanceNodeForClient(privateOverride, regularUser, estimatedPositions);
+
+      expect(result.positionIsOverride).toBe(false);
+      expect(result.positionIsEstimated).toBe(true);
+      expect(result.position.latitude).toBe(50);
+      // The masked override coordinates must not leak alongside the estimate.
+      expect(result.latitudeOverride).toBeUndefined();
+    });
+
+    it('reports false rather than undefined when there is no estimate at all', async () => {
+      const result = await enhanceNodeForClient(nodeWithoutPos, regularUser, new Map());
+      expect(result.positionIsEstimated).toBe(false);
+    });
+  });
 });
 
 describe('nodeEnhancer: filterNodesByChannelPermission', () => {

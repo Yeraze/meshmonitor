@@ -83,6 +83,14 @@ export interface DeviceInfo {
   altitudeOverride?: number;
   positionOverrideIsPrivate?: boolean;
   positionIsOverride?: boolean;
+  /**
+   * True when `position` holds a trilaterated estimate from the global
+   * `estimated_positions` table rather than a device-reported GPS fix (#4432).
+   * Mutually exclusive with `positionIsOverride` — an override wins outright.
+   */
+  positionIsEstimated?: boolean;
+  /** Radius of the estimate in km, when known. Only set with `positionIsEstimated`. */
+  positionEstimateUncertaintyKm?: number;
   // Remote admin discovery
   hasRemoteAdmin?: boolean;
   lastRemoteAdminCheck?: number;
