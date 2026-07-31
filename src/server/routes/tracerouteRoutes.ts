@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { requirePermission } from '../auth/authMiddleware.js';
 import databaseService from '../../services/database.js';
 import { ALL_SOURCES } from '../../db/repositories/index.js';
+import { isMqttSourceType } from '../../db/repositories/sources.js';
 import { logger } from '../../utils/logger.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { maskTraceroutesByChannel } from '../utils/nodeEnhancer.js';
@@ -102,10 +103,23 @@ router.get('/history/:fromNodeNum/:toNodeNum', requirePermission('traceroute', '
 
 // GET /api/traceroutes/participation/:nodeNum?sourceId=…&hours=168&limit=100
 //
-// Every stored traceroute on ONE source that this node took part in — as an
-// endpoint or as an intermediate hop. Backs the Node Details traceroute picker
-// (epic phase 2), which is the only way an MQTT source (no origin node, so no
-// own-request traceroute) can render the strip at all.
+// Stored traceroutes on ONE source that this node took part in. What counts as
+// "took part" depends on the source's type:
+//
+//   MQTT (mqtt_bridge / mqtt_broker) — endpoint OR intermediate hop. An MQTT
+//     source has no origin node of its own and therefore no own-request
+//     traceroute, so relayed rows are the only way its nodes can render the
+//     strip at all. This is what the picker was built for (epic phase 2).
+//
+//   Everything else (meshtastic_tcp / meshcore) — endpoint only. These sources
+//     DO have an origin node, and the picker should list the routes between it
+//     and the selected node. Listing routes between two other nodes that merely
+//     passed through the selected one is confusing, and it made the picker's
+//     list disagree with the statistical aggregate's route count for the same
+//     node (the aggregate is pair-scoped).
+//
+// An unknown/missing source falls back to endpoint-only: the narrower, less
+// surprising list is the safe default when the type can't be established.
 //
 // sourceId is REQUIRED: the picker is per-source by definition, and a silent
 // ALL_SOURCES fallback would mix another source's rows for the same nodeNum.
@@ -147,8 +161,13 @@ router.get(
         return fail(res, 400, 'INVALID_LIMIT', 'limit must be between 1 and 200');
       }
 
+      // Relayed (hop) participation is MQTT-only — see the header comment.
+      const source = await databaseService.sources.getSource(sourceId);
+      const endpointOnly = !isMqttSourceType(source?.type);
+
       const rows = await databaseService.traceroutes.getTraceroutesInvolvingNode(nodeNum, {
         sourceId,
+        endpointOnly,
         sinceTimestamp,
         limit,
       });

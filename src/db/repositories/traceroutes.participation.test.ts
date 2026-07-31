@@ -225,4 +225,124 @@ describe('TraceroutesRepository.getTraceroutesInvolvingNode (phase 2 §4/§8.2)'
     });
     expect(result).toHaveLength(2);
   });
+
+  // Relayed participation is MQTT-only; a Meshtastic/MeshCore source's picker
+  // must list only the routes the node is an endpoint of.
+  describe('endpointOnly', () => {
+    /** One endpoint row + one relayed row, both involving node 111. */
+    async function seedBoth() {
+      await repo.insertTraceroute(
+        makeTraceroute({ fromNodeNum: 111, toNodeNum: 222, timestamp: Date.now(), packetId: 1 }),
+        'src-a',
+      );
+      await repo.insertTraceroute(
+        makeTraceroute({
+          fromNodeNum: 333,
+          toNodeNum: 444,
+          route: '[111]',
+          timestamp: Date.now() + 1,
+          packetId: 2,
+        }),
+        'src-a',
+      );
+    }
+
+    it('drops relayed rows and keeps endpoint rows', async () => {
+      await seedBoth();
+      const result = await repo.getTraceroutesInvolvingNode(111, {
+        sourceId: 'src-a',
+        endpointOnly: true,
+      });
+      expect(result).toHaveLength(1);
+      expect(result[0].packetId).toBe(1);
+      expect(result[0].participation).toBe('endpoint');
+    });
+
+    it('keeps relayed rows when not set (the MQTT path)', async () => {
+      await seedBoth();
+      const result = await repo.getTraceroutesInvolvingNode(111, { sourceId: 'src-a' });
+      expect(result).toHaveLength(2);
+      expect(result.map(r => r.participation).sort()).toEqual(['endpoint', 'hop']);
+    });
+
+    it('matches the node on either endpoint column', async () => {
+      await repo.insertTraceroute(
+        makeTraceroute({ fromNodeNum: 111, toNodeNum: 222, packetId: 1 }),
+        'src-a',
+      );
+      await repo.insertTraceroute(
+        makeTraceroute({ fromNodeNum: 222, toNodeNum: 111, packetId: 2, timestamp: Date.now() + 1 }),
+        'src-a',
+      );
+      const result = await repo.getTraceroutesInvolvingNode(111, {
+        sourceId: 'src-a',
+        endpointOnly: true,
+      });
+      expect(result).toHaveLength(2);
+    });
+
+    it('stays source-scoped', async () => {
+      await repo.insertTraceroute(makeTraceroute({ fromNodeNum: 111, toNodeNum: 222 }), 'src-a');
+      await repo.insertTraceroute(makeTraceroute({ fromNodeNum: 111, toNodeNum: 222 }), 'src-b');
+      const result = await repo.getTraceroutesInvolvingNode(111, {
+        sourceId: 'src-a',
+        endpointOnly: true,
+      });
+      expect(result).toHaveLength(1);
+    });
+
+    it('honours sinceTimestamp and limit, newest first', async () => {
+      const now = Date.now();
+      for (let i = 0; i < 5; i++) {
+        await repo.insertTraceroute(
+          makeTraceroute({ fromNodeNum: 111, toNodeNum: 222, timestamp: now + i, packetId: i }),
+          'src-a',
+        );
+      }
+      const limited = await repo.getTraceroutesInvolvingNode(111, {
+        sourceId: 'src-a',
+        endpointOnly: true,
+        limit: 2,
+      });
+      expect(limited).toHaveLength(2);
+      expect(limited[0].packetId).toBe(4);
+
+      const windowed = await repo.getTraceroutesInvolvingNode(111, {
+        sourceId: 'src-a',
+        endpointOnly: true,
+        sinceTimestamp: now + 3,
+      });
+      expect(windowed).toHaveLength(2);
+    });
+
+    it('is not bounded by scanLimit — an old pair survives a busy source', async () => {
+      const now = Date.now();
+      // The node's only route is the oldest row, behind 30 unrelated ones.
+      await repo.insertTraceroute(
+        makeTraceroute({ fromNodeNum: 111, toNodeNum: 222, timestamp: now, packetId: 999 }),
+        'src-a',
+      );
+      for (let i = 1; i <= 30; i++) {
+        await repo.insertTraceroute(
+          makeTraceroute({ fromNodeNum: 777, toNodeNum: 888, timestamp: now + i, packetId: i }),
+          'src-a',
+        );
+      }
+      // The scan window never reaches it...
+      const scanned = await repo.getTraceroutesInvolvingNode(111, {
+        sourceId: 'src-a',
+        scanLimit: 5,
+      });
+      expect(scanned).toHaveLength(0);
+
+      // ...but the pushed-down SQL predicate finds it regardless.
+      const direct = await repo.getTraceroutesInvolvingNode(111, {
+        sourceId: 'src-a',
+        endpointOnly: true,
+        scanLimit: 5,
+      });
+      expect(direct).toHaveLength(1);
+      expect(direct[0].packetId).toBe(999);
+    });
+  });
 });
