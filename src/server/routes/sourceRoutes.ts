@@ -12,6 +12,7 @@ import { loRaCenterFrequencyMhz, REGION_SHORT_NAME } from '../../utils/loraFrequ
 import { MqttBrokerManager, MAX_HOP_LIMIT, type MqttBrokerSourceConfig } from '../mqttBrokerManager.js';
 import { MqttBridgeManager, type MqttBridgeSourceConfig } from '../mqttBridgeManager.js';
 import waypointRoutes from './waypoints.js';
+import observerRoutes from './sourceObserverRoutes.js';
 import { PortNum } from '../constants/meshtastic.js';
 import {
   buildSourceNodes,
@@ -23,6 +24,8 @@ import {
 import { getSourcePkiKeyStore, isPkiDmDecryptionGloballyEnabled } from '../services/sourcePkiKeyStore.js';
 import { mqttGeoSweepService, type GeoSweepStatsSink } from '../services/mqttGeoSweepService.js';
 import type { MqttFilterConfig } from '../mqttPacketFilter.js';
+import { fail } from '../utils/apiResponse.js';
+import { normalizeBrokerUrl } from '../transports/mqttBrokerClient.js';
 
 const router = Router();
 
@@ -59,6 +62,108 @@ export async function validateVirtualNodeConfig(
     if (otherVn?.enabled === true && otherVn.port === port) {
       return { status: 409, error: `virtualNode.port ${port} is already in use by source "${s.name}"` };
     }
+  }
+  return null;
+}
+
+// Own-property names that must never appear inside an `observer` config block.
+// The signing key lives encrypted in `meshcore_observer_keys` (#4457 Phase 1);
+// it must never be client-writable through the general config path.
+// Best-effort blocklist, not a comprehensive one — the real guard is that the
+// key lives in its own table and nothing ever reads key material out of
+// `sources.config`. This check just gives a clear error for the obvious names.
+const OBSERVER_KEY_MATERIAL_FIELDS = ['privateKey', 'privateKeyHex', 'signingKey', 'key', 'secret'] as const;
+
+function observerConfigContainsKeyMaterial(observer: Record<string, unknown>): boolean {
+  return OBSERVER_KEY_MATERIAL_FIELDS.some((f) => Object.prototype.hasOwnProperty.call(observer, f));
+}
+
+// Validate the `observer` (Analyzer Observer, #4457) config block nested
+// inside a source config blob. Returns null on success/absent, or
+// { status, error, code } on failure. Synchronous — unlike
+// validateVirtualNodeConfig, there is no cross-source uniqueness constraint
+// on observer config, so no DB round-trip is needed.
+// Exported for unit testing (see sourceRoutes.observerValidation.test.ts).
+export function validateObserverConfig(
+  type: string,
+  config: Record<string, unknown> | null | undefined,
+): { status: number; error: string; code: string } | null {
+  const observer = config?.observer;
+  if (observer === undefined || observer === null) return null;
+  if (typeof observer !== 'object' || Array.isArray(observer)) {
+    return { status: 400, error: 'observer must be an object', code: 'INVALID_PARAMETER_TYPE' };
+  }
+  const observerObj = observer as Record<string, unknown>;
+  // Key-material rejection runs regardless of `enabled` or source `type` — a
+  // hostile/careless client must never be able to smuggle a signing key into
+  // `sources.config` via either an unrelated source type or a disabled block.
+  if (observerConfigContainsKeyMaterial(observerObj)) {
+    return {
+      status: 400,
+      error: 'observer config must not contain key material; use POST /api/sources/:id/observer/key',
+      code: 'OBSERVER_KEY_IN_CONFIG',
+    };
+  }
+  if (type !== 'meshcore') {
+    return { status: 400, error: 'observer config is only supported on meshcore sources', code: 'INVALID_PARAMETER' };
+  }
+  if (observerObj.enabled !== true) return null;
+  if (config?.deviceType === 'repeater') {
+    return {
+      status: 400,
+      error: 'the Analyzer Observer requires a Companion device; repeaters cannot export a signing key',
+      code: 'OBSERVER_REQUIRES_COMPANION',
+    };
+  }
+  const brokerUrl = observerObj.brokerUrl;
+  if (typeof brokerUrl !== 'string' || brokerUrl.length === 0) {
+    return { status: 400, error: 'observer.brokerUrl must be a non-empty string', code: 'INVALID_PARAMETER' };
+  }
+  // Reject an explicit disallowed scheme BEFORE normalization. normalizeBrokerUrl
+  // (shared with the Phase 2 MQTT client — must not be modified here) only
+  // recognizes mqtt/mqtts/ws/wss/tcp/tls as an explicit passthrough scheme; any
+  // other explicit scheme (http://, https://, ftp://, ...) falls through its
+  // "bare host" branch and gets silently prefixed with mqtt://, laundering a bad
+  // scheme into an apparently-valid URL (e.g. "http://broker.example" would
+  // otherwise normalize to a parseable "mqtt://http://broker.example" whose
+  // hostname is "http"). Catch it here on the raw input instead.
+  const schemeSepIdx = brokerUrl.indexOf('://');
+  if (schemeSepIdx !== -1) {
+    const scheme = brokerUrl.slice(0, schemeSepIdx).toLowerCase();
+    if (!['ws', 'wss', 'mqtt', 'mqtts'].includes(scheme)) {
+      return { status: 400, error: 'observer.brokerUrl must be a ws/wss/mqtt/mqtts URL', code: 'INVALID_BROKER_URL' };
+    }
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(normalizeBrokerUrl(brokerUrl));
+  } catch {
+    return { status: 400, error: 'observer.brokerUrl must be a ws/wss/mqtt/mqtts URL', code: 'INVALID_BROKER_URL' };
+  }
+  if (!['ws:', 'wss:', 'mqtt:', 'mqtts:'].includes(parsed.protocol) || parsed.hostname.length === 0) {
+    return { status: 400, error: 'observer.brokerUrl must be a ws/wss/mqtt/mqtts URL', code: 'INVALID_BROKER_URL' };
+  }
+  const iataCode = observerObj.iataCode;
+  const isValidIata = typeof iataCode === 'string' && (/^[A-Za-z]{3}$/.test(iataCode) || iataCode.toLowerCase() === 'test');
+  if (!isValidIata) {
+    return {
+      status: 400,
+      error: "observer.iataCode must be a 3-letter IATA code or 'test'",
+      code: 'INVALID_IATA_CODE',
+    };
+  }
+  const tokenAudience = observerObj.tokenAudience;
+  const isValidAudience =
+    typeof tokenAudience === 'string' &&
+    tokenAudience.length > 0 &&
+    tokenAudience.length <= 255 &&
+    !/\s/.test(tokenAudience);
+  if (!isValidAudience) {
+    return {
+      status: 400,
+      error: 'observer.tokenAudience must be a non-empty string with no whitespace',
+      code: 'INVALID_PARAMETER',
+    };
   }
   return null;
 }
@@ -226,6 +331,25 @@ function preserveSourceCredentials(
   return merged;
 }
 
+// Analyzer Observer (#4457) defence-in-depth: the observer block itself
+// carries no secrets by design (brokerUrl/iataCode/tokenAudience are all
+// public-by-nature, and the signing key is never in `config` because
+// validateObserverConfig's OBSERVER_KEY_IN_CONFIG check rejects it). This
+// strip exists only to cover a pre-existing row written before that
+// validation shipped. Runs for admins too — key material must never leave
+// the process, ever, regardless of who is asking.
+function stripObserverKeyMaterial<T extends Record<string, unknown>>(cfg: T): T {
+  const obs = cfg?.observer;
+  if (!obs || typeof obs !== 'object' || Array.isArray(obs)) return cfg;
+  const { privateKey, privateKeyHex, signingKey, key, secret, ...safeObserver } = obs as Record<string, unknown>;
+  void privateKey;
+  void privateKeyHex;
+  void signingKey;
+  void key;
+  void secret;
+  return { ...cfg, observer: safeObserver } as T;
+}
+
 // MM-SEC-8: shared credential strip applied to source records leaving the
 // HTTP boundary. The `mqtt` and `meshcore` source types carry connection
 // credentials in their `config` blob; both the list and singular GET
@@ -236,9 +360,10 @@ function stripSourceSecrets<T extends { config?: unknown } | null | undefined>(
   source: T,
   isAdmin: boolean,
 ): T {
-  if (!source || isAdmin) return source;
-  const cfg = (source.config as any) ?? {};
-  const { password, apiKey, ...rest } = cfg;
+  if (!source) return source;
+  const baseCfg = stripObserverKeyMaterial((source.config as Record<string, unknown> | null | undefined) ?? {});
+  if (isAdmin) return { ...source, config: baseCfg };
+  const { password, apiKey, ...rest } = baseCfg;
   void password;
   void apiKey;
   // mqtt_broker and mqtt_bridge nest their credentials inside sub-objects.
@@ -470,6 +595,12 @@ router.post('/', requirePermission('sources', 'write'), async (req: Request, res
       return res.status(vnErr.status).json({ error: vnErr.error });
     }
 
+    // Analyzer Observer config gate (#4457 Phase 1).
+    const observerErr = validateObserverConfig(type, config);
+    if (observerErr) {
+      return fail(res, observerErr.status, observerErr.code, observerErr.error);
+    }
+
     // Prevent duplicate host:port combinations
     if (type === 'meshtastic_tcp' && config.host && config.port) {
       const existing = await databaseService.sources.getAllSources();
@@ -569,6 +700,12 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
       const vnErr = await validateVirtualNodeConfig(existing.type, config, existing.id);
       if (vnErr) {
         return res.status(vnErr.status).json({ error: vnErr.error });
+      }
+
+      // Analyzer Observer config gate (#4457 Phase 1).
+      const observerErr = validateObserverConfig(existing.type, config);
+      if (observerErr) {
+        return fail(res, observerErr.status, observerErr.code, observerErr.error);
       }
 
       // Validate mqtt_bridge topic rewrites (#3166) against the incoming
@@ -837,6 +974,16 @@ router.put('/:id', requirePermission('sources', 'write'), async (req: Request, r
       // MeshCore source config changed while enabled and autoConnect on —
       // the connect config is baked in at connect-time, so any change means
       // remove the old manager and register a fresh one with the updated config.
+      //
+      // Analyzer Observer (#4457 Phase 1, §4.2): this blanket restart is also
+      // how an `observer` config change (inside the same config blob) takes
+      // effect — deliberately reusing this existing hook rather than adding a
+      // new one, since Phase 1 ships no publisher to hot-swap into yet.
+      // Known cost: toggling the observer bounces the companion link like any
+      // other MeshCore config edit does today. Phase 2 follow-up: add a
+      // targeted `observerChanged` branch calling
+      // `manager.reconfigureObserver(...)`, mirroring the `vnChanged` branch
+      // above, once the publisher exists to reconfigure.
       try {
         const mcConfig = meshcoreConfigFromSource(source);
         if (mcConfig) {
@@ -1418,5 +1565,6 @@ router.post('/:id/prune-outside-roi', requirePermission('sources', 'write'), asy
 // Waypoints sub-router. Each handler runs `requirePermission('waypoints', …)`
 // scoped to the path's `:id` parameter.
 router.use('/:id/waypoints', waypointRoutes);
+router.use('/:id/observer', observerRoutes);
 
 export default router;
