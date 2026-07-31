@@ -918,7 +918,12 @@ router.post('/get-device-metadata', requireAdmin(), async (req, res) => {
             role: metadata.role || 0,
             positionFlags: metadata.positionFlags || 0,
             hwModel: metadata.hwModel || 0,
-            hasRemoteHardware: metadata.hasRemoteHardware || false
+            hasRemoteHardware: metadata.hasRemoteHardware || false,
+            // Read-only build capability added in firmware 2.8 (DeviceMetadata
+            // field 14): whether XEdDSA packet signature verification is
+            // compiled in. Distinguishes "this node cannot sign" from "this
+            // node did not sign this packet" (#3923).
+            hasXeddsa: metadata.hasXeddsa || false
           }
         });
       } else {

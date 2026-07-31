@@ -5785,11 +5785,15 @@ class MeshtasticManager implements ISourceManager {
         nodeData.shortName = nodeId.slice(-4);
       }
 
-      // Only include SNR/RSSI if they have valid values
+      // Only include SNR/RSSI if they have valid values.
+      // -128 is the firmware "no SNR" sentinel; 0 dB is a real reading (#3590).
+      // rx_rssi gained explicit presence in firmware 2.8 (`optional int32
+      // rx_rssi = 12`, firmware PR #11271), so absent decodes to null and a
+      // present 0 is a genuine 0 dBm reception — do not filter it out (#3548).
       if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
         nodeData.snr = meshPacket.rxSnr;
       }
-      if (meshPacket.rxRssi != null && meshPacket.rxRssi !== 0) {
+      if (meshPacket.rxRssi != null) {
         nodeData.rssi = meshPacket.rxRssi;
       }
       await databaseService.upsertNodeAsync(nodeData, this.sourceId);
@@ -6974,7 +6978,7 @@ class MeshtasticManager implements ISourceManager {
           if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
             technicalData.snr = meshPacket.rxSnr;
           }
-          if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
+          if (meshPacket.rxRssi != null) {
             technicalData.rssi = meshPacket.rxRssi;
           }
           await databaseService.upsertNodeAsync(technicalData, this.sourceId);
@@ -7002,7 +7006,7 @@ class MeshtasticManager implements ISourceManager {
           if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
             nodeData.snr = meshPacket.rxSnr;
           }
-          if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
+          if (meshPacket.rxRssi != null) {
             nodeData.rssi = meshPacket.rxRssi;
           }
 
@@ -7256,7 +7260,7 @@ class MeshtasticManager implements ISourceManager {
           logger.debug(`📊 Saved local SNR telemetry: ${meshPacket.rxSnr} dB (${reason}, previous: ${latestSnrTelemetry?.value || 'N/A'})`);
         }
       }
-      if (meshPacket.rxRssi && meshPacket.rxRssi !== 0) {
+      if (meshPacket.rxRssi != null) {
         nodeData.rssi = meshPacket.rxRssi;
 
         // Save RSSI as telemetry if it has changed OR if 10+ minutes have passed
@@ -7341,7 +7345,7 @@ class MeshtasticManager implements ISourceManager {
       if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
         nodeData.snr = meshPacket.rxSnr;
       }
-      if (meshPacket.rxRssi != null && meshPacket.rxRssi !== 0) {
+      if (meshPacket.rxRssi != null) {
         nodeData.rssi = meshPacket.rxRssi;
       }
 
@@ -7502,7 +7506,7 @@ class MeshtasticManager implements ISourceManager {
       if (meshPacket.rxSnr != null && meshPacket.rxSnr !== -128) {
         nodeData.snr = meshPacket.rxSnr;
       }
-      if (meshPacket.rxRssi != null && meshPacket.rxRssi !== 0) {
+      if (meshPacket.rxRssi != null) {
         nodeData.rssi = meshPacket.rxRssi;
       }
 
@@ -12488,7 +12492,9 @@ class MeshtasticManager implements ISourceManager {
 
     // {RSSI} - Received Signal Strength Indicator
     if (result.includes('{RSSI}')) {
-      const rssiValue = (rxRssi !== undefined && rxRssi !== null && rxRssi !== 0)
+      // rx_rssi has explicit presence since firmware 2.8, so a present 0 is a
+      // genuine 0 dBm reading, not "unset" (issue #3548).
+      const rssiValue = (rxRssi !== undefined && rxRssi !== null)
         ? rxRssi.toString()
         : 'N/A';
       result = result.replace(/{RSSI}/g, encode(rssiValue));

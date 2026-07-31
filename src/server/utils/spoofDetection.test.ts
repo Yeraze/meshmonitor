@@ -11,6 +11,11 @@ const OTHER = 0xaabbccdd;
 
 // Genuine local transmission as the host sees it: INTERNAL transport, fresh hop
 // count, no reception metadata.
+//
+// `rxRssi` is null, not 0: firmware 2.8 gave rx_rssi explicit presence
+// (`optional int32 rx_rssi = 12`), so an absent field decodes to null while a
+// genuine 0 dBm reading decodes to 0 and is carried on the wire. `rxSnr` keeps
+// proto3 implicit presence, so 0 there is still indistinguishable from absent.
 const genuineLocalTx: SpoofDetectionInput = {
   fromNum: LOCAL,
   localNodeNum: LOCAL,
@@ -18,7 +23,7 @@ const genuineLocalTx: SpoofDetectionInput = {
   hopStart: 3,
   hopLimit: 3,
   rxSnr: 0,
-  rxRssi: 0,
+  rxRssi: null,
   viaMqtt: false,
 };
 
@@ -49,8 +54,30 @@ describe('hasRfReceptionMarkers', () => {
     expect(hasRfReceptionMarkers({ ...genuineLocalTx, rxRssi: -95 })).toBe(true);
   });
 
-  it('does NOT treat rxSnr/rxRssi of exactly 0 as a marker (self-origin default)', () => {
-    expect(hasRfReceptionMarkers({ ...genuineLocalTx, rxSnr: 0, rxRssi: 0 })).toBe(false);
+  it('does NOT treat an rxSnr of exactly 0 as a marker (implicit presence, #3590)', () => {
+    expect(hasRfReceptionMarkers({ ...genuineLocalTx, rxSnr: 0, rxRssi: null })).toBe(false);
+  });
+
+  // Firmware 2.8 / protobufs `optional int32 rx_rssi = 12` (firmware PR #11271,
+  // issue #3548): 0 dBm is a real reading on SX126x/LR11x0/LR20x0 and can even go
+  // positive on SX127x. A *present* 0 is therefore a genuine RF marker; only an
+  // absent field (null/undefined) means "no reading".
+  it('treats a present rxRssi of exactly 0 as a reception marker (2.8 explicit presence)', () => {
+    expect(hasRfReceptionMarkers({ ...genuineLocalTx, rxRssi: 0 })).toBe(true);
+  });
+
+  it('does NOT treat an absent rxRssi as a marker', () => {
+    expect(hasRfReceptionMarkers({ ...genuineLocalTx, rxRssi: null })).toBe(false);
+    expect(hasRfReceptionMarkers({ ...genuineLocalTx, rxRssi: undefined })).toBe(false);
+  });
+
+  // A 2.8 node spoofing our local node at point-blank range reports rx_rssi 0.
+  // Under the pre-2.8 `rxRssi !== 0` rule that packet was misread as our own
+  // transmission; presence semantics classify it correctly.
+  it('flags a spoof whose only RF marker is a present rxRssi of 0', () => {
+    expect(
+      detectLocalNodeSpoof({ ...genuineLocalTx, rxRssi: 0, packetId: 4242, wasRecentlySentByUs: false })
+    ).toEqual({ isGenuineLocalTx: false, spoofSuspected: true });
   });
 
   it('treats hopStart > hopLimit (travelled) as a marker', () => {

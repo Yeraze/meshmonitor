@@ -105,7 +105,10 @@ export const REGION_OPTIONS: RegionOption[] = [
   { value: 12, label: 'TH - Thailand' },
   { value: 13, label: 'LORA_24 - WLAN Band' },
   { value: 14, label: 'UA_433 - Ukraine 433MHz' },
-  { value: 15, label: 'UA_868 - Ukraine 868MHz' },
+  // Deprecated upstream in the 2.8 protobufs (`UA_868 = 15 [deprecated = true]`).
+  // Kept selectable so existing devices still round-trip, but labelled so nobody
+  // picks it for a new deployment.
+  { value: 15, label: 'UA_868 - Ukraine 868MHz (deprecated)' },
   { value: 16, label: 'MY_433 - Malaysia 433MHz' },
   { value: 17, label: 'MY_919 - Malaysia 919MHz' },
   { value: 18, label: 'SG_923 - Singapore' },

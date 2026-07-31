@@ -135,6 +135,9 @@ const HARDWARE_IMAGES: Record<number, string | null> = {
   138: null, // CROWPANEL_P4
   139: null, // HELTEC_MESH_TOWER_V2
   140: null, // MESHNOLOGY_W10
+  141: null, // HELTEC_RC32
+  142: null, // HELTEC_RC52
+  143: null, // HELTEC_RCC6
 };
 
 const BASE_IMAGE_URL = 'https://raw.githubusercontent.com/meshtastic/web-flasher/main/public/img/devices/';
