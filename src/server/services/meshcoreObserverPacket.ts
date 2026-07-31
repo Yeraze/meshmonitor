@@ -104,7 +104,7 @@ function hexToBytesLocal(hex: string | null | undefined): Uint8Array {
   const len = Math.floor(clean.length / 2);
   const out = new Uint8Array(len);
   for (let i = 0; i < len; i++) {
-    out[i] = parseInt(clean.substr(i * 2, 2), 16);
+    out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
   }
   return out;
 }
@@ -264,6 +264,10 @@ export function calculateMeshCorePacketHash(rawHex: string): string {
 
     const pathLenRaw = bytes[offset];
     offset += 1;
+    // 0xff is the firmware sentinel for "sent direct, no relay hops" —
+    // pathByteLength maps it to 0, so no hop bytes are skipped before the
+    // payload. Same net layout parseObserverFrame produces via its explicit
+    // pathLenRaw !== 0xff branch.
     offset += pathByteLength(pathLenRaw);
 
     const payload = bytes.subarray(Math.min(offset, bytes.length));

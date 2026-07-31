@@ -161,6 +161,12 @@ export class MeshCoreObserverPublisher {
    * failure reason lands in `getStatus().lastError`, never a thrown error.
    */
   async start(): Promise<void> {
+    // Reset the auth-failure state so a fresh start (e.g. a new instance
+    // reused in tests, or any future restart path) is never poisoned by a
+    // prior hard-stop — the guard is a concurrency latch, not a permanent
+    // fuse (review #4468 obs. 4).
+    this.authStopping = false;
+    this.authFailures = 0;
     const result = await this.mintTokenFn(this.options.sourceId);
     if (result.kind !== 'ok') {
       this.keyStored = false;

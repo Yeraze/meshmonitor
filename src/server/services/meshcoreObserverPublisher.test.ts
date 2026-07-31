@@ -414,6 +414,13 @@ describe('MeshCoreObserverPublisher', () => {
       expect(client.publish).toHaveBeenCalledTimes(1);
       expect(client.end).toHaveBeenCalledTimes(1);
     });
+
+    it('is safe to call before start() — no client, no publish, no throw', async () => {
+      const { publisher } = makePublisher();
+      await expect(publisher.stop()).resolves.toBeUndefined();
+      expect(publisher.isRunning()).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 
   it('redacts token-shaped substrings from lastError', async () => {

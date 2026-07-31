@@ -1399,6 +1399,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       this.config.observer = observerConfigFromSource({ observer } as MeshCoreSourceConfig);
     }
     if (this.connected) {
+      // startObserver() is a no-op when the normalized config came back
+      // disabled/incomplete (its !obs?.enabled guard), so calling it
+      // unconditionally here is safe — a disable hot-swap ends with the
+      // publisher stopped and nothing restarted.
       await this.startObserver();
     }
   }
