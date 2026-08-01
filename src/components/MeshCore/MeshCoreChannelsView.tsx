@@ -318,8 +318,14 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // every status/message/node update from the mesh, even with zero user
   // interaction (#3880).
   const { getDefaultScope, fetchSavedRegions, discoverRegions } = actions;
+
+  // Both lookups below exist only to populate the scope-override control, which
+  // is a SEND-side affordance. Their routes are `requireAuth()` +
+  // `configuration: read`, so firing them for a read-only (or anonymous) viewer
+  // is guaranteed to 401 and buys nothing. Gate on `canSend` so the requests are
+  // never made rather than made and ignored.
   useEffect(() => {
-    if (!status?.connected) return;
+    if (!canSend || !status?.connected) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -330,12 +336,13 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       }
     })();
     return () => { cancelled = true; };
-  }, [status?.connected, getDefaultScope]);
+  }, [canSend, status?.connected, getDefaultScope]);
 
   // Load the global saved-regions catalog (#3770) for the override suggestions.
   // This is a cheap local DB read (no radio traffic), so it's safe to run on
   // mount / source change regardless of connection state.
   useEffect(() => {
+    if (!canSend) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -346,7 +353,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       }
     })();
     return () => { cancelled = true; };
-  }, [fetchSavedRegions, sourceId]);
+  }, [canSend, fetchSavedRegions, sourceId]);
 
   // Union of saved + discovered regions, de-duplicated, for the override
   // datalist. Saved regions come first (operator-curated), then any extra

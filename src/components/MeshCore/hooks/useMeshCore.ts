@@ -1003,17 +1003,23 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  /**
+   * Saved-regions catalog for the scope-override datalist.
+   *
+   * Deliberately does NOT surface a global error, matching `getDefaultScope`
+   * above: this only feeds optional autocomplete suggestions, and its route is
+   * `requireAuth()` + `configuration: read`. Reporting the failure meant an
+   * anonymous read-only viewer opening a MeshCore channel got the raw 401 body
+   * — "Authentication required" — as a banner across a page that was otherwise
+   * working, which reads as "you can't view this channel".
+   */
   const fetchSavedRegions = useCallback(async (): Promise<SavedRegion[] | null> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/saved-regions`);
       const data = await response.json();
-      if (!data.success) {
-        setError(data.error || 'Failed to load saved regions');
-        return null;
-      }
+      if (!data.success) return null;
       return Array.isArray(data.regions) ? (data.regions as SavedRegion[]) : [];
     } catch (_err) {
-      setError('Failed to load saved regions');
       return null;
     }
   }, [mcPrefix, csrfFetch]);
