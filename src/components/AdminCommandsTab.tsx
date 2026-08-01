@@ -720,11 +720,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           
           // First, ensure we have a session passkey
           try {
-            const passkeyResponse = await apiService.post<{
+            const passkeyResponse = await apiService.ensureSessionPasskey<{
               success: boolean;
               hasPasskey: boolean;
               remainingSeconds: number | null;
-            }>('/api/admin/ensure-session-passkey', {
+            }>({
               nodeNum: selectedNodeNum,
               ...(sourceId ? { sourceId } : {})
             });
@@ -973,11 +973,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       // Note: This is done once before retries since the passkey persists
       if (isRemoteNode) {
         try {
-          const passkeyResponse = await apiService.post<{
+          const passkeyResponse = await apiService.ensureSessionPasskey<{
             success: boolean;
             hasPasskey: boolean;
             remainingSeconds: number | null;
-          }>('/api/admin/ensure-session-passkey', {
+          }>({
             nodeNum: selectedNodeNum,
             ...(sourceId ? { sourceId } : {})
           });
@@ -1260,11 +1260,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
         
         // First, ensure we have a session passkey (prevents conflicts from parallel requests)
         try {
-          const passkeyResponse = await apiService.post<{
+          const passkeyResponse = await apiService.ensureSessionPasskey<{
             success: boolean;
             hasPasskey: boolean;
             remainingSeconds: number | null;
-          }>('/api/admin/ensure-session-passkey', {
+          }>({
             nodeNum: selectedNodeNum,
             ...(sourceId ? { sourceId } : {})
           });

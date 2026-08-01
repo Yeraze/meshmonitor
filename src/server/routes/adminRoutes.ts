@@ -646,22 +646,61 @@ router.post('/ensure-session-passkey', requireAdmin(), async (req, res) => {
       return res.json({ success: true, message: 'Local node does not require session passkey' });
     }
 
-    // Check if we already have a valid session passkey
-    let sessionPasskey = espManager.getSessionPasskey(destinationNodeNum);
-    if (!sessionPasskey) {
-      logger.debug(`Requesting session passkey for remote node ${destinationNodeNum}`);
-      sessionPasskey = await espManager.requestRemoteSessionPasskey(destinationNodeNum);
-      if (!sessionPasskey) {
-        return res.status(500).json({ error: `Failed to obtain session passkey for remote node ${destinationNodeNum}` });
-      }
+    // Already cached — answer immediately, no mesh round-trip needed.
+    const cachedPasskey = espManager.getSessionPasskey(destinationNodeNum);
+    if (cachedPasskey) {
+      return res.json({
+        success: true,
+        message: 'Session passkey available',
+        ...espManager.getSessionPasskeyStatus(destinationNodeNum)
+      });
     }
 
-    // Return status with expiry info
-    const status = espManager.getSessionPasskeyStatus(destinationNodeNum);
-    return res.json({
+    // Acquisition costs up to 45s of mesh time. Holding the request open for
+    // that is what produced upstream 502s (#4482), so hand back an operation
+    // id and finish in the background.
+    const operation = adminOperationService.create({
+      command: 'ensureSessionPasskey',
+      sourceId: espManager.sourceId,
+      destinationNodeNum,
+      userId: req.session?.userId ?? null,
+    });
+
+    void (async () => {
+      try {
+        adminOperationService.setStatus(operation.id, 'awaiting_passkey');
+        logger.debug(`Requesting session passkey for remote node ${destinationNodeNum}`);
+        const passkey = await espManager.requestRemoteSessionPasskey(destinationNodeNum);
+        if (!passkey) {
+          adminOperationService.fail(operation.id, {
+            code: 'PASSKEY_TIMEOUT',
+            message: `Failed to obtain session passkey for remote node ${destinationNodeNum}`,
+          });
+          return;
+        }
+        adminOperationService.succeed(operation.id, {
+          message: 'Session passkey available',
+          ...espManager.getSessionPasskeyStatus(destinationNodeNum),
+        });
+      } catch (error) {
+        if (isTxDisabledError(error)) {
+          adminOperationService.fail(operation.id, { code: 'TX_DISABLED', message: 'Transmit is disabled on this source' });
+          return;
+        }
+        logger.error(`Error ensuring session passkey (operation ${operation.id}):`, error);
+        const coded = error as { code?: string; message?: string } | null;
+        adminOperationService.fail(operation.id, {
+          code: coded?.code || 'PASSKEY_FAILED',
+          message: coded?.message || 'Failed to ensure session passkey',
+        });
+      }
+    })();
+
+    return res.status(202).json({
       success: true,
-      message: 'Session passkey available',
-      ...status
+      operationId: operation.id,
+      status: operation.status,
+      message: `Session passkey requested for node ${destinationNodeNum}`,
     });
   } catch (error: any) {
     if (isTxDisabledError(error)) {
@@ -1170,10 +1209,20 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
 
     logger.debug(`📥 Decoded ${decoded.channels?.length || 0} channels, LoRa config: ${!!decoded.loraConfig}`);
 
-    const importedChannels = [];
+    // Explicitly typed: inference no longer reaches the pushes now that they
+    // happen inside the runImport thunk below.
+    const importedChannels: Array<{ index: number; name: string }> = [];
     let loraImported = false;
     let requiresReboot = false;
 
+    // The import body below is wrapped in a thunk rather than being awaited
+    // inline: importing to a REMOTE node blocks on the session passkey (up to
+    // 45s) and then a burst of admin sends, which is exactly the HTTP hold that
+    // produced upstream 502s (#4482). Local imports still await it directly.
+    //
+    // Its contents are deliberately left at their original indentation so the
+    // diff stays reviewable — only the wrapper lines are new.
+    const runImport = async () => {
     if (isLocalNode) {
       // Use existing local import logic
       try {
@@ -1338,14 +1387,56 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
       }
     }
 
-    res.json({
-      success: true,
+    return {
       imported: {
         channels: importedChannels.length,
         channelDetails: importedChannels,
         loraConfig: loraImported,
       },
       requiresReboot,
+    };
+    };
+
+    if (isLocalNode) {
+      const result = await runImport();
+      return res.json({ success: true, ...result });
+    }
+
+    // Remote import: accept now, finish on the mesh's schedule (#4482).
+    const operation = adminOperationService.create({
+      command: 'importConfig',
+      sourceId: aicManager.sourceId,
+      destinationNodeNum,
+      userId: req.session?.userId ?? null,
+    });
+
+    void (async () => {
+      try {
+        adminOperationService.setStatus(operation.id, 'awaiting_passkey');
+        const result = await runImport();
+        adminOperationService.succeed(operation.id, {
+          message: `Configuration imported to node ${destinationNodeNum}`,
+          ...result,
+        });
+      } catch (error) {
+        if (isTxDisabledError(error)) {
+          adminOperationService.fail(operation.id, { code: 'TX_DISABLED', message: 'Transmit is disabled on this source' });
+          return;
+        }
+        logger.error(`Error importing configuration (operation ${operation.id}):`, error);
+        const coded = error as { code?: string; message?: string } | null;
+        adminOperationService.fail(operation.id, {
+          code: coded?.code || 'IMPORT_CONFIG_FAILED',
+          message: coded?.message || 'Failed to import configuration',
+        });
+      }
+    })();
+
+    return res.status(202).json({
+      success: true,
+      operationId: operation.id,
+      status: operation.status,
+      message: `Configuration import accepted for node ${destinationNodeNum}`,
     });
   } catch (error: any) {
     if (isTxDisabledError(error)) {

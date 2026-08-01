@@ -261,6 +261,76 @@ describe('adminRoutes — async remote-admin operations (#4482)', () => {
     });
   });
 
+  describe('POST /ensure-session-passkey (follow-up)', () => {
+    it('answers immediately from cache without opening an operation', async () => {
+      const requestRemoteSessionPasskey = vi.fn(() => new Promise(() => {}));
+      await sourceManagerRegistry.addManager(makeFakeManager({
+        getSessionPasskey: vi.fn().mockReturnValue(new Uint8Array([1])),
+        getSessionPasskeyStatus: vi.fn().mockReturnValue({ hasPasskey: true, remainingSeconds: 250 }),
+        requestRemoteSessionPasskey,
+      }));
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/ensure-session-passkey')
+        .send({ nodeNum: REMOTE_NODE_NUM, sourceId: harness.sourceA });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ success: true, hasPasskey: true, remainingSeconds: 250 });
+      expect(res.body.operationId).toBeUndefined();
+      expect(requestRemoteSessionPasskey).not.toHaveBeenCalled();
+    });
+
+    it('returns 202 while acquisition is outstanding, then settles with the status', async () => {
+      let release: (v: Uint8Array) => void = () => {};
+      const gate = new Promise<Uint8Array>((resolve) => { release = resolve; });
+      await sourceManagerRegistry.addManager(makeFakeManager({
+        getSessionPasskey: vi.fn().mockReturnValue(null),
+        requestRemoteSessionPasskey: vi.fn(() => gate),
+        getSessionPasskeyStatus: vi.fn().mockReturnValue({ hasPasskey: true, remainingSeconds: 300 }),
+      }));
+
+      const agent = await harness.loginAs(harness.admin);
+      const accepted = await agent.post('/ensure-session-passkey')
+        .send({ nodeNum: REMOTE_NODE_NUM, sourceId: harness.sourceA });
+
+      // Would have blocked ~45s before the follow-up.
+      expect(accepted.status).toBe(202);
+      expect(typeof accepted.body.operationId).toBe('string');
+
+      release(new Uint8Array([7]));
+      const settled = await waitForSettled(agent, accepted.body.operationId);
+      expect(settled.status).toBe('succeeded');
+      expect(settled.result).toMatchObject({ hasPasskey: true, remainingSeconds: 300 });
+    });
+
+    it('records a timeout as PASSKEY_TIMEOUT', async () => {
+      await sourceManagerRegistry.addManager(makeFakeManager({
+        getSessionPasskey: vi.fn().mockReturnValue(null),
+        requestRemoteSessionPasskey: vi.fn().mockResolvedValue(null),
+      }));
+
+      const agent = await harness.loginAs(harness.admin);
+      const accepted = await agent.post('/ensure-session-passkey')
+        .send({ nodeNum: REMOTE_NODE_NUM, sourceId: harness.sourceA });
+
+      const settled = await waitForSettled(agent, accepted.body.operationId);
+      expect(settled.status).toBe('failed');
+      expect(settled.error.code).toBe('PASSKEY_TIMEOUT');
+    });
+
+    it('still answers the local node synchronously', async () => {
+      await sourceManagerRegistry.addManager(makeFakeManager({}));
+      const agent = await harness.loginAs(harness.admin);
+
+      const res = await agent.post('/ensure-session-passkey')
+        .send({ nodeNum: LOCAL_NODE_NUM, sourceId: harness.sourceA });
+
+      expect(res.status).toBe(200);
+      expect(res.body.operationId).toBeUndefined();
+      expect(adminOperationService.size()).toBe(0);
+    });
+  });
+
   describe('GET /operations/:id', () => {
     it('404s an unknown id', async () => {
       const agent = await harness.loginAs(harness.admin);

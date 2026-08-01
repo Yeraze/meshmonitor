@@ -721,7 +721,23 @@ class ApiService {
       throw new Error(error.error || 'Failed to import configuration');
     }
 
-    return response.json();
+    // Importing to a REMOTE node blocks on the passkey and a burst of admin
+    // sends, so that endpoint answers 202 + operation id (#4482 follow-up).
+    return this.followAdminOperation(await response.json());
+  }
+
+  /**
+   * Ensure a session passkey is cached for a remote node.
+   *
+   * Acquisition costs up to 45s of mesh time, so the endpoint answers 202 +
+   * operation id for remote nodes and this follows it to completion (#4482
+   * follow-up). Local nodes answer synchronously — they need no passkey.
+   */
+  async ensureSessionPasskey<T extends { success: boolean }>(
+    body: Record<string, unknown>,
+  ): Promise<T> {
+    const accepted = await this.post<AdminCommandAccepted>('/api/admin/ensure-session-passkey', body);
+    return this.followAdminOperation<T>(accepted);
   }
 
   async encodeChannelUrl(channelIds: number[], includeLoraConfig: boolean, nodeNum?: number, sourceId?: string | null): Promise<string> {
@@ -1615,7 +1631,21 @@ class ApiService {
     options?: { signal?: AbortSignal },
   ): Promise<T> {
     const accepted = await this.post<AdminCommandAccepted>('/api/admin/commands', body);
+    return this.followAdminOperation<T>(accepted, options);
+  }
 
+  /**
+   * Follow a background admin operation to completion (#4482).
+   *
+   * Shared by every endpoint that can answer 202 + operation id — admin
+   * commands, session-passkey acquisition, and remote config import all block
+   * on the same mesh round-trips and are followed the same way. A response
+   * without an operation id is already final and passes straight through.
+   */
+  private async followAdminOperation<T>(
+    accepted: AdminCommandAccepted,
+    options?: { signal?: AbortSignal },
+  ): Promise<T> {
     // Local node (or any server that answered synchronously): already done.
     if (!accepted?.operationId) {
       return accepted as unknown as T;
