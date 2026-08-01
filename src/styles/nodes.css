@@ -1411,6 +1411,11 @@
 
   .map-controls .map-controls-body {
     padding: 0.5rem;
+    /* Paired with the `max-height` in the later mobile override (#4495): once
+       the panel is bounded, a long feature list scrolls inside it rather than
+       growing down over the attribution. The base `.map-controls` sets
+       `overflow: hidden`, so without this the excess is just clipped. */
+    overflow-y: auto;
   }
 
   .map-controls .map-controls-drag-handle {
@@ -2387,6 +2392,18 @@
        opacity:0/pointer-events:none, so this has no effect on the normal
        map-controls interaction. */
     z-index: 997;
+    /*
+     * Keep the panel clear of the Leaflet attribution strip (#4495).
+     *
+     * Raising z-index cannot solve this: the attribution lives in Leaflet's
+     * own `.leaflet-bottom`, which ships `z-index: 1000`, while this panel must
+     * stay at 997 to yield to the Sources drawer (999). 997 < 1000, so wherever
+     * the two overlap the attribution wins — which is exactly the report.
+     * Bounding the height means they never overlap in the first place.
+     *
+     * 16px top offset + ~34px for the attribution strip and a little air.
+     */
+    max-height: calc(100% - 50px);
   }
 }
 
@@ -2536,7 +2553,10 @@
 }
 
 /* Map controls collapse button */
-.map-controls-collapse-btn {
+/* Zoom-to-fit-all shares the collapse button's shape so the header reads as one
+   control cluster (#4496). */
+.map-controls-collapse-btn,
+.map-controls-fit-btn {
   background: var(--ctp-surface1);
   border: none;
   border-radius: var(--radius-sm);
@@ -2554,9 +2574,17 @@
   flex-shrink: 0;
 }
 
-.map-controls-collapse-btn:hover {
+.map-controls-collapse-btn:hover,
+.map-controls-fit-btn:hover:not(:disabled) {
   background: var(--ctp-surface2);
   transform: scale(1.1);
+}
+
+/* No positioned nodes to fit — stays visible so the control doesn't shift
+   around, but reads as unavailable. */
+.map-controls-fit-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .map-controls-collapse-btn:active {

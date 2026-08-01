@@ -363,3 +363,52 @@ describe('NodesTab', () => {
     });
   });
 });
+
+describe('map controls: attribution clearance + zoom-to-fit (#4495, #4496)', () => {
+  const nodesCss = readFileSync(resolve('src/styles/nodes.css'), 'utf8');
+
+  /** Body of a rule inside the LATER mobile override block, per this file's #3532 note. */
+  function mobileOverrideRule(selector: string): string {
+    // lastIndexOf, NOT indexOf: an earlier NOTE comment cross-references this
+    // same phrase, and anchoring on it sliced in the BASE rule instead.
+    const block = nodesCss.slice(nodesCss.lastIndexOf('Map Controls (mobile override)'));
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return block.match(new RegExp(escaped + '\\s*\\{([^}]*)\\}'))?.[1] ?? '';
+  }
+
+  it('bounds the mobile controls panel so it cannot reach the attribution strip', () => {
+    // Raising z-index cannot fix this: the attribution is inside Leaflet's
+    // `.leaflet-bottom` (z-index 1000) while this panel must stay at 997 to
+    // yield to the Sources drawer (999). Geometry is the only lever.
+    const rule = mobileOverrideRule('.map-controls');
+    expect(rule).toMatch(/max-height:\s*calc\(/);
+    // The z-index that forces the geometric approach must still be there.
+    expect(rule).toMatch(/z-index:\s*997/);
+  });
+
+  it('lets a long feature list scroll inside the bounded panel', () => {
+    // Base .map-controls is `overflow: hidden`, so without this the excess is
+    // clipped rather than reachable.
+    expect(nodesCss).toMatch(/\.map-controls \.map-controls-body \{[^}]*overflow-y:\s*auto/);
+  });
+
+  it('styles the zoom-to-fit button and gives it a disabled state', () => {
+    expect(nodesCss).toMatch(/\.map-controls-fit-btn/);
+    expect(nodesCss).toMatch(/\.map-controls-fit-btn:disabled \{[^}]*cursor:\s*not-allowed/);
+  });
+
+  it('wires the fit button to a counter, not a boolean', () => {
+    // A boolean would fire once and never re-fit on a second tap.
+    const src = readFileSync(resolve('src/components/NodesTab.tsx'), 'utf8');
+    expect(src).toMatch(/setFitAllRequest\(n => n \+ 1\)/);
+    expect(src).toMatch(/<FitAllNodesController\s+request=\{fitAllRequest\}/);
+  });
+
+  it('fits to the OFFSET marker positions, matching the pins the user sees', () => {
+    // Fitting to raw centres could leave a visible pin just outside the
+    // viewport — the #4016/#4155 single-position rule.
+    const src = readFileSync(resolve('src/components/NodesTab.tsx'), 'utf8');
+    const memo = src.match(/const fitAllPositions[\s\S]{0,400}/)?.[0] ?? '';
+    expect(memo).toMatch(/nodePositions\.get\(node\.nodeNum\)/);
+  });
+});
