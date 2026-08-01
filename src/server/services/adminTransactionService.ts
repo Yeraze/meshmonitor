@@ -82,7 +82,8 @@ export class AdminTransactionService {
       const adminPacket = protobufService.createAdminPacket(
         adminMessagePayload,
         destinationNodeNum,
-        localNodeNum
+        localNodeNum,
+        this.mgr.getConfiguredHopLimit()
       );
 
       await this.mgr.sendLocalAdminPacket(adminPacket);
@@ -175,7 +176,8 @@ export class AdminTransactionService {
     const { data: adminPacket, packetId } = protobufService.createAdminPacketWithId(
       adminMessagePayload,
       destinationNodeNum,
-      localNodeNum
+      localNodeNum,
+      this.mgr.getConfiguredHopLimit()
     );
 
     // Register the waiter BEFORE sending so a fast ACK can't be missed.

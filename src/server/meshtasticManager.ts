@@ -61,7 +61,7 @@ import { migrateAutomationChannels } from './utils/automationChannelMigration.js
 import { detectChannelMoves } from './utils/channelMoveDetection.js';
 import { detectLocalNodeSpoof, SentPacketIdCache, type SpoofDetectionResult } from './utils/spoofDetection.js';
 import { applyHomoglyphOptimization } from '../utils/homoglyph.js';
-import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled } from './constants/meshtastic.js';
+import { PortNum, RoutingError, isPkiError, getRoutingErrorName, CHANNEL_DB_OFFSET, TransportMechanism, resolveRadioPacketTransport, isViaMqtt, MIN_TRACEROUTE_INTERVAL_MS, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isUdpBroadcastEnabled, resolveHopLimit } from './constants/meshtastic.js';
 import { normalizeChannelRole } from './constants/channelRole.js';
 import { createRequire } from 'module';
 import { validateCron, scheduleCron, type CronJob } from './utils/cronScheduler.js';
@@ -9094,6 +9094,23 @@ class MeshtasticManager implements ISourceManager {
    */
   isTxEnabled(): boolean {
     return this.actualDeviceConfig?.lora?.txEnabled !== false;
+  }
+
+  /**
+   * The hop limit THIS node is configured to use for its own outgoing packets,
+   * read from the in-memory device config. Falls back to the firmware default
+   * (3) when the LoRa config hasn't arrived yet. No DB access — safe to call
+   * per packet.
+   *
+   * Packets we build and hand to the radio carry whatever `hop_limit` we set;
+   * the firmware does not substitute the user's setting for us. Meshtastic
+   * Python resolves it client-side the same way (`mesh_interface.py`
+   * `_sendPacket` reads `localConfig.lora.hop_limit` when the caller passes
+   * none), which is why admin commands there reach nodes further than 3 hops
+   * out and ours did not.
+   */
+  getConfiguredHopLimit(): number {
+    return resolveHopLimit(this.actualDeviceConfig?.lora?.hopLimit);
   }
 
   /**

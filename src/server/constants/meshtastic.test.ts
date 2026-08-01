@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isViaMqtt, TransportMechanism, getTransportMechanismName, RoutingError, isPkiError, getPortNumName, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isValidNodeNum, MAX_NODE_NUM } from './meshtastic.js';
+import { isViaMqtt, TransportMechanism, getTransportMechanismName, RoutingError, isPkiError, getPortNumName, StoreForwardRequestResponse, getStoreForwardRequestResponseName, isValidNodeNum, MAX_NODE_NUM, resolveHopLimit, DEFAULT_HOP_LIMIT, MAX_HOP_LIMIT } from './meshtastic.js';
 
 describe('isViaMqtt', () => {
   it('should return true for MQTT transport mechanism', () => {
@@ -207,5 +207,39 @@ describe('isValidNodeNum', () => {
     expect(isValidNodeNum(null)).toBe(false);
     expect(isValidNodeNum(undefined)).toBe(false);
     expect(isValidNodeNum({})).toBe(false);
+  });
+});
+
+describe('resolveHopLimit', () => {
+  it('passes through valid configured values', () => {
+    for (let hops = 0; hops <= MAX_HOP_LIMIT; hops++) {
+      expect(resolveHopLimit(hops)).toBe(hops);
+    }
+  });
+
+  it('passes an explicit 0 through rather than promoting it to the default', () => {
+    // Firmware honors a configured 0 for its own sends. Note a real device
+    // configured to 0 arrives as null (proto3 omits zero scalars), so this
+    // exact input only comes from an explicit caller — see the null case below.
+    expect(resolveHopLimit(0)).toBe(0);
+  });
+
+  it('falls back to the firmware default when config has not arrived', () => {
+    // Proto3 omits an unset hop_limit, so it decodes as null/undefined here —
+    // which is also how a genuinely-zero device config reaches us.
+    expect(resolveHopLimit(undefined)).toBe(DEFAULT_HOP_LIMIT);
+    expect(resolveHopLimit(null)).toBe(DEFAULT_HOP_LIMIT);
+  });
+
+  it('clamps above-protocol values to the 3-bit max', () => {
+    expect(resolveHopLimit(8)).toBe(MAX_HOP_LIMIT);
+    expect(resolveHopLimit(255)).toBe(MAX_HOP_LIMIT);
+  });
+
+  it('rejects negative, fractional, and non-numeric values', () => {
+    expect(resolveHopLimit(-1)).toBe(DEFAULT_HOP_LIMIT);
+    expect(resolveHopLimit(2.5)).toBe(DEFAULT_HOP_LIMIT);
+    expect(resolveHopLimit(NaN)).toBe(DEFAULT_HOP_LIMIT);
+    expect(resolveHopLimit('5' as unknown as number)).toBe(DEFAULT_HOP_LIMIT);
   });
 });

@@ -3,7 +3,7 @@ import path from 'path';
 import { getProtobufRoot } from './protobufLoader.js';
 import { buildSharedContactPayload } from './services/sharedContactService.js';
 import { logger } from '../utils/logger.js';
-import { PortNum } from './constants/meshtastic.js';
+import { PortNum, resolveHopLimit } from './constants/meshtastic.js';
 import { MODULE_FIELD_BY_ID } from './constants/configTypes.js';
 
 export interface MeshtasticPosition {
@@ -1883,9 +1883,11 @@ class ProtobufService {
    * @param adminMessagePayload The encoded admin message
    * @param destination Optional destination node number (0 for local node)
    * @param fromNodeNum Optional source node number (required for proper packet routing)
+   * @param hopLimit Optional hop limit; pass the local node's configured
+   *   `lora.hopLimit` for remote admin. Defaults to DEFAULT_HOP_LIMIT.
    */
-  createAdminPacket(adminMessagePayload: Uint8Array, destination: number = 0, fromNodeNum?: number): Uint8Array {
-    return this.createAdminPacketWithId(adminMessagePayload, destination, fromNodeNum).data;
+  createAdminPacket(adminMessagePayload: Uint8Array, destination: number = 0, fromNodeNum?: number, hopLimit?: number): Uint8Array {
+    return this.createAdminPacketWithId(adminMessagePayload, destination, fromNodeNum, hopLimit).data;
   }
 
   /**
@@ -1893,7 +1895,7 @@ class ProtobufService {
    * caller can correlate the inbound routing ACK (Routing.request_id === id).
    * Used by the ACK-aware admin send path (issue #2608 follow-up).
    */
-  createAdminPacketWithId(adminMessagePayload: Uint8Array, destination: number = 0, fromNodeNum?: number): { data: Uint8Array; packetId: number } {
+  createAdminPacketWithId(adminMessagePayload: Uint8Array, destination: number = 0, fromNodeNum?: number, hopLimit?: number): { data: Uint8Array; packetId: number } {
     try {
       const root = getProtobufRoot();
       const ToRadio = root?.lookupType('meshtastic.ToRadio');
@@ -1916,12 +1918,19 @@ class ProtobufService {
       const packetId = Math.floor(Math.random() * 0xFFFFFFFF) + 1;
       logger.debug(`🔍 Generated packet ID: ${packetId} (0x${packetId.toString(16)})`);
 
+      // Honor the local node's configured hop limit when the caller supplies it.
+      // Meshtastic Python does the same (mesh_interface.py `_sendPacket` falls
+      // back to `localConfig.lora.hop_limit`), so a node configured for a deep
+      // mesh can actually reach its remote admin targets. Falls back to the
+      // firmware default when config hasn't arrived yet.
+      const effectiveHopLimit = resolveHopLimit(hopLimit);
+
       const meshPacketData: any = {
         id: packetId,
         to: destination,
         decoded: dataMsg,
         channel: 0,
-        hopLimit: 3,
+        hopLimit: effectiveHopLimit,
         wantAck: true,
         priority: 70,  // RELIABLE priority
         pkiEncrypted: true  // Python CLI sets this flag even with plaintext admin messages
@@ -1943,7 +1952,7 @@ class ProtobufService {
       });
 
       const encoded = ToRadio.encode(toRadio).finish();
-      logger.debug(`📤 Created admin ToRadio packet (destination: ${destination})`);
+      logger.debug(`📤 Created admin ToRadio packet (destination: ${destination}, hopLimit: ${effectiveHopLimit})`);
       logger.debug('🔍 ToRadio bytes:', Array.from(encoded).map(b => b.toString(16).padStart(2, '0')).join(' '));
       return { data: encoded, packetId };
     } catch (error) {
