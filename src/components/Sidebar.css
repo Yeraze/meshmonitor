@@ -1,30 +1,32 @@
+/*
+ * The sidebar is now the shared SourceNav (#4473) with `.sidebar` layered on for
+ * app-shell positioning. Structure — nav list, items, section headers, unread
+ * dots, collapsed behaviour — lives in src/components/nav/SourceNav.module.css.
+ *
+ * Width and theme are handed over as custom properties rather than plain
+ * declarations: SourceNav reads them, so the values apply by inheritance and
+ * cannot depend on which stylesheet the bundler emits first. Redeclaring
+ * `width`/`background` here instead would put two equal-specificity rules in a
+ * race — the failure mode that hid the send button in #4478.
+ */
 .sidebar {
+  --source-nav-collapsed-width: calc(60px + env(safe-area-inset-left, 0px));
+  --source-nav-expanded-width: calc(240px + env(safe-area-inset-left, 0px));
+  --source-nav-bg: var(--ctp-base);
+  --source-nav-border: 1px solid var(--ctp-surface1);
+
   position: fixed;
   left: 0;
   top: 0; /* Full page height from top of viewport */
   bottom: 0;
   height: 100vh;
   height: 100dvh; /* Dynamic viewport height - accounts for mobile browser chrome */
-  width: calc(60px + env(safe-area-inset-left, 0px)); /* Add safe area to width so content has full 60px */
-  background: var(--ctp-base);
-  border-right: 1px solid var(--ctp-surface1);
   transition: width 0.3s ease, transform 0.3s ease;
   z-index: 10001; /* Above header (10000) so it overlays cleanly */
-  display: flex;
-  flex-direction: column;
   padding-top: env(safe-area-inset-top); /* Account for iPhone notch/status bar */
   padding-bottom: max(1rem, env(safe-area-inset-bottom)); /* Account for iPhone home indicator */
   padding-left: env(safe-area-inset-left); /* Account for iPhone landscape notch */
   box-sizing: border-box; /* Include padding in height calculation */
-}
-
-.sidebar.collapsed {
-  width: calc(60px + env(safe-area-inset-left, 0px));
-}
-
-/* When expanded on desktop, show full width */
-.sidebar:not(.collapsed) {
-  width: calc(240px + env(safe-area-inset-left, 0px));
 }
 
 /* The old .sidebar-footer / .version-text / .news-link rules are gone: the
@@ -166,98 +168,10 @@
   text-overflow: ellipsis;
 }
 
-.sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  /* The controls and footer are in-flow siblings now (#4436), so no bottom
-     strip needs reserving here — just a little breathing room. */
-  padding: 8px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  flex: 1;
-}
-
-.sidebar-section-header {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--ctp-subtext0);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 12px 12px 4px 12px;
-  margin-top: 8px;
-}
-
-.sidebar-section {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.sidebar-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-md);
-  color: var(--ctp-text);
-  cursor: pointer;
-  transition: background-color 0.2s;
-  text-align: left;
-  font-size: 14px;
-  position: relative;
-  white-space: nowrap;
-}
-
-.sidebar-nav-item:hover {
-  background: var(--ctp-surface0);
-}
-
-.sidebar-nav-item.active {
-  background: var(--ctp-blue);
-  color: var(--ctp-crust);
-}
-
-.sidebar-nav-item .nav-icon {
-  font-size: 18px;
-  width: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.sidebar-nav-item .nav-label {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.sidebar.collapsed .sidebar-nav-item {
-  justify-content: center;
-  padding: 10px;
-}
-
-.sidebar.collapsed .nav-label {
-  display: none;
-}
-
-.nav-notification-dot {
-  width: 8px;
-  height: 8px;
-  background: var(--ctp-red);
-  border-radius: var(--radius-full);
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.sidebar.collapsed .nav-notification-dot {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-}
+/* The nav list, section headers, items, labels, unread dots and their collapsed
+   variants all moved to SourceNav.module.css (#4473) — the whole point being
+   that MeshCore and Meshtastic can no longer drift apart. Only app-shell
+   concerns (positioning, header, controls, scrollbars) stay in this file. */
 
 /* Main content always accounts for narrow sidebar */
 /* Removed old layout-affecting rules - sidebar now floats over content */
@@ -265,20 +179,18 @@
 /* Mobile responsive - portrait only */
 @media (max-width: 768px) and (orientation: portrait) {
   .sidebar {
-    /* Collapsed by default - show as hamburger icon only */
-    width: 48px;
+    /* Collapsed by default - show as hamburger icon only. Set through the
+       custom properties SourceNav reads, not a `width` declaration, so this
+       can't end up racing the module's own width rule on stylesheet order. */
+    --source-nav-collapsed-width: 48px;
+    --source-nav-expanded-width: 240px;
     padding-bottom: 6rem; /* Extra padding on mobile for home indicator */
     padding-bottom: max(6rem, calc(env(safe-area-inset-bottom) + 4rem));
   }
 
   .sidebar:not(.collapsed) {
     /* When expanded, slide in from left */
-    width: 240px;
     box-shadow: 2px 0 16px rgba(0, 0, 0, 0.3);
-  }
-
-  .sidebar.collapsed {
-    width: 48px;
   }
 
   .app-main {
@@ -315,23 +227,8 @@
   }
 }
 
-/* Scrollbar styling for sidebar */
-.sidebar-nav::-webkit-scrollbar {
-  width: 6px;
-}
-
-.sidebar-nav::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.sidebar-nav::-webkit-scrollbar-thumb {
-  background: var(--ctp-surface2);
-  border-radius: var(--radius-xs);
-}
-
-.sidebar-nav::-webkit-scrollbar-thumb:hover {
-  background: var(--ctp-overlay0);
-}
+/* Scrollbar styling moved with the nav list into SourceNav.module.css (#4473) —
+   `.sidebar-nav` no longer exists in the markup. */
 
 /* Mobile landscape - increased threshold to catch more devices */
 @media (max-height: 700px) and (orientation: landscape) {

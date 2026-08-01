@@ -1,0 +1,12 @@
+/*
+ * MeshCore-specific geometry for the shared SourceNav (#4473).
+ *
+ * Everything structural — item layout, unread dot, the mobile bottom bar —
+ * lives in SourceNav.module.css. This file only carries the width pair the
+ * MeshCore sub-toolbar has always used, so the two source types can share a
+ * component without being forced to share a rail width.
+ */
+.subToolbar {
+  --source-nav-collapsed-width: 56px;
+  --source-nav-expanded-width: 220px;
+}

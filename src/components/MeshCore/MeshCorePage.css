@@ -119,73 +119,9 @@
   overflow: hidden;
 }
 
-/* Sub-toolbar (narrow left strip) */
-.meshcore-sub-toolbar {
-  width: 56px;
-  background: var(--ctp-mantle);
-  border-right: 1px solid var(--ctp-surface1);
-  display: flex;
-  flex-direction: column;
-  padding: 0.5rem 0;
-  flex-shrink: 0;
-  transition: width 0.18s ease;
-}
-
-.meshcore-sub-toolbar.expanded {
-  width: 220px;
-}
-
-.meshcore-sub-toolbar-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.6rem 0.75rem;
-  margin: 0.1rem 0.4rem;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  color: var(--ctp-subtext0);
-  border: none;
-  background: transparent;
-  font-size: 0.9rem;
-  text-align: left;
-  width: calc(100% - 0.8rem);
-}
-
-.meshcore-sub-toolbar-item:hover {
-  background: var(--ctp-surface1);
-  color: var(--ctp-text);
-}
-
-.meshcore-sub-toolbar-item.active {
-  background: var(--ctp-surface1);
-  color: var(--ctp-mauve);
-}
-
-.meshcore-sub-toolbar-item .icon {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.1rem;
-  flex-shrink: 0;
-  position: relative;
-}
-
-/* Unread red-dot indicator overlaid on the nav icon (#3891). Anchored to the
-   icon's top-right so it stays put whether the toolbar is collapsed or
-   expanded. */
-.meshcore-nav-unread-dot {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 8px;
-  height: 8px;
-  background: var(--ctp-red);
-  border-radius: var(--radius-full);
-  border: 1px solid var(--ctp-mantle);
-  pointer-events: none;
-}
+/* The sub-toolbar is now the shared SourceNav (#4473) — its structural
+   styles live in src/components/nav/SourceNav.module.css, and the MeshCore
+   rail widths in MeshCoreSubToolbar.module.css. */
 
 /* Per-contact unread red-dot in the Node Details (DM) contact list (#3891). */
 .meshcore-dm-unread-dot {
@@ -196,30 +132,6 @@
   border-radius: var(--radius-full);
   flex-shrink: 0;
   margin-right: 2px;
-}
-
-.meshcore-sub-toolbar.collapsed .meshcore-sub-toolbar-item .label {
-  display: none;
-}
-
-.meshcore-sub-toolbar-spacer { flex: 1; }
-
-.meshcore-sub-toolbar-toggle {
-  margin: 0.25rem 0.4rem;
-  background: transparent;
-  border: 1px solid var(--ctp-surface2);
-  color: var(--ctp-subtext0);
-  border-radius: var(--radius-md);
-  padding: 0.35rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.meshcore-sub-toolbar-toggle:hover {
-  color: var(--ctp-text);
-  background: var(--ctp-surface1);
 }
 
 /* Content area */
@@ -1638,60 +1550,11 @@
     flex-direction: column-reverse;
   }
 
-  /* --- Sub-toolbar: horizontal bottom bar --- */
-  .meshcore-sub-toolbar {
-    width: 100%;
-    flex-direction: row;
-    border-right: none;
-    border-top: 1px solid var(--ctp-surface1);
-    padding: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    flex-shrink: 0;
-  }
-
-  .meshcore-sub-toolbar.expanded {
-    width: 100%;
-  }
-
-  .meshcore-sub-toolbar-item {
-    flex-direction: column;
-    gap: 0.2rem;
-    padding: 0.5rem 0.2rem;
-    margin: 0;
-    border-radius: 0;
-    /* Share the row equally so every tab (up to 9: …Configuration,
-       Automations, Settings) stays on-screen without relying on a
-       horizontal scroll the user can't see. */
-    flex: 1 1 0;
-    min-width: 0;
-    width: auto;
-    text-align: center;
-    justify-content: center;
-    font-size: 0.7rem;
-  }
-
-  .meshcore-sub-toolbar-item .icon {
-    font-size: 1.2rem;
-  }
-
-  .meshcore-sub-toolbar-item .label {
-    display: block !important;
-    font-size: 0.65rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
-  }
-
-  .meshcore-sub-toolbar-spacer {
-    display: none;
-  }
-
-  .meshcore-sub-toolbar-toggle {
-    display: none;
-  }
+  /* The bottom-bar treatment moved to the shared SourceNav (#4473). The old
+     rules here split the row evenly (`flex: 1 1 0; min-width: 0`), which gave
+     each of 11 entries ~35px on a phone and ellipsised every label down to a
+     few characters. SourceNav sizes items to their content and scrolls the bar
+     instead. */
 
   /* --- Status bar: compact --- */
   .meshcore-status-bar {
