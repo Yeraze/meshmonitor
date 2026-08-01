@@ -356,7 +356,60 @@ The Admin Commands tab supports managing nodes that are not directly connected t
 
 1. **Session Passkey Management**: MeshMonitor automatically handles authentication with remote nodes using session passkeys
 2. **Per-Node Storage**: Configuration data is stored separately for each node to prevent conflicts
-3. **Mesh Communication**: Commands are sent through the mesh network to reach remote nodes
+3. **Asynchronous Execution**: MeshMonitor accepts a valid remote command immediately, then acquires the session passkey and transmits outside the browser's original HTTP request
+4. **Completion Polling**: The Admin Commands tab stays in its existing loading state while it checks the protected operation endpoint for completion
+5. **Mesh Communication**: Commands are sent through the mesh network to reach remote nodes
+
+Local-node commands remain synchronous. A remote command can legitimately take
+over a minute of mesh time — up to 45 seconds acquiring the session passkey, plus
+up to 30 seconds awaiting a routing ACK — and holding an HTTP request open that
+long is unreliable behind a reverse proxy or CDN, which is what this split
+avoids.
+
+Remote `POST /api/admin/commands` requests return `202 Accepted` with an opaque
+operation ID. Progress is read from `GET /api/admin/operations/:id`; both
+endpoints require admin authentication, and an operation is visible only to the
+administrator who started it. Session-passkey acquisition
+(`POST /api/admin/ensure-session-passkey`) and remote configuration import
+(`POST /api/admin/import-config`) follow the same pattern — except that a
+passkey request answers `200` immediately when one is already cached, since no
+mesh round-trip is needed.
+
+Operation records hold only the command name, the source and destination
+identifiers, lifecycle state, and timestamps. **Command parameters and session
+keys are never retained.**
+
+Remote operations move through `pending`, `awaiting_passkey`, `sending`, and
+`awaiting_ack` before reaching a terminal `succeeded` or `failed`. Terminal
+results stay readable for ten minutes, so a browser whose polling was
+interrupted can still recover the outcome. Operation state lives in memory only:
+after a server restart a lookup returns `OPERATION_NOT_FOUND`, which the web
+client reports as an interrupted operation rather than a success.
+
+Failure codes distinguish session-passkey timeout (`PASSKEY_TIMEOUT`), a source
+with transmit disabled (`TX_DISABLED`), a failed configuration import
+(`IMPORT_CONFIG_FAILED`), and missing or expired operation state
+(`OPERATION_NOT_FOUND`).
+
+### Confirmation Semantics
+
+Favorite, unfavorite, ignore, and unignore commands sent to a remote node wait
+for a routing ACK:
+
+- **Confirmed** — the remote node processed the packet, and the interface
+  updates to match.
+- **Rejected** — an explicit routing rejection. The command did not apply, so
+  the interface leaves its local favorite/ignore state unchanged.
+- **No ACK (timeout)** — genuinely uncertain. The packet may still have applied,
+  so MeshMonitor keeps the optimistic update and shows a warning rather than
+  claiming either outcome.
+
+Other remote commands are reported as successful once transmitted, matching
+their previous behavior.
+
+A remote configuration import reports both what landed and what did not: a
+partial import returns the channels it imported *and* the count and names of any
+that failed, so "1 channel" is distinguishable from "1 of 2 channels".
 
 ### Remote Node Operations
 
