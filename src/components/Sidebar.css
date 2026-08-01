@@ -176,41 +176,6 @@
 /* Main content always accounts for narrow sidebar */
 /* Removed old layout-affecting rules - sidebar now floats over content */
 
-/* Mobile responsive - portrait only */
-@media (max-width: 768px) and (orientation: portrait) {
-  .sidebar {
-    /* Collapsed by default - show as hamburger icon only. Set through the
-       custom properties SourceNav reads, not a `width` declaration, so this
-       can't end up racing the module's own width rule on stylesheet order. */
-    --source-nav-collapsed-width: 48px;
-    --source-nav-expanded-width: 240px;
-    padding-bottom: 6rem; /* Extra padding on mobile for home indicator */
-    padding-bottom: max(6rem, calc(env(safe-area-inset-bottom) + 4rem));
-  }
-
-  .sidebar:not(.collapsed) {
-    /* When expanded, slide in from left */
-    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.3);
-  }
-
-  .app-main {
-    margin-left: 0 !important;
-    width: 100% !important;
-  }
-
-  /* Show toggle button prominently on mobile */
-  .sidebar-toggle {
-    background: var(--ctp-blue);
-    color: var(--ctp-crust);
-    right: 6px;
-  }
-
-  .sidebar.collapsed .sidebar-toggle {
-    /* Make hamburger menu more visible when collapsed on mobile */
-    background: var(--ctp-blue);
-    color: var(--ctp-crust);
-  }
-}
 
 /* Mobile responsive - landscape: minimal changes to fix layout */
 @media (orientation: landscape) and (max-height: 700px) {
@@ -258,35 +223,14 @@
     display: none; /* Hide node name to save space */
   }
 
-  .sidebar-nav {
-    padding: 2px 4px 40px 4px !important; /* Minimal padding - override mobile portrait */
-    gap: 1px;
-    flex: 1;
-    min-height: 0; /* Allow flex shrinking */
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
-  }
+  /* `.sidebar-nav`, `.sidebar-nav-item` and `.sidebar-section*` rules were
+     removed here too: those classes moved into SourceNav.module.css in
+     #4473 phase 1, so the landscape overrides had been matching nothing. */
 
-  .sidebar-nav-item {
-    padding: 5px 8px;
-    font-size: 12px;
-    min-height: 28px; /* Ensure minimum tap target */
-  }
 
-  .sidebar-nav-item .nav-icon {
-    font-size: 16px;
-    width: 20px;
-  }
 
-  .sidebar-section-header {
-    font-size: 9px;
-    padding: 4px 8px 2px 8px;
-    margin-top: 2px;
-  }
 
-  .sidebar-section {
-    gap: 1px;
-  }
+
 
   /* The footer hides itself in landscape (SidebarFooter's
      hideOnCompactLandscape) to maximize nav space, so the controls can float
@@ -313,15 +257,7 @@
     width: calc(48px + env(safe-area-inset-left, 0px)) !important;
   }
 
-  .sidebar.collapsed .sidebar-nav {
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch;
-  }
 
-  .sidebar.collapsed .sidebar-nav-item {
-    max-width: 100% !important;
-    overflow: hidden !important;
-  }
 
   .sidebar.collapsed .sidebar-header {
     padding: 4px;
@@ -334,28 +270,8 @@
     height: 28px;
   }
 
-  .sidebar.collapsed .sidebar-nav {
-    padding: 4px 4px 40px 4px !important;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
 
-  .sidebar.collapsed .sidebar-nav-item {
-    padding: 8px;
-    justify-content: center;
-    min-height: 32px;
-    display: flex;
-    align-items: center;
-  }
 
-  .sidebar.collapsed .sidebar-nav-item .nav-icon {
-    font-size: 18px;
-    width: auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
 
   .sidebar.collapsed .sidebar-controls {
     bottom: 4px;
@@ -366,5 +282,63 @@
     width: 32px;
     height: 32px;
     font-size: 14px;
+  }
+}
+
+
+/* ============================================================================
+ * MOBILE BOTTOM BAR — MUST STAY LAST IN THIS FILE (#4473 phase 2)
+ *
+ * The two landscape blocks above set `.sidebar` padding with `!important` to
+ * compact the vertical rail. Among `!important` declarations at equal
+ * specificity the LAST one wins, so when this block sat before them the bar
+ * inherited 2px/8px of rail padding: 53.7px tall against the 44px the shell
+ * reserves, leaving content and the save bar underneath it.
+ *
+ * Same cascade-order trap as nodes.css (#3532). Do not move this block up.
+ * ============================================================================ */
+/*
+ * Mobile — the sidebar is a bottom bar (#4473 phase 2).
+ *
+ * Matches SourceNav.module.css's mobile query exactly (width OR landscape
+ * phone), not portrait-only as before: the two must agree or the shell reserves
+ * space for a rail the nav isn't drawing, or vice versa.
+ */
+@media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
+  .sidebar {
+    /* Undo the full-height fixed rail. SourceNav's .mobileBottomBar docks
+       itself; these override the geometry `.sidebar` sets unconditionally
+       above, which would otherwise keep it pinned top-to-bottom. */
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: auto;
+    /*
+     * `!important` only to beat the two `@media (max-height: 700px) and
+     * (orientation: landscape)` blocks further down, which set padding with
+     * `!important` to compact the *rail*. On a bottom bar that padding is just
+     * height: it inflated the landscape bar to 53.7px against the 44px the
+     * shell reserves, so content and the save bar sat under it.
+     */
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    border-right: none;
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.25);
+    /*
+     * Down from 10001. As a slide-in left rail the sidebar had to overlay the
+     * page; as a bottom bar it is shell furniture, and every modal/overlay in
+     * the app (z-index 1000..10002) should cover it the way it covers the rest
+     * of the page. 900 still clears ordinary page content, and the header
+     * (10000) and banners (9999) are top-anchored so they never overlap it.
+     */
+    z-index: 900;
+  }
+
+  .app-main {
+    margin-left: 0 !important;
+    width: 100% !important;
   }
 }

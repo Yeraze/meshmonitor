@@ -175,10 +175,17 @@
 }
 
 /* ============================================================
- * Mobile — 768px breakpoint
+ * Mobile
+ *
+ * Both conditions, not just the width one. A landscape phone (e.g. 800x400) is
+ * WIDER than 768px but is still the mobile layout — App.css's two `:root`
+ * mobile blocks and Sidebar's updateSidebarWidth() both treat it that way. If
+ * this query covered only max-width, such a viewport would zero
+ * `--sidebar-width` while the nav still rendered as a vertical rail, and page
+ * content would slide underneath it.
  * ============================================================ */
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
   /*
    * Bottom bar. The bug this fixes (#4473): items used to be `flex: 1 1 0` with
    * `min-width: 0`, so 11 entries split a ~390px phone into ~35px each and every
@@ -245,9 +252,21 @@
     font-size: 0.7rem;
   }
 
-  /* Labels stay visible on the bar even when the desktop rail is collapsed —
-     an icon-only bottom bar is exactly the affordance gap #4473 reported. */
-  .mobileBottomBar.collapsed .label,
+  /*
+   * Labels stay visible on the bar even when the desktop rail is collapsed —
+   * an icon-only bottom bar is exactly the affordance gap #4473 reported.
+   *
+   * Deliberately ONE class deep (`.mobileBottomBar .label`, not
+   * `.mobileBottomBar.collapsed .label`). It beats the `.collapsed .label`
+   * rule above on source order at equal specificity, and staying at that depth
+   * leaves the landscape block below — same specificity, later in the file —
+   * able to override it. A compound `.mobileBottomBar.collapsed` version would
+   * outrank the landscape rule no matter where it sat, which is precisely the
+   * bug that made the landscape bar 63px tall while the shell reserved 44px.
+   *
+   * Ordering within one authored file is fine; #4478's hazard was two files
+   * racing, which is why theme/width still cross the boundary as properties.
+   */
   .mobileBottomBar .label {
     display: block;
     flex: none;
@@ -258,10 +277,6 @@
     text-overflow: ellipsis;
   }
 
-  .mobileBottomBar.collapsed .item {
-    padding: 0.5rem 0.6rem;
-  }
-
   .mobileBottomBar .active {
     /* A filled pill is too heavy at bar size; underline the active entry. */
     background: transparent;
@@ -269,13 +284,54 @@
     box-shadow: inset 0 -2px 0 0 var(--ctp-blue);
   }
 
-  /* The collapse toggle is meaningless on a bottom bar. */
-  .mobileBottomBar .controls {
+  /*
+   * A logo block, a pin/collapse cluster and a footer are vertical-rail
+   * affordances — laid out in a horizontal bar they'd eat the row and push the
+   * nav items off-screen. MeshCore passes none of these; Meshtastic passes all
+   * three, which is why the bar only needed this once Meshtastic joined it.
+   */
+  .mobileBottomBar .controls,
+  .mobileBottomBar .controlsSlot,
+  .mobileBottomBar .headerSlot,
+  .mobileBottomBar .footerSlot {
     display: none;
+  }
+
+  /*
+   * Dock the bar. A consumer may position itself as a full-height fixed rail
+   * (`.sidebar` is `top:0; bottom:0; height:100dvh`), so the bar has to undo
+   * that rather than assume static flow.
+   */
+  .mobileBottomBar {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: auto;
+    max-height: none;
+    /* Published so the app shell can reserve room for the bar. */
+    --source-nav-bar-height: 56px;
   }
 
   /* Vertical rail on mobile — narrower, but structurally unchanged. */
   .mobileRail.collapsed {
     width: 48px;
+  }
+}
+
+/* Landscape phones: vertical space is the scarce axis, so shrink the bar.
+   Must stay in step with `--app-nav-bar-height: 44px` in App.css's matching
+   landscape block, which is what reserves room for it. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .mobileBottomBar {
+    --source-nav-bar-height: 44px;
+  }
+
+  .mobileBottomBar .item {
+    padding: 0.25rem 0.6rem;
+  }
+
+  .mobileBottomBar .label {
+    font-size: 0.6rem;
   }
 }

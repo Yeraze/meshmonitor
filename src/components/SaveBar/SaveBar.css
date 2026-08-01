@@ -16,6 +16,18 @@
   left: var(--sidebar-collapsed-width, 60px);
 }
 
+/*
+ * On mobile the nav is a bottom bar (#4473 phase 2), which docks in the same
+ * strip as this one. Sit above it rather than sharing the space — the save bar
+ * is an action surface and must stay reachable.
+ */
+@media (max-width: 768px), (max-height: 500px) and (orientation: landscape) {
+  .save-bar {
+    bottom: calc(var(--app-nav-bar-height, 56px) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 0;
+  }
+}
+
 @keyframes saveBarSlideIn {
   from {
     transform: translateY(100%);
