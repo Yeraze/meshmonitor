@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import apiService from '../services/api';
+import apiService, { type AdminCommandAck } from '../services/api';
 import { useToast } from './ToastContainer';
 import { useResolvedSourceId } from '../hooks/useResolvedSourceId';
 import { useTxStatus } from '../hooks/useTxStatus';
@@ -1441,7 +1441,10 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
     setIsExecuting(true);
     try {
-      const result = await apiService.post<{ success: boolean; message: string }>('/api/admin/commands', {
+      // Remote commands come back as a 202 + operation id that ApiService
+      // polls to completion (#4482), so this await can still take mesh time —
+      // it just no longer holds an HTTP request open for it.
+      const result = await apiService.sendAdminCommand<{ success: boolean; message: string; ack?: AdminCommandAck }>({
         command,
         nodeNum: selectedNodeNum,
         ...(sourceId ? { sourceId } : {}),
@@ -1598,8 +1601,22 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       return;
     }
     try {
-      await executeCommand('setIgnoredNode', { targetNodeNum: nodeManagementNodeNum });
-      showToast(t('admin_commands.node_set_ignored', { nodeNum: nodeManagementNodeNum }), 'success');
+      const res = await executeCommand('setIgnoredNode', { targetNodeNum: nodeManagementNodeNum });
+      // Remote ignores now carry a routing ACK like favorites do (#4482 part B).
+      // A definitive routing rejection means it did NOT apply — don't
+      // optimistically mark it. 'confirmed' or 'timeout' keep the update.
+      const ack = res?.ack;
+      const rejected = ack && !ack.acked && !ack.timedOut;
+      if (ack?.acked) {
+        showToast(t('admin_commands.node_ignored_confirmed', { nodeNum: nodeManagementNodeNum }), 'success');
+      } else if (ack?.timedOut) {
+        showToast(t('admin_commands.node_ignored_no_ack', { nodeNum: nodeManagementNodeNum }), 'warning');
+      } else if (rejected) {
+        showToast(t('admin_commands.node_ignored_rejected', { nodeNum: nodeManagementNodeNum, status: ack.status }), 'error');
+      } else {
+        showToast(t('admin_commands.node_set_ignored', { nodeNum: nodeManagementNodeNum }), 'success');
+      }
+      if (rejected) return;
       // Optimistically update state - use remote status if managing remote node, otherwise local
       if (isManagingRemoteNode) {
         setRemoteNodeStatus(prev => {
@@ -1627,8 +1644,20 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       return;
     }
     try {
-      await executeCommand('removeIgnoredNode', { targetNodeNum: nodeManagementNodeNum });
-      showToast(t('admin_commands.node_removed_ignored', { nodeNum: nodeManagementNodeNum }), 'success');
+      const res = await executeCommand('removeIgnoredNode', { targetNodeNum: nodeManagementNodeNum });
+      // Same ACK treatment as setIgnoredNode above (#4482 part B).
+      const ack = res?.ack;
+      const rejected = ack && !ack.acked && !ack.timedOut;
+      if (ack?.acked) {
+        showToast(t('admin_commands.node_unignored_confirmed', { nodeNum: nodeManagementNodeNum }), 'success');
+      } else if (ack?.timedOut) {
+        showToast(t('admin_commands.node_unignored_no_ack', { nodeNum: nodeManagementNodeNum }), 'warning');
+      } else if (rejected) {
+        showToast(t('admin_commands.node_unignored_rejected', { nodeNum: nodeManagementNodeNum, status: ack.status }), 'error');
+      } else {
+        showToast(t('admin_commands.node_removed_ignored', { nodeNum: nodeManagementNodeNum }), 'success');
+      }
+      if (rejected) return;
       // Optimistically update state - use remote status if managing remote node, otherwise local
       if (isManagingRemoteNode) {
         setRemoteNodeStatus(prev => {
