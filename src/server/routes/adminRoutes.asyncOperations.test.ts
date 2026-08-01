@@ -19,6 +19,15 @@ import { adminOperationService } from '../services/adminOperationService.js';
 import { TxDisabledError } from '../errors/txDisabledError.js';
 import { loadProtobufDefinitions } from '../protobufLoader.js';
 
+// import-config dynamically imports this; mock it so the tests don't need a
+// real base64url-encoded channel blob.
+vi.mock('../services/channelUrlService.js', () => ({
+  default: {
+    decodeUrl: vi.fn(),
+    encodeUrl: vi.fn().mockReturnValue('meshtastic://mock-url'),
+  },
+}));
+
 const LOCAL_NODE_NUM = 1;
 const REMOTE_NODE_NUM = 0x0badbeef;
 
@@ -258,6 +267,173 @@ describe('adminRoutes — async remote-admin operations (#4482)', () => {
       expect(res.status).toBe(200);
       expect(sendAdminCommand).toHaveBeenCalled();
       expect(sendAdminCommandAwaitAck).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /ensure-session-passkey (follow-up)', () => {
+    it('answers immediately from cache without opening an operation', async () => {
+      const requestRemoteSessionPasskey = vi.fn(() => new Promise(() => {}));
+      await sourceManagerRegistry.addManager(makeFakeManager({
+        getSessionPasskey: vi.fn().mockReturnValue(new Uint8Array([1])),
+        getSessionPasskeyStatus: vi.fn().mockReturnValue({ hasPasskey: true, remainingSeconds: 250 }),
+        requestRemoteSessionPasskey,
+      }));
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.post('/ensure-session-passkey')
+        .send({ nodeNum: REMOTE_NODE_NUM, sourceId: harness.sourceA });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ success: true, hasPasskey: true, remainingSeconds: 250 });
+      expect(res.body.operationId).toBeUndefined();
+      expect(requestRemoteSessionPasskey).not.toHaveBeenCalled();
+    });
+
+    it('returns 202 while acquisition is outstanding, then settles with the status', async () => {
+      let release: (v: Uint8Array) => void = () => {};
+      const gate = new Promise<Uint8Array>((resolve) => { release = resolve; });
+      await sourceManagerRegistry.addManager(makeFakeManager({
+        getSessionPasskey: vi.fn().mockReturnValue(null),
+        requestRemoteSessionPasskey: vi.fn(() => gate),
+        getSessionPasskeyStatus: vi.fn().mockReturnValue({ hasPasskey: true, remainingSeconds: 300 }),
+      }));
+
+      const agent = await harness.loginAs(harness.admin);
+      const accepted = await agent.post('/ensure-session-passkey')
+        .send({ nodeNum: REMOTE_NODE_NUM, sourceId: harness.sourceA });
+
+      // Would have blocked ~45s before the follow-up.
+      expect(accepted.status).toBe(202);
+      expect(typeof accepted.body.operationId).toBe('string');
+
+      release(new Uint8Array([7]));
+      const settled = await waitForSettled(agent, accepted.body.operationId);
+      expect(settled.status).toBe('succeeded');
+      expect(settled.result).toMatchObject({ hasPasskey: true, remainingSeconds: 300 });
+    });
+
+    it('records a timeout as PASSKEY_TIMEOUT', async () => {
+      await sourceManagerRegistry.addManager(makeFakeManager({
+        getSessionPasskey: vi.fn().mockReturnValue(null),
+        requestRemoteSessionPasskey: vi.fn().mockResolvedValue(null),
+      }));
+
+      const agent = await harness.loginAs(harness.admin);
+      const accepted = await agent.post('/ensure-session-passkey')
+        .send({ nodeNum: REMOTE_NODE_NUM, sourceId: harness.sourceA });
+
+      const settled = await waitForSettled(agent, accepted.body.operationId);
+      expect(settled.status).toBe('failed');
+      expect(settled.error.code).toBe('PASSKEY_TIMEOUT');
+    });
+
+    it('still answers the local node synchronously', async () => {
+      await sourceManagerRegistry.addManager(makeFakeManager({}));
+      const agent = await harness.loginAs(harness.admin);
+
+      const res = await agent.post('/ensure-session-passkey')
+        .send({ nodeNum: LOCAL_NODE_NUM, sourceId: harness.sourceA });
+
+      expect(res.status).toBe(200);
+      expect(res.body.operationId).toBeUndefined();
+      expect(adminOperationService.size()).toBe(0);
+    });
+  });
+
+  describe('POST /import-config (follow-up)', () => {
+    it('runs the whole remote import from a COLD passkey behind one operation', async () => {
+      // The #4315 tests all start with a cached passkey, so the acquisition leg
+      // of the import path was never exercised end-to-end. This covers the full
+      // chain: 202 → acquire → channel sends → settled result.
+      let release: (v: Uint8Array) => void = () => {};
+      const gate = new Promise<Uint8Array>((resolve) => { release = resolve; });
+      const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+      await sourceManagerRegistry.addManager(makeFakeManager({
+        getSessionPasskey: vi.fn().mockReturnValue(null),
+        requestRemoteSessionPasskey: vi.fn(() => gate),
+        sendAdminCommand,
+        requestRemoteConfig: vi.fn().mockResolvedValue(null),
+        getRemoteNodeConfig: vi.fn().mockReturnValue(null),
+      }));
+
+      const channelUrlService = (await import('../services/channelUrlService.js')).default;
+      (channelUrlService.decodeUrl as any).mockReturnValue({
+        channels: [{ name: 'gauntlet', psk: 'none' }],
+        loraConfig: undefined,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const accepted = await agent.post('/import-config').send({
+        sourceId: harness.sourceA, nodeNum: REMOTE_NODE_NUM, url: 'meshtastic://mock',
+      });
+
+      // Accepted while the passkey is still outstanding — nothing sent yet.
+      expect(accepted.status).toBe(202);
+      expect(sendAdminCommand).not.toHaveBeenCalled();
+
+      release(new Uint8Array([9]));
+      const settled = await waitForSettled(agent, accepted.body.operationId, 120);
+      expect(settled.status).toBe('succeeded');
+      expect(settled.result.imported.channels).toBe(1);
+      expect(sendAdminCommand).toHaveBeenCalled();
+    });
+
+    it('reports channels that failed to import instead of counting only successes', async () => {
+      // A per-channel failure is absorbed by the loop; the result must still
+      // distinguish "1 channel" from "1 of 2 channels".
+      const sendAdminCommand = vi.fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('radio dropped it'));
+      await sourceManagerRegistry.addManager(makeFakeManager({
+        getSessionPasskey: vi.fn().mockReturnValue(new Uint8Array([1])),
+        sendAdminCommand,
+        requestRemoteConfig: vi.fn().mockResolvedValue(null),
+        getRemoteNodeConfig: vi.fn().mockReturnValue(null),
+      }));
+
+      const channelUrlService = (await import('../services/channelUrlService.js')).default;
+      (channelUrlService.decodeUrl as any).mockReturnValue({
+        channels: [{ name: 'ok', psk: 'none' }, { name: 'doomed', psk: 'none' }],
+        loraConfig: undefined,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const accepted = await agent.post('/import-config').send({
+        sourceId: harness.sourceA, nodeNum: REMOTE_NODE_NUM, url: 'meshtastic://mock',
+      });
+
+      const settled = await waitForSettled(agent, accepted.body.operationId, 200);
+      expect(settled.status).toBe('succeeded');
+      expect(settled.result.imported.channels).toBe(1);
+      expect(settled.result.imported.failedChannels).toBe(1);
+      expect(settled.result.imported.failedChannelDetails).toEqual([{ index: 1, name: 'doomed' }]);
+    });
+
+    it('records a cold-passkey timeout as a failed import rather than a partial success', async () => {
+      const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+      await sourceManagerRegistry.addManager(makeFakeManager({
+        getSessionPasskey: vi.fn().mockReturnValue(null),
+        requestRemoteSessionPasskey: vi.fn().mockResolvedValue(null),
+        sendAdminCommand,
+      }));
+
+      const channelUrlService = (await import('../services/channelUrlService.js')).default;
+      (channelUrlService.decodeUrl as any).mockReturnValue({
+        channels: [{ name: 'gauntlet', psk: 'none' }],
+        loraConfig: undefined,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const accepted = await agent.post('/import-config').send({
+        sourceId: harness.sourceA, nodeNum: REMOTE_NODE_NUM, url: 'meshtastic://mock',
+      });
+
+      const settled = await waitForSettled(agent, accepted.body.operationId, 120);
+      expect(settled.status).toBe('failed');
+      // Reaches the detached closure's outer catch: the passkey throw is not
+      // absorbed by the per-channel/per-LoRa handlers inside runImport.
+      expect(settled.error.code).toBe('IMPORT_CONFIG_FAILED');
+      expect(sendAdminCommand).not.toHaveBeenCalled();
     });
   });
 

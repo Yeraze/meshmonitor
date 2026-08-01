@@ -51,6 +51,12 @@ export interface AdminOperationAck {
 export interface AdminOperationResult {
   message: string;
   ack?: AdminOperationAck;
+  /**
+   * Endpoint-specific payload merged into the result — e.g. import counts from
+   * `/import-config`, or passkey expiry info from `/ensure-session-passkey`.
+   * The client spreads the whole result, so these reach the caller unchanged.
+   */
+  [key: string]: unknown;
 }
 
 export interface AdminOperationError {

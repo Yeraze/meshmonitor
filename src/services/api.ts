@@ -704,7 +704,7 @@ class ApiService {
   }
 
 
-  async importConfig(url: string, nodeNum?: number, sourceId?: string | null): Promise<{ success: boolean; imported: { channels: number; channelDetails: any[]; loraConfig: boolean }; requiresReboot?: boolean }> {
+  async importConfig(url: string, nodeNum?: number, sourceId?: string | null): Promise<{ success: boolean; imported: { channels: number; channelDetails: any[]; loraConfig: boolean; failedChannels?: number; failedChannelDetails?: Array<{ index: number; name: string }> }; requiresReboot?: boolean }> {
     await this.ensureBaseUrl();
     // Use admin endpoint if nodeNum is provided (for remote nodes), otherwise use standard endpoint
     const endpoint = nodeNum !== undefined ? '/api/admin/import-config' : '/api/channels/import-config';
@@ -721,7 +721,26 @@ class ApiService {
       throw new Error(error.error || 'Failed to import configuration');
     }
 
-    return response.json();
+    // Importing to a REMOTE node blocks on the passkey and a burst of admin
+    // sends, so that endpoint answers 202 + operation id (#4482 follow-up).
+    // Budget: up to 45s passkey + ~1s pacing per channel (8 max) + a
+    // requestRemoteConfig round-trip, all of which can retransmit. 5 minutes
+    // leaves room for that without the client abandoning a live import.
+    return this.followAdminOperation(await response.json(), { timeoutMs: 300_000 });
+  }
+
+  /**
+   * Ensure a session passkey is cached for a remote node.
+   *
+   * Acquisition costs up to 45s of mesh time, so the endpoint answers 202 +
+   * operation id for remote nodes and this follows it to completion (#4482
+   * follow-up). Local nodes answer synchronously — they need no passkey.
+   */
+  async ensureSessionPasskey<T extends { success: boolean }>(
+    body: Record<string, unknown>,
+  ): Promise<T> {
+    const accepted = await this.post<AdminCommandAccepted>('/api/admin/ensure-session-passkey', body);
+    return this.followAdminOperation<T>(accepted);
   }
 
   async encodeChannelUrl(channelIds: number[], includeLoraConfig: boolean, nodeNum?: number, sourceId?: string | null): Promise<string> {
@@ -1615,7 +1634,21 @@ class ApiService {
     options?: { signal?: AbortSignal },
   ): Promise<T> {
     const accepted = await this.post<AdminCommandAccepted>('/api/admin/commands', body);
+    return this.followAdminOperation<T>(accepted, options);
+  }
 
+  /**
+   * Follow a background admin operation to completion (#4482).
+   *
+   * Shared by every endpoint that can answer 202 + operation id — admin
+   * commands, session-passkey acquisition, and remote config import all block
+   * on the same mesh round-trips and are followed the same way. A response
+   * without an operation id is already final and passes straight through.
+   */
+  private async followAdminOperation<T>(
+    accepted: AdminCommandAccepted,
+    options?: { signal?: AbortSignal; timeoutMs?: number },
+  ): Promise<T> {
     // Local node (or any server that answered synchronously): already done.
     if (!accepted?.operationId) {
       return accepted as unknown as T;
@@ -1623,9 +1656,12 @@ class ApiService {
 
     const operationId: string = accepted.operationId;
     const startedAt = Date.now();
-    // Comfortably above the ~75s worst case (45s passkey + 30s ACK) so a slow
-    // but healthy mesh is never cut short by the client.
-    const overallTimeoutMs = 120_000;
+    // Default sits above a single command's ~75s worst case (45s passkey +
+    // 30s ACK). Longer operations pass their own budget — a remote config
+    // import adds ~1s of pacing per channel plus a requestRemoteConfig
+    // round-trip on top of the passkey leg, which 120s does not cover with
+    // any margin on a retransmitting link.
+    const overallTimeoutMs = options?.timeoutMs ?? 120_000;
     let delayMs = 500;
 
     for (;;) {
