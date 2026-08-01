@@ -1,0 +1,281 @@
+/*
+ * Shared per-source navigation (issue #4473).
+ *
+ * Widths are driven by custom properties so each consumer can keep its own
+ * geometry without forking the rules: Meshtastic's sidebar is 60/240, MeshCore's
+ * sub-toolbar 56/220.
+ */
+.nav {
+  --source-nav-collapsed-width: 60px;
+  --source-nav-expanded-width: 240px;
+  /*
+   * Themeable bits go through custom properties rather than plain declarations
+   * so a consumer (e.g. `.sidebar`) can retheme the nav by *inheritance*, which
+   * is immune to stylesheet order. Overriding `background` from another
+   * equal-specificity rule instead would make the result depend on CSS import
+   * order — the exact failure mode that hid the send button in #4478.
+   */
+  --source-nav-bg: var(--ctp-mantle);
+  --source-nav-border: 1px solid var(--ctp-surface1);
+
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  background: var(--source-nav-bg);
+  border-right: var(--source-nav-border);
+  transition: width 0.18s ease;
+  box-sizing: border-box;
+}
+
+.collapsed {
+  width: var(--source-nav-collapsed-width);
+}
+
+.expanded {
+  width: var(--source-nav-expanded-width);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Carried over from Sidebar.css with the nav list (#4473). */
+.list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.list::-webkit-scrollbar-thumb {
+  background: var(--ctp-surface2);
+  border-radius: var(--radius-xs);
+}
+
+.list::-webkit-scrollbar-thumb:hover {
+  background: var(--ctp-overlay0);
+}
+
+.sectionHeader {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ctp-subtext0);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 12px 12px 4px 12px;
+  margin-top: 8px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--ctp-text);
+  cursor: pointer;
+  transition: background-color 0.2s;
+  text-align: left;
+  font-size: 14px;
+  position: relative;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.item:hover {
+  background: var(--ctp-surface0);
+}
+
+.active {
+  background: var(--ctp-blue);
+  color: var(--ctp-crust);
+}
+
+.icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Anchored to the icon's top-right so it holds position collapsed or expanded. */
+.unreadDot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  background: var(--ctp-red);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--ctp-mantle);
+  pointer-events: none;
+}
+
+.collapsed .item {
+  justify-content: center;
+  padding: 10px;
+}
+
+.collapsed .label {
+  display: none;
+}
+
+.controls {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 8px 8px 8px;
+  flex-shrink: 0;
+}
+
+.collapsed .controls {
+  justify-content: center;
+}
+
+.toggle {
+  background: transparent;
+  border: 1px solid var(--ctp-surface2);
+  color: var(--ctp-subtext0);
+  border-radius: var(--radius-md);
+  padding: 0.35rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toggle:hover {
+  color: var(--ctp-text);
+  background: var(--ctp-surface1);
+}
+
+/* ============================================================
+ * Mobile — 768px breakpoint
+ * ============================================================ */
+
+@media (max-width: 768px) {
+  /*
+   * Bottom bar. The bug this fixes (#4473): items used to be `flex: 1 1 0` with
+   * `min-width: 0`, so 11 entries split a ~390px phone into ~35px each and every
+   * label ellipsised to two or three characters.
+   *
+   * Items now size to their content with a floor, and the bar scrolls sideways
+   * instead. A label is either fully readable or scrolled to — never shredded.
+   */
+  .mobileBottomBar {
+    width: 100%;
+    flex-direction: row;
+    align-items: stretch;
+    border-right: none;
+    border-top: var(--source-nav-border);
+    padding: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .mobileBottomBar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Width is a row-layout concept here; the collapsed/expanded rail widths
+     must not leak into the bar. */
+  .mobileBottomBar.collapsed,
+  .mobileBottomBar.expanded {
+    width: 100%;
+  }
+
+  .mobileBottomBar .list {
+    flex-direction: row;
+    flex: 1;
+    padding: 0;
+    gap: 0;
+    overflow: visible;
+  }
+
+  .mobileBottomBar .section {
+    flex-direction: row;
+    gap: 0;
+  }
+
+  /* Section headers are a vertical-rail affordance; they'd break the row. */
+  .mobileBottomBar .sectionHeader {
+    display: none;
+  }
+
+  .mobileBottomBar .item {
+    flex: 0 0 auto;
+    min-width: 64px;
+    max-width: 120px;
+    width: auto;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.2rem;
+    padding: 0.5rem 0.6rem;
+    margin: 0;
+    border-radius: 0;
+    text-align: center;
+    font-size: 0.7rem;
+  }
+
+  /* Labels stay visible on the bar even when the desktop rail is collapsed —
+     an icon-only bottom bar is exactly the affordance gap #4473 reported. */
+  .mobileBottomBar.collapsed .label,
+  .mobileBottomBar .label {
+    display: block;
+    flex: none;
+    font-size: 0.65rem;
+    line-height: 1.2;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mobileBottomBar.collapsed .item {
+    padding: 0.5rem 0.6rem;
+  }
+
+  .mobileBottomBar .active {
+    /* A filled pill is too heavy at bar size; underline the active entry. */
+    background: transparent;
+    color: var(--ctp-blue);
+    box-shadow: inset 0 -2px 0 0 var(--ctp-blue);
+  }
+
+  /* The collapse toggle is meaningless on a bottom bar. */
+  .mobileBottomBar .controls {
+    display: none;
+  }
+
+  /* Vertical rail on mobile — narrower, but structurally unchanged. */
+  .mobileRail.collapsed {
+    width: 48px;
+  }
+}

@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
-import { UiIcon, type UiIconName } from '../icons';
+import { type UiIconName } from '../icons';
+import { SourceNav, type SourceNavItem } from '../nav/SourceNav';
+import styles from './MeshCoreSubToolbar.module.css';
 
 export type MeshCoreView = 'nodes' | 'channels' | 'rooms' | 'dms' | 'telemetry' | 'packets' | 'info' | 'configuration' | 'automations' | 'notifications' | 'settings';
 
@@ -39,6 +41,12 @@ const ITEMS: Item[] = [
   { id: 'settings', labelKey: 'meshcore.nav.settings', fallback: 'Settings', icon: 'settings' },
 ];
 
+/**
+ * MeshCore's per-source nav. Presentation is delegated to the shared
+ * {@link SourceNav} (#4473) so this and the Meshtastic sidebar can no longer
+ * drift; what stays here is MeshCore's own item list, permission gating and
+ * view-local selection state.
+ */
 export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
   view,
   onSelect,
@@ -54,42 +62,36 @@ export const MeshCoreSubToolbar: React.FC<MeshCoreSubToolbarProps> = ({
   const canReadAutomation = hasPermission('automation', 'read');
   const canReadPackets = hasPermission('packetmonitor', 'read');
 
+  const items = useMemo<SourceNavItem[]>(() => {
+    return ITEMS.filter(item => {
+      if (item.id === 'configuration' && !canReadConfig) return false;
+      if (item.id === 'automations' && !canReadAutomation) return false;
+      if (item.id === 'packets' && !canReadPackets) return false;
+      // Notifications preferences are per-user — only meaningful when signed in.
+      if (item.id === 'notifications' && !isAuthenticated) return false;
+      // Info is per-source only — it reads /api/sources/:id/meshcore/info.
+      if (item.id === 'info' && !showInfo) return false;
+      return true;
+    }).map(item => ({
+      id: item.id,
+      label: t(item.labelKey, item.fallback),
+      icon: item.icon,
+      onClick: () => onSelect(item.id),
+      unread: unread[item.id] ?? false,
+    }));
+  }, [t, onSelect, unread, showInfo, canReadConfig, canReadAutomation, canReadPackets, isAuthenticated]);
+
   return (
-    <aside className={`meshcore-sub-toolbar ${expanded ? 'expanded' : 'collapsed'}`}>
-      {ITEMS.map(item => {
-        if (item.id === 'configuration' && !canReadConfig) return null;
-        if (item.id === 'automations' && !canReadAutomation) return null;
-        if (item.id === 'packets' && !canReadPackets) return null;
-        // Notifications preferences are per-user — only meaningful when signed in.
-        if (item.id === 'notifications' && !isAuthenticated) return null;
-        // Info is per-source only — it reads /api/sources/:id/meshcore/info.
-        if (item.id === 'info' && !showInfo) return null;
-        const label = t(item.labelKey, item.fallback);
-        return (
-          <button
-            key={item.id}
-            className={`meshcore-sub-toolbar-item ${view === item.id ? 'active' : ''}`}
-            onClick={() => onSelect(item.id)}
-            title={!expanded ? label : undefined}
-          >
-            <span className="icon">
-              <UiIcon name={item.icon} size={20} />
-              {unread[item.id] && <span className="meshcore-nav-unread-dot" aria-hidden="true" />}
-            </span>
-            <span className="label">{label}</span>
-          </button>
-        );
-      })}
-      <div className="meshcore-sub-toolbar-spacer" />
-      <button
-        className="meshcore-sub-toolbar-toggle"
-        onClick={onToggleExpanded}
-        title={expanded
-          ? t('meshcore.nav.collapse', 'Collapse')
-          : t('meshcore.nav.expand', 'Expand')}
-      >
-        <UiIcon name={expanded ? 'back' : 'forward'} size={18} />
-      </button>
-    </aside>
+    <SourceNav
+      className={styles.subToolbar}
+      sections={[{ items }]}
+      activeId={view}
+      collapsed={!expanded}
+      mobileVariant="bottom-bar"
+      onToggleCollapsed={onToggleExpanded}
+      collapseLabel={t('meshcore.nav.collapse', 'Collapse')}
+      expandLabel={t('meshcore.nav.expand', 'Expand')}
+      ariaLabel={t('meshcore.nav.label', 'MeshCore navigation')}
+    />
   );
 };

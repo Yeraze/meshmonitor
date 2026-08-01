@@ -29,8 +29,10 @@ describe('MeshCoreSubToolbar', () => {
     const { container } = render(
       <MeshCoreSubToolbar view="nodes" onSelect={() => {}} expanded onToggleExpanded={() => {}} />,
     );
-    // Each nav item's .icon span should contain an <svg> from lucide-react.
-    const iconSpans = container.querySelectorAll('.meshcore-sub-toolbar-item .icon');
+    // Each nav item's icon span should contain an <svg> from lucide-react.
+    // Selectors are the stable data-* hooks SourceNav emits (#4473); its class
+    // names come from a CSS module and are hashed at build time.
+    const iconSpans = container.querySelectorAll('[data-source-nav-item] [data-source-nav-icon]');
     expect(iconSpans.length).toBeGreaterThan(0);
     iconSpans.forEach((span) => expect(span.querySelector('svg')).not.toBeNull());
   });
@@ -41,7 +43,7 @@ describe('MeshCoreSubToolbar', () => {
     const { container } = render(
       <MeshCoreSubToolbar view="nodes" onSelect={() => {}} expanded onToggleExpanded={() => {}} />,
     );
-    const firstIcon = container.querySelector('.meshcore-sub-toolbar-item .icon');
+    const firstIcon = container.querySelector('[data-source-nav-item] [data-source-nav-icon]');
     expect(firstIcon?.querySelector('svg')).toBeNull();
     expect(firstIcon?.textContent).toBe('🗺️');
     iconStyle = 'lucide'; // reset for other tests
@@ -59,11 +61,11 @@ describe('MeshCoreSubToolbar', () => {
         unread={{ channels: true, dms: false }}
       />,
     );
-    const dots = container.querySelectorAll('.meshcore-nav-unread-dot');
+    const dots = container.querySelectorAll('[data-source-nav-unread]');
     expect(dots.length).toBe(1);
-    const channelsItem = Array.from(container.querySelectorAll('.meshcore-sub-toolbar-item'))
+    const channelsItem = Array.from(container.querySelectorAll('[data-source-nav-item]'))
       .find((el) => el.textContent?.includes('Channels'));
-    expect(channelsItem?.querySelector('.meshcore-nav-unread-dot')).not.toBeNull();
+    expect(channelsItem?.querySelector('[data-source-nav-unread]')).not.toBeNull();
   });
 
   it('renders no unread dots when none are flagged', () => {
@@ -71,7 +73,7 @@ describe('MeshCoreSubToolbar', () => {
     const { container } = render(
       <MeshCoreSubToolbar view="nodes" onSelect={() => {}} expanded onToggleExpanded={() => {}} />,
     );
-    expect(container.querySelectorAll('.meshcore-nav-unread-dot').length).toBe(0);
+    expect(container.querySelectorAll('[data-source-nav-unread]').length).toBe(0);
   });
 
   it('renders the Configuration tab when configuration:read is granted', () => {
