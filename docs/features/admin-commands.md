@@ -371,16 +371,20 @@ operation ID. Progress is read from `GET /api/admin/operations/:id`; both
 endpoints require admin authentication, and an operation is visible only to the
 administrator who started it. Session-passkey acquisition
 (`POST /api/admin/ensure-session-passkey`) and remote configuration import
-(`POST /api/admin/import-config`) follow the same pattern — except that a
-passkey request answers `200` immediately when one is already cached, since no
-mesh round-trip is needed.
+(`POST /api/admin/import-config`) follow the same pattern: an uncached passkey
+acquisition returns `202` and completes in the background, while a request for a
+passkey that is **already cached** answers `200` immediately, since no mesh
+round-trip is needed.
 
 Operation records hold only the command name, the source and destination
-identifiers, lifecycle state, and timestamps. **Command parameters and session
-keys are never retained.**
+identifiers, the requesting administrator, lifecycle state, and timestamps.
+**Command parameters and session keys are never retained.**
 
 Remote operations move through `pending`, `awaiting_passkey`, `sending`, and
-`awaiting_ack` before reaching a terminal `succeeded` or `failed`. Terminal
+`awaiting_ack` before reaching a terminal `succeeded` or `failed`. Not every
+command visits every state — a configuration import, for example, goes from
+`awaiting_passkey` straight to its terminal state, since it sends a sequence of
+packets rather than awaiting a single routing ACK. Terminal
 results stay readable for ten minutes, so a browser whose polling was
 interrupted can still recover the outcome. Operation state lives in memory only:
 after a server restart a lookup returns `OPERATION_NOT_FOUND`, which the web
@@ -404,8 +408,10 @@ for a routing ACK:
   so MeshMonitor keeps the optimistic update and shows a warning rather than
   claiming either outcome.
 
-Other remote commands are reported as successful once transmitted, matching
-their previous behavior.
+Other remote commands await no routing ACK and are reported as successful once
+transmitted, matching their previous behavior. That is not the same as never
+failing: a command still fails if it cannot be sent at all — for example when
+transmit is disabled on the source (`TX_DISABLED`).
 
 A remote configuration import reports both what landed and what did not: a
 partial import returns the channels it imported *and* the count and names of any
