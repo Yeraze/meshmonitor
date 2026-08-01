@@ -1502,11 +1502,16 @@ body {
     /* The base .app-main reserves env(safe-area-inset-bottom) via its
        padding-bottom, but .send-message-form (the bottom-most element) ALSO
        pads itself by that inset — applying the home-indicator gap twice and
-       leaving dead space below the input. Drop it here so the send bar owns
-       the safe area (its background reaches the screen edge, its controls stay
-       above the indicator). env() is 0 on non-notch devices/desktop, so this
-       is a no-op there. */
-    padding-bottom: 0;
+       leaving dead space below the input. So the safe-area component is
+       deliberately NOT repeated here; the send bar owns it (its background
+       reaches the screen edge, its controls stay above the indicator).
+       env() is 0 on non-notch devices/desktop, so that part is a no-op there.
+
+       The bar height, however, must still be reserved: this used to be a flat
+       `0`, which was correct while nothing occupied the bottom strip. Since the
+       mobile nav became a bottom bar (#4473 phase 2) a flat 0 runs the compose
+       row — send, location and bell — underneath it. */
+    padding-bottom: var(--app-nav-bar-height, 56px);
   }
 
   /* The page-level bottom spacer (.app-main::after) would add dead space

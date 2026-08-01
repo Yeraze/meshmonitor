@@ -1242,9 +1242,15 @@
     display: none !important;
   }
 
-  /* Make messages split view fill available height on mobile */
+  /* Make messages split view fill available height on mobile.
+     `height: auto`, NOT `100%`: this element is `position: fixed` with both
+     `top` and `bottom` set by .nodes-split-view above, and an explicit height
+     over-constrains that pair — height wins and `bottom` is ignored, so the box
+     ran from 48px to 828px on a 780px viewport, putting the DM compose row
+     under the new bottom bar (#4473 phase 2). Letting top/bottom define the box
+     is what makes it track the bar's reserved space. */
   .messages-split-view {
-    height: 100%;
+    height: auto;
   }
 
   /* Adjust main content for Messages tab */
