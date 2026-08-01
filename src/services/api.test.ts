@@ -1226,3 +1226,91 @@ describe('ApiService BASE_URL Support', () => {
     });
   });
 });
+describe('ApiService.sendAdminCommand — async operation following (#4482)', () => {
+  beforeEach(() => {
+    (apiService as any).baseUrl = '';
+    (apiService as any).configFetched = true;
+    (apiService as any).configPromise = null;
+    mockFetch.mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** Queue responses in order: the POST, then each poll of the status endpoint. */
+  const queue = (...responses: any[]) => {
+    responses.forEach((r) => mockFetch.mockResolvedValueOnce(r));
+  };
+
+  it('returns the first response directly when the server answered synchronously (local node)', async () => {
+    queue(createMockResponse({ success: true, message: 'sent to local' }));
+
+    const result = await apiService.sendAdminCommand<any>({ command: 'reboot' });
+
+    expect(result).toMatchObject({ success: true, message: 'sent to local' });
+    // No polling: exactly one request was made.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('polls the operation until it succeeds, then resolves with the result payload', async () => {
+    queue(
+      createMockResponse({ success: true, operationId: 'op-1', status: 'pending' }),
+      createMockResponse({ success: true, data: { status: 'awaiting_passkey' } }),
+      createMockResponse({ success: true, data: { status: 'awaiting_ack' } }),
+      createMockResponse({
+        success: true,
+        data: {
+          status: 'succeeded',
+          result: { message: 'sent', ack: { acked: true, timedOut: false, status: 'confirmed' } },
+        },
+      }),
+    );
+
+    const result = await apiService.sendAdminCommand<any>({ command: 'setIgnoredNode' });
+
+    expect(result).toMatchObject({
+      success: true,
+      message: 'sent',
+      ack: { acked: true, status: 'confirmed' },
+    });
+    const polled = mockFetch.mock.calls.slice(1).map(([url]) => url);
+    expect(polled.every((u: string) => u.includes('/api/admin/operations/op-1'))).toBe(true);
+  });
+
+  it('throws an ApiError carrying the failure code so TX_DISABLED still round-trips', async () => {
+    queue(
+      createMockResponse({ success: true, operationId: 'op-2', status: 'pending' }),
+      createMockResponse({
+        success: true,
+        data: { status: 'failed', error: { code: 'TX_DISABLED', message: 'Transmit is disabled on this source' } },
+      }),
+    );
+
+    await expect(apiService.sendAdminCommand<any>({ command: 'reboot' }))
+      .rejects.toMatchObject({ code: 'TX_DISABLED', message: 'Transmit is disabled on this source' });
+  });
+
+  it('surfaces a passkey timeout as its own code rather than a generic failure', async () => {
+    queue(
+      createMockResponse({ success: true, operationId: 'op-3', status: 'pending' }),
+      createMockResponse({
+        success: true,
+        data: { status: 'failed', error: { code: 'PASSKEY_TIMEOUT', message: 'no passkey' } },
+      }),
+    );
+
+    await expect(apiService.sendAdminCommand<any>({ command: 'reboot' }))
+      .rejects.toMatchObject({ code: 'PASSKEY_TIMEOUT' });
+  });
+
+  it('reports a dropped operation plainly when the server no longer knows it', async () => {
+    queue(
+      createMockResponse({ success: true, operationId: 'op-4', status: 'pending' }),
+      createMockResponse({ error: 'Unknown or expired admin operation', code: 'OPERATION_NOT_FOUND' }, false),
+    );
+
+    await expect(apiService.sendAdminCommand<any>({ command: 'reboot' }))
+      .rejects.toMatchObject({ code: 'OPERATION_NOT_FOUND' });
+  });
+});

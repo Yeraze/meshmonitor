@@ -133,6 +133,40 @@ export class ApiError extends Error {
   }
 }
 
+/** Routing-ACK outcome for an admin command that waited for one (#4482). */
+export interface AdminCommandAck {
+  acked: boolean;
+  timedOut: boolean;
+  errorReason: number | null;
+  status: string;
+}
+
+/** Result payload of a settled admin command. */
+export interface AdminCommandResult {
+  message?: string;
+  ack?: AdminCommandAck;
+}
+
+/** First response to POST /api/admin/commands — 200 (local) or 202 (remote). */
+interface AdminCommandAccepted extends AdminCommandResult {
+  success: boolean;
+  /** Present only when the server opened a background operation. */
+  operationId?: string;
+  status?: string;
+}
+
+/** A snapshot of a background admin operation, as returned by the poll endpoint. */
+interface AdminOperationSnapshot {
+  status: 'pending' | 'awaiting_passkey' | 'sending' | 'awaiting_ack' | 'succeeded' | 'failed';
+  result?: AdminCommandResult | null;
+  error?: { code?: string; message?: string } | null;
+}
+
+/** The poll endpoint wraps its payload in the `{ success, data }` envelope. */
+interface AdminOperationEnvelope extends AdminOperationSnapshot {
+  data?: AdminOperationSnapshot;
+}
+
 class ApiService {
   private baseUrl = '';
   private configFetched = false;
@@ -1561,6 +1595,85 @@ class ApiService {
     }
 
     return response.json();
+  }
+
+  /**
+   * Send an admin command, transparently following the async operation the
+   * server opens for remote nodes (#4482).
+   *
+   * A remote admin command can take up to 75s of mesh time (session passkey +
+   * routing ACK). The server no longer holds the HTTP request open for that —
+   * it replies 202 with an operation id, and this polls until the operation
+   * settles. Callers keep their plain `await` semantics and the same result
+   * shape (`message`, optional `ack`); only the transport underneath changed.
+   *
+   * A local-node command still returns its result in the first response, so
+   * this resolves without any polling at all.
+   */
+  async sendAdminCommand<T extends { success: boolean; message?: string }>(
+    body: Record<string, unknown>,
+    options?: { signal?: AbortSignal },
+  ): Promise<T> {
+    const accepted = await this.post<AdminCommandAccepted>('/api/admin/commands', body);
+
+    // Local node (or any server that answered synchronously): already done.
+    if (!accepted?.operationId) {
+      return accepted as unknown as T;
+    }
+
+    const operationId: string = accepted.operationId;
+    const startedAt = Date.now();
+    // Comfortably above the ~75s worst case (45s passkey + 30s ACK) so a slow
+    // but healthy mesh is never cut short by the client.
+    const overallTimeoutMs = 120_000;
+    let delayMs = 500;
+
+    for (;;) {
+      if (options?.signal?.aborted) {
+        throw new ApiError('Admin command polling aborted', 0, { code: 'ABORTED' });
+      }
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      // Ease off quickly at first, then settle into a steady 2s poll.
+      delayMs = Math.min(delayMs * 1.5, 2000);
+
+      if (Date.now() - startedAt > overallTimeoutMs) {
+        throw new ApiError(
+          'Timed out waiting for the admin command to complete',
+          504,
+          { code: 'OPERATION_POLL_TIMEOUT' },
+        );
+      }
+
+      let snapshot: AdminOperationEnvelope;
+      try {
+        snapshot = await this.get<AdminOperationEnvelope>(`/api/admin/operations/${operationId}`);
+      } catch (error) {
+        // A restarted server drops in-flight operations; surface that plainly
+        // rather than spinning until the overall timeout.
+        if (error instanceof ApiError && error.status === 404) {
+          throw new ApiError(
+            'The admin operation is no longer available (the server may have restarted)',
+            404,
+            { code: 'OPERATION_NOT_FOUND' },
+          );
+        }
+        throw error;
+      }
+
+      const operation = snapshot?.data ?? snapshot;
+      if (operation?.status === 'succeeded') {
+        return { success: true, ...(operation.result ?? {}) } as unknown as T;
+      }
+      if (operation?.status === 'failed') {
+        const failure = operation.error ?? {};
+        throw new ApiError(
+          failure.message || 'Admin command failed',
+          502,
+          { code: failure.code, body: operation },
+        );
+      }
+      // Still pending / awaiting_passkey / sending / awaiting_ack — keep polling.
+    }
   }
 
   async setSecurityConfig(config: {
