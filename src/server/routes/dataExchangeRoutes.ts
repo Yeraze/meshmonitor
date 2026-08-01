@@ -10,11 +10,14 @@ const router: Router = Router();
 router.get('/stats', requirePermission('dashboard', 'read'), async (req: Request, res: Response) => {
   try {
     const statsSourceId = req.query.sourceId as string | undefined;
-    // intentional cross-source: stats totals span all sources when no sourceId is specified
-    const messageCount = await databaseService.messages.getMessageCount(statsSourceId ?? ALL_SOURCES);
-    const nodeCount = await databaseService.nodes.getNodeCount(statsSourceId ?? ALL_SOURCES);
-    const channelCount = await databaseService.channels.getChannelCount(statsSourceId ?? ALL_SOURCES);
-    const messagesByDay = await databaseService.getMessagesByDayAsync(7, statsSourceId);
+    // intentional cross-source: stats totals span all sources when no sourceId is specified.
+    // Resolved once — the bug this replaced was one of four copies of this
+    // expression drifting from the other three.
+    const statsScope = statsSourceId ?? ALL_SOURCES;
+    const messageCount = await databaseService.messages.getMessageCount(statsScope);
+    const nodeCount = await databaseService.nodes.getNodeCount(statsScope);
+    const channelCount = await databaseService.channels.getChannelCount(statsScope);
+    const messagesByDay = await databaseService.getMessagesByDayAsync(7, statsScope);
 
     res.json({
       messageCount,

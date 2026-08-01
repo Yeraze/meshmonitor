@@ -1699,7 +1699,11 @@ class DatabaseService {
   }
 
 
-  async getMessagesByDayAsync(days: number = 7, sourceId?: string): Promise<Array<{ date: string; count: number }>> {
+  // sourceId is REQUIRED, matching the sibling count methods (getMessageCount,
+  // getNodeCount, getChannelCount). Leaving it optional kept `undefined`
+  // expressible, which withSourceScope rejects at runtime — so the omission
+  // this fixes would have surfaced as a 500 again rather than a compile error.
+  async getMessagesByDayAsync(days: number = 7, sourceId: SourceScope): Promise<Array<{ date: string; count: number }>> {
     if (this.messagesRepo) {
       return this.messagesRepo.getMessagesByDay(days, sourceId);
     }
