@@ -7,7 +7,7 @@
  * but not between messages sent on the same day.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -469,5 +469,85 @@ describe('MeshCoreMessageStream route-detail popup', () => {
       <MeshCoreMessageStream messages={[message]} onSend={async () => true} />,
     );
     expect(container.querySelector('.mc-route-chain-link')).toBeNull();
+  });
+});
+
+/**
+ * Regression: the mobile two-pane layout mounts the conversation but hides it
+ * until the operator drills in from the channel/peer list. Measured on the
+ * running app in that state: scrollHeight 0, clientHeight 0, offsetParent null.
+ * The entry scroll fired there, `scrollTop = scrollHeight` was `0 = 0` (a silent
+ * no-op), and the one shot was spent — so drilling in left the view pinned at
+ * the top of a 17,000px backlog with nothing left to re-trigger it.
+ */
+describe('MeshCoreMessageStream entry scroll on a hidden pane (#4473 follow-up)', () => {
+  let resizeCallbacks: Array<() => void>;
+  let scrollHeightValue: number;
+
+  beforeEach(() => {
+    vi.stubGlobal('requestAnimationFrame', (cb: (time: number) => void) => { cb(0); return 0; });
+    resizeCallbacks = [];
+    scrollHeightValue = 0; // hidden: no layout
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(cb: () => void) { resizeCallbacks.push(cb); }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get() { return scrollHeightValue; },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+  });
+
+  const msgs = () => {
+    const now = Date.now();
+    return [msg('a', now - 2000, 'first'), msg('b', now - 1000, 'second')];
+  };
+
+  it('defers the entry scroll while the pane is hidden, then runs it on reveal', () => {
+    const { container } = render(
+      <MeshCoreMessageStream
+        messages={msgs()}
+        conversationKey="channel-0"
+        onSend={async () => true}
+      />,
+    );
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+    // Hidden — the shot must NOT be spent.
+    expect(list.scrollTop).toBe(0);
+
+    // Operator drills in: the pane gains layout and the observer fires.
+    scrollHeightValue = 900;
+    act(() => { resizeCallbacks.forEach(cb => cb()); });
+
+    expect(list.scrollTop).toBe(900);
+  });
+
+  it('does not re-scroll on later resizes once the entry scroll has run', () => {
+    const { container } = render(
+      <MeshCoreMessageStream
+        messages={msgs()}
+        conversationKey="channel-0"
+        onSend={async () => true}
+      />,
+    );
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+
+    scrollHeightValue = 900;
+    act(() => { resizeCallbacks.forEach(cb => cb()); });
+    expect(list.scrollTop).toBe(900);
+
+    // User scrolls up to read history; a later resize (keyboard, rotate) must
+    // not yank them back to the bottom.
+    list.scrollTop = 120;
+    scrollHeightValue = 1400;
+    act(() => { resizeCallbacks.forEach(cb => cb()); });
+    expect(list.scrollTop).toBe(120);
   });
 });

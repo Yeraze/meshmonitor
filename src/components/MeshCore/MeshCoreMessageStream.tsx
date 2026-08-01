@@ -164,6 +164,29 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     key: conversationKey,
     done: false,
   });
+
+  /**
+   * Perform the one-shot entry scroll, but only when the list is actually laid
+   * out. Returns whether it ran, so callers know not to mark the shot spent.
+   *
+   * The `scrollHeight` check is the load-bearing part. On mobile both the
+   * channels and DM views render a two-pane layout where the conversation is
+   * MOUNTED but hidden until the operator drills in from the list — measured
+   * there: `scrollHeight: 0`, `clientHeight: 0`, `offsetParent: null`. Assigning
+   * `scrollTop = scrollHeight` is then `0 = 0`, a silent no-op that still burnt
+   * the one shot, so drilling in left the viewport pinned at the very top of a
+   * 17,000px backlog with nothing left to re-trigger it.
+   *
+   * Deliberately keys off `scrollHeight` alone, not `clientHeight`: a hidden
+   * subtree zeroes both, while jsdom reports clientHeight 0 for everything, so a
+   * clientHeight guard would disable the entry scroll in every test.
+   */
+  const runEntryScroll = useCallback((container: HTMLDivElement): boolean => {
+    if (container.scrollHeight === 0) return false;
+    container.scrollTop = container.scrollHeight;
+    return true;
+  }, []);
+
   useEffect(() => {
     const container = listRef.current;
     if (!container) return;
@@ -176,11 +199,28 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
     if (state.done) return;
     // Wait for the (possibly async) backlog before committing the entry scroll.
     if (messages.length === 0) return;
-    state.done = true;
     requestAnimationFrame(() => {
-      container.scrollTop = container.scrollHeight;
+      // Re-check inside the frame: the pane may still be hidden.
+      if (entryScrollRef.current.done) return;
+      if (runEntryScroll(container)) entryScrollRef.current.done = true;
     });
-  }, [conversationKey, messages.length]);
+  }, [conversationKey, messages.length, runEntryScroll]);
+
+  // Complete a deferred entry scroll the moment the list gains a real size —
+  // i.e. when the hidden conversation pane is revealed. Nothing else changes at
+  // that point (no new messages, no key change), so without this observer the
+  // effect above has no trigger left to fire on.
+  useEffect(() => {
+    const container = listRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      const state = entryScrollRef.current;
+      if (state.done) return;
+      if (runEntryScroll(container)) state.done = true;
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [runEntryScroll]);
 
   // Auto-scroll on new messages only when the user is already near the bottom.
   useEffect(() => {

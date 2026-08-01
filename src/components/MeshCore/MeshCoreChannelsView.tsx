@@ -534,16 +534,37 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   const connected = status?.connected ?? false;
 
   // Per-message delete + whole-channel clear (#3981). Both confirm first.
+  //
+  // Both MUST also prune `history`, not just await the action. The stream renders
+  // `filtered` = merge(history, messages), and the hook's delete/clear only prune
+  // the shared `messages` pool — so anything served from the per-channel backlog
+  // (#4460), which is nearly everything on this view, was deleted server-side and
+  // then immediately re-rendered from `history`. That read as "the delete button
+  // does nothing"; verified against the API, the row was already gone from the
+  // database while still on screen.
   const handleDeleteMessage = useCallback(async (m: MeshCoreMessage) => {
     if (!window.confirm(t('meshcore.confirm_delete_message', 'Delete this message?'))) return;
-    await actions.deleteMessage(m.id);
+    const ok = await actions.deleteMessage(m.id);
+    if (ok) {
+      setHistory(prev => prev.filter(x => x.id !== m.id));
+      setCounts(prev => {
+        const current = prev[activeChannelIdxRef.current];
+        if (typeof current !== 'number') return prev;
+        return { ...prev, [activeChannelIdxRef.current]: Math.max(0, current - 1) };
+      });
+    }
   }, [actions, t]);
   const handleClearChannel = useCallback(async () => {
     if (!window.confirm(t(
       'meshcore.confirm_clear_channel',
       'Clear all messages on this channel? This cannot be undone.',
     ))) return;
-    await actions.clearChannelMessages(active.id);
+    const ok = await actions.clearChannelMessages(active.id);
+    if (ok) {
+      setHistory([]);
+      setHasMoreHistory(false);
+      setCounts(prev => ({ ...prev, [active.id]: 0 }));
+    }
   }, [actions, active, t]);
 
   const mobileClass = mobileShowContent ? 'mobile-show-content' : 'mobile-show-list';

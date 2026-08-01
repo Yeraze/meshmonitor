@@ -811,3 +811,134 @@ describe('MeshCoreChannelsView — explicit Unscoped send (#3888)', () => {
     expect(unscopedBtn.getAttribute('aria-pressed')).toBe('true');
   });
 });
+
+describe('MeshCoreChannelsView — delete prunes the fetched backlog', () => {
+  /**
+   * The stream renders `filtered` = merge(history, messages). `actions.deleteMessage`
+   * only prunes the shared `messages` pool, so a message served from the
+   * per-channel backlog (#4460) was deleted server-side and then immediately
+   * re-rendered from `history` — the delete button looked inert. Verified against
+   * the live API: the row was already gone from the database while still on screen.
+   */
+  function routedFetch(backlog: MeshCoreMessage[]) {
+    return vi.fn((url: string) => {
+      if (url.includes('/api/channels/all')) {
+        return Promise.resolve(jsonResponse([{ id: 0, name: 'Public' }]));
+      }
+      if (url.includes('/messages/channel-counts')) {
+        return Promise.resolve(jsonResponse({ success: true, counts: { 0: backlog.length } }));
+      }
+      if (/\/messages\/channel\/\d+/.test(url)) {
+        return Promise.resolve(jsonResponse({ success: true, data: backlog, count: backlog.length }));
+      }
+      return Promise.resolve(jsonResponse({ success: true, data: [] }));
+    });
+  }
+
+  const confirmSpy = vi.spyOn(window, 'confirm');
+
+  it('removes a backlog-sourced message from the view once the delete succeeds', async () => {
+    confirmSpy.mockReturnValue(true);
+    csrfFetchMock.mockImplementation(routedFetch([
+      { id: 'from-history', fromPublicKey: 'channel-0', text: 'delete me', timestamp: 100 },
+    ]));
+    const deleteMessage = vi.fn().mockResolvedValue(true);
+
+    render(
+      <MeshCoreChannelsView
+        messages={[]}                       // deliberately empty: this row exists ONLY in history
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions({ deleteMessage })}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('delete me')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.click(document.querySelector('.mc-message-delete') as Element);
+    });
+
+    expect(deleteMessage).toHaveBeenCalledWith('from-history');
+    await waitFor(() => expect(screen.queryByText('delete me')).toBeNull());
+  });
+
+  it('keeps the message when the delete request fails', async () => {
+    confirmSpy.mockReturnValue(true);
+    csrfFetchMock.mockImplementation(routedFetch([
+      { id: 'from-history', fromPublicKey: 'channel-0', text: 'keep me', timestamp: 100 },
+    ]));
+
+    render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions({ deleteMessage: vi.fn().mockResolvedValue(false) })}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('keep me')).toBeTruthy());
+    await act(async () => {
+      fireEvent.click(document.querySelector('.mc-message-delete') as Element);
+    });
+    // Server said no — the row must stay rather than vanish optimistically.
+    expect(screen.getByText('keep me')).toBeTruthy();
+  });
+
+  it('does not delete when the operator cancels the confirm', async () => {
+    confirmSpy.mockReturnValue(false);
+    csrfFetchMock.mockImplementation(routedFetch([
+      { id: 'from-history', fromPublicKey: 'channel-0', text: 'still here', timestamp: 100 },
+    ]));
+    const deleteMessage = vi.fn().mockResolvedValue(true);
+
+    render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions({ deleteMessage })}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('still here')).toBeTruthy());
+    await act(async () => {
+      fireEvent.click(document.querySelector('.mc-message-delete') as Element);
+    });
+    expect(deleteMessage).not.toHaveBeenCalled();
+    expect(screen.getByText('still here')).toBeTruthy();
+  });
+
+  it('clears the whole backlog when the channel clear succeeds', async () => {
+    confirmSpy.mockReturnValue(true);
+    csrfFetchMock.mockImplementation(routedFetch([
+      { id: 'h1', fromPublicKey: 'channel-0', text: 'first', timestamp: 100 },
+      { id: 'h2', fromPublicKey: 'channel-0', text: 'second', timestamp: 200 },
+    ]));
+
+    render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions({ clearChannelMessages: vi.fn().mockResolvedValue(true) })}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('first')).toBeTruthy());
+    await act(async () => {
+      fireEvent.click(document.querySelector('.meshcore-clear-conversation-btn') as Element);
+    });
+    await waitFor(() => expect(screen.queryByText('first')).toBeNull());
+    expect(screen.queryByText('second')).toBeNull();
+  });
+});
