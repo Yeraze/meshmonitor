@@ -308,4 +308,105 @@ describe('useMessagingView', () => {
       expect(ids).toEqual(['old-1', 'newer-1']);
     });
   });
+
+  describe('regression: loading older messages must not force-scroll to bottom (#4476)', () => {
+    // Bug: GATED EFFECT #1 scrolled the channel container to the bottom on
+    // *any* channelMessages change, including loadMoreChannelMessages
+    // prepending older history — so every scroll-up-to-load-more was
+    // immediately yanked back down. The fix gates the forced scroll to fire
+    // once per channel/tab entry, tracked via a ref that only resets on
+    // selectedChannel/activeTab change.
+    function fakeContainer(overrides: Partial<HTMLDivElement> = {}) {
+      return {
+        scrollHeight: 100,
+        clientHeight: 500,
+        scrollTop: 0,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        ...overrides,
+      } as unknown as HTMLDivElement;
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('does not reset scrollTop when older messages are prepended after the initial entry scroll', async () => {
+      const { result } = renderHook(() => useMessagingView());
+
+      const container = fakeContainer({ scrollHeight: 1000, scrollTop: 500 });
+
+      act(() => {
+        result.current.channelMessagesContainerRef.current = container;
+        result.current.setChannelMessages({ 0: [makeMessage({ id: 'newer-1' })] });
+      });
+
+      // Let the entry-scroll effect run and consume the pending flag.
+      await act(async () => {
+        vi.advanceTimersByTime(250);
+        await Promise.resolve();
+      });
+
+      // Simulate the user having scrolled up to read history.
+      container.scrollTop = 200;
+
+      // Now simulate loadMoreChannelMessages prepending an older page —
+      // this changes channelMessages just like a real infinite-scroll load.
+      act(() => {
+        result.current.setChannelMessages({
+          0: [makeMessage({ id: 'old-1', timestamp: new Date(0) }), makeMessage({ id: 'newer-1' })],
+        });
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(250);
+        await Promise.resolve();
+      });
+
+      // The bug forced scrollTop back to scrollHeight (1000) here; the fix
+      // leaves the user's scroll position alone.
+      expect(container.scrollTop).toBe(200);
+    });
+
+    it('still scrolls to bottom once when the channel/tab is (re-)entered', async () => {
+      const { result, rerender } = renderHook(
+        ({ activeTab }: { activeTab: string }) => {
+          mockUseUI.mockReturnValue({ activeTab });
+          return useMessagingView();
+        },
+        { initialProps: { activeTab: 'channels' } }
+      );
+
+      const container = fakeContainer({ scrollHeight: 1000, scrollTop: 0 });
+
+      act(() => {
+        result.current.channelMessagesContainerRef.current = container;
+        result.current.setChannelMessages({ 0: [makeMessage({ id: 'newer-1' })] });
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(250);
+        await Promise.resolve();
+      });
+
+      expect(container.scrollTop).toBe(1000);
+
+      // Leave the channels tab and simulate the user having scrolled away,
+      // then re-enter — the one-time scroll should re-arm.
+      container.scrollTop = 0;
+      rerender({ activeTab: 'messages' });
+      rerender({ activeTab: 'channels' });
+
+      await act(async () => {
+        vi.advanceTimersByTime(250);
+        await Promise.resolve();
+      });
+
+      expect(container.scrollTop).toBe(1000);
+    });
+  });
 });
