@@ -1271,16 +1271,34 @@ body {
   color: var(--ctp-overlay1);
 }
 
+/*
+ * Single source of truth for the message-compose send button (#4478).
+ *
+ * This rule used to be duplicated: a second `.send-btn` block further down this
+ * file re-declared `padding: 0.75rem 1.5rem` at equal specificity and won the
+ * cascade, while `width: 40px` still came from here. Under the global
+ * `box-sizing: border-box`, 48px of horizontal padding inside a 40px box leaves
+ * zero content width, so the flex child — `<UiIcon name="send" size={16} />` —
+ * was squeezed to nothing and the button rendered as a solid blue rectangle.
+ * The `.channel-action-btn` siblings escaped only because their
+ * `padding: 0.5rem !important` outranked the duplicate.
+ *
+ * The declarations below are the values that block actually produced, so the
+ * button looks unchanged; only the padding conflict is resolved. Keep this as
+ * the ONLY `.send-btn` declaration — and note that the mobile override in the
+ * `@media (max-width: 768px)` block below is declared *after* this one on
+ * purpose, or the cascade silently shadows it (same trap as issue #3532).
+ */
 .send-btn {
   padding: 0.75rem 0.5rem;
   min-width: 40px;
   width: 40px;
-  background: var(--ctp-green);
+  background: var(--ctp-blue);
   color: var(--ctp-accent-text);
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   font-weight: 600;
-  font-size: 1.5rem;
+  font-size: 1rem;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -1289,8 +1307,13 @@ body {
   flex-shrink: 0;
 }
 
+/* Never let the icon absorb a future padding/width regression. */
+.send-btn > svg {
+  flex-shrink: 0;
+}
+
 .send-btn:hover:not(:disabled) {
-  background: var(--ctp-teal);
+  background: var(--ctp-sapphire);
   transform: translateY(-1px);
   box-shadow: 0 6px 20px -3px rgba(166, 227, 161, 0.4);
 }
@@ -1983,27 +2006,7 @@ body {
   color: var(--ctp-overlay1);
 }
 
-.send-btn {
-  padding: 0.75rem 1.5rem;
-  background: var(--ctp-blue);
-  color: var(--ctp-accent-text);
-  border: none;
-  border-radius: var(--radius-lg);
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.send-btn:hover:not(:disabled) {
-  background: var(--ctp-sapphire);
-  transform: translateY(-1px);
-}
-
-.send-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+/* `.send-btn` is defined once, above — see the note there (#4478). */
 
 /* Mobile: text input full width, action buttons on second row */
 @media (max-width: 768px) {
