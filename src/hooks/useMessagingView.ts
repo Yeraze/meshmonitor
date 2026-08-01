@@ -358,16 +358,30 @@ export function useMessagingView() {
     };
   }, [handleChannelScroll, handleDMScroll, activeTab, selectedChannel, selectedDMNode]);
 
-  // Force scroll to bottom when channel changes OR when switching to channels tab
-  // Note: We track initial scroll per channel to avoid re-scrolling when user manually scrolls
+  // Force scroll to bottom when channel changes OR when switching to channels tab.
+  // `channelMessages` has to stay a dependency because messages for a
+  // freshly-selected channel can still be in flight (poll hasn't landed
+  // yet) at the moment selectedChannel/activeTab change — but that means
+  // this effect also re-fires for reasons that AREN'T a channel/tab switch,
+  // e.g. loadMoreChannelMessages prepending older history while scrolled up,
+  // which without the pending-flag below would yank the view back to the
+  // bottom on every older-page load (#4476). pendingChannelScrollRef tracks
+  // whether the one-time scroll for the *current* channel/tab entry has
+  // already happened, and is only reset by the entry effect right below.
   // [GATED EFFECT #1 — task54_spec.md §1.3]
+  const pendingChannelScrollRef = useRef(true);
   useEffect(() => {
-    if (activeTab === 'channels' && selectedChannel >= 0) {
+    pendingChannelScrollRef.current = true;
+  }, [selectedChannel, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'channels' && selectedChannel >= 0 && pendingChannelScrollRef.current) {
       const currentChannelMessages = channelMessages[selectedChannel] || [];
       const hasMessages = currentChannelMessages.length > 0;
 
-      // Always scroll to bottom when entering the channels tab or changing channels
+      // Scroll to bottom once when entering the channels tab or changing channels.
       if (hasMessages) {
+        pendingChannelScrollRef.current = false;
         // Use setTimeout to ensure messages are rendered before scrolling
         setTimeout(() => {
           if (channelMessagesContainerRef.current) {
@@ -465,10 +479,20 @@ export function useMessagingView() {
     }
   }, [selectedChannel, activeTab, channelLoadingMore, channelHasMore, loadMoreChannelMessages]);
 
-  // Force scroll to bottom when DM node changes OR when switching to messages tab
+  // Force scroll to bottom when DM node changes OR when switching to messages tab.
+  // Same one-time-per-entry gating as GATED EFFECT #1 above, and for the same
+  // reason (#4476): `messages` must stay a dependency so a still-in-flight
+  // initial fetch can still trigger the scroll, but without the pending flag
+  // loadMoreDirectMessages prepending older history would re-trigger this on
+  // every older-page load and yank the view back to the bottom.
   // [GATED EFFECT #4 — task54_spec.md §1.3]
+  const pendingDMScrollRef = useRef(true);
   useEffect(() => {
-    if (activeTab === 'messages' && selectedDMNode && currentNodeId) {
+    pendingDMScrollRef.current = true;
+  }, [selectedDMNode, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'messages' && selectedDMNode && currentNodeId && pendingDMScrollRef.current) {
       const currentDMMessages = messages.filter(
         msg =>
           (msg.fromNodeId === currentNodeId && msg.toNodeId === selectedDMNode) ||
@@ -476,8 +500,9 @@ export function useMessagingView() {
       );
       const hasMessages = currentDMMessages.length > 0;
 
-      // Always scroll to bottom when entering the messages tab or changing conversations
+      // Scroll to bottom once when entering the messages tab or changing conversations
       if (hasMessages) {
+        pendingDMScrollRef.current = false;
         setTimeout(() => {
           if (dmMessagesContainerRef.current) {
             dmMessagesContainerRef.current.scrollTop = dmMessagesContainerRef.current.scrollHeight;
