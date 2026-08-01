@@ -7,7 +7,7 @@
  *   - filters messages per channel (received + locally-sent)
  *   - passes the active channelIdx to actions.sendMessage on broadcast
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
 vi.mock('react-i18next', () => ({
@@ -31,8 +31,10 @@ vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
 }));
 
+// Mutable so a test can simulate a read-only / anonymous viewer.
+let permissionFn: (resource: string, action: string) => boolean = () => true;
 vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({ hasPermission: () => true }),
+  useAuth: () => ({ hasPermission: (r: string, a: string) => permissionFn(r, a) }),
 }));
 
 const csrfFetchMock = vi.fn();
@@ -940,5 +942,76 @@ describe('MeshCoreChannelsView — delete prunes the fetched backlog', () => {
     });
     await waitFor(() => expect(screen.queryByText('first')).toBeNull());
     expect(screen.queryByText('second')).toBeNull();
+  });
+});
+
+describe('MeshCoreChannelsView — read-only viewers skip send-side lookups', () => {
+  /**
+   * `config/default-scope` and `saved-regions` are `requireAuth()` +
+   * `configuration: read`, and exist only to populate the scope-override
+   * control (a send-side affordance). Firing them for an anonymous viewer
+   * always 401s; `fetchSavedRegions` then surfaced the raw body
+   * ("Authentication required") as a banner over an otherwise-working channel,
+   * which read as "you can't view this channel".
+   */
+  function routedFetch() {
+    return vi.fn((url: string) => {
+      if (url.includes('/api/channels/all')) {
+        return Promise.resolve(jsonResponse([{ id: 0, name: 'Public' }]));
+      }
+      if (url.includes('/messages/channel-counts')) {
+        return Promise.resolve(jsonResponse({ success: true, counts: { 0: 0 } }));
+      }
+      if (/\/messages\/channel\/\d+/.test(url)) {
+        return Promise.resolve(jsonResponse({ success: true, data: [], count: 0 }));
+      }
+      return Promise.resolve(jsonResponse({ success: true, data: [] }));
+    });
+  }
+
+  afterEach(() => { permissionFn = () => true; });
+
+  it('does not call the auth-only scope lookups without messages:write', async () => {
+    permissionFn = (resource, action) => !(resource === 'messages' && action === 'write');
+    csrfFetchMock.mockImplementation(routedFetch());
+    const getDefaultScope = vi.fn().mockResolvedValue('');
+    const fetchSavedRegions = vi.fn().mockResolvedValue([]);
+
+    render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions({ getDefaultScope, fetchSavedRegions })}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    // Wait for the channel list to settle so the effects have had their chance.
+    await waitFor(() => expect(document.querySelector('.mc-channel-row')).toBeTruthy());
+    expect(getDefaultScope).not.toHaveBeenCalled();
+    expect(fetchSavedRegions).not.toHaveBeenCalled();
+  });
+
+  it('still calls them for a viewer who can send', async () => {
+    permissionFn = () => true;
+    csrfFetchMock.mockImplementation(routedFetch());
+    const getDefaultScope = vi.fn().mockResolvedValue('');
+    const fetchSavedRegions = vi.fn().mockResolvedValue([]);
+
+    render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions({ getDefaultScope, fetchSavedRegions })}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+
+    await waitFor(() => expect(fetchSavedRegions).toHaveBeenCalled());
+    expect(getDefaultScope).toHaveBeenCalled();
   });
 });

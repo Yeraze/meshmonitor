@@ -111,6 +111,26 @@ export interface MeshCoreMessage {
   scopeCode?: number | null;
   /** Region name resolved from the scope code; null = unscoped or unknown scope (#3742 Ph2). */
   scopeName?: string | null;
+  /**
+   * MeshMonitor's own wall clock (ms) at the moment this message was created or
+   * observed — NOT the sender's clock.
+   *
+   * `timestamp` cannot order messages reliably: a received message takes its
+   * time from the wire's `sender_timestamp`, which MeshCore carries in whole
+   * SECONDS, while a locally-sent message is stamped `Date.now()` to the
+   * millisecond. An auto-responder replying inside the same second therefore
+   * sorted BEFORE the message that triggered it — observed in the field: the
+   * trigger stamped …213050, the reply stamped …213000 despite arriving 1.4s
+   * later.
+   *
+   * Ordering therefore compares `timestamp` at second granularity — all the
+   * wire actually gives us — and breaks ties on this field, a single monotonic
+   * clock across both directions. Display still uses `timestamp`.
+   *
+   * Optional: rows persisted before this field existed carry no value, and
+   * `compareMeshCoreMessages` falls back to `timestamp` for those.
+   */
+  receivedAt?: number;
 }
 
 export interface ConnectionStatus {
@@ -1003,17 +1023,23 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     }
   }, [mcPrefix, csrfFetch]);
 
+  /**
+   * Saved-regions catalog for the scope-override datalist.
+   *
+   * Deliberately does NOT surface a global error, matching `getDefaultScope`
+   * above: this only feeds optional autocomplete suggestions, and its route is
+   * `requireAuth()` + `configuration: read`. Reporting the failure meant an
+   * anonymous read-only viewer opening a MeshCore channel got the raw 401 body
+   * — "Authentication required" — as a banner across a page that was otherwise
+   * working, which reads as "you can't view this channel".
+   */
   const fetchSavedRegions = useCallback(async (): Promise<SavedRegion[] | null> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/saved-regions`);
       const data = await response.json();
-      if (!data.success) {
-        setError(data.error || 'Failed to load saved regions');
-        return null;
-      }
+      if (!data.success) return null;
       return Array.isArray(data.regions) ? (data.regions as SavedRegion[]) : [];
     } catch (_err) {
-      setError('Failed to load saved regions');
       return null;
     }
   }, [mcPrefix, csrfFetch]);
