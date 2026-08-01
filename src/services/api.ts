@@ -9,6 +9,10 @@ import {
   validateIntervalMinutes
 } from '../utils/validation';
 import { logger } from '../utils/logger.js';
+import type {
+  AdminCommandSuccessResponse,
+  AdminOperationStatusResponse,
+} from '../types/adminOperations.js';
 
 export type SignalTrend = 'improving' | 'stable' | 'degrading' | 'insufficient';
 
@@ -251,6 +255,54 @@ class ApiService {
   // Generic POST method
   async post<T>(endpoint: string, body?: any): Promise<T> {
     return this.request<T>('POST', endpoint, body);
+  }
+
+  async waitForAdminOperation(
+    operationId: string,
+    pollIntervalMs = 1000,
+    timeoutMs = 90_000,
+  ): Promise<AdminCommandSuccessResponse> {
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < timeoutMs) {
+      let response: AdminOperationStatusResponse;
+      try {
+        response = await this.get<AdminOperationStatusResponse>(
+          `/api/admin/commands/${encodeURIComponent(operationId)}`,
+        );
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'ADMIN_OPERATION_NOT_FOUND') {
+          throw new ApiError(
+            'The admin operation was interrupted by a server restart or expired before completion',
+            409,
+            { code: 'ADMIN_OPERATION_INTERRUPTED', body: error.body },
+          );
+        }
+        throw error;
+      }
+
+      const { operation } = response;
+      if (operation.status === 'failed' || (operation.status === 'timed_out' && operation.error)) {
+        throw new ApiError(operation.error?.message || 'Admin operation failed', 500, {
+          code: operation.error?.code || 'ADMIN_COMMAND_FAILED',
+          body: operation.error,
+        });
+      }
+      if (operation.status === 'succeeded' || operation.status === 'timed_out' || operation.status === 'rejected') {
+        if (!operation.result) {
+          throw new ApiError('Admin operation completed without a result', 500, {
+            code: 'ADMIN_OPERATION_INVALID_RESULT',
+          });
+        }
+        return { success: true, ...operation.result };
+      }
+
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+
+    throw new ApiError('Timed out while checking admin operation status', 504, {
+      code: 'ADMIN_OPERATION_STATUS_TIMEOUT',
+    });
   }
 
   // Generic PUT method

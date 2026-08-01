@@ -18,9 +18,16 @@ import { DeviceConfigurationSection } from './admin-commands/DeviceConfiguration
 import AutoFavoriteManagementSection from './admin-commands/AutoFavoriteManagementSection';
 import { ModuleConfigurationSection } from './admin-commands/ModuleConfigurationSection';
 import { useAdminCommandsState } from './admin-commands/useAdminCommandsState';
-import { buildNodeOptions, filterNodes, sortNodeOptionsForRemoteAdmin, type NodeOption } from './admin-commands/nodeOptionsUtils';
+import {
+  buildNodeOptions,
+  filterNodes,
+  shouldApplyOptimisticNodeState,
+  sortNodeOptionsForRemoteAdmin,
+  type NodeOption,
+} from './admin-commands/nodeOptionsUtils';
 import { createEmptyChannelSlot, createChannelFromResponse, isRetryableChannelError, countLoadedChannels } from './admin-commands/channelLoadingUtils';
 import { UiIcon } from './icons';
+import type { AdminCommandResponse, AdminCommandSuccessResponse } from '../types/adminOperations';
 
 interface AdminCommandsTabProps {
   nodes: any[];
@@ -1441,13 +1448,18 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
 
     setIsExecuting(true);
     try {
-      const result = await apiService.post<{ success: boolean; message: string }>('/api/admin/commands', {
+      const response = await apiService.post<AdminCommandResponse>('/api/admin/commands', {
         command,
         nodeNum: selectedNodeNum,
         ...(sourceId ? { sourceId } : {}),
         ...params
       });
-      showToast(result.message || t('admin_commands.command_executed', { command }), 'success');
+      const result: AdminCommandSuccessResponse = 'operation' in response
+        ? await apiService.waitForAdminOperation(response.operation.id)
+        : response;
+      if (!['setFavoriteNode', 'removeFavoriteNode', 'setIgnoredNode', 'removeIgnoredNode'].includes(command)) {
+        showToast(result.message || t('admin_commands.command_executed', { command }), 'success');
+      }
       return result;
     } catch (error: any) {
       // A 409 TX_DISABLED can still slip through as a race (TX flipped off
@@ -1513,17 +1525,17 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       return;
     }
     try {
-      const res: any = await executeCommand('setFavoriteNode', { favoriteNodeNum: nodeManagementNodeNum });
+      const res = await executeCommand('setFavoriteNode', { favoriteNodeNum: nodeManagementNodeNum });
       const ack = res?.ack;
       // For a remote node the backend waits for the routing ACK. A definitive
       // routing rejection means the favorite did NOT apply — don't optimistically
       // mark it. 'confirmed' or 'timeout' (uncertain) keep the optimistic update.
-      const rejected = ack && !ack.acked && !ack.timedOut;
+      const rejected = !shouldApplyOptimisticNodeState(ack);
       if (ack?.acked) {
         showToast(t('admin_commands.node_favorite_confirmed', { nodeNum: nodeManagementNodeNum }), 'success');
       } else if (ack?.timedOut) {
         showToast(t('admin_commands.node_favorite_no_ack', { nodeNum: nodeManagementNodeNum }), 'warning');
-      } else if (rejected) {
+      } else if (rejected && ack) {
         showToast(t('admin_commands.node_favorite_rejected', { nodeNum: nodeManagementNodeNum, status: ack.status }), 'error');
       } else {
         showToast(t('admin_commands.node_set_favorite', { nodeNum: nodeManagementNodeNum }), 'success');
@@ -1557,14 +1569,14 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       return;
     }
     try {
-      const res: any = await executeCommand('removeFavoriteNode', { favoriteNodeNum: nodeManagementNodeNum });
+      const res = await executeCommand('removeFavoriteNode', { favoriteNodeNum: nodeManagementNodeNum });
       const ack = res?.ack;
-      const rejected = ack && !ack.acked && !ack.timedOut;
+      const rejected = !shouldApplyOptimisticNodeState(ack);
       if (ack?.acked) {
         showToast(t('admin_commands.node_unfavorite_confirmed', { nodeNum: nodeManagementNodeNum }), 'success');
       } else if (ack?.timedOut) {
         showToast(t('admin_commands.node_favorite_no_ack', { nodeNum: nodeManagementNodeNum }), 'warning');
-      } else if (rejected) {
+      } else if (rejected && ack) {
         showToast(t('admin_commands.node_favorite_rejected', { nodeNum: nodeManagementNodeNum, status: ack.status }), 'error');
       } else {
         showToast(t('admin_commands.node_removed_favorite', { nodeNum: nodeManagementNodeNum }), 'success');
@@ -1598,22 +1610,32 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       return;
     }
     try {
-      await executeCommand('setIgnoredNode', { targetNodeNum: nodeManagementNodeNum });
-      showToast(t('admin_commands.node_set_ignored', { nodeNum: nodeManagementNodeNum }), 'success');
-      // Optimistically update state - use remote status if managing remote node, otherwise local
-      if (isManagingRemoteNode) {
-        setRemoteNodeStatus(prev => {
-          const newMap = new Map(prev);
-          const current = newMap.get(nodeManagementNodeNum) || { isFavorite: false, isIgnored: false };
-          newMap.set(nodeManagementNodeNum, { ...current, isIgnored: true });
-          return newMap;
-        });
+      const res = await executeCommand('setIgnoredNode', { targetNodeNum: nodeManagementNodeNum });
+      const ack = res?.ack;
+      const rejected = !shouldApplyOptimisticNodeState(ack);
+      if (ack?.timedOut) {
+        showToast(t('admin_commands.node_favorite_no_ack', { nodeNum: nodeManagementNodeNum }), 'warning');
+      } else if (rejected && ack) {
+        showToast(`${t('admin_commands.failed_execute_command')}: ${ack.status}`, 'error');
       } else {
-        setNodeOptions(prev => prev.map(node => 
-          node.nodeNum === nodeManagementNodeNum 
-            ? { ...node, isIgnored: true }
-            : node
-        ));
+        showToast(t('admin_commands.node_set_ignored', { nodeNum: nodeManagementNodeNum }), 'success');
+      }
+      if (!rejected) {
+        // Optimistically update state - use remote status if managing remote node, otherwise local
+        if (isManagingRemoteNode) {
+          setRemoteNodeStatus(prev => {
+            const newMap = new Map(prev);
+            const current = newMap.get(nodeManagementNodeNum) || { isFavorite: false, isIgnored: false };
+            newMap.set(nodeManagementNodeNum, { ...current, isIgnored: true });
+            return newMap;
+          });
+        } else {
+          setNodeOptions(prev => prev.map(node =>
+            node.nodeNum === nodeManagementNodeNum
+              ? { ...node, isIgnored: true }
+              : node
+          ));
+        }
       }
     } catch (error) {
       // Error already handled by executeCommand (toast shown)
@@ -1627,22 +1649,32 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
       return;
     }
     try {
-      await executeCommand('removeIgnoredNode', { targetNodeNum: nodeManagementNodeNum });
-      showToast(t('admin_commands.node_removed_ignored', { nodeNum: nodeManagementNodeNum }), 'success');
-      // Optimistically update state - use remote status if managing remote node, otherwise local
-      if (isManagingRemoteNode) {
-        setRemoteNodeStatus(prev => {
-          const newMap = new Map(prev);
-          const current = newMap.get(nodeManagementNodeNum) || { isFavorite: false, isIgnored: false };
-          newMap.set(nodeManagementNodeNum, { ...current, isIgnored: false });
-          return newMap;
-        });
+      const res = await executeCommand('removeIgnoredNode', { targetNodeNum: nodeManagementNodeNum });
+      const ack = res?.ack;
+      const rejected = !shouldApplyOptimisticNodeState(ack);
+      if (ack?.timedOut) {
+        showToast(t('admin_commands.node_favorite_no_ack', { nodeNum: nodeManagementNodeNum }), 'warning');
+      } else if (rejected && ack) {
+        showToast(`${t('admin_commands.failed_execute_command')}: ${ack.status}`, 'error');
       } else {
-        setNodeOptions(prev => prev.map(node => 
-          node.nodeNum === nodeManagementNodeNum 
-            ? { ...node, isIgnored: false }
-            : node
-        ));
+        showToast(t('admin_commands.node_removed_ignored', { nodeNum: nodeManagementNodeNum }), 'success');
+      }
+      if (!rejected) {
+        // Optimistically update state - use remote status if managing remote node, otherwise local
+        if (isManagingRemoteNode) {
+          setRemoteNodeStatus(prev => {
+            const newMap = new Map(prev);
+            const current = newMap.get(nodeManagementNodeNum) || { isFavorite: false, isIgnored: false };
+            newMap.set(nodeManagementNodeNum, { ...current, isIgnored: false });
+            return newMap;
+          });
+        } else {
+          setNodeOptions(prev => prev.map(node =>
+            node.nodeNum === nodeManagementNodeNum
+              ? { ...node, isIgnored: false }
+              : node
+          ));
+        }
       }
     } catch (error) {
       // Error already handled by executeCommand (toast shown)

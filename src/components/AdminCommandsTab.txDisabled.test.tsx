@@ -32,6 +32,7 @@ const h = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
   showToast: vi.fn(),
   apiPost: vi.fn(),
+  apiWaitForAdminOperation: vi.fn(),
   txStatus: { isTxDisabled: false },
 }));
 
@@ -62,6 +63,7 @@ vi.mock('../services/api', () => ({
   default: {
     setBaseUrl: vi.fn(),
     post: h.apiPost,
+    waitForAdminOperation: h.apiWaitForAdminOperation,
     exportChannel: vi.fn(),
     importChannel: vi.fn(),
     getAllChannels: vi.fn().mockResolvedValue([]),
@@ -109,6 +111,7 @@ beforeEach(() => {
   localStorage.clear();
   h.txStatus.isTxDisabled = false;
   h.apiPost.mockResolvedValue({});
+  h.apiWaitForAdminOperation.mockResolvedValue({ success: true, message: 'completed' });
 });
 
 describe('AdminCommandsTab — remote-node admin gating while TX disabled (#4294)', () => {
@@ -204,6 +207,65 @@ describe('AdminCommandsTab — remote-node admin gating while TX disabled (#4294
 
     await waitFor(() => {
       expect(h.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['txStatus'] });
+    });
+  });
+
+  it('keeps existing controls disabled while a remote operation is polled', async () => {
+    let completeOperation!: (value: { success: true; message: string }) => void;
+    const operationResult = new Promise<{ success: true; message: string }>(resolve => {
+      completeOperation = resolve;
+    });
+    h.apiPost.mockResolvedValue({
+      success: true,
+      operation: {
+        id: 'op-1', sourceId: 'source-1', destinationNodeNum: 200,
+        command: 'setDeviceConfig', status: 'pending', phase: 'queued',
+        createdAt: 1, updatedAt: 1,
+      },
+    });
+    h.apiWaitForAdminOperation.mockReturnValue(operationResult);
+    expandSections(['admin-reboot-purge']);
+    render(<AdminCommandsTab nodes={[localNode, remoteNode]} currentNodeId={LOCAL_NODE_ID} channels={[]} />);
+    selectRemoteNode();
+
+    fireEvent.click(screen.getByTestId('device-save'));
+    await waitFor(() => expect(h.apiWaitForAdminOperation).toHaveBeenCalledWith('op-1'));
+    expect(screen.getByText('admin_commands.reboot_device').closest('button')).toBeDisabled();
+
+    completeOperation({ success: true, message: 'completed' });
+    await waitFor(() => {
+      expect(screen.getByText('admin_commands.reboot_device').closest('button')).not.toBeDisabled();
+      expect(h.showToast).toHaveBeenCalledWith('completed', 'success');
+    });
+  });
+
+  it('does not poll when a local command returns its existing synchronous response', async () => {
+    h.apiPost.mockResolvedValue({ success: true, message: 'local completed' });
+    render(<AdminCommandsTab nodes={[localNode]} currentNodeId={LOCAL_NODE_ID} channels={[]} />);
+
+    fireEvent.click(screen.getByTestId('device-save'));
+    await waitFor(() => expect(h.showToast).toHaveBeenCalledWith('local completed', 'success'));
+
+    expect(h.apiWaitForAdminOperation).not.toHaveBeenCalled();
+  });
+
+  it('shows an interrupted remote operation as an error', async () => {
+    h.apiPost.mockResolvedValue({
+      success: true,
+      operation: {
+        id: 'lost-op', sourceId: 'source-1', destinationNodeNum: 200,
+        command: 'setDeviceConfig', status: 'pending', phase: 'queued',
+        createdAt: 1, updatedAt: 1,
+      },
+    });
+    h.apiWaitForAdminOperation.mockRejectedValue(new Error('The admin operation was interrupted'));
+    render(<AdminCommandsTab nodes={[localNode, remoteNode]} currentNodeId={LOCAL_NODE_ID} channels={[]} />);
+    selectRemoteNode();
+
+    fireEvent.click(screen.getByTestId('device-save'));
+
+    await waitFor(() => {
+      expect(h.showToast).toHaveBeenCalledWith('The admin operation was interrupted', 'error');
     });
   });
 });

@@ -1226,3 +1226,86 @@ describe('ApiService BASE_URL Support', () => {
     });
   });
 });
+
+describe('ApiService remote admin operation polling', () => {
+  beforeEach(() => {
+    (apiService as any).baseUrl = '';
+    (apiService as any).configFetched = true;
+    mockFetch.mockReset();
+  });
+
+  it('polls until a remote command reaches a terminal result', async () => {
+    mockFetch
+      .mockResolvedValueOnce(createMockResponse({
+        success: true,
+        operation: {
+          id: 'op-1', status: 'running', phase: 'sending', command: 'reboot',
+          sourceId: 'source-a', destinationNodeNum: 9, createdAt: 1, updatedAt: 2,
+        },
+      }))
+      .mockResolvedValueOnce(createMockResponse({
+        success: true,
+        operation: {
+          id: 'op-1', status: 'succeeded', phase: 'complete', command: 'reboot',
+          sourceId: 'source-a', destinationNodeNum: 9, createdAt: 1, updatedAt: 3,
+          result: { message: 'sent' },
+        },
+      }));
+
+    await expect(apiService.waitForAdminOperation('op-1', 0)).resolves.toEqual({
+      success: true,
+      message: 'sent',
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns uncertain ACK timeouts and routing rejections to the caller', async () => {
+    for (const [status, ack] of [
+      ['timed_out', { acked: false, timedOut: true, errorReason: null, status: 'timeout' }],
+      ['rejected', { acked: false, timedOut: false, errorReason: 5, status: 'MAX_RETRANSMIT' }],
+    ] as const) {
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        success: true,
+        operation: {
+          id: `op-${status}`, status, phase: 'complete', command: 'setFavoriteNode',
+          sourceId: 'source-a', destinationNodeNum: 9, createdAt: 1, updatedAt: 2,
+          result: { message: 'sent', ack },
+        },
+      }));
+
+      await expect(apiService.waitForAdminOperation(`op-${status}`, 0)).resolves.toMatchObject({ ack });
+    }
+  });
+
+  it('surfaces background failures with their stable code', async () => {
+    mockFetch.mockResolvedValueOnce(createMockResponse({
+      success: true,
+      operation: {
+        id: 'op-failed', status: 'failed', phase: 'complete', command: 'reboot',
+        sourceId: 'source-a', destinationNodeNum: 9, createdAt: 1, updatedAt: 2,
+        error: { code: 'TRANSPORT_FAILURE', message: 'transport closed' },
+      },
+    }));
+
+    await expect(apiService.waitForAdminOperation('op-failed', 0)).rejects.toMatchObject({
+      code: 'TRANSPORT_FAILURE',
+      message: 'transport closed',
+    });
+  });
+
+  it('presents a lost operation as interrupted after restart or expiry', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ...createMockResponse({
+        success: false,
+        code: 'ADMIN_OPERATION_NOT_FOUND',
+        error: 'Admin operation was not found or has expired',
+      }, false),
+      status: 404,
+    });
+
+    await expect(apiService.waitForAdminOperation('lost', 0)).rejects.toMatchObject({
+      code: 'ADMIN_OPERATION_INTERRUPTED',
+      status: 409,
+    });
+  });
+});

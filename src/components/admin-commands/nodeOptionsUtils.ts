@@ -1,3 +1,5 @@
+import type { AdminCommandAck } from '../../types/adminOperations';
+
 export interface NodeOption {
   nodeNum: number;
   nodeId: string;
@@ -110,3 +112,10 @@ export function filterNodes(nodes: NodeOption[], searchQuery: string): NodeOptio
   });
 }
 
+/**
+ * ACK timeouts are uncertain, so preserve the existing optimistic update.
+ * Only an explicit routing rejection prevents favorite/ignore state changes.
+ */
+export function shouldApplyOptimisticNodeState(ack?: AdminCommandAck): boolean {
+  return !ack || ack.acked || ack.timedOut;
+}

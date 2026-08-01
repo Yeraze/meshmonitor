@@ -356,7 +356,19 @@ The Admin Commands tab supports managing nodes that are not directly connected t
 
 1. **Session Passkey Management**: MeshMonitor automatically handles authentication with remote nodes using session passkeys
 2. **Per-Node Storage**: Configuration data is stored separately for each node to prevent conflicts
-3. **Mesh Communication**: Commands are sent through the mesh network to reach remote nodes
+3. **Asynchronous Execution**: MeshMonitor accepts a valid remote command immediately, then acquires the passkey and transmits outside the browser's original HTTP request
+4. **Completion Polling**: The Admin Commands tab remains in its existing loading state while it checks the protected operation endpoint for completion
+5. **Mesh Communication**: Commands are sent through the mesh network to reach remote nodes
+
+Local-node commands remain synchronous. Remote `POST /api/admin/commands` requests return `202 Accepted` with an opaque operation ID. Administrators can check `GET /api/admin/commands/:operationId`; both endpoints require admin authentication. Operation records contain only the command, source and destination identifiers, lifecycle state, and timestamps. Command parameters and session keys are not retained.
+
+Remote operations move through `pending` or `running` before reaching `succeeded`, `failed`, `timed_out`, or `rejected`. The current phase can be `queued`, `acquiring_passkey`, `sending`, `awaiting_ack`, or `complete`. Terminal results remain available in memory for five minutes. A missing operation (including after a server restart) returns `ADMIN_OPERATION_NOT_FOUND`, which the web client presents as an interrupted operation rather than a success.
+
+### Confirmation Semantics
+
+Favorite, unfavorite, ignore, and unignore commands wait for a routing ACK from the remote node. A confirmed ACK means the remote node processed the packet. An explicit routing rejection is reported as rejected and the interface does not update its local favorite/ignore state. An ACK timeout is uncertain: the packet may still have applied, so MeshMonitor preserves the existing optimistic state behavior and shows a warning. Other remote commands are considered successful after transmission, matching their previous behavior.
+
+Stable failure codes distinguish session-passkey timeout (`REMOTE_PASSKEY_TIMEOUT`), transport failure (`TRANSPORT_FAILURE`), routing rejection (`ROUTING_REJECTED`), and missing or expired operation state (`ADMIN_OPERATION_NOT_FOUND`).
 
 ### Remote Node Operations
 
@@ -421,4 +433,3 @@ All admin commands work with remote nodes:
 - [Device Configuration](/features/device) - Local device configuration
 - [Settings](/features/settings) - General MeshMonitor settings
 - [Meshtastic Official Documentation](https://meshtastic.org/docs/) - Meshtastic protocol documentation
-

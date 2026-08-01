@@ -13,6 +13,7 @@ import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/route
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
 import { TxDisabledError } from '../errors/txDisabledError.js';
 import protobufService from '../protobufService.js';
+import { adminOperationService } from '../services/adminOperationService.js';
 
 // channelUrlService is dynamically imported inside export-config/import-config —
 // mock it so those handlers don't need a real base64url-encoded channel blob.
@@ -55,6 +56,242 @@ describe('adminRoutes — requireAdmin() gate', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ success: true });
     expect(Array.isArray(res.body.suppressedNodes)).toBe(true);
+  });
+});
+
+describe('adminRoutes — asynchronous remote admin commands (#4482)', () => {
+  let harness: RouteTestHarness;
+
+  function makeCommandManager(overrides: Record<string, unknown> = {}): ISourceManager {
+    return {
+      sourceId: harness.sourceA,
+      sourceType: 'meshtastic_tcp',
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      getStatus: vi.fn().mockReturnValue({
+        sourceId: harness.sourceA,
+        sourceName: 'Source A',
+        sourceType: 'meshtastic_tcp',
+        connected: true,
+      }),
+      getLocalNodeInfo: vi.fn().mockReturnValue({
+        nodeNum: 1,
+        nodeId: '!00000001',
+        longName: 'Local',
+        shortName: 'LOC',
+      }),
+      startDistanceDeleteScheduler: vi.fn().mockResolvedValue(undefined),
+      stopDistanceDeleteScheduler: vi.fn(),
+      isTransportReady: vi.fn().mockReturnValue(true),
+      canTransmit: vi.fn().mockReturnValue(true),
+      getSessionPasskey: vi.fn().mockReturnValue(new Uint8Array([1, 2, 3, 4])),
+      requestRemoteSessionPasskey: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3, 4])),
+      sendAdminCommand: vi.fn().mockResolvedValue(undefined),
+      sendAdminCommandAwaitAck: vi.fn().mockResolvedValue({
+        acked: true,
+        timedOut: false,
+        errorReason: null,
+      }),
+      ...overrides,
+    } as unknown as ISourceManager;
+  }
+
+  async function waitForTerminal(agent: Awaited<ReturnType<RouteTestHarness['loginAs']>>, operationId: string) {
+    let response;
+    await vi.waitFor(async () => {
+      response = await agent.get(`/commands/${operationId}`);
+      expect(['succeeded', 'failed', 'timed_out', 'rejected']).toContain(response.body.operation?.status);
+    });
+    return response!;
+  }
+
+  beforeEach(async () => {
+    adminOperationService.clear();
+    vi.spyOn(protobufService, 'createRebootMessage').mockReturnValue(new Uint8Array([1]));
+    vi.spyOn(protobufService, 'createSetFavoriteNodeMessage').mockReturnValue(new Uint8Array([2]));
+    vi.spyOn(protobufService, 'createRemoveFavoriteNodeMessage').mockReturnValue(new Uint8Array([3]));
+    vi.spyOn(protobufService, 'createSetIgnoredNodeMessage').mockReturnValue(new Uint8Array([4]));
+    vi.spyOn(protobufService, 'createRemoveIgnoredNodeMessage').mockReturnValue(new Uint8Array([5]));
+    harness = await createRouteTestApp({
+      mount: (app) => app.use('/', adminRoutes),
+    });
+  });
+
+  afterEach(async () => {
+    adminOperationService.clear();
+    await sourceManagerRegistry.removeManager(harness.sourceA);
+    await harness.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it('returns 202 before a remote passkey request finishes', async () => {
+    let resolvePasskey!: (value: Uint8Array | null) => void;
+    const passkey = new Promise<Uint8Array | null>(resolve => { resolvePasskey = resolve; });
+    await sourceManagerRegistry.addManager(makeCommandManager({
+      getSessionPasskey: vi.fn().mockReturnValue(null),
+      requestRemoteSessionPasskey: vi.fn().mockReturnValue(passkey),
+    }));
+
+    const agent = await harness.loginAs(harness.admin);
+    const response = await agent.post('/commands').send({
+      sourceId: harness.sourceA,
+      nodeNum: 999,
+      command: 'reboot',
+    });
+
+    expect(response.status).toBe(202);
+    expect(response.body.operation).toMatchObject({
+      command: 'reboot',
+      sourceId: harness.sourceA,
+      destinationNodeNum: 999,
+      status: 'pending',
+      phase: 'queued',
+    });
+    resolvePasskey(null);
+  });
+
+  it('keeps local commands synchronous with a 200 response', async () => {
+    const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+    await sourceManagerRegistry.addManager(makeCommandManager({ sendAdminCommand }));
+
+    const agent = await harness.loginAs(harness.admin);
+    const response = await agent.post('/commands').send({
+      sourceId: harness.sourceA,
+      nodeNum: 1,
+      command: 'reboot',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ success: true, message: expect.stringContaining('reboot') });
+    expect(response.body.operation).toBeUndefined();
+    expect(sendAdminCommand).toHaveBeenCalledOnce();
+  });
+
+  it('rejects invalid input and TX-disabled remote commands before acceptance', async () => {
+    await sourceManagerRegistry.addManager(makeCommandManager({ canTransmit: vi.fn().mockReturnValue(false) }));
+    const agent = await harness.loginAs(harness.admin);
+
+    const invalid = await agent.post('/commands').send({
+      sourceId: harness.sourceA,
+      nodeNum: 999,
+      command: 'setOwner',
+    });
+    expect(invalid.status).toBe(400);
+    expect(invalid.body.code).toBe('INVALID_ADMIN_COMMAND');
+
+    const txDisabled = await agent.post('/commands').send({
+      sourceId: harness.sourceA,
+      nodeNum: 999,
+      command: 'reboot',
+    });
+    expect(txDisabled.status).toBe(409);
+    expect(txDisabled.body.code).toBe('TX_DISABLED');
+  });
+
+  it('protects operation status and returns 404 for lost or expired IDs', async () => {
+    const limited = await harness.loginAs(harness.limited);
+    expect((await limited.get('/commands/not-present')).status).toBe(403);
+
+    const admin = await harness.loginAs(harness.admin);
+    const missing = await admin.get('/commands/not-present');
+    expect(missing.status).toBe(404);
+    expect(missing.body.code).toBe('ADMIN_OPERATION_NOT_FOUND');
+  });
+
+  it('records passkey timeout and successful background transmission', async () => {
+    await sourceManagerRegistry.addManager(makeCommandManager({
+      getSessionPasskey: vi.fn().mockReturnValue(null),
+      requestRemoteSessionPasskey: vi.fn().mockResolvedValue(null),
+    }));
+    const agent = await harness.loginAs(harness.admin);
+    const failedPost = await agent.post('/commands').send({
+      sourceId: harness.sourceA,
+      nodeNum: 999,
+      command: 'reboot',
+    });
+    const failed = await waitForTerminal(agent, failedPost.body.operation.id);
+    expect(failed.body.operation).toMatchObject({
+      status: 'timed_out',
+      error: { code: 'REMOTE_PASSKEY_TIMEOUT' },
+    });
+
+    await sourceManagerRegistry.removeManager(harness.sourceA);
+    const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+    await sourceManagerRegistry.addManager(makeCommandManager({ sendAdminCommand }));
+    const successPost = await agent.post('/commands').send({
+      sourceId: harness.sourceA,
+      nodeNum: 999,
+      command: 'reboot',
+    });
+    const success = await waitForTerminal(agent, successPost.body.operation.id);
+    expect(success.body.operation.status).toBe('succeeded');
+    expect(sendAdminCommand).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['setFavoriteNode', { favoriteNodeNum: 42 }],
+    ['removeFavoriteNode', { favoriteNodeNum: 42 }],
+    ['setIgnoredNode', { targetNodeNum: 42 }],
+    ['removeIgnoredNode', { targetNodeNum: 42 }],
+  ])('awaits routing ACKs for %s', async (command, params) => {
+    const sendAdminCommandAwaitAck = vi.fn().mockResolvedValue({
+      acked: true,
+      timedOut: false,
+      errorReason: null,
+    });
+    await sourceManagerRegistry.addManager(makeCommandManager({ sendAdminCommandAwaitAck }));
+    const agent = await harness.loginAs(harness.admin);
+    const accepted = await agent.post('/commands').send({
+      sourceId: harness.sourceA,
+      nodeNum: 999,
+      command,
+      ...params,
+    });
+    const completed = await waitForTerminal(agent, accepted.body.operation.id);
+
+    expect(completed.body.operation).toMatchObject({
+      status: 'succeeded',
+      result: { ack: { acked: true, status: 'confirmed' } },
+    });
+    expect(sendAdminCommandAwaitAck).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [{ acked: false, timedOut: true, errorReason: null }, 'timed_out', undefined],
+    [{ acked: false, timedOut: false, errorReason: 5 }, 'rejected', 'ROUTING_REJECTED'],
+  ])('maps ACK outcome %o to %s', async (ack, expectedStatus, expectedCode) => {
+    await sourceManagerRegistry.addManager(makeCommandManager({
+      sendAdminCommandAwaitAck: vi.fn().mockResolvedValue(ack),
+    }));
+    const agent = await harness.loginAs(harness.admin);
+    const accepted = await agent.post('/commands').send({
+      sourceId: harness.sourceA,
+      nodeNum: 999,
+      command: 'setFavoriteNode',
+      favoriteNodeNum: 42,
+    });
+    const completed = await waitForTerminal(agent, accepted.body.operation.id);
+
+    expect(completed.body.operation.status).toBe(expectedStatus);
+    expect(completed.body.operation.error?.code).toBe(expectedCode);
+  });
+
+  it('captures a rejected background transport promise', async () => {
+    await sourceManagerRegistry.addManager(makeCommandManager({
+      sendAdminCommand: vi.fn().mockRejectedValue(new Error('serial transport closed')),
+    }));
+    const agent = await harness.loginAs(harness.admin);
+    const accepted = await agent.post('/commands').send({
+      sourceId: harness.sourceA,
+      nodeNum: 999,
+      command: 'reboot',
+    });
+    const completed = await waitForTerminal(agent, accepted.body.operation.id);
+
+    expect(completed.body.operation).toMatchObject({
+      status: 'failed',
+      error: { code: 'TRANSPORT_FAILURE', message: 'serial transport closed' },
+    });
   });
 });
 
