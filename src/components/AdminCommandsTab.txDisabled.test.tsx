@@ -32,6 +32,9 @@ const h = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
   showToast: vi.fn(),
   apiPost: vi.fn(),
+  // Admin commands go through apiService.sendAdminCommand (#4482), which
+  // follows the server's 202 + operation id for remote nodes.
+  apiSendAdminCommand: vi.fn(),
   txStatus: { isTxDisabled: false },
 }));
 
@@ -62,6 +65,7 @@ vi.mock('../services/api', () => ({
   default: {
     setBaseUrl: vi.fn(),
     post: h.apiPost,
+    sendAdminCommand: h.apiSendAdminCommand,
     exportChannel: vi.fn(),
     importChannel: vi.fn(),
     getAllChannels: vi.fn().mockResolvedValue([]),
@@ -109,6 +113,7 @@ beforeEach(() => {
   localStorage.clear();
   h.txStatus.isTxDisabled = false;
   h.apiPost.mockResolvedValue({});
+  h.apiSendAdminCommand.mockResolvedValue({});
 });
 
 describe('AdminCommandsTab — remote-node admin gating while TX disabled (#4294)', () => {
@@ -151,8 +156,11 @@ describe('AdminCommandsTab — remote-node admin gating while TX disabled (#4294
       expect(h.showToast).toHaveBeenCalledWith('tx_disabled.remote_admin_notice', 'warning');
     });
 
-    const commandCalls = h.apiPost.mock.calls.filter(([endpoint]) => endpoint === '/api/admin/commands');
-    expect(commandCalls).toHaveLength(0);
+    // The guard must fire before any admin command is dispatched, on either
+    // the legacy post path or the async sendAdminCommand path (#4482).
+    const postedCommands = h.apiPost.mock.calls.filter(([endpoint]) => endpoint === '/api/admin/commands');
+    expect(postedCommands).toHaveLength(0);
+    expect(h.apiSendAdminCommand).not.toHaveBeenCalled();
   });
 
   it('leaves local-node admin fully enabled when TX is off (the path that re-enables TX)', () => {

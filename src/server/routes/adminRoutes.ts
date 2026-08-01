@@ -22,8 +22,13 @@ import { getRoutingErrorName } from '../constants/meshtastic.js';
 import { CONFIG_TYPE_MAP, MODULE_FIELD_BY_ID, DEVICE_FIELD_BY_ID } from '../constants/configTypes.js';
 import { autoFavoriteManagementScheduler } from '../services/autoFavoriteManagementService.js';
 import protobufService from '../protobufService.js';
-import { fail } from '../utils/apiResponse.js';
+import { fail, ok } from '../utils/apiResponse.js';
 import { isTxDisabledError } from '../errors/txDisabledError.js';
+import {
+  adminOperationService,
+  type AdminOperationStatus,
+  type AdminOperationResult,
+} from '../services/adminOperationService.js';
 
 const router = express.Router();
 
@@ -1351,6 +1356,177 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
   }
 });
 
+/**
+ * Commands whose REMOTE form waits for the destination's routing ACK, so the
+ * caller learns whether the node actually applied the change.
+ *
+ * Favorites already did this. Ignore/unignore did not (#4482 part B) — they
+ * fired and forgot, so a remote ignore "succeeded" instantly and could never be
+ * confirmed. Now that the wait no longer occupies an HTTP socket, there is no
+ * reason for the asymmetry.
+ */
+const ACK_AWAITED_COMMANDS = new Set([
+  'setFavoriteNode',
+  'removeFavoriteNode',
+  'setIgnoredNode',
+  'removeIgnoredNode',
+]);
+
+/** Error carrying a SCREAMING_SNAKE machine code for the operation record. */
+function adminError(code: string, message: string): Error & { code: string } {
+  return Object.assign(new Error(message), { code });
+}
+
+/** Loose bag of per-command parameters off the request body. */
+type AdminCommandParams = Record<string, unknown>;
+
+/**
+ * The slice of the source manager the admin executor drives. Narrower than
+ * ISourceManager, which does not declare the remote-admin surface.
+ */
+interface AdminCapableManager {
+  sourceId: string;
+  getSessionPasskey(nodeNum: number): Uint8Array | null;
+  requestRemoteSessionPasskey(nodeNum: number): Promise<Uint8Array | null>;
+  sendAdminCommand(message: Uint8Array, nodeNum: number): Promise<void>;
+  sendAdminCommandAwaitAck(
+    message: Uint8Array,
+    nodeNum: number,
+  ): Promise<{ acked: boolean; errorReason: number | null; timedOut: boolean }>;
+  updateCachedDeviceConfig(section: string, config: Record<string, unknown>): void;
+}
+
+/** Security-config fields mirrored into the cached device config after a send. */
+interface SecurityConfigParams {
+  isManaged?: boolean;
+  serialEnabled?: boolean;
+  debugLogApiEnabled?: boolean;
+  adminChannelEnabled?: boolean;
+}
+
+/**
+ * The mesh-blocking half of an admin command: acquire the session passkey,
+ * build and send the packet, optionally wait for the routing ACK, then apply
+ * post-send side effects.
+ *
+ * Split out of the route handler so the local path can await it directly while
+ * the remote path runs it in the background behind an operation id (#4482).
+ * Parameter validation deliberately stays in the handler — a bad request must
+ * still fail fast with a 400 rather than becoming a failed async operation.
+ */
+async function executeAdminCommand(ctx: {
+  command: string;
+  params: AdminCommandParams;
+  acManager: AdminCapableManager;
+  destinationNodeNum: number;
+  localNodeNum: number;
+  isLocalNode: boolean;
+  buildAdminMessage: (sessionPasskey?: Uint8Array) => Uint8Array;
+  preSend: ((sessionPasskey?: Uint8Array) => Promise<void>) | null;
+  onStatus?: (status: AdminOperationStatus) => void;
+}): Promise<AdminOperationResult> {
+  const {
+    command, params, acManager, destinationNodeNum, localNodeNum,
+    isLocalNode, buildAdminMessage, preSend, onStatus,
+  } = ctx;
+
+  // 1. Session passkey (remote only) — the 45s leg.
+  let sessionPasskey: Uint8Array | undefined;
+  if (!isLocalNode) {
+    const cached = acManager.getSessionPasskey(destinationNodeNum);
+    if (cached) {
+      logger.debug(`🔑 Using cached session passkey for admin command to remote node ${destinationNodeNum}`);
+      sessionPasskey = cached;
+    } else {
+      logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one for admin command...`);
+      onStatus?.('awaiting_passkey');
+      const fetched = await acManager.requestRemoteSessionPasskey(destinationNodeNum);
+      if (!fetched) {
+        logger.error(`❌ Failed to obtain session passkey for remote node ${destinationNodeNum} after 45s`);
+        throw adminError(
+          'PASSKEY_TIMEOUT',
+          `Failed to obtain session passkey for remote node ${destinationNodeNum}. The node may be unreachable or not responding.`,
+        );
+      }
+      sessionPasskey = fetched;
+    }
+  }
+
+  // 2. Build and send.
+  onStatus?.('sending');
+  if (preSend) {
+    await preSend(sessionPasskey);
+  }
+  const adminMessage = buildAdminMessage(sessionPasskey);
+
+  let ack: { acked: boolean; errorReason: number | null; timedOut: boolean } | null = null;
+  if (ACK_AWAITED_COMMANDS.has(command) && !isLocalNode) {
+    onStatus?.('awaiting_ack');
+    ack = await acManager.sendAdminCommandAwaitAck(adminMessage, destinationNodeNum);
+  } else {
+    await acManager.sendAdminCommand(adminMessage, destinationNodeNum);
+  }
+
+  // 3. Post-send side effects.
+
+  // For setSecurityConfig on the local node, update the cached config immediately
+  // so the frontend reads back the correct values before the next config sync
+  if (command === 'setSecurityConfig' && isLocalNode && params.config) {
+    const securityConfig = params.config as SecurityConfigParams;
+    acManager.updateCachedDeviceConfig('security', {
+      isManaged: securityConfig.isManaged,
+      serialEnabled: securityConfig.serialEnabled,
+      debugLogApiEnabled: securityConfig.debugLogApiEnabled,
+      adminChannelEnabled: securityConfig.adminChannelEnabled
+    });
+  }
+
+  // For setFixedPosition on the local node, immediately update the database
+  // so it's correct before any stale position broadcast arrives from the device firmware.
+  if (command === 'setFixedPosition' && isLocalNode && localNodeNum) {
+    const localNodeId = `!${localNodeNum.toString(16).padStart(8, '0')}`;
+    await databaseService.nodes.upsertNode({
+      nodeNum: localNodeNum,
+      nodeId: localNodeId,
+      latitude: params.latitude as number,
+      longitude: params.longitude as number,
+      altitude: (params.altitude as number) || 0,
+      positionTimestamp: Date.now(),
+    });
+    logger.debug(`⚙️ Updated local node ${localNodeId} position in database: lat=${params.latitude}, lon=${params.longitude}`);
+  }
+
+  // If command succeeded on a remote node, update hasRemoteAdmin flag
+  if (!isLocalNode) {
+    try {
+      await databaseService.updateNodeRemoteAdminStatusAsync(
+        destinationNodeNum,
+        true,
+        null,  // Don't overwrite existing metadata, just set the flag
+        acManager.sourceId
+      );
+      logger.debug(`✅ Updated hasRemoteAdmin=true for node ${destinationNodeNum} after successful '${command}' command`);
+    } catch (dbError) {
+      logger.error(`Failed to update hasRemoteAdmin for node ${destinationNodeNum}:`, dbError);
+      // Continue with response even if database update fails
+    }
+  }
+
+  return {
+    message: `Admin command '${command}' sent to node ${destinationNodeNum}`,
+    ...(ack ? {
+      ack: {
+        acked: ack.acked,
+        timedOut: ack.timedOut,
+        errorReason: ack.errorReason,
+        status: ack.timedOut
+          ? 'timeout'
+          : (ack.acked ? 'confirmed' : getRoutingErrorName(ack.errorReason ?? -1)),
+      }
+    } : {})
+  };
+}
+
 router.post('/commands', requireAdmin(), async (req, res) => {
   try {
     const { command, nodeNum, sourceId: acSourceId, ...params } = req.body;
@@ -1364,38 +1540,34 @@ router.post('/commands', requireAdmin(), async (req, res) => {
     const localNodeNum = acManager.getLocalNodeInfo()?.nodeNum || 0;
     const isLocalNode = destinationNodeNum === 0 || destinationNodeNum === localNodeNum;
 
-    // Get or request session passkey for remote nodes
-    let sessionPasskey: Uint8Array | null = null;
-    if (!isLocalNode) {
-      sessionPasskey = acManager.getSessionPasskey(destinationNodeNum);
-      if (sessionPasskey) {
-        logger.debug(`🔑 Using cached session passkey for admin command to remote node ${destinationNodeNum}`);
-      } else {
-        logger.debug(`🔑 No cached passkey for remote node ${destinationNodeNum}, requesting new one for admin command...`);
-        sessionPasskey = await acManager.requestRemoteSessionPasskey(destinationNodeNum);
-        if (!sessionPasskey) {
-          logger.error(`❌ Failed to obtain session passkey for remote node ${destinationNodeNum} after 45s`);
-          return res.status(500).json({ error: `Failed to obtain session passkey for remote node ${destinationNodeNum}. The node may be unreachable or not responding.` });
-        }
-      }
-    }
+    // Session-passkey acquisition used to run HERE, blocking the request for up
+    // to 45s before the command was even sent (#4482). It now happens inside
+    // `executeAdminCommand`, which the remote path runs in the background.
+    //
+    // The switch below therefore captures a BUILDER rather than a finished
+    // packet: parameter validation stays synchronous in this handler (so bad
+    // input still gets an immediate 400), while the passkey — the only input
+    // that requires a mesh round-trip — is supplied later by the executor.
+    let buildAdminMessage: (sessionPasskey?: Uint8Array) => Uint8Array;
 
-    let adminMessage: Uint8Array;
+    // Extra packets some commands must send before the main one, run by the
+    // executor once the passkey is known.
+    let preSend: ((sessionPasskey?: Uint8Array) => Promise<void>) | null = null;
 
     // Create the appropriate admin message based on command type
     switch (command) {
       case 'reboot':
-        adminMessage = protobufService.createRebootMessage(params.seconds || 10, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createRebootMessage(params.seconds || 10, passkey);
         break;
       case 'setOwner':
         if (!params.longName || !params.shortName) {
           return res.status(400).json({ error: 'longName and shortName are required for setOwner' });
         }
-        adminMessage = protobufService.createSetOwnerMessage(
+        buildAdminMessage = (passkey) => protobufService.createSetOwnerMessage(
           params.longName,
           params.shortName,
           params.isUnmessagable,
-          sessionPasskey || undefined,
+          passkey,
           params.isLicensed
         );
         break;
@@ -1403,23 +1575,23 @@ router.post('/commands', requireAdmin(), async (req, res) => {
         if (params.channelIndex === undefined || !params.config) {
           return res.status(400).json({ error: 'channelIndex and config are required for setChannel' });
         }
-        adminMessage = protobufService.createSetChannelMessage(
+        buildAdminMessage = (passkey) => protobufService.createSetChannelMessage(
           params.channelIndex,
           params.config,
-          sessionPasskey || undefined
+          passkey
         );
         break;
       case 'setDeviceConfig':
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setDeviceConfig' });
         }
-        adminMessage = protobufService.createSetDeviceConfigMessage(params.config, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createSetDeviceConfigMessage(params.config, passkey);
         break;
       case 'setLoRaConfig':
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setLoRaConfig' });
         }
-        adminMessage = protobufService.createSetLoRaConfigMessage(params.config, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createSetLoRaConfigMessage(params.config, passkey);
         break;
       case 'setPositionConfig': {
         if (!params.config) {
@@ -1432,73 +1604,75 @@ router.post('/commands', requireAdmin(), async (req, res) => {
         // FIFO delivery from the same source, with natural spacing from radio transmission time.
         const { latitude, longitude, altitude, ...positionConfig } = params.config;
         if (latitude !== undefined && longitude !== undefined && positionConfig.fixedPosition) {
-          const setPositionMsg = protobufService.createSetFixedPositionMessage(
-            latitude,
-            longitude,
-            altitude || 0,
-            sessionPasskey || undefined
-          );
-          await acManager.sendAdminCommand(setPositionMsg, destinationNodeNum);
-
-          // Immediately update the local node's position in the database so it's correct
-          // before any stale position broadcast arrives from the device firmware.
-          if (isLocalNode && localNodeNum) {
-            const localNodeId = `!${localNodeNum.toString(16).padStart(8, '0')}`;
-            await databaseService.nodes.upsertNode({
-              nodeNum: localNodeNum,
-              nodeId: localNodeId,
+          preSend = async (passkey) => {
+            const setPositionMsg = protobufService.createSetFixedPositionMessage(
               latitude,
               longitude,
-              altitude: altitude || 0,
-              positionTimestamp: Date.now(),
-            });
-            logger.debug(`⚙️ Updated local node ${localNodeId} position in database: lat=${latitude}, lon=${longitude}`);
-          }
+              altitude || 0,
+              passkey
+            );
+            await acManager.sendAdminCommand(setPositionMsg, destinationNodeNum);
+
+            // Immediately update the local node's position in the database so it's correct
+            // before any stale position broadcast arrives from the device firmware.
+            if (isLocalNode && localNodeNum) {
+              const localNodeId = `!${localNodeNum.toString(16).padStart(8, '0')}`;
+              await databaseService.nodes.upsertNode({
+                nodeNum: localNodeNum,
+                nodeId: localNodeId,
+                latitude,
+                longitude,
+                altitude: altitude || 0,
+                positionTimestamp: Date.now(),
+              });
+              logger.debug(`⚙️ Updated local node ${localNodeId} position in database: lat=${latitude}, lon=${longitude}`);
+            }
+          };
         }
-        adminMessage = protobufService.createSetPositionConfigMessage(positionConfig, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createSetPositionConfigMessage(positionConfig, passkey);
         break;
       }
       case 'setMQTTConfig':
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setMQTTConfig' });
         }
-        adminMessage = protobufService.createSetMQTTConfigMessage(params.config, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createSetMQTTConfigMessage(params.config, passkey);
         break;
       case 'setBluetoothConfig':
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setBluetoothConfig' });
         }
-        adminMessage = protobufService.createSetDeviceConfigMessageGeneric('bluetooth', params.config, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createSetDeviceConfigMessageGeneric('bluetooth', params.config, passkey);
         break;
       case 'setNetworkConfig':
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setNetworkConfig' });
         }
-        adminMessage = protobufService.createSetNetworkConfigMessage(params.config, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createSetNetworkConfigMessage(params.config, passkey);
         break;
       case 'setNeighborInfoConfig':
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setNeighborInfoConfig' });
         }
-        adminMessage = protobufService.createSetNeighborInfoConfigMessage(params.config, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createSetNeighborInfoConfigMessage(params.config, passkey);
         break;
       case 'setTelemetryConfig':
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setTelemetryConfig' });
         }
-        adminMessage = protobufService.createSetModuleConfigMessageGeneric('telemetry', params.config, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createSetModuleConfigMessageGeneric('telemetry', params.config, passkey);
         break;
       case 'setStatusMessageConfig':
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setStatusMessageConfig' });
         }
-        adminMessage = protobufService.createSetModuleConfigMessageGeneric('statusmessage', params.config, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createSetModuleConfigMessageGeneric('statusmessage', params.config, passkey);
         break;
       case 'setTrafficManagementConfig':
         if (!params.config) {
           return res.status(400).json({ error: 'config is required for setTrafficManagementConfig' });
         }
-        adminMessage = protobufService.createSetModuleConfigMessageGeneric('trafficmanagement', params.config, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createSetModuleConfigMessageGeneric('trafficmanagement', params.config, passkey);
         break;
       case 'setSecurityConfig':
         if (!params.config) {
@@ -1525,134 +1699,122 @@ router.post('/commands', requireAdmin(), async (req, res) => {
             configToSend = remoteConfig;
             logger.debug('Excluding publicKey/privateKey from remote node security config update');
           }
-          adminMessage = protobufService.createSetSecurityConfigMessage(configToSend, sessionPasskey || undefined);
+          buildAdminMessage = (passkey) => protobufService.createSetSecurityConfigMessage(configToSend, passkey);
         }
         break;
       case 'setFixedPosition':
         if (params.latitude === undefined || params.longitude === undefined) {
           return res.status(400).json({ error: 'latitude and longitude are required for setFixedPosition' });
         }
-        adminMessage = protobufService.createSetFixedPositionMessage(
+        buildAdminMessage = (passkey) => protobufService.createSetFixedPositionMessage(
           params.latitude,
           params.longitude,
           params.altitude || 0,
-          sessionPasskey || undefined
+          passkey
         );
         break;
       case 'purgeNodeDb':
-        adminMessage = protobufService.createPurgeNodeDbMessage(params.seconds || 0, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createPurgeNodeDbMessage(params.seconds || 0, passkey);
         break;
       case 'beginEditSettings':
-        adminMessage = protobufService.createBeginEditSettingsMessage(sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createBeginEditSettingsMessage(passkey);
         break;
       case 'commitEditSettings':
-        adminMessage = protobufService.createCommitEditSettingsMessage(sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createCommitEditSettingsMessage(passkey);
         break;
       case 'removeNode':
         if (params.nodeNum === undefined) {
           return res.status(400).json({ error: 'nodeNum is required for removeNode' });
         }
-        adminMessage = protobufService.createRemoveNodeMessage(params.nodeNum, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createRemoveNodeMessage(params.nodeNum, passkey);
         break;
       case 'setFavoriteNode':
         // Use favoriteNodeNum to avoid collision with destination nodeNum
         if (params.favoriteNodeNum === undefined) {
           return res.status(400).json({ error: 'favoriteNodeNum is required for setFavoriteNode' });
         }
-        adminMessage = protobufService.createSetFavoriteNodeMessage(params.favoriteNodeNum, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createSetFavoriteNodeMessage(params.favoriteNodeNum, passkey);
         break;
       case 'removeFavoriteNode':
         // Use favoriteNodeNum to avoid collision with destination nodeNum
         if (params.favoriteNodeNum === undefined) {
           return res.status(400).json({ error: 'favoriteNodeNum is required for removeFavoriteNode' });
         }
-        adminMessage = protobufService.createRemoveFavoriteNodeMessage(params.favoriteNodeNum, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createRemoveFavoriteNodeMessage(params.favoriteNodeNum, passkey);
         break;
       case 'setIgnoredNode':
         // Use targetNodeNum to avoid collision with destination nodeNum
         if (params.targetNodeNum === undefined) {
           return res.status(400).json({ error: 'targetNodeNum is required for setIgnoredNode' });
         }
-        adminMessage = protobufService.createSetIgnoredNodeMessage(params.targetNodeNum, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createSetIgnoredNodeMessage(params.targetNodeNum, passkey);
         break;
       case 'removeIgnoredNode':
         // Use targetNodeNum to avoid collision with destination nodeNum
         if (params.targetNodeNum === undefined) {
           return res.status(400).json({ error: 'targetNodeNum is required for removeIgnoredNode' });
         }
-        adminMessage = protobufService.createRemoveIgnoredNodeMessage(params.targetNodeNum, sessionPasskey || undefined);
+        buildAdminMessage = (passkey) => protobufService.createRemoveIgnoredNodeMessage(params.targetNodeNum, passkey);
         break;
       default:
         return res.status(400).json({ error: `Unknown command: ${command}` });
     }
 
-    // Send the admin command. For favorite changes to a REMOTE node we wait for
-    // the destination's routing ACK (admin packets set want_response) so the UI
-    // can confirm the remote node actually processed it. Everything else (and
-    // local-node favorites) fires as before.
-    const isFavoriteCommand = command === 'setFavoriteNode' || command === 'removeFavoriteNode';
-    let favoriteAck: { acked: boolean; errorReason: number | null; timedOut: boolean } | null = null;
-    if (isFavoriteCommand && !isLocalNode) {
-      favoriteAck = await acManager.sendAdminCommandAwaitAck(adminMessage, destinationNodeNum);
-    } else {
-      await acManager.sendAdminCommand(adminMessage, destinationNodeNum);
+    // Everything above is synchronous validation. Everything below can block on
+    // the mesh (passkey acquisition, routing ACK), so it runs inline only for
+    // the local node — where there is no passkey step and no ACK wait.
+    const execute = (onStatus?: (status: AdminOperationStatus) => void) => executeAdminCommand({
+      command,
+      params,
+      acManager,
+      destinationNodeNum,
+      localNodeNum,
+      isLocalNode,
+      buildAdminMessage,
+      preSend,
+      onStatus,
+    });
+
+    if (isLocalNode) {
+      const result = await execute();
+      return res.json({ success: true, ...result });
     }
 
-    // For setSecurityConfig on the local node, update the cached config immediately
-    // so the frontend reads back the correct values before the next config sync
-    if (command === 'setSecurityConfig' && isLocalNode && params.config) {
-      acManager.updateCachedDeviceConfig('security', {
-        isManaged: params.config.isManaged,
-        serialEnabled: params.config.serialEnabled,
-        debugLogApiEnabled: params.config.debugLogApiEnabled,
-        adminChannelEnabled: params.config.adminChannelEnabled
-      });
-    }
+    // Remote node: accept now, finish on the mesh's schedule (#4482). Holding
+    // the socket open for up to 75s is what produced upstream 502s.
+    const operation = adminOperationService.create({
+      command,
+      sourceId: acManager.sourceId,
+      destinationNodeNum,
+      userId: req.session?.userId ?? null,
+    });
 
-    // For setFixedPosition on the local node, immediately update the database
-    // so it's correct before any stale position broadcast arrives from the device firmware.
-    if (command === 'setFixedPosition' && isLocalNode && localNodeNum) {
-      const localNodeId = `!${localNodeNum.toString(16).padStart(8, '0')}`;
-      await databaseService.nodes.upsertNode({
-        nodeNum: localNodeNum,
-        nodeId: localNodeId,
-        latitude: params.latitude,
-        longitude: params.longitude,
-        altitude: params.altitude || 0,
-        positionTimestamp: Date.now(),
-      });
-      logger.debug(`⚙️ Updated local node ${localNodeId} position in database: lat=${params.latitude}, lon=${params.longitude}`);
-    }
-
-    // If command succeeded on a remote node, update hasRemoteAdmin flag
-    if (!isLocalNode) {
+    void (async () => {
       try {
-        await databaseService.updateNodeRemoteAdminStatusAsync(
-          destinationNodeNum,
-          true,
-          null,  // Don't overwrite existing metadata, just set the flag
-          acManager.sourceId
-        );
-        logger.debug(`✅ Updated hasRemoteAdmin=true for node ${destinationNodeNum} after successful '${command}' command`);
-      } catch (dbError) {
-        logger.error(`Failed to update hasRemoteAdmin for node ${destinationNodeNum}:`, dbError);
-        // Continue with response even if database update fails
-      }
-    }
-
-    res.json({
-      success: true,
-      message: `Admin command '${command}' sent to node ${destinationNodeNum}`,
-      ...(favoriteAck ? {
-        ack: {
-          acked: favoriteAck.acked,
-          timedOut: favoriteAck.timedOut,
-          errorReason: favoriteAck.errorReason,
-          status: favoriteAck.timedOut
-            ? 'timeout'
-            : (favoriteAck.acked ? 'confirmed' : getRoutingErrorName(favoriteAck.errorReason ?? -1)),
+        const result = await execute((status) => adminOperationService.setStatus(operation.id, status));
+        adminOperationService.succeed(operation.id, result);
+      } catch (error) {
+        if (isTxDisabledError(error)) {
+          adminOperationService.fail(operation.id, {
+            code: 'TX_DISABLED',
+            message: 'Transmit is disabled on this source',
+          });
+          return;
         }
-      } : {})
+        logger.error(`Error executing admin command '${command}' (operation ${operation.id}):`, error);
+        const coded = error as { code?: string; message?: string } | null;
+        adminOperationService.fail(operation.id, {
+          code: coded?.code || 'ADMIN_COMMAND_FAILED',
+          message: coded?.message || 'Failed to execute admin command',
+        });
+      }
+    })();
+
+    return res.status(202).json({
+      success: true,
+      operationId: operation.id,
+      status: operation.status,
+      message: `Admin command '${command}' accepted for node ${destinationNodeNum}`,
     });
   } catch (error: any) {
     if (isTxDisabledError(error)) {
@@ -1661,6 +1823,35 @@ router.post('/commands', requireAdmin(), async (req, res) => {
     logger.error('Error executing admin command:', error);
     res.status(500).json({ error: error.message || 'Failed to execute admin command' });
   }
+});
+
+/**
+ * Poll the outcome of an async remote-admin operation (#4482).
+ *
+ * A missing id and someone else's id are deliberately indistinguishable — both
+ * 404 — so this cannot be used to probe which operation ids exist.
+ */
+router.get('/operations/:id', requireAdmin(), async (req, res) => {
+  const operation = adminOperationService.get(req.params.id);
+  const requesterId = req.session?.userId ?? null;
+
+  const notFound = !operation
+    || (operation.userId !== null && requesterId !== null && operation.userId !== requesterId);
+  if (notFound) {
+    return fail(res, 404, 'OPERATION_NOT_FOUND', 'Unknown or expired admin operation');
+  }
+
+  return ok(res, {
+    id: operation!.id,
+    command: operation!.command,
+    destinationNodeNum: operation!.destinationNodeNum,
+    status: operation!.status,
+    createdAt: operation!.createdAt,
+    updatedAt: operation!.updatedAt,
+    completedAt: operation!.completedAt,
+    result: operation!.result,
+    error: operation!.error,
+  });
 });
 
 
