@@ -5926,6 +5926,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         rssi: dbMsg.rssi ?? undefined,
         snr: dbMsg.snr ?? undefined,
         sourceId: dbMsg.sourceId ?? undefined,
+        hopCount: dbMsg.hopCount ?? null,
+        routePath: dbMsg.routePath ?? null,
+        scopeCode: dbMsg.scopeCode ?? null,
+        scopeName: dbMsg.scopeName ?? null,
         heardBy: heard && heard.length > 0
           ? heard.map(r => ({ hash: r.repeaterHash, name: r.repeaterName, snr: r.snr }))
           : undefined,
