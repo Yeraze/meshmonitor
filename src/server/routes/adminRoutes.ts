@@ -707,7 +707,7 @@ router.post('/ensure-session-passkey', requireAdmin(), async (req, res) => {
       return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
     }
     logger.error('Error ensuring session passkey:', error);
-    res.status(500).json({ error: error.message || 'Failed to ensure session passkey' });
+    return fail(res, 500, 'PASSKEY_FAILED', error.message || 'Failed to ensure session passkey');
   }
 });
 
@@ -1212,6 +1212,7 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
     // Explicitly typed: inference no longer reaches the pushes now that they
     // happen inside the runImport thunk below.
     const importedChannels: Array<{ index: number; name: string }> = [];
+    const failedChannels: Array<{ index: number; name: string }> = [];
     let loraImported = false;
     let requiresReboot = false;
 
@@ -1337,7 +1338,12 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
             // exhibits the same drop pattern as local TCP under burst.
             await new Promise(resolve => setTimeout(resolve, 1000));
           } catch (error) {
+            // Individual channel failures don't abort the import (pre-existing
+            // behavior), but they must not vanish either — running detached
+            // means the caller has no log to correlate against, so record them
+            // and report the count in the result.
             logger.error(`❌ Failed to import channel ${i}:`, error);
+            failedChannels.push({ index: i, name: channel.name || '(unnamed)' });
           }
         }
       }
@@ -1406,6 +1412,10 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
         channels: importedChannels.length,
         channelDetails: importedChannels,
         loraConfig: loraImported,
+        // Additive: a partial import previously reported only its successes,
+        // so a caller could not tell "3 channels" from "3 of 5 channels".
+        failedChannels: failedChannels.length,
+        failedChannelDetails: failedChannels,
       },
       requiresReboot,
     };
@@ -1457,7 +1467,7 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
       return fail(res, 409, 'TX_DISABLED', 'Transmit is disabled on this source');
     }
     logger.error('Error importing configuration:', error);
-    res.status(500).json({ error: error.message || 'Failed to import configuration' });
+    return fail(res, 500, 'IMPORT_CONFIG_FAILED', error.message || 'Failed to import configuration');
   }
 });
 

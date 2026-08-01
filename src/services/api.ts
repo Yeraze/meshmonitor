@@ -704,7 +704,7 @@ class ApiService {
   }
 
 
-  async importConfig(url: string, nodeNum?: number, sourceId?: string | null): Promise<{ success: boolean; imported: { channels: number; channelDetails: any[]; loraConfig: boolean }; requiresReboot?: boolean }> {
+  async importConfig(url: string, nodeNum?: number, sourceId?: string | null): Promise<{ success: boolean; imported: { channels: number; channelDetails: any[]; loraConfig: boolean; failedChannels?: number; failedChannelDetails?: Array<{ index: number; name: string }> }; requiresReboot?: boolean }> {
     await this.ensureBaseUrl();
     // Use admin endpoint if nodeNum is provided (for remote nodes), otherwise use standard endpoint
     const endpoint = nodeNum !== undefined ? '/api/admin/import-config' : '/api/channels/import-config';

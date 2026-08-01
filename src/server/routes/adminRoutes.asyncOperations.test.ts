@@ -378,6 +378,37 @@ describe('adminRoutes — async remote-admin operations (#4482)', () => {
       expect(sendAdminCommand).toHaveBeenCalled();
     });
 
+    it('reports channels that failed to import instead of counting only successes', async () => {
+      // A per-channel failure is absorbed by the loop; the result must still
+      // distinguish "1 channel" from "1 of 2 channels".
+      const sendAdminCommand = vi.fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('radio dropped it'));
+      await sourceManagerRegistry.addManager(makeFakeManager({
+        getSessionPasskey: vi.fn().mockReturnValue(new Uint8Array([1])),
+        sendAdminCommand,
+        requestRemoteConfig: vi.fn().mockResolvedValue(null),
+        getRemoteNodeConfig: vi.fn().mockReturnValue(null),
+      }));
+
+      const channelUrlService = (await import('../services/channelUrlService.js')).default;
+      (channelUrlService.decodeUrl as any).mockReturnValue({
+        channels: [{ name: 'ok', psk: 'none' }, { name: 'doomed', psk: 'none' }],
+        loraConfig: undefined,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const accepted = await agent.post('/import-config').send({
+        sourceId: harness.sourceA, nodeNum: REMOTE_NODE_NUM, url: 'meshtastic://mock',
+      });
+
+      const settled = await waitForSettled(agent, accepted.body.operationId, 200);
+      expect(settled.status).toBe('succeeded');
+      expect(settled.result.imported.channels).toBe(1);
+      expect(settled.result.imported.failedChannels).toBe(1);
+      expect(settled.result.imported.failedChannelDetails).toEqual([{ index: 1, name: 'doomed' }]);
+    });
+
     it('records a cold-passkey timeout as a failed import rather than a partial success', async () => {
       const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
       await sourceManagerRegistry.addManager(makeFakeManager({
@@ -399,6 +430,9 @@ describe('adminRoutes — async remote-admin operations (#4482)', () => {
 
       const settled = await waitForSettled(agent, accepted.body.operationId, 120);
       expect(settled.status).toBe('failed');
+      // Reaches the detached closure's outer catch: the passkey throw is not
+      // absorbed by the per-channel/per-LoRa handlers inside runImport.
+      expect(settled.error.code).toBe('IMPORT_CONFIG_FAILED');
       expect(sendAdminCommand).not.toHaveBeenCalled();
     });
   });
