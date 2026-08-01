@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 vi.mock('../../contexts/IconStyleContext', () => ({
   useIconStyleOptional: () => 'lucide' as const,
@@ -112,5 +112,58 @@ describe('SourceNav', () => {
     rerender(<SourceNav sections={sections} activeId="nodes" collapsed mobileVariant="rail" />);
     expect(container.querySelector('[data-source-nav]')?.getAttribute('data-mobile-variant'))
       .toBe('rail');
+  });
+});
+
+/**
+ * Scroll-cue state (#4497). The fade is driven by data attributes measured from
+ * the live scroll position, so a bar whose tabs all fit shows no fade at all.
+ */
+describe('SourceNav overflow cue', () => {
+  function setMetrics(el: HTMLElement, { scrollWidth, clientWidth, scrollLeft }: {
+    scrollWidth: number; clientWidth: number; scrollLeft: number;
+  }) {
+    Object.defineProperty(el, 'scrollWidth', { configurable: true, get: () => scrollWidth });
+    Object.defineProperty(el, 'clientWidth', { configurable: true, get: () => clientWidth });
+    Object.defineProperty(el, 'scrollLeft', { configurable: true, writable: true, value: scrollLeft });
+  }
+
+  const render1 = () =>
+    render(<SourceNav sections={sections} activeId="nodes" collapsed />);
+
+  it('shows no fade when every tab fits', () => {
+    const { container } = render1();
+    const nav = container.querySelector('[data-source-nav]') as HTMLElement;
+    setMetrics(nav, { scrollWidth: 300, clientWidth: 300, scrollLeft: 0 });
+    act(() => { nav.dispatchEvent(new Event('scroll')); });
+    expect(nav.getAttribute('data-overflow-start')).toBe('false');
+    expect(nav.getAttribute('data-overflow-end')).toBe('false');
+  });
+
+  it('fades the trailing edge when tabs continue past the right', () => {
+    const { container } = render1();
+    const nav = container.querySelector('[data-source-nav]') as HTMLElement;
+    setMetrics(nav, { scrollWidth: 900, clientWidth: 300, scrollLeft: 0 });
+    act(() => { nav.dispatchEvent(new Event('scroll')); });
+    expect(nav.getAttribute('data-overflow-start')).toBe('false');
+    expect(nav.getAttribute('data-overflow-end')).toBe('true');
+  });
+
+  it('fades both edges mid-scroll', () => {
+    const { container } = render1();
+    const nav = container.querySelector('[data-source-nav]') as HTMLElement;
+    setMetrics(nav, { scrollWidth: 900, clientWidth: 300, scrollLeft: 300 });
+    act(() => { nav.dispatchEvent(new Event('scroll')); });
+    expect(nav.getAttribute('data-overflow-start')).toBe('true');
+    expect(nav.getAttribute('data-overflow-end')).toBe('true');
+  });
+
+  it('drops the trailing fade once scrolled to the end', () => {
+    const { container } = render1();
+    const nav = container.querySelector('[data-source-nav]') as HTMLElement;
+    setMetrics(nav, { scrollWidth: 900, clientWidth: 300, scrollLeft: 600 });
+    act(() => { nav.dispatchEvent(new Event('scroll')); });
+    expect(nav.getAttribute('data-overflow-start')).toBe('true');
+    expect(nav.getAttribute('data-overflow-end')).toBe('false');
   });
 });

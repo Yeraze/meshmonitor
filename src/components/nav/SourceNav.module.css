@@ -206,10 +206,53 @@
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     padding-bottom: env(safe-area-inset-bottom, 0px);
+    /*
+     * Keep a horizontal drag on the bar as a scroll of THIS element (#4497).
+     * `pan-x` declares horizontal panning as the only gesture we want here, and
+     * `contain` stops scroll chaining once an end is reached — chaining is what
+     * let a swipe on the bar fall through to Safari's back-swipe / app-switcher
+     * edge gesture and kick the user out of the PWA.
+     *
+     * Partial mitigation, to be honest about it: the iOS home-indicator and
+     * app-switcher gestures are OS-level and CSS cannot fully suppress them.
+     * The safe-area padding above is what actually lifts the tap targets clear
+     * of the home-indicator zone; these two only stop the scroll chaining.
+     */
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
   }
 
   .mobileBottomBar::-webkit-scrollbar {
     display: none;
+  }
+
+  /*
+   * Scroll affordance (#4497): there are more tabs than fit on a phone, with
+   * nothing to suggest the row scrolls, so tabs get missed entirely. Fade
+   * whichever edge still has content beyond it.
+   *
+   * `mask-image` rather than an ::after overlay, because a pseudo-element
+   * inside a scroll container scrolls away with the content; a mask applies to
+   * the element's own box and stays put. The data attributes come from
+   * SourceNav's scroll position, so a bar whose tabs all fit shows no fade.
+   */
+  .mobileBottomBar[data-overflow-end='true'] {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+  }
+
+  .mobileBottomBar[data-overflow-start='true'] {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28px);
+    mask-image: linear-gradient(to right, transparent 0, #000 28px);
+  }
+
+  .mobileBottomBar[data-overflow-start='true'][data-overflow-end='true'] {
+    -webkit-mask-image: linear-gradient(
+      to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%
+    );
+    mask-image: linear-gradient(
+      to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%
+    );
   }
 
   /* Width is a row-layout concept here; the collapsed/expanded rail widths
