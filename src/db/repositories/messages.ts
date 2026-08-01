@@ -465,7 +465,7 @@ export class MessagesRepository extends BaseRepository {
    *
    * Keeps branching: per-dialect date formatting.
    */
-  async getMessagesByDay(days: number = 7, sourceId?: SourceScope): Promise<Array<{ date: string; count: number }>> {
+  async getMessagesByDay(days: number = 7, sourceId: SourceScope): Promise<Array<{ date: string; count: number }>> {
     const cutoff = this.now() - days * 24 * 60 * 60 * 1000;
     const { messages } = this.tables;
 
