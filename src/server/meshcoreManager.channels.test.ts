@@ -238,6 +238,67 @@ describe('MeshCoreManager — syncChannelsFromDevice', () => {
     // Deleted the stale empty-slot row at idx 1.
     expect(deleteCalls).toEqual([{ id: 1, sourceId: 'test-source' }]);
   });
+
+  /**
+   * `getChannels()` enumerates until the firmware errors, so a timeout part-way
+   * through the scan TRUNCATES the list rather than failing it. Treating a slot
+   * that was never reported as "deleted" turned a transient read into permanent
+   * loss of the channel definition — a configured second channel vanished from
+   * the UI while its messages (a different table) survived.
+   */
+  it('does NOT delete rows for slots the device never reported (truncated scan)', async () => {
+    const { manager, deleteCalls, upsertCalls } = makeManager({
+      preExistingRows: [
+        { id: 0, name: 'Public', psk: 'p' },
+        { id: 1, name: 'Gauntlet', psk: 'g' },
+      ],
+      // Scan stopped after slot 0 — slot 1 is absent, NOT reported-as-empty.
+      getChannelsResponse: {
+        success: true,
+        data: [{ channel_idx: 0, name: 'Public', secret_hex: 'aa'.repeat(16) }],
+      },
+    });
+    await manager.syncChannelsFromDevice();
+
+    expect(upsertCalls.map(c => c.data.id)).toEqual([0]);
+    expect(deleteCalls).toEqual([]); // Gauntlet survives.
+  });
+
+  it('does NOT delete anything when the scan returns no slots at all', async () => {
+    const { manager, deleteCalls } = makeManager({
+      preExistingRows: [
+        { id: 0, name: 'Public', psk: 'p' },
+        { id: 1, name: 'Gauntlet', psk: 'g' },
+      ],
+      getChannelsResponse: { success: true, data: [] },
+    });
+    await manager.syncChannelsFromDevice();
+
+    expect(deleteCalls).toEqual([]);
+  });
+
+  it('still deletes a slot the device reports as empty even when others are absent', async () => {
+    // Slot 1 is positively reported empty (a real out-of-band delete), while
+    // slot 5 was never reached. Only 1 may go.
+    const zero = '00'.repeat(16);
+    const { manager, deleteCalls } = makeManager({
+      preExistingRows: [
+        { id: 0, name: 'Public', psk: 'p' },
+        { id: 1, name: 'Gone', psk: 'x' },
+        { id: 5, name: 'Unreached', psk: 'y' },
+      ],
+      getChannelsResponse: {
+        success: true,
+        data: [
+          { channel_idx: 0, name: 'Public', secret_hex: 'aa'.repeat(16) },
+          { channel_idx: 1, name: '', secret_hex: zero },
+        ],
+      },
+    });
+    await manager.syncChannelsFromDevice();
+
+    expect(deleteCalls).toEqual([{ id: 1, sourceId: 'test-source' }]);
+  });
 });
 
 describe('MeshCoreManager — setChannel / deleteChannel', () => {
