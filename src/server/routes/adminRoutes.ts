@@ -1682,23 +1682,25 @@ router.post('/commands', requireAdmin(), async (req, res) => {
         // If we don't include them, the firmware may reset them to empty/random values
         // Only do this for LOCAL node - for remote nodes we don't have their private key
         {
-          let configToSend = params.config;
-          if (isLocalNode) {
-            const existingKeys = acManager.getSecurityKeys();
-            configToSend = {
-              ...params.config,
-              // Include existing keys if not explicitly provided
-              publicKey: params.config.publicKey || existingKeys.publicKey,
-              privateKey: params.config.privateKey || existingKeys.privateKey
-            };
-            logger.debug('Preserving existing public/private keys for local node security config update');
-          } else {
+          // `const` so the builder below cannot capture a binding that later
+          // changes — the closure runs after this handler returns.
+          const configToSend = (() => {
+            if (isLocalNode) {
+              const existingKeys = acManager.getSecurityKeys();
+              logger.debug('Preserving existing public/private keys for local node security config update');
+              return {
+                ...params.config,
+                // Include existing keys if not explicitly provided
+                publicKey: params.config.publicKey || existingKeys.publicKey,
+                privateKey: params.config.privateKey || existingKeys.privateKey
+              };
+            }
             // For remote nodes, explicitly exclude publicKey/privateKey to let firmware preserve them
             // We don't have the remote node's private key, so we can't include it
             const { publicKey, privateKey, ...remoteConfig } = params.config;
-            configToSend = remoteConfig;
             logger.debug('Excluding publicKey/privateKey from remote node security config update');
-          }
+            return remoteConfig;
+          })();
           buildAdminMessage = (passkey) => protobufService.createSetSecurityConfigMessage(configToSend, passkey);
         }
         break;
@@ -1835,22 +1837,23 @@ router.get('/operations/:id', requireAdmin(), async (req, res) => {
   const operation = adminOperationService.get(req.params.id);
   const requesterId = req.session?.userId ?? null;
 
-  const notFound = !operation
-    || (operation.userId !== null && requesterId !== null && operation.userId !== requesterId);
-  if (notFound) {
+  // An owned operation is visible only to its owner — a session-less requester
+  // does not qualify. (The earlier form also required `requesterId !== null`,
+  // which let two null principals share visibility.)
+  if (!operation || (operation.userId !== null && operation.userId !== requesterId)) {
     return fail(res, 404, 'OPERATION_NOT_FOUND', 'Unknown or expired admin operation');
   }
 
   return ok(res, {
-    id: operation!.id,
-    command: operation!.command,
-    destinationNodeNum: operation!.destinationNodeNum,
-    status: operation!.status,
-    createdAt: operation!.createdAt,
-    updatedAt: operation!.updatedAt,
-    completedAt: operation!.completedAt,
-    result: operation!.result,
-    error: operation!.error,
+    id: operation.id,
+    command: operation.command,
+    destinationNodeNum: operation.destinationNodeNum,
+    status: operation.status,
+    createdAt: operation.createdAt,
+    updatedAt: operation.updatedAt,
+    completedAt: operation.completedAt,
+    result: operation.result,
+    error: operation.error,
   });
 });
 

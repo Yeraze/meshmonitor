@@ -281,6 +281,30 @@ describe('adminRoutes — async remote-admin operations (#4482)', () => {
       expect(res.body).toMatchObject({ code: 'OPERATION_NOT_FOUND' });
     });
 
+    it('404s an owned operation for a requester who is not its owner, session-less included', async () => {
+      // An owned operation must not fall visible just because the requester has
+      // no session userId — two null principals used to share visibility.
+      const operation = adminOperationService.create({
+        command: 'reboot', sourceId: harness.sourceA, destinationNodeNum: REMOTE_NODE_NUM,
+        userId: harness.admin.id + 12345,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      expect((await agent.get(`/operations/${operation.id}`)).status).toBe(404);
+    });
+
+    it('lets the owner read their own operation', async () => {
+      const operation = adminOperationService.create({
+        command: 'reboot', sourceId: harness.sourceA, destinationNodeNum: REMOTE_NODE_NUM,
+        userId: harness.admin.id,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const res = await agent.get(`/operations/${operation.id}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({ id: operation.id, command: 'reboot' });
+    });
+
     it('requires admin', async () => {
       const operation = adminOperationService.create({
         command: 'reboot', sourceId: harness.sourceA, destinationNodeNum: REMOTE_NODE_NUM, userId: null,
