@@ -48,7 +48,7 @@ import { UiIcon } from '../components/icons';
 
 
 // Protocol max for `hop_limit` (3-bit field). IMPORTANT: this value must match
-// MAX_HOP_LIMIT in src/server/mqttBrokerManager.ts, which the source-save
+// MAX_HOP_LIMIT in src/server/constants/meshtastic.ts, which the source-save
 // endpoint validates against. Duplicated rather than imported — pages must not
 // pull from src/server.
 const MAX_HOP_LIMIT = 7;

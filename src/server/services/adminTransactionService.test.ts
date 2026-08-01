@@ -29,15 +29,18 @@ import { AdminTransactionService } from './adminTransactionService.js';
 function makeFakeManager(overrides: Partial<{
   transportReady: boolean;
   localNodeInfo: { nodeNum: number } | null;
+  hopLimit: number;
 }> = {}) {
   const state = {
     transportReady: overrides.transportReady ?? true,
     localNodeInfo: overrides.localNodeInfo === undefined ? { nodeNum: 111 } : overrides.localNodeInfo,
+    hopLimit: overrides.hopLimit ?? 3,
   };
   return {
     state,
     isTransportReady: vi.fn(() => state.transportReady),
     getLocalNodeInfo: vi.fn(() => state.localNodeInfo),
+    getConfiguredHopLimit: vi.fn(() => state.hopLimit),
     sendLocalAdminPacket: vi.fn().mockResolvedValue(undefined),
     logOutgoingPacket: vi.fn().mockResolvedValue(undefined),
   };
@@ -71,7 +74,7 @@ describe('AdminTransactionService', () => {
       const svc = new AdminTransactionService(mgr as any);
 
       await svc.sendAdminCommand(new Uint8Array([9]), 222);
-      expect(createAdminPacket).toHaveBeenCalledWith(expect.any(Uint8Array), 222, 111);
+      expect(createAdminPacket).toHaveBeenCalledWith(expect.any(Uint8Array), 222, 111, 3);
       expect(mgr.sendLocalAdminPacket).toHaveBeenCalledWith(expect.any(Uint8Array));
       expect(mgr.logOutgoingPacket).toHaveBeenCalledWith(
         6, 222, 0, expect.any(String), { destinationNodeNum: 222, isRemoteAdmin: true },
@@ -84,6 +87,16 @@ describe('AdminTransactionService', () => {
 
       await svc.sendAdminCommand(new Uint8Array([9]), 111);
       expect(mgr.logOutgoingPacket).not.toHaveBeenCalled();
+    });
+
+    it('sends admin commands at the node\'s CONFIGURED hop limit, not a hardcoded 3', async () => {
+      // A node configured for a deep mesh must be able to admin nodes further
+      // than the firmware default of 3 hops away.
+      const mgr = makeFakeManager({ hopLimit: 7 });
+      const svc = new AdminTransactionService(mgr as any);
+
+      await svc.sendAdminCommand(new Uint8Array([9]), 222);
+      expect(createAdminPacket).toHaveBeenCalledWith(expect.any(Uint8Array), 222, 111, 7);
     });
   });
 
@@ -136,6 +149,18 @@ describe('AdminTransactionService', () => {
 
       const result = await svc.sendAdminCommandAwaitAck(new Uint8Array([1]), 222, 5000);
       expect(result).toEqual({ packetId: 557, acked: true, errorReason: 0, timedOut: false });
+    });
+
+    it('builds the ack-aware packet at the node\'s configured hop limit', async () => {
+      createAdminPacketWithId.mockReturnValue({ data: new Uint8Array([1]), packetId: 558 });
+      const mgr = makeFakeManager({ hopLimit: 5 });
+      const svc = new AdminTransactionService(mgr as any);
+
+      const pending = svc.sendAdminCommandAwaitAck(new Uint8Array([1]), 222, 5000);
+      expect(createAdminPacketWithId).toHaveBeenCalledWith(expect.any(Uint8Array), 222, 111, 5);
+
+      await vi.advanceTimersByTimeAsync(5000);
+      await pending;
     });
   });
 
