@@ -19,6 +19,15 @@ import { adminOperationService } from '../services/adminOperationService.js';
 import { TxDisabledError } from '../errors/txDisabledError.js';
 import { loadProtobufDefinitions } from '../protobufLoader.js';
 
+// import-config dynamically imports this; mock it so the tests don't need a
+// real base64url-encoded channel blob.
+vi.mock('../services/channelUrlService.js', () => ({
+  default: {
+    decodeUrl: vi.fn(),
+    encodeUrl: vi.fn().mockReturnValue('meshtastic://mock-url'),
+  },
+}));
+
 const LOCAL_NODE_NUM = 1;
 const REMOTE_NODE_NUM = 0x0badbeef;
 
@@ -328,6 +337,69 @@ describe('adminRoutes — async remote-admin operations (#4482)', () => {
       expect(res.status).toBe(200);
       expect(res.body.operationId).toBeUndefined();
       expect(adminOperationService.size()).toBe(0);
+    });
+  });
+
+  describe('POST /import-config (follow-up)', () => {
+    it('runs the whole remote import from a COLD passkey behind one operation', async () => {
+      // The #4315 tests all start with a cached passkey, so the acquisition leg
+      // of the import path was never exercised end-to-end. This covers the full
+      // chain: 202 → acquire → channel sends → settled result.
+      let release: (v: Uint8Array) => void = () => {};
+      const gate = new Promise<Uint8Array>((resolve) => { release = resolve; });
+      const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+      await sourceManagerRegistry.addManager(makeFakeManager({
+        getSessionPasskey: vi.fn().mockReturnValue(null),
+        requestRemoteSessionPasskey: vi.fn(() => gate),
+        sendAdminCommand,
+        requestRemoteConfig: vi.fn().mockResolvedValue(null),
+        getRemoteNodeConfig: vi.fn().mockReturnValue(null),
+      }));
+
+      const channelUrlService = (await import('../services/channelUrlService.js')).default;
+      (channelUrlService.decodeUrl as any).mockReturnValue({
+        channels: [{ name: 'gauntlet', psk: 'none' }],
+        loraConfig: undefined,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const accepted = await agent.post('/import-config').send({
+        sourceId: harness.sourceA, nodeNum: REMOTE_NODE_NUM, url: 'meshtastic://mock',
+      });
+
+      // Accepted while the passkey is still outstanding — nothing sent yet.
+      expect(accepted.status).toBe(202);
+      expect(sendAdminCommand).not.toHaveBeenCalled();
+
+      release(new Uint8Array([9]));
+      const settled = await waitForSettled(agent, accepted.body.operationId, 120);
+      expect(settled.status).toBe('succeeded');
+      expect(settled.result.imported.channels).toBe(1);
+      expect(sendAdminCommand).toHaveBeenCalled();
+    });
+
+    it('records a cold-passkey timeout as a failed import rather than a partial success', async () => {
+      const sendAdminCommand = vi.fn().mockResolvedValue(undefined);
+      await sourceManagerRegistry.addManager(makeFakeManager({
+        getSessionPasskey: vi.fn().mockReturnValue(null),
+        requestRemoteSessionPasskey: vi.fn().mockResolvedValue(null),
+        sendAdminCommand,
+      }));
+
+      const channelUrlService = (await import('../services/channelUrlService.js')).default;
+      (channelUrlService.decodeUrl as any).mockReturnValue({
+        channels: [{ name: 'gauntlet', psk: 'none' }],
+        loraConfig: undefined,
+      });
+
+      const agent = await harness.loginAs(harness.admin);
+      const accepted = await agent.post('/import-config').send({
+        sourceId: harness.sourceA, nodeNum: REMOTE_NODE_NUM, url: 'meshtastic://mock',
+      });
+
+      const settled = await waitForSettled(agent, accepted.body.operationId, 120);
+      expect(settled.status).toBe('failed');
+      expect(sendAdminCommand).not.toHaveBeenCalled();
     });
   });
 

@@ -1221,7 +1221,15 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
     // produced upstream 502s (#4482). Local imports still await it directly.
     //
     // Its contents are deliberately left at their original indentation so the
-    // diff stays reviewable — only the wrapper lines are new.
+    // diff stays reviewable — only the wrapper lines are new. That makes the
+    // `return { ... }` at the end read like a handler-level return; it is the
+    // thunk's.
+    //
+    // The thunk mutates `importedChannels`/`loraImported`/`requiresReboot` from
+    // the enclosing scope. Safe because it runs exactly once per request — the
+    // local path awaits it, the remote path hands it to a single detached
+    // closure — but it is NOT reusable or independently testable as written.
+    // Anything that would call it twice must hoist that state inside first.
     const runImport = async () => {
     if (isLocalNode) {
       // Use existing local import logic
@@ -1291,6 +1299,12 @@ router.post('/import-config', requireAdmin(), async (req, res) => {
     } else {
       // For remote node, use admin commands via aicManager
       // Ensure session passkey
+      //
+      // TODO(#4482): this passkey is acquired once and reused for every send
+      // below. Session passkeys carry a TTL (see getSessionPasskeyStatus), so a
+      // long import over a slow link can outlive it and the later sends then go
+      // out with a stale key. Pre-existing, but running detached makes it more
+      // reachable — a re-check (and re-acquire) between sends is the fix.
       let sessionPasskey = aicManager.getSessionPasskey(destinationNodeNum);
       if (!sessionPasskey) {
         sessionPasskey = await aicManager.requestRemoteSessionPasskey(destinationNodeNum);

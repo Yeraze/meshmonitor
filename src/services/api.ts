@@ -723,7 +723,10 @@ class ApiService {
 
     // Importing to a REMOTE node blocks on the passkey and a burst of admin
     // sends, so that endpoint answers 202 + operation id (#4482 follow-up).
-    return this.followAdminOperation(await response.json());
+    // Budget: up to 45s passkey + ~1s pacing per channel (8 max) + a
+    // requestRemoteConfig round-trip, all of which can retransmit. 5 minutes
+    // leaves room for that without the client abandoning a live import.
+    return this.followAdminOperation(await response.json(), { timeoutMs: 300_000 });
   }
 
   /**
@@ -1644,7 +1647,7 @@ class ApiService {
    */
   private async followAdminOperation<T>(
     accepted: AdminCommandAccepted,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; timeoutMs?: number },
   ): Promise<T> {
     // Local node (or any server that answered synchronously): already done.
     if (!accepted?.operationId) {
@@ -1653,9 +1656,12 @@ class ApiService {
 
     const operationId: string = accepted.operationId;
     const startedAt = Date.now();
-    // Comfortably above the ~75s worst case (45s passkey + 30s ACK) so a slow
-    // but healthy mesh is never cut short by the client.
-    const overallTimeoutMs = 120_000;
+    // Default sits above a single command's ~75s worst case (45s passkey +
+    // 30s ACK). Longer operations pass their own budget — a remote config
+    // import adds ~1s of pacing per channel plus a requestRemoteConfig
+    // round-trip on top of the passkey leg, which 120s does not cover with
+    // any margin on a retransmitting link.
+    const overallTimeoutMs = options?.timeoutMs ?? 120_000;
     let delayMs = 500;
 
     for (;;) {
