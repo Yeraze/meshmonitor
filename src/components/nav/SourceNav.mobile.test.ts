@@ -42,7 +42,24 @@ describe('SourceNav mobile bottom bar (#4473)', () => {
 
   it('keeps labels visible on the bar even when the desktop rail is collapsed', () => {
     // An icon-only bottom bar is the other half of the reported complaint.
-    expect(css).toMatch(/\.mobileBottomBar\.collapsed \.label[\s\S]{0,120}display:\s*block/);
+    expect(css).toMatch(/\.mobileBottomBar \.label \{[^}]*display:\s*block/);
+  });
+
+  it('keeps bottom-bar rules one class deep so the landscape block can override them', () => {
+    // A `.mobileBottomBar.collapsed .item` rule (specificity 0,3,0) outranks the
+    // landscape override (0,2,0) wherever it sits in the file. That is what left
+    // the landscape bar 63px tall while the shell reserved 44px for it.
+    // Comments are stripped first — the note above this rule in the stylesheet
+    // quotes the very selector being banned.
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(rules).not.toMatch(/\.mobileBottomBar\.(collapsed|expanded)\s+\.(item|label)\b/);
+  });
+
+  it('reserves a bar height for the app shell in both orientations', () => {
+    // App.css reserves --app-nav-bar-height to keep content clear of the bar;
+    // these must stay in step or content sits under it.
+    expect(css).toMatch(/--source-nav-bar-height:\s*56px/);
+    expect(css).toMatch(/--source-nav-bar-height:\s*44px/);
   });
 
   it('themes through custom properties so consumer stylesheets cannot race it', () => {

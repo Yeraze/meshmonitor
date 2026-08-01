@@ -101,7 +101,10 @@ export const SourceNav: React.FC<SourceNavProps> = ({
       data-mobile-variant={mobileVariant}
       aria-label={ariaLabel}
     >
-      {header}
+      {/* Wrapped so the bottom-bar variant can hide them: a logo block, a
+          pin/collapse cluster and a footer are all vertical-rail affordances
+          that make no sense laid out in a horizontal bar. */}
+      {header && <div className={styles.headerSlot} data-source-nav-header="">{header}</div>}
 
       <nav className={styles.list}>
         {sections.map((section, index) => (
@@ -148,8 +151,10 @@ export const SourceNav: React.FC<SourceNavProps> = ({
         ))}
       </nav>
 
-      {controls ?? (onToggleCollapsed && (
-        <div className={styles.controls}>
+      {controls ? (
+        <div className={styles.controlsSlot} data-source-nav-controls="">{controls}</div>
+      ) : (onToggleCollapsed && (
+        <div className={`${styles.controls} ${styles.controlsSlot}`} data-source-nav-controls="">
           <button
             type="button"
             className={styles.toggle}
@@ -163,7 +168,7 @@ export const SourceNav: React.FC<SourceNavProps> = ({
         </div>
       ))}
 
-      {footer}
+      {footer && <div className={styles.footerSlot} data-source-nav-footer="">{footer}</div>}
     </aside>
   );
 };

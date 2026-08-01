@@ -29,9 +29,11 @@ export const NODE_SIDEBAR_DESKTOP_MAX_FRACTION = 0.5;
 /**
  * Whether the viewport is in the app's mobile layout.
  *
- * Deliberately mirrors the two `:root { --sidebar-width: 48px }` media queries
- * in App.css rather than inventing a third definition of "mobile". Keep the two
- * in sync: if those queries change, this changes with them.
+ * Deliberately mirrors the two `:root { --sidebar-width: … }` media queries in
+ * App.css rather than inventing a third definition of "mobile". Keep the two in
+ * sync: if those queries change, this changes with them. (Those blocks now set
+ * the width to 0 — the mobile nav is a bottom bar, #4473 phase 2 — but the
+ * breakpoints they key off are unchanged.)
  *
  * Note this does NOT catch a 1366x768 laptop (width > 768, height > 500), so
  * desktop keeps its 50% split.
@@ -51,9 +53,10 @@ export function isMobileLayout(viewportWidth: number, viewportHeight: number): b
  *
  * @param availableWidth Width of the split-view container — NOT the viewport.
  *   The container is `position: fixed; left: var(--sidebar-width); right: 0`, so
- *   it already excludes the app rail (48px mobile / 60px desktop). Measuring the
- *   container rather than subtracting a hardcoded rail width keeps this correct
- *   if the rail ever changes.
+ *   it already excludes the app rail (0 on mobile, where the nav is a bottom
+ *   bar; 60px desktop). Measuring the container rather than subtracting a
+ *   hardcoded rail width is exactly what let the mobile rail become a bottom bar
+ *   (#4473 phase 2) without touching this function.
  * @param mobile Result of isMobileLayout() for the current viewport.
  *
  * Mobile: the whole container, so the list can cover the map entirely.

@@ -108,10 +108,22 @@ const Sidebar: React.FC<SidebarProps> = ({
   // Update CSS custom property when sidebar collapse state changes
   React.useEffect(() => {
     const updateSidebarWidth = () => {
-      const isMobile = window.matchMedia('(max-width: 768px)').matches;
-      const baseCollapsedWidth = isMobile ? 48 : 60;
-      const baseExpandedWidth = 240;
-      const baseWidth = isCollapsed ? baseCollapsedWidth : baseExpandedWidth;
+      // Mirrors the two mobile media queries in App.css — keep in sync.
+      const isMobile =
+        window.matchMedia('(max-width: 768px)').matches ||
+        window.matchMedia('(max-height: 500px) and (orientation: landscape)').matches;
+
+      if (isMobile) {
+        // The nav is a bottom bar on phones (#4473 phase 2), so it occupies no
+        // horizontal space at all. Everything positioned off `--sidebar-width`
+        // (app-main, header, banners, save bar, the map/list split) correctly
+        // spans the full width once this is 0; vertical room for the bar is
+        // reserved separately via `--app-nav-bar-height`.
+        document.documentElement.style.setProperty('--sidebar-width', '0px');
+        return;
+      }
+
+      const baseWidth = isCollapsed ? 60 : 240;
       // Use calc() to include safe-area-inset-left for iPhone notch in landscape
       document.documentElement.style.setProperty(
         '--sidebar-width',
@@ -229,10 +241,10 @@ const Sidebar: React.FC<SidebarProps> = ({
       sections={sections}
       activeId={activeTab}
       collapsed={isCollapsed}
-      /* Still a left rail on phones. The bottom-bar variant is the eventual
-         target (#4473), but the whole app layout is positioned off
-         `--sidebar-width`, so that move is its own change. */
-      mobileVariant="rail"
+      /* Phones get the same scrollable bottom bar as MeshCore (#4473 phase 2).
+         The app shell reserves room for it via `--sidebar-width: 0` plus
+         `--app-nav-bar-height` — see updateSidebarWidth() below and App.css. */
+      mobileVariant="bottom-bar"
       ariaLabel={t('nav.section_main')}
       header={
         <div className="sidebar-header">
