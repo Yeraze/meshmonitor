@@ -137,6 +137,16 @@ export interface ResourceDefinition {
 }
 
 export const RESOURCES: readonly ResourceDefinition[] = [
+  // Listed first on purpose: MeshCoreSourcePage gates its ENTIRE surface on
+  // `connection: read`, so without it every other grant on a MeshCore source is
+  // inert and the user just sees "You do not have permission to view this
+  // MeshCore source". Granting it is the first thing you need, so it reads
+  // first.
+  {
+    id: 'connection',
+    name: 'Connection',
+    description: 'Required to open a source. Also controls connect/disconnect.',
+  },
   { id: 'dashboard', name: 'Dashboard', description: 'View statistics and system info' },
   { id: 'nodes', name: 'Node List', description: 'View and manage mesh nodes' },
   { id: 'channel_0', name: 'Channel 0 (Primary)', description: 'View and send messages to channel 0' },
@@ -153,7 +163,6 @@ export const RESOURCES: readonly ResourceDefinition[] = [
   { id: 'info', name: 'Info', description: 'Telemetry and network information' },
   { id: 'automation', name: 'Automation', description: 'Automated tasks and announcements' },
   { id: 'automations', name: 'Automation Engine', description: 'Create and manage global automations and variables (Advanced Mode)' },
-  { id: 'connection', name: 'Connection', description: 'Control node connection (disconnect/reconnect)' },
   { id: 'traceroute', name: 'Traceroute', description: 'Initiate traceroute requests to nodes' },
   { id: 'audit', name: 'Audit Log', description: 'View and manage audit logs (admin only)' },
   { id: 'security', name: 'Security', description: 'View security scan results and key management' },
