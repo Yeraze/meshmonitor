@@ -5,6 +5,7 @@ import { TabType } from '../types/ui';
 import { ResourceType } from '../types/permission';
 import { UiIcon, type UiIconName } from './icons';
 import SidebarFooter from './SidebarFooter';
+import { SourceNav, type SourceNavItem, type SourceNavSection } from './nav/SourceNav';
 
 interface UnreadCountsData {
   channels?: {[channelId: number]: number};
@@ -63,7 +64,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   mqttReadOnly = false,
 }) => {
   const { t } = useTranslation();
-  const icon = (name: UiIconName) => <UiIcon name={name} size={20} />;
 
   // Pin state persisted to localStorage - when pinned, sidebar won't auto-collapse on nav click
   const [isPinned, setIsPinned] = useState(() => {
@@ -124,205 +124,172 @@ const Sidebar: React.FC<SidebarProps> = ({
     return () => window.removeEventListener('resize', updateSidebarWidth);
   }, [isCollapsed]);
 
-  const NavItem: React.FC<{
-    id: TabType;
-    label: string;
-    icon: React.ReactNode;
-    onClick?: () => void;
-    showNotification?: boolean;
-  }> = ({ id, label, icon, onClick, showNotification }) => {
-    const handleClick = () => {
-      // Auto-collapse sidebar when navigation item is clicked (if expanded and not pinned)
+  /**
+   * Build a SourceNav item. Navigation still auto-collapses an unpinned
+   * sidebar, and still defaults to `setActiveTab(id)` when no custom handler is
+   * given — SourceNav owns presentation only (#4473).
+   */
+  const navItem = (
+    id: TabType,
+    label: string,
+    iconName: UiIconName,
+    opts: { onClick?: () => void; unread?: boolean } = {}
+  ): SourceNavItem => ({
+    id,
+    label,
+    icon: iconName,
+    unread: opts.unread,
+    onClick: () => {
       if (!isCollapsed && !isPinned) {
         setIsCollapsed(true);
       }
-      // Execute the custom onClick or default setActiveTab
-      if (onClick) {
-        onClick();
+      if (opts.onClick) {
+        opts.onClick();
       } else {
         setActiveTab(id);
       }
-    };
+    },
+  });
 
-    return (
-      <button
-        className={`sidebar-nav-item ${activeTab === id ? 'active' : ''}`}
-        onClick={handleClick}
-        title={isCollapsed ? label : ''}
-      >
-        <span className="nav-icon">{icon}</span>
-        {!isCollapsed && <span className="nav-label">{label}</span>}
-        {showNotification && <span className="nav-notification-dot"></span>}
-      </button>
-    );
-  };
+  const mainItems: SourceNavItem[] = [
+    /* Labelled "Map" (#4325) — the tab is the map + node list, and the Map icon
+       never matched the old "Nodes" label. The `nodes` tab id and the
+       `nav.nodes` locale key are deliberately unchanged: the id is part of the
+       route (/source/:id/nodes) so renaming it would break existing bookmarks,
+       and the key is what every locale file is already translated against. Same
+       divergence as `nav.messages`, which reads "Node Details". */
+    navItem('nodes', t('nav.nodes'), 'nodes'),
+    ...(hasAnyChannelPermission()
+      ? [navItem('channels', t('nav.channels'), 'channels', {
+          onClick: onChannelsClick,
+          unread: unreadCountsData?.channels
+            ? Object.values(unreadCountsData.channels).some(count => count > 0)
+            : false,
+        })]
+      : []),
+    ...(hasPermission('messages', 'read')
+      ? [navItem('messages', t('nav.messages'), 'directMessages', {
+          onClick: onMessagesClick,
+          unread: unreadCountsData?.directMessages
+            ? Object.values(unreadCountsData.directMessages).some(count => count > 0)
+            : false,
+        })]
+      : []),
+    /* Search opens an overlay rather than switching tabs, so its id never
+       matches activeTab and it simply never renders active. */
+    ...(onSearchClick && hasAnySearchPermission()
+      ? [navItem('search' as TabType, t('nav.search'), 'search', { onClick: onSearchClick })]
+      : []),
+    ...(hasPermission('info', 'read') ? [navItem('info', t('nav.info'), 'info')] : []),
+    ...(hasPermission('dashboard', 'read') ? [navItem('dashboard', t('nav.dashboard'), 'dashboard')] : []),
+    ...(packetLogEnabled && hasPermission('packetmonitor', 'read')
+      ? [navItem('packetmonitor', t('nav.packet_monitor', 'Packet Monitor'), 'activity')]
+      : []),
+  ];
 
-  const SectionHeader: React.FC<{ title: string }> = ({ title }) => (
-    !isCollapsed ? <div className="sidebar-section-header">{title}</div> : null
-  );
+  const configItems: SourceNavItem[] = [
+    /* 'settings' is sourcey (Phase 6 #4416); this nav link guards the whole
+       Settings tab, most of whose routes are unscoped, so anySource mirrors the
+       server's union check. */
+    ...(hasPermission('settings', 'read', { anySource: true })
+      ? [navItem('settings', t('nav.settings'), 'settings')]
+      : []),
+    ...(!mqttReadOnly && hasPermission('automation', 'read')
+      ? [navItem('automation', t('nav.automation'), 'bot')]
+      : []),
+    ...(!mqttReadOnly && hasPermission('configuration', 'read')
+      ? [navItem('configuration', t('nav.device'), 'configuration')]
+      : []),
+    /* MQTT Bridge sources have no device-config surface; surface a dedicated
+       bridge Configuration page instead. */
+    ...(mqttReadOnly && hasPermission('sources', 'read')
+      ? [navItem('mqtt-config', t('nav.mqtt_bridge_config', 'Configuration'), 'configuration')]
+      : []),
+    ...(isAuthenticated ? [navItem('notifications', t('nav.notifications'), 'notifications')] : []),
+  ];
+
+  const adminItems: SourceNavItem[] = [
+    ...(isAdmin ? [navItem('users', t('nav.users'), 'users')] : []),
+    ...(isAdmin && !mqttReadOnly ? [navItem('admin', t('nav.admin_commands'), 'zap')] : []),
+    ...(hasPermission('audit', 'read') ? [navItem('audit', t('nav.audit_log'), 'reports')] : []),
+    ...(hasPermission('security', 'read') ? [navItem('security', t('nav.security'), 'security')] : []),
+  ];
+
+  const sections: SourceNavSection[] = [
+    { title: t('nav.section_main'), items: mainItems },
+    { title: t('nav.section_configuration'), items: configItems },
+    ...(adminItems.length > 0
+      ? [{ title: t('nav.section_admin'), items: adminItems }]
+      : []),
+  ];
 
   return (
-    <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
-      <div className="sidebar-header">
-        <img src={`${baseUrl}/logo.png`} alt="MeshMonitor Logo" className="sidebar-logo" />
-        {!isCollapsed && (
-          <div className="sidebar-header-text">
-            <div className="sidebar-app-name">MeshMonitor</div>
-            {connectedNodeName && (
-              <div className="sidebar-node-name">{connectedNodeName}</div>
-            )}
-          </div>
-        )}
-      </div>
-
-      <nav className="sidebar-nav">
-        <SectionHeader title={t('nav.section_main')} />
-        <div className="sidebar-section">
-          {/* Labelled "Map" (#4325) — the tab is the map + node list, and the
-              Map icon never matched the old "Nodes" label. The `nodes` tab id
-              and the `nav.nodes` locale key are deliberately unchanged: the id
-              is part of the route (/source/:id/nodes) so renaming it would
-              break existing bookmarks, and the key is what every locale file
-              is already translated against. Same divergence as `nav.messages`,
-              which reads "Node Details". */}
-          <NavItem id="nodes" label={t('nav.nodes')} icon={icon('nodes')} />
-          {hasAnyChannelPermission() && (
-            <NavItem
-              id="channels"
-              label={t('nav.channels')}
-              icon={icon('channels')}
-              onClick={onChannelsClick}
-              showNotification={
-                unreadCountsData?.channels
-                  ? Object.values(unreadCountsData.channels).some(count => count > 0)
-                  : false
-              }
-            />
-          )}
-          {hasPermission('messages', 'read') && (
-            <NavItem
-              id="messages"
-              label={t('nav.messages')}
-              icon={icon('directMessages')}
-              onClick={onMessagesClick}
-              showNotification={
-                unreadCountsData?.directMessages
-                  ? Object.values(unreadCountsData.directMessages).some(count => count > 0)
-                  : false
-              }
-            />
-          )}
-          {onSearchClick && hasAnySearchPermission() && (
-            <button
-              className="sidebar-nav-item"
-              onClick={() => {
-                if (!isCollapsed && !isPinned) setIsCollapsed(true);
-                onSearchClick();
-              }}
-              title={isCollapsed ? t('nav.search') : ''}
-            >
-              <span className="nav-icon">{icon('search')}</span>
-              {!isCollapsed && <span className="nav-label">{t('nav.search')}</span>}
-            </button>
-          )}
-          {hasPermission('info', 'read') && (
-            <NavItem id="info" label={t('nav.info')} icon={icon('info')} />
-          )}
-          {hasPermission('dashboard', 'read') && (
-            <NavItem id="dashboard" label={t('nav.dashboard')} icon={icon('dashboard')} />
-          )}
-          {packetLogEnabled && hasPermission('packetmonitor', 'read') && (
-            <NavItem id="packetmonitor" label={t('nav.packet_monitor', 'Packet Monitor')} icon={icon('activity')} />
-          )}
-        </div>
-
-        <SectionHeader title={t('nav.section_configuration')} />
-        <div className="sidebar-section">
-          {/* 'settings' is sourcey (Phase 6 #4416); this nav link guards the
-              whole Settings tab, most of whose routes are unscoped, so
-              anySource mirrors the server's union check. */}
-          {hasPermission('settings', 'read', { anySource: true }) && (
-            <NavItem id="settings" label={t('nav.settings')} icon={icon('settings')} />
-          )}
-          {!mqttReadOnly && hasPermission('automation', 'read') && (
-            <NavItem id="automation" label={t('nav.automation')} icon={icon('bot')} />
-          )}
-          {!mqttReadOnly && hasPermission('configuration', 'read') && (
-            <NavItem id="configuration" label={t('nav.device')} icon={icon('configuration')} />
-          )}
-          {/* MQTT Bridge sources have no device-config surface; surface a
-              dedicated bridge Configuration page instead. */}
-          {mqttReadOnly && hasPermission('sources', 'read') && (
-            <NavItem id="mqtt-config" label={t('nav.mqtt_bridge_config', 'Configuration')} icon={icon('configuration')} />
-          )}
-          {isAuthenticated && (
-            <NavItem id="notifications" label={t('nav.notifications')} icon={icon('notifications')} />
-          )}
-        </div>
-
-        {(isAdmin || hasPermission('audit', 'read') || hasPermission('security', 'read')) && (
-          <>
-            <SectionHeader title={t('nav.section_admin')} />
-            <div className="sidebar-section">
-              {isAdmin && (
-                <>
-                  <NavItem id="users" label={t('nav.users')} icon={icon('users')} />
-                  {!mqttReadOnly && (
-                    <NavItem id="admin" label={t('nav.admin_commands')} icon={icon('zap')} />
-                  )}
-                </>
-              )}
-              {hasPermission('audit', 'read') && (
-                <NavItem id="audit" label={t('nav.audit_log')} icon={icon('reports')} />
-              )}
-              {hasPermission('security', 'read') && (
-                <NavItem id="security" label={t('nav.security')} icon={icon('security')} />
+    <SourceNav
+      className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}
+      sections={sections}
+      activeId={activeTab}
+      collapsed={isCollapsed}
+      /* Still a left rail on phones. The bottom-bar variant is the eventual
+         target (#4473), but the whole app layout is positioned off
+         `--sidebar-width`, so that move is its own change. */
+      mobileVariant="rail"
+      ariaLabel={t('nav.section_main')}
+      header={
+        <div className="sidebar-header">
+          <img src={`${baseUrl}/logo.png`} alt="MeshMonitor Logo" className="sidebar-logo" />
+          {!isCollapsed && (
+            <div className="sidebar-header-text">
+              <div className="sidebar-app-name">MeshMonitor</div>
+              {connectedNodeName && (
+                <div className="sidebar-node-name">{connectedNodeName}</div>
               )}
             </div>
-          </>
-        )}
-      </nav>
-
-      {/* Pin/collapse controls sit in normal flow directly above the footer.
-          They used to be absolutely positioned at a hardcoded `bottom: 70px`,
-          which assumed the old three-item footer; the shared SidebarFooter
-          (#4436) is taller — and much taller in the 60px collapsed rail, where
-          its six icons wrap — so the controls landed on top of it. */}
-      <div className="sidebar-controls">
-        {!isCollapsed && (
+          )}
+        </div>
+      }
+      /* Pin/collapse controls sit in normal flow directly above the footer.
+         They used to be absolutely positioned at a hardcoded `bottom: 70px`,
+         which assumed the old three-item footer; the shared SidebarFooter
+         (#4436) is taller — and much taller in the 60px collapsed rail, where
+         its six icons wrap — so the controls landed on top of it. */
+      controls={
+        <div className="sidebar-controls">
+          {!isCollapsed && (
+            <button
+              className={`sidebar-pin ${isPinned ? 'pinned' : ''}`}
+              onClick={togglePin}
+              title={isPinned ? t('nav.unpin_sidebar') : t('nav.pin_sidebar')}
+            >
+              <UiIcon name="pin" size={18} />
+            </button>
+          )}
           <button
-            className={`sidebar-pin ${isPinned ? 'pinned' : ''}`}
-            onClick={togglePin}
-            title={isPinned ? t('nav.unpin_sidebar') : t('nav.pin_sidebar')}
+            className="sidebar-toggle"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            title={isCollapsed ? t('nav.expand_sidebar') : t('nav.collapse_sidebar')}
           >
-            <UiIcon name="pin" size={18} />
+            <UiIcon name={isCollapsed ? 'forward' : 'back'} size={18} />
           </button>
-        )}
-        <button
-          className="sidebar-toggle"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          title={isCollapsed ? t('nav.expand_sidebar') : t('nav.collapse_sidebar')}
-        >
-          <UiIcon name={isCollapsed ? 'forward' : 'back'} size={18} />
-        </button>
-      </div>
-
-      {/* Shared footer (issue #4436) — same link set as the unified
-          dashboard sidebar. Users/Settings clicks switch tabs here, matching
-          the main-nav entries above. `narrowIcons` packs the icon row into the
-          collapsed rail instead of letting it wrap one-icon-per-line. */}
-      <SidebarFooter
-        isAdmin={isAdmin}
-        canReadSettings={hasPermission('settings', 'read', { anySource: true })}
-        onUsersClick={() => setActiveTab('users')}
-        onSettingsClick={() => setActiveTab('settings')}
-        onNewsClick={onNewsClick}
-        hideVersion={isCollapsed}
-        narrowIcons={isCollapsed}
-        pinToBottom
-        hideOnCompactLandscape
-      />
-    </aside>
+        </div>
+      }
+      /* Shared footer (issue #4436) — same link set as the unified dashboard
+         sidebar. Users/Settings clicks switch tabs here, matching the main-nav
+         entries above. `narrowIcons` packs the icon row into the collapsed rail
+         instead of letting it wrap one-icon-per-line. */
+      footer={
+        <SidebarFooter
+          isAdmin={isAdmin}
+          canReadSettings={hasPermission('settings', 'read', { anySource: true })}
+          onUsersClick={() => setActiveTab('users')}
+          onSettingsClick={() => setActiveTab('settings')}
+          onNewsClick={onNewsClick}
+          hideVersion={isCollapsed}
+          narrowIcons={isCollapsed}
+          pinToBottom
+          hideOnCompactLandscape
+        />
+      }
+    />
   );
 };
 
