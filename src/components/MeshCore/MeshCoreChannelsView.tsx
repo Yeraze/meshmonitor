@@ -22,6 +22,7 @@ import { MeshCoreContact, formatMeshCoreChannelName } from '../../utils/meshcore
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
 import { loadChannelLastRead, markChannelRead as persistChannelRead } from './meshcoreUnreadStore';
+import { compareMeshCoreMessages } from './messageOrder';
 import { UiIcon } from '../icons';
 
 const MOBILE_BREAKPOINT = 768;
@@ -474,7 +475,11 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
     for (const m of messages) {
       if (activeFilter(m)) byId.set(m.id, m);
     }
-    return Array.from(byId.values()).sort((a, b) => a.timestamp - b.timestamp);
+    // NOT a raw `timestamp` sort: received messages carry the remote's
+    // whole-second `sender_timestamp` while our own sends are ms-precision
+    // Date.now(), so a same-second auto-reply sorted BEFORE its own trigger.
+    // See ./messageOrder.ts.
+    return Array.from(byId.values()).sort(compareMeshCoreMessages);
   }, [history, messages, activeFilter]);
 
   // Mark the active channel read up to its newest visible message. Runs whenever

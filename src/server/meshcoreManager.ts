@@ -558,6 +558,19 @@ export interface MeshCoreMessage {
   toPublicKey?: string; // null for broadcast
   text: string;
   timestamp: number;
+  /**
+   * MeshMonitor's own wall clock (ms) when this message was created or observed
+   * — NOT the sender's clock, and stamped identically for both directions.
+   *
+   * `timestamp` cannot order a stream: a received message takes its time from
+   * the wire's `sender_timestamp`, which MeshCore carries in whole SECONDS,
+   * while a locally-sent message gets `Date.now()` to the millisecond. A remote
+   * auto-responder replying inside the same second therefore sorted BEFORE its
+   * own trigger (observed: trigger …213050, reply …213000 despite arriving
+   * 1.4 s later). Ordering compares `timestamp` per-second and breaks ties on
+   * this field — see src/components/MeshCore/messageOrder.ts.
+   */
+  receivedAt?: number;
   rssi?: number;
   snr?: number;
   /**
@@ -1109,6 +1122,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         rssi: dbMsg.rssi ?? undefined,
         snr: dbMsg.snr ?? undefined,
         sourceId: dbMsg.sourceId ?? undefined,
+        // The DB's createdAt IS our own observation clock — same semantic as
+        // receivedAt — so historical rows order correctly too, with no migration.
+        receivedAt: dbMsg.createdAt ?? undefined,
         hopCount: dbMsg.hopCount ?? null,
         routePath: dbMsg.routePath ?? null,
         scopeCode: dbMsg.scopeCode ?? null,
@@ -1601,6 +1617,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         toPublicKey: this.localNode?.publicKey || 'local',
         text: data.text,
         timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
+        // Our own clock, for ordering. `timestamp` above is the REMOTE's and
+        // only whole-seconds, so it cannot order against our ms-precision
+        // sends (see components/MeshCore/messageOrder.ts).
+        receivedAt: Date.now(),
         snr: data.snr,
         sourceId: this.sourceId,
         hopCount,
@@ -1637,6 +1657,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         fromName,
         text: body,
         timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
+        // Our own clock, for ordering. `timestamp` above is the REMOTE's and
+        // only whole-seconds, so it cannot order against our ms-precision
+        // sends (see components/MeshCore/messageOrder.ts).
+        receivedAt: Date.now(),
         snr: data.snr,
         sourceId: this.sourceId,
         hopCount,
@@ -1672,6 +1696,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         toPublicKey: roomFullKey,
         text: data.text,
         timestamp: data.sender_timestamp ? data.sender_timestamp * 1000 : Date.now(),
+        // Our own clock, for ordering. `timestamp` above is the REMOTE's and
+        // only whole-seconds, so it cannot order against our ms-precision
+        // sends (see components/MeshCore/messageOrder.ts).
+        receivedAt: Date.now(),
         snr: data.snr,
         sourceId: this.sourceId,
         messageType: 'room_post',
@@ -2574,6 +2602,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         fromPublicKey: match[1],
         text: match[2],
         timestamp: Date.now(),
+        receivedAt: Date.now(),
         sourceId: this.sourceId,
       };
       this.addMessage(message);
@@ -3225,6 +3254,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           toPublicKey: sentToPublicKey,
           text: text,
           timestamp: Date.now(),
+          receivedAt: Date.now(),
           sourceId: this.sourceId,
           expectedAckCrc: ackCrc ?? undefined,
           estTimeout: estTimeout ?? undefined,
@@ -4902,6 +4932,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           toPublicKey: roomPublicKey,
           text,
           timestamp: Date.now(),
+          receivedAt: Date.now(),
           sourceId: this.sourceId,
           messageType: 'room_post',
         };
@@ -5957,6 +5988,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         rssi: dbMsg.rssi ?? undefined,
         snr: dbMsg.snr ?? undefined,
         sourceId: dbMsg.sourceId ?? undefined,
+        // The DB's createdAt IS our own observation clock — same semantic as
+        // receivedAt — so historical rows order correctly too, with no migration.
+        receivedAt: dbMsg.createdAt ?? undefined,
         hopCount: dbMsg.hopCount ?? null,
         routePath: dbMsg.routePath ?? null,
         scopeCode: dbMsg.scopeCode ?? null,

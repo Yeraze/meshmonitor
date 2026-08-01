@@ -111,6 +111,26 @@ export interface MeshCoreMessage {
   scopeCode?: number | null;
   /** Region name resolved from the scope code; null = unscoped or unknown scope (#3742 Ph2). */
   scopeName?: string | null;
+  /**
+   * MeshMonitor's own wall clock (ms) at the moment this message was created or
+   * observed — NOT the sender's clock.
+   *
+   * `timestamp` cannot order messages reliably: a received message takes its
+   * time from the wire's `sender_timestamp`, which MeshCore carries in whole
+   * SECONDS, while a locally-sent message is stamped `Date.now()` to the
+   * millisecond. An auto-responder replying inside the same second therefore
+   * sorted BEFORE the message that triggered it — observed in the field: the
+   * trigger stamped …213050, the reply stamped …213000 despite arriving 1.4s
+   * later.
+   *
+   * Ordering therefore compares `timestamp` at second granularity — all the
+   * wire actually gives us — and breaks ties on this field, a single monotonic
+   * clock across both directions. Display still uses `timestamp`.
+   *
+   * Optional: rows persisted before this field existed carry no value, and
+   * `compareMeshCoreMessages` falls back to `timestamp` for those.
+   */
+  receivedAt?: number;
 }
 
 export interface ConnectionStatus {
