@@ -4196,8 +4196,8 @@
     "settings.apprise_server_description": "MeshMonitor delivers Apprise notifications through an Apprise API server, which fans out to the per-user notification service URLs (Discord, email, etc.) configured elsewhere. Override the server location below if you are running it outside the bundled container.",
     "settings.apprise_server_url_label": "Apprise API Server URL",
     "settings.apprise_server_url_description": "Leave empty if MeshMonitor's bundled Apprise API server is running (default for Docker installs).",
-  "settings.external_url_label": "External URL",
-  "settings.external_url_description": "The absolute address this MeshMonitor is reachable at, used for links in notifications (e.g. the \"View details\" link in security digests). Include your base path if you run under one, e.g. https://mesh.example.com/meshmonitor. Leave empty to omit the link.",
+    "settings.external_url_label": "External URL",
+    "settings.external_url_description": "The absolute address this MeshMonitor is reachable at, used for links in notifications (e.g. the \"View details\" link in security digests). Include your base path if you run under one, e.g. https://mesh.example.com/meshmonitor. Leave empty to omit the link.",
     "settings.apprise_server_test": "Test Connection",
     "settings.apprise_server_testing": "Testing…",
     "settings.apprise_server_test_success": "Connected successfully ({{latency}}ms)",
@@ -4341,7 +4341,7 @@
     "firmware.recovery_offline": "",
     "settings.channel_sounds_description": "",
     "nodes.copy_nodeinfo": "",
-    "admin_commands.node_favorite_confirmed": "El nodo {{nodeNum}} confirmó el favorito (ACK recibido)",
+    "admin_commands.node_favorite_confirmed": "Nodo {{nodeNum}} confirmó ser favorito (ACK recibido)",
     "auto_favorite.eligible_roles_desc": "",
     "automation.auto_localstats.specific_nodes": "",
     "channel_database.imported_from_url_description": "",
@@ -4502,7 +4502,7 @@
     "meshcore.settings.actions": "",
     "automation.airtime_cutoff.contributors_label": "",
     "automation.auto_localstats.filter_by_last_heard": "",
-    "auto_favorite.max_neighbor_age_desc": "Si ya existe un registro NeighborInfo para este nodo y es más reciente, reutilícelo en lugar de solicitar uno nuevo, ahorrando así tiempo de transmisión. Establezca el valor en 0 para solicitar siempre información nueva. Valor predeterminado: 24 horas.",
+    "auto_favorite.max_neighbor_age_desc": "Si ya existe un registro de NeighborInfo para este nodo y es más reciente que este valor, se reutiliza en lugar de solicitar uno nuevo, ahorrando tiempo de aire. Configúrelo en 0 para solicitar siempre uno nuevo. Predeterminado: 24 horas.",
     "meshcore.config.sf": "",
     "users.connection_view_status": "",
     "automation.auto_localstats.no_nodes_available": "",
@@ -4636,5 +4636,6 @@
     "meshcore.automation.pathfinding.filter.title": "",
     "meshcore.automation.pathfinding.filter.master_toggle": "",
     "meshcore.automation.autoack.node_ignore_list": "",
-    "meshcore.automation.autoack.node_ignore_list_description": ""
+    "meshcore.automation.autoack.node_ignore_list_description": "",
+    "admin_commands.node_ignored_confirmed": "Nodo {{nodeNum}} confirmó ser ignorado (ACK recibido)"
 }
