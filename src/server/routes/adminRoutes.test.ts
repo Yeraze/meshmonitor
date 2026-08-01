@@ -299,9 +299,10 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
         url: 'meshtastic://mock',
       });
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(202); // remote import is now async (#4482)
       expect(requestRemoteConfig).toHaveBeenCalledWith(999, 5, false);
-      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: false }), expect.anything());
+      // The send happens in the background now — wait for it.
+      await vi.waitFor(() => expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: false }), expect.anything()));
       spy.mockRestore();
     });
 
@@ -327,9 +328,10 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
         url: 'meshtastic://mock',
       });
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(202); // remote import is now async (#4482)
       expect(requestRemoteConfig).toHaveBeenCalledWith(999, 5, false);
-      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: true }), expect.anything());
+      // The send happens in the background now — wait for it.
+      await vi.waitFor(() => expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: true }), expect.anything()));
       spy.mockRestore();
     });
 
@@ -361,8 +363,9 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
         url: 'meshtastic://mock',
       });
 
-      expect(res.status).toBe(200);
-      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: true }), expect.anything());
+      expect(res.status).toBe(202); // remote import is now async (#4482)
+      // The send happens in the background now — wait for it.
+      await vi.waitFor(() => expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: true }), expect.anything()));
       spy.mockRestore();
     });
 
@@ -391,8 +394,9 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
         url: 'meshtastic://mock',
       });
 
-      expect(res.status).toBe(200);
-      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: false }), expect.anything());
+      expect(res.status).toBe(202); // remote import is now async (#4482)
+      // The send happens in the background now — wait for it.
+      await vi.waitFor(() => expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: false }), expect.anything()));
       spy.mockRestore();
     });
 
@@ -417,8 +421,9 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
         url: 'meshtastic://mock',
       });
 
-      expect(res.status).toBe(200);
-      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: false }), expect.anything());
+      expect(res.status).toBe(202); // remote import is now async (#4482)
+      // The send happens in the background now — wait for it.
+      await vi.waitFor(() => expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: false }), expect.anything()));
       spy.mockRestore();
     });
 
@@ -443,8 +448,9 @@ describe('adminRoutes — TX-disabled mapping + txEnabled preservation (#4294)',
         url: 'meshtastic://mock',
       });
 
-      expect(res.status).toBe(200);
-      expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: true }), expect.anything());
+      expect(res.status).toBe(202); // remote import is now async (#4482)
+      // The send happens in the background now — wait for it.
+      await vi.waitFor(() => expect(spy).toHaveBeenCalledWith(expect.objectContaining({ hopLimit: 3, txEnabled: true }), expect.anything()));
       spy.mockRestore();
     });
   });
