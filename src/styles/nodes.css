@@ -1195,9 +1195,11 @@
 @media (max-width: 768px) {
   .nodes-split-view {
     top: 48px; /* Mobile header is 48px */
-    left: 48px; /* Mobile collapsed sidebar is 48px */
-    /* Account for iPhone safe area at bottom */
-    bottom: env(safe-area-inset-bottom, 0);
+    /* The left rail became a bottom bar (#4473 phase 2), so the map/list split
+       spans the full width and instead has to clear the bar, which is fixed
+       over the bottom of the viewport. */
+    left: 0;
+    bottom: calc(var(--app-nav-bar-height, 56px) + env(safe-area-inset-bottom, 0px));
   }
 
   /* Make filter popup narrower on mobile */

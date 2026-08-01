@@ -1415,7 +1415,11 @@ body {
   /* Update layout dimensions for mobile - !important needed to override theme-specific selectors */
   :root {
     --header-height: 40px !important;
-    --sidebar-width: 48px !important;
+    /* The nav is a bottom bar on phones (#4473 phase 2), so it occupies no
+       horizontal space and everything positioned off this variable spans the
+       full width. Vertical room is reserved via --app-nav-bar-height. */
+    --sidebar-width: 0px !important;
+    --app-nav-bar-height: 56px;
   }
 
   /* Reduce font size globally on mobile */
@@ -1436,8 +1440,13 @@ body {
   .app-main {
     padding: 0.5rem;
     padding-top: calc(var(--header-height) + 0.5rem); /* Account for fixed header + desired padding */
-    padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); /* Account for iPhone home indicator */
-    padding-left: 56px; /* 48px sidebar + 8px gap */
+    /* Clear the bottom bar as well as the iPhone home indicator — the bar is
+       fixed and would otherwise cover the end of the content. */
+    padding-bottom: calc(
+      var(--app-nav-bar-height, 56px) + max(0.5rem, env(safe-area-inset-bottom))
+    );
+    /* Was 56px to clear the old 48px left rail; the rail is gone. */
+    padding-left: 0.5rem;
     margin-left: 0 !important;
     width: 100% !important;
   }
@@ -2964,12 +2973,18 @@ body {
 @media (max-height: 500px) and (orientation: landscape) {
   :root {
     --header-height: 40px !important;
-    --sidebar-width: 48px !important;
+    /* Bottom bar here too (#4473 phase 2) — SourceNav's mobile query covers
+       this viewport as well, so the two stay in agreement. Shorter bar: vertical
+       space is the scarce axis in landscape. */
+    --sidebar-width: 0px !important;
+    --app-nav-bar-height: 44px;
   }
 
   .app-main {
     padding-top: calc(var(--header-height) + 0.25rem);
-    padding-bottom: max(0.25rem, env(safe-area-inset-bottom));
+    padding-bottom: calc(
+      var(--app-nav-bar-height, 44px) + max(0.25rem, env(safe-area-inset-bottom))
+    );
   }
 
   /* Compact channel conversation for landscape */
