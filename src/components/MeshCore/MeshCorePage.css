@@ -729,6 +729,9 @@
 .mc-message-text { color: var(--ctp-text); font-size: 0.9rem; word-wrap: break-word; }
 /* Hop count + relay route for received messages (#3742). */
 .mc-message-route { color: var(--ctp-subtext0); font-size: 0.75rem; margin-top: 0.15rem; font-family: var(--font-mono, monospace); }
+/* Signal quality on a directly-received message (#4504). Same muted treatment
+   as the rest of the route row — it is provenance, not content. */
+.mc-message-signal { color: var(--ctp-subtext0); white-space: nowrap; }
 .mc-message-scope { color: var(--ctp-subtext0); font-size: 0.75rem; margin-top: 0.1rem; font-family: var(--font-mono, monospace); }
 /* Clickable relay-hash chain — opens the route-detail modal (repeater names). */
 .mc-route-chain-link {
