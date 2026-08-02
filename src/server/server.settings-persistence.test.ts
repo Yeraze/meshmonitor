@@ -476,6 +476,11 @@ describe('Settings Persistence', () => {
         // MeshCore CLI console reply-timeout (#4027) — loaded directly by
         // SettingsTab and read server-side by the /cli routes, not via SettingsContext.
         'meshcoreCliTimeoutSeconds',
+        // Remote-admin retry attempts (#4487) — same shape: SettingsTab loads it
+        // straight from the settings API, and only the admin routes read it when
+        // deciding whether to re-send a timed-out command. No frontend state
+        // depends on it, so it never reaches SettingsContext.
+        'adminRetryAttempts',
         // Analytics — backend injects into HTML, frontend doesn't need them
         'analyticsProvider', 'analyticsConfig',
         // Apprise API server URL (#3012) — loaded directly by SettingsTab,

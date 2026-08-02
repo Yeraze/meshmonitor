@@ -120,6 +120,7 @@ interface SettingsDraft {
   homoglyphEnabled: boolean;
   localStatsIntervalMinutes: number;
   meshcoreCliTimeoutSeconds: number;
+  adminRetryAttempts: number;
   analyticsProvider: string;
   analyticsConfig: Record<string, string>;
   appriseApiServerUrl: string;
@@ -230,6 +231,7 @@ interface SettingsTabProps {
 const GLOBAL_SECTIONS = new Set([
   'settings-language', 'settings-units', 'settings-appearance', 'settings-link-previews', 'settings-privacy', 'settings-meshcore-messaging', 'settings-map',
   'settings-security',
+  'settings-remote-admin',
   'settings-apprise-server', 'settings-elevation', 'settings-atak-cot', 'settings-backup', 'settings-channel-database',
   'settings-maintenance', 'settings-analytics',
   // Position estimation is a single global, cross-source batch job (issue
@@ -412,6 +414,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     homoglyphEnabled: false,
     localStatsIntervalMinutes: NODE_DISPLAY_NUMERIC_DEFAULTS.localStatsIntervalMinutes,
     meshcoreCliTimeoutSeconds: 15,
+    adminRetryAttempts: 1,
     analyticsProvider: 'none',
     analyticsConfig: {},
     appriseApiServerUrl: '',
@@ -437,6 +440,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   // MeshCore CLI console reply-timeout (seconds), issue #4027. Local-only server-backed setting
   // (no SettingsContext prop), mirroring localStats above.
   const [initialMeshcoreCliTimeoutSeconds, setInitialMeshcoreCliTimeoutSeconds] = useState(15);
+  const [initialAdminRetryAttempts, setInitialAdminRetryAttempts] = useState(1);
   const [initialAnalyticsProvider, setInitialAnalyticsProvider] = useState<string>('none');
   const [initialAnalyticsConfig, setInitialAnalyticsConfig] = useState<string>('{}');
   const [initialAppriseApiServerUrl, setInitialAppriseApiServerUrl] = useState<string>('');
@@ -550,6 +554,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           const cliTimeout = Number.isFinite(cliTimeoutParsed) ? Math.min(60, Math.max(1, cliTimeoutParsed)) : 15;
           updateField('meshcoreCliTimeoutSeconds', cliTimeout);
           setInitialMeshcoreCliTimeoutSeconds(cliTimeout);
+
+          // Load remote-admin retry attempts (#4487). Absent/invalid => 1, i.e.
+          // a single attempt, matching the server's own fallback exactly.
+          const retryParsed = parseInt(settings.adminRetryAttempts || '1', 10);
+          const retryAttempts = Number.isFinite(retryParsed) ? Math.min(10, Math.max(1, retryParsed)) : 1;
+          updateField('adminRetryAttempts', retryAttempts);
+          setInitialAdminRetryAttempts(retryAttempts);
 
           // Load node dimming initial values from server (#4412 Phase 3 WP4(c):
           // the trio now lands on the draft via updateField, like every other
@@ -689,6 +700,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       homoglyphEnabled: initialHomoglyphEnabled,
       localStatsIntervalMinutes: initialLocalStatsIntervalMinutes,
       meshcoreCliTimeoutSeconds: initialMeshcoreCliTimeoutSeconds,
+      adminRetryAttempts: initialAdminRetryAttempts,
       analyticsProvider: initialAnalyticsProvider,
       analyticsConfig: parsedAnalyticsConfig,
       appriseApiServerUrl: initialAppriseApiServerUrl,
@@ -706,7 +718,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
       solarMonitoringEnabled, solarMonitoringLatitude, solarMonitoringLongitude, solarMonitoringAzimuth, solarMonitoringDeclination,
-      initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialMeshcoreCliTimeoutSeconds,
+      initialPacketMonitorSettings, initialHomoglyphEnabled, initialLocalStatsIntervalMinutes, initialMeshcoreCliTimeoutSeconds, initialAdminRetryAttempts,
       initialAnalyticsProvider, initialAnalyticsConfig, initialAppriseApiServerUrl, initialExternalUrl, initialElevationEnabled, initialElevationSourceUrl,
       initialCotFeedEnabled, initialCotFeedPort]);
 
@@ -878,6 +890,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialHomoglyphEnabled(d.homoglyphEnabled);
     setInitialLocalStatsIntervalMinutes(d.localStatsIntervalMinutes);
     setInitialMeshcoreCliTimeoutSeconds(d.meshcoreCliTimeoutSeconds);
+    setInitialAdminRetryAttempts(d.adminRetryAttempts);
     setInitialAnalyticsProvider(d.analyticsProvider);
     setInitialAnalyticsConfig(JSON.stringify(d.analyticsConfig));
     setInitialAppriseApiServerUrl(d.appriseApiServerUrl.trim());
@@ -945,6 +958,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         homoglyphEnabled: String(draft.homoglyphEnabled),
         localStatsIntervalMinutes: draft.localStatsIntervalMinutes.toString(),
         meshcoreCliTimeoutSeconds: draft.meshcoreCliTimeoutSeconds.toString(),
+        adminRetryAttempts: draft.adminRetryAttempts.toString(),
         nodeHopsCalculation: draft.nodeHopsCalculation,
         nodeDimmingEnabled: draft.nodeDimmingEnabled ? '1' : '0',
         nodeDimmingStartHours: draft.nodeDimmingStartHours.toString(),
@@ -1458,6 +1472,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         { id: 'settings-security', label: t('settings.security', 'Security') },
         { id: 'settings-packet-monitor', label: t('settings.packet_monitor') },
         { id: 'settings-solar', label: t('settings.solar_monitoring') },
+        ...(isAdmin ? [{ id: 'settings-remote-admin', label: t('settings.remote_admin_section', 'Remote Administration') }] : []),
         ...(isAdmin ? [{ id: 'settings-apprise-server', label: t('settings.apprise_server_section', 'Apprise API Server') }] : []),
         ...(isAdmin ? [{ id: 'settings-elevation', label: t('settings.elevation_section', 'Elevation / Terrain') }] : []),
         { id: 'settings-backup', label: t('settings.system_backup', 'System Backup') },
@@ -2327,6 +2342,30 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
             </>
           )}
+        </div>}
+
+        {show('settings-remote-admin') && isAdmin && <div id="settings-remote-admin" className="settings-section">
+          <h3>{t('settings.remote_admin_section', 'Remote Administration')}</h3>
+          <div className="setting-item">
+            <label htmlFor="adminRetryAttempts">
+              {t('settings.admin_retry_attempts_label', 'Admin command attempts')}
+              <span className="setting-description">
+                {t('settings.admin_retry_attempts_description', 'How many times a remote admin command is attempted before giving up. Only a command that gets NO reply is retried — one the node explicitly refuses is never resent. Raise this for nodes on weak or lossy links. Each extra attempt is additional airtime, so the default of 1 sends exactly once. Range 1–10; default 1.')}
+              </span>
+            </label>
+            <input
+              id="adminRetryAttempts"
+              type="number"
+              min="1"
+              max="10"
+              value={draft.adminRetryAttempts}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                updateField('adminRetryAttempts', Number.isNaN(n) ? 1 : Math.min(10, Math.max(1, n)));
+              }}
+              className="setting-input"
+            />
+          </div>
         </div>}
 
         {show('settings-apprise-server') && isAdmin && <div id="settings-apprise-server" className="settings-section">
