@@ -24,17 +24,44 @@ import { logger } from '../../utils/logger.js';
 
 /**
  * Lifecycle of a remote-admin operation. The first four are transient; the
- * last two are terminal and never change again.
+ * last four are terminal and never change again.
+ *
+ * `timed_out` and `rejected` were split out of `succeeded` in #4492. Both
+ * previously settled as `succeeded` with the real outcome buried in
+ * `result.ack`, so a caller reading only `status` could not tell "the node
+ * confirmed it", "the node refused it", and "we never heard back" apart —
+ * even though those demand different treatment. The auto-retry in #4487 makes
+ * that distinction load-bearing rather than cosmetic: a timeout is worth
+ * retrying, an explicit rejection is not.
  */
 export type AdminOperationStatus =
   | 'pending'          // accepted, not yet started
   | 'awaiting_passkey' // requesting the remote node's session passkey (up to 45s)
   | 'sending'          // passkey in hand, building and handing the packet to the radio
   | 'awaiting_ack'     // packet sent, waiting for the destination's routing ACK (up to 30s)
-  | 'succeeded'
-  | 'failed';
+  | 'succeeded'        // destination ACKed
+  | 'rejected'         // destination answered with a routing error — do NOT retry
+  | 'timed_out'        // no answer within the ACK window — retryable
+  | 'failed';          // we could not complete the send at all
 
-export const TERMINAL_STATUSES: readonly AdminOperationStatus[] = ['succeeded', 'failed'];
+export const TERMINAL_STATUSES: readonly AdminOperationStatus[] = [
+  'succeeded',
+  'rejected',
+  'timed_out',
+  'failed',
+];
+
+/**
+ * Whether a terminal status is worth another attempt (#4487).
+ *
+ * Only `timed_out` qualifies. A `rejected` operation reached the node and was
+ * refused — resending it just repeats a question already answered. `failed`
+ * means we never got the packet out, which is usually a local/config problem
+ * that a retry won't change either.
+ */
+export function isRetryable(status: AdminOperationStatus): boolean {
+  return status === 'timed_out';
+}
 
 export function isTerminal(status: AdminOperationStatus): boolean {
   return TERMINAL_STATUSES.includes(status);
@@ -145,12 +172,30 @@ export class AdminOperationService {
     logger.debug(`📋 Admin operation ${id} → ${status}`);
   }
 
-  /** Settle successfully. No-op if already terminal. */
+  /** Settle successfully — the destination ACKed. No-op if already terminal. */
   succeed(id: string, result: AdminOperationResult): void {
     this.settle(id, 'succeeded', result, null);
   }
 
-  /** Settle as failed. No-op if already terminal. */
+  /**
+   * Settle as rejected — the destination answered with a routing error (#4492).
+   * Carries the result payload rather than an error, because the send itself
+   * worked; it is the remote node that said no.
+   */
+  reject(id: string, result: AdminOperationResult): void {
+    this.settle(id, 'rejected', result, null);
+  }
+
+  /**
+   * Settle as timed out — no ACK within the window (#4492). Also carries a
+   * result: we did send, we simply never heard back, and the caller may want
+   * the ack payload to decide whether to retry.
+   */
+  timeOut(id: string, result: AdminOperationResult): void {
+    this.settle(id, 'timed_out', result, null);
+  }
+
+  /** Settle as failed — the send could not be completed. No-op if already terminal. */
   fail(id: string, error: AdminOperationError): void {
     this.settle(id, 'failed', null, error);
   }

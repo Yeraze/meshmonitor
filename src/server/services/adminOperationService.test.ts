@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   AdminOperationService,
   isTerminal,
+  isRetryable,
   TERMINAL_RETENTION_MS,
   MAX_OPERATIONS,
 } from './adminOperationService.js';
@@ -165,5 +166,67 @@ describe('AdminOperationService', () => {
         expect(isTerminal(s)).toBe(false);
       }
     });
+  });
+});
+
+/**
+ * #4492 — an ACK that timed out and an ACK that was explicitly rejected both
+ * used to settle as `succeeded`, with the real outcome buried in `result.ack`.
+ * A caller reading only `status` could not tell "confirmed", "refused" and
+ * "never heard back" apart. #4487's retry makes that distinction load-bearing.
+ */
+describe('AdminOperationService ACK outcomes (#4492)', () => {
+  let svc: AdminOperationService;
+  beforeEach(() => { svc = new AdminOperationService(); });
+
+  it('settles a rejection as rejected, not succeeded', () => {
+    const op = make(svc);
+    svc.reject(op.id, { message: 'refused', ack: { acked: false, timedOut: false, errorReason: 3, status: 'NO_CHANNEL' } });
+    expect(svc.get(op.id)?.status).toBe('rejected');
+  });
+
+  it('settles a timeout as timed_out, not succeeded', () => {
+    const op = make(svc);
+    svc.timeOut(op.id, { message: 'no answer', ack: { acked: false, timedOut: true, errorReason: null, status: 'timeout' } });
+    expect(svc.get(op.id)?.status).toBe('timed_out');
+  });
+
+  it('carries a result — not an error — for both, since the send itself worked', () => {
+    const rejected = make(svc);
+    svc.reject(rejected.id, { message: 'refused' });
+    expect(svc.get(rejected.id)?.result).not.toBeNull();
+    expect(svc.get(rejected.id)?.error).toBeNull();
+
+    const timedOut = make(svc);
+    svc.timeOut(timedOut.id, { message: 'no answer' });
+    expect(svc.get(timedOut.id)?.result).not.toBeNull();
+    expect(svc.get(timedOut.id)?.error).toBeNull();
+  });
+
+  it('treats all four outcomes as terminal and immutable', () => {
+    for (const settle of ['succeed', 'reject', 'timeOut'] as const) {
+      const op = make(svc);
+      svc[settle](op.id, { message: 'first' });
+      const first = svc.get(op.id)!.status;
+      expect(isTerminal(first)).toBe(true);
+      // A late background update must not resurrect or overwrite it.
+      svc.succeed(op.id, { message: 'second' });
+      svc.setStatus(op.id, 'awaiting_ack');
+      expect(svc.get(op.id)?.status).toBe(first);
+      expect(svc.get(op.id)?.result?.message).toBe('first');
+    }
+    const failed = make(svc);
+    svc.fail(failed.id, { code: 'X', message: 'y' });
+    expect(isTerminal('failed')).toBe(true);
+    expect(svc.get(failed.id)?.status).toBe('failed');
+  });
+
+  it('marks only a timeout retryable', () => {
+    // The whole point: retrying a rejection re-asks a question the node already
+    // answered, and a failure never reached the radio.
+    expect(isRetryable('timed_out')).toBe(true);
+    expect(isRetryable('rejected')).toBe(false);
+    expect(isRetryable('succeeded')).toBe(false);
+    expect(isRetryable('failed')).toBe(false);
   });
 });
