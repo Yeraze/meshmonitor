@@ -242,8 +242,8 @@ describe('multi-channel trigger filter (#3974)', () => {
     it('extracts non-empty names from the channels array', () => {
       expect(messageFilterChannelNames({ channels: chans('gauntlet', 'ops') })).toEqual(['gauntlet', 'ops']);
     });
-    it('drops blank names and ignores non-object entries', () => {
-      expect(messageFilterChannelNames({ channels: [{ name: '' }, { name: 'ops' }, 'x', null, {}] })).toEqual(['ops']);
+    it('keeps a blank name (the Primary/unnamed-slot-0 marker, #4507) but drops non-object entries', () => {
+      expect(messageFilterChannelNames({ channels: [{ name: '' }, { name: 'ops' }, 'x', null, {}] })).toEqual(['', 'ops']);
     });
     it('returns [] when channels is absent or not an array', () => {
       expect(messageFilterChannelNames({})).toEqual([]);
@@ -258,10 +258,12 @@ describe('multi-channel trigger filter (#3974)', () => {
     it('is true for a populated channels array', () => {
       expect(messageFilterUsesChannelName({ channels: chans('gauntlet') })).toBe(true);
     });
-    it('is false when neither is set / all blank', () => {
+    it('is false when neither is set', () => {
       expect(messageFilterUsesChannelName({})).toBe(false);
       expect(messageFilterUsesChannelName({ channelName: '' })).toBe(false);
-      expect(messageFilterUsesChannelName({ channels: [{ name: '' }] })).toBe(false);
+    });
+    it('is true for a Primary-only selection (a blank-name entry, #4507)', () => {
+      expect(messageFilterUsesChannelName({ channels: [{ name: '' }] })).toBe(true);
     });
   });
 
@@ -293,6 +295,12 @@ describe('multi-channel trigger filter (#3974)', () => {
       expect(messageMatchesFilter(msg({ text: 'ping' }), { channels: chans('ops'), textContains: 'ping' }, 'Ops')).toBe(true);
       expect(messageMatchesFilter(msg({ text: 'pong' }), { channels: chans('ops'), textContains: 'ping' }, 'Ops')).toBe(false);
     });
+    it('fires on the Primary/unnamed slot-0 channel when its blank name is selected (#4507)', () => {
+      const withPrimary = [...chans('ops'), { name: '', protocol: 'meshtastic' }];
+      expect(messageMatchesFilter(msg(), { channels: withPrimary }, '')).toBe(true);
+      // Selecting only Primary must not fall through to "no filter" and match every channel.
+      expect(messageMatchesFilter(msg(), { channels: [{ name: '', protocol: 'meshtastic' }] }, 'gauntlet')).toBe(false);
+    });
   });
 
   describe('meshCoreMessageMatchesFilter OR-list (MeshCore)', () => {
@@ -313,6 +321,10 @@ describe('multi-channel trigger filter (#3974)', () => {
     it('Meshtastic-only filters (from/to/portnum) still force a non-match', () => {
       expect(meshCoreMessageMatchesFilter(mcMsg({ fromPublicKey: 'channel-1' }), { channels: chans('ops'), from: 5 }, 'Ops')).toBe(false);
     });
+    it('fires on the Primary/unnamed channel when its blank name is selected (#4507)', () => {
+      const withPrimary = [...chans('ops'), { name: '', protocol: 'meshcore' }];
+      expect(meshCoreMessageMatchesFilter(mcMsg({ fromPublicKey: 'channel-1' }), { channels: withPrimary }, '')).toBe(true);
+    });
   });
 
   describe('describeMessageFilterMiss / describeMeshCoreFilterMiss OR-list reasons', () => {
@@ -328,6 +340,10 @@ describe('multi-channel trigger filter (#3974)', () => {
     it('explains a MeshCore multi-channel miss', () => {
       expect(describeMeshCoreFilterMiss(mcMsg({ fromPublicKey: 'channel-1' }), { channels: chans('ops') }, 'Primary'))
         .toBe('channel name "Primary" not in [ops]');
+    });
+    it('returns undefined when a blank resolved name matches a selected Primary entry (#4507)', () => {
+      const withPrimary = [...chans('gauntlet'), { name: '', protocol: 'meshtastic' }];
+      expect(describeMessageFilterMiss(msg(), { channels: withPrimary }, '')).toBeUndefined();
     });
   });
 });
