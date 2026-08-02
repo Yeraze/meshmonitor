@@ -447,3 +447,94 @@ describe('MeshCoreNativeBackend — ota_packet capture', () => {
     expect(msg.data.snr).toBeUndefined();
   });
 });
+
+/**
+ * RSSI correlation onto received messages (#4504).
+ *
+ * The companion's ContactMsgRecv / ChannelMsgRecv frames carry only
+ * `pubKeyPrefix|channelIdx, pathLen, txtType, senderTimestamp, text` — no
+ * signal metadata at all. SNR and RSSI arrive on the preceding LogRxData push,
+ * which this backend already buffers and correlates by freshness + hop count
+ * (the #3589 guard). RSSI was parsed there all along and simply never added to
+ * the buffer, so it never reached the message.
+ */
+describe('MeshCoreNativeBackend — RSSI on received messages (#4504)', () => {
+  beforeEach(() => installMockModule());
+  afterEach(() => __setMeshCoreModule(null));
+
+  // TXT_MSG, DIRECT, pathLen 0xff → 0 hops.
+  const directTxt = () => Uint8Array.from([0x02, 0x02, 0xff]);
+  // GRP_TXT, DIRECT, pathLen 0xff → 0 hops.
+  const directGrp = () => Uint8Array.from([0x05, 0x02, 0xff]);
+
+  it('attaches RSSI (with SNR) to a DM from the preceding LogRxData', async () => {
+    const { conn, events } = await connectedBackend();
+    conn.emit(PushCodes.LogRxData, { lastSnr: 6.5, lastRssi: -47, raw: directTxt() });
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([1, 2, 3, 4, 5, 6]),
+      pathLen: 0xff, txtType: 0, senderTimestamp: 1700000001, text: 'hi',
+    });
+
+    const msg = events.find((e) => e.event_type === 'contact_message');
+    expect(msg.data.snr).toBe(6.5);
+    expect(msg.data.rssi).toBe(-47);
+  });
+
+  it('attaches RSSI to a channel message too', async () => {
+    const { conn, events } = await connectedBackend();
+    conn.emit(PushCodes.LogRxData, { lastSnr: 4, lastRssi: -61, raw: directGrp() });
+    conn.emit(ResponseCodes.ChannelMsgRecv, {
+      channelIdx: 0, pathLen: 0xff, txtType: 0, senderTimestamp: 1700000002, text: 'yo',
+    });
+
+    const msg = events.find((e) => e.event_type === 'channel_message');
+    expect(msg.data.snr).toBe(4);
+    expect(msg.data.rssi).toBe(-61);
+  });
+
+  it('leaves RSSI undefined when no LogRxData preceded the message', async () => {
+    // Backend started without raw logging, or the push was missed. Better to
+    // show nothing than to attach a neighbouring packet's signal.
+    const { conn, events } = await connectedBackend();
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([1, 2, 3, 4, 5, 6]),
+      pathLen: 0xff, txtType: 0, senderTimestamp: 1700000003, text: 'orphan',
+    });
+
+    const msg = events.find((e) => e.event_type === 'contact_message');
+    expect(msg.data.rssi).toBeUndefined();
+    expect(msg.data.snr).toBeUndefined();
+  });
+
+  it('does not attach a mismatched packet\'s RSSI (the #3589 guard still holds)', async () => {
+    // Buffered packet is 2 hops; the message says direct. Different packets —
+    // attaching would report another node's signal strength as this sender's.
+    const { conn, events } = await connectedBackend();
+    conn.emit(PushCodes.LogRxData, {
+      lastSnr: 9, lastRssi: -20,
+      raw: Uint8Array.from([0x02, 0x01, 0x02, 0xa3, 0x7f]), // TXT_MSG, FLOOD, 2 hops
+    });
+    conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([1, 2, 3, 4, 5, 6]),
+      pathLen: 0xff, txtType: 0, senderTimestamp: 1700000004, text: 'direct',
+    });
+
+    const msg = events.find((e) => e.event_type === 'contact_message');
+    expect(msg.data.rssi).toBeUndefined();
+  });
+
+  it('consumes the buffer once — a second message gets no stale RSSI', async () => {
+    const { conn, events } = await connectedBackend();
+    conn.emit(PushCodes.LogRxData, { lastSnr: 3, lastRssi: -70, raw: directTxt() });
+    const recv = (ts: number, text: string) => conn.emit(ResponseCodes.ContactMsgRecv, {
+      pubKeyPrefix: Uint8Array.from([1, 2, 3, 4, 5, 6]),
+      pathLen: 0xff, txtType: 0, senderTimestamp: ts, text,
+    });
+    recv(1700000005, 'first');
+    recv(1700000006, 'second');
+
+    const msgs = events.filter((e) => e.event_type === 'contact_message');
+    expect(msgs[0].data.rssi).toBe(-70);
+    expect(msgs[1].data.rssi).toBeUndefined();
+  });
+});
