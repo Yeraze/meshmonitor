@@ -262,6 +262,47 @@ const DefaultCenterController: React.FC<{
 };
 
 /**
+ * Zooms the map to fit every positioned node (#4496).
+ *
+ * The button lives in `.map-controls`, a SIBLING of MapContainer with no access
+ * to the map instance. Rather than plumb the instance outward, this follows the
+ * same shape as TracerouteBoundsController below — a controller inside the map
+ * reacting to a prop. `request` is a monotonically increasing counter so
+ * repeated clicks re-fit even when the node set hasn't changed; a boolean would
+ * only ever fire once.
+ */
+const FitAllNodesController: React.FC<{
+  request: number;
+  positions: Array<[number, number]>;
+}> = ({ request, positions }) => {
+  const map = useMap();
+  const lastHandled = useRef(0);
+
+  useEffect(() => {
+    if (request === 0 || request === lastHandled.current) return;
+    lastHandled.current = request;
+    if (positions.length === 0) return;
+
+    if (positions.length === 1) {
+      // fitBounds on zero-area bounds snaps to max zoom; centring reads better.
+      map.setView(positions[0], Math.max(map.getZoom(), 14), { animate: true });
+      return;
+    }
+
+    map.fitBounds(positions, {
+      padding: [50, 50],
+      animate: true,
+      duration: 0.5,
+      // Matches TracerouteBoundsController: a tight cluster shouldn't slam to
+      // street level.
+      maxZoom: 15,
+    });
+  }, [request, positions, map]);
+
+  return null;
+};
+
+/**
  * Controller component that zooms the map to fit the traceroute bounds
  * Must be placed inside MapContainer to access the map instance
  */
@@ -856,6 +897,11 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   const [geoJsonLayers, setGeoJsonLayers] = useState<GeoJsonLayer[]>([]);
   // mapStyles/activeStyleId/activeStyleJson now live in SettingsContext
   // (issue #4348) so DashboardMap can share the same active style.
+
+  // Zoom-to-fit-all request counter (#4496). A counter rather than a boolean so
+  // repeated taps re-fit even when the node set is unchanged; FitAllNodesController
+  // inside the map watches it.
+  const [fitAllRequest, setFitAllRequest] = useState(0);
 
   // Track if map controls are collapsed
   const [isMapControlsCollapsed, setIsMapControlsCollapsed] = useState(() => {
@@ -1513,6 +1559,17 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   // needed. `markerRefs` itself is still populated (via each descriptor's
   // `add` event handler below) purely for App.tsx's "open popup for selected
   // node" effect and this component's `onOmsClick`.
+
+  // Zoom-to-fit-all target set (#4496). Uses the same OFFSET marker positions
+  // as the pins and the measure tool, per the #4016/#4155 single-position rule —
+  // fitting to raw centres could leave a visible pin just outside the viewport.
+  const fitAllPositions: Array<[number, number]> = React.useMemo(
+    () => nodesWithPosition
+      .map(node => nodePositions.get(node.nodeNum))
+      .filter((p): p is [number, number] => Array.isArray(p)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on nodePositions like measurePoints below
+    [nodePositions, nodesWithPosition.map(n => n.nodeNum).join(',')],
+  );
 
   // #3636: measurement endpoints — nearest-node snapping picks from these.
   // Use the OFFSET marker position (nodePositions), not the raw center, so the
@@ -2410,6 +2467,23 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 <div className="map-controls-title">
                   Features
                 </div>
+                {/* Zoom to fit all nodes (#4496). Sits in the header so it stays
+                    reachable when the panel is collapsed — the whole point is a
+                    one-tap re-frame, which a click-to-expand-first would spoil. */}
+                <button
+                  className="map-controls-fit-btn"
+                  onClick={() => setFitAllRequest(n => n + 1)}
+                  disabled={fitAllPositions.length === 0}
+                  title={
+                    fitAllPositions.length === 0
+                      ? 'No positioned nodes to zoom to'
+                      : `Zoom to fit all ${fitAllPositions.length} positioned nodes`
+                  }
+                  aria-label="Zoom to fit all nodes"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <UiIcon name="target" size={16} />
+                </button>
                 <button
                   className="map-controls-collapse-btn"
                   onClick={handleCollapseMapControls}
@@ -2763,6 +2837,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                 targetZoom={mapCenterTargetZoom}
               />
               <TracerouteBoundsController bounds={tracerouteBounds} />
+              <FitAllNodesController request={fitAllRequest} positions={fitAllPositions} />
               <ZoomHandler onZoomChange={setMapZoom} />
               <MapPositionHandler />
               <WaypointMapEventBridge

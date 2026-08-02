@@ -320,9 +320,20 @@
      * `!important` to compact the *rail*. On a bottom bar that padding is just
      * height: it inflated the landscape bar to 53.7px against the 44px the
      * shell reserves, so content and the save bar sat under it.
+     *
+     * padding-bottom keeps the safe-area inset rather than flattening to 0
+     * (#4497). A flat 0 here ALSO beat SourceNav's own
+     * `padding-bottom: env(safe-area-inset-bottom)`, docking the bar flush to
+     * the screen edge in an iOS standalone PWA — which put the tab row inside
+     * the home-indicator swipe zone, so taps ran the system gesture instead of
+     * hitting the tab.
+     *
+     * Growing the bar by the inset does NOT break the shell's reservations:
+     * App.css already reserves `--app-nav-bar-height + safe-area-inset-bottom`,
+     * and .save-bar / .nodes-split-view offset by that same sum.
      */
     padding-top: 0 !important;
-    padding-bottom: 0 !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
     border-right: none;

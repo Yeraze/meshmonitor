@@ -71,3 +71,43 @@ describe('SourceNav mobile bottom bar (#4473)', () => {
     expect(css).toMatch(/--source-nav-collapsed-width:/);
   });
 });
+
+/**
+ * iOS PWA bottom-nav regressions (#4497). Reported on an iPhone 14 Pro Max
+ * standalone PWA install; all three are stylesheet-level, which jsdom cannot
+ * evaluate, so these assert on source the same way the rest of this file does.
+ */
+describe('iOS PWA bottom bar (#4497)', () => {
+  const sidebarCss = readFileSync(resolve('src/components/Sidebar.css'), 'utf-8');
+
+  it('does not flatten the bar padding-bottom to zero, which killed the safe-area inset', () => {
+    // `.sidebar` needs !important to beat the landscape-rail blocks, but a flat
+    // `0` also beat SourceNav's own env(safe-area-inset-bottom), docking the bar
+    // flush to the screen edge inside the iOS home-indicator gesture zone.
+    const mobileBlock = sidebarCss.slice(
+      sidebarCss.indexOf('@media (max-width: 768px), (max-height: 500px) and (orientation: landscape)')
+    );
+    const rule = mobileBlock.match(/\.sidebar \{([\s\S]*?)\n {2}\}/)?.[1] ?? '';
+    expect(rule).not.toBe('');
+    expect(rule).not.toMatch(/padding-bottom:\s*0\s*!important/);
+    expect(rule).toMatch(/padding-bottom:\s*env\(safe-area-inset-bottom[^;]*\)\s*!important/);
+  });
+
+  it('keeps the safe-area inset on the bar itself too', () => {
+    expect(css).toMatch(/\.mobileBottomBar \{[^}]*padding-bottom:\s*env\(safe-area-inset-bottom/);
+  });
+
+  it('guards the horizontal scroll against iOS edge-swipe chaining', () => {
+    const bar = css.match(/\.mobileBottomBar \{([^}]*)\}/)?.[1] ?? '';
+    expect(bar).toMatch(/touch-action:\s*pan-x/);
+    expect(bar).toMatch(/overscroll-behavior-x:\s*contain/);
+  });
+
+  it('fades whichever edge still has tabs beyond it', () => {
+    // mask-image, not an ::after overlay — a pseudo-element inside a scroll
+    // container scrolls away with the content.
+    expect(css).toMatch(/\.mobileBottomBar\[data-overflow-end='true'\][^}]*mask-image/);
+    expect(css).toMatch(/\.mobileBottomBar\[data-overflow-start='true'\][^}]*mask-image/);
+    expect(css).not.toMatch(/\.mobileBottomBar[^{]*::after[^}]*linear-gradient/);
+  });
+});

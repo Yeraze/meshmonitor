@@ -16,7 +16,7 @@
  * Layout hooks for tests are stable `data-*` attributes, not class names: the
  * styling lives in a CSS module whose class names are hashed at build time.
  */
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { UiIcon, type UiIconName } from '../icons';
 import styles from './SourceNav.module.css';
 
@@ -93,12 +93,56 @@ export const SourceNav: React.FC<SourceNavProps> = ({
     .filter(Boolean)
     .join(' ');
 
+  /**
+   * Which edges of the bottom bar still have tabs beyond them (#4497). The
+   * stylesheet turns these into edge fades — the only cue that the row scrolls
+   * at all, since there are more tabs than fit a phone and the scrollbar is
+   * hidden.
+   *
+   * Measured rather than assumed: a bar whose tabs all fit shows no fade.
+   */
+  const navRef = useRef<HTMLElement | null>(null);
+  const [overflow, setOverflow] = useState({ start: false, end: false });
+
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      // 1px slack: fractional scroll offsets otherwise leave a fade stuck on
+      // at a hard end.
+      const atStart = el.scrollLeft <= 1;
+      const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+      const scrollable = el.scrollWidth > el.clientWidth + 1;
+      setOverflow(prev => {
+        const next = { start: scrollable && !atStart, end: scrollable && !atEnd };
+        return prev.start === next.start && prev.end === next.end ? prev : next;
+      });
+    };
+
+    measure();
+    el.addEventListener('scroll', measure, { passive: true });
+    // Tab set and viewport both change the answer: permissions can add or drop
+    // entries, and rotation changes how many fit.
+    const observer =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    observer?.observe(el);
+
+    return () => {
+      el.removeEventListener('scroll', measure);
+      observer?.disconnect();
+    };
+  }, [sections, collapsed, mobileVariant]);
+
   return (
     <aside
+      ref={navRef}
       className={rootClasses}
       data-source-nav=""
       data-collapsed={collapsed ? 'true' : 'false'}
       data-mobile-variant={mobileVariant}
+      data-overflow-start={overflow.start ? 'true' : 'false'}
+      data-overflow-end={overflow.end ? 'true' : 'false'}
       aria-label={ariaLabel}
     >
       {/* Wrapped so the bottom-bar variant can hide them: a logo block, a
