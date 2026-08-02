@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { fieldVisible, ACTIONS, TRIGGERS, numericFields, stringFields, STRING_OP_OPTIONS, type FieldDef } from './catalog';
+import { fieldVisible, ACTIONS, CONDITIONS, TRIGGERS, numericFields, stringFields, STRING_OP_OPTIONS, type FieldDef } from './catalog';
 import { HOP_COUNT_EMOJIS } from '../../utils/hopEmoji';
 
 describe('fieldVisible', () => {
@@ -220,5 +220,38 @@ describe('Auto-Ack parity catalog additions (#4340 Phase 3)', () => {
       expect(fieldVisible(maxAttemptsField as FieldDef, { to: '{{ trigger.from }}' })).toBe(true);
       expect(fieldVisible(maxAttemptsField as FieldDef, { to: 123 })).toBe(true);
     });
+  });
+});
+
+describe("condition.string regex case-sensitivity hint (#4507)", () => {
+  const def = CONDITIONS.find((c) => c.type === 'condition.string');
+  const valueFields = (def?.fields ?? []).filter((f) => f.name === 'value');
+
+  it('warns on the operator select that casing differs between operators', () => {
+    const op = def?.fields.find((f) => f.name === 'op');
+    // The evaluator lower-cases both sides for contains/startsWith/endsWith/in
+    // but not for eq/neq/regex. Only `help` is rendered for a condition block —
+    // its `description` is not — so the note has to live here.
+    expect(op?.help).toMatch(/ignore case/i);
+    expect(op?.help).toMatch(/case-sensitive/i);
+  });
+
+  it('offers the (?i) workaround only on the regex operator', () => {
+    const regexValue = valueFields.find((f) => f.showIf?.equals === 'regex');
+    expect(regexValue?.help).toMatch(/\(\?i\)/);
+    expect(regexValue?.placeholder).toMatch(/\(\?i\)/);
+  });
+
+  it('shows exactly one Value input for every operator', () => {
+    // Both variants share the param name `value` so a typed value survives an
+    // operator switch. That makes overlap a real hazard: two visible fields
+    // would render duplicate inputs on a duplicate React key.
+    expect(valueFields.length).toBe(2);
+    for (const { value: op } of STRING_OP_OPTIONS) {
+      const visible = valueFields.filter((f) => fieldVisible(f, { op }));
+      expect(visible, `op=${op} should show exactly one Value field`).toHaveLength(1);
+    }
+    // Freshly-added block, before an operator has been chosen.
+    expect(valueFields.filter((f) => fieldVisible(f, {}))).toHaveLength(1);
   });
 });
