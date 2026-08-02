@@ -103,6 +103,25 @@ export interface MeshCoreMessage {
    *  self-echo correlation (#3700). Best-effort; `name` is null when the relay
    *  hash couldn't be resolved to a known contact. */
   heardBy?: Array<{ hash: string; name?: string | null; snr?: number | null }>;
+  /**
+   * Signal-to-noise ratio (dB) of the received packet, as reported by the
+   * companion. The server has always sent this; the client type just never
+   * declared it, so the UI could not read it (#4504).
+   *
+   * On a RELAYED message this describes the hop from the last repeater, not
+   * from the sender — which is why the stream only surfaces it for direct
+   * messages, where it unambiguously describes the sender's link.
+   */
+  snr?: number;
+  /**
+   * Received signal strength (dBm).
+   *
+   * Not populated by MeshCore's message push, which carries SNR only — RSSI
+   * lives on the separate LogRxData OTA feed. Declared so the UI renders it
+   * automatically if a message ever does carry it, rather than silently
+   * dropping the field.
+   */
+  rssi?: number;
   /** Hop count for a received message; null/undefined = direct or unknown (#3742). */
   hopCount?: number | null;
   /** Relay-hash chain the message traveled, comma-separated (e.g. "a3,7f,02") (#3742). */
