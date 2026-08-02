@@ -1622,6 +1622,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // sends (see components/MeshCore/messageOrder.ts).
         receivedAt: Date.now(),
         snr: data.snr,
+        // Correlated from the same buffered LogRxData as snr (#4504). Present
+        // only when that correlation succeeded — the UI renders it
+        // conditionally rather than showing a placeholder.
+        rssi: data.rssi,
         sourceId: this.sourceId,
         hopCount,
         // Raw packed path_len byte (0xff = direct) so the Virtual Node bridge
@@ -1662,6 +1666,10 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // sends (see components/MeshCore/messageOrder.ts).
         receivedAt: Date.now(),
         snr: data.snr,
+        // Correlated from the same buffered LogRxData as snr (#4504). Present
+        // only when that correlation succeeded — the UI renders it
+        // conditionally rather than showing a placeholder.
+        rssi: data.rssi,
         sourceId: this.sourceId,
         hopCount,
         // Raw packed path_len byte (0xff = direct) so the Virtual Node bridge
