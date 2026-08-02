@@ -296,11 +296,39 @@ export const CONDITIONS: BlockDef[] = [
   {
     type: 'condition.string',
     label: 'Text comparison',
+    // NOTE: a condition block's `description` is not rendered — only the
+    // trigger's is (AutomationBuilder.tsx). Guidance for these operators has to
+    // live in a field's `help`, which is why the casing note sits on `op` below.
     description: 'Compare text — message text, node name, role name…',
     fields: [
       { name: 'field', label: 'Field', kind: 'fieldselect' },
-      { name: 'op', label: 'Operator', kind: 'select', options: STRING_OP_OPTIONS },
-      { name: 'value', label: 'Value', kind: 'text', tokens: true, placeholder: 'e.g. ROUTER' },
+      {
+        name: 'op', label: 'Operator', kind: 'select', options: STRING_OP_OPTIONS,
+        // Casing is NOT uniform across these operators, and nothing said so
+        // until a user hit it (#4507): stringCompare() lower-cases both sides
+        // for every operator except `eq`, `neq` and `regex`. Only `eq` and
+        // `regex` are named below because `neq` is deliberately absent from
+        // STRING_OP_OPTIONS — naming an operator the dropdown doesn't offer
+        // would be worse than saying nothing. See stringCompare() in
+        // server/services/automation/conditionEvaluator.ts.
+        help: '“Equals” and “matches regex” are case-sensitive. The other operators ignore case.',
+      },
+      // Two `value` variants sharing one param name: same stored key, so the
+      // typed value survives switching operators, while the regex case gets its
+      // own placeholder and help. They MUST stay mutually exclusive — both
+      // visible would render a duplicate input on a duplicate React key.
+      {
+        name: 'value', label: 'Value', kind: 'text', tokens: true, placeholder: 'e.g. ROUTER',
+        showIf: { field: 'op', notEquals: 'regex' },
+      },
+      // `(?i)` works because the evaluator compiles with RE2
+      // (src/utils/safeRegex.ts) — plain JS RegExp rejects inline flags.
+      {
+        name: 'value', label: 'Value', kind: 'text', tokens: true,
+        placeholder: 'e.g. (?i)^(test|ping)',
+        help: 'Case-sensitive. Prefix with (?i) to ignore case — e.g. (?i)^(test|ping).',
+        showIf: { field: 'op', equals: 'regex' },
+      },
     ],
   },
   {
