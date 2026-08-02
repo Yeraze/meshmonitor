@@ -1642,6 +1642,50 @@ async function executeAdminCommand(ctx: {
   };
 }
 
+/**
+ * Effective attempt count for a remote admin command (#4487).
+ *
+ * Priority mirrors resolveCliTimeoutMs (#4027):
+ *  1. An explicit, in-range `retryAttempts` on the request — a per-send
+ *     override, for the one stubborn node rather than a global change.
+ *  2. The `adminRetryAttempts` setting, clamped to the same range.
+ *  3. 1 — a single attempt, i.e. exactly the pre-#4487 behaviour. The default
+ *     is deliberately NOT >1: silently multiplying every operator's radio
+ *     traffic is not a default worth choosing for them.
+ */
+export const ADMIN_RETRY_MIN_ATTEMPTS = 1;
+export const ADMIN_RETRY_MAX_ATTEMPTS = 10;
+
+export async function resolveAdminRetryAttempts(retryAttempts?: unknown): Promise<number> {
+  const inRange = (n: number) =>
+    Number.isInteger(n) && n >= ADMIN_RETRY_MIN_ATTEMPTS && n <= ADMIN_RETRY_MAX_ATTEMPTS;
+
+  const override = typeof retryAttempts === 'number' ? retryAttempts : NaN;
+  if (inRange(override)) return override;
+
+  // Defensive: this is awaited in the request path before the 202 is sent, so a
+  // settings-read failure must not take the whole command down. Retry policy is
+  // not worth failing a send over — fall back to the single-attempt default.
+  try {
+    const raw = await databaseService.settings.getSetting('adminRetryAttempts');
+    const configured = raw == null ? NaN : parseInt(raw, 10);
+    if (inRange(configured)) return configured;
+  } catch (error) {
+    logger.debug(`Could not read adminRetryAttempts, defaulting to 1: ${(error as Error)?.message}`);
+  }
+
+  return 1;
+}
+
+/**
+ * Backoff before attempt N+1 (#4487). Linear rather than exponential: the ACK
+ * window is already 30s, so an exponential curve would push a third attempt
+ * minutes out, long past the point the operator is still watching.
+ */
+export function adminRetryDelayMs(attempt: number): number {
+  return Math.min(attempt, 3) * 5_000;
+}
+
 router.post('/commands', requireAdmin(), async (req, res) => {
   try {
     const { command, nodeNum, sourceId: acSourceId, ...params } = req.body;
@@ -1906,10 +1950,40 @@ router.post('/commands', requireAdmin(), async (req, res) => {
       userId: req.session?.userId ?? null,
     });
 
+    const maxAttempts = await resolveAdminRetryAttempts(params.retryAttempts);
+
     void (async () => {
       try {
-        const result = await execute((status) => adminOperationService.setStatus(operation.id, status));
-        adminOperationService.succeed(operation.id, result);
+        for (let attempt = 1; ; attempt++) {
+          const result = await execute((status) => adminOperationService.setStatus(operation.id, status));
+          const ack = (result as { ack?: { acked: boolean; timedOut: boolean } }).ack;
+          const settled = { ...result, attempts: attempt, maxAttempts };
+
+          // No ACK was awaited for this command (see ACK_AWAITED_COMMANDS), so
+          // there is no outcome to distinguish — sending it was the whole job.
+          if (!ack) {
+            adminOperationService.succeed(operation.id, settled);
+            return;
+          }
+          if (ack.acked) {
+            adminOperationService.succeed(operation.id, settled);
+            return;
+          }
+          // Answered with a routing error: the node received it and refused.
+          // Retrying just re-asks a question already answered (#4492).
+          if (!ack.timedOut) {
+            adminOperationService.reject(operation.id, settled);
+            return;
+          }
+          if (attempt >= maxAttempts) {
+            adminOperationService.timeOut(operation.id, settled);
+            return;
+          }
+          logger.debug(
+            `📋 Admin operation ${operation.id} attempt ${attempt}/${maxAttempts} timed out; retrying`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, adminRetryDelayMs(attempt)));
+        }
       } catch (error) {
         if (isTxDisabledError(error)) {
           adminOperationService.fail(operation.id, {

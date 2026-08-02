@@ -198,6 +198,11 @@ export const VALID_SETTINGS_KEYS = [
   // in direct range so you can re-fire a command sooner instead of waiting the
   // default 15s. Clamped to 1..60s; absent/invalid => the built-in 15s default.
   'meshcoreCliTimeoutSeconds',
+  // How many times a remote admin command is attempted before settling as
+  // timed_out (#4487). Only a timeout is retried — an explicit routing
+  // rejection settles immediately. Clamped 1..10; absent/invalid => 1, i.e.
+  // exactly the pre-#4487 single-attempt behaviour.
+  'adminRetryAttempts',
   'localStatsIntervalMinutes',
   'nodeHopsCalculation',
   'nodeDimmingEnabled',
@@ -584,6 +589,7 @@ export const GLOBAL_ONLY_SETTINGS_KEYS = new Set<string>([
   'noIndexEnabled',                         // :184 global robots gate (#4202)
   'meshcoreChannelRetryEnabled',            // :189 global opt-in (#3979)
   'meshcoreCliTimeoutSeconds',              // :195 global CLI reply timeout (#4027)
+  'adminRetryAttempts',                     // :201 global admin retry count (#4487)
   'elevationEnabled',                       // :305 "Global (not per-source)" (#4111)
   'elevationSourceUrl',                     // :305, also SECRET_SETTINGS_KEYS
   // Global singletons driven only by the global POST branch:

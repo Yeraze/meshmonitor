@@ -408,6 +408,36 @@ for a routing ACK:
   so MeshMonitor keeps the optimistic update and shows a warning rather than
   claiming either outcome.
 
+These three outcomes are also the operation's terminal `status`, not just a
+field inside its result:
+
+| `status` | meaning | retried? |
+|---|---|---|
+| `succeeded` | the destination ACKed | no |
+| `rejected` | the destination answered with a routing error | **no** — it already answered |
+| `timed_out` | no answer within the ACK window | **yes**, up to the attempt limit |
+| `failed` | the command could not be sent at all | no |
+
+Before this split, `rejected` and `timed_out` both settled as `succeeded` with
+the real outcome buried in `result.ack`, so a caller reading `status` alone
+could not tell them apart. `result.ack` is still populated exactly as before,
+so existing consumers keep working.
+
+### Auto-retry
+
+A command that times out is retried automatically, up to
+`adminRetryAttempts` (Settings, 1–10) or a per-request `retryAttempts`
+override. Backoff is linear — 5s, 10s, then 15s — because the ACK window is
+already 30s and an exponential curve would push a third attempt minutes out.
+
+The default is **1**, i.e. a single attempt and exactly the previous behaviour.
+Retrying is opt-in on purpose: every extra attempt is real airtime on a shared
+band, which is not a cost to impose on every operator by default.
+
+Only a timeout is retried. A rejection means the node received the command and
+refused it — resending re-asks a question already answered — and a failure
+means the packet never reached the radio, which a retry will not change.
+
 Other remote commands await no routing ACK and are reported as successful once
 transmitted, matching their previous behavior. That is not the same as never
 failing: a command still fails if it cannot be sent at all — for example when

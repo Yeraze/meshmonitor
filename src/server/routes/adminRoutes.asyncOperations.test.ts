@@ -15,7 +15,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vite
 import adminRoutes from './adminRoutes.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import { sourceManagerRegistry, type ISourceManager } from '../sourceManagerRegistry.js';
-import { adminOperationService } from '../services/adminOperationService.js';
+import { adminOperationService, isTerminal } from '../services/adminOperationService.js';
 import { TxDisabledError } from '../errors/txDisabledError.js';
 import { loadProtobufDefinitions } from '../protobufLoader.js';
 
@@ -54,12 +54,19 @@ describe('adminRoutes — async remote-admin operations (#4482)', () => {
     } as unknown as ISourceManager;
   }
 
-  /** Poll the operation endpoint until it settles (or the attempt budget runs out). */
+  /**
+   * Poll the operation endpoint until it settles (or the attempt budget runs out).
+   *
+   * Uses the service's own `isTerminal` rather than a local list of statuses.
+   * This helper used to hardcode `succeeded`/`failed`, and silently spun for the
+   * full budget once #4492 split `rejected`/`timed_out` out of `succeeded` — the
+   * same duplicated-terminal-list trap that hid in `followAdminOperation`.
+   */
   async function waitForSettled(agent: any, operationId: string, attempts = 60) {
     for (let i = 0; i < attempts; i++) {
       const res = await agent.get(`/operations/${operationId}`);
       const op = res.body?.data;
-      if (op && (op.status === 'succeeded' || op.status === 'failed')) return op;
+      if (op && isTerminal(op.status)) return op;
       await new Promise((r) => setTimeout(r, 10));
     }
     throw new Error(`operation ${operationId} never settled`);
