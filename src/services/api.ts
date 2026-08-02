@@ -157,7 +157,19 @@ interface AdminCommandAccepted extends AdminCommandResult {
 
 /** A snapshot of a background admin operation, as returned by the poll endpoint. */
 interface AdminOperationSnapshot {
-  status: 'pending' | 'awaiting_passkey' | 'sending' | 'awaiting_ack' | 'succeeded' | 'failed';
+  // Mirrors AdminOperationStatus in src/server/services/adminOperationService.ts.
+  // `rejected` (node refused) and `timed_out` (no answer) were split out of
+  // `succeeded` in #4492 so a caller can tell the three apart from `status`
+  // alone, rather than reaching into `result.ack`.
+  status:
+    | 'pending'
+    | 'awaiting_passkey'
+    | 'sending'
+    | 'awaiting_ack'
+    | 'succeeded'
+    | 'rejected'
+    | 'timed_out'
+    | 'failed';
   result?: AdminCommandResult | null;
   error?: { code?: string; message?: string } | null;
 }
@@ -1697,8 +1709,25 @@ class ApiService {
       }
 
       const operation = snapshot?.data ?? snapshot;
-      if (operation?.status === 'succeeded') {
-        return { success: true, ...(operation.result ?? {}) } as unknown as T;
+      // `rejected` and `timed_out` are terminal too (#4492). They MUST be
+      // handled here — before #4492 both settled as `succeeded`, so omitting
+      // them would leave this loop polling a settled operation until the
+      // overall timeout.
+      //
+      // They resolve rather than throw, and carry `result.ack` exactly as
+      // before, so the existing ACK branching in the UI keeps working
+      // unchanged; `status` is added alongside for callers that want to read
+      // the outcome directly instead of destructuring the ack.
+      if (
+        operation?.status === 'succeeded' ||
+        operation?.status === 'rejected' ||
+        operation?.status === 'timed_out'
+      ) {
+        return {
+          success: true,
+          status: operation.status,
+          ...(operation.result ?? {}),
+        } as unknown as T;
       }
       if (operation?.status === 'failed') {
         const failure = operation.error ?? {};
