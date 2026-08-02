@@ -232,6 +232,39 @@ describe('evaluateCondition', () => {
     expect(await evaluateCondition(node('condition.string', { field: 'text', op: 'notContains', value: 'xyz' }), ctx({ text: 'ping' }))).toBe(true);
   });
 
+  /**
+   * #4507: casing is NOT uniform across the string operators, and nothing in the
+   * builder said so. `contains`/`startsWith`/`endsWith`/`in` lower-case both
+   * sides; `eq`/`neq`/`regex` compare raw. The builder's copy now states this,
+   * so pin the behaviour that copy describes.
+   */
+  it('string: contains-family ignores case but eq and regex do not (#4507)', async () => {
+    const str = (op: string, value: string, text: string) =>
+      evaluateCondition(node('condition.string', { field: 'text', op, value }), ctx({ text }));
+
+    // Case-insensitive family.
+    expect(await str('contains', 'ping', 'PING the mesh')).toBe(true);
+    expect(await str('startsWith', 'ping', 'PING the mesh')).toBe(true);
+    expect(await str('endsWith', 'mesh', 'PING the MESH')).toBe(true);
+    expect(await str('in', 'ping, test', 'PING')).toBe(true);
+
+    // Case-sensitive family — the surprise that got reported.
+    expect(await str('eq', 'ping', 'PING')).toBe(false);
+    expect(await str('regex', '^(test|ping)', 'PING')).toBe(false);
+  });
+
+  it('string: (?i) makes a regex case-insensitive — the workaround the builder suggests (#4507)', async () => {
+    // Load-bearing on the engine being RE2 (src/utils/safeRegex.ts). JavaScript's
+    // own RegExp throws on inline flags, so swapping the engine back would make
+    // both this test and the builder's hint wrong at the same time.
+    const rx = (value: string, text: string) =>
+      evaluateCondition(node('condition.string', { field: 'text', op: 'regex', value }), ctx({ text }));
+
+    expect(await rx('(?i)^(test|ping)', 'PING')).toBe(true);
+    expect(await rx('(?i)^(test|ping)', 'Test 123')).toBe(true);
+    expect(await rx('(?i)^(test|ping)', 'pong')).toBe(false);
+  });
+
   it('node.completeness: `in complete, unknown` reproduces AutoAck\'s skip-incomplete gate (#4340 Phase 3)', async () => {
     const gate = node('condition.string', { field: 'node.completeness', op: 'in', value: 'complete, unknown' });
     // complete row → passes
