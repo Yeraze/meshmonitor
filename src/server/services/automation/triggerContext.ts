@@ -339,16 +339,18 @@ export function buildScheduleContext(sourceId: string | null, timestamp: number)
  * Extract the channel names a `trigger.message` filter targets via the multi-select
  * `channels` field (#3974). Entries are `{ name, protocol? }` — the same shape the
  * builder's `channelMulti` renderer emits and `action.sendMessage` resolves. Matching
- * is name-based (protocol is a UI hint only), mirroring the legacy scalar `channelName`
- * check. Empty/blank names are dropped (Primary can't be name-matched, same as legacy).
+ * is name-based (protocol is a UI hint only). An empty string is a legitimate,
+ * meaningful entry here — it's how the "(Primary)" checkbox represents a source's
+ * unnamed slot-0 channel (#4507) — so it is kept, not dropped; only entries that
+ * aren't a `{ name: string }` object are excluded.
  */
 export function messageFilterChannelNames(params: Record<string, unknown> = {}): string[] {
   if (!Array.isArray(params.channels)) return [];
   return (params.channels as unknown[])
     .map((c) => (c && typeof c === 'object' && typeof (c as Record<string, unknown>).name === 'string'
       ? ((c as Record<string, unknown>).name as string)
-      : ''))
-    .filter((n) => n.length > 0);
+      : null))
+    .filter((n): n is string => n !== null);
 }
 
 /**
@@ -373,10 +375,13 @@ export function messageMatchesFilter(msg: DbMessage, params: Record<string, unkn
   if (params.to != null && Number(msg.toNodeNum) !== Number(params.to)) return false;
   // Multi-channel OR-list (#3974) takes precedence over the legacy scalar
   // channel/channelName fields: fire if the resolved name matches ANY entry.
+  // A resolved name of '' (Primary's unnamed slot-0) is a legitimate match
+  // target (#4507) — only an unresolved (null/undefined) name never matches.
   const channelNames = messageFilterChannelNames(params);
   if (channelNames.length > 0) {
-    const resolved = channelName?.toLowerCase();
-    if (!resolved || !channelNames.some((n) => n.toLowerCase() === resolved)) return false;
+    if (channelName == null) return false;
+    const resolved = channelName.toLowerCase();
+    if (!channelNames.some((n) => n.toLowerCase() === resolved)) return false;
   } else {
     if (params.channel != null && Number(msg.channel) !== Number(params.channel)) return false;
     // Channel-by-name: portable across sources where the channel sits in a
@@ -421,8 +426,9 @@ export function meshCoreMessageMatchesFilter(
   const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
   const channelNames = messageFilterChannelNames(params);
   if (channelNames.length > 0) {
-    const resolved = channelName?.toLowerCase();
-    if (!resolved || !channelNames.some((n) => n.toLowerCase() === resolved)) return false;
+    if (channelName == null) return false;
+    const resolved = channelName.toLowerCase();
+    if (!channelNames.some((n) => n.toLowerCase() === resolved)) return false;
   } else {
     if (params.channel != null && Number(channelIdx) !== Number(params.channel)) return false;
     if (typeof params.channelName === 'string' && params.channelName.length > 0) {
@@ -462,8 +468,8 @@ export function describeMessageFilterMiss(
   if (params.to != null && Number(msg.toNodeNum) !== Number(params.to)) return `recipient #${msg.toNodeNum} ≠ to #${params.to}`;
   const channelNames = messageFilterChannelNames(params);
   if (channelNames.length > 0) {
-    const resolved = channelName?.toLowerCase();
-    if (!resolved || !channelNames.some((n) => n.toLowerCase() === resolved)) {
+    const resolved = channelName == null ? null : channelName.toLowerCase();
+    if (resolved == null || !channelNames.some((n) => n.toLowerCase() === resolved)) {
       return `channel name "${channelName ?? '(unresolved)'}" not in [${channelNames.join(', ')}]`;
     }
   } else {
@@ -498,8 +504,8 @@ export function describeMeshCoreFilterMiss(
   const channelIdx = parseMeshCoreChannelIdx(msg.fromPublicKey);
   const channelNames = messageFilterChannelNames(params);
   if (channelNames.length > 0) {
-    const resolved = channelName?.toLowerCase();
-    if (!resolved || !channelNames.some((n) => n.toLowerCase() === resolved)) {
+    const resolved = channelName == null ? null : channelName.toLowerCase();
+    if (resolved == null || !channelNames.some((n) => n.toLowerCase() === resolved)) {
       return `channel name "${channelName ?? '(unresolved)'}" not in [${channelNames.join(', ')}]`;
     }
   } else {
