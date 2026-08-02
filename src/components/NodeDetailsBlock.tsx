@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DeviceInfo } from '../types/device';
-import { getHardwareModelName, parseNodeId } from '../utils/nodeHelpers';
+import { formatLocationSource, getHardwareModelName, parseNodeId } from '../utils/nodeHelpers';
 import { getDeviceRoleName } from '../utils/deviceRole';
 import { getHardwareImageUrl } from '../utils/hardwareImages';
 import { formatRelativeTime } from '../utils/datetime';
@@ -153,6 +153,17 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
     label: string;
     tooltip: string;
     accuracy: string | null;
+    /**
+     * True only when the position is known to carry no error bar — NOT merely
+     * when `accuracy` is null (#4498).
+     *
+     * `hasAccuracyCell` is false for three different reasons: full precision
+     * (bits >= 32), an override, and unset/zero precision bits. The first two
+     * are genuinely exact; the third means the device never told us how precise
+     * the fix was. Labelling all three "Exact" would assert something we don't
+     * know, so the unknown case still renders nothing.
+     */
+    exact: boolean;
   } = node.positionIsOverride
     ? {
         kind: 'override',
@@ -163,6 +174,7 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
         ),
         // A user placed this pin exactly where they meant it — no error bar.
         accuracy: null,
+        exact: true,
       }
     : node.positionIsEstimated
       ? {
@@ -178,14 +190,31 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
               : null,
             distanceUnit,
           ),
+          exact: false,
         }
       : {
           kind: 'gps',
-          label: t('node_details.position_source_gps', 'GPS'),
-          tooltip: t(
-            'node_details.position_source_gps_tooltip',
-            'Position reported by the device.',
-          ),
+          // Name the actual source when the device reported one (#4498). The
+          // protobuf's LocSource has been decoded and stored since #4176, but
+          // PR #4188 wired it only into the map popups — this card kept showing
+          // a generic "GPS" for a manually-entered fix as readily as an
+          // internal one. formatLocationSource returns null for LOC_UNSET or an
+          // absent value, so nodes that never reported a source keep the exact
+          // pre-#4498 wording.
+          label:
+            formatLocationSource(node.positionLocationSource) ??
+            t('node_details.position_source_gps', 'GPS'),
+          tooltip:
+            formatLocationSource(node.positionLocationSource) !== null
+              ? t(
+                  'node_details.position_source_gps_tooltip_sourced',
+                  'Position reported by the device ({{source}}).',
+                  { source: formatLocationSource(node.positionLocationSource) },
+                )
+              : t(
+                  'node_details.position_source_gps_tooltip',
+                  'Position reported by the device.',
+                ),
           // Only imprecise fixes (1..31 bits) have a meaningful error bar; full
           // precision and unset both fall through to no radius. hasAccuracyCell
           // is the same gate the map uses to draw its accuracy square.
@@ -197,6 +226,9 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
                   distanceUnit,
                 )
               : null,
+          // >= 32 bits is a full-precision fix. null/0 means the device didn't
+          // report precision at all — unknown, not exact.
+          exact: node.positionPrecisionBits != null && node.positionPrecisionBits >= 32,
         };
 
   const handleSaveNotes = async () => {
@@ -498,11 +530,15 @@ const NodeDetailsBlock: React.FC<NodeDetailsBlockProps> = ({ node, timeFormat = 
               >
                 {positionSource.label}
               </span>
-              {positionSource.accuracy && (
+              {positionSource.accuracy ? (
                 <span className="node-detail-secondary node-detail-position-accuracy">
                   {positionSource.accuracy}
                 </span>
-              )}
+              ) : positionSource.exact ? (
+                <span className="node-detail-secondary node-detail-position-accuracy">
+                  {t('node_details.position_accuracy_exact', 'Exact')}
+                </span>
+              ) : null}
             </div>
           </div>
         )}
