@@ -551,3 +551,67 @@ describe('MeshCoreMessageStream entry scroll on a hidden pane (#4473 follow-up)'
     expect(list.scrollTop).toBe(120);
   });
 });
+
+/**
+ * #4504 — a directly-received message showed nothing but the word "direct".
+ * SNR is the only thing left that says anything about the link.
+ */
+describe('MeshCoreMessageStream direct-message signal (#4504)', () => {
+  const now = Date.now();
+
+  it('shows SNR on a directly-received message', () => {
+    render(
+      <MeshCoreMessageStream
+        messages={[{ ...msg('a', now, 'hello'), hopCount: 0, snr: 7.25 }]}
+        conversationKey="channel-0"
+        onSend={async () => true}
+      />,
+    );
+    expect(screen.getByText(/SNR 7\.3 dB/)).toBeTruthy();
+  });
+
+  it('adds RSSI only when the message actually carries it', () => {
+    const { container, rerender } = render(
+      <MeshCoreMessageStream
+        messages={[{ ...msg('a', now, 'hello'), hopCount: 0, snr: 5 }]}
+        conversationKey="channel-0"
+        onSend={async () => true}
+      />,
+    );
+    // MeshCore's message push carries SNR but no RSSI, so this is the normal case.
+    expect(container.textContent).not.toMatch(/RSSI/);
+
+    rerender(
+      <MeshCoreMessageStream
+        messages={[{ ...msg('a', now, 'hello'), hopCount: 0, snr: 5, rssi: -92 }]}
+        conversationKey="channel-0"
+        onSend={async () => true}
+      />,
+    );
+    expect(container.textContent).toMatch(/RSSI -92 dBm/);
+  });
+
+  it('does NOT show signal on a relayed message — it would misattribute the link', () => {
+    // On a multi-hop message these values describe the hop from the LAST
+    // repeater, not from the sender whose name sits beside them.
+    const { container } = render(
+      <MeshCoreMessageStream
+        messages={[{ ...msg('a', now, 'hello'), hopCount: 2, routePath: 'a3,7f', snr: 7 }]}
+        conversationKey="channel-0"
+        onSend={async () => true}
+      />,
+    );
+    expect(container.textContent).not.toMatch(/SNR/);
+  });
+
+  it('still renders "direct" when the message carries no SNR at all', () => {
+    render(
+      <MeshCoreMessageStream
+        messages={[{ ...msg('a', now, 'hello'), hopCount: 0 }]}
+        conversationKey="channel-0"
+        onSend={async () => true}
+      />,
+    );
+    expect(screen.getByText(/direct/)).toBeTruthy();
+  });
+});

@@ -505,7 +505,36 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
               {!outgoing && typeof m.hopCount === 'number' && (
                 <div className="mc-message-route" title={t('meshcore.route_tooltip', 'How this message reached you')}>
                   {m.hopCount === 0 ? (
-                    <><UiIcon name="location" size={13} /> {t('meshcore.route_direct', 'direct')}</>
+                    <>
+                      <UiIcon name="location" size={13} /> {t('meshcore.route_direct', 'direct')}
+                      {/*
+                        Signal quality for a directly-received message (#4504).
+                        A direct message otherwise shows nothing but the word
+                        "direct" — SNR/RSSI is the only thing left that says
+                        anything about the link.
+
+                        Shown ONLY for hopCount === 0 on purpose. On a relayed
+                        message these values describe the hop from the LAST
+                        repeater, not from the sender, so presenting them next to
+                        the sender's name would misattribute the measurement.
+
+                        RSSI renders only when present: MeshCore's message push
+                        carries SNR but no RSSI (that lives on the separate
+                        LogRxData OTA feed), so today this is SNR in practice and
+                        RSSI lights up automatically if the field is ever filled.
+                      */}
+                      {typeof m.snr === 'number' && (
+                        <> · <span
+                          className="mc-message-signal"
+                          title={t('meshcore.signal_tooltip', 'Signal quality of the direct link from the sender')}
+                        >
+                          {t('meshcore.snr_label', 'SNR')} {m.snr.toFixed(1)} dB
+                          {typeof m.rssi === 'number' && (
+                            <> · {t('meshcore.rssi_label', 'RSSI')} {m.rssi} dBm</>
+                          )}
+                        </span></>
+                      )}
+                    </>
                   ) : (
                     <><UiIcon name="route" size={13} /> {m.hopCount} {m.hopCount === 1 ? t('meshcore.hop', 'hop') : t('meshcore.hops', 'hops')}</>
                   )}
