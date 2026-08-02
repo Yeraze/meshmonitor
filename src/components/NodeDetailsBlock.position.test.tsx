@@ -161,3 +161,75 @@ describe('NodeDetailsBlock position source pill (#4432)', () => {
     expect(screen.queryByText(/^±/)).not.toBeInTheDocument();
   });
 });
+
+/**
+ * #4498 — the Position badge showed a generic "GPS" for every real fix. The
+ * protobuf's LocSource has been decoded and stored since #4176, but PR #4188
+ * wired it only into the map popups, never this card.
+ */
+describe('NodeDetailsBlock position source badge (#4498)', () => {
+  const positioned = { latitude: 35.1, longitude: -80.6 };
+
+  it.each([
+    [2, 'Internal GPS'],
+    [3, 'External GPS'],
+    [1, 'Manual'],
+  ])('names the source when the device reported LocSource %i', (src, label) => {
+    render(<NodeDetailsBlock node={{ ...baseNode, position: positioned, positionLocationSource: src }} />);
+    expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['unset (0)', 0],
+    ['absent', undefined],
+  ])('keeps the generic "GPS" wording when the source is %s', (_label, src) => {
+    render(<NodeDetailsBlock node={{ ...baseNode, position: positioned, positionLocationSource: src }} />);
+    expect(screen.getByText('GPS')).toBeInTheDocument();
+  });
+
+  it('still says "Override" for a manually placed pin, not the LocSource', () => {
+    // positionIsOverride is MeshMonitor's own concept and outranks whatever the
+    // device last reported.
+    render(
+      <NodeDetailsBlock
+        node={{ ...baseNode, position: positioned, positionIsOverride: true, positionLocationSource: 2 }}
+      />,
+    );
+    expect(screen.getByText('Override')).toBeInTheDocument();
+    expect(screen.queryByText('Internal GPS')).toBeNull();
+  });
+});
+
+describe('NodeDetailsBlock position accuracy "Exact" (#4498)', () => {
+  const positioned = { latitude: 35.1, longitude: -80.6 };
+
+  it('labels a full-precision fix Exact', () => {
+    render(<NodeDetailsBlock node={{ ...baseNode, position: positioned, positionPrecisionBits: 32 }} />);
+    expect(screen.getByText('Exact')).toBeInTheDocument();
+  });
+
+  it('labels a user override Exact', () => {
+    render(<NodeDetailsBlock node={{ ...baseNode, position: positioned, positionIsOverride: true }} />);
+    expect(screen.getByText('Exact')).toBeInTheDocument();
+  });
+
+  it('says NOTHING when precision is unreported — unknown is not exact', () => {
+    // The load-bearing case. hasAccuracyCell() is false for full precision, for
+    // an override, AND for unset/zero bits; only the first two are genuinely
+    // exact. Claiming "Exact" here would assert something the device never told
+    // us.
+    for (const bits of [undefined, null, 0]) {
+      const { unmount } = render(
+        <NodeDetailsBlock node={{ ...baseNode, position: positioned, positionPrecisionBits: bits as never }} />,
+      );
+      expect(screen.queryByText('Exact')).toBeNull();
+      unmount();
+    }
+  });
+
+  it('shows the error bar rather than Exact for an imprecise fix', () => {
+    render(<NodeDetailsBlock node={{ ...baseNode, position: positioned, positionPrecisionBits: 16 }} />);
+    expect(screen.queryByText('Exact')).toBeNull();
+    expect(screen.getByText(/±/)).toBeInTheDocument();
+  });
+});
