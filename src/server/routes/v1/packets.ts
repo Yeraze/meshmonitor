@@ -15,12 +15,9 @@ function normalizeSinceToMs(value: string): number {
   return n < 10_000_000_000 ? n * 1000 : n;
 }
 
-/** Resolve sourceId from path or query. */
+/** Resolve sourceId from the :sourceId path param. */
 function getScopedSourceId(req: Request): string | undefined {
-  const fromPath = resolvedSourceIdFromPath(req);
-  if (fromPath) return fromPath;
-  const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
-  return fromQuery;
+  return resolvedSourceIdFromPath(req);
 }
 
 const router = express.Router({ mergeParams: true });

@@ -1,7 +1,7 @@
 /**
  * Message Search API Tests
  *
- * Tests the GET /api/v1/messages/search endpoint
+ * Tests the GET /api/v1/sources/test-source/messages/search endpoint
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
@@ -25,13 +25,13 @@ const searchResults = [
     id: 'msg-1', fromNodeId: '!abcd0001', fromNodeNum: 2882400001,
     toNodeId: '!abcd0002', toNodeNum: 2882400002,
     text: 'hello world', channel: 0, timestamp: 1709000000,
-    rxTime: 1709000001, createdAt: 1709000001
+    rxTime: 1709000001, createdAt: 1709000001, sourceId: 'test-source'
   },
   {
     id: 'msg-2', fromNodeId: '!abcd0002', fromNodeNum: 2882400002,
     toNodeId: '!abcd0001', toNodeNum: 2882400001,
     text: 'hello back', channel: 0, timestamp: 1709000100,
-    rxTime: 1709000101, createdAt: 1709000101
+    rxTime: 1709000101, createdAt: 1709000101, sourceId: 'test-source'
   }
 ];
 
@@ -86,6 +86,17 @@ vi.mock('../../../services/database.js', () => ({
       getMessagesByChannel: vi.fn().mockResolvedValue([]),
       getMessagesAfterTimestamp: vi.fn().mockResolvedValue([]),
     },
+    // Sources — attachSource resolves the :sourceId path param (incl. `default`).
+    sources: {
+      getAllSources: vi.fn(async () => [
+        { id: 'test-source', name: 'Test Source', type: 'meshtastic_tcp', enabled: true, createdAt: 1 },
+      ]),
+      getSource: vi.fn(async (id: string) =>
+        typeof id === 'string' && id.length > 0
+          ? { id, name: id, type: 'meshtastic_tcp', enabled: true, createdAt: 1 }
+          : null
+      ),
+    },
     drizzleDbType: 'sqlite'
   }
 }));
@@ -108,7 +119,7 @@ vi.mock('../../messageQueueService.js', () => ({
 
 const { default: databaseService } = await import('../../../services/database.js');
 
-describe('GET /api/v1/messages/search', () => {
+describe('GET /api/v1/sources/test-source/messages/search', () => {
   let app: express.Express;
 
   beforeEach(async () => {
@@ -143,7 +154,7 @@ describe('GET /api/v1/messages/search', () => {
 
   it('should require q parameter', async () => {
     const res = await request(app)
-      .get('/api/v1/messages/search')
+      .get('/api/v1/sources/test-source/messages/search')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
@@ -151,7 +162,7 @@ describe('GET /api/v1/messages/search', () => {
 
   it('should reject empty q parameter', async () => {
     const res = await request(app)
-      .get('/api/v1/messages/search?q=')
+      .get('/api/v1/sources/test-source/messages/search?q=')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
@@ -159,7 +170,7 @@ describe('GET /api/v1/messages/search', () => {
 
   it('should reject whitespace-only q parameter', async () => {
     const res = await request(app)
-      .get('/api/v1/messages/search?q=%20%20')
+      .get('/api/v1/sources/test-source/messages/search?q=%20%20')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
@@ -167,7 +178,7 @@ describe('GET /api/v1/messages/search', () => {
 
   it('should return search results', async () => {
     const res = await request(app)
-      .get('/api/v1/messages/search?q=hello')
+      .get('/api/v1/sources/test-source/messages/search?q=hello')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -178,7 +189,7 @@ describe('GET /api/v1/messages/search', () => {
 
   it('should add source field to results', async () => {
     const res = await request(app)
-      .get('/api/v1/messages/search?q=hello')
+      .get('/api/v1/sources/test-source/messages/search?q=hello')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
     expect(res.status).toBe(200);
     expect(res.body.data[0].source).toBe('standard');
@@ -187,7 +198,7 @@ describe('GET /api/v1/messages/search', () => {
 
   it('should pass caseSensitive option', async () => {
     await request(app)
-      .get('/api/v1/messages/search?q=hello&caseSensitive=true')
+      .get('/api/v1/sources/test-source/messages/search?q=hello&caseSensitive=true')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
     expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
       expect.objectContaining({ caseSensitive: true })
@@ -196,7 +207,7 @@ describe('GET /api/v1/messages/search', () => {
 
   it('should default caseSensitive to false', async () => {
     await request(app)
-      .get('/api/v1/messages/search?q=hello')
+      .get('/api/v1/sources/test-source/messages/search?q=hello')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
     expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
       expect.objectContaining({ caseSensitive: false })
@@ -205,7 +216,7 @@ describe('GET /api/v1/messages/search', () => {
 
   it('should pass scope filter', async () => {
     await request(app)
-      .get('/api/v1/messages/search?q=hello&scope=channels')
+      .get('/api/v1/sources/test-source/messages/search?q=hello&scope=channels')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
     expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
       expect.objectContaining({ scope: 'channels' })
@@ -214,7 +225,7 @@ describe('GET /api/v1/messages/search', () => {
 
   it('should pass date range filters', async () => {
     await request(app)
-      .get('/api/v1/messages/search?q=hello&startDate=1709000000&endDate=1709100000')
+      .get('/api/v1/sources/test-source/messages/search?q=hello&startDate=1709000000&endDate=1709100000')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
     expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
       expect.objectContaining({ startDate: 1709000000, endDate: 1709100000 })
@@ -223,7 +234,7 @@ describe('GET /api/v1/messages/search', () => {
 
   it('should pass channel filter', async () => {
     await request(app)
-      .get('/api/v1/messages/search?q=hello&channels=0,1')
+      .get('/api/v1/sources/test-source/messages/search?q=hello&channels=0,1')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
     expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
       expect.objectContaining({ channels: expect.arrayContaining([0, 1]) })
@@ -232,7 +243,7 @@ describe('GET /api/v1/messages/search', () => {
 
   it('should pass fromNodeId filter', async () => {
     await request(app)
-      .get('/api/v1/messages/search?q=hello&fromNodeId=!abcd0001')
+      .get('/api/v1/sources/test-source/messages/search?q=hello&fromNodeId=!abcd0001')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
     expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
       expect.objectContaining({ fromNodeId: '!abcd0001' })
@@ -241,7 +252,7 @@ describe('GET /api/v1/messages/search', () => {
 
   it('should respect limit parameter with max of 100', async () => {
     await request(app)
-      .get('/api/v1/messages/search?q=hello&limit=200')
+      .get('/api/v1/sources/test-source/messages/search?q=hello&limit=200')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
     expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 100 })
@@ -250,7 +261,7 @@ describe('GET /api/v1/messages/search', () => {
 
   it('should pass offset parameter', async () => {
     await request(app)
-      .get('/api/v1/messages/search?q=hello&offset=10')
+      .get('/api/v1/sources/test-source/messages/search?q=hello&offset=10')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
     expect(databaseService.searchMessagesAsync).toHaveBeenCalledWith(
       expect.objectContaining({ offset: 10 })
@@ -259,20 +270,20 @@ describe('GET /api/v1/messages/search', () => {
 
   it('should not search standard messages when scope is meshcore', async () => {
     await request(app)
-      .get('/api/v1/messages/search?q=hello&scope=meshcore')
+      .get('/api/v1/sources/test-source/messages/search?q=hello&scope=meshcore')
       .set('Authorization', `Bearer ${VALID_TEST_TOKEN}`);
     expect(databaseService.searchMessagesAsync).not.toHaveBeenCalled();
   });
 
   it('should require authentication', async () => {
     const res = await request(app)
-      .get('/api/v1/messages/search?q=hello');
+      .get('/api/v1/sources/test-source/messages/search?q=hello');
     expect(res.status).toBe(401);
   });
 
   it('should reject invalid token', async () => {
     const res = await request(app)
-      .get('/api/v1/messages/search?q=hello')
+      .get('/api/v1/sources/test-source/messages/search?q=hello')
       .set('Authorization', 'Bearer invalid_token_value_here_12345');
     expect(res.status).toBe(401);
   });
