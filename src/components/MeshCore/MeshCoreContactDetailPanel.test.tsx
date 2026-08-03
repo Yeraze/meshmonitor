@@ -479,4 +479,97 @@ describe('MeshCoreContactDetailPanel', () => {
       expect(screen.queryByRole('status')).toBeNull();
     });
   });
+
+  /**
+   * #4517 — the same async race #4514/#4515 fixed for Zero-Hop Ping existed in
+   * every other action on this panel: `await` a reply, then unconditionally
+   * write it to state. The contact-change effect clears these fields on
+   * switch, so the failure is specifically a reply landing *after* that clear
+   * and repainting one contact's data onto another's card.
+   */
+  describe('stale replies after a contact switch (#4517)', () => {
+    const PK2 = 'b'.repeat(64);
+    /** pathLen > 0 is required for the Trace Path button to be offered. */
+    const contactA: MeshCoreContact = { publicKey: PK, advType: 2, pathLen: 2 };
+    const contactB: MeshCoreContact = { publicKey: PK2, advType: 2, pathLen: 2 };
+
+    /** A promise whose resolution the test controls. */
+    function deferred<T>() {
+      let resolve!: (v: T) => void;
+      const promise = new Promise<T>((r) => { resolve = r; });
+      return { promise, resolve };
+    }
+
+    it("does not paint contact A's trace result onto contact B", async () => {
+      const d = deferred<{ hops: { index: number; snr: number }[]; lastSnr: number }>();
+      const onTracePath = vi.fn().mockReturnValue(d.promise);
+
+      const props = { onTracePath, canWriteNodes: true, isCompanion: true } as const;
+      const { rerender } = render(
+        <MeshCoreContactDetailPanel contact={contactA} publicKey={PK} {...props} />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Trace Path' }));
+      rerender(<MeshCoreContactDetailPanel contact={contactB} publicKey={PK2} {...props} />);
+
+      // A's reply arrives only now, with B on screen.
+      d.resolve({ hops: [{ index: 0, snr: 7 }], lastSnr: 5 });
+      await waitFor(() => expect(onTracePath).toHaveBeenCalledWith(PK));
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(screen.queryByText('Trace Path Results')).toBeNull();
+    });
+
+    it("does not paint contact A's neighbours onto contact B", async () => {
+      const d = deferred<{ total: number; neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[] }>();
+      const onGetNeighbours = vi.fn().mockReturnValue(d.promise);
+
+      const props = { onGetNeighbours, isCompanion: true } as const;
+      const { rerender } = render(
+        <MeshCoreContactDetailPanel contact={contactA} publicKey={PK} {...props} />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Neighbours' }));
+      rerender(<MeshCoreContactDetailPanel contact={contactB} publicKey={PK2} {...props} />);
+
+      d.resolve({ total: 3, neighbours: [{ publicKeyPrefix: 'ff', heardSecondsAgo: 10, snr: 4 }] });
+      await waitFor(() => expect(onGetNeighbours).toHaveBeenCalledWith(PK, { count: 20 }));
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(screen.queryByText(/3 total/)).toBeNull();
+    });
+
+    it('still shows a reply for the contact the user is actually on', async () => {
+      // The guard must not be so eager that it drops legitimate results.
+      const onTracePath = vi.fn().mockResolvedValue({ hops: [{ index: 0, snr: 7 }], lastSnr: 5 });
+      render(
+        <MeshCoreContactDetailPanel
+          contact={contactA} publicKey={PK}
+          onTracePath={onTracePath} canWriteNodes isCompanion
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Trace Path' }));
+      await waitFor(() => expect(screen.getByText('Trace Path Results')).toBeInTheDocument());
+    });
+
+    it('guards every async handler, including ones added later', async () => {
+      // The point of routing these through one `beginContactAction()` helper is
+      // that the next handler cannot quietly skip the check. Asserted at the
+      // source level because a behavioural test can only cover the handlers
+      // that exist today.
+      const { readFileSync } = await import('node:fs');
+      const { resolve } = await import('node:path');
+      const src = readFileSync(
+        resolve('src/components/MeshCore/MeshCoreContactDetailPanel.tsx'), 'utf8',
+      );
+      const handlers = [...src.matchAll(/const (handle\w+) = async \(\) => \{([\s\S]*?)\n {2}\};/g)];
+      expect(handlers.length).toBeGreaterThan(5);
+
+      const unguarded = handlers
+        .filter((m) => /await on[A-Z]/.test(m[2]) && !m[2].includes('beginContactAction()'))
+        .map((m) => m[1]);
+      expect(unguarded, `unguarded handlers: ${unguarded.join(', ')}`).toEqual([]);
+    });
+  });
+
 });
