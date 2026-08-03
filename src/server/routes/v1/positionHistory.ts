@@ -15,12 +15,9 @@ import { resolvedSourceIdFromPath } from './sourceParam.js';
 
 const router = express.Router({ mergeParams: true });
 
-/** Resolve sourceId from path or query. */
+/** Resolve sourceId from the :sourceId path param. */
 function getScopedSourceId(req: Request): string | undefined {
-  const fromPath = resolvedSourceIdFromPath(req);
-  if (fromPath) return fromPath;
-  const fromQuery = typeof req.query.sourceId === 'string' ? req.query.sourceId : undefined;
-  return fromQuery;
+  return resolvedSourceIdFromPath(req);
 }
 
 /**
