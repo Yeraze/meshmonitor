@@ -131,6 +131,30 @@ describe('AdminCommandsTab — remote favorite/ignored status is not readable (#
     expect(screen.queryByText('admin_commands.ignored')).not.toBeInTheDocument();
   });
 
+  it('switches to the "from this session" wording once a favorite command is acked', async () => {
+    // The optimistic remoteNodeStatus entry is the only thing that can ever
+    // populate a remote target's status — assert the acked path lands there
+    // rather than leaving the line stuck on "unknown".
+    h.apiSendAdminCommand.mockResolvedValue({ success: true, message: 'ok', ack: { acked: true, timedOut: false } });
+    expandNodeManagement();
+    render(<AdminCommandsTab nodes={[localNode, remoteNode]} currentNodeId={LOCAL_NODE_ID} channels={[]} />);
+
+    selectAdminTarget('Remote Node');
+    selectManagedNode('Remote Node');
+    await waitFor(() => {
+      expect(screen.getByText('admin_commands.remote_status_unknown')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('admin_commands.set_as_favorite'));
+
+    await waitFor(() => {
+      expect(screen.getByText('admin_commands.remote_status_from_session')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('admin_commands.remote_status_unknown')).not.toBeInTheDocument();
+    // The badge itself is the optimistic value, still not a readback.
+    expect(screen.getByText('admin_commands.favorite')).toBeInTheDocument();
+  });
+
   it('keeps local-target behaviour unchanged: badges show, no readback notes', async () => {
     expandNodeManagement();
     render(<AdminCommandsTab nodes={[localNode, remoteNode]} currentNodeId={LOCAL_NODE_ID} channels={[]} />);
