@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import {
@@ -114,6 +114,12 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const { t } = useTranslation();
   const { timeFormat, dateFormat } = useSettings();
   const { sourceId } = useSource();
+  // Tracks the currently-selected contact synchronously (unlike the
+  // `publicKey` prop, which an in-flight async closure captured at call
+  // time and won't see update) so a stale ping reply can detect that the
+  // user has since switched contacts.
+  const publicKeyRef = useRef(publicKey);
+  publicKeyRef.current = publicKey;
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     return localStorage.getItem(COLLAPSED_KEY) === 'true';
   });
@@ -183,6 +189,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     setExportSuccess(false);
     setNeighboursLoading(false);
     setNeighboursData(null);
+    setPinging(false);
+    setPingResult(null);
   }, [publicKey]);
 
   // Auto-load stored neighbor data from the database for repeaters.
@@ -277,12 +285,20 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
 
   const handlePingZeroHop = async () => {
     if (!onPingZeroHop || pinging) return;
+    const pingedKey = publicKey;
     setPinging(true);
     setPingResult(null);
     try {
-      setPingResult(await onPingZeroHop(publicKey));
+      const result = await onPingZeroHop(pingedKey);
+      // The contact may have changed while the ping was in flight — don't
+      // paint a stale reply onto whichever contact is now selected.
+      if (pingedKey === publicKeyRef.current) {
+        setPingResult(result);
+      }
     } finally {
-      setPinging(false);
+      if (pingedKey === publicKeyRef.current) {
+        setPinging(false);
+      }
     }
   };
 
