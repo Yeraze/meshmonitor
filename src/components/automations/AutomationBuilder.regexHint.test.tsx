@@ -10,7 +10,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import AutomationBuilder from './AutomationBuilder';
 import type { WorkflowForm } from './compile';
 
@@ -45,21 +45,40 @@ function renderWithStringOp(op: string) {
   );
 }
 
+/**
+ * Scope every assertion to the CONDITION block. The trigger's own "Text matches
+ * regex" field carries similar copy (#4507 follow-up), so a document-wide query
+ * matches two elements and these tests would pass or fail for the wrong reason.
+ */
+function conditionBlock() {
+  const block = screen.getByText('Operator').closest('.ae-block');
+  if (!block) throw new Error('condition block not found');
+  return within(block as HTMLElement);
+}
+
 describe('AutomationBuilder — string condition case guidance (#4507)', () => {
   it('always shows which operators ignore case', () => {
     renderWithStringOp('contains');
-    expect(screen.getByText(/ignore case/i)).toBeInTheDocument();
-    expect(screen.getByText(/case-sensitive/i)).toBeInTheDocument();
+    expect(conditionBlock().getByText(/ignore case/i)).toBeInTheDocument();
+    expect(conditionBlock().getByText(/case-sensitive/i)).toBeInTheDocument();
   });
 
   it('shows the (?i) hint when the operator is regex', () => {
     renderWithStringOp('regex');
-    expect(screen.getByText(/\(\?i\)/)).toBeInTheDocument();
+    expect(conditionBlock().getByText(/\(\?i\)/)).toBeInTheDocument();
   });
 
   it('does not show the (?i) hint for non-regex operators', () => {
     renderWithStringOp('contains');
-    expect(screen.queryByText(/\(\?i\)/)).not.toBeInTheDocument();
+    expect(conditionBlock().queryByText(/\(\?i\)/)).not.toBeInTheDocument();
+  });
+
+  it('the trigger carries its own regex hint, independent of the condition', () => {
+    // Guards the scoping above: if the trigger hint disappears, these tests
+    // must not silently start passing against the wrong element.
+    renderWithStringOp('contains');
+    expect(screen.getByText(/A regular expression matched against the message text/i))
+      .toHaveTextContent(/\(\?i\)/);
   });
 
   it('renders exactly one Value input whichever operator is selected', () => {

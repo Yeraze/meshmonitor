@@ -89,7 +89,18 @@ export const TRIGGERS: BlockDef[] = [
     description: 'Fires when a text message arrives.',
     fields: [
       { name: 'textContains', label: 'Text contains', kind: 'text', placeholder: 'e.g. ping', help: 'Case-insensitive substring match. Leave blank to match any text.' },
-      { name: 'regex', label: 'Text matches regex', kind: 'text', placeholder: 'e.g. ^(test|ping)', advanced: true, help: 'A regular expression matched against the message text.' },
+      // The field directly above says "Case-insensitive substring match", so
+      // silence here reads as "same rules apply". It is not: messageMatchesFilter
+      // lower-cases both sides for textContains and matches the regex against
+      // raw text (triggerContext.ts). #4509 documented this on the
+      // `condition.string` block and missed the trigger, which is the surface
+      // most users actually reach for.
+      {
+        name: 'regex', label: 'Text matches regex', kind: 'text',
+        placeholder: 'e.g. (?i)^(test|ping)', advanced: true,
+        help: 'A regular expression matched against the message text. '
+          + 'Case-sensitive, unlike "Text contains" above — prefix with (?i) to ignore case, e.g. (?i)^(test|ping).',
+      },
       { name: 'channels', label: 'On channels', kind: 'channelMulti', advanced: true, help: 'Match messages that arrive on ANY of these channels (unified by name across your sources). An OR-list — leave none to match any channel. When set, this overrides the single-channel fields below.' },
       { name: 'channelName', label: 'On channel (name)', kind: 'text', placeholder: 'any', advanced: true, help: 'Match by channel name (case-insensitive) — portable across sources where the same channel sits in a different slot. Preferred over the channel # below. Ignored when "On channels" above is set.' },
       { name: 'channel', label: 'On channel #', kind: 'number', placeholder: 'any', advanced: true, help: 'Match by raw channel index. Note: the same channel can be a different index on different sources — use the name above for cross-source automations. Ignored when "On channels" above is set.' },

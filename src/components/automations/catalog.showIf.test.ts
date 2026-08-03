@@ -255,3 +255,24 @@ describe("condition.string regex case-sensitivity hint (#4507)", () => {
     expect(valueFields.filter((f) => fieldVisible(f, {}))).toHaveLength(1);
   });
 });
+
+describe("trigger.message regex case-sensitivity hint (#4507 follow-up)", () => {
+  const trigger = TRIGGERS.find((t) => t.type === 'trigger.message');
+  const field = (n: string) => trigger?.fields.find((f) => f.name === n);
+
+  it('warns that the trigger regex is case-sensitive', () => {
+    // The original #4507 fix only covered the `condition.string` block. The
+    // trigger's own regex field is the surface most users reach first, and it
+    // sits directly under "Text contains", which advertises itself as
+    // case-INsensitive — so saying nothing here reads as "same rules".
+    expect(field('regex')?.help).toMatch(/case-sensitive/i);
+    expect(field('regex')?.help).toMatch(/\(\?i\)/);
+    expect(field('regex')?.placeholder).toMatch(/\(\?i\)/);
+  });
+
+  it('still describes "Text contains" as case-insensitive', () => {
+    // Pins the contrast the new copy draws. If this ever becomes
+    // case-sensitive, the regex field's help becomes a lie.
+    expect(field('textContains')?.help).toMatch(/case-insensitive/i);
+  });
+});
