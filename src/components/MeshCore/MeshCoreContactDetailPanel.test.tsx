@@ -437,6 +437,8 @@ describe('MeshCoreContactDetailPanel', () => {
       const PK2 = 'b'.repeat(64);
       const contactA: MeshCoreContact = { publicKey: PK, advType: 2 };
       const contactB: MeshCoreContact = { publicKey: PK2, advType: 2 };
+      // The Promise executor runs synchronously, so resolvePing is assigned
+      // before render() returns — safe to use below without an intermediate await.
       let resolvePing: (value: { ok: true; hopHash: string; rttMs: number; snrToTarget: number; snrFromTarget: number }) => void;
       const onPingZeroHop = vi.fn().mockImplementation(
         () => new Promise((resolve) => { resolvePing = resolve; }),
