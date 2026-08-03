@@ -116,10 +116,30 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   const { sourceId } = useSource();
   // Tracks the currently-selected contact synchronously (unlike the
   // `publicKey` prop, which an in-flight async closure captured at call
-  // time and won't see update) so a stale ping reply can detect that the
-  // user has since switched contacts.
+  // time and won't see update) so a stale reply can detect that the user
+  // has since switched contacts.
   const publicKeyRef = useRef(publicKey);
   publicKeyRef.current = publicKey;
+
+  /**
+   * Every action on this panel is "for the contact that was selected when the
+   * button was pressed". Call this first; the predicate it returns is false
+   * once the user has moved on, which is the signal to drop the reply on the
+   * floor rather than paint it onto whoever is selected now.
+   *
+   * The contact-change effect already clears these fields on switch, so the
+   * bug this guards is specifically a reply landing *after* that clear
+   * (#4514 for ping, #4517 for trace path, and the rest of the handlers here,
+   * which all had the identical shape).
+   *
+   * One guard used by every handler, rather than the same three-line check
+   * copy-pasted nine times — a check that exists in nine places is a check
+   * that will exist in eight after the next handler is added.
+   */
+  const beginContactAction = useCallback(() => {
+    const startedFor = publicKeyRef.current;
+    return () => startedFor === publicKeyRef.current;
+  }, []);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     return localStorage.getItem(COLLAPSED_KEY) === 'true';
   });
@@ -266,11 +286,13 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
 
   const handleTracePath = async () => {
     if (!onTracePath || tracing) return;
+    const isCurrent = beginContactAction();
     setTracing(true);
     setTraceError(null);
     setTraceResult(null);
     try {
       const result = await onTracePath(publicKey);
+      if (!isCurrent()) return;
       if (result) {
         setTraceResult(result);
       } else {
@@ -279,26 +301,21 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
         );
       }
     } finally {
-      setTracing(false);
+      if (isCurrent()) setTracing(false);
     }
   };
 
   const handlePingZeroHop = async () => {
     if (!onPingZeroHop || pinging) return;
-    const pingedKey = publicKey;
+    const isCurrent = beginContactAction();
     setPinging(true);
     setPingResult(null);
     try {
-      const result = await onPingZeroHop(pingedKey);
-      // The contact may have changed while the ping was in flight — don't
-      // paint a stale reply onto whichever contact is now selected.
-      if (pingedKey === publicKeyRef.current) {
-        setPingResult(result);
-      }
+      const result = await onPingZeroHop(publicKey);
+      if (!isCurrent()) return;
+      setPingResult(result);
     } finally {
-      if (pingedKey === publicKeyRef.current) {
-        setPinging(false);
-      }
+      if (isCurrent()) setPinging(false);
     }
   };
 
@@ -311,27 +328,30 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     if (typeof window !== 'undefined' && !window.confirm(confirmMessage)) {
       return;
     }
+    const isCurrent = beginContactAction();
     setResetting(true);
     setResetError(null);
     try {
       const ok = await onResetPath(publicKey);
+      if (!isCurrent()) return;
       if (!ok) {
         setResetError(
           t('meshcore.contact_details.reset_path_error', 'Reset path failed.'),
         );
       }
     } finally {
-      setResetting(false);
+      if (isCurrent()) setResetting(false);
     }
   };
 
   const handleDiscoverPath = async () => {
     if (!onDiscoverPath || discovering) return;
+    const isCurrent = beginContactAction();
     setDiscovering(true);
     try {
       await onDiscoverPath(publicKey);
     } finally {
-      setDiscovering(false);
+      if (isCurrent()) setDiscovering(false);
     }
   };
 
@@ -398,10 +418,12 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
       );
       return;
     }
+    const isCurrent = beginContactAction();
     setEditorSaving(true);
     setEditorError(null);
     try {
       const ok = await onSetOutPath(publicKey, joinPathHops(editorHops), editorHashBytes);
+      if (!isCurrent()) return;
       if (!ok) {
         setEditorError(
           t('meshcore.contact_details.edit_path_save_failed', 'Save failed.'),
@@ -410,7 +432,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
         setEditorOpen(false);
       }
     } finally {
-      setEditorSaving(false);
+      if (isCurrent()) setEditorSaving(false);
     }
   };
 
@@ -423,11 +445,13 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
     if (typeof window !== 'undefined' && !window.confirm(confirmMessage)) {
       return;
     }
+    const isCurrent = beginContactAction();
     setSharing(true);
     setShareError(null);
     setShareSuccess(false);
     try {
       const result = await onShareContact(publicKey);
+      if (!isCurrent()) return;
       if (result.ok) {
         setShareSuccess(true);
         window.setTimeout(() => setShareSuccess(false), 2200);
@@ -438,7 +462,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
         );
       }
     } finally {
-      setSharing(false);
+      if (isCurrent()) setSharing(false);
     }
   };
 
@@ -449,26 +473,33 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
       `Remove ${name} from the device's contact list? This cannot be undone.`,
     );
     if (typeof window !== 'undefined' && !window.confirm(confirmMessage)) return;
+    const isCurrent = beginContactAction();
     setRemoving(true);
     setRemoveError(null);
     try {
       const ok = await onRemoveContact(publicKey);
+      if (!isCurrent()) return;
       if (!ok) {
         setRemoveError(t('meshcore.contact_details.remove_contact_error', 'Remove contact failed.'));
       }
     } finally {
-      setRemoving(false);
+      if (isCurrent()) setRemoving(false);
     }
   };
 
   const handleExportContact = async () => {
     if (!onExportContact || exporting) return;
+    const isCurrent = beginContactAction();
     setExporting(true);
     setExportSuccess(false);
     try {
       const bytes = await onExportContact(publicKey);
       if (bytes) {
         const url = `meshcore://${bytes.map(b => b.toString(16).padStart(2, '0')).join('')}`;
+        // The copy itself still happens after a contact switch: the user asked
+        // to export *this* contact and is presumably about to paste it. Only
+        // the on-screen confirmation is suppressed, since that would otherwise
+        // appear on the newly-selected contact's card.
         try {
           await navigator.clipboard.writeText(url);
         } catch {
@@ -477,25 +508,29 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
             url,
           );
         }
-        setExportSuccess(true);
-        window.setTimeout(() => setExportSuccess(false), 2200);
+        if (isCurrent()) {
+          setExportSuccess(true);
+          window.setTimeout(() => setExportSuccess(false), 2200);
+        }
       }
     } finally {
-      setExporting(false);
+      if (isCurrent()) setExporting(false);
     }
   };
 
   const handleGetNeighbours = async () => {
     if (!onGetNeighbours || neighboursLoading) return;
+    const isCurrent = beginContactAction();
     setNeighboursLoading(true);
     setNeighboursData(null);
     try {
       const result = await onGetNeighbours(publicKey, { count: 20 });
+      if (!isCurrent()) return;
       if (result) {
         setNeighboursData({ ...result, fetchedAt: Date.now() });
       }
     } finally {
-      setNeighboursLoading(false);
+      if (isCurrent()) setNeighboursLoading(false);
     }
   };
 
