@@ -212,6 +212,22 @@ describe('messageMatchesFilter', () => {
     expect(messageMatchesFilter(msg(), { from: 999 })).toBe(false);
     expect(messageMatchesFilter(msg(), { channel: 2 })).toBe(false);
   });
+  it('matches regex case-SENSITIVELY, unlike textContains (#4507 follow-up)', () => {
+    // These two fields sit next to each other in the trigger form and disagree
+    // about casing. The regex field's help text now says so; this pins the
+    // behaviour that claim rests on.
+    expect(messageMatchesFilter(msg({ text: 'PING' }), { textContains: 'ping' })).toBe(true);
+    expect(messageMatchesFilter(msg({ text: 'PING' }), { regex: '^(test|ping)' })).toBe(false);
+  });
+
+  it('honours an inline (?i) flag on the trigger regex (#4507 follow-up)', () => {
+    // Only true because the engine compiles with RE2 (src/utils/safeRegex.ts);
+    // stock JS RegExp rejects inline flags outright. If the engine is ever
+    // swapped, this fails and the help text stops being true.
+    expect(messageMatchesFilter(msg({ text: 'PING' }), { regex: '(?i)^(test|ping)' })).toBe(true);
+    expect(messageMatchesFilter(msg({ text: 'pong' }), { regex: '(?i)^(test|ping)' })).toBe(false);
+  });
+
   it('matches textContains case-insensitively', () => {
     expect(messageMatchesFilter(msg({ text: 'PING me' }), { textContains: 'ping' })).toBe(true);
     expect(messageMatchesFilter(msg({ text: 'hello' }), { textContains: 'ping' })).toBe(false);
