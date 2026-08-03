@@ -30,6 +30,22 @@ import { MeshCoreContact, mapContactsToNodes } from '../../../utils/meshcoreHelp
 
 export type TelemetryMode = 'always' | 'device' | 'never';
 
+/**
+ * One node that answered a discovery sweep (#4516). Mirrors the server's
+ * `MeshCoreDiscoveredNode`. `snr` is what we measured on their response;
+ * `snrToNode` is what they measured on our request — the same "there and
+ * back" pair the zero-hop ping reports.
+ */
+export interface DiscoveredNode {
+  publicKey: string;
+  name: string | null;
+  advType: number | null;
+  snr: number | null;
+  snrToNode: number | null;
+  rssi: number | null;
+  isNew: boolean;
+}
+
 export interface TracePathResult {
   hops: { index: number; snr: number }[];
   lastSnr: number;
@@ -206,7 +222,7 @@ export interface MeshCoreActions {
    *  was accepted. */
   discoverContactPath: (publicKey: string) => Promise<boolean>;
   /** Active node discovery; resolves with responder counts, or null on error. */
-  discoverNodes: (mode: 'nearby' | 'repeaters' | 'sensors') => Promise<{ returned: number; newCount: number } | null>;
+  discoverNodes: (mode: 'nearby' | 'repeaters' | 'sensors') => Promise<{ returned: number; newCount: number; nodes: DiscoveredNode[] } | null>;
   /** Whether this node answers inbound discovery requests (is discoverable). */
   getDiscoverable: () => Promise<boolean>;
   /** Enable/disable answering inbound discovery requests. */
@@ -941,7 +957,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
 
   const discoverNodes = useCallback(async (
     mode: 'nearby' | 'repeaters' | 'sensors',
-  ): Promise<{ returned: number; newCount: number } | null> => {
+  ): Promise<{ returned: number; newCount: number; nodes: DiscoveredNode[] } | null> => {
     try {
       const response = await csrfFetch(`${mcPrefix}/discover`, {
         method: 'POST',
@@ -958,7 +974,13 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       if (data.returned > 0) {
         await refreshContacts();
       }
-      return { returned: data.returned ?? 0, newCount: data.new ?? 0 };
+      return {
+        returned: data.returned ?? 0,
+        newCount: data.new ?? 0,
+        // Older servers (or the region-discovery path) omit `nodes` entirely;
+        // an absent list must read as "no detail", not crash the view.
+        nodes: Array.isArray(data.nodes) ? (data.nodes as DiscoveredNode[]) : [],
+      };
     } catch (_err) {
       setError('Failed to discover nodes');
       return null;

@@ -190,6 +190,30 @@ export const MeshCoreDiscoverFilter = {
 
 export type MeshCoreDiscoverMode = 'nearby' | 'repeaters' | 'sensors';
 
+/**
+ * One node that answered a discovery sweep (#4516).
+ *
+ * The two SNRs are the "there and back" pair: `snr` is what our radio measured
+ * on the response, `snrToNode` is what the responder measured on our request.
+ * Both come from the same 0x8E frame — the reverse direction was simply never
+ * read before. Every field but the key is nullable because a discovery
+ * response carries only key + type + signal; the name is filled in afterwards
+ * from the contact store, and stays null for a node that has not advertised
+ * and does not answer an ANON_REQ OWNER.
+ */
+export interface MeshCoreDiscoveredNode {
+  publicKey: string;
+  name: string | null;
+  advType: number | null;
+  /** SNR our radio measured on the response — how well we hear them. */
+  snr: number | null;
+  /** SNR the responder measured on our request — how well they hear us. */
+  snrToNode: number | null;
+  rssi: number | null;
+  /** True when this key was not already in the contact store before the sweep. */
+  isNew: boolean;
+}
+
 /** Result of a share-contact request, carrying an actionable reason on failure. */
 export interface ShareContactResult {
   ok: boolean;
@@ -856,7 +880,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * events feed this so the awaiting call can report how many unique nodes
    * responded and how many were not previously known. Null when idle.
    */
-  private activeDiscovery: { seen: Set<string>; returned: number; newCount: number } | null = null;
+  private activeDiscovery: {
+    seen: Set<string>;
+    returned: number;
+    newCount: number;
+    /**
+     * Per-node detail for the current burst, in arrival order (#4516). The
+     * counts alone told a user "7 nodes, 2 new" without saying *which*, so the
+     * signal readings the responder just handed us were thrown away.
+     * Keyed by public key to de-duplicate repeat responses from one node.
+     */
+    nodes: Map<string, MeshCoreDiscoveredNode>;
+  } | null = null;
   private messages: MeshCoreMessage[] = [];
   private pendingCommands: Map<string, { resolve: (value: any) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout }> = new Map();
   private commandId: number = 0;
@@ -1952,6 +1987,18 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           this.activeDiscovery.seen.add(publicKey);
           this.activeDiscovery.returned++;
           if (isNew) this.activeDiscovery.newCount++;
+          // Name is resolved when the burst is reported, not here: a discovery
+          // response carries no name, and the ANON_REQ OWNER pass that fetches
+          // one runs after the collection window closes.
+          this.activeDiscovery.nodes.set(publicKey, {
+            publicKey,
+            name: null,
+            advType: data.adv_type ?? null,
+            snr: typeof data.snr === 'number' ? data.snr : null,
+            snrToNode: typeof data.snr_to_node === 'number' ? data.snr_to_node : null,
+            rssi: typeof data.rssi === 'number' ? data.rssi : null,
+            isNew,
+          });
         }
         logger.debug(
           `[MeshCore:${this.sourceId}] Discovered node ${publicKey.substring(0, 16)}… ` +
@@ -3743,8 +3790,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     filter: number,
     windowMs: number = 8000,
     fetchNames: boolean = false,
-  ): Promise<{ returned: number; newCount: number; seen: string[] }> {
-    const empty = { returned: 0, newCount: 0, seen: [] as string[] };
+  ): Promise<{
+    returned: number;
+    newCount: number;
+    seen: string[];
+    nodes: MeshCoreDiscoveredNode[];
+  }> {
+    const empty = { returned: 0, newCount: 0, seen: [] as string[], nodes: [] as MeshCoreDiscoveredNode[] };
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       logger.warn('[MeshCore] Node discovery requires Companion firmware');
       return empty;
@@ -3754,7 +3806,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     }
     // 32-bit correlation tag so responses can be matched to this request.
     const tag = Math.floor(Math.random() * 0xffffffff) >>> 0;
-    this.activeDiscovery = { seen: new Set(), returned: 0, newCount: 0 };
+    this.activeDiscovery = { seen: new Set(), returned: 0, newCount: 0, nodes: new Map() };
     try {
       const response = await this.sendBridgeCommand('discover_nodes', { filter, tag }, 15000);
       if (!response.success) {
@@ -3766,9 +3818,15 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         `collecting for ${windowMs}ms`,
       );
       await new Promise<void>(resolve => setTimeout(resolve, windowMs));
-      const result = {
+      const result: {
+        returned: number;
+        newCount: number;
+        seen: string[];
+        nodes: MeshCoreDiscoveredNode[];
+      } = {
         returned: this.activeDiscovery.returned,
         newCount: this.activeDiscovery.newCount,
+        nodes: [],
         // Snapshot the public keys that responded to this sweep (insertion
         // order = arrival order) so callers like discoverRegions() can target
         // only the current 0-hop set (#3743).
@@ -3794,6 +3852,19 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
           }
         }
       }
+
+      // Resolve names last: the burst itself carries none, and the ANON_REQ
+      // OWNER pass above is what fills them in (#4516). `nodes` may be empty
+      // while `returned` is non-zero only if a response arrived without a key,
+      // which the handler already rejects.
+      result.nodes = [...(this.activeDiscovery?.nodes.values() ?? [])].map(n => {
+        const contact = this.contacts.get(n.publicKey);
+        return {
+          ...n,
+          name: contact?.advName || contact?.name || null,
+          advType: n.advType ?? contact?.advType ?? null,
+        };
+      });
 
       return result;
     } catch (error) {
