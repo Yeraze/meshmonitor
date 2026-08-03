@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Filter, Trash2, ExternalLink, Download, Pause, Play } from 'lucide-react';
@@ -21,6 +21,7 @@ import {
   formatPacketTimestamp,
 } from '../utils/packetFormat';
 import RelayNodeModal from './RelayNodeModal';
+import SearchableSelect, { type SearchableSelectOption } from './common/SearchableSelect';
 import './PacketMonitorPanel.css';
 import { UiIcon } from './icons';
 
@@ -68,6 +69,48 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
 
   // Relay node filter options (distinct values from packet_log)
   const [relayNodeOptions, setRelayNodeOptions] = useState<RelayNodeOption[]>([]);
+
+  /**
+   * Filter options for the two node comboboxes (#4512). `keywords` carries the
+   * text a user is likely to type but which the label does not show — the hex
+   * id and short name — so `!a4c1382c` finds a node listed as "Base Station".
+   *
+   * Both sort on a copy: `relayNodeOptions` is state, and the previous
+   * `.sort()` on it mutated that array in place.
+   */
+  const fromNodeOptions = useMemo<SearchableSelectOption[]>(() => (
+    nodes
+      .filter(node => node.user?.id)
+      .map(node => {
+        const hex = `!${node.nodeNum.toString(16).padStart(8, '0')}`;
+        return {
+          value: String(node.nodeNum),
+          label: node.user?.longName || node.user?.shortName || hex,
+          keywords: [node.user?.shortName, node.user?.longName, node.user?.id, hex]
+            .filter(Boolean)
+            .join(' '),
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label))
+  ), [nodes]);
+
+  const relayFilterOptions = useMemo<SearchableSelectOption[]>(() => [
+    { value: 'unknown', label: t('packet_monitor.filter.unknown_hop') },
+    ...relayNodeOptions
+      .map(rn => {
+        const hex = `!..${rn.relay_node.toString(16).padStart(2, '0')}`;
+        const names = rn.matching_nodes.map(n => n.longName || n.shortName).filter(Boolean);
+        return {
+          value: String(rn.relay_node),
+          label: names.length > 0 ? names.join(', ') : hex,
+          // Always searchable by the relay byte, even when named nodes match it.
+          keywords: [hex, ...rn.matching_nodes.flatMap(n => [n.longName, n.shortName])]
+            .filter(Boolean)
+            .join(' '),
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label)),
+  ], [relayNodeOptions, t]);
 
   // Relay node modal state
   const [relayModalOpen, setRelayModalOpen] = useState(false);
@@ -472,55 +515,41 @@ const PacketMonitorPanel: React.FC<PacketMonitorPanelProps> = ({ onClose, onNode
               <option value="0">{t('packet_monitor.filter.transport_internal')}</option>
             </select>
 
-            <select
-              value={filters.from_node ?? ''}
-              onChange={e => setFilters({ ...filters, from_node: e.target.value ? parseInt(e.target.value) : undefined })}
+            {/* Type-to-filter rather than native selects: on a large mesh these
+                lists run to hundreds of entries, and a native select gives no
+                way to type-to-jump on mobile (#4512). */}
+            <SearchableSelect
+              value={filters.from_node !== undefined ? String(filters.from_node) : ''}
+              onChange={val => setFilters({ ...filters, from_node: val ? parseInt(val) : undefined })}
+              options={fromNodeOptions}
+              emptyLabel={t('packet_monitor.filter.all_nodes')}
+              placeholder={t('packet_monitor.filter.search_nodes', 'Search nodes…')}
               title={t('packet_monitor.filter.from_node_tooltip')}
-            >
-              <option value="">{t('packet_monitor.filter.all_nodes')}</option>
-              {nodes
-                .filter(node => node.user?.id)
-                .sort((a, b) => (a.user?.longName || '').localeCompare(b.user?.longName || ''))
-                .map(node => (
-                  <option key={node.nodeNum} value={node.nodeNum}>
-                    {node.user?.longName || node.user?.shortName || `!${node.nodeNum.toString(16).padStart(8, '0')}`}
-                  </option>
-                ))}
-            </select>
+              ariaLabel={t('packet_monitor.filter.from_node_tooltip')}
+              noMatchesText={t('packet_monitor.filter.no_matches', 'No matches')}
+              moreMatchesText={n => t('packet_monitor.filter.more_matches', {
+                count: n,
+                defaultValue: '…and {{count}} more — keep typing to narrow',
+              })}
+            />
 
-            <select
+            <SearchableSelect
               value={filters.relay_node !== undefined ? String(filters.relay_node) : ''}
-              onChange={e => {
-                const val = e.target.value;
-                setFilters({
-                  ...filters,
-                  relay_node: val === '' ? undefined : val === 'unknown' ? 'unknown' : parseInt(val),
-                });
-              }}
+              onChange={val => setFilters({
+                ...filters,
+                relay_node: val === '' ? undefined : val === 'unknown' ? 'unknown' : parseInt(val),
+              })}
+              options={relayFilterOptions}
+              emptyLabel={t('packet_monitor.filter.all_last_hops')}
+              placeholder={t('packet_monitor.filter.search_last_hops', 'Search last hops…')}
               title={t('packet_monitor.filter.last_hop_tooltip')}
-            >
-              <option value="">{t('packet_monitor.filter.all_last_hops')}</option>
-              <option value="unknown">{t('packet_monitor.filter.unknown_hop')}</option>
-              {relayNodeOptions
-                .sort((a, b) => {
-                  const aName = a.matching_nodes[0]?.longName || a.matching_nodes[0]?.shortName || '';
-                  const bName = b.matching_nodes[0]?.longName || b.matching_nodes[0]?.shortName || '';
-                  return aName.localeCompare(bName);
-                })
-                .map(rn => {
-                  const names = rn.matching_nodes
-                    .map(n => n.longName || n.shortName)
-                    .filter(Boolean);
-                  const label = names.length > 0
-                    ? names.join(', ')
-                    : `!..${rn.relay_node.toString(16).padStart(2, '0')}`;
-                  return (
-                    <option key={rn.relay_node} value={rn.relay_node}>
-                      {label}
-                    </option>
-                  );
-                })}
-            </select>
+              ariaLabel={t('packet_monitor.filter.last_hop_tooltip')}
+              noMatchesText={t('packet_monitor.filter.no_matches', 'No matches')}
+              moreMatchesText={n => t('packet_monitor.filter.more_matches', {
+                count: n,
+                defaultValue: '…and {{count}} more — keep typing to narrow',
+              })}
+            />
 
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
               <input
