@@ -3515,7 +3515,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                       <div style={{ fontWeight: '500', color: 'var(--ctp-text)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                         <span>{node.longName}</span>
                         {node.isLocal && <span style={{ color: 'var(--ctp-blue)', fontSize: '0.85rem' }}>({t('admin_commands.local_node_indicator')})</span>}
-                        {node.isFavorite && (
+                        {/* These badges come from OUR node's DB. While the admin
+                            target is a remote device they describe the wrong
+                            device, so hide them rather than mislabel remote
+                            state (#4511, the display bug behind #950). */}
+                        {!isManagingRemoteNode && node.isFavorite && (
                           <span style={{ 
                             backgroundColor: 'var(--ctp-yellow)', 
                             color: 'var(--ctp-base)', 
@@ -3527,9 +3531,9 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
                             <UiIcon name="favorite" /> {t('admin_commands.favorite')}
                           </span>
                         )}
-                        {node.isIgnored && (
-                          <span style={{ 
-                            backgroundColor: 'var(--ctp-red)', 
+                        {!isManagingRemoteNode && node.isIgnored && (
+                          <span style={{
+                            backgroundColor: 'var(--ctp-red)',
                             color: 'var(--ctp-base)', 
                             padding: '0.125rem 0.5rem', 
                             borderRadius: '4px', 
@@ -3555,22 +3559,38 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
           </div>
           {nodeManagementNodeNum !== null && (() => {
             const selectedNode = nodeOptions.find(n => n.nodeNum === nodeManagementNodeNum);
-            // When managing a remote node, only use remote status (don't fall back to local status)
-            // When managing local node, use local status from nodeOptions
-            const remoteStatus = isManagingRemoteNode ? remoteNodeStatus.get(nodeManagementNodeNum) : null;
-            const isFavorite = isManagingRemoteNode 
-              ? (remoteStatus?.isFavorite ?? false)  // Remote: only use remote status, default to false
-              : (selectedNode?.isFavorite ?? false);  // Local: use local status
-            const isIgnored = isManagingRemoteNode 
-              ? (remoteStatus?.isIgnored ?? false)    // Remote: only use remote status, default to false
-              : (selectedNode?.isIgnored ?? false);   // Local: use local status
+            // Favorite/ignored live in the *target* device's own NodeDB, and the
+            // admin protocol has no query that reads them back (#4511). So for a
+            // remote target the only honest source is what this session has sent
+            // (remoteNodeStatus, set optimistically by the handlers above) —
+            // and "unknown" until the user sends something. A local target reads
+            // straight from our own DB, which is authoritative.
+            const remoteStatus = isManagingRemoteNode ? remoteNodeStatus.get(nodeManagementNodeNum) : undefined;
+            const isFavorite = isManagingRemoteNode
+              ? (remoteStatus?.isFavorite ?? false)
+              : (selectedNode?.isFavorite ?? false);
+            const isIgnored = isManagingRemoteNode
+              ? (remoteStatus?.isIgnored ?? false)
+              : (selectedNode?.isIgnored ?? false);
+            const favoriteBadge = <span style={{ color: 'var(--ctp-yellow)' }}><UiIcon name="favorite" /> {t('admin_commands.favorite')}</span>;
+            const ignoredBadge = <span style={{ color: 'var(--ctp-red)', marginLeft: '0.5rem' }}><UiIcon name="blocked" /> {t('admin_commands.ignored')}</span>;
             return (
               <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: 'var(--ctp-subtext0)' }}>
                 {t('admin_commands.selected')}: {selectedNode?.longName || t('admin_commands.node_fallback', { nodeNum: nodeManagementNodeNum })}
-                {(isFavorite || isIgnored) && (
+                {isManagingRemoteNode ? (
                   <span style={{ marginLeft: '0.5rem' }}>
-                    {isFavorite && <span style={{ color: 'var(--ctp-yellow)' }}><UiIcon name="favorite" /> {t('admin_commands.favorite')}</span>}
-                    {isIgnored && <span style={{ color: 'var(--ctp-red)', marginLeft: '0.5rem' }}><UiIcon name="blocked" /> {t('admin_commands.ignored')}</span>}
+                    {isFavorite && favoriteBadge}
+                    {isIgnored && ignoredBadge}
+                    <span style={{ marginLeft: '0.5rem', fontStyle: 'italic' }}>
+                      {remoteStatus
+                        ? t('admin_commands.remote_status_from_session')
+                        : t('admin_commands.remote_status_unknown')}
+                    </span>
+                  </span>
+                ) : (isFavorite || isIgnored) && (
+                  <span style={{ marginLeft: '0.5rem' }}>
+                    {isFavorite && favoriteBadge}
+                    {isIgnored && ignoredBadge}
                   </span>
                 )}
               </div>
@@ -3680,6 +3700,11 @@ const AdminCommandsTab: React.FC<AdminCommandsTabProps> = ({ nodes, currentNodeI
             })()}
           </div>
         </div>
+        {isManagingRemoteNode && (
+          <p style={{ marginTop: '1rem', fontSize: '0.85rem', color: 'var(--ctp-subtext1)', fontStyle: 'italic' }}>
+            {t('admin_commands.remote_status_readback_note')}
+          </p>
+        )}
         <p style={{ marginTop: '1rem', fontSize: '0.85rem', color: 'var(--ctp-subtext1)', fontStyle: 'italic' }}>
           {t('admin_commands.firmware_requirement_note')}
         </p>

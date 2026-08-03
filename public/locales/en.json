@@ -3912,6 +3912,9 @@
   "admin_commands.already_ignored": "Already Ignored",
   "admin_commands.set_as_ignored": "Set as Ignored",
   "admin_commands.remove_ignored": "Remove Ignored",
+  "admin_commands.remote_status_unknown": "current status unknown",
+  "admin_commands.remote_status_from_session": "(from this session's commands, not a readback)",
+  "admin_commands.remote_status_readback_note": "Remote target: the admin protocol has no query that returns a node's favorite or ignored list, so MeshMonitor can set and clear these flags but cannot read the device's current state. Any status shown above comes from commands sent in this session.",
   "admin_commands.firmware_requirement_note": "Note: These commands require firmware version 2.7.0 or higher. The target device must be selected in the \"Target Node\" section above.",
 
   "admin_commands.failed_load_owner_info": "Failed to load owner info",
