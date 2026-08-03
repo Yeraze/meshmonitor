@@ -709,6 +709,16 @@ export class MeshCoreNativeBackend extends EventEmitter {
         const publicKeyBytes = keyBytes.slice(0, 32);
         const publicKey = bytesToHex(publicKeyBytes);
 
+        // The reverse direction was parsed-adjacent but never read: the frame
+        // header SNR above is how WE heard the responder, while
+        // control_payload[1] (frame[5]) is the SNR the RESPONDER measured on
+        // our request — i.e. how well it hears us. Surfacing both gives the
+        // same "there and back" pair the zero-hop ping already reports (#4516).
+        // Read only after the length check above, so a truncated frame can't
+        // produce a garbage number.
+        const snrToNode = (frame[5] << 24 >> 24) / 4;
+        const rssi = frame[2] << 24 >> 24;
+
         // Auto-add a GENUINELY NEW node to the DEVICE contact store so it's
         // actually message-able and survives the next refreshContacts() (a
         // MeshMonitor-only mirror would be clobbered by the device's list). A
@@ -740,6 +750,8 @@ export class MeshCoreNativeBackend extends EventEmitter {
           public_key: publicKey,
           adv_type: nodeType,
           snr,
+          snr_to_node: snrToNode,
+          rssi,
         });
       } catch (err) {
         logger.warn(`[MeshCore:native] Failed to parse 0x8E discover frame: ${(err as Error).message}`);

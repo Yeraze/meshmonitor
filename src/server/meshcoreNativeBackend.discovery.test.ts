@@ -159,6 +159,11 @@ describe('MeshCoreNativeBackend — node discovery', () => {
     expect(ev).toBeDefined();
     expect(ev.data.adv_type).toBe(AdvType.Repeater);
     expect(ev.data.snr).toBe(6.25); // 25 / 4
+    // #4516: the reverse direction. control_payload[1] (frame[5]) is the SNR
+    // the RESPONDER measured on our request; the header SNR above is what we
+    // measured on theirs. Both were in the frame all along — only ours was read.
+    expect(ev.data.snr_to_node).toBe(4); // 16 / 4
+    expect(ev.data.rssi).toBe(-42);
     expect(ev.data.public_key).toBe(
       Array.from(pubkey).map((b) => b.toString(16).padStart(2, '0')).join(''),
     );
@@ -172,6 +177,27 @@ describe('MeshCoreNativeBackend — node discovery', () => {
     expect(typeArg).toBe(AdvType.Repeater);
     expect(flagsArg).toBe(0);
     expect(outPathLenArg).toBe(0xff);
+  });
+
+  it('reads a NEGATIVE responder SNR as signed, not as a large positive (#4516)', async () => {
+    // A weak reverse link is the interesting case: -3.5 dB arrives as int8
+    // 0xF2 (-14, ×4-scaled). Reading it unsigned would report +60.5 dB, which
+    // would look like an excellent link rather than a marginal one.
+    const { backend, conn, events } = await connectedBackend();
+    const tag = 0x0f0f0f0f;
+    await backend.sendCommand('discover_nodes', { filter: 0x0c, tag });
+
+    const pubkey = Uint8Array.from(Array.from({ length: 32 }, (_, i) => i + 1));
+    conn.emit('rx', buildDiscoverResp({
+      snrX4: -20 & 0xff, rssi: -110 & 0xff, pathLen: 0xff,
+      nodeType: AdvType.Repeater, responderSnrX4: -14 & 0xff, tag, pubkey,
+    }));
+
+    const ev = events.find((e) => e.event_type === 'node_discovered');
+    expect(ev).toBeDefined();
+    expect(ev.data.snr).toBe(-5);          // -20 / 4
+    expect(ev.data.snr_to_node).toBe(-3.5); // -14 / 4
+    expect(ev.data.rssi).toBe(-110);
   });
 
   it('does NOT re-add (clobber) a node already in the device contact list (#3853-class)', async () => {
