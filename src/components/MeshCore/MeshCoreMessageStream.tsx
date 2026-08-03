@@ -210,12 +210,31 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   // i.e. when the hidden conversation pane is revealed. Nothing else changes at
   // that point (no new messages, no key change), so without this observer the
   // effect above has no trigger left to fire on.
+  //
+  // Read through a ref so the observer is created once per mount: putting the
+  // message count in the dep array would tear down and rebuild it on every
+  // incoming message.
+  const messageCountRef = useRef(messages.length);
+  messageCountRef.current = messages.length;
+
   useEffect(() => {
     const container = listRef.current;
     if (!container || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
       const state = entryScrollRef.current;
       if (state.done) return;
+      // The empty state ("No messages on this channel yet") is itself laid out,
+      // so the container has a real, non-zero height BEFORE any message
+      // arrives. Without this guard the observer fires on that empty list,
+      // scrolls to the bottom of ~700px of placeholder, trivially succeeds, and
+      // spends the one shot — so when the backlog lands there is nothing left
+      // to trigger on and the view sits at the top of a 16,000px history.
+      //
+      // Observed on the anonymous read-only view, where the absent compose box
+      // changes render timing enough to expose it: the list went 1 child ->
+      // 203 children in a single step, while an authenticated session rendered
+      // progressively and scrolled correctly by luck of ordering.
+      if (messageCountRef.current === 0) return;
       if (runEntryScroll(container)) state.done = true;
     });
     observer.observe(container);

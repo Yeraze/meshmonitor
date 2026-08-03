@@ -529,6 +529,44 @@ describe('MeshCoreMessageStream entry scroll on a hidden pane (#4473 follow-up)'
     expect(list.scrollTop).toBe(900);
   });
 
+  it('does not spend the entry scroll on an EMPTY list that has layout', () => {
+    // The empty state ("No messages on this channel yet") is itself laid out,
+    // so the container has a real height before any message arrives. The
+    // observer used to fire there, scroll to the bottom of the placeholder,
+    // trivially succeed, and burn the one shot — leaving the view at the top
+    // once the backlog landed.
+    //
+    // Seen on the anonymous read-only view, where the absent compose box shifts
+    // render timing enough to expose it (list went 1 child -> 203 in one step,
+    // scrollTop stuck at 0 over a 16,000px history).
+    const { container, rerender } = render(
+      <MeshCoreMessageStream
+        messages={[]}
+        conversationKey="channel-0"
+        onSend={async () => true}
+      />,
+    );
+    const list = container.querySelector('.meshcore-message-list') as HTMLElement;
+
+    // Empty, but laid out — this must NOT consume the shot.
+    scrollHeightValue = 741;
+    act(() => { resizeCallbacks.forEach(cb => cb()); });
+    expect(list.scrollTop).toBe(0);
+
+    // Backlog arrives and the list grows: the shot must still be available.
+    scrollHeightValue = 16148;
+    rerender(
+      <MeshCoreMessageStream
+        messages={msgs()}
+        conversationKey="channel-0"
+        onSend={async () => true}
+      />,
+    );
+    act(() => { resizeCallbacks.forEach(cb => cb()); });
+
+    expect(list.scrollTop).toBe(16148);
+  });
+
   it('does not re-scroll on later resizes once the entry scroll has run', () => {
     const { container } = render(
       <MeshCoreMessageStream
