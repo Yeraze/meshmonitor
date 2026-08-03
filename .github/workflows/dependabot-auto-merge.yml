@@ -27,7 +27,20 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           # "Quick Tests" retired with pr-tests.yml (its coverage was a strict
           # subset of "Test Suite"); "Documentation Build" moved into ci.yml.
-          check-regexp: '(Build Check|Test Suite|Security Scan|Docker Build|Documentation Build).*'
+          #
+          # `Analyze` (CodeQL) and `ClamAV Scan` were missing here, and that was
+          # not harmless: Dependabot's codeql-action bumps are *patch* updates,
+          # so they qualify for auto-merge, and CodeQL is the one thing they can
+          # break. #4519/#4521/#4531 each bumped a single codeql-action step,
+          # leaving codeql.yml pinning two different versions, and every one of
+          # them failed on Autobuild — while every check in this list stayed
+          # green. With auto-merge enabled they would have merged themselves and
+          # broken CodeQL on main.
+          #
+          # Deliberately NOT listed: `security/snyk` and `claude-review` (an
+          # outage or a non-deterministic review would stall every bump), and
+          # `Auto-merge Dependabot PRs` (this job — it would wait on itself).
+          check-regexp: '(Build Check|Test Suite|Security Scan|Docker Build|Documentation Build|ClamAV Scan|Analyze).*'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 30
           allowed-conclusions: success,skipped,neutral
