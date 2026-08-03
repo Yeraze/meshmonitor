@@ -16,7 +16,8 @@ import { logger } from '../../utils/logger.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiters.js';
 import { getMeshCoreCredentialStore } from '../services/meshcoreCredentialStore.js';
-import { managerFor, VALIDATION, isValidPublicKey, isValidMessage, auditMeshcoreEvent } from './meshcoreRouteShared.js';
+import { managerFor, VALIDATION, isValidPublicKey, isValidMessage, auditMeshcoreEvent,
+  requireMeshcoreChannelAccess, canAccessMeshcoreChannel } from './meshcoreRouteShared.js';
 
 const router = Router({ mergeParams: true });
 
@@ -60,7 +61,7 @@ router.get('/messages', optionalAuth(), requirePermission('messages', 'read', { 
  * #4460), mirroring the Meshtastic `/api/messages/channel/:channel` endpoint.
  * `hasMore` in the response tells the client whether an older page exists.
  */
-router.get('/messages/channel/:idx', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.get('/messages/channel/:idx', optionalAuth(), requireMeshcoreChannelAccess('read'), async (req: Request, res: Response) => {
   try {
     const idx = parseInt(req.params.idx, 10);
     if (isNaN(idx) || idx < 0) {
@@ -107,7 +108,7 @@ router.get('/messages/channel/:idx', optionalAuth(), requirePermission('messages
  * message timestamp per channel (`latestTimestamps`) for the unread indicator
  * (#3703) — channels with no messages are omitted from that map.
  */
-router.get('/messages/channel-counts', optionalAuth(), requirePermission('messages', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.get('/messages/channel-counts', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const raw = (req.query.channels as string | undefined) ?? '';
     const indices = raw
@@ -115,7 +116,26 @@ router.get('/messages/channel-counts', optionalAuth(), requirePermission('messag
       .map((s) => parseInt(s.trim(), 10))
       .filter((n) => Number.isInteger(n) && n >= 0);
     // De-dupe and cap to a sane number of channels per request.
-    const unique = Array.from(new Set(indices)).slice(0, 64);
+    const requested = Array.from(new Set(indices)).slice(0, 64);
+
+    // This endpoint takes a LIST, so a single all-or-nothing gate is wrong: a
+    // user who can read one channel would get a 403 for asking about several.
+    // Filter to the channels they may read and answer for those — an empty
+    // result leaks nothing.
+    const user = (req as Request & { user?: { id: number; isAdmin?: boolean } }).user;
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required', code: 'UNAUTHORIZED' });
+    }
+    const sourceId = typeof req.params.id === 'string' && req.params.id.length > 0
+      ? req.params.id
+      : undefined;
+    const unique = user.isAdmin
+      ? requested
+      : (await Promise.all(
+          requested.map(async (idx) =>
+            (await canAccessMeshcoreChannel(user.id, idx, 'read', sourceId)) ? idx : null),
+        )).filter((idx): idx is number => idx !== null);
+
     const manager = managerFor(req, res);
     const [counts, latestTimestamps] = unique.length > 0
       ? await Promise.all([
@@ -155,7 +175,7 @@ router.delete('/messages', requireAuth(), requirePermission('messages', 'write',
  * Clear every message on a channel index for this source (#3981). Registered
  * before /messages/:id so the two-segment path wins the route match.
  */
-router.delete('/messages/channel/:idx', requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.delete('/messages/channel/:idx', requireAuth(), requireMeshcoreChannelAccess('write'), async (req: Request, res: Response) => {
   try {
     const idx = parseInt(req.params.idx, 10);
     if (isNaN(idx) || idx < 0) {

@@ -293,3 +293,89 @@ export function isValidConnectionParams(params: {
   }
   return { valid: true };
 }
+
+/**
+ * Per-channel permission support for MeshCore channels (#4491 follow-up).
+ *
+ * MeshCore's channel routes originally gated on the global `messages`
+ * resource, while the channel *list* (`/api/channels/all`) gates on
+ * `channel_${idx}` like Meshtastic does. Granting a user "Public: Read" on a
+ * MeshCore source therefore made the channel appear with no messages in it —
+ * the list check passed and the message check did not.
+ *
+ * These helpers let the message routes honour `channel_${idx}` the way
+ * Meshtastic's `/api/messages/channel/:channel` does.
+ */
+
+/**
+ * RBAC resource for a channel slot, or null when the index has none.
+ * Only slots 0-7 exist as resources; MeshCore can carry higher indices, and
+ * those stay on the `messages` resource because there is nothing finer to
+ * check them against.
+ */
+export function channelResourceFor(idx: number): import('../../types/permission.js').ResourceType | null {
+  return Number.isInteger(idx) && idx >= 0 && idx <= 7
+    ? (`channel_${idx}` as import('../../types/permission.js').ResourceType)
+    : null;
+}
+
+/**
+ * True when `userId` may read/write MeshCore channel `idx` on `sourceId`.
+ *
+ * The check is deliberately a UNION of the per-channel resource and the legacy
+ * `messages` resource. Requiring `channel_${idx}` alone would be the tidier
+ * model, but it would silently revoke access from every existing install where
+ * a user has `messages` and no per-channel grant. Additive means the reported
+ * bug is fixed without anyone losing access they have today.
+ */
+export async function canAccessMeshcoreChannel(
+  userId: number,
+  idx: number,
+  action: 'read' | 'write',
+  sourceId?: string,
+): Promise<boolean> {
+  const resource = channelResourceFor(idx);
+  if (resource && await databaseService.checkPermissionAsync(userId, resource, action, sourceId)) {
+    return true;
+  }
+  return databaseService.checkPermissionAsync(userId, 'messages', action, sourceId);
+}
+
+/**
+ * Gate a `/messages/channel/:idx` route on that channel's permission.
+ *
+ * Must be mounted AFTER `optionalAuth()` (reads) or `requireAuth()` (writes) —
+ * both attach `req.user`, with `optionalAuth` falling back to the anonymous
+ * user, which is the case this whole helper exists to make work.
+ */
+export function requireMeshcoreChannelAccess(action: 'read' | 'write') {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const idx = parseInt(req.params.idx, 10);
+    if (!Number.isInteger(idx) || idx < 0) {
+      return res.status(400).json({ success: false, error: 'idx must be a non-negative integer' });
+    }
+
+    const user = (req as Request & { user?: { id: number; isAdmin?: boolean } }).user;
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required', code: 'UNAUTHORIZED' });
+    }
+    if (user.isAdmin) return next();
+
+    const sourceId = typeof req.params.id === 'string' && req.params.id.length > 0
+      ? req.params.id
+      : undefined;
+
+    if (await canAccessMeshcoreChannel(user.id, idx, action, sourceId)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      error: 'Insufficient permissions',
+      code: 'FORBIDDEN',
+      // Name the per-channel resource when one exists — that is the grant the
+      // operator actually needs to make, and reporting `messages` here is what
+      // made this confusing to debug in the first place.
+      required: { resource: channelResourceFor(idx) ?? 'messages', action },
+    });
+  };
+}
