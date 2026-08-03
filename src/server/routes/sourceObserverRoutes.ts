@@ -39,6 +39,32 @@ const router = Router({ mergeParams: true });
 const HEX_128 = /^[0-9a-fA-F]{128}$/;
 
 /**
+ * Hot-swap the running Analyzer Observer publisher (if any) so it re-mints
+ * against the signing key that was just stored/cleared, without requiring
+ * the operator to disable/re-enable the whole source (#4543). The publisher
+ * only mints a token at `start()` and on its renewal timer — a key written
+ * to the store after the publisher is already up (e.g. `configured: true,
+ * keyStored: false` at boot) is otherwise never picked up until the source
+ * itself restarts. Passes the source's own unchanged `observer` block
+ * through `reconfigureObserver` purely to trigger the stop/restart; this is
+ * a no-op on config, matching the hot-swap branch in `sourceRoutes.ts`'s PUT
+ * handler. Best-effort: a source with no registered manager (or a manager
+ * type without `reconfigureObserver`) just resolves to `false` — the key is
+ * still stored either way.
+ */
+async function refreshObserverPublisher(source: Source): Promise<void> {
+  try {
+    const cfg = (source.config as Record<string, unknown> | undefined) ?? {};
+    await sourceManagerRegistry.reconfigureObserver(
+      source.id,
+      cfg.observer as Record<string, unknown> | undefined,
+    );
+  } catch (error) {
+    logger.warn(`Could not refresh Analyzer Observer publisher for source ${source.id}:`, error);
+  }
+}
+
+/**
  * Shared preamble for every route: look up the source and reject anything
  * that isn't a `meshcore` source. Writes the error response itself and
  * returns `null` so callers can `if (!source) return;`.
@@ -126,6 +152,7 @@ router.post(
 
       await store.store(source.id, hex, publicKey, 'device');
       auditMeshcoreEvent(req, 'meshcore_observer_key_import', 'configuration', { sourceId: source.id });
+      await refreshObserverPublisher(source);
       const status = await store.status(source.id);
       ok(res, status);
     } catch (error) {
@@ -175,6 +202,7 @@ router.put(
       const publicKey = await deriveObserverPublicKey(trimmed);
       await store.store(source.id, trimmed, publicKey, 'manual');
       auditMeshcoreEvent(req, 'meshcore_observer_key_set', 'configuration', { sourceId: source.id });
+      await refreshObserverPublisher(source);
       const status = await store.status(source.id);
       ok(res, status);
     } catch (error) {
@@ -199,6 +227,7 @@ router.delete(
       const store = getMeshCoreObserverKeyStore();
       await store.clear(source.id);
       auditMeshcoreEvent(req, 'meshcore_observer_key_clear', 'configuration', { sourceId: source.id });
+      await refreshObserverPublisher(source);
       const status = await store.status(source.id);
       ok(res, status);
     } catch (error) {

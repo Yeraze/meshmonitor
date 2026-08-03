@@ -35,6 +35,7 @@ const UNCLAMPED_PRIV = '00'.repeat(31) + 'ff' + '00'.repeat(32);
 
 const mockSourceRegistry = vi.hoisted(() => ({
   getManager: vi.fn(),
+  reconfigureObserver: vi.fn(),
 }));
 vi.mock('../sourceManagerRegistry.js', () => ({
   sourceManagerRegistry: mockSourceRegistry,
@@ -82,6 +83,8 @@ describe('sourceObserverRoutes', () => {
 
     mockSourceRegistry.getManager.mockReset();
     mockSourceRegistry.getManager.mockReturnValue(undefined);
+    mockSourceRegistry.reconfigureObserver.mockReset();
+    mockSourceRegistry.reconfigureObserver.mockResolvedValue(true);
     setMeshCoreObserverKeyStoreForTesting(new MeshCoreObserverKeyStore('test-secret', true));
   });
 
@@ -217,6 +220,47 @@ describe('sourceObserverRoutes', () => {
 
     const getRes = await agent.get(`/api/sources/${SOURCE_ID}/observer/key`);
     expect(getRes.body.data.stored).toBe(false);
+  });
+
+  // ── Publisher hot-swap on key change (#4543) ────────────────────────────
+
+  it('PUT /key hot-swaps the running observer publisher so it picks up the new key', async () => {
+    const agent = await agentFor();
+    const res = await agent.put(`/api/sources/${SOURCE_ID}/observer/key`).send({ privateKey: PRIV });
+    expect(res.status).toBe(200);
+    expect(mockSourceRegistry.reconfigureObserver).toHaveBeenCalledTimes(1);
+    expect(mockSourceRegistry.reconfigureObserver).toHaveBeenCalledWith(SOURCE_ID, undefined);
+  });
+
+  it('POST /key/import hot-swaps the running observer publisher so it picks up the new key', async () => {
+    mockSourceRegistry.getManager.mockReturnValue({
+      sourceType: 'meshcore',
+      exportPrivateKey: vi.fn().mockResolvedValue(PRIV),
+    });
+    const agent = await agentFor();
+    const res = await agent.post(`/api/sources/${SOURCE_ID}/observer/key/import`);
+    expect(res.status).toBe(200);
+    expect(mockSourceRegistry.reconfigureObserver).toHaveBeenCalledTimes(1);
+    expect(mockSourceRegistry.reconfigureObserver).toHaveBeenCalledWith(SOURCE_ID, undefined);
+  });
+
+  it('DELETE /key hot-swaps the running observer publisher after clearing the key', async () => {
+    const agent = await agentFor();
+    await agent.put(`/api/sources/${SOURCE_ID}/observer/key`).send({ privateKey: PRIV });
+    mockSourceRegistry.reconfigureObserver.mockClear();
+
+    const res = await agent.delete(`/api/sources/${SOURCE_ID}/observer/key`);
+    expect(res.status).toBe(200);
+    expect(mockSourceRegistry.reconfigureObserver).toHaveBeenCalledTimes(1);
+    expect(mockSourceRegistry.reconfigureObserver).toHaveBeenCalledWith(SOURCE_ID, undefined);
+  });
+
+  it('a failing reconfigureObserver does not break the key-store response (best-effort)', async () => {
+    mockSourceRegistry.reconfigureObserver.mockRejectedValueOnce(new Error('boom'));
+    const agent = await agentFor();
+    const res = await agent.put(`/api/sources/${SOURCE_ID}/observer/key`).send({ privateKey: PRIV });
+    expect(res.status).toBe(200);
+    expect(res.body.data.stored).toBe(true);
   });
 
   it('non-meshcore source -> 400 INVALID_PARAMETER on every route', async () => {
