@@ -264,8 +264,10 @@ router.post(
         : MeshCoreDiscoverFilter.NEARBY;
       // fetchNames=true: actively pull each discovered repeater/room-server's
       // name via ANON_REQ OWNER so the result is named within seconds (#3820).
-      const { returned, newCount } = await managerFor(req, res).discoverNodes(filter, 8000, true);
-      res.json({ success: true, returned, new: newCount });
+      const { returned, newCount, nodes } = await managerFor(req, res).discoverNodes(filter, 8000, true);
+      // `nodes` is the per-responder detail (#4516). The counts stay for
+      // backwards compatibility with any client reading the old shape.
+      res.json({ success: true, returned, new: newCount, nodes });
     } catch (error) {
       logger.error('[API] Error discovering nodes:', error);
       res.status(500).json({ success: false, error: 'Failed to discover nodes' });

@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ConnectionStatus, MeshCoreActions, SavedRegion } from './hooks/useMeshCore';
+import { ConnectionStatus, DiscoveredNode, MeshCoreActions, SavedRegion } from './hooks/useMeshCore';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { UiIcon } from '../icons';
@@ -36,6 +36,13 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   // Which discovery (if any) is currently running, so we can disable both
   // buttons and label the active one "Discovering…".
   const [discovering, setDiscovering] = useState<'nearby' | 'repeaters' | 'sensors' | null>(null);
+  /**
+   * Who answered the last sweep (#4516). Previously the run reported only
+   * "N returned (M new)", which told a user nothing about *which* nodes are in
+   * range. Reset at the start of every run, so the list always describes the
+   * most recent sweep rather than accumulating across them.
+   */
+  const [discoveredNodes, setDiscoveredNodes] = useState<DiscoveredNode[] | null>(null);
   // "Be discoverable" toggle — whether we answer inbound discovery requests.
   const [discoverable, setDiscoverableState] = useState(false);
   const {
@@ -182,9 +189,11 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
 
   const handleDiscover = async (mode: 'nearby' | 'repeaters' | 'sensors') => {
     setDiscovering(mode);
+    setDiscoveredNodes(null);
     try {
       const result = await actions.discoverNodes(mode);
       if (result) {
+        setDiscoveredNodes(result.nodes);
         showToast(
           t('meshcore.discover.result', '{{returned}} contacts returned ({{new}} new)', {
             returned: result.returned,
@@ -295,6 +304,65 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
                 : t('meshcore.discover.sensors', 'Discover Sensors')}
             </button>
           </div>
+
+          {/* Who answered the last sweep (#4516). A discovery response carries
+              only key + type + signal, so a name is present only for a node
+              that has advertised or answered the ANON_REQ OWNER pass. */}
+          {discoveredNodes && discoveredNodes.length > 0 && (
+            <div style={{ marginTop: '0.75rem', overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9em' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--ctp-surface1)', textAlign: 'left' }}>
+                    <th style={{ padding: '0.25rem 0.5rem' }}>
+                      {t('meshcore.discover.col_node', 'Node')}
+                    </th>
+                    <th style={{ padding: '0.25rem 0.5rem', fontFamily: 'var(--font-mono, monospace)' }}>
+                      {t('meshcore.discover.col_key', 'Key')}
+                    </th>
+                    <th style={{ padding: '0.25rem 0.5rem', textAlign: 'right' }}>
+                      {t('meshcore.contact_details.ping_zero_hop_snr_in', 'SNR here')}
+                    </th>
+                    <th style={{ padding: '0.25rem 0.5rem', textAlign: 'right' }}>
+                      {t('meshcore.contact_details.ping_zero_hop_snr_out', 'SNR at node')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {discoveredNodes.map((node) => (
+                    <tr key={node.publicKey} style={{ borderBottom: '1px solid var(--ctp-surface0)' }}>
+                      <td style={{ padding: '0.25rem 0.5rem' }}>
+                        {node.name || (
+                          <span style={{ opacity: 0.6 }}>
+                            {t('meshcore.discover.unnamed', 'Unknown')}
+                          </span>
+                        )}
+                        {node.isNew && (
+                          <span
+                            style={{
+                              marginLeft: '0.4rem', padding: '0 0.3rem', borderRadius: 4,
+                              fontSize: '0.75em', fontWeight: 600,
+                              color: 'var(--ctp-base)', background: 'var(--ctp-green)',
+                            }}
+                          >
+                            {t('meshcore.discover.new_badge', 'NEW')}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '0.25rem 0.5rem', fontFamily: 'var(--font-mono, monospace)' }}>
+                        {node.publicKey.substring(0, 12)}…
+                      </td>
+                      <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right' }}>
+                        {node.snr !== null ? `${node.snr.toFixed(2)} dB` : '—'}
+                      </td>
+                      <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right' }}>
+                        {node.snrToNode !== null ? `${node.snrToNode.toFixed(2)} dB` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem' }}>
             <input
