@@ -395,5 +395,86 @@ describe('MeshCoreContactDetailPanel', () => {
         expect(status).not.toContain('SNR at node');
       });
     });
+
+    it('clears a stale ping result when the selected contact changes (#4514)', async () => {
+      const PK2 = 'b'.repeat(64);
+      const contactA: MeshCoreContact = { publicKey: PK, advType: 2 };
+      const contactB: MeshCoreContact = { publicKey: PK2, advType: 2 };
+      const onPingZeroHop = vi.fn().mockResolvedValue({
+        ok: true, hopHash: 'aa', rttMs: 100, snrToTarget: 5, snrFromTarget: 2,
+      });
+
+      const { rerender } = render(
+        <MeshCoreContactDetailPanel
+          contact={contactA}
+          publicKey={PK}
+          onPingZeroHop={onPingZeroHop}
+          canWriteNodes
+          isCompanion
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: PING_LABEL }));
+      await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Direct — in range'));
+
+      // Switch to a different contact — the previous ping result must not
+      // bleed into the new contact's card.
+      rerender(
+        <MeshCoreContactDetailPanel
+          contact={contactB}
+          publicKey={PK2}
+          onPingZeroHop={onPingZeroHop}
+          canWriteNodes
+          isCompanion
+        />,
+      );
+
+      expect(screen.queryByText('Zero-Hop Ping')).toBeNull();
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('ignores an in-flight ping reply for a contact the user has since navigated away from (#4514)', async () => {
+      const PK2 = 'b'.repeat(64);
+      const contactA: MeshCoreContact = { publicKey: PK, advType: 2 };
+      const contactB: MeshCoreContact = { publicKey: PK2, advType: 2 };
+      let resolvePing: (value: { ok: true; hopHash: string; rttMs: number; snrToTarget: number; snrFromTarget: number }) => void;
+      const onPingZeroHop = vi.fn().mockImplementation(
+        () => new Promise((resolve) => { resolvePing = resolve; }),
+      );
+
+      const { rerender } = render(
+        <MeshCoreContactDetailPanel
+          contact={contactA}
+          publicKey={PK}
+          onPingZeroHop={onPingZeroHop}
+          canWriteNodes
+          isCompanion
+        />,
+      );
+
+      // Kick off a ping for contact A, then navigate away before it resolves.
+      fireEvent.click(screen.getByRole('button', { name: PING_LABEL }));
+
+      rerender(
+        <MeshCoreContactDetailPanel
+          contact={contactB}
+          publicKey={PK2}
+          onPingZeroHop={onPingZeroHop}
+          canWriteNodes
+          isCompanion
+        />,
+      );
+
+      // Contact A's ping reply now arrives late — it must not paint onto
+      // contact B's card.
+      resolvePing!({ ok: true, hopHash: 'aa', rttMs: 100, snrToTarget: 5, snrFromTarget: 2 });
+
+      await waitFor(() => expect(onPingZeroHop).toHaveBeenCalledWith(PK));
+      // Give the resolved promise's .then a tick to run.
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(screen.queryByText('Zero-Hop Ping')).toBeNull();
+      expect(screen.queryByRole('status')).toBeNull();
+    });
   });
 });
