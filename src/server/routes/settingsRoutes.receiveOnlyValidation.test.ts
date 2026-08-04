@@ -72,7 +72,7 @@ describe('POST /api/settings — meshcoreReceiveOnly strict-boolean validation (
     [1, 1],
     [null, null],
     [{}, {}],
-  ])('rejects meshcoreReceiveOnly=%p with 400 INVALID_BOOLEAN_SETTING, writes nothing, and never fires the refresh callback', async (value) => {
+  ])('rejects meshcoreReceiveOnly=%p with 400 INVALID_BOOLEAN_SETTING, writes nothing, and never fires the refresh callback', async (value, _sameValue) => {
     const agent = await harness.loginAs(harness.admin);
 
     // Prove "nothing written" against a real prior value, not just absence.

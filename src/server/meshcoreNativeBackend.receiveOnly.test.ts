@@ -36,11 +36,24 @@ const TxtTypes = { Plain: 0, CliData: 1, SignedPlain: 2 };
 class MockConnection extends EventEmitter {
   sentFrames: Uint8Array[] = [];
   addOrUpdateContact = vi.fn().mockResolvedValue(undefined);
-  getContacts = vi.fn<[], Promise<any[]>>().mockResolvedValue([]);
+  getContacts = vi.fn<() => Promise<any[]>>().mockResolvedValue([]);
   async connect() { /* no-op */ }
   async close() { /* no-op */ }
   async getSelfInfo() {
     return { type: AdvType.Chat, publicKey: Uint8Array.from(Array(32).fill(0)), name: 'TestNode' };
+  }
+  /**
+   * Node's `EventEmitter` typings constrain event names to `string | symbol`,
+   * but the real meshcore.js connection (untyped in production code) emits
+   * and listens on the numeric ResponseCodes/PushCodes constants directly.
+   * Numeric event names behave identically to their string form at runtime
+   * (JS coerces numeric object keys to strings internally), so this override
+   * widens just the event-name parameter to `PropertyKey` to match production
+   * usage — the cast on the delegating call reflects that equivalence rather
+   * than suppressing a real type mismatch.
+   */
+  emit(eventName: PropertyKey, ...args: unknown[]): boolean {
+    return super.emit(eventName as string | symbol, ...args);
   }
   sendToRadioFrame(frame: Uint8Array) {
     this.sentFrames.push(frame);
