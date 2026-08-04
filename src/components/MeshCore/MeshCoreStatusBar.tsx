@@ -10,6 +10,10 @@ interface MeshCoreStatusBarProps {
   /** When true, the parent renders the connection chip in its own header
    *  and we suppress the duplicate "Connected to X" text + dot here. */
   hideConnectionText?: boolean;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP3 wires the actual gating (Send advert
+   *  disabled + tooltip, receive-only status chip). */
+  receiveOnly?: boolean;
 }
 
 export const MeshCoreStatusBar: React.FC<MeshCoreStatusBarProps> = ({
@@ -18,7 +22,10 @@ export const MeshCoreStatusBar: React.FC<MeshCoreStatusBarProps> = ({
   onOpenSettings,
   actions,
   hideConnectionText,
+  receiveOnly = false,
 }) => {
+  // Not yet consumed here — WP3 wires the Send-advert gate + status chip.
+  void receiveOnly;
   const { t } = useTranslation();
   const connected = status?.connected ?? false;
   const localName = status?.localNode?.name || t('meshcore.unknown', 'Unknown');

@@ -62,6 +62,11 @@ interface MeshCoreLocalConsoleProps {
    *  when false — sending to a disconnected source would just timeout. */
   connected: boolean;
   actions: Pick<MeshCoreActions, 'sendLocalCliCommand'>;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP3 wires the actual gating — the
+   *  console itself stays enabled (local serial CLI is allowed), only the
+   *  synthetic `advert` quick action is disabled. */
+  receiveOnly?: boolean;
 }
 
 export const MeshCoreLocalConsole: React.FC<MeshCoreLocalConsoleProps> = ({
@@ -70,7 +75,10 @@ export const MeshCoreLocalConsole: React.FC<MeshCoreLocalConsoleProps> = ({
   deviceType,
   connected,
   actions,
+  receiveOnly = false,
 }) => {
+  // Not yet consumed here — WP3 wires the `advert` quick-action gating.
+  void receiveOnly;
   const { t } = useTranslation();
 
   const targetName = deviceName || t('meshcore.localConsole.default_target', 'this device');

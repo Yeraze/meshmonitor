@@ -45,6 +45,10 @@ interface MeshCoreDirectMessagesViewProps {
   sourceId?: string;
   /** When set, auto-selects this contact on mount or when the value changes. */
   initialSelectedContact?: string | null;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Threaded to MeshCoreContactDetailPanel and
+   *  MeshCoreNodeTelemetryConfig; WP3 wires the DM send-box gate itself. */
+  receiveOnly?: boolean;
 }
 
 /** True when the publicKey is a real 64-char hex (i.e. not a synthetic / prefix key). */
@@ -74,6 +78,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
   baseUrl,
   sourceId,
   initialSelectedContact,
+  receiveOnly = false,
 }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
@@ -548,6 +553,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   forgetRemoteCredential: actions.forgetRemoteCredential,
                   getRemoteStatus: actions.getRemoteStatus,
                 }}
+                receiveOnly={receiveOnly}
               />
               {!!sourceId && typeof baseUrl === 'string' && isRealNodeKey(selected) && (
                 <>
@@ -555,6 +561,7 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                     baseUrl={baseUrl}
                     sourceId={sourceId}
                     publicKey={selected}
+                    receiveOnly={receiveOnly}
                   />
                   <TelemetryGraphs
                     nodeId={selected}

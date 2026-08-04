@@ -37,6 +37,11 @@ interface MeshCoreChannelsViewProps {
   baseUrl: string;
   sourceId: string;
   onNodeNameClick?: (publicKey: string) => void;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP3 wires the actual gating (send box
+   *  disabled + tooltip, and the region-discovery mount effect's silent
+   *  skip). */
+  receiveOnly?: boolean;
 }
 
 interface ChannelRow {
@@ -97,7 +102,11 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   baseUrl,
   sourceId,
   onNodeNameClick,
+  receiveOnly = false,
 }) => {
+  // Not yet consumed here — WP3 wires the send-box gate + discover-regions
+  // mount-effect silent skip.
+  void receiveOnly;
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { hasPermission } = useAuth();

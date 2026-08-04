@@ -23,12 +23,19 @@ interface Props {
   publicKey: string;
   /** Pulled from the same useMeshCore actions bundle the console uses. */
   fetchStatus: MeshCoreActions['getRemoteStatus'];
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP3 wires the actual gating (refresh /
+   *  empty-state buttons disabled, and the auto-load silently skipped). */
+  receiveOnly?: boolean;
 }
 
 export const MeshCoreRemoteStatsPanel: React.FC<Props> = ({
   publicKey,
   fetchStatus,
+  receiveOnly = false,
 }) => {
+  // Not yet consumed here — WP3 wires the button gating + auto-load silent skip.
+  void receiveOnly;
   const { t } = useTranslation();
   const [status, setStatus] = useState<MeshCoreRemoteStatus | null>(null);
   const [loading, setLoading] = useState(false);

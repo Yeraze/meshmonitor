@@ -10,6 +10,10 @@ import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 interface MeshCoreTimerTriggersSectionProps {
   baseUrl: string;
   sourceId: string;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP4 renders the paused note and gates
+   *  "Run now". */
+  receiveOnly?: boolean;
 }
 
 /**
@@ -79,7 +83,9 @@ const triggersEqual = (a: MeshCoreTimerTrigger[], b: MeshCoreTimerTrigger[]): bo
   return JSON.stringify(a) === JSON.stringify(b);
 };
 
-export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSectionProps> = ({ baseUrl, sourceId }) => {
+export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSectionProps> = ({ baseUrl, sourceId, receiveOnly = false }) => {
+  // Not yet consumed here — WP4 renders the paused note + Run now gating.
+  void receiveOnly;
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();

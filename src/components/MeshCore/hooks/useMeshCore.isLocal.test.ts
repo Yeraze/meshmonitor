@@ -30,6 +30,12 @@ vi.mock('../../../contexts/MapContext', () => ({
   useMapContext: () => ({ setMeshCoreNodes: vi.fn() }),
 }));
 
+// useMeshCore now calls useToast() (#4547 Phase 2 WP1, reportTxDisabled) —
+// mock it so this hook-only render doesn't need a real ToastProvider ancestor.
+vi.mock('../../ToastContainer', () => ({
+  useToast: () => ({ showToast: vi.fn() }),
+}));
+
 /** Minimal fake Socket.io client: records handlers by event name and lets
  *  the test fire them directly, exactly like a real push event arriving. */
 function createFakeSocket() {

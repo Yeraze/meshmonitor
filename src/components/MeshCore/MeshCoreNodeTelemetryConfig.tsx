@@ -22,6 +22,11 @@ interface MeshCoreNodeTelemetryConfigProps {
   sourceId: string;
   /** 64-char hex pubkey of the remote MeshCore node. */
   publicKey: string;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP3 wires the actual gating (Poll
+   *  status / Poll LPP disabled; the enable checkbox and interval input
+   *  stay editable per interview decision 5). */
+  receiveOnly?: boolean;
 }
 
 interface TelemetryConfigState {
@@ -43,7 +48,10 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
   baseUrl,
   sourceId,
   publicKey,
+  receiveOnly = false,
 }) => {
+  // Not yet consumed here — WP3 wires the poll-button gating.
+  void receiveOnly;
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { hasPermission } = useAuth();

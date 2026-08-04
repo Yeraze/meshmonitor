@@ -17,9 +17,12 @@
  * gates that should suppress polling entirely.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../../hooks/useCsrfFetch';
 import { useMapContext } from '../../../contexts/MapContext';
 import { useWebSocketContext } from '../../../contexts/WebSocketContext';
+import { useToast } from '../../ToastContainer';
+import { isTxDisabledBody } from '../../../utils/txDisabled';
 import type {
   MeshCoreMessageEvent,
   MeshCoreContactUpdateEvent,
@@ -459,6 +462,29 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
   const seqCursorRef = useRef<number>(0);
   const localNodeRef = useRef<MeshCoreNode | null>(null);
   const contactsRef = useRef<Map<string, MeshCoreContact>>(new Map());
+
+  const { t } = useTranslation();
+  const { showToast } = useToast();
+  /**
+   * True when the response was the Phase 1 409 (`TX_DISABLED`) raised by
+   * MeshCore strict receive-only mode (#4547 Phase 1). Also raises the
+   * warning toast as a side effect. Every TX-primitive action below calls
+   * this in its failure branch, before the existing `setError(...)`, and
+   * skips `setError` when it returns true — the toast is the user-facing
+   * signal for this specific failure, so a red inline error would double up
+   * with it. Automatic/background call sites (not wired through this
+   * component) must guard with `receiveOnly` BEFORE ever calling the action,
+   * so this helper is never reached for those paths and never raises an
+   * unsolicited toast (§3.4a of the Phase 2 spec).
+   */
+  const reportTxDisabled = useCallback((status: number, body: unknown): boolean => {
+    if (!isTxDisabledBody(status, body)) return false;
+    showToast(
+      t('meshcore.receive_only.blocked_toast', 'Receive-only mode is on for this MeshCore source — nothing was sent.'),
+      'warning',
+    );
+    return true;
+  }, [showToast, t]);
 
   /**
    * Belt-and-braces re-stamp of `isLocal` (#4438). The server already sets
@@ -916,6 +942,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       );
       const data = await response.json();
       if (!data.success) {
+        if (reportTxDisabled(response.status, data)) return false;
         setError(data.error || 'Failed to reset path');
         return false;
       }
@@ -935,7 +962,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setError('Failed to reset path');
       return false;
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   const discoverContactPath = useCallback(async (publicKey: string): Promise<boolean> => {
     try {
@@ -945,6 +972,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       );
       const data = await response.json();
       if (!data.success) {
+        if (reportTxDisabled(response.status, data)) return false;
         setError(data.error || 'Failed to discover path');
         return false;
       }
@@ -953,7 +981,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setError('Failed to discover path');
       return false;
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   const discoverNodes = useCallback(async (
     mode: 'nearby' | 'repeaters' | 'sensors',
@@ -966,6 +994,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       });
       const data = await response.json();
       if (!data.success) {
+        if (reportTxDisabled(response.status, data)) return null;
         setError(data.error || 'Failed to discover nodes');
         return null;
       }
@@ -985,7 +1014,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setError('Failed to discover nodes');
       return null;
     }
-  }, [mcPrefix, csrfFetch, refreshContacts]);
+  }, [mcPrefix, csrfFetch, refreshContacts, reportTxDisabled]);
 
   const getDiscoverable = useCallback(async (): Promise<boolean> => {
     try {
@@ -1050,6 +1079,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       const response = await csrfFetch(`${mcPrefix}/regions/discover`, { method: 'POST' });
       const data = await response.json();
       if (!data.success) {
+        if (reportTxDisabled(response.status, data)) return null;
         setError(data.error || 'Failed to discover regions');
         return null;
       }
@@ -1062,7 +1092,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setError('Failed to discover regions');
       return null;
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   /**
    * Saved-regions catalog for the scope-override datalist.
@@ -1133,6 +1163,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         body: JSON.stringify({ publicKey, password, rememberPassword }),
       });
       const data = await response.json();
+      reportTxDisabled(response.status, data);
       return {
         success: !!data.success,
         persisted: data.persisted,
@@ -1143,7 +1174,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Network error' };
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   const sendCliCommand = useCallback(async (
     publicKey: string,
@@ -1165,11 +1196,12 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       if (data.success && data.data) {
         return { ok: true as const, reply: data.data.reply, elapsedMs: data.data.elapsedMs };
       }
+      reportTxDisabled(response.status, data);
       return { ok: false as const, error: data.error || 'Unknown error', code: data.code, status: response.status };
     } catch (err) {
       return { ok: false as const, error: err instanceof Error ? err.message : 'Network error' };
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   const getRemoteAdminCapability = useCallback(async () => {
     try {
@@ -1200,11 +1232,12 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       if (data.success && data.data) {
         return { ok: true as const, reply: data.data.reply, elapsedMs: data.data.elapsedMs };
       }
+      reportTxDisabled(response.status, data);
       return { ok: false as const, error: data.error || 'Unknown error', code: data.code, status: response.status };
     } catch (err) {
       return { ok: false as const, error: err instanceof Error ? err.message : 'Network error' };
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   const loginRemoteWithSaved = useCallback(async (publicKey: string) => {
     try {
@@ -1214,6 +1247,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         body: JSON.stringify({ publicKey }),
       });
       const data = await response.json();
+      reportTxDisabled(response.status, data);
       return {
         success: !!data.success,
         usedStored: data.usedStored,
@@ -1223,7 +1257,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Network error' };
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   const forgetRemoteCredential = useCallback(async (publicKey: string): Promise<boolean> => {
     try {
@@ -1245,11 +1279,12 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       );
       const data = await response.json();
       if (data.success && data.data) return data.data as MeshCoreRemoteStatus;
+      reportTxDisabled(response.status, data);
       return null;
     } catch (_err) {
       return null;
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   const shareContact = useCallback(async (publicKey: string): Promise<{ ok: boolean; error?: string }> => {
     try {
@@ -1260,6 +1295,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       const data = await response.json();
       if (!data.success) {
         const error = data.error || 'Failed to share contact';
+        if (reportTxDisabled(response.status, data)) return { ok: false, error };
         setError(error);
         return { ok: false, error };
       }
@@ -1269,7 +1305,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setError(error);
       return { ok: false, error };
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   const setContactOutPath = useCallback(async (publicKey: string, outPath: string, hashBytes: 1 | 2 | 3 = 1): Promise<boolean> => {
     try {
@@ -1314,6 +1350,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       );
       const data = await response.json();
       if (!data.success) {
+        if (reportTxDisabled(response.status, data)) return null;
         setError(data.error || 'Trace path failed');
         return null;
       }
@@ -1322,7 +1359,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setError('Trace path failed');
       return null;
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   const pingContactZeroHop = useCallback(async (publicKey: string): Promise<ZeroHopPingResult> => {
     try {
@@ -1332,6 +1369,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       );
       const data = await response.json();
       if (!data.success) {
+        reportTxDisabled(response.status, data);
         return { ok: false, error: data.error || 'Ping failed' };
       }
       return {
@@ -1344,7 +1382,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     } catch (_err) {
       return { ok: false, error: 'Ping failed' };
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   const removeContact = useCallback(async (publicKey: string): Promise<boolean> => {
     try {
@@ -1460,12 +1498,15 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         `${mcPrefix}/contacts/${encodeURIComponent(publicKey)}/neighbours${qs ? '?' + qs : ''}`,
       );
       const data = await response.json();
-      if (!data.success) return null;
+      if (!data.success) {
+        reportTxDisabled(response.status, data);
+        return null;
+      }
       return data.data as { total: number; neighbours: { publicKeyPrefix: string; heardSecondsAgo: number; snr: number }[] };
     } catch (_err) {
       return null;
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   const rebootDevice = useCallback(async (opts?: { confirm?: boolean }): Promise<boolean> => {
     try {
@@ -1524,11 +1565,14 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
     try {
       const response = await csrfFetch(`${mcPrefix}/advert`, { method: 'POST' });
       const data = await response.json();
-      if (!data.success) setError(data.error || 'Failed to send advert');
+      if (!data.success) {
+        if (reportTxDisabled(response.status, data)) return;
+        setError(data.error || 'Failed to send advert');
+      }
     } catch (_err) {
       setError('Failed to send advert');
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   const sendMessage = useCallback(async (text: string, toPublicKey?: string, channelIdx?: number, scope?: string | null): Promise<boolean> => {
     if (!text.trim()) return false;
@@ -1550,13 +1594,14 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         await fetchMessages();
         return true;
       }
+      if (reportTxDisabled(response.status, data)) return false;
       setError(data.error || 'Failed to send message');
       return false;
     } catch (_err) {
       setError('Failed to send message');
       return false;
     }
-  }, [mcPrefix, csrfFetch, fetchMessages]);
+  }, [mcPrefix, csrfFetch, fetchMessages, reportTxDisabled]);
 
   // ----- Message deletion / purge (#3981) -----
   // Each does an optimistic local prune; the server also broadcasts a
@@ -1792,11 +1837,12 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         body: JSON.stringify({ publicKey, password, rememberPassword }),
       });
       const data = await response.json();
+      reportTxDisabled(response.status, data);
       return { success: !!data.success, persisted: data.persisted, error: data.error };
     } catch (_err) {
       return { success: false, error: 'Room login request failed' };
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   const loginRoomWithSaved = useCallback(async (publicKey: string): Promise<{ success: boolean; usedStored?: boolean; error?: string; code?: string }> => {
     try {
@@ -1806,11 +1852,12 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
         body: JSON.stringify({ publicKey }),
       });
       const data = await response.json();
+      reportTxDisabled(response.status, data);
       return { success: !!data.success, usedStored: data.usedStored, error: data.error, code: data.code };
     } catch (_err) {
       return { success: false, error: 'Room auto-login request failed' };
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   const sendRoomPost = useCallback(async (roomPublicKey: string, text: string): Promise<boolean> => {
     try {
@@ -1821,6 +1868,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       });
       const data = await response.json();
       if (!data.success) {
+        if (reportTxDisabled(response.status, data)) return false;
         setError(data.error || 'Failed to send room post');
         return false;
       }
@@ -1829,7 +1877,7 @@ export function useMeshCore(options: UseMeshCoreOptions): UseMeshCoreState {
       setError('Failed to send room post');
       return false;
     }
-  }, [mcPrefix, csrfFetch]);
+  }, [mcPrefix, csrfFetch, reportTxDisabled]);
 
   const getRoomCredentials = useCallback(async (): Promise<{ canRemember: boolean; stored: Array<{ publicKey: string }> } | null> => {
     try {

@@ -9,6 +9,10 @@ import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 interface MeshCoreAutoResponderSectionProps {
   baseUrl: string;
   sourceId: string;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP4 renders the paused note. This
+   *  section has no immediate-TX control, so no input gates on it. */
+  receiveOnly?: boolean;
 }
 
 /**
@@ -85,7 +89,9 @@ const newTrigger = (): MeshCoreAutoResponderTrigger => ({
   scopeName: '',
 });
 
-export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSectionProps> = ({ baseUrl, sourceId }) => {
+export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSectionProps> = ({ baseUrl, sourceId, receiveOnly = false }) => {
+  // Not yet consumed here — WP4 renders the paused note.
+  void receiveOnly;
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();

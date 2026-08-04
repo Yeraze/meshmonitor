@@ -89,6 +89,11 @@ interface MeshCoreContactDetailPanelProps {
    *  `remote_admin` resource. When false the console is hidden even if
    *  `remoteAdminActions` is supplied. */
   canRemoteAdmin?: boolean;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Threaded to MeshCoreRemoteConsole; WP3 wires the actual
+   *  gating of the six RF buttons on this panel (Reset/Share/Trace/Ping/
+   *  Discover path/Neighbours). */
+  receiveOnly?: boolean;
 }
 
 const COLLAPSED_KEY = 'meshcoreContactDetailsCollapsed';
@@ -110,6 +115,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   isCompanion = true,
   remoteAdminActions,
   canRemoteAdmin = false,
+  receiveOnly = false,
 }) => {
   const { t } = useTranslation();
   const { timeFormat, dateFormat } = useSettings();
@@ -1174,6 +1180,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
           publicKey={publicKey}
           contactName={name}
           actions={remoteAdminActions}
+          receiveOnly={receiveOnly}
         />
       )}
     </div>

@@ -44,6 +44,10 @@ interface MeshCoreNodesViewProps {
    * instead of an apparently-empty map during initial connect.
    */
   mapIsLoading?: boolean;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP3 wires the actual gating (the
+   *  Discover menu's three items disabled + tooltip). */
+  receiveOnly?: boolean;
 }
 
 interface MergedRow {
@@ -148,7 +152,10 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   onDiscoverNodes,
   canDiscover,
   mapIsLoading,
+  receiveOnly = false,
 }) => {
+  // Not yet consumed here — WP3 wires the Discover menu gating.
+  void receiveOnly;
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { timeFormat, dateFormat } = useSettings();

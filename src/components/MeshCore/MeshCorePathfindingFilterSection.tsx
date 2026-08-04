@@ -8,6 +8,10 @@ interface MeshCorePathfindingFilterSectionProps {
   baseUrl: string;
   sourceId: string;
   canWrite: boolean;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP4 renders the paused note. This
+   *  section has no immediate-TX control, so no input gates on it. */
+  receiveOnly?: boolean;
 }
 
 // Mirrors MeshcorePathfindingFilterSettings in src/services/database.ts (#4024).
@@ -131,7 +135,10 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
   baseUrl,
   sourceId,
   canWrite,
+  receiveOnly = false,
 }) => {
+  // Not yet consumed here — WP4 renders the paused note.
+  void receiveOnly;
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
 

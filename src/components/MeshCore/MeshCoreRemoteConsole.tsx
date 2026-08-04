@@ -70,12 +70,17 @@ interface MeshCoreRemoteConsoleProps {
     | 'forgetRemoteCredential'
     | 'getRemoteStatus'
   >;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Threaded to MeshCoreRemoteStatsPanel; WP3 wires the actual
+   *  gating of the login buttons, the console body, and the ACL form. */
+  receiveOnly?: boolean;
 }
 
 export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
   publicKey,
   contactName,
   actions,
+  receiveOnly = false,
 }) => {
   const { t } = useTranslation();
   const [capability, setCapability] = useState<CapabilitySnapshot | null>(null);
@@ -268,6 +273,7 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
         <MeshCoreRemoteStatsPanel
           publicKey={publicKey}
           fetchStatus={actions.getRemoteStatus}
+          receiveOnly={receiveOnly}
         />
       )}
 

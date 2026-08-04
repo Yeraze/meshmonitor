@@ -14,6 +14,7 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useTxStatus } from '../../hooks/useTxStatus';
 import { useMeshCore, ConnectionStatus } from './hooks/useMeshCore';
 import { useMeshCoreUnread } from './hooks/useMeshCoreUnread';
 import { MeshCoreStatusBar } from './MeshCoreStatusBar';
@@ -63,6 +64,16 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
   const meshCore = useMeshCore({ baseUrl, sourceId, enabled });
   const { status, nodes, contacts, messages, loading, hasLoadedOnce, error, actions } = meshCore;
 
+  // MeshCore strict receive-only mode (#4547 Phase 2 WP1). Phase 1 made
+  // GET /api/device/tx-status MeshCore-aware, so `isTxDisabled` for a
+  // MeshCore sourceId already means "receive-only is on" — no separate hook
+  // needed (see MESHCORE_RECEIVE_ONLY_PHASE2_SPEC.md §3.0). Called exactly
+  // once here and threaded down as a plain boolean prop; every consumer
+  // shares the same TanStack cache entry, so the toggle save's
+  // `invalidateQueries({ queryKey: ['txStatus'] })` updates them all in one
+  // tick with no page reload.
+  const { isTxDisabled: receiveOnly } = useTxStatus({ baseUrl, sourceId });
+
   const [view, setView] = useState<MeshCoreView>('nodes');
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
   const [pendingDmContact, setPendingDmContact] = useState<string | null>(null);
@@ -98,6 +109,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
         onOpenSettings={() => setView('settings')}
         actions={actions}
         hideConnectionText={!!onStatusChange}
+        receiveOnly={receiveOnly}
       />
 
       {error && (
@@ -129,6 +141,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               onDiscoverNodes={actions.discoverNodes}
               canDiscover={(status?.connected ?? false) && status?.deviceType === DEVICE_TYPE_COMPANION}
               mapIsLoading={!hasLoadedOnce}
+              receiveOnly={receiveOnly}
             />
           )}
           {view === 'channels' && (
@@ -140,6 +153,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               baseUrl={baseUrl}
               sourceId={sourceId}
               onNodeNameClick={navigateToDm}
+              receiveOnly={receiveOnly}
             />
           )}
           {view === 'rooms' && (
@@ -151,6 +165,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               baseUrl={baseUrl}
               sourceId={sourceId}
               onNodeNameClick={navigateToDm}
+              receiveOnly={receiveOnly}
             />
           )}
           {view === 'dms' && (
@@ -163,6 +178,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               baseUrl={baseUrl}
               sourceId={sourceId}
               initialSelectedContact={pendingDmContact}
+              receiveOnly={receiveOnly}
             />
           )}
           {view === 'telemetry' && (
@@ -180,6 +196,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
               actions={actions}
               baseUrl={baseUrl}
               sourceId={sourceId}
+              receiveOnly={receiveOnly}
             />
           )}
           {view === 'automations' && (
@@ -188,6 +205,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
                 <MeshCoreAutomationsView
                   baseUrl={baseUrl}
                   sourceId={sourceId}
+                  receiveOnly={receiveOnly}
                 />
               </SaveBarGroup>
               <SaveBar />
@@ -207,6 +225,7 @@ export const MeshCorePage: React.FC<MeshCorePageProps> = ({ baseUrl, sourceId, e
                   actions={actions}
                   baseUrl={baseUrl}
                   sourceId={sourceId}
+                  receiveOnly={receiveOnly}
                 />
               </SaveBarGroup>
               <SaveBar />

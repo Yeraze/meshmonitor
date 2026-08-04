@@ -11,6 +11,10 @@ import { MESHCORE_AUTOMATION_TOKENS } from './meshcoreAutomationTokens';
 interface MeshCoreAutoAnnounceSectionProps {
   baseUrl: string;
   sourceId: string;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP4 renders the paused note and gates
+   *  "Send Now". */
+  receiveOnly?: boolean;
 }
 
 interface AutoAnnounceSettings {
@@ -59,7 +63,9 @@ const arraysEqual = (a: number[], b: number[]): boolean => {
   return aSorted.every((v, i) => v === bSorted[i]);
 };
 
-export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionProps> = ({ baseUrl, sourceId }) => {
+export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionProps> = ({ baseUrl, sourceId, receiveOnly = false }) => {
+  // Not yet consumed here — WP4 renders the paused note + Send Now gating.
+  void receiveOnly;
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();

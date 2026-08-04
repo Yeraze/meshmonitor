@@ -32,6 +32,11 @@ interface MeshCoreRoomsViewProps {
   baseUrl: string;
   sourceId: string;
   onNodeNameClick?: (publicKey: string) => void;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP3 wires the actual gating (login
+   *  button + password input + send box disabled, and the auto-login
+   *  effect's silent skip). */
+  receiveOnly?: boolean;
 }
 
 function buildRoomFilter(roomPubkey: string): (m: MeshCoreMessage) => boolean {
@@ -55,7 +60,11 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   actions,
   sourceId: _sourceId,
   onNodeNameClick,
+  receiveOnly = false,
 }) => {
+  // Not yet consumed here — WP3 wires the login/send gating + auto-login
+  // effect's silent skip.
+  void receiveOnly;
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
   const canSend = hasPermission('messages', 'write');

@@ -17,6 +17,10 @@ interface MeshCoreSettingsViewProps {
   baseUrl: string;
   /** Source UUID — passed through to MeshCoreNodeDisplaySection (#4412 Phase 4 WP2). */
   sourceId: string;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP2 wires the toggle itself plus the
+   *  gating of Send advert / Discover ×3 / Discover regions. */
+  receiveOnly?: boolean;
 }
 
 export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
@@ -25,7 +29,10 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   actions,
   baseUrl,
   sourceId,
+  receiveOnly = false,
 }) => {
+  // Not yet consumed here — WP2 wires the toggle + button gating.
+  void receiveOnly;
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { hasPermission } = useAuth();
