@@ -106,6 +106,14 @@ Running a public MeshMonitor instance? We'd love to feature it! **[File an issue
 
 ---
 
+### Norway Østlandet Mesh
+- **URL**: [meshmonitor.vidda.uk](https://meshmonitor.vidda.uk/)
+- **Network**: Norway Østlandet Mesh
+- **Location**: Østlandet, Norway
+- **Description**: Public MeshMonitor instance monitoring Meshtastic networks across Østlandet, Norway.
+
+---
+
 ## About the Site Gallery
 
 The Site Gallery showcases MeshMonitor instances that are publicly accessible. These sites demonstrate:
