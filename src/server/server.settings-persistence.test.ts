@@ -173,6 +173,14 @@ function validTestValue(key: string, suffix = ''): string {
     autoDeleteByDistanceLon: '-74.006',
     appriseApiServerUrl: 'http://apprise.example.com:8000',
     externalUrl: 'https://mesh.example.com',
+
+    // Strict-boolean keys (settingsRoutes.ts's module-local
+    // STRICT_BOOLEAN_SETTINGS_KEYS, #4547 Phase 2 WP2 §4): these reject
+    // anything except the exact strings 'true'/'false' — the generic
+    // `test-${key}` fallback below 400s for them. Add every future entry in
+    // STRICT_BOOLEAN_SETTINGS_KEYS here too, or this round-trip test breaks
+    // the same way meshcoreReceiveOnly did.
+    meshcoreReceiveOnly: 'true',
   };
 
   if (key in VALID_VALUES) {
