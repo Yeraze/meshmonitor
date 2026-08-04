@@ -12,6 +12,19 @@ Custom commands are reusable prompt templates that become available through the 
 
 ## Available Commands
 
+### /epic
+**Multi-phase development harness for long-running work**
+
+Orchestrates extensive work (large refactors, remediation plans, multi-part features) across multiple phases, each shipped as its own merged PR. The session acts as Orchestrator (Fable/Opus): it interviews you to fill in missing details, writes a durable phase plan to `docs/internal/dev-notes/<NAME>_EPIC.md`, then per phase spawns an Opus architect to produce a concrete implementation spec (with a mandatory reuse-over-duplication inventory) and Sonnet subagents to implement it in a worktree, committing often without pushing. The Orchestrator reviews each phase's diff for quality/architecture/conformance and sends corrections back to the agents, runs the full test suite, validates UI changes in a live browser against the dev container, updates published docs, then pushes, creates the PR, monitors CI via the existing process, merges, and advances to the next phase.
+
+**Usage:**
+```bash
+/epic implement the remediation plan in issue #3962
+/epic docs/internal/dev-notes/SOME_PLAN.md
+```
+
+**When to use:** work spanning days with multiple mergeable phases. For single-PR tasks use the normal /worktree → /create-pr → /ci-monitor → /merge flow.
+
 ### /worktree
 **Create a git worktree with automatic setup**
 
