@@ -67,6 +67,11 @@ class FakeManager extends EventEmitter implements MeshCoreVirtualNodeManager {
     this.localNode = localNode;
     this.contacts = contacts;
   }
+  // Receive-only state (#4547 Phase 3). Default false keeps every pre-existing
+  // describe block green unmodified; flip per-test via `makeManager({ isReceiveOnly: () => true })`
+  // or `manager.receiveOnlyMock.mockReturnValue(true)` on an already-built FakeManager.
+  receiveOnlyMock = vi.fn().mockReturnValue(false);
+  isReceiveOnly() { return this.receiveOnlyMock() as boolean; }
   sendMessageMock = vi.fn().mockResolvedValue(true);
   sendMessageWithResultMock = vi.fn().mockResolvedValue({ ok: true });
   // Config-mutation mocks (issue #3904).
@@ -1518,5 +1523,389 @@ describe('MeshCoreVirtualNodeServer — getClientDetails (status endpoint contra
     expect(details[0].ip.length).toBeGreaterThan(0);
     expect(details[0].connectedAt).toBeInstanceOf(Date);
     expect(details[0].lastActivity).toBeInstanceOf(Date);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Receive-only mode (#4547 Phase 3 WP2)
+//
+// WP1 (c15192b5) added `isReceiveOnly()` to the manager interface and a
+// fail-closed `refuseIfReceiveOnly()` guard at the top of the 8 handlers that
+// cover the 9 TX-causing companion commands. This block proves the guard's
+// wire contract end to end: Err(BadState) as the FIRST and ONLY frame (never
+// a Sent — six of these handlers used to write Sent before awaiting the
+// manager, and meshcore.js drops its Err listener the instant Sent arrives),
+// the underlying manager TX method never invoked, every read path and the
+// live OTA feed unaffected, a real meshcore.js client actually parses the
+// refusal, and a denylist-style inventory test that fails the day a future
+// handler transmits without a guard.
+// ─────────────────────────────────────────────────────────────────────────
+describe('MeshCoreVirtualNodeServer — receive-only mode (#4547)', () => {
+  let server: MeshCoreVirtualNodeServer;
+  let client: TestClient;
+  let manager: FakeManager;
+
+  // Matches SAMPLE_CONTACTS' publicKey so prefix-resolution succeeds for the
+  // DM/CLI refusal tests (guard fires before contact resolution anyway, but
+  // using a real prefix keeps these tests honest about what they exercise).
+  const REMOTE_KEY = 'b1'.repeat(32);
+  const REMOTE_KEY_BYTES = Buffer.from(REMOTE_KEY, 'hex');
+  const REMOTE_PREFIX = REMOTE_KEY_BYTES.subarray(0, 6);
+
+  // allowAdminCommands defaults to true here so the CLI-relay refusal test
+  // proves receive-only wins over an ENABLED admin flag, not that admin-off
+  // happened to block it (§3.2 of the spec).
+  async function startReceiveOnly(
+    opts: { allowAdminCommands?: boolean; allowPkiExport?: boolean } = {},
+  ): Promise<void> {
+    manager = new FakeManager();
+    manager.receiveOnlyMock.mockReturnValue(true);
+    server = new MeshCoreVirtualNodeServer({
+      port: 0,
+      manager,
+      databaseService: CHANNELS_DB,
+      allowAdminCommands: opts.allowAdminCommands ?? true,
+      allowPkiExport: opts.allowPkiExport ?? false,
+    });
+    await server.start();
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+  }
+
+  afterEach(async () => {
+    client?.close();
+    await server?.stop();
+  });
+
+  // ── frame builders — byte layouts mirror the per-command describe blocks
+  // above verbatim; not re-derived here (spec §3.2). ──
+  const channelFrame = (text: string, channelIdx = 1): number[] => [
+    CommandCodes.SendChannelTxtMsg, 0, channelIdx, 0, 0, 0, 0, ...Buffer.from(text, 'utf8'),
+  ];
+  const dmFrame = (prefix: Buffer, text: string): number[] => [
+    CommandCodes.SendTxtMsg, 0, 0, 0, 0, 0, 0, ...prefix, ...Buffer.from(text, 'utf8'),
+  ];
+  const cliFrame = (text: string): number[] => [
+    CommandCodes.SendTxtMsg, 1, 0, 0, 0, 0, 0, ...REMOTE_PREFIX, ...Buffer.from(text, 'utf8'),
+  ];
+  const advertFrame: number[] = [CommandCodes.SendSelfAdvert, 1];
+  const loginFrame = (publicKeyHex: string, password: string): number[] => [
+    CommandCodes.SendLogin, ...Buffer.from(publicKeyHex, 'hex'), ...Buffer.from(password, 'utf8'),
+  ];
+  function traceFrame(tag: number, auth: number, path: number[]): number[] {
+    const head = Buffer.alloc(8);
+    head.writeUInt32LE(tag >>> 0, 0);
+    head.writeUInt32LE(auth >>> 0, 4);
+    return [CommandCodes.SendTracePath, ...head, 0, ...path];
+  }
+  const telemetryFrame = (publicKeyHex: string): number[] => [
+    CommandCodes.SendTelemetryReq, 0, 0, 0, ...Buffer.from(publicKeyHex, 'hex'),
+  ];
+  const statusFrame = (publicKeyHex: string): number[] => [
+    CommandCodes.SendStatusReq, ...Buffer.from(publicKeyHex, 'hex'),
+  ];
+  function neighboursFrame(
+    publicKeyHex: string,
+    opts: { count?: number; offset?: number; orderBy?: number; prefixLen?: number; tag?: number } = {},
+  ): number[] {
+    const { count = 10, offset = 0, orderBy = 0, prefixLen = 8, tag = 0x11223344 } = opts;
+    const req = Buffer.alloc(11);
+    req[0] = BinaryRequestTypes.GetNeighbours;
+    req[1] = 0;
+    req[2] = count;
+    req.writeUInt16LE(offset, 3);
+    req[5] = orderBy;
+    req[6] = prefixLen;
+    req.writeUInt32LE(tag >>> 0, 7);
+    return [CommandCodes.SendBinaryReq, ...Buffer.from(publicKeyHex, 'hex'), ...req];
+  }
+
+  // ── 9 refusal tests. Each asserts all three of: Err(BadState), that it is
+  // the FIRST frame written (client.request() resolves with exactly one
+  // payload — if a guard were mistakenly placed after encodeSent, payload[0]
+  // would be ResponseCodes.Sent here and the Err/BadState assertion would
+  // fail), and that the underlying manager TX method was never called. ──
+
+  it('refuses SendChannelTxtMsg with Err(BadState) as the first frame, without calling sendMessage', async () => {
+    await startReceiveOnly();
+    const payload = await client.request(channelFrame('hi chan'));
+    expect(payload[0]).toBe(ResponseCodes.Err);
+    expect(payload[1]).toBe(ErrorCodes.BadState);
+    expect(manager.sendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses SendTxtMsg (Plain DM) with Err(BadState) as the first frame, without calling sendMessageWithResult', async () => {
+    await startReceiveOnly();
+    const payload = await client.request(dmFrame(REMOTE_PREFIX, 'hi dm'));
+    expect(payload[0]).toBe(ResponseCodes.Err);
+    expect(payload[1]).toBe(ErrorCodes.BadState);
+    expect(manager.sendMessageWithResultMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses SendTxtMsg (CliData / CLI relay) with Err(BadState) even with allowAdminCommands on, without calling sendCliCommand', async () => {
+    await startReceiveOnly({ allowAdminCommands: true });
+    const payload = await client.request(cliFrame('get name'));
+    expect(payload[0]).toBe(ResponseCodes.Err);
+    expect(payload[1]).toBe(ErrorCodes.BadState);
+    expect(manager.sendCliCommandMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses SendSelfAdvert with Err(BadState) as the first frame, without calling sendAdvert', async () => {
+    await startReceiveOnly();
+    const payload = await client.request(advertFrame);
+    expect(payload[0]).toBe(ResponseCodes.Err);
+    expect(payload[1]).toBe(ErrorCodes.BadState);
+    expect(manager.sendAdvertMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses SendLogin with Err(BadState) as the first frame — never a Sent — without calling loginToNode', async () => {
+    await startReceiveOnly();
+    const payload = await client.request(loginFrame(REMOTE_KEY, 'hunter2'));
+    expect(payload[0]).toBe(ResponseCodes.Err);
+    expect(payload[1]).toBe(ErrorCodes.BadState);
+    expect(manager.loginToNodeMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses SendTracePath with Err(BadState) as the first frame — never a Sent — without calling tracePathRaw', async () => {
+    await startReceiveOnly();
+    const payload = await client.request(traceFrame(0xdeadbeef, 0, [0xa3, 0x7f]));
+    expect(payload[0]).toBe(ResponseCodes.Err);
+    expect(payload[1]).toBe(ErrorCodes.BadState);
+    expect(manager.tracePathRawMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses SendTelemetryReq with Err(BadState) as the first frame — never a Sent — without calling requestRemoteTelemetryRaw', async () => {
+    await startReceiveOnly();
+    const payload = await client.request(telemetryFrame(REMOTE_KEY));
+    expect(payload[0]).toBe(ResponseCodes.Err);
+    expect(payload[1]).toBe(ErrorCodes.BadState);
+    expect(manager.requestRemoteTelemetryRawMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses SendStatusReq with Err(BadState) as the first frame — never a Sent — without calling requestNodeStatus', async () => {
+    await startReceiveOnly();
+    const payload = await client.request(statusFrame(REMOTE_KEY));
+    expect(payload[0]).toBe(ResponseCodes.Err);
+    expect(payload[1]).toBe(ErrorCodes.BadState);
+    expect(manager.requestNodeStatusMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses SendBinaryReq/GetNeighbours with Err(BadState) as the first frame — never a Sent — without calling getNeighbours', async () => {
+    await startReceiveOnly();
+    const payload = await client.request(neighboursFrame(REMOTE_KEY));
+    expect(payload[0]).toBe(ResponseCodes.Err);
+    expect(payload[1]).toBe(ErrorCodes.BadState);
+    expect(manager.getNeighboursMock).not.toHaveBeenCalled();
+  });
+
+  // ── 2 edge tests pinning the guard-first ordering (§2.4) ──
+
+  it('refuses SendBinaryReq with an unknown inner sub-type as BadState, not UnsupportedCmd (envelope-level guard covers future sub-types)', async () => {
+    await startReceiveOnly();
+    const frame = [CommandCodes.SendBinaryReq, ...REMOTE_KEY_BYTES, BinaryRequestTypes.GetTelemetryData, 0, 0];
+    const payload = await client.request(frame);
+    expect(payload[0]).toBe(ResponseCodes.Err);
+    expect(payload[1]).toBe(ErrorCodes.BadState);
+    expect(manager.getNeighboursMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses a DM to an unknown contact prefix as BadState, not NotFound (guard runs before contact resolution)', async () => {
+    await startReceiveOnly();
+    const unknownPrefix = Buffer.from('ff'.repeat(6), 'hex');
+    const payload = await client.request(dmFrame(unknownPrefix, 'x'));
+    expect(payload[0]).toBe(ResponseCodes.Err);
+    expect(payload[1]).toBe(ErrorCodes.BadState);
+    expect(manager.sendMessageWithResultMock).not.toHaveBeenCalled();
+  });
+
+  // ── Read-path regression: the VN stays fully usable while receive-only ──
+
+  it('serves every read path normally while receive-only is ON (AppStart, contacts, channels, sync, config, PKI export)', async () => {
+    await startReceiveOnly({ allowAdminCommands: true, allowPkiExport: true });
+
+    const appStart = await client.request([CommandCodes.AppStart, 1, 0, 0, 0, 0, 0, 0]);
+    expect(appStart[0]).toBe(ResponseCodes.SelfInfo);
+
+    const deviceQuery = await client.request([CommandCodes.DeviceQuery, 1]);
+    expect(deviceQuery[0]).toBe(ResponseCodes.DeviceInfo);
+
+    const currTime = await client.request([CommandCodes.GetDeviceTime]);
+    expect(currTime[0]).toBe(ResponseCodes.CurrTime);
+
+    const setTime = await client.request([CommandCodes.SetDeviceTime, 0, 0, 0, 0]);
+    expect(setTime[0]).toBe(ResponseCodes.Ok);
+
+    client.send([CommandCodes.GetContacts, 0, 0, 0, 0]);
+    const [contactsStart, contact, endOfContacts] = await client.expectFrames(3);
+    expect(contactsStart[0]).toBe(ResponseCodes.ContactsStart);
+    expect(contact[0]).toBe(ResponseCodes.Contact);
+    expect(endOfContacts[0]).toBe(ResponseCodes.EndOfContacts);
+
+    const channel = await client.request([CommandCodes.GetChannel, 0]);
+    expect(channel[0]).toBe(ResponseCodes.ChannelInfo);
+
+    const battery = await client.request([CommandCodes.GetBatteryVoltage]);
+    expect(battery[0]).toBe(ResponseCodes.BatteryVoltage);
+
+    const sync = await client.request([CommandCodes.SyncNextMessage]);
+    expect(sync[0]).toBe(ResponseCodes.NoMoreMessages);
+
+    const floodScope = await client.request([CommandCodes.SetFloodScope, 0]);
+    expect(floodScope[0]).toBe(ResponseCodes.Ok);
+
+    // Local serial config stays allowed under receive-only (interview decision 2).
+    const setName = await client.request([CommandCodes.SetAdvertName, ...Buffer.from('Rover', 'utf8')]);
+    expect(setName[0]).toBe(ResponseCodes.Ok);
+    expect(manager.setNameMock).toHaveBeenCalledWith('Rover');
+
+    const exportKey = await client.request([CommandCodes.ExportPrivateKey]);
+    expect(exportKey[0]).toBe(ResponseCodes.PrivateKey);
+
+    // None of the 9 TX-capable methods were reached by any of the above.
+    expect(manager.sendMessageMock).not.toHaveBeenCalled();
+    expect(manager.sendMessageWithResultMock).not.toHaveBeenCalled();
+    expect(manager.sendAdvertMock).not.toHaveBeenCalled();
+    expect(manager.loginToNodeMock).not.toHaveBeenCalled();
+    expect(manager.tracePathRawMock).not.toHaveBeenCalled();
+    expect(manager.requestRemoteTelemetryRawMock).not.toHaveBeenCalled();
+    expect(manager.requestNodeStatusMock).not.toHaveBeenCalled();
+    expect(manager.getNeighboursMock).not.toHaveBeenCalled();
+    expect(manager.sendCliCommandMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the live OTA packet feed and MsgWaiting push flowing while receive-only is ON', async () => {
+    await startReceiveOnly();
+
+    const msgPush = new Promise<Buffer>((resolve) => (client as unknown as { waiters: Array<(p: Buffer) => void> }).waiters.push(resolve));
+    manager.emitMessage({
+      id: 'ro-1',
+      fromPublicKey: 'b1'.repeat(32),
+      toPublicKey: undefined,
+      text: 'incoming while receive-only',
+      timestamp: 1_750_000_000_000,
+    });
+    expect((await msgPush)[0]).toBe(PushCodes.MsgWaiting);
+
+    const otaPush = client.expectFrames(1);
+    manager.emitOtaPacket({ snr: -7.25, rssi: -95, raw_hex: '0102030405aabbccddeeff' });
+    const [ota] = await otaPush;
+    expect(ota[0]).toBe(PushCodes.LogRxData);
+  });
+
+  // ── Wire-shape test with the real meshcore.js decoder (§3.4, no `any`) ──
+
+  it('a real meshcore.js client parses the refusal via its normal Err dispatch (not the unhandled-frame fallback)', async () => {
+    await startReceiveOnly();
+    const payload = await client.request(advertFrame);
+    expect(payload[0]).toBe(ResponseCodes.Err);
+
+    interface DecoderLike {
+      once(code: number, cb: (event: { errCode?: number }) => void): void;
+      onFrameReceived(frame: Uint8Array): void;
+    }
+    const conn = new (Connection as unknown as new () => DecoderLike)();
+    const decoded = await new Promise<{ errCode?: number }>((resolve) => {
+      conn.once(ResponseCodes.Err, (event) => resolve(event));
+      conn.onFrameReceived(new Uint8Array(payload));
+    });
+    expect(decoded.errCode).toBe(ErrorCodes.BadState);
+  });
+
+  // ── Inventory test: the future-proofing guard (§3.5) ──
+  // Mirrors Phase 1's fail-closed denylist-coverage test. Fires every known
+  // CommandCode as a bare one-byte frame with receive-only ON and asserts
+  // that NONE of the TX-capable manager mocks was ever reached. Malformed
+  // frames mostly reply Err(IllegalArg) — irrelevant; the only thing that
+  // matters is that no TX method fires. A future handler that transmits
+  // without a `refuseIfReceiveOnly()` guard fails this test on day one.
+  it('never reaches a TX-capable manager method for ANY known CommandCode while receive-only (future-proofing inventory guard)', async () => {
+    await startReceiveOnly();
+
+    for (const code of Object.values(CommandCodes)) {
+      client.send([code]);
+    }
+    // Bare frames are processed synchronously up to each guard's early return
+    // (no `await` precedes it in any of the 9 guarded handlers), but give the
+    // real socket round-trip a moment to land before asserting.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(manager.sendMessageMock).not.toHaveBeenCalled();
+    expect(manager.sendMessageWithResultMock).not.toHaveBeenCalled();
+    expect(manager.sendAdvertMock).not.toHaveBeenCalled();
+    expect(manager.loginToNodeMock).not.toHaveBeenCalled();
+    expect(manager.tracePathRawMock).not.toHaveBeenCalled();
+    expect(manager.requestRemoteTelemetryRawMock).not.toHaveBeenCalled();
+    expect(manager.requestNodeStatusMock).not.toHaveBeenCalled();
+    expect(manager.getNeighboursMock).not.toHaveBeenCalled();
+    expect(manager.sendCliCommandMock).not.toHaveBeenCalled();
+  });
+
+  // ── Flag-flip test (§3.6): the guard reads live state, it is not latched ──
+
+  it('reads live receive-only state: flips OFF mid-session and the same command then reaches the manager (Phase 2 latch hazard, VN shape)', async () => {
+    manager = new FakeManager(); // starts false
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager, databaseService: CHANNELS_DB });
+    await server.start();
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+
+    manager.receiveOnlyMock.mockReturnValue(true);
+    const refused = await client.request(advertFrame);
+    expect(refused[0]).toBe(ResponseCodes.Err);
+    expect(refused[1]).toBe(ErrorCodes.BadState);
+    expect(manager.sendAdvertMock).not.toHaveBeenCalled();
+
+    manager.receiveOnlyMock.mockReturnValue(false);
+    const allowed = await client.request(advertFrame);
+    expect(allowed[0]).toBe(ResponseCodes.Ok);
+    expect(manager.sendAdvertMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Fail-closed test (§3.7) ──
+
+  it('fails closed: a manager whose isReceiveOnly() throws still refuses, without calling sendAdvert', async () => {
+    manager = new FakeManager();
+    manager.receiveOnlyMock.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager, databaseService: CHANNELS_DB });
+    await server.start();
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+
+    const payload = await client.request(advertFrame);
+    expect(payload[0]).toBe(ResponseCodes.Err);
+    expect(payload[1]).toBe(ErrorCodes.BadState);
+    expect(manager.sendAdvertMock).not.toHaveBeenCalled();
+  });
+
+  // ── Receive-only OFF regression: the guard did not alter existing generic
+  // failure paths. SendChannelTxtMsg, SendTxtMsg (Plain DM) and SendSelfAdvert
+  // already replied Err(BadState) on an ordinary node-side failure before this
+  // change (the other 6 guarded handlers reply Sent unconditionally and only
+  // fail silently); this proves those three are byte-identical with the guard
+  // in place but not tripped. ──
+
+  it('receive-only OFF: SendChannelTxtMsg, SendTxtMsg (Plain DM) and SendSelfAdvert still reply Err(BadState) on ordinary node failure, unchanged by the new guard', async () => {
+    manager = new FakeManager(); // isReceiveOnly() defaults to false
+    server = new MeshCoreVirtualNodeServer({ port: 0, manager, databaseService: CHANNELS_DB });
+    await server.start();
+    client = new TestClient();
+    await client.connect(server.getListeningPort()!);
+
+    manager.sendMessageMock.mockResolvedValueOnce(false);
+    const channelRes = await client.request(channelFrame('nope'));
+    expect(channelRes[0]).toBe(ResponseCodes.Err);
+    expect(channelRes[1]).toBe(ErrorCodes.BadState);
+
+    manager.sendMessageWithResultMock.mockResolvedValueOnce({ ok: false });
+    const dmRes = await client.request(dmFrame(REMOTE_PREFIX, 'nope'));
+    expect(dmRes[0]).toBe(ResponseCodes.Err);
+    expect(dmRes[1]).toBe(ErrorCodes.BadState);
+
+    manager.sendAdvertMock.mockResolvedValueOnce(false);
+    const advertRes = await client.request(advertFrame);
+    expect(advertRes[0]).toBe(ResponseCodes.Err);
+    expect(advertRes[1]).toBe(ErrorCodes.BadState);
   });
 });

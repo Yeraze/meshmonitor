@@ -439,6 +439,26 @@ describe('MeshCoreChannelsView — infinite scroll pagination (#4460)', () => {
     await waitFor(() => expect(screen.getByText('recent message')).toBeTruthy());
     expect(screen.queryByText('much older message')).toBeNull();
 
+    // The render that made "recent message" assertable is the SAME render that
+    // flips `hasMoreHistory` true, but the child's scroll-listener effect
+    // (MeshCoreMessageStream's `addEventListener('scroll', handleScroll)`,
+    // keyed on `hasMoreOlder`) is a passive effect — it flushes on its own
+    // schedule, not synchronously with the DOM mutation `waitFor` just
+    // observed. Firing the scroll event immediately risked hitting a stale
+    // listener still closed over `hasMoreOlder: false` from the initial
+    // mount, which silently no-ops (confirmed empirically: instrumenting the
+    // listener showed `scroll listener (re)attached { hasMoreOlder: false }`
+    // → `handleScroll fired { hasMoreOlder: false }` → `scroll listener
+    // (re)attached { hasMoreOlder: true }`, i.e. the fresh listener attached
+    // AFTER the stale one had already consumed the one-and-only scroll event
+    // this test dispatches). An empty `act()` flushes any passive effects
+    // still pending from that render before we dispatch the scroll, so the
+    // listener is guaranteed current. This is a test-only race — real users
+    // fire many scroll events while scrolling, so a real browser self-heals
+    // on the next one; only a single synthetic dispatch right after the race
+    // window can observe it.
+    await act(async () => {});
+
     const list = container.querySelector('.meshcore-message-list') as HTMLElement;
     fireEvent.scroll(list);
 

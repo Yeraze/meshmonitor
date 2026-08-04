@@ -454,7 +454,7 @@ MeshCore App 3 ┘
 - **Identity & device info** — the app connects, shows the node's identity, and reads device/firmware info.
 - **Contacts** — served from the durable per-source contact list (so the app sees the full set even when the live companion read is flaky).
 - **Channels & battery** — channel info (including PSK) and the local node's battery level.
-- **Messaging** — incoming channel and direct messages are pushed to the app; outgoing **direct** and **channel** text messages are forwarded to the real node.
+- **Messaging** — incoming channel and direct messages are pushed to the app; outgoing **direct** and **channel** text messages are forwarded to the real node, unless the source is in [receive-only mode](#safety-receive-only-mode).
 
 ### Enabling MeshCore Virtual Node on a Source
 
@@ -503,6 +503,12 @@ In the MeshCore mobile app, add a new device using the **TCP / network** connect
 By default the MeshCore Virtual Node is **read-and-message only**: read operations and sending text messages are allowed, but configuration-mutating commands (set radio params, set advert name, import private key, reboot, set channel, set TX power, etc.) are **blocked** and rejected back to the app. Exporting the device's private key is **always blocked**, regardless of settings.
 
 Enabling **Allow admin commands** forwards those configuration commands through to the real node. Only enable it on a trusted LAN where you control every device that can reach the port — any connected app would then be able to reconfigure your node.
+
+### Safety: receive-only mode
+
+*New in 4.14 (#4547).* When the source has [Receive-only mode](/features/meshcore-receive-only) turned on, the Virtual Node keeps serving reads — identity, contacts, channels, message sync, device info, battery, time, config setters, PKI export where enabled, and the live OTA packet feed — but refuses the nine commands that would transmit (sending messages, self-adverts, remote logins, trace path, telemetry and status requests, and neighbour requests). A connected app gets a clean, immediate refusal instead of a silent drop or a hung request.
+
+This is independent of **Allow admin commands** and **Allow PKI export** — receive-only blocks *transmission*, those two gate *configuration and key export*. All three can be set independently.
 
 ### Status & Troubleshooting
 

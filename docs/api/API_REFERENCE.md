@@ -728,6 +728,11 @@ Update automation and system settings.
 - **Auto Welcome**: `autoWelcomeEnabled`, `autoWelcomeMessage`, etc.
 - **Display Preferences**: `temperatureUnit`, `distanceUnit`, `timeFormat`, `dateFormat`, etc.
 - **Traceroute**: `tracerouteIntervalMinutes` (1-60)
+- **MeshCore** (per-source — pass `?sourceId=<id>`): `meshcoreReceiveOnly` (string: exact
+  `"true"`/`"false"` — see the strict-boolean note below). Blocks every transmission from that
+  MeshCore source; see [MeshCore Receive-Only Mode](/docs/features/meshcore-receive-only.md).
+  Current state is also readable from `GET /api/sources` (`radio.receiveOnly` /
+  `radio.canTransmit` on the MeshCore entry) and `GET /api/device/tx-status?sourceId=<id>`.
 
 **Response:**
 ```json
@@ -739,6 +744,24 @@ Update automation and system settings.
   }
 }
 ```
+
+**Errors:**
+- `400 INVALID_BOOLEAN_SETTING` — a strict-boolean setting was sent a value other than the exact
+  string `"true"` or `"false"`. Currently applies to `meshcoreReceiveOnly`
+  (`src/server/routes/settingsRoutes.ts`). This is stricter than the general "everything is a
+  string" rule above on purpose: the server reads this setting back with `raw === 'true'`, so a
+  coerced truthy value like `"1"`, `"yes"`, `"TRUE"`, or `"on"` would persist successfully and
+  then evaluate to **false** on every subsequent check — silently leaving transmission enabled on
+  a source the operator believed was receive-only. Rejecting the request outright surfaces that
+  bug immediately instead of hiding it behind a safety setting.
+
+  ```json
+  {
+    "success": false,
+    "error": "meshcoreReceiveOnly must be the boolean true or false (received \"1\")",
+    "code": "INVALID_BOOLEAN_SETTING"
+  }
+  ```
 
 **Notes:**
 - All settings values are strings for database storage compatibility
@@ -1103,8 +1126,13 @@ v1 API endpoints use the envelope format:
 
 **Transmit-disabled sources (`409 TX_DISABLED`):** any transmit action — message send, traceroute,
 position/nodeinfo/neighbor/telemetry request, or remote-node admin command — returns the envelope
-format above with `code: "TX_DISABLED"` and HTTP `409` when the target source's LoRa radio has
-`lora.txEnabled = false` (receive-only mode; see [Receive-Only Mode](/docs/features/receive-only-mode.md)):
+format above with `code: "TX_DISABLED"` and HTTP `409`. Two independent causes trigger it, one per
+source type:
+
+- **Meshtastic** — the target source's LoRa radio has `lora.txEnabled = false` (receive-only mode;
+  see [Receive-Only Mode](/docs/features/receive-only-mode.md)).
+- **MeshCore** — the target source has the per-source `meshcoreReceiveOnly` setting turned on
+  (see [MeshCore Receive-Only Mode](/docs/features/meshcore-receive-only.md)).
 
 ```json
 {
@@ -1114,7 +1142,41 @@ format above with `code: "TX_DISABLED"` and HTTP `409` when the target source's 
 }
 ```
 
-Nothing is transmitted. Re-enable **TX Enabled** in the source's LoRa configuration to clear it.
+Nothing is transmitted. For Meshtastic, re-enable **TX Enabled** in the source's LoRa configuration
+to clear it. For MeshCore, turn off receive-only mode for the source (MeshCore Settings, or
+`POST /api/settings?sourceId=<id>` with `meshcoreReceiveOnly: "false"`). The MeshCore message is:
+
+```json
+{
+  "success": false,
+  "error": "Transmission blocked: this MeshCore source is configured for receive-only operation.",
+  "code": "TX_DISABLED"
+}
+```
+
+MeshCore routes gated behind `409 TX_DISABLED` (mounted under `/api/sources/:id/meshcore`):
+
+```
+POST /messages/send
+POST /rooms/login | /rooms/login-with-saved | /rooms/post
+POST /contacts/:publicKey/reset-path | /discover-path | /discover | /regions/discover
+POST /contacts/:publicKey/trace-path | /ping | /share
+POST /nodes/:publicKey/telemetry/poll
+POST /neighbors/request                       (only the remote-node branch; the
+                                                local/no-key branch is unaffected)
+GET  /contacts/:publicKey/neighbours           ← GET, not POST
+POST /admin/login | /admin/login-with-saved
+POST /admin/cli
+GET  /admin/status/:publicKey                  ← GET, not POST
+POST /cli                                      (only the `advert` verb; every
+                                                 other local CLI verb still works)
+POST /advert
+POST /automation/announce/send | /automation/timers/:triggerId/run
+```
+
+Two of these are **`GET`** requests that transmit — `GET /contacts/:publicKey/neighbours` (asks a
+remote repeater for its neighbour table) and `GET /admin/status/:publicKey` (polls a remote node for
+status). An API consumer scanning only `POST` routes for transmit side effects will miss both.
 
 **Common Status Codes:**
 - `200` - Success
