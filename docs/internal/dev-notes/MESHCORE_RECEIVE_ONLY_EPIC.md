@@ -2,9 +2,51 @@
 
 **Epic issue:** #4547
 **Status:**
-- [ ] Phase 1 — Backend: setting + central command-aware TX guard (branch `feature/meshcore-receive-only-backend`)
+- [x] Phase 1 — Backend: setting + central command-aware TX guard (branch `feature/meshcore-receive-only-backend`)
 - [ ] Phase 2 — Frontend: gating UX
 - [ ] Phase 3 — Virtual Node gating + docs
+
+## Phase 1 deviations & findings (2026-08-04)
+
+Spec: `docs/internal/dev-notes/MESHCORE_RECEIVE_ONLY_PHASE1_SPEC.md`. Five work packages,
+8 commits, ~350 lines of production code and ~1,900 lines of tests.
+
+- **`requestNeighbors` gets NO guard.** It branches on `validateMeshCorePubKey`: the remote
+  branch (`ensureSavedLogin` + `sendCliCommand`) transmits and throws via its already-guarded
+  downstream primitives; the local branch (`sendLocalCliCommand('neighbors')`) is serial-only
+  and must keep working. Its route `POST /neighbors/request` therefore gets **no**
+  `requireMeshcoreTx()` middleware — only the `failIfTxDisabled` catch mapping. Gating the
+  method wholesale would have broken a legitimate local read.
+- **This doc was wrong about `settings.allowlist.test.ts`.** That test is fully structural;
+  adding the key to **both** `VALID_SETTINGS_KEYS` and `PER_SOURCE_SETTINGS_KEYS` keeps it
+  green **unmodified**. A required edit there means the key went in the wrong array.
+  `PerSourceSettingKey` is derived (`typeof PER_SOURCE_SETTINGS_KEYS[number]`), so it needs
+  no edit either.
+- **`actionExecutor.ts` lives at `src/server/services/automation/`**, not `src/server/automation/`.
+  Confirmed: MeshCore automations degrade to `{ skipped: true, reason: 'TX_DISABLED' }` with
+  zero automation-engine changes, purely by reusing the branded `TxDisabledError`.
+- **`resolveSourceManager()` is Meshtastic-only by design** — a MeshCore `sourceId` falls back
+  to the primary/fallback Meshtastic manager. `GET /api/device/tx-status` therefore narrows via
+  `sourceManagerRegistry.getManager()` + `isMeshCoreManager` directly, before the existing
+  Meshtastic path.
+- **`ping` and `shutdown` verified serial-only** (`meshcoreNativeBackend.ts:1815-1820`):
+  `shutdown` calls `this.disconnect()` (transport teardown), `ping` returns `{ pong: true }`
+  in-process. Neither touches the radio. The radio probe is `pingContactZeroHop`, which goes
+  out as `trace_path` and is on the RF list.
+- **Pre-existing gap fixed:** the client `SourceRadioSummary` mirror (`src/types/elevation.ts`)
+  was missing `txEnabled` / `udpRelayEnabled` / `canTransmit` entirely — the server had them,
+  the client type did not. Added alongside `receiveOnly`.
+- **Known limitation, deferred to Phase 2 as a product question:** flipping receive-only ON
+  mid-retry-chain parks that specific DM/channel message rather than auto-resuming when the
+  flag goes off again. Recurring schedulers (pathfinding, announce, timer triggers) all resume
+  correctly because the check lives inside the callback, not around the timer install. Adding a
+  re-arm mechanism was deliberately not invented inside the highest-risk work package.
+- **Reviewer note:** `tsconfig.json` excludes `src/**/*.test.ts`, so `npm run typecheck` never
+  checks test files, and Vitest strips types via esbuild without checking. A separate tsc run
+  with tests included was done for this phase and reported no errors — worth repeating on any
+  phase that adds significant test-only typing.
+- **Verification:** full Vitest suite 14,006 tests / 0 failures (`success: true` via JSON
+  reporter); `npm run lint:ci` clean of in-repo failures; `tsc` clean including test files.
 
 **Goal:** Give MeshCore sources a strict receive-only mode that guarantees the physical
 Companion never transmits over LoRa, while RX, the Analyzer Observer, the packet log,
