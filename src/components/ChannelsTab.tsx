@@ -92,6 +92,14 @@ export interface ChannelsTabProps {
 
   /** TX disabled on this source (epic #4294 Phase 2) — disable send/request controls with a tooltip, keep reads working. */
   txDisabled?: boolean;
+  /**
+   * Pre-computed tooltip for disabled TX controls (#4547 Phase 2 WP5). App.tsx
+   * picks the MeshCore receive-only wording or the Meshtastic LoRa-config
+   * wording based on source type. Optional — falls back to
+   * `(txDisabledTooltip ?? t('tx_disabled.control_tooltip'))` at each call site when omitted, so
+   * existing callers/tests are unaffected.
+   */
+  txDisabledTooltip?: string;
 
   // Channel selection
   selectedChannel: number;
@@ -174,6 +182,7 @@ export default function ChannelsTab({
   sourceId = null,
   connectionStatus,
   txDisabled = false,
+  txDisabledTooltip,
   selectedChannel,
   setSelectedChannel,
   selectedChannelRef,
@@ -1169,7 +1178,7 @@ export default function ChannelsTab({
                                           className="emoji-picker-button"
                                           onClick={() => setEmojiPickerMessage(msg)}
                                           disabled={txDisabled}
-                                          title={txDisabled ? t('tx_disabled.control_tooltip') : t('channels.emoji_button_title')}
+                                          title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : t('channels.emoji_button_title')}
                                           aria-label={t('channels.emoji_button_title')}
                                         >
                                           <UiIcon name="reaction" size={15} />
@@ -1229,7 +1238,7 @@ export default function ChannelsTab({
                               className="message-input"
                               rows={1}
                               disabled={txDisabled}
-                              title={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
+                              title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : undefined}
                               onKeyDown={e => {
                                 if (
                                   txDisabled ||
@@ -1261,7 +1270,7 @@ export default function ChannelsTab({
                             onClick={() => { void onSendBell?.(selectedChannel, newMessage); setNewMessage(''); }}
                             disabled={txDisabled}
                             className="send-btn channel-action-btn"
-                            title={txDisabled ? t('tx_disabled.control_tooltip') : 'Send alert bell'}
+                            title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : 'Send alert bell'}
                             aria-label="Send alert bell"
                           >
                             <UiIcon name="notifications" size={16} />
@@ -1270,7 +1279,7 @@ export default function ChannelsTab({
                             onClick={() => onSendPosition?.(selectedChannel)}
                             disabled={txDisabled}
                             className="send-btn channel-action-btn"
-                            title={txDisabled ? t('tx_disabled.control_tooltip') : 'Send position'}
+                            title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : 'Send position'}
                             aria-label="Send position"
                           >
                             <UiIcon name="location" size={16} />
@@ -1279,7 +1288,7 @@ export default function ChannelsTab({
                             onClick={() => handleSendMessage(selectedChannel)}
                             disabled={!newMessage.trim() || txDisabled}
                             className="send-btn"
-                            title={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
+                            title={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : undefined}
                           >
                             <UiIcon name="send" size={16} />
                           </button>

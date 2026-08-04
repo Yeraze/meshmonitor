@@ -50,6 +50,14 @@ interface NodePopupProps {
   currentNodeNum?: number | null;
   /** TX disabled on this source (epic #4294 Phase 2) — ORed into the traceroute run button's disabled state. */
   txDisabled?: boolean;
+  /**
+   * Pre-computed tooltip for disabled TX controls (#4547 Phase 2 WP5). App.tsx
+   * picks the MeshCore receive-only wording or the Meshtastic LoRa-config
+   * wording based on source type. Optional — falls back to
+   * `t('tx_disabled.control_tooltip')` at each call site when omitted, so
+   * existing callers/tests are unaffected.
+   */
+  txDisabledTooltip?: string;
 }
 
 export const NodePopup: React.FC<NodePopupProps> = ({
@@ -72,6 +80,7 @@ export const NodePopup: React.FC<NodePopupProps> = ({
   onPurgeNodeFromDevice,
   currentNodeNum,
   txDisabled = false,
+  txDisabledTooltip,
 }) => {
   const { t } = useTranslation();
 
@@ -183,7 +192,7 @@ export const NodePopup: React.FC<NodePopupProps> = ({
             onRunTraceroute={node.user?.id && onTraceroute ? () => onTraceroute(node.user!.id) : undefined}
             running={tracerouteLoading === node.user?.id}
             runDisabled={connectionStatus !== 'connected' || tracerouteLoading === node.user?.id || txDisabled}
-            runDisabledReason={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
+            runDisabledReason={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : undefined}
           />
         ) : undefined}
       />
