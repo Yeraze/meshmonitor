@@ -196,12 +196,14 @@ describe('GET /api/sources — radio summary (#4111 P3 WP-1)', () => {
     expect(a.radio.frequencyMhz).toBeCloseTo(915.5, 3);
   });
 
-  it('includes a meshcore radio summary ({ frequencyMhz }) derived from getLocalNode().radioFreq', async () => {
+  it('includes a meshcore radio summary ({ frequencyMhz, receiveOnly, canTransmit }) derived from getLocalNode().radioFreq / isReceiveOnly() / canTransmit()', async () => {
     mockGetManager.mockImplementation((sourceId: string) => {
       if (sourceId !== harness.sourceB) return null;
       return {
         sourceType: 'meshcore',
         getLocalNode: () => ({ publicKey: 'abc', name: 'MC', advType: 1, radioFreq: 869.525 }),
+        isReceiveOnly: () => false,
+        canTransmit: () => true,
       };
     });
 
@@ -209,7 +211,46 @@ describe('GET /api/sources — radio summary (#4111 P3 WP-1)', () => {
     const res = await agent.get('/');
 
     const b = res.body.find((s: { id: string }) => s.id === harness.sourceB);
-    expect(b.radio).toEqual({ frequencyMhz: 869.525 });
+    expect(b.radio).toEqual({ frequencyMhz: 869.525, receiveOnly: false, canTransmit: true });
+  });
+
+  // #4547 Phase 1 WP5: receiveOnly/canTransmit must reflect the MeshCore
+  // manager's own per-source state, both when the flag is on and off.
+  it('reports receiveOnly: true / canTransmit: false on the meshcore summary when the source is strictly receive-only (#4547)', async () => {
+    mockGetManager.mockImplementation((sourceId: string) => {
+      if (sourceId !== harness.sourceB) return null;
+      return {
+        sourceType: 'meshcore',
+        getLocalNode: () => ({ publicKey: 'abc', name: 'MC', advType: 1, radioFreq: 869.525 }),
+        isReceiveOnly: () => true,
+        canTransmit: () => false,
+      };
+    });
+
+    const agent = await harness.loginAs(null);
+    const res = await agent.get('/');
+
+    const b = res.body.find((s: { id: string }) => s.id === harness.sourceB);
+    expect(b.radio).toEqual({ frequencyMhz: 869.525, receiveOnly: true, canTransmit: false });
+  });
+
+  it('reports receiveOnly: false / canTransmit: true on the meshcore summary when the source can transmit (#4547)', async () => {
+    mockGetManager.mockImplementation((sourceId: string) => {
+      if (sourceId !== harness.sourceB) return null;
+      return {
+        sourceType: 'meshcore',
+        getLocalNode: () => ({ publicKey: 'abc', name: 'MC', advType: 1, radioFreq: 869.525 }),
+        isReceiveOnly: () => false,
+        canTransmit: () => true,
+      };
+    });
+
+    const agent = await harness.loginAs(null);
+    const res = await agent.get('/');
+
+    const b = res.body.find((s: { id: string }) => s.id === harness.sourceB);
+    expect(b.radio.receiveOnly).toBe(false);
+    expect(b.radio.canTransmit).toBe(true);
   });
 
   it('returns radio: null when no manager is registered for the source', async () => {

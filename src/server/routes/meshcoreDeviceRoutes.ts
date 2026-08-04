@@ -12,7 +12,7 @@ import { getMeshCoreTelemetryPoller, nodeNumFromPubkey } from '../services/meshc
 import { logger } from '../../utils/logger.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
-import { managerFor, isValidConnectionParams } from './meshcoreRouteShared.js';
+import { managerFor, isValidConnectionParams, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
 import databaseService from '../../services/database.js';
 import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
 
@@ -259,7 +259,7 @@ router.get('/info', optionalAuth(), requirePermission('connection', 'read', { so
  * Send an advertisement
  * Requires authentication - broadcasts on mesh network
  */
-router.post('/advert', meshcoreDeviceLimiter, requireAuth(), requirePermission('connection', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.post('/advert', meshcoreDeviceLimiter, requireAuth(), requirePermission('connection', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
     const success = await managerFor(req, res).sendAdvert();
 
@@ -269,6 +269,7 @@ router.post('/advert', meshcoreDeviceLimiter, requireAuth(), requirePermission('
       res.status(400).json({ success: false, error: 'Failed to send advert' });
     }
   } catch (error) {
+    if (failIfTxDisabled(res, error)) return;
     logger.error('[API] Error sending advert:', error);
     res.status(500).json({ success: false, error: 'Advert error' });
   }

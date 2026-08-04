@@ -23,6 +23,11 @@ vi.mock('../sourceManagerRegistry.js', () => {
     sourceId,
     sourceType: 'meshcore' as const,
     pingContactZeroHop: pingMock,
+    // Receive-only TX guard (#4547) — requireMeshcoreTx() calls this
+    // unconditionally on every gated route, so the stub must declare it
+    // like the real manager does.
+    isReceiveOnly: () => false,
+    canTransmit: () => true,
   });
   const managers = new Map([
     ['rt-source-a', stubFor('rt-source-a')],

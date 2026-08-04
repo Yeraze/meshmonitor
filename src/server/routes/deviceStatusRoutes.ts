@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { optionalAuth, requireAdmin } from '../auth/authMiddleware.js';
 import { logger } from '../../utils/logger.js';
 import { resolveSourceManager } from '../utils/resolveSourceManager.js';
+import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
+import { isMeshCoreManager } from '../sourceManagerTypes.js';
 
 const router = Router();
 
@@ -9,6 +11,20 @@ const router = Router();
 router.get('/device/tx-status', optionalAuth(), async (req: Request, res: Response) => {
   try {
     const txSourceId = req.query.sourceId as string | undefined;
+    // MeshCore (#4547): resolveSourceManager() is Meshtastic-only by design —
+    // an explicit MeshCore sourceId falls back to the primary/fallback
+    // Meshtastic manager rather than returning the MeshCore one (see its
+    // doc comment). Narrow via the registry + isMeshCoreManager directly so
+    // this endpoint reports the MeshCore source's own receive-only state
+    // instead of an unrelated Meshtastic source's.
+    if (txSourceId) {
+      const mgr = sourceManagerRegistry.getManager(txSourceId);
+      if (mgr && isMeshCoreManager(mgr)) {
+        const canTx = mgr.canTransmit();
+        res.json({ txEnabled: canTx, udpRelayEnabled: false, canTransmit: canTx });
+        return;
+      }
+    }
     const txManager = resolveSourceManager(txSourceId);
     const deviceConfig = await txManager.getDeviceConfig();
     const txEnabled = deviceConfig?.lora?.txEnabled !== false; // Default to true if undefined

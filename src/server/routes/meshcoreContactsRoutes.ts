@@ -21,7 +21,7 @@ import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddle
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import meshcorePositionHistoryService from '../services/meshcorePositionHistoryService.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
-import { managerFor, isValidPublicKey, auditMeshcoreEvent, parseHexPathChain } from './meshcoreRouteShared.js';
+import { managerFor, isValidPublicKey, auditMeshcoreEvent, parseHexPathChain, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
 
@@ -169,6 +169,7 @@ router.post(
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  requireMeshcoreTx(),
   async (req: Request, res: Response) => {
     try {
       const publicKey = req.params.publicKey;
@@ -187,6 +188,7 @@ router.post(
       }
       res.json({ success: true });
     } catch (error) {
+      if (failIfTxDisabled(res, error)) return;
       logger.error('[API] Error resetting contact path:', error);
       res.status(500).json({ success: false, error: 'Failed to reset path' });
     }
@@ -207,6 +209,7 @@ router.post(
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  requireMeshcoreTx(),
   async (req: Request, res: Response) => {
     try {
       const publicKey = req.params.publicKey;
@@ -225,6 +228,7 @@ router.post(
       }
       res.json({ success: true });
     } catch (error) {
+      if (failIfTxDisabled(res, error)) return;
       logger.error('[API] Error discovering contact path:', error);
       res.status(500).json({ success: false, error: 'Failed to discover path' });
     }
@@ -249,6 +253,7 @@ router.post(
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  requireMeshcoreTx(),
   async (req: Request, res: Response) => {
     try {
       const mode = req.body?.mode as MeshCoreDiscoverMode | undefined;
@@ -269,6 +274,7 @@ router.post(
       // backwards compatibility with any client reading the old shape.
       res.json({ success: true, returned, new: newCount, nodes });
     } catch (error) {
+      if (failIfTxDisabled(res, error)) return;
       logger.error('[API] Error discovering nodes:', error);
       res.status(500).json({ success: false, error: 'Failed to discover nodes' });
     }
@@ -292,11 +298,13 @@ router.post(
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  requireMeshcoreTx(),
   async (req: Request, res: Response) => {
     try {
       const result = await managerFor(req, res).discoverRegions();
       res.json({ success: true, ...result });
     } catch (error) {
+      if (failIfTxDisabled(res, error)) return;
       logger.error('[API] Error discovering regions:', error);
       res.status(500).json({ success: false, error: 'Failed to discover regions' });
     }
@@ -315,6 +323,7 @@ router.post(
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  requireMeshcoreTx(),
   async (req: Request, res: Response) => {
     try {
       const publicKey = req.params.publicKey;
@@ -333,6 +342,7 @@ router.post(
       }
       res.json({ success: true, hops: result.hops, lastSnr: result.lastSnr });
     } catch (error) {
+      if (failIfTxDisabled(res, error)) return;
       logger.error('[API] Error tracing contact path:', error);
       res.status(500).json({ success: false, error: 'Failed to trace path' });
     }
@@ -360,6 +370,7 @@ router.post(
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  requireMeshcoreTx(),
   async (req: Request, res: Response) => {
     try {
       const publicKey = req.params.publicKey;
@@ -383,6 +394,7 @@ router.post(
         snrFromTarget: result.snrFromTarget,
       });
     } catch (error) {
+      if (failIfTxDisabled(res, error)) return;
       logger.error('[API] Error pinging contact (zero hop):', error);
       return fail(res, 500, 'MESHCORE_PING_FAILED', 'Failed to ping contact');
     }
@@ -488,6 +500,7 @@ router.post(
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'write', { sourceIdFrom: 'params.id' }),
+  requireMeshcoreTx(),
   async (req: Request, res: Response) => {
     try {
       const publicKey = req.params.publicKey;
@@ -509,6 +522,7 @@ router.post(
       }
       res.json({ success: true, broadcast: true });
     } catch (error) {
+      if (failIfTxDisabled(res, error)) return;
       logger.error('[API] Error sharing contact:', error);
       res.status(500).json({ success: false, error: 'Failed to share contact' });
     }
@@ -654,6 +668,7 @@ router.get(
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  requireMeshcoreTx(),
   async (req: Request, res: Response) => {
     try {
       const publicKey = req.params.publicKey;
@@ -695,6 +710,7 @@ router.get(
 
       res.json({ success: true, data: { ...result, neighbours: resolved } });
     } catch (error) {
+      if (failIfTxDisabled(res, error)) return;
       logger.error('[API] Error getting neighbours:', error);
       res.status(500).json({ success: false, error: 'Failed to get neighbours' });
     }
@@ -759,6 +775,7 @@ router.post(
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }),
+  requireMeshcoreTx(),
   async (req: Request, res: Response) => {
     try {
       const sourceId = (req.params as { id: string }).id;
@@ -820,6 +837,7 @@ router.post(
         data: { type, written: result.written, sources: result.sources },
       });
     } catch (error) {
+      if (failIfTxDisabled(res, error)) return;
       logger.error('[API] Error polling node telemetry:', error);
       res.status(500).json({ success: false, error: 'Telemetry poll failed' });
     }
@@ -1042,6 +1060,7 @@ router.post('/neighbors/request', meshcoreDeviceLimiter, requireAuth(), requireP
 
     res.json({ success: true, data: { neighbors: result.neighbors, count: result.neighbors.length } });
   } catch (err: any) {
+    if (failIfTxDisabled(res, err)) return;
     const msg = err?.message ?? String(err);
     if (msg.includes('timed out')) {
       return res.status(504).json({ success: false, error: msg, code: 'CLI_TIMEOUT' });

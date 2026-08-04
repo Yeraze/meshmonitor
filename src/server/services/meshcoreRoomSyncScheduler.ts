@@ -107,6 +107,13 @@ export class MeshCoreRoomSyncScheduler {
   }
 
   private async tickOneManager(sourceId: string, manager: MeshCoreManager): Promise<void> {
+    // Receive-only (#4547): first statement, before any guarded send
+    // primitive (loginToRoom).
+    if (manager.isReceiveOnly()) {
+      logger.debug(`[RoomSyncScheduler:${sourceId}] Skipping - receive-only mode`);
+      return;
+    }
+
     const now = this.now();
 
     // Respect per-source mesh TX spacing.

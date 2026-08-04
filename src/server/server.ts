@@ -593,7 +593,7 @@ import meshcoreRoutes from './routes/meshcoreRoutes.js';
 import mqttPacketRoutes from './routes/mqttPacketRoutes.js';
 import atakRoutes from './routes/atakRoutes.js';
 // meshcoreConfigFromSource / ensureMeshCoreManagerStarted moved to bootstrapSources.ts
-import { isMeshtasticManager } from './sourceManagerTypes.js';
+import { isMeshtasticManager, isMeshCoreManager } from './sourceManagerTypes.js';
 import { MeshCoreTelemetryPoller, setMeshCoreTelemetryPoller } from './services/meshcoreTelemetryPoller.js';
 import {
   MeshCoreRemoteTelemetryScheduler,
@@ -912,6 +912,12 @@ setSettingsCallbacks({
     if (!sourceId) return;
     const mgr = sourceManagerRegistry.getManager(sourceId);
     mgr?.stopDistanceDeleteScheduler();
+  },
+  // MeshCore receive-only (#4547): push the freshly-saved flag into the
+  // manager's sync cache immediately, rather than waiting for a reconnect.
+  refreshMeshcoreReceiveOnly: (sourceId: string) => {
+    const mgr = sourceManagerRegistry.getManager(sourceId);
+    if (mgr && isMeshCoreManager(mgr)) void mgr.refreshReceiveOnly();
   },
   // ATAK/CoT Phase 3 (issue #3691): global singleton, not per-source.
   restartCotFeed: () => { void cotFeedService.startFromSettings(); },

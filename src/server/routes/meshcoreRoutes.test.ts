@@ -81,6 +81,10 @@ const meshcoreManager = {
   recordMeshTx: vi.fn(),
   // Fire-and-forget scope-cache refresh invoked by the saved-regions routes (#3829).
   notifySavedRegionsChanged: vi.fn(),
+  // Receive-only TX guard (#4547) — requireMeshcoreTx() calls this unconditionally
+  // on every gated route, so the stub must declare it like the real manager does.
+  isReceiveOnly: vi.fn().mockReturnValue(false),
+  canTransmit: vi.fn().mockReturnValue(true),
 };
 
 vi.mock('../meshcoreManager.js', () => ({

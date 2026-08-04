@@ -43,6 +43,18 @@ export interface SourceRadioSummary {
   regionName?: string;
   /** Meshtastic only — drives RX-sensitivity auto-seed. */
   modemPreset?: number;
+  /** Meshtastic only. Fail-open true (matches firmware default) when the field is unset. */
+  txEnabled?: boolean;
+  /** Meshtastic only. `network.enabledProtocols & UDP_BROADCAST` — a LAN peer relays our sends (#4394). */
+  udpRelayEnabled?: boolean;
+  /**
+   * Whether sends from this source have any path onto the mesh. Meshtastic:
+   * `txEnabled || udpRelayEnabled`. MeshCore: `!receiveOnly`. Consumers gating
+   * "can this source send?" must read THIS, not `txEnabled` alone (#4394).
+   */
+  canTransmit?: boolean;
+  /** MeshCore only (#4547). True when the source is configured strictly receive-only. */
+  receiveOnly?: boolean;
 }
 
 /**

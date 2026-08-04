@@ -18,6 +18,9 @@ import { sourceManagerRegistry } from '../sourceManagerRegistry.js';
 import { isMeshCoreManager } from '../sourceManagerTypes.js';
 import databaseService from '../../services/database.js';
 import { logger } from '../../utils/logger.js';
+import { fail } from '../utils/apiResponse.js';
+import { TX_DISABLED_CODE, isTxDisabledError } from '../errors/txDisabledError.js';
+import { MESHCORE_RECEIVE_ONLY_MESSAGE } from '../constants/meshcoreTx.js';
 
 /**
  * Resolve the manager for a request. Mounted only under
@@ -58,6 +61,61 @@ export function meshcoreRouteGuard(req: Request, res: Response, next: NextFuncti
   // Cache the narrowed manager so managerFor() can avoid a second registry lookup.
   res.locals.meshcoreManager = _guardMgr as MeshCoreManager;
   next();
+}
+
+/**
+ * Router middleware: reject a request on a receive-only MeshCore source with
+ * 409 TX_DISABLED (#4547). MUST be placed AFTER requirePermission(...) so a
+ * 403 still wins over a 409 for an unauthorized caller, and after
+ * meshcoreRouteGuard so res.locals.meshcoreManager is populated.
+ *
+ * Fails CLOSED: if `res.locals.meshcoreManager` is missing — meaning
+ * meshcoreRouteGuard was skipped, or ran against a source whose manager
+ * vanished between the guard and here — this cannot verify the source is
+ * safe to transmit on, so it refuses the request rather than letting it
+ * through. Mirrors meshcoreRouteGuard's own "no manager for source" 404
+ * shape so callers see one consistent error for an unresolvable manager.
+ */
+export function requireMeshcoreTx() {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const mgr = res.locals.meshcoreManager as MeshCoreManager | undefined;
+    if (!mgr) {
+      const sourceId = (req.params as { id?: string }).id;
+      return res.status(404).json({
+        success: false,
+        error: `No MeshCore manager for source ${sourceId}`,
+      });
+    }
+    if (mgr.isReceiveOnly()) {
+      return fail(res, 409, TX_DISABLED_CODE, MESHCORE_RECEIVE_ONLY_MESSAGE);
+    }
+    next();
+  };
+}
+
+/**
+ * Inline guard for handlers that transmit only on some inputs (e.g. POST /cli
+ * with the `advert` verb). Returns true when it has already sent the 409.
+ */
+export function rejectIfReceiveOnly(req: Request, res: Response): boolean {
+  if (managerFor(req, res).isReceiveOnly()) {
+    fail(res, 409, TX_DISABLED_CODE, MESHCORE_RECEIVE_ONLY_MESSAGE);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Catch-block mapping: converts a TxDisabledError raised mid-request (the
+ * flag flipped between the pre-check and the send) into 409 instead of 500.
+ * Returns true when it has already sent the response.
+ */
+export function failIfTxDisabled(res: Response, error: unknown): boolean {
+  if (isTxDisabledError(error)) {
+    fail(res, 409, TX_DISABLED_CODE, MESHCORE_RECEIVE_ONLY_MESSAGE);
+    return true;
+  }
+  return false;
 }
 
 /**

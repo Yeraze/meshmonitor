@@ -308,6 +308,9 @@ export const VALID_SETTINGS_KEYS = [
   // traffic (DMs, adverts, requests) unless a channel overrides it. Empty =
   // unscoped (legacy '*' / null region).
   'meshcoreDefaultScope',
+  // MeshCore strict receive-only mode (#4547) — per source. Blocks every
+  // RF-transmitting command/scheduler on this MeshCore source when true.
+  'meshcoreReceiveOnly',
   // Terrain Link Profile / elevation backend (#4111 Phase 1). Global (not
   // per-source) — elevation is source-agnostic public DEM data.
   // `elevationEnabled` is the public availability flag the Map Analysis page
@@ -478,6 +481,8 @@ export const PER_SOURCE_SETTINGS_KEYS = [
   'meshcoreTimerTriggers',
   // MeshCore default region/scope (#3667) — per source (per node)
   'meshcoreDefaultScope',
+  // MeshCore strict receive-only mode (#4547) — per source (#4547 §2.1)
+  'meshcoreReceiveOnly',
   // Node Display (#4412 / per-source node display epic). All ten keys in the
   // Settings → Node Display section are per-source as of Phase 1; Phase 2 converts
   // the server reads to getSettingForSource(). `localStatsIntervalMinutes` is
