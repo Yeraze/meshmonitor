@@ -24,7 +24,7 @@ import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
 import { MeshCoreNativeBackend, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
 import { resolveMessageScope } from './meshcoreScopeResolve.js';
 import { TxDisabledError } from './errors/txDisabledError.js';
-import { isRfBridgeCommand, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
+import { isRfBridgeCommand, isTransmittingLocalCliVerb, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
 import {
   parseMeshCoreIgnoreList,
   isMeshCoreIgnoreListEmpty,
@@ -3093,6 +3093,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * when only channel 0 was supported (issue follow-up to MeshCore channels plan).
    */
   async sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null, autoRetryOnMiss: boolean = false): Promise<boolean> {
+    this.requireTransmit();
     return (await this.sendMessageWithResult(text, toPublicKey, channelIdx, scopeOverride, autoRetryOnMiss)).ok;
   }
 
@@ -3113,6 +3114,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.warn('[MeshCore] Repeaters cannot send messages');
       return { ok: false };
     }
+
+    this.requireTransmit();
 
     // Serialise the scope-assert→send pair per source (#3667). The device's
     // flood scope is a single global setting; two concurrent sends with
@@ -3281,6 +3284,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     isAutoRetry: boolean = false,
     autoRetryOnMiss: boolean = false,
   ): Promise<MeshCoreSendResult> {
+    this.requireTransmit();
     try {
       const isChannelSend = !toPublicKey && channelIdx !== undefined;
 
@@ -3694,6 +3698,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return false;
     }
 
+    this.requireTransmit();
+
     if (this.deviceType === MeshCoreDeviceType.REPEATER) {
       try {
         await this.sendRepeaterCommand('advert');
@@ -3738,6 +3744,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!this.connected) {
       return false;
     }
+    this.requireTransmit();
     try {
       const response = await this.sendBridgeCommand('reset_path', { public_key: publicKey });
       if (!response.success) {
@@ -3781,6 +3788,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!this.connected) {
       return false;
     }
+    this.requireTransmit();
     try {
       const response = await this.sendBridgeCommand('discover_path', { public_key: publicKey }, 15000);
       if (!response.success) {
@@ -3827,6 +3835,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!this.connected) {
       return empty;
     }
+    this.requireTransmit();
     // 32-bit correlation tag so responses can be matched to this request.
     const tag = Math.floor(Math.random() * 0xffffffff) >>> 0;
     this.activeDiscovery = { seen: new Set(), returned: 0, newCount: 0, nodes: new Map() };
@@ -3910,6 +3919,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   async fetchOwnerName(publicKey: string): Promise<string | null> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
+    this.requireTransmit();
     try {
       // Install a zero-hop direct out_path so the ANON_REQ routes direct instead
       // of flooding into the void (firmware drops flooded OWNER reqs). Best-effort
@@ -4099,6 +4109,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       return { regions: [], perRepeater: [] };
     }
+    this.requireTransmit();
 
     // 1. Run a 0-hop discovery sweep and resolve it to the subset of known
     //    repeater/room-server contacts that answered, ordered by arrival.
@@ -4187,6 +4198,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!this.connected) {
       return null;
     }
+    this.requireTransmit();
     const contact = this.contacts.get(publicKey);
     if (!contact?.outPath || contact.pathLen == null || contact.pathLen <= 0) {
       logger.warn(`[MeshCore] Trace-path: no known path for ${publicKey.substring(0, 16)}…`);
@@ -4247,6 +4259,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
     if (!this.connected) return null;
     if (!path || path.length === 0) return null;
+    this.requireTransmit();
     try {
       // No sendWithDefaultScope wrapper (unlike requestRemoteTelemetryRaw): a
       // trace follows the explicit path it is given rather than flooding on an
@@ -4315,6 +4328,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         error: 'Contact is not known to this source.',
       };
     }
+    this.requireTransmit();
 
     // MeshCore path hashes are the leading byte(s) of the node's public key
     // (`Identity::isHashMatch`). meshcore.js sends SendTracePath with flags=0,
@@ -4388,6 +4402,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!this.connected) {
       return { ok: false, error: 'Source is disconnected.' };
     }
+    this.requireTransmit();
     try {
       // Use a short dedicated timeout (not the 30s default) so a firmware that
       // never acks CMD_SHARE_CONTACT fails fast instead of hanging the request.
@@ -4747,6 +4762,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // neighbours query behind a guest/admin login, and this binary path (like
     // the CLI `neighbors` path) otherwise fails with no session. Never
     // anonymous-logs-in (see ensureSavedLogin).
+    this.requireTransmit();
     await this.ensureSavedLogin(publicKey);
     try {
       const response = await this.sendBridgeCommand('get_neighbours', {
@@ -4863,6 +4879,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return null;
     }
 
+    this.requireTransmit();
+
     try {
       // A login request floods when the path to the node is unknown, so it
       // carries the default scope (#3667).
@@ -4899,6 +4917,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       return null;
     }
+
+    this.requireTransmit();
 
     try {
       const response = await this.sendBridgeCommand('get_status', {
@@ -4965,6 +4985,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   async ensureGuestLogin(publicKey: string): Promise<boolean> {
     if (this.guestLoggedInNodes.has(publicKey)) return true;
+    this.requireTransmit();
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return false;
     if (!this.connected) return false;
     const ok = (await this.loginToNode(publicKey, '')) !== null;
@@ -4997,6 +5018,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   async ensureSavedLogin(publicKey: string): Promise<boolean> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return false;
     if (!this.connected) return false;
+    this.requireTransmit();
 
     let cred;
     try {
@@ -5028,6 +5050,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * tracks state in roomLoggedInNodes so the UI can show login status.
    */
   async loginToRoom(publicKey: string, password: string): Promise<boolean> {
+    this.requireTransmit();
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const ok = await this.loginToNode(publicKey, password);
@@ -5069,6 +5092,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.warn('[MeshCore] Repeaters cannot send messages');
       return false;
     }
+    this.requireTransmit();
     try {
       const response = await this.sendBridgeCommand('send_message', {
         text,
@@ -5275,6 +5299,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       throw new Error('CLI command must be non-empty');
     }
 
+    this.requireTransmit();
+
     const prefixKey = normalizedKey.substring(0, 12);
     const timeoutMs = opts.timeoutMs ?? 15_000;
 
@@ -5304,6 +5330,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     command: string,
     timeoutMs: number,
   ): Promise<{ reply: string; elapsedMs: number }> {
+    this.requireTransmit();
     return new Promise<{ reply: string; elapsedMs: number }>((resolve, reject) => {
       // A stale pending entry should be impossible because of the
       // per-prefix lock, but guard against it: an entry left over from a
@@ -5384,6 +5411,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     const trimmed = command.trim();
     if (trimmed.length === 0) {
       throw new Error('Command must be non-empty');
+    }
+    if (this.receiveOnly && isTransmittingLocalCliVerb(trimmed)) {
+      throw new TxDisabledError(MESHCORE_RECEIVE_ONLY_MESSAGE);
     }
     const sentAt = Date.now();
     const timeoutMs = opts.timeoutMs ?? 10_000;
@@ -5756,6 +5786,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!this.connected) return null;
     if (!publicKey) return null;
 
+    this.requireTransmit();
+
     try {
       const params: Record<string, unknown> = { public_key: publicKey };
       if (typeof timeoutSecs === 'number' && Number.isFinite(timeoutSecs) && timeoutSecs > 0) {
@@ -5799,6 +5831,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
     if (!this.connected) return null;
     if (!publicKey) return null;
+    this.requireTransmit();
     try {
       const response = await this.sendWithDefaultScope(() =>
         this.sendBridgeCommand('request_telemetry', { public_key: publicKey }, 45_000),

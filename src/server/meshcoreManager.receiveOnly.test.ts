@@ -1,18 +1,26 @@
 /**
- * MeshCore strict receive-only mode (#4547 epic, Phase 1 WP1 — Foundations).
+ * MeshCore strict receive-only mode (#4547 epic, Phase 1).
  *
- * Covers only the WP1 slice: manager state (isReceiveOnly/canTransmit),
+ * WP1 slice (unchanged): manager state (isReceiveOnly/canTransmit),
  * refreshReceiveOnly() DB read + fail-safe caching, setReceiveOnly()'s
  * state-change-only logging + native-backend push, the sendBridgeCommand
  * command-name-aware gate, and that connect() refreshes the flag on every
- * (re)connect. The per-method requireTransmit() guards (WP2), scheduler
- * silent-skips and native-backend chokepoint B (WP3) are covered by their
- * own test files, not here.
+ * (re)connect.
  *
- * See docs/internal/dev-notes/MESHCORE_RECEIVE_ONLY_PHASE1_SPEC.md §2.3.1-2.3.3, §3.2.
+ * WP2 slice (this addition): the 24 explicit `requireTransmit()` guards from
+ * §2.3.4, the `sendLocalCliCommand` verb gate (§2.3.5), the `requestNeighbors`
+ * branch split (§2.3.4b — remote branch gated via its downstream guards,
+ * local branch deliberately ungated), the insertion-point / orphaned-state
+ * checks for the six non-trivial methods, and proof that `sendRepeaterCommand`
+ * is NOT gated wholesale.
+ *
+ * Scheduler silent-skips and native-backend chokepoint B (WP3) are covered by
+ * their own test files, not here.
+ *
+ * See docs/internal/dev-notes/MESHCORE_RECEIVE_ONLY_PHASE1_SPEC.md §2.3.4, §2.3.4b, §2.3.5, §3.2.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MeshCoreManager, ConnectionType, type MeshCoreConfig } from './meshcoreManager.js';
+import { MeshCoreManager, ConnectionType, MeshCoreDeviceType, type MeshCoreConfig, type MeshCoreContact } from './meshcoreManager.js';
 import { logger } from '../utils/logger.js';
 import databaseService from '../services/database.js';
 import { isTxDisabledError } from './errors/txDisabledError.js';
@@ -42,6 +50,84 @@ function sendBridgeCommandOf(manager: MeshCoreManager): SendBridgeCommandFn {
 
 function freshManager(sourceId = 'test-source'): MeshCoreManager {
   return new MeshCoreManager(sourceId);
+}
+
+/** Minimal shape of the native backend needed by the WP2 guard tests. */
+interface FakeNativeBackend {
+  sendCommand: (cmd: string, params: Record<string, unknown>, timeout?: number) => Promise<{
+    id?: string;
+    success: boolean;
+    data?: Record<string, unknown>;
+    error?: string;
+  }>;
+  setReceiveOnly: (enabled: boolean) => void;
+}
+
+/** Minimal shape of the serial port needed by the sendRepeaterCommand tests. */
+interface FakeSerialPort {
+  isOpen: boolean;
+  write: (data: string) => void;
+}
+
+/**
+ * Narrow, `any`-free accessor for the private fields the WP2 guard-placement
+ * and orphaned-state tests need to poke directly (device-type/connected
+ * preconditions, the native backend, the serial port, and the lock/pending-
+ * reply maps). Mirrors the `sendBridgeCommandOf` accessor above.
+ */
+interface ManagerInternals {
+  connected: boolean;
+  deviceType: MeshCoreDeviceType;
+  contacts: Map<string, MeshCoreContact>;
+  nativeBackend: FakeNativeBackend | undefined;
+  serialPort: FakeSerialPort | null;
+  cliCommandLocks: Map<string, Promise<unknown>>;
+  pendingCliReplies: Map<string, unknown>;
+  guestLoggedInNodes: Set<string>;
+}
+
+function internals(manager: MeshCoreManager): ManagerInternals {
+  return manager as unknown as ManagerInternals;
+}
+
+type PerformScopedSendFn = (
+  text: string,
+  toPublicKey?: string,
+  channelIdx?: number,
+  scopeOverride?: string | null,
+  isAutoRetry?: boolean,
+  autoRetryOnMiss?: boolean,
+) => Promise<{ ok: boolean }>;
+
+function performScopedSendOf(manager: MeshCoreManager): PerformScopedSendFn {
+  return (manager as unknown as { performScopedSend: PerformScopedSendFn }).performScopedSend.bind(manager);
+}
+
+type RunCliCommandLockedFn = (
+  fullKey: string,
+  prefixKey: string,
+  command: string,
+  timeoutMs: number,
+) => Promise<{ reply: string; elapsedMs: number }>;
+
+function runCliCommandLockedOf(manager: MeshCoreManager): RunCliCommandLockedFn {
+  return (manager as unknown as { runCliCommandLocked: RunCliCommandLockedFn }).runCliCommandLocked.bind(manager);
+}
+
+/** Valid-format 64-char hex public key used throughout the WP2 guard tests. */
+const HEX_PUBKEY = 'a'.repeat(64);
+
+function makeContact(publicKey: string, overrides: Partial<MeshCoreContact> = {}): MeshCoreContact {
+  return { publicKey, ...overrides };
+}
+
+function companionSetup(m: MeshCoreManager): void {
+  internals(m).deviceType = MeshCoreDeviceType.COMPANION;
+}
+
+function companionConnectedSetup(m: MeshCoreManager): void {
+  internals(m).deviceType = MeshCoreDeviceType.COMPANION;
+  internals(m).connected = true;
 }
 
 describe('MeshCoreManager receive-only state (#4547 WP1)', () => {
@@ -269,5 +355,250 @@ describe('MeshCoreManager.connect() refreshes receive-only on every (re)connect 
 
     expect(m.isReceiveOnly()).toBe(true);
     expect(m.canTransmit()).toBe(false);
+  });
+});
+
+/**
+ * WP2 — the 24 explicit `requireTransmit()` guards from §2.3.4. Each case
+ * supplies just enough state to pass the method's OWN pre-existing
+ * validation (device-type / connected / format checks) so the guard is
+ * actually reached, then asserts the call rejects with a `TxDisabledError`.
+ * `runCliCommandLocked` is deliberately excluded from this table — it is not
+ * declared `async`, so the guard throws SYNCHRONOUSLY before a Promise is
+ * even returned; it gets its own test below alongside the other
+ * insertion-point / orphaned-state checks.
+ */
+interface GuardCase {
+  name: string;
+  setup?: (m: MeshCoreManager) => void;
+  invoke: (m: MeshCoreManager) => Promise<unknown>;
+}
+
+const GUARD_CASES: GuardCase[] = [
+  { name: 'sendMessage', invoke: (m) => m.sendMessage('hi') },
+  {
+    name: 'sendMessageWithResult',
+    setup: (m) => { internals(m).connected = true; },
+    invoke: (m) => m.sendMessageWithResult('hi'),
+  },
+  { name: 'performScopedSend', invoke: (m) => performScopedSendOf(m)('hi') },
+  {
+    name: 'sendAdvert',
+    setup: (m) => { internals(m).connected = true; },
+    invoke: (m) => m.sendAdvert(),
+  },
+  { name: 'resetContactPath', setup: companionConnectedSetup, invoke: (m) => m.resetContactPath(HEX_PUBKEY) },
+  { name: 'discoverContactPath', setup: companionConnectedSetup, invoke: (m) => m.discoverContactPath(HEX_PUBKEY) },
+  { name: 'discoverNodes', setup: companionConnectedSetup, invoke: (m) => m.discoverNodes(0x0c) },
+  { name: 'fetchOwnerName', setup: companionSetup, invoke: (m) => m.fetchOwnerName(HEX_PUBKEY) },
+  { name: 'discoverRegions', setup: companionSetup, invoke: (m) => m.discoverRegions() },
+  { name: 'traceContactPath', setup: companionConnectedSetup, invoke: (m) => m.traceContactPath(HEX_PUBKEY) },
+  {
+    name: 'tracePathRaw',
+    setup: companionConnectedSetup,
+    invoke: (m) => m.tracePathRaw(new Uint8Array([1])),
+  },
+  {
+    name: 'pingContactZeroHop',
+    setup: (m) => {
+      companionConnectedSetup(m);
+      internals(m).contacts.set(HEX_PUBKEY, makeContact(HEX_PUBKEY));
+    },
+    invoke: (m) => m.pingContactZeroHop(HEX_PUBKEY),
+  },
+  { name: 'shareContact', setup: companionConnectedSetup, invoke: (m) => m.shareContact(HEX_PUBKEY) },
+  { name: 'getNeighbours', setup: companionConnectedSetup, invoke: (m) => m.getNeighbours(HEX_PUBKEY) },
+  { name: 'loginToNode', setup: companionSetup, invoke: (m) => m.loginToNode(HEX_PUBKEY, 'pw') },
+  { name: 'requestNodeStatus', setup: companionSetup, invoke: (m) => m.requestNodeStatus(HEX_PUBKEY) },
+  { name: 'ensureGuestLogin', invoke: (m) => m.ensureGuestLogin(HEX_PUBKEY) },
+  { name: 'ensureSavedLogin', setup: companionConnectedSetup, invoke: (m) => m.ensureSavedLogin(HEX_PUBKEY) },
+  { name: 'loginToRoom', invoke: (m) => m.loginToRoom(HEX_PUBKEY, 'pw') },
+  {
+    name: 'sendRoomPost',
+    setup: (m) => { internals(m).connected = true; },
+    invoke: (m) => m.sendRoomPost('hi', HEX_PUBKEY),
+  },
+  { name: 'sendCliCommand', setup: companionConnectedSetup, invoke: (m) => m.sendCliCommand(HEX_PUBKEY, 'neighbors') },
+  { name: 'requestRemoteTelemetry', setup: companionConnectedSetup, invoke: (m) => m.requestRemoteTelemetry(HEX_PUBKEY) },
+  {
+    name: 'requestRemoteTelemetryRaw',
+    setup: companionConnectedSetup,
+    invoke: (m) => m.requestRemoteTelemetryRaw(HEX_PUBKEY),
+  },
+];
+
+describe.each(GUARD_CASES)('MeshCoreManager.$name requireTransmit() guard (#4547 WP2 §2.3.4)', ({ setup, invoke }) => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('rejects with a TxDisabledError while receive-only', async () => {
+    const m = freshManager();
+    setup?.(m);
+    m.setReceiveOnly(true);
+
+    await expect(invoke(m)).rejects.toMatchObject({ isTxDisabledError: true, code: 'TX_DISABLED' });
+  });
+});
+
+describe('MeshCoreManager.requestNeighbors branch split stays ungated (#4547 WP2 §2.3.4b)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('remote branch (publicKey supplied) rejects via ensureSavedLogin, never reaching sendCliCommand', async () => {
+    const m = freshManager();
+    companionConnectedSetup(m);
+    m.setReceiveOnly(true);
+    const sendCliSpy = vi.spyOn(m, 'sendCliCommand');
+
+    await expect(m.requestNeighbors(HEX_PUBKEY)).rejects.toMatchObject({ isTxDisabledError: true });
+    expect(sendCliSpy).not.toHaveBeenCalled();
+  });
+
+  it('local branch (no publicKey) resolves normally, reaching sendLocalCliCommand("neighbors")', async () => {
+    const m = freshManager();
+    m.setReceiveOnly(true);
+    const localCliSpy = vi.spyOn(m, 'sendLocalCliCommand').mockResolvedValue({ reply: '', elapsedMs: 1 });
+
+    const result = await m.requestNeighbors();
+
+    expect(localCliSpy).toHaveBeenCalledWith('neighbors');
+    expect(result).toEqual({ neighbors: [] });
+  });
+
+  it('local branch also resolves when publicKey is explicitly undefined', async () => {
+    const m = freshManager();
+    m.setReceiveOnly(true);
+    const localCliSpy = vi.spyOn(m, 'sendLocalCliCommand').mockResolvedValue({ reply: '', elapsedMs: 1 });
+
+    await expect(m.requestNeighbors(undefined)).resolves.toEqual({ neighbors: [] });
+    expect(localCliSpy).toHaveBeenCalledWith('neighbors');
+  });
+});
+
+describe('MeshCoreManager.sendLocalCliCommand verb gate (#4547 WP2 §2.3.5)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each(['advert', 'ADVERT', ' advert '])(
+    'throws TxDisabledError for the transmitting verb %j on a Companion',
+    async (cmd) => {
+      const m = freshManager();
+      companionConnectedSetup(m);
+      m.setReceiveOnly(true);
+
+      await expect(m.sendLocalCliCommand(cmd)).rejects.toMatchObject({
+        isTxDisabledError: true,
+        code: 'TX_DISABLED',
+      });
+    },
+  );
+
+  it('throws TxDisabledError for "advert" on a Repeater too (single gate covers both dispatch branches)', async () => {
+    const m = freshManager();
+    internals(m).connected = true;
+    internals(m).deviceType = MeshCoreDeviceType.REPEATER;
+    m.setReceiveOnly(true);
+
+    await expect(m.sendLocalCliCommand('advert')).rejects.toMatchObject({ isTxDisabledError: true });
+  });
+
+  it('does not block "ver" — reaches the (serial-only) device_query bridge command', async () => {
+    const m = freshManager();
+    companionConnectedSetup(m);
+    const backendSend = vi.fn().mockResolvedValue({ success: true, data: { ver: '1.16' } });
+    internals(m).nativeBackend = { sendCommand: backendSend, setReceiveOnly: vi.fn() };
+    m.setReceiveOnly(true);
+
+    const result = await m.sendLocalCliCommand('ver');
+
+    expect(result.reply).toContain('1.16');
+    expect(backendSend).toHaveBeenCalledWith('device_query', {}, expect.any(Number));
+  });
+});
+
+describe('MeshCoreManager guard insertion-point / orphaned-state checks (#4547 WP2)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('sendCliCommand: throwing leaves no entry behind in cliCommandLocks', async () => {
+    const m = freshManager();
+    companionConnectedSetup(m);
+    m.setReceiveOnly(true);
+
+    await expect(m.sendCliCommand(HEX_PUBKEY, 'neighbors')).rejects.toMatchObject({ isTxDisabledError: true });
+    expect(internals(m).cliCommandLocks.size).toBe(0);
+  });
+
+  it('runCliCommandLocked: throws synchronously before installing a pendingCliReplies entry or a timer', () => {
+    const m = freshManager();
+    m.setReceiveOnly(true);
+    const setTimeoutSpy = vi.spyOn(global, 'setTimeout');
+    const fn = runCliCommandLockedOf(m);
+
+    let caught: unknown;
+    try {
+      fn(HEX_PUBKEY, HEX_PUBKEY.substring(0, 12), 'neighbors', 5000);
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(isTxDisabledError(caught)).toBe(true);
+    expect(internals(m).pendingCliReplies.size).toBe(0);
+    expect(setTimeoutSpy).not.toHaveBeenCalled();
+  });
+
+  it('ensureGuestLogin: an already-cached session returns true instead of throwing while receive-only', async () => {
+    const m = freshManager();
+    internals(m).guestLoggedInNodes.add(HEX_PUBKEY);
+    m.setReceiveOnly(true);
+
+    await expect(m.ensureGuestLogin(HEX_PUBKEY)).resolves.toBe(true);
+  });
+
+  it('getNeighbours: throws before ever calling ensureSavedLogin', async () => {
+    const m = freshManager();
+    companionConnectedSetup(m);
+    m.setReceiveOnly(true);
+    const ensureSpy = vi.spyOn(m, 'ensureSavedLogin');
+
+    await expect(m.getNeighbours(HEX_PUBKEY)).rejects.toMatchObject({ isTxDisabledError: true });
+    expect(ensureSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('MeshCoreManager.sendRepeaterCommand is not gated wholesale (#4547 WP2)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('setName still functions on a Repeater while receive-only (serial-only "set name")', async () => {
+    vi.useFakeTimers();
+    const m = freshManager();
+    internals(m).deviceType = MeshCoreDeviceType.REPEATER;
+    internals(m).serialPort = { isOpen: true, write: vi.fn() };
+    m.setReceiveOnly(true);
+
+    const resultPromise = m.setName('Test Node');
+    await vi.advanceTimersByTimeAsync(5000);
+
+    await expect(resultPromise).resolves.toBe(true);
+  });
+
+  it('setRadio still functions on a Repeater while receive-only (serial-only "set radio")', async () => {
+    vi.useFakeTimers();
+    const m = freshManager();
+    internals(m).deviceType = MeshCoreDeviceType.REPEATER;
+    internals(m).serialPort = { isOpen: true, write: vi.fn() };
+    m.setReceiveOnly(true);
+
+    const resultPromise = m.setRadio(915, 250, 7, 5);
+    await vi.advanceTimersByTimeAsync(5000);
+
+    await expect(resultPromise).resolves.toBe(true);
   });
 });
