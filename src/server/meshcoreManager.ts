@@ -23,6 +23,8 @@ import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js
 import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
 import { MeshCoreNativeBackend, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
 import { resolveMessageScope } from './meshcoreScopeResolve.js';
+import { TxDisabledError } from './errors/txDisabledError.js';
+import { isRfBridgeCommand, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
 import {
   parseMeshCoreIgnoreList,
   isMeshCoreIgnoreListEmpty,
@@ -860,6 +862,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // refreshed on connect and whenever a scope changes.
   private knownScopes: Set<string> = new Set();
 
+  /** Cached per-source `meshcoreReceiveOnly`. Sync-readable; refreshed on connect and on settings write. */
+  private receiveOnly = false;
+
   // Shared state
   private localNode: MeshCoreNode | null = null;
   private contacts: Map<string, MeshCoreContact> = new Map();
@@ -1193,6 +1198,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // backend's socket-drop events are treated as real (and so a late event
     // from the previous backend, already nulled, stays suppressed).
     this.intentionalTeardown = false;
+
+    // Receive-only (#4547): re-read the persisted per-source flag before the
+    // backend connects and schedulers arm, so every reconnect re-applies it
+    // rather than reusing a stale in-memory value from a previous connect().
+    // This applies to Repeater/serial sources too, not just Companion, so it
+    // must run here rather than inside startNativeBackend().
+    await this.refreshReceiveOnly();
 
     try {
       if (this.config.connectionType === ConnectionType.SERIAL && this.config.firmwareType === 'repeater') {
@@ -1611,6 +1623,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     } catch (err) {
       logger.warn(`[MeshCore:${this.sourceId}] Failed to read meshcoreRespondToDiscovery:`, err);
     }
+
+    // Receive-only (#4547): a freshly-constructed backend starts with its own
+    // default (false); push the manager's already-refreshed cached value so it
+    // doesn't miss a beat between connect() reading the setting and this
+    // backend coming online.
+    this.nativeBackend.setReceiveOnly(this.receiveOnly);
   }
 
   /**
@@ -1620,6 +1638,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private async sendBridgeCommand(cmd: string, params: Record<string, any>, timeout: number = 30000): Promise<BridgeResponse> {
     if (!this.nativeBackend) {
       throw new Error('Native backend not ready');
+    }
+    // Receive-only (#4547): command-name aware — this method carries BOTH RF
+    // and local serial commands. Fail-closed on unknown names (meshcoreTx.ts).
+    if (this.receiveOnly && isRfBridgeCommand(cmd)) {
+      throw new TxDisabledError(MESHCORE_RECEIVE_ONLY_MESSAGE);
     }
     return this.nativeBackend.sendCommand(cmd, params, timeout);
   }
@@ -3938,6 +3961,56 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     await databaseService.settings.setSourceSetting(this.sourceId, 'meshcoreRespondToDiscovery', enabled ? 'true' : 'false');
     this.nativeBackend?.setRespondToDiscovery(enabled);
     logger.info(`[MeshCore:${this.sourceId}] Discovery responder ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /** True when this source is configured strictly receive-only (#4547). */
+  isReceiveOnly(): boolean {
+    return this.receiveOnly;
+  }
+
+  /**
+   * Whether this source may put energy on the radio. Sync, no DB access —
+   * mirrors MeshtasticManager.canTransmit() (meshtasticManager.ts:9141) so
+   * per-command guards and the sync computeSourceRadioSummary can both use it.
+   */
+  canTransmit(): boolean {
+    return !this.receiveOnly;
+  }
+
+  /**
+   * Apply a new receive-only value. Logs ONLY on a state change (info), never
+   * per tick. Pushes the value into the native backend so chokepoint B
+   * (handleDiscoverRequest) sees it too.
+   */
+  setReceiveOnly(enabled: boolean): void {
+    const prev = this.receiveOnly;
+    this.receiveOnly = enabled;
+    this.nativeBackend?.setReceiveOnly(enabled);
+    if (prev !== enabled) {
+      logger.info(enabled
+        ? `🚫 [MeshCore:${this.sourceId}] Receive-only mode ON — all transmissions blocked, autonomous senders paused`
+        : `📡 [MeshCore:${this.sourceId}] Receive-only mode OFF — transmissions and autonomous senders resume`);
+    }
+  }
+
+  /**
+   * Re-read `meshcoreReceiveOnly` from the DB and apply it. On read failure the
+   * PREVIOUS cached value is retained — a transient DB error must never silently
+   * re-enable transmission on a source the user configured receive-only.
+   */
+  async refreshReceiveOnly(): Promise<boolean> {
+    try {
+      const raw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreReceiveOnly');
+      this.setReceiveOnly(raw === 'true');
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] Failed to read meshcoreReceiveOnly, keeping cached value (${this.receiveOnly}):`, err);
+    }
+    return this.receiveOnly;
+  }
+
+  /** Throw the shared TxDisabledError when this source is receive-only. */
+  private requireTransmit(): void {
+    if (!this.canTransmit()) throw new TxDisabledError(MESHCORE_RECEIVE_ONLY_MESSAGE);
   }
 
   /**
