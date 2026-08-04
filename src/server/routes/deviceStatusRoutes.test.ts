@@ -17,13 +17,25 @@ vi.mock('../auth/authMiddleware.js', () => ({
   requireAdmin: () => (req: any, _res: any, next: any) => { req.user = { id: 1, isAdmin: true }; next(); },
 }));
 
+// #4547 Phase 1 WP5: a MeshCore sourceId is resolved via the registry +
+// isMeshCoreManager directly (resolveSourceManager() is Meshtastic-only by
+// design and would silently fall back to the wrong manager, see the
+// doc comment on that helper and deviceStatusRoutes.ts).
+const mockGetManager = vi.hoisted(() => vi.fn());
+vi.mock('../sourceManagerRegistry.js', () => ({
+  sourceManagerRegistry: { getManager: mockGetManager },
+}));
+
 import deviceStatusRoutes from './deviceStatusRoutes.js';
 
 const app = express();
 app.use(express.json());
 app.use('/', deviceStatusRoutes);
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockGetManager.mockReturnValue(null);
+});
 
 describe('GET /device/tx-status', () => {
   beforeEach(() => mockManager.isUdpBroadcastRelayEnabled.mockReturnValue(false));
@@ -53,6 +65,47 @@ describe('GET /device/tx-status', () => {
     expect(res.body.txEnabled).toBe(false);
     expect(res.body.udpRelayEnabled).toBe(true);
     expect(res.body.canTransmit).toBe(true);
+  });
+
+  // #4547 Phase 1 WP5: an explicit MeshCore ?sourceId= reports THAT source's
+  // receive-only state, not the Meshtastic resolveSourceManager() fallback's.
+  describe('MeshCore source (#4547)', () => {
+    it('reports the receive-only source as unable to transmit', async () => {
+      mockGetManager.mockReturnValue({
+        sourceType: 'meshcore',
+        canTransmit: () => false,
+      });
+
+      const res = await request(app).get('/device/tx-status?sourceId=meshcore-a');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ txEnabled: false, udpRelayEnabled: false, canTransmit: false });
+      // The Meshtastic fallback path must not have been consulted.
+      expect(mockManager.getDeviceConfig).not.toHaveBeenCalled();
+    });
+
+    it('reports a transmit-capable MeshCore source as canTransmit: true', async () => {
+      mockGetManager.mockReturnValue({
+        sourceType: 'meshcore',
+        canTransmit: () => true,
+      });
+
+      const res = await request(app).get('/device/tx-status?sourceId=meshcore-b');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ txEnabled: true, udpRelayEnabled: false, canTransmit: true });
+    });
+
+    it('falls back to the Meshtastic resolveSourceManager() path when the sourceId is not a registered MeshCore manager', async () => {
+      mockGetManager.mockReturnValue(null); // not registered as MeshCore
+      mockManager.getDeviceConfig.mockResolvedValue({ lora: {} });
+
+      const res = await request(app).get('/device/tx-status?sourceId=meshtastic-a');
+
+      expect(res.status).toBe(200);
+      expect(res.body.txEnabled).toBe(true);
+      expect(mockManager.getDeviceConfig).toHaveBeenCalled();
+    });
   });
 });
 
