@@ -17,7 +17,7 @@ import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddle
 import { meshcoreDeviceLimiter, messageLimiter } from '../middleware/rateLimiters.js';
 import { getMeshCoreCredentialStore } from '../services/meshcoreCredentialStore.js';
 import { managerFor, VALIDATION, isValidPublicKey, isValidMessage, auditMeshcoreEvent,
-  requireMeshcoreChannelAccess, canAccessMeshcoreChannel } from './meshcoreRouteShared.js';
+  requireMeshcoreChannelAccess, canAccessMeshcoreChannel, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
 
 const router = Router({ mergeParams: true });
 
@@ -252,7 +252,7 @@ router.delete('/messages/:messageId', requireAuth(), requirePermission('messages
  * Send a message
  * Requires authentication - sends data over mesh network
  */
-router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
     const { text, toPublicKey, channelIdx, scope } = req.body;
 
@@ -324,6 +324,7 @@ router.post('/messages/send', messageLimiter, requireAuth(), requirePermission('
       res.status(400).json({ success: false, error: 'Failed to send message' });
     }
   } catch (error) {
+    if (failIfTxDisabled(res, error)) return;
     logger.error('[API] Error sending message:', error);
     res.status(500).json({ success: false, error: 'Send error' });
   }
@@ -362,7 +363,7 @@ router.get('/rooms/servers', optionalAuth(), requirePermission('messages', 'read
  *   - `password` may be empty for guest/read-only access.
  *   - `rememberPassword: true` persists the password (AES-256-GCM via credential store).
  */
-router.post('/rooms/login', meshcoreDeviceLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.post('/rooms/login', meshcoreDeviceLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
     const { publicKey, password, rememberPassword } = req.body as {
       publicKey?: string;
@@ -406,6 +407,7 @@ router.post('/rooms/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
 
     res.json({ success: true, message: 'Room login successful', persisted: false });
   } catch (error) {
+    if (failIfTxDisabled(res, error)) return;
     logger.error('[API] Error logging into room:', error);
     res.status(500).json({ success: false, error: 'Room login error' });
   }
@@ -416,7 +418,7 @@ router.post('/rooms/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
  * Login to a room server using a previously saved credential.
  * Body: { publicKey: string }
  */
-router.post('/rooms/login-with-saved', meshcoreDeviceLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.post('/rooms/login-with-saved', meshcoreDeviceLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
     const { publicKey } = req.body as { publicKey?: string };
     if (typeof publicKey !== 'string' || !isValidPublicKey(publicKey)) {
@@ -440,6 +442,7 @@ router.post('/rooms/login-with-saved', meshcoreDeviceLimiter, requireAuth(), req
     }
     res.json({ success: true, usedStored: true });
   } catch (error) {
+    if (failIfTxDisabled(res, error)) return;
     logger.error('[API] Error logging into room with saved credential:', error);
     res.status(500).json({ success: false, error: 'Room login error' });
   }
@@ -471,7 +474,7 @@ router.get('/rooms/credentials', requireAuth(), requirePermission('messages', 'r
  * Send a text post to a room server.
  * Body: { roomPublicKey: string, text: string }
  */
-router.post('/rooms/post', messageLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.post('/rooms/post', messageLimiter, requireAuth(), requirePermission('messages', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
     const { roomPublicKey, text } = req.body as {
       roomPublicKey?: string;
@@ -493,6 +496,7 @@ router.post('/rooms/post', messageLimiter, requireAuth(), requirePermission('mes
       res.status(400).json({ success: false, error: 'Failed to send room post' });
     }
   } catch (error) {
+    if (failIfTxDisabled(res, error)) return;
     logger.error('[API] Error sending room post:', error);
     res.status(500).json({ success: false, error: 'Room post error' });
   }

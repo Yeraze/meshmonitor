@@ -23,7 +23,11 @@ import {
   enhanceNeighborsReply,
   DANGER_COMMAND_PATTERN,
   resolveCliTimeoutMs,
+  requireMeshcoreTx,
+  rejectIfReceiveOnly,
+  failIfTxDisabled,
 } from './meshcoreRouteShared.js';
+import { isTransmittingLocalCliVerb } from '../constants/meshcoreTx.js';
 
 const router = Router({ mergeParams: true });
 
@@ -41,7 +45,7 @@ const router = Router({ mergeParams: true });
  * `configuration:write`; remote_admin was split out so operators can grant
  * one without the other.)
  */
-router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
     const { publicKey, password, rememberPassword } = req.body as {
       publicKey?: string;
@@ -110,6 +114,7 @@ router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
     });
     res.json({ success: true, message: 'Login successful', persisted: false });
   } catch (error) {
+    if (failIfTxDisabled(res, error)) return;
     logger.error('[API] Error logging in:', error);
     res.status(500).json({ success: false, error: 'Login error' });
   }
@@ -124,7 +129,7 @@ router.post('/admin/login', meshcoreDeviceLimiter, requireAuth(), requirePermiss
  * path, ACL eviction, or the remote being offline). Returns 502 when the
  * underlying bridge rejected the send.
  */
-router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
     const { publicKey, command, timeoutMs, confirm } = req.body as {
       publicKey?: string;
@@ -182,6 +187,7 @@ router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermissio
       });
       res.json({ success: true, data: result });
     } catch (err) {
+      if (failIfTxDisabled(res, err)) return;
       const msg = err instanceof Error ? err.message : String(err);
       auditMeshcoreEvent(req, 'meshcore_remote_cli_failed', 'remote_admin', {
         sourceId: req.params.id,
@@ -199,6 +205,7 @@ router.post('/admin/cli', meshcoreDeviceLimiter, requireAuth(), requirePermissio
       res.status(502).json({ success: false, error: msg });
     }
   } catch (error) {
+    if (failIfTxDisabled(res, error)) return;
     logger.error('[API] Unexpected error in /admin/cli:', error);
     res.status(500).json({ success: false, error: 'CLI error' });
   }
@@ -253,6 +260,12 @@ router.post('/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('con
         code: 'DANGER_CONFIRM_REQUIRED',
       });
     }
+    // Receive-only (#4547): /cli carries BOTH transmitting verbs (advert) and
+    // purely local/serial verbs (ver, stats, clock, help, get/set config).
+    // Gate only the transmitting ones so the console stays usable.
+    if (isTransmittingLocalCliVerb(command) && rejectIfReceiveOnly(req, res)) {
+      return;
+    }
     const effectiveTimeout = await resolveCliTimeoutMs(timeoutMs);
 
     try {
@@ -272,6 +285,7 @@ router.post('/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('con
       });
       res.json({ success: true, data: result });
     } catch (err) {
+      if (failIfTxDisabled(res, err)) return;
       const msg = err instanceof Error ? err.message : String(err);
       auditMeshcoreEvent(req, 'meshcore_local_cli_failed', 'configuration', {
         sourceId: req.params.id,
@@ -288,6 +302,7 @@ router.post('/cli', meshcoreDeviceLimiter, requireAuth(), requirePermission('con
       res.status(502).json({ success: false, error: msg });
     }
   } catch (error) {
+    if (failIfTxDisabled(res, error)) return;
     logger.error('[API] Unexpected error in /cli:', error);
     res.status(500).json({ success: false, error: 'CLI error' });
   }
@@ -357,7 +372,7 @@ router.get('/admin/credentials-capability', requireAuth(), requirePermission('re
  *   401 STORED_CREDENTIAL_REJECTED — credential decrypted but the remote
  *       rejected the login (remote's admin password probably changed).
  */
-router.post('/admin/login-with-saved', meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.post('/admin/login-with-saved', meshcoreDeviceLimiter, requireAuth(), requirePermission('remote_admin', 'write', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
     const { publicKey } = req.body as { publicKey?: string };
     if (typeof publicKey !== 'string' || !isValidPublicKey(publicKey)) {
@@ -398,6 +413,7 @@ router.post('/admin/login-with-saved', meshcoreDeviceLimiter, requireAuth(), req
     });
     res.json({ success: true, usedStored: true });
   } catch (error) {
+    if (failIfTxDisabled(res, error)) return;
     logger.error('[API] Error in login-with-saved:', error);
     res.status(500).json({ success: false, error: 'Login error' });
   }
@@ -430,7 +446,7 @@ router.delete('/admin/credentials/:publicKey', requireAuth(), requirePermission(
  * Get status from a remote node (requires prior login)
  * Requires authentication - queries remote node
  */
-router.get('/admin/status/:publicKey', requireAuth(), requirePermission('remote_admin', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
+router.get('/admin/status/:publicKey', requireAuth(), requirePermission('remote_admin', 'read', { sourceIdFrom: 'params.id' }), requireMeshcoreTx(), async (req: Request, res: Response) => {
   try {
     const { publicKey } = req.params;
 
@@ -447,6 +463,7 @@ router.get('/admin/status/:publicKey', requireAuth(), requirePermission('remote_
       res.status(404).json({ success: false, error: 'No status received' });
     }
   } catch (error) {
+    if (failIfTxDisabled(res, error)) return;
     logger.error('[API] Error getting node status:', error);
     res.status(500).json({ success: false, error: 'Status error' });
   }
