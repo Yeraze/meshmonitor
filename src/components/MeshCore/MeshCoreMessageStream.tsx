@@ -14,6 +14,12 @@ interface MeshCoreMessageStreamProps {
   selfPublicKey?: string;
   emptyText?: string;
   disabled?: boolean;
+  /** Why the composer is disabled (e.g. MeshCore receive-only mode). Applied
+   *  as the `title` on the input, the Send button and their shared parent
+   *  (#4547 Phase 2 WP1) — a `title` on a disabled `<button>` does not fire
+   *  hover in every browser, so the enclosing element carries it too. Only
+   *  meaningful while `disabled` is true; ignored otherwise. */
+  disabledReason?: string;
   onSend: (text: string) => Promise<boolean>;
   onNodeNameClick?: (publicKey: string) => void;
   /** When provided, received channel messages show a Reply button (#3851). The
@@ -85,6 +91,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
   selfPublicKey,
   emptyText,
   disabled,
+  disabledReason,
   onSend,
   onNodeNameClick,
   onReply,
@@ -604,7 +611,7 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           );
         })}
       </div>
-      <div className="meshcore-send-bar">
+      <div className="meshcore-send-bar" title={disabled ? disabledReason : undefined}>
         <input
           ref={inputRef}
           type="text"
@@ -613,10 +620,12 @@ export const MeshCoreMessageStream: React.FC<MeshCoreMessageStreamProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={t('meshcore.type_message', 'Type a message…')}
           disabled={disabled || sending}
+          title={disabled ? disabledReason : undefined}
         />
         <button
           onClick={() => void handleSend()}
           disabled={disabled || sending || !draft.trim() || overLimit}
+          title={disabled ? disabledReason : undefined}
         >
           {sending ? t('meshcore.sending', 'Sending…') : t('meshcore.send', 'Send')}
         </button>

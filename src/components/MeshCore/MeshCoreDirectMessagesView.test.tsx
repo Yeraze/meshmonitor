@@ -32,6 +32,13 @@ vi.mock('../../hooks/useCsrfFetch', () => ({
   useCsrfFetch: () => csrfFetchMock,
 }));
 
+// MeshCoreNodeTelemetryConfig (mounted inside the DM detail pane) uses
+// useToast() to surface the receive-only 409 toast (#4547 Phase 2 WP3).
+const showToastMock = vi.fn();
+vi.mock('../ToastContainer', () => ({
+  useToast: () => ({ showToast: showToastMock }),
+}));
+
 // TelemetryGraphs is exercised by its own tests; here we only need to
 // confirm the DM view mounts it with the right props when conditions are
 // met. Stub the heavy graphs component with a sentinel so we don't need
@@ -646,5 +653,64 @@ describe('MeshCoreDirectMessagesView — DM unread marking (#3891)', () => {
       expect(raw).toBeTruthy();
       expect(JSON.parse(raw as string)[REAL_PK]).toBeGreaterThan(0);
     });
+  });
+});
+
+describe('MeshCoreDirectMessagesView — receive-only mode (#4547 Phase 2 WP3)', () => {
+  it('disables the DM send box with a tooltip', () => {
+    render(
+      <MeshCoreDirectMessagesView
+        messages={messages}
+        contacts={[realContact]}
+        status={makeStatus()}
+        actions={makeActions()}
+        receiveOnly
+      />,
+    );
+    fireEvent.click(screen.getByText('Remote Bob'));
+    const input = screen.getByPlaceholderText('Type a message…');
+    expect(input).toBeDisabled();
+    expect(input).toHaveAttribute(
+      'title',
+      'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.',
+    );
+  });
+
+  it('threads receiveOnly to MeshCoreContactDetailPanel and MeshCoreNodeTelemetryConfig', async () => {
+    render(
+      <MeshCoreDirectMessagesView
+        messages={messages}
+        contacts={[realContact]}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+        receiveOnly
+      />,
+    );
+    fireEvent.click(screen.getByText('Remote Bob'));
+
+    // ContactDetailPanel: Share Contact is one of the six gated RF buttons.
+    const shareBtn = await screen.findByRole('button', { name: 'Share Contact' });
+    expect(shareBtn).toBeDisabled();
+
+    // NodeTelemetryConfig: Poll Status is gated too.
+    const pollBtn = await screen.findByText('Poll Status');
+    expect(pollBtn.closest('button')).toBeDisabled();
+  });
+
+  it('leaves the DM send box enabled and untitled when receiveOnly is false', () => {
+    render(
+      <MeshCoreDirectMessagesView
+        messages={messages}
+        contacts={[realContact]}
+        status={makeStatus()}
+        actions={makeActions()}
+      />,
+    );
+    fireEvent.click(screen.getByText('Remote Bob'));
+    const input = screen.getByPlaceholderText('Type a message…');
+    expect(input).not.toBeDisabled();
+    expect(input).not.toHaveAttribute('title');
   });
 });

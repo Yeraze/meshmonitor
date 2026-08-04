@@ -37,6 +37,11 @@ interface MeshCoreChannelsViewProps {
   baseUrl: string;
   sourceId: string;
   onNodeNameClick?: (publicKey: string) => void;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP3 wires the actual gating (send box
+   *  disabled + tooltip, and the region-discovery mount effect's silent
+   *  skip). */
+  receiveOnly?: boolean;
 }
 
 interface ChannelRow {
@@ -97,6 +102,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   baseUrl,
   sourceId,
   onNodeNameClick,
+  receiveOnly = false,
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -374,6 +380,11 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   // to status?.connected — reconnect flapping would flood the mesh (#3704 review).
   useEffect(() => {
     if (!showScopeOverride || !status?.connected) return;
+    // Receive-only mode: silently skip — no request, no toast, no error state.
+    // Must sit BEFORE the do-not-repeat latch below so that turning
+    // receive-only off re-enables discovery the next time the panel is
+    // opened (#4547 Phase 2 §3.4a).
+    if (receiveOnly) return;
     if (regionsDiscoveredRef.current) return;
     regionsDiscoveredRef.current = true;
     let cancelled = false;
@@ -387,7 +398,7 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
       }
     })();
     return () => { cancelled = true; };
-  }, [showScopeOverride, status?.connected, discoverRegions]);
+  }, [showScopeOverride, status?.connected, discoverRegions, receiveOnly]);
 
   // Reset the one-off override when switching channels so it never leaks across
   // channels, and collapse the control back to its unobtrusive default.
@@ -742,7 +753,8 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
           messages={filtered}
           contacts={contacts}
           selfPublicKey={selfKey}
-          disabled={!connected || !canSend}
+          disabled={!connected || !canSend || receiveOnly}
+          disabledReason={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
           emptyText={t('meshcore.no_messages', 'No messages on this channel yet')}
           onDeleteMessage={canSend ? handleDeleteMessage : undefined}
           onSend={async text => {

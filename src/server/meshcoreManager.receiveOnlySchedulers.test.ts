@@ -262,7 +262,7 @@ describe('MeshCoreManager scheduler silent skips (#4547 WP3)', () => {
         meshcoreAutoAnnounceAdvertEnabled: 'false',
       };
       vi.spyOn(databaseService.settings, 'getSettingForSource').mockImplementation(
-        async (_sourceId: string, key: string) => (key in announceSettings ? announceSettings[key] : null),
+        async (_sourceId: string | null | undefined, key: string) => (key in announceSettings ? announceSettings[key] : null),
       );
       const sendMessage = vi.fn().mockResolvedValue(true);
       (manager as any).sendMessage = sendMessage;
@@ -282,7 +282,7 @@ describe('MeshCoreManager scheduler silent skips (#4547 WP3)', () => {
         meshcoreAutoAnnounceAdvertDelaySeconds: '30',
       };
       vi.spyOn(databaseService.settings, 'getSettingForSource').mockImplementation(
-        async (_sourceId: string, key: string) => (key in announceSettings ? announceSettings[key] : null),
+        async (_sourceId: string | null | undefined, key: string) => (key in announceSettings ? announceSettings[key] : null),
       );
       (manager as any).sendMessage = vi.fn().mockResolvedValue(true);
       const sendAdvert = vi.fn().mockResolvedValue(true);
@@ -309,7 +309,7 @@ describe('MeshCoreManager scheduler silent skips (#4547 WP3)', () => {
         meshcoreAutoAnnounceAdvertDelaySeconds: '30',
       };
       vi.spyOn(databaseService.settings, 'getSettingForSource').mockImplementation(
-        async (_sourceId: string, key: string) => (key in announceSettings ? announceSettings[key] : null),
+        async (_sourceId: string | null | undefined, key: string) => (key in announceSettings ? announceSettings[key] : null),
       );
       (manager as any).sendMessage = vi.fn().mockResolvedValue(true);
       const sendAdvert = vi.fn().mockResolvedValue(true);
@@ -430,7 +430,7 @@ describe('MeshCoreManager scheduler silent skips (#4547 WP3)', () => {
     it('receive-only OFF: a matching trigger reaches sendMessage', async () => {
       const { manager } = makeManager();
       vi.spyOn(databaseService.settings, 'getSettingForSource').mockImplementation(
-        async (_sourceId: string, key: string) => {
+        async (_sourceId: string | null | undefined, key: string) => {
           if (key === 'meshcoreAutoResponderEnabled') return 'true';
           if (key === 'meshcoreAutoResponderTriggers') return JSON.stringify([trigger]);
           return null;
@@ -477,7 +477,7 @@ describe('MeshCoreManager scheduler silent skips (#4547 WP3)', () => {
         meshcoreAutoAckPreSendDelaySeconds: '0',
       };
       vi.spyOn(databaseService.settings, 'getSettingForSource').mockImplementation(
-        async (_sourceId: string, key: string) => (key in autoAckSettings ? autoAckSettings[key] : null),
+        async (_sourceId: string | null | undefined, key: string) => (key in autoAckSettings ? autoAckSettings[key] : null),
       );
       const sendMessage = vi.fn().mockResolvedValue(true);
       (manager as any).sendMessage = sendMessage;

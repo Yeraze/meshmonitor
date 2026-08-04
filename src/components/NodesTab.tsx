@@ -90,6 +90,14 @@ interface NodesTabProps {
   connectionStatus?: string;
   /** TX disabled on this source (epic #4294 Phase 2) — ORed into the traceroute run button's disabled state. */
   txDisabled?: boolean;
+  /**
+   * Pre-computed tooltip for disabled TX controls (#4547 Phase 2 WP5). App.tsx
+   * picks the MeshCore receive-only wording or the Meshtastic LoRa-config
+   * wording based on source type. Optional — falls back to
+   * `t('tx_disabled.control_tooltip')` at each call site when omitted, so
+   * existing callers/tests are unaffected.
+   */
+  txDisabledTooltip?: string;
   /** Node ID currently being tracerouted (for loading state) */
   tracerouteLoading?: string | null;
   /** Handler for deleting a node from local database */
@@ -411,6 +419,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
   onTraceroute,
   connectionStatus,
   txDisabled = false,
+  txDisabledTooltip,
   tracerouteLoading,
   onDeleteNode,
   onPurgeNodeFromDevice,
@@ -1830,7 +1839,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                           onRunTraceroute={node.user?.id && onTraceroute ? () => onTraceroute(node.user!.id) : undefined}
                           running={tracerouteLoading === node.user?.id}
                           runDisabled={isTracerouteRunDisabled(connectionStatus, tracerouteLoading, node.user?.id, txDisabled)}
-                          runDisabledReason={txDisabled ? t('tx_disabled.control_tooltip') : undefined}
+                          runDisabledReason={txDisabled ? (txDisabledTooltip ?? t('tx_disabled.control_tooltip')) : undefined}
                         />
                       ) : undefined}
                     />

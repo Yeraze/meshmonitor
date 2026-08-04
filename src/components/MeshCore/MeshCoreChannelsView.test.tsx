@@ -1015,3 +1015,104 @@ describe('MeshCoreChannelsView — read-only viewers skip send-side lookups', ()
     expect(getDefaultScope).toHaveBeenCalled();
   });
 });
+
+describe('MeshCoreChannelsView — receive-only mode (#4547 Phase 2 WP3)', () => {
+  function routedFetch() {
+    return vi.fn((url: string) => {
+      if (url.includes('/api/channels/all')) {
+        return Promise.resolve(jsonResponse([{ id: 0, name: 'Public' }]));
+      }
+      if (url.includes('/messages/channel-counts')) {
+        return Promise.resolve(jsonResponse({ success: true, counts: { 0: 0 } }));
+      }
+      if (/\/messages\/channel\/\d+/.test(url)) {
+        return Promise.resolve(jsonResponse({ success: true, data: [], count: 0 }));
+      }
+      return Promise.resolve(jsonResponse({ success: true, data: [] }));
+    });
+  }
+
+  beforeEach(() => {
+    permissionFn = () => true;
+    csrfFetchMock.mockImplementation(routedFetch());
+  });
+
+  it('disables the send box with a tooltip', async () => {
+    render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+        receiveOnly
+      />,
+    );
+    await waitFor(() => screen.getByText('# Public'));
+    const input = screen.getByPlaceholderText('Type a message…');
+    expect(input).toBeDisabled();
+    expect(input).toHaveAttribute(
+      'title',
+      'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.',
+    );
+  });
+
+  it(
+    'discoverRegions mount effect: silently skips while receiveOnly (no call) — ' +
+    'then fires once the scope-override control is reopened after receiveOnly is turned off (latch not poisoned)',
+    async () => {
+      const discoverRegions = vi.fn().mockResolvedValue({ regions: ['alpha'] });
+      const actions = makeActions({ discoverRegions });
+      const { rerender } = render(
+        <MeshCoreChannelsView
+          messages={[]}
+          contacts={contacts}
+          status={makeStatus()}
+          actions={actions}
+          baseUrl=""
+          sourceId="src-a"
+          receiveOnly
+        />,
+      );
+      await waitFor(() => screen.getByText('# Public'));
+
+      // Open the scope-override control (user-initiated).
+      fireEvent.click(screen.getByText('Scope: unscoped'));
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(discoverRegions).not.toHaveBeenCalled();
+
+      // Flip receive-only off without closing the control — the effect's own
+      // dep array (receiveOnly included) must re-fire it.
+      rerender(
+        <MeshCoreChannelsView
+          messages={[]}
+          contacts={contacts}
+          status={makeStatus()}
+          actions={actions}
+          baseUrl=""
+          sourceId="src-a"
+          receiveOnly={false}
+        />,
+      );
+      await waitFor(() => expect(discoverRegions).toHaveBeenCalled());
+    },
+  );
+
+  it('leaves the send box enabled and untitled when receiveOnly is false', async () => {
+    render(
+      <MeshCoreChannelsView
+        messages={[]}
+        contacts={contacts}
+        status={makeStatus()}
+        actions={makeActions()}
+        baseUrl=""
+        sourceId="src-a"
+      />,
+    );
+    await waitFor(() => screen.getByText('# Public'));
+    const input = screen.getByPlaceholderText('Type a message…');
+    expect(input).not.toBeDisabled();
+    expect(input).not.toHaveAttribute('title');
+  });
+});

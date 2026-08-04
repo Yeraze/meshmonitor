@@ -29,6 +29,11 @@ vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ hasPermission: 
 vi.mock('./MeshCoreNodeDisplaySection', () => ({
   MeshCoreNodeDisplaySection: () => null,
 }));
+// The receive-only toggle (#4547 Phase 2 WP2) reads useCsrfFetch/useQueryClient,
+// which throw outside their real providers — this file renders the component
+// bare, so both need a stub. Discovery flow itself never touches either.
+vi.mock('../../hooks/useCsrfFetch', () => ({ useCsrfFetch: () => vi.fn() }));
+vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }) }));
 
 const NEARBY = 'Discover Nearby Nodes';
 

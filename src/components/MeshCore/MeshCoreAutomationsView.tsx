@@ -16,6 +16,11 @@ import { UiIcon } from '../icons';
 interface MeshCoreAutomationsViewProps {
   baseUrl: string;
   sourceId: string;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Threaded to all five automation sections; each renders a
+   *  paused note while keeping its configuration inputs editable (interview
+   *  decision 5) — only "Send Now" / "Run now" get disabled, wired in WP4. */
+  receiveOnly?: boolean;
 }
 
 interface PathfindingSettings {
@@ -38,7 +43,7 @@ const DEFAULTS: PathfindingSettings = {
   lastRunAt: null,
 };
 
-export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = ({ baseUrl, sourceId }) => {
+export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = ({ baseUrl, sourceId, receiveOnly = false }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { hasPermission } = useAuth();
@@ -320,20 +325,20 @@ export const MeshCoreAutomationsView: React.FC<MeshCoreAutomationsViewProps> = (
         ) : null}
 
         {/* Target Filter (#4024) */}
-        <MeshCorePathfindingFilterSection baseUrl={baseUrl} sourceId={sourceId} canWrite={canWrite} />
+        <MeshCorePathfindingFilterSection baseUrl={baseUrl} sourceId={sourceId} canWrite={canWrite} receiveOnly={receiveOnly} />
       </div>
 
       {/* Auto-Acknowledge Section */}
-      <MeshCoreAutoAckSection baseUrl={baseUrl} sourceId={sourceId} />
+      <MeshCoreAutoAckSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
 
       {/* Auto-Announce Section */}
-      <MeshCoreAutoAnnounceSection baseUrl={baseUrl} sourceId={sourceId} />
+      <MeshCoreAutoAnnounceSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
 
       {/* Auto-Responder Section */}
-      <MeshCoreAutoResponderSection baseUrl={baseUrl} sourceId={sourceId} />
+      <MeshCoreAutoResponderSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
 
       {/* Timer Triggers Section */}
-      <MeshCoreTimerTriggersSection baseUrl={baseUrl} sourceId={sourceId} />
+      <MeshCoreTimerTriggersSection baseUrl={baseUrl} sourceId={sourceId} receiveOnly={receiveOnly} />
     </div>
   );
 };

@@ -2,9 +2,67 @@
 
 **Epic issue:** #4547
 **Status:**
-- [x] Phase 1 — Backend: setting + central command-aware TX guard (branch `feature/meshcore-receive-only-backend`)
-- [ ] Phase 2 — Frontend: gating UX
+- [x] Phase 1 — Backend: setting + central command-aware TX guard (PR #4550, merged `c41428e6`)
+- [x] Phase 2 — Frontend: gating UX (branch `feature/meshcore-receive-only-ui`)
 - [ ] Phase 3 — Virtual Node gating + docs
+
+## Phase 2 deviations & findings (2026-08-04)
+
+Spec: `docs/internal/dev-notes/MESHCORE_RECEIVE_ONLY_PHASE2_SPEC.md`. Five work packages,
+7 commits, 58 files, ~3,100 insertions.
+
+- **The deferred tooltip turned out to be a correctness bug, not cosmetics.** The shared
+  `tx_disabled.control_tooltip` reads *"Transmit is disabled on this node's radio. Re-enable TX
+  in the LoRa configuration to use this."* — it names a Meshtastic-only remedy with no MeshCore
+  equivalent, sending a MeshCore operator hunting for a screen their hardware does not have. Now
+  branched via an optional `txDisabledTooltip` prop threaded from `App.tsx` to 24 call sites
+  (`MessagesTab` ×17, `ChannelsTab` ×5, `NodesTab`, `NodePopup` — the last two are
+  `runDisabledReason`, not `title`). Meshtastic copy is asserted byte-identical.
+- **Free win:** `App.tsx`'s existing `txGated` was *already* true for a receive-only MeshCore
+  source, so channels/DM/node-popup controls were already disabled before Phase 2 — WP5 reduced
+  to copy plus the threaded prop.
+- **The latch hazard (highest-risk item).** Three TX paths fire automatically with no user
+  action: the Rooms auto-login effect, `ChannelsView`'s `discoverRegions` mount effect, and
+  `MeshCoreRemoteStatsPanel.load()`. All set a do-not-repeat latch **before** awaiting, so a
+  guard placed after the latch permanently poisons the effect for the session — turning
+  receive-only off would never re-trigger it. Each guard sits before its latch, and each has a
+  "flip the flag off and it fires again" test, the only assertion that catches a mis-placed guard.
+- **Correction to the spec:** `MeshCoreRemoteStatsPanel.load()` has **no** automatic
+  mount/expand trigger — only the two user-initiated buttons call it, and the component's own
+  comment says "No auto-fetch and no polling." The guard was added defensively rather than
+  inventing an auto-load that would have created real unwanted RF calls.
+- **Automations consistency rule (interview decision 5):** configuration inputs stay **editable**;
+  only immediate-transmit controls ("Send Now", "Run now") disable. Saving a setting does not
+  transmit — Phase 1's schedulers skip at tick time — so disabling the forms would protect
+  nothing while looking like config loss. Tests assert *both* directions so a future
+  well-meaning "fix" cannot quietly disable the forms.
+- **Carried-forward Phase 1 review item, fixed here:** `POST /api/settings` did not validate
+  values, so posting `"1"` / `"yes"` / `"TRUE"` / `"on"` persisted something that
+  `refreshReceiveOnly()`'s `raw === 'true'` reads as **false** — receive-only silently OFF while
+  the user believed transmission was blocked. A module-local `STRICT_BOOLEAN_SETTINGS_KEYS`
+  check now rejects with `400 INVALID_BOOLEAN_SETTING` before either write path and before
+  `refreshMeshcoreReceiveOnly` fires. This broke the generic round-trip test in
+  `server.settings-persistence.test.ts`, which posts a placeholder for every valid key; fixed by
+  adding the key to that file's existing `VALID_VALUES` override map (the table any future
+  strict-boolean key should join).
+- **Known gap (accepted):** the `App.tsx` 409-toast regression test was not written. No
+  full-render harness for `<App/>` exists anywhere in the repo (3,933 lines, 78 imports), and
+  building one for a uniform, grep-verified string swap was disproportionate. Flagged rather
+  than silently skipped.
+- **`typecheck:tests` burn-down:** CI runs it non-blocking, to become blocking at zero. This
+  epic had contributed 11 errors (10 from Phase 1, 1 from Phase 2); all fixed properly (no
+  `any`, no suppression directives), taking the repo-wide count 433 → **422**.
+- **Browser-validated live** against a real MeshCore Companion source (`MC-Sandbox`) in the dev
+  container: toggle persists and updates without reload; both `Send Advert` render paths and all
+  four Discover buttons disable with the MeshCore-correct tooltip; `Refresh`, `Disconnect` and
+  the discovery-response checkbox stay enabled; all five automation sections show the paused note
+  while 223/233 inputs stay editable; `GET /contacts/:pk/neighbours` and `GET /admin/status/:pk`
+  both return `409 TX_DISABLED` on the receive-only source while the control source still reaches
+  the radio; a reload with receive-only ON produced **zero** 409s and zero toasts (latch guards
+  holding); disable-confirm cancel aborts and accept re-enables every control immediately;
+  per-source isolation confirmed (sibling MeshCore and both Meshtastic sources unaffected).
+- **Verification:** full Vitest suite 14,149 tests / 0 failures (`success: true` via JSON
+  reporter); `npm run typecheck` clean; `npm run lint:ci` clean of in-repo failures.
 
 ## Phase 1 deviations & findings (2026-08-04)
 

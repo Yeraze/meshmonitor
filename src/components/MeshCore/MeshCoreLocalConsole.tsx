@@ -62,6 +62,11 @@ interface MeshCoreLocalConsoleProps {
    *  when false — sending to a disconnected source would just timeout. */
   connected: boolean;
   actions: Pick<MeshCoreActions, 'sendLocalCliCommand'>;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP3 wires the actual gating — the
+   *  console itself stays enabled (local serial CLI is allowed), only the
+   *  synthetic `advert` quick action is disabled. */
+  receiveOnly?: boolean;
 }
 
 export const MeshCoreLocalConsole: React.FC<MeshCoreLocalConsoleProps> = ({
@@ -70,6 +75,7 @@ export const MeshCoreLocalConsole: React.FC<MeshCoreLocalConsoleProps> = ({
   deviceType,
   connected,
   actions,
+  receiveOnly = false,
 }) => {
   const { t } = useTranslation();
 
@@ -78,11 +84,20 @@ export const MeshCoreLocalConsole: React.FC<MeshCoreLocalConsoleProps> = ({
   // Repeater (2) and RoomServer (3) share the same catalog. Companion (1)
   // gets the synthetic catalog. Unknown (0) shows no quick actions —
   // the user can still type free-form commands.
+  //
+  // The console itself stays enabled while receive-only (local serial CLI is
+  // explicitly allowed — interview decision 2); only the synthetic `advert`
+  // verb transmits, so it alone is disabled (with a tooltip) via
+  // ActionCommand.disabled rather than being filtered out of the catalog —
+  // a vanished button teaches the user nothing (#4547 Phase 2 §3.5).
   const actionCatalog = useMemo<ActionCommand[]>(() => {
-    if (deviceType === 2 || deviceType === 3) return REPEATER_ACTION_CATALOG;
-    if (deviceType === 1) return COMPANION_ACTION_CATALOG;
-    return [];
-  }, [deviceType]);
+    const base =
+      deviceType === 2 || deviceType === 3 ? REPEATER_ACTION_CATALOG :
+      deviceType === 1 ? COMPANION_ACTION_CATALOG :
+      [];
+    if (!receiveOnly) return base;
+    return base.map(action => action.key === 'advert' ? { ...action, disabled: true } : action);
+  }, [deviceType, receiveOnly]);
 
   const runCommand = useCallback(
     (text: string, opts?: { confirm?: boolean }) => actions.sendLocalCliCommand(text, opts),
@@ -90,9 +105,21 @@ export const MeshCoreLocalConsole: React.FC<MeshCoreLocalConsoleProps> = ({
   );
 
   // ACL management is meaningful on Repeater (2) and Room Server (3)
-  // local firmware. Companion has no ACL concept.
+  // local firmware. Companion has no ACL concept. `setperm` over the local
+  // serial link is allowed even while receive-only (only over-the-air
+  // transmissions are blocked), so this is NOT gated by receiveOnly.
   const showAcl = connected && (deviceType === 2 || deviceType === 3);
   const bodyRef = useRef<CliConsoleBodyHandle | null>(null);
+
+  const basePlaceholder = deviceType === 1
+    ? t('meshcore.localConsole.companion_placeholder', 'Type a command (ver, stats, clock, advert, help)')
+    : t('meshcore.localConsole.repeater_placeholder', 'Type a CLI command (ver, stats, neighbors, advert…)');
+  const enabledPlaceholder = receiveOnly
+    ? `${basePlaceholder} ${t(
+        'meshcore.receive_only.console_placeholder',
+        'Local serial commands still work; commands that transmit are blocked.',
+      )}`
+    : basePlaceholder;
 
   return (
     <section className="meshcore-remote-console" aria-label={t('meshcore.localConsole.title', 'Device console')}>
@@ -119,17 +146,7 @@ export const MeshCoreLocalConsole: React.FC<MeshCoreLocalConsoleProps> = ({
         actionCatalog={connected ? actionCatalog : []}
         disabled={!connected}
         disabledPlaceholder={t('meshcore.localConsole.disconnected_placeholder', 'Connect the source to send commands')}
-        placeholder={
-          deviceType === 1
-            ? t(
-                'meshcore.localConsole.companion_placeholder',
-                'Type a command (ver, stats, clock, advert, help)',
-              )
-            : t(
-                'meshcore.localConsole.repeater_placeholder',
-                'Type a CLI command (ver, stats, neighbors, advert…)',
-              )
-        }
+        placeholder={enabledPlaceholder}
         emptyTextDisabled={t(
           'meshcore.localConsole.empty_disconnected',
           'Connect the source to begin sending commands.',

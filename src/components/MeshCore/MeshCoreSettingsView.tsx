@@ -1,10 +1,13 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { ConnectionStatus, DiscoveredNode, MeshCoreActions, SavedRegion } from './hooks/useMeshCore';
 import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { UiIcon } from '../icons';
 import { MeshCoreNodeDisplaySection } from './MeshCoreNodeDisplaySection';
+import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 
 // MeshCoreDeviceType.COMPANION — active discovery is companion-only.
 const DEVICE_TYPE_COMPANION = 1;
@@ -17,6 +20,10 @@ interface MeshCoreSettingsViewProps {
   baseUrl: string;
   /** Source UUID — passed through to MeshCoreNodeDisplaySection (#4412 Phase 4 WP2). */
   sourceId: string;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP2 wires the toggle itself plus the
+   *  gating of Send advert / Discover ×3 / Discover regions. */
+  receiveOnly?: boolean;
 }
 
 export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
@@ -25,10 +32,14 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   actions,
   baseUrl,
   sourceId,
+  receiveOnly = false,
 }) => {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { hasPermission } = useAuth();
+  const csrfFetch = useCsrfFetch();
+  const queryClient = useQueryClient();
+  const [savingReceiveOnly, setSavingReceiveOnly] = useState(false);
   const canPurgeMessages = hasPermission('messages', 'write');
   const [purgingMessages, setPurgingMessages] = useState(false);
   const connected = status?.connected ?? false;
@@ -215,6 +226,53 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
     await actions.connect();
   };
 
+  // Receive-only toggle (#4547 Phase 2 WP2). Enabling is the safe direction —
+  // no confirm. Disabling resumes RF transmission, so that direction is
+  // gated behind window.confirm (interview decision — see spec §3.2).
+  const handleToggleReceiveOnly = useCallback(async (next: boolean) => {
+    if (!next && !window.confirm(t(
+      'meshcore.receive_only.disable_confirm',
+      'Allow this MeshCore node to transmit again?\n\nMessages, adverts, path discovery, remote administration and every enabled automation will resume sending over the radio. Continue?',
+    ))) {
+      return;
+    }
+    setSavingReceiveOnly(true);
+    try {
+      const res = await csrfFetch(
+        `${baseUrl}/api/settings?sourceId=${encodeURIComponent(sourceId)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ meshcoreReceiveOnly: next }),
+        },
+      );
+      if (!res.ok) {
+        showToast(t('meshcore.receive_only.save_failed', 'Failed to change receive-only mode'), 'error');
+        return;
+      }
+      // Prefix match — hits this source's txStatus entry (and every other
+      // source's, harmlessly) so every consumer of useTxStatus re-reads
+      // within one tick. Same idiom as ConfigurationTab.tsx after a TX
+      // config change.
+      await queryClient.invalidateQueries({ queryKey: ['txStatus'] });
+      showToast(
+        t(
+          next ? 'meshcore.receive_only.saved_on' : 'meshcore.receive_only.saved_off',
+          next
+            ? 'Receive-only mode enabled — this node will not transmit'
+            : 'Receive-only mode disabled — this node can transmit again',
+        ),
+        'success',
+      );
+    } finally {
+      setSavingReceiveOnly(false);
+    }
+  }, [baseUrl, sourceId, csrfFetch, queryClient, showToast, t]);
+
+  const receiveOnlyTooltip = receiveOnly
+    ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.')
+    : undefined;
+
   return (
     <div className="meshcore-form-view">
       <h2 style={{ color: 'var(--ctp-text)', marginBottom: '1rem' }}>
@@ -253,6 +311,31 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
       </div>
 
       <div className="form-section">
+        <h3>{t('meshcore.receive_only.title', 'Receive-only mode')}</h3>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <input
+            type="checkbox"
+            checked={receiveOnly}
+            disabled={savingReceiveOnly}
+            onChange={(e) => void handleToggleReceiveOnly(e.target.checked)}
+          />
+          <span>{t('meshcore.receive_only.toggle_label', 'Strict receive-only (never transmit)')}</span>
+        </label>
+        <p className="hint">
+          {t(
+            'meshcore.receive_only.description',
+            'Block every transmission from this MeshCore node. Messages, adverts, path discovery, remote CLI, logins, telemetry requests and all automations are held. Receiving, the packet log, the Analyzer Observer, contact and telemetry updates, and local serial configuration keep working.',
+          )}
+        </p>
+        <p className="hint">
+          {t(
+            'meshcore.receive_only.firmware_caveat',
+            'MeshCore firmware has no radio-level transmit switch, so MeshMonitor enforces this in software. Transmissions the node makes on its own — link-layer acknowledgements, and any advert schedule configured outside MeshMonitor — are not affected.',
+          )}
+        </p>
+      </div>
+
+      <div className="form-section">
         <h3>{t('meshcore.settings.actions', 'Device actions')}</h3>
         <p className="hint">
           {t('meshcore.settings.actions_hint',
@@ -262,7 +345,11 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
           <button onClick={() => void actions.refreshContacts()} disabled={!connected || loading}>
             {t('meshcore.refresh', 'Refresh contacts')}
           </button>
-          <button onClick={() => void actions.sendAdvert()} disabled={!connected || loading}>
+          <button
+            onClick={() => void actions.sendAdvert()}
+            disabled={!connected || loading || receiveOnly}
+            title={receiveOnlyTooltip}
+          >
             {t('meshcore.send_advert', 'Send advert')}
           </button>
         </div>
@@ -281,7 +368,8 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button
               onClick={() => void handleDiscover('nearby')}
-              disabled={!connected || loading || discovering !== null || discoveringRegions}
+              disabled={!connected || loading || discovering !== null || discoveringRegions || receiveOnly}
+              title={receiveOnlyTooltip}
             >
               {discovering === 'nearby'
                 ? t('meshcore.discover.running', 'Discovering…')
@@ -289,7 +377,8 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
             </button>
             <button
               onClick={() => void handleDiscover('repeaters')}
-              disabled={!connected || loading || discovering !== null || discoveringRegions}
+              disabled={!connected || loading || discovering !== null || discoveringRegions || receiveOnly}
+              title={receiveOnlyTooltip}
             >
               {discovering === 'repeaters'
                 ? t('meshcore.discover.running', 'Discovering…')
@@ -297,7 +386,8 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
             </button>
             <button
               onClick={() => void handleDiscover('sensors')}
-              disabled={!connected || loading || discovering !== null || discoveringRegions}
+              disabled={!connected || loading || discovering !== null || discoveringRegions || receiveOnly}
+              title={receiveOnlyTooltip}
             >
               {discovering === 'sensors'
                 ? t('meshcore.discover.running', 'Discovering…')
@@ -378,6 +468,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
               'MeshCore companion firmware does not answer discovery on its own, so other nodes can only ' +
               'find this one when this is enabled. Replies are zero-hop (direct range) and rate-limited.')}
           </p>
+          <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
         </div>
       )}
 
@@ -413,7 +504,8 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
           <div style={{ marginTop: '0.75rem' }}>
             <button
               onClick={() => void handleDiscoverRegions()}
-              disabled={!connected || loading || discoveringRegions || discovering !== null}
+              disabled={!connected || loading || discoveringRegions || discovering !== null || receiveOnly}
+              title={receiveOnlyTooltip}
             >
               {discoveringRegions
                 ? t('meshcore.scope.discovering', 'Discovering regions…')

@@ -325,6 +325,28 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       );
     }
 
+    // Keys whose consumers compare against the exact string 'true'. `String(v)` above
+    // happily stores '1' / 'yes' / 'TRUE', every one of which those consumers read as
+    // FALSE — a silent fail-OPEN for a safety flag (#4547 Phase 1 review). Reject rather
+    // than coerce: a client sending a non-boolean is a client with a bug, and quietly
+    // normalizing it would hide that bug in the one place it matters.
+    //
+    // Declared module-locally (not in src/server/constants/settings.ts) so
+    // settings.allowlist.test.ts's exact-equality assertions over that file's key
+    // arrays stay unmodified (#4547 Phase 2 WP2). Sits before both write paths
+    // (setSourceSettings below and setSettings further down) and before
+    // callbacks.refreshMeshcoreReceiveOnly fires, so a rejected request writes nothing.
+    const STRICT_BOOLEAN_SETTINGS_KEYS = ['meshcoreReceiveOnly'] as const;
+
+    for (const key of STRICT_BOOLEAN_SETTINGS_KEYS) {
+      if (!(key in filteredSettings)) continue;
+      const v = filteredSettings[key];
+      if (v !== 'true' && v !== 'false') {
+        return fail(res, 400, 'INVALID_BOOLEAN_SETTING',
+          `${key} must be the boolean true or false (received "${v}")`);
+      }
+    }
+
     // Validate autoAckRegex pattern.
     //
     // The pattern is validated with RE2 (compileUserRegex), which — unlike the

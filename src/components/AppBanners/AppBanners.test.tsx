@@ -129,6 +129,23 @@ describe('AppBanners — warning banners', () => {
     expect(screen.queryByText(/banners\.tx_disabled/)).not.toBeInTheDocument();
   });
 
+  // #4547 Phase 2 WP5: MeshCore has no LoRa Configuration screen, so a
+  // receive-only MeshCore source gets the MeshCore-worded banner instead of
+  // the Meshtastic "LoRa configuration" copy.
+  it('renders the MeshCore receive-only banner when isMeshCore is true', () => {
+    render(
+      <AppBanners {...baseProps} updateAvailable={false} isTxDisabled isMeshCore deploymentMethod="docker" />
+    );
+    expect(screen.getByText(/banners\.receive_only_meshcore/)).toBeInTheDocument();
+    expect(screen.queryByText(/^banners\.tx_disabled$/)).not.toBeInTheDocument();
+  });
+
+  it('renders the unchanged Meshtastic banner when isMeshCore is false/omitted', () => {
+    render(<AppBanners {...baseProps} updateAvailable={false} isTxDisabled deploymentMethod="docker" />);
+    expect(screen.getByText(/^banners\.tx_disabled$/)).toBeInTheDocument();
+    expect(screen.queryByText(/banners\.receive_only_meshcore/)).not.toBeInTheDocument();
+  });
+
   it('renders a config issue banner with a docs link', () => {
     render(
       <AppBanners

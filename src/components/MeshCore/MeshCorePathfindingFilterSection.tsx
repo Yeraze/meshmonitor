@@ -3,11 +3,16 @@ import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../../utils/meshcoreAge';
+import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 
 interface MeshCorePathfindingFilterSectionProps {
   baseUrl: string;
   sourceId: string;
   canWrite: boolean;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP4 renders the paused note. This
+   *  section has no immediate-TX control, so no input gates on it. */
+  receiveOnly?: boolean;
 }
 
 // Mirrors MeshcorePathfindingFilterSettings in src/services/database.ts (#4024).
@@ -131,6 +136,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
   baseUrl,
   sourceId,
   canWrite,
+  receiveOnly = false,
 }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
@@ -389,6 +395,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
           {t('meshcore.automation.pathfinding.filter.master_toggle', 'Filter target contacts')}
         </label>
       </div>
+      <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
       <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)', lineHeight: '1.5' }}>
         {t(
           'meshcore.automation.pathfinding.filter.description',

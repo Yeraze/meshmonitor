@@ -23,7 +23,7 @@ const SOURCE_B = 'source-b';
 /** Only source-a's meshcoreReceiveOnly setting is 'true'; everything else reads null. */
 function mockPerSourceReceiveOnly(): void {
   vi.spyOn(databaseService.settings, 'getSettingForSource').mockImplementation(
-    async (sourceId: string, key: string) => {
+    async (sourceId: string | null | undefined, key: string) => {
       if (sourceId === SOURCE_A && key === 'meshcoreReceiveOnly') return 'true';
       return null;
     },

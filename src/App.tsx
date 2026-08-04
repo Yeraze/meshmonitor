@@ -250,6 +250,17 @@ function App() {
   // MQTT-bridge sources are never gated (different transport, not affected by radio TX state)
   const txGated = isTxDisabled && !isMqttBridge;
 
+  // MeshCore has no LoRa Configuration screen, so the Meshtastic-worded
+  // tooltip/toast point a MeshCore operator at a remedy that does not exist
+  // on their hardware. One computed string, threaded through as an optional
+  // prop (#4547 Phase 2 WP5) — every call site falls back to the existing
+  // Meshtastic copy when the prop is omitted, so Meshtastic behavior is
+  // unchanged.
+  const isMeshCoreSource = sourceType === 'meshcore';
+  const txDisabledTooltip = t(
+    isMeshCoreSource ? 'meshcore.receive_only.control_tooltip' : 'tx_disabled.control_tooltip'
+  );
+
   // Check for version updates. TanStack Query's refetchInterval replaces the
   // hand-rolled setInterval (#3962 Phase 5.1); the hook stops polling on a 404
   // (version checking disabled server-side, env.versionCheckDisabled).
@@ -1993,7 +2004,7 @@ function App() {
         const errorData = await response.json().catch(() => ({}));
         setPositionLoading(null);
         if (isTxDisabledBody(response.status, errorData)) {
-          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          showToast(t(isMeshCoreSource ? 'meshcore.receive_only.blocked_toast' : 'tx_disabled.send_blocked_toast'), 'warning');
         }
         return;
       }
@@ -2048,7 +2059,7 @@ function App() {
         const errorData = await response.json().catch(() => ({}));
         setNodeInfoLoading(null);
         if (isTxDisabledBody(response.status, errorData)) {
-          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          showToast(t(isMeshCoreSource ? 'meshcore.receive_only.blocked_toast' : 'tx_disabled.send_blocked_toast'), 'warning');
         }
         return;
       }
@@ -2110,7 +2121,7 @@ function App() {
         const errorData = await response.json().catch(() => ({}));
         setNeighborInfoLoading(null);
         if (isTxDisabledBody(response.status, errorData)) {
-          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          showToast(t(isMeshCoreSource ? 'meshcore.receive_only.blocked_toast' : 'tx_disabled.send_blocked_toast'), 'warning');
         }
         return;
       }
@@ -2160,7 +2171,7 @@ function App() {
         const detail = await response.json().catch(() => ({}));
         if (isTxDisabledBody(response.status, detail)) {
           setTelemetryRequestLoading(null);
-          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          showToast(t(isMeshCoreSource ? 'meshcore.receive_only.blocked_toast' : 'tx_disabled.send_blocked_toast'), 'warning');
           return;
         }
         throw new Error(detail.error || `Telemetry request failed (${response.status})`);
@@ -2338,7 +2349,7 @@ function App() {
       } else {
         const errorData = await response.json();
         if (isTxDisabledBody(response.status, errorData)) {
-          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          showToast(t(isMeshCoreSource ? 'meshcore.receive_only.blocked_toast' : 'tx_disabled.send_blocked_toast'), 'warning');
           return;
         }
         setError(`Failed to send reaction: ${errorData.error || 'Unknown error'}`);
@@ -2716,7 +2727,7 @@ function App() {
         });
 
         if (isTxDisabledBody(response.status, errorData)) {
-          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          showToast(t(isMeshCoreSource ? 'meshcore.receive_only.blocked_toast' : 'tx_disabled.send_blocked_toast'), 'warning');
           return;
         }
         setError(`Failed to send message: ${errorData.error}`);
@@ -2758,7 +2769,7 @@ function App() {
       } else {
         const errorData = await response.json();
         if (isTxDisabledBody(response.status, errorData)) {
-          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          showToast(t(isMeshCoreSource ? 'meshcore.receive_only.blocked_toast' : 'tx_disabled.send_blocked_toast'), 'warning');
           return;
         }
         setError(`Failed to send bell: ${errorData.error}`);
@@ -2787,7 +2798,7 @@ function App() {
       } else {
         const errorData = await response.json().catch(() => ({}));
         if (isTxDisabledBody(response.status, errorData)) {
-          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          showToast(t(isMeshCoreSource ? 'meshcore.receive_only.blocked_toast' : 'tx_disabled.send_blocked_toast'), 'warning');
           return;
         }
         setError('Failed to send bell DM');
@@ -2813,7 +2824,7 @@ function App() {
       } else {
         const errorData = await response.json();
         if (isTxDisabledBody(response.status, errorData)) {
-          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          showToast(t(isMeshCoreSource ? 'meshcore.receive_only.blocked_toast' : 'tx_disabled.send_blocked_toast'), 'warning');
           return;
         }
         setError(`Failed to send position: ${errorData.error}`);
@@ -2918,7 +2929,7 @@ function App() {
         });
 
         if (isTxDisabledBody(response.status, errorData)) {
-          showToast(t('tx_disabled.send_blocked_toast'), 'warning');
+          showToast(t(isMeshCoreSource ? 'meshcore.receive_only.blocked_toast' : 'tx_disabled.send_blocked_toast'), 'warning');
           return;
         }
         setError(`Failed to resend message: ${errorData.error}`);
@@ -3295,6 +3306,7 @@ function App() {
       <AppBanners
         isTxDisabled={isTxDisabled}
         isUdpRelay={isUdpRelay}
+        isMeshCore={isMeshCoreSource}
         configIssues={configIssues}
         updateAvailable={updateAvailable}
         latestVersion={latestVersion}
@@ -3590,6 +3602,7 @@ function App() {
                   onTraceroute={handleTraceroute}
                   connectionStatus={connectionStatus}
                   txDisabled={txGated}
+                  txDisabledTooltip={txDisabledTooltip}
                   tracerouteLoading={tracerouteLoading}
                   onDeleteNode={handleDeleteNode}
                   onPurgeNodeFromDevice={handlePurgeNodeFromDevice}
@@ -3715,6 +3728,7 @@ function App() {
             onFocusMessageHandled={() => setFocusMessageId(null)}
             mqttReadOnly={isMqttBridge}
             txDisabled={txGated}
+            txDisabledTooltip={txDisabledTooltip}
           />
               </ErrorBoundary>
             }
@@ -3787,6 +3801,7 @@ function App() {
             onFocusMessageHandled={() => setFocusMessageId(null)}
             mqttReadOnly={isMqttBridge}
             txDisabled={txGated}
+            txDisabledTooltip={txDisabledTooltip}
             toggleIgnored={toggleIgnored}
             toggleHideFromMap={toggleHideFromMap}
             toggleFavorite={toggleFavorite}
@@ -3845,6 +3860,7 @@ function App() {
         onPurgeNodeFromDevice={handlePurgeNodeFromDevice}
         currentNodeNum={currentNodeId ? (nodes.find(n => n.user?.id === currentNodeId)?.nodeNum ?? null) : null}
         txDisabled={txGated}
+        txDisabledTooltip={txDisabledTooltip}
       />
 
       {/* News Popup */}

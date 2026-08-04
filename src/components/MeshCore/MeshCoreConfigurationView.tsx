@@ -21,6 +21,11 @@ interface MeshCoreConfigurationViewProps {
   baseUrl?: string;
   /** Source UUID — required for the channels sub-section's API calls. */
   sourceId?: string;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Threaded to MeshCoreLocalConsole; the rest of this view
+   *  (name/location/radio params/TX power/telemetry modes/channel CRUD) is
+   *  serial/DB-only and deliberately not gated (§3.7 of the Phase 2 spec). */
+  receiveOnly?: boolean;
 }
 
 export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps> = ({
@@ -28,6 +33,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
   actions,
   baseUrl,
   sourceId,
+  receiveOnly = false,
 }) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
@@ -529,6 +535,7 @@ export const MeshCoreConfigurationView: React.FC<MeshCoreConfigurationViewProps>
           deviceType={local?.advType}
           connected={connected}
           actions={{ sendLocalCliCommand: actions.sendLocalCliCommand }}
+          receiveOnly={receiveOnly}
         />
       )}
 
