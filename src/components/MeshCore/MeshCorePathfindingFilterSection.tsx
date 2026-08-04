@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { meshcoreAgeCutoffMs, isWithinMeshcoreAge } from '../../utils/meshcoreAge';
+import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 
 interface MeshCorePathfindingFilterSectionProps {
   baseUrl: string;
@@ -137,8 +138,6 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
   canWrite,
   receiveOnly = false,
 }) => {
-  // Not yet consumed here — WP4 renders the paused note.
-  void receiveOnly;
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
 
@@ -396,6 +395,7 @@ export const MeshCorePathfindingFilterSection: React.FC<MeshCorePathfindingFilte
           {t('meshcore.automation.pathfinding.filter.master_toggle', 'Filter target contacts')}
         </label>
       </div>
+      <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
       <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: 'var(--ctp-subtext0)', lineHeight: '1.5' }}>
         {t(
           'meshcore.automation.pathfinding.filter.description',

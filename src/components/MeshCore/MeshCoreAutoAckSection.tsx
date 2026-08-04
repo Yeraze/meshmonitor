@@ -5,6 +5,7 @@ import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
+import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 
 interface MeshCoreAutoAckSectionProps {
   baseUrl: string;
@@ -87,8 +88,6 @@ const generateSample = (template: string): string => {
 };
 
 export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ baseUrl, sourceId, receiveOnly = false }) => {
-  // Not yet consumed here — WP4 renders the paused note.
-  void receiveOnly;
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
@@ -278,6 +277,8 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
           {t('meshcore.automation.autoack.title', 'Auto-Acknowledge')}
         </h2>
       </div>
+
+      <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
 
       <div className="settings-section" style={{ opacity: settings.enabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: 1.5, marginLeft: '1.75rem' }}>

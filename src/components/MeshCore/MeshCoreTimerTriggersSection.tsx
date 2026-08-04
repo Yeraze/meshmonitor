@@ -6,6 +6,8 @@ import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
+import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
+import { isTxDisabledBody } from '../../utils/txDisabled';
 
 interface MeshCoreTimerTriggersSectionProps {
   baseUrl: string;
@@ -84,8 +86,6 @@ const triggersEqual = (a: MeshCoreTimerTrigger[], b: MeshCoreTimerTrigger[]): bo
 };
 
 export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSectionProps> = ({ baseUrl, sourceId, receiveOnly = false }) => {
-  // Not yet consumed here — WP4 renders the paused note + Run now gating.
-  void receiveOnly;
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
@@ -276,6 +276,11 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
       const json = await res.json();
       if (res.ok && json.success) {
         showToast(t('meshcore.automation.timers.ran', 'Trigger fired'), 'success');
+      } else if (isTxDisabledBody(res.status, json)) {
+        showToast(
+          t('meshcore.receive_only.blocked_toast', 'Receive-only mode is on for this MeshCore source — nothing was sent.'),
+          'warning',
+        );
       } else {
         showToast(json?.data?.reason || json?.error || t('meshcore.automation.timers.run_failed', 'Run failed'), 'error');
       }
@@ -309,6 +314,8 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
           {t('meshcore.automation.timers.count', '{{count}} triggers', { count: triggers.length })}
         </span>
       </div>
+
+      <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
 
       <div className="settings-section">
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: 1.5, marginLeft: '1.75rem' }}>
@@ -348,7 +355,8 @@ export const MeshCoreTimerTriggersSection: React.FC<MeshCoreTimerTriggersSection
               <button
                 type="button"
                 onClick={() => runNow(tr.id)}
-                disabled={!canWrite || runningId === tr.id || !tr.enabled}
+                disabled={!canWrite || runningId === tr.id || !tr.enabled || receiveOnly}
+                title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
                 className="meshcore-btn meshcore-btn-secondary"
               >
                 {runningId === tr.id ? t('meshcore.automation.timers.running', 'Running…') : t('meshcore.automation.timers.run_now', 'Run now')}
