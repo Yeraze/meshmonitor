@@ -118,12 +118,18 @@ describe('MeshtasticManager - bridged node detection', () => {
       expect(manager.isLocalNodeBridged()).toBe(true);
     });
 
-    it('does nothing when localNodeInfo is not yet initialised', async () => {
+    it('buffers instead of applying when localNodeInfo is not yet initialised', async () => {
+      // The flags cannot be stored without an identity to hang them on, but
+      // dropping them lost bridged-node detection for the whole session. They
+      // are held until processMyNodeInfo() drains them — see
+      // meshtasticManager.deviceMetadataRace.test.ts.
       manager.localNodeInfo = null;
+      manager.pendingDeviceMetadata = null;
       await expect(
         manager.processDeviceMetadata({ hasWifi: false, hasEthernet: false })
       ).resolves.toBeUndefined();
       expect(manager.isLocalNodeBridged()).toBe(false);
+      expect(manager.pendingDeviceMetadata).toEqual({ hasWifi: false, hasEthernet: false });
     });
   });
 });
