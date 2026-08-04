@@ -4652,14 +4652,17 @@ class MeshtasticManager implements ISourceManager {
     } finally {
       // Every exit path of the impl either assigns this.localNodeInfo or leaves
       // an already-assigned one in place, so this is the one place guaranteed to
-      // run once local identity is known.
+      // run once local identity is known. That includes the isLocked early
+      // return: draining there is intentional, because processDeviceMetadata()
+      // updates the firmware version even on a locked local node.
       await this.drainPendingDeviceMetadata();
     }
   }
 
   /**
    * Apply a DeviceMetadata frame that arrived before localNodeInfo existed.
-   * No-op when nothing was buffered or identity is still unknown.
+   * No-op when nothing was buffered or identity is still unknown — including
+   * when the impl threw before assigning identity.
    */
   private async drainPendingDeviceMetadata(): Promise<void> {
     const pending = this.pendingDeviceMetadata;
@@ -5332,6 +5335,9 @@ class MeshtasticManager implements ISourceManager {
     // in the same branch, so the next reconnect read the same empty column back.
     // It also left hasWifi/hasEthernet unknown, mis-gating isLocalNodeBridged()
     // and the OTA firmware-update UI.
+    // Holds one frame: the firmware sends DeviceMetadata once per config
+    // download, so a second arrival before MyNodeInfo would be a redundant
+    // restatement of the same device — last one wins.
     if (!this.localNodeInfo) {
       this.pendingDeviceMetadata = metadata;
       logger.debug('📱 Buffered DeviceMetadata — local node identity not established yet');

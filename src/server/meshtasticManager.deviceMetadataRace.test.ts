@@ -131,6 +131,26 @@ describe('MeshtasticManager - DeviceMetadata arriving before MyNodeInfo', () => 
     expect(manager.pendingDeviceMetadata).toBeNull();
   });
 
+  it('keeps the last frame when metadata arrives twice before MyNodeInfo', async () => {
+    // The buffer holds one frame. A second arrival before identity is known
+    // restates the same device, so last-one-wins is the intended behaviour.
+    await manager.processDeviceMetadata({ firmwareVersion: '2.7.10.stale', hasWifi: false });
+    await manager.processDeviceMetadata({ firmwareVersion: FIRMWARE, hasWifi: true });
+
+    await manager.processMyNodeInfo({ myNodeNum: LOCAL_NODE_NUM, rebootCount: 1 });
+
+    expect(manager.localNodeInfo.firmwareVersion).toBe(FIRMWARE);
+    expect(manager.localNodeInfo.hasWifi).toBe(true);
+    expect(mockUpsertNodeAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ firmwareVersion: FIRMWARE }),
+      expect.anything(),
+    );
+    expect(mockUpsertNodeAsync).not.toHaveBeenCalledWith(
+      expect.objectContaining({ firmwareVersion: '2.7.10.stale' }),
+      expect.anything(),
+    );
+  });
+
   it('leaves the stored firmware version alone when metadata carries none', async () => {
     manager.localNodeInfo = {
       nodeNum: LOCAL_NODE_NUM,
