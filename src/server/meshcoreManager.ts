@@ -3484,6 +3484,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * creates a new message nor re-arms the timer itself.
    */
   private async handleDmAckTimeout(ackCrc: number): Promise<void> {
+    // Receive-only (#4547): first statement, before any pending-map bookkeeping
+    // or the guarded resetContactPath()/performScopedSend() primitives below.
+    if (!this.canTransmit()) {
+      logger.debug(`⏭️ [MeshCore:${this.sourceId}] DM ack retry: Skipping - receive-only mode`);
+      return;
+    }
     const pending = this.pendingDmRetries.get(ackCrc);
     if (!pending) return; // already acked (or manager torn down) — nothing to do
     this.pendingDmRetries.delete(ackCrc);
@@ -3641,6 +3647,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * concurrent send (#3667).
    */
   private async handleChannelRetryTimeout(messageId: string): Promise<void> {
+    // Receive-only (#4547): first statement, before any pending-map bookkeeping
+    // or the guarded performScopedSend() primitive below.
+    if (!this.canTransmit()) {
+      logger.debug(`⏭️ [MeshCore:${this.sourceId}] Channel retry: Skipping - receive-only mode`);
+      return;
+    }
     const pending = this.pendingChannelRetries.get(messageId);
     if (!pending) return; // already cleared (disconnect) — nothing to do
     this.pendingChannelRetries.delete(messageId);
@@ -6564,6 +6576,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     logger.info(`[MeshCore:${this.sourceId}] Auto-pathfinding: starting (pathDiscovery=${pathDiscoveryEnabled}, neighbors=${neighborsEnabled}, interval=${intervalMinutes}m, repeat=${repeatHours}h, jitter=${Math.round(initialJitterMs / 1000)}s)`);
 
     const executeRun = async () => {
+      // Receive-only (#4547): loop entry — before any guarded primitive.
+      if (!this.canTransmit()) {
+        logger.debug(`⏭️ [MeshCore:${this.sourceId}] Auto-pathfinding: Skipping - receive-only mode`);
+        return;
+      }
       if (!this.connected) {
         logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: skipping — not connected`);
         return;
@@ -6603,6 +6620,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
       for (let i = 0; i < targets.length; i++) {
         if (!this.connected) break;
+        // Receive-only (#4547): re-checked per-target — the loop awaits
+        // between targets, so the flag can flip mid-run.
+        if (!this.canTransmit()) {
+          logger.debug(`⏭️ [MeshCore:${this.sourceId}] Auto-pathfinding: Skipping remaining targets - receive-only mode`);
+          break;
+        }
         const t = targets[i];
         try {
           if (t.op === 'discover_path') {
@@ -6764,6 +6787,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * so the route handler can surface partial failures.
    */
   async runAutoAnnounceCycle(reason: 'cron' | 'interval' | 'on_start' | 'manual'): Promise<{ sent: number; total: number }> {
+    // Receive-only (#4547): first statement, before any guarded primitive.
+    if (!this.canTransmit()) {
+      logger.debug(`⏭️ [MeshCore:${this.sourceId}] Auto-announce: Skipping (${reason}) - receive-only mode`);
+      return { sent: 0, total: 0 };
+    }
     if (!this.connected) {
       logger.debug(`[MeshCore:${this.sourceId}] Auto-announce: skipping (${reason}) — not connected`);
       return { sent: 0, total: 0 };
@@ -6824,6 +6852,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       if (this.autoAnnounceAdvertTimer) clearTimeout(this.autoAnnounceAdvertTimer);
       this.autoAnnounceAdvertTimer = setTimeout(() => {
         this.autoAnnounceAdvertTimer = null;
+        // Receive-only (#4547): first statement in this callback, before the
+        // guarded sendAdvert() primitive — the flag can flip during the delay.
+        if (!this.canTransmit()) {
+          logger.debug(`⏭️ [MeshCore:${this.sourceId}] Auto-announce advert burst: Skipping - receive-only mode`);
+          return;
+        }
         if (!this.connected) return;
         void this.sendAdvert().catch((err: Error) => {
           logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: advert burst failed: ${err.message}`);
@@ -6895,6 +6929,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         return;
       }
       const handle = setInterval(() => {
+        // Receive-only (#4547): first statement in the interval callback,
+        // before it reaches runTimerTrigger()'s guarded send primitives.
+        if (!this.canTransmit()) {
+          logger.debug(`⏭️ [MeshCore:${this.sourceId}] Timer trigger ${trigger.id}: Skipping - receive-only mode`);
+          return;
+        }
         void this.runTimerTrigger(trigger.id).catch((err: Error) => {
           logger.warn(`[MeshCore:${this.sourceId}] Timer trigger ${trigger.id} run failed: ${err.message}`);
         });
@@ -6909,6 +6949,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
       try {
         const job = scheduleCron(expr, () => {
+          // Receive-only (#4547): first statement in the cron callback,
+          // before it reaches runTimerTrigger()'s guarded send primitives.
+          if (!this.canTransmit()) {
+            logger.debug(`⏭️ [MeshCore:${this.sourceId}] Timer trigger ${trigger.id}: Skipping - receive-only mode`);
+            return;
+          }
           void this.runTimerTrigger(trigger.id).catch((err: Error) => {
             logger.warn(`[MeshCore:${this.sourceId}] Timer trigger ${trigger.id} run failed: ${err.message}`);
           });
@@ -7161,6 +7207,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     route: string | null = null,
   ): Promise<void> {
     try {
+      // Receive-only (#4547): first statement inside the try, before any
+      // guarded send primitive (and before the settings reads below).
+      if (!this.canTransmit()) {
+        logger.debug(`⏭️ [MeshCore:${this.sourceId}] Auto-responder: Skipping - receive-only mode`);
+        return;
+      }
       const enabledRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoResponderEnabled');
       if (enabledRaw !== 'true') return;
 
@@ -7424,6 +7476,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     route: string | null,
   ): Promise<void> {
     try {
+      // Receive-only (#4547): first statement inside the try, before any
+      // guarded send primitive (and before the settings reads below).
+      if (!this.canTransmit()) {
+        logger.debug(`⏭️ [MeshCore:${this.sourceId}] Auto-ack: Skipping - receive-only mode`);
+        return;
+      }
       const settings = databaseService.settings;
       const sourceId = this.sourceId;
 
