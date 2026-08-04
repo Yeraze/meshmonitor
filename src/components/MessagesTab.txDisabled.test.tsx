@@ -295,3 +295,39 @@ describe('MessagesTab txDisabled gating (#4294 Phase 2)', () => {
     expect(screen.getByText('hi back')).toBeTruthy();
   });
 });
+
+// #4547 Phase 2 WP5: App.tsx computes one MeshCore-or-Meshtastic tooltip
+// string and threads it in as `txDisabledTooltip`. The `?? t('tx_disabled.control_tooltip')`
+// fallback above already proves the omitted-prop (Meshtastic today) case is
+// byte-identical; this covers the other direction — the prop, when supplied,
+// wins over the default key on every gated control.
+describe('MessagesTab txDisabledTooltip prop (#4547 Phase 2 WP5)', () => {
+  const MESHCORE_TOOLTIP = 'meshcore.receive_only.control_tooltip';
+
+  it('uses the supplied tooltip on the DM textarea instead of the default key', () => {
+    render(<MessagesTab {...makeProps({ txDisabled: true, txDisabledTooltip: MESHCORE_TOOLTIP })} />);
+    const textarea = document.querySelector('textarea.message-input');
+    expect(textarea?.getAttribute('title')).toBe(MESHCORE_TOOLTIP);
+  });
+
+  it('uses the supplied tooltip on the DM bell and resend buttons', () => {
+    render(<MessagesTab {...makeProps({ txDisabled: true, txDisabledTooltip: MESHCORE_TOOLTIP })} />);
+    const bellBtn = document.querySelector('button.send-btn.channel-action-btn');
+    expect(bellBtn?.getAttribute('title')).toBe(MESHCORE_TOOLTIP);
+    const resendBtn = document.querySelector('button.resend-button');
+    expect(resendBtn?.getAttribute('title')).toBe(MESHCORE_TOOLTIP);
+  });
+
+  it('uses the supplied tooltip in the actions dropdown', () => {
+    render(<MessagesTab {...makeProps({ txDisabled: true, txDisabledTooltip: MESHCORE_TOOLTIP })} />);
+    fireEvent.click(screen.getByTitle('messages.actions_menu_title'));
+    const btn = screen.getByText('messages.scan_for_admin').closest('button');
+    expect(btn?.getAttribute('title')).toBe(MESHCORE_TOOLTIP);
+  });
+
+  it('falls back to tx_disabled.control_tooltip when the prop is omitted (Meshtastic default, unchanged)', () => {
+    render(<MessagesTab {...makeProps({ txDisabled: true })} />);
+    const textarea = document.querySelector('textarea.message-input');
+    expect(textarea?.getAttribute('title')).toBe('tx_disabled.control_tooltip');
+  });
+});

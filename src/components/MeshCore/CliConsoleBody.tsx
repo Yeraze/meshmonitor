@@ -39,6 +39,13 @@ export interface ActionCommand {
   defaultLabel: string;
   command: string;
   danger?: boolean;
+  /** When true, this specific quick action renders disabled even though the
+   *  console body itself (and the rest of the catalog) is enabled — e.g. the
+   *  `advert` action while a MeshCore source is in receive-only mode (#4547
+   *  Phase 2). Prefer disabled-with-tooltip over filtering the button out of
+   *  the catalog entirely, per the Phase 2 spec: a vanished button teaches
+   *  the user nothing. */
+  disabled?: boolean;
 }
 
 /** Server-enforced regex for danger commands. Mirrored from
@@ -295,8 +302,10 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
               type="button"
               className={action.danger ? 'mrc-btn-danger' : 'mrc-btn-quick'}
               onClick={() => handleActionClick(action)}
-              disabled={disabled || sending}
-              title={action.command}
+              disabled={disabled || sending || action.disabled}
+              title={action.disabled
+                ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.')
+                : action.command}
             >
               {t(action.labelKey, action.defaultLabel)}
             </button>

@@ -112,6 +112,7 @@
   "banners.default_password_warning": "Security Warning: The admin account is using the default password. Please change it immediately in the Users tab.",
   "banners.tx_disabled": "Transmit Disabled: Your device cannot send messages. TX is currently disabled in the LoRa configuration. Enable it via the Meshtastic app or re-import your configuration.",
   "banners.tx_disabled_udp_relay": "Radio Transmit Disabled: This device does not transmit over LoRa itself. UDP Broadcast is on, so sends go out over the local network and another node there relays them to the mesh.",
+  "banners.receive_only_meshcore": "Receive-Only Mode: this MeshCore source will not transmit. Messages, adverts, path discovery, remote administration and automations are held. Turn it off in MeshCore Settings to transmit again.",
   "banners.config_error": "Configuration Error",
   "banners.learn_more": "Learn more",
   "banners.update_available": "Update available: v{{version}}",
@@ -5154,5 +5155,19 @@
   "meshcore.automation.pathfinding.filter.preview_count": "{{count}} contacts will be targeted",
   "meshcore.automation.pathfinding.filter.no_match": "No contacts match the current filters",
   "meshcore.automation.autoack.node_ignore_list": "Sender Ignore List",
-  "meshcore.automation.autoack.node_ignore_list_description": "Never auto-acknowledge these senders — use it to break a bot echo loop. One entry per line, or comma-separated. An entry is either a public key (full key or any leading prefix, with or without a leading \"!\") or a contact/sender name. Names are matched ignoring case and extra spaces, and are the only way to exclude a channel sender, because MeshCore channel packets carry no sender key."
+  "meshcore.automation.autoack.node_ignore_list_description": "Never auto-acknowledge these senders — use it to break a bot echo loop. One entry per line, or comma-separated. An entry is either a public key (full key or any leading prefix, with or without a leading \"!\") or a contact/sender name. Names are matched ignoring case and extra spaces, and are the only way to exclude a channel sender, because MeshCore channel packets carry no sender key.",
+
+  "meshcore.receive_only.title": "Receive-only mode",
+  "meshcore.receive_only.toggle_label": "Strict receive-only (never transmit)",
+  "meshcore.receive_only.description": "Block every transmission from this MeshCore node. Messages, adverts, path discovery, remote CLI, logins, telemetry requests and all automations are held. Receiving, the packet log, the Analyzer Observer, contact and telemetry updates, and local serial configuration keep working.",
+  "meshcore.receive_only.firmware_caveat": "MeshCore firmware has no radio-level transmit switch, so MeshMonitor enforces this in software. Transmissions the node makes on its own — link-layer acknowledgements, and any advert schedule configured outside MeshMonitor — are not affected.",
+  "meshcore.receive_only.disable_confirm": "Allow this MeshCore node to transmit again?\n\nMessages, adverts, path discovery, remote administration and every enabled automation will resume sending over the radio. Continue?",
+  "meshcore.receive_only.control_tooltip": "Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.",
+  "meshcore.receive_only.blocked_toast": "Receive-only mode is on for this MeshCore source — nothing was sent.",
+  "meshcore.receive_only.paused_note": "Paused — receive-only mode. These settings are saved and unchanged; they take effect again when receive-only is turned off.",
+  "meshcore.receive_only.status_chip": "Receive-only",
+  "meshcore.receive_only.saved_on": "Receive-only mode enabled — this node will not transmit",
+  "meshcore.receive_only.saved_off": "Receive-only mode disabled — this node can transmit again",
+  "meshcore.receive_only.save_failed": "Failed to change receive-only mode",
+  "meshcore.receive_only.console_placeholder": "Local serial commands still work; commands that transmit are blocked."
 }

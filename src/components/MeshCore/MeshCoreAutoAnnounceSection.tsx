@@ -7,10 +7,16 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
 import { MESHCORE_AUTOMATION_TOKENS } from './meshcoreAutomationTokens';
+import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
+import { isTxDisabledBody } from '../../utils/txDisabled';
 
 interface MeshCoreAutoAnnounceSectionProps {
   baseUrl: string;
   sourceId: string;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP4 renders the paused note and gates
+   *  "Send Now". */
+  receiveOnly?: boolean;
 }
 
 interface AutoAnnounceSettings {
@@ -59,7 +65,7 @@ const arraysEqual = (a: number[], b: number[]): boolean => {
   return aSorted.every((v, i) => v === bSorted[i]);
 };
 
-export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionProps> = ({ baseUrl, sourceId }) => {
+export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionProps> = ({ baseUrl, sourceId, receiveOnly = false }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
@@ -279,6 +285,14 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
           showToast(t('automation.insufficient_permissions', 'Insufficient permissions'), 'error');
           return;
         }
+        const errBody = await res.json().catch(() => null);
+        if (isTxDisabledBody(res.status, errBody)) {
+          showToast(
+            t('meshcore.receive_only.blocked_toast', 'Receive-only mode is on for this MeshCore source — nothing was sent.'),
+            'warning',
+          );
+          return;
+        }
         throw new Error(`Server returned ${res.status}`);
       }
       const json = await res.json();
@@ -326,7 +340,8 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
         </h2>
         <button
           onClick={sendNow}
-          disabled={sendNowDisabled}
+          disabled={sendNowDisabled || receiveOnly}
+          title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
           className="meshcore-btn meshcore-btn-primary meshcore-send-now"
         >
           {isSendingNow
@@ -334,6 +349,8 @@ export const MeshCoreAutoAnnounceSection: React.FC<MeshCoreAutoAnnounceSectionPr
             : t('meshcore.automation.announce.send_now', 'Send Now')}
         </button>
       </div>
+
+      <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
 
       <div className="settings-section" style={{ opacity: settings.enabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: 1.5, marginLeft: '1.75rem' }}>

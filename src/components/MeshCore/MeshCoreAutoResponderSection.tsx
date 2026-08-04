@@ -5,10 +5,15 @@ import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
+import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 
 interface MeshCoreAutoResponderSectionProps {
   baseUrl: string;
   sourceId: string;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP4 renders the paused note. This
+   *  section has no immediate-TX control, so no input gates on it. */
+  receiveOnly?: boolean;
 }
 
 /**
@@ -85,7 +90,7 @@ const newTrigger = (): MeshCoreAutoResponderTrigger => ({
   scopeName: '',
 });
 
-export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSectionProps> = ({ baseUrl, sourceId }) => {
+export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSectionProps> = ({ baseUrl, sourceId, receiveOnly = false }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
@@ -279,6 +284,8 @@ export const MeshCoreAutoResponderSection: React.FC<MeshCoreAutoResponderSection
           {t('meshcore.automation.responder.count', '{{count}} triggers', { count: triggers.length })}
         </span>
       </div>
+
+      <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
 
       <div className="settings-section" style={{ opacity: enabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: 1.5, marginLeft: '1.75rem' }}>

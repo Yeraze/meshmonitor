@@ -20,6 +20,13 @@ interface AppBannersProps {
    * rather than claiming the device cannot send.
    */
   isUdpRelay?: boolean;
+  /**
+   * True when the current source is MeshCore. MeshCore has no LoRa
+   * Configuration screen, so the TX-disabled banner swaps to the
+   * receive-only wording that points at MeshCore Settings instead (#4547
+   * Phase 2 WP5). Does not affect `showTxBanner` or any offset arithmetic.
+   */
+  isMeshCore?: boolean;
   configIssues: ConfigIssue[];
   updateAvailable: boolean;
   latestVersion: string;
@@ -38,6 +45,7 @@ function readDismissedVersion(): string | null {
 export const AppBanners: React.FC<AppBannersProps> = ({
   isTxDisabled,
   isUdpRelay = false,
+  isMeshCore = false,
   configIssues,
   updateAvailable,
   latestVersion,
@@ -112,7 +120,9 @@ export const AppBanners: React.FC<AppBannersProps> = ({
           style={{ top: 'var(--header-height)' }}
         >
           <UiIcon name="alert" />{' '}
-          {isTxDisabled ? t('banners.tx_disabled') : t('banners.tx_disabled_udp_relay')}
+          {isTxDisabled
+            ? t(isMeshCore ? 'banners.receive_only_meshcore' : 'banners.tx_disabled')
+            : t('banners.tx_disabled_udp_relay')}
         </div>
       )}
 

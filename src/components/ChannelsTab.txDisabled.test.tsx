@@ -185,3 +185,33 @@ describe('ChannelsTab txDisabled gating (#4294 Phase 2)', () => {
     expect(emojiBtn).not.toBeDisabled();
   });
 });
+
+// #4547 Phase 2 WP5: App.tsx computes one MeshCore-or-Meshtastic tooltip
+// string and threads it in as `txDisabledTooltip`. The default-key assertions
+// above already prove the omitted-prop (Meshtastic today) case is
+// byte-identical; this covers the other direction — the prop, when supplied,
+// wins over the default key on every gated control.
+describe('ChannelsTab txDisabledTooltip prop (#4547 Phase 2 WP5)', () => {
+  const MESHCORE_TOOLTIP = 'meshcore.receive_only.control_tooltip';
+
+  it('uses the supplied tooltip on the message textarea instead of the default key', () => {
+    render(<ChannelsTab {...makeProps({ txDisabled: true, txDisabledTooltip: MESHCORE_TOOLTIP })} />);
+    const textarea = document.querySelector('textarea.message-input');
+    expect(textarea?.getAttribute('title')).toBe(MESHCORE_TOOLTIP);
+  });
+
+  it('uses the supplied tooltip on the bell/position buttons and the emoji-picker button', () => {
+    render(<ChannelsTab {...makeProps({ txDisabled: true, txDisabledTooltip: MESHCORE_TOOLTIP })} />);
+    document.querySelectorAll('button.send-btn.channel-action-btn').forEach(btn => {
+      expect(btn.getAttribute('title')).toBe(MESHCORE_TOOLTIP);
+    });
+    const emojiBtn = document.querySelector('button.emoji-picker-button');
+    expect(emojiBtn?.getAttribute('title')).toBe(MESHCORE_TOOLTIP);
+  });
+
+  it('falls back to tx_disabled.control_tooltip when the prop is omitted (Meshtastic default, unchanged)', () => {
+    render(<ChannelsTab {...makeProps({ txDisabled: true })} />);
+    const textarea = document.querySelector('textarea.message-input');
+    expect(textarea?.getAttribute('title')).toBe('tx_disabled.control_tooltip');
+  });
+});

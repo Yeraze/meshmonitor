@@ -5,10 +5,15 @@ import { useToast } from '../ToastContainer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSaveBar } from '../../hooks/useSaveBar';
 import { ScopeSelectField, type ScopeMode } from './ScopeSelectField';
+import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 
 interface MeshCoreAutoAckSectionProps {
   baseUrl: string;
   sourceId: string;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP4 renders the paused note. This
+   *  section has no immediate-TX control, so no input gates on it. */
+  receiveOnly?: boolean;
 }
 
 interface AutoAckSettings {
@@ -82,7 +87,7 @@ const generateSample = (template: string): string => {
     .replace(/\{VERSION\}/g, '4.8.0');
 };
 
-export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ baseUrl, sourceId }) => {
+export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ baseUrl, sourceId, receiveOnly = false }) => {
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
   const { showToast } = useToast();
@@ -272,6 +277,8 @@ export const MeshCoreAutoAckSection: React.FC<MeshCoreAutoAckSectionProps> = ({ 
           {t('meshcore.automation.autoack.title', 'Auto-Acknowledge')}
         </h2>
       </div>
+
+      <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
 
       <div className="settings-section" style={{ opacity: settings.enabled ? 1 : 0.5, transition: 'opacity 0.2s' }}>
         <p style={{ marginBottom: '1rem', color: '#666', lineHeight: 1.5, marginLeft: '1.75rem' }}>

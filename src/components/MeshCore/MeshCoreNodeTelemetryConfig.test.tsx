@@ -8,9 +8,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MeshCoreNodeTelemetryConfig } from './MeshCoreNodeTelemetryConfig';
 
-const { csrfFetchMock, hasPermissionMock } = vi.hoisted(() => ({
+const { csrfFetchMock, hasPermissionMock, showToastMock } = vi.hoisted(() => ({
   csrfFetchMock: vi.fn(),
   hasPermissionMock: vi.fn(),
+  showToastMock: vi.fn(),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -28,16 +29,21 @@ vi.mock('../../hooks/useCsrfFetch', () => ({
   useCsrfFetch: () => csrfFetchMock,
 }));
 
+vi.mock('../ToastContainer', () => ({
+  useToast: () => ({ showToast: showToastMock }),
+}));
+
 const PK = 'a'.repeat(64);
 
 const okResponse = (body: unknown) => ({ ok: true, json: async () => body });
 
-const renderPanel = () =>
-  render(<MeshCoreNodeTelemetryConfig baseUrl="" sourceId="test-source" publicKey={PK} />);
+const renderPanel = (receiveOnly = false) =>
+  render(<MeshCoreNodeTelemetryConfig baseUrl="" sourceId="test-source" publicKey={PK} receiveOnly={receiveOnly} />);
 
 describe('MeshCoreNodeTelemetryConfig — manual poll buttons', () => {
   beforeEach(() => {
     hasPermissionMock.mockReset().mockReturnValue(true);
+    showToastMock.mockReset();
     csrfFetchMock.mockReset().mockImplementation((_url: string, opts?: { method?: string; body?: string }) => {
       if (opts?.method === 'POST') {
         const type = JSON.parse(opts.body ?? '{}').type;
@@ -106,5 +112,74 @@ describe('MeshCoreNodeTelemetryConfig — manual poll buttons', () => {
     renderPanel();
     const btn = await screen.findByText('Poll Status');
     expect(btn.closest('button')).toBeDisabled();
+  });
+});
+
+describe('MeshCoreNodeTelemetryConfig — receive-only mode (#4547 Phase 2 WP3)', () => {
+  beforeEach(() => {
+    hasPermissionMock.mockReset().mockReturnValue(true);
+    showToastMock.mockReset();
+    csrfFetchMock.mockReset().mockImplementation((_url: string, opts?: { method?: string }) => {
+      if (opts?.method === 'POST') {
+        return Promise.resolve(okResponse({ success: true, data: { type: 'status', written: 0 } }));
+      }
+      return Promise.resolve(
+        okResponse({ success: true, data: { enabled: false, intervalMinutes: 60, lastRequestAt: null } }),
+      );
+    });
+  });
+
+  it('disables both poll buttons with a tooltip; the enable checkbox and interval input stay enabled', async () => {
+    renderPanel(true);
+    const pollStatus = (await screen.findByText('Poll Status')).closest('button');
+    const pollLpp = screen.getByText('Poll Environment (LPP)').closest('button');
+    expect(pollStatus).toBeDisabled();
+    expect(pollStatus).toHaveAttribute('title', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.');
+    expect(pollLpp).toBeDisabled();
+    expect(pollLpp).toHaveAttribute('title', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.');
+
+    // Negative control: the settings-only controls are NOT gated (interview
+    // decision 5 — only immediate-TX controls are disabled).
+    const checkbox = screen.getByRole('checkbox');
+    expect(checkbox).not.toBeDisabled();
+    const intervalInput = screen.getByDisplayValue('60');
+    expect(intervalInput).not.toBeDisabled();
+  });
+
+  it('does not disable the poll buttons when receiveOnly is false', async () => {
+    renderPanel(false);
+    const pollStatus = (await screen.findByText('Poll Status')).closest('button');
+    expect(pollStatus).not.toBeDisabled();
+    expect(pollStatus).not.toHaveAttribute('title', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.');
+  });
+
+  it('renders the paused note when receiveOnly', async () => {
+    renderPanel(true);
+    await screen.findByText('Poll Status');
+    expect(screen.getByText(/Paused — receive-only mode/)).toBeInTheDocument();
+  });
+
+  it('poll() detects a 409 TX_DISABLED response and toasts instead of setting the inline error', async () => {
+    csrfFetchMock.mockImplementation((_url: string, opts?: { method?: string }) => {
+      if (opts?.method === 'POST') {
+        return Promise.resolve({
+          ok: false,
+          status: 409,
+          json: async () => ({ success: false, code: 'TX_DISABLED', error: 'Transmit is disabled' }),
+        });
+      }
+      return Promise.resolve(
+        okResponse({ success: true, data: { enabled: false, intervalMinutes: 60, lastRequestAt: null } }),
+      );
+    });
+    // Render enabled so the button is clickable — a direct 409 from the
+    // server (e.g. a race with another tab flipping the setting) must still
+    // surface the friendly toast rather than a raw error.
+    renderPanel(false);
+    fireEvent.click(await screen.findByText('Poll Status'));
+    await waitFor(() => expect(showToastMock).toHaveBeenCalledWith(
+      'Receive-only mode is on for this MeshCore source — nothing was sent.', 'warning',
+    ));
+    expect(screen.queryByText('Transmit is disabled')).not.toBeInTheDocument();
   });
 });

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { ConnectionStatus, MeshCoreActions } from './hooks/useMeshCore';
+import { UiIcon } from '../icons';
 
 interface MeshCoreStatusBarProps {
   status: ConnectionStatus | null;
@@ -10,6 +11,10 @@ interface MeshCoreStatusBarProps {
   /** When true, the parent renders the connection chip in its own header
    *  and we suppress the duplicate "Connected to X" text + dot here. */
   hideConnectionText?: boolean;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Plumbed here in WP1; WP3 wires the actual gating (Send advert
+   *  disabled + tooltip, receive-only status chip). */
+  receiveOnly?: boolean;
 }
 
 export const MeshCoreStatusBar: React.FC<MeshCoreStatusBarProps> = ({
@@ -18,6 +23,7 @@ export const MeshCoreStatusBar: React.FC<MeshCoreStatusBarProps> = ({
   onOpenSettings,
   actions,
   hideConnectionText,
+  receiveOnly = false,
 }) => {
   const { t } = useTranslation();
   const connected = status?.connected ?? false;
@@ -39,14 +45,19 @@ export const MeshCoreStatusBar: React.FC<MeshCoreStatusBarProps> = ({
             )}
           </>
         )}
+        {receiveOnly && (
+          <span className="mrc-status-chip mrc-status-idle">
+            <UiIcon name="blocked" size={12} /> {t('meshcore.receive_only.status_chip', 'Receive-only')}
+          </span>
+        )}
       </div>
       <div className="meshcore-status-bar-right">
         {connected ? (
           <>
             <button
               onClick={() => void actions.sendAdvert()}
-              disabled={loading}
-              title={t('meshcore.send_advert', 'Send advert')}
+              disabled={loading || receiveOnly}
+              title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : t('meshcore.send_advert', 'Send advert')}
             >
               {t('meshcore.send_advert', 'Send advert')}
             </button>

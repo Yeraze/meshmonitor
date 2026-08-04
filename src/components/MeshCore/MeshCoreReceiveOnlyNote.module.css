@@ -1,0 +1,15 @@
+/*
+ * MeshCoreReceiveOnlyNote (#4547 Phase 2 WP1). CSS module — do not add these
+ * rules to the global sheets (CLAUDE.md CSS containment rule). Small, muted
+ * inline note shown at every gated section while a MeshCore source is in
+ * receive-only mode.
+ */
+
+.note {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ctp-subtext0);
+  font-size: 0.85em;
+  margin: 0.35rem 0;
+}

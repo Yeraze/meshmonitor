@@ -89,6 +89,11 @@ interface MeshCoreContactDetailPanelProps {
    *  `remote_admin` resource. When false the console is hidden even if
    *  `remoteAdminActions` is supplied. */
   canRemoteAdmin?: boolean;
+  /** True when this MeshCore source is in strict receive-only mode (#4547
+   *  Phase 2). Threaded to MeshCoreRemoteConsole; WP3 wires the actual
+   *  gating of the six RF buttons on this panel (Reset/Share/Trace/Ping/
+   *  Discover path/Neighbours). */
+  receiveOnly?: boolean;
 }
 
 const COLLAPSED_KEY = 'meshcoreContactDetailsCollapsed';
@@ -110,6 +115,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
   isCompanion = true,
   remoteAdminActions,
   canRemoteAdmin = false,
+  receiveOnly = false,
 }) => {
   const { t } = useTranslation();
   const { timeFormat, dateFormat } = useSettings();
@@ -633,7 +639,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     type="button"
                     className="btn-secondary"
                     onClick={handleResetPath}
-                    disabled={resetting}
+                    disabled={resetting || receiveOnly}
+                    title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
                     aria-label={t('meshcore.contact_details.reset_path_button', 'Reset Path')}
                   >
                     {resetting
@@ -646,7 +653,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     type="button"
                     className="btn-secondary"
                     onClick={handleShareContact}
-                    disabled={sharing}
+                    disabled={sharing || receiveOnly}
+                    title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
                     aria-label={t('meshcore.contact_details.share_contact_button', 'Share Contact')}
                   >
                     {sharing
@@ -669,7 +677,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     type="button"
                     className="btn-secondary"
                     onClick={handleTracePath}
-                    disabled={tracing}
+                    disabled={tracing || receiveOnly}
+                    title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
                     aria-label={t('meshcore.contact_details.trace_path_button', 'Trace Path')}
                   >
                     {tracing
@@ -682,8 +691,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     type="button"
                     className="btn-secondary"
                     onClick={handlePingZeroHop}
-                    disabled={pinging}
-                    title={t(
+                    disabled={pinging || receiveOnly}
+                    title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : t(
                       'meshcore.contact_details.ping_zero_hop_hint',
                       'Send a zero-hop trace. A reply means this node is in direct radio range (repeaters and room servers only — companions do not repeat traces).',
                     )}
@@ -701,7 +710,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     type="button"
                     className="btn-secondary"
                     onClick={handleDiscoverPath}
-                    disabled={discovering}
+                    disabled={discovering || receiveOnly}
+                    title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
                     aria-label={t('meshcore.contact_details.discover_path_button', 'Discover Path')}
                   >
                     {discovering
@@ -727,7 +737,8 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
                     type="button"
                     className="btn-secondary"
                     onClick={handleGetNeighbours}
-                    disabled={neighboursLoading}
+                    disabled={neighboursLoading || receiveOnly}
+                    title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
                     aria-label={t('meshcore.contact_details.neighbours_button', 'Neighbours')}
                   >
                     {neighboursLoading
@@ -1174,6 +1185,7 @@ export const MeshCoreContactDetailPanel: React.FC<MeshCoreContactDetailPanelProp
           publicKey={publicKey}
           contactName={name}
           actions={remoteAdminActions}
+          receiveOnly={receiveOnly}
         />
       )}
     </div>

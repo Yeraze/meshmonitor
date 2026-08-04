@@ -21,15 +21,28 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-// Stub the heavy children — we're only exercising the console's own UI.
+// Stub the heavy children — we're only exercising the console's own UI. Each
+// stub reflects the props relevant to receive-only gating as data attributes
+// so tests can assert what was threaded through without rendering the real
+// (much heavier) child.
 vi.mock('./MeshCoreRemoteStatsPanel', () => ({
-  MeshCoreRemoteStatsPanel: () => null,
+  MeshCoreRemoteStatsPanel: (props: { receiveOnly?: boolean }) => (
+    <div data-testid="stats-panel" data-receive-only={String(!!props.receiveOnly)} />
+  ),
 }));
 vi.mock('./MeshCoreAclManager', () => ({
-  MeshCoreAclManager: () => null,
+  MeshCoreAclManager: (props: { disabled?: boolean }) => (
+    <div data-testid="acl-manager" data-disabled={String(!!props.disabled)} />
+  ),
 }));
 vi.mock('./CliConsoleBody', () => ({
-  CliConsoleBody: () => null,
+  CliConsoleBody: (props: { disabled?: boolean; disabledPlaceholder?: string }) => (
+    <div
+      data-testid="cli-console-body"
+      data-disabled={String(!!props.disabled)}
+      data-disabled-placeholder={props.disabledPlaceholder ?? ''}
+    />
+  ),
 }));
 
 const PK = 'a'.repeat(64);
@@ -102,5 +115,69 @@ describe('MeshCoreRemoteConsole credential handling', () => {
     await waitFor(() => expect(actions.getRemoteAdminCapability).toHaveBeenCalled());
     expect(screen.queryByText('Saved password')).not.toBeInTheDocument();
     expect(screen.queryByText('Log in with saved password')).not.toBeInTheDocument();
+  });
+});
+
+describe('MeshCoreRemoteConsole receive-only mode (#4547 Phase 2 WP3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('disables "Log in with saved password" + "Use a different password" with a tooltip when a credential is stored', async () => {
+    const actions = makeActions();
+    render(
+      <MeshCoreRemoteConsole publicKey={PK} contactName="Repeater" actions={actions as any} receiveOnly />,
+    );
+
+    const savedBtn = await screen.findByText('Log in with saved password');
+    const differentBtn = screen.getByText('Use a different password');
+    expect(savedBtn.closest('button')).toBeDisabled();
+    expect(savedBtn.closest('button')).toHaveAttribute('title', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.');
+    expect(differentBtn.closest('button')).toBeDisabled();
+
+    fireEvent.click(savedBtn);
+    expect(actions.loginRemoteWithSaved).not.toHaveBeenCalled();
+  });
+
+  it('disables the plain "Log in to {name}" opener when nothing is stored', async () => {
+    const actions = makeActions({
+      getRemoteAdminCapability: vi.fn().mockResolvedValue({
+        canRemember: true,
+        rotatedCount: 0,
+        rotated: [],
+        stored: [],
+      }),
+    });
+    render(
+      <MeshCoreRemoteConsole publicKey={PK} contactName="Repeater" actions={actions as any} receiveOnly />,
+    );
+
+    const openBtn = await screen.findByText('Log in to {{name}}');
+    expect(openBtn.closest('button')).toBeDisabled();
+    expect(openBtn.closest('button')).toHaveAttribute('title', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.');
+  });
+
+  it('threads disabled (and the placeholder) into CliConsoleBody even before login', async () => {
+    // CliConsoleBody is unconditionally rendered (its own `disabled` prop
+    // covers both !loggedIn and receiveOnly), so this doesn't require
+    // driving the console into a logged-in state first.
+    const actions = makeActions();
+    render(
+      <MeshCoreRemoteConsole publicKey={PK} contactName="Repeater" actions={actions as any} receiveOnly />,
+    );
+    await waitFor(() => expect(actions.getRemoteAdminCapability).toHaveBeenCalled());
+    expect(screen.getByTestId('cli-console-body')).toHaveAttribute('data-disabled', 'true');
+    expect(screen.getByTestId('cli-console-body')).toHaveAttribute(
+      'data-disabled-placeholder', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.',
+    );
+  });
+
+  it('leaves the login buttons enabled and untitled when receiveOnly is false', async () => {
+    const actions = makeActions();
+    render(<MeshCoreRemoteConsole publicKey={PK} contactName="Repeater" actions={actions as any} />);
+
+    const savedBtn = await screen.findByText('Log in with saved password');
+    expect(savedBtn.closest('button')).not.toBeDisabled();
+    expect(savedBtn.closest('button')).not.toHaveAttribute('title');
   });
 });
