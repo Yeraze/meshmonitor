@@ -82,7 +82,7 @@ Any MeshCore route that would transmit returns:
 }
 ```
 
-with HTTP status `409`. This is the same `TX_DISABLED` code Meshtastic sources use for `lora.txEnabled = false` — see the [REST API reference](/api/API_REFERENCE) for the full route list. Two of the gated routes are `GET` requests (fetching neighbours and remote admin status), which is easy to miss if you're only checking `POST` routes.
+with HTTP status `409`. This is the same `TX_DISABLED` code Meshtastic sources use for `lora.txEnabled = false` — see the [REST API reference](https://github.com/Yeraze/meshmonitor/blob/main/docs/api/API_REFERENCE.md) for the full route list. Two of the gated routes are `GET` requests (fetching neighbours and remote admin status), which is easy to miss if you're only checking `POST` routes.
 
 ## Per-source scope
 
@@ -94,4 +94,4 @@ Receive-only applies to **one source only**. A sibling MeshCore source, or any M
 - [MeshCore Virtual Node](/configuration/virtual-node#meshcore-virtual-node) — what read-only access covers
 - [MeshCore Analyzer Observer](/features/meshcore-analyzer-observer) — keeps publishing under receive-only
 - [Receive-Only Mode](/features/receive-only-mode) — the Meshtastic equivalent, which **is** a firmware kill switch
-- [REST API Reference](/api/API_REFERENCE) — `409 TX_DISABLED` error shape
+- [REST API Reference](https://github.com/Yeraze/meshmonitor/blob/main/docs/api/API_REFERENCE.md) — `409 TX_DISABLED` error shape
