@@ -519,7 +519,8 @@ export const MeshCoreDirectMessagesView: React.FC<MeshCoreDirectMessagesViewProp
                   messages={filtered}
                   contacts={contacts}
                   selfPublicKey={selfKey}
-                  disabled={!connected || !canSend}
+                  disabled={!connected || !canSend || receiveOnly}
+                  disabledReason={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
                   emptyText={t('meshcore.no_messages', 'No messages with this contact yet')}
                   onSend={text => actions.sendMessage(text, selected)}
                   onDeleteMessage={canSend ? handleDeleteMessage : undefined}

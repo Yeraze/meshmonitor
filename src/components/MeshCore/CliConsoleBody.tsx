@@ -303,7 +303,9 @@ export const CliConsoleBody = forwardRef<CliConsoleBodyHandle, CliConsoleBodyPro
               className={action.danger ? 'mrc-btn-danger' : 'mrc-btn-quick'}
               onClick={() => handleActionClick(action)}
               disabled={disabled || sending || action.disabled}
-              title={action.command}
+              title={action.disabled
+                ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.')
+                : action.command}
             >
               {t(action.labelKey, action.defaultLabel)}
             </button>

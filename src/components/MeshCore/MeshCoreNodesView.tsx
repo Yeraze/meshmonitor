@@ -154,8 +154,6 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   mapIsLoading,
   receiveOnly = false,
 }) => {
-  // Not yet consumed here — WP3 wires the Discover menu gating.
-  void receiveOnly;
   const { t } = useTranslation();
   const { showToast } = useToast();
   const { timeFormat, dateFormat } = useSettings();
@@ -273,6 +271,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
   // surface here too because responders land directly in this list.
   const handleDiscover = useCallback(async (mode: DiscoverMode) => {
     if (!onDiscoverNodes || discovering) return;
+    if (receiveOnly) return;
     setDiscoverMenuOpen(false);
     setDiscovering(mode);
     try {
@@ -291,7 +290,7 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
     } finally {
       setDiscovering(null);
     }
-  }, [onDiscoverNodes, discovering, showToast, t]);
+  }, [onDiscoverNodes, discovering, receiveOnly, showToast, t]);
 
   const merged = useMemo(() => mergeNodesAndContacts(nodes, contacts), [nodes, contacts]);
 
@@ -389,13 +388,31 @@ export const MeshCoreNodesView: React.FC<MeshCoreNodesViewProps> = ({
                     onClick={() => setDiscoverMenuOpen(false)}
                   />
                   <div className="mc-discover-menu" role="menu">
-                    <button type="button" role="menuitem" onClick={() => void handleDiscover('nearby')}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => void handleDiscover('nearby')}
+                      disabled={receiveOnly}
+                      title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
+                    >
                       {t('meshcore.discover.nearby', 'Discover Nearby Nodes')}
                     </button>
-                    <button type="button" role="menuitem" onClick={() => void handleDiscover('repeaters')}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => void handleDiscover('repeaters')}
+                      disabled={receiveOnly}
+                      title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
+                    >
                       {t('meshcore.discover.repeaters', 'Discover Repeaters')}
                     </button>
-                    <button type="button" role="menuitem" onClick={() => void handleDiscover('sensors')}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => void handleDiscover('sensors')}
+                      disabled={receiveOnly}
+                      title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
+                    >
                       {t('meshcore.discover.sensors', 'Discover Sensors')}
                     </button>
                   </div>

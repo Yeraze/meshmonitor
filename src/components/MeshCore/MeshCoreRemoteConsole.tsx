@@ -247,7 +247,8 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
               type="button"
               className="mrc-btn-primary"
               onClick={() => void handleLoginWithSaved()}
-              disabled={loginBusy}
+              disabled={loginBusy || receiveOnly}
+              title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
             >
               {loginBusy
                 ? t('meshcore.remoteConsole.logging_in', 'Logging in…')
@@ -257,13 +258,20 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
               type="button"
               className="mrc-btn-secondary"
               onClick={() => setShowLogin(true)}
-              disabled={loginBusy}
+              disabled={loginBusy || receiveOnly}
+              title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
             >
               {t('meshcore.remoteConsole.login_different', 'Use a different password')}
             </button>
           </>
         ) : (
-          <button type="button" className="mrc-btn-primary" onClick={() => setShowLogin(true)}>
+          <button
+            type="button"
+            className="mrc-btn-primary"
+            onClick={() => setShowLogin(true)}
+            disabled={receiveOnly}
+            title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
+          >
             {t('meshcore.remoteConsole.login_button', 'Log in to {{name}}', { name: contactName })}
           </button>
         )}
@@ -283,10 +291,13 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
         targetName={contactName}
         runCommand={runCommand}
         actionCatalog={loggedIn ? REMOTE_ACTION_CATALOG : []}
-        disabled={!loggedIn}
+        disabled={!loggedIn || receiveOnly}
+        disabledPlaceholder={receiveOnly
+          ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.')
+          : undefined}
       />
 
-      {loggedIn && <MeshCoreAclManager bodyRef={bodyRef} />}
+      {loggedIn && <MeshCoreAclManager bodyRef={bodyRef} disabled={receiveOnly} />}
 
       {showLogin && (
         <div
@@ -343,7 +354,8 @@ export const MeshCoreRemoteConsole: React.FC<MeshCoreRemoteConsoleProps> = ({
                 type="button"
                 className="mrc-btn-primary"
                 onClick={() => void handleLogin()}
-                disabled={loginBusy}
+                disabled={loginBusy || receiveOnly}
+                title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
               >
                 {loginBusy
                   ? t('meshcore.remoteConsole.logging_in', 'Logging in…')

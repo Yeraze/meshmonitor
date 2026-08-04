@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { ConnectionStatus, MeshCoreActions } from './hooks/useMeshCore';
+import { UiIcon } from '../icons';
 
 interface MeshCoreStatusBarProps {
   status: ConnectionStatus | null;
@@ -24,8 +25,6 @@ export const MeshCoreStatusBar: React.FC<MeshCoreStatusBarProps> = ({
   hideConnectionText,
   receiveOnly = false,
 }) => {
-  // Not yet consumed here — WP3 wires the Send-advert gate + status chip.
-  void receiveOnly;
   const { t } = useTranslation();
   const connected = status?.connected ?? false;
   const localName = status?.localNode?.name || t('meshcore.unknown', 'Unknown');
@@ -46,14 +45,19 @@ export const MeshCoreStatusBar: React.FC<MeshCoreStatusBarProps> = ({
             )}
           </>
         )}
+        {receiveOnly && (
+          <span className="mrc-status-chip mrc-status-idle">
+            <UiIcon name="blocked" size={12} /> {t('meshcore.receive_only.status_chip', 'Receive-only')}
+          </span>
+        )}
       </div>
       <div className="meshcore-status-bar-right">
         {connected ? (
           <>
             <button
               onClick={() => void actions.sendAdvert()}
-              disabled={loading}
-              title={t('meshcore.send_advert', 'Send advert')}
+              disabled={loading || receiveOnly}
+              title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : t('meshcore.send_advert', 'Send advert')}
             >
               {t('meshcore.send_advert', 'Send advert')}
             </button>

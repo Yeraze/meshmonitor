@@ -14,6 +14,9 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCsrfFetch } from '../../hooks/useCsrfFetch';
+import { useToast } from '../ToastContainer';
+import { isTxDisabledBody } from '../../utils/txDisabled';
+import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 
 interface MeshCoreNodeTelemetryConfigProps {
   /** Frontend basename (e.g. '' or '/meshmonitor'). */
@@ -50,10 +53,9 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
   publicKey,
   receiveOnly = false,
 }) => {
-  // Not yet consumed here — WP3 wires the poll-button gating.
-  void receiveOnly;
   const { t } = useTranslation();
   const csrfFetch = useCsrfFetch();
+  const { showToast } = useToast();
   const { hasPermission } = useAuth();
   const canWriteConfig = hasPermission('configuration', 'write');
   // A manual poll is a user-initiated read that happens to transmit, so it's
@@ -172,6 +174,10 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
               ? t('meshcore.telemetry_config.poll_wrote', `Wrote ${written} telemetry row(s).`)
               : t('meshcore.telemetry_config.poll_empty', 'Request sent — no telemetry returned.'),
         });
+      } else if (isTxDisabledBody(response.status, data)) {
+        // Receive-only 409 — the friendly warning toast covers this; don't
+        // also paint the red inline error (#4547 Phase 2 §3.3).
+        showToast(t('meshcore.receive_only.blocked_toast', 'Receive-only mode is on for this MeshCore source — nothing was sent.'), 'warning');
       } else {
         setPollMsg({
           kind: 'err',
@@ -282,12 +288,14 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
             'Request telemetry immediately, outside the scheduled interval. Subject to the same 60-second mesh-TX spacing. Status applies to repeaters; Environment (LPP) to nodes with sensors.',
           )}
         </p>
+        <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button
             type="button"
             className="btn-secondary"
             onClick={() => void poll('status')}
-            disabled={!canPoll || polling !== null}
+            disabled={!canPoll || polling !== null || receiveOnly}
+            title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
           >
             {polling === 'status'
               ? t('meshcore.telemetry_config.polling', 'Polling…')
@@ -297,7 +305,8 @@ export const MeshCoreNodeTelemetryConfig: React.FC<MeshCoreNodeTelemetryConfigPr
             type="button"
             className="btn-secondary"
             onClick={() => void poll('lpp')}
-            disabled={!canPoll || polling !== null}
+            disabled={!canPoll || polling !== null || receiveOnly}
+            title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
           >
             {polling === 'lpp'
               ? t('meshcore.telemetry_config.polling', 'Polling…')

@@ -34,8 +34,6 @@ export const MeshCoreRemoteStatsPanel: React.FC<Props> = ({
   fetchStatus,
   receiveOnly = false,
 }) => {
-  // Not yet consumed here — WP3 wires the button gating + auto-load silent skip.
-  void receiveOnly;
   const { t } = useTranslation();
   const [status, setStatus] = useState<MeshCoreRemoteStatus | null>(null);
   const [loading, setLoading] = useState(false);
@@ -49,6 +47,12 @@ export const MeshCoreRemoteStatsPanel: React.FC<Props> = ({
 
   const load = useCallback(async () => {
     if (inFlightRef.current) return;
+    // Receive-only mode: silently skip — no request, no toast, no loading
+    // state. Guards every caller of `load()` (both the manual Refresh /
+    // Fetch-stats buttons below, which are also separately disabled, and any
+    // future automatic caller), before any fetchStatus() call and before any
+    // loading state is set (#4547 Phase 2 §3.4a(c)).
+    if (receiveOnly) return;
     inFlightRef.current = true;
     setLoading(true);
     setError(null);
@@ -64,7 +68,7 @@ export const MeshCoreRemoteStatsPanel: React.FC<Props> = ({
       inFlightRef.current = false;
       setLoading(false);
     }
-  }, [fetchStatus, publicKey, t]);
+  }, [fetchStatus, publicKey, receiveOnly, t]);
 
   // No auto-fetch and no polling — status is loaded only when the user asks
   // (the "Fetch stats" / "Refresh" buttons below), to avoid spending radio
@@ -93,7 +97,8 @@ export const MeshCoreRemoteStatsPanel: React.FC<Props> = ({
           type="button"
           className="mrs-refresh-btn"
           onClick={(e) => { e.stopPropagation(); void load(); }}
-          disabled={loading}
+          disabled={loading || receiveOnly}
+          title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
         >
           {loading
             ? t('meshcore.remoteStats.refreshing', 'Refreshing…')
@@ -148,7 +153,13 @@ export const MeshCoreRemoteStatsPanel: React.FC<Props> = ({
               <p className="mrs-empty-hint">
                 {t('meshcore.remoteStats.empty_hint', 'Status is not fetched automatically.')}
               </p>
-              <button type="button" className="mrs-fetch-btn" onClick={() => void load()}>
+              <button
+                type="button"
+                className="mrs-fetch-btn"
+                onClick={() => void load()}
+                disabled={receiveOnly}
+                title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
+              >
                 {t('meshcore.remoteStats.fetch', 'Fetch stats')}
               </button>
             </div>

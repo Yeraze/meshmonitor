@@ -19,6 +19,7 @@ import { MeshCoreContact } from '../../utils/meshcoreHelpers';
 import { MeshCoreMessageStream } from './MeshCoreMessageStream';
 import { useAuth } from '../../contexts/AuthContext';
 import { UiIcon } from '../icons';
+import { MeshCoreReceiveOnlyNote } from './MeshCoreReceiveOnlyNote';
 
 const MOBILE_BREAKPOINT = 768;
 const isMobileViewport = (): boolean =>
@@ -62,9 +63,6 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
   onNodeNameClick,
   receiveOnly = false,
 }) => {
-  // Not yet consumed here — WP3 wires the login/send gating + auto-login
-  // effect's silent skip.
-  void receiveOnly;
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
   const canSend = hasPermission('messages', 'write');
@@ -142,6 +140,11 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
     if (!selectedRoom) return;
     if (loggedInRooms.has(selectedRoom)) return;
     if (!storedCreds.has(selectedRoom)) return;
+    // Receive-only mode: silently skip — no request, no toast, no error
+    // state. Must sit BEFORE the do-not-repeat latch below so turning
+    // receive-only back off re-triggers auto-login the next time the room is
+    // selected (#4547 Phase 2 §3.4a).
+    if (receiveOnly) return;
     if (autoLoginAttempted.current.has(selectedRoom)) return;
 
     autoLoginAttempted.current.add(selectedRoom);
@@ -153,7 +156,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
       }
       setLoginLoading(false);
     })();
-  }, [selectedRoom, loggedInRooms, storedCreds, actions]);
+  }, [selectedRoom, loggedInRooms, storedCreds, actions, receiveOnly]);
 
   const loadSyncConfig = useCallback(async (pubkey: string) => {
     const config = await actions.getRoomSyncConfig(pubkey);
@@ -299,9 +302,10 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
                 className="meshcore-room-login-input"
                 value={loginPassword}
                 onChange={e => setLoginPassword(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !loginLoading && handleLogin()}
+                onKeyDown={e => e.key === 'Enter' && !loginLoading && !receiveOnly && handleLogin()}
                 placeholder={t('meshcore.rooms.password_placeholder', 'Password (empty for guest)')}
-                disabled={loginLoading}
+                disabled={loginLoading || receiveOnly}
+                title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
                 autoFocus
               />
               {canRemember && (
@@ -317,7 +321,8 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               <button
                 className="meshcore-room-login-btn"
                 onClick={handleLogin}
-                disabled={loginLoading}
+                disabled={loginLoading || receiveOnly}
+                title={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
               >
                 {loginLoading
                   ? t('meshcore.rooms.logging_in', 'Logging in…')
@@ -372,6 +377,7 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
                       {t('meshcore.rooms.save_sync', 'Save')}
                     </button>
                   )}
+                  <MeshCoreReceiveOnlyNote receiveOnly={receiveOnly} />
                 </span>
               )}
             </div>
@@ -379,7 +385,8 @@ export const MeshCoreRoomsView: React.FC<MeshCoreRoomsViewProps> = ({
               messages={filtered}
               contacts={contacts}
               selfPublicKey={selfKey}
-              disabled={!connected || !canSend}
+              disabled={!connected || !canSend || receiveOnly}
+              disabledReason={receiveOnly ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') : undefined}
               emptyText={t('meshcore.rooms.no_messages', 'No posts in this room yet')}
               onSend={handleSend}
               onNodeNameClick={onNodeNameClick}
