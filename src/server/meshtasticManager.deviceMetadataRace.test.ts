@@ -127,6 +127,9 @@ describe('MeshtasticManager - DeviceMetadata arriving before MyNodeInfo', () => 
     });
 
     expect(manager.localNodeInfo.nodeNum).toBe(LOCAL_NODE_NUM);
+    // Both merge lookups are mocked null, so the merge branch itself assigns
+    // firmwareVersion: null. Seeing FIRMWARE here proves the drain ran after
+    // the branch's early return — that is the whole point of this test.
     expect(manager.localNodeInfo.firmwareVersion).toBe(FIRMWARE);
     expect(manager.pendingDeviceMetadata).toBeNull();
   });
