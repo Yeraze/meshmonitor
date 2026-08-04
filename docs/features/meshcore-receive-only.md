@@ -57,6 +57,10 @@ The [MeshCore Virtual Node](/configuration/virtual-node#meshcore-virtual-node) p
 
 The nine transmit-causing companion commands are refused instead: `SendChannelTxtMsg`, `SendTxtMsg` (including the CLI relay), `SendSelfAdvert`, `SendLogin`, `SendTracePath`, `SendTelemetryReq`, `SendStatusReq`, and `SendBinaryReq` (neighbour requests). A third-party MeshCore client connected to the Virtual Node gets a prompt, well-formed refusal on each of these — not a silent drop, and not a timeout.
 
+::: warning The Virtual Node port is unauthenticated
+Keeping reads available cuts both ways: the Virtual Node port has no authentication, so any client that can reach it can read your identity, contacts, channels and messages. That is existing Virtual Node behaviour and receive-only mode does not change it — but it is worth restating here, because "receive-only" means *this node will not transmit*, not *this node will not disclose anything*. If that distinction matters for your deployment, restrict access to the port, or turn the Virtual Node off.
+:::
+
 ## How to enable / disable it
 
 1. Open the source's **MeshCore Settings**.
@@ -78,7 +82,7 @@ Any MeshCore route that would transmit returns:
 }
 ```
 
-with HTTP status `409`. This is the same `TX_DISABLED` code Meshtastic sources use for `lora.txEnabled = false` — see the [REST API reference](https://github.com/Yeraze/meshmonitor/blob/main/docs/api/API_REFERENCE.md) for the full route list. Two of the gated routes are `GET` requests (fetching neighbours and remote admin status), which is easy to miss if you're only checking `POST` routes.
+with HTTP status `409`. This is the same `TX_DISABLED` code Meshtastic sources use for `lora.txEnabled = false` — see the [REST API reference](/api/API_REFERENCE) for the full route list. Two of the gated routes are `GET` requests (fetching neighbours and remote admin status), which is easy to miss if you're only checking `POST` routes.
 
 ## Per-source scope
 
@@ -90,4 +94,4 @@ Receive-only applies to **one source only**. A sibling MeshCore source, or any M
 - [MeshCore Virtual Node](/configuration/virtual-node#meshcore-virtual-node) — what read-only access covers
 - [MeshCore Analyzer Observer](/features/meshcore-analyzer-observer) — keeps publishing under receive-only
 - [Receive-Only Mode](/features/receive-only-mode) — the Meshtastic equivalent, which **is** a firmware kill switch
-- [REST API Reference](https://github.com/Yeraze/meshmonitor/blob/main/docs/api/API_REFERENCE.md) — `409 TX_DISABLED` error shape
+- [REST API Reference](/api/API_REFERENCE) — `409 TX_DISABLED` error shape
