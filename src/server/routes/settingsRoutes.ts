@@ -153,6 +153,10 @@ export interface SettingsCallbacks {
   // intervalHours arg. A null sourceId is a no-op (no global scheduler).
   restartAutoDeleteByDistanceService?: (sourceId?: string | null) => void;
   stopAutoDeleteByDistanceService?: (sourceId?: string | null) => void;
+  // MeshCore receive-only (#4547): the manager caches the flag for sync,
+  // DB-free guards, so a scoped save must push the new value immediately
+  // rather than waiting for the source to reconnect.
+  refreshMeshcoreReceiveOnly?: (sourceId: string) => void;
   // ATAK/CoT Phase 3 (issue #3691): global singleton (not per-source). Re-read
   // cotFeedEnabled/cotFeedPort and (re)start or stop the CoT feed server.
   restartCotFeed?: () => void;
@@ -877,6 +881,13 @@ router.post('/', requirePermission('settings', 'write', { sourceIdFrom: 'query' 
       if (INACTIVE_NODE_KEYS.some((key) => key in filteredSettings)) {
         callbacks.rescheduleInactiveNodeService?.(sourceId);
         logger.debug(`✅ Inactive node check rescheduled (source: ${sourceId})`);
+      }
+
+      // MeshCore receive-only (#4547): the manager caches this flag for sync,
+      // DB-free guards, so a scoped save must push the new value immediately
+      // rather than waiting for the source to reconnect.
+      if ('meshcoreReceiveOnly' in filteredSettings) {
+        callbacks.refreshMeshcoreReceiveOnly?.(sourceId);
       }
 
       await auditSettingsWrite(req, currentSettings, filteredSettings, sourceId);
