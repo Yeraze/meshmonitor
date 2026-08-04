@@ -270,7 +270,7 @@ export const MeshCoreSettingsView: React.FC<MeshCoreSettingsViewProps> = ({
   }, [baseUrl, sourceId, csrfFetch, queryClient, showToast, t]);
 
   const receiveOnlyTooltip = receiveOnly
-    ? (t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.') as string)
+    ? t('meshcore.receive_only.control_tooltip', 'Receive-only mode is on for this MeshCore source. Turn it off in MeshCore Settings to use this.')
     : undefined;
 
   return (

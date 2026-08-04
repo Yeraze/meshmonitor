@@ -381,9 +381,9 @@ export const MeshCoreChannelsView: React.FC<MeshCoreChannelsViewProps> = ({
   useEffect(() => {
     if (!showScopeOverride || !status?.connected) return;
     // Receive-only mode: silently skip — no request, no toast, no error state.
-    // Must sit BEFORE the do-not-repeat latch below so turning receive-only
-    // back off re-enables discovery the next time the panel is opened (#4547
-    // Phase 2 §3.4a).
+    // Must sit BEFORE the do-not-repeat latch below so that turning
+    // receive-only off re-enables discovery the next time the panel is
+    // opened (#4547 Phase 2 §3.4a).
     if (receiveOnly) return;
     if (regionsDiscoveredRef.current) return;
     regionsDiscoveredRef.current = true;

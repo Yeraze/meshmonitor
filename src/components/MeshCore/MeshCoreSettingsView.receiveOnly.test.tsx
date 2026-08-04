@@ -221,4 +221,28 @@ describe('MeshCoreSettingsView — toggle save / invalidate path (#4547 Phase 2 
     ));
     expect(h.invalidateQueries).not.toHaveBeenCalled();
   });
+
+  it('a non-ok save (400, with a json body) toasts the error, does not invalidate, and leaves the checkbox not claiming the new state', async () => {
+    h.csrfFetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: vi.fn().mockResolvedValue({ success: false, error: 'Invalid request', code: 'VALIDATION_ERROR' }),
+    });
+    const user = userEvent.setup();
+    renderView(false);
+
+    const checkbox = screen.getByRole('checkbox', { name: /Strict receive-only/i });
+    await user.click(checkbox);
+
+    await waitFor(() => expect(h.showToast).toHaveBeenCalledWith(
+      expect.stringMatching(/Failed to change receive-only mode/),
+      'error',
+    ));
+    expect(h.invalidateQueries).not.toHaveBeenCalled();
+    // receiveOnly is server-truth via the prop, not local state — a failed
+    // save must not leave the checkbox claiming the toggled (unpersisted)
+    // state. Since the prop never changed (still false), the box must still
+    // read unchecked.
+    expect(checkbox).not.toBeChecked();
+  });
 });
