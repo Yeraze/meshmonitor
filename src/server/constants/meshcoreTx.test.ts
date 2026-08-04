@@ -39,11 +39,42 @@ function extractSendBridgeCommandLiterals(source: string): string[] {
   return [...names];
 }
 
+/**
+ * Isolate the source text of `private async dispatch(cmd: string, ...)` —
+ * the bridge-command switch — by brace-counting from its signature to the
+ * matching close brace. Anchoring here (rather than scanning the whole file)
+ * keeps this test from tripping on an unrelated lowercase `case` label in
+ * some other switch (push codes, status codes, etc.) added later.
+ */
+function extractDispatchMethodSource(source: string): string {
+  const marker = 'private async dispatch(cmd: string';
+  const start = source.indexOf(marker);
+  if (start === -1) {
+    throw new Error(
+      "Could not locate 'private async dispatch(cmd: string' in meshcoreNativeBackend.ts — " +
+        'has the bridge-command dispatch method been renamed or reshaped? Update the marker in ' +
+        'extractDispatchMethodSource to match.',
+    );
+  }
+  const braceStart = source.indexOf('{', start);
+  let depth = 0;
+  let i = braceStart;
+  for (; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}') {
+      depth--;
+      if (depth === 0) break;
+    }
+  }
+  return source.slice(start, i + 1);
+}
+
 function extractDispatchCaseLiterals(source: string): string[] {
+  const dispatchSource = extractDispatchMethodSource(source);
   const re = /case '([a-z_]+)':/g;
   const names = new Set<string>();
   let match: RegExpExecArray | null;
-  while ((match = re.exec(source)) !== null) {
+  while ((match = re.exec(dispatchSource)) !== null) {
     names.add(match[1]);
   }
   return [...names];

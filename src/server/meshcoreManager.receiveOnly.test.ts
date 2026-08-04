@@ -517,6 +517,32 @@ describe('MeshCoreManager.sendLocalCliCommand verb gate (#4547 WP2 §2.3.5)', ()
     expect(result.reply).toContain('1.16');
     expect(backendSend).toHaveBeenCalledWith('device_query', {}, expect.any(Number));
   });
+
+  it('does not block a non-transmitting Repeater verb ("get name") — reaches the serial CLI', async () => {
+    const m = freshManager();
+    internals(m).connected = true;
+    internals(m).deviceType = MeshCoreDeviceType.REPEATER;
+    const writes: string[] = [];
+    internals(m).serialPort = {
+      isOpen: true,
+      write: (data: string) => {
+        writes.push(data);
+        // sendRepeaterCommand registers its 'serial_data' listener and calls
+        // write() synchronously (before any await), so emitting here — still
+        // inside the write() call — reaches an already-registered listener.
+        // First line echoes the command (skipped by the handler), second
+        // line is the terminator that resolves the pending promise.
+        m.emit('serial_data', data.replace(/\r$/, ''));
+        m.emit('serial_data', 'OK - name: test-repeater');
+      },
+    };
+    m.setReceiveOnly(true);
+
+    const result = await m.sendLocalCliCommand('get name');
+
+    expect(result.reply).toContain('OK - name: test-repeater');
+    expect(writes).toEqual(['get name\r']);
+  });
 });
 
 describe('MeshCoreManager guard insertion-point / orphaned-state checks (#4547 WP2)', () => {

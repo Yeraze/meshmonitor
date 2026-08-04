@@ -68,11 +68,25 @@ export function meshcoreRouteGuard(req: Request, res: Response, next: NextFuncti
  * 409 TX_DISABLED (#4547). MUST be placed AFTER requirePermission(...) so a
  * 403 still wins over a 409 for an unauthorized caller, and after
  * meshcoreRouteGuard so res.locals.meshcoreManager is populated.
+ *
+ * Fails CLOSED: if `res.locals.meshcoreManager` is missing — meaning
+ * meshcoreRouteGuard was skipped, or ran against a source whose manager
+ * vanished between the guard and here — this cannot verify the source is
+ * safe to transmit on, so it refuses the request rather than letting it
+ * through. Mirrors meshcoreRouteGuard's own "no manager for source" 404
+ * shape so callers see one consistent error for an unresolvable manager.
  */
 export function requireMeshcoreTx() {
-  return (_req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     const mgr = res.locals.meshcoreManager as MeshCoreManager | undefined;
-    if (mgr?.isReceiveOnly?.()) {
+    if (!mgr) {
+      const sourceId = (req.params as { id?: string }).id;
+      return res.status(404).json({
+        success: false,
+        error: `No MeshCore manager for source ${sourceId}`,
+      });
+    }
+    if (mgr.isReceiveOnly()) {
       return fail(res, 409, TX_DISABLED_CODE, MESHCORE_RECEIVE_ONLY_MESSAGE);
     }
     next();

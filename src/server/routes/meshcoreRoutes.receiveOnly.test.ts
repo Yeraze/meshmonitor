@@ -14,7 +14,9 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { Request, Response } from 'express';
 import meshcoreRoutes from './meshcoreRoutes.js';
+import { requireMeshcoreTx } from './meshcoreRouteShared.js';
 import { createRouteTestApp, type RouteTestHarness } from '../test-helpers/routeTestApp.js';
 import { TxDisabledError } from '../errors/txDisabledError.js';
 import { MESHCORE_RECEIVE_ONLY_MESSAGE } from '../constants/meshcoreTx.js';
@@ -328,6 +330,32 @@ describe('MeshCore receive-only — 409 TX_DISABLED mapping (#4547)', () => {
         .send({ publicKey: VALID_PK });
       expect(res.status).toBe(409);
       expect(res.body).toMatchObject({ success: false, code: 'TX_DISABLED' });
+    });
+  });
+});
+
+describe('requireMeshcoreTx() fails closed when the manager is unresolved (code review, #4550)', () => {
+  /**
+   * meshcoreRouteGuard always populates res.locals.meshcoreManager before
+   * requireMeshcoreTx runs in the real router chain, so this exercises the
+   * middleware directly to prove it refuses the request rather than passing
+   * it through when that invariant is somehow violated (guard skipped, or a
+   * future manager type lacking isReceiveOnly()).
+   */
+  it('returns 404 and never calls next() when res.locals.meshcoreManager is absent', () => {
+    const req = { params: { id: 'missing-source' } } as unknown as Request;
+    const jsonMock = vi.fn();
+    const statusMock = vi.fn().mockReturnValue({ json: jsonMock });
+    const res = { locals: {}, status: statusMock } as unknown as Response;
+    const next = vi.fn();
+
+    requireMeshcoreTx()(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(statusMock).toHaveBeenCalledWith(404);
+    expect(jsonMock).toHaveBeenCalledWith({
+      success: false,
+      error: 'No MeshCore manager for source missing-source',
     });
   });
 });
