@@ -16,6 +16,8 @@ The Analyzer Observer relays every packet your MeshCore Companion hears to a Mes
 
 It publishes what the radio already heard. Nothing more.
 
+Because it only ever publishes outbound to a broker over the network, the Analyzer Observer keeps running unaffected when a source is in [receive-only mode](/features/meshcore-receive-only) — receive-only blocks the radio path, not this one.
+
 ## Requirements
 
 - A **Companion** source (not a Repeater, not a Room Server) — the Analyzer Observer needs the device's signing key, and only Companions can export one.

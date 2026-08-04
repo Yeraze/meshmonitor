@@ -518,6 +518,17 @@ Write controls in the MeshCore UI are now **disabled in place** for users withou
 
 See [Per-Source Permissions](/features/per-source-permissions) for the full model.
 
+## Receive-Only Mode
+
+*New in 4.14.* A per-source **Receive-only mode** toggle in MeshCore Settings blocks every
+transmission from that source — messages, adverts, remote admin, path discovery, and every
+transmitting automation — while receiving, the packet log, the Analyzer Observer, and local
+serial configuration keep working. MeshCore firmware has no radio-level transmit switch, so
+MeshMonitor enforces this in software; it cannot stop link-layer acknowledgements or an
+on-device advert schedule configured outside MeshMonitor. See
+[MeshCore Receive-Only Mode](/features/meshcore-receive-only) for the full picture, including
+Virtual Node behavior and the firmware limitation.
+
 ## Radio Configuration
 
 Use the Configuration view's **Preset** dropdown to pick from the official MeshCore preset list, or choose **Custom** to manually set:
