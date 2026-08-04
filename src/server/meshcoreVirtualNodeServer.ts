@@ -70,6 +70,12 @@ export interface MeshCoreVirtualNodeManager {
   isConnected(): boolean;
   getLocalNode(): MeshCoreNode | null;
   getContacts(): MeshCoreContact[];
+  /**
+   * True when this source is configured strictly receive-only (#4547). Sync and
+   * cached on the manager — no DB read on the command path. The server refuses
+   * the 9 TX-causing companion commands while this is true.
+   */
+  isReceiveOnly(): boolean;
   /** Send a text message to the real node: channel (by index) or DM (full key). */
   sendMessage(text: string, toPublicKey?: string, channelIdx?: number): Promise<boolean>;
   /**
@@ -270,6 +276,12 @@ interface ConnectedClient {
  * Reads are synthesized from the manager's local-node state; nothing is
  * forwarded to the real node yet (that arrives in Phase 2). Structure mirrors
  * src/server/virtualNodeServer.ts (the proven Meshtastic equivalent).
+ *
+ * Receive-only mode (#4547 Phase 3): when `manager.isReceiveOnly()` is true,
+ * the 9 TX-causing companion commands (self-advert, login, trace-path,
+ * telemetry/status/neighbour requests, channel/DM sends incl. the CLI relay)
+ * are refused with `Err(BadState)` via `refuseIfReceiveOnly()`, before any
+ * frame is written. Every read path and the live push feed keep working.
  */
 export class MeshCoreVirtualNodeServer extends EventEmitter {
   private readonly options: MeshCoreVirtualNodeServerOptions;
@@ -706,6 +718,48 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
   }
 
   /**
+   * Receive-only refusal for the 9 TX-causing companion commands (#4547 Phase 3).
+   * Returns true when it has ALREADY replied and the caller must return —
+   * same contract as `rejectIfReceiveOnly()` in routes/meshcoreRouteShared.ts.
+   *
+   * MUST be called before the handler writes anything, in particular before
+   * the `Sent(6)` that six of these handlers emit up front: meshcore.js drops
+   * its `Err` listener the instant `Sent` arrives (connection.js:1641, :2373),
+   * so an error written afterwards is silently discarded and the client waits
+   * out its estimated timeout instead.
+   *
+   * Replies Err(BadState) — the only refusal every meshcore.js command wrapper
+   * terminates on. Disabled(15) is listened for by exportPrivateKey() alone
+   * (connection.js:1576) and would hang the untimed send/advert promises
+   * forever.
+   *
+   * Fails CLOSED: a manager that cannot answer is treated as receive-only, in
+   * line with `isRfBridgeCommand()`'s fail-closed default (constants/meshcoreTx.ts).
+   *
+   * Logged at debug, matching the sibling `allowAdminCommands` refusal — a
+   * companion app retries sends on its own schedule, so an info-level line
+   * here would be a log flood. The operator-facing signal is the single
+   * state-change info line from `MeshCoreManager.setReceiveOnly()`.
+   */
+  private refuseIfReceiveOnly(clientId: string, commandName: string): boolean {
+    let receiveOnly: boolean;
+    try {
+      receiveOnly = this.options.manager.isReceiveOnly() !== false;
+    } catch (err) {
+      logger.warn(
+        `[MeshCore VN ${this.sourceId}] receive-only check threw, refusing ${commandName}: ${(err as Error).message}`,
+      );
+      receiveOnly = true;
+    }
+    if (!receiveOnly) return false;
+    logger.debug(
+      `[MeshCore VN ${this.sourceId}] ${commandName} refused from ${clientId} (receive-only mode)`,
+    );
+    this.send(clientId, encodeErr(ErrorCodes.BadState));
+    return true;
+  }
+
+  /**
    * Shared path for config-mutating commands (issue #3904). Gates on
    * `allowAdminCommands`, runs `apply()` (which parses the payload and calls the
    * matching MeshCoreManager method against the real node), and translates the
@@ -766,6 +820,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
    * Err(BadState) if the manager reported failure or threw (issue #3904).
    */
   private async handleSendSelfAdvert(clientId: string): Promise<void> {
+    if (this.refuseIfReceiveOnly(clientId, 'SendSelfAdvert')) return;
     try {
       const ok = await this.options.manager.sendAdvert();
       if (!ok) {
@@ -801,6 +856,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
    * Not gated on allowAdminCommands — logging in is a normal unlock step.
    */
   private async handleSendLogin(clientId: string, command: ParsedCommand): Promise<void> {
+    if (this.refuseIfReceiveOnly(clientId, 'SendLogin')) return;
     let parsed;
     try {
       parsed = parseSendLogin(command.payload);
@@ -844,6 +900,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
    * alongside the measured SNRs. On failure we emit nothing (app times out).
    */
   private async handleSendTracePath(clientId: string, command: ParsedCommand): Promise<void> {
+    if (this.refuseIfReceiveOnly(clientId, 'SendTracePath')) return;
     let parsed;
     try {
       parsed = parseSendTracePath(command.payload);
@@ -880,6 +937,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
    * from the real node, then push them verbatim. On failure we emit nothing.
    */
   private async handleSendTelemetryReq(clientId: string, command: ParsedCommand): Promise<void> {
+    if (this.refuseIfReceiveOnly(clientId, 'SendTelemetryReq')) return;
     let parsed;
     try {
       parsed = parseSendTelemetryReq(command.payload);
@@ -925,6 +983,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
    * exactly what the app renders.
    */
   private async handleSendStatusReq(clientId: string, command: ParsedCommand): Promise<void> {
+    if (this.refuseIfReceiveOnly(clientId, 'SendStatusReq')) return;
     let parsed;
     try {
       parsed = parseSendStatusReq(command.payload);
@@ -961,6 +1020,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
    * Sent, mirroring the sibling req handlers.
    */
   private async handleSendBinaryReq(clientId: string, command: ParsedCommand): Promise<void> {
+    if (this.refuseIfReceiveOnly(clientId, 'SendBinaryReq')) return;
     let parsed: SendBinaryReqCmd;
     try {
       parsed = parseSendBinaryReq(command.payload);
@@ -1141,6 +1201,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
 
   /** SendChannelTxtMsg → forward to the real node on the given channel, reply Sent. */
   private async handleSendChannelTxtMsg(clientId: string, cmd: ParsedCommand): Promise<void> {
+    if (this.refuseIfReceiveOnly(clientId, 'SendChannelTxtMsg')) return;
     const text = cmd.text ?? '';
     const channelIdx = cmd.channelIdx ?? 0;
     try {
@@ -1170,6 +1231,7 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
    * remote's CLI handler and the app would just time out waiting for a reply.
    */
   private async handleSendTxtMsg(clientId: string, cmd: ParsedCommand): Promise<void> {
+    if (this.refuseIfReceiveOnly(clientId, 'SendTxtMsg')) return;
     const text = cmd.text ?? '';
     const prefixHex = (cmd.pubKeyPrefix ?? Buffer.alloc(0)).toString('hex');
     const fullKey = this.resolveContactKey(prefixHex);
@@ -1260,6 +1322,11 @@ export class MeshCoreVirtualNodeServer extends EventEmitter {
    * thread. On failure/timeout we emit nothing further, mirroring
    * SendStatusReq/SendTelemetryReq: a real node that never got a CLI reply
    * doesn't push anything either, so the app's own timeout takes over.
+   *
+   * Receive-only (#4547 Phase 3): NOT separately guarded here. This method is
+   * `private` with exactly one caller, `handleSendTxtMsg`, which already calls
+   * `refuseIfReceiveOnly()` before dispatching to CliData vs. plain-DM — a
+   * second guard here would be unreachable.
    */
   private async handleSendCliTxtMsg(clientId: string, targetPublicKey: string, command: string): Promise<void> {
     if (!this.allowAdminCommands) {

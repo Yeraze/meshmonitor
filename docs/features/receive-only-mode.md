@@ -62,7 +62,9 @@ rest of the mesh** over time, even though it can still hear everything happening
   run history rather than failing the run; the automation builder also shows an inline warning
   badge next to any explicitly-selected source that currently has TX disabled.
 - **Not gated:** the embedded MQTT bridge downlink (it publishes to a broker, bypassing the radio
-  entirely) and MeshCore sources (a different protocol with no equivalent flag).
+  entirely). MeshCore sources have their own equivalent — see
+  [MeshCore Receive-Only Mode](/features/meshcore-receive-only) — enforced in software, because
+  MeshCore firmware has no transmit kill switch.
 
 ## How to enable / disable it
 
@@ -89,3 +91,5 @@ itself after you disable it, that's a device-side quirk, not MeshMonitor overrid
   checkbox
 - [REST API Reference](https://github.com/Yeraze/meshmonitor/blob/main/docs/api/API_REFERENCE.md) — `409 TX_DISABLED` error shape
 - [Multi-Source](/features/multi-source) — TX state is tracked per source
+- [MeshCore Receive-Only Mode](/features/meshcore-receive-only) — the MeshCore equivalent,
+  enforced in software rather than by a firmware kill switch

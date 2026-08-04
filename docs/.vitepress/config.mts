@@ -154,6 +154,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { text: 'MeshCore', link: '/features/meshcore' },
+            { text: 'MeshCore Receive-Only Mode', link: '/features/meshcore-receive-only' },
             { text: 'MeshCore Analyzer Observer', link: '/features/meshcore-analyzer-observer' }
           ]
         }

@@ -103,8 +103,12 @@ Per-source v1 endpoints return `400 MISSING_SOURCE_ID` when `sourceId` is absent
 
 **Transmit-disabled sources (`409 TX_DISABLED`):** any transmit action — message send, traceroute,
 position/nodeinfo/neighbor/telemetry request, or remote-node admin command — returns `409` with
-`code: "TX_DISABLED"` when the target source's LoRa radio has `lora.txEnabled = false` (receive-only
-mode; see [Receive-Only Mode](/docs/features/receive-only-mode.md)):
+`code: "TX_DISABLED"`. Two independent causes trigger it, one per source type:
+
+- **Meshtastic** — the target source's LoRa radio has `lora.txEnabled = false` (receive-only mode;
+  see [Receive-Only Mode](/docs/features/receive-only-mode.md)).
+- **MeshCore** — the target source has the per-source `meshcoreReceiveOnly` setting turned on
+  (see [MeshCore Receive-Only Mode](/docs/features/meshcore-receive-only.md)).
 
 ```json
 {
@@ -114,10 +118,47 @@ mode; see [Receive-Only Mode](/docs/features/receive-only-mode.md)):
 }
 ```
 
-Nothing is transmitted. Re-enable **TX Enabled** in the source's LoRa configuration to clear it. This
-applies to both the v1 endpoints above and the equivalent main-API routes (`/api/messages/send`,
-`/api/traceroute`, `/api/position/request`, `/api/nodeinfo/request`, `/api/neighborinfo/request`,
-`/api/telemetry/request`, `/api/admin/commands`).
+Nothing is transmitted. For Meshtastic, re-enable **TX Enabled** in the source's LoRa configuration
+to clear it. This applies to both the v1 endpoints above and the equivalent main-API routes
+(`/api/messages/send`, `/api/traceroute`, `/api/position/request`, `/api/nodeinfo/request`,
+`/api/neighborinfo/request`, `/api/telemetry/request`, `/api/admin/commands`).
+
+For MeshCore, turn off receive-only mode for the source (MeshCore Settings, or
+`POST /api/settings?sourceId=<id>` with `meshcoreReceiveOnly: "false"`) to clear it. The MeshCore
+message is:
+
+```json
+{
+  "success": false,
+  "error": "Transmission blocked: this MeshCore source is configured for receive-only operation.",
+  "code": "TX_DISABLED"
+}
+```
+
+MeshCore routes gated behind `409 TX_DISABLED` (mounted under
+`/api/sources/:id/meshcore`):
+
+```
+POST /messages/send
+POST /rooms/login | /rooms/login-with-saved | /rooms/post
+POST /contacts/:publicKey/reset-path | /discover-path | /discover | /regions/discover
+POST /contacts/:publicKey/trace-path | /ping | /share
+POST /nodes/:publicKey/telemetry/poll
+POST /neighbors/request                       (only the remote-node branch; the
+                                                local/no-key branch is unaffected)
+GET  /contacts/:publicKey/neighbours           ← GET, not POST
+POST /admin/login | /admin/login-with-saved
+POST /admin/cli
+GET  /admin/status/:publicKey                  ← GET, not POST
+POST /cli                                      (only the `advert` verb; every
+                                                 other local CLI verb still works)
+POST /advert
+POST /automation/announce/send | /automation/timers/:triggerId/run
+```
+
+Two of these are **`GET`** requests that transmit — `GET /contacts/:publicKey/neighbours` (asks a
+remote repeater for its neighbour table) and `GET /admin/status/:publicKey` (polls a remote node for
+status). An API consumer scanning only `POST` routes for transmit side effects will miss both.
 
 **Common Status Codes:**
 - `200` - Success

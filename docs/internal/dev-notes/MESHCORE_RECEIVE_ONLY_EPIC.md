@@ -3,8 +3,58 @@
 **Epic issue:** #4547
 **Status:**
 - [x] Phase 1 — Backend: setting + central command-aware TX guard (PR #4550, merged `c41428e6`)
-- [x] Phase 2 — Frontend: gating UX (branch `feature/meshcore-receive-only-ui`)
-- [ ] Phase 3 — Virtual Node gating + docs
+- [x] Phase 2 — Frontend: gating UX (PR #4552, merged `d818768f`)
+- [x] Phase 3 — Virtual Node gating + docs (branch `feature/meshcore-receive-only-vn`)
+
+**EPIC COMPLETE.** Every MeshMonitor-controlled transmit path for a MeshCore source is now
+gated: HTTP routes (409), manager primitives (throw), schedulers and automations (silent skip),
+the discovery auto-responder, and the Virtual Node port. The one thing MeshMonitor cannot stop
+is firmware-autonomous TX — see the hard constraint at the top of this document, documented for
+users in `docs/features/meshcore-receive-only.md`.
+
+## Phase 3 deviations & findings (2026-08-04)
+
+Spec: `docs/internal/dev-notes/MESHCORE_RECEIVE_ONLY_PHASE3_SPEC.md`. Four work packages,
+4 commits, 10 files.
+
+- **The refusal shape was the whole phase, and the obvious choice was wrong.** Refusing with
+  `Disabled(15)` would have hung real clients: in `@liamcottle/meshcore.js` v1.13.0 only
+  `exportPrivateKey()` listens for `Disabled` (`connection.js:1576`), and `sendTextMessage` /
+  `sendChannelTextMessage` / `sendAdvert` have **no timeout at all** — so a `Disabled` reply to
+  those emits an event nobody is listening for and the promise never settles. `Err(1)` with
+  `ErrorCodes.BadState(4)` is the only refusal every command wrapper terminates on.
+  `BadState` over `UnsupportedCmd` because the latter is a *capability* claim a client may cache,
+  whereas receive-only is runtime state.
+- **The guard must precede the `Sent` frame — relying on Phase 1's throw was structurally
+  impossible.** Six of the nine handlers wrote `Sent(6)` before reaching the manager, and the
+  client wrappers for `login` and `tracePath` do `onSent → this.off(Err, onErr)`
+  (`connection.js:1641`, `:2373`) — they tear down the error listener the instant `Sent` arrives.
+  Any refusal emitted after that point is silently discarded. Before this phase those six
+  commands did not transmit (Phase 1 blocked them downstream) but never refused either: the
+  client simply hung 12–30 s to its own timeout. Three handlers already replied `Err(BadState)`
+  correctly, so for those the change is byte-identical.
+- **8 guard sites cover 9 commands.** `handleSendCliTxtMsg` is private with a single caller
+  (`handleSendTxtMsg`), so a separate guard there would be dead code — documented in a JSDoc note
+  so a future reader doesn't "fix" the apparent omission. Guards run before payload parsing, so
+  `SendBinaryReq` is refused at the envelope and future sub-types are covered automatically.
+- **`isReceiveOnly()` is a required interface member, deliberately.** An optional one would
+  default to "allowed" — the wrong direction for a safety gate. Making it required meant the
+  existing `FakeManager` stopped compiling and 41 tests failed until WP2 updated the harness;
+  that noisy failure is the intended behaviour and was not silenced with a cast.
+- **Regression net:** an inventory test fires every `CommandCodes` value with receive-only ON and
+  asserts no TX manager mock is reached, so a future unguarded handler fails on day one — the
+  same shape as Phase 1's fail-closed denylist test. Plus a decode test using the real
+  `meshcore.js` client, proving a genuine client parses the refusal rather than desyncing.
+- **Doc bug fixed:** `docs/features/receive-only-mode.md` still claimed MeshCore had "no
+  equivalent flag" — true before this epic, false now.
+- **Correction to this document:** the telemetry-poll route is
+  `POST /nodes/:publicKey/telemetry/poll`, not `/contacts/:pk/telemetry/poll` as the Phase 1
+  inventory above originally recorded. Fixed inline.
+- **i18n:** all 14 receive-only keys present and referenced in `public/locales/en.json`;
+  non-English locales are Weblate-managed and were not touched.
+- **Verification:** full Vitest suite 14,168 tests / 0 failures (`success: true` via JSON
+  reporter); VN suite 104/104; `npm run typecheck` clean; `npm run lint:ci` clean of in-repo
+  failures; `npm run docs:build` succeeds with no dead links.
 
 ## Phase 2 deviations & findings (2026-08-04)
 
@@ -217,7 +267,7 @@ guard must hold across reconnects, not just at arm time.
 /rooms/login-with-saved · :474 /rooms/post
 `meshcoreContactsRoutes.ts` :167 reset-path · :205 discover-path · :247 /discover · :290
 /regions/discover · :313 trace-path · :358 ping · :486 share · **:652 `GET`
-/contacts/:pk/neighbours** · :757 telemetry/poll · :1011 /neighbors/request
+/contacts/:pk/neighbours** · :757 `POST /nodes/:publicKey/telemetry/poll` · :1011 /neighbors/request
 `meshcoreAdminRoutes.ts` :44 /admin/login · :127 /admin/cli · :360 /admin/login-with-saved ·
 **:433 `GET` /admin/status/:pk** · :230 /cli (only the `advert` verb)
 `meshcoreDeviceRoutes.ts` :262 /advert
