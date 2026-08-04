@@ -345,6 +345,15 @@ export class MeshCoreRemoteTelemetryScheduler {
   /** Process a single manager. Visible for tests. */
   async tickOneManager(manager: MeshCoreManager): Promise<void> {
     if (!manager.isConnected()) return;
+    // Receive-only (#4547): first statement after the connectivity check,
+    // before any guarded send primitive (requestNodeStatus/ensureGuestLogin/
+    // requestRemoteTelemetry). requestRemoteTelemetry has no local try/catch
+    // and would otherwise rely on tick()'s per-manager catch two layers up —
+    // this skip keeps it from ever getting there.
+    if (manager.isReceiveOnly()) {
+      logger.debug(`[MeshCoreRemoteTelem:${manager.sourceId}] Skipping - receive-only mode`);
+      return;
+    }
 
     const now = this.nowFn();
     const sinceLastTx = now - manager.getLastMeshTxAt();

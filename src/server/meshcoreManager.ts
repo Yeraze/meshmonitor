@@ -23,6 +23,8 @@ import { replaceMeshCoreAnnounceTokens } from './utils/meshcoreAnnounceTokens.js
 import { runScript, type RunScriptResult } from './utils/scriptRunner.js';
 import { MeshCoreNativeBackend, type BridgeShapedEvent } from './meshcoreNativeBackend.js';
 import { resolveMessageScope } from './meshcoreScopeResolve.js';
+import { TxDisabledError } from './errors/txDisabledError.js';
+import { isRfBridgeCommand, isTransmittingLocalCliVerb, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
 import {
   parseMeshCoreIgnoreList,
   isMeshCoreIgnoreListEmpty,
@@ -860,6 +862,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   // refreshed on connect and whenever a scope changes.
   private knownScopes: Set<string> = new Set();
 
+  /** Cached per-source `meshcoreReceiveOnly`. Sync-readable; refreshed on connect and on settings write. */
+  private receiveOnly = false;
+
   // Shared state
   private localNode: MeshCoreNode | null = null;
   private contacts: Map<string, MeshCoreContact> = new Map();
@@ -1193,6 +1198,13 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // backend's socket-drop events are treated as real (and so a late event
     // from the previous backend, already nulled, stays suppressed).
     this.intentionalTeardown = false;
+
+    // Receive-only (#4547): re-read the persisted per-source flag before the
+    // backend connects and schedulers arm, so every reconnect re-applies it
+    // rather than reusing a stale in-memory value from a previous connect().
+    // This applies to Repeater/serial sources too, not just Companion, so it
+    // must run here rather than inside startNativeBackend().
+    await this.refreshReceiveOnly();
 
     try {
       if (this.config.connectionType === ConnectionType.SERIAL && this.config.firmwareType === 'repeater') {
@@ -1611,6 +1623,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     } catch (err) {
       logger.warn(`[MeshCore:${this.sourceId}] Failed to read meshcoreRespondToDiscovery:`, err);
     }
+
+    // Receive-only (#4547): a freshly-constructed backend starts with its own
+    // default (false); push the manager's already-refreshed cached value so it
+    // doesn't miss a beat between connect() reading the setting and this
+    // backend coming online.
+    this.nativeBackend.setReceiveOnly(this.receiveOnly);
   }
 
   /**
@@ -1620,6 +1638,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   private async sendBridgeCommand(cmd: string, params: Record<string, any>, timeout: number = 30000): Promise<BridgeResponse> {
     if (!this.nativeBackend) {
       throw new Error('Native backend not ready');
+    }
+    // Receive-only (#4547): command-name aware — this method carries BOTH RF
+    // and local serial commands. Fail-closed on unknown names (meshcoreTx.ts).
+    if (this.receiveOnly && isRfBridgeCommand(cmd)) {
+      throw new TxDisabledError(MESHCORE_RECEIVE_ONLY_MESSAGE);
     }
     return this.nativeBackend.sendCommand(cmd, params, timeout);
   }
@@ -3070,6 +3093,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * when only channel 0 was supported (issue follow-up to MeshCore channels plan).
    */
   async sendMessage(text: string, toPublicKey?: string, channelIdx?: number, scopeOverride?: string | null, autoRetryOnMiss: boolean = false): Promise<boolean> {
+    this.requireTransmit();
     return (await this.sendMessageWithResult(text, toPublicKey, channelIdx, scopeOverride, autoRetryOnMiss)).ok;
   }
 
@@ -3090,6 +3114,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.warn('[MeshCore] Repeaters cannot send messages');
       return { ok: false };
     }
+
+    this.requireTransmit();
 
     // Serialise the scope-assert→send pair per source (#3667). The device's
     // flood scope is a single global setting; two concurrent sends with
@@ -3258,6 +3284,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     isAutoRetry: boolean = false,
     autoRetryOnMiss: boolean = false,
   ): Promise<MeshCoreSendResult> {
+    this.requireTransmit();
     try {
       const isChannelSend = !toPublicKey && channelIdx !== undefined;
 
@@ -3457,6 +3484,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * creates a new message nor re-arms the timer itself.
    */
   private async handleDmAckTimeout(ackCrc: number): Promise<void> {
+    // Receive-only (#4547): first statement, before any pending-map bookkeeping
+    // or the guarded resetContactPath()/performScopedSend() primitives below.
+    if (!this.canTransmit()) {
+      logger.debug(`⏭️ [MeshCore:${this.sourceId}] DM ack retry: Skipping - receive-only mode`);
+      return;
+    }
     const pending = this.pendingDmRetries.get(ackCrc);
     if (!pending) return; // already acked (or manager torn down) — nothing to do
     this.pendingDmRetries.delete(ackCrc);
@@ -3614,6 +3647,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * concurrent send (#3667).
    */
   private async handleChannelRetryTimeout(messageId: string): Promise<void> {
+    // Receive-only (#4547): first statement, before any pending-map bookkeeping
+    // or the guarded performScopedSend() primitive below.
+    if (!this.canTransmit()) {
+      logger.debug(`⏭️ [MeshCore:${this.sourceId}] Channel retry: Skipping - receive-only mode`);
+      return;
+    }
     const pending = this.pendingChannelRetries.get(messageId);
     if (!pending) return; // already cleared (disconnect) — nothing to do
     this.pendingChannelRetries.delete(messageId);
@@ -3671,6 +3710,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return false;
     }
 
+    this.requireTransmit();
+
     if (this.deviceType === MeshCoreDeviceType.REPEATER) {
       try {
         await this.sendRepeaterCommand('advert');
@@ -3715,6 +3756,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!this.connected) {
       return false;
     }
+    this.requireTransmit();
     try {
       const response = await this.sendBridgeCommand('reset_path', { public_key: publicKey });
       if (!response.success) {
@@ -3758,6 +3800,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!this.connected) {
       return false;
     }
+    this.requireTransmit();
     try {
       const response = await this.sendBridgeCommand('discover_path', { public_key: publicKey }, 15000);
       if (!response.success) {
@@ -3804,6 +3847,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!this.connected) {
       return empty;
     }
+    this.requireTransmit();
     // 32-bit correlation tag so responses can be matched to this request.
     const tag = Math.floor(Math.random() * 0xffffffff) >>> 0;
     this.activeDiscovery = { seen: new Set(), returned: 0, newCount: 0, nodes: new Map() };
@@ -3887,6 +3931,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   async fetchOwnerName(publicKey: string): Promise<string | null> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
+    this.requireTransmit();
     try {
       // Install a zero-hop direct out_path so the ANON_REQ routes direct instead
       // of flooding into the void (firmware drops flooded OWNER reqs). Best-effort
@@ -3938,6 +3983,56 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     await databaseService.settings.setSourceSetting(this.sourceId, 'meshcoreRespondToDiscovery', enabled ? 'true' : 'false');
     this.nativeBackend?.setRespondToDiscovery(enabled);
     logger.info(`[MeshCore:${this.sourceId}] Discovery responder ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /** True when this source is configured strictly receive-only (#4547). */
+  isReceiveOnly(): boolean {
+    return this.receiveOnly;
+  }
+
+  /**
+   * Whether this source may put energy on the radio. Sync, no DB access —
+   * mirrors MeshtasticManager.canTransmit() (meshtasticManager.ts:9141) so
+   * per-command guards and the sync computeSourceRadioSummary can both use it.
+   */
+  canTransmit(): boolean {
+    return !this.receiveOnly;
+  }
+
+  /**
+   * Apply a new receive-only value. Logs ONLY on a state change (info), never
+   * per tick. Pushes the value into the native backend so chokepoint B
+   * (handleDiscoverRequest) sees it too.
+   */
+  setReceiveOnly(enabled: boolean): void {
+    const prev = this.receiveOnly;
+    this.receiveOnly = enabled;
+    this.nativeBackend?.setReceiveOnly(enabled);
+    if (prev !== enabled) {
+      logger.info(enabled
+        ? `🚫 [MeshCore:${this.sourceId}] Receive-only mode ON — all transmissions blocked, autonomous senders paused`
+        : `📡 [MeshCore:${this.sourceId}] Receive-only mode OFF — transmissions and autonomous senders resume`);
+    }
+  }
+
+  /**
+   * Re-read `meshcoreReceiveOnly` from the DB and apply it. On read failure the
+   * PREVIOUS cached value is retained — a transient DB error must never silently
+   * re-enable transmission on a source the user configured receive-only.
+   */
+  async refreshReceiveOnly(): Promise<boolean> {
+    try {
+      const raw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreReceiveOnly');
+      this.setReceiveOnly(raw === 'true');
+    } catch (err) {
+      logger.warn(`[MeshCore:${this.sourceId}] Failed to read meshcoreReceiveOnly, keeping cached value (${this.receiveOnly}):`, err);
+    }
+    return this.receiveOnly;
+  }
+
+  /** Throw the shared TxDisabledError when this source is receive-only. */
+  private requireTransmit(): void {
+    if (!this.canTransmit()) throw new TxDisabledError(MESHCORE_RECEIVE_ONLY_MESSAGE);
   }
 
   /**
@@ -4026,6 +4121,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       return { regions: [], perRepeater: [] };
     }
+    this.requireTransmit();
 
     // 1. Run a 0-hop discovery sweep and resolve it to the subset of known
     //    repeater/room-server contacts that answered, ordered by arrival.
@@ -4114,6 +4210,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!this.connected) {
       return null;
     }
+    this.requireTransmit();
     const contact = this.contacts.get(publicKey);
     if (!contact?.outPath || contact.pathLen == null || contact.pathLen <= 0) {
       logger.warn(`[MeshCore] Trace-path: no known path for ${publicKey.substring(0, 16)}…`);
@@ -4174,6 +4271,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
     if (!this.connected) return null;
     if (!path || path.length === 0) return null;
+    this.requireTransmit();
     try {
       // No sendWithDefaultScope wrapper (unlike requestRemoteTelemetryRaw): a
       // trace follows the explicit path it is given rather than flooding on an
@@ -4242,6 +4340,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         error: 'Contact is not known to this source.',
       };
     }
+    this.requireTransmit();
 
     // MeshCore path hashes are the leading byte(s) of the node's public key
     // (`Identity::isHashMatch`). meshcore.js sends SendTracePath with flags=0,
@@ -4315,6 +4414,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!this.connected) {
       return { ok: false, error: 'Source is disconnected.' };
     }
+    this.requireTransmit();
     try {
       // Use a short dedicated timeout (not the 30s default) so a firmware that
       // never acks CMD_SHARE_CONTACT fails fast instead of hanging the request.
@@ -4674,6 +4774,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     // neighbours query behind a guest/admin login, and this binary path (like
     // the CLI `neighbors` path) otherwise fails with no session. Never
     // anonymous-logs-in (see ensureSavedLogin).
+    this.requireTransmit();
     await this.ensureSavedLogin(publicKey);
     try {
       const response = await this.sendBridgeCommand('get_neighbours', {
@@ -4790,6 +4891,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       return null;
     }
 
+    this.requireTransmit();
+
     try {
       // A login request floods when the path to the node is unknown, so it
       // carries the default scope (#3667).
@@ -4826,6 +4929,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) {
       return null;
     }
+
+    this.requireTransmit();
 
     try {
       const response = await this.sendBridgeCommand('get_status', {
@@ -4892,6 +4997,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    */
   async ensureGuestLogin(publicKey: string): Promise<boolean> {
     if (this.guestLoggedInNodes.has(publicKey)) return true;
+    this.requireTransmit();
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return false;
     if (!this.connected) return false;
     const ok = (await this.loginToNode(publicKey, '')) !== null;
@@ -4924,6 +5030,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
   async ensureSavedLogin(publicKey: string): Promise<boolean> {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return false;
     if (!this.connected) return false;
+    this.requireTransmit();
 
     let cred;
     try {
@@ -4955,6 +5062,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * tracks state in roomLoggedInNodes so the UI can show login status.
    */
   async loginToRoom(publicKey: string, password: string): Promise<boolean> {
+    this.requireTransmit();
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const ok = await this.loginToNode(publicKey, password);
@@ -4996,6 +5104,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.warn('[MeshCore] Repeaters cannot send messages');
       return false;
     }
+    this.requireTransmit();
     try {
       const response = await this.sendBridgeCommand('send_message', {
         text,
@@ -5202,6 +5311,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       throw new Error('CLI command must be non-empty');
     }
 
+    this.requireTransmit();
+
     const prefixKey = normalizedKey.substring(0, 12);
     const timeoutMs = opts.timeoutMs ?? 15_000;
 
@@ -5231,6 +5342,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     command: string,
     timeoutMs: number,
   ): Promise<{ reply: string; elapsedMs: number }> {
+    this.requireTransmit();
     return new Promise<{ reply: string; elapsedMs: number }>((resolve, reject) => {
       // A stale pending entry should be impossible because of the
       // per-prefix lock, but guard against it: an entry left over from a
@@ -5311,6 +5423,9 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     const trimmed = command.trim();
     if (trimmed.length === 0) {
       throw new Error('Command must be non-empty');
+    }
+    if (this.receiveOnly && isTransmittingLocalCliVerb(trimmed)) {
+      throw new TxDisabledError(MESHCORE_RECEIVE_ONLY_MESSAGE);
     }
     const sentAt = Date.now();
     const timeoutMs = opts.timeoutMs ?? 10_000;
@@ -5683,6 +5798,8 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (!this.connected) return null;
     if (!publicKey) return null;
 
+    this.requireTransmit();
+
     try {
       const params: Record<string, unknown> = { public_key: publicKey };
       if (typeof timeoutSecs === 'number' && Number.isFinite(timeoutSecs) && timeoutSecs > 0) {
@@ -5726,6 +5843,7 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     if (this.deviceType !== MeshCoreDeviceType.COMPANION) return null;
     if (!this.connected) return null;
     if (!publicKey) return null;
+    this.requireTransmit();
     try {
       const response = await this.sendWithDefaultScope(() =>
         this.sendBridgeCommand('request_telemetry', { public_key: publicKey }, 45_000),
@@ -6458,6 +6576,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     logger.info(`[MeshCore:${this.sourceId}] Auto-pathfinding: starting (pathDiscovery=${pathDiscoveryEnabled}, neighbors=${neighborsEnabled}, interval=${intervalMinutes}m, repeat=${repeatHours}h, jitter=${Math.round(initialJitterMs / 1000)}s)`);
 
     const executeRun = async () => {
+      // Receive-only (#4547): loop entry — before any guarded primitive.
+      if (!this.canTransmit()) {
+        logger.debug(`⏭️ [MeshCore:${this.sourceId}] Auto-pathfinding: Skipping - receive-only mode`);
+        return;
+      }
       if (!this.connected) {
         logger.debug(`[MeshCore:${this.sourceId}] Auto-pathfinding: skipping — not connected`);
         return;
@@ -6497,6 +6620,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
 
       for (let i = 0; i < targets.length; i++) {
         if (!this.connected) break;
+        // Receive-only (#4547): re-checked per-target — the loop awaits
+        // between targets, so the flag can flip mid-run.
+        if (!this.canTransmit()) {
+          logger.debug(`⏭️ [MeshCore:${this.sourceId}] Auto-pathfinding: Skipping remaining targets - receive-only mode`);
+          break;
+        }
         const t = targets[i];
         try {
           if (t.op === 'discover_path') {
@@ -6658,6 +6787,11 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
    * so the route handler can surface partial failures.
    */
   async runAutoAnnounceCycle(reason: 'cron' | 'interval' | 'on_start' | 'manual'): Promise<{ sent: number; total: number }> {
+    // Receive-only (#4547): first statement, before any guarded primitive.
+    if (!this.canTransmit()) {
+      logger.debug(`⏭️ [MeshCore:${this.sourceId}] Auto-announce: Skipping (${reason}) - receive-only mode`);
+      return { sent: 0, total: 0 };
+    }
     if (!this.connected) {
       logger.debug(`[MeshCore:${this.sourceId}] Auto-announce: skipping (${reason}) — not connected`);
       return { sent: 0, total: 0 };
@@ -6718,6 +6852,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       if (this.autoAnnounceAdvertTimer) clearTimeout(this.autoAnnounceAdvertTimer);
       this.autoAnnounceAdvertTimer = setTimeout(() => {
         this.autoAnnounceAdvertTimer = null;
+        // Receive-only (#4547): first statement in this callback, before the
+        // guarded sendAdvert() primitive — the flag can flip during the delay.
+        if (!this.canTransmit()) {
+          logger.debug(`⏭️ [MeshCore:${this.sourceId}] Auto-announce advert burst: Skipping - receive-only mode`);
+          return;
+        }
         if (!this.connected) return;
         void this.sendAdvert().catch((err: Error) => {
           logger.warn(`[MeshCore:${this.sourceId}] Auto-announce: advert burst failed: ${err.message}`);
@@ -6789,6 +6929,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         return;
       }
       const handle = setInterval(() => {
+        // Receive-only (#4547): first statement in the interval callback,
+        // before it reaches runTimerTrigger()'s guarded send primitives.
+        if (!this.canTransmit()) {
+          logger.debug(`⏭️ [MeshCore:${this.sourceId}] Timer trigger ${trigger.id}: Skipping - receive-only mode`);
+          return;
+        }
         void this.runTimerTrigger(trigger.id).catch((err: Error) => {
           logger.warn(`[MeshCore:${this.sourceId}] Timer trigger ${trigger.id} run failed: ${err.message}`);
         });
@@ -6803,6 +6949,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       }
       try {
         const job = scheduleCron(expr, () => {
+          // Receive-only (#4547): first statement in the cron callback,
+          // before it reaches runTimerTrigger()'s guarded send primitives.
+          if (!this.canTransmit()) {
+            logger.debug(`⏭️ [MeshCore:${this.sourceId}] Timer trigger ${trigger.id}: Skipping - receive-only mode`);
+            return;
+          }
           void this.runTimerTrigger(trigger.id).catch((err: Error) => {
             logger.warn(`[MeshCore:${this.sourceId}] Timer trigger ${trigger.id} run failed: ${err.message}`);
           });
@@ -7055,6 +7207,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     route: string | null = null,
   ): Promise<void> {
     try {
+      // Receive-only (#4547): first statement inside the try, before any
+      // guarded send primitive (and before the settings reads below).
+      if (!this.canTransmit()) {
+        logger.debug(`⏭️ [MeshCore:${this.sourceId}] Auto-responder: Skipping - receive-only mode`);
+        return;
+      }
       const enabledRaw = await databaseService.settings.getSettingForSource(this.sourceId, 'meshcoreAutoResponderEnabled');
       if (enabledRaw !== 'true') return;
 
@@ -7318,6 +7476,12 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
     route: string | null,
   ): Promise<void> {
     try {
+      // Receive-only (#4547): first statement inside the try, before any
+      // guarded send primitive (and before the settings reads below).
+      if (!this.canTransmit()) {
+        logger.debug(`⏭️ [MeshCore:${this.sourceId}] Auto-ack: Skipping - receive-only mode`);
+        return;
+      }
       const settings = databaseService.settings;
       const sourceId = this.sourceId;
 

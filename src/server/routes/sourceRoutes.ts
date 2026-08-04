@@ -427,6 +427,8 @@ interface SourceRadioSummary {
    * read THIS, not `txEnabled` (#4394).
    */
   canTransmit?: boolean;
+  /** MeshCore only (#4547). True when the source is configured strictly receive-only. */
+  receiveOnly?: boolean;
 }
 
 // Wrapped in try/catch so a manager that throws from getCurrentConfig()/
@@ -465,7 +467,11 @@ function computeSourceRadioSummary(sourceId: string): SourceRadioSummary | null 
       // localNode is a private field on MeshCoreManager — use the public
       // accessor rather than reaching into it directly.
       const freq = mgr.getLocalNode()?.radioFreq;
-      return { frequencyMhz: typeof freq === 'number' && Number.isFinite(freq) ? freq : null };
+      return {
+        frequencyMhz: typeof freq === 'number' && Number.isFinite(freq) ? freq : null,
+        receiveOnly: mgr.isReceiveOnly(),
+        canTransmit: mgr.canTransmit(),
+      };
     }
     return null; // MQTT / bridge sources have no local radio.
   } catch (error) {

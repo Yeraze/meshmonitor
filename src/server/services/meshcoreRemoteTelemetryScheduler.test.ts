@@ -195,6 +195,8 @@ interface FakeManagerState {
   guestLoginResult: boolean;
   /** Order of sub-call invocations within tickOneManager for ordering assertions. */
   callOrder: string[];
+  /** #4547: strict receive-only flag. Defaults to false (transmit-allowed). */
+  receiveOnly: boolean;
 }
 
 function makeFakeManager(init: Partial<FakeManagerState>): MeshCoreManager & { _state: FakeManagerState } {
@@ -208,11 +210,13 @@ function makeFakeManager(init: Partial<FakeManagerState>): MeshCoreManager & { _
     guestLoginCalledFor: [],
     guestLoginResult: true,
     callOrder: [],
+    receiveOnly: false,
     ...init,
   };
   const m: any = {
     sourceId: state.sourceId,
     isConnected: () => state.connected,
+    isReceiveOnly: () => state.receiveOnly,
     getLastMeshTxAt: () => state.lastMeshTxAt,
     recordMeshTx: (when: number = Date.now()) => {
       state.lastMeshTxAt = when;
@@ -738,5 +742,59 @@ describe('statusToTelemetryRows', () => {
     const rows = statusToTelemetryRows({ uptimeSecs: 0, queueLen: 0 }, 'pk', 1, 0);
     const types = rows.map((r) => r.telemetryType).sort();
     expect(types).toEqual(['mc_status_queue_len', 'mc_status_uptime_secs']);
+  });
+});
+
+// ============ Receive-only (#4547 WP3) ============
+
+describe('MeshCoreRemoteTelemetryScheduler.tickOneManager — receive-only (#4547)', () => {
+  it('returns before requestNodeStatus/ensureGuestLogin/requestRemoteTelemetry when receive-only', async () => {
+    const now = 10_000_000;
+    const manager = makeFakeManager({ lastMeshTxAt: 0, receiveOnly: true });
+    const getNodes = vi.fn().mockResolvedValue([
+      makeNode({ publicKey: 'a', telemetryEnabled: true, lastTelemetryRequestAt: null }),
+    ]);
+    const markRequested = vi.fn();
+    const insertSpy = vi.fn().mockResolvedValue(0);
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database: {
+        meshcore: { getTelemetryEnabledNodes: getNodes, markTelemetryRequested: markRequested, upsertNode: vi.fn().mockResolvedValue(undefined) },
+        telemetry: { insertTelemetryBatch: insertSpy },
+      },
+      now: () => now,
+    });
+
+    await scheduler.tickOneManager(manager);
+
+    // The skip fires before even reading eligible nodes — no DB read, no
+    // stamp, no request of any kind.
+    expect(getNodes).not.toHaveBeenCalled();
+    expect(markRequested).not.toHaveBeenCalled();
+    expect((manager as any)._state.callOrder).toEqual([]);
+    expect((manager as any)._state.lastRequestedKey).toBeNull();
+  });
+
+  it('a connected, non-receive-only manager still ticks normally (non-vacuous negative)', async () => {
+    const now = 10_000_000;
+    const manager = makeFakeManager({ lastMeshTxAt: 0, receiveOnly: false });
+    const getNodes = vi.fn().mockResolvedValue([
+      makeNode({ publicKey: 'a', telemetryEnabled: true, lastTelemetryRequestAt: null }),
+    ]);
+    const markRequested = vi.fn().mockResolvedValue(undefined);
+    const insertSpy = vi.fn().mockResolvedValue(1);
+    const scheduler = new MeshCoreRemoteTelemetryScheduler({
+      registry: makeRegistry([manager]),
+      database: {
+        meshcore: { getTelemetryEnabledNodes: getNodes, markTelemetryRequested: markRequested, upsertNode: vi.fn().mockResolvedValue(undefined) },
+        telemetry: { insertTelemetryBatch: insertSpy },
+      },
+      now: () => now,
+    });
+
+    await scheduler.tickOneManager(manager);
+
+    expect(getNodes).toHaveBeenCalled();
+    expect((manager as any)._state.callOrder).toContain('requestRemoteTelemetry');
   });
 });

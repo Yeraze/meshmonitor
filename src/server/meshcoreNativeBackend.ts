@@ -14,6 +14,8 @@
 import { EventEmitter } from 'events';
 import { createHash } from 'node:crypto';
 import { logger } from '../utils/logger.js';
+import { TxDisabledError } from './errors/txDisabledError.js';
+import { isRfBridgeCommand, MESHCORE_RECEIVE_ONLY_MESSAGE } from './constants/meshcoreTx.js';
 
 // Lazy meshcore.js import. Hold the module reference so tests can swap it
 // out by calling `__setMeshCoreModule(...)`. The default load path is the
@@ -268,6 +270,13 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * the manager from the per-source `meshcoreRespondToDiscovery` setting.
    */
   private respondToDiscovery: boolean = false;
+  /**
+   * Receive-only mirror pushed by the manager (#4547). Same push mechanism
+   * as `respondToDiscovery` — this class holds no `databaseService` handle,
+   * so it learns the state from `MeshCoreManager.setReceiveOnly()` /
+   * `startNativeBackend()`, never by reading settings itself.
+   */
+  private receiveOnly: boolean = false;
   /**
    * Timestamps (ms) of recent discovery responses we've sent, for rate
    * limiting. Mirrors the firmware repeater's "max 4 per 120s" guard so an
@@ -784,6 +793,16 @@ export class MeshCoreNativeBackend extends EventEmitter {
   }
 
   /**
+   * Set by `MeshCoreManager.setReceiveOnly()` and on connect in
+   * `startNativeBackend()` (#4547). Gates chokepoint B: this class is the
+   * only place that can put a frame on the air without going through
+   * `MeshCoreManager.sendBridgeCommand`.
+   */
+  setReceiveOnly(enabled: boolean): void {
+    this.receiveOnly = enabled;
+  }
+
+  /**
    * Reply to an inbound NODE_DISCOVER_REQ (0x8E control push) with a zero-hop
    * NODE_DISCOVER_RESP carrying our public key, so the requester discovers us.
    * Mirrors the firmware repeater's responder, but for our companion node.
@@ -794,8 +813,17 @@ export class MeshCoreNativeBackend extends EventEmitter {
    *   [55][0x90|selfType][our inbound SNR×4][tag(4 LE)][pubkey (32B, or 8B if prefix_only)]
    *
    * Gated on the opt-in flag, a type-filter match, and a 4-per-120s rate limit.
+   *
+   * #4547: this is the single most important guard in the receive-only epic.
+   * It is push-event driven (never touches `sendCommand`/`dispatch`) and
+   * calls `c.sendToRadioFrame(out)` directly below — the receive-only check
+   * MUST be the first statement, ahead of even the `respondToDiscovery` gate.
    */
   private handleDiscoverRequest(frame: Uint8Array): void {
+    if (this.receiveOnly) {
+      logger.debug(`[MeshCoreNative:${this.sourceId}] Discovery request ignored - receive-only mode`);
+      return;
+    }
     if (!this.respondToDiscovery) return;
     const c = this.connection;
     const selfKey: Uint8Array | undefined = this.cachedSelfInfo?.publicKey;
@@ -876,6 +904,14 @@ export class MeshCoreNativeBackend extends EventEmitter {
    * doesn't need to special-case the transport.
    */
   async sendCommand(cmd: string, params: Record<string, unknown>, timeoutMs: number = 30000): Promise<BridgeShapedResponse> {
+    // Receive-only (#4547): belt-and-braces gate for any caller that reaches
+    // this backend without going through MeshCoreManager.sendBridgeCommand
+    // (e.g. a future Virtual Node caller, or the raw ANON_REQ/discover paths
+    // inside dispatch()). Thrown before the try/catch below so it rejects
+    // the promise instead of being swallowed into a {success:false} shape.
+    if (this.receiveOnly && isRfBridgeCommand(cmd)) {
+      throw new TxDisabledError(MESHCORE_RECEIVE_ONLY_MESSAGE);
+    }
     const id = `${++this.commandSeq}`;
     try {
       const data = await this.withTimeout(this.dispatch(cmd, params), timeoutMs, cmd);

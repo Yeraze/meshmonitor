@@ -18,7 +18,7 @@ import { resolveAutoAckPreSendDelaySeconds } from '../autoAckDelay.js';
 import { compileUserRegex } from '../../utils/safeRegex.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import type { MeshcorePathfindingFilterSettings } from '../../services/database.js';
-import { managerFor } from './meshcoreRouteShared.js';
+import { managerFor, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
 
 const router = Router({ mergeParams: true });
 
@@ -582,6 +582,7 @@ router.post(
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  requireMeshcoreTx(),
   async (req: Request, res: Response) => {
     try {
       const mgr = managerFor(req, res);
@@ -589,6 +590,7 @@ router.post(
       const status = mgr.getAutoAnnounceStatus();
       res.json({ success: true, data: { ...result, lastRunAt: status.lastRunAt || null } });
     } catch (error) {
+      if (failIfTxDisabled(res, error)) return;
       logger.error('[API] Error sending manual meshcore announce:', error);
       res.status(500).json({ success: false, error: 'Failed to send announcement' });
     }
@@ -648,6 +650,7 @@ router.post(
   meshcoreDeviceLimiter,
   requireAuth(),
   requirePermission('automation', 'write', { sourceIdFrom: 'params.id' }),
+  requireMeshcoreTx(),
   async (req: Request, res: Response) => {
     try {
       const mgr = managerFor(req, res);
@@ -658,6 +661,7 @@ router.post(
       const result = await mgr.runTimerTrigger(triggerId);
       res.json({ success: result.ok, data: result });
     } catch (error) {
+      if (failIfTxDisabled(res, error)) return;
       logger.error('[API] Error running meshcore timer trigger:', error);
       res.status(500).json({ success: false, error: 'Failed to run timer trigger' });
     }
