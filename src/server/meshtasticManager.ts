@@ -790,6 +790,12 @@ class MeshtasticManager implements ISourceManager {
   })();
   private packetActiveCount: number = 0;
   private packetWaiters: Array<() => void> = [];
+  // DeviceMetadata that arrived before localNodeInfo existed. MyNodeInfo and
+  // DeviceMetadata are sent back-to-back in the same config-download burst, and
+  // inbound frames run concurrently (packetConcurrencyLimit above), so metadata
+  // can overtake the DB awaits inside processMyNodeInfo(). Buffered here and
+  // drained by processMyNodeInfo() — see processDeviceMetadata().
+  private pendingDeviceMetadata: Record<string, unknown> | null = null;
   private localNodeInfo: {
     nodeNum: number;
     nodeId: string;
@@ -4640,7 +4646,34 @@ class MeshtasticManager implements ISourceManager {
     }
   }
 
-  private async processMyNodeInfo(myNodeInfo: any): Promise<void> {
+  private async processMyNodeInfo(myNodeInfo: Record<string, unknown>): Promise<void> {
+    try {
+      await this.processMyNodeInfoImpl(myNodeInfo);
+    } finally {
+      // Every exit path of the impl either assigns this.localNodeInfo or leaves
+      // an already-assigned one in place, so this is the one place guaranteed to
+      // run once local identity is known.
+      await this.drainPendingDeviceMetadata();
+    }
+  }
+
+  /**
+   * Apply a DeviceMetadata frame that arrived before localNodeInfo existed.
+   * No-op when nothing was buffered or identity is still unknown.
+   */
+  private async drainPendingDeviceMetadata(): Promise<void> {
+    const pending = this.pendingDeviceMetadata;
+    if (!pending || !this.localNodeInfo) return;
+    this.pendingDeviceMetadata = null;
+    try {
+      logger.debug('📱 Applying buffered DeviceMetadata now that local node identity is known');
+      await this.processDeviceMetadata(pending);
+    } catch (error) {
+      logger.error('❌ Failed to apply buffered DeviceMetadata:', error);
+    }
+  }
+
+  private async processMyNodeInfoImpl(myNodeInfo: any): Promise<void> {
     logger.debug('📱 Processing MyNodeInfo for local device');
     logger.debug('📱 MyNodeInfo contents:', JSON.stringify(myNodeInfo, null, 2));
 
@@ -5290,43 +5323,58 @@ class MeshtasticManager implements ISourceManager {
     logger.debug('📱 Processing DeviceMetadata:', JSON.stringify(metadata, null, 2));
     logger.debug('📱 Firmware version:', metadata.firmwareVersion);
 
+    // MyNodeInfo establishes local identity and DeviceMetadata follows it in the
+    // same config-download burst, but inbound frames are processed concurrently
+    // (packetConcurrencyLimit), so metadata can overtake the DB awaits inside
+    // processMyNodeInfo() and find localNodeInfo still null. Buffer rather than
+    // drop: dropping left firmwareVersion permanently null on that source (the
+    // UI's "Firmware Version: Not Available"), because the DB write below lives
+    // in the same branch, so the next reconnect read the same empty column back.
+    // It also left hasWifi/hasEthernet unknown, mis-gating isLocalNodeBridged()
+    // and the OTA firmware-update UI.
+    if (!this.localNodeInfo) {
+      this.pendingDeviceMetadata = metadata;
+      logger.debug('📱 Buffered DeviceMetadata — local node identity not established yet');
+      return;
+    }
+
+    const localNodeInfo = this.localNodeInfo;
+
     // Capture the node's transport-capability flags (proto3 bools decode to a
     // concrete true/false). These drive isLocalNodeBridged() — a serial/BLE-only
     // node fronted by a TCP proxy reports both false and cannot do OTA updates.
     // Captured independently of firmwareVersion so detection works even if the
     // firmware string is momentarily empty.
-    if (this.localNodeInfo) {
-      this.localNodeInfo.hasWifi = metadata.hasWifi === true;
-      this.localNodeInfo.hasEthernet = metadata.hasEthernet === true;
-      this.localNodeInfo.hasBluetooth = metadata.hasBluetooth === true;
-      // Firmware 2.8 build capability, surfaced alongside the transport flags so
-      // the local node reports it the same way a remote node does (#3923).
-      this.localNodeInfo.hasXeddsa = metadata.hasXeddsa === true;
-      if (this.isLocalNodeBridged()) {
-        logger.debug('🌉 Connected node reports no native WiFi/Ethernet — treating as a bridged node (OTA firmware update disabled)');
-      }
+    localNodeInfo.hasWifi = metadata.hasWifi === true;
+    localNodeInfo.hasEthernet = metadata.hasEthernet === true;
+    localNodeInfo.hasBluetooth = metadata.hasBluetooth === true;
+    // Firmware 2.8 build capability, surfaced alongside the transport flags so
+    // the local node reports it the same way a remote node does (#3923).
+    localNodeInfo.hasXeddsa = metadata.hasXeddsa === true;
+    if (this.isLocalNodeBridged()) {
+      logger.debug('🌉 Connected node reports no native WiFi/Ethernet — treating as a bridged node (OTA firmware update disabled)');
     }
 
     // Update local node info with firmware version (always allowed, even if locked)
-    if (this.localNodeInfo && metadata.firmwareVersion) {
+    if (metadata.firmwareVersion) {
       // Only update firmware version, don't touch other fields
-      this.localNodeInfo.firmwareVersion = metadata.firmwareVersion;
+      localNodeInfo.firmwareVersion = metadata.firmwareVersion;
       // Clear favorites support cache since firmware version changed
       this.favoritesSupportCache = null;
       logger.debug(`📱 Updated firmware version: ${metadata.firmwareVersion}`);
 
       // Update the database with the firmware version
-      if (this.localNodeInfo.nodeNum) {
+      if (localNodeInfo.nodeNum) {
         const nodeData = {
-          nodeNum: this.localNodeInfo.nodeNum,
-          nodeId: this.localNodeInfo.nodeId,
+          nodeNum: localNodeInfo.nodeNum,
+          nodeId: localNodeInfo.nodeId,
           firmwareVersion: metadata.firmwareVersion
         };
         await databaseService.upsertNodeAsync(nodeData, this.sourceId);
-        logger.debug(`📱 Saved firmware version to database for node ${this.localNodeInfo.nodeId}`);
+        logger.debug(`📱 Saved firmware version to database for node ${localNodeInfo.nodeId}`);
       }
     } else {
-      logger.debug('⚠️ Cannot update firmware - localNodeInfo not initialized yet');
+      logger.debug('⚠️ DeviceMetadata carried no firmware version — leaving stored value untouched');
     }
   }
 
