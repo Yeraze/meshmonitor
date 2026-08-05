@@ -398,7 +398,7 @@ separate from channel sharing, which uses Meshtastic's `/e/#` URL format.
 
 **Default**: 13 (range 0–18)
 
-**Effect**: Below this zoom, a click on a marker that has another marker within ~20 screen pixels re-centres and zooms in rather than opening a popup. An **isolated** marker opens its popup right away at any zoom — crowding is measured per click, so a lone node on the edge of the map is never withheld. Set the value to `0` to turn the gate off entirely and always open popups on the first click.
+**Effect**: Below this zoom, a click on a marker that has another marker within ~20 screen pixels re-centers and zooms in rather than opening a popup. An **isolated** marker opens its popup right away at any zoom — crowding is measured per click, so a lone node on the edge of the map is never withheld. Set the value to `0` to turn the gate off entirely and always open popups on the first click.
 
 Raise the threshold if your nodes sit close together and you keep opening the wrong popup; lower it (or zero it) if you mostly view a sparse mesh and want one-click popups when zoomed out.
 
