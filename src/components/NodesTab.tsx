@@ -2491,7 +2491,7 @@ const NodesTabComponent: React.FC<NodesTabProps> = ({
                   aria-label="Zoom to fit all nodes"
                   onMouseDown={(e) => e.stopPropagation()}
                 >
-                  <UiIcon name="target" size={16} />
+                  <UiIcon name="fitBounds" size={16} />
                 </button>
                 <button
                   className="map-controls-collapse-btn"
