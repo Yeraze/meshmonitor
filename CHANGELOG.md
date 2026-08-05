@@ -6,16 +6,66 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [4.14.1-rc1] - 2026-08-05
+
 ### Added
-- **MeshCore Analyzer Observer** — a MeshCore Companion source can now publish the packets it hears to a MeshCore Analyzer MQTT broker (FL Mesh, LetsMesh, or compatible), so your node counts as a regional observer. Authentication uses a short-lived Ed25519 token signed with the node's own signing key — imported from the connected device or pasted by hand, stored encrypted, and never returned by any API. Configure the broker URL, IATA region, and token audience per source in the Dashboard edit modal; manage the signing key and watch live connection/publish counters on the source's MeshCore → Configuration page. Enabling or editing the observer hot-swaps the publisher without bouncing the radio link. **Observation-only**: MeshMonitor never subscribes to the broker or injects broker traffic onto the mesh, and the feature is Companion-only (Repeaters can't export a signing key). See the [Analyzer Observer guide](https://meshmonitor.org/features/meshcore-analyzer-observer). (#4457)
+- **MeshCore strict receive-only mode** — a per-source switch that stops a MeshCore source transmitting. Messages, adverts, path discovery, remote CLI, logins, telemetry requests and every automation are held; receiving, the packet log, the Analyzer Observer, contact/telemetry updates and local serial configuration keep working. MeshCore firmware has no radio-level transmit switch, so this is enforced in software — link-layer acknowledgements and any advert schedule configured outside MeshMonitor are unaffected, and the UI says so. Defaults to off. (#4550, #4552, #4555, closes #4547)
+- **Analyzer Observer reports battery, uptime and noise floor** in its status payload. (#4557, closes #4556)
+- **Map Click Zoom Gate setting** — the zoom below which clicking a crowded marker zooms in first is now configurable (default 13, `0` disables) instead of hardcoded at z13. (#4563)
 
 ### Changed
+- **MeshCore contact positions now require `canViewOnMap`**, not just `nodes:read` — matching how Meshtastic nodes have always behaved, so a read-only user can see the contact list without learning where those nodes are. Migration 135 backfills the flag for anyone who already had `nodes` read on a MeshCore source, so no current user loses map access on upgrade; new grants must set it explicitly. (#4560, closes #4559)
+
+### Fixed
+- **Marker clicks gate on crowding, not zoom alone** — an isolated marker opens its popup on the first click at any zoom instead of being withheld below the threshold. (#4563, closes #4551)
+- **Zoom-to-fit no longer uses the locate-me crosshair icon**, which reads as "center on my GPS location" in every mapping UI. (#4564, closes #4562)
+- **MeshCore contact Last Heard updates on incoming direct messages.** (#4554, closes #4553)
+- **Analyzer Observer hot-swaps its publisher when the signing key changes** instead of requiring a source disable/re-enable cycle. (#4544, closes #4543)
+- **DeviceMetadata arriving before MyNodeInfo is buffered** rather than dropped. (#4548)
+- **Remote admin no longer implies it knows a remote node's favorite/ignored state** — the admin protocol has no readback for those flags. (#4542, closes #4511)
+
+### Tests
+- System tests moved off the v1 API root paths removed in 4.14, and `/api/upgrade/*` corrected from the transitional `410` to its post-removal `404`. Because a 404 body is not JSON, every affected assertion had been dying inside `jq` with an opaque parse error. (#4565)
+
+## [4.14.0] - 2026-08-03
+
+> Backfilled. This section covers everything between 4.13.2 and the 4.14.0 release, including the work released through the 4.13.3-rc1…rc6 candidates — 4.13.3 never shipped as a stable release, so those changes landed in 4.14.0.
+
+### Removed
+- **The two 4.13 grace-period shims are gone.** The v1 API root paths (`/api/v1/nodes?sourceId=…` and siblings) now 404 — use the per-source shape `/api/v1/sources/{sourceId}/…`. The `/api/upgrade/*` endpoints, which returned `410 FEATURE_RETIRED` for one release after auto-upgrade was retired in 4.13, are removed entirely. (#4189, closes #4117)
+
+### Added
+- **MeshCore Analyzer Observer** — a MeshCore Companion source can now publish the packets it hears to a MeshCore Analyzer MQTT broker (FL Mesh, LetsMesh, or compatible), so your node counts as a regional observer. Authentication uses a short-lived Ed25519 token signed with the node's own signing key — imported from the connected device or pasted by hand, stored encrypted, and never returned by any API. Configure the broker URL, IATA region, and token audience per source in the Dashboard edit modal; manage the signing key and watch live connection/publish counters on the source's MeshCore → Configuration page. Enabling or editing the observer hot-swaps the publisher without bouncing the radio link. **Observation-only**: MeshMonitor never subscribes to the broker or injects broker traffic onto the mesh, and the feature is Companion-only (Repeaters can't export a signing key). See the [Analyzer Observer guide](https://meshmonitor.org/features/meshcore-analyzer-observer). (#4457)
+- **Unified per-source navigation** — Meshtastic and MeshCore sources now share one navigation system, including the phone bottom bar. (#4473)
+- **Remote admin: distinct ACK outcomes and opt-in auto-retry**, with the retry-attempt controls exposed in the UI. (#4487, #4492)
+- **Position provenance in Node Details** — where a node's position came from, and how accurate it is, shown on the badge. (#4432, #4498)
+- **MeshCore: SNR and RSSI on directly-received messages.** (#4504)
+- **MeshCore: discovery sweeps show which nodes answered.** (#4516)
+- **Packet Monitor: type-to-filter node filters** instead of a native scroll dropdown. (closes #4512)
+
+### Changed
+- **Protobuf pin refreshed** to `develop@6ceceae`, honoring explicit `rx_rssi` presence (absent ≠ 0).
 - **The `:dev` Docker tag now follows stable releases too** — previously `:dev` moved only on pre-releases (RCs), so between a stable cut and the next RC the fast track sat on an image *older* than `:latest`. Users on `:dev` had to wait for the next RC to receive a stable release's fixes. Every published release, stable or pre-release, now updates `:dev`, making the fast track a superset of the stable track: `:dev` is never behind `:latest` and never moves backwards. `:latest` and the rolling `:4` / `:4.13` tags are unchanged — they still move only on stable releases.
 
 ### Fixed
 - **Map Analysis 3D: view state, Follow, and basemap switching** — the 3D branch of the Map Analysis canvas had never been given the plumbing the 2D branch has, so three things went wrong at once. Switching to 3D discarded your view and re-centered on the Default Map Center (or, with none configured, a hardcoded `[30, -90]`); the **Follow** and **Auto-zoom** buttons did nothing, because the follow controller was only mounted inside the 2D map; and the tileset selector wasn't rendered in 3D, so basemaps couldn't be switched without dropping back to 2D. Both map surfaces now publish their live camera into a shared view state, so 2D↔3D switches open where you were looking — with pitch and bearing preserved across a 3D → 2D → 3D round-trip — Follow/Auto-zoom and the **Resume follow** affordance work in 3D against the MapLibre camera, and the tileset selector is mounted in 3D. Layers the 3D canvas genuinely can't draw (heatmap, trails, hop shading, SNR overlay, accuracy regions, polar grid, waypoints, ATAK contacts) now show their toggle greyed out with a "2D view only" tooltip instead of appearing to work; their state is left untouched for the switch back. (#4371)
 - **3D map showed a blank basemap on some tilesets (CSP)** — selecting the **OSM Humanitarian** tileset and switching to 3D rendered nothing and filled the console with `Refused to connect because it violates the document's Content Security Policy`. The `connect-src` allowlist of built-in tile hosts had drifted from the tileset catalog and never included `tile.openstreetmap.fr`. This was invisible in 2D because the two map surfaces load tiles through different CSP directives: Leaflet uses `<img>` (`img-src`, which allows any host), MapLibre uses `fetch` (`connect-src`). A custom tileset whose URL used the `{s}` subdomain placeholder failed the same way, since the derived CSP source kept the literal `{s}.` and matched nothing. Both are fixed, and the CSP tests now import the real tileset catalog so a newly added tileset can't ship without its `connect-src` entry. (#4371)
 - **News popup links pointed at the local instance** — blog posts link with site-root-relative paths (`/features/atak`) because that is what the docs site wants, and the news feed copied post bodies verbatim. Rendered inside MeshMonitor, those paths resolved against the instance's own base URL and 404'd instead of opening meshmonitor.org. This affected 13 of the 45 feed items, including every inline image. The feed generator now absolutizes root-relative links, images, reference definitions, and raw `href`/`src` attributes; the News popup also rewrites them on render so items already published work without waiting for a docs rebuild. Protocol-relative, absolute, anchor, and `mailto:` targets are untouched.
+- **Remote-admin commands, config import and session passkey decoupled from the HTTP request** — long-running admin work no longer dies with the request that started it. (#4482)
+- **Admin messages send at the node's configured hop limit** instead of a fixed default.
+- **`GET /stats` returned 500 whenever `sourceId` was omitted.**
+- **Null Island position estimates were shown as real positions.**
+- **MeshCore: per-channel permissions honored on channel messages.**
+- **MeshCore: a stale reply could be painted onto the wrong contact.** (closes #4517)
+- **MeshCore: zero-hop ping results followed a contact change.** (closes #4514)
+- **MeshCore: hop, route and scope preserved in channel message history.**
+- **MeshCore: anon auth banner, channel-sync data loss, and reply/trigger ordering.**
+- **MeshCore: channel view opened mid-list and Delete appeared to do nothing.**
+- **Automations: "On channels" now matches the Primary/unnamed channel.** (#4507)
+- **PWA: notification clicks deep-link to the source route.** (#4463)
+- **iOS PWA: bottom-nav safe area and map-controls clearance.**
+- **Messaging: loading older messages no longer force-scrolls to the bottom.**
+- **Restored the send-message button icon.** (#4478)
 
 ## [4.13.2] - 2026-07-27
 

@@ -1143,10 +1143,13 @@ describe('MqttBridgeManager', () => {
     });
     localClient.publish('msh/CA/ON/PTBO', optOutEnvelope);
 
-    await new Promise((r) => setTimeout(r, 500));
-
-    // Despite bit 0 being unset, the packet was forwarded upstream.
-    expect(publishesByClient.some((p) => p.topic === 'msh/CA/ON/PTBO')).toBe(true);
+    // Despite bit 0 being unset, the packet was forwarded upstream. Polled for
+    // the same reason as the tryDecrypt assertion below — a positive assertion
+    // behind a fixed settle is a latent CI flake.
+    await vi.waitFor(
+      () => expect(publishesByClient.some((p) => p.topic === 'msh/CA/ON/PTBO')).toBe(true),
+      { timeout: 5000, interval: 25 },
+    );
     // And the drop counter stayed at zero.
     expect(bridge.getStatus().uplinkOkToMqttDrops).toBe(0);
 
@@ -1211,14 +1214,26 @@ describe('MqttBridgeManager', () => {
     try {
       localClient.publish('msh/CA/ON/PTBO', Buffer.from(envelopeBytes));
 
-      await new Promise((r) => setTimeout(r, 500));
-
       // The encrypted branch was reached and decryption was attempted with
       // the ok_to_mqtt evaluator's expected args. (The local broker's own
       // ingestion of this same locally-published packet independently
       // calls tryDecrypt too, to decode message/telemetry content — so this
       // asserts "at least once with these args", not an exact call count.)
-      expect(tryDecryptSpy).toHaveBeenCalledWith(expect.any(Uint8Array), 0x40000005, 0x33333333, 0);
+      //
+      // Poll rather than sleep-then-assert: this is a POSITIVE assertion, so
+      // waiting longer can only help it. A fixed 500ms settle was enough on a
+      // quiet machine and not enough on a loaded CI runner, where it failed
+      // with "Number of calls: 0" on Node 25 while 22 and 24 passed.
+      await vi.waitFor(
+        () =>
+          expect(tryDecryptSpy).toHaveBeenCalledWith(
+            expect.any(Uint8Array),
+            0x40000005,
+            0x33333333,
+            0,
+          ),
+        { timeout: 5000, interval: 25 },
+      );
     } finally {
       await new Promise<void>((r) => localClient.end(true, {}, () => r()));
       tryDecryptSpy.mockRestore();
