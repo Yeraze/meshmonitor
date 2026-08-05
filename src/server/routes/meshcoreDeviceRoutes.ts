@@ -12,7 +12,7 @@ import { getMeshCoreTelemetryPoller, nodeNumFromPubkey } from '../services/meshc
 import { logger } from '../../utils/logger.js';
 import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
-import { managerFor, isValidConnectionParams, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
+import { managerFor, isValidConnectionParams, requireMeshcoreTx, failIfTxDisabled, maskContactPositionsForViewOnMap } from './meshcoreRouteShared.js';
 import databaseService from '../../services/database.js';
 import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
 
@@ -181,6 +181,13 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
       allContacts.unshift(buildLocalContactRow(localNode));
     }
 
+    // `connection:read` alone does not entitle a caller to positions on the
+    // map — that additionally requires `nodes:viewOnMap`, mirroring the
+    // messages gate above (issue #4559). Strip lat/lon rather than dropping
+    // the rows so the contact list this snapshot also feeds keeps working.
+    const maskedContacts = await maskContactPositionsForViewOnMap(allContacts, user ?? null, sourceId);
+    const maskedNodes = await maskContactPositionsForViewOnMap(nodes, user ?? null, sourceId);
+
     res.json({
       success: true,
       data: {
@@ -189,8 +196,8 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
           localNode,
           deviceTypeName: MeshCoreDeviceType[status.deviceType],
         },
-        contacts: allContacts,
-        nodes,
+        contacts: maskedContacts,
+        nodes: maskedNodes,
         messages,
         seqCursor,
       },

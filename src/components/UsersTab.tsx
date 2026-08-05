@@ -269,7 +269,10 @@ const UsersTab: React.FC = () => {
       const allKeys: ResourceType[] = [...PERMISSION_KEYS, ...GLOBAL_PERMISSION_RESOURCES];
       allKeys.forEach(resource => {
         if (!permissions[resource]) return;
-        if (resource.startsWith('channel_')) {
+        // `nodes` carries viewOnMap alongside channel_* resources (#4559):
+        // read makes the node/contact list available, viewOnMap additionally
+        // publishes positions on the map — the same split channels already have.
+        if (resource.startsWith('channel_') || resource === 'nodes') {
           validPermissions[resource] = {
             viewOnMap: permissions[resource]?.viewOnMap || false,
             read: permissions[resource]?.read || false,
@@ -980,7 +983,17 @@ const UsersTab: React.FC = () => {
 
                 const tooltip = resource.startsWith('channel_')
                   ? 'View on Map: show nodes heard on this channel. Read: view messages. Write: send messages.'
+                  : resource === 'nodes'
+                  ? 'View on Map: publish node/contact positions on the map. Read: view the node list.'
                   : tooltipMap[resource] || '';
+
+                // MeshCore has no per-channel device slots, so map visibility
+                // for its contacts is gated on `nodes:viewOnMap` directly
+                // rather than per-channel like Meshtastic (#4559). Only show
+                // the extra checkbox when it does something — on a Meshtastic
+                // source, `nodes:viewOnMap` isn't checked anywhere.
+                const scopedSourceForNodes = sources.find(s => s.id === permissionScope);
+                const showNodesViewOnMap = resource === 'nodes' && scopedSourceForNodes?.type === 'meshcore';
 
                 return (
                   <div key={resource} className="permission-item">
@@ -1067,6 +1080,35 @@ const UsersTab: React.FC = () => {
                               onChange={() => toggleChannelWrite(resource)}
                             />
                             {t('users.send_messages')}
+                          </label>
+                        </>
+                      ) : showNodesViewOnMap ? (
+                        // MeshCore: nodes:viewOnMap independently gates positions
+                        // on the map, same split as channel_* (#4559).
+                        <>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={permissions[resource]?.viewOnMap || false}
+                              onChange={() => toggleChannelViewOnMap(resource)}
+                            />
+                            {t('users.view_on_map')}
+                          </label>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={permissions[resource]?.read || false}
+                              onChange={() => togglePermission(resource, 'read')}
+                            />
+                            {t('users.read')}
+                          </label>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={permissions[resource]?.write || false}
+                              onChange={() => togglePermission(resource, 'write')}
+                            />
+                            {t('users.write')}
                           </label>
                         </>
                       ) : (

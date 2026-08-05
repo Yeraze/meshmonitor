@@ -47,6 +47,16 @@ export async function buildSourceNodes(source: SourceRow, user: ReqUser): Promis
   // reach the position-override logic below: MeshCore contacts have no
   // override columns (that's a Meshtastic-node feature, #3551).
   if (source.type === 'meshcore') {
+    // Mirror the Meshtastic path below: canRead("nodes") makes the contact
+    // list available, but publishing positions on the map additionally
+    // requires viewOnMap("nodes") — MeshCore has no per-channel granularity
+    // here, so this is a single per-source check rather than per-node
+    // (#4559). Admins bypass, as everywhere else in this file.
+    const canViewOnMap = user ? await hasPermission(user, 'nodes', 'viewOnMap', source.id) : false;
+    if (!canViewOnMap) {
+      return [];
+    }
+
     const _raw = sourceManagerRegistry.getManager(source.id);
     const mcManager = _raw && isMeshCoreManager(_raw) ? _raw : null;
     const mcNodes: any[] = [];
