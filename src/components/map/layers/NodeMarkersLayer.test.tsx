@@ -76,8 +76,12 @@ vi.mock('react-leaflet', () => ({
 
 // #4046 item 2/4: NodeMarkersLayer reads `mapCenterTargetZoom` from
 // SettingsContext to feed the below-threshold "zoom in first" target.
+// #4551 adds `mapZoomGateThreshold` — the layer resolves it into
+// `zoomGateThreshold` (0 => undefined => gating disabled) and passes it to the
+// hook. Mutable so the precedence tests below can vary it.
+let mapZoomGateThresholdMock = 13;
 vi.mock('../../../contexts/SettingsContext', () => ({
-  useSettings: () => ({ mapCenterTargetZoom: 17 }),
+  useSettings: () => ({ mapCenterTargetZoom: 17, mapZoomGateThreshold: mapZoomGateThresholdMock }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -93,16 +97,29 @@ const handleGatedClickMock = vi.fn();
 // zoom-gate threshold. Read fresh on every `useMarkerSpiderfier()` call
 // (i.e. every render), matching the real hook's re-render-on-cross behavior.
 let isAboveGateThresholdMock = true;
+// #4551: per-marker crowding verdict. Below the threshold the layer asks this
+// whether THIS marker's click is genuinely ambiguous; only then does it use
+// the zoom-in-first flow. Defaults to true so the pre-#4551 tests above keep
+// describing the crowded case they were written for.
+let isMarkerGatedMock = true;
+
+// #4551: records the resolved options the layer hands the hook, so the
+// threshold-precedence tests can assert on them.
+let lastSpiderfierOptions: Record<string, unknown> | undefined;
 
 vi.mock('../../../hooks/useMarkerSpiderfier', () => ({
-  useMarkerSpiderfier: () => ({
-    addMarker: addMarkerMock,
-    removeMarker: removeMarkerMock,
-    addListener: addListenerMock,
-    removeListener: removeListenerMock,
-    isAboveGateThreshold: isAboveGateThresholdMock,
-    handleGatedClick: handleGatedClickMock,
-  }),
+  useMarkerSpiderfier: (opts: Record<string, unknown>) => {
+    lastSpiderfierOptions = opts;
+    return {
+      addMarker: addMarkerMock,
+      removeMarker: removeMarkerMock,
+      addListener: addListenerMock,
+      removeListener: removeListenerMock,
+      isAboveGateThreshold: isAboveGateThresholdMock,
+      isMarkerGated: () => isMarkerGatedMock,
+      handleGatedClick: handleGatedClickMock,
+    };
+  },
   SHARED_SPIDERFIER_OPTIONS: {},
 }));
 
@@ -130,6 +147,9 @@ beforeEach(() => {
   removeListenerMock.mockClear();
   handleGatedClickMock.mockClear();
   isAboveGateThresholdMock = true;
+  isMarkerGatedMock = true;
+  mapZoomGateThresholdMock = 13;
+  lastSpiderfierOptions = undefined;
 });
 afterEach(() => cleanup());
 
@@ -286,6 +306,111 @@ describe('NodeMarkersLayer', () => {
       const handlers = renderLog.at(-1)?.eventHandlers;
       expect(handlers?.add).toBe(addSpy);
       expect(typeof handlers?.click).toBe('function'); // gated click still wired in
+    });
+  });
+
+  // #4551: below the threshold, an ISOLATED marker (no neighbour within
+  // nearbyDistance) must behave like a normal click instead of demanding the
+  // zoom-in-first cycle. The reported symptom was a node 200km from anything
+  // else needing a zoom-in/zoom-out round trip just to open its popup.
+  describe('density-aware gated click routing (#4551)', () => {
+    it('below the threshold but isolated: runs the descriptor click AND opens the popup', () => {
+      isAboveGateThresholdMock = false;
+      isMarkerGatedMock = false;
+      const clickSpy = vi.fn();
+      render(<NodeMarkersLayer markers={[descriptor({ key: 'n1', eventHandlers: { click: clickSpy } })]} />);
+
+      const handlers = renderLog.at(-1)?.eventHandlers;
+      const marker = mountedMarkers[0];
+      const event = { target: marker };
+      handlers?.click(event);
+
+      // No zoom detour...
+      expect(handleGatedClickMock).not.toHaveBeenCalled();
+      // ...the consumer's own selection/centering runs...
+      expect(clickSpy).toHaveBeenCalledWith(event);
+      // ...and the popup opens, standing in for the OMS 'click' listener that
+      // cannot fire for an unregistered marker.
+      expect(marker.openPopup).toHaveBeenCalledTimes(1);
+    });
+
+    it('below the threshold but isolated: prefers onOmsClick over openPopup when provided', () => {
+      isAboveGateThresholdMock = false;
+      isMarkerGatedMock = false;
+      const onOmsClick = vi.fn();
+      render(
+        <NodeMarkersLayer
+          markers={[descriptor({ key: 'n1' })]}
+          onOmsClick={onOmsClick}
+        />,
+      );
+
+      const marker = mountedMarkers[0];
+      renderLog.at(-1)?.eventHandlers?.click({ target: marker });
+
+      expect(onOmsClick).toHaveBeenCalledWith(marker, 'n1');
+      expect(marker.openPopup).not.toHaveBeenCalled();
+      expect(handleGatedClickMock).not.toHaveBeenCalled();
+    });
+
+    it('below the threshold and crowded: still takes the zoom-in-first detour', () => {
+      isAboveGateThresholdMock = false;
+      isMarkerGatedMock = true;
+      const clickSpy = vi.fn();
+      const onOmsClick = vi.fn();
+      render(
+        <NodeMarkersLayer
+          markers={[descriptor({ key: 'n1', eventHandlers: { click: clickSpy } })]}
+          onOmsClick={onOmsClick}
+        />,
+      );
+
+      const marker = mountedMarkers[0];
+      renderLog.at(-1)?.eventHandlers?.click({ target: marker });
+
+      expect(handleGatedClickMock).toHaveBeenCalledWith(marker);
+      expect(clickSpy).not.toHaveBeenCalled();
+      expect(onOmsClick).not.toHaveBeenCalled();
+      expect(marker.openPopup).not.toHaveBeenCalled();
+    });
+
+    it('below the threshold and isolated with no descriptor click handler: still opens the popup', () => {
+      isAboveGateThresholdMock = false;
+      isMarkerGatedMock = false;
+      render(<NodeMarkersLayer markers={[descriptor({ key: 'n1' })]} />);
+
+      const marker = mountedMarkers[0];
+      expect(() => renderLog.at(-1)?.eventHandlers?.click({ target: marker })).not.toThrow();
+      expect(marker.openPopup).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // #4551: the threshold itself is a user setting. The layer is the single
+  // place that resolves it — `SHARED_SPIDERFIER_OPTIONS` deliberately no
+  // longer pins one, because a value there always looked like an explicit
+  // per-caller override and shadowed the setting entirely.
+  describe('zoom-gate threshold resolution (#4551)', () => {
+    it('passes the mapZoomGateThreshold setting through to the hook', () => {
+      mapZoomGateThresholdMock = 10;
+      render(<NodeMarkersLayer markers={[descriptor({ key: 'n1' })]} />);
+      expect(lastSpiderfierOptions?.zoomGateThreshold).toBe(10);
+    });
+
+    it('maps a stored 0 to undefined — gating disabled', () => {
+      mapZoomGateThresholdMock = 0;
+      render(<NodeMarkersLayer markers={[descriptor({ key: 'n1' })]} />);
+      expect(lastSpiderfierOptions?.zoomGateThreshold).toBeUndefined();
+    });
+
+    it("lets an explicit caller-supplied threshold win over the setting", () => {
+      mapZoomGateThresholdMock = 10;
+      render(
+        <NodeMarkersLayer
+          markers={[descriptor({ key: 'n1' })]}
+          spiderfierOptions={{ zoomGateThreshold: 16 }}
+        />,
+      );
+      expect(lastSpiderfierOptions?.zoomGateThreshold).toBe(16);
     });
   });
 });

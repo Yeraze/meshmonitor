@@ -60,3 +60,44 @@ export function computeZoomAnimationDuration(currentZoom: number, targetZoom: nu
   const duration = ZOOM_ANIMATION_DURATION_BASE_SECONDS * Math.pow(ZOOM_ANIMATION_DURATION_GROWTH_FACTOR, delta);
   return Math.min(duration, ZOOM_ANIMATION_DURATION_MAX_SECONDS);
 }
+
+/** A projected screen-space point, structurally compatible with `L.Point`. */
+export interface ScreenPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * True when any point in `others` lies within `nearbyDistancePx` of `target`
+ * (issue #4551).
+ *
+ * This is the density half of the zoom gate: below `zoomGateThreshold` a
+ * marker click only needs the "zoom in first" detour when there is actually
+ * something nearby to disambiguate it from. An isolated marker — the reported
+ * case, a node 200km from anything else — has nothing to separate, so it can
+ * open its popup directly at any zoom.
+ *
+ * Distances are in projected layer pixels, matching how OMS itself decides
+ * what overlaps (`nearbyDistance`). Layer-point deltas depend only on zoom,
+ * not on pan, so a given pair's neighbour-ness is stable while panning.
+ *
+ * Comparison is `<=` so the boundary case counts as nearby, and squared
+ * distances are compared to skip a `Math.sqrt` per candidate — this runs over
+ * every tracked marker on each gated click.
+ */
+export function hasNearbyPoint(
+  target: ScreenPoint,
+  others: Iterable<ScreenPoint>,
+  nearbyDistancePx: number,
+): boolean {
+  // A non-positive radius means "nothing is ever nearby" — treat every marker
+  // as isolated rather than letting `0 <= 0` match a marker against itself.
+  if (!(nearbyDistancePx > 0)) return false;
+  const limitSquared = nearbyDistancePx * nearbyDistancePx;
+  for (const other of others) {
+    const dx = other.x - target.x;
+    const dy = other.y - target.y;
+    if (dx * dx + dy * dy <= limitSquared) return true;
+  }
+  return false;
+}

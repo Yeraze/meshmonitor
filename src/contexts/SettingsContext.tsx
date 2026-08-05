@@ -10,7 +10,7 @@ import { DEFAULT_TILESET_ID, type TilesetId, type CustomTileset } from '../confi
 import { type OverlayScheme, getSchemeForTileset, getOverlayColors, type OverlayColors } from '../config/overlayColors';
 import i18n from '../config/i18n';
 import { type TapbackEmoji, DEFAULT_TAPBACK_EMOJIS } from '../components/EmojiPickerModal/EmojiPickerModal';
-import { DEFAULT_TARGET_ZOOM } from '../utils/mapZoomAnimation';
+import { DEFAULT_TARGET_ZOOM, DEFAULT_ZOOM_GATE_THRESHOLD } from '../utils/mapZoomAnimation';
 import { setDiscardInvalidPositionsDisplay } from '../utils/positionDisplayConfig';
 import { IconStyleProvider, type IconStyle } from './IconStyleContext';
 import { useSource } from './SourceContext';
@@ -128,6 +128,12 @@ interface SettingsContextType {
    *  ever zooms IN, never forces a zoom-out (issue #4046 item 2). Also feeds
    *  the zoom-gated spiderfier's below-threshold click flow (item 4). */
   mapCenterTargetZoom: number;
+  /** Zoom level below which a click on a CROWDED marker zooms in first instead
+   *  of opening the popup (issue #4046 item 4, made configurable in #4551).
+   *  `0` disables the gate entirely, so every click opens its popup at any
+   *  zoom. Isolated markers are never gated regardless of this value — see
+   *  `useMarkerSpiderfier`'s `isMarkerGated`. */
+  mapZoomGateThreshold: number;
   defaultLandingPage: string;
   theme: Theme;
   appearanceMode: AppearanceMode;
@@ -199,6 +205,7 @@ interface SettingsContextType {
   setDefaultMapCenterLon: (lon: number | null) => void;
   setDefaultMapCenterZoom: (zoom: number | null) => void;
   setMapCenterTargetZoom: (zoom: number) => void;
+  setMapZoomGateThreshold: (zoom: number) => void;
   setDefaultLandingPage: (value: string) => void;
   setTheme: (theme: Theme) => void;
   setAppearanceMode: (mode: AppearanceMode) => void;
@@ -498,6 +505,17 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const [mapCenterTargetZoom, setMapCenterTargetZoomState] = useState<number>(() => {
     const saved = localStorage.getItem('mapCenterTargetZoom');
     return saved ? parseInt(saved, 10) : DEFAULT_TARGET_ZOOM;
+  });
+
+  // #4551: `0` means "no gate" — every marker click opens its popup at any
+  // zoom. Parsed with an explicit NaN guard rather than `saved ? ... : default`
+  // because '0' is a legitimate stored value that the truthiness check would
+  // silently discard.
+  const [mapZoomGateThreshold, setMapZoomGateThresholdState] = useState<number>(() => {
+    const saved = localStorage.getItem('mapZoomGateThreshold');
+    if (saved === null) return DEFAULT_ZOOM_GATE_THRESHOLD;
+    const parsed = parseInt(saved, 10);
+    return Number.isNaN(parsed) ? DEFAULT_ZOOM_GATE_THRESHOLD : parsed;
   });
 
   // Default landing page when visiting root URL: 'unified' or a sourceId UUID.
@@ -827,6 +845,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
   const setMapCenterTargetZoom = React.useCallback((zoom: number) => {
     setMapCenterTargetZoomState(zoom);
     localStorage.setItem('mapCenterTargetZoom', String(zoom));
+  }, []);
+
+  const setMapZoomGateThreshold = React.useCallback((zoom: number) => {
+    setMapZoomGateThresholdState(zoom);
+    localStorage.setItem('mapZoomGateThreshold', String(zoom));
   }, []);
 
   const setDefaultLandingPage = React.useCallback((value: string) => {
@@ -1639,6 +1662,15 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
             }
           }
 
+          // #4551: range starts at 0 (not 1) — 0 is the "gate disabled" value.
+          if (settings.mapZoomGateThreshold !== undefined) {
+            const zoom = parseInt(settings.mapZoomGateThreshold, 10);
+            if (!isNaN(zoom) && zoom >= 0 && zoom <= 18) {
+              setMapZoomGateThresholdState(zoom);
+              localStorage.setItem('mapZoomGateThreshold', String(zoom));
+            }
+          }
+
           if (typeof settings.defaultLandingPage === 'string' && settings.defaultLandingPage.length > 0) {
             setDefaultLandingPageState(settings.defaultLandingPage);
             localStorage.setItem('defaultLandingPage', settings.defaultLandingPage);
@@ -1903,6 +1935,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     defaultMapCenterLon,
     defaultMapCenterZoom,
     mapCenterTargetZoom,
+    mapZoomGateThreshold,
     defaultLandingPage,
     theme,
     appearanceMode,
@@ -1962,6 +1995,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setDefaultMapCenterLon,
     setDefaultMapCenterZoom,
     setMapCenterTargetZoom,
+    setMapZoomGateThreshold,
     setDefaultLandingPage,
     setTheme,
     setAppearanceMode,
@@ -2026,6 +2060,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     defaultMapCenterLon,
     defaultMapCenterZoom,
     mapCenterTargetZoom,
+    mapZoomGateThreshold,
     defaultLandingPage,
     theme,
     appearanceMode,
@@ -2084,6 +2119,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children, ba
     setDefaultMapCenterLon,
     setDefaultMapCenterZoom,
     setMapCenterTargetZoom,
+    setMapZoomGateThreshold,
     setDefaultLandingPage,
     setTheme,
     setAppearanceMode,
