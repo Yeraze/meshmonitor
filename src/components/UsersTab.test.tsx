@@ -283,6 +283,28 @@ describe('UsersTab — PR-C grid additions', () => {
     expect(nodesRow!.textContent).toContain('users.view_on_map');
   });
 
+  it('includes viewOnMap in the PUT payload for the nodes resource on a MeshCore source (#4559)', async () => {
+    setupApi({
+      sources: [{ id: 'mc-1', name: 'MeshCore', type: 'meshcore' }],
+      channels: [],
+    });
+    render(<UsersTab />);
+    fireEvent.click(await screen.findByText(/Alice/));
+    const select = (await screen.findByLabelText(/permission_scope/i)) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'mc-1' } });
+
+    await waitFor(() => expect(screen.getByText('Node Map & List')).toBeInTheDocument());
+    const nodesRow = screen.getByText('Node Map & List').closest('.permission-item')!;
+    const [viewOnMapCheckbox] = Array.from(nodesRow.querySelectorAll('input[type="checkbox"]'));
+    fireEvent.click(viewOnMapCheckbox);
+
+    fireEvent.click(screen.getByText('users.save_permissions'));
+
+    await waitFor(() => expect(apiPutMock).toHaveBeenCalled());
+    const [, body] = apiPutMock.mock.calls[0];
+    expect(body.permissions.nodes).toMatchObject({ viewOnMap: true });
+  });
+
   it('channel-database section renders a canWrite checkbox column', async () => {
     setupApi({
       channelDbEntries: [

@@ -45,6 +45,7 @@ vi.mock('../sourceManagerRegistry.js', () => {
     getContacts: () => [STUB_CONTACT],
     getAllNodes: async () => [STUB_NODE],
     getRecentMessages: (_limit?: number) => [],
+    refreshContacts: async () => new Map([[STUB_CONTACT.publicKey, STUB_CONTACT]]),
   });
   const managers = new Map([['rt-source-a', stubFor('rt-source-a')]]);
   return {
@@ -141,6 +142,42 @@ describe('MeshCore routes — nodes:viewOnMap gates position data (#4559)', () =
       expect(res.status).toBe(200);
       expect(res.body.data[0].latitude).toBe(40.0);
       expect(res.body.data[0].longitude).toBe(-105.0);
+    });
+  });
+
+  describe('POST /contacts/refresh', () => {
+    it('masks lat/lon with nodes:write but not nodes:viewOnMap', async () => {
+      // nodes:write is a stronger grant than nodes:read but does not itself
+      // imply viewOnMap — refresh must not be a side-channel around the
+      // read-path's position gate (#4559 review follow-up).
+      await harness.grant(harness.limited.id, 'nodes', 'write', harness.sourceA);
+      const agent = await harness.loginAs(harness.limited);
+
+      const res = await agent.post(`/sources/${harness.sourceA}/meshcore/contacts/refresh`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0].latitude).toBeUndefined();
+      expect(res.body.data[0].longitude).toBeUndefined();
+    });
+
+    it('includes lat/lon once nodes:viewOnMap is also granted', async () => {
+      await harness.db.auth.createPermission({
+        userId: harness.limited.id,
+        resource: 'nodes',
+        canRead: true,
+        canWrite: true,
+        canViewOnMap: true,
+        sourceId: harness.sourceA,
+        grantedAt: Date.now(),
+        grantedBy: null,
+      });
+      const agent = await harness.loginAs(harness.limited);
+
+      const res = await agent.post(`/sources/${harness.sourceA}/meshcore/contacts/refresh`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data[0].latitude).toBe(40.0);
     });
   });
 

@@ -10,9 +10,9 @@ import { Router, Request, Response } from 'express';
 import { ConnectionType, MeshCoreDeviceType } from '../meshcoreManager.js';
 import { getMeshCoreTelemetryPoller, nodeNumFromPubkey } from '../services/meshcoreTelemetryPoller.js';
 import { logger } from '../../utils/logger.js';
-import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
+import { requireAuth, optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
-import { managerFor, isValidConnectionParams, requireMeshcoreTx, failIfTxDisabled, maskContactPositionsForViewOnMap } from './meshcoreRouteShared.js';
+import { managerFor, isValidConnectionParams, requireMeshcoreTx, failIfTxDisabled, stripPositions } from './meshcoreRouteShared.js';
 import databaseService from '../../services/database.js';
 import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
 
@@ -185,8 +185,12 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
     // map — that additionally requires `nodes:viewOnMap`, mirroring the
     // messages gate above (issue #4559). Strip lat/lon rather than dropping
     // the rows so the contact list this snapshot also feeds keeps working.
-    const maskedContacts = await maskContactPositionsForViewOnMap(allContacts, user ?? null, sourceId);
-    const maskedNodes = await maskContactPositionsForViewOnMap(nodes, user ?? null, sourceId);
+    // Resolved once (not via maskContactPositionsForViewOnMap per array) —
+    // it's the same user/source for both, so a second permission check would
+    // just be a redundant DB round-trip on every snapshot request.
+    const canViewOnMap = user ? await hasPermission(user, 'nodes', 'viewOnMap', sourceId) : false;
+    const maskedContacts = canViewOnMap ? allContacts : stripPositions(allContacts);
+    const maskedNodes = canViewOnMap ? nodes : stripPositions(nodes);
 
     res.json({
       success: true,

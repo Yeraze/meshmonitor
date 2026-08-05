@@ -153,10 +153,15 @@ router.post('/contacts/refresh', meshcoreDeviceLimiter, requireAuth(), requirePe
       allContacts.unshift(buildLocalContactRow(localNode));
     }
 
+    // nodes:write (required above) does not imply nodes:viewOnMap — mask the
+    // same as GET /contacts so refreshing doesn't become a side-channel
+    // around the read-path's position gate (#4559 review follow-up).
+    const masked = await maskContactPositionsForViewOnMap(allContacts, req.user ?? null, req.params.id);
+
     res.json({
       success: true,
-      data: allContacts,
-      count: allContacts.length,
+      data: masked,
+      count: masked.length,
     });
   } catch (error) {
     logger.error('[API] Error refreshing contacts:', error);

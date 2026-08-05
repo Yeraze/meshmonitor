@@ -200,6 +200,23 @@ export async function resolveCliTimeoutMs(timeoutMs?: number): Promise<number | 
  * Validation helper functions
  */
 /**
+ * Strip `latitude`/`longitude` from a set of contact/node rows. Pure —
+ * callers resolve the `viewOnMap` permission themselves (see
+ * `maskContactPositionsForViewOnMap` for the single-array case, or resolve
+ * once and call this directly when masking more than one array for the same
+ * user/source, e.g. GET /snapshot's contacts + nodes).
+ */
+export function stripPositions<T extends { latitude?: number; longitude?: number }>(items: T[]): T[] {
+  return items.map((item) => {
+    if (item.latitude === undefined && item.longitude === undefined) return item;
+    const masked = { ...item };
+    delete masked.latitude;
+    delete masked.longitude;
+    return masked;
+  });
+}
+
+/**
  * Strip `latitude`/`longitude` from contact/node rows when the caller lacks
  * `nodes:viewOnMap` on this source (#4559). `nodes:read` makes the contact
  * list available; publishing positions additionally requires `viewOnMap` —
@@ -213,14 +230,7 @@ export async function maskContactPositionsForViewOnMap<T extends { latitude?: nu
   sourceId: string,
 ): Promise<T[]> {
   const canViewOnMap = user ? await hasPermission(user, 'nodes', 'viewOnMap', sourceId) : false;
-  if (canViewOnMap) return items;
-  return items.map((item) => {
-    if (item.latitude === undefined && item.longitude === undefined) return item;
-    const masked = { ...item };
-    delete masked.latitude;
-    delete masked.longitude;
-    return masked;
-  });
+  return canViewOnMap ? items : stripPositions(items);
 }
 
 export function isValidPublicKey(key: string | undefined): boolean {
