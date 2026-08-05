@@ -262,6 +262,16 @@ fi
 
 echo -e "${GREEN}✓ API Token generated: ${API_TOKEN:0:15}...${NC}"
 
+# Per-source route prefix. The legacy root shape (`/api/v1/nodes?sourceId=…`)
+# had a one-release deprecation window in 4.13 and was REMOVED in 4.14
+# (#4117 / commit 6399407d) — those paths now 404, and a 404 body is not JSON,
+# which is why every root-path assertion below used to die inside jq with
+# "parse error: Invalid numeric literal" rather than a readable failure.
+# `default` is the alias `attachSource` resolves to the oldest source, so this
+# stays correct without hardcoding a source id. Scoping lives in the PATH now,
+# so no endpoint below needs a `?sourceId=` query param.
+V1_SRC="${BASE_URL}/api/v1/sources/default"
+
 # Resolve the gauntlet channel slot dynamically. Project rule: use the
 # "gauntlet" channel for testing, never primary. Hardcoding a slot index
 # (e.g. `channel: 3`) drifts every time channels get reordered on the test
@@ -269,7 +279,7 @@ echo -e "${GREEN}✓ API Token generated: ${API_TOKEN:0:15}...${NC}"
 # entirely if the test device's slot N happens to share a PSK (notably the
 # default `AQ==`) with another slot.
 GAUNTLET_SLOT=$(curl -sS -H "Authorization: Bearer $API_TOKEN" \
-    "${BASE_URL}/api/v1/channels" \
+    "${V1_SRC}/channels" \
     | jq -r '.data[]? | select((.name // "") | ascii_downcase == "gauntlet") | .id' \
     | head -n1)
 
@@ -293,77 +303,77 @@ run_test "GET /api/v1/ - API version info" \
     | jq -e '.version == \"v1\" and .endpoints.nodes != null'"
 
 # Test 2: Nodes List
-run_test "GET /api/v1/nodes - List all nodes" \
+run_test "GET /api/v1/sources/default/nodes - List all nodes" \
     "curl -sS -H 'Authorization: Bearer $API_TOKEN' \
-    '${BASE_URL}/api/v1/nodes' \
+    '${V1_SRC}/nodes' \
     | jq -e '.success == true and .count > 0 and (.data | type) == \"array\"'"
 
 # Test 3: Verify node count is reasonable (at least 1 node, the test node)
 run_test "Verify node count >= 1" \
     "curl -sS -H 'Authorization: Bearer $API_TOKEN' \
-    '${BASE_URL}/api/v1/nodes' \
+    '${V1_SRC}/nodes' \
     | jq -e '.count >= 1'"
 
 # Test 4: Get specific node by ID (get first node's ID)
 NODE_ID=$(curl -sS -H "Authorization: Bearer $API_TOKEN" \
-    "${BASE_URL}/api/v1/nodes" \
+    "${V1_SRC}/nodes" \
     | jq -r '.data[0].node_id')
 
 if [ -n "$NODE_ID" ] && [ "$NODE_ID" != "null" ]; then
-    run_test "GET /api/v1/nodes/:id - Get specific node" \
+    run_test "GET /api/v1/sources/default/nodes/:id - Get specific node" \
         "curl -sS -H 'Authorization: Bearer $API_TOKEN' \
-        '${BASE_URL}/api/v1/nodes/${NODE_ID}' \
+        '${V1_SRC}/nodes/${NODE_ID}' \
         | jq -e '.success == true and .data.node_id == $NODE_ID'"
 fi
 
 # Test 5: Messages endpoint
-run_test "GET /api/v1/messages - List messages" \
+run_test "GET /api/v1/sources/default/messages - List messages" \
     "curl -sS -H 'Authorization: Bearer $API_TOKEN' \
-    '${BASE_URL}/api/v1/messages?limit=10' \
+    '${V1_SRC}/messages?limit=10' \
     | jq -e '.success == true and (.data | type) == \"array\"'"
 
 # Test 7: Telemetry endpoint
-run_test "GET /api/v1/telemetry - List telemetry data" \
+run_test "GET /api/v1/sources/default/telemetry - List telemetry data" \
     "curl -sS -H 'Authorization: Bearer $API_TOKEN' \
-    '${BASE_URL}/api/v1/telemetry' \
+    '${V1_SRC}/telemetry' \
     | jq -e '.success == true and (.data | type) == \"array\"'"
 
 # Test 8: Traceroutes endpoint
-run_test "GET /api/v1/traceroutes - List traceroutes" \
+run_test "GET /api/v1/sources/default/traceroutes - List traceroutes" \
     "curl -sS -H 'Authorization: Bearer $API_TOKEN' \
-    '${BASE_URL}/api/v1/traceroutes' \
+    '${V1_SRC}/traceroutes' \
     | jq -e '.success == true and (.data | type) == \"array\"'"
 
 # Test 6: Network stats endpoint
-run_test "GET /api/v1/network - Get network stats" \
+run_test "GET /api/v1/sources/default/network - Get network stats" \
     "curl -sS -H 'Authorization: Bearer $API_TOKEN' \
-    '${BASE_URL}/api/v1/network' \
+    '${V1_SRC}/network' \
     | jq -e '.success == true and .data.totalNodes != null'"
 
 # Test 10: Packets endpoint
-run_test "GET /api/v1/packets - List packet logs" \
+run_test "GET /api/v1/sources/default/packets - List packet logs" \
     "curl -sS -H 'Authorization: Bearer $API_TOKEN' \
-    '${BASE_URL}/api/v1/packets?limit=50' \
+    '${V1_SRC}/packets?limit=50' \
     | jq -e '.success == true and .limit == 50 and (.data | type) == \"array\"'"
 
 # Test 11: Packets with filtering
-run_test "GET /api/v1/packets with filter - Filter by encrypted" \
+run_test "GET /api/v1/sources/default/packets with filter - Filter by encrypted" \
     "curl -sS -H 'Authorization: Bearer $API_TOKEN' \
-    '${BASE_URL}/api/v1/packets?encrypted=true&limit=10' \
+    '${V1_SRC}/packets?encrypted=true&limit=10' \
     | jq -e '.success == true and (.data | type) == \"array\"'"
 
-# Test 12: Get specific packet (if any exist). GET /api/v1/packets/:id now
-# requires a sourceId (packet IDs are a global PK), so grab the packet's own
-# sourceId from the list and scope the by-id read to it.
+# Test 12: Get specific packet (if any exist). Packet IDs are a global PK, so
+# the by-id read has to be scoped to a source or a caller on source A could
+# read source B's packet by guessing its id. The per-source path carries that
+# scope now, so no `?sourceId=` query param is needed.
 FIRST_PACKET=$(curl -sS -H "Authorization: Bearer $API_TOKEN" \
-    "${BASE_URL}/api/v1/packets?limit=1")
+    "${V1_SRC}/packets?limit=1")
 PACKET_ID=$(echo "$FIRST_PACKET" | jq -r '.data[0].id // empty')
-PACKET_SRC=$(echo "$FIRST_PACKET" | jq -r '.data[0].sourceId // empty')
 
 if [ -n "$PACKET_ID" ] && [ "$PACKET_ID" != "null" ]; then
-    run_test "GET /api/v1/packets/:id - Get specific packet" \
+    run_test "GET /api/v1/sources/default/packets/:id - Get specific packet" \
         "curl -sS -H 'Authorization: Bearer $API_TOKEN' \
-        '${BASE_URL}/api/v1/packets/${PACKET_ID}?sourceId=${PACKET_SRC}' \
+        '${V1_SRC}/packets/${PACKET_ID}' \
         | jq -e '.success == true and .data.id == $PACKET_ID'"
 fi
 
@@ -375,13 +385,13 @@ echo ""
 
 # Test 13: Reject request without token
 run_test "Reject request without Authorization header" \
-    "[ \$(curl -sS -w '%{http_code}' -o /dev/null '${BASE_URL}/api/v1/nodes') = '401' ]"
+    "[ \$(curl -sS -w '%{http_code}' -o /dev/null '${V1_SRC}/nodes') = '401' ]"
 
 # Test 14: Reject request with invalid token
 run_test "Reject request with invalid token" \
     "[ \$(curl -sS -w '%{http_code}' -o /dev/null \
     -H 'Authorization: Bearer mm_v1_invalid_token_123' \
-    '${BASE_URL}/api/v1/nodes') = '401' ]"
+    '${V1_SRC}/nodes') = '401' ]"
 
 echo ""
 echo "=========================================="
@@ -395,11 +405,11 @@ echo ""
 # Test: POST to messages endpoint without CSRF token (should work with Bearer)
 # Uses the gauntlet channel for testing per project rules. Slot is resolved
 # dynamically above so this stays correct even when channels get reordered.
-run_test "POST /api/v1/messages without CSRF token succeeds with Bearer auth" \
+run_test "POST /api/v1/sources/default/messages without CSRF token succeeds with Bearer auth" \
     "RESPONSE=\$(curl -sS -w '\\n%{http_code}' \
         -H 'Authorization: Bearer $API_TOKEN' \
         -H 'Content-Type: application/json' \
-        -X POST '${BASE_URL}/api/v1/messages' \
+        -X POST '${V1_SRC}/messages' \
         -d '{\"text\": \"API v1 test message\", \"channel\": ${GAUNTLET_SLOT}}')
     HTTP_CODE=\$(echo \"\$RESPONSE\" | tail -n1)
     BODY=\$(echo \"\$RESPONSE\" | head -n -1)
@@ -431,7 +441,7 @@ echo ""
 run_test "All list endpoints return success: true" \
     "for endpoint in nodes messages telemetry traceroutes packets; do
         curl -sS -H 'Authorization: Bearer $API_TOKEN' \
-            \"${BASE_URL}/api/v1/\$endpoint\" \
+            \"${V1_SRC}/\$endpoint\" \
             | jq -e '.success == true' > /dev/null || exit 1
     done"
 
@@ -439,7 +449,7 @@ run_test "All list endpoints return success: true" \
 run_test "All list endpoints return data array" \
     "for endpoint in nodes messages telemetry traceroutes packets; do
         curl -sS -H 'Authorization: Bearer $API_TOKEN' \
-            \"${BASE_URL}/api/v1/\$endpoint\" \
+            \"${V1_SRC}/\$endpoint\" \
             | jq -e '(.data | type) == \"array\"' > /dev/null || exit 1
     done"
 
@@ -447,7 +457,7 @@ run_test "All list endpoints return data array" \
 run_test "All list endpoints return count field" \
     "for endpoint in nodes messages telemetry traceroutes packets; do
         curl -sS -H 'Authorization: Bearer $API_TOKEN' \
-            \"${BASE_URL}/api/v1/\$endpoint\" \
+            \"${V1_SRC}/\$endpoint\" \
             | jq -e '.count != null' > /dev/null || exit 1
     done"
 
