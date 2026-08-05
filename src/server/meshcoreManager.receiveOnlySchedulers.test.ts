@@ -70,7 +70,12 @@ describe('MeshCoreManager scheduler silent skips (#4547 WP3)', () => {
   beforeEach(() => {
     unhandled = [];
     process.on('unhandledRejection', onUnhandled);
-    vi.useFakeTimers();
+    // Pin the clock to an exact minute boundary. Without `now`, fake timers
+    // start at real wall-clock, so the `* * * * *` cron tests below — which
+    // advance 61s and expect exactly one fire — cross TWO minute boundaries
+    // and fire twice whenever the run happens to start in the last second of
+    // a minute. That is a ~1-in-60 CI flake, observed on PR #4557.
+    vi.useFakeTimers({ now: new Date('2026-01-01T00:00:00.000Z') });
     vi.spyOn(logger, 'debug').mockImplementation(() => undefined);
     vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
     vi.spyOn(logger, 'error').mockImplementation(() => undefined);

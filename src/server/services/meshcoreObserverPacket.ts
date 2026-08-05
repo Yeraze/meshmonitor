@@ -56,6 +56,32 @@ export interface ObserverPacketPayload {
   path?: string;
 }
 
+/**
+ * Live device stats nested under the status payload's `stats` key (#4556).
+ *
+ * Key names are the analyzer contract, taken verbatim from
+ * `michaelhart/meshcoretomqtt`'s `get_device_stats()` — the tool the
+ * Analyzer's Battery / Uptime / Noise Floor columns are fed by. They are the
+ * firmware's own `stats-core` / `stats-radio` JSON keys, NOT our camelCase
+ * `MeshCoreStatsCore` / `MeshCoreStatsRadio` field names. Do not rename them
+ * to match our internal types.
+ *
+ * Every field is optional: firmware that doesn't report one must have it
+ * omitted rather than published as 0/null (issue #4556). The broker already
+ * knows this object — `meshcore-mqtt-broker`'s forward filter strips
+ * `message.stats` wholesale for LIMITED-role subscribers — so extra keys are
+ * safe and are handled the same way as the reference's.
+ */
+export interface ObserverDeviceStats {
+  battery_mv?: number;
+  uptime_secs?: number;
+  errors?: number;
+  queue_len?: number;
+  noise_floor?: number;
+  tx_air_secs?: number;
+  rx_air_secs?: number;
+}
+
 export interface ObserverStatusPayload {
   status: 'online' | 'offline';
   timestamp: string;
@@ -65,6 +91,8 @@ export interface ObserverStatusPayload {
   firmware_version?: string;
   radio?: string;
   client_version?: string;
+  /** Present only on `online` payloads, and only when at least one field is known. */
+  stats?: ObserverDeviceStats;
 }
 
 export interface ObserverPacketIdentity {
@@ -331,11 +359,66 @@ export function buildObserverPacketPayload(
   return payload;
 }
 
+/**
+ * Camel-case stats as the manager reports them (`MeshCoreStatsCore` +
+ * `MeshCoreStatsRadio`), before the snake_case wire mapping below. Kept
+ * structural rather than importing the manager types so this module stays
+ * dependency-free.
+ */
+export interface ObserverStatsInput {
+  batteryMv?: number | null;
+  uptimeSecs?: number | null;
+  errors?: number | null;
+  queueLen?: number | null;
+  noiseFloor?: number | null;
+  txAirSecs?: number | null;
+  rxAirSecs?: number | null;
+}
+
+/**
+ * Map camel-case device stats onto the analyzer's snake_case `stats` object,
+ * dropping anything the firmware didn't report (#4556 — omit the field rather
+ * than publish an invalid value). Returns `undefined` when nothing survives,
+ * so the caller can leave `stats` off the payload entirely.
+ *
+ * `0` is a legitimate reading for every one of these (a freshly-booted node
+ * reports `uptime_secs: 0`; `noise_floor` is routinely negative-or-zero), so
+ * the filter tests finiteness, never truthiness.
+ */
+export function buildObserverDeviceStats(
+  input: ObserverStatsInput | null | undefined,
+): ObserverDeviceStats | undefined {
+  if (!input) return undefined;
+
+  const out: ObserverDeviceStats = {};
+  const put = (key: keyof ObserverDeviceStats, value: number | null | undefined): void => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return;
+    out[key] = value;
+  };
+
+  put('battery_mv', input.batteryMv);
+  put('uptime_secs', input.uptimeSecs);
+  put('errors', input.errors);
+  put('queue_len', input.queueLen);
+  put('noise_floor', input.noiseFloor);
+  put('tx_air_secs', input.txAirSecs);
+  put('rx_air_secs', input.rxAirSecs);
+
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 /** Build the analyzer-contract status payload (online or offline/LWT). */
 export function buildObserverStatusPayload(
   status: 'online' | 'offline',
   identity: ObserverPacketIdentity,
-  device?: { model?: string; firmwareVersion?: string; radio?: string; clientVersion?: string },
+  device?: {
+    model?: string;
+    firmwareVersion?: string;
+    radio?: string;
+    clientVersion?: string;
+    /** Live device stats (#4556). Omitted from the payload when empty/absent. */
+    stats?: ObserverStatsInput | null;
+  },
   now: Date = new Date(),
 ): ObserverStatusPayload {
   const base: ObserverStatusPayload = {
@@ -349,13 +432,20 @@ export function buildObserverStatusPayload(
     return base; // LWT / graceful-offline form: no device sub-fields.
   }
 
-  return {
+  const online: ObserverStatusPayload = {
     ...base,
     model: device?.model ?? 'unknown',
     firmware_version: device?.firmwareVersion ?? 'unknown',
     radio: device?.radio ?? 'unknown',
     client_version: device?.clientVersion ?? 'unknown',
   };
+
+  // Unlike the four fields above, `stats` has NO "unknown" fallback — a device
+  // that reports nothing publishes no `stats` key at all.
+  const stats = buildObserverDeviceStats(device?.stats);
+  if (stats) online.stats = stats;
+
+  return online;
 }
 
 /** meshcore/{region}/{PUBKEY}/{packets|status}. Applies the `test`-lowercase rule. */

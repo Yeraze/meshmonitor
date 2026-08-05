@@ -93,7 +93,7 @@ Per heard packet, MeshMonitor publishes:
 - A packet hash
 - The raw hex of the OTA frame
 
-It also publishes a retained online/offline status message carrying your device name, model, firmware version, and radio parameters.
+It also publishes a retained online/offline status message carrying your device name, model, firmware version, and radio parameters, plus live stats read off the attached Companion — battery voltage, uptime, noise floor, error and queue counters, and airtime. The status is republished every five minutes so those values stay current on the analyzer. Anything your firmware doesn't report is left out rather than sent as a placeholder.
 
 If you're not comfortable with a third party seeing everything your node hears — even encrypted — don't enable this feature.
 
