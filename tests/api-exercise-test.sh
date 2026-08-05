@@ -585,14 +585,16 @@ check "GET /api/firmware/releases" "$(api GET /api/firmware/releases)" 200
 check "GET /api/firmware/backups" "$(api GET /api/firmware/backups)" 200
 
 # ─── Upgrade ───────────────────────────────────────────────
-# Auto-upgrade was retired in 4.13 (#4108): endpoints return 410 FEATURE_RETIRED
-# until their removal in 4.14.
+# Auto-upgrade was retired in 4.13 (#4108), where the endpoints returned 410
+# FEATURE_RETIRED for one release. The router was deleted in 4.14 (#4117,
+# commit 6399407d) — the same removal that took the v1 root paths — so these
+# are now plain 404s. Asserting the shape keeps a future re-add honest.
 
 echo ""
-echo -e "${BLUE}=== Upgrade (retired) ===${NC}"
+echo -e "${BLUE}=== Upgrade (removed) ===${NC}"
 
-check "GET /api/upgrade/history" "$(api GET /api/upgrade/history)" 410
-check "GET /api/upgrade/status" "$(api GET /api/upgrade/status)" 410
+check "GET /api/upgrade/history" "$(api GET /api/upgrade/history)" 404
+check "GET /api/upgrade/status" "$(api GET /api/upgrade/status)" 404
 
 # ─── MeshCore ──────────────────────────────────────────────
 
