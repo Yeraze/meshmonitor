@@ -1699,6 +1699,17 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
       logger.debug(`[MeshCore:${this.sourceId}] Contact message from ${data.pubkey_prefix} (${data.text.length} chars)`);
       void this.checkAutoAcknowledge(message, true, undefined, hopCount, ackRoute);
       void this.checkAutoResponder(message, true, undefined, hopCount, ackRoute);
+      // A direct message is itself a "we just heard this contact" event —
+      // without this, Last Heard/Last Seen only advance on `contact_advertised`
+      // pushes or the next refreshContacts() poll, so the Contact Details panel
+      // can show a stale "1 day ago" moments after a live DM arrives (#4553).
+      if (senderContact) {
+        const touchedContact: MeshCoreContact = { ...senderContact, lastSeen: Date.now() };
+        this.contacts.set(senderContact.publicKey, touchedContact);
+        void this.persistContact(touchedContact);
+        this.emit('contacts_updated', { sourceId: this.sourceId, contact: touchedContact });
+        dataEventEmitter.emitMeshCoreContactUpdated(touchedContact, this.sourceId);
+      }
     } else if (event_type === 'channel_message') {
       // MeshCore channel packets have no sender field on the wire — the sender's
       // device prefixes "Name: " onto the text body. Split it out so the UI can
