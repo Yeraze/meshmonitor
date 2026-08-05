@@ -10171,6 +10171,29 @@ class MeshtasticManager implements ISourceManager {
 
   private async checkAutoAcknowledge(message: any, messageText: string, channelIndex: number, isDirectMessage: boolean, fromNum: number, packetId?: number, rxSnr?: number, rxRssi?: number): Promise<void> {
     try {
+      // Never auto-acknowledge a tapback (#4569).
+      //
+      // A tapback is a TEXT_MESSAGE_APP packet whose Data carries `emoji > 0`;
+      // the text payload is the reaction character itself and `replyId` points
+      // at the message being reacted to. Acking one is pure waste: clients do
+      // not render a reaction to a reaction, so neither a text reply nor the
+      // hop-count tapback below is ever visible to the sender — it only burns
+      // airtime.
+      //
+      // This never fired under the default `^(test|ping)` regex, which a bare
+      // emoji cannot match. It bites operators running a permissive pattern
+      // (e.g. `.` or `.*`) to ack everything, where every reaction on the
+      // channel drew a reply.
+      //
+      // `emoji` is normalized upstream to `undefined` when absent or zero (see
+      // the TEXT_MESSAGE_APP decode), so presence alone is the tapback marker.
+      // Checked before the dedup guard below so a tapback's packetId never
+      // consumes a slot in the bounded `autoAckProcessedPackets` set.
+      if (message?.emoji != null) {
+        logger.debug(`⏭️ Skipping auto-acknowledge for packet ${packetId}: message is a tapback/reaction`);
+        return;
+      }
+
       // Per-packet dedup guard: prevent duplicate auto-ack responses for the same
       // mesh packet. This can happen when the transport delivers the same packet
       // twice (e.g. LoRa + MQTT proxy, serial retransmission) and the non-awaited
