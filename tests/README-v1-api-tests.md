@@ -18,23 +18,23 @@ Comprehensive unit tests for all V1 API endpoints using Vitest and Supertest.
   - Returns API version info
   - Lists all available endpoints
 
-- Nodes API (`GET /api/v1/nodes`)
+- Nodes API (`GET /api/v1/sources/default/nodes`)
   - Returns list of nodes with standard response format
   - Includes known test node ("Yeraze Station G2")
   - Returns specific node by ID
   - Returns 404 for non-existent nodes
 
-- Messages API (`GET /api/v1/messages`)
+- Messages API (`GET /api/v1/sources/default/messages`)
   - Returns messages with pagination
   - Respects offset and limit parameters
 
-- Telemetry API (`GET /api/v1/telemetry`)
+- Telemetry API (`GET /api/v1/sources/default/telemetry`)
   - Returns telemetry data array
 
-- Traceroutes API (`GET /api/v1/traceroutes`)
+- Traceroutes API (`GET /api/v1/sources/default/traceroutes`)
   - Returns traceroute data array
 
-- Packets API (`GET /api/v1/packets`)
+- Packets API (`GET /api/v1/sources/default/packets`)
   - Returns packet log data with pagination
   - Supports filtering by portnum
   - Returns specific packet by ID

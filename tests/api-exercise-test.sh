@@ -610,7 +610,7 @@ echo ""
 echo -e "${BLUE}=== V1 API (no token, expect 401) ===${NC}"
 
 check "GET /api/v1 (no token)" "$(api GET /api/v1)" 401
-check "GET /api/v1/nodes (no token)" "$(api GET /api/v1/nodes)" 401
+check "GET /api/v1/sources/default/nodes (no token)" "$(api GET /api/v1/sources/default/nodes)" 401
 
 echo ""
 echo -e "${BLUE}=== V1 API (with token) ===${NC}"
@@ -674,27 +674,34 @@ except Exception as e:
     fi
   }
 
+  # The legacy root shape (/api/v1/nodes etc.) was removed in 4.14 (#4117,
+  # commit 6399407d); those paths now 404. Per-source resources live under
+  # /api/v1/sources/{sourceId}/..., and `default` is the alias attachSource
+  # resolves to the oldest source. Only the version index, channel-database,
+  # solar and docs remain at the root.
+  V1S="/api/v1/sources/default"
+
   check_v1 "GET /api/v1" "/api/v1" "'version' in data or 'success' in data"
-  check_v1 "GET /api/v1/nodes" "/api/v1/nodes" "'success' in data and 'data' in data"
-  check_v1 "GET /api/v1/channels" "/api/v1/channels" "'success' in data and 'data' in data"
-  check_v1 "GET /api/v1/messages" "/api/v1/messages" "'success' in data and 'data' in data"
-  check_v1 "GET /api/v1/telemetry" "/api/v1/telemetry" "'success' in data or isinstance(data, dict)"
-  check_v1 "GET /api/v1/traceroutes" "/api/v1/traceroutes" "'success' in data and 'data' in data"
-  check_v1 "GET /api/v1/network" "/api/v1/network" "'success' in data and 'data' in data"
-  check_v1 "GET /api/v1/network/topology" "/api/v1/network/topology" "'success' in data and 'data' in data"
-  check_v1 "GET /api/v1/network/direct-neighbors" "/api/v1/network/direct-neighbors" "'success' in data or isinstance(data, dict)"
-  check_v1 "GET /api/v1/packets" "/api/v1/packets" "'success' in data and 'data' in data"
+  check_v1 "GET $V1S/nodes" "$V1S/nodes" "'success' in data and 'data' in data"
+  check_v1 "GET $V1S/channels" "$V1S/channels" "'success' in data and 'data' in data"
+  check_v1 "GET $V1S/messages" "$V1S/messages" "'success' in data and 'data' in data"
+  check_v1 "GET $V1S/telemetry" "$V1S/telemetry" "'success' in data or isinstance(data, dict)"
+  check_v1 "GET $V1S/traceroutes" "$V1S/traceroutes" "'success' in data and 'data' in data"
+  check_v1 "GET $V1S/network" "$V1S/network" "'success' in data and 'data' in data"
+  check_v1 "GET $V1S/network/topology" "$V1S/network/topology" "'success' in data and 'data' in data"
+  check_v1 "GET $V1S/network/direct-neighbors" "$V1S/network/direct-neighbors" "'success' in data or isinstance(data, dict)"
+  check_v1 "GET $V1S/packets" "$V1S/packets" "'success' in data and 'data' in data"
   check_v1 "GET /api/v1/channel-database" "/api/v1/channel-database" "'success' in data and 'data' in data"
   check "GET /api/v1/solar" "$(v1 GET /api/v1/solar)" 200
   check "GET /api/v1/solar/range" "$(v1 GET '/api/v1/solar/range?start=0&end=9999999999999')" 200
-  check "GET /api/v1/messages/search?q=test" "$(v1 GET '/api/v1/messages/search?q=test')" 200
+  check "GET $V1S/messages/search?q=test" "$(v1 GET "$V1S/messages/search?q=test")" 200
   check "GET /api/v1/docs/openapi.json" "$(v1 GET /api/v1/docs/openapi.json)" 200
   check "GET /api/v1/docs/openapi.yaml" "$(v1 GET /api/v1/docs/openapi.yaml)" 200
 
   if [ -n "$FIRST_NODE_ID" ]; then
-    check "GET /api/v1/nodes/:nodeId" "$(v1 GET /api/v1/nodes/$FIRST_NODE_ID)" 200
-    check "GET /api/v1/telemetry/:nodeId" "$(v1 GET /api/v1/telemetry/$FIRST_NODE_ID)" 200
-    check "GET /api/v1/nodes/:nodeId/position-history" "$(v1 GET /api/v1/nodes/$FIRST_NODE_ID/position-history)" 200
+    check "GET $V1S/nodes/:nodeId" "$(v1 GET $V1S/nodes/$FIRST_NODE_ID)" 200
+    check "GET $V1S/telemetry/:nodeId" "$(v1 GET $V1S/telemetry/$FIRST_NODE_ID)" 200
+    check "GET $V1S/nodes/:nodeId/position-history" "$(v1 GET $V1S/nodes/$FIRST_NODE_ID/position-history)" 200
   fi
 
   # Cleanup token
