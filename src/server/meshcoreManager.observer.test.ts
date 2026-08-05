@@ -196,6 +196,43 @@ describe('MeshCoreManager — Analyzer Observer lifecycle (#4457 Phase 2)', () =
       expect(FakePublisher.instances[0].start).toHaveBeenCalledTimes(1);
     });
 
+    it('wires a stats seam that merges getStatsCore() and getStatsRadio() (#4556)', async () => {
+      const m = new MeshCoreManager('src-e2');
+      (m as any).config = { observer: { ...COMPLETE_OBSERVER_CONFIG } };
+      (m as any).nativeBackend = {};
+      const getStatsCore = vi.fn().mockResolvedValue({ batteryMv: 4021, uptimeSecs: 3600 });
+      const getStatsRadio = vi.fn().mockResolvedValue({ noiseFloor: -95, lastRssi: -70 });
+      (m as any).getStatsCore = getStatsCore;
+      (m as any).getStatsRadio = getStatsRadio;
+
+      await (m as any).startObserver();
+
+      const { stats } = FakePublisher.instances[0].options as { stats: () => Promise<unknown> };
+      await expect(stats()).resolves.toEqual({
+        batteryMv: 4021,
+        uptimeSecs: 3600,
+        noiseFloor: -95,
+        lastRssi: -70,
+      });
+      expect(getStatsCore).toHaveBeenCalledTimes(1);
+      expect(getStatsRadio).toHaveBeenCalledTimes(1);
+    });
+
+    it('stats seam resolves null when the device answers neither stats call (#4556)', async () => {
+      const m = new MeshCoreManager('src-e3');
+      (m as any).config = { observer: { ...COMPLETE_OBSERVER_CONFIG } };
+      (m as any).nativeBackend = {};
+      // Both getters swallow their own errors and return null — that is what a
+      // companion that didn't answer looks like from here.
+      (m as any).getStatsCore = vi.fn().mockResolvedValue(null);
+      (m as any).getStatsRadio = vi.fn().mockResolvedValue(null);
+
+      await (m as any).startObserver();
+
+      const { stats } = FakePublisher.instances[0].options as { stats: () => Promise<unknown> };
+      await expect(stats()).resolves.toBeNull();
+    });
+
     it('is idempotent — calling startObserver() twice constructs only one publisher', async () => {
       const m = new MeshCoreManager('src-f');
       (m as any).config = { observer: { ...COMPLETE_OBSERVER_CONFIG } };

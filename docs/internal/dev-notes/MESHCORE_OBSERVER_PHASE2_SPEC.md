@@ -280,8 +280,33 @@ Source: `publish_status()` L1369-1387 (online) and the LWT literal at L1355-1366
 | `firmware_version` | string | e.g. `"v1.16.1 (Build: …)"`, else `"unknown"` | *(absent)* |
 | `radio` | string | radio params, else `"unknown"` | *(absent)* |
 | `client_version` | string | `"{name}/{version}"` | *(absent)* |
+| `stats` | object | live device stats — see §2.4a | *(absent)* |
 
 Emit the online form with `retain: true` immediately after CONNACK, and register the offline form as the LWT.
+
+#### 2.4a `stats` — battery / uptime / noise floor (#4556)
+
+`meshcore-packet-capture`'s `publish_status()` does **not** emit these, which is why a MeshMonitor observer showed `Battery —`, `Uptime —`, `Noise Floor —` on the analyzer. The keys come from the *other* upstream publisher, `michaelhart/meshcoretomqtt`: `build_status_message()` (L1163-1180) attaches `self.stats['device']` under a `stats` key, populated by `get_device_stats()` (L566-624) from the firmware's own `stats-core` / `stats-radio` JSON.
+
+The broker corroborates the shape — `meshcore-mqtt-broker`'s forward filter deletes `message.stats` wholesale for LIMITED-role subscribers, alongside `model` and `firmware_version`.
+
+| Key | Source (`stats-core` / `stats-radio`) |
+|---|---|
+| `battery_mv` | `core.batteryMv` |
+| `uptime_secs` | `core.uptimeSecs` |
+| `errors` | `core.errors` |
+| `queue_len` | `core.queueLen` |
+| `noise_floor` | `radio.noiseFloor` |
+| `tx_air_secs` | `radio.txAirSecs` |
+| `rx_air_secs` | `radio.rxAirSecs` |
+
+Rules:
+- **snake_case is the wire contract**, not our internal `MeshCoreStatsCore` / `MeshCoreStatsRadio` camelCase. Do not rename to match our types.
+- **Omit, never placeholder.** A field the firmware doesn't report is left out; when nothing survives, the `stats` key itself is omitted. There is no `"unknown"` fallback here (unlike the four fields above).
+- **Filter on finiteness, not truthiness.** `0` is real for `uptime_secs` (fresh boot) and `queue_len` (idle), and `noise_floor` is routinely negative.
+- **Offline/LWT never carries `stats`**, same as the other optional fields.
+- **Refresh on a timer.** `STATUS_REFRESH_MS` (5 min, matching `meshcoretomqtt`'s stats loop) republishes the retained online status so the values track the device instead of freezing at their connect-time reading. Each tick is two *local* bridge commands (`get_stats core` + `radio`) — no RF, safe on a fixed interval. The tick skips while the socket is down (same unbounded-offline-queue hazard `handleOtaPacket` guards against) and latches so a slow device can't stack ticks.
+- The republish is safe against the broker's stale-status rule: each carries a fresh, monotonically newer `timestamp`.
 
 **Verified upstream quirk — the LWT is (usually) never delivered.** `authorizeForward` (L637-660) blocks any `/status` message whose `timestamp` is older than the last one seen for that `origin_id`. The LWT payload is fixed at CONNECT time, so its timestamp is always *older* than the online status published milliseconds later, and the broker drops it as stale. This affects the reference identically. Do not work around it. Instead: on **graceful** stop, publish an explicit `offline` status (fresh timestamp) before disconnecting — that one is delivered.
 
@@ -295,6 +320,7 @@ Emit the online form with `retain: true` immediately after CONNACK, and register
 | `firmware_version` | `localNode.ver` → `"v{ver}"`, plus `" (Build: {firmwareBuild})"` when present | `"unknown"` |
 | `radio` | `` `${radioFreq},${radioBw},${radioSf},${radioCr}` `` when all four present on `localNode` | `"unknown"` |
 | `client_version` | `` `meshmonitor/${pkg.version}` `` | — |
+| `stats` | `manager.getStatsCore()` + `manager.getStatsRadio()`, merged, mapped to snake_case by `buildObserverDeviceStats()` | *(key omitted)* |
 
 `MeshCoreNode` fields are at `meshcoreManager.ts` L372-406. `model`/`ver`/`firmwareBuild` are populated in-memory by the telemetry poller and may be undefined — the fallbacks are load-bearing, not decorative.
 
