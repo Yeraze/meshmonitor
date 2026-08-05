@@ -10188,6 +10188,17 @@ class MeshtasticManager implements ISourceManager {
         }
       }
 
+      // Reaction/tapback packets carry the emoji itself as `messageText` and
+      // MUST NOT be treated as an ack-worthy trigger: firmware/apps never
+      // display a reply to a tapback, so acking one is a pure airtime waste —
+      // and worse, it can also ack a tapback some OTHER node placed on a
+      // message we never sent, since the trigger match only looks at the text
+      // (#4569).
+      if (message.emoji) {
+        logger.debug('⏭️  Skipping auto-acknowledge for a tapback/reaction packet');
+        return;
+      }
+
       // All auto-ack settings are per-source: each MeshtasticManager instance
       // has its own sourceId and the UI writes to `source:{sourceId}:autoAck*`
       // keys. Reading from the global namespace here would resolve to stale or
