@@ -218,6 +218,10 @@ export const VALID_SETTINGS_KEYS = [
   // (issue #4046 item 2). Also feeds the zoom-gated spiderfier's "zoom in
   // first" click flow (item 4).
   'mapCenterTargetZoom',
+  // Zoom below which a click on a CROWDED marker zooms in first rather than
+  // opening the popup. `0` disables the gate entirely. Isolated markers are
+  // never gated at any zoom (issue #4551).
+  'mapZoomGateThreshold',
   'securityDigestEnabled',
   'securityDigestAppriseUrl',
   'securityDigestTime',

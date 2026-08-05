@@ -6,6 +6,7 @@ import {
   ZOOM_ANIMATION_DURATION_MAX_SECONDS,
   computeClampedTargetZoom,
   computeZoomAnimationDuration,
+  hasNearbyPoint,
 } from './mapZoomAnimation';
 
 describe('mapZoomAnimation constants (#4046)', () => {
@@ -59,5 +60,53 @@ describe('computeZoomAnimationDuration (#4046 item 3)', () => {
   it('never returns less than the base duration', () => {
     const duration = computeZoomAnimationDuration(15, 15.5);
     expect(duration).toBeGreaterThanOrEqual(ZOOM_ANIMATION_DURATION_BASE_SECONDS);
+  });
+});
+
+describe('hasNearbyPoint (#4551)', () => {
+  const target = { x: 100, y: 100 };
+
+  it('reports no neighbour for an isolated point — the reported case', () => {
+    // A node 200km away projects far outside the 20px overlap radius at any
+    // usable zoom. Nothing to disambiguate, so the click must not be gated.
+    expect(hasNearbyPoint(target, [{ x: 4000, y: 3000 }], 20)).toBe(false);
+  });
+
+  it('reports a neighbour for a co-located point (a genuine pile)', () => {
+    expect(hasNearbyPoint(target, [{ x: 100, y: 100 }], 20)).toBe(true);
+  });
+
+  it('treats the radius as inclusive at the boundary', () => {
+    expect(hasNearbyPoint(target, [{ x: 120, y: 100 }], 20)).toBe(true);
+    expect(hasNearbyPoint(target, [{ x: 120.5, y: 100 }], 20)).toBe(false);
+  });
+
+  it('measures euclidean distance, not per-axis distance', () => {
+    // dx=15, dy=15 is 15px on each axis but ~21.2px apart — outside a 20px
+    // radius. A naive `dx < r && dy < r` check would wrongly call this nearby.
+    expect(hasNearbyPoint(target, [{ x: 115, y: 115 }], 20)).toBe(false);
+    // dx=12, dy=12 is ~17px — genuinely inside.
+    expect(hasNearbyPoint(target, [{ x: 112, y: 112 }], 20)).toBe(true);
+  });
+
+  it('returns false for an empty neighbour set', () => {
+    expect(hasNearbyPoint(target, [], 20)).toBe(false);
+  });
+
+  it('short-circuits on the first match without scanning the rest', () => {
+    let visited = 0;
+    function* candidates() {
+      visited++; yield { x: 100, y: 100 };
+      visited++; yield { x: 101, y: 101 };
+    }
+    expect(hasNearbyPoint(target, candidates(), 20)).toBe(true);
+    expect(visited).toBe(1);
+  });
+
+  it('treats a non-positive radius as "nothing is nearby"', () => {
+    // Guards the self-match case: with r=0 a co-located point would otherwise
+    // satisfy `0 <= 0` and gate every marker.
+    expect(hasNearbyPoint(target, [{ x: 100, y: 100 }], 0)).toBe(false);
+    expect(hasNearbyPoint(target, [{ x: 100, y: 100 }], -5)).toBe(false);
   });
 });

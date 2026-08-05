@@ -103,13 +103,21 @@ export function NodeMarkersLayer({
   // shared layer) lands on the same target zoom as clicking a node in a list.
   // Only applied when the caller's own `spiderfierOptions` didn't already set
   // one explicitly.
-  const { mapCenterTargetZoom } = useSettings();
+  //
+  // #4551: the gate THRESHOLD is user-configurable too. A stored `0` means
+  // "no gate at all" and maps to `undefined`, which is how `useMarkerSpiderfier`
+  // already spells "gating disabled" (`threshold != null`). Callers that set
+  // their own `zoomGateThreshold` explicitly still win, same as the target
+  // zoom above.
+  const { mapCenterTargetZoom, mapZoomGateThreshold } = useSettings();
   const effectiveSpiderfierOptions = useMemo<SpiderfierOptions>(() => ({
     ...spiderfierOptions,
     zoomGateTargetZoom: spiderfierOptions.zoomGateTargetZoom ?? mapCenterTargetZoom,
-  }), [spiderfierOptions, mapCenterTargetZoom]);
+    zoomGateThreshold: spiderfierOptions.zoomGateThreshold
+      ?? (mapZoomGateThreshold > 0 ? mapZoomGateThreshold : undefined),
+  }), [spiderfierOptions, mapCenterTargetZoom, mapZoomGateThreshold]);
 
-  const { addMarker, removeMarker, addListener, removeListener, isAboveGateThreshold, handleGatedClick } =
+  const { addMarker, removeMarker, addListener, removeListener, isAboveGateThreshold, isMarkerGated, handleGatedClick } =
     useMarkerSpiderfier(effectiveSpiderfierOptions);
 
   const markerByKey = useRef<Map<string, LeafletMarker>>(new Map());
@@ -242,17 +250,39 @@ export function NodeMarkersLayer({
   // gating), so their native Leaflet 'click' never reaches OMS — the OMS
   // 'click' listener above (onOmsClick / openPopup) simply never fires. That
   // means BELOW the threshold, a marker's `click` eventHandler is the only
-  // thing that runs. We replace it with the "zoom in first" flow — never the
-  // consumer's own click behavior (selection/centering/popup) — so a click
+  // thing that runs. We replace it with the "zoom in first" flow so a click
   // on a large low-zoom pile isn't ambiguous about which node was meant;
   // once zoomed in enough to cross back above the threshold, a further click
   // resumes normal spiderfy/select/popup behavior. Non-click handlers (e.g.
   // NodesTab's `add`/`mouseover`/`mouseout`) are preserved either way.
+  //
+  // #4551 narrows that replacement to the case it was written for. Being
+  // below the threshold is necessary but no longer sufficient: `isMarkerGated`
+  // additionally requires a neighbouring marker within `nearbyDistance` px,
+  // so only a genuine pile gets the zoom-in-first detour. An ISOLATED marker
+  // has nothing to disambiguate, so it runs the same two things a click above
+  // the threshold would run — the consumer's own click handler (selection /
+  // centering) and the popup. The popup has to be opened explicitly here
+  // because a below-threshold marker isn't registered with OMS, so the OMS
+  // 'click' listener above never fires for it; this mirrors that listener
+  // exactly (onOmsClick when provided, else `marker.openPopup()`).
   const resolveEventHandlers = (d: NodeMarkerDescriptor): LeafletEventHandlerFnMap | undefined => {
     if (isAboveGateThreshold) return d.eventHandlers;
     return {
       ...d.eventHandlers,
-      click: (e: LeafletMouseEvent) => handleGatedClick(e.target as LeafletMarker),
+      click: (e: LeafletMouseEvent) => {
+        const marker = e.target as LeafletMarker;
+        if (isMarkerGated(marker)) {
+          handleGatedClick(marker);
+          return;
+        }
+        d.eventHandlers?.click?.(e);
+        if (onOmsClick) {
+          onOmsClick(marker, d.key);
+        } else {
+          marker.openPopup();
+        }
+      },
     };
   };
 
