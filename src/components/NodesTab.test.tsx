@@ -404,6 +404,16 @@ describe('map controls: attribution clearance + zoom-to-fit (#4495, #4496)', () 
     expect(src).toMatch(/<FitAllNodesController\s+request=\{fitAllRequest\}/);
   });
 
+  it('uses a fit-bounds icon, not the locate-me crosshair (#4562)', () => {
+    // `target` maps to Lucide Crosshair, which reads as "centre on my GPS
+    // location" everywhere else in mapping UIs — the wrong promise for a
+    // button that re-frames the whole mesh.
+    const src = readFileSync(resolve('src/components/NodesTab.tsx'), 'utf8');
+    const button = src.match(/aria-label="Zoom to fit all nodes"[\s\S]{0,300}/)?.[0] ?? '';
+    expect(button).toMatch(/<UiIcon name="fitBounds"/);
+    expect(button).not.toMatch(/<UiIcon name="target"/);
+  });
+
   it('fits to the OFFSET marker positions, matching the pins the user sees', () => {
     // Fitting to raw centres could leave a visible pin just outside the
     // viewport — the #4016/#4155 single-position rule.
