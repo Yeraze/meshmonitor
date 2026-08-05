@@ -385,6 +385,12 @@ export class MeshCoreObserverPublisher {
    * The client/topics are re-read AFTER the await — a token renewal or a stop
    * can swap or null them while the stats read is in flight, and publishing to
    * the stale client would either throw or write under the wrong credentials.
+   *
+   * The re-read is then CAPTURED into a local so the null-check and the
+   * publish below see the same object. `stop()` nulls `this.client` before it
+   * awaits the disconnect, so re-reading the field per use could pass the
+   * check and then publish through a different (or absent) client. Worst case
+   * we publish through a socket that is closing, which the `.catch` absorbs.
    */
   private async publishOnlineStatus(): Promise<void> {
     if (!this.client || !this.topics) return;

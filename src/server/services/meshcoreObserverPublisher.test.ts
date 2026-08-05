@@ -302,6 +302,10 @@ describe('MeshCoreObserverPublisher', () => {
     expect(publisher.getStatus().lastError).toContain('Broker rejected the observer auth token');
     expect(mintToken).toHaveBeenCalledTimes(1); // proves no per-attempt re-minting
     expect(client.end).toHaveBeenCalled();
+    // Both timers go, not just renewal — a leaked status-refresh interval
+    // would keep ticking against a publisher that is meant to stay stopped
+    // until an operator-driven config change (#4556).
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('renews on a timer tick: mints again, tears down the old client, connects a new one, republishes online', async () => {

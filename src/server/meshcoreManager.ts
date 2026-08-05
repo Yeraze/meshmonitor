@@ -1419,6 +1419,14 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
         // no RF — so they're safe on the publisher's refresh interval.
         // Both getters already swallow their own failures and return null, so
         // a device that doesn't answer degrades to a status with no `stats`.
+        //
+        // The spread assumes MeshCoreStatsCore and MeshCoreStatsRadio have NO
+        // overlapping keys (core: batteryMv/uptimeSecs/errors/queueLen; radio:
+        // noiseFloor/lastRssi/lastSnr/txAirSecs/rxAirSecs). If a field is ever
+        // added to both, radio silently wins here — split the merge instead.
+        // Keys with no analyzer-contract equivalent (lastRssi, lastSnr) ride
+        // along harmlessly; buildObserverDeviceStats() maps an explicit list
+        // and drops everything else.
         stats: async () => {
           const [core, radio] = await Promise.all([this.getStatsCore(), this.getStatsRadio()]);
           if (!core && !radio) return null;
