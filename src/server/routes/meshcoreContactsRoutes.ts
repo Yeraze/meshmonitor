@@ -21,7 +21,7 @@ import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddle
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
 import meshcorePositionHistoryService from '../services/meshcorePositionHistoryService.js';
 import { isBogusPosition } from '../../utils/nullIsland.js';
-import { managerFor, isValidPublicKey, auditMeshcoreEvent, parseHexPathChain, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
+import { managerFor, isValidPublicKey, auditMeshcoreEvent, parseHexPathChain, requireMeshcoreTx, failIfTxDisabled, maskContactPositionsForViewOnMap } from './meshcoreRouteShared.js';
 import { ok, fail } from '../utils/apiResponse.js';
 import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
 
@@ -33,7 +33,11 @@ const router = Router({ mergeParams: true });
  */
 router.get('/nodes', optionalAuth(), requirePermission('nodes', 'read', { sourceIdFrom: 'params.id' }), async (req: Request, res: Response) => {
   try {
-    const nodes = await managerFor(req, res).getAllNodes();
+    const nodes = await maskContactPositionsForViewOnMap(
+      await managerFor(req, res).getAllNodes(),
+      req.user ?? null,
+      req.params.id,
+    );
     res.json({
       success: true,
       data: nodes,
@@ -107,10 +111,16 @@ router.get('/contacts', optionalAuth(), requirePermission('nodes', 'read', { sou
       allContacts.unshift(buildLocalContactRow(localNode));
     }
 
+    const masked = await maskContactPositionsForViewOnMap(
+      allContacts,
+      req.user ?? null,
+      req.params.id,
+    );
+
     res.json({
       success: true,
-      data: allContacts,
-      count: allContacts.length,
+      data: masked,
+      count: masked.length,
     });
   } catch (error) {
     logger.error('[API] Error getting contacts:', error);
@@ -143,10 +153,15 @@ router.post('/contacts/refresh', meshcoreDeviceLimiter, requireAuth(), requirePe
       allContacts.unshift(buildLocalContactRow(localNode));
     }
 
+    // nodes:write (required above) does not imply nodes:viewOnMap — mask the
+    // same as GET /contacts so refreshing doesn't become a side-channel
+    // around the read-path's position gate (#4559 review follow-up).
+    const masked = await maskContactPositionsForViewOnMap(allContacts, req.user ?? null, req.params.id);
+
     res.json({
       success: true,
-      data: allContacts,
-      count: allContacts.length,
+      data: masked,
+      count: masked.length,
     });
   } catch (error) {
     logger.error('[API] Error refreshing contacts:', error);

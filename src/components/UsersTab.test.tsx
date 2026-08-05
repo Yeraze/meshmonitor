@@ -249,6 +249,62 @@ describe('UsersTab — PR-C grid additions', () => {
     expect(channelNRows).toHaveLength(1);
   });
 
+  it('shows a "View on Map" checkbox for the nodes resource only when a MeshCore source is scoped (#4559)', async () => {
+    // MeshCore has no per-channel device slots, so map visibility for its
+    // contacts is controlled by nodes:viewOnMap directly. The checkbox must
+    // appear when a MeshCore source is selected, and stay absent for a
+    // Meshtastic source (where nodes:viewOnMap is not checked anywhere, and
+    // showing it would just be a dead control).
+    setupApi({
+      sources: [
+        { id: 'tcp-1', name: 'TCP Source', type: 'meshtastic_tcp' },
+        { id: 'mc-1', name: 'MeshCore', type: 'meshcore' },
+      ],
+      channels: [{ id: 0, name: '' }],
+    });
+    render(<UsersTab />);
+    fireEvent.click(await screen.findByText(/Alice/));
+    const select = (await screen.findByLabelText(/permission_scope/i)) as HTMLSelectElement;
+
+    // Meshtastic source: nodes row has just read/write, no View on Map checkbox
+    // (channel_0's own "View on Map" checkbox is a separate row and separate
+    // concern — asserted here by checkbox count scoped to the nodes row only).
+    fireEvent.change(select, { target: { value: 'tcp-1' } });
+    await waitFor(() => expect(screen.getByText('Node Map & List')).toBeInTheDocument());
+    let nodesRow = screen.getByText('Node Map & List').closest('.permission-item');
+    expect(nodesRow!.querySelectorAll('input[type="checkbox"]')).toHaveLength(2);
+    expect(nodesRow!.textContent).not.toContain('users.view_on_map');
+
+    // MeshCore source: nodes row gains the View on Map checkbox.
+    fireEvent.change(select, { target: { value: 'mc-1' } });
+    await waitFor(() => expect(screen.getByText('Node Map & List')).toBeInTheDocument());
+    nodesRow = screen.getByText('Node Map & List').closest('.permission-item');
+    expect(nodesRow!.querySelectorAll('input[type="checkbox"]')).toHaveLength(3);
+    expect(nodesRow!.textContent).toContain('users.view_on_map');
+  });
+
+  it('includes viewOnMap in the PUT payload for the nodes resource on a MeshCore source (#4559)', async () => {
+    setupApi({
+      sources: [{ id: 'mc-1', name: 'MeshCore', type: 'meshcore' }],
+      channels: [],
+    });
+    render(<UsersTab />);
+    fireEvent.click(await screen.findByText(/Alice/));
+    const select = (await screen.findByLabelText(/permission_scope/i)) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'mc-1' } });
+
+    await waitFor(() => expect(screen.getByText('Node Map & List')).toBeInTheDocument());
+    const nodesRow = screen.getByText('Node Map & List').closest('.permission-item')!;
+    const [viewOnMapCheckbox] = Array.from(nodesRow.querySelectorAll('input[type="checkbox"]'));
+    fireEvent.click(viewOnMapCheckbox);
+
+    fireEvent.click(screen.getByText('users.save_permissions'));
+
+    await waitFor(() => expect(apiPutMock).toHaveBeenCalled());
+    const [, body] = apiPutMock.mock.calls[0];
+    expect(body.permissions.nodes).toMatchObject({ viewOnMap: true });
+  });
+
   it('channel-database section renders a canWrite checkbox column', async () => {
     setupApi({
       channelDbEntries: [

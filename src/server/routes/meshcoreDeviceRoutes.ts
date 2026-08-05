@@ -10,9 +10,9 @@ import { Router, Request, Response } from 'express';
 import { ConnectionType, MeshCoreDeviceType } from '../meshcoreManager.js';
 import { getMeshCoreTelemetryPoller, nodeNumFromPubkey } from '../services/meshcoreTelemetryPoller.js';
 import { logger } from '../../utils/logger.js';
-import { requireAuth, optionalAuth, requirePermission } from '../auth/authMiddleware.js';
+import { requireAuth, optionalAuth, requirePermission, hasPermission } from '../auth/authMiddleware.js';
 import { meshcoreDeviceLimiter } from '../middleware/rateLimiters.js';
-import { managerFor, isValidConnectionParams, requireMeshcoreTx, failIfTxDisabled } from './meshcoreRouteShared.js';
+import { managerFor, isValidConnectionParams, requireMeshcoreTx, failIfTxDisabled, stripPositions } from './meshcoreRouteShared.js';
 import databaseService from '../../services/database.js';
 import { buildLocalContactRow, withoutLocalFlag, type MeshCoreContactResponse } from './meshcoreLocalContactRow.js';
 
@@ -181,6 +181,17 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
       allContacts.unshift(buildLocalContactRow(localNode));
     }
 
+    // `connection:read` alone does not entitle a caller to positions on the
+    // map — that additionally requires `nodes:viewOnMap`, mirroring the
+    // messages gate above (issue #4559). Strip lat/lon rather than dropping
+    // the rows so the contact list this snapshot also feeds keeps working.
+    // Resolved once (not via maskContactPositionsForViewOnMap per array) —
+    // it's the same user/source for both, so a second permission check would
+    // just be a redundant DB round-trip on every snapshot request.
+    const canViewOnMap = user ? await hasPermission(user, 'nodes', 'viewOnMap', sourceId) : false;
+    const maskedContacts = canViewOnMap ? allContacts : stripPositions(allContacts);
+    const maskedNodes = canViewOnMap ? nodes : stripPositions(nodes);
+
     res.json({
       success: true,
       data: {
@@ -189,8 +200,8 @@ router.get('/snapshot', optionalAuth(), requirePermission('connection', 'read', 
           localNode,
           deviceTypeName: MeshCoreDeviceType[status.deviceType],
         },
-        contacts: allContacts,
-        nodes,
+        contacts: maskedContacts,
+        nodes: maskedNodes,
         messages,
         seqCursor,
       },
