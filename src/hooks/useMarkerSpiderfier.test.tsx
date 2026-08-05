@@ -125,7 +125,13 @@ let api: ReturnType<typeof useMarkerSpiderfier> | null = null;
  * Mirrors the real consumers: registers a marker in a layout effect (pre-init
  * timing) just as react-leaflet's <Marker ref> fires during commit.
  */
-function Harness({ nodeId, lat = 0.0005, lon = 0.0005, options = SHARED_SPIDERFIER_OPTIONS }: {
+// #4551 moved `zoomGateThreshold` out of SHARED_SPIDERFIER_OPTIONS (the layer
+// now resolves it from the `mapZoomGateThreshold` setting), so the gating tests
+// below supply it here explicitly — they exercise the HOOK's gate contract,
+// which is unchanged.
+const GATED_OPTIONS = { ...SHARED_SPIDERFIER_OPTIONS, zoomGateThreshold: DEFAULT_ZOOM_GATE_THRESHOLD };
+
+function Harness({ nodeId, lat = 0.0005, lon = 0.0005, options = GATED_OPTIONS }: {
   nodeId: string;
   lat?: number;
   lon?: number;
@@ -229,7 +235,7 @@ describe('useMarkerSpiderfier zoom-gated registration (#4046 item 4)', () => {
 
   it('handleGatedClick centers and zooms in on the clicked marker (clamped, never zooms out)', () => {
     currentFakeMap = createFakeMap(5); // far zoomed out
-    render(<Harness nodeId="node-1" options={{ ...SHARED_SPIDERFIER_OPTIONS, zoomGateTargetZoom: 17 }} />);
+    render(<Harness nodeId="node-1" options={{ ...GATED_OPTIONS, zoomGateTargetZoom: 17 }} />);
 
     const marker = L.marker([1, 2]);
     act(() => {

@@ -90,6 +90,7 @@ interface SettingsDraft {
   defaultMapCenterLon: number | null;
   defaultMapCenterZoom: number | null;
   mapCenterTargetZoom: number;
+  mapZoomGateThreshold: number;
   defaultLandingPage: string;
   appearanceMode: AppearanceMode;
   darkTheme: Theme;
@@ -345,7 +346,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setDefaultMapCenterLon,
     setDefaultMapCenterZoom,
     mapCenterTargetZoom,
+    mapZoomGateThreshold,
     setMapCenterTargetZoom,
+    setMapZoomGateThreshold,
     defaultLandingPage,
     setDefaultLandingPage,
     appearanceMode,
@@ -389,6 +392,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     defaultMapCenterLon,
     defaultMapCenterZoom,
     mapCenterTargetZoom,
+    mapZoomGateThreshold,
     defaultLandingPage,
     appearanceMode,
     darkTheme,
@@ -670,6 +674,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
       defaultMapCenterLon,
       defaultMapCenterZoom,
       mapCenterTargetZoom,
+      mapZoomGateThreshold,
       defaultLandingPage,
       appearanceMode,
       darkTheme,
@@ -713,7 +718,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours,
       temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays,
       preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle,
-      iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom,
+      iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, mapZoomGateThreshold,
       defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
@@ -762,6 +767,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         defaultMapCenterLon,
         defaultMapCenterZoom,
         mapCenterTargetZoom,
+        mapZoomGateThreshold,
         defaultLandingPage,
         appearanceMode,
         darkTheme,
@@ -786,7 +792,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   }, [maxNodeAgeHours, inactiveNodeThresholdHours, inactiveNodeCheckIntervalMinutes, inactiveNodeCooldownHours,
       temperatureUnit, distanceUnit, positionHistoryLineStyle, telemetryVisualizationHours, favoriteTelemetryStorageDays,
       preferredSortField, preferredSortDirection, timeFormat, dateFormat, mapTilesetLight, mapTilesetDark, mapPinStyle,
-      iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom,
+      iconStyle, neighborInfoMinZoom, defaultMapCenterLat, defaultMapCenterLon, defaultMapCenterZoom, mapCenterTargetZoom, mapZoomGateThreshold,
       defaultLandingPage, appearanceMode, darkTheme, lightTheme, nodeHopsCalculation, preferredDashboardSortOption,
       linkPreviewsEnabled, discardInvalidPositions, noIndexEnabled, meshcoreChannelRetryEnabled, showIncompleteNodes,
       nodeDimmingEnabled, nodeDimmingStartHours, nodeDimmingMinOpacity,
@@ -870,6 +876,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setDefaultMapCenterLon(d.defaultMapCenterLon);
     setDefaultMapCenterZoom(d.defaultMapCenterZoom);
     setMapCenterTargetZoom(d.mapCenterTargetZoom);
+    setMapZoomGateThreshold(d.mapZoomGateThreshold);
     setDefaultLandingPage(d.defaultLandingPage);
     setAppearanceMode(d.appearanceMode);
     setDarkTheme(d.darkTheme);
@@ -900,7 +907,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
     setInitialCotFeedEnabled(d.cotFeedEnabled);
     setInitialCotFeedPort(d.cotFeedPort);
   }, [setNeighborInfoMinZoom, setDefaultMapCenterLat, setDefaultMapCenterLon, setDefaultMapCenterZoom,
-      setMapCenterTargetZoom, setDefaultLandingPage, setAppearanceMode, setDarkTheme, setLightTheme,
+      setMapCenterTargetZoom, setMapZoomGateThreshold, setDefaultLandingPage, setAppearanceMode, setDarkTheme, setLightTheme,
       setNodeHopsCalculation, setPreferredDashboardSortOption, setLinkPreviewsEnabled, setDiscardInvalidPositions,
       setNoIndexEnabled, setMeshcoreChannelRetryEnabled, setHideIncompleteNodes,
       setNodeDimmingEnabled, setNodeDimmingStartHours, setNodeDimmingMinOpacity]);
@@ -937,6 +944,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
         defaultMapCenterLon: draft.defaultMapCenterLon !== null ? draft.defaultMapCenterLon.toString() : '',
         defaultMapCenterZoom: draft.defaultMapCenterZoom !== null ? draft.defaultMapCenterZoom.toString() : '',
         mapCenterTargetZoom: draft.mapCenterTargetZoom.toString(),
+        mapZoomGateThreshold: draft.mapZoomGateThreshold.toString(),
         defaultLandingPage: draft.defaultLandingPage,
         theme: effectiveTheme,
         appearanceMode: draft.appearanceMode,
@@ -1928,6 +1936,29 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 const value = parseInt(e.target.value);
                 if (value >= 1 && value <= 18) {
                   updateField('mapCenterTargetZoom', value);
+                }
+              }}
+              className="setting-input"
+              style={{ width: '100px' }}
+            />
+          </div>
+          <div className="setting-item">
+            <label htmlFor="mapZoomGateThreshold">
+              {t('settings.map_zoom_gate_threshold_label')}
+              <span className="setting-description">{t('settings.map_zoom_gate_threshold_description')}</span>
+            </label>
+            <input
+              id="mapZoomGateThreshold"
+              type="number"
+              min="0"
+              max="18"
+              value={draft.mapZoomGateThreshold}
+              onChange={(e) => {
+                // #4551: 0 is a real value here ("never gate"), so this range
+                // starts at 0 rather than 1 like the target-zoom field above.
+                const value = parseInt(e.target.value);
+                if (value >= 0 && value <= 18) {
+                  updateField('mapZoomGateThreshold', value);
                 }
               }}
               className="setting-input"

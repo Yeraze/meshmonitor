@@ -12,6 +12,8 @@ import {
   DEFAULT_ZOOM_GATE_THRESHOLD,
   computeClampedTargetZoom,
   computeZoomAnimationDuration,
+  hasNearbyPoint,
+  type ScreenPoint,
 } from '../utils/mapZoomAnimation';
 
 export { DEFAULT_ZOOM_GATE_THRESHOLD };
@@ -87,13 +89,15 @@ export const SHARED_SPIDERFIER_OPTIONS: SpiderfierOptions = {
     usual: 'rgba(100, 100, 100, 0.6)', // Semi-transparent gray
     highlighted: 'rgba(50, 50, 50, 0.8)', // Darker when hovering
   },
-  /** Issue #4046 item 4: below z13, don't register markers with the
-   *  spiderfier at all — a click falls through to the native marker click,
-   *  which `NodeMarkersLayer` wires to a "zoom in first" flow instead of
-   *  spiderfying a large, hard-to-parse low-zoom pile. Applies to every
-   *  surface that uses the shared layer (NodesTab, Dashboard, MeshCore,
-   *  Map Analysis). */
-  zoomGateThreshold: DEFAULT_ZOOM_GATE_THRESHOLD,
+  // NOTE (#4551): `zoomGateThreshold` deliberately does NOT live here any
+  // more. It used to be pinned to DEFAULT_ZOOM_GATE_THRESHOLD, which made it
+  // impossible for the user setting to take effect — this object is
+  // `NodeMarkersLayer`'s default `spiderfierOptions`, so a value here always
+  // looked like an explicit per-caller override and won over the setting.
+  // The layer now resolves the threshold from `mapZoomGateThreshold`
+  // (defaulting to DEFAULT_ZOOM_GATE_THRESHOLD, `0` = disabled) and passes it
+  // down. A caller that genuinely wants its own threshold still sets it on
+  // its own options object and wins.
 };
 
 export interface SpiderfierOptions {
@@ -617,6 +621,69 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
    * rather than through each consumer's own center-on-node plumbing, so
    * every map surface gets identical below-threshold behavior for free.
    */
+  /**
+   * Issue #4551: is THIS marker's click actually ambiguous enough to warrant
+   * the "zoom in first" detour?
+   *
+   * `isAboveGateThreshold` answers the question for the whole layer — it is
+   * driven purely by zoom level, which is what made an isolated node 200km
+   * from anything else behave exactly like a 50-node pile: both demanded a
+   * zoom-in/zoom-out cycle before their popup would open. This narrows the
+   * gate to its actual purpose. Below the threshold a click is gated only
+   * when another tracked marker sits within `nearbyDistance` screen pixels —
+   * i.e. only when there is something to disambiguate it FROM.
+   *
+   * The check runs at click time rather than at registration time on purpose.
+   * Neighbour-ness changes with every zoom level, so precomputing it would
+   * mean an O(n) sweep on every `zoomend` for a result that is only ever
+   * consulted on the rare gated click. Here it costs one pass over the
+   * tracked markers, once, on the click that needs it.
+   *
+   * Returns false whenever gating is off, the zoom is above the threshold, or
+   * the map cannot project — a marker is only ever withheld on positive
+   * evidence of a crowd.
+   */
+  const isMarkerGated = useCallback((marker: LeafletMarker): boolean => {
+    const currentMap = mapRef.current;
+    if (!currentMap) return false;
+
+    const threshold = optionsRef.current.zoomGateThreshold;
+    if (threshold == null || currentMap.getZoom() >= threshold) return false;
+
+    // Without a projection we cannot measure crowding. Fall back to the
+    // pre-#4551 behaviour (gate everything below the threshold) rather than
+    // silently letting a dense pile through.
+    if (typeof currentMap.latLngToLayerPoint !== 'function') return true;
+
+    const project = (m: LeafletMarker): ScreenPoint | null => {
+      try {
+        return currentMap.latLngToLayerPoint(m.getLatLng());
+      } catch {
+        return null;
+      }
+    };
+
+    const target = project(marker);
+    if (!target) return true;
+
+    // Every marker this hook knows about, in either gate state: below the
+    // threshold they live in `gatedMarkersRef`, above it in `markerByIdRef`,
+    // and `pendingRef` holds any that mounted before the spiderfier existed.
+    const neighbours: ScreenPoint[] = [];
+    const seen = new Set<LeafletMarker>([marker]);
+    for (const source of [gatedMarkersRef.current, markerByIdRef.current, pendingRef.current]) {
+      for (const other of source.values()) {
+        if (seen.has(other)) continue;
+        seen.add(other);
+        const point = project(other);
+        if (point) neighbours.push(point);
+      }
+    }
+
+    const nearbyDistance = optionsRef.current.nearbyDistance ?? 20;
+    return hasNearbyPoint(target, neighbours, nearbyDistance);
+  }, []);
+
   const handleGatedClick = useCallback((marker: LeafletMarker) => {
     if (!map) return;
     const currentZoom = map.getZoom();
@@ -637,6 +704,12 @@ export function useMarkerSpiderfier(options: SpiderfierOptions = {}) {
      *  below the threshold — markers are withheld and `NodeMarkersLayer`
      *  should route clicks through `handleGatedClick` instead (#4046 item 4). */
     isAboveGateThreshold,
+    /** #4551: true only when the given marker's click is genuinely ambiguous
+     *  — below the threshold AND crowded by another marker within
+     *  `nearbyDistance` px. An isolated marker returns false at any zoom, so
+     *  consumers can run their normal select/popup flow instead of the
+     *  zoom-in-first detour. */
+    isMarkerGated,
     handleGatedClick,
   };
 }
