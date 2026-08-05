@@ -149,6 +149,7 @@ import { migration as seedPerSourceNodeDisplayMigration, runMigration131Postgres
 import { migration as fanOutSettingsPermissionsMigration, runMigration132Postgres, runMigration132Mysql } from '../server/migrations/132_fan_out_settings_permissions.js';
 import { migration as addMeshCoreObserverKeysMigration, runMigration133Postgres, runMigration133Mysql } from '../server/migrations/133_add_meshcore_observer_keys.js';
 import { migration as clearNullIslandEstimatesMigration, runMigration134Postgres, runMigration134Mysql } from '../server/migrations/134_clear_null_island_estimates.js';
+import { migration as backfillMeshcoreNodesViewOnMapMigration, runMigration135Postgres, runMigration135Mysql } from '../server/migrations/135_backfill_meshcore_nodes_viewonmap.js';
 
 // ============================================================================
 // Registry
@@ -2136,4 +2137,13 @@ registry.register({
   sqlite: (db) => clearNullIslandEstimatesMigration.up(db),
   postgres: (client) => runMigration134Postgres(client),
   mysql: (pool) => runMigration134Mysql(pool),
+});
+
+registry.register({
+  number: 135,
+  name: 'backfill_meshcore_nodes_viewonmap',
+  settingsKey: 'migration_135_backfill_meshcore_nodes_viewonmap',
+  sqlite: (db) => backfillMeshcoreNodesViewOnMapMigration.up(db),
+  postgres: (client) => runMigration135Postgres(client),
+  mysql: (pool) => runMigration135Mysql(pool),
 });
