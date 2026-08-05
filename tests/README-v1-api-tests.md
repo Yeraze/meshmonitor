@@ -18,23 +18,22 @@ Comprehensive unit tests for all V1 API endpoints using Vitest and Supertest.
   - Returns API version info
   - Lists all available endpoints
 
-- Nodes API (`GET /api/v1/nodes`)
+- Nodes API (`GET /api/v1/sources/default/nodes`)
   - Returns list of nodes with standard response format
-  - Includes known test node ("Yeraze Station G2")
   - Returns specific node by ID
   - Returns 404 for non-existent nodes
 
-- Messages API (`GET /api/v1/messages`)
+- Messages API (`GET /api/v1/sources/default/messages`)
   - Returns messages with pagination
   - Respects offset and limit parameters
 
-- Telemetry API (`GET /api/v1/telemetry`)
+- Telemetry API (`GET /api/v1/sources/default/telemetry`)
   - Returns telemetry data array
 
-- Traceroutes API (`GET /api/v1/traceroutes`)
+- Traceroutes API (`GET /api/v1/sources/default/traceroutes`)
   - Returns traceroute data array
 
-- Packets API (`GET /api/v1/packets`)
+- Packets API (`GET /api/v1/sources/default/packets`)
   - Returns packet log data with pagination
   - Supports filtering by portnum
   - Returns specific packet by ID
@@ -65,8 +64,7 @@ Integration test that runs against a live Quick Start container.
 **Test Coverage:**
 - API Root endpoint returns version info
 - Nodes list endpoint returns data
-- Node count validation (>= 10 nodes)
-- Known node validation ("Yeraze Station G2" exists)
+- Node count validation (>= 1 node)
 - Specific node retrieval by ID
 - Messages endpoint with pagination
 - Telemetry endpoint
@@ -120,8 +118,7 @@ This will run all system tests including:
 ## Test Data Requirements
 
 The V1 API tests expect:
-- At least 10 nodes in the mesh network
-- A node with short name containing "YERG2" or "YerG2" or long name "Yeraze Station G2"
+- At least 1 node in the mesh network
 - Some telemetry data
 - Some message data
 - Some packet log data
@@ -130,7 +127,7 @@ The V1 API tests expect:
 
 - Unit tests create mock data and may not catch all integration issues
 - System tests require access to a real Meshtastic node
-- Some tests check for minimum data counts (e.g., >= 10 nodes) which may fail on smaller networks
+- Some tests check for minimum data counts (e.g., >= 1 node) which may fail on an empty mesh
 - Tests assume the default admin credentials (admin/admin) for Quick Start deployment
 
 ## Future Enhancements

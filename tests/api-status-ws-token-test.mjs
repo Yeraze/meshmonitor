@@ -1,5 +1,5 @@
 /**
- * Test: GET /api/v1/status + WebSocket Bearer token auth
+ * Test: GET /api/v1/sources/default/status + WebSocket Bearer token auth
  *
  * Usage:
  *   node tests/api-status-ws-token-test.mjs [BASE_URL] [API_TOKEN]
@@ -47,8 +47,8 @@ const SOCKET_PATH = `${baseUrlObj.pathname.replace(/\/$/, '')}/socket.io`;
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 async function testStatus() {
-  console.log('\n--- GET /api/v1/status ---');
-  const { status, data } = await fetchJSON('/api/v1/status');
+  console.log('\n--- GET /api/v1/sources/default/status ---');
+  const { status, data } = await fetchJSON('/api/v1/sources/default/status');
   assert(status === 200, 'Status 200');
   assert(data.success === true, 'success: true');
   assert('localNodeNum' in data.data, 'Has localNodeNum');
@@ -60,8 +60,8 @@ async function testStatus() {
 }
 
 async function testStatusNoAuth() {
-  console.log('\n--- GET /api/v1/status without auth ---');
-  const res = await fetch(`${BASE_URL}/api/v1/status`);
+  console.log('\n--- GET /api/v1/sources/default/status without auth ---');
+  const res = await fetch(`${BASE_URL}/api/v1/sources/default/status`);
   assert(res.status === 401, 'Returns 401');
 }
 
