@@ -389,6 +389,21 @@ separate from channel sharing, which uses Meshtastic's `/e/#` URL format.
 
 ## Map Settings
 
+### Map Click Zoom Gate
+
+::: tip New in 4.14.1
+:::
+
+**Description**: The zoom level below which clicking a **crowded** marker zooms the map in first instead of opening that marker's popup, so you can pick the node you actually meant.
+
+**Default**: 13 (range 0–18)
+
+**Effect**: Below this zoom, a click on a marker that has another marker within ~20 screen pixels re-centres and zooms in rather than opening a popup. An **isolated** marker opens its popup right away at any zoom — crowding is measured per click, so a lone node on the edge of the map is never withheld. Set the value to `0` to turn the gate off entirely and always open popups on the first click.
+
+Raise the threshold if your nodes sit close together and you keep opening the wrong popup; lower it (or zero it) if you mostly view a sparse mesh and want one-click popups when zoomed out.
+
+**Location**: Settings → Map Settings
+
 ### Discard Invalid Positions
 
 ::: tip New in 4.13

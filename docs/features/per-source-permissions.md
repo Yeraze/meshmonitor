@@ -23,6 +23,10 @@ Each row in the `permissions` table grants a user a set of action flags on a **r
 
 Resources cover per-source items like messages, nodes, channels, schedulers, and admin-command surfaces, plus global items like users, settings, audit log, and system backup. When a resource is source-scoped, the row also carries a `sourceId` so the same user can have different rights on different sources.
 
+::: tip MeshCore map positions honour `canViewOnMap` (4.14.1)
+MeshCore contact positions used to be returned to anyone with `nodes` read access. They now require `canViewOnMap` on that source, matching how Meshtastic nodes have always behaved — so a user granted read-only access can see the contact list without learning where those nodes are. Existing users are backfilled on upgrade: anyone who already had `nodes` read on a MeshCore source keeps map visibility, so nothing disappears for current accounts. New grants must set the flag explicitly.
+:::
+
 ## Users page
 
 **Settings → Users** (admin only) is the central management page. Admins can:
