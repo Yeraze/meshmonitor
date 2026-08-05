@@ -58,6 +58,7 @@ import {
   RENEWAL_CHECK_MS,
   RENEWAL_THRESHOLD_S,
   MAX_AUTH_FAILURES,
+  STATUS_REFRESH_MS,
   type MeshCoreObserverPublisherOptions,
 } from './meshcoreObserverPublisher.js';
 import { buildObserverPacketPayload } from './meshcoreObserverPacket.js';
@@ -120,12 +121,14 @@ function makeMintTokenAlwaysOk(
 function makePublisher(
   mintToken: MockedFunction<(sourceId: string) => Promise<ObserverTokenResult>> = makeMintTokenAlwaysOk(),
   sourceId: string = SOURCE_ID,
+  extra: Partial<MeshCoreObserverPublisherOptions> = {},
 ): { publisher: MeshCoreObserverPublisher; mintToken: typeof mintToken } {
   const publisher = new MeshCoreObserverPublisher({
     sourceId,
     config: makeConfig(),
     device: makeDevice(),
     mintToken,
+    ...extra,
   });
   return { publisher, mintToken };
 }
@@ -134,13 +137,18 @@ async function flushMicrotasks(times = 10): Promise<void> {
   for (let i = 0; i < times; i++) await Promise.resolve();
 }
 
-/** Starts the publisher, flushes to the point the client is created, then fires 'connect'. */
+/**
+ * Starts the publisher, flushes to the point the client is created, then fires
+ * 'connect'. The trailing flush covers the online-status publish, which is
+ * async since #4556 (it awaits the device-stats read before publishing).
+ */
 async function startAndConnect(publisher: MeshCoreObserverPublisher): Promise<FakeMqttClient> {
   const startPromise = publisher.start();
   await flushMicrotasks(3);
   const client = lastFakeClient();
   client.emit('connect');
   await startPromise;
+  await flushMicrotasks();
   return client;
 }
 
@@ -419,6 +427,99 @@ describe('MeshCoreObserverPublisher', () => {
       const { publisher } = makePublisher();
       await expect(publisher.stop()).resolves.toBeUndefined();
       expect(publisher.isRunning()).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  describe('device stats in the status payload (#4556)', () => {
+    const lastStatusBody = (client: FakeMqttClient) => {
+      const statusCalls = client.publish.mock.calls.filter((c) => c[0].endsWith('/status'));
+      return JSON.parse(statusCalls.at(-1)![1].toString());
+    };
+
+    it('carries battery/uptime/noise-floor from the stats seam on the online status', async () => {
+      const stats = vi.fn().mockResolvedValue({ batteryMv: 4021, uptimeSecs: 3600, noiseFloor: -95 });
+      const { publisher } = makePublisher(undefined, SOURCE_ID, { stats });
+      const client = await startAndConnect(publisher);
+
+      const body = lastStatusBody(client);
+      expect(body.status).toBe('online');
+      expect(body.stats).toEqual({ battery_mv: 4021, uptime_secs: 3600, noise_floor: -95 });
+      expect(stats).toHaveBeenCalledTimes(1);
+    });
+
+    it('publishes no `stats` key when the source supplies no stats seam', async () => {
+      const { publisher } = makePublisher();
+      const client = await startAndConnect(publisher);
+      expect(lastStatusBody(client)).not.toHaveProperty('stats');
+    });
+
+    it('still publishes the status when the stats read rejects', async () => {
+      const stats = vi.fn().mockRejectedValue(new Error('device did not answer'));
+      const { publisher } = makePublisher(undefined, SOURCE_ID, { stats });
+      const client = await startAndConnect(publisher);
+
+      const body = lastStatusBody(client);
+      expect(body.status).toBe('online');
+      expect(body).not.toHaveProperty('stats');
+    });
+
+    it('never reads stats on the packet path — only on status publishes', async () => {
+      const stats = vi.fn().mockResolvedValue({ batteryMv: 4021 });
+      const { publisher } = makePublisher(undefined, SOURCE_ID, { stats });
+      await startAndConnect(publisher);
+      stats.mockClear();
+
+      for (let i = 0; i < 20; i++) {
+        publisher.handleOtaPacket({ snr: 5, rssi: -70, raw_hex: '0900aa' });
+      }
+      await flushMicrotasks();
+
+      expect(stats).not.toHaveBeenCalled();
+    });
+
+    it('republishes the retained online status with fresh stats every STATUS_REFRESH_MS', async () => {
+      const stats = vi
+        .fn()
+        .mockResolvedValueOnce({ batteryMv: 4021, uptimeSecs: 60 })
+        .mockResolvedValueOnce({ batteryMv: 3990, uptimeSecs: 360 });
+      const { publisher } = makePublisher(undefined, SOURCE_ID, { stats });
+      const client = await startAndConnect(publisher);
+      expect(lastStatusBody(client).stats).toEqual({ battery_mv: 4021, uptime_secs: 60 });
+
+      await vi.advanceTimersByTimeAsync(STATUS_REFRESH_MS);
+      await flushMicrotasks();
+
+      expect(stats).toHaveBeenCalledTimes(2);
+      const body = lastStatusBody(client);
+      expect(body.status).toBe('online');
+      expect(body.stats).toEqual({ battery_mv: 3990, uptime_secs: 360 });
+      const statusCalls = client.publish.mock.calls.filter((c) => c[0].endsWith('/status'));
+      expect(statusCalls.at(-1)![2].retain).toBe(true);
+    });
+
+    it('skips the refresh while the socket is down (never queues in mqtt.js)', async () => {
+      const stats = vi.fn().mockResolvedValue({ batteryMv: 4021 });
+      const { publisher } = makePublisher(undefined, SOURCE_ID, { stats });
+      const client = await startAndConnect(publisher);
+      client.publish.mockClear();
+      stats.mockClear();
+
+      client.emit('close');
+      await vi.advanceTimersByTimeAsync(STATUS_REFRESH_MS);
+      await flushMicrotasks();
+
+      expect(stats).not.toHaveBeenCalled();
+      expect(client.publish).not.toHaveBeenCalled();
+    });
+
+    it('stop() clears the refresh timer along with the renewal timer', async () => {
+      const stats = vi.fn().mockResolvedValue({ batteryMv: 4021 });
+      const { publisher } = makePublisher(undefined, SOURCE_ID, { stats });
+      await startAndConnect(publisher);
+
+      await publisher.stop();
+
       expect(vi.getTimerCount()).toBe(0);
     });
   });

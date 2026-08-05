@@ -1414,6 +1414,16 @@ class MeshCoreManager extends EventEmitter implements ISourceManager {
             : undefined,
           radio: formatRadioInfo(this.localNode),
         }),
+        // Battery / uptime / noise floor for the analyzer's observer detail
+        // (#4556). These read the ATTACHED companion over the local link —
+        // no RF — so they're safe on the publisher's refresh interval.
+        // Both getters already swallow their own failures and return null, so
+        // a device that doesn't answer degrades to a status with no `stats`.
+        stats: async () => {
+          const [core, radio] = await Promise.all([this.getStatsCore(), this.getStatsRadio()]);
+          if (!core && !radio) return null;
+          return { ...core, ...radio };
+        },
       });
       this.on('ota_packet', this.onObserverOtaPacket);
       await this.observerPublisher.start();

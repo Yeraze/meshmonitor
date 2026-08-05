@@ -44,6 +44,7 @@ import {
   buildObserverStatusPayload,
   observerTopics,
   type ObserverPacketIdentity,
+  type ObserverStatsInput,
 } from './meshcoreObserverPacket.js';
 import {
   mintObserverTokenForSourceDetailed,
@@ -65,6 +66,14 @@ export const RENEWAL_CHECK_MS = 3_600_000;
 export const RENEWAL_THRESHOLD_S = 300;
 /** Consecutive CONNACK auth rejections before the publisher hard-stops. */
 export const MAX_AUTH_FAILURES = 5;
+/**
+ * How often the retained `online` status is republished with fresh device
+ * stats (#4556). Matches `meshcoretomqtt`'s 5-minute stats loop, so battery /
+ * uptime / noise floor on the analyzer track the device instead of freezing
+ * at their connect-time values. Each tick costs two local bridge commands
+ * (`get_stats core` + `radio`) — no RF, so it is safe on a fixed interval.
+ */
+export const STATUS_REFRESH_MS = 300_000;
 
 /** Strips anything shaped like a minted observer token (or a JWT-style secret) from a message. */
 const TOKEN_SHAPE_PATTERN = /[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[0-9A-Fa-f]{128}/g;
@@ -108,6 +117,14 @@ export interface MeshCoreObserverPublisherOptions {
     firmwareVersion?: string;
     radio?: string;
   };
+  /**
+   * Live battery / uptime / noise-floor stats read off the attached companion
+   * (#4556). Async because it costs a bridge round-trip, so it is only ever
+   * called on the status path — never per-packet. Optional: a source that
+   * can't supply stats simply publishes a status with no `stats` key.
+   * Must resolve, not reject; a rejection is caught and treated as "no stats".
+   */
+  stats?: () => Promise<ObserverStatsInput | null>;
   /** Injection seam for tests. Defaults to `mintObserverTokenForSourceDetailed`. */
   mintToken?: (sourceId: string) => Promise<ObserverTokenResult>;
   /** Injection seam for tests. Defaults to `(opts) => new MqttBrokerClient(opts)`. */
@@ -143,6 +160,8 @@ export class MeshCoreObserverPublisher {
   private authStopping = false;
   private renewing = false;
   private renewalTimer: ReturnType<typeof setInterval> | null = null;
+  private statusRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  private refreshingStatus = false;
 
   constructor(options: MeshCoreObserverPublisherOptions) {
     this.options = options;
@@ -176,12 +195,14 @@ export class MeshCoreObserverPublisher {
 
     await this.connectWithToken(result.token);
     this.armRenewalTimer();
+    this.armStatusRefreshTimer();
     this.running = true;
   }
 
   /** Publish an explicit offline status, then disconnect. Idempotent. */
   async stop(): Promise<void> {
     this.clearRenewalTimer();
+    this.clearStatusRefreshTimer();
     const client = this.client;
     if (!client) {
       this.running = false;
@@ -316,7 +337,7 @@ export class MeshCoreObserverPublisher {
     client.on('connect', () => {
       this.lastError = null;
       this.authFailures = 0;
-      this.publishOnlineStatus();
+      void this.publishOnlineStatus();
     });
     client.on('error', (err: Error) => {
       // `MqttBrokerClient` emits BOTH `permission-denied` and a raw `error`
@@ -338,7 +359,38 @@ export class MeshCoreObserverPublisher {
     });
   }
 
-  private publishOnlineStatus(): void {
+  /**
+   * Read the device stats for a status publish (#4556). Never throws and never
+   * blocks the status itself — a stats read that fails or times out degrades to
+   * a status message with no `stats` key, which is exactly what a firmware
+   * that doesn't report them would produce.
+   */
+  private async readStats(): Promise<ObserverStatsInput | null> {
+    if (!this.options.stats) return null;
+    try {
+      return await this.options.stats();
+    } catch (err) {
+      logger.debug(
+        `[MeshCoreObserver:${this.options.sourceId}] stats read failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Publish the retained `online` status. Async because the device stats it
+   * carries cost a bridge round-trip; callers on the event path (`connect`)
+   * fire-and-forget it.
+   *
+   * The client/topics are re-read AFTER the await — a token renewal or a stop
+   * can swap or null them while the stats read is in flight, and publishing to
+   * the stale client would either throw or write under the wrong credentials.
+   */
+  private async publishOnlineStatus(): Promise<void> {
+    if (!this.client || !this.topics) return;
+
+    const stats = await this.readStats();
+
     const client = this.client;
     const identity = this.getIdentity();
     if (!client || !identity || !this.topics) return;
@@ -349,8 +401,9 @@ export class MeshCoreObserverPublisher {
       firmwareVersion: dev.firmwareVersion,
       radio: dev.radio,
       clientVersion: `meshmonitor/${appVersion}`,
+      stats,
     });
-    void client
+    await client
       .publish(this.topics.status, Buffer.from(JSON.stringify(payload)), true)
       .catch((err: unknown) => {
         this.lastError = redactToken(err instanceof Error ? err.message : String(err));
@@ -400,6 +453,49 @@ export class MeshCoreObserverPublisher {
   }
 
   /**
+   * Republish the retained `online` status every `STATUS_REFRESH_MS` so the
+   * analyzer's battery / uptime / noise floor track the device instead of
+   * freezing at their connect-time values (#4556).
+   *
+   * Deliberately a separate timer from the renewal one: renewal is hourly and
+   * tears the socket down, while this is a cheap publish on the existing
+   * socket. Folding the two would either make stats hourly or make renewal
+   * five-minutely.
+   */
+  private armStatusRefreshTimer(): void {
+    this.clearStatusRefreshTimer();
+    this.statusRefreshTimer = setInterval(() => {
+      void this.refreshStatus();
+    }, STATUS_REFRESH_MS);
+    this.statusRefreshTimer.unref();
+  }
+
+  private clearStatusRefreshTimer(): void {
+    if (this.statusRefreshTimer) {
+      clearInterval(this.statusRefreshTimer);
+      this.statusRefreshTimer = null;
+    }
+  }
+
+  /**
+   * One refresh tick. Skips when the socket is down (a status publish to a
+   * disconnected client would sit in mqtt.js's offline queue — the same
+   * unbounded-queue hazard `handleOtaPacket` guards against) and latches so a
+   * slow stats read can't stack ticks on a busy/unresponsive device.
+   */
+  private async refreshStatus(): Promise<void> {
+    if (this.refreshingStatus) return;
+    if (!this.client?.isConnected()) return;
+
+    this.refreshingStatus = true;
+    try {
+      await this.publishOnlineStatus();
+    } finally {
+      this.refreshingStatus = false;
+    }
+  }
+
+  /**
    * Renew when `nowSeconds >= tokenExpiresAt - (RENEWAL_CHECK_MS/1000 +
    * RENEWAL_THRESHOLD_S)`. The reference tests only the threshold on a
    * coarser interval, which leaves an expiry hole — see the module header
@@ -432,6 +528,7 @@ export class MeshCoreObserverPublisher {
     if (this.authStopping) return;
     this.authStopping = true;
     this.clearRenewalTimer();
+    this.clearStatusRefreshTimer();
     const client = this.client;
     this.client = null;
     this.running = false;

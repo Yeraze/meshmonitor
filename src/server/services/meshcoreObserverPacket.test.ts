@@ -31,6 +31,7 @@ import {
   calculateMeshCorePacketHash,
   buildObserverPacketPayload,
   buildObserverStatusPayload,
+  buildObserverDeviceStats,
   observerTopics,
   type ObserverPacketIdentity,
 } from './meshcoreObserverPacket.js';
@@ -601,6 +602,87 @@ describe('buildObserverStatusPayload', () => {
     const lower: ObserverPacketIdentity = { origin: 'x', originId: IDENTITY.originId.toLowerCase() };
     const p = buildObserverStatusPayload('offline', lower, undefined, now);
     expect(p.origin_id).toBe(IDENTITY.originId);
+  });
+
+  // ── device stats (#4556) ────────────────────────────────────────────────
+
+  it('online carries device stats under the snake_case `stats` key', () => {
+    const p = buildObserverStatusPayload(
+      'online',
+      IDENTITY,
+      { stats: { batteryMv: 4021, uptimeSecs: 86_400, noiseFloor: -92 } },
+      now,
+    );
+    expect(p.stats).toEqual({ battery_mv: 4021, uptime_secs: 86_400, noise_floor: -92 });
+  });
+
+  it('online omits `stats` entirely when no stats are supplied', () => {
+    expect(buildObserverStatusPayload('online', IDENTITY, { model: 'M1' }, now)).not.toHaveProperty(
+      'stats',
+    );
+    expect(buildObserverStatusPayload('online', IDENTITY, { stats: null }, now)).not.toHaveProperty(
+      'stats',
+    );
+    expect(buildObserverStatusPayload('online', IDENTITY, { stats: {} }, now)).not.toHaveProperty(
+      'stats',
+    );
+  });
+
+  it('offline never carries stats even when supplied', () => {
+    const p = buildObserverStatusPayload('offline', IDENTITY, { stats: { batteryMv: 4021 } }, now);
+    expect(p).not.toHaveProperty('stats');
+    expect(Object.keys(p).sort()).toEqual(['origin', 'origin_id', 'status', 'timestamp'].sort());
+  });
+});
+
+describe('buildObserverDeviceStats', () => {
+  it('maps every camelCase field onto its analyzer-contract snake_case key', () => {
+    expect(
+      buildObserverDeviceStats({
+        batteryMv: 3980,
+        uptimeSecs: 1234,
+        errors: 2,
+        queueLen: 0,
+        noiseFloor: -101,
+        txAirSecs: 55,
+        rxAirSecs: 900,
+      }),
+    ).toEqual({
+      battery_mv: 3980,
+      uptime_secs: 1234,
+      errors: 2,
+      queue_len: 0,
+      noise_floor: -101,
+      tx_air_secs: 55,
+      rx_air_secs: 900,
+    });
+  });
+
+  it('omits fields the firmware did not report rather than publishing a placeholder', () => {
+    const stats = buildObserverDeviceStats({ batteryMv: 4100, noiseFloor: undefined, errors: null });
+    expect(stats).toEqual({ battery_mv: 4100 });
+    expect(stats).not.toHaveProperty('noise_floor');
+    expect(stats).not.toHaveProperty('errors');
+  });
+
+  it('keeps genuine zero and negative readings', () => {
+    // A freshly-booted node reports uptime_secs 0, an idle one queue_len 0,
+    // and noise_floor is routinely negative — a truthiness filter eats all three.
+    expect(buildObserverDeviceStats({ uptimeSecs: 0, queueLen: 0, noiseFloor: -110 })).toEqual({
+      uptime_secs: 0,
+      queue_len: 0,
+      noise_floor: -110,
+    });
+  });
+
+  it('drops non-finite readings', () => {
+    expect(buildObserverDeviceStats({ batteryMv: NaN, uptimeSecs: Infinity })).toBeUndefined();
+  });
+
+  it('returns undefined for null/undefined/empty input', () => {
+    expect(buildObserverDeviceStats(null)).toBeUndefined();
+    expect(buildObserverDeviceStats(undefined)).toBeUndefined();
+    expect(buildObserverDeviceStats({})).toBeUndefined();
   });
 });
 
