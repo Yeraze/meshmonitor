@@ -58,7 +58,7 @@
   min-height: 100px;
   resize: vertical;
   padding: 0.5rem;
-  border: 1px solid var(--color-surface-active);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   background: var(--color-bg);
   color: var(--color-text);
@@ -74,7 +74,7 @@
 
 .fallbackClose {
   padding: 6px 14px;
-  border: 1px solid var(--color-surface-active);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);

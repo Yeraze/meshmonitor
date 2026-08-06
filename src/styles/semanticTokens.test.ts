@@ -67,11 +67,25 @@ describe('semantic color tokens (#4567)', () => {
     const themes = paletteVarsInThemeBlocks();
     expect(themes.length).toBeGreaterThan(5);
 
+    // `--ctp-accent-text` is deliberately theme-independent: it is the text
+    // color painted ON a bright accent button, fixed at black so the contrast
+    // holds whatever the accent becomes. It lives on the base :root and no
+    // theme block overrides it, so the per-theme check below cannot apply to
+    // it. Rather than skip it silently — which would let a half-finished
+    // per-theme override slip through with the test still green — assert the
+    // property that actually has to hold: it is defined exactly once, on the
+    // base :root.
+    const baseRoot = appCss.match(/:root\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+    expect(baseRoot).toMatch(/--ctp-accent-text\s*:/);
+    const themeBlocksDefiningIt = paletteVarsInThemeBlocks().filter((t) =>
+      t.vars.has('--ctp-accent-text'),
+    );
+    expect(themeBlocksDefiningIt.map((t) => t.theme)).toEqual([]);
+
     const missing: string[] = [];
     for (const [token, palette] of defs) {
+      if (palette === '--ctp-accent-text') continue; // asserted above instead
       for (const { theme, vars } of themes) {
-        // --ctp-accent-text is defined once on the base :root, not per theme.
-        if (palette === '--ctp-accent-text') continue;
         if (!vars.has(palette)) missing.push(`${token} -> ${palette} (missing in ${theme})`);
       }
     }

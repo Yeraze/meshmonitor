@@ -29,9 +29,14 @@ function toNodeNum(raw: unknown): number | null {
   return null;
 }
 
-/** Recover a nodeNum from the `!aabbccdd` hex form when the numeric field is unusable. */
+/**
+ * Recover a nodeNum from the `!aabbccdd` hex form when the numeric field is
+ * unusable. Bounded to 8 hex digits because nodeNum is a 32-bit unsigned
+ * value — a longer string is not a nodeId, so it falls through to the
+ * string-id branch rather than being parsed into a nonsense number.
+ */
 function nodeNumFromNodeId(nodeId: unknown): number | null {
-  if (typeof nodeId !== 'string' || !/^![0-9a-fA-F]+$/.test(nodeId)) return null;
+  if (typeof nodeId !== 'string' || !/^![0-9a-fA-F]{1,8}$/.test(nodeId)) return null;
   const n = parseInt(nodeId.slice(1), 16);
   return Number.isFinite(n) ? n : null;
 }
