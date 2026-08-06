@@ -1,7 +1,11 @@
+/* Some colors below deliberately stay on raw `--ctp-*` palette names (#4579):
+ * the `--ctp-*-rgb` variants are a separate mechanism (numeric triplets fed to
+ * rgba()), and teal/pink/overlay0/overlay2 have no semantic role yet. Roles get
+ * added when a real one appears, not to reach 100%. */
 .custom-tileset-manager {
   margin-top: 1rem;
   padding: 1rem;
-  background-color: var(--ctp-surface0);
+  background-color: var(--color-surface);
   border-radius: var(--radius-lg);
   border: 1px solid var(--ctp-overlay0);
 }
@@ -12,19 +16,19 @@
 
 .manager-header h3 {
   margin: 0 0 0.25rem 0;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1.1rem;
 }
 
 .manager-description {
   font-size: 0.9rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .no-custom-tilesets {
   text-align: center;
   padding: 2rem 1rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .no-custom-tilesets p {
@@ -33,7 +37,7 @@
 
 .no-custom-tilesets .hint {
   font-size: 0.85rem;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
 }
 
 .tileset-list {
@@ -48,14 +52,14 @@
   justify-content: space-between;
   align-items: flex-start;
   padding: 1rem;
-  background-color: var(--ctp-crust);
+  background-color: var(--color-bg-sunken);
   border: 1px solid var(--ctp-overlay0);
   border-radius: var(--radius-md);
   transition: border-color 0.2s;
 }
 
 .tileset-item:hover {
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 
 .tileset-info {
@@ -72,7 +76,7 @@
 
 .tileset-name {
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1rem;
 }
 
@@ -88,8 +92,8 @@
 
 .tileset-badge.vector {
   background-color: rgba(var(--ctp-mauve-rgb, 203, 166, 247), 0.2);
-  color: var(--ctp-mauve);
-  border: 1px solid var(--ctp-mauve);
+  color: var(--color-accent-alt);
+  border: 1px solid var(--color-accent-alt);
 }
 
 .tileset-badge.raster {
@@ -101,20 +105,20 @@
 .tileset-url {
   font-family: var(--font-mono);
   font-size: 0.85rem;
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   word-break: break-all;
   margin-bottom: 0.25rem;
 }
 
 .tileset-description {
   font-size: 0.9rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   margin-bottom: 0.25rem;
 }
 
 .tileset-meta {
   font-size: 0.8rem;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -136,8 +140,8 @@
   padding: 0.4rem 0.8rem;
   border: 1px solid var(--ctp-overlay0);
   border-radius: var(--radius-sm);
-  background-color: var(--ctp-surface0);
-  color: var(--ctp-text);
+  background-color: var(--color-surface);
+  color: var(--color-text);
   cursor: pointer;
   font-size: 0.85rem;
   transition: all 0.2s;
@@ -148,15 +152,15 @@
 }
 
 .btn-edit:hover:not(:disabled) {
-  background-color: var(--ctp-blue);
-  color: var(--ctp-accent-text);
-  border-color: var(--ctp-blue);
+  background-color: var(--color-accent);
+  color: var(--color-accent-text);
+  border-color: var(--color-accent);
 }
 
 .btn-delete:hover:not(:disabled) {
-  background-color: var(--ctp-red);
-  color: var(--ctp-accent-text);
-  border-color: var(--ctp-red);
+  background-color: var(--color-error);
+  color: var(--color-accent-text);
+  border-color: var(--color-error);
 }
 
 .tileset-actions button:disabled {
@@ -165,16 +169,16 @@
 }
 
 .tileset-form {
-  background-color: var(--ctp-crust);
+  background-color: var(--color-bg-sunken);
   padding: 1.5rem;
   border-radius: var(--radius-md);
-  border: 1px solid var(--ctp-blue);
+  border: 1px solid var(--color-accent);
   margin-bottom: 1rem;
 }
 
 .form-header h4 {
   margin: 0 0 1rem 0;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1rem;
 }
 
@@ -185,22 +189,22 @@
 .form-field label {
   display: block;
   margin-bottom: 0.4rem;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-weight: 500;
   font-size: 0.9rem;
 }
 
 .form-field .required {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 .form-field input {
   width: 100%;
   padding: 0.6rem;
-  background-color: var(--ctp-surface0);
+  background-color: var(--color-surface);
   border: 1px solid var(--ctp-overlay0);
   border-radius: var(--radius-sm);
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.9rem;
   font-family: inherit;
   transition: border-color 0.2s;
@@ -208,11 +212,11 @@
 
 .form-field input:focus {
   outline: none;
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 
 .form-field input.error {
-  border-color: var(--ctp-red);
+  border-color: var(--color-error);
 }
 
 .form-field input:disabled {
@@ -224,7 +228,7 @@
   display: block;
   margin-top: 0.3rem;
   font-size: 0.8rem;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
 }
 
 .form-field small.example {
@@ -241,14 +245,14 @@
 
 .validation-message.error {
   background-color: rgba(var(--ctp-red-rgb, 243, 139, 168), 0.15);
-  color: var(--ctp-red);
-  border-left: 3px solid var(--ctp-red);
+  color: var(--color-error);
+  border-left: 3px solid var(--color-error);
 }
 
 .validation-message.warning {
   background-color: rgba(var(--ctp-yellow-rgb, 249, 226, 175), 0.15);
-  color: var(--ctp-yellow);
-  border-left: 3px solid var(--ctp-yellow);
+  color: var(--color-warning);
+  border-left: 3px solid var(--color-warning);
 }
 
 .form-actions {
@@ -270,12 +274,12 @@
 }
 
 .btn-save {
-  background-color: var(--ctp-blue);
-  color: var(--ctp-accent-text);
+  background-color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .btn-save:hover:not(:disabled) {
-  background-color: var(--ctp-sapphire);
+  background-color: var(--color-accent-hover);
 }
 
 .btn-save:disabled {
@@ -284,8 +288,8 @@
 }
 
 .btn-cancel {
-  background-color: var(--ctp-surface0);
-  color: var(--ctp-text);
+  background-color: var(--color-surface);
+  color: var(--color-text);
   border: 1px solid var(--ctp-overlay0);
 }
 
@@ -301,10 +305,10 @@
 .btn-add-tileset {
   width: 100%;
   padding: 0.75rem;
-  background-color: var(--ctp-surface0);
+  background-color: var(--color-surface);
   border: 2px dashed var(--ctp-overlay0);
   border-radius: var(--radius-md);
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -312,7 +316,7 @@
 }
 
 .btn-add-tileset:hover:not(:disabled) {
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
   background-color: rgba(var(--ctp-blue-rgb, 137, 180, 250), 0.1);
 }
 
@@ -334,10 +338,10 @@
 
 .btn-test {
   padding: 0.6rem 1rem;
-  background-color: var(--ctp-surface1);
+  background-color: var(--color-surface-hover);
   border: 1px solid var(--ctp-overlay0);
   border-radius: var(--radius-sm);
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -347,9 +351,9 @@
 }
 
 .btn-test:hover:not(:disabled) {
-  background-color: var(--ctp-blue);
-  color: var(--ctp-accent-text);
-  border-color: var(--ctp-blue);
+  background-color: var(--color-accent);
+  color: var(--color-accent-text);
+  border-color: var(--color-accent);
 }
 
 .btn-test:disabled {
@@ -367,17 +371,17 @@
 
 .test-result-success {
   background-color: rgba(var(--ctp-green-rgb, 166, 227, 161), 0.15);
-  border: 1px solid var(--ctp-green);
+  border: 1px solid var(--color-success);
 }
 
 .test-result-warning {
   background-color: rgba(var(--ctp-yellow-rgb, 249, 226, 175), 0.15);
-  border: 1px solid var(--ctp-yellow);
+  border: 1px solid var(--color-warning);
 }
 
 .test-result-error {
   background-color: rgba(var(--ctp-red-rgb, 243, 139, 168), 0.15);
-  border: 1px solid var(--ctp-red);
+  border: 1px solid var(--color-error);
 }
 
 .test-result-header {
@@ -392,11 +396,11 @@
 }
 
 .test-result-message {
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .test-result-time {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.85rem;
   font-weight: normal;
 }
@@ -405,7 +409,7 @@
   margin-top: 0.5rem;
   padding-top: 0.5rem;
   border-top: 1px solid var(--ctp-overlay0);
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.85rem;
 }
 
@@ -415,12 +419,12 @@
 }
 
 .test-result-layers .layers-matched {
-  color: var(--ctp-green);
+  color: var(--color-success);
   margin-bottom: 0.25rem;
 }
 
 .test-result-layers .layers-missing {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 .test-result .test-result-warning {
@@ -428,7 +432,7 @@
   padding: 0.4rem 0.6rem;
   background-color: rgba(var(--ctp-yellow-rgb, 249, 226, 175), 0.1);
   border-radius: var(--radius-sm);
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
   font-size: 0.85rem;
   border: none;
 }
@@ -438,7 +442,7 @@
   padding: 0.4rem 0.6rem;
   background-color: rgba(var(--ctp-red-rgb, 243, 139, 168), 0.1);
   border-radius: var(--radius-sm);
-  color: var(--ctp-red);
+  color: var(--color-error);
   font-size: 0.85rem;
   border: none;
 }
@@ -447,7 +451,7 @@
 .autodetect-section {
   margin-top: 1rem;
   padding: 1rem;
-  background-color: var(--ctp-surface0);
+  background-color: var(--color-surface);
   border-radius: var(--radius-md);
   border: 1px solid var(--ctp-overlay0);
 }
@@ -458,7 +462,7 @@
   gap: 0.5rem;
   margin-bottom: 0.75rem;
   font-weight: 500;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .autodetect-icon {
@@ -474,24 +478,24 @@
 .autodetect-input-row input {
   flex: 1;
   padding: 0.6rem;
-  background-color: var(--ctp-crust);
+  background-color: var(--color-bg-sunken);
   border: 1px solid var(--ctp-overlay0);
   border-radius: var(--radius-sm);
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.9rem;
 }
 
 .autodetect-input-row input:focus {
   outline: none;
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 
 .btn-autodetect {
   padding: 0.6rem 1rem;
-  background-color: var(--ctp-mauve);
+  background-color: var(--color-accent-alt);
   border: none;
   border-radius: var(--radius-sm);
-  color: var(--ctp-accent-text);
+  color: var(--color-accent-text);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -513,7 +517,7 @@
   display: block;
   margin-top: 0.4rem;
   font-size: 0.8rem;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
 }
 
 /* Autodetect progress */
@@ -530,14 +534,14 @@
 
 .progress-fill {
   height: 100%;
-  background-color: var(--ctp-mauve);
+  background-color: var(--color-accent-alt);
   transition: width 0.2s ease-out;
 }
 
 .progress-text {
   margin-top: 0.4rem;
   font-size: 0.8rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   text-align: center;
 }
 
@@ -550,17 +554,17 @@
 
 .autodetect-result.success {
   background-color: rgba(var(--ctp-green-rgb, 166, 227, 161), 0.15);
-  border: 1px solid var(--ctp-green);
+  border: 1px solid var(--color-success);
 }
 
 .autodetect-result.error {
   background-color: rgba(var(--ctp-red-rgb, 243, 139, 168), 0.15);
-  border: 1px solid var(--ctp-red);
+  border: 1px solid var(--color-error);
 }
 
 .autodetect-result-header {
   font-weight: 500;
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin-bottom: 0.75rem;
 }
 
@@ -576,7 +580,7 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
-  background-color: var(--ctp-crust);
+  background-color: var(--color-bg-sunken);
   border-radius: var(--radius-sm);
   border: 1px solid var(--ctp-overlay0);
 }
@@ -592,16 +596,16 @@
 .autodetect-url-text {
   font-family: var(--font-mono);
   font-size: 0.85rem;
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   word-break: break-all;
 }
 
 .btn-use-url {
   padding: 0.4rem 0.8rem;
-  background-color: var(--ctp-green);
+  background-color: var(--color-success);
   border: none;
   border-radius: var(--radius-sm);
-  color: var(--ctp-accent-text);
+  color: var(--color-accent-text);
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
@@ -619,7 +623,7 @@
   padding: 0.4rem 0.6rem;
   background-color: rgba(var(--ctp-red-rgb, 243, 139, 168), 0.1);
   border-radius: var(--radius-sm);
-  color: var(--ctp-red);
+  color: var(--color-error);
   font-size: 0.85rem;
 }
 
@@ -628,7 +632,7 @@
   margin-bottom: 1rem;
   padding: 0.75rem 1rem;
   background-color: rgba(var(--ctp-yellow-rgb, 249, 226, 175), 0.15);
-  border: 1px solid var(--ctp-yellow);
+  border: 1px solid var(--color-warning);
   border-radius: var(--radius-md);
 }
 
@@ -646,17 +650,17 @@
 
 .reload-notice-text {
   flex: 1;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.9rem;
   min-width: 200px;
 }
 
 .btn-reload {
   padding: 0.4rem 0.8rem;
-  background-color: var(--ctp-yellow);
+  background-color: var(--color-warning);
   border: none;
   border-radius: var(--radius-sm);
-  color: var(--ctp-accent-text);
+  color: var(--color-accent-text);
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
@@ -665,14 +669,14 @@
 }
 
 .btn-reload:hover {
-  background-color: var(--ctp-peach);
+  background-color: var(--color-caution);
 }
 
 .btn-dismiss {
   padding: 0.3rem 0.5rem;
   background: none;
   border: none;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 1rem;
   cursor: pointer;
   transition: color 0.2s;
@@ -680,5 +684,5 @@
 }
 
 .btn-dismiss:hover {
-  color: var(--ctp-text);
+  color: var(--color-text);
 }

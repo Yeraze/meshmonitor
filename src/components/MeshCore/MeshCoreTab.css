@@ -10,13 +10,13 @@
 }
 
 .meshcore-tab h2 {
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin-bottom: 1.5rem;
   font-size: 1.5rem;
 }
 
 .meshcore-tab h3 {
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   margin-bottom: 1rem;
   font-size: 1.1rem;
   display: flex;
@@ -26,8 +26,8 @@
 
 /* Error banner */
 .meshcore-error {
-  background: var(--ctp-red);
-  color: var(--ctp-accent-text);
+  background: var(--color-error);
+  color: var(--color-accent-text);
   padding: 0.75rem 1rem;
   border-radius: var(--radius-lg);
   margin-bottom: 1rem;
@@ -38,8 +38,8 @@
 
 .meshcore-error button {
   background: transparent;
-  border: 1px solid var(--ctp-base);
-  color: var(--ctp-accent-text);
+  border: 1px solid var(--color-bg);
+  color: var(--color-accent-text);
   padding: 0.25rem 0.5rem;
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -47,7 +47,7 @@
 
 /* Sections */
 .meshcore-section {
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   border-radius: var(--radius-xl);
   padding: 1.25rem;
   margin-bottom: 1.5rem;
@@ -67,15 +67,15 @@
 }
 
 .form-group label {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.875rem;
 }
 
 .form-group input,
 .form-group select {
-  background: var(--ctp-surface1);
-  border: 1px solid var(--ctp-surface2);
-  color: var(--ctp-text);
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-surface-active);
+  color: var(--color-text);
   padding: 0.5rem 0.75rem;
   border-radius: var(--radius-md);
   font-size: 0.9rem;
@@ -84,13 +84,13 @@
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
-  border-color: var(--ctp-mauve);
+  border-color: var(--color-accent-alt);
 }
 
 /* Buttons */
 .meshcore-tab button {
-  background: var(--ctp-mauve);
-  color: var(--ctp-accent-text);
+  background: var(--color-accent-alt);
+  color: var(--color-accent-text);
   border: none;
   padding: 0.5rem 1rem;
   border-radius: var(--radius-md);
@@ -104,17 +104,17 @@
 }
 
 .meshcore-tab button:disabled {
-  background: var(--ctp-surface2);
+  background: var(--color-surface-active);
   color: var(--ctp-overlay0);
   cursor: not-allowed;
 }
 
 .meshcore-tab button.disconnect {
-  background: var(--ctp-red);
+  background: var(--color-error);
 }
 
 .meshcore-tab button.disconnect:hover {
-  background: var(--ctp-maroon);
+  background: var(--color-danger);
 }
 
 .refresh-btn {
@@ -135,7 +135,7 @@
   align-items: center;
   gap: 0.5rem;
   font-weight: 500;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .status-dot {
@@ -146,15 +146,15 @@
 }
 
 .status-dot.connected {
-  background: var(--ctp-green);
-  box-shadow: 0 0 8px var(--ctp-green);
+  background: var(--color-success);
+  box-shadow: 0 0 8px var(--color-success);
 }
 
 .status-details {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.875rem;
 }
 
@@ -176,7 +176,7 @@
 
 .meshcore-node-item,
 .meshcore-contact-item {
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
   border-radius: var(--radius-lg);
   padding: 0.75rem 1rem;
   display: flex;
@@ -192,7 +192,7 @@
 
 .node-name,
 .contact-name {
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -200,8 +200,8 @@
 }
 
 .node-type {
-  background: var(--ctp-surface2);
-  color: var(--ctp-subtext0);
+  background: var(--color-surface-active);
+  color: var(--color-text-subtle);
   padding: 0.125rem 0.5rem;
   border-radius: var(--radius-sm);
   font-size: 0.75rem;
@@ -213,7 +213,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.8rem;
 }
 
@@ -233,7 +233,7 @@
 }
 
 .meshcore-message {
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
   border-radius: var(--radius-lg);
   padding: 0.75rem;
 }
@@ -245,7 +245,7 @@
 }
 
 .message-from {
-  color: var(--ctp-mauve);
+  color: var(--color-accent-alt);
   font-weight: 500;
   font-size: 0.8rem;
 }
@@ -256,7 +256,7 @@
 }
 
 .message-text {
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 /* Send Form */
@@ -266,9 +266,9 @@
 }
 
 .meshcore-send-form select {
-  background: var(--ctp-surface1);
-  border: 1px solid var(--ctp-surface2);
-  color: var(--ctp-text);
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-surface-active);
+  color: var(--color-text);
   padding: 0.5rem;
   border-radius: var(--radius-md);
   min-width: 150px;
@@ -276,16 +276,16 @@
 
 .meshcore-send-form input {
   flex: 1;
-  background: var(--ctp-surface1);
-  border: 1px solid var(--ctp-surface2);
-  color: var(--ctp-text);
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-surface-active);
+  color: var(--color-text);
   padding: 0.5rem 0.75rem;
   border-radius: var(--radius-md);
 }
 
 .meshcore-send-form input:focus {
   outline: none;
-  border-color: var(--ctp-mauve);
+  border-color: var(--color-accent-alt);
 }
 
 /* Admin Section */
@@ -297,13 +297,13 @@
 }
 
 .meshcore-admin-status {
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
   border-radius: var(--radius-lg);
   padding: 1rem;
 }
 
 .meshcore-admin-status h4 {
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin-bottom: 0.75rem;
   font-size: 0.9rem;
 }
@@ -312,7 +312,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 0.5rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.875rem;
 }
 
@@ -334,14 +334,14 @@
 .meshcore-node-list::-webkit-scrollbar-track,
 .meshcore-contact-list::-webkit-scrollbar-track,
 .meshcore-messages::-webkit-scrollbar-track {
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   border-radius: var(--radius-xs);
 }
 
 .meshcore-node-list::-webkit-scrollbar-thumb,
 .meshcore-contact-list::-webkit-scrollbar-thumb,
 .meshcore-messages::-webkit-scrollbar-thumb {
-  background: var(--ctp-surface2);
+  background: var(--color-surface-active);
   border-radius: var(--radius-xs);
 }
 

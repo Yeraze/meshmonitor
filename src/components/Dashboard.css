@@ -16,10 +16,10 @@
 
 .dashboard-add-widget-btn {
   padding: 10px 16px;
-  background-color: var(--ctp-blue);
+  background-color: var(--color-accent);
   border: none;
   border-radius: var(--radius-md);
-  color: var(--ctp-accent-text);
+  color: var(--color-accent-text);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -27,7 +27,7 @@
 }
 
 .dashboard-add-widget-btn:hover {
-  background-color: var(--ctp-sapphire);
+  background-color: var(--color-accent-hover);
 }
 
 .dashboard-add-widget-btn:active {
@@ -35,14 +35,14 @@
 }
 
 .dashboard-title {
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin: 0 0 5px 0;
   font-size: 1.5rem;
   font-weight: 600;
 }
 
 .dashboard-subtitle {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   margin: 0;
   font-size: 0.9rem;
 }
@@ -54,9 +54,9 @@
   align-items: flex-end;
   margin-bottom: 15px;
   padding: 15px;
-  background-color: var(--ctp-mantle);
+  background-color: var(--color-bg-raised);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--ctp-surface1);
+  border: 1px solid var(--color-surface-hover);
 }
 
 .dashboard-filters {
@@ -71,17 +71,17 @@
   flex: 1;
   min-width: 200px;
   padding: 8px 12px;
-  background-color: var(--ctp-crust);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-bg-sunken);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-md);
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.9rem;
   outline: none;
   transition: border-color 0.2s ease;
 }
 
 .dashboard-search:focus {
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 
 .dashboard-search::placeholder {
@@ -90,10 +90,10 @@
 
 .dashboard-filter-select {
   padding: 8px 12px;
-  background-color: var(--ctp-crust);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-bg-sunken);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-md);
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.9rem;
   outline: none;
   cursor: pointer;
@@ -102,11 +102,11 @@
 }
 
 .dashboard-filter-select:hover {
-  border-color: var(--ctp-surface2);
+  border-color: var(--color-surface-active);
 }
 
 .dashboard-filter-select:focus {
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 
 .dashboard-role-filter-dropdown {
@@ -119,10 +119,10 @@
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background-color: var(--ctp-crust);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-bg-sunken);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-md);
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.9rem;
   cursor: pointer;
   transition: border-color 0.2s ease;
@@ -130,12 +130,12 @@
 }
 
 .dashboard-role-filter-button:hover {
-  border-color: var(--ctp-surface2);
+  border-color: var(--color-surface-active);
 }
 
 .dashboard-dropdown-arrow {
   margin-left: 8px;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.7rem;
 }
 
@@ -145,8 +145,8 @@
   left: 0;
   right: 0;
   margin-top: 4px;
-  background-color: var(--ctp-crust);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-bg-sunken);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-md);
   padding: 8px;
   z-index: 1000;
@@ -160,7 +160,7 @@
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.85rem;
   padding: 6px 4px;
   transition: background-color 0.2s ease;
@@ -168,20 +168,20 @@
 }
 
 .dashboard-role-checkbox-label:hover {
-  background-color: var(--ctp-surface0);
+  background-color: var(--color-surface);
 }
 
 .dashboard-role-checkbox-label input[type='checkbox'] {
   cursor: pointer;
   width: 16px;
   height: 16px;
-  accent-color: var(--ctp-blue);
+  accent-color: var(--color-accent);
   flex-shrink: 0;
 }
 
 .dashboard-role-divider {
   height: 1px;
-  background-color: var(--ctp-surface1);
+  background-color: var(--color-surface-hover);
   margin: 4px 0;
 }
 
@@ -200,17 +200,17 @@
 }
 
 .dashboard-sort label {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.9rem;
   white-space: nowrap;
 }
 
 .dashboard-sort-select {
   padding: 8px 12px;
-  background-color: var(--ctp-crust);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-bg-sunken);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-md);
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.9rem;
   outline: none;
   cursor: pointer;
@@ -219,15 +219,15 @@
 }
 
 .dashboard-sort-select:hover {
-  border-color: var(--ctp-surface2);
+  border-color: var(--color-surface-active);
 }
 
 .dashboard-sort-select:focus {
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 
 .dashboard-results-info {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.85rem;
   margin-bottom: 15px;
   text-align: right;
@@ -236,25 +236,25 @@
 .dashboard-loading,
 .dashboard-error,
 .dashboard-empty {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   text-align: center;
   padding: 40px 20px;
-  background-color: var(--ctp-mantle);
+  background-color: var(--color-bg-raised);
   border-radius: var(--radius-lg);
   margin: 20px;
 }
 
 .dashboard-empty h2 {
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin-bottom: 10px;
 }
 
 .dashboard-empty p {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .dashboard-error {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 .dashboard-grid {
@@ -265,8 +265,8 @@
 }
 
 .dashboard-chart-container {
-  background-color: var(--ctp-crust);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-bg-sunken);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
   padding: 15px;
   min-width: 0;
@@ -280,7 +280,7 @@
 }
 
 .dashboard-drag-handle {
-  color: var(--ctp-surface2);
+  color: var(--color-surface-active);
   font-size: 1.2rem;
   cursor: grab;
   padding: 0 4px;
@@ -292,16 +292,16 @@
 }
 
 .dashboard-drag-handle:hover {
-  color: var(--ctp-blue);
+  color: var(--color-accent);
 }
 
 .dashboard-drag-handle:active {
   cursor: grabbing;
-  color: var(--ctp-sky);
+  color: var(--color-info);
 }
 
 .dashboard-chart-title {
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin: 0;
   font-size: 0.95rem;
   font-weight: 500;
@@ -322,7 +322,7 @@
 .dashboard-remove-btn {
   background: none;
   border: none;
-  color: var(--ctp-surface2);
+  color: var(--color-surface-active);
   font-size: 1.2rem;
   cursor: pointer;
   padding: 0;
@@ -337,14 +337,14 @@
 }
 
 .dashboard-remove-btn:hover {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 /* Solar toggle button */
 .solar-toggle-btn {
   background: none;
   border: none;
-  color: var(--ctp-surface2);
+  color: var(--color-surface-active);
   font-size: 1rem;
   cursor: pointer;
   padding: 0;
@@ -358,15 +358,15 @@
 }
 
 .solar-toggle-btn:hover {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 .solar-toggle-btn.active {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 .dashboard-no-data {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   text-align: center;
   padding: 40px 20px;
   font-style: italic;
@@ -472,8 +472,8 @@
 }
 
 .add-widget-modal {
-  background-color: var(--ctp-crust);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-bg-sunken);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-xl);
   width: 90%;
   max-width: 500px;
@@ -487,19 +487,19 @@
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--ctp-surface1);
+  border-bottom: 1px solid var(--color-surface-hover);
 }
 
 .add-widget-modal-header h2 {
   margin: 0;
   font-size: 1.2rem;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .add-widget-modal-close {
   background: none;
   border: none;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 1.5rem;
   cursor: pointer;
   padding: 0;
@@ -508,7 +508,7 @@
 }
 
 .add-widget-modal-close:hover {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 .add-widget-modal-content {
@@ -523,16 +523,16 @@
   align-items: flex-start;
   gap: 16px;
   padding: 16px;
-  background-color: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .add-widget-option:hover {
-  background-color: var(--ctp-surface1);
-  border-color: var(--ctp-blue);
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-accent);
 }
 
 .add-widget-option-icon {
@@ -543,13 +543,13 @@
 .add-widget-option-info h3 {
   margin: 0 0 4px 0;
   font-size: 1rem;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .add-widget-option-info p {
   margin: 0;
   font-size: 0.85rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   line-height: 1.4;
 }
 
@@ -559,7 +559,7 @@
 
 .add-widget-help-intro {
   margin: 0;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.95rem;
   line-height: 1.5;
 }
@@ -567,7 +567,7 @@
 .add-widget-help-steps {
   margin: 0;
   padding-left: 1.25rem;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.9rem;
   line-height: 1.6;
   display: flex;
@@ -577,9 +577,9 @@
 
 .add-widget-help-back {
   align-self: flex-start;
-  background-color: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
-  color: var(--ctp-text);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
+  color: var(--color-text);
   padding: 8px 14px;
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -588,8 +588,8 @@
 }
 
 .add-widget-help-back:hover {
-  background-color: var(--ctp-surface1);
-  border-color: var(--ctp-blue);
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-accent);
 }
 
 /* Node Status Widget */
@@ -614,10 +614,10 @@
 .node-status-search {
   width: 100%;
   padding: 8px 12px;
-  background-color: var(--ctp-mantle);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-bg-raised);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-md);
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.85rem;
   outline: none;
   transition: border-color 0.2s ease;
@@ -625,7 +625,7 @@
 }
 
 .node-status-search:focus {
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 
 .node-status-search::placeholder {
@@ -638,8 +638,8 @@
   left: 0;
   right: 0;
   margin-top: 4px;
-  background-color: var(--ctp-crust);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-bg-sunken);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-md);
   max-height: 200px;
   overflow-y: auto;
@@ -653,17 +653,17 @@
   align-items: center;
   padding: 8px 12px;
   cursor: pointer;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.85rem;
   transition: background-color 0.2s ease;
 }
 
 .node-status-search-item:hover {
-  background-color: var(--ctp-surface0);
+  background-color: var(--color-surface);
 }
 
 .node-status-search-id {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.75rem;
   font-family: var(--font-mono);
 }
@@ -677,15 +677,15 @@
 .node-status-table th {
   text-align: left;
   padding: 8px;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-weight: 500;
-  border-bottom: 1px solid var(--ctp-surface1);
+  border-bottom: 1px solid var(--color-surface-hover);
 }
 
 .node-status-table td {
   padding: 8px;
-  color: var(--ctp-text);
-  border-bottom: 1px solid var(--ctp-surface0);
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-surface);
 }
 
 .node-status-table tr:last-child td {
@@ -701,7 +701,7 @@
   border: none;
   padding: 0;
   margin: 0;
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   text-decoration: underline;
   cursor: pointer;
   font: inherit;
@@ -709,16 +709,16 @@
 }
 
 .node-status-name-link:hover {
-  color: var(--ctp-sapphire);
+  color: var(--color-accent-hover);
 }
 
 .node-status-time {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .node-status-hops {
   text-align: center;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .node-status-hops-header {
@@ -733,7 +733,7 @@
 .node-status-remove-node {
   background: none;
   border: none;
-  color: var(--ctp-surface2);
+  color: var(--color-surface-active);
   font-size: 1rem;
   cursor: pointer;
   padding: 2px 6px;
@@ -741,11 +741,11 @@
 }
 
 .node-status-remove-node:hover {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 .node-status-empty {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.85rem;
   text-align: center;
   padding: 20px;
@@ -775,7 +775,7 @@
   flex-direction: column;
   align-items: center;
   padding: 8px 16px;
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   border-radius: var(--radius-lg);
   min-width: 80px;
 }
@@ -783,13 +783,13 @@
 .hop-stat-value {
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--ctp-text);
+  color: var(--color-text);
   line-height: 1.2;
 }
 
 .hop-stat-label {
   font-size: 0.7rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   text-align: center;
@@ -809,7 +809,7 @@
 
 .hop-bar-label {
   font-size: 0.8rem;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   min-width: 70px;
   text-align: right;
   white-space: nowrap;
@@ -818,7 +818,7 @@
 .hop-bar-track {
   flex: 1;
   height: 20px;
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
@@ -833,7 +833,7 @@
 .hop-bar-count {
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
   min-width: 28px;
   text-align: right;
 }
@@ -845,8 +845,8 @@
 
 .distance-unit-badge {
   font-size: 0.7rem;
-  color: var(--ctp-subtext0);
-  background: var(--ctp-surface0);
+  color: var(--color-text-subtle);
+  background: var(--color-surface);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   margin-left: 8px;
@@ -865,7 +865,7 @@
   background: none;
   border: none;
   font-size: 1rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   cursor: pointer;
   padding: 2px 6px;
   border-radius: var(--radius-sm);
@@ -873,13 +873,13 @@
 }
 
 .distance-settings-btn:hover {
-  color: var(--ctp-text);
-  background: var(--ctp-surface0);
+  color: var(--color-text);
+  background: var(--color-surface);
 }
 
 .distance-settings-panel {
   padding: 8px 12px;
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   border-radius: var(--radius-md);
   margin-bottom: 8px;
   display: flex;
@@ -889,16 +889,16 @@
 
 .distance-settings-label {
   font-size: 0.8rem;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .distance-bucket-select {
-  background: var(--ctp-base);
-  color: var(--ctp-text);
-  border: 1px solid var(--ctp-surface2);
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-surface-active);
   border-radius: var(--radius-sm);
   padding: 4px 8px;
   font-size: 0.8rem;
@@ -907,7 +907,7 @@
 
 .distance-bucket-select:focus {
   outline: none;
-  border-color: var(--ctp-lavender);
+  border-color: var(--color-accent-muted);
 }
 
 /* Hop-Distance Heatmap Widget */
@@ -939,7 +939,7 @@
   height: 40px;
   padding: 4px 8px;
   font-weight: 400;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -966,8 +966,8 @@
   background: linear-gradient(
     to top right,
     transparent calc(50% - 0.5px),
-    var(--ctp-surface1) calc(50% - 0.5px),
-    var(--ctp-surface1) calc(50% + 0.5px),
+    var(--color-surface-hover) calc(50% - 0.5px),
+    var(--color-surface-hover) calc(50% + 0.5px),
     transparent calc(50% + 0.5px)
   );
   pointer-events: none;
@@ -976,21 +976,21 @@
 .heatmap-col-header {
   padding: 6px 4px;
   text-align: center;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-weight: 500;
   font-size: 0.7rem;
   white-space: nowrap;
-  border-bottom: 1px solid var(--ctp-surface1);
+  border-bottom: 1px solid var(--color-surface-hover);
 }
 
 .heatmap-row-header {
   padding: 6px 8px;
   text-align: right;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-weight: 500;
   font-size: 0.75rem;
   white-space: nowrap;
-  border-right: 1px solid var(--ctp-surface1);
+  border-right: 1px solid var(--color-surface-hover);
 }
 
 .heatmap-cell {
@@ -999,19 +999,19 @@
   min-width: 36px;
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
   border-radius: var(--radius-xs);
   transition: opacity 0.2s;
   cursor: default;
 }
 
 .heatmap-cell:hover {
-  outline: 1px solid var(--ctp-overlay1);
+  outline: 1px solid var(--color-text-disabled);
 }
 
 .heatmap-skipped {
   font-size: 0.75rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   text-align: center;
   font-style: italic;
 }
@@ -1022,7 +1022,7 @@
   justify-content: center;
   gap: 8px;
   font-size: 0.7rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .heatmap-legend-bar {
@@ -1063,10 +1063,10 @@
 .traceroute-search {
   width: 100%;
   padding: 8px 12px;
-  background-color: var(--ctp-mantle);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-bg-raised);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-md);
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.85rem;
   outline: none;
   transition: border-color 0.2s ease;
@@ -1074,7 +1074,7 @@
 }
 
 .traceroute-search:focus {
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 
 .traceroute-search::placeholder {
@@ -1087,8 +1087,8 @@
   left: 0;
   right: 0;
   margin-top: 4px;
-  background-color: var(--ctp-crust);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-bg-sunken);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-md);
   max-height: 200px;
   overflow-y: auto;
@@ -1102,17 +1102,17 @@
   align-items: center;
   padding: 8px 12px;
   cursor: pointer;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.85rem;
   transition: background-color 0.2s ease;
 }
 
 .traceroute-search-item:hover {
-  background-color: var(--ctp-surface0);
+  background-color: var(--color-surface);
 }
 
 .traceroute-search-id {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.75rem;
   font-family: var(--font-mono);
 }
@@ -1128,11 +1128,11 @@
   justify-content: space-between;
   align-items: center;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--ctp-surface0);
+  border-bottom: 1px solid var(--color-surface);
 }
 
 .traceroute-timestamp {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.8rem;
 }
 
@@ -1141,17 +1141,17 @@
   align-items: center;
   gap: 4px;
   padding: 4px 10px;
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-sm);
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.75rem;
   cursor: pointer;
   transition: background-color 0.2s ease;
 }
 
 .traceroute-map-toggle-inline:hover {
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
 }
 
 .traceroute-path-section {
@@ -1161,7 +1161,7 @@
 }
 
 .traceroute-path-label {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.8rem;
   font-weight: 500;
 }
@@ -1178,15 +1178,15 @@
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  background-color: var(--ctp-surface0);
+  background-color: var(--color-surface);
   padding: 6px 10px;
   border-radius: var(--radius-md);
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .traceroute-snr {
   font-size: 0.7rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   margin-top: 2px;
 }
 
@@ -1198,7 +1198,7 @@
 .traceroute-empty,
 .traceroute-loading,
 .traceroute-no-data {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.85rem;
   text-align: center;
   padding: 20px;
@@ -1210,11 +1210,11 @@
   margin: 8px 0;
   border-radius: var(--radius-lg);
   overflow: hidden;
-  border: 1px solid var(--ctp-surface1);
+  border: 1px solid var(--color-surface-hover);
 }
 
 .traceroute-map-container .leaflet-container {
-  background: var(--ctp-mantle);
+  background: var(--color-bg-raised);
 }
 
 .traceroute-map-legend {
@@ -1222,9 +1222,9 @@
   gap: 16px;
   justify-content: center;
   padding: 8px;
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   font-size: 0.75rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .traceroute-map-legend .legend-item {
@@ -1238,11 +1238,11 @@
 }
 
 .traceroute-map-legend .legend-item:hover {
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
 }
 
 .traceroute-map-legend .legend-item.highlighted {
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
   font-weight: 600;
 }
 

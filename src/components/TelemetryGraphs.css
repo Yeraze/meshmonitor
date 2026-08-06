@@ -2,7 +2,7 @@
   width: 100%;
   margin-bottom: 20px;
   padding: 20px;
-  background-color: var(--ctp-mantle);
+  background-color: var(--color-bg-raised);
   border-radius: var(--radius-lg);
 }
 
@@ -30,7 +30,7 @@
 }
 
 .telemetry-title {
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin: 0;
   font-size: 1.2rem;
   font-weight: 600;
@@ -45,10 +45,10 @@
 }
 
 .telemetry-range-btn {
-  background-color: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-sm);
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 0.8rem;
   font-weight: 500;
@@ -57,19 +57,19 @@
 }
 
 .telemetry-range-btn:hover {
-  color: var(--ctp-text);
-  border-color: var(--ctp-surface2);
+  color: var(--color-text);
+  border-color: var(--color-surface-active);
 }
 
 .telemetry-range-btn.active {
-  background-color: var(--ctp-blue);
-  border-color: var(--ctp-blue);
-  color: var(--ctp-crust);
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg-sunken);
 }
 
 .telemetry-loading,
 .telemetry-empty {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   text-align: center;
   padding: 20px;
   font-style: italic;
@@ -82,8 +82,8 @@
 }
 
 .graph-container {
-  background-color: var(--ctp-crust);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-bg-sunken);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
   padding: 15px;
 }
@@ -96,7 +96,7 @@
 }
 
 .graph-title {
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin: 0;
   font-size: 1rem;
   font-weight: 500;
@@ -126,19 +126,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--ctp-surface2);
+  color: var(--color-surface-active);
   transition: color 0.2s ease;
 }
 
 .favorite-btn:hover,
 .graph-menu-btn:hover,
 .solar-toggle-btn:hover {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 .favorite-btn.favorited,
 .solar-toggle-btn.active {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 .graph-menu-btn {
@@ -148,8 +148,8 @@
 }
 
 .telemetry-context-menu {
-  background-color: var(--ctp-crust);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-bg-sunken);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-md);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   z-index: 1000;
@@ -163,7 +163,7 @@
   padding: 8px 16px;
   background: none;
   border: none;
-  color: var(--ctp-text);
+  color: var(--color-text);
   text-align: left;
   cursor: pointer;
   font-size: 0.9rem;
@@ -171,8 +171,8 @@
 }
 
 .context-menu-item:hover {
-  background-color: var(--ctp-surface0);
-  color: var(--ctp-red);
+  background-color: var(--color-surface);
+  color: var(--color-error);
 }
 
 /* Mode toggle button group */
@@ -193,17 +193,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--ctp-surface2);
+  color: var(--color-surface-active);
   transition: color 0.2s ease;
   border-radius: var(--radius-sm);
 }
 
 .mode-toggle-btn:hover {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 .mode-toggle-btn.active {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 /* Gauge display */
@@ -227,19 +227,19 @@
   width: 56px;
   padding: 2px 4px;
   font-size: 0.8rem;
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-sm);
-  color: var(--ctp-text);
+  color: var(--color-text);
   text-align: center;
 }
 
 .gauge-range-input:focus {
-  outline: 1px solid var(--ctp-blue);
+  outline: 1px solid var(--color-accent);
 }
 
 .gauge-range-dash {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.8rem;
   letter-spacing: -2px;
 }
@@ -262,13 +262,13 @@
 
 .telemetry-numeric-unit {
   font-size: 1rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .telemetry-numeric-time {
   font-size: 0.8rem;
   font-style: italic;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 @media (max-width: 768px) {

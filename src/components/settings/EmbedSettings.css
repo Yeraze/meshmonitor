@@ -8,28 +8,28 @@
 }
 
 .embed-table thead tr {
-  border-bottom: 2px solid var(--ctp-surface2);
+  border-bottom: 2px solid var(--color-surface-active);
 }
 
 .embed-table th {
   padding: 0.75rem;
   text-align: left;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.875rem;
   font-weight: 600;
 }
 
 .embed-table tbody tr {
-  border-bottom: 1px solid var(--ctp-surface1);
+  border-bottom: 1px solid var(--color-surface-hover);
 }
 
 .embed-table tbody tr:hover {
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
 }
 
 .embed-table td {
   padding: 0.75rem;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .embed-table-center {
@@ -46,23 +46,23 @@
 }
 
 .embed-status-enabled {
-  color: var(--ctp-green);
+  color: var(--color-success);
   font-weight: 500;
 }
 
 .embed-status-disabled {
-  color: var(--ctp-red);
+  color: var(--color-error);
   font-weight: 500;
 }
 
 /* Danger button variant */
 .embed-button-danger {
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
 
 .embed-button-danger:hover:not(:disabled) {
-  background: var(--ctp-red);
-  color: var(--ctp-accent-text);
+  background: var(--color-error);
+  color: var(--color-accent-text);
 }
 
 /* Modal override for wider embed form */
@@ -95,7 +95,7 @@
 .embed-checkbox-label input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--ctp-blue);
+  accent-color: var(--color-accent);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -106,7 +106,7 @@
   width: 100%;
   border-radius: var(--radius-lg);
   overflow: hidden;
-  border: 2px solid var(--ctp-surface2);
+  border: 2px solid var(--color-surface-active);
   margin-top: 0.5rem;
 }
 
@@ -115,18 +115,18 @@
   gap: 1rem;
   margin-top: 0.5rem;
   font-size: 0.875rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .embed-map-coords strong {
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 /* Info box (security note) */
 .embed-info-box {
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface2);
-  border-left: 4px solid var(--ctp-blue);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-active);
+  border-left: 4px solid var(--color-accent);
   border-radius: var(--radius-md);
   padding: 1rem;
   margin-top: 1.5rem;
@@ -134,13 +134,13 @@
 }
 
 .embed-info-box strong {
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   display: block;
   margin-bottom: 0.25rem;
 }
 
 .embed-info-box p {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   margin: 0;
   line-height: 1.5;
 }
@@ -162,15 +162,15 @@
 }
 
 .embed-origin-tag.valid {
-  background: color-mix(in srgb, var(--ctp-green) 15%, transparent);
-  border: 1px solid var(--ctp-green);
-  color: var(--ctp-green);
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+  border: 1px solid var(--color-success);
+  color: var(--color-success);
 }
 
 .embed-origin-tag.invalid {
-  background: color-mix(in srgb, var(--ctp-red) 15%, transparent);
-  border: 1px solid var(--ctp-red);
-  color: var(--ctp-red);
+  background: color-mix(in srgb, var(--color-error) 15%, transparent);
+  border: 1px solid var(--color-error);
+  color: var(--color-error);
 }
 
 /* Embed code textarea */
@@ -178,9 +178,9 @@
   width: 100%;
   font-family: var(--font-mono);
   font-size: 0.85rem;
-  background: var(--ctp-surface1);
-  border: 2px solid var(--ctp-surface2);
-  color: var(--ctp-text);
+  background: var(--color-surface-hover);
+  border: 2px solid var(--color-surface-active);
+  color: var(--color-text);
   padding: 0.75rem;
   border-radius: var(--radius-lg);
   resize: vertical;
@@ -189,7 +189,7 @@
 
 .embed-code-textarea:focus {
   outline: none;
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 
 /* Responsive */

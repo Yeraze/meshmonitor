@@ -12,8 +12,8 @@
 .sidebar {
   --source-nav-collapsed-width: calc(60px + env(safe-area-inset-left, 0px));
   --source-nav-expanded-width: calc(240px + env(safe-area-inset-left, 0px));
-  --source-nav-bg: var(--ctp-base);
-  --source-nav-border: 1px solid var(--ctp-surface1);
+  --source-nav-bg: var(--color-bg);
+  --source-nav-border: 1px solid var(--color-surface-hover);
 
   position: fixed;
   left: 0;
@@ -34,7 +34,7 @@
    carries its own CSS module. .github-link survives — LoginPage uses it. */
 
 .github-link {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -43,13 +43,13 @@
 }
 
 .github-link:hover {
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .sidebar-toggle {
-  background: var(--ctp-blue, #2a2a2a);
-  border: 1px solid var(--ctp-sapphire, #333);
-  color: var(--ctp-base, #e0e0e0);
+  background: var(--color-accent, #2a2a2a);
+  border: 1px solid var(--color-accent-hover, #333);
+  color: var(--color-bg, #e0e0e0);
   width: 36px;
   height: 36px;
   border-radius: var(--radius-md);
@@ -64,7 +64,7 @@
 }
 
 .sidebar-toggle:hover {
-  background: var(--ctp-sapphire, #74c7ec);
+  background: var(--color-accent-hover, #74c7ec);
   transform: scale(1.05);
 }
 
@@ -87,9 +87,9 @@
 }
 
 .sidebar-pin {
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
-  color: var(--ctp-subtext0);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
+  color: var(--color-text-subtle);
   width: 36px;
   height: 36px;
   border-radius: var(--radius-md);
@@ -103,30 +103,30 @@
 }
 
 .sidebar-pin:hover {
-  background: var(--ctp-surface1);
-  color: var(--ctp-text);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
   transform: scale(1.05);
 }
 
 .sidebar-pin.pinned {
-  background: var(--ctp-green);
-  border-color: var(--ctp-green);
-  color: var(--ctp-crust);
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: var(--color-bg-sunken);
 }
 
 .sidebar-pin.pinned:hover {
   background: var(--ctp-teal);
   border-color: var(--ctp-teal);
-  color: var(--ctp-crust);
+  color: var(--color-bg-sunken);
 }
 
 .sidebar-header {
   padding: 12px;
-  border-bottom: 1px solid var(--ctp-surface1);
+  border-bottom: 1px solid var(--color-surface-hover);
   display: flex;
   align-items: center;
   gap: 12px;
-  background: var(--ctp-base);
+  background: var(--color-bg);
   flex-shrink: 0;
 }
 
@@ -154,7 +154,7 @@
 .sidebar-app-name {
   font-size: 16px;
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -162,7 +162,7 @@
 
 .sidebar-node-name {
   font-size: 11px;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
