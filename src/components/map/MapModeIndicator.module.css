@@ -32,10 +32,10 @@
   max-width: min(90%, 40rem);
   padding: 0.3rem 0.5rem 0.3rem 0.6rem;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--ctp-surface2);
-  background: var(--ctp-surface0);
+  border: 1px solid var(--color-surface-active);
+  background: var(--color-surface);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.8rem;
   line-height: 1.2;
   user-select: none;
@@ -44,7 +44,7 @@
 
 .icon {
   flex-shrink: 0;
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   display: inline-flex;
 }
 
@@ -54,7 +54,7 @@
 }
 
 .hint {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -70,13 +70,13 @@
   border: none;
   border-radius: 4px;
   background: transparent;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   cursor: pointer;
 }
 
 .disable:hover {
-  background: var(--ctp-surface1);
-  color: var(--ctp-text);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
 }
 
 /* On narrow screens the explanatory hint is the first thing to go — the

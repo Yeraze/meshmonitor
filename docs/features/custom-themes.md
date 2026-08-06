@@ -106,9 +106,11 @@ MeshMonitor resolves every color through a **role**, and each role points at one
 | `--color-success` | `green` | Success states, healthy status |
 | `--color-error` | `red` | Errors, failures |
 | `--color-warning` | `yellow` | Warnings, degraded status |
+| `--color-caution` | `peach` | A step below a warning |
 | `--color-info` | `sky` | Informational notices |
 | `--color-danger` | `maroon` | Destructive actions |
 | `--color-accent` | `blue` | Primary accent, links, focus |
+| `--color-accent-hover` | `sapphire` | Hover shade of the accent |
 | `--color-accent-alt` | `mauve` | Secondary accent |
 | `--color-accent-muted` | `lavender` | Tertiary accent |
 | `--color-bg` / `--color-bg-raised` / `--color-bg-sunken` | `base` / `mantle` / `crust` | Page and panel backgrounds |
@@ -119,7 +121,7 @@ MeshMonitor resolves every color through a **role**, and each role points at one
 **What this means for you:** change what `red` means in your theme and every error surface follows, because they all ask for "the error color" rather than "the red one". Most roles map to the palette name you would expect, so the effect is usually what you already assumed was happening.
 
 ::: warning Migration in progress
-Parts of the interface still read palette colors directly and will not pick up a role remap until they are converted. Conversion is tracked as follow-up work to [issue #4567](https://github.com/Yeraze/meshmonitor/issues/4567). If a specific surface ignores a color change, that is why — please report it on that issue with a screenshot so it can be prioritized.
+Parts of the interface still read palette colors directly and will not pick up a role remap until they are converted. Component-scoped stylesheets (CSS modules) are done; the global stylesheets and inline component styles are not. Conversion is tracked as follow-up work to [issue #4567](https://github.com/Yeraze/meshmonitor/issues/4567). If a specific surface ignores a color change, that is why — please report it on that issue with a screenshot so it can be prioritized.
 :::
 
 ## Cloning Themes

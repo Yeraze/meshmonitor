@@ -11,7 +11,7 @@
 
 .name {
   margin-bottom: 4px;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1rem;
   font-weight: 600;
 }
@@ -19,7 +19,7 @@
 .summary,
 .instructions,
 .status {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.9rem;
   font-weight: 400;
   line-height: 1.4;
@@ -31,11 +31,11 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border: 1px solid var(--ctp-surface2);
+  border: 1px solid var(--color-surface-active);
   border-radius: var(--radius-sm);
   padding: 7px 12px;
-  background: var(--ctp-surface0);
-  color: var(--ctp-text);
+  background: var(--color-surface);
+  color: var(--color-text);
   cursor: pointer;
   font: inherit;
   font-size: 0.9rem;
@@ -45,21 +45,21 @@
 
 .toggle:hover,
 .copy:hover {
-  border-color: var(--ctp-blue);
-  color: var(--ctp-blue);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 .toggle:focus-visible,
 .copy:focus-visible,
 .url:focus-visible {
-  outline: 2px solid var(--ctp-blue);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
 .content {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid var(--ctp-surface1);
+  border-top: 1px solid var(--color-surface-hover);
 }
 
 .instructions {
@@ -69,7 +69,7 @@
 
 .error {
   margin-bottom: 12px;
-  color: var(--ctp-red);
+  color: var(--color-error);
   font-size: 0.9rem;
 }
 
@@ -84,6 +84,8 @@
   max-width: 100%;
   /* qrcode writes an inline height; responsive sizing must override it. */
   height: auto !important;
+  /* Intentionally hardcoded, not themed: QR scanners need a high-contrast
+     quiet zone, so this frame must stay white on every theme. */
   border: 8px solid #ffffff;
   border-radius: var(--radius-sm);
 }
@@ -97,24 +99,24 @@
   min-width: 0;
   flex: 1;
   padding: 8px 10px;
-  border: 1px solid var(--ctp-surface2);
+  border: 1px solid var(--color-surface-active);
   border-radius: var(--radius-sm);
-  background: var(--ctp-base);
-  color: var(--ctp-text);
+  background: var(--color-bg);
+  color: var(--color-text);
   font-family: var(--font-mono);
   font-size: 0.82rem;
 }
 
 .copy {
-  background: var(--ctp-blue);
-  border-color: var(--ctp-blue);
-  color: var(--ctp-base);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg);
 }
 
 .copy:hover {
-  background: var(--ctp-sapphire);
-  border-color: var(--ctp-sapphire);
-  color: var(--ctp-base);
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  color: var(--color-bg);
 }
 
 @media (max-width: 768px) {
