@@ -19,7 +19,7 @@
 }
 
 .modal-content {
-  background: var(--ctp-base);
+  background: var(--color-bg);
   border-radius: var(--radius-lg);
   padding: 0;
   max-width: 500px;
@@ -28,7 +28,7 @@
      area (the desktop case is unaffected — the var defaults to 0px). */
   max-height: calc(80vh - var(--keyboard-inset, 0px));
   overflow: auto;
-  border: 1px solid var(--ctp-surface0);
+  border: 1px solid var(--color-surface);
 }
 
 .modal-header {
@@ -36,12 +36,12 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--ctp-surface0);
+  border-bottom: 1px solid var(--color-surface);
 }
 
 .modal-header h2 {
   margin: 0;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1.25rem;
 }
 
@@ -49,14 +49,14 @@
   background: none;
   border: none;
   font-size: 1.5rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   cursor: pointer;
   padding: 0;
   line-height: 1;
 }
 
 .modal-close:hover {
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .modal-body {

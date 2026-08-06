@@ -14,9 +14,9 @@
 /* Apply setting-input visual treatment to selects too. */
 .meshcore-automations-view select.setting-input,
 .meshcore-automations-view select.meshcore-select {
-  background: var(--ctp-surface1);
-  border: 2px solid var(--ctp-surface2);
-  color: var(--ctp-text);
+  background: var(--color-surface-hover);
+  border: 2px solid var(--color-surface-active);
+  color: var(--color-text);
   padding: 0.5rem 0.75rem;
   border-radius: var(--radius-lg, 8px);
   font-size: 0.95rem;
@@ -30,7 +30,7 @@
 .meshcore-automations-view select.setting-input:focus,
 .meshcore-automations-view select.meshcore-select:focus {
   outline: none;
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 .meshcore-automations-view select:disabled {
   opacity: 0.6;
@@ -51,9 +51,9 @@
 /* Inline text/number/textarea controls inside the trigger cards. */
 .meshcore-automations-view input.meshcore-input,
 .meshcore-automations-view textarea.meshcore-input {
-  background: var(--ctp-surface1);
-  border: 2px solid var(--ctp-surface2);
-  color: var(--ctp-text);
+  background: var(--color-surface-hover);
+  border: 2px solid var(--color-surface-active);
+  color: var(--color-text);
   padding: 0.4rem 0.6rem;
   border-radius: var(--radius-md, 6px);
   font-size: 0.95rem;
@@ -67,8 +67,8 @@
 .meshcore-automations-view input.meshcore-input:focus,
 .meshcore-automations-view textarea.meshcore-input:focus {
   outline: none;
-  border-color: var(--ctp-blue);
-  background: var(--ctp-base);
+  border-color: var(--color-accent);
+  background: var(--color-bg);
 }
 .meshcore-automations-view input.meshcore-input:disabled,
 .meshcore-automations-view textarea.meshcore-input:disabled {
@@ -97,28 +97,28 @@
 }
 
 .meshcore-automations-view .meshcore-btn-primary {
-  background: var(--ctp-blue);
-  color: var(--ctp-base);
+  background: var(--color-accent);
+  color: var(--color-bg);
 }
 .meshcore-automations-view .meshcore-btn-primary:hover:not(:disabled) {
-  background: var(--ctp-sapphire, var(--ctp-blue));
+  background: var(--color-accent-hover, var(--color-accent));
 }
 
 .meshcore-automations-view .meshcore-btn-danger {
-  background: var(--ctp-red);
-  color: var(--ctp-base);
+  background: var(--color-error);
+  color: var(--color-bg);
 }
 .meshcore-automations-view .meshcore-btn-danger:hover:not(:disabled) {
-  background: var(--ctp-maroon, var(--ctp-red));
+  background: var(--color-danger, var(--color-error));
 }
 
 .meshcore-automations-view .meshcore-btn-secondary {
-  background: var(--ctp-surface1);
-  color: var(--ctp-text);
-  border: 1px solid var(--ctp-surface2);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  border: 1px solid var(--color-surface-active);
 }
 .meshcore-automations-view .meshcore-btn-secondary:hover:not(:disabled) {
-  background: var(--ctp-surface2);
+  background: var(--color-surface-active);
 }
 
 /* --- Trigger cards ------------------------------------------------- */
@@ -126,8 +126,8 @@
 .meshcore-automations-view .meshcore-trigger-card {
   padding: 1rem 1.25rem;
   margin-bottom: 1rem;
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: 8px;
 }
 
@@ -154,18 +154,18 @@
 
 .meshcore-automations-view .meshcore-trigger-card label {
   font-size: 0.85rem;
-  color: var(--ctp-subtext1, var(--ctp-text));
+  color: var(--color-text-muted, var(--color-text));
   display: block;
 }
 
 .meshcore-automations-view .meshcore-trigger-card legend {
   font-size: 0.8rem;
   padding: 0 0.5rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .meshcore-automations-view .meshcore-trigger-card fieldset {
-  border: 1px solid var(--ctp-surface2);
+  border: 1px solid var(--color-surface-active);
   border-radius: 6px;
   padding: 0.5rem 0.75rem;
   margin-top: 0.5rem;
@@ -175,24 +175,24 @@
 .meshcore-automations-view .meshcore-add-card {
   padding: 1rem 1.25rem;
   margin-bottom: 1rem;
-  background: var(--ctp-surface0);
-  border: 1px dashed var(--ctp-surface2);
+  background: var(--color-surface);
+  border: 1px dashed var(--color-surface-active);
   border-radius: 8px;
 }
 .meshcore-automations-view .meshcore-add-card h3 {
   margin: 0 0 0.75rem 0;
   font-size: 1rem;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 /* The "Last run …" banner under each trigger. */
 .meshcore-automations-view .meshcore-trigger-lastrun {
   margin-top: 0.5rem;
   font-size: 0.8rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
-.meshcore-automations-view .meshcore-trigger-lastrun .ok { color: var(--ctp-green); }
-.meshcore-automations-view .meshcore-trigger-lastrun .err { color: var(--ctp-red); }
+.meshcore-automations-view .meshcore-trigger-lastrun .ok { color: var(--color-success); }
+.meshcore-automations-view .meshcore-trigger-lastrun .err { color: var(--color-error); }
 
 /* --- Section header send-now button ------------------------------- */
 
@@ -212,7 +212,7 @@
 
 .meshcore-automations-view .meshcore-token-list-label {
   font-size: 0.8rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   margin-right: 0.25rem;
 }
 
@@ -223,14 +223,14 @@
   font-size: 0.78rem;
   padding: 0.15rem 0.5rem;
   border-radius: var(--radius-md, 6px);
-  background: var(--ctp-surface1);
-  color: var(--ctp-blue);
-  border: 1px solid var(--ctp-surface2);
+  background: var(--color-surface-hover);
+  color: var(--color-accent);
+  border: 1px solid var(--color-surface-active);
   cursor: pointer;
   transition: background-color 0.15s, border-color 0.15s;
 }
 .meshcore-automations-view .meshcore-token-chip:hover:not(:disabled) {
-  background: var(--ctp-surface2);
+  background: var(--color-surface-active);
   border-color: var(--ctp-overlay0);
 }
 .meshcore-automations-view .meshcore-token-chip:disabled {

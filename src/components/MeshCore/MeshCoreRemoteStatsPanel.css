@@ -3,10 +3,10 @@
  */
 
 .meshcore-remote-stats {
-  border: 1px solid var(--ctp-surface1);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-md, 6px);
-  background: var(--ctp-surface0);
-  color: var(--ctp-text);
+  background: var(--color-surface);
+  color: var(--color-text);
 }
 
 .mrs-header {
@@ -21,11 +21,11 @@
 }
 
 .mrs-header:hover {
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
 }
 
 .mrs-chevron {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.7em;
 }
 
@@ -33,20 +33,20 @@
   margin: 0;
   font-size: 0.95rem;
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
   flex: 1;
 }
 
 .mrs-updated {
   font-size: 0.75rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .mrs-refresh-btn {
   padding: 0.2rem 0.7rem;
-  border: 1px solid var(--ctp-surface2);
+  border: 1px solid var(--color-surface-active);
   background: transparent;
-  color: var(--ctp-text);
+  color: var(--color-text);
   border-radius: var(--radius-sm, 3px);
   cursor: pointer;
   font-size: 0.78rem;
@@ -54,8 +54,8 @@
 }
 
 .mrs-refresh-btn:hover:not(:disabled) {
-  background: var(--ctp-surface1);
-  border-color: var(--ctp-mauve);
+  background: var(--color-surface-hover);
+  border-color: var(--color-accent-alt);
 }
 
 .mrs-refresh-btn:disabled {
@@ -65,14 +65,14 @@
 
 .mrs-body {
   padding: 0.5rem 0.75rem 0.75rem;
-  border-top: 1px solid var(--ctp-surface1);
+  border-top: 1px solid var(--color-surface-hover);
 }
 
 .mrs-error,
 .mrs-loading {
   margin: 0;
   font-size: 0.85rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-style: italic;
 }
 
@@ -88,15 +88,15 @@
 .mrs-empty-hint {
   margin: 0;
   font-size: 0.8rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-style: italic;
 }
 
 .mrs-fetch-btn {
   padding: 0.35rem 1rem;
-  border: 1px solid var(--ctp-mauve);
-  background: var(--ctp-surface0);
-  color: var(--ctp-text);
+  border: 1px solid var(--color-accent-alt);
+  background: var(--color-surface);
+  color: var(--color-text);
   border-radius: var(--radius-sm, 3px);
   cursor: pointer;
   font-size: 0.82rem;
@@ -105,7 +105,7 @@
 }
 
 .mrs-fetch-btn:hover {
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
 }
 
 .mrs-grid {
@@ -124,13 +124,13 @@
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .mrs-field-value {
   font-size: 0.95rem;
   font-weight: 500;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -144,7 +144,7 @@
 
 .mrs-section {
   grid-column: 1 / -1;
-  border-top: 1px solid var(--ctp-surface1);
+  border-top: 1px solid var(--color-surface-hover);
   padding-top: 0.5rem;
 }
 
@@ -153,7 +153,7 @@
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--ctp-mauve);
+  color: var(--color-accent-alt);
   font-weight: 600;
 }
 

@@ -5,12 +5,12 @@
 .position-override-loading {
   text-align: center;
   padding: 2rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .position-override-description {
   margin-bottom: 1.5rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.95rem;
   line-height: 1.5;
 }
@@ -29,14 +29,14 @@
 .private-checkbox {
   margin-left: 1.5rem;
   padding: 0.75rem;
-  background-color: var(--ctp-surface0);
-  border: 1px solid var(--ctp-surface1);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-md);
   transition: all 0.2s ease;
 }
 
 .private-checkbox:hover {
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 
 .private-checkbox label {
@@ -84,34 +84,34 @@
 
 .position-override-field label {
   font-weight: 500;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .position-override-field .field-description {
   display: block;
   font-size: 0.85rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-weight: normal;
   margin-top: 2px;
 }
 
 .position-override-field input {
   padding: 0.75rem;
-  border: 1px solid var(--ctp-surface1);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-sm);
-  background-color: var(--ctp-surface0);
-  color: var(--ctp-text);
+  background-color: var(--color-surface);
+  color: var(--color-text);
   font-size: 1rem;
 }
 
 .position-override-field input:focus {
   outline: none;
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
   box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.2);
 }
 
 .position-override-field input.input-error {
-  border-color: var(--ctp-red);
+  border-color: var(--color-error);
 }
 
 .position-override-field input.input-error:focus {
@@ -119,7 +119,7 @@
 }
 
 .position-override-field .error-message {
-  color: var(--ctp-red);
+  color: var(--color-error);
   font-size: 0.85rem;
   margin-top: 0.25rem;
 }
@@ -129,7 +129,7 @@
 }
 
 .position-override-link a {
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   text-decoration: none;
   font-size: 0.9rem;
 }
@@ -140,8 +140,8 @@
 
 .position-override-error {
   background-color: rgba(243, 139, 168, 0.1);
-  border: 1px solid var(--ctp-red);
-  color: var(--ctp-red);
+  border: 1px solid var(--color-error);
+  color: var(--color-error);
   padding: 0.75rem;
   border-radius: var(--radius-sm);
   margin-bottom: 1rem;
@@ -156,8 +156,8 @@
 }
 
 .position-override-actions .cancel-btn {
-  background-color: var(--ctp-surface1);
-  color: var(--ctp-text);
+  background-color: var(--color-surface-hover);
+  color: var(--color-text);
   border: none;
   padding: 0.75rem 1.5rem;
   border-radius: var(--radius-sm);
@@ -167,12 +167,12 @@
 }
 
 .position-override-actions .cancel-btn:hover:not(:disabled) {
-  background-color: var(--ctp-surface2);
+  background-color: var(--color-surface-active);
 }
 
 .position-override-actions .save-btn {
-  background-color: var(--ctp-blue);
-  color: var(--ctp-accent-text);
+  background-color: var(--color-accent);
+  color: var(--color-accent-text);
   border: none;
   padding: 0.75rem 1.5rem;
   border-radius: var(--radius-sm);
@@ -182,7 +182,7 @@
 }
 
 .position-override-actions .save-btn:hover:not(:disabled) {
-  background-color: var(--ctp-sapphire);
+  background-color: var(--color-accent-hover);
 }
 
 .position-override-actions .save-btn:disabled,

@@ -3,8 +3,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--ctp-base);
-  border-left: 1px solid var(--ctp-surface2);
+  background: var(--color-bg);
+  border-left: 1px solid var(--color-surface-active);
   overflow: hidden;
 }
 
@@ -27,8 +27,8 @@
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  background: var(--ctp-mantle);
-  border-bottom: 1px solid var(--ctp-surface2);
+  background: var(--color-bg-raised);
+  border-bottom: 1px solid var(--color-surface-active);
   flex-shrink: 0;
 }
 
@@ -36,14 +36,14 @@
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .packet-count {
   font-size: 12px;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   padding: 4px 8px;
-  background: var(--ctp-crust);
+  background: var(--color-bg-sunken);
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
 }
@@ -57,18 +57,18 @@
 
 .control-btn {
   background: transparent;
-  border: 1px solid var(--ctp-surface2);
+  border: 1px solid var(--color-surface-active);
   border-radius: var(--radius-sm);
   padding: 6px 10px;
   cursor: pointer;
   font-size: 14px;
-  color: var(--ctp-text);
+  color: var(--color-text);
   transition: all 0.2s;
 }
 
 .control-btn:hover:not(:disabled) {
-  background: var(--ctp-crust);
-  border-color: var(--ctp-blue);
+  background: var(--color-bg-sunken);
+  border-color: var(--color-accent);
 }
 
 .control-btn:disabled {
@@ -81,13 +81,13 @@
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   padding: 0 8px;
   transition: color 0.2s;
 }
 
 .close-btn:hover {
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .packet-monitor-no-permission {
@@ -97,19 +97,19 @@
   height: 100%;
   padding: 32px;
   text-align: center;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .packet-monitor-no-permission strong {
-  color: var(--ctp-blue);
+  color: var(--color-accent);
 }
 
 .packet-filters {
   display: flex;
   gap: 8px;
   padding: 12px 16px;
-  background: var(--ctp-mantle);
-  border-bottom: 1px solid var(--ctp-surface2);
+  background: var(--color-bg-raised);
+  border-bottom: 1px solid var(--color-surface-active);
   flex-wrap: wrap;
 }
 
@@ -117,38 +117,38 @@
   flex: 1;
   min-width: 150px;
   padding: 6px 10px;
-  border: 1px solid var(--ctp-surface2);
+  border: 1px solid var(--color-surface-active);
   border-radius: var(--radius-sm);
-  background: var(--ctp-base);
-  color: var(--ctp-text);
+  background: var(--color-bg);
+  color: var(--color-text);
   font-size: 13px;
 }
 
 .packet-filters select option {
-  background: var(--ctp-surface0, #313244);
-  color: var(--ctp-text, #cdd6f4);
+  background: var(--color-surface, #313244);
+  color: var(--color-text, #cdd6f4);
   padding: 6px;
 }
 
 .packet-filters select option:hover {
-  background: var(--ctp-surface1, #45475a);
+  background: var(--color-surface-hover, #45475a);
 }
 
 .clear-filters-btn {
   padding: 6px 12px;
-  background: var(--ctp-crust);
-  border: 1px solid var(--ctp-surface2);
+  background: var(--color-bg-sunken);
+  border: 1px solid var(--color-surface-active);
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 13px;
-  color: var(--ctp-text);
+  color: var(--color-text);
   transition: all 0.2s;
 }
 
 .clear-filters-btn:hover {
-  background: var(--ctp-blue);
+  background: var(--color-accent);
   color: white;
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
 }
 
 .packet-table-container {
@@ -163,7 +163,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 14px;
 }
 
@@ -180,7 +180,7 @@
 .packet-table thead {
   position: sticky;
   top: 0;
-  background: var(--ctp-mantle);
+  background: var(--color-bg-raised);
   z-index: 10;
 }
 
@@ -188,19 +188,19 @@
   padding: 10px 8px;
   text-align: left;
   font-weight: 600;
-  color: var(--ctp-subtext0);
-  border-bottom: 2px solid var(--ctp-surface2);
+  color: var(--color-text-subtle);
+  border-bottom: 2px solid var(--color-surface-active);
   white-space: nowrap;
 }
 
 .packet-table tbody tr {
   cursor: pointer;
   transition: background 0.2s;
-  border-bottom: 1px solid var(--ctp-surface2);
+  border-bottom: 1px solid var(--color-surface-active);
 }
 
 .packet-table tbody tr:hover {
-  background: var(--ctp-crust);
+  background: var(--color-bg-sunken);
 }
 
 .packet-table tbody tr.selected {
@@ -209,7 +209,7 @@
 
 .packet-table td {
   padding: 8px;
-  color: var(--ctp-text);
+  color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -217,7 +217,7 @@
 
 .packet-table .packet-number {
   font-size: 11px;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-family: var(--font-mono);
   font-weight: 600;
   padding-right: 12px;
@@ -225,7 +225,7 @@
 
 .packet-table .timestamp {
   font-size: 12px;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .packet-table .from-node,
@@ -234,7 +234,7 @@
 }
 
 .node-id-link {
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   cursor: pointer;
   text-decoration: underline;
   text-decoration-style: dotted;
@@ -242,12 +242,12 @@
 }
 
 .node-id-link:hover {
-  color: var(--ctp-sapphire);
+  color: var(--color-accent-hover);
   text-decoration-style: solid;
 }
 
 .hops-link {
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   cursor: pointer;
   text-decoration: underline;
   text-decoration-style: dotted;
@@ -255,7 +255,7 @@
 }
 
 .hops-link:hover {
-  color: var(--ctp-sapphire);
+  color: var(--color-accent-hover);
   text-decoration-style: solid;
 }
 
@@ -284,7 +284,7 @@
 }
 
 .relay-link {
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   cursor: pointer;
   text-decoration: underline;
   text-decoration-style: dotted;
@@ -292,7 +292,7 @@
 }
 
 .relay-link:hover {
-  color: var(--ctp-sapphire);
+  color: var(--color-accent-hover);
   text-decoration-style: solid;
 }
 
@@ -322,21 +322,21 @@
 }
 
 .packet-table .direction-rx {
-  color: var(--ctp-green, #a6e3a1);
+  color: var(--color-success, #a6e3a1);
 }
 
 .packet-table .direction-tx {
-  color: var(--ctp-peach, #fab387);
+  color: var(--color-caution, #fab387);
 }
 
 /* Impersonation/spoof-suspected packet (#2584): claims our local node id but
    arrived over RF. */
 .packet-table .direction.spoofed {
-  color: var(--ctp-red, #f38ba8);
+  color: var(--color-error, #f38ba8);
 }
 
 .packet-table tr.spoofed-row td {
-  background: color-mix(in srgb, var(--ctp-red, #f38ba8) 12%, transparent);
+  background: color-mix(in srgb, var(--color-error, #f38ba8) 12%, transparent);
 }
 
 /* Transport mechanism column colors */
@@ -346,22 +346,22 @@
 }
 
 .packet-table .transport-0 { /* INTERNAL */
-  color: var(--ctp-subtext1, #a6adc8);
+  color: var(--color-text-muted, #a6adc8);
 }
 
 .packet-table .transport-1,
 .packet-table .transport-2,
 .packet-table .transport-3,
 .packet-table .transport-4 { /* LORA variants */
-  color: var(--ctp-green, #a6e3a1);
+  color: var(--color-success, #a6e3a1);
 }
 
 .packet-table .transport-5 { /* MQTT */
-  color: var(--ctp-mauve, #cba6f7);
+  color: var(--color-accent-alt, #cba6f7);
 }
 
 .packet-table .transport-6 { /* UDP */
-  color: var(--ctp-blue, #89b4fa);
+  color: var(--color-accent, #89b4fa);
 }
 
 .packet-table .transport-7 { /* API */
@@ -369,7 +369,7 @@
 }
 
 .packet-table .transport-unknown {
-  color: var(--ctp-subtext0, #6c7086);
+  color: var(--color-text-subtle, #6c7086);
 }
 
 .encrypted-indicator {
@@ -397,8 +397,8 @@
 }
 
 .packet-detail-content {
-  background: var(--ctp-surface0, #313244);
-  border: 3px solid var(--ctp-blue, #4a9eff);
+  background: var(--color-surface, #313244);
+  border: 3px solid var(--color-accent, #4a9eff);
   border-radius: var(--radius-xl);
   max-width: 600px;
   width: 100%;
@@ -409,7 +409,7 @@
               0 0 20px rgba(74, 158, 255, 0.2);
   position: relative;
   z-index: 10000;
-  color: var(--ctp-text, #cdd6f4);
+  color: var(--color-text, #cdd6f4);
 }
 
 .packet-detail-header {
@@ -417,8 +417,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  background: var(--ctp-mantle);
-  border-bottom: 1px solid var(--ctp-surface2);
+  background: var(--color-bg-raised);
+  border-bottom: 1px solid var(--color-surface-active);
   border-radius: 8px 8px 0 0;
 }
 
@@ -426,7 +426,7 @@
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .packet-detail-body {
@@ -443,12 +443,12 @@
 
 .detail-label {
   font-weight: 600;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 13px;
 }
 
 .detail-value {
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 13px;
   word-break: break-word;
 }
@@ -468,10 +468,10 @@
 }
 
 .detail-value-json {
-  background: var(--ctp-mantle);
+  background: var(--color-bg-raised);
   padding: 8px 12px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--ctp-surface2);
+  border: 1px solid var(--color-surface-active);
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.4;
@@ -480,16 +480,16 @@
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .payload-content,
 .metadata-json,
 .packet-json {
-  background: var(--ctp-mantle);
+  background: var(--color-bg-raised);
   padding: 12px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--ctp-surface2);
+  border: 1px solid var(--color-surface-active);
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.4;
@@ -520,7 +520,7 @@
 .payload-content::-webkit-scrollbar-track,
 .metadata-json::-webkit-scrollbar-track,
 .packet-json::-webkit-scrollbar-track {
-  background: var(--ctp-crust);
+  background: var(--color-bg-sunken);
 }
 
 .packet-table-container::-webkit-scrollbar-thumb,
@@ -528,7 +528,7 @@
 .payload-content::-webkit-scrollbar-thumb,
 .metadata-json::-webkit-scrollbar-thumb,
 .packet-json::-webkit-scrollbar-thumb {
-  background: var(--ctp-surface2);
+  background: var(--color-surface-active);
   border-radius: var(--radius-sm);
 }
 
@@ -537,5 +537,5 @@
 .payload-content::-webkit-scrollbar-thumb:hover,
 .metadata-json::-webkit-scrollbar-thumb:hover,
 .packet-json::-webkit-scrollbar-thumb:hover {
-  background: var(--ctp-subtext0);
+  background: var(--color-text-subtle);
 }

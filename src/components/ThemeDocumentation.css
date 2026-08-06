@@ -9,14 +9,14 @@
 }
 
 .theme-doc-header h2 {
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin: 0 0 10px 0;
   font-size: 2rem;
   font-weight: 600;
 }
 
 .theme-doc-header p {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 1.1rem;
   margin: 0;
 }
@@ -30,9 +30,9 @@
 
 .category-btn {
   padding: 10px 20px;
-  background: var(--ctp-surface0);
-  color: var(--ctp-text);
-  border: 2px solid var(--ctp-surface1);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 2px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
   cursor: pointer;
   font-size: 0.95rem;
@@ -41,14 +41,14 @@
 }
 
 .category-btn:hover {
-  background: var(--ctp-surface1);
-  border-color: var(--ctp-blue);
+  background: var(--color-surface-hover);
+  border-color: var(--color-accent);
 }
 
 .category-btn.active {
-  background: var(--ctp-blue);
-  color: var(--ctp-crust);
-  border-color: var(--ctp-blue);
+  background: var(--color-accent);
+  color: var(--color-bg-sunken);
+  border-color: var(--color-accent);
 }
 
 .themes-grid {
@@ -59,8 +59,8 @@
 }
 
 .theme-card {
-  background: var(--ctp-mantle);
-  border: 2px solid var(--ctp-surface1);
+  background: var(--color-bg-raised);
+  border: 2px solid var(--color-surface-hover);
   border-radius: var(--radius-xl);
   padding: 20px;
   cursor: pointer;
@@ -68,15 +68,15 @@
 }
 
 .theme-card:hover {
-  border-color: var(--ctp-blue);
+  border-color: var(--color-accent);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .theme-card.active {
-  border-color: var(--ctp-green);
-  background: var(--ctp-base);
-  box-shadow: 0 0 0 2px var(--ctp-green);
+  border-color: var(--color-success);
+  background: var(--color-bg);
+  box-shadow: 0 0 0 2px var(--color-success);
 }
 
 .theme-card-header {
@@ -87,15 +87,15 @@
 }
 
 .theme-card-header h3 {
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin: 0;
   font-size: 1.3rem;
   font-weight: 600;
 }
 
 .current-badge {
-  background: var(--ctp-green);
-  color: var(--ctp-crust);
+  background: var(--color-success);
+  color: var(--color-bg-sunken);
   padding: 4px 12px;
   border-radius: var(--radius-xl);
   font-size: 0.8rem;
@@ -103,15 +103,15 @@
 }
 
 .theme-description {
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.95rem;
   margin: 0 0 15px 0;
   line-height: 1.5;
 }
 
 .accessibility-badge {
-  background: var(--ctp-surface0);
-  border: 1px solid var(--ctp-blue);
+  background: var(--color-surface);
+  border: 1px solid var(--color-accent);
   border-radius: var(--radius-lg);
   padding: 10px;
   margin-bottom: 15px;
@@ -126,7 +126,7 @@
 }
 
 .badge-text {
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 0.85rem;
   line-height: 1.4;
 }
@@ -149,7 +149,7 @@
   width: 100%;
   aspect-ratio: 1;
   border-radius: var(--radius-lg);
-  border: 2px solid var(--ctp-surface2);
+  border: 2px solid var(--color-surface-active);
   transition: transform 0.2s ease;
 }
 
@@ -159,15 +159,15 @@
 
 .swatch-label {
   font-size: 0.75rem;
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   font-weight: 500;
 }
 
 .preview-btn {
   width: 100%;
   padding: 12px;
-  background: var(--ctp-blue);
-  color: var(--ctp-crust);
+  background: var(--color-accent);
+  color: var(--color-bg-sunken);
   border: none;
   border-radius: var(--radius-lg);
   font-size: 1rem;
@@ -177,7 +177,7 @@
 }
 
 .preview-btn:hover {
-  background: var(--ctp-sapphire);
+  background: var(--color-accent-hover);
   transform: scale(1.02);
 }
 
@@ -194,33 +194,33 @@
 
 /* Only the button for the slot this theme is assigned to turns green. */
 .preview-btn.active {
-  background: var(--ctp-green);
+  background: var(--color-success);
   cursor: default;
 }
 
 .preview-btn.active:hover {
-  background: var(--ctp-green);
+  background: var(--color-success);
   transform: none;
 }
 
 /* Keep the unassigned slot's button blue even when the card is highlighted. */
 .theme-card.active .theme-card-actions .preview-btn:not(.active) {
-  background: var(--ctp-blue);
+  background: var(--color-accent);
 }
 
 .theme-card.active .theme-card-actions .preview-btn:not(.active):hover {
-  background: var(--ctp-sapphire);
+  background: var(--color-accent-hover);
 }
 
 .theme-doc-footer {
-  background: var(--ctp-mantle);
+  background: var(--color-bg-raised);
   border-radius: var(--radius-xl);
   padding: 30px;
   margin-top: 40px;
 }
 
 .theme-doc-footer h3 {
-  color: var(--ctp-text);
+  color: var(--color-text);
   margin: 0 0 20px 0;
   font-size: 1.5rem;
   font-weight: 600;
@@ -233,21 +233,21 @@
 }
 
 .info-section {
-  background: var(--ctp-base);
-  border: 1px solid var(--ctp-surface1);
+  background: var(--color-bg);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
   padding: 20px;
 }
 
 .info-section h4 {
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   margin: 0 0 10px 0;
   font-size: 1.1rem;
   font-weight: 600;
 }
 
 .info-section p {
-  color: var(--ctp-text);
+  color: var(--color-text);
   line-height: 1.6;
   margin: 0 0 10px 0;
 }
@@ -255,7 +255,7 @@
 .info-section ul {
   margin: 10px 0 0 0;
   padding-left: 20px;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .info-section li {
@@ -264,7 +264,7 @@
 }
 
 .info-section strong {
-  color: var(--ctp-mauve);
+  color: var(--color-accent-alt);
 }
 
 @media (max-width: 768px) {

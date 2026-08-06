@@ -1,7 +1,7 @@
 /* App Header container */
 .app-header {
-  background: var(--ctp-mantle);
-  border-bottom: 1px solid var(--ctp-surface0);
+  background: var(--color-bg-raised);
+  border-bottom: 1px solid var(--color-surface);
   padding: 1.5rem 2rem;
   padding-top: max(1.5rem, env(safe-area-inset-top)); /* Account for iPhone notch/status bar */
   position: fixed;
@@ -43,17 +43,17 @@
 
 .app-header h1 {
   margin: 0;
-  color: var(--ctp-lavender);
+  color: var(--color-accent-muted);
   font-size: 2rem;
   font-weight: 700;
 }
 
 /* Back to sources button */
 .back-to-sources-btn {
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   border: 1px solid var(--ctp-overlay0);
   border-radius: var(--radius-sm);
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   cursor: pointer;
   font-size: 0.85rem;
   padding: 0.25rem 0.75rem;
@@ -62,17 +62,17 @@
 }
 
 .back-to-sources-btn:hover {
-  background: var(--ctp-surface1);
-  border-color: var(--ctp-overlay1);
-  color: var(--ctp-text);
+  background: var(--color-surface-hover);
+  border-color: var(--color-text-disabled);
+  color: var(--color-text);
 }
 
 /* Source name badge shown beside the title */
 .header-source-name {
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
   border: 1px solid var(--ctp-overlay0);
   border-radius: var(--radius-sm);
-  color: var(--ctp-subtext1);
+  color: var(--color-text-muted);
   font-size: 0.8rem;
   font-weight: 500;
   padding: 0.2rem 0.6rem;
@@ -84,26 +84,26 @@
   gap: 0.5rem;
   align-items: center;
   font-size: 0.9rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .node-address {
   font-family: var(--font-mono);
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   padding: 0.25rem 0.5rem;
   border-radius: var(--radius-sm);
-  color: var(--ctp-blue);
+  color: var(--color-accent);
   transition: all 0.2s ease;
 }
 
 .node-address.clickable:hover {
-  background: var(--ctp-surface1);
-  color: var(--ctp-sapphire);
+  background: var(--color-surface-hover);
+  color: var(--color-accent-hover);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .device-name {
-  color: var(--ctp-green);
+  color: var(--color-success);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -121,7 +121,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-weight: 500;
   cursor: pointer;
 }
@@ -130,35 +130,35 @@
   width: 12px;
   height: 12px;
   border-radius: var(--radius-full);
-  background: var(--ctp-overlay1);
+  background: var(--color-text-disabled);
 }
 
 .status-indicator.connected {
-  background: var(--ctp-green);
+  background: var(--color-success);
   animation: pulse 2s infinite;
 }
 
 .status-indicator.connecting {
-  background: var(--ctp-yellow);
+  background: var(--color-warning);
   animation: pulse 1s infinite;
 }
 
 .status-indicator.configuring {
-  background: var(--ctp-blue);
+  background: var(--color-accent);
   animation: pulse 1.5s infinite;
 }
 
 .status-indicator.disconnected {
-  background: var(--ctp-red);
+  background: var(--color-error);
 }
 
 .status-indicator.rebooting {
-  background: var(--ctp-peach);
+  background: var(--color-caution);
   animation: pulse 1s infinite;
 }
 
 .status-indicator.node-offline {
-  background: var(--ctp-yellow);
+  background: var(--color-warning);
   animation: pulse 1.5s infinite;
 }
 
@@ -182,11 +182,11 @@
 }
 
 .update-method-indicator.websocket {
-  color: var(--ctp-green);
+  color: var(--color-success);
 }
 
 .update-method-indicator.polling {
-  color: var(--ctp-yellow);
+  color: var(--color-warning);
 }
 
 /* Connection control buttons */
@@ -195,8 +195,8 @@
   padding: 4px 12px;
   font-size: 12px;
   border: 1px solid var(--ctp-overlay0);
-  background: var(--ctp-surface0);
-  color: var(--ctp-text);
+  background: var(--color-surface);
+  color: var(--color-text);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.2s;
@@ -204,19 +204,19 @@
 }
 
 .connection-control-btn:hover {
-  background: var(--ctp-surface1);
-  border-color: var(--ctp-overlay1);
+  background: var(--color-surface-hover);
+  border-color: var(--color-text-disabled);
 }
 
 .connection-control-btn.reconnect {
-  background: var(--ctp-blue);
-  border-color: var(--ctp-blue);
-  color: var(--ctp-accent-text);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .connection-control-btn.reconnect:hover {
-  background: var(--ctp-sapphire);
-  border-color: var(--ctp-sapphire);
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
 }
 
 /* Login button */
@@ -225,10 +225,10 @@
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: var(--ctp-blue);
+  background: var(--color-accent);
   border: none;
   border-radius: var(--radius-lg);
-  color: var(--ctp-accent-text);
+  color: var(--color-accent-text);
   cursor: pointer;
   font-size: 0.95em;
   font-weight: 600;
@@ -237,7 +237,7 @@
 }
 
 .login-button:hover {
-  background: var(--ctp-sapphire);
+  background: var(--color-accent-hover);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(137, 180, 250, 0.3);
 }

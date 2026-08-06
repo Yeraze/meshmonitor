@@ -10,32 +10,32 @@
   align-items: flex-start;
   gap: 1rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid var(--ctp-surface2);
+  border-bottom: 1px solid var(--color-surface-active);
 }
 
 .theme-management-header h3 {
   margin: 0 0 0.5rem 0;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1.25rem;
 }
 
 .theme-management-header p {
   margin: 0;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-size: 0.9rem;
 }
 
 .no-themes-message {
   text-align: center;
   padding: 3rem 1rem;
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   border-radius: var(--radius-lg);
-  border: 2px dashed var(--ctp-surface2);
+  border: 2px dashed var(--color-surface-active);
 }
 
 .no-themes-message p {
   margin: 0.5rem 0;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .theme-list {
@@ -45,26 +45,26 @@
 }
 
 .theme-card {
-  background: var(--ctp-surface0);
-  border: 2px solid var(--ctp-surface1);
+  background: var(--color-surface);
+  border: 2px solid var(--color-surface-hover);
   border-radius: var(--radius-lg);
   overflow: hidden;
   transition: all 0.2s;
 }
 
 .theme-card:hover {
-  border-color: var(--ctp-surface2);
+  border-color: var(--color-surface-active);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .theme-card.active {
-  border-color: var(--ctp-blue);
-  box-shadow: 0 0 0 1px var(--ctp-blue);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
 }
 
 .theme-card-preview {
-  background: var(--ctp-base);
+  background: var(--color-bg);
   padding: 0.75rem;
 }
 
@@ -97,22 +97,22 @@
 
 .theme-card-info h4 {
   margin: 0;
-  color: var(--ctp-text);
+  color: var(--color-text);
   font-size: 1rem;
   font-weight: 600;
 }
 
 .theme-slug {
   font-size: 0.8rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   font-family: var(--font-mono);
 }
 
 .builtin-badge {
   display: inline-block;
   padding: 0.125rem 0.5rem;
-  background: var(--ctp-surface2);
-  color: var(--ctp-text);
+  background: var(--color-surface-active);
+  color: var(--color-text);
   font-size: 0.75rem;
   font-weight: 600;
   border-radius: var(--radius-sm);
@@ -129,8 +129,8 @@
 .assignment-badge {
   display: inline-block;
   padding: 0.125rem 0.5rem;
-  background: var(--ctp-blue);
-  color: var(--ctp-crust);
+  background: var(--color-accent);
+  color: var(--color-bg-sunken);
   font-size: 0.75rem;
   font-weight: 600;
   border-radius: var(--radius-sm);
@@ -147,8 +147,8 @@
 .btn-apply {
   flex: 1 1 120px;
   padding: 0.5rem 1rem;
-  background: var(--ctp-blue);
-  color: var(--ctp-crust);
+  background: var(--color-accent);
+  color: var(--color-bg-sunken);
   border: none;
   border-radius: var(--radius-md);
   font-weight: 600;
@@ -157,12 +157,12 @@
 }
 
 .btn-apply:hover:not(:disabled) {
-  background: var(--ctp-sapphire);
+  background: var(--color-accent-hover);
   transform: translateY(-1px);
 }
 
 .btn-apply.active {
-  background: var(--ctp-green);
+  background: var(--color-success);
   cursor: default;
 }
 
@@ -175,7 +175,7 @@
   width: 36px;
   height: 36px;
   padding: 0;
-  background: var(--ctp-surface1);
+  background: var(--color-surface-hover);
   border: none;
   border-radius: var(--radius-md);
   font-size: 1.1rem;
@@ -187,12 +187,12 @@
 }
 
 .btn-icon:hover {
-  background: var(--ctp-surface2);
+  background: var(--color-surface-active);
   transform: scale(1.1);
 }
 
 .btn-icon.btn-danger:hover {
-  background: var(--ctp-red);
+  background: var(--color-error);
 }
 
 @media (max-width: 768px) {

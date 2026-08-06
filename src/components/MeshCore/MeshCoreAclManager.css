@@ -1,7 +1,7 @@
 .meshcore-acl-manager {
-  border: 1px solid var(--ctp-surface1);
+  border: 1px solid var(--color-surface-hover);
   border-radius: var(--radius-md, 6px);
-  background: var(--ctp-surface0);
+  background: var(--color-surface);
   padding: 0.6rem 0.75rem;
   display: flex;
   flex-direction: column;
@@ -12,13 +12,13 @@
   margin: 0;
   font-size: 0.95rem;
   font-weight: 600;
-  color: var(--ctp-text);
+  color: var(--color-text);
 }
 
 .acl-hint {
   margin: 0;
   font-size: 0.8rem;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
   line-height: 1.4;
 }
 
@@ -45,14 +45,14 @@
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--ctp-subtext0);
+  color: var(--color-text-subtle);
 }
 
 .acl-input {
   padding: 0.4rem 0.6rem;
-  border: 1px solid var(--ctp-surface2);
-  background: var(--ctp-base);
-  color: var(--ctp-text);
+  border: 1px solid var(--color-surface-active);
+  background: var(--color-bg);
+  color: var(--color-text);
   border-radius: var(--radius-md, 4px);
   font: inherit;
   font-size: 0.85rem;
@@ -60,7 +60,7 @@
 
 .acl-input:focus {
   outline: none;
-  border-color: var(--ctp-mauve);
+  border-color: var(--color-accent-alt);
 }
 
 .acl-pubkey-input {
@@ -68,10 +68,10 @@
 }
 
 .acl-input-invalid {
-  border-color: var(--ctp-red);
+  border-color: var(--color-error);
 }
 
 .acl-error-hint {
   font-size: 0.75rem;
-  color: var(--ctp-red);
+  color: var(--color-error);
 }
